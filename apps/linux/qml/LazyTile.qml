@@ -2,7 +2,7 @@
 // empty Item of the card's size, so the page lays out exactly as it will look and the
 // scroll bar is right from the first frame.
 //
-// The page's PageScroll hands out a budget of about a screen and a tenth of area each
+// The page's PageScroll hands out a budget of one viewport of card area each
 // frame: tiles created while it lasts build at once, synchronously, so the first frame
 // after a click, a search or a re-sort shows every card in view. The rest wait in the
 // PageScroll's list, which measures them only after a frame has painted (when the layout
@@ -17,6 +17,9 @@ Item {
     readonly property alias item: loader.item
     property var flick: null
     property bool seen: false
+    // false for a tile that holds tiles (a section of cards): it builds at once while the
+    // first frame's budget lasts but spends none of it, so the budget goes to its cards
+    property bool spends: true
 
     function findFlick() {
         for (var p = parent; p; p = p.parent)
@@ -40,7 +43,7 @@ Item {
         // card a little wider than the theme's stands in, since columns stretch to fill
         var guess = theme.posterWidth * 1.3
         var area = width * height > 0 ? width * height : guess * guess * 1.5
-        if (!flick || flick.takeLazy(area)) seen = true
+        if (!flick || flick.takeLazy(spends ? area : 0)) seen = true
         else flick.lazyAdd(root)
     }
     Component.onCompleted: decide()

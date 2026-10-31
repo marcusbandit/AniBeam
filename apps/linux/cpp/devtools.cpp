@@ -20,6 +20,7 @@
 #include <QtQml/QQmlAbstractUrlInterceptor>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlEngine>
+#include <QtQml/QQmlDebuggingEnabler>
 #include <QtQuick/QQuickImageProvider>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
@@ -247,6 +248,12 @@ void walk(QQuickItem *item, const QRectF &window, double dpr2, Scene &s)
     }
 }
 
+}
+
+void dev_enable_qml_profiling()
+{
+    if (qgetenv("ANIBEAM_QML_PROFILE") == "1")
+        QQmlDebuggingEnabler::enableDebugging(true);
 }
 
 void install_dev_tools(QQmlApplicationEngine &engine)

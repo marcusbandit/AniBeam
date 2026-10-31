@@ -9,6 +9,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls.Basic as QC
+import com.marcusrosado.AniBeam
 
 Flickable {
     id: root
@@ -29,14 +30,17 @@ Flickable {
     readonly property real scrollTarget: wheel.target
     GridKeys { id: gridKeys; flick: root }
 
-    // LazyTile's bookkeeping (#289). A budget of about a screen and a tenth of card area,
+    // LazyTile's bookkeeping (#289). A budget of one viewport of card area,
     // refilled after every painted frame: tiles made while it lasts build at once. The
     // others wait in `lazyWaiting` and are measured only after a frame (the layout is
     // settled then) and when the view has moved a quarter of a screen, never per tile and
     // never per scroll frame.
     readonly property real lazyBudget: {
+        // The page's own viewport, not the window: only what is in view builds before the
+        // first frame; the rest comes in the frames after, before a scroll can reach it
+        if (root.width > 0 && root.height > 0) return root.width * root.height
         var w = root.Window.window
-        return 1.1 * (w ? w.width * w.height : 1920 * 1080)
+        return w ? w.width * w.height : 1920 * 1080
     }
     property real lazyLeft: lazyBudget
     property int lazyCount: 0
@@ -54,14 +58,13 @@ Flickable {
     }
     function lazySweep() {
         lazySweptAt = contentY
-        var view = contentY, end = contentY + height, keep = []
-        for (var i = 0; i < lazyWaiting.length; i++) {
-            var t = lazyWaiting[i]
-            if (!t || t.seen) continue
-            var y = t.mapToItem(contentItem, 0, 0).y
-            if (y + t.height > view - height && y < end + height)
-                t.build(y + t.height > view && y < end)
-            else keep.push(t)
+        var live = lazyWaiting.filter(function(t) { return t && !t.seen })
+        // Measured in one native call: in view (2), within a screen of it (1), or not yet (0)
+        var at = TileReach.measure(contentItem, live, contentY, contentY + height, contentY - height, contentY + 2 * height)
+        var keep = []
+        for (var i = 0; i < live.length; i++) {
+            if (at[i] > 0) live[i].build(at[i] === 2)
+            else keep.push(live[i])
         }
         lazyWaiting = keep
         lazyCount = keep.length

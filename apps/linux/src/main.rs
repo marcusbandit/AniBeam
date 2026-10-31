@@ -165,6 +165,7 @@ fn main() {
     let mut app = QGuiApplication::new();
     bridge::helpers::ffi::set_desktop_file_name(&QString::from(APP_ID));
 
+    bridge::helpers::ffi::dev_enable_qml_profiling();
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
         bridge::helpers::ffi::install_dev_tools(engine.as_mut());

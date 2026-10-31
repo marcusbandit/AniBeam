@@ -23,10 +23,10 @@
 // minPlate, heroPlate and plateH are 0 (nothing sits under the poster any more).
 // `plateHeight` is accepted and unused.
 //
-// Drawn natively since #289: CardFace (cpp/cardface.cpp) lays out and draws everything
-// written over the poster in one item, where this file used to build about sixty objects.
-// What stays here is what QML does best: the poster image (shared with the pixmap cache
-// and decoded off the Qt thread), the hover, the click, the keys, and the hero's Play.
+// Drawn natively since #289: CardFace (cpp/cardface.cpp) draws the poster and everything
+// written over it in one item, where this file used to build about sixty objects. What
+// stays here is what QML does best: the Image that decodes the poster (shared with the
+// pixmap cache, off the Qt thread), the hover, the click, the keys, and the hero's Play.
 
 import QtQuick
 import com.marcusrosado.AniBeam
@@ -126,32 +126,21 @@ Item {
         border.width: 1
     }
 
-    // ---- The poster: full-bleed, cropped to the rounded tile through a Corner that samples
-    // the Image's own texture (no offscreen pass). Built only while live; decoded at the
-    // shared poster size (the pool's, so a warmed poster is a cache hit, not a second
-    // decode), a hero at twice it.
-    Loader {
-        anchors.fill: parent
-        active: root.live && !!root.item.poster
-        opacity: root.ghost || root.dropped ? 0.6 : 1
-        sourceComponent: Corner {
-            radius: root.radius
-            fillItem: posterImage
-            Image {
-                id: posterImage
-                visible: false
-                anchors.fill: parent
-                source: Fmt.fileUrl(root.item.poster)
-                sourceSize: root.hero ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2) : theme.posterDecodeSize
-                fillMode: Image.PreserveAspectCrop
-                smooth: true
-                asynchronous: true
-                cache: true
-                onStatusChanged: root.posterReady = status === Image.Ready
-                Component.onCompleted: root.posterReady = status === Image.Ready
-                Component.onDestruction: root.posterReady = false
-            }
-        }
+    // ---- The poster: decoded at the shared poster size (the pool's, so a warmed poster is a
+    // cache hit, not a second decode), a hero at twice it, off the Qt thread. The Image only
+    // decodes; the face draws its texture, cropped to the tile and rounded by a shader.
+    Image {
+        id: posterImage
+        visible: false
+        width: root.width; height: root.height
+        source: root.live && !!root.item.poster ? Fmt.fileUrl(root.item.poster) : ""
+        sourceSize: root.hero ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2) : theme.posterDecodeSize
+        fillMode: Image.PreserveAspectCrop
+        smooth: true
+        asynchronous: true
+        cache: true
+        onStatusChanged: root.posterReady = status === Image.Ready
+        Component.onCompleted: root.posterReady = status === Image.Ready
     }
 
     // ---- Everything written on the poster: one native item
@@ -159,6 +148,8 @@ Item {
         id: face
         anchors.fill: parent
         item: root.item
+        poster: root.posterReady ? posterImage : null
+        posterOpacity: root.ghost || root.dropped ? 0.6 : 1
         metaOverride: root.metaOverride
         countdown: root.countdown
         ghost: root.ghost

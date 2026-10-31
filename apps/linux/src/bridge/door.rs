@@ -107,6 +107,17 @@ pub mod qobject {
             direction: &QString,
             reveal_hidden: bool,
         ) -> QJsonObject;
+        /// listLibrary with each card cut to the fields the library page and its cards
+        /// read, about a third of the bytes, for the page that loads on every visit.
+        #[qinvokable]
+        fn list_library_lean(
+            self: &Door,
+            tab: &QString,
+            query: &QString,
+            sort: &QString,
+            direction: &QString,
+            reveal_hidden: bool,
+        ) -> QJsonObject;
         #[qinvokable]
         fn get_series(self: &Door, series: f64) -> QJsonObject;
         #[qinvokable]
@@ -597,6 +608,73 @@ fn call_name(call: &Call) -> String {
     }
 }
 
+/// A reshaping of a reply before it reaches QML: its name keys the read cache.
+#[derive(Clone, Copy)]
+struct Shape {
+    name: &'static str,
+    apply: fn(&mut Value),
+}
+
+/// The fields of a series card the library page, its cards (CardFace) and the frame's
+/// delete menu read; a card carries about sixty, and every one of them was converted twice
+/// on its way to QML (#289).
+const LEAN_CARD_KEYS: &[&str] = &[
+    "id",
+    "title",
+    "titles",
+    "poster",
+    "cubes",
+    "code",
+    "kind",
+    "path",
+    "list_status",
+    "watched",
+    "watched_state",
+    "total_episodes",
+    "total_is_estimate",
+    "episodes_on_disk",
+    "next_airing",
+    "my_score",
+    "community_score",
+    "downloading",
+    "hidden",
+    "site_url",
+    "franchise",
+    "season",
+    "start_date",
+    "year",
+    "format",
+    "genres",
+];
+
+fn lean_cards(list: &mut Value) {
+    if let Some(cards) = list.as_array_mut() {
+        for card in cards {
+            if let Some(o) = card.as_object_mut() {
+                o.retain(|k, _| LEAN_CARD_KEYS.contains(&k.as_str()));
+                // The folder is the one alternative title anything here reads
+                if let Some(t) = o.get_mut("titles").and_then(|t| t.as_object_mut()) {
+                    t.retain(|k, _| k == "folder");
+                }
+            }
+        }
+    }
+}
+
+const LEAN_LIBRARY: Shape = Shape {
+    name: "lean",
+    apply: |v| {
+        if let Some(reply) = v.get_mut("reply") {
+            if let Some(series) = reply.get_mut("series") {
+                lean_cards(series);
+            }
+            if let Some(airing) = reply.get_mut("airing") {
+                lean_cards(airing);
+            }
+        }
+    },
+};
+
 fn ms(d: std::time::Duration) -> f64 {
     d.as_secs_f64() * 1000.0
 }
@@ -812,8 +890,14 @@ impl qobject::Door {
     /// about should not take the window with it. A caught panic comes back as the ordinary
     /// `Internal` error shape.
     fn dispatch(&self, call: Result<Call, CoreError>) -> QJsonObject {
+        self.dispatch_shaped(call, None)
+    }
+
+    /// `dispatch` with the reply reshaped before it becomes a QJsonObject, so what QML is
+    /// handed is only what it reads; kept in the read cache under its own key.
+    fn dispatch_shaped(&self, call: Result<Call, CoreError>, shape: Option<Shape>) -> QJsonObject {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match call {
-            Ok(c) => self.answer(c),
+            Ok(c) => self.answer(c, shape),
             Err(e) => to_qjson_object(&json!({ "error": json::error_json(&e) })),
         }))
         .unwrap_or_else(|payload| {
@@ -825,9 +909,12 @@ impl qobject::Door {
     /// One call, from the read cache when it is a whole-library read the core's state has
     /// not moved past. The generation is read before the call runs, so a change that lands
     /// during the read leaves its answer stamped old.
-    fn answer(&self, call: Call) -> QJsonObject {
+    fn answer(&self, call: Call, shape: Option<Shape>) -> QJsonObject {
         let core = crate::runtime::core();
-        let key = read_cache::key_of(&call);
+        let key = read_cache::key_of(&call).map(|k| match shape {
+            Some(s) => format!("{}:{k}", s.name),
+            None => k,
+        });
         let dev = crate::devstats::on();
         let at = if dev { crate::devstats::now() } else { 0.0 };
         let name = if timing() || dev {
@@ -862,7 +949,10 @@ impl qobject::Door {
         let reply = core.call(call);
         let t1 = Instant::now();
         let ok = reply.is_ok();
-        let v = json::reply_json(reply);
+        let mut v = json::reply_json(reply);
+        if let Some(s) = shape {
+            (s.apply)(&mut v);
+        }
         let t2 = Instant::now();
         let o = to_qjson_object(&v);
         let t3 = Instant::now();
@@ -1281,6 +1371,27 @@ impl qobject::Door {
                 reveal_hidden,
             })
         })())
+    }
+    pub fn list_library_lean(
+        &self,
+        tab: &QString,
+        query: &QString,
+        sort: &QString,
+        direction: &QString,
+        reveal_hidden: bool,
+    ) -> QJsonObject {
+        self.dispatch_shaped(
+            (|| -> Result<Call, CoreError> {
+                Ok(Call::ListLibrary {
+                    tab: parse_enum::<Tab>("tab", tab)?,
+                    query: query.to_string(),
+                    sort: parse_enum::<Sort>("sort", sort)?,
+                    direction: parse_enum::<Direction>("direction", direction)?,
+                    reveal_hidden,
+                })
+            })(),
+            Some(LEAN_LIBRARY),
+        )
     }
     pub fn get_series(&self, series: f64) -> QJsonObject {
         self.dispatch(Ok(Call::GetSeries { series: id(series) }))

@@ -10,6 +10,7 @@
 // inks, the cube colours and the spacing unit. Main.qml hands it the tokens once, and
 // again whenever the theme changes; each face reads it when it lays out.
 #include <QtCore/QHash>
+#include <QtCore/QPointer>
 #include <QtCore/QVariant>
 #include <QtGui/QColor>
 #include <QtGui/QFont>
@@ -51,6 +52,22 @@ private:
     Data m_data;
 };
 
+// Which of a page's waiting LazyTiles are within reach of the viewport (#289): one call
+// that measures every tile in C++, where a JavaScript loop over mapToItem cost a page of
+// 300 series about 30 ms a visit.
+class TileReach : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
+public:
+    explicit TileReach(QObject *parent = nullptr) : QObject(parent) {}
+    // For each tile (in `tiles`), measured in `content`'s coordinates: 2 when it overlaps
+    // [viewTop, viewBottom], 1 when it overlaps [reachTop, reachBottom] only, 0 otherwise
+    Q_INVOKABLE QList<int> measure(QQuickItem *content, const QVariantList &tiles, qreal viewTop, qreal viewBottom,
+                                   qreal reachTop, qreal reachBottom) const;
+};
+
 class CardFace : public QQuickItem
 {
     Q_OBJECT
@@ -64,6 +81,11 @@ class CardFace : public QQuickItem
     Q_PROPERTY(qreal lift READ lift WRITE setLift NOTIFY liftChanged)
     Q_PROPERTY(bool focused READ focused WRITE setFocused NOTIFY focusedChanged)
     Q_PROPERTY(qreal rightInset READ rightInset WRITE setRightInset NOTIFY rightInsetChanged)
+    // The decoded poster: an Image whose texture the face draws, cropped to fill the tile and
+    // rounded by a shader; null until it is Ready. posterOpacity dims a ghost's or a dropped
+    // series'.
+    Q_PROPERTY(QQuickItem *poster READ poster WRITE setPoster NOTIFY posterChanged)
+    Q_PROPERTY(qreal posterOpacity READ posterOpacity WRITE setPosterOpacity NOTIFY posterChanged)
     // Read by the card: where the hero's Play row sits, and what a tip names
     Q_PROPERTY(qreal playY READ playY NOTIFY laidOut)
     Q_PROPERTY(qreal pad READ pad NOTIFY laidOut)
@@ -93,6 +115,10 @@ public:
     void setFocused(bool v);
     qreal rightInset() const { return m_rightInset; }
     void setRightInset(qreal v);
+    QQuickItem *poster() const { return m_poster; }
+    void setPoster(QQuickItem *v);
+    qreal posterOpacity() const { return m_posterOpacity; }
+    void setPosterOpacity(qreal v);
     qreal playY() const { return m_playY; }
     qreal pad() const;
     bool bare() const;
@@ -112,6 +138,7 @@ signals:
     void liftChanged();
     void focusedChanged();
     void rightInsetChanged();
+    void posterChanged();
     void laidOut();
 
 protected:
@@ -153,7 +180,9 @@ private:
     QVariant m_countdown;
     bool m_ghost = false, m_hero = false, m_focused = false;
     double m_nowMs = 0;
-    qreal m_lift = 0, m_rightInset = 0, m_playY = 0;
+    qreal m_lift = 0, m_rightInset = 0, m_playY = 0, m_posterOpacity = 1;
+    QPointer<QQuickItem> m_poster;
+    QMetaObject::Connection m_textureWatch;
 
     std::vector<std::unique_ptr<QTextLayout>> m_layouts;
     std::vector<Fill> m_fills;

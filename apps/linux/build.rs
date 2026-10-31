@@ -153,6 +153,8 @@ fn main() {
     // blank icon at runtime, not a build error, so it is generated:
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
     .qrc_resources([
+        "shaders/poster.vert.qsb",
+        "shaders/poster.frag.qsb",
         "assets/icon.png",
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",

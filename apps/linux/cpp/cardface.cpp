@@ -11,7 +11,14 @@
 #include <QtQuick/QSGFlatColorMaterial>
 #include <QtQuick/QSGGeometryNode>
 #include <QtQuick/QSGTextNode>
+#include <QtQuick/QSGImageNode>
+#include <QtQuick/QSGRendererInterface>
 #include <QtQuick/QSGVertexColorMaterial>
+#include <QtQuick/QSGMaterial>
+#include <QtQuick/QSGMaterialShader>
+#include <QtQuick/QSGTexture>
+#include <QtQuick/QSGTextureProvider>
+#include <QtGui/QMatrix4x4>
 
 // ---- CardStyle -------------------------------------------------------------------------
 
@@ -93,6 +100,25 @@ void CardStyle::set(const QVariantMap &t)
     emit changed();
 }
 
+// ---- TileReach ---------------------------------------------------------------------------
+
+QList<int> TileReach::measure(QQuickItem *content, const QVariantList &tiles, qreal viewTop, qreal viewBottom,
+                              qreal reachTop, qreal reachBottom) const
+{
+    QList<int> out;
+    out.reserve(tiles.size());
+    for (const QVariant &v : tiles) {
+        auto *t = qobject_cast<QQuickItem *>(v.value<QObject *>());
+        if (!t || !content) {
+            out.push_back(0);
+            continue;
+        }
+        const qreal y = t->mapToItem(content, QPointF(0, 0)).y(), h = t->height();
+        out.push_back(y + h > viewTop && y < viewBottom ? 2 : y + h > reachTop && y < reachBottom ? 1 : 0);
+    }
+    return out;
+}
+
 // ---- CardFace: inputs ------------------------------------------------------------------
 
 namespace {
@@ -170,6 +196,26 @@ void CardFace::setLift(qreal v)
     emit liftChanged();
     relayout();
 }
+void CardFace::setPoster(QQuickItem *v)
+{
+    if (m_poster == v)
+        return;
+    if (m_textureWatch)
+        disconnect(m_textureWatch);
+    m_textureWatch = {};
+    m_poster = v;
+    emit posterChanged();
+    update();
+}
+void CardFace::setPosterOpacity(qreal v)
+{
+    if (qFuzzyCompare(m_posterOpacity, v))
+        return;
+    m_posterOpacity = v;
+    emit posterChanged();
+    update();
+}
+
 void CardFace::geometryChange(const QRectF &now, const QRectF &before)
 {
     QQuickItem::geometryChange(now, before);
@@ -732,6 +778,129 @@ QSGGeometryNode *meshNode(const Mesh &m)
 }
 }
 
+// ---- The poster: the Image's texture through a shader that crops and rounds it ----------
+
+namespace {
+class PosterMaterial : public QSGMaterial
+{
+public:
+    PosterMaterial() { setFlag(Blending, true); }
+    QSGMaterialType *type() const override
+    {
+        static QSGMaterialType t;
+        return &t;
+    }
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode) const override;
+    int compare(const QSGMaterial *other) const override
+    {
+        auto *o = static_cast<const PosterMaterial *>(other);
+        if (texture != o->texture)
+            return texture < o->texture ? -1 : 1;
+        if (radius != o->radius)
+            return radius < o->radius ? -1 : 1;
+        if (size != o->size)
+            return size.width() < o->size.width() ? -1 : 1;
+        return dim < o->dim ? -1 : dim > o->dim ? 1 : 0;
+    }
+    QSGTexture *texture = nullptr;
+    float radius = 0, dim = 1;
+    QSizeF size;
+    QRectF sub{0, 0, 1, 1};
+};
+
+class PosterShader : public QSGMaterialShader
+{
+public:
+    PosterShader()
+    {
+        setShaderFileName(VertexStage, QStringLiteral(":/qt/qml/com/marcusrosado/AniBeam/shaders/poster.vert.qsb"));
+        setShaderFileName(FragmentStage, QStringLiteral(":/qt/qml/com/marcusrosado/AniBeam/shaders/poster.frag.qsb"));
+    }
+    bool updateUniformData(RenderState &state, QSGMaterial *next, QSGMaterial *) override
+    {
+        auto *m = static_cast<PosterMaterial *>(next);
+        QByteArray *buf = state.uniformData();
+        Q_ASSERT(buf->size() >= 96);
+        if (state.isMatrixDirty()) {
+            const QMatrix4x4 mat = state.combinedMatrix();
+            memcpy(buf->data(), mat.constData(), 64);
+        }
+        const float opacity = state.opacity() * m->dim;
+        const float u[8] = {opacity, m->radius, float(m->size.width()), float(m->size.height()),
+                            float(m->sub.left()), float(m->sub.top()), float(m->sub.right()), float(m->sub.bottom())};
+        memcpy(buf->data() + 64, u, sizeof u);
+        return true;
+    }
+    void updateSampledImage(RenderState &state, int binding, QSGTexture **texture, QSGMaterial *next, QSGMaterial *) override
+    {
+        if (binding != 1)
+            return;
+        auto *m = static_cast<PosterMaterial *>(next);
+        if (m->texture)
+            m->texture->commitTextureOperations(state.rhi(), state.resourceUpdateBatch());
+        *texture = m->texture;
+    }
+};
+
+QSGMaterialShader *PosterMaterial::createShader(QSGRendererInterface::RenderMode) const { return new PosterShader; }
+
+// The tile `size` filled by a texture of `tex` pixels, cropped about its centre (the
+// PreserveAspectCrop the card's Image asks for), a pixel of fringe on every side
+QSGGeometryNode *posterNode(QSGTexture *texture, const QSizeF &size, qreal radius, qreal dim)
+{
+    static const QSGGeometry::Attribute attrs[] = {
+        QSGGeometry::Attribute::createWithAttributeType(0, 2, QSGGeometry::FloatType, QSGGeometry::PositionAttribute),
+        QSGGeometry::Attribute::createWithAttributeType(1, 2, QSGGeometry::FloatType, QSGGeometry::TexCoordAttribute),
+        QSGGeometry::Attribute::createWithAttributeType(2, 2, QSGGeometry::FloatType, QSGGeometry::TexCoord1Attribute),
+    };
+    static const QSGGeometry::AttributeSet set = {3, 6 * sizeof(float), attrs};
+    const QSize ts = texture->textureSize();
+    if (ts.isEmpty() || size.isEmpty())
+        return nullptr;
+    // The part of the texture that fills the tile: the whole of the narrower side
+    const qreal tileAspect = size.width() / size.height(), texAspect = qreal(ts.width()) / ts.height();
+    qreal u0 = 0, v0 = 0, u1 = 1, v1 = 1;
+    if (texAspect > tileAspect) {
+        const qreal keep = tileAspect / texAspect;
+        u0 = (1 - keep) / 2;
+        u1 = 1 - u0;
+    } else {
+        const qreal keep = texAspect / tileAspect;
+        v0 = (1 - keep) / 2;
+        v1 = 1 - v0;
+    }
+    const QRectF sub = texture->normalizedTextureSubRect();
+    auto tx = [&](qreal u) { return float(sub.left() + u * sub.width()); };
+    auto ty = [&](qreal v) { return float(sub.top() + v * sub.height()); };
+    const qreal du = (u1 - u0) / size.width(), dv = (v1 - v0) / size.height();
+    auto *g = new QSGGeometry(set, 4);
+    g->setDrawingMode(QSGGeometry::DrawTriangleStrip);
+    float *d = static_cast<float *>(g->vertexData());
+    const qreal w = size.width(), h = size.height(), e = 1;
+    const qreal xs[4] = {-e, w + e, -e, w + e}, ys[4] = {-e, -e, h + e, h + e};
+    for (int i = 0; i < 4; ++i) {
+        d[i * 6 + 0] = float(xs[i]);
+        d[i * 6 + 1] = float(ys[i]);
+        d[i * 6 + 2] = tx(u0 + xs[i] * du);
+        d[i * 6 + 3] = ty(v0 + ys[i] * dv);
+        d[i * 6 + 4] = float(xs[i]);
+        d[i * 6 + 5] = float(ys[i]);
+    }
+    auto *m = new PosterMaterial;
+    m->texture = texture;
+    m->radius = float(radius);
+    m->size = size;
+    m->dim = float(dim);
+    m->sub = sub;
+    auto *n = new QSGGeometryNode;
+    n->setGeometry(g);
+    n->setFlag(QSGNode::OwnsGeometry);
+    n->setMaterial(m);
+    n->setFlag(QSGNode::OwnsMaterial);
+    return n;
+}
+}
+
 // ---- Nodes: rebuilt whole when the layout moved; the GUI thread waits meanwhile --------
 
 QSGNode *CardFace::updatePaintNode(QSGNode *old, UpdatePaintNodeData *)
@@ -740,6 +909,32 @@ QSGNode *CardFace::updatePaintNode(QSGNode *old, UpdatePaintNodeData *)
     if (width() <= 0 || height() <= 0)
         return nullptr;
     auto *root = new QSGNode;
+
+    // The poster first, under the scrim and the writing. Its texture provider is asked
+    // here, on the render thread, as Qt requires; a texture that arrives or changes later
+    // asks for another frame.
+    if (m_poster) {
+        if (QSGTextureProvider *provider = m_poster->textureProvider()) {
+            if (!m_textureWatch)
+                m_textureWatch = connect(provider, &QSGTextureProvider::textureChanged, this, &QQuickItem::update, Qt::QueuedConnection);
+            if (QSGTexture *t = provider->texture()) {
+                t->setFiltering(QSGTexture::Linear);
+                QQuickWindow *win = window();
+                const bool software = win && win->rendererInterface()->graphicsApi() == QSGRendererInterface::Software;
+                if (!software) {
+                    if (QSGGeometryNode *p = posterNode(t, size(), style().radiusTile, m_posterOpacity))
+                        root->appendChildNode(p);
+                } else if (win) {
+                    // The software renderer runs no shaders: square corners, uncropped
+                    QSGImageNode *img = win->createImageNode();
+                    img->setTexture(t);
+                    img->setRect(QRectF(QPointF(0, 0), size()));
+                    img->setFiltering(QSGTexture::Linear);
+                    root->appendChildNode(img);
+                }
+            }
+        }
+    }
 
     Mesh below;
     for (const Fill &f : m_fills) {

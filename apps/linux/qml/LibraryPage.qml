@@ -182,7 +182,19 @@ Item {
         var files = list.reduce(function(n, c) { return n + (c.episodes_on_disk || 0) }, 0)
         return Fmt.plural(files, "file", "files") + " still on disk"
     }
+    // What the sections Repeater gets: plain data only, each card as its row in cardList.
+    // A list of whole card objects handed to a Repeater is converted in full, for every
+    // card, each time the list changes, visible or not; at 300 series that was most of the
+    // page's build (#289). A card reads its object from cardList only once it is built.
     readonly property var sections: {
+        var row = {}
+        for (var i = 0; i < cardList.length; i++) row[cardList[i].id] = i
+        return sectionsOf.map(function(sec) {
+            return { title: sec.title, airing: sec.airing, dropped: sec.dropped === true, rows: sec.cards.map(function(c) { return row[c.id] }),
+                     count: sec.cards.length, fact: sec.dropped ? page.droppedFact(sec.cards) : page.factOf(sec.cards) }
+        })
+    }
+    readonly property var sectionsOf: {
         page.revision
         // None is no sections at all, the airing and dropped ones included
         if (arrange === "None") return cardList.length ? [{ title: "", cards: cardList, airing: false }] : []
@@ -218,7 +230,9 @@ Item {
                 out.push({ title: b.title, cards: b.cards, airing: b.cards.some(function(x) { return airingIds[x.id] === true }) })
             }
             // The grouped ones keep the library's order among themselves
-            rest.sort(function(p, q) { return cardList.indexOf(p) - cardList.indexOf(q) })
+            var at = {}
+            for (var o = 0; o < cardList.length; o++) at[cardList[o].id] = o
+            rest.sort(function(p, q) { return at[p.id] - at[q.id] })
         } else rest = kept
         out = lead.concat(out)
         if (arrange === "Season") return out.concat(seasonSections(rest, airingIds), tail)
@@ -243,13 +257,13 @@ Item {
     function cardIds() { return cardList.map(function(c) { return c.id }) }
     function tileCount() { return cardList.length }
     function heroCount() { return 0 }
-    function boxes() { return sections.filter(function(s) { return s.title !== "" }).map(function(s) { return { title: s.title, airing: s.airing, ids: s.cards.map(function(c) { return c.id }) } }) }
+    function boxes() { return sectionsOf.filter(function(s) { return s.title !== "" }).map(function(s) { return { title: s.title, airing: s.airing, ids: s.cards.map(function(c) { return c.id }) } }) }
     function boxOf(id) { var b = boxes(); for (var i = 0; i < b.length; i++) if (b[i].ids.indexOf(id) >= 0) return b[i].title; return "" }
     function seriesWhere(text) { return cardList.filter(function(c) { return String(c.title).toLowerCase().indexOf(text) >= 0 }).map(function(c) { return { id: c.id, title: c.title, format: c.format, franchise: c.franchise === undefined ? "undefined" : c.franchise } }) }
 
     function reload() {
         var keep = scroll.contentY
-        var r = Door.listLibrary(tab, query, sort, direction, Door.revealHidden)
+        var r = Door.listLibraryLean(tab, query, sort, direction, Door.revealHidden)
         if (r.error) { frame.toast(r.error.message); return }
         cardList = r.reply.series.filter(page.inGenre)
         var n = r.reply.counts || {}
@@ -456,58 +470,72 @@ Item {
         TrackerNudge { id: nudge; width: parent.width; height: implicitHeight }
 
         // ---- The sections
+        // Each section is a LazyTile of its own known height (header, then whole rows of
+        // cards), so a page of 300 series builds only the sections near the view; a section
+        // spends none of the first frame's budget itself, only its cards do (#289)
         Repeater {
             model: page.sections
-            Column {
-                id: section
+            LazyTile {
+                id: box
                 required property var modelData
                 required property int index
-                readonly property string slug: String(modelData.title).toLowerCase().replace(/[^a-z0-9]+/g, "-")
-                objectName: modelData.title !== "" ? "box-" + slug : "box-all"
+                spends: false
                 width: parent.width
-                spacing: theme.space(3)
-                Item {
-                    visible: section.modelData.title !== ""
-                    width: parent.width
-                    height: visible ? theme.space(12) : 0
-                    Row {
-                        anchors.left: parent.left
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: theme.space(2)
+                readonly property int rows: Math.ceil(modelData.count / page.cols)
+                height: (modelData.title !== "" ? theme.space(12) + theme.space(3) : 0)
+                        + rows * Math.round(page.cardWidth * 1.5) + Math.max(0, rows - 1) * page.gap
+                sourceComponent: Column {
+                        id: section
+                        readonly property var modelData: box.modelData
+                        readonly property int index: box.index
+                        readonly property string slug: String(modelData.title).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+                        objectName: modelData.title !== "" ? "box-" + slug : "box-all"
+                        width: parent.width
                         spacing: theme.space(3)
-                        Label {
-                            id: sectionTitle
-                            text: section.modelData.title
-                            role: "display"
-                            font.pointSize: theme.typeHeading
-                            font.variableAxes: ({ "wdth": 70, "wght": 420 })
-                            color: section.modelData.airing ? theme.accent : section.modelData.dropped ? theme.textDim : theme.text
+                        Item {
+                            visible: section.modelData.title !== ""
+                            width: parent.width
+                            height: visible ? theme.space(12) : 0
+                            Row {
+                                anchors.left: parent.left
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: theme.space(2)
+                                spacing: theme.space(3)
+                                Label {
+                                    id: sectionTitle
+                                    text: section.modelData.title
+                                    role: "display"
+                                    font.pointSize: theme.typeHeading
+                                    font.variableAxes: ({ "wdth": 70, "wght": 420 })
+                                    color: section.modelData.airing ? theme.accent : section.modelData.dropped ? theme.textDim : theme.text
+                                }
+                                Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.count; role: "ledger"; color: theme.textFaint }
+                                Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.fact; role: "ui"; color: theme.textDim }
+                            }
                         }
-                        Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.cards.length; role: "ledger"; color: theme.textFaint }
-                        Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.dropped ? page.droppedFact(section.modelData.cards) : page.factOf(section.modelData.cards); role: "ui"; color: theme.textDim }
-                    }
-                }
-                Flow {
-                    width: parent.width
-                    spacing: page.gap
-                    Repeater {
-                        model: section.modelData.cards
-                        LazyTile {
-                            id: tile
-                            required property var modelData
-                            width: page.cardWidth
-                            height: Math.round(page.cardWidth * 1.5)
-                            sourceComponent: Card {
-                                objectName: "tile-" + tile.modelData.id
-                                item: tile.modelData
-                                posterWidth: page.cardWidth
-                                nowMs: page.nowMs
-                                onOpened: frame.go("series", { id: tile.modelData.id }, tile.modelData.title)
-                                onPlayed: page.playSeries(tile.modelData)
+                        Flow {
+                            width: parent.width
+                            spacing: page.gap
+                            Repeater {
+                                model: section.modelData.rows
+                                LazyTile {
+                                    id: tile
+                                    required property int modelData
+                                    width: page.cardWidth
+                                    height: Math.round(page.cardWidth * 1.5)
+                                    sourceComponent: Card {
+                                        readonly property var series: page.cardList[tile.modelData] || ({})
+                                        objectName: "tile-" + series.id
+                                        item: series
+                                        posterWidth: page.cardWidth
+                                        nowMs: page.nowMs
+                                        onOpened: frame.go("series", { id: series.id }, series.title)
+                                        onPlayed: page.playSeries(series)
+                                    }
+                                }
                             }
                         }
                     }
-                }
             }
         }
 

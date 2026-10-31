@@ -102,9 +102,17 @@ impl EventBus {
         };
         // Before the listeners, so a shell that rereads on hearing the
         // event never finds its cache still stamped current. Progress is
-        // the one body that is never a change of state on its own: every
-        // write behind it is followed by its own event.
-        if !matches!(event.body, EventBody::JobProgress { .. }) {
+        // never a change of state on its own: every write behind it is
+        // followed by its own event.
+        // A torrent read is not one either: it is the client's list as polled every few
+        // seconds, and a series whose downloading changed is announced by its own
+        // SeriesChanged (downloads::list_torrents). Moving the generation on each read
+        // emptied the shell's read cache and the kept snapshot every few seconds while a
+        // download ran, so no page ever found its library read cached (#289).
+        if !matches!(
+            event.body,
+            EventBody::JobProgress { .. } | EventBody::TorrentsRead { .. }
+        ) {
             self.generation.fetch_add(1, Ordering::SeqCst);
         }
         if level != Level::Debug {
@@ -400,6 +408,22 @@ mod tests {
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].message, "hello");
         assert_eq!(recent[0].level, Level::Info);
+    }
+
+    #[test]
+    fn a_torrent_read_leaves_the_generation_where_it_was() {
+        let (_d, bus) = bus();
+        let g0 = bus.generation();
+        bus.debug(
+            Stage::Downloads,
+            "3 torrents read",
+            EventBody::TorrentsRead {
+                torrents: vec![],
+                transfer: Default::default(),
+                shows: vec![],
+            },
+        );
+        assert_eq!(bus.generation(), g0);
     }
 
     #[test]
