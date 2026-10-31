@@ -49,6 +49,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Release lists show a Rip column: WEB-DL, WEBRip, BluRay and the rest
 - This week shows nine days, two back and six ahead, every day even when empty
 - Right-click a card to delete its watched episodes or all of them, to the trash
+- Discord shows what you are watching, a switch in Settings, Playback
 
 ### Fixed
 - This week cards keep the airing time inside the card

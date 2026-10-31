@@ -22,7 +22,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -32,6 +32,7 @@ use crate::library::cards;
 use crate::library::sidecar::sidecars_of;
 use crate::library::{classifier, labels, titles};
 use crate::prefs;
+use crate::presence::Activity;
 use crate::time;
 use crate::trackers::{on_hold, writes};
 
@@ -82,6 +83,11 @@ pub struct Session {
     /// The position the last resume point was written at, which is what the
     /// four second throttle measures against.
     pub resume_written_at: Option<f64>,
+    /// Whether the last tick said paused.
+    pub paused: bool,
+    /// What Discord shows for this session, built once at `open` and shared
+    /// so the clone every tick takes stays cheap.
+    pub presence: Arc<Activity>,
 }
 
 /// Every open session, and the counter that names the next one. Ids are per
@@ -108,6 +114,21 @@ impl Sessions {
     /// carries the clone across its awaits.
     pub(crate) fn get(&self, id: u64) -> Option<Session> {
         self.lock().get(&id).cloned()
+    }
+
+    /// Whether the session is still open: `close` takes it out first.
+    pub(crate) fn is_open(&self, id: u64) -> bool {
+        self.lock().contains_key(&id)
+    }
+
+    /// The newest session that has ticked and was not paused at its last
+    /// tick: what is playing, if anything is.
+    pub(crate) fn playing(&self) -> Option<Session> {
+        self.lock()
+            .values()
+            .filter(|s| s.last_position.is_some() && !s.paused)
+            .max_by_key(|s| s.id)
+            .cloned()
     }
 }
 
@@ -240,6 +261,8 @@ struct SeriesRow {
     /// Still putting out episodes, by AniList's or TVmaze's own status.
     airing: bool,
     poster: Option<String>,
+    /// The poster's remote URL, for Discord, which cannot read the cache.
+    poster_url: Option<String>,
 }
 
 fn file_row(conn: &Connection, file: u64) -> Result<FileRow, CoreError> {
@@ -276,7 +299,8 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
             "SELECT s.kind, s.folder_name, s.anilist_id, s.mal_id, s.track_choice,
                     COALESCE(t.name, m.title_romaji), m.title_english, m.episodes, i.path, t.id,
                     CASE WHEN t.id IS NOT NULL THEN t.status ELSE m.status END,
-                    m.title_native
+                    m.title_native,
+                    CASE WHEN t.id IS NOT NULL THEN t.poster_url ELSE m.cover_url END
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
              LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -315,6 +339,7 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
                     poster: r
                         .get::<_, Option<String>>(8)?
                         .map(|p| images_dir.join(p).to_string_lossy().into_owned()),
+                    poster_url: r.get(12)?,
                 })
             },
         )
@@ -494,6 +519,22 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
         }
     };
 
+    let series_title = titles::resolve(
+        lang,
+        s.title_romaji.as_deref(),
+        s.title_english.as_deref(),
+        s.title_native.as_deref(),
+        &s.folder_name,
+    );
+    let presence = Arc::new(Activity::describe(
+        &series_title,
+        &code,
+        episode_title.as_deref(),
+        f.is_extra,
+        is_film,
+        s.poster_url.clone(),
+    ));
+
     let id = core.sessions.next_id();
     core.sessions.lock().insert(
         id,
@@ -515,6 +556,8 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             marked: false,
             completed: false,
             resume_written_at: None,
+            paused: false,
+            presence,
         },
     );
 
@@ -523,13 +566,7 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
         file,
         path: f.path,
         series: f.series,
-        series_title: titles::resolve(
-            lang,
-            s.title_romaji.as_deref(),
-            s.title_english.as_deref(),
-            s.title_native.as_deref(),
-            &s.folder_name,
-        ),
+        series_title,
         episode_title,
         code,
         is_extra: f.is_extra,
@@ -586,8 +623,10 @@ pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<()
                 TickKind::Playing
             },
         );
+        s.paused = paused;
         (s.clone(), fired)
     };
+    crate::presence::tick(core, s.id, &s.presence, position, paused);
     apply(core, &s, &fired)
 }
 
@@ -605,6 +644,7 @@ pub fn close(
         tracing::debug!("close for session {session}, which is already closed");
         return Ok(());
     };
+    crate::presence::close(core, session);
     let mut fired = effects(&mut s, position, TickKind::Closing);
     if reason == CloseReason::Ended
         && let Some(effect) = ended(&mut s)
@@ -862,6 +902,10 @@ mod tests {
             marked: false,
             completed: false,
             resume_written_at: None,
+            paused: false,
+            presence: Arc::new(Activity::describe(
+                "Bebop", "EP 3", None, is_extra, false, None,
+            )),
         }
     }
 

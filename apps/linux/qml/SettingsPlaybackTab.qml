@@ -1,5 +1,5 @@
-// The Playback tab: auto-skip, Use my mpv.conf, the language orders, the subtitle
-// defaults, and the preview rendered through mpv.
+// The Playback tab: auto-skip, Use my mpv.conf, showing what plays on Discord, the
+// language orders, the subtitle defaults, and the preview rendered through mpv.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -13,7 +13,17 @@ SettingsTab {
     function isHex(s) { return /^#[0-9a-fA-F]{6}$/.test(s) }
     function hexOf(c) { function h(n) { return ("0" + n.toString(16)).slice(-2) } return "#" + h(c.r) + h(c.g) + h(c.b) }
     function colourOf(hex) { return { r: parseInt(hex.substr(1, 2), 16), g: parseInt(hex.substr(3, 2), 16), b: parseInt(hex.substr(5, 2), 16), a: 255 } }
+    // Discord rich presence: a build with no Discord application has nothing to switch on
+    property bool discordAvailable: false
+    function setDiscord(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.discord_presence = on
+        var r = Door.setPreferences(p)
+        if (r.error) frame.toast(r.error.message)
+    }
     Component.onCompleted: {
+        var presence = Door.call("GetPresence", {})
+        if (!presence.error) discordAvailable = presence.reply.available
         // The episode watched last, at its resume point; else the sample
         // source. The Watched tab rides along: the episode seen last is
         // often watched-out, and the two tabs' rows are each sorted, not
@@ -68,6 +78,9 @@ SettingsTab {
             SettingRow { label: "Use my mpv settings"; helper: "Reads your mpv settings file. Options that only apply at startup are skipped, and scripts never load."
                 status: Player.configLayers.length ? Player.configLayers.join("\n") : "No mpv settings file found."
                 Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
+            SettingRow { label: "Show what you watch on Discord"
+                helper: tab.discordAvailable ? "The series, episode and poster appear on your Discord profile while you play. Nothing is sent while this is off or Discord is closed." : "This build has no Discord application."
+                Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } }
         }
     }
     Component {
