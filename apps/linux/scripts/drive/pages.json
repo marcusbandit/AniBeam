@@ -132,7 +132,7 @@
   {"click": "settings-tabs-playback"},
   {"wait": 500},
   {"shot": "pages-08-settings-playback"},
-  {"click": "settings-tabs-data"},
+  {"click": "settings-tabs-storage"},
   {"until": "driver.item.findItem('data-export') !== null"},
   {"eval": "driver.item.findItem('data-export') !== null", "expect": true},
   {"eval": "driver.item.findItem('data-clear-images') !== null", "expect": true},

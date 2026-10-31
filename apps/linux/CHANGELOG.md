@@ -27,6 +27,10 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Set how many episodes a TVmaze show's season has, so no more are predicted
 
 ### Changed
+- Settings lists its sections down the left, each saying how it stands now
+- Search settings: type a word and land on the setting it names
+- Accounts, Subtitles, Keyboard, Phone app and About are sections of their own
+- Unsaved download settings wait in a bar with Save, wherever you scroll
 - A show's Fixes menu holds Fix files, the episode count, the match and Rescan
 - The activity log speaks plain words and leaves out background chores
 

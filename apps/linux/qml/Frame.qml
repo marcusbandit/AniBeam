@@ -86,11 +86,11 @@ FocusScope {
         downloads: "DownloadsPage.qml", settings: "SettingsPage.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
     })
 
-    // The settings page's own session state: the current tab and each tab's scroll
-    // position, kept here rather than on the page itself so they survive the page being
-    // torn down and rebuilt on every navigation away and back.
-    property int settingsTab: 0
-    property var settingsScroll: [0, 0, 0, 0, 0, 0]
+    // The settings page's own session state: the section open and each section's scroll
+    // position by its id, kept here rather than on the page itself so they survive the page
+    // being torn down and rebuilt on every navigation away and back.
+    property string settingsTab: "library"
+    property var settingsScroll: ({})
 
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
     function go(name, props, label) { nav.open(name, props, label, leavingScroll()) }

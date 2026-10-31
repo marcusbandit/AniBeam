@@ -117,6 +117,17 @@ below where they disagree:
   (`Tiles.qml`) stand on the ground as a figure over its caption. The Appearance previews
   keep their panes inside their section. A card without a poster (`Card.qml`) is a plain
   pane with no scrim and the theme's own inks, so it reads in light mode.
+- **Settings is an index and one section (2026-10-31, experimental).** The head row is the
+  title alone. Under it, at the left, the search and the index: one entry per section, a
+  glyph, the name and one live line on how it stands ("Syncing to AniList", "qBittorrent
+  answered"), in four runs (library and accounts; look and play; downloads and the phone;
+  the app). Beside it the open section at a readable measure: its name in the display cut,
+  one plain sentence, then groups. A group (`Panel.qml`) is a heading in the display cut at
+  `typeLarge` over one flat pane of rows with hairlines between them, never a pane in a
+  pane. A preview (Appearance, Subtitles) leads its section, since it is what the knobs are
+  for. Search swaps the section for the matching settings; picking one opens its section,
+  scrolls to the row and lights it in the soft accent. Ledgers that belong to other pages
+  (the on-disk list, recent scans, the poster wall) are gone from Settings.
 - **Metadata answers the librarian's questions before it lists.** The head is the title
   with its count and the search; under it one line of pills (the filter with its counts,
   Match unmatched, Refresh all) that wraps on a narrow window. Then the figures on the

@@ -1,99 +1,67 @@
-// The Data tab: export and import of the library (the anibeam-export format), the image
-// cache with its size and a clear, and where AniBeam keeps its files. Export, import and the
-// clear are jobs; their results come back as exportFinished, importFinished and
-// imagesCleared, and each lands in its own section. Export and Import sit beside About,
-// the pair squared off; the Images section runs the width under them and takes the rest
-// of the viewport with a wall of the library's cached posters, as many as it holds.
+// Storage and backup: Back up the library (one file, with private data or without), Restore
+// from a backup with what the last restore did, the image cache with its size and a clear,
+// and where AniBeam keeps its files. Export, import and the clear are jobs; their results
+// come back as exportFinished, importFinished and imagesCleared.
 import QtQuick
-import QtQuick.Layouts
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
 
 SettingsTab {
     id: tab
+    title: "Storage and backup"
+    lead: "Move your library to another computer, keep a copy safe, or free the space images take."
     property bool includePrivate: false
     property string lastExport: ""
     property var importSummary: null
     property var storage: ({ image_count: 0, image_bytes: 0 })
     property bool confirmingClear: false
-    property var posters: []                // the library's cached poster files, A to Z
-    function loadPosters() {
-        var r = Door.listLibrary("All", "", "Alpha", "Asc", false)
-        if (r.error) return
-        posters = (r.reply.series || []).filter(function(c) { return !!c.poster }).map(function(c) { return { id: c.id, title: c.title, poster: c.poster } })
-    }
     readonly property var about: Door.about || ({})
     function loadStorage() { var r = Door.getStorage(); if (!r.error) storage = r.reply }
     function path(url) { return Fmt.localPath(String(url)) }
     function dir(p) { var i = Math.max(String(p || "").lastIndexOf("/"), String(p || "").lastIndexOf("\\")); return i > 0 ? p.slice(0, i) : p }
-    Component.onCompleted: { loadStorage(); loadPosters() }
+    Component.onCompleted: loadStorage()
     Connections {
         target: Door
-        function onExportFinished(p) { tab.lastExport = p; frame.toast("Exported to " + p) }
-        function onImportFinished(summary) { tab.importSummary = summary; frame.toast("Import finished") }
-        function onImagesCleared(removed) { tab.loadStorage(); tab.loadPosters(); frame.toast("Removed " + Fmt.plural(removed, "image", "images")) }
+        function onExportFinished(p) { tab.lastExport = p; frame.toast("Backed up to " + p) }
+        function onImportFinished(summary) { tab.importSummary = summary; frame.toast("Restore finished") }
+        function onImagesCleared(removed) { tab.loadStorage(); frame.toast("Removed " + Fmt.plural(removed, "image", "images")) }
         function onJobFailed(job, kind, error) { if (kind === "Export" || kind === "Import" || kind === "ClearImages") frame.toast(error && error.message ? error.message : "That did not finish") }
     }
-    function summaryLines(s) {
-        if (!s) return []
-        var out = [
-            [Fmt.plural(s.sources_added, "folder", "folders") + " added", s.sources_unavailable > 0 ? s.sources_unavailable + " not found on this computer" : ""],
-            [Fmt.plural(s.series_created, "series", "series") + " created", Fmt.plural(s.matches_applied, "match", "matches") + " applied"],
-            [Fmt.plural(s.views_merged, "view", "views") + " merged", Fmt.plural(s.completed_merged, "completed episode", "completed episodes") + " merged"],
-            [Fmt.plural(s.resume_points_merged, "resume point", "resume points") + " merged", Fmt.plural(s.accounts_imported, "tracker account", "tracker accounts") + " imported"]
-        ]
-        return out.map(function(p) { return p.filter(Boolean).join(", ") })
+    function summaryLine(s) {
+        if (!s) return ""
+        var parts = [Fmt.plural(s.sources_added, "folder", "folders") + " added",
+                     Fmt.plural(s.series_created, "series", "series") + " created",
+                     Fmt.plural(s.matches_applied, "match", "matches") + " applied",
+                     Fmt.plural(s.views_merged, "view", "views") + " and " + Fmt.plural(s.completed_merged, "finished episode", "finished episodes") + " merged",
+                     Fmt.plural(s.resume_points_merged, "resume point", "resume points") + " merged",
+                     Fmt.plural(s.accounts_imported, "tracker account", "tracker accounts") + " brought in"]
+        var out = parts.join(", ") + "."
+        if (s.sources_unavailable > 0) out += " " + Fmt.plural(s.sources_unavailable, "folder was", "folders were") + " not found on this computer."
+        if (s.fields_ignored && s.fields_ignored.length) out += " Left out: " + s.fields_ignored.join(", ") + "."
+        return out
     }
 
-    SettingsPair {
-        split: 1 / 2
-        evenColumns: true
-        leftPanels: [ exportPanel, importPanel ]
-        rightPanels: [ aboutPanel ]
+    Panel {
+        title: "Backup"
+        SettingRow { label: "Back up the library"; helper: "One file with your folders, matches and what you have watched."
+            line: tab.lastExport !== "" ? "Last written to " + tab.lastExport : ""
+            Button { objectName: "data-export"; text: "Back up"; icon: "file-up"; primary: true; onClicked: exportDialog.open() } }
+        SettingRow { label: "Include private data"; helper: "Adds tracker sign-ins, watch history and preferences. Sign-ins are written as plain text, so keep the file to yourself."
+            Switch { objectName: "data-private"; checked: tab.includePrivate; onToggled: function(on) { tab.includePrivate = on } } }
+        SettingRow { label: "Restore from a backup"; helper: "Reads a backup into this library. What is on disk wins; the file fills in the rest."
+            status: tab.summaryLine(tab.importSummary)
+            Button { objectName: "data-import"; text: "Restore"; icon: "file-down"; flat: true; onClicked: importDialog.open() } }
     }
-    Loader { property bool grows: true; sourceComponent: storagePanel; Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: item ? item.implicitHeight : 0 }
-    Component {
-        id: exportPanel
-        Panel {
-            title: "Export"; icon: "file-up"
-            helper: "Writes your library to one file: folders, matches and what you have watched. Import it on another computer or after a reinstall."
-            SettingRow { label: "Include private data"; helper: "Adds tracker sign-ins, watch history and preferences. Sign-ins are stored as plain text, so keep the file to yourself."
-                Switch { objectName: "data-private"; checked: tab.includePrivate; onToggled: function(on) { tab.includePrivate = on } } }
-            Row {
-                spacing: theme.space(3)
-                Button { objectName: "data-export"; text: "Export library"; icon: "download"; primary: true; onClicked: exportDialog.open() }
-                Label { visible: tab.lastExport !== ""; anchors.verticalCenter: parent.verticalCenter; text: "Last written to " + tab.lastExport; role: "ledger"; color: theme.textDim; elide: Text.ElideMiddle; width: Math.min(implicitWidth, theme.space(120)) }
-            }
-        }
-    }
-    Component {
-        id: importPanel
-        Panel {
-            title: "Import"; icon: "file-down"
-            helper: "Reads an AniBeam export into this library. What is on disk wins; the file fills in the rest."
-            Button { objectName: "data-import"; text: "Import a file"; icon: "upload"; onClicked: importDialog.open() }
-            Column {
-                visible: tab.importSummary !== null
-                width: parent.width
-                spacing: theme.space(1)
-                Label { text: "Last import"; role: "title"; font.pointSize: theme.typeNormal; bottomPadding: theme.space(1) }
-                Repeater { model: tab.summaryLines(tab.importSummary); Label { required property var modelData; text: modelData; role: "ledger"; color: theme.textDim } }
-                Label { visible: !!tab.importSummary && tab.importSummary.fields_ignored.length > 0; width: parent.width; wrapMode: Text.Wrap; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim
-                    text: tab.importSummary ? "Left out: " + tab.importSummary.fields_ignored.join(", ") : "" }
-            }
-        }
-    }
-    Component {
-        id: storagePanel
-        Panel {
-            objectName: "data-images"
-            title: "Images"; icon: "image"; grows: true
-            helper: "Posters, banners and portraits are kept on disk so the library works offline. Clearing them frees the space; they download again as pages need them."
-            Tiles { stone: theme.raised; tiles: [{ value: String(tab.storage.image_count), caption: "Images" }, { value: Fmt.bytes(tab.storage.image_bytes || 0), caption: "On disk" }] }
+    Panel {
+        objectName: "data-images"
+        title: "Image cache"
+        helper: "Posters, banners and portraits are kept on disk so the library works offline. Cleared images download again as pages need them."
+        SettingRow {
+            label: tab.storage.image_count ? Fmt.bytes(tab.storage.image_bytes || 0) + " in " + Fmt.plural(tab.storage.image_count, "image", "images") : "No images cached"
             Item {
-                width: parent.width
+                width: tab.confirmingClear ? confirm.implicitWidth : clearBtn.width
                 height: tab.confirmingClear ? confirm.implicitHeight : clearBtn.height
-                Button { id: clearBtn; objectName: "data-clear-images"; visible: !tab.confirmingClear; text: "Clear images"; icon: "trash-2"; enabled: tab.storage.image_count > 0; onClicked: tab.confirmingClear = true }
+                Button { id: clearBtn; objectName: "data-clear-images"; visible: !tab.confirmingClear; text: "Clear"; icon: "trash-2"; flat: true; enabled: tab.storage.image_count > 0; onClicked: tab.confirmingClear = true }
                 InlineConfirm {
                     id: confirm
                     visible: tab.confirmingClear
@@ -103,95 +71,33 @@ SettingsTab {
                     onKept: tab.confirmingClear = false
                 }
             }
-            // What the cache holds: the library's posters, whole rows only
-            stretch: Item {
-                id: wallBox
-                anchors.fill: parent
-                readonly property real gap: theme.space(2)
-                // The fewest columns (the largest posters) that fit every poster in the
-                // height; past the smallest poster, whole rows of the smallest
-                readonly property real minW: theme.space(20)
-                readonly property int cols: {
-                    var n = tab.posters.length, most = Math.max(1, Math.floor((width + gap) / (minW + gap)))
-                    for (var c = 1; c <= most; c++) {
-                        var cw = (width - (c - 1) * gap) / c, r = Math.ceil(n / c)
-                        if (r * Math.round(cw * 1.5) + (r - 1) * gap <= height) return c
-                    }
-                    return most
-                }
-                readonly property real w: (width - (cols - 1) * gap) / cols
-                readonly property real h0: Math.round(w * 1.5)
-                readonly property int rows: Math.min(Math.ceil(tab.posters.length / cols), Math.max(0, Math.floor((height + gap) / (h0 + gap))))
-                // The rows run to the tile's foot: each poster a little taller, cropped,
-                // while that stays under 1.9 to 1
-                readonly property real h: rows > 0 ? Math.min(w * 1.9, (height - (rows - 1) * gap) / rows) : h0
-                implicitHeight: tab.posters.length ? Math.round(minW * 1.5) : 0
-                clip: true
-                Grid {
-                    columns: wallBox.cols
-                    spacing: wallBox.gap
-                    Repeater {
-                        model: tab.posters.slice(0, wallBox.cols * wallBox.rows)
-                        // A plain clipped Image, not a Corner fill: the Shape fill left
-                        // whole runs of these cells blank in the captures
-                        Rectangle {
-                            id: cell
-                            required property var modelData
-                            width: wallBox.w; height: wallBox.h
-                            color: theme.raised
-                            clip: true
-                            Image { anchors.fill: parent; source: Fmt.fileUrl(cell.modelData.poster); fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: theme.posterDecodeSize }
-                            MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("series", { id: cell.modelData.id }, cell.modelData.title) }
-                            Tooltip { text: cell.modelData.title }
-                        }
-                    }
-                }
-            }
         }
     }
-    Component {
-        id: aboutPanel
-        Panel {
-            title: "About"; icon: "info"
-            SettingRow { label: "Version"; line: Shell.build
-                Button { objectName: "data-whats-new"; text: "What's new"; icon: "sparkles"; small: true; onClicked: frame.openWhatsNew() } }
-            SettingRow { label: "Updates"
-                helper: frame.updatePanel.track === "nightly"
-                    ? "Hear about a new build most days. Newer, and less tested."
-                    : "Hear about a new version once it has been tested and released."
-                Seg { objectName: "data-update-track"; options: [{ text: "Stable", icon: "badge-check", name: "stable" }, { text: "Nightly", icon: "moon", name: "nightly" }]
-                      index: frame.updatePanel.track === "nightly" ? 1 : 0
-                      onPicked: function(i) { frame.updatePanel.setTrack(i === 1 ? "nightly" : "stable") } } }
-            // Developer options (#287): always on in a debug build, so the switch is only
-            // for a release build, where it opens the Developer tab
-            SettingRow { visible: !Dev.forced; label: "Developer options"; helper: "Adds a Developer tab that times every page, shows memory and the full technical log, and can turn images off."
-                Switch { objectName: "data-developer"; checked: frame.devKept.enabled; onToggled: function(on) { frame.devKept.enabled = on; frame.devApply(); if (on) frame.go("settings", { tab: "developer" }) } } }
-            // IMDb's terms ask for this line wherever its data is used
-            SettingRow { label: "Ratings"; helper: "Information courtesy of IMDb (https://www.imdb.com). Used with permission." }
-            Repeater {
-                model: [["Library database", "db_path", true], ["Data", "data_dir", false], ["Settings", "config_dir", false], ["Cache", "cache_dir", false]]
-                SettingRow {
-                    required property var modelData
-                    label: modelData[0]
-                    line: tab.about[modelData[1]] || ""
-                    Button { text: "Open"; icon: "folder-open"; small: true; onClicked: frame.openLink(Fmt.fileUrl(modelData[2] ? tab.dir(tab.about[modelData[1]]) : tab.about[modelData[1]])) }
-                }
+    Panel {
+        title: "Where AniBeam keeps its files"
+        Repeater {
+            model: [["Library database", "db_path", true], ["Data", "data_dir", false], ["Settings", "config_dir", false], ["Cache", "cache_dir", false]]
+            SettingRow {
+                required property var modelData
+                label: modelData[0]
+                status: tab.about[modelData[1]] || ""
+                Button { text: "Open"; icon: "folder-open"; flat: true; small: true; onClicked: frame.openLink(Fmt.fileUrl(modelData[2] ? tab.dir(tab.about[modelData[1]]) : tab.about[modelData[1]])) }
             }
         }
     }
     FileDialog {
         id: exportDialog
-        title: "Export the library"
+        title: "Back up the library"
         fileMode: FileDialog.SaveFile
         defaultSuffix: "json"
         currentFile: Fmt.fileUrl((tab.about.data_dir ? tab.dir(tab.about.data_dir) : "") + "/anibeam-export.json")
-        nameFilters: ["AniBeam export (*.json)"]
-        onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); frame.toast(r.error ? r.error.message : "Exporting") }
+        nameFilters: ["AniBeam backup (*.json)"]
+        onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); frame.toast(r.error ? r.error.message : "Backing up") }
     }
     FileDialog {
         id: importDialog
-        title: "Import an AniBeam export"
-        nameFilters: ["AniBeam export (*.json)", "All files (*)"]
-        onAccepted: { var r = Door.importLibrary(tab.path(selectedFile)); frame.toast(r.error ? r.error.message : "Importing") }
+        title: "Restore from a backup"
+        nameFilters: ["AniBeam backup (*.json)", "All files (*)"]
+        onAccepted: { var r = Door.importLibrary(tab.path(selectedFile)); frame.toast(r.error ? r.error.message : "Restoring") }
     }
 }
