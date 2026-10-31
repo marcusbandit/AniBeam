@@ -84,6 +84,7 @@ pub fn event_json(e: &Event) -> Value {
         "level": serde_json::to_value(e.level).unwrap_or(Value::Null),
         "stage": serde_json::to_value(e.stage).unwrap_or(Value::Null),
         "message": e.message,
+        "plain": e.plain,
         "job": e.job.as_ref().map(|j| json!({
             "id": j.id,
             "kind": serde_json::to_value(j.kind).unwrap_or(Value::Null),
@@ -282,6 +283,7 @@ mod tests {
             level: Level::Info,
             stage: Stage::Library,
             message: "scan finished: 1 added".into(),
+            plain: None,
             job: Some(JobRef {
                 id: 2,
                 kind: JobKind::Scan,

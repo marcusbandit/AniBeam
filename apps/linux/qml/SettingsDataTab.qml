@@ -165,6 +165,10 @@ SettingsTab {
                           index: frame.updatePanel.track === "nightly" ? 1 : 0
                           onPicked: function(i) { frame.updatePanel.setTrack(i === 1 ? "nightly" : "stable") } }
                     Button { objectName: "data-check-updates"; anchors.verticalCenter: parent.verticalCenter; text: "Check now"; icon: "refresh-cw"; small: true; onClicked: frame.updatePanel.checkNow() } } }
+            // Developer options (#287): always on in a debug build, so the switch is only
+            // for a release build, where it opens the Developer tab
+            SettingRow { visible: !Dev.forced; label: "Developer options"; helper: "Adds a Developer tab that times every page, shows memory and the full technical log, and can turn images off."
+                Switch { objectName: "data-developer"; checked: frame.devKept.enabled; onToggled: function(on) { frame.devKept.enabled = on; frame.devApply(); if (on) frame.go("settings", { tab: "developer" }) } } }
             // IMDb's terms ask for this line wherever its data is used
             SettingRow { label: "Ratings"; helper: "Information courtesy of IMDb (https://www.imdb.com). Used with permission." }
             Repeater {

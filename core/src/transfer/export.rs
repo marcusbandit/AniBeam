@@ -144,6 +144,11 @@ pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
             let text = serde_json::to_string_pretty(&doc)?;
             write_atomically(&path, text.into_bytes()).await?;
             Ok(Finished {
+                plain: Some(format!(
+                    "Saved {count} {} to {}.",
+                    crate::words::pick(count, "show", "shows"),
+                    crate::library::scan::folder_of(&path)
+                )),
                 level: Level::Info,
                 message: format!("Exported {count} series to {path}"),
                 body: EventBody::ExportFinished { path },

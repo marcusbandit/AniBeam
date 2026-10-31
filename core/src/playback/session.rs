@@ -668,8 +668,10 @@ fn mark(core: &Core, s: &Session) {
             .read(|c| line_labels(c, s))
             .map(|(folder, _)| folder)
             .unwrap_or_default();
-        core.bus.warn(
+        core.bus.say(
+            Level::Warn,
             Stage::Playback,
+            format!("Your progress on {folder} was not saved. Match the show first."),
             format!("watched to the end but {folder} has no AniList or MAL id"),
             EventBody::Notice,
         );

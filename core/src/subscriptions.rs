@@ -37,6 +37,7 @@ pub fn start(core: &Core) -> Result<u64, CoreError> {
             let result = run().await?;
             let message = message_of(&result);
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message,
                 body: EventBody::SubscriptionsListed { result },

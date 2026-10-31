@@ -121,10 +121,14 @@ fn main() {
             .qml_file("qml/StartSourceSheet.qml")
             .qml_file("qml/TorrentRow.qml")
             .qml_file("qml/RollControls.qml")
-            .qml_file("qml/SettingsDataTab.qml"),
+            .qml_file("qml/SettingsDataTab.qml")
+            .qml_file("qml/DevRecorder.qml")
+            .qml_file("qml/DevHud.qml")
+            .qml_file("qml/SettingsDeveloperTab.qml"),
     )
     .qt_module("Quick")
     .files([
+        "src/bridge/dev.rs",
         "src/bridge/door.rs",
         "src/bridge/fmt.rs",
         "src/bridge/helpers.rs",
@@ -138,6 +142,7 @@ fn main() {
     .include_dir(format!("{mpvqt_prefix}/include/MpvQt"))
     .cpp_files([
         "cpp/helpers.cpp",
+        "cpp/devtools.cpp",
         "cpp/videoitem.h",
         "cpp/videoitem.cpp",
         "cpp/keyboard.h",
@@ -166,6 +171,7 @@ fn main() {
         "assets/icons/bell.svg",
         "assets/icons/book-open.svg",
         "assets/icons/bookmark.svg",
+        "assets/icons/bug.svg",
         "assets/icons/calendar-clock.svg",
         "assets/icons/captions.svg",
         "assets/icons/case-sensitive.svg",
@@ -198,6 +204,7 @@ fn main() {
         "assets/icons/folder-search.svg",
         "assets/icons/folder-x.svg",
         "assets/icons/folder.svg",
+        "assets/icons/gauge.svg",
         "assets/icons/git-branch.svg",
         "assets/icons/globe.svg",
         "assets/icons/hard-drive.svg",
@@ -217,6 +224,7 @@ fn main() {
         "assets/icons/log-in.svg",
         "assets/icons/log-out.svg",
         "assets/icons/maximize.svg",
+        "assets/icons/memory-stick.svg",
         "assets/icons/minimize.svg",
         "assets/icons/monitor.svg",
         "assets/icons/moon.svg",
@@ -226,10 +234,12 @@ fn main() {
         "assets/icons/play.svg",
         "assets/icons/plus.svg",
         "assets/icons/radio.svg",
+        "assets/icons/recycle.svg",
         "assets/icons/refresh-cw.svg",
         "assets/icons/rotate-ccw.svg",
         "assets/icons/rotate-cw.svg",
         "assets/icons/rss.svg",
+        "assets/icons/scan-search.svg",
         "assets/icons/scan.svg",
         "assets/icons/search.svg",
         "assets/icons/settings.svg",
@@ -245,6 +255,8 @@ fn main() {
         "assets/icons/step-forward.svg",
         "assets/icons/sun.svg",
         "assets/icons/thumbs-up.svg",
+        "assets/icons/timer.svg",
+        "assets/icons/toggle-right.svg",
         "assets/icons/trash-2.svg",
         "assets/icons/trash.svg",
         "assets/icons/triangle-alert.svg",

@@ -2,6 +2,7 @@
 // rising from it, and an overlay for menus and tips. Everything in spec 4.1 unit 1 that
 // is not a page lives here. The player takes the whole window and hides the rest.
 import QtQuick
+import QtCore
 import QtQuick.Window
 import QtCore
 import com.marcusrosado.AniBeam
@@ -90,7 +91,7 @@ FocusScope {
     // tab's scroll position, kept here rather than on the page itself so they survive the
     // page being torn down and rebuilt on every navigation away and back.
     property alias settingsTab: shellPrefs.settingsTab
-    property var settingsScroll: [0, 0, 0, 0, 0]
+    property var settingsScroll: [0, 0, 0, 0, 0, 0]
     // Settings edits not saved yet, by tab, for this run
     property var settingsDrafts: ({})
 
@@ -126,12 +127,46 @@ FocusScope {
     // context destroyed during incubation". A shared method reference lets Qt.callLater
     // collapse the two calls into one, so loadPageNow runs once per tick and still reads
     // nav.current fresh at execution time.
-    function loadPage() { Qt.callLater(frame.loadPageNow) }
+    function loadPage() { if (frame.devOn) devRecorder.begin(nav.current.page, nav.current.label); Qt.callLater(frame.loadPageNow) }
     function loadPageNow() {
         page.source = ""
         page.setSource(Qt.resolvedUrl(frame.pages[nav.current.page] || "PagePlaceholder.qml"), { props: nav.current.props })
+        if (frame.devOn) devRecorder.built()
     }
-    Component.onCompleted: frame.loadPage()
+
+    // ---- Developer options (#287). On in a debug build or under ANIBEAM_DEV=1, else behind
+    // the switch at the foot of Settings' Data tab. The switches live in shell.conf so a
+    // measuring session survives a restart.
+    Settings {
+        id: devKept
+        location: Shell.settingsUrl
+        category: "developer"
+        property bool enabled: false
+        property bool images: true
+        property bool hud: true
+        property bool readCache: true
+        property bool posterPool: true
+    }
+    readonly property alias devKept: devKept
+    readonly property alias devRecorder: devRecorder
+    readonly property bool devOn: Dev.forced || devKept.enabled
+    function devApply() { Dev.configure(frame.devOn, devKept.images, devKept.readCache) }
+    function devSetImages(on) { devKept.images = on; devRecorder.images = on; devApply() }
+    onDevOnChanged: devApply()
+    DevRecorder {
+        id: devRecorder
+        hostWindow: frame.hostWindow
+        hostFrame: frame
+        enabled: frame.devOn
+        images: devKept.images
+        onSetImages: function(on) { frame.devSetImages(on) }
+    }
+    Connections {
+        target: frame.hostWindow
+        enabled: frame.devOn
+        function onFrameSwapped() { devRecorder.frame() }
+    }
+    Component.onCompleted: { frame.devApply(); frame.loadPage() }
     // A hovered item destroyed by the navigation never fires its own exit handler, so a
     // tip or a menu opened on the leaving page would otherwise survive onto the next one.
     // The escape stack is cleared for the identical reason: a popover the leaving page
@@ -207,7 +242,8 @@ FocusScope {
             width: content.column
             anchors.bottom: parent.bottom
             readonly property var job: Door.runningJobs.length ? Door.runningJobs[0] : null
-            readonly property var line: Door.latestLine
+            // A person reads the plain line; with developer options on, the technical one
+            readonly property var line: frame.devOn ? Door.latestLine : Door.latestPlain
             // A kind or stage as words: "ConnectTracker" reads "Connect tracker", "metadata"
             // reads "Metadata"
             function words(k) {
@@ -215,8 +251,9 @@ FocusScope {
                 return w.charAt(0).toUpperCase() + w.slice(1)
             }
             // Nothing has happened yet this run: it says so, rather than a bare stage chip
-            stage: job ? words(job.kind) : (line && line.stage ? words(line.stage) : "Ready")
-            message: job ? (job.label || words(job.kind)) + (job.total > 0 ? ", " + job.done + " of " + job.total : "") : (line && line.message ? line.message : "Nothing is running")
+            stage: frame.devOn ? (job ? words(job.kind) : (line && line.stage ? words(line.stage) : "Ready")) : ""
+            message: job ? (frame.devOn ? (job.label || words(job.kind)) : (job.doing || words(job.kind))) + (job.total > 0 ? ", " + job.done + " of " + job.total : "")
+                         : (line ? (frame.devOn ? line.message : line.plain) || "Nothing is running" : "Nothing is running")
             time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), "hh:mm")
             running: job !== null
             fraction: job && job.total > 0 ? job.done / job.total : 0
@@ -224,8 +261,17 @@ FocusScope {
             onClicked: frame.toggleDrawer()
         }
     }
+    DevHud {
+        visible: frame.devOn && devKept.hud && !frame.fullWindow
+        recorder: devRecorder
+        // Bottom right, over the page's foot: the top right is where pages put search
+        anchors.right: content.right; anchors.rightMargin: theme.space(4)
+        anchors.bottom: content.bottom; anchors.bottomMargin: strip.height + theme.space(2)
+        z: 450
+    }
     ActivityDrawer {
         id: drawer
+        technical: frame.devOn
         visible: !frame.fullWindow && openness > 0.001
         anchors.left: content.left; anchors.right: content.right; anchors.bottom: content.bottom
         maxHeight: Math.round(page.height * 0.6)

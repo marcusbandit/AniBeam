@@ -1,7 +1,9 @@
 // The activity drawer: rises from the status strip with exponential smoothing. A header
-// with the stage and level filters and the Copy, Clear and Close actions, then the core's
-// event stream at Info and above, newest first, with runs of identical lines folded into
-// one row that expands on click. Signal-only, like the log it shows: the drawer adds no
+// with its filters and the Copy, Clear and Close actions, then the core's event stream at
+// Info and above, newest first, with runs of identical lines folded into one row that
+// expands on click. A person sees the plain lines only, the ones the core worded for them,
+// filtered to everything or just problems (#287). With developer options on (`technical`)
+// it shows every line in the developer's words, with the stage and level filters. Signal-only, like the log it shows: the drawer adds no
 // chatter of its own, it only renders what the core already reported.
 import QtQuick
 import QtQuick.Controls.Basic as QC
@@ -13,6 +15,8 @@ Item {
     property real maxHeight: theme.space(100)
     property var entries: []
     property bool backfilled: false
+    property bool technical: false
+    property bool problemsOnly: false
     signal closed()
 
     readonly property var stages: ["Library", "Metadata", "Trackers", "Franchise", "Playback", "Store", "System", "Downloads"]
@@ -43,7 +47,7 @@ Item {
         var d = new Date(at * 1000), now = new Date()
         return d.toDateString() === now.toDateString() ? Qt.formatTime(d, "hh:mm:ss") : Qt.formatDateTime(d, "d MMM hh:mm")
     }
-    function toEntry(e) { return { time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, seq: e.seq } }
+    function toEntry(e) { return { time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, plain: e.plain || "", seq: e.seq } }
     Connections {
         target: Door
         function onEvent(envelope) {
@@ -83,8 +87,14 @@ Item {
         var run = null
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
-            if (sAny && !stageOn[e.stage]) continue
-            if (lAny && !levelOn[e.level]) continue
+            if (!technical) {
+                if (e.plain === "") continue
+                if (problemsOnly && e.level === "Info") continue
+                e = { time: e.time, stage: "", level: e.level, msg: e.plain, seq: e.seq }
+            } else {
+                if (sAny && !stageOn[e.stage]) continue
+                if (lAny && !levelOn[e.level]) continue
+            }
             if (run && run.stage === e.stage && run.level === e.level && run.msg === e.msg) {
                 run.count += 1
                 run.items.push(e)
@@ -104,7 +114,7 @@ Item {
     }
 
     // The rows on screen, one line each, a folded run carrying its count.
-    function lineOf(r) { return r.time + "  " + r.stage + "  " + r.level + "  " + r.msg + (r.count > 1 ? "  ×" + r.count : "") }
+    function lineOf(r) { return r.time + "  " + (r.stage ? r.stage + "  " + r.level + "  " : "") + r.msg + (r.count > 1 ? "  ×" + r.count : "") }
     property bool copied: false
     Timer { id: copiedTimer; interval: 2000; onTriggered: root.copied = false }
     function copyAll() {
@@ -168,8 +178,16 @@ Item {
                     font.weight: Font.Bold
                 }
                 Item { width: theme.space(2); height: 1 }
+                Seg {
+                    visible: !root.technical
+                    anchors.verticalCenter: parent.verticalCenter
+                    small: true
+                    options: [{ text: "Everything" }, { text: "Problems" }]
+                    index: root.problemsOnly ? 1 : 0
+                    onPicked: function(i) { root.problemsOnly = i === 1 }
+                }
                 Repeater {
-                    model: root.stages
+                    model: root.technical ? root.stages : []
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
@@ -182,9 +200,9 @@ Item {
                         onClicked: root.stageOn = root.flip(root.stageOn, modelData)
                     }
                 }
-                Item { width: theme.space(2); height: 1 }
+                Item { visible: root.technical; width: theme.space(2); height: 1 }
                 Repeater {
-                    model: root.levels
+                    model: root.technical ? root.levels : []
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
@@ -252,6 +270,7 @@ Item {
                     }
                     Chip {
                         id: stageChip
+                        visible: modelData.stage !== ""
                         anchors.verticalCenter: parent.verticalCenter
                         text: modelData.stage
                         small: true
@@ -261,7 +280,7 @@ Item {
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, line.width - stamp.width - stageChip.width - line.spacing * 2 - (fold.visible ? fold.width + line.spacing : 0))
+                        width: Math.min(implicitWidth, line.width - stamp.width - (stageChip.visible ? stageChip.width + line.spacing : 0) - line.spacing - (fold.visible ? fold.width + line.spacing : 0))
                         text: modelData.msg
                         color: root.levelColor(modelData.level)
                         elide: Text.ElideRight
@@ -293,6 +312,13 @@ Item {
                 Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.tileSunken }
             }
             QC.ScrollBar.vertical: ThinScrollBar {}
+        }
+        Label {
+            visible: root.rows.length === 0
+            anchors.top: header.bottom; anchors.topMargin: theme.space(4)
+            anchors.left: parent.left; anchors.leftMargin: theme.space(4)
+            text: root.technical ? "Nothing logged yet." : root.problemsOnly ? "No problems. Everything worked." : "Nothing to report yet. What AniBeam does for you shows up here."
+            color: theme.textDim
         }
     }
 }

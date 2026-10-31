@@ -331,8 +331,14 @@ pub fn set_episode_count(core: &Core, series: u64, count: Option<u32>) -> Result
         Some(n) => format!("{title} set to {n} episodes"),
         None => format!("{title}'s episode count cleared"),
     };
-    core.bus.info(
+    let said = match count {
+        Some(n) => format!("{title} now has {n} episodes."),
+        None => format!("Cleared the episode count of {title}."),
+    };
+    core.bus.say(
+        Level::Info,
         Stage::Library,
+        said,
         what,
         EventBody::SeriesChanged { series: cards },
     );
