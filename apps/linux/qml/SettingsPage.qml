@@ -11,9 +11,10 @@ FocusScope {
     property var props: ({})
     property string title: "Settings"
     property real scrollY: 0
-    readonly property var tabNames: ["Library", "Appearance", "Playback", "Downloads", "Data"]
-    readonly property var tabIcons: ["folder", "palette", "play", "download", "hard-drive"]
-    property int tab: frame.settingsTab
+    // Developer joins the tabs while developer options are on (#287)
+    readonly property var tabNames: ["Library", "Appearance", "Playback", "Downloads", "Data"].concat(frame.devOn ? ["Developer"] : [])
+    readonly property var tabIcons: ["folder", "palette", "play", "download", "hard-drive"].concat(frame.devOn ? ["bug"] : [])
+    property int tab: Math.min(frame.settingsTab, tabNames.length - 1)
     onTabChanged: frame.settingsTab = tab
     Component.onCompleted: {
         var want = tabNames.map(function(n) { return n.toLowerCase() }).indexOf(String(props.tab || "").toLowerCase())
@@ -59,7 +60,7 @@ FocusScope {
         y: head.y + head.height + theme.space(4)
         width: page.width
         height: page.height - y
-        sourceComponent: [libraryTab, appearanceTab, playbackTab, downloadsTab, dataTab][page.tab]
+        sourceComponent: [libraryTab, appearanceTab, playbackTab, downloadsTab, dataTab, developerTab][page.tab]
         onLoaded: {
             item.contentY = frame.settingsScroll[page.tab] || 0
             // `focus` in the props names a section to bring into view (Airing now's link to
@@ -74,4 +75,5 @@ FocusScope {
     Component { id: playbackTab; SettingsPlaybackTab {} }
     Component { id: downloadsTab; SettingsDownloadsTab {} }
     Component { id: dataTab; SettingsDataTab {} }
+    Component { id: developerTab; SettingsDeveloperTab {} }
 }

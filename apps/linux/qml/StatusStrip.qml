@@ -47,6 +47,7 @@ Item {
             spacing: theme.space(2)
             Chip {
                 id: stageChip
+                visible: root.stage !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.stage
                 small: true
@@ -55,7 +56,7 @@ Item {
             }
             Label {
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.max(0, Math.min(implicitWidth, line.width - stageChip.width - stamp.width - line.spacing * 2))
+                width: Math.max(0, Math.min(implicitWidth, line.width - (stageChip.visible ? stageChip.width + line.spacing : 0) - stamp.width - line.spacing))
                 text: root.message
                 role: "ui"
                 elide: Text.ElideRight

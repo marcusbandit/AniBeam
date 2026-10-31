@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · 2026-10-30
 
 ### New
+- Developer options, in Settings under Data, time every page and turn images off
 - Pick Stable or Nightly updates in Settings, under Data
 - Downloaded lists every show on disk, not only what the torrent client holds
 - Downloaded shows how much of the disk is watched and how much is not
@@ -21,6 +22,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Deleting episodes removes their torrent too, so they can be downloaded again
 - Ctrl-click a release group or one of its episodes to pick all it has missing
 - Get says it is sending to your torrent client the moment you click it
+
+### Changed
+- The activity log speaks plain words and leaves out background chores
 
 ### Fixed
 - A download's speed and time left no longer run under its Stop button

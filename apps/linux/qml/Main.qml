@@ -23,7 +23,11 @@ Window {
     // Filled the way the pages show them — airing soonest, then recently
     // viewed, then the shelf — and refilled (debounced) when the library says
     // a series changed, only ever replacing the pool when the path set moved.
-    PosterPool { id: posterPool }
+    // Developer options can switch the pool off, and switching images off empties it too.
+    PosterPool {
+        id: posterPool
+        capacity: frame.item && frame.item.devOn && (!frame.item.devKept.posterPool || !frame.item.devKept.images) ? 0 : 60
+    }
     // One read for both lists: listLibrary carries the airing rail with the shelf, and
     // the Door keeps the answer until the library changes, so a page reading the same
     // thing in the same beat pays nothing.
