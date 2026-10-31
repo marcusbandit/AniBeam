@@ -242,6 +242,21 @@ fn erai_polish(entry: Node, title: &str) -> Erai {
     }
 }
 
+/// A message a feed or an API sent about itself, made safe to show: control characters
+/// dropped and cut to about 200 characters, since a third-party repo's endpoint chooses it.
+pub(super) fn their_message(text: &str) -> String {
+    const MAX: usize = 200;
+    let clean: String = text
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let clean = clean.trim();
+    match clean.char_indices().nth(MAX) {
+        Some((cut, _)) => format!("{}...", clean[..cut].trim_end()),
+        None => clean.to_string(),
+    }
+}
+
 /// Jackett and Prowlarr answer a bad key or a broken indexer with a whole document of
 /// `<error code="100" description="Invalid API Key"/>` instead of a feed.
 fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreError> {
@@ -250,7 +265,7 @@ fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreE
         return None;
     }
     let message = match root.attribute("description").map(str::trim) {
-        Some(d) if !d.is_empty() => d.to_string(),
+        Some(d) if !d.is_empty() => their_message(d),
         _ => format!(
             "the indexer answered error {}",
             root.attribute("code").unwrap_or("?")

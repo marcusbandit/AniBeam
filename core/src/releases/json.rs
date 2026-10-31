@@ -20,13 +20,20 @@ fn at<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
         .try_fold(value, |v, key| v.as_object()?.get(key))
 }
 
-/// Whether a value is set: anything but null, false, zero or empty.
+/// Whether a value is set: anything but null, false, zero or empty. A string reads the way
+/// an API that stringifies its flags means it, so "false", "0" and "no" are unset too.
 fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
         Value::Bool(b) => *b,
         Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
-        Value::String(s) => !s.is_empty(),
+        Value::String(s) => {
+            let s = s.trim();
+            !s.is_empty()
+                && !["false", "0", "no"]
+                    .iter()
+                    .any(|f| s.eq_ignore_ascii_case(f))
+        }
         Value::Array(a) => !a.is_empty(),
         Value::Object(o) => !o.is_empty(),
     }
@@ -137,20 +144,28 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
 }
 
 /// The reply's results as releases, read through `map`. Counts stay unknown, since the kind
-/// has no field for them. A reply without its results list has none; one whose list is
-/// something else does not read.
+/// has no field for them. A reply whose results list is null has none; one without the list
+/// at all, or whose list is something else, does not read, so an API that renames the field
+/// shows an error rather than "no results" forever.
 pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, String> {
     let reply: Value = serde_json::from_slice(body).map_err(|e| format!("not JSON: {e}"))?;
     if let Some(v) = map.error.as_deref().and_then(|p| at(&reply, p))
         && truthy(v)
     {
-        return Err(match v.as_str().map(str::trim).filter(|m| !m.is_empty()) {
-            Some(m) => format!("the search answered with an error: {m}"),
-            None => "the search answered with an error".into(),
-        });
+        return Err(
+            match v
+                .as_str()
+                .map(super::fetch::their_message)
+                .filter(|m| !m.is_empty())
+            {
+                Some(m) => format!("the search answered with an error: {m}"),
+                None => "the search answered with an error".into(),
+            },
+        );
     }
     let items = match at(&reply, &map.items) {
-        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Null) => return Ok(Vec::new()),
+        None => return Err(format!("the reply has no results at {:?}", map.items)),
         Some(Value::Array(items)) => items,
         Some(_) => return Err("the reply's results are not a list".into()),
     };
@@ -270,6 +285,38 @@ mod tests {
         let bare = small(json!({"hash": "h"}));
         let body = json!([one, one]).to_string();
         assert_eq!(parse(body.as_bytes(), &bare, "s").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_missing_results_list_is_an_error_and_a_null_one_is_empty() {
+        let deep = small(json!({"items": "data.hits", "hash": "h"}));
+        let err = parse(br#"{"data": {"results": []}}"#, &deep, "s").unwrap_err();
+        assert!(err.contains("data.hits"), "{err}");
+        assert!(
+            parse(br#"{"data": {"hits": null}}"#, &deep, "s")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_flag_written_as_text_reads_the_way_it_means() {
+        for unset in ["false", "FALSE", "0", "no", " No ", ""] {
+            assert!(!truthy(&json!(unset)), "{unset:?}");
+        }
+        for set in ["true", "1", "yes", "x"] {
+            assert!(truthy(&json!(set)), "{set:?}");
+        }
+    }
+
+    #[test]
+    fn an_error_text_is_cut_short_and_cleaned() {
+        let errs = small(json!({"hash": "h", "error": "e"}));
+        let long = format!("bad\u{7}{}", "x".repeat(500));
+        let body = json!({"e": long}).to_string();
+        let err = parse(body.as_bytes(), &errs, "s").unwrap_err();
+        assert!(!err.contains('\u{7}'), "{err}");
+        assert!(err.chars().count() < 260, "{}", err.len());
     }
 
     #[test]
