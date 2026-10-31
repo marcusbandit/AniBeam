@@ -203,8 +203,15 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
         } else {
             format!("{n} files")
         };
-        core.bus.info(
+        let said = if undo {
+            format!("Went back to reading {files} of {title} by name.")
+        } else {
+            format!("Fixed how {files} of {title} are read.")
+        };
+        core.bus.say(
+            Level::Info,
             Stage::Library,
+            said,
             if undo {
                 format!("{title}: {files} read by name again")
             } else {

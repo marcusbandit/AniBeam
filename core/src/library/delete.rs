@@ -127,18 +127,21 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
     let moved = crate::downloads::trash::move_to_trash(&targets);
     crate::downloads::drop_torrents_of(core, gone(&targets));
     if moved.is_ok() {
-        core.bus.info(
+        let line = format!(
+            "{} {} of {title} {}",
+            n,
+            crate::words::pick(n, "episode", "episodes"),
+            if crate::downloads::trash::WHERE == "deleted" {
+                "deleted"
+            } else {
+                "moved to the trash"
+            }
+        );
+        core.bus.say(
+            Level::Info,
             Stage::Library,
-            format!(
-                "{} {} of {title} {}",
-                n,
-                if n == 1 { "episode" } else { "episodes" },
-                if crate::downloads::trash::WHERE == "deleted" {
-                    "deleted"
-                } else {
-                    "moved to the trash"
-                }
-            ),
+            format!("{line}."),
+            line,
             EventBody::Notice,
         );
     }
@@ -237,27 +240,30 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
             format!(
                 "{} finished {}",
                 picked.len(),
-                if picked.len() == 1 { "show" } else { "shows" }
+                crate::words::pick(picked.len(), "show", "shows")
             )
         } else {
             format!(
                 "{} watched {} of {} {}",
                 episodes,
-                if episodes == 1 { "episode" } else { "episodes" },
+                crate::words::pick(episodes, "episode", "episodes"),
                 picked.len(),
                 "series"
             )
         };
-        core.bus.info(
+        let line = format!(
+            "{what} {}",
+            if crate::downloads::trash::WHERE == "deleted" {
+                "deleted"
+            } else {
+                "moved to the trash"
+            }
+        );
+        core.bus.say(
+            Level::Info,
             Stage::Library,
-            format!(
-                "{what} {}",
-                if crate::downloads::trash::WHERE == "deleted" {
-                    "deleted"
-                } else {
-                    "moved to the trash"
-                }
-            ),
+            format!("{line}."),
+            line,
             EventBody::Notice,
         );
     }

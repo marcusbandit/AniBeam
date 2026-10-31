@@ -622,7 +622,13 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
     } else {
         Level::Info
     };
+    let said = match level {
+        Level::Debug => None,
+        Level::Warn => Some("Downloads are not ready. Check Downloads in Settings.".to_string()),
+        _ => Some("Downloads are ready.".to_string()),
+    };
     Ok(Finished {
+        plain: said,
         level,
         message: describe(&status, anirss_failure.as_deref()),
         body: EventBody::DownloadsStatusChanged { status },
@@ -741,7 +747,15 @@ pub fn test_torrent_client(core: &Core) -> Result<u64, CoreError> {
                     format!("{client} not connected: {}", status.torrent.message),
                 )
             };
+            let said = match (status.torrent.connected, before) {
+                (true, true) => None,
+                (true, false) => Some("The download app is connected.".to_string()),
+                (false, _) => Some(
+                    "The download app is not connected. Check its address in Settings.".to_string(),
+                ),
+            };
             Ok(Finished {
+                plain: said,
                 level,
                 message,
                 body: EventBody::DownloadsStatusChanged { status },
@@ -801,6 +815,7 @@ pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
             owner.downloads.state().endpoints = endpoints;
             let status = status_async(&owner).await?;
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: if up.is_empty() {
                     "No on-demand endpoint is running".to_string()
@@ -854,6 +869,7 @@ pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
             owner.downloads.state().endpoints = endpoints;
             let status = status_async(&owner).await?;
             Ok(Finished {
+                plain: Some("The download source is running.".to_string()),
                 level: Level::Info,
                 message: format!("{name} is running"),
                 body: EventBody::DownloadsStatusChanged { status },
@@ -1042,6 +1058,7 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                 )
             };
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message,
                 body: EventBody::ReleasesFound { search },
@@ -1223,6 +1240,7 @@ pub fn refine(
                 )
             };
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message,
                 body: EventBody::ReleasesRefined { refinement },
@@ -1244,6 +1262,7 @@ pub fn preview(
             let client = ensure_client(&owner).await?;
             let spec = client.preview(&query, &endpoint, &items).await?;
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: format!("Subscription preview for \"{query}\""),
                 body: EventBody::SubscriptionPreviewed { spec },
@@ -1291,6 +1310,7 @@ pub fn subscribe(
                 )
             };
             Ok(Finished {
+                plain: Some(format!("Subscribed to {}.", result.name)),
                 level: Level::Info,
                 message,
                 body: EventBody::Subscribed { result },
@@ -1502,6 +1522,10 @@ pub fn download_with(
                 }
             }
             Ok(Finished {
+                plain: Some(format!(
+                    "Added {} to your downloads.",
+                    plural(result.count, "download", "downloads")
+                )),
                 level: Level::Info,
                 message: format!(
                     "Added {} to {} under {}{extra}",
@@ -1628,6 +1652,7 @@ pub fn movie(core: &Core, link: String) -> Result<u64, CoreError> {
             let client = ensure_client(&owner).await?;
             let result = client.movie(&link).await?;
             Ok(Finished {
+                plain: Some("Added a movie to your downloads.".to_string()),
                 level: Level::Info,
                 message: format!("Added a movie to {}", result.save_path),
                 body: EventBody::TorrentsAdded { result },
@@ -1651,6 +1676,7 @@ pub fn plan_remove(
                 .remove(std::slice::from_ref(&name), torrents, files, true)
                 .await?;
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: format!("Planned the removal of {name}"),
                 body: EventBody::RemovalPlanned { plans },
@@ -1675,6 +1701,7 @@ pub fn remove(core: &Core, name: String, torrents: bool, files: bool) -> Result<
                 (false, false) => "",
             };
             Ok(Finished {
+                plain: Some(format!("Unsubscribed from {name}.")),
                 level: Level::Info,
                 message: format!("Removed the subscription {name}{extra}"),
                 body: EventBody::SubscriptionRemoved { name },
@@ -1731,7 +1758,26 @@ pub fn control(core: &Core, hashes: Vec<String>, action: TorrentAction) -> Resul
                     }
                 }
             };
+            let n = hashes.len() as u64;
+            let said = match &action {
+                TorrentAction::Stop => {
+                    Some(format!("Paused {}.", plural(n, "download", "downloads")))
+                }
+                TorrentAction::Start => {
+                    Some(format!("Resumed {}.", plural(n, "download", "downloads")))
+                }
+                TorrentAction::Delete { files: true } => Some(format!(
+                    "Deleted {} and the files.",
+                    plural(n, "download", "downloads")
+                )),
+                TorrentAction::Delete { files: false } => Some(format!(
+                    "Removed {} from your list.",
+                    plural(n, "download", "downloads")
+                )),
+                TorrentAction::Sequential { .. } | TorrentAction::FirstLastPieces { .. } => None,
+            };
             Ok(Finished {
+                plain: said,
                 level: Level::Info,
                 message: format!(
                     "{verb} {}",
@@ -1875,6 +1921,7 @@ pub fn remove_show(
                 ),
             };
             Ok(Finished {
+                plain: Some(format!("Removed {title} from your downloads.")),
                 level: Level::Info,
                 message: format!("Removed {title}: {what}"),
                 body: EventBody::ShowRemoved {
@@ -2199,8 +2246,10 @@ pub fn drop_torrents_of(core: &Core, gone: Vec<std::path::PathBuf>) {
                 let _ = list_torrents(&owner);
             }
             Err(e) => {
-                owner.bus.warn(
+                owner.bus.say(
+                    Level::Warn,
                     Stage::Downloads,
+                    "Deleted files are still listed in the download app.",
                     format!("The torrents of the deleted files stay in the client: {e}"),
                     EventBody::Notice,
                 );
@@ -2516,6 +2565,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
             let now = feed::read(owner.http.as_ref(), &url).await?;
             if !now.is_empty() {
                 return Ok(Finished {
+                    plain: Some(format!("{name} needs no repair.")),
                     level: Level::Info,
                     message: format!(
                         "{name} needs no repair: its feed finds {}",
@@ -2544,6 +2594,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                 swap_feed(&qbt, &rules, &name, &narrowed, &url, &next).await?;
                 let must = narrowed["mustContain"].as_str().unwrap_or("").to_string();
                 return Ok(Finished {
+                    plain: Some(format!("Repaired the subscription to {name}.")),
                     level: Level::Info,
                     message: format!(
                         "Repaired {name}: {host} is searched for \"{candidate}\" ({}) and the rule keeps {}",
@@ -2787,8 +2838,10 @@ pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
     settings::validate(&mut s, &[])?;
     restart(core, s)?;
     let status = status(core)?;
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        "Downloads now use a different download app.",
         format!("Downloads use {name}"),
         EventBody::DownloadsStatusChanged { status },
     );

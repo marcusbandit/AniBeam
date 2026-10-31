@@ -436,8 +436,17 @@ pub fn download(
     } else {
         format!("{} releases of {folder}", items.len())
     };
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        format!(
+            "Started downloading {} of {folder}.",
+            if items.len() == 1 {
+                "an episode".to_string()
+            } else {
+                format!("{} episodes", items.len())
+            }
+        ),
         format!("Downloading {what}"),
         EventBody::Notice,
     );
@@ -489,8 +498,10 @@ pub fn subscribe(
             store.mark_taken(&subscribed.name, &had)?;
         }
     }
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        format!("Subscribed to {}.", subscribed.name),
         format!("Subscribed to {}", subscribed.name),
         EventBody::Notice,
     );
@@ -604,8 +615,10 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             };
             match engine.add(item, &folder, file).await {
                 Ok(_) => {
-                    core.bus.info(
+                    core.bus.say(
+                        Level::Info,
                         Stage::Downloads,
+                        format!("A new episode of {} is downloading.", rule.name),
                         format!("New for {}: {}", rule.name, item.title),
                         EventBody::Notice,
                     );

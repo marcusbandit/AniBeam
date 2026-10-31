@@ -36,6 +36,7 @@ pub mod time;
 pub mod trackers;
 pub mod transfer;
 pub mod update;
+pub mod words;
 
 pub use contract::*;
 pub use core::Core;
