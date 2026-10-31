@@ -110,6 +110,26 @@ pub fn clock_ms(secs: f64) -> String {
     }
 }
 
+/// A subtitle or audio delay in seconds, signed: "+0.3 s", "-1.2 s", "0.0 s". The steps
+/// move in tenths, so one decimal is the rule; a value set in mpv.conf off that grid
+/// ("-0.04") keeps its hundredths rather than reading as "-0.0 s".
+pub fn delay(secs: f64) -> String {
+    if !secs.is_finite() {
+        return "0.0 s".to_string();
+    }
+    let hundredths = (secs * 100.0).round();
+    if hundredths == 0.0 {
+        return "0.0 s".to_string();
+    }
+    let sign = if hundredths > 0.0 { "+" } else { "" };
+    let v = hundredths / 100.0;
+    if hundredths % 10.0 == 0.0 {
+        format!("{sign}{v:.1} s")
+    } else {
+        format!("{sign}{v:.2} s")
+    }
+}
+
 /// How long an episode or a film runs: "24 min", "1 h 52 min", or "2 h" on the hour. An
 /// unknown length is the caller's to leave out, never a 0 passed here.
 pub fn runtime(minutes: u32) -> String {
@@ -243,6 +263,19 @@ mod tests {
         assert_eq!(clock_ms(95.9705), "1:35.971");
         assert_eq!(clock_ms(3600.5), "1:00:00.500");
         assert_eq!(clock_ms(f64::NAN), "0:00.000");
+    }
+
+    #[test]
+    fn delays_keep_hundredths_only_off_the_tenths() {
+        assert_eq!(delay(0.0), "0.0 s");
+        assert_eq!(delay(-0.0), "0.0 s");
+        assert_eq!(delay(0.001), "0.0 s");
+        assert_eq!(delay(0.3), "+0.3 s");
+        assert_eq!(delay(0.1 + 0.2), "+0.3 s");
+        assert_eq!(delay(-1.2), "-1.2 s");
+        assert_eq!(delay(-0.04), "-0.04 s");
+        assert_eq!(delay(0.25), "+0.25 s");
+        assert_eq!(delay(f64::NAN), "0.0 s");
     }
 
     #[test]

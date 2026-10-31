@@ -3,6 +3,7 @@
 // while the steps are clicked; a press outside or Escape closes it. The buttons never take
 // the keyboard, and the page takes it back when the panel closes, so the keys work at once.
 import QtQuick
+import com.marcusrosado.AniBeam
 
 Item {
     id: root
@@ -60,7 +61,7 @@ Item {
                     Label { anchors.verticalCenter: parent.verticalCenter; width: theme.space(20); role: "ui"; text: delayRow.modelData.label }
                     PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-down"; glyph: "minus"; tip: delayRow.modelData.label + " 0.1 s earlier"
                         onClicked: page.nudgeDelay(delayRow.modelData.prop, -0.1) }
-                    Label { anchors.verticalCenter: parent.verticalCenter; width: theme.space(16); horizontalAlignment: Text.AlignHCenter; role: "ledger"; text: page.delayText(delayRow.value) }
+                    Label { anchors.verticalCenter: parent.verticalCenter; width: theme.space(16); horizontalAlignment: Text.AlignHCenter; role: "ledger"; text: Fmt.delay(delayRow.value) }
                     PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-up"; glyph: "plus"; tip: delayRow.modelData.label + " 0.1 s later"
                         onClicked: page.nudgeDelay(delayRow.modelData.prop, 0.1) }
                     PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-reset"; glyph: "rotate-ccw"; interactive: delayRow.value !== 0

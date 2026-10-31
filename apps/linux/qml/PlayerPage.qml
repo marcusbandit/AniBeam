@@ -333,8 +333,7 @@ FocusScope {
     // the HUD and the panel report the player, not the intent. Both reset when the next file
     // starts (reset-on-next-file), and the observation carries that back here too.
     function delayOf(prop) { return prop === "audio-delay" ? audioDelay : subDelay }
-    function delayText(v) { return v === 0 ? "0.0 s" : (v > 0 ? "+" : "") + v.toFixed(1) + " s" }
-    function delayLine(prop, v) { return (prop === "audio-delay" ? "Audio delay " : "Subtitle delay ") + delayText(v) }
+    function delayLine(prop, v) { return (prop === "audio-delay" ? "Audio delay " : "Subtitle delay ") + Fmt.delay(v) }
     function setDelay(prop, v) {
         v = Math.round(v * 10) / 10
         if (prop === "audio-delay") audioDelay = v; else subDelay = v
