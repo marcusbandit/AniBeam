@@ -32,6 +32,18 @@ fn truthy(v: &Value) -> bool {
     }
 }
 
+/// Whether a `skip` or `error` value says yes: as `truthy`, except that a string reading
+/// "false", "0" or "no" (trimmed, in any case), or only blank, says no.
+fn flag(v: &Value) -> bool {
+    match v {
+        Value::String(s) => {
+            let s = s.trim();
+            !s.is_empty() && !["false", "0", "no"].iter().any(|f| s.eq_ignore_ascii_case(f))
+        }
+        _ => truthy(v),
+    }
+}
+
 /// A string or a number as text, trimmed; None when empty or anything else.
 fn text(v: &Value) -> Option<String> {
     let s = match v {
@@ -103,7 +115,7 @@ fn fill_page(template: &str, item: &Value) -> String {
 /// neither a usable hash nor a ready `magnet:` or `https://` link.
 fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
     let field = |path: &Option<String>| path.as_deref().and_then(|p| at(item, p));
-    if field(&map.skip).is_some_and(truthy) {
+    if field(&map.skip).is_some_and(flag) {
         return None;
     }
     let title = at(item, &map.title).and_then(text)?;
@@ -143,9 +155,10 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
 pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, String> {
     let reply: Value = serde_json::from_slice(body).map_err(|e| format!("not JSON: {e}"))?;
     if let Some(v) = map.error.as_deref().and_then(|p| at(&reply, p))
-        && truthy(v)
+        && flag(v)
     {
-        return Err(match v.as_str().map(str::trim).filter(|m| !m.is_empty()) {
+        let said = v.as_str().map(super::fetch::feed_message);
+        return Err(match said.filter(|m| !m.is_empty()) {
             Some(m) => format!("the search answered with an error: {m}"),
             None => "the search answered with an error".into(),
         });
@@ -388,8 +401,13 @@ mod tests {
         assert!(e.contains("bad query"), "{e}");
         let e = parse(br#"{"error": true}"#, &errs, "s").unwrap_err();
         assert_eq!(e, "the search answered with an error");
-        let e = parse(br#"{"error": "  "}"#, &errs, "s").unwrap_err();
+        let e = parse(br#"{"error": " \u0000 "}"#, &errs, "s").unwrap_err();
         assert_eq!(e, "the search answered with an error");
+        let e = parse(br#"{"error": "bad\n\u001b query"}"#, &errs, "s").unwrap_err();
+        assert!(e.ends_with(": bad query"), "{e}");
+        let long = json!({"error": "x".repeat(500)}).to_string();
+        let e = parse(long.as_bytes(), &errs, "s").unwrap_err();
+        assert!(e.ends_with(&format!("{}...", "x".repeat(200))), "{e}");
         assert!(parse(br#"{"error": false, "results": []}"#, &errs, "s").is_ok());
         assert!(
             parse(br#"{"error": 0, "results": []}"#, &errs, "s")
@@ -398,6 +416,40 @@ mod tests {
         );
         assert!(parse(b"<html>", &errs, "s").is_err());
         assert!(parse(br#"{"results": {"a": 1}}"#, &errs, "s").is_err());
+    }
+
+    #[test]
+    fn skip_and_error_read_false_0_and_no_as_unset() {
+        let errs = small(json!({"hash": "h", "items": "results", "error": "error"}));
+        let skips = small(json!({"hash": "h", "skip": "s"}));
+        let unset = [
+            json!(false),
+            json!(0),
+            json!(0.0),
+            json!(null),
+            json!(""),
+            json!("  "),
+            json!("false"),
+            json!(" FALSE "),
+            json!("0"),
+            json!("No"),
+        ];
+        let set = [
+            json!(true),
+            json!(1),
+            json!(-1),
+            json!("true"),
+            json!("yes"),
+            json!("1"),
+            json!("nope"),
+            json!("0.0"),
+        ];
+        for (value, says) in unset.iter().map(|v| (v, false)).chain(set.iter().map(|v| (v, true))) {
+            let reply = json!({"error": value, "results": []}).to_string();
+            assert_eq!(parse(reply.as_bytes(), &errs, "x").is_err(), says, "error {value}");
+            let reply = json!([{"t": "x", "h": HASH, "s": value}]).to_string();
+            assert_eq!(parse(reply.as_bytes(), &skips, "x").unwrap().is_empty(), says, "skip {value}");
+        }
     }
 
     #[test]
