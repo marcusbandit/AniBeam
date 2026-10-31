@@ -29,28 +29,52 @@ Flickable {
     readonly property real scrollTarget: wheel.target
     GridKeys { id: gridKeys; flick: root }
 
-    // LazyTile's budget (#289): the area of cards built at once when the page is made,
-    // about a screen and a tenth; the rest are built as they come near, once the page
-    // has painted and its layout is settled (lazyArmed).
-    property real lazyLeft: 0
-    property bool lazyStarted: false
-    property bool lazyArmed: false
+    // LazyTile's bookkeeping (#289). A budget of about a screen and a tenth of card area,
+    // refilled after every painted frame: tiles made while it lasts build at once. The
+    // others wait in `lazyWaiting` and are measured only after a frame (the layout is
+    // settled then) and when the view has moved a quarter of a screen, never per tile and
+    // never per scroll frame.
+    readonly property real lazyBudget: {
+        var w = root.Window.window
+        return 1.1 * (w ? w.width * w.height : 1920 * 1080)
+    }
+    property real lazyLeft: lazyBudget
+    property int lazyCount: 0
+    property var lazyWaiting: []
+    property real lazySweptAt: 0
     function takeLazy(area) {
-        if (!lazyStarted) {
-            lazyStarted = true
-            var w = root.Window.window
-            lazyLeft = 1.1 * (w ? w.width * w.height : 1920 * 1080)
-        }
         var had = lazyLeft
         lazyLeft -= area
         return had > 0
     }
+    function lazyAdd(tile) { lazyWaiting.push(tile); lazyCount = lazyWaiting.length }
+    function lazyRemove(tile) {
+        var i = lazyWaiting.indexOf(tile)
+        if (i >= 0) { lazyWaiting.splice(i, 1); lazyCount = lazyWaiting.length }
+    }
+    function lazySweep() {
+        lazySweptAt = contentY
+        var view = contentY, end = contentY + height, keep = []
+        for (var i = 0; i < lazyWaiting.length; i++) {
+            var t = lazyWaiting[i]
+            if (!t || t.seen) continue
+            var y = t.mapToItem(contentItem, 0, 0).y
+            if (y + t.height > view - height && y < end + height)
+                t.build(y + t.height > view && y < end)
+            else keep.push(t)
+        }
+        lazyWaiting = keep
+        lazyCount = keep.length
+    }
     Connections {
         target: root.Window.window
-        enabled: !root.lazyArmed
-        function onFrameSwapped() { root.lazyArmed = true }
+        enabled: root.lazyCount > 0 || root.lazyLeft < root.lazyBudget
+        function onFrameSwapped() {
+            root.lazyLeft = root.lazyBudget
+            if (root.lazyCount > 0) root.lazySweep()
+        }
     }
-    Timer { running: !root.lazyArmed; interval: 250; onTriggered: root.lazyArmed = true }
+    onContentYChanged: if (lazyCount > 0 && Math.abs(contentY - lazySweptAt) > height / 4) lazySweep()
     function keyPressed(event) { gridKeys.handle(event, root.Window.window ? root.Window.window.activeFocusItem : null) }
     Keys.onPressed: function(event) { root.keyPressed(event) }
     MouseArea { anchors.fill: parent; onPressed: function(m) { root.forceActiveFocus(); m.accepted = false } }
