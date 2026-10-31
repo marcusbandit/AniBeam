@@ -536,7 +536,8 @@ pub fn refresh(core: &Core) -> Result<Reply, CoreError> {
 }
 
 /// Checks the person's values against an endpoint's fields: one for each, none left empty,
-/// nothing that is not a field, and a bare host for `{host}`.
+/// nothing that is not a field, and a bare host for `{host}`, one on the home network when the
+/// address is plain http.
 fn credentials_for(
     def: &Definition,
     given: &[EndpointCredential],
@@ -566,14 +567,29 @@ fn credentials_for(
             }
             continue;
         }
-        if field.key == index::HOST_KEY && def.host_is_placeholder() && !index::bare_host(&value) {
-            return Err(CoreError::invalid(
-                "credentials",
-                format!(
-                    "{}: the {} is a host or host:port only, like 192.168.1.10:9696",
-                    def.name, field.label
-                ),
-            ));
+        if field.key == index::HOST_KEY && def.host_is_placeholder() {
+            if !index::bare_host(&value) {
+                return Err(CoreError::invalid(
+                    "credentials",
+                    format!(
+                        "{}: the {} is a host name or IPv4 address, with a port if it needs one, \
+                         like 192.168.1.10:9696",
+                        def.name, field.label
+                    ),
+                ));
+            }
+            // Plain http carries the key in the clear: only across the home network.
+            if def.plain_http() && !index::home_host(&value) {
+                return Err(CoreError::invalid(
+                    "credentials",
+                    format!(
+                        "{}: {} is not on your home network, and this address is plain http, so \
+                         the key would cross the internet unencrypted. Use a home-network \
+                         address like 192.168.1.10:9696, or a server with an https address",
+                        def.name, value
+                    ),
+                ));
+            }
         }
         out.push((field.key.clone(), value));
     }
@@ -1320,5 +1336,42 @@ mod tests {
             normal_url("Https://example.com/x.json").unwrap(),
             "https://example.com/x.json"
         );
+    }
+
+    #[test]
+    fn a_public_host_is_refused_on_plain_http() {
+        let def = |scheme: &str| -> Definition {
+            serde_json::from_value(serde_json::json!({
+                "id": "indexer", "name": "Indexer", "version": 1, "kind": "torznab",
+                "url": format!("{scheme}://{{host}}/1/api?t=search&q={{query}}&apikey={{apikey}}"),
+                "auth": [
+                    {"key": "host", "label": "Prowlarr address", "secret": false},
+                    {"key": "apikey", "label": "API key", "secret": true},
+                ],
+            }))
+            .unwrap()
+        };
+        let given = |host: &str| {
+            vec![
+                EndpointCredential {
+                    key: "host".into(),
+                    value: host.into(),
+                },
+                EndpointCredential {
+                    key: "apikey".into(),
+                    value: "k".into(),
+                },
+            ]
+        };
+        let (http, https) = (def("http"), def("https"));
+        let e = credentials_for(&http, &given("indexer.example.org:9696"), true).unwrap_err();
+        assert!(e.to_string().contains("https"), "{e}");
+        assert!(credentials_for(&https, &given("indexer.example.org:9696"), true).is_ok());
+        for home in ["192.168.1.10:9696", "nas:9696"] {
+            assert!(credentials_for(&http, &given(home), true).is_ok(), "{home}");
+        }
+        // An IPv6 literal would build an address no client can read.
+        let e = credentials_for(&https, &given("::1"), true).unwrap_err();
+        assert!(e.to_string().contains("IPv4"), "{e}");
     }
 }

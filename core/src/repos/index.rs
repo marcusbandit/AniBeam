@@ -2,6 +2,8 @@
 //! index inside it, and each endpoint definition. Nothing here touches the store or the
 //! network, so every check is a plain function a test can call.
 
+use std::net::IpAddr;
+
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use ed25519_dalek::{Signature, VerifyingKey};
@@ -153,12 +155,19 @@ impl Definition {
         keys
     }
 
-    /// Whether credentials stored for `self` may go with `next` unasked: the same fields, and
-    /// the same hosts for the address and the front.
+    /// Whether credentials stored for `self` may go with `next` unasked: the same fields, the
+    /// same scheme, and the same hosts for the address and the front. A move to plain http asks
+    /// again, so a key never starts going in the clear without the person seeing it.
     pub fn keeps_credentials(&self, next: &Definition) -> bool {
         self.auth_keys() == next.auth_keys()
+            && scheme_of(&self.url) == scheme_of(&next.url)
             && self.host() == next.host()
             && self.front == next.front
+    }
+
+    /// Whether the address is plain http.
+    pub fn plain_http(&self) -> bool {
+        scheme_of(&self.url) == "http"
     }
 
     /// Whether the address names the person's own server: its whole authority is `{host}`.
@@ -168,17 +177,17 @@ impl Definition {
 
     /// The address with every `auth` placeholder filled, percent-encoded; `{query}` stays for
     /// the search to fill. None when a value is missing, or when the value for `{host}` is not
-    /// a bare host.
+    /// a bare host, or not a home one on plain http.
     pub fn filled_url(&self, value: impl Fn(&str) -> Option<String>) -> Option<String> {
         let own_host = self.host_is_placeholder();
         let mut url = self.url.clone();
         for field in &self.auth {
             let v = value(&field.key)?;
             let filled = if own_host && field.key == HOST_KEY {
-                if !bare_host(&v) {
+                if !bare_host(&v) || (self.plain_http() && !home_host(&v)) {
                     return None;
                 }
-                crate::releases::endpoints::quote(v.as_bytes(), ":[]")
+                crate::releases::endpoints::quote(v.as_bytes(), ":")
             } else {
                 crate::releases::endpoints::quote(v.as_bytes(), "")
             };
@@ -193,13 +202,65 @@ impl Definition {
 pub const HOST_KEY: &str = "host";
 
 /// Whether `value` may stand in for `{host}`: a host or host:port and nothing that could
-/// carry a path, a login or another placeholder. No bracketed IPv6 literal, which `host_of`
-/// cannot read.
+/// carry a path, a login or another placeholder. No IPv6 literal: `host_of` cannot read a
+/// bracketed one, and a bare one would read as a host and a port.
 pub fn bare_host(value: &str) -> bool {
     !value.is_empty()
+        && value.matches(':').count() <= 1
         && !value.chars().any(|c| {
             c.is_whitespace() || matches!(c, '/' | '@' | '?' | '#' | '{' | '}' | '\\' | '[' | ']')
         })
+}
+
+/// Whether a `{host}` value names a machine on the home network, where plain http may carry
+/// a key: a private, loopback, link-local or carrier-grade NAT address, or a home name.
+pub fn home_host(value: &str) -> bool {
+    let host = match value.split_once(':') {
+        Some((host, port)) if !port.contains(':') => host,
+        _ => value,
+    };
+    // `nas.` is `nas`, and the client reads `8.8.8.8.` as `8.8.8.8`.
+    let host = host.strip_suffix('.').unwrap_or(host);
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(ip)) => {
+            let [a, b, ..] = ip.octets();
+            ip.is_private()
+                || ip.is_loopback()
+                || ip.is_link_local()
+                || (a == 100 && b & 0xc0 == 64)
+        }
+        Ok(IpAddr::V6(ip)) => {
+            ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local()
+        }
+        Err(_) => home_name(host),
+    }
+}
+
+/// Whether a name stays on the home network: a single label, or a home suffix. Plain ASCII
+/// only, and never a label the client would read as an IPv4 number (`134744072`, `0x8080808`),
+/// so neither IDNA mapping nor a numeric host can reach a public address.
+/// This should fold into `net::doh::is_home_name` once #252 lands.
+fn home_name(name: &str) -> bool {
+    if name.is_empty() || !name.is_ascii() {
+        return false;
+    }
+    let name = name.to_ascii_lowercase();
+    if !name.contains('.') {
+        let number = match name.strip_prefix("0x") {
+            Some(hex) => hex.chars().all(|c| c.is_ascii_hexdigit()),
+            None => name.chars().all(|c| c.is_ascii_digit()),
+        };
+        return !number;
+    }
+    [".local", ".lan", ".home.arpa", ".internal", ".ts.net"]
+        .iter()
+        .any(|suffix| name.ends_with(suffix))
+}
+
+/// The scheme of an address, lower case; empty when there is none.
+fn scheme_of(url: &str) -> String {
+    url.split_once("://")
+        .map_or(String::new(), |(s, _)| s.to_ascii_lowercase())
 }
 
 /// The authority of an http(s) address as written, between `://` and the path.
@@ -775,6 +836,92 @@ pub(crate) mod tests {
         let mut c = a.clone();
         c.front = Some("front.example".into());
         assert!(!a.keeps_credentials(&c));
+    }
+
+    #[test]
+    fn an_update_to_plain_http_does_not_keep_the_key() {
+        let mut https = jackett();
+        https.url = https.url.replacen("http://", "https://", 1);
+        let mut next = jackett();
+        next.version = 2;
+        assert!(!https.keeps_credentials(&next));
+        let mut same = https.clone();
+        same.version = 2;
+        assert!(https.keeps_credentials(&same));
+    }
+
+    #[test]
+    fn plain_http_fills_only_a_home_host() {
+        let fill = |def: &Definition, host: &str| {
+            def.filled_url(|key| Some(if key == "host" { host } else { "k" }.to_string()))
+        };
+        let http = jackett();
+        let mut https = jackett();
+        https.url = https.url.replacen("http://", "https://", 1);
+        assert_eq!(fill(&http, "indexer.example.org:9696"), None);
+        assert!(fill(&https, "indexer.example.org:9696").is_some());
+        for home in [
+            "192.168.1.10:9696",
+            "nas",
+            "nas.local",
+            "box.tail1234.ts.net",
+        ] {
+            assert!(fill(&http, home).is_some(), "{home}");
+        }
+    }
+
+    #[test]
+    fn home_host_takes_the_home_network_only() {
+        for home in [
+            "10.0.0.2",
+            "172.16.4.1:9117",
+            "192.168.1.10:9696",
+            "127.0.0.1",
+            "169.254.3.4",
+            "100.64.0.1",
+            "100.127.255.254",
+            "::1",
+            "fd12::1",
+            "fe80::1",
+            "localhost",
+            "nas",
+            "nas.",
+            "NAS.Local",
+            "jackett.lan:9117",
+            "router.home.arpa",
+            "box.internal",
+            "box.tail1234.ts.net",
+        ] {
+            assert!(home_host(home), "{home}");
+        }
+        for public in [
+            "8.8.8.8",
+            "8.8.8.8.",
+            "100.128.0.1",
+            "2001:db8::1",
+            "indexer.example.org",
+            "local.example.org",
+            // Numbers the client reads as a public IPv4 address.
+            "134744072",
+            "0x8080808",
+            "010.0.0.1",
+            // Full-width digits, which IDNA maps to plain ones.
+            "\u{ff18}\u{ff18}",
+            "",
+        ] {
+            assert!(!home_host(public), "{public:?}");
+        }
+    }
+
+    #[test]
+    fn an_ipv6_host_is_refused() {
+        assert!(!bare_host("::1"));
+        assert!(!bare_host("fd12::1"));
+        let fill = |host: &str| {
+            jackett().filled_url(|key| Some(if key == "host" { host } else { "k" }.to_string()))
+        };
+        assert_eq!(fill("::1"), None);
+        assert_eq!(fill("[::1]:9696"), None);
     }
 
     #[test]

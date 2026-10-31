@@ -893,3 +893,61 @@ fn a_torznab_endpoint_searches_the_host_it_was_given() {
         ]
     );
 }
+
+#[test]
+fn an_update_from_https_to_http_asks_for_the_key_again() {
+    let (dir, core, _) = common::open_core();
+    let path = dir.path().join("repo.json");
+    let url = path.to_string_lossy().into_owned();
+    let indexer = |version: u32, scheme: &str| {
+        json!({
+            "id": "indexer", "name": "Indexer", "version": version, "kind": "torznab",
+            "url": format!("{scheme}://{{host}}/1/api?t=search&q={{query}}&apikey={{apikey}}"),
+            "auth": [
+                {"key": "host", "label": "Prowlarr address", "secret": false},
+                {"key": "apikey", "label": "API key", "secret": true},
+            ],
+        })
+    };
+    let credentials = || {
+        vec![
+            EndpointCredential {
+                key: "host".into(),
+                value: "10.0.0.2:9696".into(),
+            },
+            EndpointCredential {
+                key: "apikey".into(),
+                value: "k3y".into(),
+            },
+        ]
+    };
+    write_repo(&path, &key(1), 1, vec![indexer(1, "https")]);
+    trust(&core, &url);
+    let c = catalog(core.call(Call::InstallEndpoint {
+        repo: url.clone(),
+        id: "indexer".into(),
+        credentials: credentials(),
+    }));
+    let id = install_id(&c, "indexer");
+
+    write_repo(&path, &key(1), 2, vec![indexer(2, "http")]);
+    let c = catalog(core.call(Call::RefreshEndpointRepos));
+    assert!(c.installed[0].update_asks);
+    let e = core
+        .call(Call::UpdateEndpoint {
+            install: id.clone(),
+            credentials: vec![],
+        })
+        .unwrap_err();
+    assert!(matches!(e, CoreError::Invalid { .. }), "{e:?}");
+    assert_eq!(
+        catalog(core.call(Call::ListRepoEndpoints)).installed[0].version,
+        1
+    );
+
+    let c = catalog(core.call(Call::UpdateEndpoint {
+        install: id,
+        credentials: credentials(),
+    }));
+    assert_eq!(c.installed[0].version, 2);
+}
