@@ -1206,7 +1206,7 @@ pub(crate) fn annotate(
 /// counts). The address is the subscription preview's (anirss's
 /// `/subscriptions/preview`, or the core's own, gives the feed a search on
 /// this query reads), and the read is cheap: a plain RSS endpoint answers
-/// at once and Jackett serves a repeat query from its cache. The search
+/// at once and Jackett serves a repeat query from its cache. anirss's search
 /// counts as a request to the feed's host, so the read waits its pace after
 /// it rather than going back to back. Not a job; a failure is a debug line
 /// and the page shows no dates.
@@ -1219,6 +1219,8 @@ fn enrich(
 ) {
     let owner = core.clone();
     let (query, endpoint, items) = (query.to_string(), endpoint.to_string(), items.to_vec());
+    // The native engine's search booked its host through the paced client already.
+    let searched_elsewhere = matches!(backend, DownloadsBackend::Anirss(_));
     core.handle.spawn(async move {
         let outcome = async {
             let spec = backend.preview(&query, &endpoint, &items).await?;
@@ -1226,7 +1228,9 @@ fn enrich(
                 return Err(CoreError::internal("no feed named for this search"));
             }
             let http = crate::repos::endpoint_http(&owner);
-            http.passed(&spec.feed_url);
+            if searched_elsewhere {
+                http.passed(&spec.feed_url);
+            }
             feed::read(&http, &spec.feed_url).await
         }
         .await;

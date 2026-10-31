@@ -74,6 +74,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can add a source that answers in JSON
 
 ### Changed
+- Searches wait a second between requests to one site, except your own server
 - A show's Fixes menu holds Fix files, the episode count, the match and Rescan
 - Skip outro stays up with the controls hidden, like Skip intro
 - Skipping an intro lands right where the episode starts

@@ -16,6 +16,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can search your own Prowlarr or Jackett over torznab
 - An endpoint repo can add a source that answers in JSON
 
+### Changed
+- Searches wait a second between requests to one site, except your own server
+
 ## 2.1.1 · 2026-10-26
 
 ### Fixed

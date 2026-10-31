@@ -14,8 +14,21 @@ use std::time::{Duration, Instant};
 use crate::net::{BoxFuture, Http, HttpError, HttpRequest, HttpResponse};
 
 /// The least gap between two requests to one endpoint host, whatever its definition says
-/// or when it has none: `net::front`'s gap, which keeps DDoS-Guard answering (#135).
+/// or when it has none: `net::front`'s gap, which keeps DDoS-Guard answering (#135). A
+/// person's own server (localhost, a home-network address) has no floor, only its rate.
 pub const FLOOR: Duration = crate::net::front::GAP;
+
+/// A host on this machine or the home network, a person's own Jackett or Prowlarr.
+fn is_own_host(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    match host.trim_matches(['[', ']']).parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+        Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback() || ip.is_unique_local(),
+        Err(_) => false,
+    }
+}
 
 /// Host to the earliest moment its next request may start.
 static NEXT: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Default::default);
@@ -44,7 +57,12 @@ impl Paced {
 
     /// How long a request to `host` at `now` waits, and books its slot.
     fn book(&self, host: &str, now: Instant) -> Duration {
-        let gap = self.gaps.get(host).copied().unwrap_or_default().max(FLOOR);
+        let floor = if is_own_host(host) {
+            Duration::ZERO
+        } else {
+            FLOOR
+        };
+        let gap = self.gaps.get(host).copied().unwrap_or_default().max(floor);
         let mut next = NEXT.lock().unwrap_or_else(|e| e.into_inner());
         let start = next.get(host).copied().unwrap_or(now).max(now);
         next.insert(host.to_string(), start + gap);
@@ -88,6 +106,22 @@ mod tests {
         assert_eq!(p.book(host, now), Duration::ZERO);
         assert_eq!(p.book(host, now), FLOOR);
         assert_eq!(p.book(host, now + FLOOR * 3), Duration::ZERO);
+    }
+
+    #[test]
+    fn a_persons_own_server_waits_only_its_rate() {
+        let p = Paced::new(
+            FakeHttp::new(),
+            vec![("192.168.1.10".into(), Duration::from_secs(2))],
+        );
+        let now = Instant::now();
+        for host in ["localhost", "127.0.0.1", "10.0.0.5", "[::1]"] {
+            p.book(host, now);
+            assert_eq!(p.book(host, now), Duration::ZERO, "{host}");
+        }
+        p.book("192.168.1.10", now);
+        assert_eq!(p.book("192.168.1.10", now), Duration::from_secs(2));
+        assert!(!is_own_host("8.8.8.8") && !is_own_host("nyaa.example"));
     }
 
     #[test]

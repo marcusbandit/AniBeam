@@ -1143,15 +1143,25 @@ pub fn paced_http(core: &Core, runnable: &[Runnable]) -> Arc<dyn crate::net::Htt
 /// installed definition's rate, switched off or not, since the rate is the site's. Reads no
 /// credentials.
 pub fn endpoint_http(core: &Core) -> Paced {
+    let secrets = core.secrets();
     let gaps = core
         .store
         .read(read_installed)
         .unwrap_or_default()
         .into_iter()
         .filter_map(|r| {
-            r.def
-                .rate
-                .map(|rate| (r.def.host(), rate_gap(rate.per_minute)))
+            let rate = r.def.rate?;
+            // The host the requests go to, as the search fills it: a torznab `{host}` is
+            // the person's own server, never the literal placeholder.
+            let filled = r.def.filled_url(|key| {
+                secrets
+                    .get(&secret_key(&r.install_id, key), None)
+                    .ok()
+                    .flatten()
+                    .map(|(v, _)| v)
+            });
+            let host = filled.map_or_else(|| r.def.host(), |url| index::host_of(&url));
+            Some((host, rate_gap(rate.per_minute)))
         })
         .collect();
     Paced::new(core.http.clone(), gaps)
