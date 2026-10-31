@@ -37,7 +37,7 @@ public:
     Q_INVOKABLE void set(const QVariantMap &tokens);
 
     struct Data {
-        QFont title, heroTitle, ledger, ledgerStrong, heroScore, ui, tag, heroTag;
+        QFont title, heroTitle, ledger, ledgerStrong, heroScore, ui, heroUi, tag, heroTag;
         QColor text, textDim, textFaint, accent, focusRing, onPoster, onPosterDim, accentOnPoster, posterScrim, downloadInk;
         QColor tagFill{8, 9, 11, 158}, tagEdge{255, 255, 255, 36};
         QHash<QChar, QPair<QColor, QColor>> cubes;

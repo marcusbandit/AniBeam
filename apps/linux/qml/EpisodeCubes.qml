@@ -238,13 +238,16 @@ Item {
     // The tip: one for the grid, under the hovered cube. The probe stands where that cube
     // is, so the frame places the tip as it did when each cube had its own; Tooltip in
     // manual mode keeps the hover intent, the warm handover and the popover guard.
-    readonly property string tipText: pointCell < 0 || count > tipLimit || fold !== 1 ? ""
-        : tipFor ? tipFor(pointCell, cells[pointCell] || "g")
-        : "Episode " + (first + pointCell) + ": " + theme.cubeState(cells[pointCell] || "g").label.toLowerCase()
+    // The tip's words for a cube, read when the pointer reaches it: worked out in the
+    // handler below, not by a binding, so a warm handover never shows the cube before's
+    function tipTextOf(i) {
+        if (i < 0 || count > tipLimit || fold !== 1) return ""
+        return tipFor ? tipFor(i, cells[i] || "g") : "Episode " + (first + i) + ": " + theme.cubeState(cells[i] || "g").label.toLowerCase()
+    }
     Item {
         id: probe
         width: root.size; height: root.size
-        Tooltip { id: cubeTip; manual: true; area: root; held: hover.hovered && root.pointCell >= 0; text: root.tipText }
+        Tooltip { id: cubeTip; manual: true; area: root; held: hover.hovered && root.pointCell >= 0 }
     }
     // Placed before the tip is asked for, so it never reads the last cube's place; asked on
     // every move to another cube, even one whose tip reads the same
@@ -252,6 +255,7 @@ Item {
         if (pointCell < 0) { cubeTip.release(); return }
         probe.x = (pointCell % perRow) * (size + gap)
         probe.y = gridY + Math.floor(pointCell / perRow) * (size + gap)
+        cubeTip.text = tipTextOf(pointCell)
         cubeTip.show()
     }
     Connections {

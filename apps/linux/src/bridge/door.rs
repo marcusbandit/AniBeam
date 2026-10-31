@@ -107,20 +107,6 @@ pub mod qobject {
             direction: &QString,
             reveal_hidden: bool,
         ) -> QJsonObject;
-        /// listLibrary with each card cut to the fields the library page and its cards
-        /// read, about a third of the bytes, for the page that loads on every visit.
-        #[qinvokable]
-        fn list_library_lean(
-            self: &Door,
-            tab: &QString,
-            query: &QString,
-            sort: &QString,
-            direction: &QString,
-            reveal_hidden: bool,
-        ) -> QJsonObject;
-        /// The library page's sections, cut in Rust from the lean read: titles, facts and
-        /// series ids only. `args`: tab, query, sort, direction, reveal, arrange, group,
-        /// genre, now, season.
         #[qinvokable]
         fn library_view(self: &Door, args: &QJsonObject) -> QJsonObject;
         /// One card of the last library view, read when the card is built.
@@ -595,15 +581,15 @@ pub struct DoorRust {
     /// Whole-library answers kept while the core's generation stands still.
     /// The size of each answer as JSON text rides along, measured only while developer
     /// options are on, so a hit can report it without walking the answer again.
-    read_cache: RefCell<ReadCache<(QJsonObject, usize, u64)>>,
+    read_cache: RefCell<ReadCache<Kept>>,
     /// Keys whose fresh read is running on a thread of its own (stale-while-revalidate)
     refreshing: RefCell<std::collections::HashSet<String>>,
     /// The read the last library view was cut from, by content hash, and its cards by id
-    view_source: RefCell<Option<(u64, Value)>>,
+    view_source: RefCell<Option<(u64, std::rc::Rc<Value>)>>,
     cards: RefCell<std::collections::HashMap<u64, QJsonObject>>,
 }
 
-impl Default for ReadCache<(QJsonObject, usize, u64)> {
+impl Default for ReadCache<Kept> {
     /// On unless `ANIBEAM_READ_CACHE=0`, which is there to measure what it saves.
     fn default() -> Self {
         ReadCache::new(std::env::var("ANIBEAM_READ_CACHE").as_deref() != Ok("0"))
@@ -634,13 +620,20 @@ struct Shape {
     revalidate: bool,
 }
 
-/// Whether two answers are the same, without keeping either as text.
-fn content_hash(v: &Value) -> u64 {
+/// An answer's size as JSON text and a hash of it, from one serialisation: whether two
+/// answers are the same, without keeping either as text.
+fn measure(v: &Value) -> (usize, u64) {
     use std::hash::{Hash, Hasher};
+    let text = serde_json::to_vec(v).unwrap_or_default();
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    serde_json::to_string(v).unwrap_or_default().hash(&mut h);
-    h.finish()
+    text.hash(&mut h);
+    (text.len(), h.finish())
 }
+
+/// What the read cache keeps per answer: the QJsonObject QML gets, its size, its content
+/// hash (0 when not measured) and, for a revalidating read, the Value it came from, so a
+/// view cut from it never walks the QJsonObject back.
+type Kept = (QJsonObject, usize, u64, Option<std::rc::Rc<Value>>);
 
 /// The fields of a series card the library page, its cards (CardFace) and the frame's
 /// delete menu read; a card carries about sixty, and every one of them was converted twice
@@ -672,6 +665,7 @@ const LEAN_CARD_KEYS: &[&str] = &[
     "year",
     "format",
     "genres",
+    "downloaded_at",
 ];
 
 fn lean_cards(list: &mut Value) {
@@ -942,8 +936,12 @@ impl qobject::Door {
     }
 
     /// `answer`, with the content hash of a revalidating read (0 for any other), so a view
-    /// built from it knows when it has to be built again.
-    fn answer_full(&self, call: Call, shape: Option<Shape>) -> (QJsonObject, u64) {
+    /// built from it knows when it has to be built again, and the Value it came from.
+    fn answer_full(
+        &self,
+        call: Call,
+        shape: Option<Shape>,
+    ) -> (QJsonObject, u64, Option<std::rc::Rc<Value>>) {
         let core = crate::runtime::core();
         let key = read_cache::key_of(&call).map(|k| match shape {
             Some(s) => format!("{}:{k}", s.name),
@@ -959,7 +957,8 @@ impl qobject::Door {
         let generation = core.generation();
         let t0 = Instant::now();
         if let Some(k) = &key
-            && let Some((hit, size, hit_hash)) = self.read_cache.borrow_mut().get(k, generation, t0)
+            && let Some((hit, size, hit_hash, hit_value)) =
+                self.read_cache.borrow_mut().get(k, generation, t0)
         {
             if timing() {
                 eprintln!("timing {name} hit {:.3}ms", ms(t0.elapsed()));
@@ -978,13 +977,13 @@ impl qobject::Door {
                     off_thread: false,
                 });
             }
-            return (hit, hit_hash);
+            return (hit, hit_hash, hit_value);
         }
         // Out of date but known: shown at once, read again on a thread of its own, and the
         // page told only if the answer moved (#289). A page then never waits on the core.
         if let (Some(k), Some(s)) = (&key, shape)
             && s.revalidate
-            && let Some((stale, size, hash)) = self.read_cache.borrow().stale(k)
+            && let Some((stale, size, hash, value)) = self.read_cache.borrow().stale(k)
         {
             self.revalidate(call, k.clone(), s, generation, hash);
             if dev {
@@ -1000,7 +999,7 @@ impl qobject::Door {
                     off_thread: false,
                 });
             }
-            return (stale, hash);
+            return (stale, hash, value);
         }
         let reply = core.call(call);
         let t1 = Instant::now();
@@ -1013,16 +1012,22 @@ impl qobject::Door {
         let o = to_qjson_object(&v);
         let t3 = Instant::now();
         let revalidates = shape.is_some_and(|s| s.revalidate);
-        let size = if dev || revalidates {
-            crate::devstats::size_of(&v)
+        let (size, hash) = if revalidates {
+            measure(&v)
+        } else if dev {
+            (crate::devstats::size_of(&v), 0)
         } else {
-            0
+            (0, 0)
         };
-        let hash = if revalidates { content_hash(&v) } else { 0 };
+        let value = revalidates.then(|| std::rc::Rc::new(v));
         if ok && let Some(k) = key {
-            self.read_cache
-                .borrow_mut()
-                .put(k, generation, t0, (o.clone(), size, hash));
+            self.read_cache.borrow_mut().put(
+                k,
+                generation,
+                t0,
+                (o.clone(), size, hash, value.clone()),
+                revalidates,
+            );
         }
         if timing() {
             eprintln!(
@@ -1046,26 +1051,27 @@ impl qobject::Door {
                 off_thread: false,
             });
         }
-        (o, hash)
+        (o, hash, value)
     }
 
     /// The fresh read behind a stale answer: the core and the walk to JSON on a thread of
     /// their own, the QJsonObject and the cache on the Qt thread, and `readRefreshed` only
-    /// when the answer differs from the one shown. One at a time per key.
+    /// when the answer differs from the one shown. One at a time per key; when the state
+    /// moved while it ran, it reads again, so a change that landed mid-read is never lost.
     fn revalidate(&self, call: Call, key: String, shape: Shape, generation: u64, shown: u64) {
         if !self.refreshing.borrow_mut().insert(key.clone()) {
             return;
         }
         let qt = self.qt_thread();
         let mine = key.clone();
+        let again = call.clone();
         let spawned = std::thread::Builder::new()
             .name("door-refresh".into())
             .spawn(move || {
                 let mut v = json::reply_json(crate::runtime::core().call(call));
                 (shape.apply)(&mut v);
                 let ok = v.get("error").is_none();
-                let size = crate::devstats::size_of(&v);
-                let hash = content_hash(&v);
+                let (size, hash) = measure(&v);
                 qt.queue(move |mut door: Pin<&mut qobject::Door>| {
                     door.as_ref().refreshing.borrow_mut().remove(&key);
                     if !ok {
@@ -1073,13 +1079,18 @@ impl qobject::Door {
                     }
                     let o = to_qjson_object(&v);
                     door.as_ref().read_cache.borrow_mut().put(
-                        key,
+                        key.clone(),
                         generation,
                         Instant::now(),
-                        (o, size, hash),
+                        (o, size, hash, Some(std::rc::Rc::new(v))),
+                        true,
                     );
                     if hash != shown {
                         door.as_mut().read_refreshed();
+                    }
+                    let now = crate::runtime::core().generation();
+                    if now != generation {
+                        door.as_ref().revalidate(again, key, shape, now, hash);
                     }
                 })
                 .ok();
@@ -1474,27 +1485,6 @@ impl qobject::Door {
             })
         })())
     }
-    pub fn list_library_lean(
-        &self,
-        tab: &QString,
-        query: &QString,
-        sort: &QString,
-        direction: &QString,
-        reveal_hidden: bool,
-    ) -> QJsonObject {
-        self.dispatch_shaped(
-            (|| -> Result<Call, CoreError> {
-                Ok(Call::ListLibrary {
-                    tab: parse_enum::<Tab>("tab", tab)?,
-                    query: query.to_string(),
-                    sort: parse_enum::<Sort>("sort", sort)?,
-                    direction: parse_enum::<Direction>("direction", direction)?,
-                    reveal_hidden,
-                })
-            })(),
-            Some(LEAN_LIBRARY),
-        )
-    }
     /// The library page in sections, cut in Rust (library_view), from the lean library
     /// read, cached and revalidated like it. `args`: tab, query, sort, direction, reveal,
     /// arrange, group, genre, now (ms), season (the current season's label).
@@ -1518,7 +1508,7 @@ impl qobject::Door {
             Err(e) => return to_qjson_object(&json!({ "error": json::error_json(&e) })),
         };
         let t0 = Instant::now();
-        let (reply, hash) = self.answer_full(call, Some(LEAN_LIBRARY));
+        let (reply, hash, value) = self.answer_full(call, Some(LEAN_LIBRARY));
         let t1 = Instant::now();
         // The read as a Value, and each card as its own QJsonObject for Door::card, made
         // again only when the read's content moved
@@ -1528,7 +1518,7 @@ impl qobject::Door {
             .as_ref()
             .is_none_or(|(h, _)| *h != hash || hash == 0);
         if fresh {
-            let v = from_qjson_object(&reply);
+            let v = value.unwrap_or_else(|| std::rc::Rc::new(from_qjson_object(&reply)));
             let mut cards = std::collections::HashMap::new();
             for list in ["series", "airing"] {
                 if let Some(arr) = v["reply"][list].as_array() {

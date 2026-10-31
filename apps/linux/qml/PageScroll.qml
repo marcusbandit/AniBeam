@@ -47,6 +47,9 @@ Flickable {
     property var lazyWaiting: []
     property real lazySweptAt: 0
     function takeLazy(area) {
+        // Scrolled down, the first tiles made are the ones at the top, not the ones in view:
+        // none build at once; the sweep after the frame builds what is in view (#289)
+        if (contentY > 0) return false
         var had = lazyLeft
         lazyLeft -= area
         return had > 0

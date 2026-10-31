@@ -222,8 +222,9 @@ fn season_sections<'a>(list: &[&'a Value], ids: &HashSet<u64>, current: &str) ->
     out
 }
 
-/// The sections of `reply` (ListLibrary's, lean or whole) as QML reads them: `{ sections:
-/// [{ title, airing, dropped, count, fact, ids }], ids, count, counts }`
+/// The sections of `reply` (ListLibrary's, lean or whole) as QML reads them: `{ key,
+/// sections: [{ title, airing, dropped, count, ids }], facts: [one per section], ids, count,
+/// counts }`. `key` names the structure, so a view that only moved its facts is seen as one.
 pub fn view(reply: &Value, p: &Params) -> Value {
     let series: Vec<&Value> = reply["series"]
         .as_array()
@@ -252,18 +253,43 @@ pub fn view(reply: &Value, p: &Params) -> Value {
     } else {
         cut(&series, &airing_ids, p)
     };
-    let to_json = |s: &Section| {
-        json!({
-            "title": s.title,
-            "airing": s.airing,
-            "dropped": s.dropped,
-            "count": s.cards.len(),
-            "fact": if s.dropped { dropped_fact(&s.cards) } else { fact_of(&s.cards, p.now_secs) },
-            "ids": s.cards.iter().map(|c| id_of(c)).collect::<Vec<_>>(),
+    let structure: Vec<Value> = sections
+        .iter()
+        .map(|s| {
+            json!({
+                "title": s.title,
+                "airing": s.airing,
+                "dropped": s.dropped,
+                "count": s.cards.len(),
+                "ids": s.cards.iter().map(|c| id_of(c)).collect::<Vec<_>>(),
+            })
         })
+        .collect();
+    // The facts move with the clock ("Next episode in 4h 12m"); kept apart from the
+    // structure, and the structure keyed by a hash, so the page's 30 s tick changes a few
+    // labels and never rebuilds a section or a card (#289)
+    let facts: Vec<String> = sections
+        .iter()
+        .map(|s| {
+            if s.dropped {
+                dropped_fact(&s.cards)
+            } else {
+                fact_of(&s.cards, p.now_secs)
+            }
+        })
+        .collect();
+    let key = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        serde_json::to_string(&structure)
+            .unwrap_or_default()
+            .hash(&mut h);
+        h.finish().to_string()
     };
     json!({
-        "sections": sections.iter().map(to_json).collect::<Vec<_>>(),
+        "key": key,
+        "sections": structure,
+        "facts": facts,
         "ids": series.iter().map(|c| id_of(c)).collect::<Vec<_>>(),
         "count": series.len(),
         "counts": reply["counts"].clone(),
@@ -329,7 +355,7 @@ fn cut<'a>(series: &[&'a Value], ids: &HashSet<u64>, p: &Params) -> Vec<Section<
                 continue;
             }
             if cards.iter().all(|c| release_of(c).is_some()) {
-                cards.sort_by(|a, b| release_of(a).cmp(&release_of(b)));
+                cards.sort_by_key(|c| release_of(c));
             }
             out.push(Section {
                 airing: any_airing(&cards, ids),
@@ -442,7 +468,7 @@ mod tests {
             json!([3]),
             "the current season's airing series is under Airing only"
         );
-        assert_eq!(v["sections"][4]["fact"], "3 files still on disk");
+        assert_eq!(v["facts"][4], "3 files still on disk");
         assert_eq!(v["count"], 5);
     }
 
@@ -469,6 +495,17 @@ mod tests {
         assert_eq!(view(&reply, &p)["sections"][0]["ids"], json!([1, 2]));
         p.genre = "Drama";
         assert_eq!(view(&reply, &p)["ids"], json!([2]));
+    }
+
+    #[test]
+    fn the_clock_moves_the_facts_and_not_the_key() {
+        let reply = json!({ "series": [card(1, json!({ "season": "Fall 2025", "next_airing": { "at": 5000.0 } }))], "airing": [] });
+        let mut p = params("Season");
+        let a = view(&reply, &p);
+        p.now_secs = 2000.0;
+        let b = view(&reply, &p);
+        assert_eq!(a["key"], b["key"]);
+        assert_ne!(a["facts"], b["facts"]);
     }
 
     #[test]

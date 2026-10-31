@@ -7,6 +7,10 @@
 //! the time of day (an episode airs, the airing rail and the tab a series sits in follow
 //! `now`), and the rare write that lands after the event that announced it. Thirty seconds
 //! is the same beat the library page's own clock refreshes on.
+//!
+//! A read put with `keep_stale` (the library page's, Door::library_view) also outlives its
+//! generation as the key's last known answer, which the Door shows at once while it reads
+//! again on a thread of its own. Every other answer goes when the generation moves.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -47,9 +51,10 @@ const KEEP: usize = 48;
 
 pub struct ReadCache<V> {
     generation: u64,
-    /// key -> (the generation it was read under, when, the answer). An entry from an older
-    /// generation stays, no longer fresh, as the last known answer (`stale`).
-    entries: HashMap<String, (u64, Instant, V)>,
+    /// key -> (the generation it was read under, when, the answer, whether it outlives its
+    /// generation). Only an answer put with `keep_stale` stays, no longer fresh, as the
+    /// key's last known answer (`stale`); every other one goes when the generation moves.
+    entries: HashMap<String, (u64, Instant, V, bool)>,
     enabled: bool,
 }
 
@@ -63,7 +68,11 @@ impl<V: Clone> ReadCache<V> {
     }
 
     fn advance(&mut self, generation: u64) {
-        self.generation = self.generation.max(generation);
+        if generation > self.generation {
+            self.entries
+                .retain(|_, (g, _, _, keep)| *keep || *g >= generation);
+            self.generation = generation;
+        }
     }
 
     pub fn get(&mut self, key: &str, generation: u64, now: Instant) -> Option<V> {
@@ -72,27 +81,41 @@ impl<V: Clone> ReadCache<V> {
         }
         self.advance(generation);
         match self.entries.get(key) {
-            Some((g, at, v)) if *g == generation && now.duration_since(*at) < MAX_AGE => {
+            Some((g, at, v, _)) if *g == generation && now.duration_since(*at) < MAX_AGE => {
                 Some(v.clone())
             }
             _ => None,
         }
     }
 
-    /// The last answer kept under `key`, fresh or not: what a page shows at once while a
-    /// fresh read runs elsewhere (Door::list_library_lean).
+    /// The last answer kept under `key` with `keep_stale`, fresh or not: what a page shows
+    /// at once while a fresh read runs elsewhere (Door::library_view).
     pub fn stale(&self, key: &str) -> Option<V> {
         if !self.enabled || paused() {
             return None;
         }
-        self.entries.get(key).map(|(_, _, v)| v.clone())
+        self.entries
+            .get(key)
+            .filter(|(_, _, _, keep)| *keep)
+            .map(|(_, _, v, _)| v.clone())
     }
 
     /// `generation` is the one read *before* the answer was computed: a change that landed
-    /// during the read moved the number past it, so the answer is dropped on the next get
-    /// rather than kept as current.
-    pub fn put(&mut self, key: String, generation: u64, now: Instant, v: V) {
-        if !self.enabled || paused() || generation < self.generation {
+    /// during the read moved the number past it, so the answer is never kept as current.
+    /// With `keep_stale` it is still kept as the last known answer when it is newer than
+    /// what the key holds: the Door's background re-read lands after the generation moved.
+    pub fn put(&mut self, key: String, generation: u64, now: Instant, v: V, keep_stale: bool) {
+        if !self.enabled || paused() {
+            return;
+        }
+        if generation < self.generation {
+            let newer = self
+                .entries
+                .get(&key)
+                .is_none_or(|(g, _, _, _)| *g <= generation);
+            if keep_stale && newer {
+                self.entries.insert(key, (generation, now, v, true));
+            }
             return;
         }
         self.advance(generation);
@@ -100,13 +123,13 @@ impl<V: Clone> ReadCache<V> {
             let oldest = self
                 .entries
                 .iter()
-                .min_by_key(|(_, (_, at, _))| *at)
+                .min_by_key(|(_, (_, at, _, _))| *at)
                 .map(|(k, _)| k.clone());
             if let Some(k) = oldest {
                 self.entries.remove(&k);
             }
         }
-        self.entries.insert(key, (generation, now, v));
+        self.entries.insert(key, (generation, now, v, keep_stale));
     }
 }
 
@@ -161,20 +184,27 @@ mod tests {
     fn a_new_generation_or_old_age_drops_an_answer() {
         let t = Instant::now();
         let mut c = ReadCache::new(true);
-        c.put("k".into(), 3, t, 1);
+        c.put("k".into(), 3, t, 1, false);
         assert_eq!(c.get("k", 3, t + Duration::from_secs(1)), Some(1));
         assert_eq!(c.get("k", 3, t + MAX_AGE), None, "too old");
-        c.put("k".into(), 3, t, 1);
+        c.put("k".into(), 3, t, 1, false);
         assert_eq!(c.get("k", 4, t), None, "the generation moved");
         // An answer computed under a generation that has since moved is never kept.
-        c.put("k".into(), 3, t, 2);
+        c.put("k".into(), 3, t, 2, false);
         assert_eq!(c.get("k", 4, t), None);
         // Not fresh, but still the last known answer
-        c.put("k".into(), 4, t, 5);
+        c.put("k".into(), 4, t, 5, true);
         assert_eq!(c.get("k", 6, t), None);
         assert_eq!(c.stale("k"), Some(5));
+        // A plain answer goes with its generation
+        c.put("p".into(), 6, t, 7, false);
+        assert_eq!(c.get("p", 8, t), None);
+        assert_eq!(c.stale("p"), None);
+        // A re-read from an older generation still replaces an older kept answer
+        c.put("k".into(), 5, t, 9, true);
+        assert_eq!(c.stale("k"), Some(9));
         let mut off = ReadCache::new(false);
-        off.put("k".into(), 1, t, 1);
+        off.put("k".into(), 1, t, 1, false);
         assert_eq!(off.get("k", 1, t), None, "a disabled cache keeps nothing");
     }
 
@@ -194,7 +224,7 @@ mod tests {
                 return (v, true);
             }
             let v = crate::json::dispatch(&core, call);
-            cache.put(key, generation, Instant::now(), v.clone());
+            cache.put(key, generation, Instant::now(), v.clone(), false);
             (v, false)
         };
         let all = |v: &serde_json::Value| v["reply"]["series"].as_array().unwrap().len();

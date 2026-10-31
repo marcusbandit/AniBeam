@@ -98,13 +98,25 @@ Item {
     // facts and series ids, nothing per card. At 300 series, cutting them here over every
     // card object, and Qt converting those objects for the Repeaters, was most of a visit.
     // A card reads its own record from Door.card once it is built.
-    property var view: ({ sections: [], ids: [], count: 0, counts: {} })
-    readonly property var sections: view.sections
+    // `sections` changes only when the structure does (the view's key): a re-cut that only
+    // moved the facts (the clock) or the counts leaves every section and card standing
+    property var view: ({ ids: [], count: 0 })
+    property var sections: []
+    property var facts: []
+    property var counts: ({})
+    property string viewKey: ""
     function cut() {
         var r = Door.libraryView({ tab: tab, query: query, sort: sort, direction: direction, reveal: Door.revealHidden,
                                    arrange: arrange, group: groupFranchises, genre: genre, now: nowMs, season: currentSeason })
         if (r.error) { frame.toast(r.error.message); return false }
-        view = r.reply
+        var v = r.reply
+        counts = v.counts || {}
+        if (v.key !== viewKey) {
+            viewKey = v.key
+            view = { ids: v.ids, count: v.count }
+            sections = v.sections
+        }
+        facts = v.facts
         return true
     }
     // A change of cut re-cuts at once; the first reload and reload itself cut once, so a
@@ -120,7 +132,7 @@ Item {
     function cardIds() { return view.ids }
     function tileCount() { return view.count }
     function heroCount() { return 0 }
-    function boxes() { return view.sections.filter(function(s) { return s.title !== "" }).map(function(s) { return { title: s.title, airing: s.airing, ids: s.ids } }) }
+    function boxes() { return sections.filter(function(s) { return s.title !== "" }).map(function(s) { return { title: s.title, airing: s.airing, ids: s.ids } }) }
     function boxOf(id) { var b = boxes(); for (var i = 0; i < b.length; i++) if (b[i].ids.indexOf(id) >= 0) return b[i].title; return "" }
     function seriesWhere(text) { return view.ids.map(function(id) { return Door.card(id) }).filter(function(c) { return String(c.title).toLowerCase().indexOf(text) >= 0 }).map(function(c) { return { id: c.id, title: c.title, format: c.format, franchise: c.franchise === undefined ? "undefined" : c.franchise } }) }
 
@@ -134,7 +146,7 @@ Item {
         reloading = false
         settled = true
         if (!cut()) return
-        var n = view.counts || {}
+        var n = counts
         watchedExist = (n.watched || 0) > 0
         hiddenExist = Door.revealHidden && (n.hidden || 0) > 0
         libraryEmpty = (n.all || 0) === 0 && !watchedExist && (n.hidden || 0) === 0
@@ -375,7 +387,7 @@ Item {
                                     color: section.modelData.airing ? theme.accent : section.modelData.dropped ? theme.textDim : theme.text
                                 }
                                 Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.count; role: "ledger"; color: theme.textFaint }
-                                Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.fact; role: "ui"; color: theme.textDim }
+                                Label { anchors.baseline: sectionTitle.baseline; text: page.facts[section.index] || ""; role: "ui"; color: theme.textDim }
                             }
                         }
                         Flow {

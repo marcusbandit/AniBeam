@@ -72,6 +72,8 @@ void CardStyle::set(const QVariantMap &t)
     d.ledgerStrong = roleFont(family, small, 88, 650, true);
     d.heroScore = roleFont(family, normal, 88, 500, true);
     d.ui = roleFont(family, small, 100, 450, false);
+    // The hero's next-episode line: the ui role at its own size, as the QML Label had it
+    d.heroUi = roleFont(family, normal, 100, 450, false);
     d.tag = d.ledger;
     d.heroTag = roleFont(family, normal * 0.92, 88, 500, true);
     d.text = colorOf(t.value(QStringLiteral("text")), Qt::white);
@@ -500,7 +502,7 @@ void CardFace::updatePolish()
                 m_runs.push_back({at, QPointF(p, top), color});
             }});
         };
-        line(nextText, st.ui, inkMain);
+        line(nextText, st.heroUi, inkMain);
         if (airs) {
             footH += spacing + pillH;
             rows.push_back({pillH, [&](qreal top) { countdownRow(p, top + pillH / 2, footW); }});
