@@ -138,32 +138,34 @@ async fn host(
         )),
     }
 
-    let start = Instant::now();
-    match doh.lookup(name).await {
-        Some(found) => {
-            let shown = found
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ");
-            out.push(line(
-                format!("{label}: DNS over HTTPS"),
-                true,
-                shown,
-                ms(start),
-            ));
-            for ip in found {
-                if !ips.contains(&ip) {
-                    ips.push(ip);
+    let doh_line = format!("{label}: DNS over HTTPS");
+    if name.parse::<IpAddr>().is_ok() {
+        out.push(line(doh_line, true, "skipped, an address".into(), 0));
+    } else if crate::net::doh::is_home_name(name) {
+        out.push(line(doh_line, true, "skipped, home-network name".into(), 0));
+    } else {
+        let start = Instant::now();
+        match doh.lookup(name).await {
+            Some(found) => {
+                let shown = found
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push(line(doh_line, true, shown, ms(start)));
+                for ip in found {
+                    if !ips.contains(&ip) {
+                        ips.push(ip);
+                    }
                 }
             }
+            None => out.push(line(
+                doh_line,
+                false,
+                "no resolver answered".into(),
+                ms(start),
+            )),
         }
-        None => out.push(line(
-            format!("{label}: DNS over HTTPS"),
-            false,
-            "no resolver answered".into(),
-            ms(start),
-        )),
     }
 
     for ip in ips.iter().filter(|ip| ip.is_ipv4()).take(3) {

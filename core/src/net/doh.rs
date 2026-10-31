@@ -20,6 +20,28 @@ const MAX_TTL: u64 = 3600;
 /// How long the resolvers are left alone after none answered.
 const DOWN_FOR: Duration = Duration::from_secs(300);
 
+/// Endings that only a home network, a router or a tailnet answers for.
+const HOME_SUFFIXES: [&str; 10] = [
+    ".lan",
+    ".local",
+    ".localdomain",
+    ".localhost",
+    ".home",
+    ".home.arpa",
+    ".internal",
+    ".corp",
+    ".fritz.box",
+    ".ts.net",
+];
+
+/// A name only this network can answer: a single label (`prowlarr`), or one under a home,
+/// router or tailnet ending (`prowlarr.lan`, `nas.fritz.box`, `box.tail1234.ts.net`). A
+/// public resolver has no answer for these, and asking one sends the name off the network.
+pub fn is_home_name(name: &str) -> bool {
+    let name = name.trim_end_matches('.').to_ascii_lowercase();
+    !name.contains('.') || HOME_SUFFIXES.iter().any(|end| name.ends_with(end))
+}
+
 /// Name to its addresses and when they go stale.
 type Cache = HashMap<String, (Vec<IpAddr>, Instant)>;
 
@@ -156,6 +178,39 @@ impl Resolve for Doh {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn home_network_names_are_home_names() {
+        for name in [
+            "prowlarr",
+            "localhost",
+            "prowlarr.lan",
+            "jackett.local",
+            "nas.localdomain",
+            "nas.home",
+            "nas.home.arpa",
+            "box.internal",
+            "files.corp",
+            "nas.fritz.box",
+            "nas.tail1234.ts.net",
+            "NAS.LAN.",
+        ] {
+            assert!(is_home_name(name), "{name} should be a home name");
+        }
+    }
+
+    #[test]
+    fn public_names_are_not_home_names() {
+        for name in [
+            "nyaa.si",
+            "example.com",
+            "one.one.one.one",
+            "lan.example.com",
+            "fritz.box.example.com",
+        ] {
+            assert!(!is_home_name(name), "{name} should be public");
+        }
+    }
 
     #[test]
     fn a_dns_json_answer_gives_its_addresses_and_shortest_ttl() {
