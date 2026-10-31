@@ -782,3 +782,97 @@ fn download_with_rolling_works_on_native() {
     assert_eq!(urls.lines().count(), 12);
     no_anirss(&r.http);
 }
+
+/// A small but whole .torrent file.
+const TORRENT: &[u8] = b"d8:announce15:http://x.test/a4:infod6:lengthi1e4:name5:a.mkvee";
+
+fn torrent_hash() -> String {
+    anibeam_core::releases::stats::info_hash(TORRENT)
+        .unwrap()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// A web link's .torrent is fetched here and uploaded, so its hash is
+/// known and qBittorrent never fetches it itself.
+#[test]
+fn a_torrent_url_is_fetched_and_uploaded_with_its_hash() {
+    let r = rig();
+    r.http
+        .push_for("dl.example/a.torrent", 200, TORRENT.to_vec());
+    r.http.push_for("torrents/info", 200, "[]");
+    r.http.push_for("torrents/add", 200, "Ok.");
+    let job = started(
+        &r.core,
+        Call::DownloadReleases {
+            items: vec![release(
+                "[Group] Show - 01 (1080p)",
+                "https://dl.example/a.torrent",
+            )],
+            name: Some("Show".to_string()),
+        },
+    );
+    let done = common::wait_job(&r.c, job);
+    assert_eq!(added(&done).hashes, vec![torrent_hash()]);
+    let calls = qbt_calls(&r.http);
+    assert!(
+        calls
+            .iter()
+            .any(|(p, _)| *p == format!("torrents/info?hashes={}", torrent_hash())),
+        "{calls:?}"
+    );
+    let add = called(&calls, "torrents/add");
+    let Some(Body::Multipart { fields, files }) = &add.body else {
+        panic!("not an upload: {:?}", add.body)
+    };
+    assert_eq!(
+        fields,
+        &vec![
+            ("savepath".to_string(), "/srv/TV/Show".to_string()),
+            ("tags".to_string(), "Anime".to_string()),
+        ]
+    );
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].field, "torrents");
+    assert_eq!(files[0].file_name, "a.torrent");
+    assert_eq!(files[0].bytes, TORRENT);
+    assert_eq!(
+        calls.iter().filter(|(p, _)| p == "torrents/add").count(),
+        1,
+        "no second add by URL"
+    );
+    no_anirss(&r.http);
+}
+
+#[test]
+fn a_duplicate_upload_is_skipped() {
+    let r = rig();
+    r.http
+        .push_for("dl.example/a.torrent", 200, TORRENT.to_vec());
+    r.http.push_for(
+        "torrents/info",
+        200,
+        json!([{"hash": torrent_hash(), "name": "a.mkv"}]).to_string(),
+    );
+    let job = started(
+        &r.core,
+        Call::DownloadReleases {
+            items: vec![release(
+                "[Group] Show - 01 (1080p)",
+                "https://dl.example/a.torrent",
+            )],
+            name: Some("Show".to_string()),
+        },
+    );
+    let done = common::wait_job(&r.c, job);
+    let result = added(&done);
+    assert_eq!(result.count, 1);
+    assert_eq!(result.hashes, vec![torrent_hash()]);
+    assert!(
+        !paths_of(&r.http).iter().any(|p| p == "torrents/add"),
+        "qBittorrent already has it: {:?}",
+        paths_of(&r.http)
+    );
+    no_anirss(&r.http);
+}

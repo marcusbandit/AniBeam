@@ -8,15 +8,17 @@
 //! (`trash`), never deleted for good. A client on another machine keeps its
 //! files out of the trash's reach, so there its own delete takes them.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
 use crate::contract::*;
 use crate::core::Core;
 use crate::releases::native::Native;
+use crate::releases::stats;
 
 use super::anirss::url_safe;
 use super::paths::{self, SavePaths};
@@ -30,6 +32,9 @@ const SERVICE: &str = "AniBeam";
 /// The folder a download with no name and no show to name it after goes
 /// into (anirss's fallback name).
 const FALLBACK_NAME: &str = "anirss";
+
+/// How long fetching the .torrent files before an add may take in all.
+const FETCH_DEADLINE: Duration = Duration::from_secs(20);
 
 fn not_found(message: String) -> CoreError {
     CoreError::Service {
@@ -146,7 +151,7 @@ pub(super) async fn download(
     let qbt = super::qbt_client(core).await?;
     let saving = paths::resolve(core, &qbt).await?;
     let save_path = paths::join(&saving.save_base, &name);
-    add_links(&qbt, &links, &save_path, &saving).await
+    add_links(core, &qbt, &links, &save_path, &saving).await
 }
 
 /// One torrent straight into the films' folder, with no folder of its own
@@ -155,7 +160,28 @@ pub(super) async fn movie(core: &Arc<Core>, link: &str) -> Result<AddedTorrents,
     let links = checked_links([link])?;
     let qbt = super::qbt_client(core).await?;
     let saving = paths::resolve(core, &qbt).await?;
-    add_links(&qbt, &links, &saving.movie_path, &saving).await
+    add_links(core, &qbt, &links, &saving.movie_path, &saving).await
+}
+
+/// The upload's file name: the link's last path segment, decoded.
+fn link_file_name(link: &str) -> String {
+    let path = link.split(['?', '#']).next().unwrap_or("");
+    let path = path.split_once("://").map_or(path, |(_, rest)| rest);
+    let last = match path.split_once('/') {
+        Some((_, p)) => p.rsplit('/').next().unwrap_or(""),
+        None => "",
+    };
+    // A path's `+` is a plus, not a form's space
+    let name = crate::percent::decode(&last.replace('+', "%2B"));
+    if name.is_empty() {
+        "file.torrent".to_string()
+    } else {
+        name
+    }
+}
+
+fn hex(hash: &stats::Hash) -> String {
+    hash.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// The links as qBittorrent should get them (anirss `_check_links`): a
@@ -184,18 +210,67 @@ fn checked_links<'a>(links: impl IntoIterator<Item = &'a str>) -> Result<Vec<Str
     Ok(out)
 }
 
-/// Hands the links to qBittorrent (anirss `add_links`). The hashes are the
-/// ones known up front, from magnets.
+/// Hands the links to qBittorrent (anirss `_add_links` and `add_links`).
+/// qBittorrent fetches every web link at once, and a host that caps its
+/// concurrent streams refuses the rest, so the .torrent files are fetched
+/// here first and uploaded; a link that could not be fetched still goes as
+/// a URL. One qBittorrent already has is not uploaded again. The hashes
+/// are the ones known up front: an uploaded file's and a magnet's.
 async fn add_links(
+    core: &Core,
     qbt: &QbtClient,
     links: &[String],
     save_path: &str,
     saving: &SavePaths,
 ) -> Result<AddedTorrents, CoreError> {
-    qbt.add_urls(links, save_path, &saving.tags).await?;
+    let web: Vec<String> = links
+        .iter()
+        .filter(|l| l.starts_with("http://") || l.starts_with("https://"))
+        .cloned()
+        .collect();
+    let mut fetched = if web.is_empty() {
+        HashMap::new()
+    } else {
+        stats::fetch_torrents(core.http.as_ref(), &web, FETCH_DEADLINE).await
+    };
+    let file_hashes: HashMap<String, String> = fetched
+        .iter()
+        .filter_map(|(link, bytes)| Some((link.clone(), hex(&stats::info_hash(bytes).ok()?))))
+        .collect();
+    let mut have: HashSet<String> = HashSet::new();
+    if !file_hashes.is_empty() {
+        let wanted: Vec<String> = file_hashes.values().cloned().collect();
+        have = qbt
+            .torrents_named(&wanted)
+            .await?
+            .into_iter()
+            .map(|t| t.hash.to_ascii_lowercase())
+            .collect();
+    }
+    let mut urls = Vec::new();
+    for link in links {
+        match file_hashes.get(link) {
+            None => urls.push(link.clone()),
+            Some(hash) if !have.contains(hash) => {
+                let bytes = fetched.remove(link).unwrap_or_default();
+                qbt.add_file(bytes, &link_file_name(link), save_path, &saving.tags)
+                    .await?;
+                have.insert(hash.clone());
+            }
+            Some(_) => {}
+        }
+    }
+    if !urls.is_empty() {
+        qbt.add_urls(&urls, save_path, &saving.tags).await?;
+    }
     let hashes = links
         .iter()
-        .filter_map(|l| super::replace::magnet_hash(l))
+        .filter_map(|l| {
+            file_hashes
+                .get(l)
+                .cloned()
+                .or_else(|| super::replace::magnet_hash(l))
+        })
         .collect();
     Ok(AddedTorrents {
         count: links.len() as u64,
@@ -577,6 +652,16 @@ mod tests {
         assert!(checked_links(["magnet:?xt=urn:btih:aa\nmagnet:?xt=x"]).is_err());
         assert!(checked_links(["magnet:?xt=urn:btih:aa&dn=a b"]).is_err());
         assert!(checked_links([] as [&str; 0]).is_err());
+    }
+
+    #[test]
+    fn an_upload_is_named_after_the_links_last_segment() {
+        assert_eq!(
+            link_file_name("https://dl.example/t/%5BGroup%5D%20Show+%2001.torrent?x=1"),
+            "[Group] Show+ 01.torrent"
+        );
+        assert_eq!(link_file_name("https://dl.example/"), "file.torrent");
+        assert_eq!(link_file_name("https://dl.example"), "file.torrent");
     }
 
     #[test]

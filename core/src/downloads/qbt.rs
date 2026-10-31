@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 
 use crate::contract::*;
-use crate::net::{Body, Http, HttpRequest, HttpResponse, Method};
+use crate::net::{Body, FilePart, Http, HttpRequest, HttpResponse, Method};
 
 /// How `CoreError::Service` names this service.
 pub const SERVICE: &str = "qBittorrent";
@@ -128,6 +128,39 @@ impl QbtClient {
         form.extend(tags_field(tags));
         let r = self.call("torrents/add", Some(form)).await?;
         added_or_not(&r)
+    }
+
+    /// Uploads one .torrent file's bytes, saved into `save_path`: a URL
+    /// only works for a link qBittorrent can fetch itself. A torrent it
+    /// already has answers 409, which is no failure here.
+    pub async fn add_file(
+        &self,
+        bytes: Vec<u8>,
+        file_name: &str,
+        save_path: &str,
+        tags: &[String],
+    ) -> Result<(), CoreError> {
+        let mut fields = vec![("savepath".to_string(), save_path.to_string())];
+        fields.extend(tags_field(tags));
+        let file_name = if file_name.is_empty() {
+            "file.torrent"
+        } else {
+            file_name
+        };
+        let body = Body::Multipart {
+            fields,
+            files: vec![FilePart {
+                field: "torrents".to_string(),
+                file_name: file_name.to_string(),
+                content_type: "application/x-bittorrent".to_string(),
+                bytes,
+            }],
+        };
+        match self.call_with("torrents/add", Some(body)).await {
+            Ok(r) => added_or_not(&r),
+            Err(CoreError::Service { code, .. }) if code == "http_409" => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 
     // ---- RSS: the engine that subscribes creates the feeds and rules; the
@@ -303,26 +336,28 @@ impl QbtClient {
         path: &str,
         form: Option<Vec<(String, String)>>,
     ) -> Result<HttpResponse, CoreError> {
-        let first = self.send(path, form.clone()).await?;
+        self.call_with(path, form.map(Body::Form)).await
+    }
+
+    /// `call` with any body: a POST, or a GET without one.
+    async fn call_with(&self, path: &str, body: Option<Body>) -> Result<HttpResponse, CoreError> {
+        let first = self.send(path, body.clone()).await?;
         if first.status != 403 {
             return judge(&self.base, first);
         }
         self.login().await?;
-        judge(&self.base, self.send(path, form).await?)
+        judge(&self.base, self.send(path, body).await?)
     }
 
-    async fn send(
-        &self,
-        path: &str,
-        form: Option<Vec<(String, String)>>,
-    ) -> Result<HttpResponse, CoreError> {
+    async fn send(&self, path: &str, body: Option<Body>) -> Result<HttpResponse, CoreError> {
         let mut headers = vec![("Referer".to_string(), format!("{}/", self.base))];
         if let Some(cookie) = self.sid.lock().unwrap_or_else(|e| e.into_inner()).clone() {
             headers.push(("Cookie".to_string(), cookie));
         }
-        let (method, body) = match form {
-            Some(f) => (Method::Post, Some(Body::Form(f))),
-            None => (Method::Get, None),
+        let method = if body.is_some() {
+            Method::Post
+        } else {
+            Method::Get
         };
         self.http
             .send(HttpRequest {
@@ -898,6 +933,44 @@ mod tests {
             matches!(&e, CoreError::Service { code, .. } if code == "add_failed"),
             "{e:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_file_is_uploaded_as_a_multipart_form_and_a_duplicate_is_no_failure() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for("torrents/add", 200, "Ok.");
+        let c = client(&http);
+        c.add_file(
+            b"d4:infoe".to_vec(),
+            "a.torrent",
+            "/srv/TV/Show",
+            &["Anime".into()],
+        )
+        .await
+        .unwrap();
+        let sent = http.requests();
+        assert_eq!(sent[0].method, Method::Post);
+        assert_eq!(
+            sent[0].body,
+            Some(Body::Multipart {
+                fields: vec![
+                    ("savepath".to_string(), "/srv/TV/Show".to_string()),
+                    ("tags".to_string(), "Anime".to_string()),
+                ],
+                files: vec![FilePart {
+                    field: "torrents".to_string(),
+                    file_name: "a.torrent".to_string(),
+                    content_type: "application/x-bittorrent".to_string(),
+                    bytes: b"d4:infoe".to_vec(),
+                }],
+            })
+        );
+        http.push_for("torrents/add", 409, "Conflict");
+        c.add_file(b"d4:infoe".to_vec(), "", "/x", &[])
+            .await
+            .unwrap();
+        assert!(matches!(&http.requests()[1].body,
+            Some(Body::Multipart { files, .. }) if files[0].file_name == "file.torrent"));
     }
 
     #[tokio::test]
