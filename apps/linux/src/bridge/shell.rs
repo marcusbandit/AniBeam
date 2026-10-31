@@ -69,9 +69,9 @@ pub mod qobject {
             how: QString,
             command: QString,
         );
-        /// How far installUpdate's download has come, 0 to 1.
+        /// How far installUpdate's download has come, in bytes.
         #[qsignal]
-        fn update_progress(self: Pin<&mut Self>, fraction: f64);
+        fn update_progress(self: Pin<&mut Self>, got: f64, total: f64);
         /// installUpdate is done: a restart opens the new version, and a quit leaves it for
         /// the next start.
         #[qsignal]
@@ -139,6 +139,9 @@ pub mod qobject {
         /// `install`. updateFailed answers when it cannot.
         #[qinvokable]
         fn install_update(self: &Self, version: &QString);
+        /// Stops installUpdate's download. Nothing answers; QML has already moved on.
+        #[qinvokable]
+        fn cancel_update(self: &Self);
         /// The next exit opens the readied update; QML quits the app right after.
         #[qinvokable]
         fn restart_for_update(self: &Self);
@@ -258,6 +261,7 @@ static INSTALL: OnceLock<Install> = OnceLock::new();
 static OFFERED: Mutex<Vec<Update>> = Mutex::new(Vec::new());
 static PREPARED: Mutex<Option<Prepared>> = Mutex::new(None);
 static INSTALLING: AtomicBool = AtomicBool::new(false);
+static CANCEL: AtomicBool = AtomicBool::new(false);
 static RESTART: AtomicBool = AtomicBool::new(false);
 
 /// Called by main as the last thing before exit: finishes a readied update, and opens it
@@ -366,7 +370,8 @@ impl qobject::Shell {
         let (Some(install), Some(update)) = (INSTALL.get().cloned(), found) else {
             return self.fail(format!("AniBeam {version} is no longer on offer"));
         };
-        // A second click while one runs is the same download
+        // A click while one runs, even one just cancelled, carries on with that download
+        CANCEL.store(false, Ordering::SeqCst);
         if INSTALLING.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -376,10 +381,9 @@ impl qobject::Shell {
             let work = std::env::temp_dir().join(format!("anibeam-update-{}", std::process::id()));
             let tell = shell.clone();
             let progress = move |got: u64, total: u64| {
-                let fraction = got as f64 / total.max(1) as f64;
-                let _ = tell.queue(move |shell| shell.update_progress(fraction));
+                let _ = tell.queue(move |shell| shell.update_progress(got as f64, total as f64));
             };
-            let result = install::fetch(&install, &update, &work, progress).await;
+            let result = install::fetch(&install, &update, &work, &CANCEL, progress).await;
             INSTALLING.store(false, Ordering::SeqCst);
             match result {
                 Ok(prepared) => {
@@ -388,6 +392,7 @@ impl qobject::Shell {
                     }
                     let _ = shell.queue(|shell| shell.update_ready());
                 }
+                Err(_) if CANCEL.load(Ordering::SeqCst) => {}
                 Err(message) => {
                     eprintln!("anibeam: update: {message}");
                     let _ = shell.queue(move |shell| shell.update_failed(QString::from(&message)));
@@ -400,6 +405,10 @@ impl qobject::Shell {
         let _ = self
             .qt_thread()
             .queue(move |shell| shell.update_failed(QString::from(&message)));
+    }
+
+    pub fn cancel_update(&self) {
+        CANCEL.store(true, Ordering::SeqCst);
     }
 
     pub fn restart_for_update(&self) {

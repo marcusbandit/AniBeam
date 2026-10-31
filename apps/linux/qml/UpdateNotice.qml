@@ -1,8 +1,8 @@
 // A newer desktop build is out: one quiet island over the page's bottom right corner. The
 // frame asks once as the app starts (check()), Settings asks again when the track changes,
 // and Shell answers through updateAvailable with how this copy takes the update:
-// - install: Update downloads it here, with the progress along the island's foot, and the
-//   app restarts into it once it is ready. A download that finishes while the player, a sheet
+// - install: Update downloads it here, with the progress along the island's foot and a
+//   Cancel, and the app restarts into it once it is ready. A download that finishes while the player, a sheet
 //   or What's new has the window waits for a Restart click instead.
 // - command: a package manager owns this copy (the AUR), so the island shows the command
 //   that updates it and a Copy button. Shell only says so once the AUR has the version.
@@ -21,7 +21,11 @@ Frost {
     objectName: "update-notice"
     visible: shown && !covered
     radius: theme.radiusTile
-    width: row.implicitWidth + theme.space(6); height: theme.controlHeight + theme.space(2)
+    // One width for every state, wider only when the words need it, so the island does not
+    // jump about as the update moves along
+    readonly property real pad: theme.space(4)
+    width: Math.max(theme.space(116), words.implicitWidth + actions.implicitWidth + pad * 2 + theme.space(6))
+    height: Math.max(words.implicitHeight, actions.implicitHeight) + theme.space(6)
 
     property bool shown: false
     property bool covered: false
@@ -32,7 +36,9 @@ Frost {
     property string command: ""
     // offer, downloading, ready or failed
     property string phase: "offer"
-    property real progress: 0
+    property real got: 0
+    property real total: 0
+    readonly property real progress: total > 0 ? Math.min(1, got / total) : 0
     property string failure: ""
     property bool copied: false
 
@@ -69,7 +75,11 @@ Frost {
         function onUpdateAvailable(version, url, track, how, command) {
             if (track === root.track && !root.busy) root.show(version, url, how, command)
         }
-        function onUpdateProgress(fraction) { root.progress = fraction }
+        function onUpdateProgress(got, total) {
+            if (root.phase !== "downloading") return
+            root.got = got
+            root.total = total
+        }
         // Restarts at once unless the player, a sheet or What's new has the window; then
         // Restart waits for a click
         function onUpdateReady() {
@@ -95,9 +105,14 @@ Frost {
         shown = false
     }
     function install() {
-        root.progress = 0
+        root.got = 0
+        root.total = 0
         root.phase = "downloading"
         Shell.installUpdate(root.version)
+    }
+    function cancel() {
+        Shell.cancelUpdate()
+        root.phase = "offer"
     }
     function restart() {
         Shell.restartForUpdate()
@@ -111,37 +126,54 @@ Frost {
     }
     TextEdit { id: clipboard; visible: false }
 
-    readonly property string line: {
-        if (phase === "downloading") return "Downloading AniBeam " + version + "  " + Math.floor(progress * 100) + "%"
+    function mb(bytes) { return Math.round(bytes / 1048576) }
+    readonly property string headline: {
+        if (phase === "downloading") return "Downloading AniBeam " + version
         if (phase === "ready") return "AniBeam " + version + " is ready"
-        if (phase === "failed") return "The update did not work: " + failure
+        if (phase === "failed") return "The update failed"
         if (how === "command") return "AniBeam " + version + " is on the AUR"
-        if (how === "source") return "AniBeam " + version + " is out. This copy is built from source, so pull and rebuild"
         return "AniBeam " + version + " is out"
+    }
+    readonly property string detail: {
+        if (phase === "downloading") return Math.floor(progress * 100) + "%  ·  " + mb(got) + " of " + mb(total) + " MB"
+        if (phase === "ready") return "Restart now, or it opens next time"
+        if (phase === "failed") return failure
+        if (how === "command") return command
+        if (how === "source") return "This copy is built from source: pull and rebuild"
+        if (how === "page") return "No download here for this computer"
+        return "Update installs it and restarts AniBeam"
+    }
+
+    Column {
+        id: words
+        anchors.left: parent.left; anchors.leftMargin: root.pad
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: theme.space(1)
+        Label {
+            objectName: "update-line"
+            role: "ui"
+            text: root.headline
+        }
+        Label {
+            objectName: "update-detail"
+            // The command is what gets typed, so it reads at full strength in a fixed face;
+            // the progress line keeps its digits still
+            role: root.phase === "downloading" ? "ledger" : "ui"
+            font.family: root.phase === "offer" && root.how === "command" ? "monospace" : theme.roleFamily(role)
+            font.pointSize: theme.typeSmall
+            color: root.phase === "offer" && root.how === "command" ? theme.text : theme.textDim
+            text: root.detail
+        }
     }
 
     Row {
-        id: row
-        anchors.centerIn: parent
-        spacing: theme.space(3)
-        Label {
-            objectName: "update-line"
-            anchors.verticalCenter: parent.verticalCenter
-            role: "ui"
-            text: root.line
-        }
-        Label {
-            objectName: "update-command"
-            visible: root.phase === "offer" && root.how === "command"
-            anchors.verticalCenter: parent.verticalCenter
-            role: "ledger"
-            color: theme.textDim
-            text: root.command
-        }
+        id: actions
+        anchors.right: parent.right; anchors.rightMargin: root.pad
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: theme.space(2)
         Button {
             objectName: "update-install"
             visible: (root.phase === "offer" && root.how === "install") || root.phase === "failed"
-            anchors.verticalCenter: parent.verticalCenter
             text: root.phase === "failed" ? "Retry" : "Update"
             icon: root.phase === "failed" ? "rotate-cw" : "download"
             primary: true; small: true
@@ -150,14 +182,12 @@ Frost {
         Button {
             objectName: "update-restart"
             visible: root.phase === "ready"
-            anchors.verticalCenter: parent.verticalCenter
             text: "Restart"; icon: "refresh-cw"; primary: true; small: true
             onClicked: root.restart()
         }
         Button {
             objectName: "update-copy"
             visible: root.phase === "offer" && root.how === "command"
-            anchors.verticalCenter: parent.verticalCenter
             text: root.copied ? "Copied" : "Copy"; icon: root.copied ? "check" : "copy"
             primary: true; small: true
             onClicked: root.copyCommand()
@@ -165,14 +195,18 @@ Frost {
         Button {
             objectName: "update-page"
             visible: root.phase === "offer" && root.how === "page"
-            anchors.verticalCenter: parent.verticalCenter
             text: "Release page"; icon: "external-link"; primary: true; small: true
             onClicked: { root.shown = false; frame.openLink(root.url) }
         }
         Button {
+            objectName: "update-cancel"
+            visible: root.phase === "downloading"
+            text: "Cancel"; icon: "x"; small: true
+            onClicked: root.cancel()
+        }
+        Button {
             objectName: "update-later"
             visible: root.phase !== "downloading"
-            anchors.verticalCenter: parent.verticalCenter
             text: "Later"; icon: "clock"; small: true
             onClicked: root.later()
         }

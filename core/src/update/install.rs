@@ -18,6 +18,7 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
@@ -227,11 +228,13 @@ pub enum Prepared {
 }
 
 /// Downloads `update`'s file for `install` and readies it, reporting the bytes so far and
-/// the total as it goes. `work` is a directory of the update's own, emptied first.
+/// the total as it goes. `work` is a directory of the update's own, emptied first. Setting
+/// `cancel` stops the download and removes what it wrote.
 pub async fn fetch(
     install: &Install,
     update: &Update,
     work: &Path,
+    cancel: &AtomicBool,
     progress: impl FnMut(u64, u64) + Send,
 ) -> Result<Prepared, String> {
     let asset = install.asset(&update.assets).ok_or_else(|| {
@@ -249,7 +252,7 @@ pub async fn fetch(
             let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
             let dir = path.parent().unwrap_or(Path::new("/"));
             let next = dir.join(format!(".{}.update", name.unwrap_or_default()));
-            download(asset, &next, progress).await?;
+            download(asset, &next, cancel, progress).await?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -266,7 +269,7 @@ pub async fn fetch(
         }
         Install::MacApp { bundle } => {
             let dmg = work.join(&asset.name);
-            download(asset, &dmg, progress).await?;
+            download(asset, &dmg, cancel, progress).await?;
             let staged = staged_bundle(bundle);
             stage_from_dmg(&dmg, &work.join("mount"), &staged).await?;
             let _ = tokio::fs::remove_file(&dmg).await;
@@ -277,7 +280,7 @@ pub async fn fetch(
         }
         Install::WindowsSetup { exe } => {
             let setup = work.join(&asset.name);
-            download(asset, &setup, progress).await?;
+            download(asset, &setup, cancel, progress).await?;
             Ok(Prepared::WindowsSetup {
                 setup,
                 exe: exe.clone(),
@@ -285,7 +288,7 @@ pub async fn fetch(
         }
         Install::WindowsPortable { exe } => {
             let zip = work.join(&asset.name);
-            download(asset, &zip, progress).await?;
+            download(asset, &zip, cancel, progress).await?;
             Ok(Prepared::WindowsPortable {
                 zip,
                 exe: exe.clone(),
@@ -301,6 +304,7 @@ pub async fn fetch(
 async fn download(
     asset: &Asset,
     to: &Path,
+    cancel: &AtomicBool,
     mut progress: impl FnMut(u64, u64) + Send,
 ) -> Result<(), String> {
     let client = reqwest::Client::builder()
@@ -331,6 +335,9 @@ async fn download(
             .await
             .map_err(|e| format!("The download stopped: {e}"))?
         {
+            if cancel.load(Ordering::SeqCst) {
+                return Err("Cancelled".into());
+            }
             file.write_all(&chunk)
                 .await
                 .map_err(|e| format!("Could not write {}: {e}", part.display()))?;
