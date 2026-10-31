@@ -17,6 +17,10 @@
 
 class QQmlApplicationEngine;
 
+// Lets qmlprofiler attach (ANIBEAM_QML_PROFILE=1): Qt's QML debugging services, which
+// time every object created and every binding run, by file and line. Must run before the
+// engine exists. Off, this does nothing.
+void dev_enable_qml_profiling();
 // Installs the interceptor and the `dev` image provider. Once, before the first load.
 void install_dev_tools(QQmlApplicationEngine &engine);
 // measure: decodes go through the provider and are recorded. images: false stops every

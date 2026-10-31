@@ -166,6 +166,14 @@ FocusScope {
         enabled: frame.devOn
         function onFrameSwapped() { devRecorder.frame() }
     }
+    // Start-up marks (ANIBEAM_TIMING=1): the first page's first painted frame
+    property bool firstPageMarked: false
+    Connections {
+        id: firstPaint
+        target: frame.hostWindow
+        enabled: false
+        function onFrameSwapped() { firstPaint.enabled = false; Dev.mark("first page painted") }
+    }
     Component.onCompleted: { frame.devApply(); frame.loadPage() }
     // A hovered item destroyed by the navigation never fires its own exit handler, so a
     // tip or a menu opened on the leaving page would otherwise survive onto the next one.
@@ -214,6 +222,7 @@ FocusScope {
             focus: true
             asynchronous: false
             onLoaded: {
+                if (!frame.firstPageMarked) { frame.firstPageMarked = true; Dev.mark("first page built: " + nav.current.page); firstPaint.enabled = true }
                 if (nav.pendingScroll > 0 && item.scrollY !== undefined) Qt.callLater(function() { if (page.item) page.item.scrollY = nav.pendingScroll })
                 item.forceActiveFocus()
                 frame.startNotes()

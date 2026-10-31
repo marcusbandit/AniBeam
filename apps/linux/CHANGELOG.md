@@ -107,6 +107,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Reduce motion stops every slide and grow, scrolling aside
 - Settings and errors use plain words instead of anirss terms
 - The activity log speaks plain words and leaves out background chores
+- Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
 - A download's speed and time left no longer run under its Stop button
