@@ -284,9 +284,11 @@ pub fn magnet_facts(link: &str) -> Option<(Hash, Vec<String>)> {
         // A magnet's values are percent-encoded; a `+` in one is a plus, not a space.
         let value = unquote_plus(&value.replace('+', "%2B"));
         if key.eq_ignore_ascii_case("tr")
-            && ["http://", "https://", "udp://"]
-                .iter()
-                .any(|p| value.starts_with(p))
+            && ["http://", "https://", "udp://"].iter().any(|p| {
+                value
+                    .get(..p.len())
+                    .is_some_and(|head| head.eq_ignore_ascii_case(p))
+            })
             && !trackers.contains(&value)
         {
             trackers.push(value);
@@ -839,7 +841,7 @@ async fn enrich_with(
     let urls: Vec<String> = by_url.iter().map(|(u, _)| u.clone()).collect();
     let torrent_urls: Vec<String> = urls
         .iter()
-        .filter(|u| !u.starts_with("magnet:"))
+        .filter(|u| !u.trim_start().starts_with("magnet:"))
         .cloned()
         .collect();
     let fetched = fetch_torrents_with(
@@ -862,10 +864,20 @@ async fn enrich_with(
     // Scrape per tracker in announce-priority order until everything lands.
     let mut pending: Vec<(Hash, Vec<String>)> = Vec::new(); // info-hash to the announces to try
     for url in &urls {
-        if let Some((hash, announces)) = facts.get(url)
-            && !pending.iter().any(|(h, _)| h == hash)
-        {
-            pending.push((*hash, announces.clone()));
+        let Some((hash, announces)) = facts.get(url) else {
+            continue;
+        };
+        // Two links to one hash pool their trackers, so a dead list on one does not hide
+        // a live tracker on the other.
+        match pending.iter_mut().find(|(h, _)| h == hash) {
+            Some((_, known)) => {
+                for a in announces {
+                    if !known.contains(a) {
+                        known.push(a.clone());
+                    }
+                }
+            }
+            None => pending.push((*hash, announces.clone())),
         }
     }
     let mut tracker_order: Vec<&String> = Vec::new();
@@ -876,12 +888,19 @@ async fn enrich_with(
             }
         }
     }
+    // The tracker budget covers the whole page, so the trackers most hashes share go first;
+    // one magnet's long list of its own trackers cannot use it up for the rest. The sort is
+    // stable, so announce priority still breaks ties.
+    tracker_order.sort_by_key(|a| {
+        std::cmp::Reverse(pending.iter().filter(|(_, urls)| urls.contains(a)).count())
+    });
 
     let mut found: HashMap<Hash, Stats> = HashMap::new();
     let unknown =
         |found: &HashMap<Hash, Stats>, h: &Hash| found.get(h).is_none_or(|s| *s == (0, 0, 0));
-    for announce in tracker_order.into_iter().take(MAX_TRACKERS_TRIED) {
-        if Instant::now() > deadline {
+    let mut tried = 0;
+    for announce in tracker_order {
+        if tried == MAX_TRACKERS_TRIED || Instant::now() > deadline {
             break;
         }
         let todo: Vec<Hash> = pending
@@ -889,9 +908,11 @@ async fn enrich_with(
             .filter(|(h, urls)| urls.contains(announce) && unknown(&found, h))
             .map(|(h, _)| *h)
             .collect();
+        // A tracker with nothing left to ask costs no budget.
         if todo.is_empty() {
             continue;
         }
+        tried += 1;
         for (h, stats) in backend.scrape_tracker(announce, &todo).await {
             if unknown(&found, &h) {
                 // A tracker that does not know the hash answers all zeros; prefer any later
@@ -1151,6 +1172,12 @@ mod tests {
         );
         let upper = format!("magnet:?xt=URN:BTIH:{B32}&tr=udp%3A%2F%2Ft2.example%3A1337");
         assert_eq!(magnet_facts(&upper).unwrap().0, h);
+        // The xt key and a tracker's scheme are read in any case too.
+        let shouty = format!("magnet:?XT=urn:btih:{HEX}&tr=UDP%3A%2F%2Ft2.example%3A1337");
+        assert_eq!(
+            magnet_facts(&shouty),
+            Some((h, vec!["UDP://t2.example:1337".to_string()]))
+        );
         // Padding a download's hash reader accepts is accepted here too.
         let padded = format!("  magnet:?xt=urn:btih:{HEX}&tr=udp%3A%2F%2Ft2.example%3A1337\n");
         assert_eq!(
