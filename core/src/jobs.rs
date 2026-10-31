@@ -20,6 +20,9 @@ pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 /// terminal event.
 pub struct Finished {
     pub level: Level,
+    /// The line a person reads in the plain log; `None` keeps the moment
+    /// to the developer log.
+    pub plain: Option<String>,
     pub message: String,
     pub body: EventBody,
 }
@@ -81,10 +84,31 @@ impl JobCtx {
         }
     }
 
+    /// A line for the developer log. Inside a job the person started, a
+    /// warning or an error also reaches the plain log in general words
+    /// (`EventBus::emit`); inside a chore it stays with the developer.
     pub fn emit(&self, level: Level, message: impl Into<String>, body: EventBody) {
-        self.bus.emit(
+        let job = Some(self.job_ref(JobPhase::Running));
+        if self.kind.chore() {
+            self.bus
+                .emit_said(level, self.kind.stage(), None, message, job, body);
+        } else {
+            self.bus.emit(level, self.kind.stage(), message, job, body);
+        }
+    }
+
+    /// `emit` with the line a person reads in the plain activity log.
+    pub fn say(
+        &self,
+        level: Level,
+        plain: impl Into<String>,
+        message: impl Into<String>,
+        body: EventBody,
+    ) {
+        self.bus.emit_said(
             level,
             self.kind.stage(),
+            Some(plain.into()),
             message,
             Some(self.job_ref(JobPhase::Running)),
             body,
@@ -262,6 +286,12 @@ impl JobCtx {
     }
 }
 
+/// What a person reads when a job ends in an error or a panic: nothing for
+/// a chore the app runs on its own, whose failure the next run retries.
+fn stopped_line(kind: JobKind) -> Option<String> {
+    (!kind.chore()).then(|| format!("{} stopped with a problem.", kind.doing()))
+}
+
 /// Guarantees a job's registry entry and terminal event are never lost to a
 /// panic in its body. Created before the body runs; the normal path (the
 /// `tokio::select!` resolving, whatever the outcome) disarms it by setting
@@ -290,9 +320,10 @@ impl Drop for JobGuard {
             phase: JobPhase::Finished,
         };
         if std::thread::panicking() {
-            self.jobs.bus.emit(
+            self.jobs.bus.emit_said(
                 Level::Error,
                 self.kind.stage(),
+                stopped_line(self.kind),
                 format!("{} panicked", self.kind.as_str()),
                 Some(finished),
                 EventBody::JobFailed {
@@ -306,9 +337,10 @@ impl Drop for JobGuard {
             // principle, a `select!` whose cancelled arm won before this
             // guard's `done` flag could be set). Either way the job did
             // not fail, it was cancelled.
-            self.jobs.bus.emit(
+            self.jobs.bus.emit_said(
                 Level::Info,
                 self.kind.stage(),
+                None,
                 format!("{} cancelled", self.kind.as_str()),
                 Some(finished),
                 EventBody::JobCancelled,
@@ -428,36 +460,40 @@ impl Jobs {
             };
             match outcome {
                 None => {
-                    jobs.bus.emit(
+                    jobs.bus.emit_said(
                         Level::Info,
                         kind.stage(),
+                        None,
                         format!("{} cancelled", kind.as_str()),
                         Some(finished),
                         EventBody::JobCancelled,
                     );
                 }
                 Some(Err(e)) if e == CoreError::internal("cancelled") => {
-                    jobs.bus.emit(
+                    jobs.bus.emit_said(
                         Level::Info,
                         kind.stage(),
+                        None,
                         format!("{} cancelled", kind.as_str()),
                         Some(finished),
                         EventBody::JobCancelled,
                     );
                 }
                 Some(Err(e)) => {
-                    jobs.bus.emit(
+                    jobs.bus.emit_said(
                         Level::Error,
                         kind.stage(),
+                        stopped_line(kind),
                         format!("{} failed: {e}", kind.as_str()),
                         Some(finished),
                         EventBody::JobFailed { error: e },
                     );
                 }
                 Some(Ok(done)) => {
-                    jobs.bus.emit(
+                    jobs.bus.emit_said(
                         done.level,
                         kind.stage(),
+                        done.plain,
                         done.message,
                         Some(finished),
                         done.body,
@@ -574,6 +610,7 @@ mod tests {
             total_is_estimate: false,
             episodes_set: None,
             episodes_set_applied: false,
+            count_season: None,
             bytes_on_disk: 0,
             watched_bytes: 0,
             watched_on_disk: 0,
@@ -613,6 +650,7 @@ mod tests {
         let id = jobs.start(JobKind::Search, |ctx| async move {
             ctx.emit(Level::Debug, "half way", EventBody::Notice);
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: "search done".into(),
                 body: EventBody::SearchFinished { results: vec![] },
@@ -656,6 +694,78 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_job_has_a_plain_line_and_a_cancelled_one_stays_quiet() {
+        let (_d, _rt, jobs, c) = setup();
+        let failed = jobs.start(JobKind::Search, |_ctx| async move {
+            Err(CoreError::internal("nope"))
+        });
+        wait_for_finished(&c, failed);
+        let cancelled = jobs.start(JobKind::Scan, |ctx| async move {
+            loop {
+                ctx.checkpoint()?;
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        });
+        std::thread::sleep(Duration::from_millis(30));
+        jobs.cancel(cancelled).unwrap();
+        wait_for_finished(&c, cancelled);
+        let last = |id: u64| {
+            c.events()
+                .into_iter()
+                .rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id))
+                .unwrap()
+        };
+        let failed = last(failed);
+        assert_eq!(
+            failed.plain.as_deref(),
+            Some("Searching for a show stopped with a problem.")
+        );
+        assert!(failed.message.starts_with("Search failed"));
+        // The person cancelled it, or a newer job replaced it: not news
+        let cancelled = last(cancelled);
+        assert_eq!(cancelled.plain, None);
+        assert_eq!(cancelled.message, "Scan cancelled");
+    }
+
+    #[test]
+    fn a_chore_that_fails_stays_in_the_developer_log() {
+        let (_d, _rt, jobs, c) = setup();
+        let id = jobs.start(JobKind::FillImages, |ctx| async move {
+            ctx.emit(Level::Warn, "one image failed", EventBody::Notice);
+            Err(CoreError::internal("nope"))
+        });
+        wait_for_finished(&c, id);
+        let mine: Vec<_> = c
+            .events()
+            .into_iter()
+            .filter(|e| e.job.as_ref().is_some_and(|j| j.id == id))
+            .collect();
+        assert!(mine.iter().any(|e| e.level == Level::Error));
+        assert!(mine.iter().all(|e| e.plain.is_none()));
+    }
+
+    #[test]
+    fn a_finished_job_passes_its_plain_line_through() {
+        let (_d, _rt, jobs, c) = setup();
+        let id = jobs.start(JobKind::Search, |_ctx| async move {
+            Ok(Finished {
+                plain: Some("Found it.".to_string()),
+                level: Level::Info,
+                message: "found".into(),
+                body: EventBody::SearchFinished { results: vec![] },
+            })
+        });
+        wait_for_finished(&c, id);
+        let last = c
+            .events()
+            .into_iter()
+            .rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id))
+            .unwrap();
+        assert_eq!(last.plain.as_deref(), Some("Found it."));
+        assert_eq!(last.message, "found");
+    }
+
+    #[test]
     fn cancel_ends_a_job_with_job_cancelled() {
         let (_d, _rt, jobs, c) = setup();
         let id = jobs.start(JobKind::Scan, |ctx| async move {
@@ -690,6 +800,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
             Ok(Finished {
+                plain: None,
                 level: Level::Info,
                 message: "".into(),
                 body: EventBody::ScanFinished {
@@ -704,6 +815,7 @@ mod tests {
         assert_eq!(first, second);
         let other = jobs.start(JobKind::Search, |_ctx| async move {
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: "".into(),
                 body: EventBody::SearchFinished { results: vec![] },
@@ -723,6 +835,7 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(300)).await;
             Ok(Finished {
+                plain: None,
                 level: Level::Info,
                 message: "".into(),
                 body: EventBody::ScanFinished {
@@ -758,6 +871,7 @@ mod tests {
                 ctx.changed(card(i));
             }
             Ok(Finished {
+                plain: None,
                 level: Level::Info,
                 message: "".into(),
                 body: EventBody::ScanFinished {
@@ -826,6 +940,7 @@ mod tests {
             ctx.progress(1, Some(10), "walking");
             ctx.progress(2, Some(10), "walking");
             Ok(Finished {
+                plain: None,
                 level: Level::Info,
                 message: "".into(),
                 body: EventBody::ScanFinished {
@@ -904,6 +1019,7 @@ mod tests {
         // under a new id rather than handing back the dead one.
         let second = jobs.start(JobKind::Scan, |_ctx| async move {
             Ok(Finished {
+                plain: None,
                 level: Level::Info,
                 message: "".into(),
                 body: EventBody::ScanFinished {
@@ -1011,6 +1127,7 @@ mod tests {
             newer.title = "second".into();
             ctx.changed(newer);
             Ok(Finished {
+                plain: None,
                 level: Level::Info,
                 message: "".into(),
                 body: EventBody::ScanFinished {

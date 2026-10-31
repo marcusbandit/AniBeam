@@ -639,8 +639,10 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
         series_count: 0,
         movie_folders: Vec::new(),
     };
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Library,
+        format!("Added the folder {} to your library.", folder_of(&path)),
         format!("source added: {path}"),
         EventBody::SourceChanged {
             source: source.clone(),
@@ -683,6 +685,7 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
     })?;
     core.library.forget_source(source);
     core.unwatch_source(&path);
+    let shows = ids.len();
     if !ids.is_empty() {
         core.bus.info(
             Stage::Library,
@@ -690,8 +693,18 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
             EventBody::SeriesRemoved { ids },
         );
     }
-    core.bus.info(
+    let folder = folder_of(&path);
+    core.bus.say(
+        Level::Info,
         Stage::Library,
+        if shows == 0 {
+            format!("Removed the folder {folder} from your library.")
+        } else {
+            format!(
+                "Removed the folder {folder} and its {shows} {} from your library.",
+                crate::words::pick(shows, "show", "shows")
+            )
+        },
         format!("source removed: {path}"),
         EventBody::SourceRemoved { source },
     );
@@ -721,8 +734,10 @@ pub fn forget_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
         tx.execute("DELETE FROM series WHERE id = ?1", params![series as i64])?;
         Ok(name)
     })?;
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Library,
+        format!("Removed {name} from your library."),
         format!("forgot {name}"),
         EventBody::SeriesRemoved { ids: vec![series] },
     );
@@ -807,8 +822,43 @@ async fn set_available(
     } else {
         format!("source unavailable: {path}")
     };
-    ctx.emit(Level::Info, message, EventBody::SourceChanged { source });
+    let folder = folder_of(path);
+    let said = if available {
+        format!("The folder {folder} is back.")
+    } else {
+        format!("The folder {folder} is not available. Check that its drive is connected.")
+    };
+    ctx.say(
+        if available { Level::Info } else { Level::Warn },
+        said,
+        message,
+        EventBody::SourceChanged { source },
+    );
     Ok(())
+}
+
+/// The last part of a folder's path, which is how a person knows it.
+pub(crate) fn folder_of(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned())
+}
+
+/// What a finished scan tells a person; nothing when it found nothing new,
+/// since the catch-up scan at launch would otherwise say so every time.
+fn scan_line(added: u64, changed: u64, removed: u64) -> Option<String> {
+    let shows = |n: u64| crate::words::pick(n, "show", "shows");
+    let mut parts = Vec::new();
+    if added > 0 {
+        parts.push(format!("{added} new {}", shows(added)));
+    }
+    if changed > 0 {
+        parts.push(format!("{changed} {} changed", shows(changed)));
+    }
+    if removed > 0 {
+        parts.push(format!("{removed} missing"));
+    }
+    (!parts.is_empty()).then(|| format!("Checked your folders: {}.", parts.join(", ")))
 }
 
 /// Starts the Scan job and returns its id. Scan runs one at a time, so a
@@ -931,8 +981,12 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     let scanned = match walked {
                         Ok(scanned) => scanned,
                         Err(e) => {
-                            ctx.emit(
+                            ctx.say(
                                 Level::Warn,
+                                format!(
+                                    "Could not read the folder {}. Check that its drive is connected.",
+                                    folder_of(&path)
+                                ),
                                 format!("cannot read {path}: {e}"),
                                 EventBody::Notice,
                             );
@@ -954,8 +1008,12 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                             .write_async(move |c| series_count(c, source_id))
                             .await?;
                         if held > 0 {
-                            ctx.emit(
+                            ctx.say(
                                 Level::Warn,
+                                format!(
+                                    "The folder {} looks empty, so your shows were left as they were.",
+                                    folder_of(&path)
+                                ),
                                 format!("{path} read as empty while it holds {held} series"),
                                 EventBody::Notice,
                             );
@@ -991,8 +1049,9 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                     {
                         Ok(r) => r,
                         Err(e) => {
-                            ctx.emit(
+                            ctx.say(
                                 Level::Warn,
+                                format!("Could not update the shows in {}.", folder_of(&path)),
                                 format!("cannot reconcile {path}: {e}"),
                                 EventBody::Notice,
                             );
@@ -1056,6 +1115,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
             }
 
             Ok(Finished {
+                plain: scan_line(added, changed, removed),
                 level: Level::Info,
                 message: format!(
                     "scan finished: {added} added, {changed} changed, {removed} missing"
@@ -1345,5 +1405,24 @@ mod tests {
         assert!(under("/lib/Show A/ep.mkv", "/lib/Show A"));
         assert!(!under("/library/Show A", "/lib"));
         assert!(under("/lib/Show A", "/lib/"));
+    }
+
+    #[test]
+    fn a_folder_is_named_by_its_last_part() {
+        assert_eq!(folder_of("/mnt/anime/Winter 2026"), "Winter 2026");
+        assert_eq!(folder_of("/mnt/anime/"), "anime");
+    }
+
+    #[test]
+    fn a_scan_only_speaks_to_a_person_when_it_found_something() {
+        assert_eq!(scan_line(0, 0, 0), None);
+        assert_eq!(
+            scan_line(2, 1, 0).as_deref(),
+            Some("Checked your folders: 2 new shows, 1 show changed.")
+        );
+        assert_eq!(
+            scan_line(1, 0, 3).as_deref(),
+            Some("Checked your folders: 1 new show, 3 missing.")
+        );
     }
 }

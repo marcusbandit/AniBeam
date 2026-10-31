@@ -21,11 +21,12 @@ out="$(mixed "$1")"
 bin="${ANIBEAM_BIN:-$repo/target/release/anibeam.exe}"
 deps="${DEPS_PREFIX:?DEPS_PREFIX names the prefix deps.sh built into}"
 
-# The PKGBUILD's pkgver rule: v2.0.0 -> 2.0.0, v2.0.0-21-gabc1234 -> 2.0.0.r21.gabc1234.
-describe="$(git -C "$repo" describe --tags --match 'v*' --dirty 2>/dev/null || echo v0.0.0)"
-pkgver="$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-dirty$/.dirty/' <<<"$describe")"
-short="${pkgver%%.r*}"
-short="${short%.dirty}"
+# CI tells a build what it ships as: 2.4.0, 2.4.0-nightly.20261030.12 or 2.4.0-pr.280.3.
+# Otherwise the PKGBUILD's pkgver rule: v2.0.0 -> 2.0.0, v2.0.0-21-gabc1234 ->
+# 2.0.0.r21.gabc1234, described from stable tags only.
+describe="$(git -C "$repo" describe --tags --match 'v*' --exclude 'v*-*' --dirty 2>/dev/null || echo v0.0.0)"
+pkgver="${ANIBEAM_RELEASE_VERSION:-$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-dirty$/.dirty/' <<<"$describe")}"
+short="$(grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' <<<"$pkgver")"
 
 app="$out/AniBeam"
 rm -rf "$app"

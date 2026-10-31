@@ -397,6 +397,7 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
                 .await?;
             let Some(cand) = cand else {
                 return Ok(Finished {
+                    plain: None,
                     level: Level::Debug,
                     message: format!("Airing: series {series} needs no refresh"),
                     body: EventBody::AiringRefreshed {
@@ -410,6 +411,7 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
                 ctx.changed(card);
             }
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: if updated {
                     format!("Airing refreshed for {}", cand.folder_name)
@@ -450,6 +452,7 @@ pub fn start_refresh_library(core: &Arc<Core>) -> u64 {
                 }
             }
             Ok(Finished {
+                plain: None,
                 // The launch runs this whether anything was due or not, so
                 // a sweep that changed nothing is trace rather than log.
                 level: if updated == 0 {

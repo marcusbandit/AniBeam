@@ -8,8 +8,8 @@ AniBeam browses, plays and tracks a local anime library: it scans configured fol
 
 `CONTRIBUTING.md` holds the flow and the naming: issue first, a `<type>/<issue>-<slug>` branch, `<type>(<scope>): <outcome>` commits and PR titles, squash merge. Read it before the first commit of a task.
 
-- **Never commit work directly on `main`.** One focused branch per task, deleted after merging.
-- **Stable releases come from `release/*` branches only.** Main ships as the rolling `preview` pre-release; never create a new release or `android-v*` pre-release for a test build, upload it to `preview` instead. CONTRIBUTING's "Releases" has the steps.
+- **Never commit work directly on `main`.** One focused branch per task, deleted after merging. The one exception is the Release workflow's own bot commit that moves main to the next version after a stable release; Actions here may not open PRs.
+- **Every build ships from main.** Nightlies come from `nightly.yml`, a stable version is a promoted nightly (Release workflow), a PR gets installers from the `test build` label, and `release/X.Y` exists only for a hotfix. Never create a release or `android-v*` pre-release for a test build by hand. CONTRIBUTING's "Releases" has the steps.
 - **Merge only working code.** The checks in CONTRIBUTING's "Before you open it" pass first; `main` must always build.
 
 ## Commands

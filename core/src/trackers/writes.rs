@@ -399,12 +399,26 @@ fn level_of(outcomes: &[TrackerOutcome]) -> Level {
     }
 }
 
+/// The sites a write landed on, as a person names them: "AniList and
+/// MyAnimeList". None when it landed nowhere, since each failed site has
+/// said so on its own line.
+fn landed_on(outcomes: &[TrackerOutcome]) -> Option<String> {
+    let names: Vec<&str> = outcomes
+        .iter()
+        .filter(|o| o.ok)
+        .map(|o| super::oauth::site_name(o.tracker))
+        .collect();
+    (!names.is_empty()).then(|| names.join(" and "))
+}
+
 fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> Finished {
     let series = target.series;
     let folder = &target.folder_name;
     let level = level_of(&outcomes);
+    let sites = landed_on(&outcomes);
     match action {
         Action::Mark { episode } => Finished {
+            plain: sites.map(|s| format!("Marked episode {episode} of {folder} on {s}.")),
             level,
             message: format!("Marked episode {episode} of {folder}"),
             body: EventBody::Marked {
@@ -414,6 +428,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
             },
         },
         Action::Progress { progress } => Finished {
+            plain: sites.map(|s| format!("Set your progress on {folder} to {progress} on {s}.")),
             level,
             message: format!("Progress of {folder} set to {progress}"),
             body: EventBody::ProgressSet {
@@ -427,6 +442,10 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
             // carries no score rather than a rating of nothing.
             let rated = (score > 0.0).then_some(score);
             Finished {
+                plain: sites.map(|s| match rated {
+                    Some(score) => format!("Scored {folder} {score} on {s}."),
+                    None => format!("Cleared your score for {folder} on {s}."),
+                }),
                 level,
                 message: match rated {
                     Some(score) => format!("score of {folder} set to {score}"),
@@ -458,8 +477,12 @@ async fn write_one(
     match attempt(core, ctx, t, target, media_id, user_id, action).await {
         Ok(outcome) => outcome,
         Err(e) => {
-            ctx.emit(
+            ctx.say(
                 Level::Error,
+                format!(
+                    "Could not update {}. Try again later.",
+                    super::oauth::site_name(t)
+                ),
                 format!(
                     "{} {} failed: {}",
                     t.as_str(),

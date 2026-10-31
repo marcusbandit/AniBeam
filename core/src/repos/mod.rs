@@ -472,8 +472,10 @@ pub fn trust_repo(core: &Core, url: String, key: String) -> Result<Reply, CoreEr
     }
     save_index(core, &url, &idx)?;
     if stored.is_none() {
-        core.bus.info(
+        core.bus.say(
+            Level::Info,
             Stage::Downloads,
+            "Added a list of download sources.",
             format!("Added the endpoint repo {}", idx.name),
             EventBody::Notice,
         );
@@ -490,8 +492,10 @@ pub fn remove_repo(core: &Core, url: String) -> Result<Reply, CoreError> {
         conn.execute("DELETE FROM endpoint_repos WHERE url = ?1", params![url])?;
         Ok(())
     })?;
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        "Removed a list of download sources.",
         format!("Removed the endpoint repo {}", stored.name),
         EventBody::Notice,
     );
@@ -633,8 +637,10 @@ pub fn install(
         )?;
         Ok(())
     })?;
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        "Added a download source.",
         format!("Installed the endpoint {}", def.name),
         EventBody::Notice,
     );
@@ -674,8 +680,10 @@ pub fn update(
         )?;
         Ok(())
     })?;
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        "Updated a download source.",
         format!(
             "Updated the endpoint {} to version {}",
             next.name, next.version
@@ -697,8 +705,10 @@ pub fn remove(core: &Core, install: String) -> Result<Reply, CoreError> {
         )?;
         Ok(())
     })?;
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        "Removed a download source.",
         format!("Removed the endpoint {}", row.def.name),
         EventBody::Notice,
     );
@@ -903,8 +913,10 @@ pub fn add_custom(
         )?;
         Ok(())
     })?;
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        "Added a download source.",
         format!("Added the endpoint {name}"),
         EventBody::Notice,
     );
