@@ -50,6 +50,8 @@ Item {
             width: theme.space(10); height: width
             source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icon.png"
             sourceSize: Qt.size(96, 96)
+            // Decoded off the Qt thread, not inside the frame's first build
+            asynchronous: true
             smooth: true
         }
         Item { width: 1; height: theme.space(3) }

@@ -1,6 +1,7 @@
-// The window. The first frame is the ground alone: Hyprland answers the first configure
-// with 0x0 and sends the tile's size only after the window has mapped, so everything else
-// is built once the window is settled and laid out once, at the compositor's size.
+// The window. The frame and the first page are built as soon as the engine and the core
+// are up, while the render thread sets up the GPU. Hyprland answers the first configure with
+// 0x0 and sends the tile's size only after the window has mapped; that arrives as one
+// resize and one relayout. `settled` still gates the --shoot and --drive captures.
 import QtQuick
 import QtQuick.Window
 import com.marcusrosado.AniBeam
@@ -89,10 +90,14 @@ Window {
 
     property bool firstFrame: false
     property bool settled: false
-    onAfterAnimating: if (!firstFrame) { firstFrame = true; settle.start() }
+    onAfterAnimating: if (!firstFrame) { firstFrame = true; Dev.mark("first frame (empty window)"); settle.start() }
     onWidthChanged: if (firstFrame && !settled) settled = true
     onHeightChanged: if (firstFrame && !settled) settled = true
-    Timer { id: settle; interval: 200; onTriggered: window.settled = true }
+    // The compositor's size arrives as a resize right after the window maps, and the line
+    // above settles on it at once; this is only the fallback for a window that is never
+    // resized (a tiling WM that keeps the hint, a floating window, offscreen). It was 200 ms,
+    // which was most of a launch (#289).
+    Timer { id: settle; interval: 30; onTriggered: window.settled = true }
 
     // --page takes an optional ":<action>" suffix for a shoot capture that needs the frame
     // in a state a bare page name cannot reach, such as the activity drawer open over it;
@@ -103,9 +108,13 @@ Window {
     Loader {
         id: frame
         anchors.fill: parent
-        active: window.settled && Theme.ready && Door.ready
+        // Built as soon as the engine and the core are up, not after the first empty frame:
+        // the render thread sets up the GPU meanwhile, and a compositor's late size is one
+        // relayout, where waiting for it was most of a launch (#289)
+        active: Theme.ready && Door.ready
         sourceComponent: window.pageName === "tokens" ? tokensPage : frameComponent
         onLoaded: {
+            Dev.mark("frame built")
             // Home is the default page, so its props ride only when a launch actually
             // handed some over; every other page always replaces.
             var homeWithProps = window.pageName === "home" && Shell.props !== ""
@@ -141,7 +150,7 @@ Window {
         if (window.settled && Theme.ready && frame.item && (Shell.shoot !== "" || Shell.driveOut !== ""))
             shootTimer.start()
     }
-    onSettledChanged: window.maybeShoot()
+    onSettledChanged: { if (window.settled) Dev.mark("window settled"); window.maybeShoot() }
     Connections { target: Theme; function onReadyChanged() { window.maybeShoot() } }
     Timer {
         id: shootTimer

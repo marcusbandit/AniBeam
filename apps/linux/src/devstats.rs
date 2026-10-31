@@ -64,6 +64,14 @@ pub fn now() -> f64 {
     crate::bridge::helpers::ffi::dev_now_ms()
 }
 
+/// One step of start-up, printed with its time since the process began under
+/// ANIBEAM_TIMING=1: how long a launch takes to show something, step by step.
+pub fn startup_mark(step: &str) {
+    if std::env::var("ANIBEAM_TIMING").as_deref() == Ok("1") {
+        eprintln!("startup {:8.1} ms  {step}", now());
+    }
+}
+
 fn push<T>(ring: &Mutex<VecDeque<T>>, v: T) {
     let mut r = ring.lock().unwrap_or_else(|e| e.into_inner());
     r.push_back(v);
