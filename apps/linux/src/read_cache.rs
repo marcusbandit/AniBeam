@@ -41,9 +41,15 @@ pub fn key_of(call: &Call) -> Option<String> {
     }
 }
 
+/// How many answers are kept: every distinct read is a key (a search per word typed), and
+/// an old one is only good as a stale first paint.
+const KEEP: usize = 48;
+
 pub struct ReadCache<V> {
     generation: u64,
-    entries: HashMap<String, (Instant, V)>,
+    /// key -> (the generation it was read under, when, the answer). An entry from an older
+    /// generation stays, no longer fresh, as the last known answer (`stale`).
+    entries: HashMap<String, (u64, Instant, V)>,
     enabled: bool,
 }
 
@@ -56,13 +62,8 @@ impl<V: Clone> ReadCache<V> {
         }
     }
 
-    /// Everything kept under an older generation goes first, so the map never holds more
-    /// than one generation's worth of answers.
     fn advance(&mut self, generation: u64) {
-        if generation != self.generation {
-            self.entries.clear();
-            self.generation = generation;
-        }
+        self.generation = self.generation.max(generation);
     }
 
     pub fn get(&mut self, key: &str, generation: u64, now: Instant) -> Option<V> {
@@ -71,13 +72,20 @@ impl<V: Clone> ReadCache<V> {
         }
         self.advance(generation);
         match self.entries.get(key) {
-            Some((at, v)) if now.duration_since(*at) < MAX_AGE => Some(v.clone()),
-            Some(_) => {
-                self.entries.remove(key);
-                None
+            Some((g, at, v)) if *g == generation && now.duration_since(*at) < MAX_AGE => {
+                Some(v.clone())
             }
-            None => None,
+            _ => None,
         }
+    }
+
+    /// The last answer kept under `key`, fresh or not: what a page shows at once while a
+    /// fresh read runs elsewhere (Door::list_library_lean).
+    pub fn stale(&self, key: &str) -> Option<V> {
+        if !self.enabled || paused() {
+            return None;
+        }
+        self.entries.get(key).map(|(_, _, v)| v.clone())
     }
 
     /// `generation` is the one read *before* the answer was computed: a change that landed
@@ -88,7 +96,17 @@ impl<V: Clone> ReadCache<V> {
             return;
         }
         self.advance(generation);
-        self.entries.insert(key, (now, v));
+        if self.entries.len() >= KEEP && !self.entries.contains_key(&key) {
+            let oldest = self
+                .entries
+                .iter()
+                .min_by_key(|(_, (_, at, _))| *at)
+                .map(|(k, _)| k.clone());
+            if let Some(k) = oldest {
+                self.entries.remove(&k);
+            }
+        }
+        self.entries.insert(key, (generation, now, v));
     }
 }
 
@@ -151,6 +169,10 @@ mod tests {
         // An answer computed under a generation that has since moved is never kept.
         c.put("k".into(), 3, t, 2);
         assert_eq!(c.get("k", 4, t), None);
+        // Not fresh, but still the last known answer
+        c.put("k".into(), 4, t, 5);
+        assert_eq!(c.get("k", 6, t), None);
+        assert_eq!(c.stale("k"), Some(5));
         let mut off = ReadCache::new(false);
         off.put("k".into(), 1, t, 1);
         assert_eq!(off.get("k", 1, t), None, "a disabled cache keeps nothing");

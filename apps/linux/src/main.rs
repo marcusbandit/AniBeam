@@ -10,6 +10,7 @@ mod inhibit;
 #[cfg(target_os = "macos")]
 mod iokit;
 mod json;
+mod library_view;
 #[cfg(target_os = "macos")]
 mod macnp;
 mod media;

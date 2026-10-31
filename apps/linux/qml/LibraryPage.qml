@@ -51,12 +51,8 @@ Item {
     property bool watchedExist: false
     property bool libraryEmpty: false
     property real nowMs: Date.now()
-    property var airingRows: []
-    property var cardList: []
-    property int revision: 0
 
     function clearGenre() { genre = ""; frame.nav.current.props = { q: page.query }; frame.nav.relabel("Library"); reload() }
-    function inGenre(c) { return genre === "" || (c.genres && c.genres.indexOf(genre) >= 0) }
     function persist() {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.library_tab = tab === "Hidden" ? p.library_tab : tab
@@ -91,194 +87,63 @@ Item {
     readonly property bool showHidden: Door.revealHidden && hiddenExist
     readonly property var tabNames: tabs.concat(watchedExist ? ["Watched"] : []).concat(showHidden ? ["Hidden"] : [])
 
-    // ---- The sections
-    function typeOf(c) {
-        var f = c.format || ""
-        if (f === "TV" || f === "TV_SHORT") return "TV"
-        if (f === "MOVIE" || (f === "" && c.kind === "Movie")) return "Films"
-        if (f === "OVA" || f === "ONA" || f === "SPECIAL") return "OVA, ONA and specials"
-        if (f === "MUSIC") return "Music"
-        return "Unknown"
-    }
-    // On hold is the tracker's list (AniList's Paused), whatever the episodes say
-    function stateOf(c) {
-        var w = c.watched
-        if (c.list_status === "Paused") return "On hold"
-        if (c.watched_state === "CaughtUp") return "Caught up"
-        if (c.watched_state === "Behind") return "Watching"
-        return w !== null && w !== undefined && w > 0 ? "Watching" : "Not started"
-    }
-    // ---- The season cut, shared by the Season sort and Related's lone series: one section
-    // per `c.season` ("Fall 2025"), newest first (the year, then Fall, Summer, Spring,
-    // Winter), the series without one closing the list under "No date". A season with a
-    // single series is still its own section. The order inside a section is the core's.
+    // The season now, which the Season cut (library_view.rs) keeps airing series out of
     readonly property var seasonWords: ["Winter", "Spring", "Summer", "Fall"]
-    function seasonRank(c) {
-        var label = c.season ? String(c.season) : ""
-        var parts = label.split(" ")
-        var word = seasonWords.indexOf(parts[0])
-        var year = typeof c.year === "number" ? c.year : parseInt(parts[parts.length - 1], 10)
-        if (isNaN(year)) return -1
-        return year * seasonWords.length + Math.max(0, word)
-    }
-    // The season now, as a card's season label reads ("Fall 2026")
+    // As a card's season label reads it ("Fall 2026")
     readonly property string currentSeason: {
         var d = new Date(nowMs)
         return seasonWords[Math.floor(d.getMonth() / 3)] + " " + d.getFullYear()
     }
-    function seasonSections(list, airingIds) {
-        var buckets = {}, keys = [], undated = []
-        for (var i = 0; i < list.length; i++) {
-            var c = list[i], s = c.season ? String(c.season) : ""
-            if (s === "") { undated.push(c); continue }
-            // An airing series is already under Airing; the season now holds only the
-            // ones done airing, so nothing is shown twice on the same ground
-            if (s === currentSeason && airingIds[c.id] === true) continue
-            if (!buckets[s]) { buckets[s] = { rank: seasonRank(c), cards: [] }; keys.push(s) }
-            buckets[s].cards.push(c)
-        }
-        keys.sort(function(p, q) { return buckets[q].rank - buckets[p].rank })
-        var out = keys.map(function(k) { return { title: k, cards: buckets[k].cards, airing: buckets[k].cards.some(function(x) { return airingIds[x.id] === true }) } })
-        if (undated.length) out.push({ title: "No date", cards: undated, airing: undated.some(function(x) { return airingIds[x.id] === true }) })
-        return out
+    // The sections, cut in Rust from the lean library read (Door.libraryView, #289): titles,
+    // facts and series ids, nothing per card. At 300 series, cutting them here over every
+    // card object, and Qt converting those objects for the Repeaters, was most of a visit.
+    // A card reads its own record from Door.card once it is built.
+    property var view: ({ sections: [], ids: [], count: 0, counts: {} })
+    readonly property var sections: view.sections
+    function cut() {
+        var r = Door.libraryView({ tab: tab, query: query, sort: sort, direction: direction, reveal: Door.revealHidden,
+                                   arrange: arrange, group: groupFranchises, genre: genre, now: nowMs, season: currentSeason })
+        if (r.error) { frame.toast(r.error.message); return false }
+        view = r.reply
+        return true
     }
-    function groupOf(c) {
-        if (arrange === "Type") { var t = typeOf(c); return { key: t, title: t } }
-        if (arrange === "Genre") { var g = c.genres && c.genres.length ? c.genres[0] : "Unmatched"; return { key: g, title: g } }
-        if (arrange === "WatchState") { var st = stateOf(c); return { key: st, title: st } }
-        return null
-    }
-    function releaseOf(c) {
-        if (c.start_date) return String(c.start_date)
-        if (c.year) return String(c.year)
-        return null
-    }
-    function shortCountdown(secs) {
-        var t = Math.max(0, Math.floor(secs))
-        var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
-        return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m"
-    }
-    // A section's one fact: what its name and count do not already say
-    function factOf(list) {
-        var now = nowMs / 1000, going = 0, fresh = 0, done = 0, files = 0, soon = null
-        for (var i = 0; i < list.length; i++) {
-            var c = list[i], w = c.watched !== null && c.watched !== undefined ? c.watched : 0
-            files += c.episodes_on_disk || 0
-            if (c.watched_state === "CaughtUp" && !c.next_airing) done++
-            else if (w > 0 || c.watched_state === "Behind") going++
-            else fresh++
-            var n = c.next_airing
-            if (n && n.at > now && (!soon || n.at < soon.at)) soon = n
-        }
-        var n = list.length
-        if (soon) return "Next episode in " + shortCountdown(soon.at - now)
-        if (going > 0 && going < n) return going + " in progress"
-        if (fresh > 0 && fresh < n) return fresh + " not started"
-        if (n > 0 && done === n) return "All watched"
-        if (files > 0) return Fmt.plural(files, "episode", "episodes") + " on disk"
-        return ""
-    }
-    function droppedFact(list) {
-        var files = list.reduce(function(n, c) { return n + (c.episodes_on_disk || 0) }, 0)
-        return Fmt.plural(files, "file", "files") + " still on disk"
-    }
-    // What the sections Repeater gets: plain data only, each card as its row in cardList.
-    // A list of whole card objects handed to a Repeater is converted in full, for every
-    // card, each time the list changes, visible or not; at 300 series that was most of the
-    // page's build (#289). A card reads its object from cardList only once it is built.
-    readonly property var sections: {
-        var row = {}
-        for (var i = 0; i < cardList.length; i++) row[cardList[i].id] = i
-        return sectionsOf.map(function(sec) {
-            return { title: sec.title, airing: sec.airing, dropped: sec.dropped === true, rows: sec.cards.map(function(c) { return row[c.id] }),
-                     count: sec.cards.length, fact: sec.dropped ? page.droppedFact(sec.cards) : page.factOf(sec.cards) }
-        })
-    }
-    readonly property var sectionsOf: {
-        page.revision
-        // None is no sections at all, the airing and dropped ones included
-        if (arrange === "None") return cardList.length ? [{ title: "", cards: cardList, airing: false }] : []
-        var airingIds = {}
-        for (var a = 0; a < airingRows.length; a++) airingIds[airingRows[a].id] = true
-        // Airing is its own section, always first: a series airing now is here and also
-        // wherever the cut or its franchise puts it. The one place it is not repeated is
-        // the current season's section (seasonSections).
-        var airing = cardList.filter(function(c) { return airingIds[c.id] === true })
-        var lead = airing.length ? [{ title: "Airing", cards: airing, airing: true }] : []
-        // Dropped on the tracker is its own section, always last and nowhere else: what is
-        // in it is a reminder to clear the disk, not something to watch
-        var dropped = cardList.filter(function(c) { return c.list_status === "Dropped" })
-        var kept = cardList.filter(function(c) { return c.list_status !== "Dropped" })
-        var tail = dropped.length ? [{ title: "Dropped", cards: dropped, airing: false, dropped: true }] : []
-        // The franchises first, when grouped: a franchise with two or more series in the
-        // library is a section of its own, in release order; the rest go on to the cut
-        var out = [], rest = []
-        if (groupFranchises) {
-            var fr = {}, frOrder = []
-            for (var i = 0; i < kept.length; i++) {
-                var c = kept[i]
-                if (!c.franchise) { rest.push(c); continue }
-                var key = "f" + c.franchise.id
-                if (!fr[key]) { fr[key] = { title: c.franchise.title, cards: [] }; frOrder.push(key) }
-                fr[key].cards.push(c)
-            }
-            for (var k = 0; k < frOrder.length; k++) {
-                var b = fr[frOrder[k]]
-                if (b.cards.length < 2) { rest = rest.concat(b.cards); continue }
-                if (b.cards.every(function(x) { return page.releaseOf(x) !== null }))
-                    b.cards.sort(function(p, q) { var rp = page.releaseOf(p), rq = page.releaseOf(q); return rp < rq ? -1 : rp > rq ? 1 : 0 })
-                out.push({ title: b.title, cards: b.cards, airing: b.cards.some(function(x) { return airingIds[x.id] === true }) })
-            }
-            // The grouped ones keep the library's order among themselves
-            var at = {}
-            for (var o = 0; o < cardList.length; o++) at[cardList[o].id] = o
-            rest.sort(function(p, q) { return at[p.id] - at[q.id] })
-        } else rest = kept
-        out = lead.concat(out)
-        if (arrange === "Season") return out.concat(seasonSections(rest, airingIds), tail)
-        var buckets = {}, order = []
-        for (var j = 0; j < rest.length; j++) {
-            var g = groupOf(rest[j])
-            if (!buckets[g.key]) { buckets[g.key] = { title: g.title, cards: [] }; order.push(g.key) }
-            buckets[g.key].cards.push(rest[j])
-        }
-        // On hold closes the watch states, right before Dropped
-        var held = order.indexOf("On hold")
-        if (held >= 0) order.push(order.splice(held, 1)[0])
-        for (var s = 0; s < order.length; s++) {
-            var bb = buckets[order[s]]
-            out.push({ title: bb.title, cards: bb.cards, airing: bb.cards.some(function(x) { return airingIds[x.id] === true }) })
-        }
-        return out.concat(tail)
-    }
-    readonly property int shownCount: cardList.length
+    // A change of cut re-cuts at once; the first reload and reload itself cut once, so a
+    // visit asks the Door one time, not once per setting it seeds
+    property bool settled: false
+    onArrangeChanged: if (settled) cut()
+    onGroupFranchisesChanged: if (settled) cut()
+    onNowMsChanged: if (settled && !reloading) cut()
+    property bool reloading: false
+    readonly property int shownCount: view.count
 
     // For a --drive script's evals
-    function cardIds() { return cardList.map(function(c) { return c.id }) }
-    function tileCount() { return cardList.length }
+    function cardIds() { return view.ids }
+    function tileCount() { return view.count }
     function heroCount() { return 0 }
-    function boxes() { return sectionsOf.filter(function(s) { return s.title !== "" }).map(function(s) { return { title: s.title, airing: s.airing, ids: s.cards.map(function(c) { return c.id }) } }) }
+    function boxes() { return view.sections.filter(function(s) { return s.title !== "" }).map(function(s) { return { title: s.title, airing: s.airing, ids: s.ids } }) }
     function boxOf(id) { var b = boxes(); for (var i = 0; i < b.length; i++) if (b[i].ids.indexOf(id) >= 0) return b[i].title; return "" }
-    function seriesWhere(text) { return cardList.filter(function(c) { return String(c.title).toLowerCase().indexOf(text) >= 0 }).map(function(c) { return { id: c.id, title: c.title, format: c.format, franchise: c.franchise === undefined ? "undefined" : c.franchise } }) }
+    function seriesWhere(text) { return view.ids.map(function(id) { return Door.card(id) }).filter(function(c) { return String(c.title).toLowerCase().indexOf(text) >= 0 }).map(function(c) { return { id: c.id, title: c.title, format: c.format, franchise: c.franchise === undefined ? "undefined" : c.franchise } }) }
 
+    // The core's library read is served at once from the last answer while a fresh one
+    // runs elsewhere; when that one differs, the page reads again (#289)
+    Connections { target: Door; function onReadRefreshed() { Qt.callLater(page.reload) } }
     function reload() {
         var keep = scroll.contentY
-        var r = Door.listLibraryLean(tab, query, sort, direction, Door.revealHidden)
-        if (r.error) { frame.toast(r.error.message); return }
-        cardList = r.reply.series.filter(page.inGenre)
-        var n = r.reply.counts || {}
+        reloading = true
+        nowMs = Date.now()
+        reloading = false
+        settled = true
+        if (!cut()) return
+        var n = view.counts || {}
         watchedExist = (n.watched || 0) > 0
         hiddenExist = Door.revealHidden && (n.hidden || 0) > 0
         libraryEmpty = (n.all || 0) === 0 && !watchedExist && (n.hidden || 0) === 0
-        airingRows = !libraryEmpty && r.reply.airing ? r.reply.airing.filter(page.inGenre) : []
-        nowMs = Date.now()
-        revision++
         scroll.contentY = Math.max(0, Math.min(keep, Math.max(0, scroll.contentHeight - scroll.height)))
     }
     Timer { id: debounce; interval: 400; onTriggered: page.reload() }
     function soon() { if (!debounce.running) debounce.start() }
     Timer { id: queryDebounce; interval: 150; onTriggered: { page.query = search.text; frame.nav.current.props = { q: page.query, genre: page.genre }; page.reload() } }
-    Timer { interval: 30000; running: cardList.length > 0; repeat: true; onTriggered: page.nowMs = Date.now() }
+    Timer { interval: 30000; running: page.view.count > 0; repeat: true; onTriggered: page.nowMs = Date.now() }
     Connections {
         target: Door
         function onSeriesChanged() { page.soon() }
@@ -517,14 +382,14 @@ Item {
                             width: parent.width
                             spacing: page.gap
                             Repeater {
-                                model: section.modelData.rows
+                                model: section.modelData.ids
                                 LazyTile {
                                     id: tile
                                     required property int modelData
                                     width: page.cardWidth
                                     height: Math.round(page.cardWidth * 1.5)
                                     sourceComponent: Card {
-                                        readonly property var series: page.cardList[tile.modelData] || ({})
+                                        readonly property var series: Door.card(tile.modelData)
                                         objectName: "tile-" + series.id
                                         item: series
                                         posterWidth: page.cardWidth
@@ -541,7 +406,7 @@ Item {
 
         // EmptyState centres itself in its parent, so it gets a plain box in the column
         Item {
-            visible: page.cardList.length === 0 && !page.libraryEmpty
+            visible: page.view.count === 0 && !page.libraryEmpty
             width: parent.width
             height: visible ? theme.space(60) : 0
             EmptyState {

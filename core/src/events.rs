@@ -109,9 +109,12 @@ impl EventBus {
         // SeriesChanged (downloads::list_torrents). Moving the generation on each read
         // emptied the shell's read cache and the kept snapshot every few seconds while a
         // download ran, so no page ever found its library read cached (#289).
+        // Nor is a job starting: what it goes on to change is announced by its own events.
         if !matches!(
             event.body,
-            EventBody::JobProgress { .. } | EventBody::TorrentsRead { .. }
+            EventBody::JobProgress { .. }
+                | EventBody::JobStarted { .. }
+                | EventBody::TorrentsRead { .. }
         ) {
             self.generation.fetch_add(1, Ordering::SeqCst);
         }

@@ -51,7 +51,12 @@ Flickable {
         lazyLeft -= area
         return had > 0
     }
-    function lazyAdd(tile) { lazyWaiting.push(tile); lazyCount = lazyWaiting.length }
+    function lazyAdd(tile) { lazyWaiting.push(tile); lazyCount = lazyWaiting.length; lazyDirty = true }
+    // Set when a tile joins or the layout moves; a painted frame sweeps only then, not on
+    // every frame while tiles wait
+    property bool lazyDirty: false
+    onContentHeightChanged: if (lazyCount > 0) lazyDirty = true
+    onWidthChanged: if (lazyCount > 0) lazyDirty = true
     function lazyRemove(tile) {
         var i = lazyWaiting.indexOf(tile)
         if (i >= 0) { lazyWaiting.splice(i, 1); lazyCount = lazyWaiting.length }
@@ -71,10 +76,10 @@ Flickable {
     }
     Connections {
         target: root.Window.window
-        enabled: root.lazyCount > 0 || root.lazyLeft < root.lazyBudget
+        enabled: root.lazyDirty || root.lazyLeft < root.lazyBudget
         function onFrameSwapped() {
             root.lazyLeft = root.lazyBudget
-            if (root.lazyCount > 0) root.lazySweep()
+            if (root.lazyCount > 0 && root.lazyDirty) { root.lazyDirty = false; root.lazySweep() }
         }
     }
     onContentYChanged: if (lazyCount > 0 && Math.abs(contentY - lazySweptAt) > height / 4) lazySweep()
