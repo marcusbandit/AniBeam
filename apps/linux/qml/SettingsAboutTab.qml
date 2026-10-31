@@ -10,14 +10,21 @@ SettingsTab {
     lead: "Which AniBeam this is, and how it hears about the next one."
     readonly property var upd: frame.updatePanel
     readonly property bool offered: upd.phase === "offer" && upd.shown
+    // Only a build that can replace itself installs from here; the others say where to get it
+    readonly property bool installs: offered && upd.how === "install"
+    readonly property string offerLine: !offered ? ""
+        : upd.how === "install" ? upd.version + " is ready to install."
+        : upd.how === "command" ? upd.version + " is on the AUR: " + upd.command
+        : upd.how === "source" ? upd.version + " is out. This copy is built from source: pull and rebuild."
+        : upd.version + " is out, with no download here for this computer."
 
     Panel {
         title: "Version"
         SettingRow { label: "AniBeam " + Shell.build
-            helper: tab.offered ? tab.upd.version + " is ready to install." : ""
+            helper: tab.offerLine
             Row { spacing: theme.space(2)
                 Button { objectName: "data-whats-new"; text: "What's new"; icon: "sparkles"; flat: true; onClicked: frame.openWhatsNew() }
-                Button { visible: tab.offered; text: "Install " + tab.upd.version; icon: "download"; primary: true; onClicked: tab.upd.install() } } }
+                Button { visible: tab.installs; text: "Install " + tab.upd.version; icon: "download"; primary: true; onClicked: tab.upd.install() } } }
         SettingRow { label: "Updates"
             helper: tab.upd.track === "nightly"
                 ? "A new build most days. Newer, and less tested."

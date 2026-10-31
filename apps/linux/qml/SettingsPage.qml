@@ -9,7 +9,6 @@
 // row into view and lights it for a moment. The section and each one's scroll are session
 // state kept on the frame, by section id.
 import QtQuick
-import QtQuick.Controls.Basic as QC
 import com.marcusrosado.AniBeam
 
 FocusScope {
@@ -43,19 +42,23 @@ FocusScope {
     // with Save stays where it is and says so.
     function open(id, focus) {
         if (id !== current && content.item && content.item.dirty === true) {
+            // The results would cover the bar that has Save on it
+            clearSearch()
+            pendingFallback = ""
             frame.toast("Save or discard the download settings first")
-            return
+            return false
         }
         clearSearch()
         pendingFocus = focus || ""
-        if (current === id) { if (pendingFocus !== "") focusLater.restart(); return }
+        if (current === id) { if (pendingFocus !== "") focusLater.restart(); return true }
         current = id
+        return true
     }
     property string pendingFocus: ""
     // A row shown only in some states (a theme picker while colours come from the desktop)
     // falls back to the group that turns it on
     property string pendingFallback: ""
-    function openResult(r) { open(r.section, r.label); pendingFallback = r.fallback || "" }
+    function openResult(r) { if (open(r.section, r.label)) pendingFallback = r.fallback || "" }
     function clearSearch() { query = ""; search.text = "" }
 
     Component.onCompleted: {
@@ -179,12 +182,13 @@ FocusScope {
         ["subtitles", "Background box", "box opacity"],
         ["subtitles", "Bold", "weight"],
         ["keys", "In the player", "keyboard shortcuts keys hotkeys"],
+        ["keys", "Getting around the player", "keyboard shortcuts fullscreen next previous episode back"],
         ["keys", "Anywhere", "keyboard shortcuts keys hotkeys settings quit"],
         ["downloads", "Torrent client", "qbittorrent password username address webui seedbox"],
         ["downloads", "Search with anirss", "anirss rss feeds token command server"],
         ["downloads", "Rolling downloads", "roll episodes ahead delete watched keep disk space"],
         ["downloads", "Unsubscribe from finished shows", "prune feeds finished"],
-        ["downloads", "Search sources", "endpoints nyaa 1337x config"],
+        ["downloads", "Search sources", "endpoints feeds config"],
         ["downloads", "Endpoint repos", "repo signed endpoints jackett prowlarr"],
         ["phone", "Share over Tailscale", "phone android tailnet remote host"],
         ["storage", "Back up the library", "export backup file json"],
@@ -237,7 +241,7 @@ FocusScope {
     }
     // ---- The index
     Flickable {
-        id: index
+        id: indexPane
         objectName: "settings-index"
         x: page.sideInset
         y: head.y + head.height + theme.space(4)
@@ -246,10 +250,10 @@ FocusScope {
         contentHeight: indexCol.height + theme.space(10)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        WheelStep { flick: index }
+        WheelStep { flick: indexPane }
         Column {
             id: indexCol
-            width: index.width
+            width: indexPane.width
             SearchField {
                 id: search
                 objectName: "settings-search"
@@ -337,8 +341,8 @@ FocusScope {
     // ---- The section, or the search's results while there is a query
     Item {
         id: stage
-        x: index.x + index.width + page.columnGap
-        y: index.y
+        x: indexPane.x + indexPane.width + page.columnGap
+        y: indexPane.y
         width: page.width - x - page.sideInset + theme.space(6)
         height: page.height - y
         Loader {

@@ -189,7 +189,7 @@ SettingsTab {
             Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(48); placeholder: tab.hasPassword ? "Saved" : "Not set"
                     onEdited: function(t) { tab.passwordText = t; tab.passwordTouched = true; tab.dirty = true } } }
         SettingRow { label: "Connection"; line: tab.torrentLine; status: tab.mismatch
-            Button { text: tab.testing ? "Trying" : tab.dirty ? "Save and test" : "Test"; icon: "check-check"; flat: true; enabled: !tab.testing; onClicked: tab.test() } }
+            Button { text: tab.testing ? "Trying" : "Test"; icon: "check-check"; flat: true; enabled: !tab.testing && !tab.dirty; onClicked: tab.test() } }
     }
     Panel {
         title: "Search with anirss"
@@ -279,8 +279,8 @@ SettingsTab {
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(2)
-            Button { text: "Discard"; flat: true; onClicked: tab.discard() }
-            Button { objectName: "downloads-save"; text: "Save"; icon: "check"; primary: true; onClicked: tab.save() }
+            Button { text: "Discard"; flat: true; enabled: tab.dirty; onClicked: tab.discard() }
+            Button { objectName: "downloads-save"; text: "Save"; icon: "check"; primary: true; enabled: tab.dirty; onClicked: tab.save() }
         }
     }
 }
