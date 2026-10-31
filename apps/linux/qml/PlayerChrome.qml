@@ -137,31 +137,61 @@ Item {
             // No height: a Row is as tall as its tallest child, so the island follows the
             // buttons rather than a number that has to be kept in step.
             spacing: theme.space(1)
-            PlayerButton { objectName: "player-prev"; glyph: "skip-back"; interactive: page.hasPrevious; tip: interactive ? "Previous episode" : "No previous episode"; onClicked: page.openPrevious() }
-            PlayerButton { objectName: "player-play"; glyph: page.paused ? "play" : "pause"; tip: page.paused ? "Play" : "Pause"; onClicked: page.togglePause() }
-            PlayerButton { objectName: "player-next"; glyph: "skip-forward"; interactive: page.hasNext; tip: interactive ? "Next episode" : "No next episode"; onClicked: page.openNext() }
-            Item { width: theme.space(2); height: 1 }
-            PlayerButton { objectName: "player-mute"; glyph: Player.mute || page.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
+            readonly property bool outroUp: page.inside(page.outro, page.timePos)
+            // A narrow window: how far the row would run past the island with every control
+            // the file asks for up, measured from the items' own widths so it follows the
+            // tokens and the density. While it runs over, the controls that have a key of
+            // their own give way one at a time, in this order, until it fits: the volume
+            // slider (Up and Down), Keyboard shortcuts (?), the delays (z and a), then
+            // Previous and Next (p and n). Nothing here reads a visibility it sets, so it
+            // settles in one pass.
+            readonly property real over: {
+                var s = spacing
+                var w = prevBtn.width + playBtn.width + nextBtn.width + gap.width + muteBtn.width + volumeSlider.fullWidth + 5 * s
+                if (outroUp) w += skipOutro.width + s
+                w += s + delayBtn.width + helpBtn.width + fullBtn.width + 2 * s
+                if (page.audioTracks.length > 1) w += audioBtn.width + s
+                if (page.subTracks.length > 0) w += subBtn.width + s
+                if (page.canMark) w += markBtn.width + s
+                return w - width
+            }
+            readonly property real volumeRoom: volumeSlider.fullWidth + spacing
+            readonly property real helpRoom: helpBtn.width + spacing
+            readonly property real delayRoom: delayBtn.width + spacing
+            readonly property real neighbourRoom: prevBtn.width + nextBtn.width + 2 * spacing
+            readonly property bool keepVolume: over <= 0
+            readonly property bool keepHelp: over <= volumeRoom
+            readonly property bool keepDelays: over <= volumeRoom + helpRoom
+            readonly property bool keepNeighbours: over <= volumeRoom + helpRoom + delayRoom
+            // Narrower still, the right group keeps its slot (below) and the row clips at the
+            // island's edge rather than drawing the group over the left half.
+            clip: over > volumeRoom + helpRoom + delayRoom + neighbourRoom
+            PlayerButton { id: prevBtn; objectName: "player-prev"; glyph: "skip-back"; visible: bottomRow.keepNeighbours; interactive: page.hasPrevious; tip: interactive ? "Previous episode" : "No previous episode"; onClicked: page.openPrevious() }
+            PlayerButton { id: playBtn; objectName: "player-play"; glyph: page.paused ? "play" : "pause"; tip: page.paused ? "Play" : "Pause"; onClicked: page.togglePause() }
+            PlayerButton { id: nextBtn; objectName: "player-next"; glyph: "skip-forward"; visible: bottomRow.keepNeighbours; interactive: page.hasNext; tip: interactive ? "Next episode" : "No next episode"; onClicked: page.openNext() }
+            Item { id: gap; width: theme.space(2); height: 1 }
+            PlayerButton { id: muteBtn; objectName: "player-mute"; glyph: Player.mute || page.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
             // Never on the keyboard: a click on it must leave the arrows to seek and the
             // Up and Down keys to step the volume by 5.
-            SliderRow { objectName: "player-volume"; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1; trackWidth: theme.space(24)
+            SliderRow { id: volumeSlider; objectName: "player-volume"; visible: bottomRow.keepVolume; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1; trackWidth: theme.space(24)
                 takesFocus: false; ground: theme.raised; onMoved: function(v) { page.setVolume(v) } }
             // Skip outro, up only while the position is inside the outro window, and there
             // whether or not auto-skip is on. Skip intro is a tile of its own, below: the
             // corner it takes belongs to the auto-next tile during the outro.
-            Button { objectName: "player-skip-outro"; visible: page.inside(page.outro, page.timePos); anchors.verticalCenter: parent.verticalCenter; text: "Skip outro"; icon: "chevrons-right"; primary: true; small: true; takesFocus: false; onClicked: page.skipWindow(page.outro) }
+            Button { id: skipOutro; objectName: "player-skip-outro"; visible: bottomRow.outroUp; anchors.verticalCenter: parent.verticalCenter; text: "Skip outro"; icon: "chevrons-right"; primary: true; small: true; takesFocus: false; onClicked: page.skipWindow(page.outro) }
             // The slot takes its height from what it holds, not from the row: the row
             // takes its own height from its children, and parent.height here would be a loop.
-            Item { id: rightSlot; width: parent.width - x; height: rightGroup.height
+            // Never narrower than the group, so the group can never be drawn over the left half.
+            Item { id: rightSlot; width: Math.max(rightGroup.width, parent.width - x); height: rightGroup.height
                 anchors.verticalCenter: parent.verticalCenter
-                Row { id: rightGroup; anchors.right: parent.right; spacing: theme.space(1)
+                Row { id: rightGroup; anchors.right: parent.right; spacing: bottomRow.spacing
                     // Shown with no tracks to choose as well: one audio track can still be out of sync.
-                    PlayerButton { id: delayBtn; objectName: "player-delays"; glyph: "clock"; tip: "Subtitle and audio delay"; active: page.subDelay !== 0 || page.audioDelay !== 0; onClicked: page.openDelays(delayBtn) }
+                    PlayerButton { id: delayBtn; objectName: "player-delays"; glyph: "clock"; tip: "Subtitle and audio delay"; visible: bottomRow.keepDelays; active: page.subDelay !== 0 || page.audioDelay !== 0; onClicked: page.openDelays(delayBtn) }
                     PlayerButton { id: audioBtn; objectName: "player-audio"; glyph: "audio-lines"; tip: "Audio track"; visible: page.audioTracks.length > 1; onClicked: page.openAudioPicker(audioBtn) }
                     PlayerButton { id: subBtn; objectName: "player-subs"; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: page.subTracks.length > 0; onClicked: page.openSubPicker(subBtn) }
-                    PlayerButton { objectName: "player-mark"; glyph: "check-check"; tip: "Mark watched"; visible: page.canMark; onClicked: page.markWatched() }
-                    PlayerButton { objectName: "player-help"; glyph: "keyboard"; tip: "Keyboard shortcuts"; onClicked: page.showHelp() }
-                    PlayerButton { objectName: "player-fullscreen"; glyph: frame.hostWindow.visibility === Window.FullScreen ? "minimize" : "maximize"; tip: "Fullscreen"; onClicked: page.toggleFullscreen() } } }
+                    PlayerButton { id: markBtn; objectName: "player-mark"; glyph: "check-check"; tip: "Mark watched"; visible: page.canMark; onClicked: page.markWatched() }
+                    PlayerButton { id: helpBtn; objectName: "player-help"; glyph: "keyboard"; tip: "Keyboard shortcuts"; visible: bottomRow.keepHelp; onClicked: page.showHelp() }
+                    PlayerButton { id: fullBtn; objectName: "player-fullscreen"; glyph: frame.hostWindow.visibility === Window.FullScreen ? "minimize" : "maximize"; tip: "Fullscreen"; onClicked: page.toggleFullscreen() } } }
         }
     }
 

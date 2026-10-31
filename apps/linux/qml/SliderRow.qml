@@ -15,6 +15,9 @@ Row {
     property alias stepSize: s.stepSize
     property int decimals: 0
     property real trackWidth: theme.space(40)
+    // The width with the readout, whether or not the row is shown: a hidden Row lays out
+    // nothing and reports 0, so an owner measuring what it would take reads this instead.
+    readonly property real fullWidth: trackWidth + spacing + readout.width
     property bool takesFocus: true
     property color ground: theme.bg
     signal moved(real v)
@@ -46,6 +49,7 @@ Row {
         }
     }
     Label {
+        id: readout
         anchors.verticalCenter: parent.verticalCenter
         width: theme.space(9)
         role: "ledger"
