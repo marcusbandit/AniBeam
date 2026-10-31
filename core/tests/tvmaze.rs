@@ -606,9 +606,10 @@ fn a_series_is_searched_linked_and_rematched_through_tvmaze() {
     core.shutdown();
 }
 
-/// A TVmaze-only series has nothing to report to: every tracker write is
-/// refused as unmatched, and a session's mark rule never fires, while the
-/// view and the episode title still work.
+/// A TVmaze-only series has nothing to report to: a mark and a score are
+/// refused as unmatched, progress is kept on this device instead, and a
+/// session's mark rule never fires, while the view and the episode title
+/// still work.
 #[test]
 fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
     let http = FakeHttp::new();
@@ -630,10 +631,6 @@ fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
             series,
             episode: 1.0,
         },
-        Call::SetProgress {
-            series,
-            progress: 1,
-        },
         Call::SetScore {
             series,
             score: Some(8.0),
@@ -649,6 +646,40 @@ fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
             "{call:?}"
         );
     }
+
+    // Progress lands here at once: up to episode 1 watched, nothing after it
+    let watched = |core: &Core| -> Vec<bool> {
+        detail(core, series)
+            .episodes
+            .iter()
+            .map(|e| e.watched)
+            .collect()
+    };
+    assert!(matches!(
+        core.call(Call::SetProgress {
+            series,
+            progress: 1,
+            season: None,
+        }),
+        Ok(Reply::Ok)
+    ));
+    let marked = watched(&core);
+    assert!(marked[0] && marked[1..].iter().all(|w| !w), "{marked:?}");
+    core.call(Call::SetProgress {
+        series,
+        progress: 0,
+        season: None,
+    })
+    .unwrap();
+    assert!(watched(&core).iter().all(|w| !w));
+    // A count is within its season: season 2's leaves season 1's episodes alone
+    core.call(Call::SetProgress {
+        series,
+        progress: 5,
+        season: Some(2),
+    })
+    .unwrap();
+    assert!(watched(&core).iter().all(|w| !w));
 
     let session = match core.call(Call::OpenPlayback { file: files[1] }).unwrap() {
         Reply::Playback { session } => *session,
@@ -1386,4 +1417,194 @@ fn a_summary_decodes_every_entity_and_strips_only_real_tags() {
     // Decoding happens once: an escaped entity is not decoded twice.
     assert_eq!(plain_summary("&amp;lt;b&amp;gt;"), "&lt;b&gt;");
     assert_eq!(plain_summary("&lt;b&gt;bold&lt;/b&gt;"), "<b>bold</b>");
+}
+
+fn set_count(core: &Core, series: u64, count: Option<u32>) {
+    core.call(Call::SetEpisodeCount { series, count }).unwrap();
+}
+
+/// A running show whose record lists no episode past the thirteenth, all
+/// thirteen out and on disk: the next is a guess until a count set by hand
+/// says the season ends there (#283).
+#[test]
+fn a_set_count_ends_a_running_tvmaze_season() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let s1: Vec<i64> = (0..13).map(|i| now - (13 - i) * 7 * DAY + DAY).collect();
+    insert_show(&core, 903, "Running", &[(1, s1)]);
+    let files: Vec<(u32, u32)> = (1..=13).map(|n| (1, n)).collect();
+    let series = tv_series(&core, 903, &files);
+
+    let c = card(&core, series);
+    let next = c.next_airing.as_ref().expect("a guess");
+    assert!(next.predicted);
+    assert_eq!(next.episode, 14);
+    assert!(c.total_is_estimate);
+
+    set_count(&core, series, Some(13));
+    let d = detail(&core, series);
+    assert!(d.card.episodes_set_applied);
+    assert_eq!(d.card.next_airing, None);
+    assert_eq!(
+        (d.card.total_episodes, d.card.total_is_estimate),
+        (Some(13), false)
+    );
+    assert!(d.upcoming.is_empty(), "{:#?}", d.upcoming);
+
+    set_count(&core, series, None);
+    assert_eq!(card(&core, series).next_airing.map(|a| a.episode), Some(14));
+    core.shutdown();
+}
+
+/// The count belongs to the season the card is about: season 2 set to
+/// eleven drops the twelfth from the schedule, and the folder's total is
+/// season 1 plus those eleven. A count below what already aired gives way.
+#[test]
+fn a_tvmaze_count_belongs_to_the_card_season() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let mut s2: Vec<i64> = (0..11).map(|i| now - (11 - i) * DAY).collect();
+    s2.push(now + 7 * DAY);
+    insert_show(&core, 904, "Running", &[(1, long_ago(10)), (2, s2)]);
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=3).map(|n| (2, n)));
+    let series = tv_series(&core, 904, &files);
+
+    set_count(&core, series, Some(11));
+    let d = detail(&core, series);
+    assert!(d.card.episodes_set_applied);
+    assert_eq!(d.card.next_airing, None);
+    assert_eq!(d.card.total_episodes, Some(21));
+    assert!(d.upcoming.is_empty(), "{:#?}", d.upcoming);
+
+    set_count(&core, series, Some(2));
+    let c = card(&core, series);
+    assert!(!c.episodes_set_applied);
+    let next = c.next_airing.expect("the schedule is back");
+    assert_eq!(
+        (next.season, next.episode, next.predicted),
+        (Some(2), 12, false)
+    );
+    core.shutdown();
+}
+
+/// A count set for season 2 stays season 2's: once a season 3 file lands,
+/// the card moves on and the count no longer applies to anything (#283).
+#[test]
+fn a_tvmaze_count_stays_with_its_season() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let mut s2: Vec<i64> = (0..11).map(|i| now - (30 - i) * DAY).collect();
+    s2.push(now - 18 * DAY);
+    let s3: Vec<i64> = (0..13).map(|i| now - DAY + i * 7 * DAY).collect();
+    insert_show(
+        &core,
+        905,
+        "Running",
+        &[(1, long_ago(10)), (2, s2), (3, s3.clone())],
+    );
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=12).map(|n| (2, n)));
+    let series = tv_series(&core, 905, &files);
+
+    set_count(&core, series, Some(12));
+    assert!(card(&core, series).episodes_set_applied);
+
+    fixtures::insert_file(
+        &core,
+        series,
+        "/tv/Two Seasons/Two.Seasons.S03E01.mkv",
+        1.0,
+        Some(3),
+        "episode",
+        1,
+    );
+    let c = card(&core, series);
+    assert_eq!(c.count_season, Some(3));
+    assert!(!c.episodes_set_applied);
+    let next = c.next_airing.expect("season 3 runs on");
+    assert_eq!(
+        (next.season, next.episode, time::to_secs(next.at)),
+        (Some(3), 2, s3[1])
+    );
+    core.shutdown();
+}
+
+/// Two folders matched to one show share its schedule: a count set on one
+/// never cuts the other's.
+#[test]
+fn a_tvmaze_count_never_cuts_another_folders_schedule() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let mut s1: Vec<i64> = (0..5).map(|i| now - (5 - i) * 7 * DAY).collect();
+    s1.push(now + 2 * DAY);
+    insert_show(&core, 906, "Running", &[(1, s1.clone())]);
+    let files: Vec<(u32, u32)> = (1..=5).map(|n| (1, n)).collect();
+    let first = tv_series(&core, 906, &files);
+    let src = fixtures::insert_source(&core, "/tv2");
+    let second = fixtures::insert_series(&core, src, SeriesKind::Show, "/tv2/Same", "Same");
+    fixtures::insert_file(
+        &core,
+        second,
+        "/tv2/Same/Same.S01E01.mkv",
+        1.0,
+        Some(1),
+        "episode",
+        1,
+    );
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE series SET provider = 'tvmaze', tvmaze_id = 906 WHERE id = ?1",
+                params![second as i64],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    set_count(&core, first, Some(5));
+    assert_eq!(card(&core, first).next_airing, None);
+    let next = card(&core, second).next_airing.expect("its own schedule");
+    assert_eq!((next.episode, time::to_secs(next.at)), (6, s1[5]));
+    core.shutdown();
+}
+
+/// TVmaze lists ten episodes, twelve are on disk and the count says twelve:
+/// the last two are episodes, not files past the end.
+#[test]
+fn a_tvmaze_count_judges_files_against_itself() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let s1: Vec<i64> = (0..10).map(|i| now - (12 - i) * 7 * DAY).collect();
+    insert_show(&core, 907, "Running", &[(1, s1)]);
+    let files: Vec<(u32, u32)> = (1..=12).map(|n| (1, n)).collect();
+    let series = tv_series(&core, 907, &files);
+
+    set_count(&core, series, Some(12));
+    let d = detail(&core, series);
+    assert!(d.card.episodes_set_applied);
+    assert!(d.unmatched_files.is_empty(), "{:#?}", d.unmatched_files);
+    assert_eq!(d.episodes.len(), 12);
+    core.shutdown();
+}
+
+/// With season 1 whole on disk and season 2 running with nothing dated
+/// ahead, the guess is season 2's next episode, not one numbered past both
+/// seasons together.
+#[test]
+fn a_multi_season_guess_counts_within_the_season() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let s2: Vec<i64> = (0..4).map(|i| now - (4 - i) * 7 * DAY + DAY).collect();
+    insert_show(&core, 908, "Running", &[(1, long_ago(10)), (2, s2)]);
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=4).map(|n| (2, n)));
+    let series = tv_series(&core, 908, &files);
+
+    let next = card(&core, series).next_airing.expect("a guess");
+    assert!(next.predicted);
+    assert_eq!((next.season, next.episode), (Some(2), 5));
+    let d = detail(&core, series);
+    assert_eq!(d.upcoming.first().map(|u| u.number), Some(5));
+    core.shutdown();
 }

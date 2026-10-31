@@ -58,6 +58,10 @@ pub mod qobject {
         /// comes back as given.
         #[qinvokable]
         fn local_path(self: &Fmt, url: &QString) -> QString;
+        /// A folder's name as a title to search for: release-group brackets, a trailing
+        /// episode range and a trailing END gone.
+        #[qinvokable]
+        fn folder_title(self: &Fmt, name: &QString) -> QString;
     }
 }
 
@@ -125,6 +129,12 @@ impl qobject::Fmt {
     }
     pub fn local_path(&self, url: &QString) -> QString {
         QString::from(&local_path(&url.to_string(), cfg!(windows)))
+    }
+
+    pub fn folder_title(&self, name: &QString) -> QString {
+        QString::from(&anibeam_core::library::walk::clean_folder_title(
+            &name.to_string(),
+        ))
     }
 }
 

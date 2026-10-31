@@ -102,7 +102,11 @@ static TICK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mu
 pub fn magnet_hash(link: &str) -> Option<String> {
     let query = link.trim().strip_prefix("magnet:?")?;
     for part in query.split('&') {
-        let Some(v) = part.strip_prefix("xt=") else {
+        let Some(v) = part
+            .get(..3)
+            .filter(|key| key.eq_ignore_ascii_case("xt="))
+            .map(|_| &part[3..])
+        else {
             continue;
         };
         let lower = v.to_ascii_lowercase();
@@ -553,7 +557,7 @@ pub fn describe(options: &DownloadOptions, followups: &[Followup]) -> String {
     if n > 0 {
         bits.push(format!(
             "replacing {n} {} once the new files finish",
-            if n == 1 { "episode" } else { "episodes" }
+            crate::words::pick(n, "episode", "episodes")
         ));
     }
     if bits.is_empty() {
@@ -801,8 +805,10 @@ pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
                 .await
             {
                 tracing::warn!("episode {} not replaced: {e}", entry.episode);
-                core.bus.warn(
+                core.bus.say(
+                    Level::Warn,
                     Stage::Downloads,
+                    format!("Episode {} was not replaced.", entry.episode),
                     format!("Episode {} was not replaced: {e}", entry.episode),
                     EventBody::Notice,
                 );
@@ -860,8 +866,10 @@ async fn replace_episode(
         .map_err(|e| CoreError::Internal {
             message: format!("trash: {e}"),
         })??;
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        format!("Replaced episode {} with the new download.", entry.episode),
         format!(
             "Replaced episode {}: {} {}",
             entry.episode,

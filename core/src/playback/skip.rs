@@ -200,6 +200,7 @@ pub fn start(
                 session::report_chapters(&owner, s.id, duration, Some(outro.start));
             }
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: format!("Skip windows: {}", summary(&windows)),
                 body: EventBody::SkipWindowsReady {

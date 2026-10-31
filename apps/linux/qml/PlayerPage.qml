@@ -8,6 +8,7 @@
 // title, escapePressed, scrollY) stays on this object.
 import QtQuick
 import QtQuick.Window
+import QtCore
 import com.marcusrosado.AniBeam
 
 FocusScope {
@@ -41,13 +42,14 @@ FocusScope {
     // rather than on the file's first track.
     property int lastSid: -1
     property real subDelay: 0
+    property real audioDelay: 0
     // Seeded by the observation and refreshed at each step, since mpv notifies this one only
     // once. See the frame step section.
     property real frameNumber: 0
 
     // Chrome
     property bool chromeVisible: true
-    property int openMenus: 0            // pickers, the rating picker and the key list
+    property int openMenus: 0            // pickers, the delays, the rating picker and the key list
     // A popover's own button or row may have held the keyboard while it was up; the page
     // takes it back when the last one closes, so Space and the arrows work again at once.
     onOpenMenusChanged: if (openMenus === 0) forceActiveFocus()
@@ -90,6 +92,16 @@ FocusScope {
         seriesTitles = card.titles || {}
         var ep = d.reply.detail.episodes.find(function(e) { return e.file === session.file })
         episodeNumber = ep ? ep.number : -1
+        var next = session.next ? d.reply.detail.episodes.find(function(e) { return e.file === session.next }) : null
+        nextEpisode = next ? { number: next.number, title: next.title || "" } : null
+    }
+    // The episode auto-next goes to, for the pill: its number and, unless Settings says
+    // number only, its title
+    property var nextEpisode: null
+    readonly property string nextLine: {
+        if (!nextEpisode) return "Next"
+        var name = Fmt.episodeName("", nextEpisode.number)
+        return frame.prefs.nextNamesEpisode && nextEpisode.title ? name + " \u00b7 " + nextEpisode.title : name
     }
     Component.onDestruction: {
         Shell.setCursorHidden(false)
@@ -111,13 +123,21 @@ FocusScope {
         Door.closePlayback(session.session, timePos, reason)
     }
     function leave() { close("Stopped"); frame.nav.back() }
-    function openNeighbour(file) { if (!file) return; close("Switched"); frame.nav.replace("player", { file: file }, page.title) }
+    // The speed goes along: someone watching at 1.5x wants the next episode at 1.5x too
+    function openNeighbour(file) { if (!file) return; close("Switched"); frame.nav.replace("player", { file: file, speed: heldSpeed > 0 ? heldSpeed : speed }, page.title) }
     // N and P: the same neighbours, and the same rule, as the island's two buttons. An extra
     // has no place in the episode order, so it has neither.
     readonly property bool hasNext: !!(session && session.next && !session.is_extra)
     readonly property bool hasPrevious: !!(session && session.prev && !session.is_extra)
-    function openNext() { if (hasNext) openNeighbour(session.next) }
-    function openPrevious() { if (hasPrevious) openNeighbour(session.prev) }
+    // A key that can do nothing says why on the video, where the buttons say it in their tips
+    function openNext() {
+        if (hasNext) openNeighbour(session.next)
+        else hud.flash(session && session.is_extra ? "An extra has no next episode" : "This is the last episode")
+    }
+    function openPrevious() {
+        if (hasPrevious) openNeighbour(session.prev)
+        else hud.flash(session && session.is_extra ? "An extra has no previous episode" : "This is the first episode")
+    }
     // Named escapePressed, not escape: the QML compiler reserves "escape" as a member name
     // on any object, and the frame calls this one by that name.
     function escapePressed() { leave(); return true }
@@ -133,6 +153,10 @@ FocusScope {
         video.setProperty("volume", page.volume)
         video.setProperty("mute", Player.mute)
         video.setProperty("start", session.resume_from ? String(session.resume_from) : "none")
+        if (props.speed && props.speed !== 1) setSpeed(props.speed)
+        // S saves the frame, subtitles and all, into the pictures folder
+        video.setProperty("screenshot-directory", Fmt.localPath(String(StandardPaths.writableLocation(StandardPaths.PicturesLocation))) + "/AniBeam")
+        video.setProperty("screenshot-template", "%F %wH.%wM.%wS")
         video.command(["loadfile", session.path])
     }
     // Spec 4.4's subtitle table as mpv options. These are set before the file, so they are
@@ -205,7 +229,7 @@ FocusScope {
             observe("mute", VideoItem.Flag); observe("hwdec-current", VideoItem.String); observe("frame-drop-count", VideoItem.Int64)
             observe("track-list", VideoItem.Node); observe("chapter-list", VideoItem.Node); observe("aid", VideoItem.String)
             observe("sid", VideoItem.String); observe("sub-delay", VideoItem.Double); observe("estimated-frame-number", VideoItem.Int64)
-            observe("speed", VideoItem.Double)
+            observe("speed", VideoItem.Double); observe("audio-delay", VideoItem.Double)
             if (page.session) page.start()
         }
         onLoaded: {
@@ -214,6 +238,7 @@ FocusScope {
             var chapters = getProperty("chapter-list") || []
             var list = []
             for (var i = 0; i < chapters.length; i++) list.push({ title: String(chapters[i].title || ""), start: Number(chapters[i].time || 0) })
+            page.chapters = list
             page.duration = Number(getProperty("duration") || 0)
             if (page.session && page.duration > 0) {
                 var rc = Door.reportChapters(page.session.session, list, page.duration)
@@ -236,7 +261,12 @@ FocusScope {
         // the double-click interval first, so a double-click never pauses at all: a pause is not
         // free, it ticks the core and cancels a running auto-next countdown.
         Timer { id: clickPause; interval: Qt.styleHints.mouseDoubleClickInterval; onTriggered: page.togglePause() }
-        MouseArea { anchors.fill: parent; onClicked: clickPause.restart(); onDoubleClicked: function() { clickPause.stop(); page.toggleFullscreen() }; hoverEnabled: true; onPositionChanged: function(mouse) { page.pointerMoved(mapToItem(page, mouse.x, mouse.y)) }; cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor }
+        // A press held on the video plays at 2x until it lets go; Qt sends no click after it.
+        MouseArea { anchors.fill: parent; onClicked: clickPause.restart(); onDoubleClicked: function() { clickPause.stop(); page.toggleFullscreen() }; hoverEnabled: true; onPositionChanged: function(mouse) { page.pointerMoved(mapToItem(page, mouse.x, mouse.y)) }; cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor
+            pressAndHoldInterval: 400
+            onPressAndHold: page.holdFast()
+            onReleased: page.letGoFast()
+            onCanceled: page.letGoFast() }
     }
     // The one place the track list is asked for rather than observed: the pick has to be
     // made before the first frame, and the observation for `track-list` may not have
@@ -249,12 +279,21 @@ FocusScope {
         video.setProperty("aid", p.aid >= 0 ? String(p.aid) : "no")
         video.setProperty("sid", p.sid >= 0 ? String(p.sid) : "no")
         if (p.sid >= 0) lastSid = p.sid
+        // Picked up where it was left: say so, with the way back to the start
+        if (session.resume_from && session.resume_from > 5) {
+            noticeUndo = function() { seekTo(0) }
+            notice.show("Resumed at " + Fmt.clock(session.resume_from), "Start over", 6)
+        }
     }
     function onObserved(name, value) {
         if (name === "track-list") trackList = asArray(value)
         else if (name === "aid") aid = value === "no" || value === null ? -1 : Number(value)
         else if (name === "sid") { sid = value === "no" || value === null ? -1 : Number(value); if (sid >= 0) lastSid = sid }
-        else if (name === "sub-delay") { subDelay = Number(value || 0); hud.update(delayLine(subDelay), "subDelay") }
+        else if (name === "sub-delay" || name === "audio-delay") {
+            var v = Number(value || 0)
+            if (name === "sub-delay") subDelay = v; else audioDelay = v
+            hud.update(delayLine(name, v), name)
+        }
         // mpv sends this one exactly once, when the observation is registered: it is not on
         // mpv's tick change list, so an observed value alone would read the number the file
         // opened on for the whole session. Kept because the spec's observe list has it and
@@ -266,6 +305,19 @@ FocusScope {
     // The last frame is still on screen, because keep-open holds it: the replay button sits
     // on it, unless the countdown is already taking us to the next episode.
     function onEnded() { close("Ended"); if (!nextCounting) replayVisible = true }
+    // Back from the end, by a seek or Home: the core closed the session at the end, so a
+    // fresh one opens and the rewatch keeps its own place, and the replay button goes.
+    function reopen() {
+        var r = Door.openPlayback(props.file)
+        // Tried once: a file gone since the end would otherwise be asked for every frame
+        ended = false
+        if (r.error) { notice.show(errorLine(r.error)); return }
+        closed = false
+        replayVisible = false
+        session = r.reply.session
+        tickTimer.start()
+    }
+    property var chapters: []
 
     // ---- Tracks
     // mpv hands the list back as a QVariantList, which QML wraps in a sequence object:
@@ -302,6 +354,7 @@ FocusScope {
         var ref = Player.trackRef(t)
         storeChoice(ref, subtitleArg())
         session.track_choice.audio = ref
+        hud.flash("Audio: " + Player.trackLabel(t))
         showChrome()
     }
     function pickSubtitle(id) {
@@ -311,27 +364,47 @@ FocusScope {
         var choice = id < 0 ? { off: true } : { Track: { track: Player.trackRef(t) } }
         storeChoice(audioArg(), choice)
         session.track_choice.subtitle = id < 0 ? "Off" : choice
+        hud.flash(t ? "Subtitles: " + Player.trackLabel(t) : "Subtitles off")
         showChrome()
     }
     // C: off, then back to the track it was on. The choice is not stored, because a key
     // pressed to read one sign is not a decision about the series.
     function toggleSubtitles() {
+        var on = -1
         if (sid >= 0) video.setProperty("sid", "no")
-        else if (lastSid >= 0) video.setProperty("sid", String(lastSid))
-        else if (subTracks.length) video.setProperty("sid", String(subTracks[0].id))
+        else if (lastSid >= 0) on = lastSid
+        else if (subTracks.length) on = subTracks[0].id
+        else { hud.flash("This file has no subtitles"); return }
+        if (on >= 0) video.setProperty("sid", String(on))
+        var t = subTracks.find(function(x) { return x.id === on })
+        hud.flash(on < 0 ? "Subtitles off" : "Subtitles: " + (t ? t.label : "on"))
         showChrome()
     }
-    // z and Z. The page's own value moves first so a second press within the round trip
-    // adds to the first rather than repeating it; the observation then rewrites the line
-    // with what mpv actually settled on, so the HUD reports the player, not the intent.
-    function delayLine(v) { return "Subtitle delay " + (v >= 0 ? "+" : "") + v.toFixed(1) + " s" }
-    function nudgeDelay(d) {
-        var v = Math.round((subDelay + d) * 10) / 10
-        subDelay = v
-        video.setProperty("sub-delay", v)
-        hud.flash(delayLine(v), "subDelay")
+    // ---- Delays: sub-delay (z and Z) and audio-delay (a and A), stepped from the keys or the
+    // delays panel and named by their mpv property. The page's own value moves first so a
+    // second press within the round trip adds to the first rather than repeating it; the
+    // observation then rewrites the value and the line with what mpv actually settled on, so
+    // the HUD and the panel report the player, not the intent. Both reset when the next file
+    // starts (reset-on-next-file), and the observation carries that back here too.
+    function delayOf(prop) { return prop === "audio-delay" ? audioDelay : subDelay }
+    // Tenths, or hundredths for a finer value from mpv.conf, so -0.04 never shows as -0.0.
+    function delayText(v) {
+        var r = Math.round(v * 100) / 100
+        if (r === 0) return "0.0 s"
+        var fine = Math.abs(r * 10 - Math.round(r * 10)) > 1e-6
+        return (r > 0 ? "+" : "") + r.toFixed(fine ? 2 : 1) + " s"
+    }
+    function delayLine(prop, v) { return (prop === "audio-delay" ? "Audio delay " : "Subtitle delay ") + delayText(v) }
+    function setDelay(prop, v) {
+        // Hundredths, so a step from a fine mpv.conf value moves by exactly 0.1
+        v = Math.round(v * 100) / 100
+        if (prop === "audio-delay") audioDelay = v; else subDelay = v
+        video.setProperty(prop, v)
+        hud.flash(delayLine(prop, v), prop)
         showChrome()
     }
+    function nudgeDelay(prop, d) { setDelay(prop, delayOf(prop) + d) }
+    function resetDelay(prop) { setDelay(prop, 0) }
 
     // ---- Ticks: once a second while playing, once on pause, once after a seek, once on
     // close. The timer never asks mpv for anything: it sends the last observed time-pos,
@@ -359,8 +432,8 @@ FocusScope {
     // Playback speed, [ and ] in quarter steps between 0.25 and 3, Backspace back to 1. The
     // page's value moves first so presses inside the round trip add up; the observation then
     // settles it on what mpv took. The speed shows in the controls tile's time row, which the
-    // key brings up, never as a line over the picture, where top-placed signs would be. Each page is its own mpv core, so the next
-    // file starts at the configured speed again rather than inheriting this one.
+    // key brings up, never as a line over the video, where top-placed signs would be. Each
+    // page is its own mpv core, so the next episode gets the speed through openNeighbour.
     property real speed: 1
     function speedLine(v) { return "Speed " + Number(v.toFixed(2)) + "\u00d7" }
     function setSpeed(v) {
@@ -370,6 +443,42 @@ FocusScope {
         showChrome()
     }
     function stepSpeed(d) { setSpeed(speed + d * 0.25) }
+    // A press held on the video: 2x while it is down, then the speed it was. Not through
+    // setSpeed, which would bring the controls up over what is being skimmed.
+    property real heldSpeed: 0
+    function holdFast() {
+        if (!loaded || paused || heldSpeed > 0) return
+        clickPause.stop()
+        heldSpeed = speed
+        video.setProperty("speed", 2)
+        hud.hold("2\u00d7 while held", "hold")
+    }
+    function letGoFast() {
+        if (heldSpeed <= 0) return
+        video.setProperty("speed", heldSpeed)
+        heldSpeed = 0
+        if (hud.kind === "hold") hud.clear()
+    }
+    // ---- Chapters: PageDown to the next one's start, PageUp to the start of this one, or
+    // the one before when this one has only just begun
+    function chapterJump(dir) {
+        if (!chapters.length) { hud.flash("This file has no chapters"); return }
+        var target = null
+        if (dir > 0) target = chapters.find(function(c) { return c.start > timePos + 0.5 })
+        else for (var i = chapters.length - 1; i >= 0; i--) if (chapters[i].start < timePos - 2) { target = chapters[i]; break }
+        if (!target) { if (dir < 0) seekTo(0); else hud.flash("This is the last chapter"); return }
+        seekTo(target.start)
+        var n = chapters.indexOf(target) + 1
+        hud.flash("Chapter " + n + (target.title ? ": " + target.title : ""))
+    }
+    // Home and End: the start, and the outro's start when one is known
+    function seekHome() { seekTo(0) }
+    function seekOutro() { if (outro) seekTo(outro.start) }
+    function screenshot() {
+        if (!loaded) return
+        video.command(["screenshot", "subtitles"])
+        hud.flash("Saved to Pictures/AniBeam")
+    }
     function toggleFullscreen() { frame.hostWindow.visibility = frame.hostWindow.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen }
 
     // ---- Skip windows and auto-skip
@@ -381,12 +490,12 @@ FocusScope {
     readonly property var intro: windowOf("Intro")
     readonly property var outro: windowOf("Outro")
     function inside(w, t) { return !!w && t >= w.start && t < w.end }
-    function skipWindow(w) { if (w) seekTo(w.end + 1) }
+    function skipWindow(w) { if (w) seekTo(w.end) }
     // The skip intro tile's click: the same skip, then the controls and the pointer go at once
     // rather than staying up for the 2.5 s seekTo gives them, so the picture is clear the
     // moment the intro is. Ctrl+Right still brings them up, as every handled key does.
     // `at` is where the pointer rested for the click, in page coordinates.
-    function skipIntroAndHide(at) { skipWindow(intro); hideTimer.stop(); chromeVisible = false; restingAt = at }
+    function skipAndHide(w, at) { skipWindow(w); hideTimer.stop(); chromeVisible = false; restingAt = at }
     // Once the seek lands the tile leaves from under the resting pointer, and Qt hovers the
     // picture at that same spot with nothing having moved. That hover must not call the
     // controls back up; the first real move does, and clears the spot.
@@ -425,6 +534,8 @@ FocusScope {
         notice.show(w.kind === "Intro" ? "Skipped intro" : "Skipped outro", "Undo")
     }
     onTimePosChanged: {
+        if (ended && duration > 0 && duration - timePos > 1.5) reopen()
+        else if (replayVisible && duration > 0 && duration - timePos > 1.5) replayVisible = false
         var jumped = lastPos >= 0 && Math.abs(timePos - lastPos) > 2
         autoSkipWindow(intro, !!autoSkip.intro, jumped)
         autoSkipWindow(outro, !!autoSkip.outro, jumped)
@@ -538,7 +649,7 @@ FocusScope {
         hud.flash(frameLine(), "frame")               // the frame still on screen
         video.command([dir > 0 ? "frame-step" : "frame-back-step"])
     }
-    // Play clears the frame line at once, and only the frame line: a subtitle delay put on
+    // Play clears the frame line at once, and only the frame line: a delay put on
     // screen while paused is a different message and keeps its own 1.2 s. A step's own dip
     // through unpaused is not a play, so it clears nothing. A pause also stops the auto-next
     // countdown: the pill keeps Next and Stay, and playing back into the counting zone
@@ -596,25 +707,36 @@ FocusScope {
     // the replay button
     PlayerChrome { id: chrome }
 
-    // ---- The pickers. They fill the page and hold the chrome while they are up. The chrome
-    // and the key map open them through these three functions rather than by id, so what the
-    // page offers its own parts is a contract rather than a reach up the context chain.
+    // ---- The pickers and the delays. They fill the page and hold the chrome while they are
+    // up. The chrome and the key map open them through these functions rather than by id, so
+    // what the page offers its own parts is a contract rather than a reach up the context chain.
     function openAudioPicker(anchor) { audioPicker.openAt(anchor) }
+    // The track picker that is up, for the keys: null when neither is
+    readonly property var openPicker: audioPicker.open ? audioPicker : subPicker.open ? subPicker : null
     function openSubPicker(anchor) { subPicker.openAt(anchor) }
+    function openDelays(anchor) { delays.openAt(anchor) }
     function showHelp() { help.show() }
     function toggleHelp() { if (help.open) help.close(); else help.show() }
     TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }
     TrackPicker { id: subPicker; title: "Subtitles"; tracks: page.subTracks; selected: page.sid; offRow: true; onPicked: function(id) { page.pickSubtitle(id) } }
+    PlayerDelays { id: delays }
 
-    // ---- The HUD line: one message over the picture, gone after 1.2 s. The subtitle delay
-    // and the frame step share it, each owning the line through its own kind. A
+    // ---- The HUD line: one message over the picture, gone after 1.2 s. The two delays and
+    // the frame step share it, each owning the line through its own kind. A
     // pane of the video glass like every other island on the player; its text is figures,
     // so ledger.
     Corner {
         id: hud
         objectName: "player-hud"
-        visible: false
-        anchors.top: parent.top; anchors.topMargin: theme.space(20); anchors.horizontalCenter: parent.horizontalCenter
+        // Shown at once, gone by a short fade
+        property bool shown: false
+        visible: opacity > 0
+        opacity: shown ? 1 : 0
+        Behavior on opacity { enabled: !theme.reducedMotion && !hud.shown; NumberAnimation { duration: 300 } }
+        // Under the rating prompt while that is up, so neither covers the other
+        anchors.top: rating.visible ? rating.bottom : parent.top
+        anchors.topMargin: rating.visible ? theme.space(3) : theme.space(20)
+        anchors.horizontalCenter: parent.horizontalCenter
         width: hudText.implicitWidth + theme.space(6); height: theme.controlHeight
         color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1); borderWidth: 1; highlight: theme.glassHighlight
         // Which key owns the line on screen, so an observation that lands afterwards can
@@ -623,10 +745,12 @@ FocusScope {
         readonly property alias text: hudText.text
         Label { id: hudText; anchors.centerIn: parent; role: "ledger"; font.pointSize: theme.typeNormal }
         Timer { id: hudTimer; interval: 1200; onTriggered: hud.clear() }
-        function flash(text, kind) { hud.kind = kind || ""; hudText.text = text; visible = true; hudTimer.restart() }
+        function flash(text, kind) { hud.kind = kind || ""; hudText.text = text; shown = true; hudTimer.restart() }
+        // Up until clear(), for as long as something is held
+        function hold(text, kind) { hud.kind = kind || ""; hudText.text = text; shown = true; hudTimer.stop() }
         // The text alone, with the countdown left alone: a confirmation is not a new message.
-        function update(text, kind) { if (visible && hud.kind === (kind || "")) hudText.text = text }
-        function clear() { visible = false; hud.kind = ""; hudTimer.stop() }
+        function update(text, kind) { if (shown && hud.kind === (kind || "")) hudText.text = text }
+        function clear() { shown = false; hud.kind = ""; hudTimer.stop() }
     }
 
     // ---- The passing notice: Skipped intro and its Undo, and the tracker outcomes
@@ -646,6 +770,8 @@ FocusScope {
         width: ratingRow.implicitWidth + padding * 2; height: ratingRow.implicitHeight + padding * 2
         // The picture's own MouseArea is under the tile; a click on its padding must not pause.
         MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -rating.padding }
+        // It goes by itself after a while, unless the score picker is open on it
+        Timer { interval: 15000; running: rating.visible && !ratingPicker.open; onTriggered: rating.visible = false }
         Row {
             id: ratingRow
             anchors.centerIn: parent; spacing: theme.space(3)
@@ -665,7 +791,7 @@ FocusScope {
     }
 
     // ---- The key list
-    KeyHelp { id: help }
+    KeyHelp { id: help; player: page }
 
     // ---- Keys. The attached property stays here, on the item that holds focus; the map
     // itself is PlayerKeys.qml, beside the list KeyHelp.qml draws from it.

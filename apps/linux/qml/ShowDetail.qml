@@ -315,6 +315,7 @@ Column {
                     text: root.torrents.length === 1 ? "Remove the torrent" : "Remove " + root.torrents.length + " torrents"
                     icon: "x"
                     flat: true
+                    danger: true
                     onClicked: root.removeAll(removeAllButton)
                 }
             }

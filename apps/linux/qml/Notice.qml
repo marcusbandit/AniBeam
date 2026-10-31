@@ -34,7 +34,9 @@ Corner {
         }
         Button { id: act; anchors.verticalCenter: parent.verticalCenter; visible: root.action !== ""; text: root.action; small: true; flat: true; takesFocus: false; onClicked: { root.hide(); root.acted() } }
     }
-    Timer { id: life; interval: 4000; onTriggered: root.visible = false }
+    // The pointer on the line holds it, so a reach for its button is never too late
+    HoverHandler { id: hold }
+    Timer { id: life; interval: 4000; onTriggered: if (hold.hovered) restart(); else root.visible = false }
     function show(text, action, seconds) { root.text = text; root.action = action || ""; life.interval = (seconds || 4) * 1000; visible = true; life.restart() }
     function hide() { visible = false; life.stop() }
 }

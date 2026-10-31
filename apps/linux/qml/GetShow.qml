@@ -4,7 +4,8 @@
 // answer now without asking it anything; clicking one fetches what it has for this show.
 // Its releases open as a grid: one row per release group and quality, one cube per episode,
 // under the library's own row so the gaps line up. Clicking a group picks its releases for
-// every episode the library lacks; clicking a cube picks or drops one, and that includes an
+// every episode the library lacks, and Ctrl-clicking one adds them to the picks from other
+// groups; clicking a cube picks or drops one, and that includes an
 // episode the library already has: picking one asks to replace it, and the plan then carries a
 // "Replace current episodes" switch, off by default. The plan at the right says what Get will
 // do, and whether new episodes will follow. When the show has torrents moving, a Downloading
@@ -28,6 +29,8 @@ Item {
     property string active: ""
     property var sourceOn: function(name) { return true }
     property bool acting: false
+    // The torrent client by name, for what Get says while it sends
+    property string clientName: "the torrent client"
     // Set when a Get went through; it clears the picks and is not drawn
     property string actionLine: ""
     property string actionError: ""
@@ -303,6 +306,19 @@ Item {
         picks = p
         chosen = row.key
     }
+    // Ctrl-click on a row's name or any of its cubes: every episode the library lacks that this
+    // row has is picked from it, and the picks of episodes it lacks stay, so several groups
+    // fill one show. A second Ctrl-click on a row whose missing episodes are all picked from it
+    // drops them.
+    function addRow(row) {
+        if (!row) return
+        var p = JSON.parse(JSON.stringify(picks)), w = wanted(row)
+        var mine = w.filter(function(n) { return p[n] === row.eps[n] })
+        if (w.length && mine.length === w.length) w.forEach(function(n) { delete p[n] })
+        else w.forEach(function(n) { p[n] = row.eps[n] })
+        picks = p
+        chosen = row.key
+    }
     function toggleCube(row, n) {
         if (row.eps[n] === undefined) return
         var p = JSON.parse(JSON.stringify(picks))
@@ -430,7 +446,7 @@ Item {
     }
     readonly property string goText: {
         var n = planList.length
-        if (acting) return "Working"
+        if (acting) return "Sending to " + clientName
         var swap = replacing ? " and replace" : ""
         if (n && follow && followRow) return "Get " + Fmt.plural(n, "episode", "episodes") + swap + " and subscribe"
         if (n) return "Get " + Fmt.plural(n, "episode", "episodes") + swap
@@ -772,9 +788,9 @@ Item {
                             chosen: root.chosen === modelData.key
                             clickable: true
                             rowData: modelData
-                            onPicked: root.pickRow(modelData, true)
-                            onCubePicked: function(i) { root.toggleCube(modelData, i + 1) }
-                            onRangePicked: function(a, z) { root.toggleRange(modelData, a + 1, z + 1) }
+                            onPicked: function(mods) { if (mods & Qt.ControlModifier) root.addRow(modelData); else root.pickRow(modelData, true) }
+                            onCubePicked: function(i, mods) { if (mods & Qt.ControlModifier) root.addRow(modelData); else root.toggleCube(modelData, i + 1) }
+                            onRangePicked: function(a, z, mods) { if (mods & Qt.ControlModifier) root.addRow(modelData); else root.toggleRange(modelData, a + 1, z + 1) }
                         }
                     }
                 }
@@ -922,8 +938,12 @@ Item {
                         icon: root.follow && root.followRow ? "rss" : "download"
                         primary: true
                         enabled: !root.acting && (root.planList.length > 0 || (root.follow && !!root.followRow))
+                        busy: root.acting
                         onClicked: root.go()
                     }
+                    // What the last Get or Subscribe did, until the next pick
+                    Label { objectName: "get-action-line"; visible: root.actionLine !== "" && root.actionError === "" && root.planList.length === 0
+                        width: parent.width; text: root.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }
                     Label { visible: root.actionError !== ""; width: parent.width; text: root.actionError; role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap }
                 }
             }
@@ -1053,9 +1073,13 @@ Item {
                     anchors.rightMargin: theme.space(4)
                     spacing: theme.space(1.5)
                     Label { visible: card.episodeWords !== ""; text: card.episodeWords; role: "ui"; color: theme.textDim }
+                    // The figures wrap under the percentage rather than run under the controls
                     Row {
+                        id: figuresRow
+                        width: parent.width
                         spacing: theme.space(3)
                         Label {
+                            id: stateLabel
                             objectName: "get-torrent-state"
                             text: card.broken ? root.stateWords(card.t) : Math.floor((card.t.progress || 0) * 100) + "%"
                             role: "title"; font.pointSize: theme.typeLarge
@@ -1063,11 +1087,13 @@ Item {
                         }
                         Label {
                             objectName: "get-torrent-figures"
-                            anchors.baseline: parent.children[0].baseline
+                            anchors.baseline: stateLabel.baseline
+                            width: Math.min(implicitWidth, figuresRow.width - stateLabel.width - figuresRow.spacing)
+                            wrapMode: Text.Wrap
                             text: {
                                 var t = card.t, bits = []
                                 bits.push(Fmt.bytes(Math.round((t.size || 0) * (t.progress || 0))) + " of " + Fmt.bytes(t.size || 0))
-                                if ((t.dlspeed || 0) > 0) bits.push(Fmt.bytes(t.dlspeed) + "/s")
+                                if ((t.dlspeed || 0) > 0) bits.push(Fmt.bytes(t.dlspeed) + "/s down")
                                 if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(Fmt.countdown(t.eta) + " left")
                                 return bits.join(", ")
                             }
@@ -1161,7 +1187,7 @@ Item {
                 Fact { objectName: "get-torrent-name"; key: "Torrent"; value: card.t.name || "" }
                 Fact { key: "Release"; value: card.release }
                 Fact { key: "From"; value: card.source }
-                Fact { key: "Saving to"; value: card.t.save_path || card.t.content_path || "" }
+                Fact { key: "Saving to"; value: card.t.save_path || card.t.content_path || ""; folder: true }
             }
         }
     }
@@ -1171,9 +1197,13 @@ Item {
         property string key: ""
         property string value: ""
         width: parent ? parent.width : 0
-        height: Math.max(keyLabel.implicitHeight, valueLabel.implicitHeight)
+        height: Math.max(keyLabel.implicitHeight, valueLabel.implicitHeight, openBtn.visible ? openBtn.height : 0)
         Label { id: keyLabel; width: theme.space(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
-        Label { id: valueLabel; x: theme.space(18); width: parent.width - x; text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
+        Label { id: valueLabel; x: theme.space(18); width: parent.width - x - (openBtn.visible ? openBtn.width + theme.space(2) : 0); text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
+        // A folder opens from its line
+        property bool folder: false
+        Button { id: openBtn; visible: parent.folder && parent.value !== ""; anchors.right: parent.right; anchors.verticalCenter: valueLabel.verticalCenter
+            small: true; flat: true; icon: "folder-open"; text: "Open"; onClicked: frame.openLink(Fmt.fileUrl(parent.value)) }
     }
 
     // One row of the grid: who, one line, and the cubes; a click on the name picks the row
@@ -1187,15 +1217,15 @@ Item {
         property bool lit: false
         property bool clickable: false
         property var rowData: null
-        signal picked()
-        signal cubePicked(int index)
-        signal rangePicked(int first, int last)
+        signal picked(int modifiers)
+        signal cubePicked(int index, int modifiers)
+        signal rangePicked(int first, int last, int modifiers)
         width: grid.width
         height: Math.max(theme.space(15), cubes.implicitHeight + theme.space(5))
         Rectangle {
             anchors.fill: parent
             radius: theme.radiusMd
-            color: gr.chosen ? theme.accentSoft : gr.lit ? theme.glassFloat : whoMouse.containsMouse ? theme.glassFloat : "transparent"
+            color: gr.chosen ? theme.accentSoft : gr.lit ? theme.glassFloat : whoHover.hovered ? theme.glassFloat : "transparent"
             border.width: gr.chosen ? 1 : 0
             border.color: theme.accentEdge
         }
@@ -1205,7 +1235,9 @@ Item {
             enabled: gr.clickable
             hoverEnabled: enabled
             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: gr.picked()
+            onClicked: function(mouse) { gr.picked(mouse.modifiers) }
+            // The hover through a handler, as the cubes take theirs
+            HoverHandler { id: whoHover; enabled: gr.clickable }
         }
         Column {
             x: theme.space(4)
@@ -1217,6 +1249,7 @@ Item {
         }
         EpisodeCubes {
             id: cubes
+            objectName: gr.clickable ? "get-cubes-pick" : "get-cubes"
             x: grid.whoWidth
             anchors.verticalCenter: parent.verticalCenter
             width: grid.cubeWidth
@@ -1244,8 +1277,30 @@ Item {
                 if (code === "t") bits.push("downloading now, click to replace it")
                 return bits.join("\n")
             } : null
-            onCubeClicked: function(i) { gr.cubePicked(i) }
-            onRangeClicked: function(a, z) { gr.rangePicked(a, z) }
+            onCubeClicked: function(i, mods) { gr.cubePicked(i, mods) }
+            onRangeClicked: function(a, z, mods) { gr.rangePicked(a, z, mods) }
+            lit: gr.litCells
+        }
+        // What a click would pick, lit in the cubes before the click: the hovered episode,
+        // a whole batch for a gap in it, and with Ctrl held every missing episode the row has
+        // (the row's name, clicked, picks those too)
+        readonly property bool hot: cubes.hoverCell >= 0 || whoHover.hovered
+        readonly property var litCells: {
+            var row = gr.rowData, out = ({})
+            if (!gr.clickable || !row || !gr.hot) return out
+            var cellOf = function(n) { return Math.floor((n - 1) / cubes.fold) }
+            var light = function(list) { for (var i = 0; i < list.length; i++) out[cellOf(list[i])] = true }
+            if (Keyboard.ctrl || whoHover.hovered) {
+                var w = root.wanted(row)
+                if (!w.length && !Keyboard.ctrl) w = root.covered(row)
+                light(w)
+                return out
+            }
+            var cell = cubes.hoverCell
+            var n = cell * cubes.fold + 1
+            if (row.batch && !root.have(n)) { light(root.wanted(row)); return out }
+            out[cell] = true
+            return out
         }
     }
 }

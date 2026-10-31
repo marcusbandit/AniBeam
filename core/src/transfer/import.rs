@@ -176,6 +176,7 @@ async fn run(
         summary.fields_ignored.len(),
     );
     Ok(Finished {
+        plain: Some("Loaded your library from the file.".to_string()),
         level: Level::Info,
         message,
         body: EventBody::ImportFinished { summary },
@@ -309,6 +310,13 @@ async fn import_series(
                     && apply_match(tx, id, m, now)?
                 {
                     matched += 1;
+                }
+                // After the match, which would otherwise clear a count set by hand
+                if let Some(n) = entry.episodes_set {
+                    tx.execute(
+                        "UPDATE series SET episodes_set = ?2, episodes_set_season = ?3 WHERE id = ?1",
+                        params![id as i64, n as i64, entry.episodes_set_season.map(|s| s as i64)],
+                    )?;
                 }
                 touched.push(id);
             }
@@ -779,6 +787,8 @@ async fn import_preferences(
                 // The export format predates On hold too.
                 on_hold_auto: current.on_hold_auto,
                 on_hold_days: current.on_hold_days,
+                // Telling Discord what plays is this machine's business too.
+                discord_presence: current.discord_presence,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

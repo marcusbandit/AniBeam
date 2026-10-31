@@ -166,9 +166,16 @@ pub(crate) fn name_for(
     }
 }
 
-/// `base/name`, as Python's `os.path.join` makes it.
+/// `base/name`, as Python's `posixpath.join` makes it: a forward slash on
+/// every host, since the path is qBittorrent's and Windows reads it too.
 pub fn join(base: &str, name: &str) -> String {
-    Path::new(base).join(name).to_string_lossy().into_owned()
+    if name.starts_with('/') || base.is_empty() {
+        name.to_string()
+    } else if base.ends_with('/') {
+        format!("{base}{name}")
+    } else {
+        format!("{base}/{name}")
+    }
 }
 
 /// A path as anirss compares them: `~` expanded, `.`, `..` and repeated

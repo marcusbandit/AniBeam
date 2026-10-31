@@ -23,22 +23,41 @@ const ALWAYS: [(&str, &str); 2] = [
     ("example.com", "https://example.com/"),
 ];
 
-/// The hosts a search on this phone goes to, one each, with the site's front page to fetch.
-fn searched_hosts(core: &Core) -> Vec<(String, String)> {
-    let mut out: Vec<(String, String)> = Vec::new();
-    for s in super::search_sources(core) {
-        let host = crate::repos::index::host_of(&s.url);
-        if host.is_empty() || out.iter().any(|(h, _)| *h == host) {
+/// The hosts a search on this phone goes to, one each, with the site's front page to fetch
+/// and the port its searches connect to.
+fn searched_hosts(core: &Core) -> Vec<(String, String, u16)> {
+    let mut out: Vec<(String, String, u16)> = Vec::new();
+    // The runnable addresses, not the shown ones: a torznab source's `{host}` is filled there.
+    for (_, e) in super::searched(core) {
+        let host = crate::repos::index::host_of(&e.url);
+        let port = port_of(&e.url);
+        // By host and port: a Prowlarr and a Jackett on one machine are two servers.
+        if host.is_empty() || out.iter().any(|(h, _, p)| *h == host && *p == port) {
             continue;
         }
-        let scheme = if s.url.starts_with("http://") {
+        let scheme = if e.url.starts_with("http://") {
             "http"
         } else {
             "https"
         };
-        out.push((host.clone(), format!("{scheme}://{host}/")));
+        // The port stays (a Prowlarr listens on 9696); a login in the address never goes out.
+        let authority = crate::repos::index::authority_of(&e.url);
+        let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+        out.push((host.clone(), format!("{scheme}://{authority}/"), port));
     }
     out
+}
+
+/// The port a connection to `url` goes to: the one in the address, else the scheme's own.
+fn port_of(url: &str) -> u16 {
+    let authority = crate::repos::index::authority_of(url);
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    // A ':' inside an IPv6 literal's brackets is not a port.
+    authority
+        .rsplit_once(':')
+        .filter(|(_, port)| !port.contains(']'))
+        .and_then(|(_, port)| port.parse().ok())
+        .unwrap_or(if url.starts_with("http://") { 80 } else { 443 })
 }
 
 fn ms(since: Instant) -> u64 {
@@ -54,11 +73,11 @@ fn line(name: String, ok: bool, detail: String, ms: u64) -> NetCheck {
     }
 }
 
-async fn tcp(ip: IpAddr) -> (bool, String, u64) {
+async fn tcp(ip: IpAddr, port: u16) -> (bool, String, u64) {
     let start = Instant::now();
     match tokio::time::timeout(
         STEP,
-        tokio::net::TcpStream::connect(SocketAddr::new(ip, 443)),
+        tokio::net::TcpStream::connect(SocketAddr::new(ip, port)),
     )
     .await
     {
@@ -68,9 +87,24 @@ async fn tcp(ip: IpAddr) -> (bool, String, u64) {
     }
 }
 
-async fn host(core: &Core, doh: &crate::net::doh::Doh, name: &str, url: &str) -> Vec<NetCheck> {
+async fn host(
+    core: &Core,
+    doh: &crate::net::doh::Doh,
+    name: &str,
+    url: &str,
+    port: u16,
+) -> Vec<NetCheck> {
     let mut out = Vec::new();
     let mut ips: Vec<IpAddr> = Vec::new();
+    // Named with the port when it is not the scheme's own, so two servers on one machine read
+    // apart, and the fetch says HTTP when that is what it is.
+    let plain = url.starts_with("http://");
+    let label = if port == if plain { 80 } else { 443 } {
+        name.to_string()
+    } else {
+        format!("{name}:{port}")
+    };
+    let fetch = if plain { "HTTP" } else { "HTTPS" };
 
     let start = Instant::now();
     let system = tokio::time::timeout(STEP, tokio::net::lookup_host((name, 443))).await;
@@ -83,7 +117,7 @@ async fn host(core: &Core, doh: &crate::net::doh::Doh, name: &str, url: &str) ->
                 .collect::<Vec<_>>()
                 .join(", ");
             out.push(line(
-                format!("{name}: network DNS"),
+                format!("{label}: network DNS"),
                 !found.is_empty(),
                 shown,
                 ms(start),
@@ -91,50 +125,52 @@ async fn host(core: &Core, doh: &crate::net::doh::Doh, name: &str, url: &str) ->
             ips.extend(found);
         }
         Ok(Err(e)) => out.push(line(
-            format!("{name}: network DNS"),
+            format!("{label}: network DNS"),
             false,
             format!("failed: {e}"),
             ms(start),
         )),
         Err(_) => out.push(line(
-            format!("{name}: network DNS"),
+            format!("{label}: network DNS"),
             false,
             "no answer".into(),
             ms(start),
         )),
     }
 
-    let start = Instant::now();
-    match doh.lookup(name).await {
-        Some(found) => {
-            let shown = found
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ");
-            out.push(line(
-                format!("{name}: DNS over HTTPS"),
-                true,
-                shown,
-                ms(start),
-            ));
-            for ip in found {
-                if !ips.contains(&ip) {
-                    ips.push(ip);
+    let doh_line = format!("{label}: DNS over HTTPS");
+    if name.parse::<IpAddr>().is_ok() {
+        out.push(line(doh_line, true, "skipped, an address".into(), 0));
+    } else if crate::net::doh::is_home_name(name) {
+        out.push(line(doh_line, true, "skipped, home-network name".into(), 0));
+    } else {
+        let start = Instant::now();
+        match doh.lookup(name).await {
+            Some(found) => {
+                let shown = found
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push(line(doh_line, true, shown, ms(start)));
+                for ip in found {
+                    if !ips.contains(&ip) {
+                        ips.push(ip);
+                    }
                 }
             }
+            None => out.push(line(
+                doh_line,
+                false,
+                "no resolver answered".into(),
+                ms(start),
+            )),
         }
-        None => out.push(line(
-            format!("{name}: DNS over HTTPS"),
-            false,
-            "no resolver answered".into(),
-            ms(start),
-        )),
     }
 
     for ip in ips.iter().filter(|ip| ip.is_ipv4()).take(3) {
-        let (ok, detail, t) = tcp(*ip).await;
-        out.push(line(format!("{name}: connect {ip}"), ok, detail, t));
+        let (ok, detail, t) = tcp(*ip, port).await;
+        out.push(line(format!("{label}: connect {ip}"), ok, detail, t));
     }
 
     let start = Instant::now();
@@ -165,12 +201,17 @@ async fn host(core: &Core, doh: &crate::net::doh::Doh, name: &str, url: &str) ->
         .await;
     match answer {
         Ok(r) => out.push(line(
-            format!("{name}: HTTPS"),
+            format!("{label}: {fetch}"),
             r.is_success(),
             format!("HTTP {}, {} bytes", r.status, r.body.len()),
             ms(start),
         )),
-        Err(e) => out.push(line(format!("{name}: HTTPS"), false, e.message, ms(start))),
+        Err(e) => out.push(line(
+            format!("{label}: {fetch}"),
+            false,
+            e.message,
+            ms(start),
+        )),
     }
     out
 }
@@ -186,14 +227,18 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         return Vec::new();
     };
     let mut hosts = searched_hosts(core);
-    hosts.extend(ALWAYS.iter().map(|(h, u)| (h.to_string(), u.to_string())));
+    hosts.extend(
+        ALWAYS
+            .iter()
+            .map(|(h, u)| (h.to_string(), u.to_string(), port_of(u))),
+    );
     // All at once, as before: a dropped host costs one timeout, not one each.
     let tasks: Vec<_> = hosts
         .into_iter()
-        .map(|(name, url)| {
+        .map(|(name, url, port)| {
             let (owner, doh) = (owner.clone(), doh.clone());
             core.handle
-                .spawn(async move { host(&owner, &doh, &name, &url).await })
+                .spawn(async move { host(&owner, &doh, &name, &url, port).await })
         })
         .collect();
     let mut out = Vec::new();
@@ -201,4 +246,19 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         out.extend(t.await.unwrap_or_default());
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_connect_step_takes_the_address_port() {
+        assert_eq!(port_of("https://example.org/?q={query}"), 443);
+        assert_eq!(port_of("http://jackett.lan/api?q={query}"), 80);
+        assert_eq!(port_of("http://192.168.1.10:9696/1/api?q={query}"), 9696);
+        assert_eq!(port_of("https://me:pw@idx.example:8443/api"), 8443);
+        assert_eq!(port_of("http://[::1]:9117/api"), 9117);
+        assert_eq!(port_of("https://[::1]/api"), 443);
+    }
 }

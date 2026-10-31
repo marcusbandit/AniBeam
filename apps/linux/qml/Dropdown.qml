@@ -29,7 +29,7 @@ Corner {
     readonly property string current: options.length > index && index >= 0 ? String(options[index]) : ""
     readonly property bool opened: pop.opened
     implicitWidth: Math.max(minWidth, label.implicitWidth + theme.space(4) * 2)
-    scale: hover.pressed ? 0.98 : 1
+    scale: theme.reducedMotion ? 1 : (hover.pressed ? 0.98 : 1)
     implicitHeight: theme.controlHeight
     radius: height / 2
     smoothing: theme.cornerSmoothing

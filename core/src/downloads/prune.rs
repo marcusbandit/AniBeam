@@ -260,8 +260,10 @@ async fn check(
             .await
         {
             Ok(_) => {
-                core.bus.info(
+                core.bus.say(
+                    Level::Info,
                     Stage::Downloads,
+                    format!("Unsubscribed from {}, it finished airing.", d.title),
                     format!(
                         "Unsubscribed from {}: finished airing {} ago",
                         d.title,
@@ -271,8 +273,13 @@ async fn check(
                 );
             }
             Err(e) => {
-                core.bus.warn(
+                core.bus.say(
+                    Level::Warn,
                     Stage::Downloads,
+                    format!(
+                        "Could not unsubscribe from {}. Check Downloads in Settings.",
+                        d.title
+                    ),
                     format!(
                         "Could not unsubscribe from {}: {}",
                         d.title,

@@ -56,11 +56,30 @@ impl EventBus {
     }
 
     /// Stamps `seq` and `at`, persists Info and above to the ring, then
-    /// calls every listener with the finished event.
+    /// calls every listener with the finished event. A line emitted here has
+    /// no plain wording of its own: at Info and below only the developer log
+    /// shows it, and a warning or an error gets the general line for its
+    /// stage, so a problem never goes unsaid. `emit_said` takes the wording,
+    /// and with `None` keeps even a problem to the developer log.
     pub fn emit(
         &self,
         level: Level,
         stage: Stage,
+        message: impl Into<String>,
+        job: Option<JobRef>,
+        body: EventBody,
+    ) -> Event {
+        let plain = (level >= Level::Warn).then(|| stage_problem(stage));
+        self.emit_said(level, stage, plain, message, job, body)
+    }
+
+    /// `emit` with the line a person reads in the plain activity log beside
+    /// the developer's `message`.
+    pub fn emit_said(
+        &self,
+        level: Level,
+        stage: Stage,
+        plain: Option<String>,
         message: impl Into<String>,
         job: Option<JobRef>,
         mut body: EventBody,
@@ -77,14 +96,26 @@ impl EventBus {
             level,
             stage,
             message: message.into(),
+            plain,
             job,
             body,
         };
         // Before the listeners, so a shell that rereads on hearing the
         // event never finds its cache still stamped current. Progress is
-        // the one body that is never a change of state on its own: every
-        // write behind it is followed by its own event.
-        if !matches!(event.body, EventBody::JobProgress { .. }) {
+        // never a change of state on its own: every write behind it is
+        // followed by its own event.
+        // A torrent read is not one either: it is the client's list as polled every few
+        // seconds, and a series whose downloading changed is announced by its own
+        // SeriesChanged (downloads::list_torrents). Moving the generation on each read
+        // emptied the shell's read cache and the kept snapshot every few seconds while a
+        // download ran, so no page ever found its library read cached (#289).
+        // Nor is a job starting: what it goes on to change is announced by its own events.
+        if !matches!(
+            event.body,
+            EventBody::JobProgress { .. }
+                | EventBody::JobStarted { .. }
+                | EventBody::TorrentsRead { .. }
+        ) {
             self.generation.fetch_add(1, Ordering::SeqCst);
         }
         if level != Level::Debug {
@@ -118,6 +149,19 @@ impl EventBus {
     pub fn error(&self, stage: Stage, message: impl Into<String>, body: EventBody) -> Event {
         self.emit(Level::Error, stage, message, None, body)
     }
+    /// A line for both logs: `plain` for the person, `message` for the
+    /// developer view. The two may say the same thing when the developer
+    /// line is already plain.
+    pub fn say(
+        &self,
+        level: Level,
+        stage: Stage,
+        plain: impl Into<String>,
+        message: impl Into<String>,
+        body: EventBody,
+    ) -> Event {
+        self.emit_said(level, stage, Some(plain.into()), message, None, body)
+    }
 
     /// Fire-and-forget: queued on the writer thread with no reply, so an
     /// `emit` from inside a `write` or `tx` closure never waits on itself.
@@ -137,8 +181,8 @@ impl EventBus {
                 }
             };
             if let Err(err) = c.execute(
-                "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body],
+                "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body, e.plain],
             ) {
                 tracing::warn!("failed to insert event seq {}: {err}", e.seq);
                 return;
@@ -180,7 +224,7 @@ impl EventBus {
         let limit = limit.min(RING_SIZE);
         self.store.write(move |c| {
             let mut stmt = c.prepare_cached(
-                "SELECT seq, at, level, stage, message, job_id, job_kind, job_phase, body FROM events ORDER BY seq DESC LIMIT ?1",
+                "SELECT seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain FROM events ORDER BY seq DESC LIMIT ?1",
             )?;
             let mut rows: Vec<Event> = stmt
                 .query_map(params![limit as i64], |r| {
@@ -193,6 +237,7 @@ impl EventBus {
                     let job_kind_col: Option<String> = r.get(6)?;
                     let job_phase_col: Option<String> = r.get(7)?;
                     let body_col: String = r.get(8)?;
+                    let plain: Option<String> = r.get(9)?;
 
                     let Some(level) = Level::from_column(&level_col) else {
                         tracing::warn!("skipping event seq {seq}: unknown level {level_col:?}");
@@ -221,7 +266,7 @@ impl EventBus {
                         return Ok(None);
                     };
 
-                    Ok(Some(Event { seq: seq as u64, at: time::from_secs(at), level, stage, message, job, body }))
+                    Ok(Some(Event { seq: seq as u64, at: time::from_secs(at), level, stage, message, plain, job, body }))
                 })?
                 .collect::<Result<Vec<Option<Event>>, _>>()?
                 .into_iter()
@@ -238,6 +283,22 @@ impl EventBus {
             Ok(())
         })
     }
+}
+
+/// The plain line for a warning or an error whose site has no wording of its
+/// own: which part of the app it touched, and where the details are.
+pub fn stage_problem(stage: Stage) -> String {
+    let area = match stage {
+        Stage::Library => "your library",
+        Stage::Metadata => "show info",
+        Stage::Trackers => "your lists",
+        Stage::Franchise => "related shows",
+        Stage::Playback => "playback",
+        Stage::Store => "saving your data",
+        Stage::System => "AniBeam",
+        Stage::Downloads => "downloads",
+    };
+    format!("Something went wrong with {area}. Developer options have the details.")
 }
 
 /// Handed back by `Core::subscribe`; dropping it or calling `unsubscribe`
@@ -350,6 +411,51 @@ mod tests {
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].message, "hello");
         assert_eq!(recent[0].level, Level::Info);
+    }
+
+    #[test]
+    fn a_torrent_read_leaves_the_generation_where_it_was() {
+        let (_d, bus) = bus();
+        let g0 = bus.generation();
+        bus.debug(
+            Stage::Downloads,
+            "3 torrents read",
+            EventBody::TorrentsRead {
+                torrents: vec![],
+                transfer: Default::default(),
+                shows: vec![],
+            },
+        );
+        assert_eq!(bus.generation(), g0);
+    }
+
+    #[test]
+    fn a_problem_without_wording_still_reaches_the_plain_log() {
+        let (_d, bus) = bus();
+        let quiet = bus.info(Stage::Library, "scan finished", EventBody::Notice);
+        let loud = bus.warn(Stage::Library, "watcher error: too many", EventBody::Notice);
+        let kept = bus.emit_said(
+            Level::Warn,
+            Stage::Library,
+            None,
+            "chore",
+            None,
+            EventBody::Notice,
+        );
+        assert_eq!(quiet.plain, None);
+        assert_eq!(
+            loud.plain.as_deref(),
+            Some(stage_problem(Stage::Library).as_str())
+        );
+        assert_eq!(
+            kept.plain, None,
+            "emit_said with None keeps it to the developer log"
+        );
+        let stored = bus.recent(10).unwrap();
+        assert_eq!(
+            stored[1].plain, loud.plain,
+            "the plain line is kept in the ring"
+        );
     }
 
     /// What a listener saw the generation as, while it was being told.

@@ -1,21 +1,74 @@
-// The window. The first frame is the ground alone: Hyprland answers the first configure
-// with 0x0 and sends the tile's size only after the window has mapped, so everything else
-// is built once the window is settled and laid out once, at the compositor's size.
+// The window. The frame and the first page are built as soon as the engine and the core
+// are up, while the render thread sets up the GPU. Hyprland answers the first configure with
+// 0x0 and sends the tile's size only after the window has mapped; that arrives as one
+// resize and one relayout. `settled` still gates the --shoot and --drive captures.
 import QtQuick
 import QtQuick.Window
+import QtCore
 import com.marcusrosado.AniBeam
 
 Window {
     id: window
-    width: Shell.shootWidth > 0 ? Shell.shootWidth : 1280   // a hint; the compositor sizes the window
-    height: Shell.shootHeight > 0 ? Shell.shootHeight : 800
+    // A hint; a tiling compositor sizes the window itself. Elsewhere the window comes back
+    // at the size and place it was left, and maximized if it was.
+    width: Shell.shootWidth > 0 ? Shell.shootWidth : placement.width
+    height: Shell.shootHeight > 0 ? Shell.shootHeight : placement.height
     visible: true
+    readonly property bool capturing: Shell.shootWidth > 0 || Shell.shoot !== "" || Shell.driveOut !== ""
+    Settings {
+        id: placement
+        location: Shell.settingsUrl
+        category: "window"
+        property int width: 1280
+        property int height: 800
+        property int x: -1
+        property int y: -1
+        property bool maximized: false
+    }
+    Component.onCompleted: {
+        if (capturing) return
+        if (placement.x >= 0 && placement.y >= 0) { window.x = placement.x; window.y = placement.y }
+        if (placement.maximized) window.visibility = Window.Maximized
+    }
+    // Kept a moment after the last change, and only the size of a plain window: a
+    // maximized or fullscreen one comes back as that instead
+    Timer {
+        id: placementSave
+        interval: 600
+        onTriggered: {
+            if (window.capturing) return
+            placement.maximized = window.visibility === Window.Maximized
+            if (window.visibility !== Window.Windowed) return
+            placement.width = window.width
+            placement.height = window.height
+            placement.x = window.x
+            placement.y = window.y
+        }
+    }
+    onXChanged: placementSave.restart()
+    onYChanged: placementSave.restart()
+    onVisibilityChanged: placementSave.restart()
 
     // The tokens every component below reaches through the context chain. A plain Window
     // has no font property, so the face and the size are set per Text from these tokens.
     // Until the engine's first push every token is absent, so the ground is the neutral one
     // until Theme.ready rather than Tokens' missing-token magenta.
     Tokens { id: theme }
+    // The tokens the native poster cards draw with (CardFace, #289), handed over at start and
+    // again whenever the theme moves
+    QtObject {
+        id: cardTokens
+        readonly property var tokens: ({
+            fontFamily: theme.fontFamily, typeSmall: theme.typeSmall, typeNormal: theme.typeNormal, typeLarge: theme.typeLarge,
+            space: 4 * theme.densityFactor, radiusTile: theme.radiusTile, radiusSm: theme.radiusSm, scrimReach: theme.scrimReach,
+            text: theme.text, textDim: theme.textDim, textFaint: theme.textFaint, accent: theme.accent, focusRing: theme.focusRing,
+            onPoster: theme.onPoster, onPosterDim: theme.onPosterDim, accentOnPoster: theme.accentOnPoster, posterScrim: theme.posterScrim,
+            downloadInk: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3),
+            cubes: theme.cubeStates
+        })
+        onTokensChanged: CardStyle.set(tokens)
+        Component.onCompleted: CardStyle.set(tokens)
+    }
     color: Theme.ready ? theme.bg : "#101216"
 
     // The poster pool: every poster decoded once and held, so a page's first
@@ -23,7 +76,11 @@ Window {
     // Filled the way the pages show them — airing soonest, then recently
     // viewed, then the shelf — and refilled (debounced) when the library says
     // a series changed, only ever replacing the pool when the path set moved.
-    PosterPool { id: posterPool }
+    // Developer options can switch the pool off, and switching images off empties it too.
+    PosterPool {
+        id: posterPool
+        capacity: frame.item && frame.item.devOn && (!frame.item.devKept.posterPool || !frame.item.devKept.images) ? 0 : 60
+    }
     // One read for both lists: listLibrary carries the airing rail with the shelf, and
     // the Door keeps the answer until the library changes, so a page reading the same
     // thing in the same beat pays nothing.
@@ -39,6 +96,12 @@ Window {
             posterPool.paths = paths
     }
     Timer { id: poolDebounce; interval: 2000; onTriggered: window.fillPool() }
+    // Measuring sends posters through the image://dev provider, a different url from the
+    // file the pool decoded, so the pool would miss every page; it starts over instead.
+    Connections {
+        target: frame.item && frame.item.devOn !== undefined ? frame.item : null
+        function onDevOnChanged() { posterPool.paths = []; poolDebounce.restart() }
+    }
     Connections { target: Door; function onSeriesChanged(cards) { poolDebounce.restart() } }
     // The first fill waits a beat after the library is ready, so the first page's own
     // posters reach the single pixmap reader thread ahead of the pool's.
@@ -64,10 +127,14 @@ Window {
 
     property bool firstFrame: false
     property bool settled: false
-    onAfterAnimating: if (!firstFrame) { firstFrame = true; settle.start() }
-    onWidthChanged: if (firstFrame && !settled) settled = true
-    onHeightChanged: if (firstFrame && !settled) settled = true
-    Timer { id: settle; interval: 200; onTriggered: window.settled = true }
+    onAfterAnimating: if (!firstFrame) { firstFrame = true; Dev.mark("first frame (empty window)"); settle.start() }
+    onWidthChanged: { if (firstFrame && !settled) settled = true; placementSave.restart() }
+    onHeightChanged: { if (firstFrame && !settled) settled = true; placementSave.restart() }
+    // The compositor's size arrives as a resize right after the window maps, and the line
+    // above settles on it at once; this is only the fallback for a window that is never
+    // resized (a tiling WM that keeps the hint, a floating window, offscreen). It was 200 ms,
+    // which was most of a launch (#289).
+    Timer { id: settle; interval: 30; onTriggered: window.settled = true }
 
     // --page takes an optional ":<action>" suffix for a shoot capture that needs the frame
     // in a state a bare page name cannot reach, such as the activity drawer open over it;
@@ -78,9 +145,13 @@ Window {
     Loader {
         id: frame
         anchors.fill: parent
-        active: window.settled && Theme.ready && Door.ready
+        // Built as soon as the engine and the core are up, not after the first empty frame:
+        // the render thread sets up the GPU meanwhile, and a compositor's late size is one
+        // relayout, where waiting for it was most of a launch (#289)
+        active: Theme.ready && Door.ready
         sourceComponent: window.pageName === "tokens" ? tokensPage : frameComponent
         onLoaded: {
+            Dev.mark("frame built")
             // Home is the default page, so its props ride only when a launch actually
             // handed some over; every other page always replaces.
             var homeWithProps = window.pageName === "home" && Shell.props !== ""
@@ -116,7 +187,7 @@ Window {
         if (window.settled && Theme.ready && frame.item && (Shell.shoot !== "" || Shell.driveOut !== ""))
             shootTimer.start()
     }
-    onSettledChanged: window.maybeShoot()
+    onSettledChanged: { if (window.settled) Dev.mark("window settled"); window.maybeShoot() }
     Connections { target: Theme; function onReadyChanged() { window.maybeShoot() } }
     Timer {
         id: shootTimer

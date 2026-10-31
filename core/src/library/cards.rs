@@ -9,7 +9,7 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::contract::*;
-use crate::library::snapshot::{AiringRow, FileRow, NextEpisode, SeriesRow, Snapshot};
+use crate::library::snapshot::{AiringRow, FileRow, NextEpisode, SeriesRow, Snapshot, season_of};
 use crate::library::{labels, titles};
 use crate::time;
 
@@ -24,6 +24,49 @@ pub const UNKNOWN_TAIL: f64 = 0.15;
 
 /// The most cubes a row draws: past this a count says more than a row.
 pub const CUBES_MAX: u32 = 400;
+
+/// What decides whether a file of one series is watched (#266), the way the series page
+/// marks its episodes: within the tracker's progress, or played to the end here. The
+/// tracker's progress counts one season, so it only applies to a folder holding one, and
+/// never past the provider's own count. A film once watched in either. An extra never is.
+pub(crate) struct Watched<'a> {
+    done: HashSet<&'a str>,
+    progress: Option<u32>,
+    film: bool,
+    total: Option<u32>,
+    one_season: bool,
+}
+
+impl Watched<'_> {
+    /// Whether the tracker's progress covers episode `n`.
+    fn tracked(&self, n: f64) -> bool {
+        self.one_season
+            && n >= 1.0
+            && self.progress.is_some_and(|w| n <= f64::from(w))
+            && self.total.is_none_or(|t| n <= f64::from(t))
+    }
+
+    pub(crate) fn file(&self, f: &FileRow) -> bool {
+        if !f.is_episode {
+            return false;
+        }
+        if self.done.contains(f.episode_key.as_str()) {
+            return true;
+        }
+        if self.film {
+            return self.progress.is_some_and(|w| w >= 1);
+        }
+        self.tracked(f.number)
+    }
+}
+
+/// A series' share of the disk (#266).
+pub(crate) struct Usage {
+    pub bytes: u64,
+    pub watched_bytes: u64,
+    pub watched_episodes: u64,
+    pub finished: bool,
+}
 
 /// The inputs of one series' cube row, gathered in `card_of`.
 pub struct CubeFacts<'a> {
@@ -474,8 +517,10 @@ impl Snapshot {
     /// The furthest episode known out, the count the upcoming list starts
     /// past: aired by date, one short of the next scheduled, within the
     /// tracker's progress, or on disk. Only the card's own season counts
-    /// for a TVmaze match, whose numbers restart, and a file numbered past
-    /// a known total is a stray, not a release.
+    /// for a TVmaze match, whose numbers restart, so there what aired is
+    /// read off that season rather than `latest_aired`, which counts every
+    /// season on disk; a file numbered past a known total is a stray, not a
+    /// release.
     pub(crate) fn released_of(
         &self,
         row: &SeriesRow,
@@ -487,6 +532,18 @@ impl Snapshot {
     ) -> u32 {
         let season = self.card_season(row);
         let total = total.filter(|t| *t > 0);
+        let latest_aired = match season {
+            Some(_) => {
+                let now = time::to_secs(self.now);
+                self.airing_of(row)
+                    .iter()
+                    .filter(|a| a.aired_at.is_some_and(|at| at <= now))
+                    .map(|a| a.number)
+                    .max()
+                    .unwrap_or(0)
+            }
+            None => latest_aired,
+        };
         let on_disk = episodes
             .iter()
             .filter(|f| season.is_none_or(|s| f.season.unwrap_or(1) == s))
@@ -502,6 +559,73 @@ impl Snapshot {
             .max(on_disk)
             .max(before_next)
             .max(tracked.unwrap_or(0))
+    }
+
+    /// What decides whether a file of `row` is watched (#266), read once per series.
+    pub(crate) fn watched_of(&self, row: &SeriesRow) -> Watched<'_> {
+        let files = self.files_of(row.id);
+        let seasons: BTreeSet<u32> = files
+            .iter()
+            .filter(|f| f.is_episode)
+            .map(|f| f.season.unwrap_or(1))
+            .collect();
+        let media = row.media.as_ref();
+        Watched {
+            done: self
+                .completed
+                .get(&row.id)
+                .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
+                .unwrap_or_default(),
+            progress: self.tracker(row).map(|e| e.progress),
+            film: row.kind == SeriesKind::Movie,
+            total: media.and_then(|m| m.episodes).filter(|t| *t > 0),
+            one_season: seasons.len() <= 1,
+        }
+    }
+
+    /// What a series takes on disk, how much of it is watched, and whether it is confirmed
+    /// done with (`SeriesCard::finished_watched`).
+    pub(crate) fn usage_of(&self, row: &SeriesRow) -> Usage {
+        let files = self.files_of(row.id);
+        let w = self.watched_of(row);
+        let watched: Vec<&FileRow> = files.iter().filter(|f| w.file(f)).collect();
+        let mut keys: Vec<&str> = watched.iter().map(|f| f.episode_key.as_str()).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        Usage {
+            bytes: files.iter().map(|f| f.size).sum(),
+            watched_bytes: watched.iter().map(|f| f.size).sum(),
+            watched_episodes: keys.len() as u64,
+            finished: !files.is_empty() && self.finished_watched(row, &w),
+        }
+    }
+
+    /// Confirmed done with: the provider says Finished, and every episode of the provider's
+    /// own count is watched. A guessed or hand-set count never counts, nor does a show still
+    /// airing, on hiatus or with no status at all.
+    pub(crate) fn finished_watched(&self, row: &SeriesRow, w: &Watched) -> bool {
+        let finished = row
+            .media
+            .as_ref()
+            .and_then(|m| m.status.as_deref())
+            .and_then(AiringStatus::from_provider)
+            == Some(AiringStatus::Finished);
+        if !finished {
+            return false;
+        }
+        let files = self.files_of(row.id);
+        if w.film {
+            return files.iter().any(|f| w.file(f));
+        }
+        let Some(total) = w.total else {
+            return false;
+        };
+        let watched_here: HashSet<u32> = files
+            .iter()
+            .filter(|f| f.number >= 1.0 && f.number.fract() == 0.0 && w.file(f))
+            .map(|f| f.number as u32)
+            .collect();
+        (1..=total).all(|n| w.tracked(f64::from(n)) || watched_here.contains(&n))
     }
 
     pub fn card(&self, id: u64) -> Option<SeriesCard> {
@@ -526,6 +650,8 @@ impl Snapshot {
             .and_then(|m| m.status.as_deref())
             .and_then(AiringStatus::from_provider);
         let total = media.and_then(|m| m.episodes);
+        // A TVmaze count set by hand runs within the card's season (#283)
+        let plan_total = self.season_total(row, total);
         let entry = self.tracker(row);
         let watched = entry.map(|e| e.progress);
         let (total_episodes, total_is_estimate) = total_with_estimate(total, latest_aired, watched);
@@ -542,6 +668,28 @@ impl Snapshot {
             .filter(|f| f.number >= 1.0 && f.number.fract() == 0.0)
             .map(|f| f.number as u32)
             .collect();
+        let usage = self.usage_of(row);
+        // Episodes finished on this device. With no tracker they are all the watched state
+        // has to go on: a show watched to its end here reads caught up (#102).
+        let done: HashSet<&str> = self
+            .completed
+            .get(&row.id)
+            .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
+            .unwrap_or_default();
+        // Counted within the season the card is at, the latest on disk, so a run watched in
+        // season 1 never reads as season 2's
+        let season_now = episodes.last().map(|f| season_of(f));
+        let watched_here: BTreeSet<u32> = episodes
+            .iter()
+            .filter(|f| Some(season_of(f)) == season_now)
+            .filter(|f| f.number >= 1.0 && done.contains(f.episode_key.as_str()))
+            .map(|f| f.number as u32)
+            .collect();
+        let watched_run_here = if row.kind == SeriesKind::Movie {
+            None
+        } else {
+            (1..).take_while(|n| watched_here.contains(n)).last()
+        };
         SeriesCard {
             id: row.id,
             kind: row.kind,
@@ -572,23 +720,25 @@ impl Snapshot {
             extras_on_disk: (files.len() - episodes.len()) as u64,
             total_episodes,
             total_is_estimate,
+            episodes_set: row.episodes_set,
+            episodes_set_applied: row.episodes_set_applied,
+            count_season: self.card_season(row),
+            bytes_on_disk: usage.bytes,
+            watched_bytes: usage.watched_bytes,
+            watched_on_disk: usage.watched_episodes,
+            finished_watched: usage.finished,
             code,
             watched,
-            watched_state: watched_state(watched, total, latest_aired, latest_downloaded),
+            watched_state: watched_state(
+                watched.or(watched_run_here),
+                total,
+                latest_aired,
+                latest_downloaded,
+            ),
             episodes_here: on_disk.iter().copied().collect(),
             cubes: if row.kind == SeriesKind::Movie {
                 String::new()
             } else {
-                let done: HashSet<&str> = self
-                    .completed
-                    .get(&row.id)
-                    .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
-                    .unwrap_or_default();
-                let watched_here: BTreeSet<u32> = episodes
-                    .iter()
-                    .filter(|f| f.number >= 1.0 && done.contains(f.episode_key.as_str()))
-                    .map(|f| f.number as u32)
-                    .collect();
                 cubes(&CubeFacts {
                     total,
                     latest_aired,
@@ -626,8 +776,8 @@ impl Snapshot {
                 }),
                 None => predict_next(
                     airing,
-                    self.released_of(row, &episodes, total, latest_aired, None, watched),
-                    total,
+                    self.released_of(row, &episodes, plan_total, latest_aired, None, watched),
+                    plan_total,
                     status,
                     now,
                 )
@@ -1016,6 +1166,13 @@ mod tests {
             extras_on_disk: 0,
             total_episodes: Some(12),
             total_is_estimate: false,
+            episodes_set: None,
+            episodes_set_applied: false,
+            count_season: None,
+            bytes_on_disk: 0,
+            watched_bytes: 0,
+            watched_on_disk: 0,
+            finished_watched: false,
             code: None,
             watched: Some(12),
             watched_state: WatchedState::CaughtUp,

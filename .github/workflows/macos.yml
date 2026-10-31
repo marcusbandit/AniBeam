@@ -3,8 +3,8 @@ name: macOS
 # Builds AniBeam.app for Apple silicon on a macos-15 runner, with qbittorrent-nox and anirss
 # (and a Python to run it) inside, runs the core and shell tests there, smoke-tests the
 # bundle and both helpers with Homebrew moved out of reach, including the Downloads page
-# starting them on a fresh install. release.yml calls it for a version tag and puts
-# the .dmg on the draft release. A pull request that touches the core, the Qt shell or the
+# starting them on a fresh install. nightly.yml, release.yml and pr-build.yml call it and
+# put the .dmg on their release. A pull request that touches the core, the Qt shell or the
 # workspace runs it too, so a change that breaks the Mac shows up before it merges. Run it
 # from the Actions tab (Run workflow) for a build without a release.
 on:
@@ -19,11 +19,21 @@ on:
       - '.github/workflows/macos.yml'
   workflow_dispatch:
   workflow_call:
+    # nightly.yml, release.yml and pr-build.yml say which commit to build and what version it
+    # ships as; a pull request's own run builds its head and describes itself from git.
+    inputs:
+      ref:
+        type: string
+        default: ''
+      version:
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 env:
+  ANIBEAM_RELEASE_VERSION: ${{ inputs.version }}
   MACOSX_DEPLOYMENT_TARGET: '15.0'
   HOMEBREW_NO_AUTO_UPDATE: '1'
   HOMEBREW_NO_INSTALL_CLEANUP: '1'
@@ -33,6 +43,9 @@ env:
   # click. Empty on a fork's pull request, whose build then asks for a client ID instead.
   ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
   ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
+  # The project's Discord application, named after "Watching" in the presence. Empty
+  # leaves the Discord switch disabled.
+  ANIBEAM_DISCORD_CLIENT_ID: ${{ secrets.ANIBEAM_DISCORD_CLIENT_ID }}
 
 jobs:
   build-macos:
@@ -41,6 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0 # git describe names the version
 
       - name: Homebrew packages

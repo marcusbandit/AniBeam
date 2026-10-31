@@ -121,7 +121,7 @@ pub fn runtime(minutes: u32) -> String {
 }
 
 pub fn bytes(n: u64) -> String {
-    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut v = n as f64;
     let mut i = 0;
     while v >= 1024.0 && i < UNITS.len() - 1 {
@@ -260,6 +260,7 @@ mod tests {
         assert_eq!(bytes(1536), "1.5 KB");
         assert_eq!(bytes(312 * 1024 * 1024), "312.0 MB");
         assert_eq!(bytes(5 * 1024 * 1024 * 1024), "5.0 GB");
+        assert_eq!(bytes(3 * 1024 * 1024 * 1024 * 1024 / 2), "1.5 TB");
     }
 
     #[test]

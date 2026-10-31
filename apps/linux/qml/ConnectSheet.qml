@@ -189,9 +189,9 @@ Item {
                     id: closeGlyph
                     glyph: "x"
                     size: theme.space(4.5)
-                    color: theme.textDim
+                    color: closeMouse.containsMouse ? theme.text : theme.textDim
                     anchors.right: parent.right; anchors.top: parent.top
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
+                    MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
                 }
             }
 

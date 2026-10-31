@@ -137,11 +137,14 @@ pub(super) fn rule_def(spec: &SubscriptionSpec, save_path: &str, tags: &[String]
 
 // Adding torrents ----------------------------------------------------------------
 
-/// The releases into `save_base/<name>` (anirss `download_items`).
+/// The releases into `save_base/<name>`, or straight into `save_path` when
+/// given: the folder of a show already in the library (anirss
+/// `download_items`).
 pub(super) async fn download(
     core: &Arc<Core>,
     items: &[Release],
     name: Option<&str>,
+    save_path: Option<&str>,
 ) -> Result<AddedTorrents, CoreError> {
     if items.is_empty() {
         return Err(CoreError::invalid("items", "no items given"));
@@ -150,7 +153,10 @@ pub(super) async fn download(
     let links = checked_links(items.iter().map(|i| i.link.as_str()))?;
     let qbt = super::qbt_client(core).await?;
     let saving = paths::resolve(core, &qbt).await?;
-    let save_path = paths::join(&saving.save_base, &name);
+    let save_path = match save_path {
+        Some(p) => p.to_string(),
+        None => paths::join(&saving.save_base, &name),
+    };
     add_links(core, &qbt, &links, &save_path, &saving).await
 }
 

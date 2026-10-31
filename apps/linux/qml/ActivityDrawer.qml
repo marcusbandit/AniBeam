@@ -1,7 +1,9 @@
 // The activity drawer: rises from the status strip with exponential smoothing. A header
-// with the stage and level filters and the Copy, Clear and Close actions, then the core's
-// event stream at Info and above, newest first, with runs of identical lines folded into
-// one row that expands on click. Signal-only, like the log it shows: the drawer adds no
+// with its filters and the Copy, Clear and Close actions, then the core's event stream at
+// Info and above, newest first, with runs of identical lines folded into one row that
+// expands on click. A person sees the plain lines only, the ones the core worded for them,
+// filtered to everything or just problems (#287). With developer options on (`technical`)
+// it shows every line in the developer's words, with the stage and level filters. Signal-only, like the log it shows: the drawer adds no
 // chatter of its own, it only renders what the core already reported.
 import QtQuick
 import QtQuick.Controls.Basic as QC
@@ -13,6 +15,8 @@ Item {
     property real maxHeight: theme.space(100)
     property var entries: []
     property bool backfilled: false
+    property bool technical: false
+    property bool problemsOnly: false
     signal closed()
 
     readonly property var stages: ["Library", "Metadata", "Trackers", "Franchise", "Playback", "Store", "System", "Downloads"]
@@ -37,7 +41,13 @@ Item {
         entries = r.reply.events.slice().reverse().map(toEntry)
         backfilled = true
     }
-    function toEntry(e) { return { time: Qt.formatTime(new Date(e.at * 1000), "hh:mm:ss"), stage: e.stage, level: e.level, msg: e.message, seq: e.seq } }
+    // Today's lines say the time; older ones say the day too, so yesterday's error does not
+    // read as a fresh one
+    function stampOf(at) {
+        var d = new Date(at * 1000), now = new Date()
+        return d.toDateString() === now.toDateString() ? Qt.formatTime(d, "hh:mm:ss") : Qt.formatDateTime(d, "d MMM hh:mm")
+    }
+    function toEntry(e) { return { time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, plain: e.plain || "", seq: e.seq } }
     Connections {
         target: Door
         function onEvent(envelope) {
@@ -77,8 +87,14 @@ Item {
         var run = null
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
-            if (sAny && !stageOn[e.stage]) continue
-            if (lAny && !levelOn[e.level]) continue
+            if (!technical) {
+                if (e.plain === "") continue
+                if (problemsOnly && e.level === "Info") continue
+                e = { time: e.time, stage: "", level: e.level, msg: e.plain, seq: e.seq }
+            } else {
+                if (sAny && !stageOn[e.stage]) continue
+                if (lAny && !levelOn[e.level]) continue
+            }
             if (run && run.stage === e.stage && run.level === e.level && run.msg === e.msg) {
                 run.count += 1
                 run.items.push(e)
@@ -90,20 +106,41 @@ Item {
         }
         var flat = []
         out.forEach(function(r) {
-            if (r.count > 1 && expanded[r.key]) r.items.forEach(function(e) { flat.push({ time: e.time, stage: e.stage, level: e.level, msg: e.msg, count: 1, key: -1 }) })
+            // An unfolded run keeps a fold chip on its first line, to fold it back up
+            if (r.count > 1 && expanded[r.key]) r.items.forEach(function(e, n) { flat.push({ time: e.time, stage: e.stage, level: e.level, msg: e.msg, count: 1, key: -1, foldKey: n === 0 ? r.key : -1 }) })
             else flat.push(r)
         })
         return flat
     }
 
     // The rows on screen, one line each, a folded run carrying its count.
+    function lineOf(r) { return r.time + "  " + (r.stage ? r.stage + "  " + r.level + "  " : "") + r.msg + (r.count > 1 ? "  ×" + r.count : "") }
+    property bool copied: false
+    Timer { id: copiedTimer; interval: 2000; onTriggered: root.copied = false }
     function copyAll() {
-        var lines = rows.map(function(r) { return r.time + "  " + r.stage + "  " + r.level + "  " + r.msg + (r.count > 1 ? "  ×" + r.count : "") })
-        clipboard.text = lines.join("\n")
+        clipboardLoader.active = true
+        var clipboard = clipboardLoader.item
+        clipboard.text = rows.map(lineOf).join("\n")
         clipboard.selectAll()
         clipboard.copy()
+        copied = true
+        copiedTimer.restart()
     }
-    TextEdit { id: clipboard; visible: false }
+    // One line, by a click on it
+    function copyLine(r) {
+        clipboardLoader.active = true
+        var clipboard = clipboardLoader.item
+        clipboard.text = lineOf(r)
+        clipboard.selectAll()
+        clipboard.copy()
+        frame.toast("Copied the line")
+    }
+    // Clear empties the log for good: the first click asks, the second clears
+    property bool clearArmed: false
+    Timer { id: clearDisarm; interval: 4000; onTriggered: root.clearArmed = false }
+    // A TextEdit only to reach the clipboard, made on the first Copy: built with the frame
+    // it was 8 ms of every launch (#289)
+    Loader { id: clipboardLoader; active: false; sourceComponent: TextEdit { visible: false } }
 
     Item {
         id: body
@@ -147,8 +184,16 @@ Item {
                     font.weight: Font.Bold
                 }
                 Item { width: theme.space(2); height: 1 }
+                Seg {
+                    visible: !root.technical
+                    anchors.verticalCenter: parent.verticalCenter
+                    small: true
+                    options: [{ text: "Everything" }, { text: "Problems" }]
+                    index: root.problemsOnly ? 1 : 0
+                    onPicked: function(i) { root.problemsOnly = i === 1 }
+                }
                 Repeater {
-                    model: root.stages
+                    model: root.technical ? root.stages : []
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
@@ -161,9 +206,9 @@ Item {
                         onClicked: root.stageOn = root.flip(root.stageOn, modelData)
                     }
                 }
-                Item { width: theme.space(2); height: 1 }
+                Item { visible: root.technical; width: theme.space(2); height: 1 }
                 Repeater {
-                    model: root.levels
+                    model: root.technical ? root.levels : []
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
@@ -182,8 +227,15 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(1)
-                Button { text: "Copy"; icon: "copy"; flat: true; small: true; onClicked: root.copyAll() }
-                Button { text: "Clear"; icon: "trash-2"; flat: true; small: true; onClicked: { Door.clearEvents(); root.entries = []; root.expanded = ({}) } }
+                Button { text: root.copied ? "Copied" : "Copy"; icon: root.copied ? "check" : "copy"; flat: true; small: true; onClicked: root.copyAll() }
+                Button {
+                    text: root.clearArmed ? "Clear every line" : "Clear"; icon: "trash-2"; flat: true; small: true; danger: root.clearArmed
+                    onClicked: {
+                        if (!root.clearArmed) { root.clearArmed = true; clearDisarm.restart(); return }
+                        root.clearArmed = false
+                        Door.clearEvents(); root.entries = []; root.expanded = ({})
+                    }
+                }
                 Button { text: "Close"; icon: "x"; flat: true; small: true; onClicked: root.close() }
             }
         }
@@ -203,9 +255,13 @@ Item {
             model: root.rows
             WheelStep { flick: list }
             delegate: Item {
+                id: logRow
                 required property var modelData
                 width: list.width
                 height: theme.space(7)
+                Rectangle { anchors.fill: parent; color: rowMouse.containsMouse ? theme.tileHover : "transparent"; radius: theme.radiusSm }
+                MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.copyLine(logRow.modelData) }
+                Tooltip { text: "Click to copy the line" }
                 Row {
                     id: line
                     anchors.fill: parent
@@ -220,6 +276,7 @@ Item {
                     }
                     Chip {
                         id: stageChip
+                        visible: modelData.stage !== ""
                         anchors.verticalCenter: parent.verticalCenter
                         text: modelData.stage
                         small: true
@@ -229,12 +286,22 @@ Item {
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, line.width - stamp.width - stageChip.width - line.spacing * 2 - (fold.visible ? fold.width + line.spacing : 0))
+                        width: Math.min(implicitWidth, line.width - stamp.width - (stageChip.visible ? stageChip.width + line.spacing : 0) - line.spacing - (fold.visible ? fold.width + line.spacing : 0))
                         text: modelData.msg
                         color: root.levelColor(modelData.level)
                         elide: Text.ElideRight
                         font.family: theme.fontSans
                         font.pointSize: theme.typeSmall
+                    }
+                    Chip {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: modelData.foldKey !== undefined && modelData.foldKey >= 0
+                        text: "Fold"
+                        small: true
+                        clickable: true
+                        color: theme.tileSunken
+                        textColor: theme.textDim
+                        onClicked: { var n = {}; for (var k in root.expanded) if (Number(k) !== modelData.foldKey) n[k] = root.expanded[k]; root.expanded = n }
                     }
                     Chip {
                         id: fold
@@ -251,6 +318,13 @@ Item {
                 Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.tileSunken }
             }
             QC.ScrollBar.vertical: ThinScrollBar {}
+        }
+        Label {
+            visible: root.rows.length === 0
+            anchors.top: header.bottom; anchors.topMargin: theme.space(4)
+            anchors.left: parent.left; anchors.leftMargin: theme.space(4)
+            text: root.technical ? "Nothing logged yet." : root.problemsOnly ? "No problems. Everything worked." : "Nothing to report yet. What AniBeam does for you shows up here."
+            color: theme.textDim
         }
     }
 }

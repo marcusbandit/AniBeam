@@ -76,6 +76,9 @@ pub mod qobject {
         fn track_ref(self: &Player, track: &QJsonObject) -> QJsonObject;
         #[qinvokable]
         fn subtitle_options(self: &Player, defaults: &QJsonObject) -> QJsonArray;
+        /// The subtitle defaults AniBeam ships with, for Settings' Reset.
+        #[qinvokable]
+        fn stock_subtitle_defaults(self: &Player) -> QJsonObject;
         /// The subtitle preview's fallback source when there is no view history: a black
         /// lavfi picture and the one-line sample SRT that goes with it.
         #[qinvokable]
@@ -332,6 +335,14 @@ impl qobject::Player {
             ]));
             let r = list.first().map(anibeam_core::playback::tracks::track_ref);
             crate::json::to_qjson_object(&serde_json::to_value(r).unwrap_or(Value::Null))
+        })
+    }
+
+    pub fn stock_subtitle_defaults(&self) -> QJsonObject {
+        Self::guard("stockSubtitleDefaults", || {
+            serde_json::to_value(SubtitleDefaults::default())
+                .map(|v| crate::json::to_qjson_object(&v))
+                .unwrap_or_default()
         })
     }
 

@@ -10,7 +10,10 @@ pub struct JobRef {
 }
 
 /// Every event is one envelope. `message` is the activity log line, written
-/// by the core once; the shell never composes log text.
+/// by the core once; the shell never composes log text. `plain` is the same
+/// moment told to someone who has never read the code: no ids, paths, job
+/// names or provider internals. A line without one is for developers only,
+/// and the plain activity log leaves it out.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Event {
     pub seq: u64,
@@ -18,6 +21,8 @@ pub struct Event {
     pub level: Level,
     pub stage: Stage,
     pub message: String,
+    #[serde(default)]
+    pub plain: Option<String>,
     pub job: Option<JobRef>,
     pub body: EventBody,
 }

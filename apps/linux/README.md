@@ -34,16 +34,15 @@ turn a relative dir into an absolute one against the directory they run from; a 
 reported in the `.log` and ignored, and a file missing from the dir is reported once and loaded from the
 compiled copy. Build before the last run of a task all the same: the binary the launcher starts has the QML compiled in.
 
-`shoot.sh` and `drive.sh` build into one shared target dir instead of the checkout's own `target/`:
-`scripts/target-dir.sh` points `CARGO_TARGET_DIR` at the main checkout's `target/` (when that is an
-AniBeam checkout), so a fresh worktree reuses the dependency build instead of starting cold (logged
-cold builds ran 99 s median, 518 s worst). A `CARGO_TARGET_DIR` already in the environment wins.
-Right after each build the scripts copy the binary to the checkout's own
-`target/debug/anibeam-staged` and run that copy, so a capture always runs this checkout's last build
-even when another worktree links the shared `debug/anibeam` meanwhile. `ANIBEAM_NO_BUILD=1` skips the
-build and reuses that staged copy. The tradeoff: builds from different checkouts queue on one cargo
-lock. Release builds and `bench.sh` stay per checkout, so a worktree never replaces the binary the
-launcher starts.
+`shoot.sh` and `drive.sh` build into the checkout's own `target/` through `scripts/target-dir.sh`;
+a `CARGO_TARGET_DIR` already in the environment wins. Never point two checkouts at one target dir:
+cargo keys each workspace member by its path inside the workspace, so a worktree can take another
+checkout's build of `anibeam-core` or the shell as fresh and run without its own edits (#250). A fresh worktree pays one cold
+build (logged cold builds ran 99 s median, 518 s worst) and keeps a debug `target/` of several GB
+until the worktree goes. Right after each build the scripts copy the
+binary to `target/debug/anibeam-staged` and run that copy, so a capture runs this checkout's last
+build. `ANIBEAM_NO_BUILD=1` skips the build and reuses that staged copy. Release builds and
+`bench.sh` stay per checkout, so a worktree never replaces the binary the launcher starts.
 
 `--props '<json>'` hands a shot page its props (Main.qml parses it and passes it to `nav.replace`),
 for a page that needs more than a bare name to draw anything real: `--page series` with no `id` in

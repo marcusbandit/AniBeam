@@ -43,6 +43,9 @@ pub fn sources(core: &Core) -> Vec<PhoneSource> {
 }
 
 pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
+    // A row saved before the {query} rule covered tosho (#248) stays as it is, so the phone
+    // can still remove the other sources around it.
+    let saved = self::sources(core);
     for s in &sources {
         if s.name.trim().is_empty() {
             return Err(CoreError::invalid("sources", "a source needs a name"));
@@ -56,7 +59,20 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
                 ),
             ));
         }
-        if s.kind == "rss" && !s.url.contains("{query}") {
+        if s.kind == "json" {
+            return Err(CoreError::invalid(
+                "sources",
+                format!(
+                    "{}: {}",
+                    s.name,
+                    crate::releases::endpoints::JSON_NEEDS_REPO
+                ),
+            ));
+        }
+        if crate::releases::endpoints::needs_query(&s.kind)
+            && !s.url.contains("{query}")
+            && !saved.contains(s)
+        {
             return Err(CoreError::invalid(
                 "sources",
                 format!(
@@ -319,21 +335,23 @@ async fn torrent_file(core: &Core, link: &str) -> Result<Option<Vec<u8>>, CoreEr
     if !(link.starts_with("http://") || link.starts_with("https://")) {
         return Ok(None);
     }
-    let reply = core
-        .http
-        .send(crate::net::HttpRequest {
+    let http = crate::repos::endpoint_http(core);
+    let reply = crate::net::Http::send(
+        &http,
+        crate::net::HttpRequest {
             method: crate::net::Method::Get,
             url: link.to_string(),
             headers: Vec::new(),
             body: None,
             timeout: Some(std::time::Duration::from_secs(30)),
-        })
-        .await
-        .map_err(|e| CoreError::Service {
-            service: crate::downloads::feed::host_of(link),
-            code: "unreachable".to_string(),
-            message: e.message,
-        })?;
+        },
+    )
+    .await
+    .map_err(|e| CoreError::Service {
+        service: crate::downloads::feed::host_of(link),
+        code: "unreachable".to_string(),
+        message: e.message,
+    })?;
     Ok((reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec()))
 }
 
@@ -391,8 +409,17 @@ pub fn download(
     } else {
         format!("{} releases of {folder}", items.len())
     };
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        format!(
+            "Started downloading {} of {folder}.",
+            if items.len() == 1 {
+                "an episode".to_string()
+            } else {
+                format!("{} episodes", items.len())
+            }
+        ),
         format!("Downloading {what}"),
         EventBody::Notice,
     );
@@ -444,8 +471,10 @@ pub fn subscribe(
             store.mark_taken(&subscribed.name, &had)?;
         }
     }
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        format!("Subscribed to {}.", subscribed.name),
         format!("Subscribed to {}", subscribed.name),
         EventBody::Notice,
     );
@@ -509,10 +538,11 @@ pub fn unsubscribe(core: &Core, names: Vec<String>, files: bool) -> Result<Reply
 #[cfg(feature = "phone")]
 async fn feed(core: &Core, url: &str, name: &str) -> Result<Vec<Release>, CoreError> {
     let timeout = crate::releases::fetch::DEFAULT_TIMEOUT;
+    let http = crate::repos::endpoint_http(core);
     if url.contains("animetosho.org/feed/json") {
-        crate::releases::tosho::fetch(core.http.as_ref(), url, name, timeout).await
+        crate::releases::tosho::fetch(&http, url, name, timeout).await
     } else {
-        crate::releases::fetch::fetch_rss(core.http.as_ref(), url, name, timeout).await
+        crate::releases::fetch::fetch_rss(&http, url, name, timeout).await
     }
 }
 
@@ -559,8 +589,10 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             };
             match engine.add(item, &folder, file).await {
                 Ok(_) => {
-                    core.bus.info(
+                    core.bus.say(
+                        Level::Info,
                         Stage::Downloads,
+                        format!("A new episode of {} is downloading.", rule.name),
                         format!("New for {}: {}", rule.name, item.title),
                         EventBody::Notice,
                     );

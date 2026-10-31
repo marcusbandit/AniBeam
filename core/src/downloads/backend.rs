@@ -190,15 +190,19 @@ impl DownloadsBackend {
         }
     }
 
-    /// Adds the releases now, into the show's folder.
+    /// Adds the releases now, into the show's folder: `save_path` when
+    /// given, the folder of a show already in the library.
     pub async fn download(
         &self,
         items: &[Release],
         name: Option<&str>,
+        save_path: Option<&str>,
     ) -> Result<AddedTorrents, CoreError> {
         match self {
-            DownloadsBackend::Anirss(client) => client.download(items, name).await,
-            DownloadsBackend::Native(_, core) => on_qbt::download(core, items, name).await,
+            DownloadsBackend::Anirss(client) => client.download(items, name, save_path).await,
+            DownloadsBackend::Native(_, core) => {
+                on_qbt::download(core, items, name, save_path).await
+            }
         }
     }
 

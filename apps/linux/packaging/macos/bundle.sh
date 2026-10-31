@@ -17,18 +17,21 @@ bin="${ANIBEAM_BIN:-$repo/target/release/anibeam}"
 deps="${DEPS_PREFIX:?DEPS_PREFIX names the prefix deps.sh built into}"
 min_macos="${MACOSX_DEPLOYMENT_TARGET:-15.0}"
 
-# The PKGBUILD's pkgver rule: v2.0.0 -> 2.0.0, v2.0.0-21-gabc1234 -> 2.0.0.r21.gabc1234.
-describe="$(git -C "$repo" describe --tags --match 'v*' --dirty 2>/dev/null || echo v0.0.0)"
-pkgver="$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-dirty$/.dirty/' <<<"$describe")"
-short="${pkgver%%.r*}"
-short="${short%.dirty}"
+# CI tells a build what it ships as: 2.4.0, 2.4.0-nightly.20261030.12 or 2.4.0-pr.280.3.
+# Otherwise the PKGBUILD's pkgver rule: v2.0.0 -> 2.0.0, v2.0.0-21-gabc1234 ->
+# 2.0.0.r21.gabc1234, described from stable tags only.
+describe="$(git -C "$repo" describe --tags --match 'v*' --exclude 'v*-*' --dirty 2>/dev/null || echo v0.0.0)"
+pkgver="${ANIBEAM_RELEASE_VERSION:-$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-dirty$/.dirty/' <<<"$describe")}"
+short="$(grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' <<<"$pkgver")"
 
 app="$out/AniBeam.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/anibeam"
 cp "$deps/bin/qbittorrent-nox" "$app/Contents/MacOS/qbittorrent-nox"
-sed -e "s/@SHORT_VERSION@/$short/" -e "s/@BUILD_VERSION@/$pkgver/" -e "s/@MIN_MACOS@/$min_macos/" \
+# Apple reads CFBundleVersion as at most three whole numbers, so a nightly's day and run
+# stay out of it; the app shows its whole version itself.
+sed -e "s/@SHORT_VERSION@/$short/" -e "s/@BUILD_VERSION@/$short/" -e "s/@MIN_MACOS@/$min_macos/" \
   "$here/Info.plist.in" > "$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"

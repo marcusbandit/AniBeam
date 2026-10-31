@@ -41,6 +41,8 @@ struct Row {
     tmdb_kind: Option<String>,
     tvmaze_id: Option<u64>,
     track_choice: Option<String>,
+    episodes_set: Option<u32>,
+    episodes_set_season: Option<u32>,
     romaji: Option<String>,
     english: Option<String>,
 }
@@ -142,6 +144,11 @@ pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
             let text = serde_json::to_string_pretty(&doc)?;
             write_atomically(&path, text.into_bytes()).await?;
             Ok(Finished {
+                plain: Some(format!(
+                    "Saved {count} {} to {}.",
+                    crate::words::pick(count, "show", "shows"),
+                    crate::library::scan::folder_of(&path)
+                )),
                 level: Level::Info,
                 message: format!("Exported {count} series to {path}"),
                 body: EventBody::ExportFinished { path },
@@ -190,7 +197,8 @@ fn source_paths(conn: &Connection) -> Result<Vec<String>, CoreError> {
 fn series_rows(conn: &Connection) -> Result<Vec<Row>, CoreError> {
     let mut stmt = conn.prepare(
         "SELECT s.id, s.kind, s.path, s.folder_name, s.hidden, s.provider, s.anilist_id, s.mal_id, s.tmdb_id, s.tmdb_kind,
-                s.track_choice, COALESCE(t.name, m.title_romaji), m.title_english, s.tvmaze_id
+                s.track_choice, COALESCE(t.name, m.title_romaji), m.title_english, s.tvmaze_id,
+                s.episodes_set, s.episodes_set_season
          FROM series s
          LEFT JOIN anilist_media m ON m.id = s.anilist_id
          LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -216,6 +224,8 @@ fn series_rows(conn: &Connection) -> Result<Vec<Row>, CoreError> {
                 romaji: r.get(11)?,
                 english: r.get(12)?,
                 tvmaze_id: r.get::<_, Option<i64>>(13)?.map(|v| v as u64),
+                episodes_set: r.get::<_, Option<i64>>(14)?.map(|v| v as u32),
+                episodes_set_season: r.get::<_, Option<i64>>(15)?.map(|v| v as u32),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -246,6 +256,8 @@ fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
             .track_choice
             .as_deref()
             .and_then(|json| serde_json::from_str::<TrackChoice>(json).ok()),
+        episodes_set: row.episodes_set,
+        episodes_set_season: row.episodes_set_season,
         extra: HashMap::new(),
     }
 }
@@ -460,6 +472,8 @@ mod tests {
             tmdb_kind: None,
             tvmaze_id: None,
             track_choice: None,
+            episodes_set: None,
+            episodes_set_season: None,
             romaji: None,
             english: None,
         }
