@@ -1,5 +1,5 @@
-// Phone app: the core serves a read-only copy of the library, the subscriptions and the
-// downloads on this computer's Tailscale addresses while sharing is on. The page says what
+// Phone app: the core serves the library, the subscriptions, the downloads and the episodes
+// themselves on this computer's Tailscale addresses while sharing is on. The page says what
 // the phone gets before the switch, then the addresses the phone app should be given, one
 // row each, with Copy.
 import QtQuick
@@ -8,7 +8,7 @@ import com.marcusrosado.AniBeam
 SettingsTab {
     id: tab
     title: "Phone app"
-    lead: "AniBeam on your phone can browse this library, see what is airing and follow your downloads, wherever you are."
+    lead: "AniBeam on your phone can play this library, see what is airing and follow your downloads, wherever you are."
     property var host: ({ enabled: false, urls: [], message: "" })
     function reloadHost() { var r = Door.getHost(); if (!r.error) host = r.reply.status }
     function setSharing(on) {
@@ -24,7 +24,7 @@ SettingsTab {
     Panel {
         objectName: "settings-share"
         title: "Sharing"
-        helper: "Only your own devices on Tailscale can reach it. The phone reads; it never changes anything here."
+        helper: "Only your own devices on Tailscale can reach it. Episodes watched on the phone keep their place and progress here."
         SettingRow {
             label: "Share over Tailscale"
             line: tab.host.message

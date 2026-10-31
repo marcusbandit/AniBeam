@@ -1,5 +1,5 @@
-//! The routes. Every one is a `GET` and reads; anything else is told so in a
-//! small JSON error. The snapshot is built at most once every thirty seconds
+//! The routes. Every one is a `GET` and reads, but for the playback calls
+//! (`stream`); anything else is told so in a small JSON error. The snapshot is built at most once every thirty seconds
 //! however many clients ask.
 
 use std::path::Path as FsPath;
@@ -12,9 +12,10 @@ use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 
 use super::build::{self, LibraryPart};
+use super::{convert, stream};
 use crate::contract::CoreError;
 use crate::core::Core;
 use crate::time;
@@ -25,7 +26,8 @@ pub const CACHE_FOR: Duration = Duration::from_secs(30);
 const POSTER_MAX_AGE: &str = "max-age=86400";
 
 pub struct Served {
-    core: Weak<Core>,
+    pub(super) core: Weak<Core>,
+    pub(super) streams: stream::Streams,
     host: String,
     snapshot: tokio::sync::Mutex<Option<(Instant, Bytes)>>,
     library: tokio::sync::Mutex<Option<(Instant, Arc<LibraryPart>)>>,
@@ -45,6 +47,7 @@ pub fn hostname() -> String {
 pub fn router(core: Weak<Core>) -> Router {
     let served = Arc::new(Served {
         core,
+        streams: stream::Streams::default(),
         host: hostname(),
         snapshot: tokio::sync::Mutex::new(None),
         library: tokio::sync::Mutex::new(None),
@@ -53,6 +56,11 @@ pub fn router(core: Weak<Core>) -> Router {
         .route(wire::HELLO, get(hello))
         .route(wire::SNAPSHOT, get(snapshot))
         .route("/api/v1/posters/{id}", get(poster))
+        .route("/api/v1/files/{id}", get(stream::file))
+        .route("/api/v1/files/{id}/sidecars/{index}", get(stream::sidecar))
+        .route("/api/v1/files/{id}/probe", get(stream::probe))
+        .route("/api/v1/files/{id}/hls/{height}/{name}", get(stream::hls))
+        .route(wire::CALL, post(stream::call))
         .fallback(not_found)
         .method_not_allowed_fallback(not_allowed)
         .layer(axum::middleware::from_fn(known_host))
@@ -98,7 +106,7 @@ pub fn host_allowed(host: &str, machine: &str) -> bool {
         || (!machine.is_empty() && first == machine.split('.').next().unwrap_or_default())
 }
 
-fn error(status: StatusCode, message: &str) -> Response {
+pub(super) fn error(status: StatusCode, message: &str) -> Response {
     let body = serde_json::json!({ "error": message }).to_string();
     (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
 }
@@ -108,7 +116,10 @@ async fn not_found() -> Response {
 }
 
 async fn not_allowed() -> Response {
-    error(StatusCode::METHOD_NOT_ALLOWED, "this host only answers GET")
+    error(
+        StatusCode::METHOD_NOT_ALLOWED,
+        "this host answers GET, and POST for playback calls",
+    )
 }
 
 fn json(body: Bytes) -> Response {
@@ -137,11 +148,22 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
         version: crate::VERSION.to_string(),
         host: st.host.clone(),
         now: time::now_secs(),
+        features: features().await,
     };
     match serde_json::to_vec(&hello) {
         Ok(body) => json(Bytes::from(body)),
         Err(e) => failed(&e.into()),
     }
+}
+
+/// What this host serves past the snapshot. Streaming always; converting
+/// when ffmpeg and an encoder work here.
+async fn features() -> Vec<String> {
+    let mut out = vec![wire::FEATURE_STREAM.to_string()];
+    if convert::available().await {
+        out.push(wire::FEATURE_CONVERT.to_string());
+    }
+    out
 }
 
 async fn snapshot(State(st): State<Arc<Served>>) -> Response {

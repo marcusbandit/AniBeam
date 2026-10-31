@@ -17,6 +17,7 @@ use axum::routing::get;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use super::media::Prepared;
+use crate::host::stream::{Range, byte_range};
 
 /// What one token serves.
 pub struct Served {
@@ -224,26 +225,8 @@ async fn ranged(served: &Served, method: &Method, headers: &HeaderMap) -> Respon
         return missing();
     };
     let len = f.metadata().await.map(|m| m.len()).unwrap_or(0);
-    let range = headers
-        .get(header::RANGE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("bytes="))
-        .and_then(|v| v.split(',').next())
-        .and_then(|v| {
-            let (a, b) = v.split_once('-')?;
-            let (start, end) = match (a.trim(), b.trim()) {
-                ("", suffix) => (
-                    len.saturating_sub(suffix.parse().ok()?),
-                    len.saturating_sub(1),
-                ),
-                (a, "") => (a.parse().ok()?, len.saturating_sub(1)),
-                (a, b) => (
-                    a.parse().ok()?,
-                    b.parse::<u64>().ok()?.min(len.saturating_sub(1)),
-                ),
-            };
-            (start <= end && start < len).then_some((start, end))
-        });
+    let asked = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
+    let range = byte_range(asked, len);
     let mut h = HeaderMap::new();
     h.insert(
         header::CONTENT_TYPE,
@@ -262,21 +245,21 @@ async fn ranged(served: &Served, method: &Method, headers: &HeaderMap) -> Respon
         ),
     );
     let (status, start, count) = match range {
-        Some((s, e)) => {
+        Range::Part(s, e) => {
             h.insert(
                 header::CONTENT_RANGE,
                 HeaderValue::from_str(&format!("bytes {s}-{e}/{len}")).unwrap(),
             );
             (StatusCode::PARTIAL_CONTENT, s, e - s + 1)
         }
-        None if headers.contains_key(header::RANGE) => {
+        Range::Unmet => {
             h.insert(
                 header::CONTENT_RANGE,
                 HeaderValue::from_str(&format!("bytes */{len}")).unwrap(),
             );
             return cors((StatusCode::RANGE_NOT_SATISFIABLE, h).into_response());
         }
-        None => (StatusCode::OK, 0, len),
+        Range::Whole => (StatusCode::OK, 0, len),
     };
     h.insert(header::CONTENT_LENGTH, HeaderValue::from(count));
     if *method == Method::HEAD {
