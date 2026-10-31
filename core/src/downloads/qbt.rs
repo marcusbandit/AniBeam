@@ -1,7 +1,8 @@
 //! qBittorrent over its WebUI API (`/api/v2`), reached directly for what
 //! anirss does not offer: the live transfer, the client's version as proof
 //! that the saved settings work, and stopping, starting or deleting a
-//! torrent. anirss owns everything that creates a torrent or a rule.
+//! torrent. On anirss's engine anirss creates every torrent and rule; on
+//! the core's own (`backend`) the core adds them here, the same way.
 //!
 //! The session is a cookie from `auth/login` (`SID` on 4.x, `QBT_SID_<port>`
 //! on 5.x, so the name is whatever the server said); reqwest here has no
@@ -105,9 +106,33 @@ impl QbtClient {
             .unwrap_or_default())
     }
 
-    // ---- RSS: anirss creates the feeds and rules; the core reads them, and
-    // rewires one when anirss's feed would come back empty (see
-    // `downloads::rewire`)
+    /// Where qBittorrent saves a torrent added without a path.
+    pub async fn default_save_path(&self) -> Result<String, CoreError> {
+        let r = self.call("app/defaultSavePath", None).await?;
+        Ok(String::from_utf8_lossy(&r.body).trim().to_string())
+    }
+
+    /// Adds magnet and http(s) links, saved into `save_path`. qBittorrent
+    /// fetches a web link itself. Tags go as one comma-separated field, and
+    /// none at all when there are none, so the client's own defaults apply.
+    pub async fn add_urls(
+        &self,
+        urls: &[String],
+        save_path: &str,
+        tags: &[String],
+    ) -> Result<(), CoreError> {
+        let mut form = vec![
+            ("urls".to_string(), urls.join("\n")),
+            ("savepath".to_string(), save_path.to_string()),
+        ];
+        form.extend(tags_field(tags));
+        let r = self.call("torrents/add", Some(form)).await?;
+        added_or_not(&r)
+    }
+
+    // ---- RSS: the engine that subscribes creates the feeds and rules; the
+    // core reads them, and rewires one when the feed would come back empty
+    // (see `downloads::rewire`)
 
     /// Every auto-download rule by name, as qBittorrent writes them.
     pub async fn rules(&self) -> Result<Value, CoreError> {
@@ -376,6 +401,56 @@ impl QbtClient {
             // login too. Nothing to carry; later calls go as they are.
             None => Ok(()),
         }
+    }
+}
+
+/// Tags trimmed, blanks dropped and repeats dropped in order. qBittorrent
+/// splits tags on commas itself, so a comma inside one becomes two here.
+pub fn clean_tags(tags: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for tag in tags {
+        for piece in tag.split(',') {
+            let piece = piece.trim();
+            if !piece.is_empty() && !out.iter().any(|t| t == piece) {
+                out.push(piece.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// `torrents/add`'s tags field, absent when there are no tags.
+fn tags_field(tags: &[String]) -> Option<(String, String)> {
+    let clean = clean_tags(tags);
+    (!clean.is_empty()).then(|| ("tags".to_string(), clean.join(",")))
+}
+
+/// Whether `torrents/add` took the torrents. 4.x answers `Ok.`; 5.x a
+/// JSON count, where a pending add is one still landing, not a failure.
+fn added_or_not(r: &HttpResponse) -> Result<(), CoreError> {
+    let body = String::from_utf8_lossy(&r.body);
+    let body = body.trim();
+    if body == "Ok." {
+        return Ok(());
+    }
+    let failed = |message: String| {
+        Err(CoreError::Service {
+            service: SERVICE.to_string(),
+            code: "add_failed".to_string(),
+            message,
+        })
+    };
+    let Ok(v) = serde_json::from_str::<Value>(body) else {
+        return failed(format!("qBittorrent did not add the torrents: {body:?}"));
+    };
+    if !v.is_object() {
+        return failed(format!("qBittorrent did not add the torrents: {body:?}"));
+    }
+    match num(&v["failure_count"]) {
+        0 => Ok(()),
+        n => failed(format!(
+            "qBittorrent could not add {n} of the torrents: {body:?}"
+        )),
     }
 }
 
@@ -759,6 +834,87 @@ mod tests {
         );
         http.push(200, "");
         assert!(client.add_feed("https://nyaa.si/?q=g", "G").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn add_urls_sends_the_links_a_line_each_with_the_folder_and_tags() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for("torrents/add", 200, "Ok.");
+        let links = vec![
+            "magnet:?xt=urn:btih:aa".to_string(),
+            "https://dl.example/b.torrent".to_string(),
+        ];
+        client(&http)
+            .add_urls(&links, "/srv/TV/Show", &[" TV, New ".into(), "TV".into()])
+            .await
+            .unwrap();
+        let sent = http.requests();
+        assert!(sent[0].url.ends_with("api/v2/torrents/add"));
+        assert_eq!(
+            sent[0].body,
+            Some(Body::Form(vec![
+                (
+                    "urls".to_string(),
+                    "magnet:?xt=urn:btih:aa\nhttps://dl.example/b.torrent".to_string()
+                ),
+                ("savepath".to_string(), "/srv/TV/Show".to_string()),
+                ("tags".to_string(), "TV,New".to_string()),
+            ]))
+        );
+        // No tags, no tags field: qBittorrent's own defaults apply
+        http.push_for("torrents/add", 200, "Ok.");
+        client(&http)
+            .add_urls(&links[..1], "/srv/TV/Show", &[" ".into()])
+            .await
+            .unwrap();
+        assert!(matches!(&http.requests()[1].body, Some(Body::Form(f)) if f.len() == 2));
+    }
+
+    #[tokio::test]
+    async fn an_add_is_judged_by_its_answer() {
+        let http = Arc::new(FakeHttp::new());
+        let c = client(&http);
+        let links = vec!["magnet:?xt=urn:btih:aa".to_string()];
+        // 5.x counts; a pending add is still landing, not a failure
+        http.push_for(
+            "torrents/add",
+            200,
+            json!({"success_count": 0, "pending_count": 1, "failure_count": 0}).to_string(),
+        );
+        c.add_urls(&links, "/x", &[]).await.unwrap();
+        http.push_for(
+            "torrents/add",
+            200,
+            json!({"success_count": 0, "failure_count": 1}).to_string(),
+        );
+        let e = c.add_urls(&links, "/x", &[]).await.unwrap_err();
+        assert!(
+            matches!(&e, CoreError::Service { code, .. } if code == "add_failed"),
+            "{e:?}"
+        );
+        http.push_for("torrents/add", 200, "Fails.");
+        let e = c.add_urls(&links, "/x", &[]).await.unwrap_err();
+        assert!(
+            matches!(&e, CoreError::Service { code, .. } if code == "add_failed"),
+            "{e:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_default_save_path_is_read_as_text() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for("app/defaultSavePath", 200, "/home/me/Downloads\n");
+        assert_eq!(
+            client(&http).default_save_path().await.unwrap(),
+            "/home/me/Downloads"
+        );
+    }
+
+    #[test]
+    fn tags_are_trimmed_split_and_kept_once_in_order() {
+        let tags: Vec<String> = vec!["Anime".into(), " a, b ,,".into(), "b".into(), "".into()];
+        assert_eq!(clean_tags(&tags), vec!["Anime", "a", "b"]);
+        assert_eq!(tags_field(&[" ".into()]), None);
     }
 
     #[tokio::test]
