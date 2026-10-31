@@ -16,6 +16,17 @@ use anibeam_core::Call;
 /// How long a kept answer lives even when nothing changed.
 pub const MAX_AGE: Duration = Duration::from_secs(30);
 
+/// Developer options can turn the cache off for the session, to see what it saves.
+static PAUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_paused(paused: bool) {
+    PAUSED.store(paused, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn paused() -> bool {
+    PAUSED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// The key a call is kept under, or `None` for a call that is not kept: only the reads
 /// that load the whole library, which are the ones worth keeping and the ones with no
 /// side effect a repeat would owe.
@@ -55,7 +66,7 @@ impl<V: Clone> ReadCache<V> {
     }
 
     pub fn get(&mut self, key: &str, generation: u64, now: Instant) -> Option<V> {
-        if !self.enabled {
+        if !self.enabled || paused() {
             return None;
         }
         self.advance(generation);
@@ -73,7 +84,7 @@ impl<V: Clone> ReadCache<V> {
     /// during the read moved the number past it, so the answer is dropped on the next get
     /// rather than kept as current.
     pub fn put(&mut self, key: String, generation: u64, now: Instant, v: V) {
-        if !self.enabled || generation < self.generation {
+        if !self.enabled || paused() || generation < self.generation {
             return;
         }
         self.advance(generation);

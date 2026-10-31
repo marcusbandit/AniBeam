@@ -1,6 +1,7 @@
 // The match popover: a raised tile over a Blocker (the owning page puts one under it), to
 // search a metadata provider for the series's real record (AniList for anime, TVmaze for
-// other television; the Seg opens on the first in the Settings order) or look up a pasted
+// other television; the Seg opens on the current match's provider, else the first in the
+// Settings order) or look up a pasted
 // AniList, MyAnimeList, TVmaze or IMDb link, and apply. Search and look-up are jobs whose replies come back as events
 // (SearchFinished, LinkResolved), matched here by job id. Applying writes the match
 // confirmed at once; the assets follow and SeriesChanged re-lists the page behind. It opens
@@ -33,7 +34,9 @@ Corner {
         root.results = []
         root.resolved = null
         var order = Door.settings && Door.settings.provider_order ? Door.settings.provider_order : []
-        root.provider = order.length && root.providers.indexOf(order[0]) >= 0 ? order[0] : "Anilist"
+        var current = matchInfo ? matchInfo.provider : ""
+        root.provider = root.providers.indexOf(current) >= 0 ? current
+            : order.length && root.providers.indexOf(order[0]) >= 0 ? order[0] : "Anilist"
         search.text = title
         searchDebounce.stop()
         visible = true

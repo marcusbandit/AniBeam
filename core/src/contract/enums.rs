@@ -668,6 +668,68 @@ impl JobKind {
         }
     }
 
+    /// The kind as plain words for a status line while it runs: no variant
+    /// names, no provider names beyond the two trackers a person connected.
+    pub fn doing(self) -> &'static str {
+        use JobKind::*;
+        match self {
+            Scan => "Checking your folders",
+            AutoMatch => "Matching shows",
+            Search => "Searching for a show",
+            ResolveLink => "Reading a link",
+            ApplyMatch => "Matching a show",
+            Refresh => "Updating a show",
+            RefreshAll => "Updating show info",
+            RefreshAiring => "Checking what is airing",
+            RefreshImdb => "Updating ratings",
+            ClearImages => "Clearing pictures",
+            FillImages => "Fetching pictures",
+            ConnectTracker => "Connecting your list",
+            Mark => "Marking an episode watched",
+            SetProgress => "Setting your progress",
+            Score => "Saving your score",
+            RefreshProgress => "Reading your list progress",
+            RefreshWatching => "Reading your Watching list",
+            RefreshAiringNow => "Checking this season",
+            OnHold => "Moving idle shows to On hold",
+            SetStatus => "Changing a list status",
+            Crawl => "Finding related shows",
+            SkipWindows => "Finding the opening and ending",
+            Export => "Saving your library to a file",
+            Import => "Loading your library from a file",
+            Subscriptions => "Checking your subscriptions",
+            ConnectDownloads => "Connecting the download app",
+            SearchReleases => "Looking for episodes",
+            RefineReleases => "Narrowing down episodes",
+            Subscribe => "Subscribing to a show",
+            Download => "Adding downloads",
+            RemoveSubscription => "Removing a subscription",
+            ControlTorrents => "Changing your downloads",
+            TestTorrentClient => "Testing the download app",
+            RemoveShow => "Removing a show",
+            RepairSubscription => "Repairing a subscription",
+            CheckEndpoints => "Checking your download sources",
+            StartEndpoint => "Starting a download source",
+        }
+    }
+
+    /// Kinds the app starts on its own, on a timer or after another job,
+    /// rather than on something the person did. Their failures stay in the
+    /// developer log: the next run retries, and the person has nothing to do.
+    pub fn chore(self) -> bool {
+        use JobKind::*;
+        match self {
+            RefreshAiring | RefreshImdb | FillImages | RefreshProgress | RefreshWatching
+            | RefreshAiringNow | OnHold | Crawl | SkipWindows | Subscriptions
+            | ConnectDownloads | CheckEndpoints => true,
+            Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
+            | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | Export
+            | Import | SearchReleases | RefineReleases | Subscribe | Download
+            | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
+            | RepairSubscription | StartEndpoint => false,
+        }
+    }
+
     /// Kinds that run one at a time: a second call replies Started with the running id.
     pub fn one_at_a_time(self) -> bool {
         use JobKind::*;
