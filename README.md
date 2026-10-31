@@ -95,6 +95,10 @@ Open Downloads (the arrow in the left rail). There is nothing to install or set 
   If not, AniBeam sets up its own qBittorrent the first time you open the page, and
   says so in the status line at the bottom.
 
+AniBeam comes with no sources to search. In Settings > Downloads > Endpoint repos, add a repo by
+pasting its index URL, then install the endpoints you want from it. A repo is a list of
+sources someone else keeps; AniBeam itself never points at a site.
+
 Search for a show (`Frieren 1080p`), look over the releases, and click Subscribe. New
 episodes then download by themselves as they come out, into `~/Downloads/Anime` unless you
 pick another folder. Add that folder to your library (step 2) so they show up there. Download

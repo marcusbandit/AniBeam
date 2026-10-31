@@ -2,6 +2,7 @@
 // rising from it, and an overlay for menus and tips. Everything in spec 4.1 unit 1 that
 // is not a page lives here. The player takes the whole window and hides the rest.
 import QtQuick
+import QtCore
 import QtQuick.Window
 import com.marcusrosado.AniBeam
 
@@ -89,7 +90,7 @@ FocusScope {
     // position, kept here rather than on the page itself so they survive the page being
     // torn down and rebuilt on every navigation away and back.
     property int settingsTab: 0
-    property var settingsScroll: [0, 0, 0, 0, 0]
+    property var settingsScroll: [0, 0, 0, 0, 0, 0]
 
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
     function go(name, props, label) { nav.open(name, props, label, leavingScroll()) }
@@ -111,12 +112,46 @@ FocusScope {
     // context destroyed during incubation". A shared method reference lets Qt.callLater
     // collapse the two calls into one, so loadPageNow runs once per tick and still reads
     // nav.current fresh at execution time.
-    function loadPage() { Qt.callLater(frame.loadPageNow) }
+    function loadPage() { if (frame.devOn) devRecorder.begin(nav.current.page, nav.current.label); Qt.callLater(frame.loadPageNow) }
     function loadPageNow() {
         page.source = ""
         page.setSource(Qt.resolvedUrl(frame.pages[nav.current.page] || "PagePlaceholder.qml"), { props: nav.current.props })
+        if (frame.devOn) devRecorder.built()
     }
-    Component.onCompleted: frame.loadPage()
+
+    // ---- Developer options (#287). On in a debug build or under ANIBEAM_DEV=1, else behind
+    // the switch at the foot of Settings' Data tab. The switches live in shell.conf so a
+    // measuring session survives a restart.
+    Settings {
+        id: devKept
+        location: Shell.settingsUrl
+        category: "developer"
+        property bool enabled: false
+        property bool images: true
+        property bool hud: true
+        property bool readCache: true
+        property bool posterPool: true
+    }
+    readonly property alias devKept: devKept
+    readonly property alias devRecorder: devRecorder
+    readonly property bool devOn: Dev.forced || devKept.enabled
+    function devApply() { Dev.configure(frame.devOn, devKept.images, devKept.readCache) }
+    function devSetImages(on) { devKept.images = on; devRecorder.images = on; devApply() }
+    onDevOnChanged: devApply()
+    DevRecorder {
+        id: devRecorder
+        hostWindow: frame.hostWindow
+        hostFrame: frame
+        enabled: frame.devOn
+        images: devKept.images
+        onSetImages: function(on) { frame.devSetImages(on) }
+    }
+    Connections {
+        target: frame.hostWindow
+        enabled: frame.devOn
+        function onFrameSwapped() { devRecorder.frame() }
+    }
+    Component.onCompleted: { frame.devApply(); frame.loadPage() }
     // A hovered item destroyed by the navigation never fires its own exit handler, so a
     // tip or a menu opened on the leaving page would otherwise survive onto the next one.
     // The escape stack is cleared for the identical reason: a popover the leaving page
@@ -191,15 +226,17 @@ FocusScope {
             width: content.column
             anchors.bottom: parent.bottom
             readonly property var job: Door.runningJobs.length ? Door.runningJobs[0] : null
-            readonly property var line: Door.latestLine
+            // A person reads the plain line; with developer options on, the technical one
+            readonly property var line: frame.devOn ? Door.latestLine : Door.latestPlain
             // A kind or stage as words: "ConnectTracker" reads "Connect tracker", "metadata"
             // reads "Metadata"
             function words(k) {
                 var w = String(k).replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase()
                 return w.charAt(0).toUpperCase() + w.slice(1)
             }
-            stage: job ? words(job.kind) : (line && line.stage ? words(line.stage) : "System")
-            message: job ? (job.label || words(job.kind)) + (job.total > 0 ? ", " + job.done + " of " + job.total : "") : (line && line.message ? line.message : "")
+            stage: frame.devOn ? (job ? words(job.kind) : (line && line.stage ? words(line.stage) : "System")) : ""
+            message: job ? (frame.devOn ? (job.label || words(job.kind)) : (job.doing || words(job.kind))) + (job.total > 0 ? ", " + job.done + " of " + job.total : "")
+                         : (line ? (frame.devOn ? line.message : line.plain) || "" : "")
             time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), "hh:mm")
             running: job !== null
             fraction: job && job.total > 0 ? job.done / job.total : 0
@@ -207,8 +244,17 @@ FocusScope {
             onClicked: frame.toggleDrawer()
         }
     }
+    DevHud {
+        visible: frame.devOn && devKept.hud && !frame.fullWindow
+        recorder: devRecorder
+        // Bottom right, over the page's foot: the top right is where pages put search
+        anchors.right: content.right; anchors.rightMargin: theme.space(4)
+        anchors.bottom: content.bottom; anchors.bottomMargin: strip.height + theme.space(2)
+        z: 450
+    }
     ActivityDrawer {
         id: drawer
+        technical: frame.devOn
         visible: !frame.fullWindow && openness > 0.001
         anchors.left: content.left; anchors.right: content.right; anchors.bottom: content.bottom
         maxHeight: Math.round(page.height * 0.6)
@@ -375,7 +421,7 @@ FocusScope {
         WhatsNew { id: whatsNew }
         UpdateNotice {
             id: updateNotice
-            covered: frame.fullWindow || whatsNew.visible
+            covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.bottom: parent.bottom; anchors.bottomMargin: rail.footHeight + theme.space(4)
         }
@@ -405,7 +451,7 @@ FocusScope {
     function startNotes() {
         if (notesStarted) return
         notesStarted = true
-        if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); Shell.checkForUpdate() }
+        if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
     function openWhatsNew() { whatsNew.open() }
     readonly property alias notesPanel: whatsNew
@@ -509,28 +555,47 @@ FocusScope {
         return out
     }
     property var deleteCalls: ({})   // token -> what the toast names
-    function askDeleteFiles(anchor, c, watchedOnly) {
+    // `whole` (Downloads' On disk, #266) takes the extras too, so the series leaves the disk
+    function askDeleteFiles(anchor, c, watchedOnly, whole) {
         var r = Door.getSeries(c.id)
         if (r.error || !r.reply.detail) { frame.toast(r.error ? frame.errorText(r.error) : "That series is gone"); return }
         // An episode a torrent is still writing is not offered
         var files = (r.reply.detail.episodes || [])
             .filter(function(e) { return (e.downloading === undefined || e.downloading === null) && (!watchedOnly || e.watched) })
             .map(function(e) { return e.file })
-        if (!files.length) { frame.toast("No watched episodes of " + c.title + " on disk"); return }
+        var extras = whole ? (r.reply.detail.extras || []).map(function(x) { return x.file }) : []
+        if (!files.length && !extras.length) { frame.toast((watchedOnly ? "No watched episodes of " : "Nothing of ") + c.title + " on disk"); return }
         var noun = seriesNoun(c), which = watchedOnly ? "watched " : ""
-        var words = Fmt.plural(files.length, which + noun[0], which + noun[1])
+        var words = files.length ? Fmt.plural(files.length, which + noun[0], which + noun[1]) : ""
+        if (extras.length) words += (words ? " and " : "") + Fmt.plural(extras.length, "extra", "extras")
+        files = files.concat(extras)
         removeSheet.openAt(anchor, {
             heading: "Delete " + words + " of " + c.title + "?",
-            base: "The files and their subtitles go to the trash, so you can get them back from there.",
+            base: "The files and their subtitles go to the trash, so you can get them back from there. Their torrents leave the torrent client, so they can be downloaded again.",
             rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
         }, function() {
             var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files })
             var m = Object.assign({}, frame.deleteCalls); m[t] = words + " of " + c.title; frame.deleteCalls = m
         })
     }
+    // Delete watched across the library (#266): the frame keeps the reply, so its toast still
+    // comes when the page has gone, and one runs at a time
+    property real deleteWatchedToken: -1
+    function deleteWatched(finished) {
+        if (frame.deleteWatchedToken >= 0) return
+        frame.deleteWatchedToken = Door.callAsync("DeleteWatched", { finished_shows: finished })
+    }
     Connections {
         target: Door
         function onCallDone(token, reply) {
+            if (token === frame.deleteWatchedToken) {
+                frame.deleteWatchedToken = -1
+                var d = reply.reply || {}
+                frame.toast(reply.error ? frame.errorText(reply.error)
+                    : d.episodes > 0 || d.series > 0 ? Fmt.plural(d.episodes, "episode", "episodes") + ", " + Fmt.bytes(d.bytes) + ", moved to the trash"
+                    : "Nothing to delete")
+                return
+            }
             var words = frame.deleteCalls[token]
             if (words === undefined) return
             var m = Object.assign({}, frame.deleteCalls); delete m[token]; frame.deleteCalls = m

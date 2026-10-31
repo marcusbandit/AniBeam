@@ -10,6 +10,29 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.4.0 · 2026-10-30
+
+### New
+- Developer options, in Settings under Data, time every page and turn images off
+- Pick Stable or Nightly updates in Settings, under Data
+- Update installs the new version and restarts, no trip to GitHub
+- An AUR install shows the command that updates it, once the AUR has it
+- Downloaded lists every show on disk, not only what the torrent client holds
+- Downloaded shows how much of the disk is watched and how much is not
+- Delete watched clears every watched episode, or every finished show you saw
+- Right-click a show on Gaps or Downloaded to delete it
+- Deleting episodes removes their torrent too, so they can be downloaded again
+- Ctrl-click a release group or one of its episodes to pick all it has missing
+- Get says it is sending to your torrent client the moment you click it
+- Set how many episodes a TVmaze show's season has, so no more are predicted
+
+### Changed
+- A show's Fixes menu holds Fix files, the episode count, the match and Rescan
+- The activity log speaks plain words and leaves out background chores
+
+### Fixed
+- A download's speed and time left no longer run under its Stop button
+
 ## 2.3.0 · 2026-10-27
 
 ### New
@@ -23,6 +46,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Mark a show not interested and it stays off Airing now
 - Plan to watch or get episodes straight from Airing now
 - Media keys and Control Centre play, pause and skip on the Mac
+- Set how many episodes a show has, and nothing past it is predicted
 - Release lists show a Rip column: WEB-DL, WEBRip, BluRay and the rest
 - This week shows nine days, two back and six ahead, every day even when empty
 - Right-click a card to delete its watched episodes or all of them, to the trash
@@ -33,6 +57,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - On disk marks only the release you have, not every release of that episode
 - An episode that aired earlier today stays on Today and says if it landed
 - An episode that aired with no file yet says it is late
+- Episodes you get for a show land in its folder and join it, not new shows
 
 ## 2.2.0 · 2026-10-26
 

@@ -13,7 +13,10 @@
 //
 // With nothing searched the page is four lenses: Gaps in your library (aired episodes not
 // on disk), Airing, Following (the subscriptions, in sections by where the show stands) and
-// Downloaded (the torrents, a show at a time). Every show, wherever it is clicked, opens the
+// Downloaded (everything on disk, a show at a time: the torrents by what the client does with
+// them, then every other series with files here). Downloaded opens on how much of the disk is
+// watched, with Delete watched beside it; right-clicking a show there or on Gaps deletes its
+// watched episodes or all of it (#266). Every show, wherever it is clicked, opens the
 // show view (GetShow): its providers, a click on one fetches what it has, its releases as a
 // grid of episode cubes, and a plan that says what Get and Follow will do. Opening a show
 // never downloads anything. A subscription or a downloaded show opens the older ShowDetail,
@@ -136,9 +139,93 @@ Item {
 
     // ---- The library, for the lenses and the suggestions
     property var libCards: []
+    // Every series with a file on disk (#266), the watched and hidden ones too, which the
+    // All tab leaves out: what Downloaded lists and the usage line counts
+    property var diskCards: []
     function loadLibrary() {
         var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
         if (!r.error) page.libCards = r.reply.series || []
+        var seen = {}, out = []
+        ;[r, Door.listLibrary("Watched", "", "LastViewed", "Desc", false), Door.listLibrary("Hidden", "", "LastViewed", "Desc", false)].forEach(function(t) {
+            if (t.error) return
+            ;(t.reply.series || []).forEach(function(c) { if (!seen[c.id] && (c.bytes_on_disk || 0) > 0) { seen[c.id] = true; out.push(c) } })
+        })
+        page.diskCards = out
+    }
+    // A delete, a scan or a rescan changes what is on disk: read again, once the burst is over
+    Timer { id: libDebounce; interval: 400; onTriggered: page.loadLibrary() }
+    Connections {
+        target: Door
+        function onSeriesChanged() { libDebounce.restart() }
+        function onSeriesRemoved() { libDebounce.restart() }
+    }
+    readonly property var diskById: { var m = {}; for (var i = 0; i < diskCards.length; i++) m[diskCards[i].id] = diskCards[i]; return m }
+    // The library series a torrent group is of, when it has files here
+    function cardOfGroup(g) { return g && g.show && g.show.series_id !== undefined && g.show.series_id !== null ? page.diskById[g.show.series_id] || null : null }
+    // The series on disk no torrent in the client is of, the biggest first
+    readonly property var diskOnly: {
+        var taken = {}
+        for (var i = 0; i < showGroups.length; i++) { var c = page.cardOfGroup(showGroups[i]); if (c) taken[c.id] = true }
+        return diskCards.filter(function(c) { return !taken[c.id] }).sort(function(a, b) { return (b.bytes_on_disk || 0) - (a.bytes_on_disk || 0) })
+    }
+    readonly property real diskBytes: diskCards.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
+    readonly property real watchedBytes: diskCards.reduce(function(n, c) { return n + (c.watched_bytes || 0) }, 0)
+    readonly property int watchedEpisodes: diskCards.reduce(function(n, c) { return n + (c.watched_on_disk || 0) }, 0)
+    readonly property var finishedCards: diskCards.filter(function(c) { return c.finished_watched === true })
+    readonly property real finishedBytes: finishedCards.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
+    // A show's line in Downloaded: how many episodes, how big, how much of it is watched
+    function diskLedger(c) {
+        var n = c.kind === "Movie" ? "Film" : Fmt.plural(c.episodes_on_disk || 0, "episode", "episodes")
+        var w = c.watched_bytes > 0 && c.watched_bytes < c.bytes_on_disk ? ", " + Fmt.bytes(c.watched_bytes) + " watched" : c.watched_bytes > 0 ? ", all watched" : ""
+        return n + ", " + Fmt.bytes(c.bytes_on_disk || 0) + w
+    }
+
+    // ---- Delete watched (#266): every watched episode, or every show confirmed done with,
+    // picked from a menu at the button and confirmed in the removal sheet
+    function askDeleteWatched(anchor) {
+        var p = anchor.mapToItem(frame, 0, anchor.height + theme.space(1))
+        frame.openMenu(p.x, p.y, [
+            { text: "Every watched episode: " + Fmt.plural(page.watchedEpisodes, "episode", "episodes") + ", " + Fmt.bytes(page.watchedBytes), icon: "trash-2",
+              action: function() { page.confirmDeleteWatched(anchor, false) } },
+            { text: "Every finished show you watched: " + Fmt.plural(page.finishedCards.length, "show", "shows") + ", " + Fmt.bytes(page.finishedBytes), icon: "trash-2",
+              action: function() { page.confirmDeleteWatched(anchor, true) } }
+        ])
+    }
+    function someTitles(cards) {
+        var t = cards.slice().sort(function(a, b) { return (b.bytes_on_disk || 0) - (a.bytes_on_disk || 0) }).map(function(c) { return c.title })
+        if (t.length <= 3) return t.length === 1 ? t[0] : t.slice(0, -1).join(", ") + " and " + t[t.length - 1]
+        return t.slice(0, 3).join(", ") + " and " + (t.length - 3) + " more"
+    }
+    function confirmDeleteWatched(anchor, finished) {
+        if (finished ? !page.finishedCards.length : !page.watchedEpisodes) {
+            frame.toast(finished ? "No finished show is watched all the way through" : "Nothing watched is on disk")
+            return
+        }
+        var torrentWords = " Their torrents leave " + page.clientName + " too, so they can be downloaded again."
+        frame.askRemoval(anchor, finished ? {
+            heading: "Delete " + Fmt.plural(page.finishedCards.length, "finished show", "finished shows") + ", " + Fmt.bytes(page.finishedBytes) + "?",
+            base: page.someTitles(page.finishedCards) + ". Only shows the provider says have finished, every episode watched; a show still airing, or whose end is a guess, stays. Every file of them goes to the trash, extras too." + torrentWords,
+            rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
+        } : {
+            heading: "Delete " + Fmt.plural(page.watchedEpisodes, "watched episode", "watched episodes") + ", " + Fmt.bytes(page.watchedBytes) + "?",
+            base: "Every episode you have watched, in every show. Episodes not watched yet and extras stay. The files and their subtitles go to the trash, so you can get them back from there." + torrentWords,
+            rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
+        }, function() { frame.deleteWatched(finished) })
+    }
+
+    // ---- Right-click on a torrent group (#266): the frame adds the series' deletes when
+    // the group is of one; this adds taking the torrents out of the client
+    property var hoverGroup: null
+    property Item hoverGroupItem: null
+    function hoverOn(item, g, on) {
+        if (on) { page.hoverGroupItem = item; page.hoverGroup = g }
+        else if (page.hoverGroupItem === item) { page.hoverGroupItem = null; page.hoverGroup = null }
+    }
+    function contextItems() {
+        var g = page.hoverGroup, anchor = page.hoverGroupItem
+        if (!g || !anchor || !page.home || page.lens !== "downloaded") return []
+        return [{ text: g.torrents.length === 1 ? "Remove the torrent" : "Remove its " + g.torrents.length + " torrents", icon: "x",
+                  action: function() { page.askRemoveGroup(anchor, g) } }]
     }
     function hasGap(c) {
         var s = String(c.cubes || "")
@@ -347,16 +434,30 @@ Item {
             page.getResults = m
         }
     }
+    // Get says it is sending the moment it is clicked; the call goes out a frame later, so
+    // the button has turned before anything waits on the client
     function getAndFollow(plan) {
         page.getLine = ""
         page.getError = ""
-        page.pendingFollow = plan.follow ? plan : null
-        if (plan.items.length) {
-            var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
-            if (r.error) { page.getError = page.errorWords(r.error); return }
-            page.getJob = r.reply.job
-            page.getActing = true
-        } else if (plan.follow) page.follow(plan)
+        page.getActing = true
+        sendTimer.plan = plan
+        sendTimer.restart()
+    }
+    Timer {
+        id: sendTimer
+        property var plan: null
+        interval: 20
+        onTriggered: {
+            var plan = sendTimer.plan
+            sendTimer.plan = null
+            page.pendingFollow = plan.follow ? plan : null
+            if (plan.items.length) {
+                var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
+                if (r.error) { page.getActing = false; page.getError = page.errorWords(r.error); return }
+                page.getJob = r.reply.job
+            } else if (plan.follow) page.follow(plan)
+            else page.getActing = false
+        }
     }
     function follow(plan) {
         page.pendingFollow = null
@@ -826,7 +927,7 @@ Item {
         for (var j = 0; j < showGroups.length; j++) { var st = page.groupState(showGroups[j]); if (by[st]) by[st].items.push(showGroups[j]) }
         return defs.filter(function(d) { return d.items.length > 0 })
     }
-    readonly property int downloadedCount: { var n = 0; for (var i = 0; i < dlSections.length; i++) n += dlSections[i].items.length; return n }
+    readonly property int downloadedCount: { var n = diskOnly.length; for (var i = 0; i < dlSections.length; i++) n += dlSections[i].items.length; return n }
     readonly property real downloadedSize: { var n = 0; for (var i = 0; i < torrents.length; i++) n += torrents[i].size || 0; return n }
 
     // The subscriptions, by where the show stands
@@ -2099,6 +2200,7 @@ Item {
                 active: page.getActive
                 sourceOn: function(name) { var m = frame.downloadsSources; return page.sourceOn(name) }
                 acting: page.getActing
+                clientName: page.activeClientName
                 actionLine: page.getLine
                 actionError: page.getError
                 nowMs: page.nowMs
@@ -2163,7 +2265,7 @@ Item {
                     { text: "Gaps in your library  " + page.gapCards.length },
                     { text: "Airing  " + page.airingCards.length },
                     { text: "Following  " + page.rules.length },
-                    { text: "Downloaded  " + page.showGroups.length }
+                    { text: "Downloaded  " + page.downloadedCount }
                 ]
                 index: ["gaps", "airing", "following", "downloaded"].indexOf(page.lens)
                 onPicked: function(i) { page.lens = ["gaps", "airing", "following", "downloaded"][i] }
@@ -2195,7 +2297,8 @@ Item {
                         radius: theme.radiusTile
                         smoothing: theme.cornerSmoothing
                         color: gapMouse.containsMouse ? theme.glassFloatHover : theme.glassFloat
-                        MouseArea { id: gapMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openGet(page.showFromCard(gap.modelData)) }
+                        MouseArea { id: gapMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openGet(page.showFromCard(gap.modelData)); onContainsMouseChanged: frame.hoverCard(gap, gap.modelData, containsMouse) }
+                        Component.onDestruction: frame.hoverCard(gap, null, false)
                         Corner {
                             id: gapPoster
                             x: theme.space(3); y: theme.space(3)
@@ -2370,13 +2473,42 @@ Item {
             BandHead {
                 title: "Downloaded"
                 count: page.downloadedCount
-                line: !page.torrentOn ? (page.torrent && page.torrent.message ? page.torrent.message : page.clientName + " is not connected.")
+                line: Fmt.bytes(page.diskBytes) + " on disk. "
+                      + (!page.torrentOn ? (page.torrent && page.torrent.message ? page.torrent.message : page.clientName + " is not connected.")
                       : page.torrentsError !== "" ? page.torrentsError
-                      : page.torrentsRead ? Fmt.plural(page.torrents.length, "torrent", "torrents") + ", " + Fmt.bytes(page.downloadedSize) + " in " + page.clientName + "." : "Reading."
+                      : page.torrentsRead ? Fmt.plural(page.torrents.length, "torrent", "torrents") + ", " + Fmt.bytes(page.downloadedSize) + " in " + page.clientName + "." : "Reading.")
                 alarm: !page.torrentOn || page.torrentsError !== ""
                 view: frame.downloadsDlView
                 viewName: "downloads-dl-view"
                 onViewPicked: function(v) { frame.downloadsDlView = v }
+            }
+            // How much of the disk is watched, counted by episode, and the button that clears it
+            Item {
+                objectName: "downloads-usage"
+                visible: page.diskBytes > 0
+                width: parent.width
+                height: visible ? Math.max(usageBar.implicitHeight, deleteWatched.height) : 0
+                UsageBar {
+                    id: usageBar
+                    anchors.left: parent.left
+                    anchors.right: deleteWatched.left
+                    anchors.rightMargin: theme.space(6)
+                    anchors.verticalCenter: parent.verticalCenter
+                    parts: [
+                        { label: "Watched", value: Fmt.bytes(page.watchedBytes), amount: page.watchedBytes, color: theme.green },
+                        { label: "Not watched", value: Fmt.bytes(page.diskBytes - page.watchedBytes), amount: page.diskBytes - page.watchedBytes, color: theme.accent }
+                    ]
+                }
+                Button {
+                    id: deleteWatched
+                    objectName: "downloads-delete-watched"
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: frame.deleteWatchedToken >= 0 ? "Deleting" : "Delete watched"
+                    icon: "trash-2"
+                    enabled: frame.deleteWatchedToken < 0 && page.watchedBytes > 0
+                    onClicked: page.askDeleteWatched(deleteWatched)
+                }
             }
             Repeater {
                 model: page.dlSections
@@ -2404,8 +2536,21 @@ Item {
                     GroupList { groups: dlSection.modelData.items; state: dlSection.modelData.key; grid: frame.downloadsDlView === "grid" }
                 }
             }
+            // Every other series with files here: in the library, no torrent in the client
+            Column {
+                visible: page.diskOnly.length > 0
+                width: parent.width
+                spacing: theme.space(2)
+                SectionHead {
+                    title: "On disk"
+                    dot: theme.textDim
+                    count: page.diskOnly.length
+                    line: "In your library with no torrent in " + page.clientName + ", the biggest first. Right-click one to delete it."
+                }
+                DiskList { cards: page.diskOnly; grid: frame.downloadsDlView === "grid" }
+            }
             Item {
-                visible: page.torrentsRead && page.showGroups.length === 0
+                visible: page.torrentsRead && page.showGroups.length === 0 && page.diskOnly.length === 0
                 width: parent.width
                 height: visible ? theme.space(30) : 0
                 EmptyState {
@@ -2554,6 +2699,7 @@ Item {
                     busy: page.isRemoving("g:" + modelData.key)
                     onOpened: page.openGroup(modelData)
                     onAction: function(anchor) { page.askRemoveGroup(anchor, modelData) }
+                    GroupHover {}
                 }
             }
         }
@@ -2585,6 +2731,86 @@ Item {
                     busy: page.isRemoving("g:" + modelData.key)
                     onOpened: page.openGroup(modelData)
                     onAction: function(anchor) { page.askRemoveGroup(anchor, modelData) }
+                    GroupHover {}
+                }
+            }
+        }
+    }
+
+    // A torrent group under the pointer names itself for the right-click menu: to the frame
+    // as its library series, so the menu offers deleting its files, and to the page, which
+    // offers taking its torrents out of the client. Sits inside the group's card or row.
+    component GroupHover: HoverHandler {
+        onHoveredChanged: {
+            var it = parent, g = parent.modelData
+            page.hoverOn(it, g, hovered)
+            // Leaving always clears, even when a reload has dropped the group's series since
+            var c = page.cardOfGroup(g)
+            if (!hovered) frame.hoverCard(it, null, false)
+            else if (c) frame.hoverCard(it, c, true)
+        }
+        Component.onDestruction: { page.hoverOn(parent, null, false); frame.hoverCard(parent, null, false) }
+    }
+
+    // The series on disk with no torrent, as posters or as rows. A click opens the series;
+    // Delete, and a right-click, delete its files through the frame's removal sheet.
+    component DiskList: Item {
+        id: dl
+        property var cards: []
+        property bool grid: true
+        width: parent ? parent.width : 0
+        height: grid ? dlFlow.implicitHeight : dlColumn.implicitHeight
+        Flow {
+            id: dlFlow
+            visible: dl.grid
+            width: parent.width
+            spacing: page.tileGap
+            Repeater {
+                model: dl.grid ? dl.cards : []
+                ShowCard {
+                    id: diskCard
+                    required property var modelData
+                    objectName: "disk-" + modelData.id
+                    width: page.cardWidth
+                    height: implicitHeight
+                    glyph: "folder"
+                    poster: modelData.poster || ""
+                    title: modelData.title
+                    tag: modelData.finished_watched ? "Watched" : ""
+                    tagDot: theme.green
+                    ledger: page.diskLedger(modelData)
+                    cubes: modelData.cubes || ""
+                    actionText: "Delete"
+                    actionIcon: "trash-2"
+                    onOpened: frame.go("series", { id: modelData.id }, modelData.title)
+                    onAction: function(anchor) { frame.askDeleteFiles(anchor, modelData, false, true) }
+                    HoverHandler { onHoveredChanged: frame.hoverCard(diskCard, diskCard.modelData, hovered) }
+                    Component.onDestruction: frame.hoverCard(diskCard, null, false)
+                }
+            }
+        }
+        Column {
+            id: dlColumn
+            visible: !dl.grid
+            width: parent.width
+            Repeater {
+                model: dl.grid ? [] : dl.cards
+                ShowRow {
+                    id: diskRow
+                    required property var modelData
+                    glyph: "folder"
+                    poster: modelData.poster || ""
+                    title: modelData.title
+                    chips: modelData.finished_watched ? [{ text: "Watched", dot: theme.green }] : []
+                    facts: page.diskLedger(modelData)
+                    folder: modelData.path
+                    cubes: modelData.cubes || ""
+                    actionText: "Delete"
+                    actionIcon: "trash-2"
+                    onOpened: frame.go("series", { id: modelData.id }, modelData.title)
+                    onAction: function(anchor) { frame.askDeleteFiles(anchor, modelData, false, true) }
+                    HoverHandler { onHoveredChanged: frame.hoverCard(diskRow, diskRow.modelData, hovered) }
+                    Component.onDestruction: frame.hoverCard(diskRow, null, false)
                 }
             }
         }

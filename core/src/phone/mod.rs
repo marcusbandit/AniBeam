@@ -41,6 +41,9 @@ pub fn sources(core: &Core) -> Vec<PhoneSource> {
 }
 
 pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
+    // A row saved before the {query} rule covered tosho (#248) stays as it is, so the phone
+    // can still remove the other sources around it.
+    let saved = self::sources(core);
     for s in &sources {
         if s.name.trim().is_empty() {
             return Err(CoreError::invalid("sources", "a source needs a name"));
@@ -54,7 +57,10 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
                 ),
             ));
         }
-        if s.kind == "rss" && !s.url.contains("{query}") {
+        if crate::releases::endpoints::needs_query(&s.kind)
+            && !s.url.contains("{query}")
+            && !saved.contains(s)
+        {
             return Err(CoreError::invalid(
                 "sources",
                 format!(
@@ -430,8 +436,17 @@ pub fn download(
     } else {
         format!("{} releases of {folder}", items.len())
     };
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        format!(
+            "Started downloading {} of {folder}.",
+            if items.len() == 1 {
+                "an episode".to_string()
+            } else {
+                format!("{} episodes", items.len())
+            }
+        ),
         format!("Downloading {what}"),
         EventBody::Notice,
     );
@@ -483,8 +498,10 @@ pub fn subscribe(
             store.mark_taken(&subscribed.name, &had)?;
         }
     }
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        format!("Subscribed to {}.", subscribed.name),
         format!("Subscribed to {}", subscribed.name),
         EventBody::Notice,
     );
@@ -598,8 +615,10 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             };
             match engine.add(item, &folder, file).await {
                 Ok(_) => {
-                    core.bus.info(
+                    core.bus.say(
+                        Level::Info,
                         Stage::Downloads,
+                        format!("A new episode of {} is downloading.", rule.name),
                         format!("New for {}: {}", rule.name, item.title),
                         EventBody::Notice,
                     );

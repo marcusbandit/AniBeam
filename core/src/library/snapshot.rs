@@ -41,6 +41,12 @@ pub struct SeriesRow {
     pub tvmaze_id: Option<u64>,
     pub confirmed: bool,
     pub track_choice: Option<String>,
+    /// The episode count the person set by hand (#239), in force or not.
+    pub episodes_set: Option<u32>,
+    /// Whether that count is in force (`apply_episodes_set`).
+    pub episodes_set_applied: bool,
+    /// The TVmaze season that count belongs to (#283); None for AniList.
+    pub episodes_set_season: Option<u32>,
     /// The record behind the match: the AniList media, or for a TVmaze
     /// match the show, read into the same shape so every reader draws
     /// either without asking which it is.
@@ -92,6 +98,8 @@ pub struct FileRow {
     pub sidecars: Vec<Sidecar>,
     /// Read this way by the user's quick fix (#170), not by its name.
     pub fixed: bool,
+    /// The file's size in bytes, as the last scan found it.
+    pub size: u64,
 }
 
 pub struct AiringRow {
@@ -337,6 +345,7 @@ impl Snapshot {
         snap.load_airing(conn, scope.map(|_| anilist_ids.as_slice()))?;
         snap.load_tv_episodes(conn, scope.map(|_| show_ids.as_slice()))?;
         snap.fill_tvmaze_totals();
+        snap.apply_episodes_set();
         snap.load_tracker_entries(conn, scope.map(|_| media_ids.as_slice()))?;
         snap.load_history(conn, scoped_series)?;
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
@@ -363,7 +372,7 @@ impl Snapshot {
                     m.cover_url, m.banner_url, ip.path, ib.path,
                     s.tvmaze_id, t.id, t.name, t.status, t.premiered, t.rating, t.genres, t.network, t.summary,
                     t.url, t.poster_url, t.background_url, m.season, m.start_date, m.duration,
-                    t.average_runtime
+                    t.average_runtime, s.episodes_set, s.episodes_set_season
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
              LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -435,6 +444,14 @@ impl Snapshot {
                 tvmaze_id: r.get::<_, Option<i64>>(34)?.map(|v| v as u64),
                 confirmed: r.get::<_, i64>(13)? != 0,
                 track_choice: r.get(14)?,
+                episodes_set: r
+                    .get::<_, Option<i64>>(50)?
+                    .and_then(|v| u32::try_from(v).ok())
+                    .filter(|n| *n > 0),
+                episodes_set_applied: false,
+                episodes_set_season: r
+                    .get::<_, Option<i64>>(51)?
+                    .and_then(|v| u32::try_from(v).ok()),
                 media,
                 poster_path: local(r.get(32)?),
                 banner_path: local(r.get(33)?),
@@ -464,7 +481,7 @@ impl Snapshot {
         };
         let sql = format!(
             "SELECT id, series_id, path, mtime, kind, number, season, extra_kind, extra_index, label, episode_key, sidecars,
-                    EXISTS (SELECT 1 FROM file_fixes x WHERE x.path = files.path)
+                    EXISTS (SELECT 1 FROM file_fixes x WHERE x.path = files.path), size
              FROM files{where_sql}
              ORDER BY series_id, season, number, path"
         );
@@ -489,6 +506,7 @@ impl Snapshot {
                 episode_key: r.get(10)?,
                 sidecars: sidecars_of(&r.get::<_, String>(11)?),
                 fixed: r.get(12)?,
+                size: r.get::<_, i64>(13)?.max(0) as u64,
             })
         })?;
         for row in rows {
@@ -597,6 +615,102 @@ impl Snapshot {
                 m.episodes = Some(n);
             }
         }
+    }
+
+    /// A count the person set by hand (#239) stands in while the record names
+    /// none of its own, so nothing past it is predicted or scheduled, until an
+    /// episode past it airs or a file of one lands: then what really happened
+    /// wins and the series reads as before. A record that publishes its own
+    /// count always wins. A TVmaze match numbers within a season, so there the
+    /// count is the length of the season it was set for (#283), in force only
+    /// while that is still the card's season, and the folder's total is the
+    /// seasons on disk before it plus that. The schedule itself is never
+    /// edited, since other folders may share it: `clip` cuts it on read.
+    fn apply_episodes_set(&mut self) {
+        let now = crate::time::to_secs(self.now);
+        let mut applied: Vec<(usize, u32)> = Vec::new();
+        for (i, row) in self.series.iter().enumerate() {
+            let Some(set) = row.episodes_set else {
+                continue;
+            };
+            let own = row.media.as_ref().map(|m| m.episodes);
+            if own != Some(None) {
+                continue;
+            }
+            let seasons =
+                (row.provider == Some(Provider::Tvmaze)).then(|| self.seasons_on_disk(row));
+            let season = seasons.as_ref().map(|s| s.last().copied().unwrap_or(1));
+            if season != row.episodes_set_season {
+                continue;
+            }
+            let schedule = match season {
+                Some(s) => self.tv_season(row, s).unwrap_or(&[]),
+                None => self.airing_of(row),
+            };
+            // Only what really came out proves the count wrong: a date the
+            // schedule names ahead is a plan, and plans run long
+            let aired = schedule
+                .iter()
+                .filter(|a| a.aired_at.is_some_and(|at| at <= now))
+                .map(|a| a.number)
+                .max()
+                .unwrap_or(0);
+            let on_disk = self
+                .files_of(row.id)
+                .iter()
+                .filter(|f| f.is_episode && f.number >= 1.0 && f.number.fract() == 0.0)
+                .filter(|f| season.is_none_or(|s| f.season.unwrap_or(1) == s))
+                .map(|f| f.number as u32)
+                .max()
+                .unwrap_or(0);
+            if aired.max(on_disk) <= set {
+                let before: u32 = seasons
+                    .iter()
+                    .flatten()
+                    .filter(|x| season.is_some_and(|s| **x < s))
+                    .filter_map(|x| self.tv_season(row, *x))
+                    .map(|eps| eps.len() as u32)
+                    .sum();
+                applied.push((i, before + set));
+            }
+        }
+        for (i, total) in applied {
+            let row = &mut self.series[i];
+            row.episodes_set_applied = true;
+            if let Some(m) = row.media.as_mut() {
+                m.episodes = Some(total);
+            }
+        }
+    }
+
+    /// A schedule as this row reads it: cut at the count set by hand while
+    /// that count is in force for `season` (None for a record numbering
+    /// without seasons), so nothing past it is scheduled. The list is in
+    /// number order.
+    fn clip<'a>(row: &SeriesRow, season: Option<u32>, list: &'a [AiringRow]) -> &'a [AiringRow] {
+        match row.episodes_set {
+            Some(n) if row.episodes_set_applied && row.episodes_set_season == season => {
+                &list[..list.partition_point(|a| a.number <= n)]
+            }
+            _ => list,
+        }
+    }
+
+    /// The count the card's own episode numbers run to, what guesses and
+    /// the upcoming list stop at: the record's total, except a TVmaze match
+    /// with a count set by hand, which counts within its season (#283).
+    pub(crate) fn season_total(&self, row: &SeriesRow, total: Option<u32>) -> Option<u32> {
+        if row.provider == Some(Provider::Tvmaze) && row.episodes_set_applied {
+            row.episodes_set
+        } else {
+            total
+        }
+    }
+
+    /// The count set by hand for a TVmaze season, while it is in force.
+    fn season_set(&self, row: &SeriesRow, season: u32) -> Option<u32> {
+        row.episodes_set
+            .filter(|_| row.episodes_set_applied && row.episodes_set_season == Some(season))
     }
 
     fn load_tracker_entries(
@@ -794,7 +908,7 @@ impl Snapshot {
         }
         row.anilist_id
             .and_then(|id| self.airing.get(&id))
-            .map(Vec::as_slice)
+            .map(|list| Self::clip(row, None, list))
             .unwrap_or(&[])
     }
 
@@ -807,12 +921,28 @@ impl Snapshot {
             .then(|| self.seasons_on_disk(row).last().copied().unwrap_or(1))
     }
 
-    /// One season of a TVmaze match's show, as TVmaze lists it.
+    /// One season of a TVmaze match's show, as TVmaze lists it, cut at a
+    /// count set by hand for it.
     fn tv_season(&self, row: &SeriesRow, season: u32) -> Option<&[AiringRow]> {
         row.tvmaze_id
             .and_then(|id| self.tv_seasons.get(&id))
             .and_then(|seasons| seasons.get(&season))
-            .map(Vec::as_slice)
+            .map(|list| Self::clip(row, Some(season), list))
+    }
+
+    /// Every season of a TVmaze match's show, each as `tv_season` reads it.
+    pub(crate) fn tv_seasons_of<'a>(
+        &'a self,
+        row: &'a SeriesRow,
+    ) -> impl Iterator<Item = (u32, &'a [AiringRow])> + 'a {
+        row.tvmaze_id
+            .and_then(|id| self.tv_seasons.get(&id))
+            .into_iter()
+            .flat_map(move |seasons| {
+                seasons
+                    .iter()
+                    .map(move |(season, list)| (*season, Self::clip(row, Some(*season), list)))
+            })
     }
 
     /// The seasons a TVmaze folder holds episodes of, a file naming no
@@ -855,15 +985,9 @@ impl Snapshot {
             .tv_span(row)
             .filter(|a| a.aired_at.is_some_and(|at| at <= now))
             .count() as u32;
-        let next = row
-            .tvmaze_id
-            .and_then(|id| self.tv_seasons.get(&id))
-            .into_iter()
-            .flat_map(|seasons| {
-                seasons
-                    .iter()
-                    .flat_map(|(season, eps)| eps.iter().map(move |a| (*season, a)))
-            })
+        let next = self
+            .tv_seasons_of(row)
+            .flat_map(|(season, eps)| eps.iter().map(move |a| (season, a)))
             .filter_map(|(season, a)| {
                 a.aired_at.filter(|at| *at > now).map(|at| NextEpisode {
                     season: Some(season),
@@ -892,8 +1016,13 @@ impl Snapshot {
     /// length, when TVmaze lists that season at all.
     pub(crate) fn past_the_end(&self, row: &SeriesRow, file: &FileRow, total: u32) -> bool {
         if row.provider == Some(Provider::Tvmaze) {
+            let season = file.season.unwrap_or(1);
+            // A count set by hand is the season's length, however few TVmaze lists
+            if let Some(n) = self.season_set(row, season) {
+                return file.number > f64::from(n);
+            }
             return self
-                .tv_season(row, file.season.unwrap_or(1))
+                .tv_season(row, season)
                 .is_some_and(|s| !s.is_empty() && file.number > s.len() as f64);
         }
         file.season.is_none_or(|s| s <= 1) && file.number > f64::from(total)

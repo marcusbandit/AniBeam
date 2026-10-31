@@ -8,7 +8,10 @@ the branch, every commit, the PR title and the squash commit it becomes.
 1. **Issue first.** Anything bigger than a typo starts as a GitHub issue. The
    title states the outcome, the body says what done looks like. What happens
    to an issue once it is filed is in
-   [`docs/agents/triage.md`](docs/agents/triage.md).
+   [`docs/agents/triage.md`](docs/agents/triage.md). Every issue sits on the
+   [AniBeam project board](https://github.com/users/marcusbandit/projects/1),
+   and its card moves as the work does. Before your first card, ask the owner
+   for board access and run `gh auth refresh -s project`.
 2. **Branch** off `main` as `<type>/<issue>-<slug>`.
 3. **Commit** as you go, each message `<type>(<scope>): <outcome>`.
 4. **Try it live** in a sandbox run of the branch's own build. See below.
@@ -84,7 +87,7 @@ moved.
 Good:
 
 - `fix(shell): the wheel scrolls like a browser`
-- `feat(downloads): a provider switch with 1337x`
+- `feat(downloads): a provider switch on the search bar`
 - `perf(shell): one drive run captures several pages`
 
 Not:
@@ -136,48 +139,76 @@ Not:
 pull request. The phone's `build.sh` refuses an APK whose newest heading is not its
 `versionName`.
 
+## Sources
+
+AniBeam ships no download sources, and this repo takes no PR that adds one. Nothing in
+the app points at a site: no address, no host, no default, no onboarding link, and no code,
+test or fixture that names one. A PR that adds a site gets closed, however well it is built.
+
+What the core does hold is endpoint kinds. A kind is a type of input the core knows how to
+read and handle well: an RSS feed, a torznab API, a JSON search API, a feed that needs a key.
+It is named for that shape, never for a site, and it knows nothing about which sites use it.
+A new kind is welcome when no existing one can read a source; open an issue for it first.
+
+The site itself comes from an endpoint repo the user attaches by URL
+(`docs/superpowers/specs/2026-10-24-endpoint-repos.md` has the format). Its definition says
+which kind to use and where to point it, and installing it is what tells the app how to handle
+that site. A new source goes in one of two places:
+
+- A PR to [`marcusbandit/anibeam-endpoints`](https://github.com/marcusbandit/anibeam-endpoints),
+  the owner's own repo. Its README says how to write a definition.
+- A repo of your own, signed with your own key, that anyone can add in AniBeam beside or
+  instead of the owner's.
+
 ## Before you open it
 
 - The test, clippy and fmt commands in the README's Development section pass.
 - A visible change has a capture in the PR body, taken against a sandbox root.
 - A change someone can notice has its line in the app's `CHANGELOG.md`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
+- Nothing in the diff names a download site. See Sources.
 
 ## Releases
 
-People get stable builds only, and main keeps moving while one is checked. Two pre-releases
-carry the builds in between (`.github/workflows/preview.yml`):
+Every build ships from main. What tells them apart is the version, and the app reads its
+update track from that version:
 
-- **`preview`** is main. Every merge that touches the app rebuilds the Mac, Linux and
-  Windows apps onto it, replacing the last build's files.
-- **`candidate`** is the release branch being checked. Every push to a `release/*` branch
-  rebuilds onto it the same way.
+| Build | Version | Comes from | Who gets it |
+| --- | --- | --- | --- |
+| Stable | `2.5.0` | Release workflow, promoting a nightly | everyone; the Latest release |
+| Nightly | `2.5.0-nightly.20261102.40` | `nightly.yml`, every few hours | the Nightly track in Settings |
+| PR test build | `2.5.0-pr.280.3` | `pr-build.yml`, the `test build` label | whoever the PR comment reaches |
 
-Each is one release whose files change, never a new release, so nobody watching the repo
-hears about a build, and the app's update notice ignores both. A phone build for testing
-goes on the matching one under one fixed name instead of a new `android-v*` pre-release:
-`cp AniBeam-2.1.2.apk AniBeam-phone.apk && gh release upload preview AniBeam-phone.apk --clobber`.
+The workspace version in `Cargo.toml` is always the next stable version, and every build
+between two releases carries it as its base.
 
-Shipping a version:
+- **Nightly.** `nightly.yml` builds main every few hours when the app changed and the last
+  nightly is six hours old, and publishes it as its own pre-release. The ten newest are
+  kept. Run it from the Actions tab with `force` for one now.
+- **PR test build.** Put the `test build` label on a PR to get installers for it on the
+  `pr-builds` pre-release, linked from a comment on the PR. Every push rebuilds them;
+  closing the PR or taking the label off removes them. Use it to have someone try a
+  branch before it merges, a Mac change for Liam for example.
+- **Stable.** When the newest nightly has been run for a while and is good, run the Release
+  workflow on main from the Actions tab. It promotes that nightly's commit, so what ships is
+  a build people have already used: nightly `2.5.0-nightly.20261102.40` ships as `v2.5.0`.
+  It builds every platform, publishes the release once every file is on it, and moves main
+  to `2.6.0` with a new `CHANGELOG.md` heading. Then update the AUR package and the brew
+  cask: `apps/linux/packaging/aur/publish.sh 2.5.0` and
+  `apps/linux/packaging/brew/bump.sh 2.5.0`.
+- **Hotfix.** A shipped version that needs a fix gets a branch from its tag, only then:
+  `git push origin v2.5.0^{commit}:refs/heads/release/2.5`. The fix lands on main first
+  through the usual PR, then is cherry-picked onto the branch with `git cherry-pick -x` in
+  a PR against `release/2.5`, with its patch note under a new `2.5.1` heading and the
+  version bumped to match. Tag it to ship: `git tag v2.5.1 origin/release/2.5 && git push
+  origin v2.5.1`. The Release workflow refuses a tag that is not on its own branch. The
+  branch is never merged back, since everything on it came from main.
 
-1. When main has a batch worth shipping, cut the branch from it:
-   `git push origin main:release/2.4`. If that push starts no Candidate build, run the
-   Preview workflow on the branch from the Actions tab. In the same step, a PR on main
-   bumps the workspace version to the next one (2.5.0) with a new `CHANGELOG.md` heading,
-   so what merges next is noted under the version it will ship in.
-2. Testers run `candidate`.
-3. A bug found there is fixed on main first, through the usual PR, then cherry-picked onto
-   the branch with `git cherry-pick -x` in a PR against `release/2.4`. Its patch note
-   moves under the branch's own heading there.
-4. When the candidate is good, tag the branch: `git tag v2.4.0 origin/release/2.4 && git
-   push origin v2.4.0`. `release.yml` refuses a tag that is not on its own branch
-   (`v2.4.x` on `release/2.4`), builds every platform and leaves a draft; read it and
-   press Publish. The phone ships from the same branch under its own number,
-   `android-v2.1.2` for example, published by hand.
-5. A fix for a version that has shipped goes the same way and ships as 2.4.1 from the
-   same branch.
+A phone build for testing goes on the newest nightly under one fixed name instead of a new
+`android-v*` pre-release: `cp AniBeam-2.1.2.apk AniBeam-phone.apk && gh release upload
+<nightly tag> AniBeam-phone.apk --clobber`. The phone ships under its own number,
+`android-v2.1.2` for example, published by hand.
 
-The branch stays as the record of what shipped; it is never merged back, since everything
-on it came from main. Builds name themselves after the newest stable tag their history
-holds, so a main build after a cherry-picked release still reads as the version before it
-plus commits; the app's own version comes from `Cargo.toml` either way.
+A build made outside CI (a checkout, the AUR) names itself after the newest stable tag in
+its history plus commits, `2.4.0.r12.gabc1234`, and counts as the workspace version for
+updates.

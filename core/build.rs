@@ -17,16 +17,38 @@ fn main() {
     watch_git();
     rerun_when_head_moves();
     let fallback = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    // A build CI ships says what it is: 2.4.0, 2.4.0-nightly.20261030.12 or 2.4.0-pr.280.3.
+    // That string names the build and decides which updates it is offered; a build without
+    // it (a checkout, the AUR) describes itself from git and counts as the workspace version.
+    println!("cargo:rerun-if-env-changed=ANIBEAM_RELEASE_VERSION");
+    let shipped = std::env::var("ANIBEAM_RELEASE_VERSION")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    println!(
+        "cargo:rustc-env=ANIBEAM_RELEASE={}",
+        shipped.as_deref().unwrap_or(&fallback)
+    );
     // Each app describes itself from its own tags only: the desktop's v2.3.0, the phone's
-    // android-v2.1.1. Any other tag (the preview release's) never names a version.
+    // android-v2.1.1. Any other tag never names a version.
     let android = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "android");
-    let (pattern, prefix) = if android {
-        ("android-v[0-9]*", "android-v")
+    // A nightly's or test build's tag (v2.4.0-nightly.20261030.12) is never one to describe
+    // from: only a stable version is.
+    let (pattern, exclude, prefix) = if android {
+        ("android-v[0-9]*", "android-v*-*", "android-v")
     } else {
-        ("v[0-9]*", "v")
+        ("v[0-9]*", "v*-*", "v")
     };
     let describe = Command::new("git")
-        .args(["describe", "--tags", "--match", pattern, "--dirty"])
+        .args([
+            "describe",
+            "--tags",
+            "--match",
+            pattern,
+            "--exclude",
+            exclude,
+            "--dirty",
+        ])
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -53,6 +75,7 @@ fn main() {
             d.replace('-', ".")
         })
         .unwrap_or(fallback);
+    let version = shipped.unwrap_or(version);
     println!("cargo:rustc-env=ANIBEAM_VERSION={version}");
 }
 

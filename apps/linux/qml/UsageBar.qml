@@ -1,12 +1,14 @@
 // A pill split into segments by share, with a legend line under it. `value` is the part's
 // already-formatted amount (as Tiles' own `value` is); the leading number in it is what
-// sets the segment's share, so a caller can hand this "312 MB" and "4.1 MB" directly.
+// sets the segment's share, so a caller can hand this "312 MB" and "4.1 MB" directly. Parts in
+// different units ("412 GB" and "1.2 TB") hand their raw size as `amount`, which wins.
 import QtQuick
 
 Column {
     id: root
-    property var parts: []                 // [{ label, value, color }]
-    readonly property real total: parts.reduce(function(s, p) { return s + (parseFloat(p.value) || 0) }, 0)
+    property var parts: []                 // [{ label, value, color, amount? }]
+    function share(p) { return p.amount !== undefined ? p.amount : (parseFloat(p.value) || 0) }
+    readonly property real total: parts.reduce(function(s, p) { return s + root.share(p) }, 0)
     readonly property real segGap: theme.space(0.5)
     width: parent ? parent.width : theme.space(100)
     spacing: theme.space(2)
@@ -30,7 +32,7 @@ Column {
             readonly property var widths: {
                 var n = root.parts.length
                 var room = width - root.segGap * (n - 1)
-                var w = root.parts.map(function(p) { return root.total > 0 ? room * (parseFloat(p.value) || 0) / root.total : 0 })
+                var w = root.parts.map(function(p) { return root.total > 0 ? room * root.share(p) / root.total : 0 })
                 var owed = 0, big = 0
                 for (var i = 0; i < n; i++) {
                     if (w[i] > w[big]) big = i

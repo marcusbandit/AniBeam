@@ -426,6 +426,7 @@ async fn run(
     }
     match pending {
         Some((t, count)) => Ok(Finished {
+            plain: None,
             level: Level::Info,
             message: refreshed_line(t, count),
             body: EventBody::ProgressRefreshed { tracker: t },
@@ -439,11 +440,13 @@ async fn run(
         None => match failure {
             Some(e) if tracker.is_some() => Err(e),
             Some(_) => Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: "No progress refreshed".to_string(),
                 body: EventBody::Notice,
             }),
             None => Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: "Nothing to refresh".to_string(),
                 body: EventBody::Notice,

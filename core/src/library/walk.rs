@@ -85,6 +85,15 @@ static ORDINAL_SEASON: LazyLock<Regex> =
 static PARENS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\(.*?\)\s*").unwrap());
 static DOT_YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.[0-9]{4}\.").unwrap());
 static PURE_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([0-9]+)$").unwrap());
+/// One episode named in a folder: `S01E11`, or `Show - 11` the way an anime
+/// release names it. A range (`S01E01-E12`, `01-12`) or a season alone is
+/// no episode. Group 1 is the title before the marker.
+static ONE_EPISODE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(.*?)(?:\bS[0-9]{1,2}E[0-9]{1,4}(?:$|[^-0-9]|-(?:$|[^E0-9]|E[^0-9]))|\s-\s[0-9]{1,4}(?:v[0-9])?(?:\s|$|\[|\())",
+    )
+    .unwrap()
+});
 
 fn first_number(patterns: &[Regex], s: &str) -> Option<u32> {
     patterns
@@ -318,12 +327,53 @@ enum Shape {
     Passthrough(PathBuf),
 }
 
+/// The show a torrent's folder around one episode belongs to, as a key:
+/// `Show.S01E11.1080p-GRP/` holding that one video and nothing else that
+/// plays. A show's folder fills with these when
+/// single-episode torrents each bring their own folder, and they are
+/// episodes of it, never shows of their own.
+fn episode_folder_show(state: &mut WalkState, dir: &Path) -> Option<String> {
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let title = ONE_EPISODE.captures(&name)?.get(1)?.as_str();
+    let title = BRACKETS.replace_all(title, " ");
+    let key: String = title
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
+    let l = state.list(dir);
+    let only_one = l.videos.len() == 1 && !l.dirs.iter().any(|d| has_videos_shallow(state, d));
+    only_one.then_some(key)
+}
+
+/// Every video-bearing subfolder is an episode folder of one same show.
+fn all_episode_folders(state: &mut WalkState, dirs: &[PathBuf]) -> bool {
+    let mut show: Option<String> = None;
+    for d in dirs {
+        match (episode_folder_show(state, d), &show) {
+            (None, _) => return false,
+            (Some(k), Some(s)) if &k != s => return false,
+            (Some(k), _) => show = Some(k),
+        }
+    }
+    show.is_some()
+}
+
 fn classify_folder(state: &mut WalkState, loose_videos: usize, dirs: &[PathBuf]) -> Shape {
     let video_bearing: Vec<PathBuf> = dirs
         .iter()
         .filter(|d| has_videos_shallow(state, d))
         .cloned()
         .collect();
+    // Episodes loose in the folder make it the show itself: a pack or a
+    // season folder saved in beside them belongs to it, and reading the
+    // folder as a wrapper would turn every loose episode into a film
+    if all_episode_folders(state, &video_bearing) || loose_videos >= 2 {
+        return Shape::Series;
+    }
     if video_bearing.len() >= 2 {
         return Shape::Wrapper(video_bearing);
     }
@@ -792,6 +842,120 @@ mod tests {
         assert_eq!(results[0].kind, SeriesKind::Show);
         assert_eq!(results[0].files.len(), 3);
         assert_eq!(results[0].name, "My Show");
+    }
+
+    #[test]
+    fn single_episode_torrent_folders_are_episodes_of_the_show() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Avatar Seven Havens");
+        for ep in 10..=13 {
+            let rip = format!("Avatar.Seven.Havens.S01E{ep}.1080p.x265-ELiTE");
+            touch(&show.join(&rip).join(format!("{rip}.mkv")));
+        }
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].kind, SeriesKind::Show);
+        assert_eq!(results[0].name, "Avatar Seven Havens");
+        assert_eq!(results[0].path, show.to_string_lossy());
+        assert_eq!(results[0].files.len(), 4);
+        // One alone is still an episode of the show, not a passthrough
+        let one = tempfile::tempdir().unwrap();
+        let show = one.path().join("Solo Show");
+        touch(
+            &show
+                .join("[Grp] Solo Show - 05 [1080p]")
+                .join("[Grp] Solo Show - 05 [1080p].mkv"),
+        );
+        let results = scan_source(one.path()).unwrap();
+        assert_eq!(
+            (results.len(), results[0].path.as_str()),
+            (1, &*show.to_string_lossy())
+        );
+    }
+
+    #[test]
+    fn episode_folders_beside_loose_episodes_join_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Mixed Show");
+        for ep in 1..=9 {
+            touch(&show.join(format!("Mixed.Show.S01E{ep:02}.1080p.WEB-DL.mkv")));
+        }
+        for ep in 10..=11 {
+            let rip = format!("Mixed.Show.S01E{ep}.1080p.x265-ELiTE");
+            touch(&show.join(&rip).join(format!("{rip}.mkv")));
+        }
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            (results[0].kind, results[0].files.len()),
+            (SeriesKind::Show, 11)
+        );
+    }
+
+    #[test]
+    fn episode_folders_of_two_shows_stay_two_shows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dl = tmp.path().join("Downloads");
+        touch(&dl.join("Foo.S01E03-GRP").join("Foo.S01E03-GRP.mkv"));
+        touch(&dl.join("Bar.S02E07-GRP").join("Bar.S02E07-GRP.mkv"));
+        assert_eq!(scan_source(tmp.path()).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_group_tag_after_the_episode_still_reads_as_one_episode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Show");
+        for ep in 1..=2 {
+            let rip = format!("Show.S01E{ep:02}-ELiTE");
+            touch(&show.join(&rip).join(format!("{rip}.mkv")));
+        }
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, show.to_string_lossy());
+        // A range is a pack, not one episode
+        assert!(!ONE_EPISODE.is_match("Show.S01E01-E12.1080p"));
+        assert!(!ONE_EPISODE.is_match("[Grp] Show - 01-12 [1080p]"));
+        assert!(!ONE_EPISODE.is_match("Show.S01.1080p"));
+    }
+
+    #[test]
+    fn a_pack_saved_beside_loose_episodes_joins_the_show() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Loose Show");
+        for ep in 1..=9 {
+            touch(&show.join(format!("Loose.Show.S01E{ep:02}.1080p.mkv")));
+        }
+        for ep in 10..=13 {
+            touch(
+                &show
+                    .join("Loose.Show.S01.1080p-GRP")
+                    .join(format!("Loose.Show.S01E{ep}.mkv")),
+            );
+        }
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            (results[0].kind, results[0].files.len()),
+            (SeriesKind::Show, 13)
+        );
+    }
+
+    #[test]
+    fn season_packs_and_batches_are_not_episode_folders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Pack Show");
+        touch(
+            &show
+                .join("Pack.Show.S01.1080p")
+                .join("Pack.Show.S01E01.mkv"),
+        );
+        touch(
+            &show
+                .join("Pack.Show.S02.1080p")
+                .join("Pack.Show.S02E01.mkv"),
+        );
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 2);
     }
 
     #[test]

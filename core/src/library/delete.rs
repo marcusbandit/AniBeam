@@ -1,7 +1,9 @@
 //! Deleting episodes (#158): the files of chosen episodes, with their subtitle sidecars, out
 //! of the library. On a desktop they go to the trash, where they can be put back; a phone has
 //! no trash and deletes them (`downloads::trash`). The series is scanned again at once, so its
-//! page and cubes follow without waiting on the watcher.
+//! page and cubes follow without waiting on the watcher. A torrent that held one of the files
+//! leaves the client with them (#266), and Delete watched does the same across the whole
+//! library at once.
 
 use std::path::{Path, PathBuf};
 
@@ -123,25 +125,158 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
     // A trash that fails part way has still moved what it moved: the library is read again
     // either way, and the failure is reported after.
     let moved = crate::downloads::trash::move_to_trash(&targets);
+    crate::downloads::drop_torrents_of(core, gone(&targets));
     if moved.is_ok() {
-        core.bus.info(
+        let line = format!(
+            "{} {} of {title} {}",
+            n,
+            crate::words::pick(n, "episode", "episodes"),
+            if crate::downloads::trash::WHERE == "deleted" {
+                "deleted"
+            } else {
+                "moved to the trash"
+            }
+        );
+        core.bus.say(
+            Level::Info,
             Stage::Library,
-            format!(
-                "{} {} of {title} {}",
-                n,
-                if n == 1 { "episode" } else { "episodes" },
-                if crate::downloads::trash::WHERE == "deleted" {
-                    "deleted"
-                } else {
-                    "moved to the trash"
-                }
-            ),
+            format!("{line}."),
+            line,
             EventBody::Notice,
         );
     }
     let scan = super::scan::rescan_series(core, series);
     moved?;
     scan
+}
+
+/// What of `targets` is really gone: a trash that failed part way leaves the rest, and a
+/// torrent of a file still here stays in the client.
+fn gone(targets: &[PathBuf]) -> Vec<PathBuf> {
+    targets.iter().filter(|p| !p.exists()).cloned().collect()
+}
+
+/// One series' share of a Delete watched: its id, its file rows, and their bytes.
+type Picked = (u64, Vec<(u64, Option<Row>)>, u64);
+
+/// Deletes across the whole library (#266): every watched episode's file, or with
+/// `finished_shows` every file of each show confirmed done with
+/// (`SeriesCard::finished_watched`), its extras too. To the trash, as `delete_episodes`
+/// does, and a file a torrent is still writing stays. Every path is checked first and one
+/// that fails refuses the lot. Each series it touched is scanned again.
+pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreError> {
+    let images_dir = core.paths.images_dir();
+    let now = crate::time::now();
+    let (picked, sources) = core.store.read(|c| {
+        let snap = super::snapshot::Snapshot::load(c, &images_dir, now, None)?;
+        let mut picked: Vec<Picked> = Vec::new();
+        for row in &snap.series {
+            // A series whose folder is gone has nothing left to delete
+            let w = snap.watched_of(row);
+            if row.missing || (finished_shows && !snap.finished_watched(row, &w)) {
+                continue;
+            }
+            let mut rows = Vec::new();
+            let mut bytes = 0;
+            for f in snap.files_of(row.id) {
+                // A finished show takes its extras too; a file of another season or past the
+                // count, which nothing says was watched, stays either way
+                let take = w.file(f) || (finished_shows && !f.is_episode);
+                // Gone already (an earlier delete the rescan has not caught up with) is not
+                // counted as going now
+                if !take
+                    || crate::downloads::is_writing(core, &f.path)
+                    || !Path::new(&f.path).exists()
+                {
+                    continue;
+                }
+                bytes += f.size;
+                rows.push((
+                    f.id,
+                    Some(Row {
+                        series: row.id,
+                        path: f.path.clone(),
+                        number: f.is_episode.then_some(f.number),
+                        sidecars: f.sidecars.clone(),
+                    }),
+                ));
+            }
+            if !rows.is_empty() {
+                picked.push((row.id, rows, bytes));
+            }
+        }
+        let mut stmt = c.prepare("SELECT path FROM sources")?;
+        let sources = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((picked, sources))
+    })?;
+    let mut targets = Vec::new();
+    let mut episodes = 0u64;
+    let mut bytes = 0u64;
+    for (series, rows, b) in &picked {
+        targets.extend(paths(rows, *series, &sources)?);
+        let mut numbers: Vec<String> = rows
+            .iter()
+            .filter_map(|(_, r)| r.as_ref())
+            .filter_map(|r| r.number.map(|n| n.to_string()))
+            .collect();
+        numbers.sort();
+        numbers.dedup();
+        episodes += numbers.len() as u64;
+        bytes += b;
+    }
+    if targets.is_empty() {
+        return Ok(Reply::Deleted {
+            series: 0,
+            episodes: 0,
+            bytes: 0,
+        });
+    }
+    let moved = crate::downloads::trash::move_to_trash(&targets);
+    crate::downloads::drop_torrents_of(core, gone(&targets));
+    if moved.is_ok() {
+        let what = if finished_shows {
+            format!(
+                "{} finished {}",
+                picked.len(),
+                crate::words::pick(picked.len(), "show", "shows")
+            )
+        } else {
+            format!(
+                "{} watched {} of {} {}",
+                episodes,
+                crate::words::pick(episodes, "episode", "episodes"),
+                picked.len(),
+                "series"
+            )
+        };
+        let line = format!(
+            "{what} {}",
+            if crate::downloads::trash::WHERE == "deleted" {
+                "deleted"
+            } else {
+                "moved to the trash"
+            }
+        );
+        core.bus.say(
+            Level::Info,
+            Stage::Library,
+            format!("{line}."),
+            line,
+            EventBody::Notice,
+        );
+    }
+    // A trash that fails part way has still moved what it moved: every series is read again
+    for (series, _, _) in &picked {
+        let _ = super::scan::rescan_series(core, *series);
+    }
+    moved?;
+    Ok(Reply::Deleted {
+        series: picked.len() as u64,
+        episodes,
+        bytes,
+    })
 }
 
 #[cfg(test)]

@@ -1,0 +1,147 @@
+name: Nightly
+
+# What main is becoming, as a build of its own every few hours rather than one file replaced
+# on every merge. The schedule wakes every three hours and builds only when the app changed
+# on main since the last nightly and that nightly is at least six hours old; Run workflow
+# with `force` builds now regardless. Each nightly is versioned from the workspace version,
+# 2.5.0-nightly.20261030.12 (the day and this workflow's run number), and published as the
+# pre-release v2.5.0-nightly.20261030.12 once every platform's files are on it. An app on the
+# Nightly track hears about it; the Stable track never does. release.yml promotes the newest
+# nightly to a stable version. The ten newest nightlies are kept. CONTRIBUTING.md, under
+# Releases, has the whole line.
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build even if the last nightly is recent or main has not changed
+        type: boolean
+        default: false
+
+# One nightly at a time; a schedule that fires while one builds waits for it.
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.gate.outputs.build }}
+      sha: ${{ steps.gate.outputs.sha }}
+      version: ${{ steps.gate.outputs.version }}
+      previous: ${{ steps.gate.outputs.previous }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Is a nightly due
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force || 'false' }}
+        run: |
+          sha="$(git rev-parse HEAD)"
+          base="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)"
+          version="$base-nightly.$(date -u +%Y%m%d).$GITHUB_RUN_NUMBER"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          last="$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | last // empty | "\(.tagName) \(.createdAt)"')"
+          build=true
+          if [ -n "$last" ]; then
+            read -r tag created <<<"$last"
+            echo "previous=$tag" >> "$GITHUB_OUTPUT"
+            git fetch -q origin "refs/tags/$tag:refs/tags/$tag"
+            age=$(( $(date -u +%s) - $(date -u -d "$created" +%s) ))
+            if git diff --quiet "$tag" "$sha" -- core host-api apps/linux apps/cli Cargo.toml Cargo.lock; then
+              echo "The app has not changed on main since $tag."
+              build=false
+            elif [ "$age" -lt 21600 ]; then
+              echo "$tag is $(( age / 60 )) minutes old; the next nightly waits for six hours."
+              build=false
+            fi
+          fi
+          if [ "$FORCE" = true ]; then build=true; fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "build=$build, $version at ${sha::7}"
+
+  macos:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/macos.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.gate.outputs.sha }}
+      version: ${{ needs.gate.outputs.version }}
+
+  linux:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/linux.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.gate.outputs.sha }}
+      version: ${{ needs.gate.outputs.version }}
+
+  windows:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/windows.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.gate.outputs.sha }}
+      version: ${{ needs.gate.outputs.version }}
+
+  publish:
+    needs: [gate, macos, linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: anibeam-*
+          merge-multiple: true
+          path: dist
+
+      # A draft first, made public only once every file is on it, so an app that checks
+      # meanwhile never finds a nightly without its download.
+      - name: Publish the nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.gate.outputs.version }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          PREVIOUS: ${{ needs.gate.outputs.previous }}
+        run: |
+          ls -la dist
+          tag="v$VERSION"
+          {
+            echo "A nightly build of main at ${SHA::7}: what the next stable version is becoming, not yet checked the way a release is. Turn on Settings > Data > Updates > Nightly to hear about the next one."
+            echo
+            sed "s/@VERSION@/$VERSION/g" .github/release-notes.md | sed '/^\*\*Arch:\*\*/d'
+          } > notes.md
+          start=()
+          if [ -n "$PREVIOUS" ]; then start=(--notes-start-tag "$PREVIOUS"); fi
+          gh release create "$tag" dist/* --draft --prerelease --latest=false --target "$SHA" \
+            --title "AniBeam $VERSION" --notes-file notes.md --generate-notes "${start[@]}"
+          gh release edit "$tag" --draft=false --prerelease --latest=false
+
+      - name: Keep the ten newest nightlies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+            while read -r tag; do
+              echo "Removing $tag"
+              gh release delete "$tag" --yes --cleanup-tag
+            done
