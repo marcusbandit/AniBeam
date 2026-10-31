@@ -127,18 +127,21 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
     let moved = crate::downloads::trash::move_to_trash(&targets);
     crate::downloads::drop_torrents_of(core, gone(&targets));
     if moved.is_ok() {
-        core.bus.info(
+        let line = format!(
+            "{} {} of {title} {}",
+            n,
+            if n == 1 { "episode" } else { "episodes" },
+            if crate::downloads::trash::WHERE == "deleted" {
+                "deleted"
+            } else {
+                "moved to the trash"
+            }
+        );
+        core.bus.say(
+            Level::Info,
             Stage::Library,
-            format!(
-                "{} {} of {title} {}",
-                n,
-                if n == 1 { "episode" } else { "episodes" },
-                if crate::downloads::trash::WHERE == "deleted" {
-                    "deleted"
-                } else {
-                    "moved to the trash"
-                }
-            ),
+            format!("{line}."),
+            line,
             EventBody::Notice,
         );
     }
@@ -248,16 +251,19 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
                 "series"
             )
         };
-        core.bus.info(
+        let line = format!(
+            "{what} {}",
+            if crate::downloads::trash::WHERE == "deleted" {
+                "deleted"
+            } else {
+                "moved to the trash"
+            }
+        );
+        core.bus.say(
+            Level::Info,
             Stage::Library,
-            format!(
-                "{what} {}",
-                if crate::downloads::trash::WHERE == "deleted" {
-                    "deleted"
-                } else {
-                    "moved to the trash"
-                }
-            ),
+            format!("{line}."),
+            line,
             EventBody::Notice,
         );
     }

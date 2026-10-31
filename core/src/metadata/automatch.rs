@@ -407,7 +407,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
                     let score = hit.score;
                     let title = hit.title;
                     let label = hit.provider.label();
-                    ctx.emit(Level::Info, format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
+                    ctx.say(Level::Info, format!("Matched {folder} to {title}."), format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
                     let dir = images_dir.clone();
                     let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
@@ -449,7 +449,18 @@ pub fn start(core: &Arc<Core>) -> u64 {
 
         images::sweep_after(&owner, "auto-match").await;
 
+        let said = match (matched, unmatched) {
+            (0, 0) => None,
+            (m, 0) => Some(format!("Matched {m} {}.", if m == 1 { "show" } else { "shows" })),
+            (0, u) => Some(format!("{u} {} a match.", if u == 1 { "show still needs" } else { "shows still need" })),
+            (m, u) => Some(format!(
+                "Matched {m} {}; {u} still {} a match.",
+                if m == 1 { "show" } else { "shows" },
+                if u == 1 { "needs" } else { "need" }
+            )),
+        };
         Ok(Finished {
+            plain: said,
             level: Level::Info,
             message: format!("Auto-match: {matched} matched, {unmatched} unmatched, {backfilled} backfilled"),
             body: EventBody::AutoMatchFinished { backfilled, matched, unmatched },

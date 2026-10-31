@@ -82,6 +82,88 @@ mod tests {
         assert_eq!(back, event);
     }
 
+    /// Every kind, with a match that stops compiling when one is added, so
+    /// the list below cannot fall behind the enum.
+    fn every_job_kind() -> Vec<JobKind> {
+        use JobKind::*;
+        let all = vec![
+            Scan,
+            AutoMatch,
+            Search,
+            ResolveLink,
+            ApplyMatch,
+            Refresh,
+            RefreshAll,
+            RefreshAiring,
+            RefreshImdb,
+            ClearImages,
+            FillImages,
+            ConnectTracker,
+            Mark,
+            SetProgress,
+            Score,
+            RefreshProgress,
+            RefreshWatching,
+            RefreshAiringNow,
+            OnHold,
+            SetStatus,
+            Crawl,
+            SkipWindows,
+            Export,
+            Import,
+            Subscriptions,
+            ConnectDownloads,
+            SearchReleases,
+            RefineReleases,
+            Subscribe,
+            Download,
+            RemoveSubscription,
+            ControlTorrents,
+            TestTorrentClient,
+            RemoveShow,
+            RepairSubscription,
+            CheckEndpoints,
+            StartEndpoint,
+        ];
+        for kind in &all {
+            match kind {
+                Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
+                | RefreshAiring | RefreshImdb | ClearImages | FillImages | ConnectTracker
+                | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
+                | RefreshAiringNow | OnHold | SetStatus | Crawl | SkipWindows | Export | Import
+                | Subscriptions | ConnectDownloads | SearchReleases | RefineReleases
+                | Subscribe | Download | RemoveSubscription | ControlTorrents
+                | TestTorrentClient | RemoveShow | RepairSubscription | CheckEndpoints
+                | StartEndpoint => {}
+            }
+        }
+        all
+    }
+
+    #[test]
+    fn every_job_kind_has_plain_words_for_a_status_line() {
+        for kind in every_job_kind() {
+            let words = kind.doing();
+            assert!(!words.is_empty(), "{kind:?} has no words");
+            assert!(
+                !words.contains(['-', '\u{2013}', '\u{2014}', '.']),
+                "{kind:?}: {words:?} has a dash or a full stop"
+            );
+            assert!(
+                words
+                    .split(' ')
+                    .all(|w| !w.chars().skip(1).any(char::is_uppercase)),
+                "{kind:?}: {words:?} has a CamelCase word"
+            );
+            assert!(
+                words.chars().next().is_some_and(char::is_uppercase),
+                "{kind:?}: {words:?} does not start with a capital"
+            );
+        }
+        assert_eq!(JobKind::Scan.doing(), "Checking your folders");
+        assert_eq!(JobKind::RefreshAll.doing(), "Updating show info");
+    }
+
     #[test]
     fn job_kinds_know_their_stage_and_serialisation() {
         assert_eq!(JobKind::Scan.stage(), Stage::Library);
