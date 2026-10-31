@@ -1160,6 +1160,8 @@ pub(crate) fn annotate(
 /// counts). The address is anirss's own (`/subscriptions/preview` gives the
 /// feed a search on this query reads), and the read is cheap: nyaa and
 /// Erai answer at once and Jackett serves a repeat query from its cache.
+/// anirss's search counts as a request to the feed's host, so the read
+/// waits its pace after it rather than going back to back.
 /// Not a job; a failure is a debug line and the page shows no dates.
 fn enrich(core: &Arc<Core>, client: AnirssClient, query: &str, endpoint: &str, items: &[Release]) {
     let owner = core.clone();
@@ -1170,7 +1172,9 @@ fn enrich(core: &Arc<Core>, client: AnirssClient, query: &str, endpoint: &str, i
             if spec.feed_url.is_empty() {
                 return Err(CoreError::internal("anirss named no feed for this search"));
             }
-            feed::read(owner.http.as_ref(), &spec.feed_url).await
+            let http = crate::repos::endpoint_http(&owner);
+            http.passed(&spec.feed_url);
+            feed::read(&http, &spec.feed_url).await
         }
         .await;
         match outcome {
@@ -1436,7 +1440,7 @@ async fn tightest_feed(
     if words.is_empty() || items.is_empty() {
         return feed_url.to_string();
     }
-    let http = core.http.as_ref();
+    let http = &crate::repos::endpoint_http(core);
     let Ok(now) = feed::read(http, feed_url).await else {
         return feed_url.to_string();
     };
@@ -2481,7 +2485,8 @@ pub fn inspect_release(core: &Core, link: String) -> Result<Reply, CoreError> {
     let link = link.trim().to_string();
     let owner = core.owner()?;
     core.handle.spawn(async move {
-        let (episodes, files) = match contents::inspect(owner.http.as_ref(), &link).await {
+        let http = crate::repos::endpoint_http(&owner);
+        let (episodes, files) = match contents::inspect(&http, &link).await {
             Ok(found) => found,
             Err(e) => {
                 tracing::debug!("release not inspected: {}", plain(&e));
@@ -2515,7 +2520,7 @@ pub fn read_feed(core: &Core, url: String) -> Result<Reply, CoreError> {
     }
     let owner = core.owner()?;
     core.handle.spawn(async move {
-        match feed::read(owner.http.as_ref(), &url).await {
+        match feed::read(&crate::repos::endpoint_http(&owner), &url).await {
             Ok(entries) => owner.bus.debug(
                 Stage::Downloads,
                 format!(
@@ -2562,7 +2567,8 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
             let (key, value) = rewire::search_param(&url).ok_or_else(|| {
                 service(&host, "no_search", "the feed carries no search to shorten".to_string())
             })?;
-            let now = feed::read(owner.http.as_ref(), &url).await?;
+            let http = crate::repos::endpoint_http(&owner);
+            let now = feed::read(&http, &url).await?;
             if !now.is_empty() {
                 return Ok(Finished {
                     plain: Some(format!("{name} needs no repair.")),
@@ -2585,7 +2591,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                 let candidate = fields[..*k].join(" ");
                 ctx.progress(n as u64, Some(tries.len() as u64), &format!("Trying \"{candidate}\""));
                 let next = rewire::with_search(&url, &key, &candidate);
-                let entries = feed::read(owner.http.as_ref(), &next).await?;
+                let entries = feed::read(&http, &next).await?;
                 if entries.is_empty() {
                     continue;
                 }
