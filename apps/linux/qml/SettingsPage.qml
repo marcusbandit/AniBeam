@@ -37,25 +37,41 @@ FocusScope {
     function sectionIndex(id) { for (var i = 0; i < sections.length; i++) if (sections[i].id === id) return i; return -1 }
     property string current: sectionIndex(frame.settingsTab) >= 0 ? frame.settingsTab : "library"
     onCurrentChanged: frame.settingsTab = current
+    // Opens a section, and with `focus` the row or group of that name in it. The reveal waits
+    // a beat in every case: a section just loaded, or one coming back from behind the search
+    // results, has not laid out yet. Unsaved Downloads edits keep the section open: the bar
+    // with Save stays where it is and says so.
     function open(id, focus) {
-        query = ""
-        if (current === id) { if (focus && content.item) content.item.reveal(focus); return }
+        if (id !== current && content.item && content.item.dirty === true) {
+            frame.toast("Save or discard the download settings first")
+            return
+        }
+        clearSearch()
         pendingFocus = focus || ""
+        if (current === id) { if (pendingFocus !== "") focusLater.restart(); return }
         current = id
     }
     property string pendingFocus: ""
+    // A row shown only in some states (a theme picker while colours come from the desktop)
+    // falls back to the group that turns it on
+    property string pendingFallback: ""
+    function openResult(r) { open(r.section, r.label); pendingFallback = r.fallback || "" }
+    function clearSearch() { query = ""; search.text = "" }
 
     Component.onCompleted: {
         var want = String(props.tab || "").toLowerCase()
         want = aliases[want] || want
-        if (sectionIndex(want) >= 0) current = want
+        // The focus first: when `tab` names the section already loaded, nothing reloads and
+        // the reveal has to be started here
         if (props.focus) pendingFocus = props.focus === "not-interested" ? "Hidden from Airing now" : props.focus
+        if (sectionIndex(want) >= 0) current = want
+        if (pendingFocus !== "") focusLater.restart()
         forceActiveFocus()
     }
     function focusSearch() { search.focusInput() }
     // Named escapePressed, not escape: QML's compiler reserves "escape" and refuses it as a
     // property, method or signal name on any object.
-    function escapePressed() { if (query !== "") { query = ""; return true } return false }
+    function escapePressed() { if (query !== "") { clearSearch(); return true } return false }
 
     // ---- What each index entry says about its section, read live
     property var srcs: []
@@ -98,12 +114,14 @@ FocusScope {
         }
         if (id === "playback") {
             var sk = Door.settings.auto_skip || {}
-            return sk.intro && sk.outro ? "Skips intros and outros" : sk.intro ? "Skips intros" : sk.outro ? "Skips outros" : "Plays everything through"
+            var langs = (Door.settings.subtitle_defaults || {}).audio_languages || []
+            return (sk.intro && sk.outro ? "Skips intros and outros" : sk.intro ? "Skips intros" : sk.outro ? "Skips outros" : "Plays everything through")
+                   + (langs.length ? ", audio " + langs.join(", ") : "")
         }
         if (id === "subtitles") {
             var sd = Door.settings.subtitle_defaults || {}
-            var subs = (sd.subtitle_languages || []).join(", "), aud = (sd.audio_languages || []).join(", ")
-            return (subs ? "Subtitles " + subs : "Any subtitles") + ", " + (aud ? "audio " + aud : "any audio")
+            var mode = ({ AsScripted: "styled files as made", ScaleOnly: "styled files keep their look", Force: "your style on every file" })[sd.ass_override || "ScaleOnly"]
+            return "Size " + Math.round((sd.scale || 1) * 100) + " percent, " + mode
         }
         if (id === "keys") return "Every key the player answers to"
         if (id === "downloads") {
@@ -135,13 +153,13 @@ FocusScope {
         ["library", "Show hidden shows", "hidden reveal"],
         ["library", "Hidden from Airing now", "not interested airing show again"],
         ["accounts", "Trackers", "anilist myanimelist mal sign in connect login account disconnect"],
-        ["accounts", "Main tracker", "progress cards primary"],
-        ["accounts", "Sync now", "refresh progress lists tracker"],
-        ["accounts", "Move to On hold", "on hold paused inactive untouched days"],
+        ["accounts", "Main tracker", "progress cards primary", "Trackers"],
+        ["accounts", "Sync now", "refresh progress lists tracker", "Trackers"],
+        ["accounts", "Move to On hold", "on hold paused inactive untouched days", "Trackers"],
         ["appearance", "Mode", "dark light system theme night"],
         ["appearance", "Colours from", "terminal desktop system theme source kitty"],
-        ["appearance", "Dark theme", "colour scheme base16"],
-        ["appearance", "Light theme", "colour scheme base16"],
+        ["appearance", "Dark theme", "colour scheme base16", "Colours from"],
+        ["appearance", "Light theme", "colour scheme base16", "Colours from"],
         ["appearance", "Accent", "colour highlight"],
         ["appearance", "Density", "compact comfortable spacing size"],
         ["appearance", "Poster size", "cards small medium large"],
@@ -149,8 +167,8 @@ FocusScope {
         ["playback", "Skip intros", "opening op auto skip aniskip chapters"],
         ["playback", "Skip outros", "ending ed credits auto skip aniskip"],
         ["playback", "Use my mpv settings", "mpv.conf config"],
-        ["subtitles", "Subtitle languages", "language track subs"],
-        ["subtitles", "Audio languages", "language track dub japanese"],
+        ["playback", "Subtitle languages", "language track subs"],
+        ["playback", "Audio languages", "language track dub japanese"],
         ["subtitles", "Size", "scale subtitle"],
         ["subtitles", "Position", "height margin subtitle"],
         ["subtitles", "Styled subtitles", "ass override force"],
@@ -160,7 +178,8 @@ FocusScope {
         ["subtitles", "Shadow", ""],
         ["subtitles", "Background box", "box opacity"],
         ["subtitles", "Bold", "weight"],
-        ["keys", "Keyboard", "shortcuts keys hotkeys"],
+        ["keys", "In the player", "keyboard shortcuts keys hotkeys"],
+        ["keys", "Anywhere", "keyboard shortcuts keys hotkeys settings quit"],
         ["downloads", "Torrent client", "qbittorrent password username address webui seedbox"],
         ["downloads", "Search with anirss", "anirss rss feeds token command server"],
         ["downloads", "Rolling downloads", "roll episodes ahead delete watched keep disk space"],
@@ -174,7 +193,7 @@ FocusScope {
         ["storage", "Where AniBeam keeps its files", "database data config cache folder path"],
         ["about", "Version", "build what's new changelog"],
         ["about", "Updates", "stable nightly channel check"],
-        ["about", "Developer options", "debug timing"],
+        ["about", "Developer options", "debug timing", "", "release"],
         ["about", "Ratings", "imdb credit"]
     ]
     property string query: ""
@@ -185,9 +204,11 @@ FocusScope {
         var out = []
         searchIndex.forEach(function(e) {
             if (sectionIndex(e[0]) < 0) return
+            // A switch only a release build shows
+            if (e[4] === "release" && Dev.forced) return
             var hay = (e[1] + " " + e[2] + " " + sections[sectionIndex(e[0])].name).toLowerCase()
             var named = e[1].toLowerCase().indexOf(q) >= 0
-            if (words.every(function(w) { return hay.indexOf(w) >= 0 })) out.push({ section: e[0], label: e[1], named: named })
+            if (words.every(function(w) { return hay.indexOf(w) >= 0 })) out.push({ section: e[0], label: e[1], named: named, fallback: e[3] || "" })
         })
         out.sort(function(a, b) { return (b.named ? 1 : 0) - (a.named ? 1 : 0) })
         return out
@@ -235,10 +256,8 @@ FocusScope {
                 width: parent.width
                 placeholder: "Search settings"
                 hint: "/"
-                text: page.query
                 onTextChanged: page.query = text
-                onCleared: page.query = ""
-                onAccepted: if (page.results.length) page.open(page.results[0].section, page.results[0].label)
+                onAccepted: if (page.results.length) page.openResult(page.results[0])
             }
             Item { width: 1; height: theme.space(5) }
             Repeater {
@@ -325,14 +344,23 @@ FocusScope {
         Loader {
             id: content
             anchors.fill: parent
-            visible: page.query === ""
+            // Hidden by opacity, not visibility, so the section keeps its layout and its scroll
+            // under the results
+            opacity: page.query === "" ? 1 : 0
+            enabled: page.query === ""
             source: "Settings" + ({ library: "Library", accounts: "Accounts", appearance: "Appearance", playback: "Playback", subtitles: "Subtitles",
                                      keys: "Keys", downloads: "Downloads", phone: "Phone", storage: "Data", about: "About", developer: "Developer" })[page.current] + "Tab.qml"
             onLoaded: {
                 item.contentY = frame.settingsScroll[page.current] || 0
                 if (page.pendingFocus !== "") focusLater.restart()
             }
-            Timer { id: focusLater; interval: 150; onTriggered: { if (content.item) content.item.reveal(page.pendingFocus); page.pendingFocus = "" } }
+            Timer {
+                id: focusLater; interval: 150
+                onTriggered: {
+                    if (content.item && !content.item.reveal(page.pendingFocus) && page.pendingFallback !== "") content.item.reveal(page.pendingFallback)
+                    page.pendingFocus = ""; page.pendingFallback = ""
+                }
+            }
             Connections {
                 target: content.item
                 function onContentYChanged() { var s = Object.assign({}, frame.settingsScroll); s[page.current] = content.item.contentY; frame.settingsScroll = s }
@@ -405,7 +433,7 @@ FocusScope {
                                     size: theme.space(4)
                                     color: theme.textFaint
                                 }
-                                MouseArea { id: hitMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.open(hit.modelData.section, hit.modelData.label) }
+                                MouseArea { id: hitMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openResult(hit.modelData) }
                             }
                         }
                     }

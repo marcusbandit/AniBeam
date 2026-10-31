@@ -14,6 +14,8 @@ SettingsTab {
     property var preview: ({ path: "", subtitle: "", startAt: 0 })
     Connections { target: Door; function onSettingsChanged() { tab.defaults = JSON.parse(JSON.stringify(Door.settings.subtitle_defaults)) } }
     Timer { id: save; interval: 250; onTriggered: { var r = Door.setSubtitleDefaults(tab.defaults); if (r.error) frame.toast(r.error.message) } }
+    // A change still waiting on the debounce is written on the way out
+    Component.onDestruction: if (save.running) Door.setSubtitleDefaults(tab.defaults)
     function edit(f) { var d = JSON.parse(JSON.stringify(defaults)); f(d); defaults = d; save.restart() }
     function isHex(s) { return /^#[0-9a-fA-F]{6}$/.test(s) }
     function hexOf(c) { function h(n) { return ("0" + n.toString(16)).slice(-2) } return "#" + h(c.r) + h(c.g) + h(c.b) }

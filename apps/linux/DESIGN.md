@@ -124,8 +124,8 @@ below where they disagree:
   the app). Beside it the open section at a readable measure: its name in the display cut,
   one plain sentence, then groups. A group (`Panel.qml`) is a heading in the display cut at
   `typeLarge` over one flat pane of rows with hairlines between them, never a pane in a
-  pane. A preview (Appearance, Subtitles) leads its section, since it is what the knobs are
-  for. Search swaps the section for the matching settings; picking one opens its section,
+  pane. Subtitles leads with its preview; Appearance sets it right under Colours, so the
+  knobs people reach for most stay at the top and the preview stays in view of them. Search swaps the section for the matching settings; picking one opens its section,
   scrolls to the row and lights it in the soft accent. Ledgers that belong to other pages
   (the on-disk list, recent scans, the poster wall) are gone from Settings.
 - **Metadata answers the librarian's questions before it lists.** The head is the title

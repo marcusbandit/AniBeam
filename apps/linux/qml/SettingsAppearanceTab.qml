@@ -1,7 +1,7 @@
-// Appearance: the preview first, since it is what every knob below is for (the same sample
-// page drawn once per mode, so the pair being chosen is what is shown), then Colours (mode,
-// where the colours come from, the theme pair, the accent) and Size and motion (density,
-// poster size, reduced motion). Every knob writes through the Theme singleton's pick*
+// Appearance: Colours (mode, where the colours come from, the theme pair, the accent), then
+// the preview right under them (the same sample page drawn once per mode, so the pair being
+// chosen is what is shown, in view of the knobs that change it), then Size and motion
+// (density, poster size, reduced motion). Every knob writes through the Theme singleton's pick*
 // invokables; the engine pushes the fresh resolution back and the panes re-tone through
 // their own Tokens, so nothing here polls.
 import QtQuick
@@ -23,10 +23,6 @@ SettingsTab {
     Timer { interval: 30000; running: true; repeat: true; onTriggered: tab.nowMs = Date.now() }
 
     Panel {
-        bare: true
-        stretch: LookPreview { nowMs: tab.nowMs }
-    }
-    Panel {
         title: "Colours"
         SettingRow { label: "Mode"
             Seg { options: [{ text: "Dark", icon: "moon" }, { text: "Light", icon: "sun" }, { text: "System", icon: "monitor" }]
@@ -43,6 +39,10 @@ SettingsTab {
                 onPicked: function(i) { Theme.pickTheme("light", tab.lightThemes[i].stem) } } }
         SettingRow { label: "Accent"; helper: "Marks what is selected, playing or new."
             Swatches { slot: Theme.accent; onPicked: function(s) { Theme.pickAccent(s) } } }
+    }
+    Panel {
+        bare: true
+        stretch: LookPreview { nowMs: tab.nowMs }
     }
     Panel {
         title: "Size and motion"

@@ -11,6 +11,8 @@ SettingsTab {
     property var defaults: JSON.parse(JSON.stringify(Door.settings.subtitle_defaults || {}))
     Connections { target: Door; function onSettingsChanged() { tab.defaults = JSON.parse(JSON.stringify(Door.settings.subtitle_defaults)) } }
     Timer { id: save; interval: 250; onTriggered: { var r = Door.setSubtitleDefaults(tab.defaults); if (r.error) frame.toast(r.error.message) } }
+    // A change still waiting on the debounce is written on the way out
+    Component.onDestruction: if (save.running) Door.setSubtitleDefaults(tab.defaults)
     function edit(f) { var d = JSON.parse(JSON.stringify(defaults)); f(d); defaults = d; save.restart() }
     function codes(t) { return t.split(",").map(function(s) { return s.trim() }).filter(function(s) { return s }) }
     readonly property var skip: Door.settings.auto_skip || ({})

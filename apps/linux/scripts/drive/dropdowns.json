@@ -486,7 +486,7 @@
   "expect": true
  },
  {
-  "click": "settings-tabs-library"
+  "click": "settings-tabs-accounts"
  },
  {
   "wait": 500
