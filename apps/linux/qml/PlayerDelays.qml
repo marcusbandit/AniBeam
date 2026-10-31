@@ -64,7 +64,7 @@ Item {
                     PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-up"; glyph: "plus"; tip: delayRow.modelData.label + " 0.1 s later"
                         onClicked: page.nudgeDelay(delayRow.modelData.prop, 0.1) }
                     PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-reset"; glyph: "rotate-ccw"; interactive: delayRow.value !== 0
-                        tip: interactive ? "Reset to 0" : "No delay"; onClicked: page.resetDelay(delayRow.modelData.prop) }
+                        tip: interactive ? "Reset to 0 until the next file" : "No delay"; onClicked: page.resetDelay(delayRow.modelData.prop) }
                 }
             }
         }
