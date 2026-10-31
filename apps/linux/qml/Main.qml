@@ -16,6 +16,21 @@ Window {
     // Until the engine's first push every token is absent, so the ground is the neutral one
     // until Theme.ready rather than Tokens' missing-token magenta.
     Tokens { id: theme }
+    // The tokens the native poster cards draw with (CardFace, #289), handed over at start and
+    // again whenever the theme moves
+    QtObject {
+        id: cardTokens
+        readonly property var tokens: ({
+            fontFamily: theme.fontFamily, typeSmall: theme.typeSmall, typeNormal: theme.typeNormal, typeLarge: theme.typeLarge,
+            space: 4 * theme.densityFactor, radiusTile: theme.radiusTile, radiusSm: theme.radiusSm, scrimReach: theme.scrimReach,
+            text: theme.text, textDim: theme.textDim, textFaint: theme.textFaint, accent: theme.accent, focusRing: theme.focusRing,
+            onPoster: theme.onPoster, onPosterDim: theme.onPosterDim, accentOnPoster: theme.accentOnPoster, posterScrim: theme.posterScrim,
+            downloadInk: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3),
+            cubes: theme.cubeStates
+        })
+        onTokensChanged: CardStyle.set(tokens)
+        Component.onCompleted: CardStyle.set(tokens)
+    }
     color: Theme.ready ? theme.bg : "#101216"
 
     // The poster pool: every poster decoded once and held, so a page's first

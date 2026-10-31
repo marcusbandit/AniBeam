@@ -144,6 +144,8 @@ fn main() {
     .cpp_files([
         "cpp/helpers.cpp",
         "cpp/devtools.cpp",
+        "cpp/cardface.h",
+        "cpp/cardface.cpp",
         "cpp/videoitem.h",
         "cpp/videoitem.cpp",
     ])
