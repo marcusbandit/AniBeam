@@ -233,11 +233,12 @@ fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreE
     if root.tag_name().name() != "error" {
         return None;
     }
-    let message = match root.attribute("description").map(str::trim) {
-        Some(d) if !d.is_empty() => d.to_string(),
+    // The feed writes these, so they are cleaned before they reach the UI or the event log.
+    let message = match root.attribute("description").map(feed_message) {
+        Some(d) if !d.is_empty() => d,
         _ => format!(
             "the indexer answered error {}",
-            root.attribute("code").unwrap_or("?")
+            feed_message(root.attribute("code").unwrap_or("?"))
         ),
     };
     Some(CoreError::Service {
@@ -491,6 +492,20 @@ fn charref(num: u32) -> String {
         return String::new();
     }
     char::from_u32(num).map(String::from).unwrap_or_default()
+}
+
+/// A message a feed or API wrote about itself, made safe to show and store: control
+/// characters dropped, whitespace runs folded to one space, and at most 200 characters.
+pub(crate) fn feed_message(raw: &str) -> String {
+    let folded = raw
+        .split(|c: char| c.is_whitespace() || c.is_control())
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    match folded.char_indices().nth(200) {
+        Some((cut, _)) => format!("{}...", &folded[..cut]),
+        None => folded,
+    }
 }
 
 #[cfg(test)]
@@ -864,5 +879,18 @@ mod tests {
                 ("http_500".to_string(), "the feed answered 500".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn feed_message_strips_control_characters_and_caps_length() {
+        assert_eq!(
+            feed_message("  Invalid\u{1b}[31m API\r\nKey\u{0}  "),
+            "Invalid [31m API Key"
+        );
+        assert_eq!(feed_message("\u{7}\t "), "");
+        let long = feed_message(&"\u{e9}".repeat(500));
+        assert_eq!(long.chars().count(), 203);
+        assert!(long.ends_with("..."));
+        assert_eq!(feed_message(&"a".repeat(200)), "a".repeat(200));
     }
 }
