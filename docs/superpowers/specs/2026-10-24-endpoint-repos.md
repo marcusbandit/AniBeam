@@ -21,7 +21,7 @@ exception for "code that runs in a virtual machine or an interpreter".
 So AniBeam copies Mihon's repository model and drops its extension model. A Mihon
 extension is an APK with Kotlin in it. An AniBeam endpoint in a repo is a JSON
 definition the core already knows how to run. The core holds every kind of
-endpoint as Rust (`nyaa`, `rss`, `tosho`, later `torznab`), and a new kind ships
+endpoint as Rust (`json`, `nyaa`, `rss`, `tosho`, `torznab`), and a new kind ships
 in an app update, through Play, like any other change.
 
 ## How Mihon does it, for reference
@@ -161,6 +161,74 @@ with no JSON canonicalisation between jq and serde. Decoded, it is the index:
 - `min_core` hides the endpoint from a core too old for its kind or fields.
 - `category` and `filter` are for `nyaa` only, as in `releases::Endpoint`.
 
+### The `json` kind
+
+A `json` endpoint is a search API that answers in JSON, giving per result a title,
+an info-hash or a link, a size and maybe a page. The kind knows no field names;
+the definition maps them in a `json` object, which this kind requires and every
+other kind refuses:
+
+```json
+{
+  "id": "example-json",
+  "name": "Example search",
+  "version": 1,
+  "kind": "json",
+  "url": "https://search.example.org/api?q={query}&limit=50",
+  "json": {
+    "items": "data.hits",
+    "title": "label",
+    "hash": "torrent.infohash",
+    "link": "torrent.url",
+    "size": "torrent.bytes",
+    "page": "https://example.org/view/{ref.post}",
+    "skip": "flags.hidden",
+    "error": "status.failed"
+  }
+}
+```
+
+- Every path is object keys joined by dots, with no array indexing. `items` is
+  read from the reply and is empty when the reply itself is the results array;
+  `error` is read from the reply's top; the rest from each result.
+- `items` and `title` are required, and so is one of `hash` and `link`.
+- `hash` becomes `magnet:?xt=urn:btih:<hash>&dn=<title>` only when it is 40 hex
+  or 32 base32 characters. `link` is a ready `magnet:` or `https://` link, used
+  when there is no usable hash. A result with neither is left out.
+- `size` is bytes, as a number.
+- `page` is an `https://` template with a literal host and `{path}` placeholders
+  in its path or query only. It is filled, each value percent-encoded, only when
+  every placeholder's value is present and not null, empty, zero or false;
+  otherwise the result has no page.
+- `skip` drops a result whose value there is set: this is how a definition
+  leaves out results its site flags, such as adult ones.
+- A set value at `error` makes the reply an error, with the value as the message
+  when it is a non-empty string and a generic one otherwise.
+- The query's `-word` exclusions are applied after the fetch rather than sent,
+  since the kind cannot know which search syntax a site takes.
+- A `json` source cannot be added by hand or saved as a phone source: its map
+  only comes from a repo.
+
+### The `torznab` kind
+
+A `torznab` endpoint searches the user's own Prowlarr or Jackett. It reads the
+reply as RSS, applies `-word` exclusions after the fetch, and on the desktop is
+synced to anirss as kind `rss`.
+
+- Only this kind may write `{host}` as the address's whole host and port, filled
+  from an `auth` field named `host` that is not secret. The typed value must be a
+  bare host or `host:port`: no `/ @ ? # { } [ ] \`, whitespace or second colon,
+  so IPv6 literals are not supported. It is checked at install, when credentials
+  change and before each search.
+- A definition may use plain `http://` only in that `{host}` form, since a
+  Prowlarr at home is usually plain http. A fixed host still needs https.
+- A public host typed into an `http://{host}` definition is allowed. A tailnet
+  name looks public and is not, so the app does not guess; the definition's help
+  text should say that the key travels in the clear over http.
+- A Jackett or Prowlarr `<error description=".."/>` reply becomes an error with
+  that description, cleaned of control characters and cut to about 200
+  characters, never the address or the key.
+
 ## Trust
 
 - Adding a repo fetches `index.json` and `index.json.sig` and checks the
@@ -183,9 +251,10 @@ with no JSON canonicalisation between jq and serde. Decoded, it is the index:
   the list. No intervals, the same rule as the library watcher.
 - An installed endpoint with a higher `version` in the index is shown as having
   an update. Updating keeps the stored credentials only when the `auth` keys are
-  unchanged and the hosts of `url` and `front` are unchanged. A new key, or a
-  credential that would now go to a different host, asks the user again and
-  shows the new host.
+  unchanged, the hosts of `url` and `front` are unchanged, and `url` does not
+  step down from https to http. A new key, a credential that would now go to a
+  different host, or one that would now travel in the clear, asks the user again
+  and shows the new host.
 - An endpoint removed from the index stays installed and is marked as no longer
   offered. The user removes it.
 

@@ -183,9 +183,9 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: page.refreshing ? "Refreshing" : "Refresh"
                 icon: "refresh-cw"
+                busy: page.refreshing
                 flat: true
-                enabled: !page.refreshing
-                onClicked: page.refresh(true)
+                onClicked: if (!page.refreshing) page.refresh(true)
             }
         }
 
@@ -226,16 +226,22 @@ Item {
                     spacing: page.gap
                     Repeater {
                         model: section.modelData.cards
-                        Card {
+                        LazyTile {
+                            id: tile
                             required property var modelData
-                            objectName: "tile-" + modelData.id
-                            item: modelData.item
-                            metaOverride: modelData.meta
-                            ghost: modelData.ghost
-                            posterWidth: page.cardWidth
-                            nowMs: page.nowMs
-                            onOpened: page.open(modelData)
-                            onPlayed: page.playSeries(modelData.raw.owned, modelData.raw.title)
+                            width: page.cardWidth
+                            height: Math.round(page.cardWidth * 1.5)
+                            sourceComponent: Card {
+                                objectName: "tile-" + tile.modelData.id
+                                item: tile.modelData.item
+                                metaOverride: tile.modelData.meta
+                                ghost: tile.modelData.ghost
+                                posterWidth: page.cardWidth
+                                nowMs: page.nowMs
+                                onOpened: page.open(tile.modelData)
+                                // A show the library does not have has nothing to play: Space opens it
+                                onPlayed: tile.modelData.ghost ? page.open(tile.modelData) : page.playSeries(tile.modelData.raw.owned, tile.modelData.raw.title)
+                            }
                         }
                     }
                 }
@@ -252,7 +258,7 @@ Item {
                 visible: !page.anilistConnected
                 icon: "log-in"
                 title: "AniList is not connected"
-                body: "Connected, this page lists your Watching and Rewatching series on AniList: Play on the ones you own, a countdown on the ones airing."
+                body: "Connect it and this page lists the shows you are watching or rewatching on AniList, with Play on the ones you have and a countdown on the ones airing."
                 // One click: the browser opens on it when the build carries AniList's id
                 ConnectButton {
                     objectName: "watching-connect"
@@ -275,6 +281,7 @@ Item {
                 icon: "eye"
                 title: "Nothing on your watching list"
                 body: "Mark a show as Watching on AniList and it lands here."
+                Button { text: "Open AniList"; icon: "external-link"; flat: true; onClicked: frame.openLink("https://anilist.co/home") }
             }
         }
     }

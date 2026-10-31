@@ -43,7 +43,7 @@ Item {
         onTriggered: root.lift = theme.follow(root.lift, hov.hovered ? 1 : 0, frameTime)
     }
     HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
-    scale: press.pressed ? 0.985 : 1
+    scale: theme.reducedMotion ? 1 : (press.pressed ? 0.985 : 1)
 
     Corner {
         anchors.fill: parent

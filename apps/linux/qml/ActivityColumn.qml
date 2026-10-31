@@ -175,11 +175,15 @@ Item {
                 width: parent.width
                 spacing: theme.space(1)
                 Label { text: "Downloading now"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(2) }
+                // Twelve, then the rest on a click
+                property bool all: false
                 Repeater {
-                    model: root.entries.slice(0, 12)
+                    model: parent.all ? root.entries : root.entries.slice(0, 12)
                     TorrentLine { required property var modelData; t: modelData }
                 }
-                Label { visible: root.entries.length > 12; text: "And " + (root.entries.length - 12) + " more"; role: "ui"; color: theme.textFaint }
+                Button { visible: root.entries.length > 12; small: true; flat: true
+                    text: parent.all ? "Fewer" : "And " + (root.entries.length - 12) + " more"
+                    onClicked: parent.all = !parent.all }
             }
             Label {
                 visible: root.connected && root.active.length === 0
@@ -194,10 +198,14 @@ Item {
                 width: parent.width
                 spacing: theme.space(1)
                 Label { text: "Finished today"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(2) }
+                property bool all: false
                 Repeater {
-                    model: root.finishedEntries.slice(0, 8)
+                    model: parent.all ? root.finishedEntries : root.finishedEntries.slice(0, 8)
                     TorrentLine { required property var modelData; t: modelData }
                 }
+                Button { visible: root.finishedEntries.length > 8; small: true; flat: true
+                    text: parent.all ? "Fewer" : "And " + (root.finishedEntries.length - 8) + " more"
+                    onClicked: parent.all = !parent.all }
             }
 
             // ---- The log

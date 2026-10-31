@@ -77,10 +77,15 @@ Corner {
         visible: !input.activeFocus && !input.text && root.hint !== ""
         text: root.hint; color: theme.textFaint; role: "ledger"
     }
-    Icon {
+    // Clear: a round hover behind the x, a press darker still, and its tip
+    Rectangle {
+        objectName: root.objectName !== "" ? root.objectName + "-clear" : ""
         visible: input.text !== ""
-        anchors.right: root.goButton ? goButton.left : parent.right; anchors.rightMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
-        glyph: "x"; size: theme.space(4); color: theme.textDim
-        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared() } }
+        anchors.right: root.goButton ? goButton.left : parent.right; anchors.rightMargin: theme.space(1.5); anchors.verticalCenter: parent.verticalCenter
+        width: theme.space(7); height: width; radius: width / 2
+        color: clearArea.pressed ? theme.surfacePressed : clearArea.containsMouse ? theme.tileHover : "transparent"
+        Icon { anchors.centerIn: parent; glyph: "x"; size: theme.space(4); color: clearArea.containsMouse ? theme.text : theme.textDim }
+        MouseArea { id: clearArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared(); input.forceActiveFocus() } }
+        Tooltip { text: "Clear the search" }
     }
 }

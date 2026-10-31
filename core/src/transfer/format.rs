@@ -100,6 +100,12 @@ pub struct SeriesEntry {
     /// null when the series has never had one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub track_choice: Option<TrackChoice>,
+    /// Version 2 too: the episode count set by hand for a show whose provider has none
+    /// (#283), and the season it counts within. Absent when never set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episodes_set: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episodes_set_season: Option<u32>,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
 }

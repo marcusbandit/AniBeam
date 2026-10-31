@@ -69,7 +69,7 @@
   "shot": "progress-03-library-plain"
  },
  {
-  "eval": "var p = frame.item.pageItem; p.pickSort('Downloaded'); p.sections.length + ':' + p.cardList.slice(0, 5).map(function(c) { return c.title + '@' + c.downloaded_at + ':' + c.cubes }).join(' | ')",
+  "eval": "var p = frame.item.pageItem; p.pickSort('Downloaded'); p.sections.length + ':' + p.view.ids.slice(0, 5).map(function(id) { var c = Door.card(id); return c.title + '@' + c.downloaded_at + ':' + c.cubes }).join(' | ')",
   "as": "recent"
  },
  {

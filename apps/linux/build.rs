@@ -88,6 +88,7 @@ fn main() {
             .qml_file("qml/PlayerButton.qml")
             .qml_file("qml/SeekBar.qml")
             .qml_file("qml/TrackPicker.qml")
+            .qml_file("qml/PlayerDelays.qml")
             .qml_file("qml/Notice.qml")
             .qml_file("qml/KeyHelp.qml")
             .qml_file("qml/PlayerChrome.qml")
@@ -124,7 +125,8 @@ fn main() {
             .qml_file("qml/SettingsDataTab.qml")
             .qml_file("qml/DevRecorder.qml")
             .qml_file("qml/DevHud.qml")
-            .qml_file("qml/SettingsDeveloperTab.qml"),
+            .qml_file("qml/SettingsDeveloperTab.qml")
+            .qml_file("qml/LazyTile.qml"),
     )
     .qt_module("Quick")
     .files([
@@ -143,13 +145,19 @@ fn main() {
     .cpp_files([
         "cpp/helpers.cpp",
         "cpp/devtools.cpp",
+        "cpp/cardface.h",
+        "cpp/cardface.cpp",
         "cpp/videoitem.h",
         "cpp/videoitem.cpp",
+        "cpp/keyboard.h",
+        "cpp/keyboard.cpp",
     ])
     // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/...; a name left out of this list is a
     // blank icon at runtime, not a build error, so it is generated:
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
     .qrc_resources([
+        "shaders/poster.vert.qsb",
+        "shaders/poster.frag.qsb",
         "assets/icon.png",
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",
@@ -224,6 +232,7 @@ fn main() {
         "assets/icons/maximize.svg",
         "assets/icons/memory-stick.svg",
         "assets/icons/minimize.svg",
+        "assets/icons/minus.svg",
         "assets/icons/monitor.svg",
         "assets/icons/moon.svg",
         "assets/icons/palette.svg",

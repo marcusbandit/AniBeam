@@ -201,14 +201,24 @@ Corner {
                                     radius: theme.radiusSm; smoothing: theme.cornerSmoothing
                                     readonly property bool loading: seasonRow.modelData.loading[number] === true
                                     color: loading ? theme.cubeState("t").fill : present ? theme.cubeState("d").fill : "transparent"
-                                    borderColor: present ? "transparent" : theme.cubeState("f").edge
+                                    borderColor: present ? "transparent" : chipMouse.containsMouse ? theme.text : theme.cubeState("f").edge
                                     borderWidth: 1
                                     Label {
                                         anchors.centerIn: parent
                                         text: parent.number
                                         role: "ledger"
-                                        color: parent.present ? theme.bg : theme.textFaint
+                                        color: parent.present ? theme.bg : chipMouse.containsMouse ? theme.text : theme.textFaint
                                     }
+                                    // A missing one opens Downloads on the series, to get it
+                                    MouseArea {
+                                        id: chipMouse
+                                        anchors.fill: parent
+                                        enabled: !parent.present && !parent.loading
+                                        hoverEnabled: enabled
+                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                        onClicked: { var id = root.seriesId, t = root.title; root.close(); frame.go("downloads", { series: id }, "Downloads") }
+                                    }
+                                    Tooltip { text: !parent.present && !parent.loading ? "Get episode " + parent.number : "" }
                                 }
                             }
                         }

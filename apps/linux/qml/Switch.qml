@@ -28,6 +28,8 @@ Corner {
 
     function toggle() { checked = !checked; toggled(checked) }
     Keys.onSpacePressed: toggle()
+    Keys.onReturnPressed: toggle()
+    Keys.onEnterPressed: toggle()
 
     Corner {
         readonly property real size: root.height - root.pad * 2
