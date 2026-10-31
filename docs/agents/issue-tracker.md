@@ -13,6 +13,26 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Project board
+
+Every open issue sits on the AniBeam project, https://github.com/users/marcusbandit/projects/1 (owner `marcusbandit`, number 1). Its Status column is what the owner reads to see where work stands, so keep it true:
+
+| Status      | When                                                     |
+| ----------- | -------------------------------------------------------- |
+| Backlog     | Filed, nobody picked it                                  |
+| Up next     | The owner picked it for a coming session                 |
+| In progress | A thread started work on it, set before the first commit |
+| In review   | Its PR is open                                           |
+| Done        | Set by GitHub when the issue closes or the PR merges     |
+
+Platform is `Desktop`, `Phone`, `Both` (core work both apps use) or `Dev` (CI, build, tooling). Release names the version an issue is meant for, when one is set.
+
+The board is private. A collaborator needs two things once: the owner adds them under the board's Settings, Manage access, and their `gh` login needs the `project` scope, `gh auth refresh -s project`. Without the scope every `gh project` command fails with a missing-scope error.
+
+- **Add a new issue**: `gh project item-add 1 --owner marcusbandit --url <issue-url> --format json --jq .id` gives the item id. Every issue you file goes on the board.
+- **Move a card**: look up the ids once with `gh project field-list 1 --owner marcusbandit --format json`, then `gh project item-edit --project-id <project-id> --id <item-id> --field-id <status-field-id> --single-select-option-id <option-id>`.
+- **Find an issue's item**: `gh project item-list 1 --owner marcusbandit --limit 500 --format json --jq '.items[] | select(.content.number == <n>) | .id'`.
+
 ## Triage
 
 The triage labels and what happens to an issue once it is filed: [`triage.md`](triage.md).

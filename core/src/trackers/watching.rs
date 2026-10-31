@@ -297,6 +297,7 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
         .write_async(move |c| list(c, &images_dir))
         .await?;
     Ok(Finished {
+        plain: None,
         level: Level::Debug,
         message: format!("Watching list refreshed: {} entries", list.entries.len()),
         body: EventBody::WatchingRefreshed { list },

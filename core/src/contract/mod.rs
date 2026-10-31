@@ -64,6 +64,7 @@ mod tests {
             level: Level::Info,
             stage: Stage::Library,
             message: "scan finished".into(),
+            plain: None,
             job: Some(JobRef {
                 id: 4,
                 kind: JobKind::Scan,
@@ -79,6 +80,89 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         let back: Event = serde_json::from_str(&json).unwrap();
         assert_eq!(back, event);
+    }
+
+    /// Every kind. The match below stops compiling when a kind is added, which
+    /// is the reminder to add it to this list too; the list itself is not
+    /// checked by the compiler.
+    fn every_job_kind() -> Vec<JobKind> {
+        use JobKind::*;
+        let all = vec![
+            Scan,
+            AutoMatch,
+            Search,
+            ResolveLink,
+            ApplyMatch,
+            Refresh,
+            RefreshAll,
+            RefreshAiring,
+            RefreshImdb,
+            ClearImages,
+            FillImages,
+            ConnectTracker,
+            Mark,
+            SetProgress,
+            Score,
+            RefreshProgress,
+            RefreshWatching,
+            RefreshAiringNow,
+            OnHold,
+            SetStatus,
+            Crawl,
+            SkipWindows,
+            Export,
+            Import,
+            Subscriptions,
+            ConnectDownloads,
+            SearchReleases,
+            RefineReleases,
+            Subscribe,
+            Download,
+            RemoveSubscription,
+            ControlTorrents,
+            TestTorrentClient,
+            RemoveShow,
+            RepairSubscription,
+            CheckEndpoints,
+            StartEndpoint,
+        ];
+        for kind in &all {
+            match kind {
+                Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
+                | RefreshAiring | RefreshImdb | ClearImages | FillImages | ConnectTracker
+                | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
+                | RefreshAiringNow | OnHold | SetStatus | Crawl | SkipWindows | Export | Import
+                | Subscriptions | ConnectDownloads | SearchReleases | RefineReleases
+                | Subscribe | Download | RemoveSubscription | ControlTorrents
+                | TestTorrentClient | RemoveShow | RepairSubscription | CheckEndpoints
+                | StartEndpoint => {}
+            }
+        }
+        all
+    }
+
+    #[test]
+    fn every_job_kind_has_plain_words_for_a_status_line() {
+        for kind in every_job_kind() {
+            let words = kind.doing();
+            assert!(!words.is_empty(), "{kind:?} has no words");
+            assert!(
+                !words.contains(['-', '\u{2013}', '\u{2014}', '.']),
+                "{kind:?}: {words:?} has a dash or a full stop"
+            );
+            assert!(
+                words
+                    .split(' ')
+                    .all(|w| !w.chars().skip(1).any(char::is_uppercase)),
+                "{kind:?}: {words:?} has a CamelCase word"
+            );
+            assert!(
+                words.chars().next().is_some_and(char::is_uppercase),
+                "{kind:?}: {words:?} does not start with a capital"
+            );
+        }
+        assert_eq!(JobKind::Scan.doing(), "Checking your folders");
+        assert_eq!(JobKind::RefreshAll.doing(), "Updating show info");
     }
 
     #[test]

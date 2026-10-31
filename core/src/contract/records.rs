@@ -96,6 +96,10 @@ pub struct SeriesCard {
     /// aired or landed, or while the record names a count of its own.
     #[serde(default)]
     pub episodes_set_applied: bool,
+    /// The season a count set by hand belongs to: a TVmaze card's own season,
+    /// since TVmaze numbers within one (#283). None for AniList.
+    #[serde(default)]
+    pub count_season: Option<u32>,
     /// The bytes every file of the series takes on disk, extras included (#266).
     #[serde(default)]
     pub bytes_on_disk: u64,

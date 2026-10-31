@@ -176,6 +176,7 @@ async fn run(
         summary.fields_ignored.len(),
     );
     Ok(Finished {
+        plain: Some("Loaded your library from the file.".to_string()),
         level: Level::Info,
         message,
         body: EventBody::ImportFinished { summary },

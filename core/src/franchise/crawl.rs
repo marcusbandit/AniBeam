@@ -200,6 +200,7 @@ async fn run(
     }
 
     Ok(Finished {
+        plain: None,
         level: Level::Info,
         message: format!("Crawl finished: {fetched} fetched, {deferred} deferred"),
         body: EventBody::CrawlFinished { fetched, deferred },

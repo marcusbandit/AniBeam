@@ -1086,7 +1086,19 @@ async fn step(
         if !acted.is_empty() {
             line.push_str(&format!(", {}", acted.join(", ")));
         }
-        core.bus.info(Stage::Downloads, line, EventBody::Notice);
+        core.bus.say(
+            Level::Info,
+            Stage::Downloads,
+            format!(
+                "{}: now on episodes {} to {} of {}.",
+                roll.title,
+                (after.start + 1).min(after.total),
+                after.end,
+                after.total
+            ),
+            line,
+            EventBody::Notice,
+        );
     }
     if roll.released && m.add.is_empty() && all_set {
         return Step::Drop;
