@@ -132,15 +132,17 @@ impl Snapshot {
                 }
             })
             .collect();
+        // A TVmaze count set by hand runs within the card's season (#283)
+        let plan_total = self.season_total(row, total);
         let released = self.released_of(
             row,
             &episodes,
-            total,
+            plan_total,
             latest_aired,
             next_scheduled,
             card.watched,
         );
-        let upcoming = upcoming(airing, released, total, card.status, now)
+        let upcoming = upcoming(airing, released, plan_total, card.status, now)
             .into_iter()
             .map(|(number, at, predicted)| UpcomingEpisode {
                 number,

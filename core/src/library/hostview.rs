@@ -92,14 +92,8 @@ impl Snapshot {
     /// `next_airing`, so `upcoming[0]` is that card's next airing.
     fn upcoming(&self, row: &SeriesRow, now: i64) -> Vec<wire::Airing> {
         let mut out: Vec<wire::Airing> = if row.provider == Some(Provider::Tvmaze) {
-            row.tvmaze_id
-                .and_then(|id| self.tv_seasons.get(&id))
-                .into_iter()
-                .flat_map(|seasons| {
-                    seasons
-                        .iter()
-                        .flat_map(|(season, eps)| eps.iter().map(move |a| (Some(*season), a)))
-                })
+            self.tv_seasons_of(row)
+                .flat_map(|(season, eps)| eps.iter().map(move |a| (Some(season), a)))
                 .filter_map(|(season, a)| {
                     a.aired_at.filter(|at| *at > now).map(|at| wire::Airing {
                         episode: a.number,
