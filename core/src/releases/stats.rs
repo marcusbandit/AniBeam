@@ -10,6 +10,9 @@
 //! 3. scrape the trackers (HTTP batch first, UDP fallback), which answers seeders,
 //!    leechers and completed per info-hash in one tiny request.
 //!
+//! A magnet link skips the download: its `xt=urn:btih:` is the info-hash and its `tr=`
+//! parameters are the trackers.
+//!
 //! `enrich` is the only entry point the flows call. It never fails: any failure leaves the
 //! stats unknown and logs. Results are cached in memory with a TTL, so keystroke-driven
 //! live previews and refine refetches mostly cost nothing. anirss also keeps that cache in
@@ -23,8 +26,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::net::UdpSocket;
 
-use super::endpoints::{quote, split_url};
+use super::endpoints::{quote, split_url, unquote_plus};
 use crate::contract::Release;
+use crate::downloads::replace::magnet_hash;
 use crate::net::{BoxFuture, Http, HttpRequest, Method};
 
 /// Tracker counts go stale quickly.
@@ -260,6 +264,35 @@ pub fn torrent_facts(data: &[u8]) -> Result<(Hash, Vec<String>), BadBencode> {
         return Err(BadBencode); // no announce URL
     }
     Ok((infohash, announces))
+}
+
+// Magnet links --------------------------------------------------------------------------
+
+/// (info-hash, trackers in the order given) from a magnet link's `xt=urn:btih:` and `tr=`
+/// parameters, keeping the http, https and udp trackers. `None` when the link is not a
+/// magnet, its hash is malformed or it names no tracker to scrape.
+pub fn magnet_facts(link: &str) -> Option<(Hash, Vec<String>)> {
+    let query = link.strip_prefix("magnet:?")?;
+    // The hex or base32 hash, read the way a download reads it, as 20 bytes.
+    let hex = magnet_hash(link)?;
+    let mut hash = [0u8; 20];
+    for (i, byte) in hash.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    let mut trackers: Vec<String> = Vec::new();
+    for (key, value) in query.split('&').filter_map(|p| p.split_once('=')) {
+        // A magnet's values are percent-encoded; a `+` in one is a plus, not a space.
+        let value = unquote_plus(&value.replace('+', "%2B"));
+        if key.eq_ignore_ascii_case("tr")
+            && ["http://", "https://", "udp://"]
+                .iter()
+                .any(|p| value.starts_with(p))
+            && !trackers.contains(&value)
+        {
+            trackers.push(value);
+        }
+    }
+    (!trackers.is_empty()).then_some((hash, trackers))
 }
 
 // Scraping ------------------------------------------------------------------------------
@@ -740,8 +773,9 @@ fn with_stats(mut item: Release, stats: Stats) -> Release {
 /// Fill in unknown seed, peer and download counts from the items' trackers.
 ///
 /// Items whose feed already carries stats (nyaa) pass through untouched. For the rest,
-/// stats come from scraping the .torrent's trackers: the same numbers qBittorrent shows
-/// after adding. Never fails; on any failure the item keeps its unknown stats.
+/// stats come from scraping the .torrent's trackers, or for a magnet link the trackers its
+/// `tr=` parameters name: the same numbers qBittorrent shows after adding. Never fails; on
+/// any failure the item keeps its unknown stats.
 pub async fn enrich(http: &dyn Http, items: Vec<Release>, deadline: Duration) -> Vec<Release> {
     enrich_with(&Net(http), &CACHE, items, deadline).await
 }
@@ -757,7 +791,7 @@ async fn enrich_with(
     }
     let deadline = Instant::now() + deadline_s;
 
-    // Torrent URL to item indexes, in first-seen order.
+    // Torrent URL or magnet link to item indexes, in first-seen order.
     let mut by_url: Vec<(String, Vec<usize>)> = Vec::new();
     let mut resolved: HashMap<usize, Stats> = HashMap::new();
     for (i, item) in items.iter().enumerate() {
@@ -766,7 +800,13 @@ async fn enrich_with(
         if item.seeders.is_some() && item.leechers.is_some() {
             continue;
         }
-        if item.link.starts_with("http://") || item.link.starts_with("https://") {
+        // A magnet is scraped only at the trackers its own `tr=` parameters name. There is
+        // no fallback tracker list: the app ships no sources and names no tracker, so a
+        // magnet without `tr=` (or with a malformed info-hash) stays unscraped.
+        let scrapable = item.link.starts_with("http://")
+            || item.link.starts_with("https://")
+            || magnet_facts(&item.link).is_some();
+        if scrapable {
             match cache.get(&item.link) {
                 None => match by_url.iter_mut().find(|(u, _)| *u == item.link) {
                     Some((_, idxs)) => idxs.push(i),
@@ -794,19 +834,27 @@ async fn enrich_with(
         return apply(items, &resolved);
     }
 
-    // Download the missing .torrent files in parallel, honouring the deadline.
+    // Download the missing .torrent files in parallel, honouring the deadline. A magnet
+    // carries its info-hash and trackers itself, so it needs no download.
     let urls: Vec<String> = by_url.iter().map(|(u, _)| u.clone()).collect();
+    let torrent_urls: Vec<String> = urls
+        .iter()
+        .filter(|u| !u.starts_with("magnet:"))
+        .cloned()
+        .collect();
     let fetched = fetch_torrents_with(
         backend,
-        &urls,
+        &torrent_urls,
         deadline.saturating_duration_since(Instant::now()),
     )
     .await;
     let mut facts: HashMap<String, (Hash, Vec<String>)> = HashMap::new();
     for url in &urls {
-        if let Some(data) = fetched.get(url)
-            && let Ok(fact) = torrent_facts(data)
-        {
+        let fact = match magnet_facts(url) {
+            Some(fact) => Some(fact),
+            None => fetched.get(url).and_then(|data| torrent_facts(data).ok()),
+        };
+        if let Some(fact) = fact {
             facts.insert(url.clone(), fact);
         }
     }
@@ -1047,6 +1095,87 @@ mod tests {
     }
 
     // HTTP scrape --------------------------------------------------------------------
+
+    // Magnet links ------------------------------------------------------------------------
+
+    /// One info-hash written both ways a magnet may carry it.
+    const HEX: &str = "c12fe1c06bba254a9dc9f519b335aa7c1367a88a";
+    const B32: &str = "YEX6DQDLXISUVHOJ6UM3GNNKPQJWPKEK";
+
+    fn facts_hash(xt: &str) -> Option<Hash> {
+        magnet_facts(&format!(
+            "magnet:?xt=urn:btih:{xt}&tr=http%3A%2F%2Ft.example"
+        ))
+        .map(|f| f.0)
+    }
+
+    #[test]
+    fn magnet_facts_decodes_hex_and_base32_hashes_in_either_case() {
+        let h = facts_hash(HEX).unwrap();
+        assert_eq!(hex(&h), HEX);
+        assert_eq!(facts_hash(&HEX.to_uppercase()), Some(h));
+        assert_eq!(facts_hash(B32), Some(h));
+        assert_eq!(facts_hash(&B32.to_lowercase()), Some(h));
+    }
+
+    #[test]
+    fn magnet_facts_rejects_malformed_hashes() {
+        assert_eq!(facts_hash(""), None);
+        assert_eq!(facts_hash("abc"), None);
+        assert_eq!(facts_hash(&HEX[..39]), None);
+        assert_eq!(facts_hash(&format!("{HEX}0")), None);
+        assert_eq!(facts_hash(&format!("{}g", &HEX[..39])), None);
+        // 0, 1, 8 and 9 are not base32 letters.
+        assert_eq!(facts_hash(&format!("{}1", &B32[..31])), None);
+        assert_eq!(facts_hash(&format!("{}8", &B32[..31])), None);
+        assert_eq!(facts_hash(&format!("{}=", &B32[..31])), None);
+    }
+
+    #[test]
+    fn magnet_facts_reads_the_hash_and_decoded_trackers() {
+        let link = format!(
+            "magnet:?xt=urn:btih:{HEX}&dn=%5BGroup%5D+Show+-+01+%281080p%29\
+             &tr=http%3A%2F%2Ft1.example%2Fannounce%3Fk%3Da+b\
+             &tr=udp%3A%2F%2Ft2.example%3A1337%2Fannounce\
+             &TR=https://t3.example/announce\
+             &tr=wss%3A%2F%2Ft4.example\
+             &tr=udp%3A%2F%2Ft2.example%3A1337%2Fannounce"
+        );
+        let (h, trackers) = magnet_facts(&link).unwrap();
+        assert_eq!(hex(&h), HEX);
+        assert_eq!(
+            trackers,
+            [
+                "http://t1.example/announce?k=a+b",
+                "udp://t2.example:1337/announce",
+                "https://t3.example/announce",
+            ]
+        );
+        let upper = format!("magnet:?xt=URN:BTIH:{B32}&tr=udp%3A%2F%2Ft2.example%3A1337");
+        assert_eq!(magnet_facts(&upper).unwrap().0, h);
+    }
+
+    #[test]
+    fn magnet_facts_needs_a_good_hash_and_a_tracker() {
+        assert_eq!(magnet_facts(&format!("magnet:?xt=urn:btih:{HEX}")), None);
+        assert_eq!(
+            magnet_facts(&format!(
+                "magnet:?xt=urn:btih:{HEX}&tr=wss%3A%2F%2Ft.example"
+            )),
+            None
+        );
+        assert_eq!(
+            magnet_facts("magnet:?xt=urn:btih:abc&tr=http%3A%2F%2Ft.example"),
+            None
+        );
+        assert_eq!(
+            magnet_facts(&format!(
+                "magnet:?xt=urn:sha1:{HEX}&tr=http%3A%2F%2Ft.example"
+            )),
+            None
+        );
+        assert_eq!(magnet_facts("http://example.org/a.torrent"), None);
+    }
 
     #[test]
     fn parse_http_scrape_reads_all_files() {
@@ -1367,24 +1496,73 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn enrich_passes_through_known_stats_and_non_http_links() {
-        let mock = Mock::new(&[]);
+    async fn enrich_passes_through_known_stats_and_unscrapable_links() {
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let log = asked.clone();
+        let mock = Mock::new(&[]).scraping(move |announce, _| {
+            log.lock().unwrap().push(announce.to_string());
+            HashMap::from([(infohash(), (1, 1, 1))])
+        });
         let mut known = rel(T);
         known.seeders = Some(5);
         known.leechers = Some(1);
         known.downloads = Some(9);
-        let magnet = rel("magnet:?xt=urn:btih:abc");
-        let items = vec![known, magnet];
+        let mut known_magnet = rel(&format!("magnet:?xt=urn:btih:{HEX}&tr=http%3A%2F%2Ft1"));
+        known_magnet.seeders = Some(3);
+        known_magnet.leechers = Some(0);
+        // No `tr=`, a malformed hash, and no scheme the scrape code speaks.
+        let bare_magnet = rel(&format!("magnet:?xt=urn:btih:{HEX}"));
+        let bad_hash = rel("magnet:?xt=urn:btih:abc&tr=http%3A%2F%2Ft1");
+        let other = rel("ftp://example.org/a.torrent");
+        let items = vec![known, known_magnet, bare_magnet, bad_hash, other];
         assert_eq!(
             enrich_one(&mock, &StatsCache::default(), items.clone()).await,
             items
         );
         assert!(mock.fetched().is_empty());
+        assert!(asked.lock().unwrap().is_empty());
         assert!(
             enrich_one(&mock, &StatsCache::default(), vec![])
                 .await
                 .is_empty()
         );
+    }
+
+    #[tokio::test]
+    async fn enrich_scrapes_a_magnet_at_its_own_trackers() {
+        let h = facts_hash(HEX).unwrap();
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let log = asked.clone();
+        let mock = Mock::new(&[]).scraping(move |announce, hashes| {
+            log.lock()
+                .unwrap()
+                .push((announce.to_string(), hashes.to_vec()));
+            if announce.starts_with("udp://") {
+                HashMap::from([(h, (12, 3, 40))])
+            } else {
+                HashMap::new()
+            }
+        });
+        let link = format!(
+            "magnet:?xt=urn:btih:{}&dn=Show&tr=http%3A%2F%2Ft1.example%2Fannounce\
+             &tr=udp%3A%2F%2Ft2.example%3A1337%2Fannounce",
+            B32.to_lowercase()
+        );
+        let cache = StatsCache::default();
+        let out = enrich_one(&mock, &cache, vec![rel(&link)]).await;
+        assert_eq!(counts(&out[0]), (Some(12), Some(3), Some(40)));
+        assert!(mock.fetched().is_empty(), "a magnet needs no download");
+        assert_eq!(
+            *asked.lock().unwrap(),
+            [
+                ("http://t1.example/announce".to_string(), vec![h]),
+                ("udp://t2.example:1337/announce".to_string(), vec![h]),
+            ]
+        );
+        // Cached by link like a .torrent URL.
+        let again = Mock::new(&[]);
+        let out = enrich_one(&again, &cache, vec![rel(&link)]).await;
+        assert_eq!(counts(&out[0]), (Some(12), Some(3), Some(40)));
     }
 
     #[tokio::test]

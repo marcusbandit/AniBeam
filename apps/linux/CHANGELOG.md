@@ -14,6 +14,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### New
 - Developer options, in Settings under Data, time every page and turn images off
+- Magnet-only search results show their seeders and leechers
 - Pick Stable or Nightly updates in Settings, under Data
 - Update installs the new version and restarts, no trip to GitHub
 - An AUR install shows the command that updates it, once the AUR has it

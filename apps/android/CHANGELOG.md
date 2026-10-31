@@ -12,6 +12,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ## 2.1.1 · 2026-10-26
 
+### New
+- Magnet-only search results show their seeders and leechers
+
 ### Fixed
 - Numbered specials and OVAs keep their own episode numbers
 
