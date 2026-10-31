@@ -39,6 +39,9 @@ env:
   # click. Empty on a fork's pull request, whose build then asks for a client ID instead.
   ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
   ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
+  # The project's Discord application, named after "Watching" in the presence. Empty
+  # leaves the Discord switch disabled.
+  ANIBEAM_DISCORD_CLIENT_ID: ${{ secrets.ANIBEAM_DISCORD_CLIENT_ID }}
 
 jobs:
   build-linux:

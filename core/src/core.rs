@@ -123,6 +123,9 @@ pub struct Core {
     /// The tailnet host: the read-only API the phone app reads, served on
     /// this machine's Tailscale addresses while the preference is on.
     pub(crate) host: crate::host::Host,
+    /// Discord rich presence: what the player shows on Discord while the
+    /// switch is on. Holds no thread or socket until it is first switched on.
+    pub(crate) presence: crate::presence::Presence,
     /// The phone's own sources and torrent engine (`Phone*` calls).
     #[cfg_attr(not(feature = "phone"), allow(dead_code))]
     pub(crate) phone: crate::phone::Phone,
@@ -222,6 +225,7 @@ impl Core {
         let handle = runtime.handle().clone();
         let jobs = Jobs::new(handle.clone(), bus.clone());
         let host = crate::host::Host::new(bus.clone());
+        let presence = crate::presence::Presence::new(bus.clone());
         let anilist = Arc::new(AnilistClient::new(ProviderClient::new(
             Upstream::Anilist,
             http.clone(),
@@ -279,6 +283,7 @@ impl Core {
             repos: crate::repos::Pending::default(),
             cast: crate::cast::Cast::default(),
             host,
+            presence,
             me: me.clone(),
             snapshot_cache: AtomicBool::new(false),
             kept_load: Mutex::new(None),
@@ -317,6 +322,43 @@ impl Core {
     #[doc(hidden)]
     pub fn set_host_bind(&self, bind: Option<String>) {
         self.host.set_bind(bind);
+    }
+
+    /// Speaks Discord presence to `transport` instead of a Discord client,
+    /// which also makes presence available in a build with no application
+    /// id. Takes effect when the switch is first turned on. Not part of the
+    /// contract and not exported to any shell.
+    #[doc(hidden)]
+    pub fn set_presence_transport(&self, transport: Box<dyn crate::presence::Transport>) {
+        self.presence.set_transport(transport);
+    }
+
+    /// Clears Discord presence after a pause of `wait` instead of
+    /// `presence::PAUSE_CLEAR`. Not part of the contract.
+    #[doc(hidden)]
+    pub fn set_presence_pause_clear(&self, wait: std::time::Duration) {
+        self.presence.set_pause_clear(wait);
+    }
+
+    /// Feeds Discord presence one tick of `session` directly, as a tick
+    /// that lost the race with its session's close would arrive. Not part
+    /// of the contract.
+    #[doc(hidden)]
+    pub fn presence_tick(
+        &self,
+        session: u64,
+        activity: &crate::presence::Activity,
+        position: f64,
+        paused: bool,
+    ) {
+        crate::presence::tick(self, session, activity, position, paused);
+    }
+
+    /// Returns once every Discord presence send asked for so far has been
+    /// handled. Not part of the contract.
+    #[doc(hidden)]
+    pub fn presence_flush(&self) {
+        self.presence.flush();
     }
 
     /// Moves the OAuth listener off the registered port, so two tests
@@ -592,6 +634,7 @@ impl Core {
         // The host follows the stored preference from the first moment, so
         // a phone can reach a machine that was left sharing.
         crate::host::sync(self);
+        crate::presence::sync(self);
         launch::start(&core)
     }
 
@@ -750,6 +793,7 @@ impl Core {
                 })?;
                 self.host
                     .set_enabled(self, preferences.share_over_tailscale);
+                crate::presence::set_enabled(self, preferences.discord_presence);
                 // On hold switched on: the entries due now move without
                 // waiting for the next launch.
                 if on_hold::wants_sweep(&before, &preferences)
@@ -766,6 +810,10 @@ impl Core {
             }
             Call::GetHost => Ok(Reply::Host {
                 status: self.host.status(),
+            }),
+            Call::GetPresence => Ok(Reply::Presence {
+                available: self.presence.available(),
+                connected: self.presence.connected(),
             }),
             Call::GetSettings => Ok(Reply::Settings {
                 settings: self.store.read(prefs::load_settings)?,
@@ -1151,6 +1199,9 @@ impl Core {
         // The anirss sidecar goes with the core that started it.
         self.downloads.stop();
         self.host.stop();
+        // Discord drops the activity when the socket closes anyway; this
+        // clears it first and ends the worker.
+        crate::presence::shutdown(self);
         self.jobs.cancel_all();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the

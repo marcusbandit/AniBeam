@@ -32,6 +32,7 @@ Item {
             ["M", "Mute"],
             ["C", "Subtitles off and back"],
             ["z / Z", "Subtitle delay 100 ms earlier or later"],
+            ["a / A", "Audio delay 100 ms earlier or later"],
             ["Hold the video", "2\u00d7 speed while held"],
             ["S", "Save a screenshot to Pictures"]
         ] },

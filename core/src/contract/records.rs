@@ -795,6 +795,11 @@ pub struct Preferences {
     /// moves it, `ON_HOLD_DAYS` by default.
     #[serde(default = "default_on_hold_days")]
     pub on_hold_days: u32,
+    /// Whether the player tells a running Discord client what is playing
+    /// (`presence`). Default off, and per machine like `share_over_tailscale`:
+    /// an export never carries it. `serde(default)` because older blobs predate it.
+    #[serde(default)]
+    pub discord_presence: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -958,6 +963,7 @@ impl Default for Preferences {
             share_over_tailscale: false,
             on_hold_auto: true,
             on_hold_days: ON_HOLD_DAYS,
+            discord_presence: false,
         }
     }
 }

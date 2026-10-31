@@ -240,6 +240,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 share_over_tailscale: false,
                 on_hold_auto: true,
                 on_hold_days: ON_HOLD_DAYS,
+                discord_presence: false,
             }
         ),
         other => panic!("{other:?}"),
@@ -301,6 +302,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         share_over_tailscale: false,
         on_hold_auto: true,
         on_hold_days: ON_HOLD_DAYS,
+        discord_presence: false,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

@@ -164,6 +164,14 @@ that site. A new source goes in one of two places:
 - A repo of your own, signed with your own key, that anyone can add in AniBeam beside or
   instead of the owner's.
 
+Endpoints are not part of this project, and that is final. No PR here decides which sources
+exist, whether one is hidden or shown, or how a particular one is handled. A source that only
+works with something else running, such as an indexer proxy or a challenge solver, is still
+just a definition in an endpoint repo: it uses an existing kind, and its definition or that
+repo's README says what has to be running and how to set it up. The app never bundles,
+starts or special-cases a service for one source. If a source seems to need app code beyond a
+kind, open an issue about the kind and leave the source out.
+
 ## Before you open it
 
 - The test, clippy and fmt commands in the README's Development section pass.

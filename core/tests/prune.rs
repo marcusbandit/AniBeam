@@ -41,6 +41,7 @@ fn remote(prune: bool) -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: prune,
         rolling: Default::default(),
+        engine: Default::default(),
     }
 }
 

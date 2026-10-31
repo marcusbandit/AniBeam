@@ -211,6 +211,9 @@ pub enum Call {
     /// or serving and on which URLs. Never touches the network; changes
     /// arrive as `HostChanged`.
     GetHost,
+    /// Whether this build can show what plays on Discord, and whether it is
+    /// talking to a Discord client right now. Never touches the socket.
+    GetPresence,
     GetSettings,
     SetSubtitleDefaults {
         defaults: SubtitleDefaults,
@@ -672,6 +675,12 @@ pub enum Reply {
     },
     Host {
         status: HostStatus,
+    },
+    /// `available` is false for a build with no Discord application id,
+    /// where the switch can do nothing.
+    Presence {
+        available: bool,
+        connected: bool,
     },
     Settings {
         settings: Settings,

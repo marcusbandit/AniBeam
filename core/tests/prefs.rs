@@ -19,6 +19,7 @@ fn preferences_and_settings_round_trip_with_events() {
         share_over_tailscale: false,
         on_hold_auto: false,
         on_hold_days: 90,
+        discord_presence: false,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {

@@ -1,6 +1,7 @@
-// Playback: Skipping (intro and outro on their own switches), Languages (which subtitle
-// and audio tracks a new episode starts on, by language code, most wanted first) and mpv
-// (whether the person's own mpv settings file is read, with the files it found).
+// Playback: Skipping (intro and outro on their own switches), Next episode, Languages
+// (which subtitle and audio tracks a new episode starts on, by language code, most wanted
+// first), Discord (showing what plays on the person's profile, where the build has a
+// Discord application) and mpv (whether their own mpv settings file is read).
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -16,6 +17,15 @@ SettingsTab {
     function edit(f) { var d = JSON.parse(JSON.stringify(defaults)); f(d); defaults = d; save.restart() }
     function codes(t) { return t.split(",").map(function(s) { return s.trim() }).filter(function(s) { return s }) }
     readonly property var skip: Door.settings.auto_skip || ({})
+    // Discord rich presence: a build with no Discord application has nothing to switch on
+    property bool discordAvailable: false
+    function setDiscord(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.discord_presence = on
+        var r = Door.setPreferences(p)
+        if (r.error) frame.toast(r.error.message)
+    }
+    Component.onCompleted: { var presence = Door.call("GetPresence", {}); if (!presence.error) discordAvailable = presence.reply.available }
 
     Panel {
         title: "Skipping"
@@ -37,6 +47,12 @@ SettingsTab {
             Field { text: (tab.defaults.subtitle_languages || []).join(", "); placeholder: "en"; width: theme.space(40); onEdited: function(t) { tab.edit(function(d) { d.subtitle_languages = tab.codes(t) }) } } }
         SettingRow { label: "Audio languages"
             Field { text: (tab.defaults.audio_languages || []).join(", "); placeholder: "ja, en"; width: theme.space(40); onEdited: function(t) { tab.edit(function(d) { d.audio_languages = tab.codes(t) }) } } }
+    }
+    Panel {
+        title: "Discord"
+        SettingRow { label: "Show what you watch on Discord"
+            helper: tab.discordAvailable ? "The series, episode and poster appear on your Discord profile while you play. Nothing is sent while this is off or Discord is closed." : "This build has no Discord application."
+            Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } }
     }
     Panel {
         title: "mpv"

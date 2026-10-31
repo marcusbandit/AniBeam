@@ -10,6 +10,12 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.2.0 · 2026-10-31
+
+### New
+- An endpoint repo can search your own Prowlarr or Jackett over torznab
+- An endpoint repo can add a source that answers in JSON
+
 ## 2.1.1 · 2026-10-26
 
 ### Fixed

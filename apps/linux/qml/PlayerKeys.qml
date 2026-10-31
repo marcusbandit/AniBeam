@@ -15,10 +15,10 @@ QtObject {
                                        Qt.Key_J, Qt.Key_L, Qt.Key_BracketLeft, Qt.Key_BracketRight]
 
     function handle(e) {
-        // A popover is open (a track picker, the rating picker, this list): it owns the keys
-        // until it closes. Escape goes on to the frame's escape stack, which closes the
-        // topmost popover; Ctrl, Alt and Meta presses go on to the frame's shortcuts; ? still
-        // toggles the list. Everything else is swallowed, so nothing pauses or seeks under it.
+        // A popover is open (a track picker, the delays, the rating picker, the key list): it
+        // owns the keys until it closes. Escape goes on to the frame's escape stack, which
+        // closes the topmost popover; Ctrl, Alt and Meta presses go on to the frame's
+        // shortcuts; ? still toggles the list. Everything else is swallowed, so nothing pauses or seeks under it.
         if (page.openMenus > 0) {
             if (e.key === Qt.Key_Escape || (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) { e.accepted = false; return }
             e.accepted = true
@@ -49,7 +49,7 @@ QtObject {
             return
         }
         // Every other Ctrl, Alt and Meta press belongs to the frame's shortcuts. Shift
-        // passes through: z and Z differ by it, and ? is Shift and the slash key.
+        // passes through: z and Z, a and A differ by it, and ? is Shift and the slash key.
         if (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) { e.accepted = false; return }
         e.accepted = true
         if (e.key === Qt.Key_Space || e.key === Qt.Key_K) page.togglePause()
@@ -72,8 +72,10 @@ QtObject {
         else if (e.key === Qt.Key_Up) page.setVolume(page.volume + 5)
         else if (e.key === Qt.Key_Down) page.setVolume(page.volume - 5)
         else if (e.key === Qt.Key_C) page.toggleSubtitles()
-        else if (e.key === Qt.Key_Z && !(e.modifiers & Qt.ShiftModifier)) page.nudgeDelay(-0.1)
-        else if (e.key === Qt.Key_Z) page.nudgeDelay(0.1)
+        else if (e.key === Qt.Key_Z && !(e.modifiers & Qt.ShiftModifier)) page.nudgeDelay("sub-delay", -0.1)
+        else if (e.key === Qt.Key_Z) page.nudgeDelay("sub-delay", 0.1)
+        else if (e.key === Qt.Key_A && !(e.modifiers & Qt.ShiftModifier)) page.nudgeDelay("audio-delay", -0.1)
+        else if (e.key === Qt.Key_A) page.nudgeDelay("audio-delay", 0.1)
         else if (e.key === Qt.Key_Question) page.toggleHelp()          // R33: a second press closes it
         else if (e.key === Qt.Key_Escape) {
             if (frame.hostWindow.visibility === Window.FullScreen) frame.hostWindow.visibility = Window.Windowed

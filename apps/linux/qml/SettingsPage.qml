@@ -163,6 +163,7 @@ FocusScope {
         ["playback", "Skip intros", "opening op auto skip aniskip chapters"],
         ["playback", "Skip outros", "ending ed credits auto skip aniskip"],
         ["playback", "Use my mpv settings", "mpv.conf config"],
+        ["playback", "Show what you watch on Discord", "discord rich presence status profile"],
         ["playback", "Name the next episode", "next button title autoplay end"],
         ["playback", "Subtitle languages", "language track subs"],
         ["playback", "Audio languages", "language track dub japanese"],

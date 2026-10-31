@@ -506,6 +506,17 @@ pub enum AnirssMode {
     Remote,
 }
 
+/// What the desktop's search, refine and subscription preview run on: anirss
+/// (the sidecar or a remote server), or the core's own port of it
+/// (`releases::native`). Subscribing and downloading stay on anirss with
+/// either, for now (#119).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+pub enum DownloadsEngine {
+    #[default]
+    Anirss,
+    Native,
+}
+
 /// The torrent clients the downloads page can drive. One for now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum TorrentClient {
@@ -595,6 +606,17 @@ pub struct DownloadSettings {
     /// How long downloads roll (`downloads::rolling`).
     #[serde(default)]
     pub rolling: RollingSettings,
+    /// Settings saved before the choice existed, and a value this build
+    /// does not know, read as anirss.
+    #[serde(default, deserialize_with = "lenient_engine")]
+    pub engine: DownloadsEngine,
+}
+
+/// A stored engine this build does not know falls back to the default
+/// instead of failing the whole blob.
+fn lenient_engine<'de, D: serde::Deserializer<'de>>(d: D) -> Result<DownloadsEngine, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).unwrap_or_default())
 }
 
 /// Rolling download: a long show is fetched a window of episodes at a
