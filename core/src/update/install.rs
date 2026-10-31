@@ -694,6 +694,8 @@ mod tests {
         assert_eq!(picked(Install::Package { package: None }, "x86_64"), None);
     }
 
+    /// Unix paths: Windows reads `/home/...` as relative.
+    #[cfg(unix)]
     #[test]
     fn linux_tells_an_appimage_a_package_and_a_build_apart() {
         let exe = Path::new("/tmp/.mount_AniBeaXYZ/usr/bin/anibeam");
