@@ -54,17 +54,42 @@ fn text(v: &Value) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
-/// A size in bytes, as a number or a string of digits.
+/// A size in bytes, as a number, a numeric string, or a string with a unit as feeds write it
+/// ("1.36GB", "485.1 MB"). None when negative, not finite or past what a u64 holds.
 fn bytes(v: &Value) -> Option<u64> {
     match v {
-        Value::Number(n) => n.as_u64().or_else(|| {
-            n.as_f64()
-                .filter(|f| f.is_finite() && *f >= 0.0)
-                .map(|f| f as u64)
-        }),
-        Value::String(s) => s.trim().parse().ok(),
+        Value::Number(n) => n.as_u64().or_else(|| whole(n.as_f64()?)),
+        Value::String(s) => {
+            let s = s.trim();
+            if s.starts_with('-') {
+                return None;
+            }
+            whole(s.parse::<f64>().ok().or_else(|| {
+                super::bestfit::size_mib(s).map(|mib| mib * 1024.0 * 1024.0)
+            })?)
+        }
         _ => None,
     }
+}
+
+/// `n` rounded to a whole u64, or None when it is negative, not finite or too big for one.
+fn whole(n: f64) -> Option<u64> {
+    let n = n.round();
+    (n.is_finite() && n >= 0.0 && n < u64::MAX as f64).then_some(n as u64)
+}
+
+/// Whether `link` starts with `prefix`, in any case.
+fn starts_with_any_case(link: &str, prefix: &str) -> bool {
+    link.get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+}
+
+/// Whether a ready link can be handed on: `https://`, or a `magnet:` that names an
+/// info-hash, both in any case.
+fn usable_link(link: &str) -> bool {
+    starts_with_any_case(link, "https://")
+        || (starts_with_any_case(link, "magnet:")
+            && link.to_ascii_lowercase().contains("xt=urn:btih:"))
 }
 
 /// Whether `hash` is an info-hash: 40 hex digits or 32 base32 ones, in either case. Anything
@@ -123,7 +148,7 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
         Some(hash) => magnet(&hash, &title),
         None => field(&map.link)
             .and_then(text)
-            .filter(|l| l.starts_with("magnet:") || l.starts_with("https://"))?,
+            .filter(|l| usable_link(l))?,
     };
     Some(Release {
         link,
@@ -354,6 +379,53 @@ mod tests {
         let body = json!([{"t": "x", "h": "nope", "url": "https://files.example.org/x"}]);
         let items = parse(body.to_string().as_bytes(), &both, "s").unwrap();
         assert_eq!(items[0].link, "https://files.example.org/x");
+    }
+
+    #[test]
+    fn a_ready_link_is_matched_in_any_case_and_a_magnet_needs_its_hash() {
+        let links = small(json!({"link": "url"}));
+        let body = json!([
+            {"t": "a", "url": "HTTPS://files.example.org/a.torrent"},
+            {"t": "b", "url": "Magnet:?XT=URN:BTIH:00112233445566778899aabbccddeeff00112233"},
+            {"t": "c", "url": "magnet:?dn=no-hash"},
+            {"t": "d", "url": "magnet:?xt=urn:sha1:abc"},
+        ])
+        .to_string();
+        let titles: Vec<String> = parse(body.as_bytes(), &links, "s")
+            .unwrap()
+            .into_iter()
+            .map(|i| i.title)
+            .collect();
+        assert_eq!(titles, ["a", "b"]);
+    }
+
+    #[test]
+    fn a_size_reads_numbers_numeric_strings_and_units_and_never_saturates() {
+        let sizes = small(json!({"hash": "h", "size": "z"}));
+        let size = |z: Value| {
+            let body = json!([{"t": "x", "h": HASH, "z": z}]).to_string();
+            parse(body.as_bytes(), &sizes, "s").unwrap().remove(0).size
+        };
+        assert_eq!(size(json!(1536)), "1.5 KiB");
+        assert_eq!(size(json!(1536.4)), "1.5 KiB");
+        assert_eq!(size(json!("1536")), "1.5 KiB");
+        assert_eq!(size(json!(" 1.5 ")), "2 B");
+        assert_eq!(size(json!("1.36GB")), "1.4 GiB");
+        assert_eq!(size(json!("485.1 MB")), "485.1 MiB");
+        for unknown in [
+            json!(-1),
+            json!(-1.5),
+            json!(1e30),
+            json!("-1"),
+            json!("-5 GB"),
+            json!("NaN"),
+            json!("inf"),
+            json!("1e30"),
+            json!("big"),
+            json!(true),
+        ] {
+            assert_eq!(size(unknown.clone()), "", "{unknown}");
+        }
     }
 
     #[test]
