@@ -272,7 +272,7 @@ pub fn torrent_facts(data: &[u8]) -> Result<(Hash, Vec<String>), BadBencode> {
 /// parameters, keeping the http, https and udp trackers. `None` when the link is not a
 /// magnet, its hash is malformed or it names no tracker to scrape.
 pub fn magnet_facts(link: &str) -> Option<(Hash, Vec<String>)> {
-    let query = link.strip_prefix("magnet:?")?;
+    let query = link.trim().strip_prefix("magnet:?")?;
     // The hex or base32 hash, read the way a download reads it, as 20 bytes.
     let hex = magnet_hash(link)?;
     let mut hash = [0u8; 20];
@@ -1094,8 +1094,6 @@ mod tests {
         assert!(info_hash(b"").is_err());
     }
 
-    // HTTP scrape --------------------------------------------------------------------
-
     // Magnet links ------------------------------------------------------------------------
 
     /// One info-hash written both ways a magnet may carry it.
@@ -1153,6 +1151,12 @@ mod tests {
         );
         let upper = format!("magnet:?xt=URN:BTIH:{B32}&tr=udp%3A%2F%2Ft2.example%3A1337");
         assert_eq!(magnet_facts(&upper).unwrap().0, h);
+        // Padding a download's hash reader accepts is accepted here too.
+        let padded = format!("  magnet:?xt=urn:btih:{HEX}&tr=udp%3A%2F%2Ft2.example%3A1337\n");
+        assert_eq!(
+            magnet_facts(&padded),
+            Some((h, vec!["udp://t2.example:1337".to_string()]))
+        );
     }
 
     #[test]
@@ -1176,6 +1180,8 @@ mod tests {
         );
         assert_eq!(magnet_facts("http://example.org/a.torrent"), None);
     }
+
+    // HTTP scrape --------------------------------------------------------------------
 
     #[test]
     fn parse_http_scrape_reads_all_files() {
