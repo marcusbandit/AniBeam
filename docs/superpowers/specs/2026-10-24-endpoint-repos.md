@@ -291,6 +291,11 @@ synced to anirss as kind `rss`.
   credentials }`, `UpdateEndpoint`, `RemoveEndpoint`, `SetEndpointCredentials`.
 - The activity log gets a line for adding a repo, installing, updating and
   removing an endpoint. Nothing per fetch.
+- Seeders and leechers an endpoint leaves out are filled by `releases::stats`
+  (`enrich`), which scrapes a .torrent's announce list or, for a magnet-only
+  result, the trackers in the magnet's own `tr=` parameters (#246). There is no
+  fallback tracker list, since the core ships no sources and names no tracker,
+  so a magnet without `tr=` keeps unknown counts.
 
 ## Endpoint packs (#97)
 

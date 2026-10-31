@@ -102,7 +102,11 @@ static TICK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mu
 pub fn magnet_hash(link: &str) -> Option<String> {
     let query = link.trim().strip_prefix("magnet:?")?;
     for part in query.split('&') {
-        let Some(v) = part.strip_prefix("xt=") else {
+        let Some(v) = part
+            .get(..3)
+            .filter(|key| key.eq_ignore_ascii_case("xt="))
+            .map(|_| &part[3..])
+        else {
             continue;
         };
         let lower = v.to_ascii_lowercase();
