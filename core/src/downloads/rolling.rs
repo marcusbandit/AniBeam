@@ -974,8 +974,8 @@ async fn step(
             .iter()
             .map(|&p| roll.parts[p].release.clone())
             .collect();
-        match super::ensure_client(core).await {
-            Ok(anirss) => match anirss.download(&items, roll.name.as_deref()).await {
+        match super::backend::DownloadsBackend::open(core).await {
+            Ok(backend) => match backend.download(&items, roll.name.as_deref()).await {
                 Ok(added) => {
                     for &p in &m.add {
                         roll.parts[p].added = true;

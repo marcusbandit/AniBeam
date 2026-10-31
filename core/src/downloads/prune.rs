@@ -1,6 +1,6 @@
 //! Unsubscribing from finished shows. A show whose run ended long enough
 //! ago has no episode left to download, so its RSS feed and rule are
-//! removed from anirss. Only the subscription goes, exactly as the user's
+//! removed, through whichever engine the downloads run on. Only the subscription goes, exactly as the user's
 //! own "keep the files and torrents" removal does it: the library series,
 //! the files and the torrents are never touched.
 //!
@@ -27,7 +27,7 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::store::settings as kv;
 
-use super::anirss::AnirssClient;
+use super::backend::DownloadsBackend;
 use super::settings;
 
 /// Days a show must have been finished before its feed goes.
@@ -212,20 +212,20 @@ pub fn plan(
 /// here: a check that cannot run is not the page's problem.
 pub(super) async fn after_read(
     core: &Arc<Core>,
-    client: &AnirssClient,
+    backend: &DownloadsBackend,
     rules: &[SubscriptionRule],
 ) {
     if !core.downloads.unattended_allowed() {
         return;
     }
-    if let Err(e) = check(core, client, rules, crate::time::now_secs()).await {
+    if let Err(e) = check(core, backend, rules, crate::time::now_secs()).await {
         tracing::warn!("finished feeds not pruned: {}", super::plain(&e));
     }
 }
 
 async fn check(
     core: &Arc<Core>,
-    client: &AnirssClient,
+    backend: &DownloadsBackend,
     rules: &[SubscriptionRule],
     now: i64,
 ) -> Result<(), CoreError> {
@@ -254,7 +254,7 @@ async fn check(
     // finds the day already checked
     core.store.write(move |c| kv::set(c, LAST_CHECK, &now))?;
     for d in due {
-        match client
+        match backend
             .remove(std::slice::from_ref(&d.rule), false, false, false)
             .await
         {

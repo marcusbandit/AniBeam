@@ -22,6 +22,10 @@ pub const DOWNLOADS: &str = "downloads";
 /// The endpoint names AniBeam wrote into anirss from repos (#143), so a sync only ever
 /// changes its own and never one written by hand.
 pub const ANIRSS_SYNCED_ENDPOINTS: &str = "anirss_synced_endpoints";
+/// Where the core's own downloads engine saves (`downloads::paths`): the
+/// folder each show's own goes under, the films' folder and the tags. Absent
+/// until something sets it.
+pub const DOWNLOAD_PATHS: &str = "download_paths";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
     let raw: Option<String> = conn
