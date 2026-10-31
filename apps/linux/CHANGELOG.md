@@ -15,6 +15,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ### New
 - Developer options, in Settings under Data, time every page and turn images off
 - Pick Stable or Nightly updates in Settings, under Data
+- Update installs the new version and restarts, no trip to GitHub
+- An AUR install shows the command that updates it, once the AUR has it
 - Downloaded lists every show on disk, not only what the torrent client holds
 - Downloaded shows how much of the disk is watched and how much is not
 - Delete watched clears every watched episode, or every finished show you saw
@@ -22,8 +24,10 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Deleting episodes removes their torrent too, so they can be downloaded again
 - Ctrl-click a release group or one of its episodes to pick all it has missing
 - Get says it is sending to your torrent client the moment you click it
+- Set how many episodes a TVmaze show's season has, so no more are predicted
 
 ### Changed
+- A show's Fixes menu holds Fix files, the episode count, the match and Rescan
 - The activity log speaks plain words and leaves out background chores
 
 ### Fixed

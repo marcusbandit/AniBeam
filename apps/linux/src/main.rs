@@ -183,5 +183,8 @@ fn main() {
     // Held until here on purpose: the lock is released by closing the file, so this is the
     // line that says the process is done being the one instance.
     drop(lock);
+    // An update readied in this run finishes once this process is gone, by a helper that
+    // waits for it; started last, so the new version finds the lock free.
+    bridge::shell::finish_update();
     std::process::exit(code);
 }
