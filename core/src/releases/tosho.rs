@@ -30,22 +30,6 @@ struct Entry {
     total_size: Option<u64>,
 }
 
-/// A size as nyaa writes it: `1.4 GiB`.
-fn size_text(bytes: u64) -> String {
-    let units = ["B", "KiB", "MiB", "GiB", "TiB"];
-    let mut v = bytes as f64;
-    let mut u = 0;
-    while v >= 1024.0 && u < units.len() - 1 {
-        v /= 1024.0;
-        u += 1;
-    }
-    if u == 0 {
-        format!("{bytes} B")
-    } else {
-        format!("{v:.1} {}", units[u])
-    }
-}
-
 /// The feed's entries as releases. The torrent's own name is the title: the feed's title adds
 /// an English name and tags after ` | `, which the title parsing would read as part of it.
 pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
@@ -66,7 +50,10 @@ pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
                 seeders: e.seeders,
                 leechers: e.leechers,
                 downloads: e.torrent_downloaded_count.filter(|n| *n > 0),
-                size: e.total_size.map(size_text).unwrap_or_default(),
+                size: e
+                    .total_size
+                    .map(super::fetch::size_text)
+                    .unwrap_or_default(),
                 category: String::new(),
                 page: e.link.unwrap_or_default(),
                 source: source.to_string(),

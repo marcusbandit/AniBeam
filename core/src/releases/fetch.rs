@@ -25,6 +25,22 @@ const TORZNAB_NS: &str = "http://torznab.com/schemas/2015/feed";
 pub const USER_AGENT: &str =
     "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
 
+/// A size from bytes, in the binary units feeds write: `1.4 GiB`.
+pub(super) fn size_text(bytes: u64) -> String {
+    let units = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut v = bytes as f64;
+    let mut u = 0;
+    while v >= 1024.0 && u < units.len() - 1 {
+        v /= 1024.0;
+        u += 1;
+    }
+    if u == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{v:.1} {}", units[u])
+    }
+}
+
 /// Newznab top-level category ids (Jackett and Prowlarr torznab feeds).
 fn torznab_category(id: &str) -> &'static str {
     match id {

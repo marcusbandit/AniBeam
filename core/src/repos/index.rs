@@ -104,6 +104,9 @@ pub struct Definition {
     pub filter: Option<String>,
     #[serde(default)]
     pub min_core: Option<String>,
+    /// `json` only: where its replies keep each field.
+    #[serde(default)]
+    pub json: Option<JsonMap>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -125,6 +128,34 @@ fn yes() -> bool {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rate {
     pub per_minute: u32,
+}
+
+/// Where a `json` endpoint's reply keeps each field a release needs. Every path is object
+/// keys joined by dots (`data.hits`), with no array indexing; `items` is read from the
+/// reply, `error` from its top, and the rest from each result.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct JsonMap {
+    /// The results array; empty when the reply itself is the array.
+    pub items: String,
+    pub title: String,
+    /// An info-hash, made into a magnet.
+    #[serde(default)]
+    pub hash: Option<String>,
+    /// A ready `magnet:` or `https://` link, for a result without a usable hash.
+    #[serde(default)]
+    pub link: Option<String>,
+    /// The size in bytes.
+    #[serde(default)]
+    pub size: Option<String>,
+    /// An `https://` address with `{path}` placeholders filled from the result.
+    #[serde(default)]
+    pub page: Option<String>,
+    /// A result whose value here is truthy is left out.
+    #[serde(default)]
+    pub skip: Option<String>,
+    /// A truthy value here makes the whole reply an error.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 impl Definition {
@@ -381,6 +412,88 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if def.rate.is_some_and(|r| r.per_minute == 0) {
         return Err(format!("{}: a rate of zero", def.id));
     }
+    match (&def.json, def.kind == "json") {
+        (None, true) => return Err(format!("{}: a json endpoint needs its `json` map", def.id)),
+        (Some(_), false) => {
+            return Err(format!(
+                "{}: only a json endpoint takes a `json` map",
+                def.id
+            ));
+        }
+        (Some(map), true) => check_map(map).map_err(|e| format!("{}: {e}", def.id))?,
+        (None, false) => {}
+    }
+    Ok(())
+}
+
+/// Object keys joined by dots, each key plain: letters, digits, '_' and '-'.
+fn plain_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.split('.').all(|key| {
+            !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        })
+}
+
+/// A `json` map's paths and its page template.
+fn check_map(map: &JsonMap) -> Result<(), String> {
+    if !map.items.is_empty() && !plain_path(&map.items) {
+        return Err(format!("bad items path {:?}", map.items));
+    }
+    if !plain_path(&map.title) {
+        return Err(format!("bad title path {:?}", map.title));
+    }
+    if map.hash.is_none() && map.link.is_none() {
+        return Err("the json map needs a hash or a link".into());
+    }
+    for (what, path) in [
+        ("hash", &map.hash),
+        ("link", &map.link),
+        ("size", &map.size),
+        ("skip", &map.skip),
+        ("error", &map.error),
+    ] {
+        if let Some(path) = path
+            && !plain_path(path)
+        {
+            return Err(format!("bad {what} path {path:?}"));
+        }
+    }
+    if let Some(page) = &map.page {
+        check_page(page)?;
+    }
+    Ok(())
+}
+
+/// A page template: https, a literal host, and placeholders naming result paths in the path
+/// or the query only, so a result can never pick where the link goes.
+fn check_page(page: &str) -> Result<(), String> {
+    let Some(rest) = page.strip_prefix("https://") else {
+        return Err("the page must start with https://".into());
+    };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let host = &rest[..end];
+    if host.is_empty() || host.contains(['{', '}', '@']) {
+        return Err("the page needs a literal host".into());
+    }
+    let mut left = rest[end..].to_string();
+    for p in placeholders(&rest[end..]) {
+        if !plain_path(p) {
+            return Err(format!("bad page placeholder {{{p}}}"));
+        }
+        left = left.replacen(&format!("{{{p}}}"), "", 1);
+    }
+    if left.contains(['{', '}']) {
+        return Err("the page has an unclosed placeholder".into());
+    }
+    if rest[end..]
+        .split_once('#')
+        .is_some_and(|(_, f)| f.contains('{'))
+    {
+        return Err("a placeholder in the page's fragment".into());
+    }
     Ok(())
 }
 
@@ -563,6 +676,66 @@ pub(crate) mod tests {
             d.url = "https://feed.example/json?q={query}".into();
             assert!(check(&d).is_ok(), "{kind}");
             assert!(check_custom(&d).is_ok(), "{kind}");
+        }
+    }
+
+    fn json_def(map: serde_json::Value) -> Definition {
+        let mut d = def("j", "json", "https://search.example.org/api?q={query}");
+        d["json"] = map;
+        serde_json::from_value(d).unwrap()
+    }
+
+    #[test]
+    fn a_json_endpoint_needs_its_map_and_no_other_kind_takes_one() {
+        let bare: Definition =
+            serde_json::from_value(def("j", "json", "https://search.example.org/api?q={query}"))
+                .unwrap();
+        assert!(check(&bare).unwrap_err().contains("`json` map"));
+        assert!(check_custom(&bare).is_err());
+        let mapped = json_def(serde_json::json!({"items": "", "title": "t", "hash": "h"}));
+        check(&mapped).unwrap();
+        let mut rss = mapped.clone();
+        rss.kind = "rss".into();
+        assert!(check(&rss).unwrap_err().contains("only a json endpoint"));
+    }
+
+    #[test]
+    fn a_json_map_needs_a_title_and_a_hash_or_a_link_on_plain_paths() {
+        for map in [
+            serde_json::json!({"items": "a", "title": "", "hash": "h"}),
+            serde_json::json!({"items": "a", "title": "t"}),
+            serde_json::json!({"items": "a.", "title": "t", "hash": "h"}),
+            serde_json::json!({"items": "a[0]", "title": "t", "hash": "h"}),
+            serde_json::json!({"items": "a", "title": "t", "link": "l", "size": ""}),
+            serde_json::json!({"items": "a", "title": "t", "hash": "h", "skip": "x y"}),
+        ] {
+            assert!(check(&json_def(map.clone())).is_err(), "{map}");
+        }
+        check(&json_def(serde_json::json!({
+            "items": "data.hits", "title": "label", "link": "torrent.url",
+            "size": "torrent.bytes", "skip": "flags.hidden", "error": "status.failed",
+        })))
+        .unwrap();
+    }
+
+    #[test]
+    fn a_json_page_is_https_on_a_literal_host_with_placeholders_after_it() {
+        let with_page = |page: &str| {
+            json_def(serde_json::json!({"items": "", "title": "t", "hash": "h", "page": page}))
+        };
+        check(&with_page("https://example.org/view/{ref.post}")).unwrap();
+        check(&with_page("https://example.org/v?id={id}&g={group}")).unwrap();
+        for bad in [
+            "http://example.org/view/{id}",
+            "https://{host}/view/{id}",
+            "https://example.org{id}",
+            "https://user@example.org/view/{id}",
+            "https://example.org/view/{a b}",
+            "https://example.org/view/{id",
+            "https://example.org/view#{id}",
+            "example.org/view/{id}",
+        ] {
+            assert!(check(&with_page(bad)).is_err(), "{bad}");
         }
     }
 

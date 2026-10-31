@@ -869,6 +869,7 @@ pub fn add_custom(
         category: None,
         filter: None,
         min_core: None,
+        json: None,
     };
     index::check_custom(&def).map_err(|e| CoreError::invalid("endpoint", e))?;
     let installed = core.store.read(read_installed)?;
@@ -912,7 +913,7 @@ pub fn add_custom(
 
 // The desktop's anirss ------------------------------------------------------------------
 
-/// The kinds anirss itself can search; `tosho` is AniBeam's own.
+/// The kinds anirss itself can search; every other kind is AniBeam's own.
 const ANIRSS_KINDS: [&str; 2] = ["nyaa", "rss"];
 
 /// The first anirss with the endpoint API (`POST` and `DELETE /endpoints`).
@@ -1084,6 +1085,7 @@ pub fn runnable(core: &Core) -> Vec<Runnable> {
         if let Some(f) = &row.def.filter {
             endpoint.filter = f.clone();
         }
+        endpoint.json = row.def.json.clone();
         out.push(Runnable {
             endpoint,
             shown_url: row.def.url.clone(),

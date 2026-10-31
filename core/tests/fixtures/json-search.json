@@ -1,0 +1,37 @@
+{
+  "status": { "failed": false, "reason": null },
+  "data": {
+    "count": 5,
+    "hits": [
+      {
+        "label": "[Group] Show - 01 (1080p)",
+        "torrent": { "infohash": "00112233445566778899aabbccddeeff00112233", "bytes": 1468006400 },
+        "ref": { "post": 0 },
+        "flags": { "hidden": 0 }
+      },
+      {
+        "label": "[Group] Show - 01 (720p)",
+        "torrent": { "infohash": "ffeeddccbbaa99887766554433221100ffeeddcc", "bytes": 734003200 },
+        "ref": { "post": 4821 },
+        "flags": { "hidden": 0 }
+      },
+      {
+        "label": "[Other] Show - 01 (1080p HEVC)",
+        "torrent": { "infohash": "0123456789abcdef0123456789abcdef01234567", "bytes": 524288000 },
+        "ref": { "post": 4822 },
+        "flags": { "hidden": false }
+      },
+      {
+        "label": "[Group] Show - 01 (1080p) [Hidden]",
+        "torrent": { "infohash": "89abcdef0123456789abcdef0123456789abcdef", "bytes": 1468006400 },
+        "ref": { "post": 4823 },
+        "flags": { "hidden": 1 }
+      },
+      {
+        "label": "[Group] Show - 01 (1080p) [No Hash]",
+        "torrent": { "infohash": "" },
+        "ref": { "post": 4824 }
+      }
+    ]
+  }
+}
