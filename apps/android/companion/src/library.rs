@@ -14,6 +14,9 @@ pub struct DiskEpisode {
     pub watched: bool,
     pub title: Option<String>,
     pub aired_at: Option<i64>,
+    /// The host's file for it, for streaming; the first copy when there are two. None
+    /// from a host older than streaming.
+    pub file: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -31,7 +34,10 @@ fn episodes(series: &Series) -> Vec<DiskEpisode> {
     let mut out: Vec<(Option<u32>, &str, DiskEpisode)> = Vec::new();
     for e in &series.episodes {
         match out.iter_mut().find(|(season, key, _)| *season == e.season && *key == e.key) {
-            Some((_, _, seen)) => seen.watched |= e.watched,
+            Some((_, _, seen)) => {
+                seen.watched |= e.watched;
+                seen.file = seen.file.or(e.file);
+            }
             None => out.push((
                 e.season,
                 &e.key,
@@ -42,6 +48,7 @@ fn episodes(series: &Series) -> Vec<DiskEpisode> {
                     watched: e.watched,
                     title: e.title.clone(),
                     aired_at: e.aired_at,
+                    file: e.file,
                 },
             )),
         }

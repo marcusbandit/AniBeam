@@ -73,11 +73,14 @@ component EpisodeItem inherits Rectangle {
         font-family: Theme.figure;
         vertical-alignment: center;
     }
-    // A whole episode on the phone plays at a tap, or is picked while deleting.
+    // A whole episode plays at a tap, streamed when it is the other device's, or is
+    // picked while deleting.
     touch := TouchArea {
         enabled: root.data.file != 0;
         clicked => {
-            if (AppData.deleting) {
+            if (root.data.remote) {
+                AppData.play-remote(root.data.file);
+            } else if (AppData.deleting) {
                 AppData.toggle-delete(root.data.file);
             } else {
                 AppData.play(root.data.file);
@@ -210,8 +213,18 @@ export component SeriesPage inherits Rectangle {
                 go-back => { AppData.close-series(); }
             }
             SeriesHeadView { }
-            // A series of this phone's goes straight to who has it; another device's is
-            // read only.
+            // Another device's series plays from there, streamed.
+            if AppData.device != 0 && Nav.page != 0 && AppData.series.play-file != 0: HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: AppData.series.play-label;
+                    icon: @image-url("icons/play.svg");
+                    has-icon: true;
+                    primary: true;
+                    clicked => { AppData.play-remote(AppData.series.play-file); }
+                }
+            }
+            // A series of this phone's goes straight to who has it.
             if AppData.device == 0 || Nav.page == 0: HorizontalLayout {
                 alignment: start;
                 spacing: Theme.unit * 2;

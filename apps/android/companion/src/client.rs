@@ -158,6 +158,47 @@ impl HostClient {
         serde_json::from_slice(&body).map_err(|e| HostError::Bad(format!("The snapshot did not read: {e}")))
     }
 
+    /// What is in one of the host's episode files.
+    pub fn probe(&self, file: u64) -> Result<api::Probe, HostError> {
+        let (body, _) = self.get(&api::probe_path(file), 1024 * 1024)?;
+        serde_json::from_slice(&body).map_err(|e| HostError::Bad(format!("The file's details did not read: {e}")))
+    }
+
+    /// The host's address with the name looked up, for a player that resolves names on
+    /// its own and may not ask the tailnet's DNS: `http://100.94.40.21:8790`.
+    pub fn stream_base(&self) -> Result<String, HostError> {
+        use std::net::ToSocketAddrs;
+        let host = self.address.host.trim_start_matches('[').trim_end_matches(']');
+        let found = (host, self.address.port).to_socket_addrs().ok().and_then(|mut all| all.next());
+        match found {
+            Some(std::net::SocketAddr::V4(a)) => Ok(format!("http://{}:{}", a.ip(), a.port())),
+            Some(std::net::SocketAddr::V6(a)) => Ok(format!("http://[{}]:{}", a.ip(), a.port())),
+            None => Err(HostError::Unreachable(format!(
+                "The phone cannot find {}. Is Tailscale connected?",
+                self.address.host
+            ))),
+        }
+    }
+
+    /// `POST`s JSON and hands back the status and the answer, whatever the status.
+    pub fn post(&self, path: &str, body: &[u8]) -> Result<(u16, Vec<u8>), HostError> {
+        let url = format!("{}{}", self.address.base_url(), path);
+        let mut response = self
+            .agent
+            .post(&url)
+            .header("content-type", "application/json")
+            .send(body)
+            .map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
+        let status = response.status().as_u16();
+        let body = response
+            .body_mut()
+            .with_config()
+            .limit(4 * 1024 * 1024)
+            .read_to_vec()
+            .map_err(|e| HostError::Bad(format!("The answer from {} broke off: {e}", self.address.display())))?;
+        Ok((status, body))
+    }
+
     /// The image bytes and their content type.
     pub fn poster(&self, series_id: u64) -> Result<(Vec<u8>, Option<String>), HostError> {
         self.get(&api::poster_path(series_id), POSTER_LIMIT)

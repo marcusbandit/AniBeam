@@ -237,6 +237,9 @@ enum Undo {
 struct Player {
     window: slint::Weak<AppWindow>,
     session: PlaybackSession,
+    /// The other device the session is open on, for an episode streamed from it; None
+    /// for the phone's own.
+    host: Option<Arc<crate::stream::Host>>,
     mpv: Arc<Mpv>,
     video: Option<Video>,
     rules: Rules,
@@ -318,10 +321,10 @@ pub fn install(window: &AppWindow) {
     d.on_stay(|| with_player(|p| p.stay()));
     d.on_replay_clicked(|| {
         let mut file = None;
-        with_player(|p| file = Some(p.session.file));
-        if let Some(file) = file {
+        with_player(|p| file = Some((p.session.file, p.host.is_some())));
+        if let Some((file, remote)) = file {
             close_page(CloseReason::Switched);
-            open(file);
+            if remote { open_remote(file) } else { open(file) }
         }
     });
     d.on_open_picker(|kind| with_player(|p| p.open_picker(kind)));
@@ -363,10 +366,6 @@ pub fn open(file: u64) {
             return;
         }
     };
-    let auto = match core.call(Call::GetSettings) {
-        Ok(Reply::Settings { settings }) => settings.auto_skip,
-        _ => AutoSkip::default(),
-    };
     // The session carries the series and the file, not the episode number or the tracker
     // ids, so the detail is read once, as the desktop does.
     let (episode_number, tracked) = match core.call(Call::GetSeries { series: session.series }) {
@@ -375,6 +374,61 @@ pub fn open(file: u64) {
             detail.card.match_info.as_ref().is_some_and(|m| m.anilist_id.is_some() || m.mal_id.is_some()),
         ),
         _ => (None, false),
+    };
+    begin(window, session, None, episode_number, tracked, None);
+}
+
+thread_local! {
+    /// The episode numbers of the other device's files, by file, for the player's Mark
+    /// watched. Set by the app whenever it reads that device's library.
+    static REMOTE_NUMBERS: RefCell<std::collections::HashMap<u64, f64>> = RefCell::new(Default::default());
+}
+
+pub fn set_remote_numbers(numbers: std::collections::HashMap<u64, f64>) {
+    REMOTE_NUMBERS.with(|n| *n.borrow_mut() = numbers);
+}
+
+/// Opens `file` of the other device: the session opens there, off this thread, and the page
+/// says it is connecting meanwhile.
+pub fn open_remote(file: u64) {
+    let Some(window) = WINDOW.with(|w| w.borrow().clone()) else { return };
+    if PLAYER.with(|p| p.borrow().is_some()) {
+        close_page(CloseReason::Switched);
+    }
+    failed(&window, String::new());
+    data(&window, |d| d.set_title("Connecting".into()));
+    let quality = crate::stream::quality();
+    let unmetered = crate::android::unmetered().unwrap_or(false);
+    std::thread::spawn(move || {
+        let opened = crate::stream::open(file, quality, unmetered);
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(window) = WINDOW.with(|w| w.borrow().clone()) else { return };
+            match opened {
+                Ok(o) => {
+                    let number = REMOTE_NUMBERS.with(|n| n.borrow().get(&file).copied());
+                    let note = o.converted.map(|h| format!("Streaming from {} at {h}p", o.host.name));
+                    // The other device decides what its tracker takes; the button is offered
+                    // for every episode, and a refusal says why.
+                    begin(window, o.session, Some(o.host), number, number.is_some(), note);
+                }
+                Err(e) => failed(&window, e),
+            }
+        });
+    });
+}
+
+/// Opens the page on a session, the phone's own or one on the other device.
+fn begin(
+    window: slint::Weak<AppWindow>,
+    session: PlaybackSession,
+    host: Option<Arc<crate::stream::Host>>,
+    episode_number: Option<f64>,
+    tracked: bool,
+    note: Option<String>,
+) {
+    let auto = match crate::local::core().map(|core| core.call(Call::GetSettings)) {
+        Some(Ok(Reply::Settings { settings })) => settings.auto_skip,
+        _ => AutoSkip::default(),
     };
 
     let listener = {
@@ -392,7 +446,7 @@ pub fn open(file: u64) {
     let mpv = match Mpv::new(listener) {
         Ok(mpv) => mpv,
         Err(e) => {
-            let _ = core.call(Call::ClosePlayback { session: session.session, position: 0.0, reason: CloseReason::Stopped });
+            send(&host, Call::ClosePlayback { session: session.session, position: 0.0, reason: CloseReason::Stopped });
             failed(&window, e);
             return;
         }
@@ -442,6 +496,7 @@ pub fn open(file: u64) {
     let mut player = Player {
         window,
         session,
+        host,
         mpv,
         video: None,
         rules,
@@ -473,6 +528,9 @@ pub fn open(file: u64) {
     };
     player.start();
     player.show_cast();
+    if let Some(note) = note {
+        player.flash(&note, None);
+    }
     // The file waits for the renderer, but never forever: with no picture after three
     // seconds it plays on sound, and the page says why.
     let session_id = player.session.session;
@@ -492,6 +550,26 @@ pub fn open(file: u64) {
             w.window().request_redraw();
         }
     });
+}
+
+/// One call to wherever the session lives, its answer not waited for. A call to the other
+/// device goes from its own thread, so the page never waits on the network.
+fn send(host: &Option<Arc<crate::stream::Host>>, call: Call) {
+    match host {
+        Some(host) => {
+            let host = host.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = host.call(&call) {
+                    crate::local::log(&format!("player: the other device refused a call: {e}"));
+                }
+            });
+        }
+        None => {
+            if let Some(core) = crate::local::core() {
+                let _ = core.call(call);
+            }
+        }
+    }
 }
 
 /// The page with only a reason on it, nothing of a previous episode left under it.
@@ -555,7 +633,9 @@ pub fn close_page(reason: CloseReason) {
 /// Next or previous: the same neighbours, and the same rule, as the desktop's buttons.
 fn neighbour(forward: bool) {
     let mut target = None;
+    let mut remote = false;
     with_player(|p| {
+        remote = p.host.is_some();
         if !p.session.is_extra {
             target = if forward { p.session.next } else { p.session.prev };
         }
@@ -568,7 +648,7 @@ fn neighbour(forward: bool) {
     });
     if let Some(file) = target {
         close_page(CloseReason::Switched);
-        open(file);
+        if remote { open_remote(file) } else { open(file) }
     }
 }
 
@@ -766,9 +846,7 @@ impl Player {
         self.rules.duration = duration;
         if duration > 0.0 {
             let chapters = self.mpv.get("chapter-list").map(|j| chapters(&j)).unwrap_or_default();
-            if let Some(core) = crate::local::core() {
-                let _ = core.call(Call::ReportChapters { session: self.session.session, chapters, duration });
-            }
+            send(&self.host, Call::ReportChapters { session: self.session.session, chapters, duration });
         }
         // Every sidecar the core found beside the file; mpv adds none of its own.
         for s in &self.session.sidecars {
@@ -892,9 +970,7 @@ impl Player {
         if self.closed {
             return;
         }
-        if let Some(core) = crate::local::core() {
-            let _ = core.call(Call::Tick { session: self.session.session, position: self.rules.position, paused: self.paused });
-        }
+        send(&self.host, Call::Tick { session: self.session.session, position: self.rules.position, paused: self.paused });
     }
 
     fn close(&mut self, reason: CloseReason) {
@@ -912,9 +988,7 @@ impl Player {
         {
             let _ = core.call(Call::CastStop);
         }
-        if let Some(core) = crate::local::core() {
-            let _ = core.call(Call::ClosePlayback { session: self.session.session, position: self.rules.position, reason });
-        }
+        send(&self.host, Call::ClosePlayback { session: self.session.session, position: self.rules.position, reason });
         crate::local::touch();
     }
 
@@ -941,7 +1015,10 @@ impl Player {
             self.d(|d| d.set_preview(slint::Image::default()));
         }
         self.scrubbing = true;
-        if self.thumbs.is_none() {
+        // A conversion is made in order as it is watched; a second reader jumping about in
+        // it would start it over each time, so a converted stream has no previews.
+        let converted = self.host.is_some() && self.session.path.contains("/hls/");
+        if self.thumbs.is_none() && !converted {
             let session_id = self.session.session;
             self.thumbs = Thumbs::open(&self.session.path, move |shot: Shot| {
                 let _ = slint::invoke_from_event_loop(move || {
@@ -1244,13 +1321,51 @@ impl Player {
         let start = at.unwrap_or(self.rules.position);
         self.cast = Some(Casting { device: device.clone(), state: CastPlayState::Connecting });
         self.show_cast();
-        let call = Call::CastStart { device: device.id.clone(), file: self.session.file, start, audio_track, subtitle };
+        let call = match &self.host {
+            // The other device converts it for the TV, subtitles drawn in, and the phone
+            // passes it on, since the TV has no way onto the tailnet.
+            Some(host) => {
+                let (audio, burn) = self.remote_picks();
+                Call::CastStartStream {
+                    device: device.id.clone(),
+                    url: host.url(&anibeam_companion::api::hls_path(self.session.file, 1080, audio, burn)),
+                    title: self.session.series_title.clone(),
+                    start,
+                    duration: self.rules.duration,
+                }
+            }
+            None => Call::CastStart { device: device.id.clone(), file: self.session.file, start, audio_track, subtitle },
+        };
         if let Err(e) = core.call(call) {
             self.cast = None;
             self.show_cast();
             self.flash(&e.to_string(), None);
         }
         crate::local::touch();
+    }
+
+    /// The audio and subtitle tracks picked here, as indexes into the other device's probe
+    /// of the file. The file's own tracks count from 1 in mpv; a converted stream's
+    /// subtitles are the file's tracks loaded one by one, in order.
+    fn remote_picks(&self) -> (Option<usize>, Option<usize>) {
+        let list: serde_json::Value = serde_json::from_str(&self.track_json).unwrap_or_default();
+        let entry = |id: i64, kind: &str| {
+            list.as_array().and_then(|a| a.iter().find(|t| t["id"].as_i64() == Some(id) && t["type"] == kind)).cloned()
+        };
+        let converted = self.session.path.contains("/hls/");
+        let audio = match entry(self.aid, "audio") {
+            Some(t) if !converted && t["external"].as_bool() != Some(true) => usize::try_from(self.aid - 1).ok(),
+            _ => None,
+        };
+        let burn = entry(self.sid, "sub").and_then(|t| {
+            if t["external"].as_bool() == Some(true) {
+                let name = t["external-filename"].as_str()?;
+                name.rsplit_once("/subtitles/").and_then(|(_, i)| i.parse().ok())
+            } else {
+                usize::try_from(self.sid - 1).ok()
+            }
+        });
+        (audio, burn)
     }
 
     /// A new audio or subtitle choice while casting starts the cast again with it.
@@ -1273,7 +1388,8 @@ impl Player {
     /// playback would; an end, a failure or a stop hands the episode back to the phone.
     fn on_cast(&mut self, st: CastState) {
         let Some(c) = self.cast.as_mut() else { return };
-        if st.file != self.session.file {
+        // A relayed stream is the other device's file, which this phone has no number for.
+        if st.file != self.session.file && !(self.host.is_some() && st.file == 0) {
             return;
         }
         c.state = st.state;
@@ -1353,29 +1469,42 @@ impl Player {
     }
 
     fn store_choice(&self) {
-        if let Some(core) = crate::local::core() {
-            let c = &self.session.track_choice;
-            let r = core.call(Call::SetTrackChoice {
-                series: self.session.series,
-                audio: c.audio.clone(),
-                subtitle: c.subtitle.clone(),
-            });
-            if let Err(e) = r {
-                crate::local::log(&format!("player: track choice: {e}"));
-            }
-        }
+        let c = &self.session.track_choice;
+        send(&self.host, Call::SetTrackChoice { series: self.session.series, audio: c.audio.clone(), subtitle: c.subtitle.clone() });
     }
 
     fn mark(&mut self) {
         let Some(n) = self.episode_number else { return };
-        if let Some(core) = crate::local::core()
-            && let Err(e) = core.call(Call::MarkEpisode { series: self.session.series, episode: n })
-        {
-            let line = match &e {
-                anibeam_core::CoreError::Refused { reason } => format!("Not tracked: {}.", refusal_word(reason)),
-                other => other.to_string(),
-            };
-            self.flash(&line, None);
+        let call = Call::MarkEpisode { series: self.session.series, episode: n };
+        let refused = |e: &anibeam_core::CoreError| match e {
+            anibeam_core::CoreError::Refused { reason } => format!("Not tracked: {}.", refusal_word(reason)),
+            other => other.to_string(),
+        };
+        match &self.host {
+            // The other device's tracker answers there, so its word comes back here.
+            Some(host) => {
+                let (host, session) = (host.clone(), self.session.session);
+                std::thread::spawn(move || {
+                    let line = match host.call(&call) {
+                        Ok(_) => "Marked watched".to_string(),
+                        Err(e) => refused(&e),
+                    };
+                    let _ = slint::invoke_from_event_loop(move || {
+                        with_player(|p| {
+                            if p.session.session == session {
+                                p.flash(&line, None);
+                            }
+                        })
+                    });
+                });
+            }
+            None => {
+                if let Some(core) = crate::local::core()
+                    && let Err(e) = core.call(call)
+                {
+                    self.flash(&refused(&e), None);
+                }
+            }
         }
         self.show_chrome();
     }

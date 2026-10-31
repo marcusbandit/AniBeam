@@ -260,6 +260,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         cubes: std::rc::Rc::new(slint::VecModel::from(cube_codes(&card.cubes))).into(),
         synopsis: detail.synopsis.clone().into(),
         play_file: play.map(|e| e.file as i32).unwrap_or(0),
+        play_remote: false,
         play_label: play
             .map(|e| {
                 let what = if movie { "the film".to_string() } else { format!("episode {}", e.number) };
@@ -293,6 +294,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 // A file a torrent is still writing is on disk but not playable.
                 file: if e.downloading.is_none() { e.file as i32 } else { 0 },
                 picked: false,
+                remote: false,
             },
         ));
     }
@@ -308,6 +310,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 cube: a.cube.chars().next().map(cube_code).unwrap_or(3),
                 file: 0,
                 picked: false,
+                remote: false,
             },
         ));
     }
@@ -330,6 +333,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 cube: 5,
                 file: 0,
                 picked: false,
+                remote: false,
             },
         ));
     }

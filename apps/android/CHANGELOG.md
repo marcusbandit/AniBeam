@@ -10,6 +10,14 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.3.0 · 2026-11-01
+
+### New
+- Play episodes from your computer's library over Tailscale
+- Pick how streams play in More: Auto, Original, 1080p, 720p or 480p
+- Cast an episode from your computer to a Chromecast, converted to play
+- Episodes watched from your computer keep their place there
+
 ## 2.2.0 · 2026-10-31
 
 ### New

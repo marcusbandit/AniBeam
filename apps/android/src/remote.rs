@@ -1,5 +1,5 @@
 //! Another AniBeam's library, read from its tailnet snapshot, in the shapes the Slint pages
-//! take. Read only: the phone shows what that device has, it never changes it.
+//! take. The phone never changes that library; its episodes stream from there.
 
 use std::collections::HashMap;
 
@@ -138,6 +138,24 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
         progress_text: progress_text.into(),
         ..Default::default()
     };
+    // Play opens the first episode not watched yet, or the first of all when every one is.
+    let next = page.episodes.iter().find(|e| !e.watched && e.file.is_some());
+    let up = next.or_else(|| page.episodes.iter().find(|e| e.file.is_some()));
+    let head = match up.and_then(|e| Some((e, i32::try_from(e.file?).ok()?))) {
+        Some((e, file)) => SeriesHead {
+            play_file: file,
+            play_remote: true,
+            play_label: if movie {
+                "Play".into()
+            } else if next.is_some() {
+                format!("Play episode {}", e.number).into()
+            } else {
+                format!("Watch episode {} again", e.number).into()
+            },
+            ..head
+        },
+        None => head,
+    };
 
     let mut lines: Vec<((u32, f64), EpisodeLine)> = page
         .episodes
@@ -152,9 +170,10 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
                 date: e.aired_at.map(format::day_month).unwrap_or_default().into(),
                 note: Default::default(),
                 cube: if e.watched { 0 } else { 2 },
-                // Another device's file does not play here.
-                file: 0,
+                // Streamed from the other device, from a host that can.
+                file: e.file.and_then(|f| i32::try_from(f).ok()).unwrap_or(0),
                 picked: false,
+                remote: e.file.is_some(),
             };
             ((e.season.unwrap_or(1), e.number), line)
         })
@@ -168,6 +187,7 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
             cube: 3,
             file: 0,
             picked: false,
+            remote: false,
         };
         lines.push(((1, f64::from(*n)), line));
     }
@@ -183,6 +203,7 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
             cube: 5,
             file: 0,
             picked: false,
+            remote: false,
         });
     }
     Some((head, lines))
