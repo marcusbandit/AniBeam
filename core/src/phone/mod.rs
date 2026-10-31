@@ -372,21 +372,23 @@ async fn torrent_file(core: &Core, link: &str) -> Result<Option<Vec<u8>>, CoreEr
     if !(link.starts_with("http://") || link.starts_with("https://")) {
         return Ok(None);
     }
-    let reply = core
-        .http
-        .send(crate::net::HttpRequest {
+    let http = crate::repos::endpoint_http(core);
+    let reply = crate::net::Http::send(
+        &http,
+        crate::net::HttpRequest {
             method: crate::net::Method::Get,
             url: link.to_string(),
             headers: Vec::new(),
             body: None,
             timeout: Some(std::time::Duration::from_secs(30)),
-        })
-        .await
-        .map_err(|e| CoreError::Service {
-            service: crate::downloads::feed::host_of(link),
-            code: "unreachable".to_string(),
-            message: e.message,
-        })?;
+        },
+    )
+    .await
+    .map_err(|e| CoreError::Service {
+        service: crate::downloads::feed::host_of(link),
+        code: "unreachable".to_string(),
+        message: e.message,
+    })?;
     Ok((reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec()))
 }
 
@@ -573,10 +575,11 @@ pub fn unsubscribe(core: &Core, names: Vec<String>, files: bool) -> Result<Reply
 #[cfg(feature = "phone")]
 async fn feed(core: &Core, url: &str, name: &str) -> Result<Vec<Release>, CoreError> {
     let timeout = crate::releases::fetch::DEFAULT_TIMEOUT;
+    let http = crate::repos::endpoint_http(core);
     if url.contains("animetosho.org/feed/json") {
-        crate::releases::tosho::fetch(core.http.as_ref(), url, name, timeout).await
+        crate::releases::tosho::fetch(&http, url, name, timeout).await
     } else {
-        crate::releases::fetch::fetch_rss(core.http.as_ref(), url, name, timeout).await
+        crate::releases::fetch::fetch_rss(&http, url, name, timeout).await
     }
 }
 

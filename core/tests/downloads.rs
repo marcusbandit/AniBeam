@@ -810,6 +810,78 @@ fn a_refine_that_changes_nothing_ends_with_applied_false() {
     );
 }
 
+/// A refetch reads the endpoint's feed again for its dates. anirss has just
+/// searched that host, so the core's read waits the endpoint floor after it
+/// instead of going back to back (#247).
+#[test]
+fn the_feed_read_after_a_refetch_waits_the_endpoint_floor() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    let mut s = settings("anirss");
+    s.anirss_mode = AnirssMode::Remote;
+    s.anirss_url = "http://anirss.test:8787/".to_string();
+    save(&core, s, Some("tok"), None);
+
+    let feed = "https://enrich-pace.example/?page=rss&q=Frieren";
+    http.push_for(
+        "/refine/apply",
+        200,
+        json!({
+            "applied": true,
+            "reason": null,
+            "mode": "refetch",
+            "query": "Frieren 1080p",
+            "endpoint": "nyaa",
+            "items": [release_json(1, json!(42))],
+            "previous_count": 2,
+            "delta": -1,
+            "groups": [],
+            "best_fit": {"available": false, "query": "", "item": null, "profile": []}
+        })
+        .to_string(),
+    );
+    http.push_for(
+        "subscriptions/preview",
+        200,
+        json!({"feed_url": feed, "must_contain": "", "must_not_contain": "", "endpoint_name": "nyaa"})
+            .to_string(),
+    );
+    http.push_for(
+        "enrich-pace.example",
+        200,
+        "<rss><channel><item><title>[SubsPlease] Sousou no Frieren - 01 (1080p)</title>\
+         <link>https://enrich-pace.example/download/1.torrent</link></item></channel></rss>",
+    );
+    let asked = Instant::now();
+    started(
+        &core,
+        Call::RefineReleases {
+            query: "Frieren 1080p".to_string(),
+            endpoint: "nyaa".to_string(),
+            items: vec![release(1, json!(42)), release(2, json!(7))],
+            op: RefineOp::Tokens {
+                tokens: vec!["[SubsPlease]".to_string()],
+            },
+        },
+    );
+    let event = common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::ReleasesEnriched { .. }),
+        Duration::from_secs(10),
+    );
+    let EventBody::ReleasesEnriched { entries, .. } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(entries.len(), 1);
+    assert!(
+        asked.elapsed() >= anibeam_core::repos::FLOOR,
+        "the feed was read {:?} after the refine",
+        asked.elapsed()
+    );
+    assert!(http.requests().iter().any(|r| r.url == feed));
+}
+
 /// A torrent saved under another mount than the library's still finds the
 /// series its folder fills, by the folder's name, and the series travels
 /// beside the list once.

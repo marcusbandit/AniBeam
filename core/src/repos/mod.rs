@@ -22,7 +22,7 @@ use crate::core::Core;
 use crate::net::{HttpRequest, Method};
 use index::{Definition, Index, RepoFault};
 
-pub use pace::Paced;
+pub use pace::{FLOOR, Paced};
 
 /// This core's version, which `min_core` is compared against.
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -92,6 +92,7 @@ fn is_local_http(url: &str) -> bool {
 /// Fetches a repo file: over the network for an address, from disk for a local path.
 async fn fetch_bytes(core: &Core, url: &str) -> Result<Vec<u8>, RepoFault> {
     if url.starts_with("https://") || url.starts_with("http://") {
+        // A repo's host has no rate of its own; it waits the floor like any endpoint host.
         let http = Paced::new(core.http.clone(), Vec::new());
         let req = HttpRequest {
             method: Method::Get,
@@ -1122,20 +1123,48 @@ pub fn runnable(core: &Core) -> Vec<Runnable> {
     out
 }
 
-/// Wraps the core's client so each host with a rate from its definition is paced to it.
+/// The gap a definition's `rate` asks between two requests to its host.
+fn rate_gap(per_minute: u32) -> Duration {
+    Duration::from_secs_f64(60.0 / f64::from(per_minute.max(1)))
+}
+
+/// Wraps the core's client so every host waits the floor between requests, and a host with a
+/// slower rate from its definition waits that.
 pub fn paced_http(core: &Core, runnable: &[Runnable]) -> Arc<dyn crate::net::Http> {
     let gaps = runnable
         .iter()
-        .filter_map(|r| {
-            r.per_minute.map(|n| {
-                (
-                    r.host.clone(),
-                    Duration::from_secs_f64(60.0 / f64::from(n.max(1))),
-                )
-            })
-        })
+        .filter_map(|r| r.per_minute.map(|n| (r.host.clone(), rate_gap(n))))
         .collect();
     Arc::new(Paced::new(core.http.clone(), gaps))
+}
+
+/// The core's client for an endpoint fetch outside the search (a feed read again after
+/// anirss's search, a subscription's feed, a `.torrent`): paced like the search, to every
+/// installed definition's rate, switched off or not, since the rate is the site's. Reads no
+/// credentials.
+pub fn endpoint_http(core: &Core) -> Paced {
+    let secrets = core.secrets();
+    let gaps = core
+        .store
+        .read(read_installed)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|r| {
+            let rate = r.def.rate?;
+            // The host the requests go to, as the search fills it: a torznab `{host}` is
+            // the person's own server, never the literal placeholder.
+            let filled = r.def.filled_url(|key| {
+                secrets
+                    .get(&secret_key(&r.install_id, key), None)
+                    .ok()
+                    .flatten()
+                    .map(|(v, _)| v)
+            });
+            let host = filled.map_or_else(|| r.def.host(), |url| index::host_of(&url));
+            Some((host, rate_gap(rate.per_minute)))
+        })
+        .collect();
+    Paced::new(core.http.clone(), gaps)
 }
 
 #[cfg(test)]

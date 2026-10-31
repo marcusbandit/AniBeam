@@ -144,10 +144,20 @@ with no JSON canonicalisation between jq and serde. Decoded, it is the index:
   connection still goes to the URL host's own address (`FrontResolve`), so a
   front can only change which certificate name is checked there. The install
   screen shows both hosts.
-- `rate` can only slow the core down. The limiter takes the lower of the
-  definition's rate and the core's own floor for that host (#135), and the
-  budget is per host, so two endpoints on one site share it. Every call still
-  goes through `net/limiter.rs`.
+- `rate` can only slow the core down. Every core-side endpoint fetch (the
+  search, a feed read again after anirss's search, a subscription's feed, a
+  `.torrent`, a repo's own files) goes through `Paced` in
+  `core/src/repos/pace.rs`, on every platform. It paces each host at the lower
+  of the definition's rate and the core's floor (`pace::FLOOR`, one second, the
+  gap `net/front.rs` keeps for #135), so a host whose definition gives no
+  `rate` still waits the floor. The budget is per host and process-wide, so two
+  endpoints on one site, two searches in a row and a search's feed read share
+  it.
+- Endpoints are not in `net/limiter.rs`. That limiter budgets a fixed set of
+  metadata providers known when the core is built (AniList, MAL, Jikan,
+  TVmaze, AniSkip); an endpoint is any host a user's repo, or their own hand,
+  supplies, so its pace is keyed by host and set by its definition. The
+  desktop's searches themselves run in anirss, outside the core.
 - `min_core` hides the endpoint from a core too old for its kind or fields.
 - `category` and `filter` are for `nyaa` only, as in `releases::Endpoint`.
 

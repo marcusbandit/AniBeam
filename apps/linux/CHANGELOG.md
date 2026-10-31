@@ -74,6 +74,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can add a source that answers in JSON
 
 ### Changed
+- Searches wait a second between requests to one site, except your own server
 - Settings lists its sections down the left, each saying how it stands now
 - Search settings: type a word and land on the setting it names
 - Accounts, Subtitles, Keyboard, Phone app and About are sections of their own
