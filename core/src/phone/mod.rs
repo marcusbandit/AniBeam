@@ -128,10 +128,8 @@ pub fn search_sources(core: &Core) -> Vec<PhoneSource> {
 /// The sources as the ported anirss endpoints, enabled ones in order, each host held to the
 /// pace its repo definition asks for.
 fn native(core: &Core) -> crate::releases::native::Native {
-    let installed = crate::repos::runnable(core);
-    let http = crate::repos::paced_http(core, &installed);
-    let endpoints = searched(core).into_iter().map(|(_, e)| e).collect();
-    crate::releases::native::Native::new(http, endpoints)
+    let sources = searched(core).into_iter().map(|(_, e)| e).collect();
+    crate::releases::native::Native::for_core(core, sources)
 }
 
 /// How long the show search waits for covers before answering without them.
