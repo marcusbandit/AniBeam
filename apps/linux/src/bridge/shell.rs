@@ -56,19 +56,23 @@ pub mod qobject {
         /// MPRIS Quit. The window closes itself; nothing here ends the process.
         #[qsignal]
         fn quit_requested(self: Pin<&mut Self>);
-        /// A desktop build newer than this one is out on `track`: its version, its page and
-        /// how this copy takes it. `how` is `install` (installUpdate does it), `command`
+        /// A desktop build newer than this one is out on `track`: its version, its title
+        /// (empty when it has none), its page and how this copy takes it. `how` is `install` (installUpdate does it), `command`
         /// (the package manager does it, with `command`), `source` (a build from a
         /// checkout) or `page` (the release has no file for this copy).
         #[qsignal]
         fn update_available(
             self: Pin<&mut Self>,
             version: QString,
+            title: QString,
             url: QString,
             track: QString,
             how: QString,
             command: QString,
         );
+        /// A check on `track` found nothing newer than this build.
+        #[qsignal]
+        fn update_current(self: Pin<&mut Self>, track: QString);
         /// How far installUpdate's download has come, in bytes.
         #[qsignal]
         fn update_progress(self: Pin<&mut Self>, got: f64, total: f64);
@@ -305,18 +309,24 @@ impl qobject::Shell {
                     INSTALL.get_or_init(|| found).clone()
                 }
             };
-            let offer = |version: &str, url: &str, how: &'static str, command: String| {
-                let (version, url) = (QString::from(version), QString::from(url));
-                let _ = shell.queue(move |shell| {
-                    shell.update_available(
-                        version,
-                        url,
-                        QString::from(asked),
-                        QString::from(how),
-                        QString::from(&command),
-                    )
-                });
-            };
+            let offer =
+                |version: &str, title: &str, url: &str, how: &'static str, command: String| {
+                    let (version, title, url) = (
+                        QString::from(version),
+                        QString::from(title),
+                        QString::from(url),
+                    );
+                    let _ = shell.queue(move |shell| {
+                        shell.update_available(
+                            version,
+                            title,
+                            url,
+                            QString::from(asked),
+                            QString::from(how),
+                            QString::from(&command),
+                        )
+                    });
+                };
             // A build the system's package manager installed is updated by that package
             // manager. The AUR's is offered once the AUR has it, with the command that
             // fetches it; one pacman does not know is left alone.
@@ -331,6 +341,7 @@ impl qobject::Shell {
                                 .unwrap_or_default();
                         offer(
                             &version,
+                            "",
                             &format!("https://aur.archlinux.org/packages/{package}"),
                             "command",
                             command,
@@ -343,7 +354,10 @@ impl qobject::Shell {
             }
             let update = match anibeam_core::update::check(&http, &current, track).await {
                 Ok(Some(update)) => update,
-                Ok(None) => return,
+                Ok(None) => {
+                    let _ = shell.queue(move |shell| shell.update_current(QString::from(asked)));
+                    return;
+                }
                 Err(e) => return eprintln!("anibeam: update check: {e:?}"),
             };
             let how = if install.asset(&update.assets).is_some() {
@@ -357,7 +371,13 @@ impl qobject::Shell {
                 offered.retain(|u| u.version != update.version);
                 offered.push(update.clone());
             }
-            offer(&update.version, &update.url, how, String::new());
+            offer(
+                &update.version,
+                &update.title,
+                &update.url,
+                how,
+                String::new(),
+            );
         });
     }
 

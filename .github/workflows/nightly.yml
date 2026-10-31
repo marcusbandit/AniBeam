@@ -132,7 +132,7 @@ jobs:
           start=()
           if [ -n "$PREVIOUS" ]; then start=(--notes-start-tag "$PREVIOUS"); fi
           gh release create "$tag" dist/* --draft --prerelease --latest=false --target "$SHA" \
-            --title "AniBeam $VERSION" --notes-file notes.md --generate-notes "${start[@]}"
+            --title "$(.github/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --prerelease --latest=false
 
       - name: Keep the ten newest nightlies

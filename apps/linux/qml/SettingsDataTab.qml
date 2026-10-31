@@ -63,6 +63,7 @@ SettingsTab {
                 spacing: theme.space(3)
                 Button { objectName: "data-export"; text: "Export library"; icon: "download"; primary: true; onClicked: exportDialog.open() }
                 Label { visible: tab.lastExport !== ""; anchors.verticalCenter: parent.verticalCenter; text: "Last written to " + tab.lastExport; role: "ledger"; color: theme.textDim; elide: Text.ElideMiddle; width: Math.min(implicitWidth, theme.space(120)) }
+                Button { visible: tab.lastExport !== ""; anchors.verticalCenter: parent.verticalCenter; text: "Open folder"; icon: "folder-open"; small: true; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.dir(tab.lastExport))) }
             }
         }
     }
@@ -159,9 +160,11 @@ SettingsTab {
                 helper: frame.updatePanel.track === "nightly"
                     ? "Hear about a new build most days. Newer, and less tested."
                     : "Hear about a new version once it has been tested and released."
-                Seg { objectName: "data-update-track"; options: [{ text: "Stable", icon: "badge-check", name: "stable" }, { text: "Nightly", icon: "moon", name: "nightly" }]
-                      index: frame.updatePanel.track === "nightly" ? 1 : 0
-                      onPicked: function(i) { frame.updatePanel.setTrack(i === 1 ? "nightly" : "stable") } } }
+                Row { spacing: theme.space(3)
+                    Seg { objectName: "data-update-track"; options: [{ text: "Stable", icon: "badge-check", name: "stable" }, { text: "Nightly", icon: "moon", name: "nightly" }]
+                          index: frame.updatePanel.track === "nightly" ? 1 : 0
+                          onPicked: function(i) { frame.updatePanel.setTrack(i === 1 ? "nightly" : "stable") } }
+                    Button { objectName: "data-check-updates"; anchors.verticalCenter: parent.verticalCenter; text: "Check now"; icon: "refresh-cw"; small: true; onClicked: frame.updatePanel.checkNow() } } }
             // IMDb's terms ask for this line wherever its data is used
             SettingRow { label: "Ratings"; helper: "Information courtesy of IMDb (https://www.imdb.com). Used with permission." }
             Repeater {

@@ -118,6 +118,10 @@ Minecraft's patch notes: a version, a few sections, one short line per change.
 - The newest heading is the app's version, with the day: `## 2.1.1 · 2026-10-25`. Bumping
   the version adds a heading, and a heading for a new version bumps the version in the
   same PR. Never add a line under a version that has shipped.
+- A version can have a title to remember it by, between the number and the day:
+  `## 2.5.0 · Quality of life · 2026-11-02`, 40 characters at most. Most versions have
+  none. What's new and the update notice show it, and the release goes out named
+  "AniBeam 2.5.0 · Quality of life"; a nightly of that version carries it too.
 
 Good:
 
