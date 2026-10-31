@@ -2,6 +2,8 @@
 // step up and a reset to 0. It opens above its button the way TrackPicker does and stays up
 // while the steps are clicked; a press outside or Escape closes it. The buttons never take
 // the keyboard, and the page takes it back when the panel closes, so the keys work at once.
+// The reset is to 0 on purpose, not to an mpv.conf value: that value comes back on its own
+// with the next file (reset-on-next-file), and the reset's tip says so.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -65,7 +67,7 @@ Item {
                     PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-up"; glyph: "plus"; tip: delayRow.modelData.label + " 0.1 s later"
                         onClicked: page.nudgeDelay(delayRow.modelData.prop, 0.1) }
                     PlayerButton { objectName: "player-" + delayRow.modelData.key + "-delay-reset"; glyph: "rotate-ccw"; interactive: delayRow.value !== 0
-                        tip: interactive ? "Reset to 0" : "No delay"; onClicked: page.resetDelay(delayRow.modelData.prop) }
+                        tip: interactive ? "Reset to 0 (the next file starts from the mpv.conf value)" : "No delay"; onClicked: page.resetDelay(delayRow.modelData.prop) }
                 }
             }
         }
