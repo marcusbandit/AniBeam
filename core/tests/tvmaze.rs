@@ -1456,3 +1456,124 @@ fn a_tvmaze_count_belongs_to_the_card_season() {
     );
     core.shutdown();
 }
+
+/// A count set for season 2 stays season 2's: once a season 3 file lands,
+/// the card moves on and the count no longer applies to anything (#283).
+#[test]
+fn a_tvmaze_count_stays_with_its_season() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let mut s2: Vec<i64> = (0..11).map(|i| now - (30 - i) * DAY).collect();
+    s2.push(now - 18 * DAY);
+    let s3: Vec<i64> = (0..13).map(|i| now - DAY + i * 7 * DAY).collect();
+    insert_show(
+        &core,
+        905,
+        "Running",
+        &[(1, long_ago(10)), (2, s2), (3, s3.clone())],
+    );
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=12).map(|n| (2, n)));
+    let series = tv_series(&core, 905, &files);
+
+    set_count(&core, series, Some(12));
+    assert!(card(&core, series).episodes_set_applied);
+
+    fixtures::insert_file(
+        &core,
+        series,
+        "/tv/Two Seasons/Two.Seasons.S03E01.mkv",
+        1.0,
+        Some(3),
+        "episode",
+        1,
+    );
+    let c = card(&core, series);
+    assert_eq!(c.count_season, Some(3));
+    assert!(!c.episodes_set_applied);
+    let next = c.next_airing.expect("season 3 runs on");
+    assert_eq!(
+        (next.season, next.episode, time::to_secs(next.at)),
+        (Some(3), 2, s3[1])
+    );
+    core.shutdown();
+}
+
+/// Two folders matched to one show share its schedule: a count set on one
+/// never cuts the other's.
+#[test]
+fn a_tvmaze_count_never_cuts_another_folders_schedule() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let mut s1: Vec<i64> = (0..5).map(|i| now - (5 - i) * 7 * DAY).collect();
+    s1.push(now + 2 * DAY);
+    insert_show(&core, 906, "Running", &[(1, s1.clone())]);
+    let files: Vec<(u32, u32)> = (1..=5).map(|n| (1, n)).collect();
+    let first = tv_series(&core, 906, &files);
+    let src = fixtures::insert_source(&core, "/tv2");
+    let second = fixtures::insert_series(&core, src, SeriesKind::Show, "/tv2/Same", "Same");
+    fixtures::insert_file(
+        &core,
+        second,
+        "/tv2/Same/Same.S01E01.mkv",
+        1.0,
+        Some(1),
+        "episode",
+        1,
+    );
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE series SET provider = 'tvmaze', tvmaze_id = 906 WHERE id = ?1",
+                params![second as i64],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    set_count(&core, first, Some(5));
+    assert_eq!(card(&core, first).next_airing, None);
+    let next = card(&core, second).next_airing.expect("its own schedule");
+    assert_eq!((next.episode, time::to_secs(next.at)), (6, s1[5]));
+    core.shutdown();
+}
+
+/// TVmaze lists ten episodes, twelve are on disk and the count says twelve:
+/// the last two are episodes, not files past the end.
+#[test]
+fn a_tvmaze_count_judges_files_against_itself() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let s1: Vec<i64> = (0..10).map(|i| now - (12 - i) * 7 * DAY).collect();
+    insert_show(&core, 907, "Running", &[(1, s1)]);
+    let files: Vec<(u32, u32)> = (1..=12).map(|n| (1, n)).collect();
+    let series = tv_series(&core, 907, &files);
+
+    set_count(&core, series, Some(12));
+    let d = detail(&core, series);
+    assert!(d.card.episodes_set_applied);
+    assert!(d.unmatched_files.is_empty(), "{:#?}", d.unmatched_files);
+    assert_eq!(d.episodes.len(), 12);
+    core.shutdown();
+}
+
+/// With season 1 whole on disk and season 2 running with nothing dated
+/// ahead, the guess is season 2's next episode, not one numbered past both
+/// seasons together.
+#[test]
+fn a_multi_season_guess_counts_within_the_season() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let s2: Vec<i64> = (0..4).map(|i| now - (4 - i) * 7 * DAY + DAY).collect();
+    insert_show(&core, 908, "Running", &[(1, long_ago(10)), (2, s2)]);
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=4).map(|n| (2, n)));
+    let series = tv_series(&core, 908, &files);
+
+    let next = card(&core, series).next_airing.expect("a guess");
+    assert!(next.predicted);
+    assert_eq!((next.season, next.episode), (Some(2), 5));
+    let d = detail(&core, series);
+    assert_eq!(d.upcoming.first().map(|u| u.number), Some(5));
+    core.shutdown();
+}

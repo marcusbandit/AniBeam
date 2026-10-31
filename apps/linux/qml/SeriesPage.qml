@@ -672,6 +672,8 @@ Item {
                     property bool editing: false
                     readonly property var set: card.episodes_set === undefined ? null : card.episodes_set
                     readonly property bool gaveWay: set !== null && card.episodes_set_applied !== true
+                    // A TVmaze count is one season's, so the row names it
+                    readonly property string seasonWord: card.count_season ? "Season " + card.count_season : ""
                     // A set count is always offered, so it can be cleared once the show is over
                     readonly property bool offered: !page.isMovie && (set !== null || (card.status === "Releasing"
                              && (card.total_is_estimate || !card.total_episodes || (!!card.next_airing && card.next_airing.predicted))))
@@ -690,7 +692,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: countRow.set === null ? "" : countRow.gaveWay
                               ? "You set " + countRow.set + " episodes; that no longer applies"
-                              : "Ends at episode " + countRow.set + ", set by you"
+                              : (countRow.seasonWord ? countRow.seasonWord + " ends" : "Ends") + " at episode " + countRow.set + ", set by you"
                         role: "ledger"
                         color: page.inkDim
                     }
@@ -708,6 +710,13 @@ Item {
                         small: true; flat: true
                         text: "Clear"
                         onClicked: page.setEpisodeCount(null)
+                    }
+                    Label {
+                        visible: countRow.editing && countRow.seasonWord !== ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: countRow.seasonWord + " episodes"
+                        role: "ledger"
+                        color: page.inkDim
                     }
                     Field {
                         id: countField
@@ -1184,7 +1193,7 @@ Item {
         onDismissed: fixSheet.close()
     }
 
-    // The match, for an unmatched series: the same popover Metadata opens, over the overlay
+    // The match, from Find a match or Fixes: the same popover Metadata opens, over the overlay
     MatchPanel {
         id: matchPanel
         parent: frame.overlay

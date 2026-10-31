@@ -574,6 +574,7 @@ mod tests {
             total_is_estimate: false,
             episodes_set: None,
             episodes_set_applied: false,
+            count_season: None,
             bytes_on_disk: 0,
             watched_bytes: 0,
             watched_on_disk: 0,
