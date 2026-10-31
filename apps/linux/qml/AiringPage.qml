@@ -398,18 +398,23 @@ Item {
             spacing: page.gap
             Repeater {
                 model: page.shows
-                Card {
-                    id: card
+                LazyTile {
+                    id: tile
                     required property var modelData
-                    objectName: "tile-" + modelData.anilist_id
-                    item: page.cardItem(modelData)
-                    metaOverride: page.metaOf(modelData)
-                    posterWidth: page.cardWidth
-                    nowMs: page.nowMs
-                    dismissible: true
-                    onOpened: page.openActions(modelData, card)
-                    onPlayed: page.openActions(modelData, card)
-                    onDismissed: page.dismiss(modelData)
+                    width: page.cardWidth
+                    height: Math.round(page.cardWidth * 1.5)
+                    sourceComponent: Card {
+                        id: card
+                        objectName: "tile-" + tile.modelData.anilist_id
+                        item: page.cardItem(tile.modelData)
+                        metaOverride: page.metaOf(tile.modelData)
+                        posterWidth: page.cardWidth
+                        nowMs: page.nowMs
+                        dismissible: true
+                        onOpened: page.openActions(tile.modelData, card)
+                        onPlayed: page.openActions(tile.modelData, card)
+                        onDismissed: page.dismiss(tile.modelData)
+                    }
                 }
             }
         }

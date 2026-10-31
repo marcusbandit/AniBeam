@@ -109,11 +109,15 @@ Item {
     // The rows on screen, one line each, a folded run carrying its count.
     function copyAll() {
         var lines = rows.map(function(r) { return r.time + "  " + (r.stage ? r.stage + "  " + r.level + "  " : "") + r.msg + (r.count > 1 ? "  ×" + r.count : "") })
+        clipboardLoader.active = true
+        var clipboard = clipboardLoader.item
         clipboard.text = lines.join("\n")
         clipboard.selectAll()
         clipboard.copy()
     }
-    TextEdit { id: clipboard; visible: false }
+    // A TextEdit only to reach the clipboard, made on the first Copy: built with the frame
+    // it was 8 ms of every launch (#289)
+    Loader { id: clipboardLoader; active: false; sourceComponent: TextEdit { visible: false } }
 
     Item {
         id: body

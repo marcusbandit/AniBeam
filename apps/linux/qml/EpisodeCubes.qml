@@ -82,7 +82,6 @@ Item {
     readonly property bool badged: badgeIndex >= 0 && badgeIndex < cells.length && badgeText !== ""
     // The tag overlaps its cube's top edge by half its height; only the rest needs room
     readonly property real badgeRoom: badged ? Math.round((badgeLabel.implicitHeight + theme.space(1)) / 2) : 0
-    property int hoverCell: -1
     readonly property bool spanHot: spanned && hoverCell >= spanA && hoverCell <= spanB
     function inSpan(i) { return spanned && i >= spanA && i <= spanB }
     implicitHeight: count === 0 ? 0 : tabHeight + 2 * pad + rows * size + (rows - 1) * gap
@@ -147,8 +146,28 @@ Item {
         Label { id: badgeLabel; anchors.centerIn: parent; text: root.badgeText; role: "figure"; font.pointSize: theme.typeSmall * 0.9; color: theme.text }
     }
 
+    // One cube is one Rectangle. The hover, the click and the tip belong to the whole
+    // grid and find their cube from the pointer, rather than every cube carrying its own
+    // MouseArea, hover box and Tooltip: on a card that was seven objects a cube, most of
+    // the items a library page built (#289).
+    readonly property real gridY: tabHeight + pad
+    function cellAt(x, y) {
+        var step = size + gap
+        var c = Math.floor((x + gap / 2) / step), r = Math.floor((y - gridY + gap / 2) / step)
+        if (c < 0 || c >= perRow || r < 0) return -1
+        var i = r * perRow + c
+        return i < cells.length ? i : -1
+    }
+    // The cube under the pointer, for the tip; the hover a click acts on is hoverCell
+    readonly property int pointCell: hover.hovered ? cellAt(hover.point.position.x, hover.point.position.y) : -1
+    // The cube a click would act on, which grows under the pointer
+    readonly property int hoverCell: clickable ? pointCell : -1
+    // How much a cube grows: under the pointer, or as part of a hot span
+    function scaleOf(i) { return hoverCell === i || (spanHot && inSpan(i)) ? (inSpan(i) ? 1.1 : 1.18) : 1 }
+    HoverHandler { id: hover; cursorShape: root.clickable && root.pointCell >= 0 ? Qt.PointingHandCursor : Qt.ArrowCursor }
+
     Grid {
-        y: root.tabHeight + root.pad
+        y: root.gridY
         columns: root.perRow
         spacing: root.gap
         Repeater {
@@ -164,46 +183,83 @@ Item {
                 color: filled >= 0 ? theme.cubeState("g").fill : st.fill
                 border.width: st.edge === "transparent" ? 0 : 1
                 border.color: st.edge
-                scale: cubeMouse.containsMouse || (root.spanHot && root.inSpan(cube.index)) ? (root.inSpan(cube.index) ? 1.1 : 1.18) : 1
+                scale: root.scaleOf(cube.index)
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
-                Item {
-                    visible: cube.filled > 0
-                    anchors.bottom: parent.bottom
-                    width: parent.width
-                    height: Math.round(parent.height * cube.filled)
-                    clip: true
-                    Rectangle {
-                        y: parent.height - cube.height
-                        width: cube.width; height: cube.height
-                        radius: cube.radius
-                        color: cube.st.fill
-                    }
-                }
-                MouseArea {
-                    id: cubeMouse
-                    anchors.fill: parent
-                    anchors.margins: -root.gap / 2
-                    enabled: root.clickable
-                    hoverEnabled: enabled
-                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onContainsMouseChanged: if (containsMouse) root.hoverCell = cube.index; else if (root.hoverCell === cube.index) root.hoverCell = -1
-                    onClicked: function(mouse) {
-                        if (root.fold === 1) root.cubeClicked(cube.index, mouse.modifiers)
-                        else root.rangeClicked(cube.index * root.fold, Math.min(root.count, (cube.index + 1) * root.fold) - 1, mouse.modifiers)
-                    }
-                }
-                // The hover reaches half the gap each way, so neighbouring cubes meet and a
-                // move from one to the next never crosses empty ground
-                Item {
-                    anchors.fill: parent
-                    anchors.margins: -root.gap / 2
-                    Tooltip {
-                        text: root.count > root.tipLimit || root.fold !== 1 ? ""
-                            : root.tipFor ? root.tipFor(cube.index, cube.code)
-                            : "Episode " + (root.first + cube.index) + ": " + cube.st.label.toLowerCase()
-                    }
-                }
             }
         }
+    }
+    // A part-downloaded episode fills from the foot. One Repeater over just those cubes,
+    // usually none, rather than a fill slot in every cube.
+    readonly property var partial: {
+        var out = []
+        if (!fills || fold !== 1) return out
+        for (var i = 0; i < cells.length; i++)
+            if (cells[i] === "t" && typeof fills[i] === "number" && fills[i] > 0) out.push(i)
+        return out
+    }
+    Repeater {
+        model: root.partial
+        Item {
+            required property int modelData
+            readonly property real filled: Math.min(1, root.fills[modelData])
+            readonly property var st: theme.cubeState("t")
+            x: (modelData % root.perRow) * (root.size + root.gap)
+            y: root.gridY + Math.floor(modelData / root.perRow) * (root.size + root.gap) + root.size - height
+            width: root.size
+            height: Math.round(root.size * filled)
+            clip: true
+            // Grows with its cube, about the cube's centre rather than its own
+            property real grown: root.scaleOf(modelData)
+            Behavior on grown { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
+            transform: Scale { origin.x: root.size / 2; origin.y: root.size / 2 - (root.size - height); xScale: grown; yScale: grown }
+            Rectangle {
+                y: parent.height - root.size
+                width: root.size; height: root.size
+                radius: Math.max(1, root.size * 0.3)
+                color: parent.st.fill
+            }
+        }
+    }
+    MouseArea {
+        y: root.gridY
+        width: parent.width
+        height: Math.max(0, parent.height - root.gridY)
+        enabled: root.clickable
+        // A press between or past the cubes is not the grid's: it goes to what lies under
+        onPressed: function(mouse) { mouse.accepted = root.cellAt(mouse.x, mouse.y + root.gridY) >= 0 }
+        onClicked: function(mouse) {
+            var i = root.cellAt(mouse.x, mouse.y + root.gridY)
+            if (i < 0) return
+            if (root.fold === 1) root.cubeClicked(i, mouse.modifiers)
+            else root.rangeClicked(i * root.fold, Math.min(root.count, (i + 1) * root.fold) - 1, mouse.modifiers)
+        }
+    }
+
+    // The tip: one for the grid, under the hovered cube. The probe stands where that cube
+    // is, so the frame places the tip as it did when each cube had its own; Tooltip in
+    // manual mode keeps the hover intent, the warm handover and the popover guard.
+    // The tip's words for a cube, read when the pointer reaches it: worked out in the
+    // handler below, not by a binding, so a warm handover never shows the cube before's
+    function tipTextOf(i) {
+        if (i < 0 || count > tipLimit || fold !== 1) return ""
+        return tipFor ? tipFor(i, cells[i] || "g") : "Episode " + (first + i) + ": " + theme.cubeState(cells[i] || "g").label.toLowerCase()
+    }
+    Item {
+        id: probe
+        width: root.size; height: root.size
+        Tooltip { id: cubeTip; manual: true; area: root; held: hover.hovered && root.pointCell >= 0 }
+    }
+    // Placed before the tip is asked for, so it never reads the last cube's place; asked on
+    // every move to another cube, even one whose tip reads the same
+    onPointCellChanged: {
+        if (pointCell < 0) { cubeTip.release(); return }
+        probe.x = (pointCell % perRow) * (size + gap)
+        probe.y = gridY + Math.floor(pointCell / perRow) * (size + gap)
+        cubeTip.text = tipTextOf(pointCell)
+        cubeTip.show()
+    }
+    Connections {
+        target: hover
+        function onHoveredChanged() { if (!hover.hovered) cubeTip.release() }
     }
 }

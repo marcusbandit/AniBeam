@@ -30,6 +30,9 @@ pub mod qobject {
         /// Milliseconds on the clock every record shares.
         #[qinvokable]
         fn now(self: &Dev) -> f64;
+        /// A start-up step, printed under ANIBEAM_TIMING=1 with its time since launch.
+        #[qinvokable]
+        fn mark(self: &Dev, step: &QString);
         /// The Door calls that started at or after `since`.
         #[qinvokable]
         fn calls(self: &Dev, since: f64) -> QString;
@@ -76,6 +79,10 @@ impl qobject::Dev {
 
     pub fn now(&self) -> f64 {
         crate::devstats::now()
+    }
+
+    pub fn mark(&self, step: &QString) {
+        crate::devstats::startup_mark(&step.to_string());
     }
 
     pub fn calls(&self, since: f64) -> QString {
