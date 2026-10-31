@@ -7,7 +7,11 @@ SettingsTab {
     id: tab
     property var defaults: JSON.parse(JSON.stringify(Door.settings.subtitle_defaults || {}))
     property var preview: ({ path: "", subtitle: "", startAt: 0 })
-    Connections { target: Door; function onSettingsChanged() { tab.defaults = JSON.parse(JSON.stringify(Door.settings.subtitle_defaults)) } }
+    Connections {
+        target: Door
+        function onSettingsChanged() { tab.defaults = JSON.parse(JSON.stringify(Door.settings.subtitle_defaults)) }
+        function onPresenceChanged(available, connected) { tab.discordAvailable = available; tab.discordConnected = connected }
+    }
     Timer { id: save; interval: 250; onTriggered: { var r = Door.setSubtitleDefaults(tab.defaults); if (r.error) frame.toast(r.error.message) } }
     function edit(f) { var d = JSON.parse(JSON.stringify(defaults)); f(d); defaults = d; save.restart() }
     function isHex(s) { return /^#[0-9a-fA-F]{6}$/.test(s) }
@@ -15,6 +19,7 @@ SettingsTab {
     function colourOf(hex) { return { r: parseInt(hex.substr(1, 2), 16), g: parseInt(hex.substr(3, 2), 16), b: parseInt(hex.substr(5, 2), 16), a: 255 } }
     // Discord rich presence: a build with no Discord application has nothing to switch on
     property bool discordAvailable: false
+    property bool discordConnected: false
     function setDiscord(on) {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.discord_presence = on
@@ -23,7 +28,7 @@ SettingsTab {
     }
     Component.onCompleted: {
         var presence = Door.call("GetPresence", {})
-        if (!presence.error) discordAvailable = presence.reply.available
+        if (!presence.error) { discordAvailable = presence.reply.available; discordConnected = presence.reply.connected }
         // The episode watched last, at its resume point; else the sample
         // source. The Watched tab rides along: the episode seen last is
         // often watched-out, and the two tabs' rows are each sorted, not
@@ -80,6 +85,7 @@ SettingsTab {
                 Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
             SettingRow { label: "Show what you watch on Discord"
                 helper: tab.discordAvailable ? "The series, episode and poster appear on your Discord profile while you play. Nothing is sent while this is off or Discord is closed." : "This build has no Discord application."
+                status: !tab.discordAvailable || !Door.preferences.discord_presence ? "" : tab.discordConnected ? "Connected to Discord." : "Not connected. Discord is not running, or nothing is playing."
                 Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } }
         }
     }

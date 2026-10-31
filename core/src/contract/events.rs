@@ -161,6 +161,12 @@ pub enum EventBody {
     HostChanged {
         status: HostStatus,
     },
+    /// Discord presence reached a Discord client or lost it: the state
+    /// `GetPresence` answers. Sent at Debug, so it never reaches the log.
+    PresenceChanged {
+        available: bool,
+        connected: bool,
+    },
     ExportFinished {
         path: String,
     },

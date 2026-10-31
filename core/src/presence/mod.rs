@@ -793,8 +793,25 @@ impl Worker {
         self.connected.load(Ordering::Relaxed)
     }
 
+    /// Records whether Discord is reached, and tells the shell when that
+    /// changes.
     fn set_connected(&self, on: bool) {
-        self.connected.store(on, Ordering::Relaxed);
+        if self.connected.swap(on, Ordering::Relaxed) == on {
+            return;
+        }
+        // A worker only runs where presence is available.
+        self.bus.debug(
+            Stage::Playback,
+            if on {
+                "Discord presence connected"
+            } else {
+                "Discord presence disconnected"
+            },
+            EventBody::PresenceChanged {
+                available: true,
+                connected: on,
+            },
+        );
     }
 
     fn disconnect(&mut self) {
@@ -1239,7 +1256,10 @@ mod tests {
         let empty = Activity::describe("", "EP 1", None, false, false, None);
         assert_eq!(empty.details.chars().count(), FIELD_MIN);
         // Two characters are enough as they are.
-        assert_eq!(Activity::describe("K2", "EP 1", None, false, false, None).details, "K2");
+        assert_eq!(
+            Activity::describe("K2", "EP 1", None, false, false, None).details,
+            "K2"
+        );
     }
 
     #[test]

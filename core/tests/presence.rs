@@ -479,6 +479,66 @@ fn a_refused_poster_falls_back_to_the_apps_art() {
     );
 }
 
+/// Every `PresenceChanged` the core sent so far, as its `connected`.
+fn presence_events(c: &anibeam_core::events::Collector) -> Vec<bool> {
+    c.events()
+        .into_iter()
+        .filter_map(|e| match e.body {
+            EventBody::PresenceChanged {
+                available,
+                connected,
+            } => {
+                assert!(available);
+                assert_eq!(e.level, Level::Debug);
+                Some(connected)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn reaching_discord_and_letting_go_each_send_one_event() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    core.presence_flush();
+    // Nothing plays, so nothing connects and nothing changed.
+    assert!(presence_events(&c).is_empty());
+
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    tick(&core, s, 2.0, true);
+    core.presence_flush();
+    assert_eq!(presence_events(&c), vec![true]);
+    assert_eq!(presence_reply(&core), (true, true));
+
+    // The flush returns once the worker has let go, which sent the event.
+    switch(&core, false);
+    core.presence_flush();
+    assert_eq!(presence_events(&c), vec![true, false]);
+    assert_eq!(presence_reply(&core), (true, false));
+}
+
+#[test]
+fn a_discord_that_is_not_there_sends_no_event() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        fail: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    assert_eq!(fake.sent(), vec![Sent::Connect]);
+    assert!(presence_events(&c).is_empty());
+}
+
 #[test]
 fn get_presence_says_whether_this_build_has_an_application() {
     let (_dir, core, _c) = common::open_core();

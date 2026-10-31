@@ -487,6 +487,8 @@ pub mod qobject {
         fn import_finished(self: Pin<&mut Door>, summary: QJsonObject);
         #[qsignal]
         fn host_changed(self: Pin<&mut Door>, status: QJsonObject);
+        #[qsignal]
+        fn presence_changed(self: Pin<&mut Door>, available: bool, connected: bool);
         // Downloads
         #[qsignal]
         fn downloads_status_changed(self: Pin<&mut Door>, status: QJsonObject);
@@ -1146,6 +1148,10 @@ impl qobject::Door {
             EventBody::ExportFinished { .. } => self.as_mut().export_finished(s("path")),
             EventBody::ImportFinished { .. } => self.as_mut().import_finished(obj("summary")),
             EventBody::HostChanged { .. } => self.as_mut().host_changed(obj("status")),
+            EventBody::PresenceChanged {
+                available,
+                connected,
+            } => self.as_mut().presence_changed(*available, *connected),
             EventBody::DownloadsStatusChanged { .. } => {
                 self.as_mut().downloads_status_changed(obj("status"))
             }
