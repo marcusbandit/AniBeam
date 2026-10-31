@@ -667,8 +667,7 @@ impl Sidecar {
             if started.elapsed() > READY_TIMEOUT {
                 let _ = self.child.start_kill();
                 return Err(format!(
-                    "anirss did not answer on port {} within {} seconds{}",
-                    self.port,
+                    "anirss did not start within {} seconds{}",
                     READY_TIMEOUT.as_secs(),
                     self.stderr_tail()
                 ));

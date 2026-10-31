@@ -88,8 +88,10 @@ async fn run() -> Result<SubscriptionsResult, CoreError> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     match parse_output(&stdout) {
         Ok(feeds) => Ok(SubscriptionsResult::Ok { feeds }),
-        Err(message) => Err(CoreError::Unsupported {
-            what: format!("anirss returned unreadable JSON: {message}"),
+        Err(message) => Err(CoreError::Service {
+            service: "anirss".into(),
+            code: "unreadable".into(),
+            message: format!("its answer could not be read ({message})"),
         }),
     }
 }
@@ -188,8 +190,14 @@ pub fn classify_failure(stderr: &str) -> Result<SubscriptionsResult, CoreError> 
     if lower.contains("cancelled") || lower.contains("can't reach qbittorrent") {
         Ok(SubscriptionsResult::NeedsAuth)
     } else {
-        Err(CoreError::Unsupported {
-            what: format!("anirss exited: {trimmed}"),
+        Err(CoreError::Service {
+            service: "anirss".into(),
+            code: "exited".into(),
+            message: if trimmed.is_empty() {
+                "it stopped without saying why".into()
+            } else {
+                format!("it stopped: {trimmed}")
+            },
         })
     }
 }
@@ -263,8 +271,8 @@ mod tests {
     fn classify_failure_fails_the_job_for_anything_else() {
         let err = classify_failure("boom, disk on fire").unwrap_err();
         match err {
-            CoreError::Unsupported { what } => {
-                assert_eq!(what, "anirss exited: boom, disk on fire")
+            CoreError::Service { message, .. } => {
+                assert_eq!(message, "it stopped: boom, disk on fire")
             }
             other => panic!("{other:?}"),
         }

@@ -57,6 +57,8 @@ Item {
                     mono: false
                     color: theme.tileSunken
                     textColor: theme.textDim
+                    // Why, and the fix, when the pointer asks
+                    Tooltip { text: "AniBeam cannot reach this folder. If it is on a drive that is not plugged in or not mounted, connect it and AniBeam picks it up again. If it moved, remove it here and add the new place." }
                 }
             }
             Text {

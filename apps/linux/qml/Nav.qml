@@ -1,11 +1,21 @@
 // The navigation trail. Back goes to the page you came from, labelled with its name, and
-// restores its scroll; sideways moves keep the trail; twelve entries at most. The frame
-// reads the leaving page's scrollY and restores it on the way back.
+// restores its scroll; Forward goes back to where Back left, until a new page is opened;
+// sideways moves keep the trail; twelve entries at most. The frame reads the leaving page's
+// scrollY and restores it on the way back.
+//
+// The rail's pages remember how they were left, their props (a search, a season) and their
+// scroll, so going back to one from the rail finds it as it was.
 import QtQuick
 
 QtObject {
     id: nav
     property var trail: []
+    // What Back left, newest last, for Forward
+    property var ahead: []
+    // Per rail page, how it was left: { props, scrollY }
+    property var remembered: ({})
+    readonly property bool canBack: trail.length > 0 || current.page !== "home"
+    readonly property bool canForward: ahead.length > 0
     property var current: ({ page: "home", props: {}, label: "Home" })
     property real pendingScroll: -1
     signal changed()
@@ -24,8 +34,22 @@ QtObject {
     function key(e) { return e.page + ":" + JSON.stringify(e.props || {}) }
     function labelOf(page, label) { return label || labels[page] || "Back" }
 
+    function remember(scrollY) {
+        if (railPages.indexOf(current.page) < 0) return
+        var m = Object.assign({}, remembered)
+        m[current.page] = { props: current.props, scrollY: scrollY || 0 }
+        remembered = m
+    }
+    // A rail page, as it was left
+    function openRail(page, leavingScroll) {
+        var m = remembered[page]
+        open(page, m ? m.props : {}, undefined, leavingScroll)
+        if (m) pendingScroll = m.scrollY
+    }
     // Descend: the page we leave joins the trail with its scroll, de-duplicated and capped.
     function open(page, props, label, leavingScroll) {
+        remember(leavingScroll)
+        ahead = []
         var here = { page: current.page, props: current.props, label: current.label, scrollY: leavingScroll || 0 }
         var t = trail.filter(function(e) { return key(e) !== key(here) })
         t.push(here)
@@ -40,11 +64,32 @@ QtObject {
         pendingScroll = 0
         changed()
     }
-    function back() {
-        if (!trail.length) { if (current.page !== "home") replace("home", {}, "Home"); return }
+    function back(leavingScroll) {
+        remember(leavingScroll)
+        var here = { page: current.page, props: current.props, label: current.label, scrollY: leavingScroll || 0 }
+        if (!trail.length) {
+            if (current.page === "home") return
+            ahead = ahead.concat([here])
+            current = { page: "home", props: {}, label: "Home" }
+            pendingScroll = 0
+            changed()
+            return
+        }
         var t = trail.slice()
         var target = t.pop()
         trail = t
+        ahead = ahead.concat([here]).slice(-12)
+        current = { page: target.page, props: target.props, label: target.label }
+        pendingScroll = target.scrollY || 0
+        changed()
+    }
+    function forward(leavingScroll) {
+        if (!ahead.length) return
+        remember(leavingScroll)
+        var a = ahead.slice()
+        var target = a.pop()
+        trail = trail.concat([{ page: current.page, props: current.props, label: current.label, scrollY: leavingScroll || 0 }]).slice(-12)
+        ahead = a
         current = { page: target.page, props: target.props, label: target.label }
         pendingScroll = target.scrollY || 0
         changed()

@@ -16,6 +16,11 @@
 // the display cut, the next episode, the countdown, the progress, and a square Play button
 // (`played`). `live` false drops the poster (the mosaic's tiles far outside the viewport).
 //
+// A page that picks several cards at once sets `selectable`: pressing and holding a card, or
+// Ctrl+click, asks for it to be picked (`selectToggled`), and while the page is `selecting`
+// a plain click, Return or Space picks too instead of opening. A picked card wears a filled
+// accent check top left and an accent edge; while selecting, the others show an empty ring.
+//
 // An airing countdown is one treatment everywhere: "Episode 2" in the dim ledger, then a
 // small clock and the time ("4d 18h") in accent text.
 //
@@ -59,15 +64,20 @@ Item {
     property bool dismissible: false
     // Right-click offers deleting the series' files; off for a sample card that stands for none
     property bool offersDelete: true
+    // Picking several at once: see the head of the file
+    property bool selectable: false
+    property bool selecting: false
+    property bool selected: false
     signal opened()
     signal played()
     signal dismissed()
+    signal selectToggled()
     // A stop for the page's arrow keys (GridKeys), and a Tab stop after the page's controls
     readonly property bool gridStop: true
     activeFocusOnTab: true
-    Keys.onReturnPressed: root.opened()
-    Keys.onEnterPressed: root.opened()
-    Keys.onSpacePressed: root.played()
+    Keys.onReturnPressed: root.selecting ? root.selectToggled() : root.opened()
+    Keys.onEnterPressed: root.selecting ? root.selectToggled() : root.opened()
+    Keys.onSpacePressed: root.selecting ? root.selectToggled() : root.played()
     Keys.onDeletePressed: if (root.dismissible) root.dismissed()
 
     readonly property real radius: theme.radiusTile
@@ -89,7 +99,7 @@ Item {
         onTriggered: root.lift = theme.follow(root.lift, root.liftTarget, frameTime)
     }
     // Hover lifts the tile a touch (smoothed with `lift`); a press pulls it back under
-    scale: press.pressed ? 0.98 : 1 + 0.015 * lift
+    scale: theme.reducedMotion ? 1 : (press.pressed ? 0.98 : 1 + 0.015 * lift)
     z: lift > 0.01 || activeFocus ? 1 : 0
 
     HoverHandler {
@@ -102,6 +112,8 @@ Item {
         }
     }
     Component.onDestruction: frame.hoverCard(root, null, false)
+    // Focus stands in for the pointer, so Shift+F10 opens the focused card's menu
+    onActiveFocusChanged: if (root.offersDelete && !hoverer.hovered) frame.hoverCard(root, root.item, activeFocus)
     Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(root, face.folderName, root) }
 
     // The click covers the whole tile; the Play button and the dismiss sit above it
@@ -109,8 +121,15 @@ Item {
         id: press
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
+        pressAndHoldInterval: 500
         onPressed: root.forceActiveFocus()
-        onClicked: { tipIntent.stop(); frame.hideTip(); root.opened() }
+        onClicked: function(mouse) {
+            tipIntent.stop(); frame.hideTip()
+            if (root.selectable && (root.selecting || (mouse.modifiers & Qt.ControlModifier))) root.selectToggled()
+            else root.opened()
+        }
+        // A held press picks the card and starts picking; Qt sends no click after it
+        onPressAndHold: if (root.selectable) { tipIntent.stop(); frame.hideTip(); root.selectToggled() }
     }
 
     // ---- The pane under the poster: only while there is no poster to show. Under a decoded
@@ -157,6 +176,7 @@ Item {
         nowMs: root.nowMs
         lift: root.lift
         focused: root.activeFocus
+        hideCode: root.selecting || root.selected
         rightInset: dismissLoader.item && dismissLoader.item.visible ? dismissLoader.item.width + theme.space(1) : 0
     }
 
@@ -182,6 +202,35 @@ Item {
         }
     }
 
+    // ---- Picked: an accent edge, and the check top left where the episode code was; while
+    // picking, an empty ring on the cards not picked yet. Built only while picking.
+    Loader {
+        anchors.fill: parent
+        active: root.selecting || root.selected
+        sourceComponent: Item {
+            Rectangle {
+                anchors.fill: parent
+                visible: root.selected
+                radius: root.radius
+                antialiasing: true
+                color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.14)
+                border.width: 2
+                border.color: theme.accent
+            }
+            Rectangle {
+                objectName: "tile-check-" + (root.item.id === undefined ? "" : root.item.id)
+                x: face.pad * 0.8; y: face.pad * 0.8
+                width: Math.round(theme.space(6)); height: width
+                radius: width / 2
+                antialiasing: true
+                color: root.selected ? theme.accent : Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.55)
+                border.color: root.selected ? theme.accent : Qt.rgba(1, 1, 1, 0.7)
+                border.width: root.selected ? 0 : 1.5
+                Icon { visible: root.selected; anchors.centerIn: parent; glyph: "check"; size: Math.round(parent.width * 0.66); color: theme.contrast(theme.accent, Qt.rgba(1, 1, 1, 1)) >= 4.5 ? "#ffffff" : "#0d0e11" }
+            }
+        }
+    }
+
     // ---- Not interested: above the tile's own click, so it takes its own
     Loader {
         id: dismissLoader
@@ -191,7 +240,7 @@ Item {
             id: dismiss
             readonly property real pill: Math.ceil(ledgerMetrics.height + theme.space(1))
             objectName: "tile-dismiss-" + (root.item.id === undefined ? "" : root.item.id)
-            visible: hoverer.hovered || root.activeFocus
+            visible: !root.selecting && (hoverer.hovered || root.activeFocus)
             width: Math.round(pill + theme.space(1.5)); height: width
             radius: theme.radiusSm
             antialiasing: true

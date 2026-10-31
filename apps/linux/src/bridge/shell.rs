@@ -56,19 +56,25 @@ pub mod qobject {
         /// MPRIS Quit. The window closes itself; nothing here ends the process.
         #[qsignal]
         fn quit_requested(self: Pin<&mut Self>);
-        /// A desktop build newer than this one is out on `track`: its version, its page and
-        /// how this copy takes it. `how` is `install` (installUpdate does it), `command`
-        /// (the package manager does it, with `command`), `source` (a build from a
-        /// checkout) or `page` (the release has no file for this copy).
+        /// A desktop build newer than this one is out on `track`: its version, its title
+        /// (empty when it has none), its page and how this copy takes it. `how` is
+        /// `install` (installUpdate does it), `command` (the package manager does it, with
+        /// `command`), `source` (a build from a checkout) or `page` (the release has no
+        /// file for this copy).
         #[qsignal]
         fn update_available(
             self: Pin<&mut Self>,
             version: QString,
+            title: QString,
             url: QString,
             track: QString,
             how: QString,
             command: QString,
         );
+        /// A check on `track` ended with nothing to offer: `error` is empty when this
+        /// build is the newest, else why the check could not tell.
+        #[qsignal]
+        fn update_current(self: Pin<&mut Self>, track: QString, error: QString);
         /// How far installUpdate's download has come, in bytes.
         #[qsignal]
         fn update_progress(self: Pin<&mut Self>, got: f64, total: f64);
@@ -291,10 +297,19 @@ impl qobject::Shell {
         };
         let shell = self.qt_thread();
         crate::runtime::runtime().spawn(async move {
+            // Every way a check ends without an offer says so, so Check now always answers
+            let nothing = |error: String| {
+                if !error.is_empty() {
+                    eprintln!("anibeam: update check: {error}");
+                }
+                let _ = shell.queue(move |shell| {
+                    shell.update_current(QString::from(asked), QString::from(&error))
+                });
+            };
             let http = match anibeam_core::net::ReqwestHttp::new(std::time::Duration::from_secs(15))
             {
                 Ok(http) => http,
-                Err(e) => return eprintln!("anibeam: update check: {e:?}"),
+                Err(e) => return nothing(e.to_string()),
             };
             let install = match INSTALL.get() {
                 Some(install) => install.clone(),
@@ -305,23 +320,31 @@ impl qobject::Shell {
                     INSTALL.get_or_init(|| found).clone()
                 }
             };
-            let offer = |version: &str, url: &str, how: &'static str, command: String| {
-                let (version, url) = (QString::from(version), QString::from(url));
-                let _ = shell.queue(move |shell| {
-                    shell.update_available(
-                        version,
-                        url,
-                        QString::from(asked),
-                        QString::from(how),
-                        QString::from(&command),
-                    )
-                });
-            };
+            let offer =
+                |version: &str, title: &str, url: &str, how: &'static str, command: String| {
+                    let (version, title, url) = (
+                        QString::from(version),
+                        QString::from(title),
+                        QString::from(url),
+                    );
+                    let _ = shell.queue(move |shell| {
+                        shell.update_available(
+                            version,
+                            title,
+                            url,
+                            QString::from(asked),
+                            QString::from(how),
+                            QString::from(&command),
+                        )
+                    });
+                };
             // A build the system's package manager installed is updated by that package
             // manager. The AUR's is offered once the AUR has it, with the command that
             // fetches it; one pacman does not know is left alone.
             if let Install::Package { package } = &install {
-                let Some(package) = package else { return };
+                let Some(package) = package else {
+                    return nothing(String::new());
+                };
                 match anibeam_core::update::check_aur(&http, package, &current).await {
                     Ok(Some(version)) => {
                         let name = package.clone();
@@ -331,20 +354,21 @@ impl qobject::Shell {
                                 .unwrap_or_default();
                         offer(
                             &version,
+                            "",
                             &format!("https://aur.archlinux.org/packages/{package}"),
                             "command",
                             command,
                         )
                     }
-                    Ok(None) => {}
-                    Err(e) => eprintln!("anibeam: update check: {e:?}"),
+                    Ok(None) => nothing(String::new()),
+                    Err(e) => nothing(e.to_string()),
                 }
                 return;
             }
             let update = match anibeam_core::update::check(&http, &current, track).await {
                 Ok(Some(update)) => update,
-                Ok(None) => return,
-                Err(e) => return eprintln!("anibeam: update check: {e:?}"),
+                Ok(None) => return nothing(String::new()),
+                Err(e) => return nothing(e.to_string()),
             };
             let how = if install.asset(&update.assets).is_some() {
                 "install"
@@ -357,7 +381,13 @@ impl qobject::Shell {
                 offered.retain(|u| u.version != update.version);
                 offered.push(update.clone());
             }
-            offer(&update.version, &update.url, how, String::new());
+            offer(
+                &update.version,
+                &update.title,
+                &update.url,
+                how,
+                String::new(),
+            );
         });
     }
 

@@ -148,6 +148,8 @@ fn main() {
         "cpp/cardface.cpp",
         "cpp/videoitem.h",
         "cpp/videoitem.cpp",
+        "cpp/keyboard.h",
+        "cpp/keyboard.cpp",
     ])
     // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/...; a name left out of this list is a
     // blank icon at runtime, not a build error, so it is generated:

@@ -127,7 +127,7 @@ Item {
         // The bar is above the island's own hover MouseArea, so the hover that keeps the
         // chrome up while the pointer sits on the bar comes from the bar itself.
         SeekBar { id: seek; anchors.left: parent.left; anchors.right: parent.right; anchors.top: ledgerRow.bottom; anchors.topMargin: theme.space(1)
-            position: page.timePos; duration: page.duration; windows: page.windows
+            position: page.timePos; duration: page.duration; windows: page.windows; chapters: page.chapters.map(function(c) { return c.start })
             onSeeked: function(s) { page.seekTo(s) }
             onHovered: function(s) { page.showChrome(); preview.show(s, seek.mapToItem(page, page.duration > 0 ? s / page.duration * seek.width : 0, 0).x) }
             onUnhovered: preview.hide() }
@@ -146,10 +146,6 @@ Item {
             // Up and Down keys to step the volume by 5.
             SliderRow { objectName: "player-volume"; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1; trackWidth: theme.space(24)
                 takesFocus: false; ground: theme.raised; onMoved: function(v) { page.setVolume(v) } }
-            // Skip outro, up only while the position is inside the outro window, and there
-            // whether or not auto-skip is on. Skip intro is a tile of its own, below: the
-            // corner it takes belongs to the auto-next tile during the outro.
-            Button { objectName: "player-skip-outro"; visible: page.inside(page.outro, page.timePos); anchors.verticalCenter: parent.verticalCenter; text: "Skip outro"; icon: "chevrons-right"; primary: true; small: true; takesFocus: false; onClicked: page.skipWindow(page.outro) }
             // The slot takes its height from what it holds, not from the row: the row
             // takes its own height from its children, and parent.height here would be a loop.
             Item { id: rightSlot; width: parent.width - x; height: rightGroup.height
@@ -190,21 +186,22 @@ Item {
                     // stopped, so a countdown cancelled part way would keep a half filled pill.
                     NumberAnimation on width { running: page.nextCounting; from: 0; to: countFill.parent.width; duration: page.nextCountMs
                         onRunningChanged: if (!running) countFill.width = 0 } }
-                Label { id: nextLabel; anchors.centerIn: parent; text: "Next"; role: "title"; font.pointSize: theme.typeNormal }
+                Label { id: nextLabel; anchors.centerIn: parent; width: Math.min(implicitWidth, theme.space(90)); elide: Text.ElideRight
+                    text: page.nextLine; role: "title"; font.pointSize: theme.typeNormal }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openNext() }
             }
         }
     }
 
-    // ---- Skip intro. Not chrome either, and in the auto-next tile's corner: it is up for as
-    // long as the position is inside the intro window, whether or not the controls are, and
-    // whether or not auto-skip is on. A click lets the controls go rather than calling them
-    // up, so the picture is clear the moment the intro is. The two never share the corner in
-    // practice; if they ever do, this one sits above.
+    // ---- Skip intro and Skip outro. Not chrome either, and in the auto-next tile's corner,
+    // above it when both are up: each is there for as long as the position is inside its
+    // window, whether or not the controls are, and whether or not auto-skip is on. A click
+    // lets the controls go rather than calling them up, so the video is clear at once.
+    readonly property var skipping: page.inside(page.intro, page.timePos) ? page.intro : page.inside(page.outro, page.timePos) ? page.outro : null
     Tile {
         id: skipTile
         objectName: "player-skip-intro-tile"
-        visible: page.inside(page.intro, page.timePos)
+        visible: !!root.skipping
         raised: true
         color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
         padding: theme.space(1.5)
@@ -212,8 +209,9 @@ Item {
         anchors.bottom: nextTile.visible ? nextTile.top : controls.top; anchors.bottomMargin: theme.grout
         width: skipButton.implicitWidth + padding * 2; height: skipButton.implicitHeight + padding * 2
         MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -skipTile.padding }
-        Button { id: skipButton; objectName: "player-skip-intro"; anchors.centerIn: parent; text: "Skip intro"; icon: "chevrons-right"; primary: true; takesFocus: false
-            onClicked: page.skipIntroAndHide(page.mapFromItem(null, skipHover.point.scenePosition))
+        Button { id: skipButton; objectName: root.skipping && root.skipping.kind === "Outro" ? "player-skip-outro" : "player-skip-intro"; anchors.centerIn: parent
+            text: root.skipping && root.skipping.kind === "Outro" ? "Skip outro" : "Skip intro"; icon: "chevrons-right"; primary: true; takesFocus: false
+            onClicked: page.skipAndHide(root.skipping, page.mapFromItem(null, skipHover.point.scenePosition))
             // Where the pointer is for the click, so the page knows the spot it then rests on.
             HoverHandler { id: skipHover } }
     }

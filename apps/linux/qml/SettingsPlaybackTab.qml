@@ -10,6 +10,17 @@ SettingsTab {
     Connections { target: Door; function onSettingsChanged() { tab.defaults = JSON.parse(JSON.stringify(Door.settings.subtitle_defaults)) } }
     Timer { id: save; interval: 250; onTriggered: { var r = Door.setSubtitleDefaults(tab.defaults); if (r.error) frame.toast(r.error.message) } }
     function edit(f) { var d = JSON.parse(JSON.stringify(defaults)); f(d); defaults = d; save.restart() }
+    // A change still waiting on the timer is saved as the tab goes, not dropped
+    Component.onDestruction: if (save.running) { save.stop(); Door.setSubtitleDefaults(tab.defaults) }
+    // Back to the look AniBeam ships with; the language orders stay as they are
+    function resetStyle() {
+        var stock = Player.stockSubtitleDefaults()
+        tab.edit(function(d) { d.scale = stock.scale; d.ass_override = stock.ass_override; d.text_style = stock.text_style })
+        frame.toast("Subtitles look as they did at first")
+    }
+    // A value a field cannot take: the field says so in red and nothing is saved
+    property var bad: ({})
+    function flag(key, ok) { var b = Object.assign({}, bad); if (ok) delete b[key]; else b[key] = true; bad = b; return ok }
     function isHex(s) { return /^#[0-9a-fA-F]{6}$/.test(s) }
     function hexOf(c) { function h(n) { return ("0" + n.toString(16)).slice(-2) } return "#" + h(c.r) + h(c.g) + h(c.b) }
     function colourOf(hex) { return { r: parseInt(hex.substr(1, 2), 16), g: parseInt(hex.substr(3, 2), 16), b: parseInt(hex.substr(5, 2), 16), a: 255 } }
@@ -65,6 +76,8 @@ SettingsTab {
                 Switch { checked: !!(Door.settings.auto_skip && Door.settings.auto_skip.intro); onToggled: function(on) { Door.setAutoSkip(on, !!(Door.settings.auto_skip && Door.settings.auto_skip.outro)) } } }
             SettingRow { label: "Auto-skip outro"; helper: "Jumps the outro when the file's chapters or AniSkip know where it is. Undo in the player turns it off for the session."
                 Switch { checked: !!(Door.settings.auto_skip && Door.settings.auto_skip.outro); onToggled: function(on) { Door.setAutoSkip(!!(Door.settings.auto_skip && Door.settings.auto_skip.intro), on) } } }
+            SettingRow { label: "Name the next episode"; helper: "The Next button at the end of an episode shows the next one's title. Off, it shows only its number."
+                Switch { checked: frame.prefs.nextNamesEpisode; onToggled: function(on) { frame.prefs.nextNamesEpisode = on } } }
             SettingRow { label: "Use my mpv settings"; helper: "Reads your mpv settings file. Options that only apply at startup are skipped, and scripts never load."
                 status: Player.configLayers.length ? Player.configLayers.join("\n") : "No mpv settings file found."
                 Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
@@ -85,30 +98,32 @@ SettingsTab {
         Panel {
             title: "Subtitle defaults"; icon: "captions"; grows: true; spread: true
             helper: "What every session starts from. Change tracks in the player and AniBeam remembers them per series."
+            SettingRow { label: "Start over"; helper: "Puts the size, font, colours, outline, box and position back to how they came."
+                Button { objectName: "subtitle-reset"; text: "Reset"; icon: "rotate-ccw"; flat: true; onClicked: tab.resetStyle() } }
             SettingRow { label: "Scale"
-                SliderRow { from: 0.5; to: 2.0; stepSize: 0.05; decimals: 2; value: tab.defaults.scale || 1; onMoved: function(v) { tab.edit(function(d) { d.scale = v }) } } }
+                SliderRow { from: 0.5; to: 2.0; stepSize: 0.05; decimals: 2; unit: "\u00d7"; value: tab.defaults.scale || 1; onMoved: function(v) { tab.edit(function(d) { d.scale = v }) } } }
             SettingRow { label: "Styled subtitles"; helper: "Force applies your text style to every subtitle, which can break signs and karaoke."
                 Seg { options: ["As scripted", "Scale only", "Force"]; index: ["AsScripted", "ScaleOnly", "Force"].indexOf(tab.defaults.ass_override || "ScaleOnly"); onPicked: function(i) { tab.edit(function(d) { d.ass_override = ["AsScripted", "ScaleOnly", "Force"][i] }) } } }
             Note { text: "Applies to plain subtitle files (SRT, VTT). Styled files (ASS) keep their own look." }
             SettingRow { label: "Font"
-                Field { text: tab.defaults.text_style ? tab.defaults.text_style.font : ""; width: theme.space(30); onEdited: function(t) { if (t.trim() !== "") tab.edit(function(d) { d.text_style.font = t.trim() }) } } }
+                Field { text: tab.defaults.text_style ? tab.defaults.text_style.font : ""; width: theme.space(30); invalid: !!tab.bad.font; onEdited: function(t) { if (tab.flag("font", t.trim() !== "")) tab.edit(function(d) { d.text_style.font = t.trim() }) } } }
             SettingRow { label: "Colour"
                 Row { spacing: theme.space(2)
                     Corner { width: theme.space(6); height: width; radius: theme.radiusSm; smoothing: theme.cornerSmoothing; color: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.colour) : "#ffffff"; borderColor: theme.line; borderWidth: 1 }
-                    Field { text: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.colour) : ""; mono: true; width: theme.space(24); onEdited: function(t) { if (tab.isHex(t)) tab.edit(function(d) { d.text_style.colour = tab.colourOf(t) }) } } } }
+                    Field { text: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.colour) : ""; mono: true; width: theme.space(24); invalid: !!tab.bad.colour; onEdited: function(t) { if (tab.flag("colour", tab.isHex(t))) tab.edit(function(d) { d.text_style.colour = tab.colourOf(t) }) } } } }
             SettingRow { label: "Outline"
                 Row { spacing: theme.space(2)
-                    Field { text: tab.defaults.text_style ? String(tab.defaults.text_style.outline_size) : ""; mono: true; width: theme.space(18); onEdited: function(t) { var v = Number(t); if (v >= 0) tab.edit(function(d) { d.text_style.outline_size = v }) } }
+                    Field { text: tab.defaults.text_style ? String(tab.defaults.text_style.outline_size) : ""; mono: true; width: theme.space(18); invalid: !!tab.bad.outline; onEdited: function(t) { var v = Number(t); if (tab.flag("outline", t.trim() !== "" && v >= 0)) tab.edit(function(d) { d.text_style.outline_size = v }) } }
                     Corner { width: theme.space(6); height: width; radius: theme.radiusSm; smoothing: theme.cornerSmoothing; color: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.outline_colour) : "#000000"; borderColor: theme.line; borderWidth: 1 }
-                    Field { text: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.outline_colour) : ""; mono: true; width: theme.space(24); onEdited: function(t) { if (tab.isHex(t)) tab.edit(function(d) { d.text_style.outline_colour = tab.colourOf(t) }) } } } }
+                    Field { text: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.outline_colour) : ""; mono: true; width: theme.space(24); invalid: !!tab.bad.outlineColour; onEdited: function(t) { if (tab.flag("outlineColour", tab.isHex(t))) tab.edit(function(d) { d.text_style.outline_colour = tab.colourOf(t) }) } } } }
             SettingRow { label: "Shadow"
-                Field { text: tab.defaults.text_style ? String(tab.defaults.text_style.shadow_offset) : ""; mono: true; width: theme.space(14); onEdited: function(t) { var v = Number(t); if (v >= 0) tab.edit(function(d) { d.text_style.shadow_offset = v }) } } }
+                Field { text: tab.defaults.text_style ? String(tab.defaults.text_style.shadow_offset) : ""; mono: true; width: theme.space(14); invalid: !!tab.bad.shadow; onEdited: function(t) { var v = Number(t); if (tab.flag("shadow", t.trim() !== "" && v >= 0)) tab.edit(function(d) { d.text_style.shadow_offset = v }) } } }
             SettingRow { label: "Box opacity"
                 SliderRow { from: 0; to: 1; stepSize: 0.05; decimals: 2; value: tab.defaults.text_style ? tab.defaults.text_style.box_opacity : 0; onMoved: function(v) { tab.edit(function(d) { d.text_style.box_opacity = v }) } } }
             SettingRow { label: "Bold"
                 Switch { checked: !!(tab.defaults.text_style && tab.defaults.text_style.bold); onToggled: function(on) { tab.edit(function(d) { d.text_style.bold = on }) } } }
             SettingRow { label: "Position"
-                SliderRow { from: 0; to: 150; stepSize: 1; value: tab.defaults.text_style ? tab.defaults.text_style.position : 100; onMoved: function(v) { tab.edit(function(d) { d.text_style.position = v }) } } }
+                SliderRow { from: 0; to: 150; stepSize: 1; unit: "%"; value: tab.defaults.text_style ? tab.defaults.text_style.position : 100; onMoved: function(v) { tab.edit(function(d) { d.text_style.position = v }) } } }
         }
     }
     Component {

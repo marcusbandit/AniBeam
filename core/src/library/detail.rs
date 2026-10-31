@@ -311,6 +311,7 @@ impl Snapshot {
         Ok(people
             .iter()
             .map(|c| Person {
+                anilist_id: c.get("id").and_then(Value::as_u64).filter(|id| *id > 0),
                 name: c
                     .get("name")
                     .and_then(Value::as_str)

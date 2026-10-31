@@ -50,6 +50,9 @@ impl Track {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Update {
     pub version: String,
+    /// The release's title, `Quality of life` out of `AniBeam 2.5.0 · Quality of life`;
+    /// empty for a release known by its number.
+    pub title: String,
     pub url: String,
     pub assets: Vec<Asset>,
 }
@@ -114,11 +117,21 @@ impl Version {
 #[derive(Deserialize)]
 struct Release {
     tag_name: String,
+    #[serde(default)]
+    name: Option<String>,
     html_url: String,
     #[serde(default)]
     draft: bool,
     #[serde(default)]
     assets: Vec<Asset>,
+}
+
+/// A release's title out of its name: the Release workflow names one `AniBeam 2.5.0 ·
+/// Quality of life` when its CHANGELOG heading has a title, and `AniBeam 2.5.0` when not.
+fn title_of(name: &str) -> String {
+    name.split_once(" · ")
+        .map(|(_, title)| title.trim().to_string())
+        .unwrap_or_default()
 }
 
 /// The newest release on `track` in `releases`, GitHub's list as it sends it, when it is
@@ -147,6 +160,7 @@ pub fn newest(releases: &[u8], current: &str, track: Track) -> Result<Option<Upd
                 v,
                 Update {
                     version: name.to_string(),
+                    title: title_of(r.name.as_deref().unwrap_or("")),
                     url: r.html_url,
                     assets: r.assets,
                 },
@@ -265,6 +279,26 @@ mod tests {
         assert_eq!(offered("2.2.0", Track::Stable).as_deref(), Some("u240"));
         assert_eq!(offered("2.4.0", Track::Stable), None);
         assert_eq!(offered("2.6.0", Track::Stable), None);
+    }
+
+    #[test]
+    fn a_titled_release_carries_its_title() {
+        let list = serde_json::json!([
+            { "tag_name": "v2.5.0", "name": "AniBeam 2.5.0 · Quality of life", "html_url": "u250" },
+            { "tag_name": "v2.4.0", "name": "AniBeam 2.4.0", "html_url": "u240" }
+        ])
+        .to_string();
+        let titled = newest(list.as_bytes(), "2.4.0", Track::Stable)
+            .unwrap()
+            .unwrap();
+        assert_eq!(titled.title, "Quality of life");
+        let plain = newest(list.as_bytes(), "2.3.0", Track::Stable).unwrap();
+        assert_eq!(plain.unwrap().title, "Quality of life");
+        let older = r#"[{ "tag_name": "v2.4.0", "name": "AniBeam 2.4.0", "html_url": "u240" }]"#;
+        let untitled = newest(older.as_bytes(), "2.3.0", Track::Stable)
+            .unwrap()
+            .unwrap();
+        assert_eq!(untitled.title, "");
     }
 
     #[test]

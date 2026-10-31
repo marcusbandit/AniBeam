@@ -28,7 +28,7 @@ Corner {
     color: selected ? theme.accentSoft : clickable && hover.containsMouse ? theme.glassPressed : dimmed ? "transparent" : theme.raised
     borderColor: selected ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.5) : clickable && hover.containsMouse ? theme.lineStrong : theme.line
     borderWidth: 1
-    scale: hover.pressed ? 0.98 : 1
+    scale: theme.reducedMotion ? 1 : (hover.pressed ? 0.98 : 1)
 
     readonly property color ink: selected ? theme.accent : dimmed ? theme.textFaint : textColor
     Row {

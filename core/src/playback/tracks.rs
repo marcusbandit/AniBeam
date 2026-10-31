@@ -203,21 +203,87 @@ pub fn track_ref(t: &Track) -> TrackRef {
     }
 }
 
-/// "Full Dialogue (eng)", "English (eng, external file)", "spa", "Track 2".
+/// A track as the picker names it: its title, the language it is in when the title does not
+/// say so already, and "(file)" for a sidecar beside the video. "Full Dialogue · English",
+/// "English (file)", "Spanish", "Track 2".
 pub fn label(t: &Track) -> String {
-    let mut extra: Vec<&str> = Vec::new();
-    if let Some(l) = &t.lang {
-        extra.push(l);
-    }
+    // A tag not in the list still names the language, as the tag itself
+    let lang = t
+        .lang
+        .as_deref()
+        .filter(|code| *code != "und")
+        .map(|code| language_name(code).unwrap_or_else(|| code.to_string()));
+    let mut out = match (&t.title, lang) {
+        // A title that only repeats the language ("Simplified" on Chinese (Simplified)) says
+        // it once, as the language
+        (Some(title), Some(lang)) if lang.to_lowercase().contains(&title.to_lowercase()) => lang,
+        (Some(title), Some(lang)) if !title.to_lowercase().contains(&lang.to_lowercase()) => {
+            format!("{title} · {lang}")
+        }
+        (Some(title), _) => title.clone(),
+        (None, Some(lang)) => lang,
+        (None, None) => format!("Track {}", t.id),
+    };
     if t.external {
-        extra.push("external file");
+        out.push_str(" (file)");
     }
-    match (&t.title, extra.is_empty()) {
-        (Some(title), true) => title.clone(),
-        (Some(title), false) => format!("{title} ({})", extra.join(", ")),
-        (None, false) => extra.join(", "),
-        (None, true) => format!("Track {}", t.id),
-    }
+    out
+}
+
+/// A language tag as a person says it: `eng` and `en` are English, `pt-BR` is Portuguese
+/// (Brazil). None for `und` and for a tag not in the list, which the label then shows as it
+/// came.
+fn language_name(tag: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    let mut parts = lower.split(['-', '_']);
+    let base = parts.next()?;
+    let region = parts.next();
+    let name = match base {
+        "en" | "eng" => "English",
+        "ja" | "jpn" => "Japanese",
+        "es" | "spa" => "Spanish",
+        "pt" | "por" => "Portuguese",
+        "fr" | "fre" | "fra" => "French",
+        "de" | "ger" | "deu" => "German",
+        "it" | "ita" => "Italian",
+        "ru" | "rus" => "Russian",
+        "zh" | "chi" | "zho" => "Chinese",
+        "ko" | "kor" => "Korean",
+        "ar" | "ara" => "Arabic",
+        "hi" | "hin" => "Hindi",
+        "id" | "ind" => "Indonesian",
+        "ms" | "may" | "msa" => "Malay",
+        "th" | "tha" => "Thai",
+        "vi" | "vie" => "Vietnamese",
+        "pl" | "pol" => "Polish",
+        "tr" | "tur" => "Turkish",
+        "nl" | "dut" | "nld" => "Dutch",
+        "sv" | "swe" => "Swedish",
+        "no" | "nor" | "nb" | "nob" => "Norwegian",
+        "da" | "dan" => "Danish",
+        "fi" | "fin" => "Finnish",
+        "he" | "heb" => "Hebrew",
+        "uk" | "ukr" => "Ukrainian",
+        "cs" | "cze" | "ces" => "Czech",
+        "hu" | "hun" => "Hungarian",
+        "el" | "gre" | "ell" => "Greek",
+        "ro" | "rum" | "ron" => "Romanian",
+        "fil" | "tl" | "tgl" => "Filipino",
+        _ => return None,
+    };
+    let region = match region {
+        Some("br") => Some("Brazil"),
+        Some("pt") => Some("Portugal"),
+        Some("419") | Some("la") => Some("Latin America"),
+        Some("es") if base == "es" || base == "spa" => Some("Spain"),
+        Some("hans") | Some("cn") => Some("Simplified"),
+        Some("hant") | Some("tw") | Some("hk") => Some("Traditional"),
+        _ => None,
+    };
+    Some(match region {
+        Some(r) => format!("{name} ({r})"),
+        None => name.to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -339,9 +405,32 @@ mod tests {
         assert_eq!(r.kind, TrackKind::Sidecar);
         assert_eq!(r.language.as_deref(), Some("eng"));
         assert_eq!(r.title.as_deref(), Some("English"));
-        assert_eq!(label(&l[4]), "Full Dialogue (eng)");
-        assert_eq!(label(&l[5]), "English (eng, external file)");
-        assert_eq!(label(&l[6]), "spa");
+        assert_eq!(label(&l[4]), "Full Dialogue · English");
+        assert_eq!(label(&l[5]), "English (file)");
+        assert_eq!(label(&l[6]), "Spanish");
+        assert_eq!(
+            label(&l[1]),
+            "Japanese",
+            "a title that names the language says it once"
+        );
+        let odd = parse(&json!([
+            { "id": 2, "type": "sub" },
+            { "id": 3, "type": "sub", "lang": "pt-BR" },
+            { "id": 4, "type": "audio", "lang": "und" },
+            { "id": 5, "type": "audio", "lang": "xho" },
+            { "id": 6, "type": "sub", "lang": "zh-Hans", "title": "Simplified" },
+            { "id": 7, "type": "sub", "lang": "xho", "title": "Signs" }
+        ]));
+        assert_eq!(label(&odd[0]), "Track 2");
+        assert_eq!(label(&odd[1]), "Portuguese (Brazil)");
+        assert_eq!(label(&odd[2]), "Track 4");
+        assert_eq!(label(&odd[3]), "xho");
+        assert_eq!(label(&odd[4]), "Chinese (Simplified)");
+        assert_eq!(
+            label(&odd[5]),
+            "Signs · xho",
+            "a tag not in the list still names the language"
+        );
         assert!(
             same_lang("en", "eng")
                 && same_lang("ja", "jpn")

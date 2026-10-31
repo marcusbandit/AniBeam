@@ -126,6 +126,10 @@ pub enum Call {
     SetProgress {
         series: u64,
         progress: u32,
+        /// The season the count is within, for a series no tracker knows: its watched
+        /// episodes are kept per season here. None is season 1.
+        #[serde(default)]
+        season: Option<u32>,
     },
     SetScore {
         series: u64,

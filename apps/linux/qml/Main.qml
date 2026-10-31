@@ -4,13 +4,50 @@
 // resize and one relayout. `settled` still gates the --shoot and --drive captures.
 import QtQuick
 import QtQuick.Window
+import QtCore
 import com.marcusrosado.AniBeam
 
 Window {
     id: window
-    width: Shell.shootWidth > 0 ? Shell.shootWidth : 1280   // a hint; the compositor sizes the window
-    height: Shell.shootHeight > 0 ? Shell.shootHeight : 800
+    // A hint; a tiling compositor sizes the window itself. Elsewhere the window comes back
+    // at the size and place it was left, and maximized if it was.
+    width: Shell.shootWidth > 0 ? Shell.shootWidth : placement.width
+    height: Shell.shootHeight > 0 ? Shell.shootHeight : placement.height
     visible: true
+    readonly property bool capturing: Shell.shootWidth > 0 || Shell.shoot !== "" || Shell.driveOut !== ""
+    Settings {
+        id: placement
+        location: Shell.settingsUrl
+        category: "window"
+        property int width: 1280
+        property int height: 800
+        property int x: -1
+        property int y: -1
+        property bool maximized: false
+    }
+    Component.onCompleted: {
+        if (capturing) return
+        if (placement.x >= 0 && placement.y >= 0) { window.x = placement.x; window.y = placement.y }
+        if (placement.maximized) window.visibility = Window.Maximized
+    }
+    // Kept a moment after the last change, and only the size of a plain window: a
+    // maximized or fullscreen one comes back as that instead
+    Timer {
+        id: placementSave
+        interval: 600
+        onTriggered: {
+            if (window.capturing) return
+            placement.maximized = window.visibility === Window.Maximized
+            if (window.visibility !== Window.Windowed) return
+            placement.width = window.width
+            placement.height = window.height
+            placement.x = window.x
+            placement.y = window.y
+        }
+    }
+    onXChanged: placementSave.restart()
+    onYChanged: placementSave.restart()
+    onVisibilityChanged: placementSave.restart()
 
     // The tokens every component below reaches through the context chain. A plain Window
     // has no font property, so the face and the size are set per Text from these tokens.
@@ -91,8 +128,8 @@ Window {
     property bool firstFrame: false
     property bool settled: false
     onAfterAnimating: if (!firstFrame) { firstFrame = true; Dev.mark("first frame (empty window)"); settle.start() }
-    onWidthChanged: if (firstFrame && !settled) settled = true
-    onHeightChanged: if (firstFrame && !settled) settled = true
+    onWidthChanged: { if (firstFrame && !settled) settled = true; placementSave.restart() }
+    onHeightChanged: { if (firstFrame && !settled) settled = true; placementSave.restart() }
     // The compositor's size arrives as a resize right after the window maps, and the line
     // above settles on it at once; this is only the fallback for a window that is never
     // resized (a tiling WM that keeps the hint, a floating window, offscreen). It was 200 ms,

@@ -818,9 +818,16 @@ impl Core {
             Call::MarkEpisode { series, episode } => Ok(Reply::Started {
                 job: writes::mark(self, series, episode)?,
             }),
-            Call::SetProgress { series, progress } => Ok(Reply::Started {
-                job: writes::set_progress(self, series, progress)?,
-            }),
+            Call::SetProgress {
+                series,
+                progress,
+                season,
+            } => Ok(
+                match writes::set_progress(self, series, progress, season)? {
+                    Some(job) => Reply::Started { job },
+                    None => Reply::Ok,
+                },
+            ),
             Call::SetScore { series, score } => Ok(Reply::Started {
                 job: writes::set_score(self, series, score)?,
             }),
