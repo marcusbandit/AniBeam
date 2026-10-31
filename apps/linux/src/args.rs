@@ -67,6 +67,9 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             "--action" => a.action = Some(value("--action")?),
             "--drive" => a.drive = Some(value("--drive")?),
             "--out" => a.out = Some(PathBuf::from(value("--out")?)),
+            // Qt's own: qmlprofiler and Qt Creator start the app with it, and
+            // QGuiApplication reads it from argv after this parse
+            other if other.starts_with("-qmljsdebugger") => {}
             other => return Err(format!("unknown argument {other}")),
         }
     }

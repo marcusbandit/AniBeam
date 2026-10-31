@@ -29,6 +29,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ### Changed
 - A show's Fixes menu holds Fix files, the episode count, the match and Rescan
 - The activity log speaks plain words and leaves out background chores
+- Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
 - A download's speed and time left no longer run under its Stop button

@@ -10,6 +10,7 @@ mod inhibit;
 #[cfg(target_os = "macos")]
 mod iokit;
 mod json;
+mod library_view;
 #[cfg(target_os = "macos")]
 mod macnp;
 mod media;
@@ -87,6 +88,7 @@ fn main() {
     // Installed before the lock, because the names the hand-off targets are the sandbox's
     // under --root and the arguments are where that is read from. Nothing else looks at
     // either until the engine loads.
+    devstats::startup_mark("main");
     runtime::install_paths(paths);
     runtime::install_args(args);
 
@@ -160,17 +162,21 @@ fn main() {
     if args.drive.is_some() || args.shoot.is_some() || args.root.is_some() {
         core.disable_unattended_changes();
     }
+    devstats::startup_mark("core open");
     runtime::install_core(core);
 
     let mut app = QGuiApplication::new();
+    devstats::startup_mark("application");
     bridge::helpers::ffi::set_desktop_file_name(&QString::from(APP_ID));
 
+    bridge::helpers::ffi::dev_enable_qml_profiling();
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
         bridge::helpers::ffi::install_dev_tools(engine.as_mut());
         #[cfg(debug_assertions)]
         let engine = install_dev_qml_dir(engine);
         engine.load(&QUrl::from(MAIN_QML));
+        devstats::startup_mark("Main.qml loaded");
     }
     // The engine goes first: dropping it destroys the Door, which drops the event
     // subscription, so nothing is still listening when the core closes its store.

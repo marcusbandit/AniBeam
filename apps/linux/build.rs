@@ -124,7 +124,8 @@ fn main() {
             .qml_file("qml/SettingsDataTab.qml")
             .qml_file("qml/DevRecorder.qml")
             .qml_file("qml/DevHud.qml")
-            .qml_file("qml/SettingsDeveloperTab.qml"),
+            .qml_file("qml/SettingsDeveloperTab.qml")
+            .qml_file("qml/LazyTile.qml"),
     )
     .qt_module("Quick")
     .files([
@@ -143,6 +144,8 @@ fn main() {
     .cpp_files([
         "cpp/helpers.cpp",
         "cpp/devtools.cpp",
+        "cpp/cardface.h",
+        "cpp/cardface.cpp",
         "cpp/videoitem.h",
         "cpp/videoitem.cpp",
     ])
@@ -150,6 +153,8 @@ fn main() {
     // blank icon at runtime, not a build error, so it is generated:
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
     .qrc_resources([
+        "shaders/poster.vert.qsb",
+        "shaders/poster.frag.qsb",
         "assets/icon.png",
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",
