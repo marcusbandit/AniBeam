@@ -167,7 +167,7 @@ pub mod qobject {
         #[qinvokable]
         fn mark_episode(self: &Door, series: f64, episode: f64) -> QJsonObject;
         #[qinvokable]
-        fn set_progress(self: &Door, series: f64, progress: i32) -> QJsonObject;
+        fn set_progress(self: &Door, series: f64, progress: i32, season: i32) -> QJsonObject;
         #[qinvokable]
         fn set_score(self: &Door, series: f64, score: f64) -> QJsonObject;
         #[qinvokable]
@@ -1370,10 +1370,11 @@ impl qobject::Door {
             episode,
         }))
     }
-    pub fn set_progress(&self, series: f64, progress: i32) -> QJsonObject {
+    pub fn set_progress(&self, series: f64, progress: i32, season: i32) -> QJsonObject {
         self.dispatch(Ok(Call::SetProgress {
             series: id(series),
             progress: progress.max(0) as u32,
+            season: (season > 0).then_some(season as u32),
         }))
     }
     pub fn set_score(&self, series: f64, score: f64) -> QJsonObject {

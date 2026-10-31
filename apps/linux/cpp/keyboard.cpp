@@ -1,7 +1,7 @@
 #include "keyboard.h"
 
 #include <QGuiApplication>
-#include <QInputEvent>
+#include <QKeyEvent>
 
 Keyboard::Keyboard(QObject *parent) : QObject(parent)
 {
@@ -11,8 +11,16 @@ Keyboard::Keyboard(QObject *parent) : QObject(parent)
 bool Keyboard::eventFilter(QObject *watched, QEvent *event)
 {
     switch (event->type()) {
+    // Ctrl's own press and release carry the state from before it; the key says it plainly
     case QEvent::KeyPress:
-    case QEvent::KeyRelease:
+    case QEvent::KeyRelease: {
+        auto *key = static_cast<QKeyEvent *>(event);
+        if (key->key() == Qt::Key_Control)
+            set(event->type() == QEvent::KeyPress);
+        else
+            set(key->modifiers() & Qt::ControlModifier);
+        break;
+    }
     case QEvent::MouseMove:
     case QEvent::HoverMove:
     case QEvent::MouseButtonPress:

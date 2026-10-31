@@ -77,10 +77,10 @@ Frost {
         function onUpdateAvailable(version, title, url, track, how, command) {
             if (track === root.track && !root.busy) root.show(version, title, url, how, command)
         }
-        function onUpdateCurrent(track) {
+        function onUpdateCurrent(track, error) {
             if (track !== root.track || !root.asked) return
             root.asked = false
-            frame.toast("AniBeam is up to date")
+            frame.toast(error ? "Could not check for updates: " + error : "AniBeam is up to date")
         }
         function onUpdateProgress(got, total) {
             if (root.phase !== "downloading") return

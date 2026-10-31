@@ -1,6 +1,7 @@
-// The keyboard map, shown by ? or the keyboard button. The list is the keys that work in the
-// player written out: PlayerKeys.qml's handler and the frame's own shortcuts. A key neither
-// acts on has no line here, and every line here is a key that works. Escape or a press
+// The keyboard map, shown by ? or the keyboard button. In the player the list is the keys
+// that work there written out: PlayerKeys.qml's handler and the frame's own shortcuts.
+// Anywhere else it is the frame's shortcuts alone. A key neither acts on has no line here,
+// and every line here is a key that works where the list is open. Escape or a press
 // outside closes it, and it holds the chrome open while it is up.
 //
 // A floating pane of glass on a Blocker scrim, like every sheet. The groups sit side by side when the
@@ -17,7 +18,8 @@ Item {
     visible: open
     z: 950
 
-    readonly property var groups: [
+    readonly property var groups: player ? playerGroups : appGroups
+    readonly property var playerGroups: [
         { name: "Playback", keys: [
             ["Space / K", "Play or pause"],
             ["Left / Right", "Seek 5 s"],
@@ -40,6 +42,23 @@ Item {
             ["F / F11", "Fullscreen"],
             ["Escape", "Close what is open, else leave fullscreen, else leave the player"],
             ["Alt+Left", "Back"],
+            ["?", "Show or hide this list"]
+        ] },
+        { name: "Library", keys: [
+            ["Ctrl+K", "Library and search"],
+            ["/ or Ctrl+F", "Search this page"],
+            ["Ctrl+L", "Activity"],
+            ["Ctrl+,", "Settings"],
+            ["Ctrl+Q", "Quit"]
+        ] }
+    ]
+    readonly property var appGroups: [
+        { name: "Navigation", keys: [
+            ["Alt+Left", "Back"],
+            ["Alt+Right", "Forward"],
+            ["Escape", "Close what is open, else back"],
+            ["Shift+F10", "The right-click menu"],
+            ["F11", "Fullscreen"],
             ["?", "Show or hide this list"]
         ] },
         { name: "Library", keys: [

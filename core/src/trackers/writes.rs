@@ -230,13 +230,18 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
 /// over-counted episode is undone.
 ///
 /// A series no tracker knows (a TVmaze show, an unmatched folder) keeps its
-/// watched episodes here instead: the episodes up to `progress` are marked
-/// completed on this device and the ones after it are not, at once, with no
-/// job. None then, where a tracker write answers with its job.
-pub fn set_progress(core: &Core, series: u64, progress: u32) -> Result<Option<u64>, CoreError> {
+/// watched episodes here instead: the episodes of `season` up to `progress`
+/// are marked completed on this device and the ones after it are not, at
+/// once, with no job. None then, where a tracker write answers with its job.
+pub fn set_progress(
+    core: &Core,
+    series: u64,
+    progress: u32,
+    season: Option<u32>,
+) -> Result<Option<u64>, CoreError> {
     let target = core.store.read(|c| targets(c, series))?;
     if !target.matched() {
-        mark_here(core, series, progress)?;
+        mark_here(core, series, progress, season.unwrap_or(1))?;
         return Ok(None);
     }
     guard(core, &target)?;
@@ -249,25 +254,29 @@ pub fn set_progress(core: &Core, series: u64, progress: u32) -> Result<Option<u6
     .map(Some)
 }
 
-/// The local half of `set_progress`: every episode file numbered up to
-/// `progress` is completed, every one past it is not, and the card is pushed
-/// so the page redraws.
-fn mark_here(core: &Core, series: u64, progress: u32) -> Result<(), CoreError> {
+/// The local half of `set_progress`, within one season (a file naming none
+/// is season 1's): every episode file from 1 up to `progress` is completed,
+/// every one past it is not, and the card is pushed so the page redraws. A
+/// half episode goes with the whole one before it, so 12.5 is watched with
+/// 12, the way a tracker's count reads it. An episode 0 is never touched.
+fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(), CoreError> {
     let now = time::now_secs();
-    let upto = f64::from(progress);
+    let past = f64::from(progress) + 1.0;
     core.store.tx(move |tx| {
         tx.execute(
             "INSERT INTO completed (series_id, episode_key, at)
              SELECT DISTINCT series_id, episode_key, ?3 FROM files
-             WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL AND number <= ?2
+             WHERE series_id = ?1 AND kind = 'episode' AND COALESCE(season, 1) = ?4
+               AND number >= 1 AND number < ?2
              ON CONFLICT(series_id, episode_key) DO NOTHING",
-            params![series as i64, upto, now],
+            params![series as i64, past, now, season],
         )?;
         tx.execute(
             "DELETE FROM completed WHERE series_id = ?1 AND episode_key IN (
                  SELECT episode_key FROM files
-                 WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL AND number > ?2)",
-            params![series as i64, upto],
+                 WHERE series_id = ?1 AND kind = 'episode' AND COALESCE(season, 1) = ?3
+                   AND number >= ?2)",
+            params![series as i64, past, season],
         )?;
         Ok(())
     })?;

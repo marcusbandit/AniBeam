@@ -71,9 +71,10 @@ pub mod qobject {
             how: QString,
             command: QString,
         );
-        /// A check on `track` found nothing newer than this build.
+        /// A check on `track` ended with nothing to offer: `error` is empty when this
+        /// build is the newest, else why the check could not tell.
         #[qsignal]
-        fn update_current(self: Pin<&mut Self>, track: QString);
+        fn update_current(self: Pin<&mut Self>, track: QString, error: QString);
         /// How far installUpdate's download has come, in bytes.
         #[qsignal]
         fn update_progress(self: Pin<&mut Self>, got: f64, total: f64);
@@ -296,10 +297,19 @@ impl qobject::Shell {
         };
         let shell = self.qt_thread();
         crate::runtime::runtime().spawn(async move {
+            // Every way a check ends without an offer says so, so Check now always answers
+            let nothing = |error: String| {
+                if !error.is_empty() {
+                    eprintln!("anibeam: update check: {error}");
+                }
+                let _ = shell.queue(move |shell| {
+                    shell.update_current(QString::from(asked), QString::from(&error))
+                });
+            };
             let http = match anibeam_core::net::ReqwestHttp::new(std::time::Duration::from_secs(15))
             {
                 Ok(http) => http,
-                Err(e) => return eprintln!("anibeam: update check: {e:?}"),
+                Err(e) => return nothing(e.to_string()),
             };
             let install = match INSTALL.get() {
                 Some(install) => install.clone(),
@@ -332,7 +342,9 @@ impl qobject::Shell {
             // manager. The AUR's is offered once the AUR has it, with the command that
             // fetches it; one pacman does not know is left alone.
             if let Install::Package { package } = &install {
-                let Some(package) = package else { return };
+                let Some(package) = package else {
+                    return nothing(String::new());
+                };
                 match anibeam_core::update::check_aur(&http, package, &current).await {
                     Ok(Some(version)) => {
                         let name = package.clone();
@@ -348,18 +360,15 @@ impl qobject::Shell {
                             command,
                         )
                     }
-                    Ok(None) => {}
-                    Err(e) => eprintln!("anibeam: update check: {e:?}"),
+                    Ok(None) => nothing(String::new()),
+                    Err(e) => nothing(e.to_string()),
                 }
                 return;
             }
             let update = match anibeam_core::update::check(&http, &current, track).await {
                 Ok(Some(update)) => update,
-                Ok(None) => {
-                    let _ = shell.queue(move |shell| shell.update_current(QString::from(asked)));
-                    return;
-                }
-                Err(e) => return eprintln!("anibeam: update check: {e:?}"),
+                Ok(None) => return nothing(String::new()),
+                Err(e) => return nothing(e.to_string()),
             };
             let how = if install.asset(&update.assets).is_some() {
                 "install"

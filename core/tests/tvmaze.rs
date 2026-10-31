@@ -658,7 +658,8 @@ fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
     assert!(matches!(
         core.call(Call::SetProgress {
             series,
-            progress: 1
+            progress: 1,
+            season: None,
         }),
         Ok(Reply::Ok)
     ));
@@ -667,6 +668,15 @@ fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
     core.call(Call::SetProgress {
         series,
         progress: 0,
+        season: None,
+    })
+    .unwrap();
+    assert!(watched(&core).iter().all(|w| !w));
+    // A count is within its season: season 2's leaves season 1's episodes alone
+    core.call(Call::SetProgress {
+        series,
+        progress: 5,
+        season: Some(2),
     })
     .unwrap();
     assert!(watched(&core).iter().all(|w| !w));

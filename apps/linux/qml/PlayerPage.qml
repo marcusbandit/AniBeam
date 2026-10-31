@@ -304,8 +304,9 @@ FocusScope {
     // fresh one opens and the rewatch keeps its own place, and the replay button goes.
     function reopen() {
         var r = Door.openPlayback(props.file)
-        if (r.error) { console.warn("anibeam: reopen:", r.error.message); return }
+        // Tried once: a file gone since the end would otherwise be asked for every frame
         ended = false
+        if (r.error) { notice.show(errorLine(r.error)); return }
         closed = false
         replayVisible = false
         session = r.reply.session

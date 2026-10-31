@@ -240,12 +240,14 @@ Item {
         // An absent episode has no file; its integral number reads the target on its own
         optimisticFile = ep.file !== undefined ? ep.file : -1
         optimisticWatched = !watched
-        var r = Door.setProgress(props.id, target)
+        // The season goes along for a show with no tracker, whose marks are kept per season
+        var id = props.id, season = ep.season || 1
+        var r = Door.setProgress(id, target, season)
         if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.toast(r.error.message); return }
         // A mark that moves more than one episode says so, with the way back
         if (before >= 0 && Math.abs(target - before) > 1)
             frame.toast(target > before ? "Watched up to " + Fmt.episodeName("", target) : "Unwatched from " + Fmt.episodeName("", target + 1), 8, "Undo",
-                        function() { optimisticProgress = -1; optimisticFile = -1; Door.setProgress(page.props.id, before) })
+                        function() { Door.setProgress(id, before, season); optimisticProgress = -1; optimisticFile = -1 })
     }
     function watchedWithOptimism(ep) {
         if (optimisticProgress < 0) return !!ep.watched
@@ -872,10 +874,12 @@ Item {
                         icon: card.hidden ? "eye" : "eye-off"
                         onClicked: {
                             var hide = !card.hidden
-                            var r = Door.setHidden(props.id, hide)
+                            // The id is kept here: Undo can come after the page is gone
+                            var id = props.id
+                            var r = Door.setHidden(id, hide)
                             if (r.error) { frame.toast(r.error.message); return }
                             frame.toast(hide ? page.title + " is hidden, and its tracker sync stops" : page.title + " is back, and syncs again", 6, "Undo",
-                                        function() { Door.setHidden(page.props.id, !hide) })
+                                        function() { Door.setHidden(id, !hide) })
                         }
                         Tooltip { text: page.hasTracker ? "Hidden from every list, and tracker sync stops" : "Hidden from every list" }
                     }

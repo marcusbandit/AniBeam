@@ -207,7 +207,12 @@ pub fn track_ref(t: &Track) -> TrackRef {
 /// say so already, and "(file)" for a sidecar beside the video. "Full Dialogue · English",
 /// "English (file)", "Spanish", "Track 2".
 pub fn label(t: &Track) -> String {
-    let lang = t.lang.as_deref().and_then(language_name);
+    // A tag not in the list still names the language, as the tag itself
+    let lang = t
+        .lang
+        .as_deref()
+        .filter(|code| *code != "und")
+        .map(|code| language_name(code).unwrap_or_else(|| code.to_string()));
     let mut out = match (&t.title, lang) {
         // A title that only repeats the language ("Simplified" on Chinese (Simplified)) says
         // it once, as the language
@@ -217,10 +222,7 @@ pub fn label(t: &Track) -> String {
         }
         (Some(title), _) => title.clone(),
         (None, Some(lang)) => lang,
-        (None, None) => match &t.lang {
-            Some(code) if code != "und" => code.clone(),
-            _ => format!("Track {}", t.id),
-        },
+        (None, None) => format!("Track {}", t.id),
     };
     if t.external {
         out.push_str(" (file)");
@@ -416,13 +418,19 @@ mod tests {
             { "id": 3, "type": "sub", "lang": "pt-BR" },
             { "id": 4, "type": "audio", "lang": "und" },
             { "id": 5, "type": "audio", "lang": "xho" },
-            { "id": 6, "type": "sub", "lang": "zh-Hans", "title": "Simplified" }
+            { "id": 6, "type": "sub", "lang": "zh-Hans", "title": "Simplified" },
+            { "id": 7, "type": "sub", "lang": "xho", "title": "Signs" }
         ]));
         assert_eq!(label(&odd[0]), "Track 2");
         assert_eq!(label(&odd[1]), "Portuguese (Brazil)");
         assert_eq!(label(&odd[2]), "Track 4");
         assert_eq!(label(&odd[3]), "xho");
         assert_eq!(label(&odd[4]), "Chinese (Simplified)");
+        assert_eq!(
+            label(&odd[5]),
+            "Signs · xho",
+            "a tag not in the list still names the language"
+        );
         assert!(
             same_lang("en", "eng")
                 && same_lang("ja", "jpn")

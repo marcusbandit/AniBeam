@@ -251,6 +251,7 @@ fn a_hidden_series_is_refused() {
         Call::SetProgress {
             series,
             progress: 3,
+            season: None,
         },
         Call::SetScore {
             series,
@@ -292,7 +293,8 @@ fn an_unmatched_series_is_refused() {
     assert_eq!(
         core.call(Call::SetProgress {
             series,
-            progress: 1
+            progress: 1,
+            season: None,
         })
         .unwrap(),
         Reply::Ok
@@ -337,7 +339,8 @@ fn no_connected_tracker_names_the_main_one() {
     assert_eq!(
         core.call(Call::SetProgress {
             series,
-            progress: 1
+            progress: 1,
+            season: None,
         })
         .err()
         .unwrap(),
@@ -374,7 +377,8 @@ fn a_missing_series_is_not_found() {
     assert_eq!(
         core.call(Call::SetProgress {
             series,
-            progress: 1
+            progress: 1,
+            season: None,
         })
         .err()
         .unwrap(),
@@ -464,6 +468,7 @@ fn setting_progress_to_nought_plans_the_series() {
         core.call(Call::SetProgress {
             series,
             progress: 0,
+            season: None,
         })
         .unwrap(),
     );

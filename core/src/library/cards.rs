@@ -9,7 +9,7 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::contract::*;
-use crate::library::snapshot::{AiringRow, FileRow, NextEpisode, SeriesRow, Snapshot};
+use crate::library::snapshot::{AiringRow, FileRow, NextEpisode, SeriesRow, Snapshot, season_of};
 use crate::library::{labels, titles};
 use crate::time;
 
@@ -676,8 +676,12 @@ impl Snapshot {
             .get(&row.id)
             .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
             .unwrap_or_default();
+        // Counted within the season the card is at, the latest on disk, so a run watched in
+        // season 1 never reads as season 2's
+        let season_now = episodes.last().map(|f| season_of(f));
         let watched_here: BTreeSet<u32> = episodes
             .iter()
+            .filter(|f| Some(season_of(f)) == season_now)
             .filter(|f| f.number >= 1.0 && done.contains(f.episode_key.as_str()))
             .map(|f| f.number as u32)
             .collect();
