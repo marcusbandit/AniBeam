@@ -69,6 +69,8 @@ apple-native-keyring-store = { version = "1.0", default-features = false, featur
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1.1"
+# Overlapped reads and writes on Discord's named pipe, so each has a timeout.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Threading"] }
 
 # uname for the host's name; Windows reads COMPUTERNAME instead.
 [target.'cfg(unix)'.dependencies]

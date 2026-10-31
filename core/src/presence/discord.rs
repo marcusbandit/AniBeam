@@ -8,7 +8,7 @@
 
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -29,6 +29,9 @@ const MAX_SKIPPED: u32 = 16;
 /// How long a read or a write on the socket may take. Discord answers in
 /// milliseconds; one that does not is treated as gone.
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long finding Discord may take in all. Sockets that accept and never
+/// answer share it rather than costing `IO_TIMEOUT` each.
+const CONNECT_BUDGET: Duration = Duration::from_secs(5);
 
 /// One frame on the wire.
 pub fn encode(op: u32, payload: &Value) -> Vec<u8> {
@@ -117,31 +120,18 @@ fn next_reply<S: Read + Write>(
     Err(SendError::Gone("no reply".to_string()))
 }
 
-pub trait Stream: Read + Write + Send {}
-impl<T: Read + Write + Send> Stream for T {}
-
 /// The real transport: finds the socket, handshakes, and holds the
 /// connection until it breaks or is closed.
 #[derive(Default)]
 pub struct Discord {
-    conn: Option<Connection<Box<dyn Stream>>>,
+    conn: Option<Connection<Socket>>,
 }
 
 impl Transport for Discord {
     fn connect(&mut self, client_id: &str) -> Result<(), SendError> {
         self.conn = None;
-        let mut last = SendError::Gone("no Discord socket".to_string());
-        for path in candidates() {
-            let Ok(stream) = open(&path) else { continue };
-            match Connection::handshake(stream, client_id) {
-                Ok(conn) => {
-                    self.conn = Some(conn);
-                    return Ok(());
-                }
-                Err(e) => last = e,
-            }
-        }
-        Err(last)
+        self.conn = Some(connect_any(candidates(), client_id, CONNECT_BUDGET)?);
+        Ok(())
     }
 
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError> {
@@ -158,6 +148,35 @@ impl Transport for Discord {
     fn close(&mut self) {
         self.conn = None;
     }
+}
+
+/// The first of `paths` that handshakes, all of them within `budget`: each
+/// read and write of a handshake waits no longer than the time left, and no
+/// socket is tried once it is gone. The connection then gets `IO_TIMEOUT`.
+fn connect_any(
+    paths: Vec<PathBuf>,
+    client_id: &str,
+    budget: Duration,
+) -> Result<Connection<Socket>, SendError> {
+    let deadline = Instant::now() + budget;
+    let mut last = SendError::Gone("no Discord socket".to_string());
+    for path in paths {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(socket) = open(&path, left.min(IO_TIMEOUT)) else {
+            continue;
+        };
+        match Connection::handshake(socket, client_id) {
+            Ok(mut conn) => {
+                set_timeout(&mut conn.stream, IO_TIMEOUT)?;
+                return Ok(conn);
+            }
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
 }
 
 /// Every place a Discord client may have put its socket, in the order the
@@ -190,11 +209,20 @@ fn candidates() -> Vec<PathBuf> {
 }
 
 #[cfg(unix)]
-fn open(path: &Path) -> io::Result<Box<dyn Stream>> {
-    let stream = std::os::unix::net::UnixStream::connect(path)?;
-    stream.set_read_timeout(Some(IO_TIMEOUT))?;
-    stream.set_write_timeout(Some(IO_TIMEOUT))?;
-    Ok(Box::new(stream))
+type Socket = std::os::unix::net::UnixStream;
+
+#[cfg(unix)]
+fn open(path: &Path, wait: Duration) -> io::Result<Socket> {
+    let mut stream = Socket::connect(path)?;
+    set_timeout(&mut stream, wait)?;
+    Ok(stream)
+}
+
+/// How long each read and each write may wait from now on.
+#[cfg(unix)]
+fn set_timeout(stream: &mut Socket, wait: Duration) -> io::Result<()> {
+    stream.set_read_timeout(Some(wait))?;
+    stream.set_write_timeout(Some(wait))
 }
 
 #[cfg(windows)]
@@ -205,13 +233,163 @@ fn candidates() -> Vec<PathBuf> {
 }
 
 #[cfg(windows)]
-fn open(path: &Path) -> io::Result<Box<dyn Stream>> {
-    let _ = IO_TIMEOUT;
-    let pipe = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
-    Ok(Box::new(pipe))
+type Socket = pipe::Pipe;
+
+#[cfg(windows)]
+fn open(path: &Path, wait: Duration) -> io::Result<Socket> {
+    pipe::Pipe::open(path, wait)
+}
+
+/// How long each read and each write may wait from now on.
+#[cfg(windows)]
+fn set_timeout(pipe: &mut Socket, wait: Duration) -> io::Result<()> {
+    pipe.timeout = wait;
+    Ok(())
+}
+
+/// A named pipe has no read or write timeout of its own, and a synchronous
+/// read on one that Discord opened but never answers would wait forever. So
+/// the pipe is opened for overlapped I/O, and each read and write is started,
+/// waited on for at most the timeout, and cancelled past it.
+#[cfg(windows)]
+mod pipe {
+    use std::fs::File;
+    use std::io::{self, Read, Write};
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::AsRawHandle;
+    use std::path::Path;
+    use std::time::Duration;
+
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_MORE_DATA, GetLastError, HANDLE,
+        WAIT_TIMEOUT,
+    };
+    use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OVERLAPPED, ReadFile, WriteFile};
+    use windows_sys::Win32::System::IO::{
+        CancelIoEx, GetOverlappedResult, GetOverlappedResultEx, OVERLAPPED,
+    };
+    use windows_sys::Win32::System::Threading::CreateEventW;
+    use windows_sys::core::BOOL;
+
+    pub struct Pipe {
+        file: File,
+        /// Signalled when the operation in flight completes.
+        event: HANDLE,
+        pub timeout: Duration,
+    }
+
+    // SAFETY: the event handle belongs to this pipe alone, and a Win32
+    // handle may be used from any thread.
+    unsafe impl Send for Pipe {}
+
+    impl Pipe {
+        pub fn open(path: &Path, timeout: Duration) -> io::Result<Pipe> {
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(FILE_FLAG_OVERLAPPED)
+                .open(path)?;
+            // Manual reset, as overlapped I/O wants; ReadFile and WriteFile
+            // reset it as each operation starts.
+            // SAFETY: no security attributes and no name, both may be null.
+            let event = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+            if event.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(Pipe {
+                file,
+                event,
+                timeout,
+            })
+        }
+
+        /// Runs one overlapped operation, which `start` begins, and waits at
+        /// most the timeout for it. Past that it is cancelled, and the
+        /// cancel is waited out: the kernel holds the buffer and the
+        /// OVERLAPPED until the operation is over, so neither may go first.
+        fn run(&self, start: impl FnOnce(HANDLE, *mut OVERLAPPED) -> BOOL) -> io::Result<usize> {
+            let handle: HANDLE = self.file.as_raw_handle();
+            let mut ov = OVERLAPPED {
+                hEvent: self.event,
+                ..Default::default()
+            };
+            let mut done = 0u32;
+            let wait = u32::try_from(self.timeout.as_millis())
+                .unwrap_or(u32::MAX - 1)
+                .max(1);
+            // SAFETY: `ov` and the buffer `start` was handed outlive the
+            // operation: every path out of this block either never started
+            // it or has seen it complete.
+            unsafe {
+                if start(handle, &raw mut ov) == 0 {
+                    let err = GetLastError();
+                    if err != ERROR_IO_PENDING {
+                        return Err(error(err));
+                    }
+                }
+                if GetOverlappedResultEx(handle, &ov, &mut done, wait, 0) != 0 {
+                    return Ok(done as usize);
+                }
+                let err = GetLastError();
+                if err != WAIT_TIMEOUT {
+                    return Err(error(err));
+                }
+                CancelIoEx(handle, &ov);
+                // It may have finished just before the cancel.
+                if GetOverlappedResult(handle, &ov, &mut done, 1) != 0 {
+                    return Ok(done as usize);
+                }
+            }
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the Discord pipe did not answer",
+            ))
+        }
+    }
+
+    fn error(code: u32) -> io::Error {
+        io::Error::from_raw_os_error(code as i32)
+    }
+
+    impl Read for Pipe {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let len = u32::try_from(buf.len()).unwrap_or(u32::MAX);
+            let ptr = buf.as_mut_ptr();
+            let result = self.run(|handle, ov| {
+                // SAFETY: `ptr` is valid for `len` bytes for as long as `run` waits.
+                unsafe { ReadFile(handle, ptr, len, std::ptr::null_mut(), ov) }
+            });
+            // A pipe the far end closed is the end of the stream, and a read
+            // that filled the buffer with more to come is still a read.
+            match result {
+                Err(e) if e.raw_os_error() == Some(ERROR_BROKEN_PIPE as i32) => Ok(0),
+                Err(e) if e.raw_os_error() == Some(ERROR_MORE_DATA as i32) => Ok(buf.len()),
+                other => other,
+            }
+        }
+    }
+
+    impl Write for Pipe {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            let len = u32::try_from(buf.len()).unwrap_or(u32::MAX);
+            let ptr = buf.as_ptr();
+            self.run(|handle, ov| {
+                // SAFETY: `ptr` is valid for `len` bytes for as long as `run` waits.
+                unsafe { WriteFile(handle, ptr, len, std::ptr::null_mut(), ov) }
+            })
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Drop for Pipe {
+        fn drop(&mut self) {
+            // SAFETY: the event was made in `open` and nothing else holds it.
+            unsafe { CloseHandle(self.event) };
+        }
+    }
 }
 
 #[cfg(test)]
@@ -360,6 +538,26 @@ mod tests {
     fn an_unconnected_transport_sends_nothing() {
         let mut d = Discord::default();
         assert!(matches!(d.send(None), Err(SendError::Gone(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn silent_sockets_share_one_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        // Sockets that accept and never answer, as Discord's do while it
+        // starts up.
+        let paths: Vec<PathBuf> = (0..4)
+            .map(|i| dir.path().join(format!("discord-ipc-{i}")))
+            .collect();
+        let _listening: Vec<_> = paths
+            .iter()
+            .map(|p| std::os::unix::net::UnixListener::bind(p).unwrap())
+            .collect();
+        let started = Instant::now();
+        let result = connect_any(paths, "123", Duration::from_millis(300));
+        assert!(matches!(result, Err(SendError::Gone(_))));
+        let took = started.elapsed();
+        assert!(took < Duration::from_secs(2), "took {took:?}");
     }
 
     #[cfg(unix)]
