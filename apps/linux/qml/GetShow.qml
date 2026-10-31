@@ -1225,7 +1225,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: theme.radiusMd
-            color: gr.chosen ? theme.accentSoft : gr.lit ? theme.glassFloat : whoMouse.containsMouse ? theme.glassFloat : "transparent"
+            color: gr.chosen ? theme.accentSoft : gr.lit ? theme.glassFloat : whoHover.hovered ? theme.glassFloat : "transparent"
             border.width: gr.chosen ? 1 : 0
             border.color: theme.accentEdge
         }
@@ -1236,6 +1236,8 @@ Item {
             hoverEnabled: enabled
             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
             onClicked: function(mouse) { gr.picked(mouse.modifiers) }
+            // The hover through a handler, as the cubes take theirs
+            HoverHandler { id: whoHover; enabled: gr.clickable }
         }
         Column {
             x: theme.space(4)
@@ -1247,7 +1249,7 @@ Item {
         }
         EpisodeCubes {
             id: cubes
-            objectName: "get-cubes"
+            objectName: gr.clickable ? "get-cubes-pick" : "get-cubes"
             x: grid.whoWidth
             anchors.verticalCenter: parent.verticalCenter
             width: grid.cubeWidth
@@ -1282,13 +1284,13 @@ Item {
         // What a click would pick, lit in the cubes before the click: the hovered episode,
         // a whole batch for a gap in it, and with Ctrl held every missing episode the row has
         // (the row's name, clicked, picks those too)
-        readonly property bool hot: cubes.hoverCell >= 0 || whoMouse.containsMouse
+        readonly property bool hot: cubes.hoverCell >= 0 || whoHover.hovered
         readonly property var litCells: {
             var row = gr.rowData, out = ({})
             if (!gr.clickable || !row || !gr.hot) return out
             var cellOf = function(n) { return Math.floor((n - 1) / cubes.fold) }
             var light = function(list) { for (var i = 0; i < list.length; i++) out[cellOf(list[i])] = true }
-            if (Keyboard.ctrl || whoMouse.containsMouse) {
+            if (Keyboard.ctrl || whoHover.hovered) {
                 var w = root.wanted(row)
                 if (!w.length && !Keyboard.ctrl) w = root.covered(row)
                 light(w)

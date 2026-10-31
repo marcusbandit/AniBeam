@@ -168,7 +168,7 @@ Item {
                 color: filled >= 0 ? theme.cubeState("g").fill : st.fill
                 border.width: st.edge === "transparent" ? 0 : 1
                 border.color: st.edge
-                scale: theme.reducedMotion ? 1 : (cubeMouse.containsMouse || (root.spanHot && root.inSpan(cube.index)) ? (root.inSpan(cube.index) ? 1.1 : 1.18) : 1)
+                scale: theme.reducedMotion ? 1 : (cubeHover.hovered || (root.spanHot && root.inSpan(cube.index)) ? (root.inSpan(cube.index) ? 1.1 : 1.18) : 1)
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
                 Item {
                     visible: cube.filled > 0
@@ -200,9 +200,7 @@ Item {
                     anchors.fill: parent
                     anchors.margins: -root.gap / 2
                     enabled: root.clickable
-                    hoverEnabled: enabled
                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onContainsMouseChanged: if (containsMouse) root.hoverCell = cube.index; else if (root.hoverCell === cube.index) root.hoverCell = -1
                     onClicked: function(mouse) {
                         if (root.fold === 1) root.cubeClicked(cube.index, mouse.modifiers)
                         else root.rangeClicked(cube.index * root.fold, Math.min(root.count, (cube.index + 1) * root.fold) - 1, mouse.modifiers)
@@ -213,6 +211,14 @@ Item {
                 Item {
                     anchors.fill: parent
                     anchors.margins: -root.gap / 2
+                    // The hover is a handler's, not the click area's: a MouseArea in this grid
+                    // never saw the pointer (its tooltip's handler did), so neither the lift nor
+                    // the pick preview ever showed
+                    HoverHandler {
+                        id: cubeHover
+                        enabled: root.clickable
+                        onHoveredChanged: if (hovered) root.hoverCell = cube.index; else if (root.hoverCell === cube.index) root.hoverCell = -1
+                    }
                     Tooltip {
                         text: root.count > root.tipLimit || root.fold !== 1 ? ""
                             : root.tipFor ? root.tipFor(cube.index, cube.code)

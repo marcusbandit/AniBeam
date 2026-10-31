@@ -106,6 +106,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Watching no longer says Connected before you connect AniList
 - An empty Home shows how to connect AniList or MyAnimeList
 - Tooltips no longer blink and vanish when moving between cards
+- Episode cubes in Get react to the pointer, which they never did
 - A show you watched to the end with no tracker reads caught up
 - An unfolded run of repeated lines in Activity folds back up
 
