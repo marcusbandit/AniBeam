@@ -12,7 +12,7 @@ names=(search arrow-left arrow-right arrow-down arrow-up chevron-down chevron-up
   audio-lines languages clock film tv layers list-filter keyboard scan ban circle-check circle-x clapperboard image
   sliders-horizontal triangle-alert square-check square calendar-clock book-open users case-sensitive chart-pie check-check
   badge-check bell circle-question-mark step-back step-forward file-down file-up circle-play list-video bookmark sparkles
-  radio folder-search check pencil trash thumbs-up minus timer)
+  radio folder-search check pencil trash thumbs-up)
 # Fetched to a temporary file and moved into place only on success: a 404 or a dropped
 # connection must not leave a zero-byte SVG behind, because a blank icon is not a build error.
 for n in "${names[@]}"; do
