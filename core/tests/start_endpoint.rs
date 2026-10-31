@@ -18,6 +18,7 @@ fn remote(jackett_command: &str) -> DownloadSettings {
         anirss_command: "anirss".to_string(),
         prune_finished_feeds: false,
         rolling: Default::default(),
+        engine: Default::default(),
         jackett_command: jackett_command.to_string(),
         anirss_url: "http://anirss.test".to_string(),
         has_anirss_token: false,

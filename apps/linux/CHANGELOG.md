@@ -68,6 +68,10 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Tooltips show on keyboard focus too
 - Press ? anywhere for the list of keys
 - Exports carry an episode count you set by hand
+- The player's controls set subtitle and audio delay; a and A shift the audio
+- Discord shows what you are watching, a switch in Settings, Playback
+- An endpoint repo can search your own Prowlarr or Jackett over torznab
+- An endpoint repo can add a source that answers in JSON
 
 ### Changed
 - A show's Fixes menu holds Fix files, the episode count, the match and Rescan
