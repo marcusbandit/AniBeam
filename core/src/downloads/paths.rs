@@ -233,7 +233,7 @@ pub fn inside(path: &str, roots: &[&str]) -> bool {
 
 /// The path with links resolved as far as it exists, the rest kept as it
 /// reads (Python's `realpath`).
-fn real(path: &str) -> PathBuf {
+pub fn real(path: &str) -> PathBuf {
     let normed = PathBuf::from(norm(path));
     let mut rest = Vec::new();
     let mut at = normed.as_path();

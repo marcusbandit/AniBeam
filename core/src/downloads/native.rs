@@ -70,10 +70,22 @@ pub(super) async fn subscribe(
     let saving = paths::resolve(core, &qbt).await?;
     // Naming is check-then-act: one subscription at a time
     let _one = core.downloads.rules.lock().await;
-    let name = unique_name(&qbt, &name, &spec).await;
+    let name = unique_name(&qbt, &name, &spec).await?;
     let save_path = paths::join(&saving.save_base, &name);
     let tags = qbt::clean_tags(&saving.tags);
-    qbt.add_feed(&spec.feed_url, &name).await?;
+    if !qbt.add_feed(&spec.feed_url, &name).await?
+        && !qbt
+            .feeds()
+            .await?
+            .iter()
+            .any(|(_, url)| *url == spec.feed_url)
+    {
+        // A feed already sits at that path with another address
+        return Err(CoreError::invalid(
+            "name",
+            format!("a feed named {name:?} already reads another address"),
+        ));
+    }
     qbt.set_rule(&name, &rule_def(&spec, &save_path, &tags))
         .await?;
     Ok(Subscribed {
@@ -87,23 +99,33 @@ pub(super) async fn subscribe(
 }
 
 /// `name`, or `name @endpoint` when a rule of that name reads another feed
-/// (anirss `_unique_rule_name`). Subscribing the same feed again keeps the
-/// name and overwrites the rule. A read that fails keeps the name.
-async fn unique_name(qbt: &QbtClient, name: &str, spec: &SubscriptionSpec) -> String {
-    let Ok(rules) = qbt.rules().await else {
-        return name.to_string();
+/// (anirss `_unique_rule_name`), then `name @endpoint 2` and on while that
+/// one is taken too. Subscribing the same feed again keeps the name and
+/// overwrites the rule. A read that fails is an error, so no rule is
+/// overwritten blind.
+async fn unique_name(
+    qbt: &QbtClient,
+    name: &str,
+    spec: &SubscriptionSpec,
+) -> Result<String, CoreError> {
+    let rules = qbt.rules().await?;
+    let free = |candidate: &str| match rules.get(candidate) {
+        None => true,
+        Some(rule) => rule["affectedFeeds"]
+            .as_array()
+            .is_some_and(|f| f.iter().any(|u| u.as_str() == Some(&spec.feed_url))),
     };
-    let Some(rule) = rules.get(name) else {
-        return name.to_string();
-    };
-    let reads_it = rule["affectedFeeds"]
-        .as_array()
-        .is_some_and(|f| f.iter().any(|u| u.as_str() == Some(&spec.feed_url)));
-    if reads_it || spec.endpoint_name.is_empty() {
-        name.to_string()
-    } else {
-        format!("{name} @{}", spec.endpoint_name)
+    if free(name) || spec.endpoint_name.is_empty() {
+        return Ok(name.to_string());
     }
+    let suffixed = format!("{name} @{}", spec.endpoint_name);
+    if free(&suffixed) {
+        return Ok(suffixed);
+    }
+    Ok((2..)
+        .map(|n| format!("{suffixed} {n}"))
+        .find(|c| free(c))
+        .expect("an unbounded range finds a free name"))
 }
 
 /// The rule exactly as anirss writes it. qBittorrent 4.6 learned tags
@@ -311,7 +333,7 @@ pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRu
         .iter()
         .map(|(name, rule)| {
             let feed_url = first_feed(rule);
-            let save_path = rule["savePath"].as_str().unwrap_or("").to_string();
+            let save_path = rule_save_path(rule).unwrap_or("").to_string();
             SubscriptionRule {
                 name: name.clone(),
                 query: crate::subscriptions::decode_nyaa_query(&feed_url).unwrap_or_default(),
@@ -343,6 +365,16 @@ pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRu
 
 fn first_feed(rule: &Value) -> String {
     rule["affectedFeeds"][0].as_str().unwrap_or("").to_string()
+}
+
+/// Where a rule saves. qBittorrent 4.6 and later read `torrentParams`
+/// over the flat keys, and a rule made in its own window may keep the
+/// folder only there.
+fn rule_save_path(rule: &Value) -> Option<&str> {
+    [&rule["torrentParams"]["save_path"], &rule["savePath"]]
+        .into_iter()
+        .filter_map(Value::as_str)
+        .find(|p| !p.is_empty())
 }
 
 // Removing ------------------------------------------------------------------------
@@ -436,9 +468,7 @@ async fn plan(
     for name in names {
         let rule = &rules[name.as_str()];
         let feed_url = first_feed(rule);
-        let saved = rule["savePath"]
-            .as_str()
-            .filter(|p| !p.is_empty())
+        let saved = rule_save_path(rule)
             .map(str::to_string)
             .unwrap_or_else(|| paths::join(save_base, name));
         let save_path = paths::norm(&saved);
@@ -515,10 +545,12 @@ fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Resu
         }
         Ok(all)
     })?;
-    let home = std::env::home_dir();
+    // Links resolved on both sides, as `paths::inside` compares them
+    let home = std::env::home_dir().map(|h| paths::real(&h.to_string_lossy()));
+    let sources: Vec<PathBuf> = sources.iter().map(|s| paths::real(s)).collect();
     for p in plans {
-        let folder = Path::new(&p.save_path);
-        let holds = |inner: &Path| inner.starts_with(folder);
+        let folder = paths::real(&p.save_path);
+        let holds = |inner: &Path| inner.starts_with(&folder);
         if home.as_deref().is_some_and(holds) {
             return Err(CoreError::invalid(
                 "files",
@@ -528,7 +560,7 @@ fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Resu
                 ),
             ));
         }
-        if sources.iter().any(|s| holds(Path::new(&paths::norm(s)))) {
+        if sources.iter().any(|s| holds(s)) {
             return Err(CoreError::invalid(
                 "files",
                 format!(
@@ -618,6 +650,17 @@ async fn blocking<T: Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rule_saves_where_its_torrent_params_say_first() {
+        let both = json!({"savePath": "/flat", "torrentParams": {"save_path": "/params"}});
+        assert_eq!(rule_save_path(&both), Some("/params"));
+        let only_params = json!({"savePath": "", "torrentParams": {"save_path": "/params"}});
+        assert_eq!(rule_save_path(&only_params), Some("/params"));
+        let flat = json!({"savePath": "/flat", "torrentParams": {"save_path": ""}});
+        assert_eq!(rule_save_path(&flat), Some("/flat"));
+        assert_eq!(rule_save_path(&json!({})), None);
+    }
 
     fn spec() -> SubscriptionSpec {
         SubscriptionSpec {

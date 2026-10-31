@@ -265,6 +265,11 @@ fn subscribing_the_same_feed_again_keeps_the_name() {
     );
     // qBittorrent already has the feed: no failure
     r.http.push_for("rss/addFeed", 409, "Conflict");
+    r.http.push_for(
+        "rss/items",
+        200,
+        json!({"Show": {"uid": "u", "url": "https://feed.example/rss?q=Show"}}).to_string(),
+    );
     r.http.push_for("rss/setRule", 200, "");
 
     let done = subscribe(&r, "Show", vec![episode(1)], None);
@@ -274,6 +279,30 @@ fn subscribing_the_same_feed_again_keeps_the_name() {
         field(called(&calls, "rss/setRule"), "ruleName").as_deref(),
         Some("Show")
     );
+}
+
+#[test]
+fn a_feed_of_that_name_on_another_address_is_refused() {
+    let r = rig();
+    r.http.push_for("rss/rules", 200, "{}");
+    r.http.push_for("rss/addFeed", 409, "Conflict");
+    r.http.push_for(
+        "rss/items",
+        200,
+        json!({"Show": {"uid": "u", "url": "https://feed.example/rss?q=Old"}}).to_string(),
+    );
+
+    let done = subscribe(&r, "Show", vec![episode(1)], None);
+    assert!(
+        matches!(failed(&done), CoreError::Invalid { field, .. } if field == "name"),
+        "{done:?}"
+    );
+    let calls = qbt_calls(&r.http);
+    assert!(
+        !calls.iter().any(|(p, _)| p == "rss/setRule"),
+        "no rule pointed at a feed qBittorrent never took"
+    );
+    no_anirss(&r.http);
 }
 
 #[test]
