@@ -476,6 +476,20 @@ fn charref(num: u32) -> String {
     char::from_u32(num).map(String::from).unwrap_or_default()
 }
 
+/// A message a feed or API wrote about itself, made safe to show and store: control
+/// characters dropped, whitespace runs folded to one space, and at most 200 characters.
+pub(crate) fn feed_message(raw: &str) -> String {
+    let folded = raw
+        .split(|c: char| c.is_whitespace() || c.is_control())
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    match folded.char_indices().nth(200) {
+        Some((cut, _)) => format!("{}...", &folded[..cut]),
+        None => folded,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -791,5 +805,15 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn feed_message_strips_control_characters_and_caps_length() {
+        assert_eq!(feed_message("  bad\u{0}\u{1b}[31m query\r\n\tnow "), "bad [31m query now");
+        assert_eq!(feed_message("\u{7}\n "), "");
+        let long = "\u{e9}".repeat(250);
+        let cut = feed_message(&long);
+        assert_eq!(cut, format!("{}...", "\u{e9}".repeat(200)));
+        assert_eq!(feed_message(&"a".repeat(200)), "a".repeat(200));
     }
 }
