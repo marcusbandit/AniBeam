@@ -7,8 +7,8 @@
 // flat grid. Airing is its own section before all of that: a series airing now is there
 // and also under its franchise or its cut, except in the current season's section, which
 // holds only what is done airing. The core searches and orders; the page cuts the sections client-side and
-// reloads, debounced, when the core says a series changed. The visible words are Order
-// (the core's ordering, `sort` here) and Sort (the cut, `arrange` here); the names stay
+// reloads, debounced, when the core says a series changed. The visible words are Sort by
+// (the core's ordering, `sort` here) and Group by (the cut, `arrange` here); the names stay
 // for the preference keys and the drive scripts.
 import QtQuick
 import QtQuick.Controls.Basic as QC
@@ -90,12 +90,25 @@ Item {
     }
     readonly property bool showHidden: Door.revealHidden && hiddenExist
     readonly property var tabNames: tabs.concat(watchedExist ? ["Watched"] : []).concat(showHidden ? ["Hidden"] : [])
+    // How many each tab holds, from the last read
+    property var tabCounts: ({})
+    readonly property var tabOptions: tabNames.map(function(t) {
+        var k = { All: "all", Series: "series", Movies: "movies", Watched: "watched", Hidden: "hidden" }[t]
+        return { text: t, name: t.toLowerCase(), count: page.tabCounts[k] }
+    })
+    // What the count under the title counts, by tab
+    function countLine(n) {
+        if (tab === "Movies") return Fmt.plural(n, "movie", "movies")
+        if (tab === "Watched") return n + " watched"
+        if (tab === "Hidden") return n + " hidden"
+        return Fmt.plural(n, "series", "series")
+    }
 
     // ---- The sections
     function typeOf(c) {
         var f = c.format || ""
         if (f === "TV" || f === "TV_SHORT") return "TV"
-        if (f === "MOVIE" || (f === "" && c.kind === "Movie")) return "Films"
+        if (f === "MOVIE" || (f === "" && c.kind === "Movie")) return "Movies"
         if (f === "OVA" || f === "ONA" || f === "SPECIAL") return "OVA, ONA and specials"
         if (f === "MUSIC") return "Music"
         return "Unknown"
@@ -253,6 +266,7 @@ Item {
         if (r.error) { frame.toast(r.error.message); return }
         cardList = r.reply.series.filter(page.inGenre)
         var n = r.reply.counts || {}
+        tabCounts = n
         watchedExist = (n.watched || 0) > 0
         hiddenExist = Door.revealHidden && (n.hidden || 0) > 0
         libraryEmpty = (n.all || 0) === 0 && !watchedExist && (n.hidden || 0) === 0
@@ -300,6 +314,14 @@ Item {
         if (props.sort && sorts.some(function(x) { return x[0] === props.sort })) { sort = props.sort; direction = props.sort === "Alpha" ? "Asc" : "Desc" }
         queryDebounce.stop()
         reload()
+        // Home's See all names the box it stands for: the page opens on it
+        if (props.box) Qt.callLater(page.revealBox, props.box)
+    }
+    function revealBox(title) {
+        for (var i = 0; i < boxRepeater.count; i++) {
+            var it = boxRepeater.itemAt(i)
+            if (it && it.modelData.title === title) { scroll.contentY = Math.max(0, it.mapToItem(scroll.contentItem, 0, 0).y - theme.space(4)); return }
+        }
     }
 
     // ---- The grid's geometry: as many columns as the width holds at the poster width
@@ -343,7 +365,7 @@ Item {
                 anchors.left: clearGenreButton.visible ? clearGenreButton.right : titleLabel.right
                 anchors.leftMargin: theme.space(3)
                 anchors.baseline: titleLabel.baseline
-                text: Fmt.plural(page.shownCount, "series", "series")
+                text: page.countLine(page.shownCount)
                 role: "ui"
                 color: theme.textDim
             }
@@ -365,7 +387,7 @@ Item {
             spacing: theme.space(4)
             Seg {
                 objectName: "tab"
-                options: page.tabNames
+                options: page.tabOptions
                 index: Math.max(0, page.tabNames.indexOf(page.tab))
                 onPicked: function(i) { page.pickTab(i) }
             }
@@ -373,7 +395,7 @@ Item {
             // a dim label before each control
             Row {
                 spacing: theme.space(2.5)
-                Label { anchors.verticalCenter: parent.verticalCenter; text: "Order"; role: "ui"; color: theme.textDim }
+                Label { anchors.verticalCenter: parent.verticalCenter; text: "Sort by"; role: "ui"; color: theme.textDim }
                 Seg {
                     objectName: "sort"
                     visible: !page.compact
@@ -404,7 +426,7 @@ Item {
             }
             Row {
                 spacing: theme.space(2.5)
-                Label { anchors.verticalCenter: parent.verticalCenter; text: "Sort"; role: "ui"; color: theme.textDim }
+                Label { anchors.verticalCenter: parent.verticalCenter; text: "Group by"; role: "ui"; color: theme.textDim }
                 Seg {
                     objectName: "arrange"
                     visible: !page.compact
@@ -457,6 +479,7 @@ Item {
 
         // ---- The sections
         Repeater {
+            id: boxRepeater
             model: page.sections
             Column {
                 id: section
@@ -514,7 +537,8 @@ Item {
             EmptyState {
                 icon: "search"
                 title: page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing here"
-                body: page.query !== "" ? "" : "No " + (page.tab === "Series" ? "series" : page.tab === "Movies" ? "films" : page.tab === "Watched" ? "watched items" : "items") + " in your library yet."
+                body: page.query !== "" ? "" : "No " + (page.tab === "Series" ? "series" : page.tab === "Movies" ? "movies" : page.tab === "Watched" ? "watched items" : "items") + " in your library yet."
+                Button { visible: page.query !== ""; text: "Clear search"; icon: "x"; onClicked: { search.text = ""; queryDebounce.stop(); page.query = ""; frame.nav.current.props = page.genre !== "" ? { genre: page.genre } : {}; page.reload() } }
             }
         }
     }

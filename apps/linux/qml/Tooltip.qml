@@ -47,6 +47,19 @@ Item {
         }
     }
     onTextChanged: if (hh.hovered && text === "") hide()
+    // Keyboard focus shows the tip too, after the same pause, and losing it takes it away
+    Connections {
+        target: root.target
+        function onActiveFocusChanged() {
+            if (root.target.activeFocus && root.text !== "" && !hh.hovered) focusIntent.restart()
+            else if (!root.target.activeFocus) { focusIntent.stop(); if (!hh.hovered) root.hide() }
+        }
+    }
+    Timer {
+        id: focusIntent
+        interval: 600
+        onTriggered: if (root.target.activeFocus && root.host && root.text !== "" && !root.popoverUp()) root.host.showTip(root.target, root.text, root.target, true, true)
+    }
     // A tip already up when a popover opens (a click on the hovered button) goes
     Connections {
         target: hh.hovered && root.host ? root.host.escapeStack : null

@@ -30,7 +30,11 @@ Item {
         if (s === "moving") return "Moving"
         if (s === "error") return "Error"
         if (s === "missingFiles") return "Files missing"
-        return s
+        if (s === "allocating") return "Making room"
+        if (s === "metaDL" || s === "forcedMetaDL") return "Finding peers"
+        if (s === "forcedDL") return "Downloading"
+        // A state this list does not know yet still reads as a word, never the client's code
+        return "Waiting"
     }
     readonly property string facts: {
         var parts = []
@@ -40,7 +44,7 @@ Item {
         if ((root.t.dlspeed || 0) > 0) parts.push(Fmt.bytes(root.t.dlspeed) + "/s down")
         if ((root.t.upspeed || 0) > 0) parts.push(Fmt.bytes(root.t.upspeed) + "/s up")
         if (!root.done && (root.t.dlspeed || 0) > 0 && root.t.eta > 0 && root.t.eta < 8640000) parts.push(Fmt.countdown(root.t.eta) + " left")
-        if (!root.done) parts.push(String(root.t.num_seeds || 0) + " seeds")
+        if (!root.done) parts.push(Fmt.plural(root.t.num_seeds || 0, "seeder", "seeders"))
         if (root.t.roll) parts.push("rolling, episodes " + root.t.roll.next + " to " + root.t.roll.through + " of " + root.t.roll.total)
         return parts.join(", ")
     }

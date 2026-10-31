@@ -669,6 +669,23 @@ impl Snapshot {
             .map(|f| f.number as u32)
             .collect();
         let usage = self.usage_of(row);
+        // Episodes finished on this device. With no tracker they are all the watched state
+        // has to go on: a show watched to its end here reads caught up (#102).
+        let done: HashSet<&str> = self
+            .completed
+            .get(&row.id)
+            .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
+            .unwrap_or_default();
+        let watched_here: BTreeSet<u32> = episodes
+            .iter()
+            .filter(|f| f.number >= 1.0 && done.contains(f.episode_key.as_str()))
+            .map(|f| f.number as u32)
+            .collect();
+        let watched_run_here = if row.kind == SeriesKind::Movie {
+            None
+        } else {
+            (1..).take_while(|n| watched_here.contains(n)).last()
+        };
         SeriesCard {
             id: row.id,
             kind: row.kind,
@@ -708,21 +725,16 @@ impl Snapshot {
             finished_watched: usage.finished,
             code,
             watched,
-            watched_state: watched_state(watched, total, latest_aired, latest_downloaded),
+            watched_state: watched_state(
+                watched.or(watched_run_here),
+                total,
+                latest_aired,
+                latest_downloaded,
+            ),
             episodes_here: on_disk.iter().copied().collect(),
             cubes: if row.kind == SeriesKind::Movie {
                 String::new()
             } else {
-                let done: HashSet<&str> = self
-                    .completed
-                    .get(&row.id)
-                    .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
-                    .unwrap_or_default();
-                let watched_here: BTreeSet<u32> = episodes
-                    .iter()
-                    .filter(|f| f.number >= 1.0 && done.contains(f.episode_key.as_str()))
-                    .map(|f| f.number as u32)
-                    .collect();
                 cubes(&CubeFacts {
                     total,
                     latest_aired,

@@ -3,7 +3,9 @@
 // so a binding on it survives. An option is a string, or a record { text, icon, delegate }:
 // `icon` names a Lucide glyph drawn before the text, `name` the cell's objectName suffix, `delegate` is a Component drawn before
 // it instead, which reads the option's colour and record off its parent Loader as `tint`
-// and `option`.
+// and `option`; `count`, when set, is a dim number after the text.
+//
+// A Tab stop: Left and Right pick the cell before or after, Home and End the first and last.
 import QtQuick
 
 Corner {
@@ -12,6 +14,17 @@ Corner {
     property int index: 0
     property bool small: false
     signal picked(int i)
+    activeFocusOnTab: true
+    Keys.onPressed: function(e) {
+        var n = options.length, to = -1
+        if (e.key === Qt.Key_Left) to = Math.max(0, index - 1)
+        else if (e.key === Qt.Key_Right) to = Math.min(n - 1, index + 1)
+        else if (e.key === Qt.Key_Home) to = 0
+        else if (e.key === Qt.Key_End) to = n - 1
+        else return
+        e.accepted = true
+        if (to !== index && to >= 0) root.picked(to)
+    }
 
     readonly property real pad: 2
     implicitHeight: (small ? theme.space(6) : theme.controlHeight)
@@ -19,7 +32,7 @@ Corner {
     radius: height / 2
     smoothing: theme.cornerSmoothing
     color: theme.tile
-    borderColor: theme.line
+    borderColor: activeFocus ? theme.focusRing : theme.line
     borderWidth: 1
 
     property real thumbX: 0
@@ -111,6 +124,14 @@ Corner {
                         color: cell.tint
                         role: "ui"
                         font.pointSize: root.small ? theme.typeSmall : theme.typeNormal
+                    }
+                    Label {
+                        visible: cell.record && cell.modelData.count !== undefined && cell.modelData.count !== null
+                        anchors.baseline: t.baseline
+                        text: visible ? String(cell.modelData.count) : ""
+                        color: cell.on ? theme.textDim : theme.textFaint
+                        role: "ledger"
+                        font.pointSize: theme.typeSmall
                     }
                 }
                 MouseArea {

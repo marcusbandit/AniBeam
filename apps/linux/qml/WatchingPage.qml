@@ -183,9 +183,9 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: page.refreshing ? "Refreshing" : "Refresh"
                 icon: "refresh-cw"
+                busy: page.refreshing
                 flat: true
-                enabled: !page.refreshing
-                onClicked: page.refresh(true)
+                onClicked: if (!page.refreshing) page.refresh(true)
             }
         }
 
@@ -235,7 +235,8 @@ Item {
                             posterWidth: page.cardWidth
                             nowMs: page.nowMs
                             onOpened: page.open(modelData)
-                            onPlayed: page.playSeries(modelData.raw.owned, modelData.raw.title)
+                            // A show the library does not have has nothing to play: Space opens it
+                            onPlayed: modelData.ghost ? page.open(modelData) : page.playSeries(modelData.raw.owned, modelData.raw.title)
                         }
                     }
                 }
@@ -252,7 +253,7 @@ Item {
                 visible: !page.anilistConnected
                 icon: "log-in"
                 title: "AniList is not connected"
-                body: "Connected, this page lists your Watching and Rewatching series on AniList: Play on the ones you own, a countdown on the ones airing."
+                body: "Connect it and this page lists the shows you are watching or rewatching on AniList, with Play on the ones you have and a countdown on the ones airing."
                 // One click: the browser opens on it when the build carries AniList's id
                 ConnectButton {
                     objectName: "watching-connect"
@@ -275,6 +276,7 @@ Item {
                 icon: "eye"
                 title: "Nothing on your watching list"
                 body: "Mark a show as Watching on AniList and it lands here."
+                Button { text: "Open AniList"; icon: "external-link"; flat: true; onClicked: frame.openLink("https://anilist.co/home") }
             }
         }
     }
