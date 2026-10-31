@@ -396,7 +396,8 @@ FocusScope {
     }
     function delayLine(prop, v) { return (prop === "audio-delay" ? "Audio delay " : "Subtitle delay ") + delayText(v) }
     function setDelay(prop, v) {
-        v = Math.round(v * 10) / 10
+        // Hundredths, so a step from a fine mpv.conf value moves by exactly 0.1
+        v = Math.round(v * 100) / 100
         if (prop === "audio-delay") audioDelay = v; else subDelay = v
         video.setProperty(prop, v)
         hud.flash(delayLine(prop, v), prop)

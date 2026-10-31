@@ -96,6 +96,15 @@ async fn host(
 ) -> Vec<NetCheck> {
     let mut out = Vec::new();
     let mut ips: Vec<IpAddr> = Vec::new();
+    // Named with the port when it is not the scheme's own, so two servers on one machine read
+    // apart, and the fetch says HTTP when that is what it is.
+    let plain = url.starts_with("http://");
+    let label = if port == if plain { 80 } else { 443 } {
+        name.to_string()
+    } else {
+        format!("{name}:{port}")
+    };
+    let fetch = if plain { "HTTP" } else { "HTTPS" };
 
     let start = Instant::now();
     let system = tokio::time::timeout(STEP, tokio::net::lookup_host((name, 443))).await;
@@ -108,7 +117,7 @@ async fn host(
                 .collect::<Vec<_>>()
                 .join(", ");
             out.push(line(
-                format!("{name}: network DNS"),
+                format!("{label}: network DNS"),
                 !found.is_empty(),
                 shown,
                 ms(start),
@@ -116,13 +125,13 @@ async fn host(
             ips.extend(found);
         }
         Ok(Err(e)) => out.push(line(
-            format!("{name}: network DNS"),
+            format!("{label}: network DNS"),
             false,
             format!("failed: {e}"),
             ms(start),
         )),
         Err(_) => out.push(line(
-            format!("{name}: network DNS"),
+            format!("{label}: network DNS"),
             false,
             "no answer".into(),
             ms(start),
@@ -138,7 +147,7 @@ async fn host(
                 .collect::<Vec<_>>()
                 .join(", ");
             out.push(line(
-                format!("{name}: DNS over HTTPS"),
+                format!("{label}: DNS over HTTPS"),
                 true,
                 shown,
                 ms(start),
@@ -150,7 +159,7 @@ async fn host(
             }
         }
         None => out.push(line(
-            format!("{name}: DNS over HTTPS"),
+            format!("{label}: DNS over HTTPS"),
             false,
             "no resolver answered".into(),
             ms(start),
@@ -159,7 +168,7 @@ async fn host(
 
     for ip in ips.iter().filter(|ip| ip.is_ipv4()).take(3) {
         let (ok, detail, t) = tcp(*ip, port).await;
-        out.push(line(format!("{name}: connect {ip}"), ok, detail, t));
+        out.push(line(format!("{label}: connect {ip}"), ok, detail, t));
     }
 
     let start = Instant::now();
@@ -190,12 +199,17 @@ async fn host(
         .await;
     match answer {
         Ok(r) => out.push(line(
-            format!("{name}: HTTPS"),
+            format!("{label}: {fetch}"),
             r.is_success(),
             format!("HTTP {}, {} bytes", r.status, r.body.len()),
             ms(start),
         )),
-        Err(e) => out.push(line(format!("{name}: HTTPS"), false, e.message, ms(start))),
+        Err(e) => out.push(line(
+            format!("{label}: {fetch}"),
+            false,
+            e.message,
+            ms(start),
+        )),
     }
     out
 }

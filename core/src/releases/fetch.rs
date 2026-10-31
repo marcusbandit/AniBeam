@@ -268,7 +268,7 @@ fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreE
         Some(d) if !d.is_empty() => their_message(d),
         _ => format!(
             "the indexer answered error {}",
-            root.attribute("code").unwrap_or("?")
+            their_message(root.attribute("code").unwrap_or("?"))
         ),
     };
     Some(CoreError::Service {
