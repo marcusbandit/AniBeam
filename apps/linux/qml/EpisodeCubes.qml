@@ -147,8 +147,26 @@ Item {
         Label { id: badgeLabel; anchors.centerIn: parent; text: root.badgeText; role: "figure"; font.pointSize: theme.typeSmall * 0.9; color: theme.text }
     }
 
+    // One cube is one Rectangle. The hover, the click and the tip belong to the whole
+    // grid and find their cube from the pointer, rather than every cube carrying its own
+    // MouseArea, hover box and Tooltip: on a card that was seven objects a cube, most of
+    // the items a library page built (#289).
+    readonly property real gridY: tabHeight + pad
+    function cellAt(x, y) {
+        var step = size + gap
+        var c = Math.floor((x + gap / 2) / step), r = Math.floor((y - gridY + gap / 2) / step)
+        if (c < 0 || c >= perRow || r < 0) return -1
+        var i = r * perRow + c
+        return i < cells.length ? i : -1
+    }
+    // The cube under the pointer, for the tip; the hover a click acts on is hoverCell
+    readonly property int pointCell: hover.hovered ? cellAt(hover.point.position.x, hover.point.position.y) : -1
+    onPointCellChanged: hoverCell = clickable ? pointCell : -1
+    onClickableChanged: hoverCell = clickable ? pointCell : -1
+    HoverHandler { id: hover; cursorShape: root.clickable && root.pointCell >= 0 ? Qt.PointingHandCursor : Qt.ArrowCursor }
+
     Grid {
-        y: root.tabHeight + root.pad
+        y: root.gridY
         columns: root.perRow
         spacing: root.gap
         Repeater {
@@ -164,46 +182,86 @@ Item {
                 color: filled >= 0 ? theme.cubeState("g").fill : st.fill
                 border.width: st.edge === "transparent" ? 0 : 1
                 border.color: st.edge
-                scale: cubeMouse.containsMouse || (root.spanHot && root.inSpan(cube.index)) ? (root.inSpan(cube.index) ? 1.1 : 1.18) : 1
+                scale: root.hoverCell === cube.index || (root.spanHot && root.inSpan(cube.index)) ? (root.inSpan(cube.index) ? 1.1 : 1.18) : 1
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
-                Item {
-                    visible: cube.filled > 0
-                    anchors.bottom: parent.bottom
-                    width: parent.width
-                    height: Math.round(parent.height * cube.filled)
-                    clip: true
-                    Rectangle {
-                        y: parent.height - cube.height
-                        width: cube.width; height: cube.height
-                        radius: cube.radius
-                        color: cube.st.fill
-                    }
-                }
-                MouseArea {
-                    id: cubeMouse
-                    anchors.fill: parent
-                    anchors.margins: -root.gap / 2
-                    enabled: root.clickable
-                    hoverEnabled: enabled
-                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onContainsMouseChanged: if (containsMouse) root.hoverCell = cube.index; else if (root.hoverCell === cube.index) root.hoverCell = -1
-                    onClicked: function(mouse) {
-                        if (root.fold === 1) root.cubeClicked(cube.index, mouse.modifiers)
-                        else root.rangeClicked(cube.index * root.fold, Math.min(root.count, (cube.index + 1) * root.fold) - 1, mouse.modifiers)
-                    }
-                }
-                // The hover reaches half the gap each way, so neighbouring cubes meet and a
-                // move from one to the next never crosses empty ground
-                Item {
-                    anchors.fill: parent
-                    anchors.margins: -root.gap / 2
-                    Tooltip {
-                        text: root.count > root.tipLimit || root.fold !== 1 ? ""
-                            : root.tipFor ? root.tipFor(cube.index, cube.code)
-                            : "Episode " + (root.first + cube.index) + ": " + cube.st.label.toLowerCase()
-                    }
-                }
             }
         }
+    }
+    // A part-downloaded episode fills from the foot. One Repeater over just those cubes,
+    // usually none, rather than a fill slot in every cube.
+    readonly property var partial: {
+        var out = []
+        if (!fills || fold !== 1) return out
+        for (var i = 0; i < cells.length; i++)
+            if (cells[i] === "t" && typeof fills[i] === "number" && fills[i] > 0) out.push(i)
+        return out
+    }
+    Repeater {
+        model: root.partial
+        Item {
+            required property int modelData
+            readonly property real filled: Math.min(1, root.fills[modelData])
+            readonly property var st: theme.cubeState("t")
+            x: (modelData % root.perRow) * (root.size + root.gap)
+            y: root.gridY + Math.floor(modelData / root.perRow) * (root.size + root.gap) + root.size - height
+            width: root.size
+            height: Math.round(root.size * filled)
+            clip: true
+            scale: root.hoverCell === modelData ? 1.18 : 1
+            Rectangle {
+                y: parent.height - root.size
+                width: root.size; height: root.size
+                radius: Math.max(1, root.size * 0.3)
+                color: parent.st.fill
+            }
+        }
+    }
+    MouseArea {
+        y: root.gridY
+        width: parent.width
+        height: Math.max(0, parent.height - root.gridY)
+        enabled: root.clickable
+        onClicked: function(mouse) {
+            var i = root.cellAt(mouse.x, mouse.y + root.gridY)
+            if (i < 0) return
+            if (root.fold === 1) root.cubeClicked(i, mouse.modifiers)
+            else root.rangeClicked(i * root.fold, Math.min(root.count, (i + 1) * root.fold) - 1, mouse.modifiers)
+        }
+    }
+
+    // The tip: one for the grid, under the hovered cube. The probe stands where that cube
+    // is, so the frame places the tip as it did when each cube had its own.
+    readonly property string tipText: pointCell < 0 || count > tipLimit || fold !== 1 ? ""
+        : tipFor ? tipFor(pointCell, cells[pointCell] || "g")
+        : "Episode " + (first + pointCell) + ": " + theme.cubeState(cells[pointCell] || "g").label.toLowerCase()
+    readonly property var tipHost: typeof frame === "undefined" || !frame ? null
+        : frame.showTip ? frame : (frame.item && frame.item.showTip ? frame.item : null)
+    Item {
+        id: probe
+        x: root.pointCell < 0 ? 0 : (root.pointCell % root.perRow) * (root.size + root.gap)
+        y: root.pointCell < 0 ? 0 : root.gridY + Math.floor(root.pointCell / root.perRow) * (root.size + root.gap)
+        width: root.size; height: root.size
+    }
+    function tipPopoverUp() {
+        if (!tipHost || !tipHost.escapeStack) return false
+        var e = tipHost.escapeStack.entries
+        for (var i = 0; i < e.length; i++) if (e[i].kind === "popover") return true
+        return false
+    }
+    onTipTextChanged: {
+        if (!tipHost) return
+        if (tipText === "") { tipIntent.stop(); if (hover.hovered) tipHost.hideTip(); else tipHost.releaseTip(root); return }
+        if (tipHost.tipWarm && tipHost.tipWarm()) tipIntent.trigger()
+        else tipIntent.restart()
+    }
+    Connections {
+        target: hover
+        function onHoveredChanged() { if (!hover.hovered) { tipIntent.stop(); if (root.tipHost) root.tipHost.releaseTip(root) } }
+    }
+    Timer {
+        id: tipIntent
+        interval: 600
+        function trigger() { stop(); triggered() }
+        onTriggered: if (hover.hovered && root.tipHost && root.tipText !== "" && !root.tipPopoverUp()) root.tipHost.showTip(probe, root.tipText, root)
     }
 }

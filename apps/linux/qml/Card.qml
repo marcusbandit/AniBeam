@@ -186,6 +186,21 @@ Item {
         }
     }
 
+    // The tags along the top right, in order. An episode out and not seen is the one tag in
+    // the accent; a series put aside says so instead, since one on hold has an episode
+    // waiting almost by definition. Downloading: an episode a torrent is still writing, not
+    // playable until it is whole.
+    readonly property var tags: {
+        var t = []
+        if (item.watched_state === "Behind" && !ghost && !dropped && !onHold) t.push({ name: "tag-new", text: "New", ink: theme.accentOnPoster })
+        if (downloadingCount > 0 && !ghost) t.push({ name: "tag-downloading", text: "Downloading", ink: downloadInk })
+        if (onHold && !ghost) t.push({ name: "tag-on-hold", text: "On hold", ink: theme.onPoster })
+        if (dropped) t.push({ name: "tag-dropped", text: "Dropped", ink: theme.onPosterDim })
+        if (!!item.hidden) t.push({ name: "tag-hidden", text: "Hidden", ink: theme.onPosterDim })
+        if (ghost && !!item.site_url) t.push({ name: "tag-anilist", text: "AniList", ink: theme.onPoster })
+        return t
+    }
+
     // 0 rest, 1 hover; smoothed like every other tracking value
     property real lift: 0
     readonly property real liftTarget: hoverer.hovered ? 1 : 0
@@ -291,15 +306,17 @@ Item {
     Row {
         x: root.width - width - root.pad * 0.8 - (dismiss.visible ? dismiss.width + theme.space(1) : 0); y: root.pad * 0.8
         spacing: theme.space(1)
-        // An episode out and not seen: the one tag in the accent. A series put aside says so
-        // instead, since one on hold has an episode waiting almost by definition
-        PosterTag { visible: root.item.watched_state === "Behind" && !root.ghost && !root.dropped && !root.onHold; text: "New"; ink: theme.accentOnPoster }
-        // An episode a torrent is still writing: it is not playable until it is whole
-        PosterTag { objectName: "tag-downloading"; visible: root.downloadingCount > 0 && !root.ghost; text: "Downloading"; ink: root.downloadInk }
-        PosterTag { objectName: "tag-on-hold"; visible: root.onHold && !root.ghost; text: "On hold" }
-        PosterTag { visible: root.dropped; text: "Dropped"; ink: theme.onPosterDim }
-        PosterTag { visible: !!root.item.hidden; text: "Hidden"; ink: theme.onPosterDim }
-        PosterTag { visible: root.ghost && !!root.item.site_url; text: "AniList" }
+        // Only the tags that apply are built: six hidden PosterTags a card, on every card of
+        // a page, were a good share of what the page cost (#289).
+        Repeater {
+            model: root.tags
+            PosterTag {
+                required property var modelData
+                objectName: modelData.name
+                text: modelData.text
+                ink: modelData.ink
+            }
+        }
     }
 
     // ---- The writing on the foot

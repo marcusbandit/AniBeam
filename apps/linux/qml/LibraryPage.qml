@@ -492,14 +492,19 @@ Item {
                     spacing: page.gap
                     Repeater {
                         model: section.modelData.cards
-                        Card {
+                        LazyTile {
+                            id: tile
                             required property var modelData
-                            objectName: "tile-" + modelData.id
-                            item: modelData
-                            posterWidth: page.cardWidth
-                            nowMs: page.nowMs
-                            onOpened: frame.go("series", { id: modelData.id }, modelData.title)
-                            onPlayed: page.playSeries(modelData)
+                            width: page.cardWidth
+                            height: Math.round(page.cardWidth * 1.5)
+                            sourceComponent: Card {
+                                objectName: "tile-" + tile.modelData.id
+                                item: tile.modelData
+                                posterWidth: page.cardWidth
+                                nowMs: page.nowMs
+                                onOpened: frame.go("series", { id: tile.modelData.id }, tile.modelData.title)
+                                onPlayed: page.playSeries(tile.modelData)
+                            }
                         }
                     }
                 }

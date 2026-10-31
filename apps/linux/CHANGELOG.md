@@ -25,6 +25,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Changed
 - The activity log speaks plain words and leaves out background chores
+- Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
 - A download's speed and time left no longer run under its Stop button

@@ -124,7 +124,8 @@ fn main() {
             .qml_file("qml/SettingsDataTab.qml")
             .qml_file("qml/DevRecorder.qml")
             .qml_file("qml/DevHud.qml")
-            .qml_file("qml/SettingsDeveloperTab.qml"),
+            .qml_file("qml/SettingsDeveloperTab.qml")
+            .qml_file("qml/LazyTile.qml"),
     )
     .qt_module("Quick")
     .files([

@@ -28,6 +28,29 @@ Flickable {
     function scrollTo(y) { wheel.scrollTo(y) }
     readonly property real scrollTarget: wheel.target
     GridKeys { id: gridKeys; flick: root }
+
+    // LazyTile's budget (#289): the area of cards built at once when the page is made,
+    // about a screen and a tenth; the rest are built as they come near, once the page
+    // has painted and its layout is settled (lazyArmed).
+    property real lazyLeft: 0
+    property bool lazyStarted: false
+    property bool lazyArmed: false
+    function takeLazy(area) {
+        if (!lazyStarted) {
+            lazyStarted = true
+            var w = root.Window.window
+            lazyLeft = 1.1 * (w ? w.width * w.height : 1920 * 1080)
+        }
+        var had = lazyLeft
+        lazyLeft -= area
+        return had > 0
+    }
+    Connections {
+        target: root.Window.window
+        enabled: !root.lazyArmed
+        function onFrameSwapped() { root.lazyArmed = true }
+    }
+    Timer { running: !root.lazyArmed; interval: 250; onTriggered: root.lazyArmed = true }
     function keyPressed(event) { gridKeys.handle(event, root.Window.window ? root.Window.window.activeFocusItem : null) }
     Keys.onPressed: function(event) { root.keyPressed(event) }
     MouseArea { anchors.fill: parent; onPressed: function(m) { root.forceActiveFocus(); m.accepted = false } }
