@@ -21,7 +21,7 @@ Item {
     readonly property string meta: Fmt.plural(source.series_count || 0, "series", "series")
         + ((source.movie_folders || []).length ? ", " + Fmt.plural(source.movie_folders.length, "movie folder", "movie folders") : "")
     readonly property real gutter: theme.space(6)
-    readonly property bool stacked: width < lead.width + controls.width + gutter + theme.space(4)
+    readonly property bool stacked: width < lead.width + controls.width + gutter
 
     width: parent.width
     height: stacked ? theme.space(3) + lead.height + theme.space(2) + controls.height + theme.space(3)
@@ -29,7 +29,7 @@ Item {
 
     Row {
         id: lead
-        x: theme.space(4)
+        x: 0
         y: root.stacked ? theme.space(3) : Math.round((root.height - height) / 2)
         spacing: theme.space(3)
         Icon {
@@ -57,6 +57,8 @@ Item {
                     mono: false
                     color: theme.tileSunken
                     textColor: theme.textDim
+                    // Why, and the fix, when the pointer asks
+                    Tooltip { text: "AniBeam cannot reach this folder. If it is on a drive that is not plugged in or not mounted, connect it and AniBeam picks it up again. If it moved, remove it here and add the new place." }
                 }
             }
             Text {
@@ -70,7 +72,7 @@ Item {
     }
     Row {
         id: controls
-        x: root.stacked ? theme.space(4) : root.width - width - theme.space(3)
+        x: root.stacked ? 0 : root.width - width
         y: root.stacked ? lead.y + lead.height + theme.space(2) : Math.round((root.height - height) / 2)
         Row {
             visible: !root.confirming
@@ -86,4 +88,6 @@ Item {
             onKept: root.confirming = false
         }
     }
+    // Closes the row inside a settings group, except the group's last
+    Rectangle { visible: !(root.parent && root.parent.lastRow === root); anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
 }

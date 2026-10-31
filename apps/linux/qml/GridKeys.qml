@@ -56,9 +56,15 @@ QtObject {
     // The stop an arrow lands on from `from`, or null when there is none that way
     function move(from, key) {
         if (key === Qt.Key_Left || key === Qt.Key_Right) {
+            // A card a LazyTile built sits inside the tile's Loader, so its row is the
+            // tile's siblings, each standing for the card it holds (#289)
             var sib = []
-            var kids = from.parent ? from.parent.children : []
-            for (var i = 0; i < kids.length; i++) if (isStop(kids[i]) && kids[i].visible) sib.push(kids[i])
+            var slot = from.parent && from.parent.parent && from.parent.parent.build !== undefined && from.parent.parent.item === from ? from.parent.parent : from
+            var kids = slot.parent ? slot.parent.children : []
+            for (var i = 0; i < kids.length; i++) {
+                var k = kids[i].build !== undefined && kids[i].sourceComponent !== undefined ? kids[i].item : kids[i]
+                if (k && isStop(k) && k.visible) sib.push(k)
+            }
             var at = sib.indexOf(from) + (key === Qt.Key_Right ? 1 : -1)
             return at >= 0 && at < sib.length ? sib[at] : null
         }

@@ -195,4 +195,6 @@ Item {
             Button { text: "Cancel"; flat: true; onClicked: root.addingSecret = false }
         }
     }
+    // Closes the row inside a settings group, except the group's last
+    Rectangle { visible: !(root.parent && root.parent.lastRow === root); anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
 }

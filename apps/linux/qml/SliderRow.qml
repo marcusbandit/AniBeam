@@ -14,6 +14,8 @@ Row {
     property alias value: s.value
     property alias stepSize: s.stepSize
     property int decimals: 0
+    // What the number counts, after it: "days", "episodes"
+    property string unit: ""
     property real trackWidth: theme.space(40)
     property bool takesFocus: true
     property color ground: theme.bg
@@ -47,9 +49,9 @@ Row {
     }
     Label {
         anchors.verticalCenter: parent.verticalCenter
-        width: theme.space(9)
+        width: root.unit !== "" ? implicitWidth : theme.space(9)
         role: "ledger"
-        text: Number(s.value).toFixed(root.decimals)
+        text: Number(s.value).toFixed(root.decimals) + (root.unit !== "" ? " " + root.unit : "")
         color: theme.textDim
     }
 }

@@ -160,7 +160,7 @@ jobs:
           where=(--target "$SHA")
           if [ "$KIND" = hotfix ]; then where=(--verify-tag); fi
           gh release create "$tag" dist/* --draft "${where[@]}" \
-            --title "AniBeam $VERSION" --notes-file notes.md --generate-notes "${start[@]}"
+            --title "$(.github/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --latest="$latest"
 
   next:

@@ -13,7 +13,9 @@
 //! - The seek bar previews in the bubble while you drag
 //! ```
 //!
-//! A heading per version, newest first, with the day it was made; under it one or more of
+//! A heading per version, newest first, with the day it was made and, when the version has
+//! one, a title to remember it by between the two: `## 2.5.0 · Quality of life · 2026-11-02`.
+//! The Release workflow names the GitHub release after it. Under each heading one or more of
 //! the sections New, Changed, Fixed and Removed, in that order; under each, one line per
 //! change. The `# ` title and `<!-- -->` comments are skipped.
 
@@ -25,10 +27,15 @@ pub const KINDS: [&str; 4] = ["New", "Changed", "Fixed", "Removed"];
 /// The most characters a line may have: two lines on a phone.
 pub const MAX_LINE: usize = 80;
 
+/// The most characters a version's title may have: one line beside its number.
+pub const MAX_TITLE: usize = 40;
+
 /// One version's notes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Notes {
     pub version: String,
+    /// `Quality of life`, the version's own name; empty for a version known by its number.
+    pub title: String,
     /// `2026-10-24`, as the heading has it; empty when it has none.
     pub date: String,
     pub sections: Vec<Section>,
@@ -49,8 +56,14 @@ pub fn parse(text: &str) -> Vec<Notes> {
     let mut out: Vec<Notes> = Vec::new();
     for (_, line) in read(text) {
         match line {
-            Line::Heading { version, date, .. } => out.push(Notes {
+            Line::Heading {
                 version,
+                title,
+                date,
+                ..
+            } => out.push(Notes {
+                version,
+                title,
                 date,
                 sections: Vec::new(),
             }),
@@ -104,6 +117,7 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
             Line::Title => {}
             Line::Heading {
                 version: v,
+                title,
                 date,
                 exact,
             } => {
@@ -116,7 +130,13 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                 kinds.clear();
                 if !exact {
                     problems.push(format!(
-                        "line {n}: write a heading as \"## 2.0.8 · 2026-10-24\""
+                        "line {n}: write a heading as \"## 2.0.8 · 2026-10-24\", or with a title as \"## 2.0.8 · Quality of life · 2026-10-24\""
+                    ));
+                }
+                let len = title.chars().count();
+                if len > MAX_TITLE {
+                    problems.push(format!(
+                        "line {n}: a title of {len} characters, {MAX_TITLE} at most: \"{title}\""
                     ));
                 }
                 if parts(&v).is_none() {
@@ -287,6 +307,8 @@ pub struct WhatsNew {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Shown {
     pub version: String,
+    /// The version's title, or empty.
+    pub title: String,
     /// "24 Oct 2026", or empty.
     pub day: String,
     /// Drawn at full strength: every version, except those under a line that marks where
@@ -343,6 +365,7 @@ pub fn whats_new(notes: &[Notes], current: &str, seen: &Seen, used_before: bool)
             .enumerate()
             .map(|(i, n)| Shown {
                 version: n.version.clone(),
+                title: n.title.clone(),
                 day: day(&n.date),
                 lit: !known || i < above,
                 sections: n.sections.clone(),
@@ -365,9 +388,11 @@ pub fn day(date: &str) -> String {
 enum Line {
     /// `# AniBeam for Android`
     Title,
-    /// `## 2.0.8 · 2026-10-24`, read leniently; `exact` when it is written just so.
+    /// `## 2.0.8 · 2026-10-24` or `## 2.5.0 · Quality of life · 2026-11-02`, read
+    /// leniently; `exact` when it is written just so.
     Heading {
         version: String,
+        title: String,
         date: String,
         exact: bool,
     },
@@ -424,9 +449,21 @@ fn heading(text: &str) -> Line {
         .rfind(|w| w.len() == 10 && w.as_bytes()[4] == b'-')
         .unwrap_or("")
         .to_string();
-    let exact = !date.is_empty() && text == format!("{version} · {date}");
+    // The title is whatever sits between the number and the day, each set off by a " · "
+    let fields: Vec<&str> = text.split(" · ").map(str::trim).collect();
+    let title = match fields.as_slice() {
+        [_, title, _] => title.to_string(),
+        _ => String::new(),
+    };
+    let exact = !date.is_empty()
+        && if title.is_empty() {
+            text == format!("{version} · {date}")
+        } else {
+            text == format!("{version} · {title} · {date}")
+        };
     Line::Heading {
         version,
+        title,
         date,
         exact,
     }
@@ -524,6 +561,24 @@ How to write a line.
             ["Countdowns read in 3d, not in in 3d"]
         );
         assert_eq!(notes[2].sections[0].kind, "Removed");
+        assert_eq!(notes[0].title, "");
+    }
+
+    #[test]
+    fn a_heading_may_name_its_version() {
+        let named = "## 2.5.0 · Quality of life · 2026-11-02\n### New\n- One\n";
+        let notes = parse(named);
+        assert_eq!(notes[0].version, "2.5.0");
+        assert_eq!(notes[0].title, "Quality of life");
+        assert_eq!(notes[0].date, "2026-11-02");
+        assert_eq!(lint(named, "2.5.0"), Vec::<String>::new());
+        let w = whats_new(&notes, "2.5.0", &Seen::default(), false);
+        assert_eq!(w.versions[0].title, "Quality of life");
+
+        let long = "## 2.5.0 · A title that goes on far longer than any name should · 2026-11-02\n### New\n- One\n";
+        assert!(lint(long, "2.5.0")[0].contains("40 at most"));
+        let sloppy = "## 2.5.0 ·Quality of life· 2026-11-02\n### New\n- One\n";
+        assert!(lint(sloppy, "2.5.0")[0].contains("write a heading as"));
     }
 
     #[test]

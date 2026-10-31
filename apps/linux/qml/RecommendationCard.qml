@@ -7,11 +7,17 @@ Item {
     id: root
     property var rec: ({})
     signal opened()
+    // A Tab stop that opens on Return or Space
+    activeFocusOnTab: true
+    Keys.onReturnPressed: opened()
+    Keys.onEnterPressed: opened()
+    Keys.onSpacePressed: opened()
+    Rectangle { anchors.fill: parent; anchors.margins: -2; visible: root.activeFocus; color: "transparent"; border.width: 2; border.color: theme.focusRing; z: 10 }
     width: theme.space(32)
     height: Math.round(width * 1.5)
     implicitWidth: width
     implicitHeight: height
-    scale: m.pressed ? 0.98 : 1
+    scale: theme.reducedMotion ? 1 : (m.pressed ? 0.98 : 1)
 
     Rectangle { anchors.fill: parent; color: theme.tile; border.color: theme.line; border.width: 1 }
     Image {

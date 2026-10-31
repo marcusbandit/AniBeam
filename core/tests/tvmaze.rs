@@ -606,9 +606,10 @@ fn a_series_is_searched_linked_and_rematched_through_tvmaze() {
     core.shutdown();
 }
 
-/// A TVmaze-only series has nothing to report to: every tracker write is
-/// refused as unmatched, and a session's mark rule never fires, while the
-/// view and the episode title still work.
+/// A TVmaze-only series has nothing to report to: a mark and a score are
+/// refused as unmatched, progress is kept on this device instead, and a
+/// session's mark rule never fires, while the view and the episode title
+/// still work.
 #[test]
 fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
     let http = FakeHttp::new();
@@ -630,10 +631,6 @@ fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
             series,
             episode: 1.0,
         },
-        Call::SetProgress {
-            series,
-            progress: 1,
-        },
         Call::SetScore {
             series,
             score: Some(8.0),
@@ -649,6 +646,40 @@ fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
             "{call:?}"
         );
     }
+
+    // Progress lands here at once: up to episode 1 watched, nothing after it
+    let watched = |core: &Core| -> Vec<bool> {
+        detail(core, series)
+            .episodes
+            .iter()
+            .map(|e| e.watched)
+            .collect()
+    };
+    assert!(matches!(
+        core.call(Call::SetProgress {
+            series,
+            progress: 1,
+            season: None,
+        }),
+        Ok(Reply::Ok)
+    ));
+    let marked = watched(&core);
+    assert!(marked[0] && marked[1..].iter().all(|w| !w), "{marked:?}");
+    core.call(Call::SetProgress {
+        series,
+        progress: 0,
+        season: None,
+    })
+    .unwrap();
+    assert!(watched(&core).iter().all(|w| !w));
+    // A count is within its season: season 2's leaves season 1's episodes alone
+    core.call(Call::SetProgress {
+        series,
+        progress: 5,
+        season: Some(2),
+    })
+    .unwrap();
+    assert!(watched(&core).iter().all(|w| !w));
 
     let session = match core.call(Call::OpenPlayback { file: files[1] }).unwrap() {
         Reply::Playback { session } => *session,

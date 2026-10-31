@@ -121,6 +121,10 @@ Minecraft's patch notes: a version, a few sections, one short line per change.
 - The newest heading is the app's version, with the day: `## 2.1.1 · 2026-10-25`. Bumping
   the version adds a heading, and a heading for a new version bumps the version in the
   same PR. Never add a line under a version that has shipped.
+- A version can have a title to remember it by, between the number and the day:
+  `## 2.5.0 · Quality of life · 2026-11-02`, 40 characters at most. Most versions have
+  none. What's new and the update notice show it, and the release goes out named
+  "AniBeam 2.5.0 · Quality of life"; a nightly of that version carries it too.
 
 Good:
 
@@ -159,6 +163,14 @@ that site. A new source goes in one of two places:
   the owner's own repo. Its README says how to write a definition.
 - A repo of your own, signed with your own key, that anyone can add in AniBeam beside or
   instead of the owner's.
+
+Endpoints are not part of this project, and that is final. No PR here decides which sources
+exist, whether one is hidden or shown, or how a particular one is handled. A source that only
+works with something else running, such as an indexer proxy or a challenge solver, is still
+just a definition in an endpoint repo: it uses an existing kind, and its definition or that
+repo's README says what has to be running and how to set it up. The app never bundles,
+starts or special-cases a service for one source. If a source seems to need app code beyond a
+kind, open an issue about the kind and leave the source out.
 
 ## Before you open it
 

@@ -73,6 +73,9 @@ pub mod ffi {
 
     unsafe extern "C++" {
         include!("devtools.h");
+        /// Qt's QML debugging services for qmlprofiler, under ANIBEAM_QML_PROFILE=1; before
+        /// the engine exists.
+        fn dev_enable_qml_profiling();
         /// Developer options (#287): the image interceptor and the `dev` image provider.
         fn install_dev_tools(engine: Pin<&mut QQmlApplicationEngine>);
         /// Measure decodes through the provider; with `images` false nothing loads.

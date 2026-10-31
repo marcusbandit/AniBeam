@@ -41,7 +41,13 @@ Item {
         entries = r.reply.events.slice().reverse().map(toEntry)
         backfilled = true
     }
-    function toEntry(e) { return { time: Qt.formatTime(new Date(e.at * 1000), "hh:mm:ss"), stage: e.stage, level: e.level, msg: e.message, plain: e.plain || "", seq: e.seq } }
+    // Today's lines say the time; older ones say the day too, so yesterday's error does not
+    // read as a fresh one
+    function stampOf(at) {
+        var d = new Date(at * 1000), now = new Date()
+        return d.toDateString() === now.toDateString() ? Qt.formatTime(d, "hh:mm:ss") : Qt.formatDateTime(d, "d MMM hh:mm")
+    }
+    function toEntry(e) { return { time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, plain: e.plain || "", seq: e.seq } }
     Connections {
         target: Door
         function onEvent(envelope) {
@@ -100,20 +106,41 @@ Item {
         }
         var flat = []
         out.forEach(function(r) {
-            if (r.count > 1 && expanded[r.key]) r.items.forEach(function(e) { flat.push({ time: e.time, stage: e.stage, level: e.level, msg: e.msg, count: 1, key: -1 }) })
+            // An unfolded run keeps a fold chip on its first line, to fold it back up
+            if (r.count > 1 && expanded[r.key]) r.items.forEach(function(e, n) { flat.push({ time: e.time, stage: e.stage, level: e.level, msg: e.msg, count: 1, key: -1, foldKey: n === 0 ? r.key : -1 }) })
             else flat.push(r)
         })
         return flat
     }
 
     // The rows on screen, one line each, a folded run carrying its count.
+    function lineOf(r) { return r.time + "  " + (r.stage ? r.stage + "  " + r.level + "  " : "") + r.msg + (r.count > 1 ? "  ×" + r.count : "") }
+    property bool copied: false
+    Timer { id: copiedTimer; interval: 2000; onTriggered: root.copied = false }
     function copyAll() {
-        var lines = rows.map(function(r) { return r.time + "  " + (r.stage ? r.stage + "  " + r.level + "  " : "") + r.msg + (r.count > 1 ? "  ×" + r.count : "") })
-        clipboard.text = lines.join("\n")
+        clipboardLoader.active = true
+        var clipboard = clipboardLoader.item
+        clipboard.text = rows.map(lineOf).join("\n")
         clipboard.selectAll()
         clipboard.copy()
+        copied = true
+        copiedTimer.restart()
     }
-    TextEdit { id: clipboard; visible: false }
+    // One line, by a click on it
+    function copyLine(r) {
+        clipboardLoader.active = true
+        var clipboard = clipboardLoader.item
+        clipboard.text = lineOf(r)
+        clipboard.selectAll()
+        clipboard.copy()
+        frame.toast("Copied the line")
+    }
+    // Clear empties the log for good: the first click asks, the second clears
+    property bool clearArmed: false
+    Timer { id: clearDisarm; interval: 4000; onTriggered: root.clearArmed = false }
+    // A TextEdit only to reach the clipboard, made on the first Copy: built with the frame
+    // it was 8 ms of every launch (#289)
+    Loader { id: clipboardLoader; active: false; sourceComponent: TextEdit { visible: false } }
 
     Item {
         id: body
@@ -200,8 +227,15 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(1)
-                Button { text: "Copy"; icon: "copy"; flat: true; small: true; onClicked: root.copyAll() }
-                Button { text: "Clear"; icon: "trash-2"; flat: true; small: true; onClicked: { Door.clearEvents(); root.entries = []; root.expanded = ({}) } }
+                Button { text: root.copied ? "Copied" : "Copy"; icon: root.copied ? "check" : "copy"; flat: true; small: true; onClicked: root.copyAll() }
+                Button {
+                    text: root.clearArmed ? "Clear every line" : "Clear"; icon: "trash-2"; flat: true; small: true; danger: root.clearArmed
+                    onClicked: {
+                        if (!root.clearArmed) { root.clearArmed = true; clearDisarm.restart(); return }
+                        root.clearArmed = false
+                        Door.clearEvents(); root.entries = []; root.expanded = ({})
+                    }
+                }
                 Button { text: "Close"; icon: "x"; flat: true; small: true; onClicked: root.close() }
             }
         }
@@ -221,9 +255,13 @@ Item {
             model: root.rows
             WheelStep { flick: list }
             delegate: Item {
+                id: logRow
                 required property var modelData
                 width: list.width
                 height: theme.space(7)
+                Rectangle { anchors.fill: parent; color: rowMouse.containsMouse ? theme.tileHover : "transparent"; radius: theme.radiusSm }
+                MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.copyLine(logRow.modelData) }
+                Tooltip { text: "Click to copy the line" }
                 Row {
                     id: line
                     anchors.fill: parent
@@ -254,6 +292,16 @@ Item {
                         elide: Text.ElideRight
                         font.family: theme.fontSans
                         font.pointSize: theme.typeSmall
+                    }
+                    Chip {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: modelData.foldKey !== undefined && modelData.foldKey >= 0
+                        text: "Fold"
+                        small: true
+                        clickable: true
+                        color: theme.tileSunken
+                        textColor: theme.textDim
+                        onClicked: { var n = {}; for (var k in root.expanded) if (Number(k) !== modelData.foldKey) n[k] = root.expanded[k]; root.expanded = n }
                     }
                     Chip {
                         id: fold

@@ -654,7 +654,11 @@ Item {
         var q = search.text.trim()
         if (q === "") { search.focusInput(); return }
         var names = only && only.length ? only : page.enabledEndpoints.map(function(e) { return e.name })
-        if (!names.length) { page.searchError = "Every source is switched off. Switch one on under the search."; return }
+        if (!names.length) {
+            page.searchError = page.endpoints.length ? "Every source is switched off. Switch one on under the search."
+                : "There are no sources to search yet. Add an endpoint repo in Settings, under Downloads."
+            return
+        }
         page.closeGet()
         page.gridReturn = null
         page.suggestClosed = true
@@ -679,7 +683,7 @@ Item {
         page.extras = ({})
         page.extrasByTitle = ({})
         page.datesState = "loading"
-        page.sortKey = ""
+        // The column sort a person picked stays for the next search
         page.showDismissed = false
         page.searchError = ""
         page.notice = ""
@@ -690,6 +694,9 @@ Item {
         page.preview = null
         page.actionLine = ""
         page.actionError = ""
+        // A folder name was typed for the last show, not this one
+        page.nameText = ""
+        frame.downloadsQuery = q
     }
     // The progress card follows one source: an on-demand one still coming up, else the first
     // still out
@@ -790,7 +797,8 @@ Item {
     }
     function sortBy(key) {
         if (page.sortKey === key) page.sortDesc = !page.sortDesc
-        else { page.sortKey = key; page.sortDesc = key !== "title" }
+        // Names sort A to Z first, numbers biggest first
+        else { page.sortKey = key; page.sortDesc = key !== "title" && key !== "group" }
     }
     function toggleAll(on) {
         var s = {}
@@ -982,7 +990,7 @@ Item {
     function groupLedger(g) {
         if (page.groupState(g) === "downloading") {
             var parts = [Math.round(100 * g.have / Math.max(1, g.size)) + "%"]
-            if (g.dlspeed > 0) parts.push(Fmt.bytes(g.dlspeed) + "/s")
+            if (g.dlspeed > 0) parts.push(Fmt.bytes(g.dlspeed) + "/s down")
             if (g.eta > 0) parts.push(Fmt.countdown(g.eta) + " left")
             return parts.join(", ")
         }
@@ -1163,6 +1171,18 @@ Item {
     }
     function askRemoveGroup(anchor, g) {
         var t = page.targetForGroup(g)
+        // Still downloading: it is a cancel, as in the show view, and what it wrote so far
+        // goes with it unless unticked
+        if (page.groupState(g) === "downloading") {
+            frame.askRemoval(anchor, {
+                heading: "Cancel " + t.title + "?",
+                base: (t.hashes.length === 1 ? "Its download stops and leaves " : "Its " + t.hashes.length + " downloads stop and leave ") + page.clientName + "." + (g.rule ? " The subscription stays." : ""),
+                rule: false, torrentCount: t.hashes.length, canFiles: true, filesOn: true,
+                filesWhere: "what it has downloaded so far",
+                confirmText: "Cancel the download", keepText: "Keep downloading"
+            }, function(choice) { page.enqueue([t], choice) })
+            return
+        }
         frame.askRemoval(anchor, {
             heading: "Remove " + t.title + "?",
             base: (t.hashes.length === 1 ? "Its torrent leaves " : "Its " + t.hashes.length + " torrents leave ") + page.clientName + "; the files stay unless you tick below."
@@ -1495,6 +1515,11 @@ Item {
         pollTorrents()
         loadLibrary()
         if (props.query) { search.text = props.query; Qt.callLater(page.runSearch) }
+        // Back on the page: the last search again, unless Settings says to start empty
+        else if (frame.prefs.keepDownloadsQuery && frame.downloadsQuery !== "" && props.series === undefined && !props.hit) {
+            search.text = frame.downloadsQuery
+            Qt.callLater(page.runSearch)
+        }
         // A series page's Get episodes (#169): straight to that show's view
         if (props.series !== undefined && props.series !== null) page.openSeries(props.series)
         // Airing now's Get episodes (#202) for a show the library does not have: its view
@@ -1636,8 +1661,9 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: page.anirssReady ? "anirss " + page.anirss.version : page.connecting ? "anirss starting" : "anirss off"
                     role: "ledger"; font.pointSize: theme.typeNormal
-                    color: page.anirssReady || page.connecting ? theme.textFaint : theme.red
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }) }
+                    color: page.anirssReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
+                    font.underline: anirssChipMouse.containsMouse
+                    MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }) }
                     Tooltip { text: page.anirssReady ? "anirss at " + page.anirss.url + ". " + page.summary : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
                 }
                 Label {
@@ -1654,7 +1680,7 @@ Item {
                             var p = parent.mapToItem(frame, 0, parent.height); frame.openMenu(p.x, p.y, page.clientMenu())
                         }
                     }
-                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + (page.remoteAnirss ? "\nA remote anirss uses the client its own config names" : "\nClick to switch clients") }
+                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url.replace(/\/\/[^\/@]*@/, "//") : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + (page.remoteAnirss ? "\nA remote anirss uses the client its own config names" : "\nClick to switch clients") }
                 }
                 Button {
                     text: page.connecting ? "Connecting" : "Reconnect"
@@ -1786,7 +1812,7 @@ Item {
                 Item {
                     width: parent.width
                     height: theme.space(14)
-                    Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: page.suggestIndex === 0 ? theme.glassFloat : "transparent" }
+                    Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: page.suggestIndex === 0 || releaseRowMouse.containsMouse ? theme.glassFloat : "transparent" }
                     Label {
                         x: theme.space(4)
                         anchors.verticalCenter: parent.verticalCenter
@@ -1794,7 +1820,7 @@ Item {
                         role: "ui"; color: theme.textDim
                     }
                     Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; text: "Return"; role: "ledger"; color: theme.textFaint }
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch() }
+                    MouseArea { id: releaseRowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch() }
                 }
             }
         }
@@ -1881,7 +1907,10 @@ Item {
                 elapsed: page.searchElapsed
                 total: page.searchTotal
                 endpoint: page.searchEndpoint
+                // The other sources that are on and not asked yet: a slow one can be left for them
+                others: page.enabledEndpoints.map(function(e) { return e.name }).filter(function(n) { return n !== page.searchEndpoint && page.searchResults[n] === undefined })
                 onCancel: page.cancelSearch()
+                onSwitchTo: function(name) { page.searchOn(name) }
             }
             // Each source the search asked: what it found, and a click shows it
             Row {
@@ -1901,10 +1930,13 @@ Item {
                         small: true
                         selected: page.adoptedFrom === modelData && page.state !== null
                         dimmed: !res || res.state === "idle" || res.state === "error"
-                        clickable: !!res && res.state === "done"
-                        hint: !res ? "" : res.state === "searching" ? "searching" : res.state === "error" ? "failed" : res.state === "idle" ? "cancelled" : Fmt.plural(res.search.items.length, "release", "releases")
-                        onClicked: page.adoptFrom(modelData)
-                        Tooltip { text: found.res && found.res.state === "error" && found.res.error ? found.res.error : "" }
+                        // A failed source says why on the chip, cut short; the tip has it whole, and a
+                        // click asks that source again
+                        clickable: !!res && (res.state === "done" || res.state === "error")
+                        readonly property string why: res && res.state === "error" && res.error ? String(res.error) : ""
+                        hint: !res ? "" : res.state === "searching" ? "searching" : res.state === "error" ? (why !== "" ? "failed: " + (why.length > 36 ? why.slice(0, 35) + "\u2026" : why) : "failed") : res.state === "idle" ? "cancelled" : Fmt.plural(res.search.items.length, "release", "releases")
+                        onClicked: if (res.state === "error") page.runSearch([modelData]); else page.adoptFrom(modelData)
+                        Tooltip { text: found.why !== "" ? found.why + "\nClick to try again" : "" }
                     }
                 }
             }
@@ -2103,11 +2135,14 @@ Item {
                         Button {
                             objectName: "downloads-download"
                             width: parent.width
-                            text: page.acting ? "Working" : page.selectedCount > 0 ? "Download " + Fmt.plural(page.selectedCount, "release", "releases") : "Download all " + page.items.length
+                            // All means every row the table shows, never the rows past its end
+                            readonly property var shown: table.order.slice(0, table.cap).map(function(i) { return page.items[i] })
+                            text: page.acting ? "Working" : page.selectedCount > 0 ? "Download " + Fmt.plural(page.selectedCount, "release", "releases")
+                                : shown.length < page.items.length ? "Download the " + shown.length + " shown" : "Download all " + shown.length
                             icon: "download"
                             primary: true
                             enabled: !!page.state && page.items.length > 0 && !page.acting && !page.searching
-                            onClicked: page.download(page.selectedCount > 0 ? page.selectedItems() : page.items)
+                            onClicked: page.download(page.selectedCount > 0 ? page.selectedItems() : shown)
                         }
                         Button {
                             width: parent.width
@@ -2342,6 +2377,18 @@ Item {
                 title: "Airing"
                 count: page.airingCards.length
                 line: "Shows in your library with episodes still to come. Open one to follow it."
+            }
+            // None yet: why, and where they come from
+            Item {
+                visible: page.airingCards.length === 0
+                width: parent.width
+                height: visible ? theme.space(50) : 0
+                EmptyState {
+                    icon: "calendar-clock"
+                    title: "Nothing in your library is airing"
+                    body: "A show lands here once it is in your library and has episodes still to come. Airing now lists everything on air."
+                    Button { text: "Airing now"; icon: "radio"; onClicked: frame.go("airing") }
+                }
             }
             Flow {
                 width: parent.width
@@ -2694,7 +2741,7 @@ Item {
                     progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
                     progressCode: "t"
                     cubes: gl.state !== "downloading" && modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                    actionText: "Remove"
+                    actionText: page.groupState(modelData) === "downloading" ? "Cancel" : "Remove"
                     actionIcon: "x"
                     busy: page.isRemoving("g:" + modelData.key)
                     onOpened: page.openGroup(modelData)
@@ -2726,7 +2773,7 @@ Item {
                     progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
                     progressCode: "t"
                     cubes: gl.state !== "downloading" && modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                    actionText: "Remove"
+                    actionText: page.groupState(modelData) === "downloading" ? "Cancel" : "Remove"
                     actionIcon: "x"
                     busy: page.isRemoving("g:" + modelData.key)
                     onOpened: page.openGroup(modelData)

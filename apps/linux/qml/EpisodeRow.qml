@@ -31,11 +31,22 @@ Corner {
     property bool gettable: false
     signal download()
     readonly property bool getting: gettable && absent && !picking
+    // A Tab stop: Return plays (or picks, or gets), as a click does
+    activeFocusOnTab: playable || getting
+    function activate() {
+        if (root.playable) { if (root.picking) root.pick(); else root.play() }
+        else if (root.getting) root.download()
+    }
+    Keys.onReturnPressed: activate()
+    Keys.onEnterPressed: activate()
+    borderColor: activeFocus ? theme.focusRing : "transparent"
+    borderWidth: activeFocus ? 2 : 0
     width: parent ? parent.width : implicitWidth
     height: Math.max(theme.space(10), words.implicitHeight + theme.space(3))
     radius: theme.radiusMd
     smoothing: theme.cornerSmoothing
     color: picked ? theme.redSoft
+         : hover.pressed && (playable || getting) && !picking ? theme.surfacePressed
          : picking ? (hover.containsMouse && playable ? theme.tile : "transparent")
          : getting && hover.containsMouse ? theme.tile
          : nextUp ? (hover.containsMouse ? theme.raised : theme.tile) : hover.containsMouse && playable ? theme.tile : "transparent"
@@ -57,8 +68,11 @@ Corner {
         return absent || upcoming || base === "l" ? base : "d"
     }
     readonly property var cubeState: theme.cubeState(cube)
+    Component.onDestruction: frame.hoverEpisode(root, false)
     readonly property bool playable: !downloading && !absent && !upcoming
-    readonly property bool trackable: hasTracker && !extra && !upcoming
+    // With a tracker, any aired episode marks there; without one, an episode on disk marks
+    // as watched here
+    readonly property bool trackable: !extra && !upcoming && (hasTracker || !absent)
     readonly property bool downloading: episode.downloading !== undefined && episode.downloading !== null
     readonly property bool nextUp: !!episode.next_up && !downloading
     readonly property real downloadFraction: downloading ? Math.max(0, Math.min(1, episode.downloading)) : 0
@@ -74,10 +88,9 @@ Corner {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: root.playable || root.getting ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: {
-            if (root.playable) { if (root.picking) root.pick(); else root.play() }
-            else if (root.getting) root.download()
-        }
+        // The frame's right-click menu reads the row under the pointer for its episode rows
+        onContainsMouseChanged: frame.hoverEpisode(root, containsMouse)
+        onClicked: root.activate()
     }
 
     Row {
@@ -112,7 +125,7 @@ Corner {
                 color: root.cubeState.fill
                 border.width: markHover.containsMouse ? 1 : root.cubeState.edge === "transparent" ? 0 : 1
                 border.color: markHover.containsMouse ? theme.accent : root.cubeState.edge
-                scale: markHover.containsMouse ? 1.18 : 1
+                scale: theme.reducedMotion ? 1 : (markHover.containsMouse ? 1.18 : 1)
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
                 Behavior on color { enabled: !theme.reducedMotion; ColorAnimation { duration: theme.motionFast } }
             }
@@ -126,7 +139,7 @@ Corner {
                     else if (root.trackable) root.marker()
                 }
             }
-            Tooltip { text: root.picking ? "" : root.cubeState.label + (root.trackable ? (root.watched ? ". Click to untrack to here" : ". Click to track to here") : "") }
+            Tooltip { text: root.picking ? "" : root.cubeState.label + (root.trackable ? (root.watched ? ". Click to mark unwatched from here" : ". Click to mark watched up to here") : "") }
         }
         Label {
             id: code

@@ -3,8 +3,9 @@
 //! JSON text, which QML parses with JSON.parse, so a large answer never becomes a deep
 //! QJsonObject on the way.
 //!
-//! `forced` is true in a debug build and under ANIBEAM_DEV=1: developer options are on and
-//! the switch that turns them off is not shown.
+//! `forced` is true under ANIBEAM_DEV=1 only: developer options are on and the switch that
+//! turns them off is not shown. A debug build starts with them off like a release build, so
+//! its captures look like what ships; the switch under About turns them on.
 
 use cxx_qt_lib::QString;
 
@@ -30,6 +31,9 @@ pub mod qobject {
         /// Milliseconds on the clock every record shares.
         #[qinvokable]
         fn now(self: &Dev) -> f64;
+        /// A start-up step, printed under ANIBEAM_TIMING=1 with its time since launch.
+        #[qinvokable]
+        fn mark(self: &Dev, step: &QString);
         /// The Door calls that started at or after `since`.
         #[qinvokable]
         fn calls(self: &Dev, since: f64) -> QString;
@@ -58,7 +62,7 @@ pub struct DevRust {
 impl Default for DevRust {
     fn default() -> Self {
         DevRust {
-            forced: cfg!(debug_assertions) || std::env::var("ANIBEAM_DEV").as_deref() == Ok("1"),
+            forced: std::env::var("ANIBEAM_DEV").as_deref() == Ok("1"),
         }
     }
 }
@@ -76,6 +80,10 @@ impl qobject::Dev {
 
     pub fn now(&self) -> f64 {
         crate::devstats::now()
+    }
+
+    pub fn mark(&self, step: &QString) {
+        crate::devstats::startup_mark(&step.to_string());
     }
 
     pub fn calls(&self, since: f64) -> QString {

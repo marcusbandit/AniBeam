@@ -236,11 +236,13 @@ Item {
     // Exponential smoothing toward a target, bandit shell's rate: x += (target - x) * k
     // with k = 1 - exp(-followRate * dt). follow() is one step of it.
     readonly property real followRate: 14
-    function follow(x, target, dt) { return x + (target - x) * (1 - Math.exp(-followRate * dt)) }
-    // Reduced motion: the orchestrated moments (the library's opening sweep) are skipped
+    // Reduced motion lands every follower at once: hovers, thumbs and lifts jump, nothing glides
+    function follow(x, target, dt) { return reducedMotion ? target : x + (target - x) * (1 - Math.exp(-followRate * dt)) }
+    // Reduced motion: the orchestrated moments (the library's opening sweep) are skipped, and
+    // every transition timed by these two is instant. Scrolling keeps its ease (WheelStep).
     readonly property bool reducedMotion: Theme.reducedMotion
-    readonly property int motionFast: 120
-    readonly property int motionNormal: 200
+    readonly property int motionFast: reducedMotion ? 0 : 120
+    readonly property int motionNormal: reducedMotion ? 0 : 200
     readonly property int motionSlow: 320
     readonly property real controlHeight: space(8)
     readonly property real disabledOpacity: 0.45
