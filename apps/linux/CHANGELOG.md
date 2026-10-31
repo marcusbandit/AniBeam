@@ -25,6 +25,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Ctrl-click a release group or one of its episodes to pick all it has missing
 - Get says it is sending to your torrent client the moment you click it
 - Set how many episodes a TVmaze show's season has, so no more are predicted
+- Discord shows what you are watching, a switch in Settings, Playback
 
 ### Changed
 - A show's Fixes menu holds Fix files, the episode count, the match and Rescan
@@ -50,7 +51,6 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Release lists show a Rip column: WEB-DL, WEBRip, BluRay and the rest
 - This week shows nine days, two back and six ahead, every day even when empty
 - Right-click a card to delete its watched episodes or all of them, to the trash
-- Discord shows what you are watching, a switch in Settings, Playback
 
 ### Fixed
 - This week cards keep the airing time inside the card
