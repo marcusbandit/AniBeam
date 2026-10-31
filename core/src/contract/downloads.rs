@@ -506,10 +506,13 @@ pub enum AnirssMode {
     Remote,
 }
 
-/// What the desktop's search, refine and subscription preview run on: anirss
-/// (the sidecar or a remote server), or the core's own port of it
-/// (`releases::native`). Subscribing and downloading stay on anirss with
-/// either, for now (#119).
+/// What the desktop's downloads run on: anirss (the sidecar or a remote
+/// server), or the core's own engine. On the native engine, search, refine
+/// and the subscription preview run on the core's port of anirss
+/// (`releases::native`), and subscribing, listing and removing
+/// subscriptions and adding torrents go to qBittorrent's Web API directly.
+/// `ConnectDownloads` still starts anirss with either, for its endpoint
+/// list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum DownloadsEngine {
     #[default]

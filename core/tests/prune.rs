@@ -118,6 +118,7 @@ fn body_of(r: &HttpRequest) -> String {
             .map(|(k, v)| format!("{k}={v}"))
             .collect::<Vec<_>>()
             .join("&"),
+        Some(Body::Multipart { .. }) => String::new(),
         None => String::new(),
     }
 }

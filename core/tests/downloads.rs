@@ -975,6 +975,7 @@ fn form_of(r: &anibeam_core::net::HttpRequest) -> String {
             .collect::<Vec<_>>()
             .join("&"),
         Some(anibeam_core::net::Body::Json(v)) => v.to_string(),
+        Some(anibeam_core::net::Body::Multipart { .. }) => String::new(),
         None => String::new(),
     }
 }
