@@ -41,13 +41,14 @@ FocusScope {
     // rather than on the file's first track.
     property int lastSid: -1
     property real subDelay: 0
+    property real audioDelay: 0
     // Seeded by the observation and refreshed at each step, since mpv notifies this one only
     // once. See the frame step section.
     property real frameNumber: 0
 
     // Chrome
     property bool chromeVisible: true
-    property int openMenus: 0            // pickers, the rating picker and the key list
+    property int openMenus: 0            // pickers, the delays, the rating picker and the key list
     // A popover's own button or row may have held the keyboard while it was up; the page
     // takes it back when the last one closes, so Space and the arrows work again at once.
     onOpenMenusChanged: if (openMenus === 0) forceActiveFocus()
@@ -205,7 +206,7 @@ FocusScope {
             observe("mute", VideoItem.Flag); observe("hwdec-current", VideoItem.String); observe("frame-drop-count", VideoItem.Int64)
             observe("track-list", VideoItem.Node); observe("chapter-list", VideoItem.Node); observe("aid", VideoItem.String)
             observe("sid", VideoItem.String); observe("sub-delay", VideoItem.Double); observe("estimated-frame-number", VideoItem.Int64)
-            observe("speed", VideoItem.Double)
+            observe("speed", VideoItem.Double); observe("audio-delay", VideoItem.Double)
             if (page.session) page.start()
         }
         onLoaded: {
@@ -254,7 +255,11 @@ FocusScope {
         if (name === "track-list") trackList = asArray(value)
         else if (name === "aid") aid = value === "no" || value === null ? -1 : Number(value)
         else if (name === "sid") { sid = value === "no" || value === null ? -1 : Number(value); if (sid >= 0) lastSid = sid }
-        else if (name === "sub-delay") { subDelay = Number(value || 0); hud.update(delayLine(subDelay), "subDelay") }
+        else if (name === "sub-delay" || name === "audio-delay") {
+            var v = Number(value || 0)
+            if (name === "sub-delay") subDelay = v; else audioDelay = v
+            hud.update(delayLine(name, v), name)
+        }
         // mpv sends this one exactly once, when the observation is registered: it is not on
         // mpv's tick change list, so an observed value alone would read the number the file
         // opened on for the whole session. Kept because the spec's observe list has it and
@@ -321,17 +326,24 @@ FocusScope {
         else if (subTracks.length) video.setProperty("sid", String(subTracks[0].id))
         showChrome()
     }
-    // z and Z. The page's own value moves first so a second press within the round trip
-    // adds to the first rather than repeating it; the observation then rewrites the line
-    // with what mpv actually settled on, so the HUD reports the player, not the intent.
-    function delayLine(v) { return "Subtitle delay " + (v >= 0 ? "+" : "") + v.toFixed(1) + " s" }
-    function nudgeDelay(d) {
-        var v = Math.round((subDelay + d) * 10) / 10
-        subDelay = v
-        video.setProperty("sub-delay", v)
-        hud.flash(delayLine(v), "subDelay")
+    // ---- Delays: sub-delay (z and Z) and audio-delay (a and A), stepped from the keys or the
+    // delays panel and named by their mpv property. The page's own value moves first so a
+    // second press within the round trip adds to the first rather than repeating it; the
+    // observation then rewrites the value and the line with what mpv actually settled on, so
+    // the HUD and the panel report the player, not the intent. Both reset when the next file
+    // starts (reset-on-next-file), and the observation carries that back here too.
+    function delayOf(prop) { return prop === "audio-delay" ? audioDelay : subDelay }
+    function delayText(v) { return v === 0 ? "0.0 s" : (v > 0 ? "+" : "") + v.toFixed(1) + " s" }
+    function delayLine(prop, v) { return (prop === "audio-delay" ? "Audio delay " : "Subtitle delay ") + delayText(v) }
+    function setDelay(prop, v) {
+        v = Math.round(v * 10) / 10
+        if (prop === "audio-delay") audioDelay = v; else subDelay = v
+        video.setProperty(prop, v)
+        hud.flash(delayLine(prop, v), prop)
         showChrome()
     }
+    function nudgeDelay(prop, d) { setDelay(prop, delayOf(prop) + d) }
+    function resetDelay(prop) { setDelay(prop, 0) }
 
     // ---- Ticks: once a second while playing, once on pause, once after a seek, once on
     // close. The timer never asks mpv for anything: it sends the last observed time-pos,
@@ -538,7 +550,7 @@ FocusScope {
         hud.flash(frameLine(), "frame")               // the frame still on screen
         video.command([dir > 0 ? "frame-step" : "frame-back-step"])
     }
-    // Play clears the frame line at once, and only the frame line: a subtitle delay put on
+    // Play clears the frame line at once, and only the frame line: a delay put on
     // screen while paused is a different message and keeps its own 1.2 s. A step's own dip
     // through unpaused is not a play, so it clears nothing. A pause also stops the auto-next
     // countdown: the pill keeps Next and Stay, and playing back into the counting zone
@@ -596,18 +608,20 @@ FocusScope {
     // the replay button
     PlayerChrome { id: chrome }
 
-    // ---- The pickers. They fill the page and hold the chrome while they are up. The chrome
-    // and the key map open them through these three functions rather than by id, so what the
-    // page offers its own parts is a contract rather than a reach up the context chain.
+    // ---- The pickers and the delays. They fill the page and hold the chrome while they are
+    // up. The chrome and the key map open them through these functions rather than by id, so
+    // what the page offers its own parts is a contract rather than a reach up the context chain.
     function openAudioPicker(anchor) { audioPicker.openAt(anchor) }
     function openSubPicker(anchor) { subPicker.openAt(anchor) }
+    function openDelays(anchor) { delays.openAt(anchor) }
     function showHelp() { help.show() }
     function toggleHelp() { if (help.open) help.close(); else help.show() }
     TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }
     TrackPicker { id: subPicker; title: "Subtitles"; tracks: page.subTracks; selected: page.sid; offRow: true; onPicked: function(id) { page.pickSubtitle(id) } }
+    PlayerDelays { id: delays }
 
-    // ---- The HUD line: one message over the picture, gone after 1.2 s. The subtitle delay
-    // and the frame step share it, each owning the line through its own kind. A
+    // ---- The HUD line: one message over the picture, gone after 1.2 s. The two delays and
+    // the frame step share it, each owning the line through its own kind. A
     // pane of the video glass like every other island on the player; its text is figures,
     // so ledger.
     Corner {

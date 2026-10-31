@@ -24,6 +24,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Ctrl-click a release group or one of its episodes to pick all it has missing
 - Get says it is sending to your torrent client the moment you click it
 - Set how many episodes a TVmaze show's season has, so no more are predicted
+- The player's controls set subtitle and audio delay; a and A shift the audio
 
 ### Changed
 - A show's Fixes menu holds Fix files, the episode count, the match and Rescan
