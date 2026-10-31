@@ -184,12 +184,19 @@ impl Definition {
         keys
     }
 
-    /// Whether credentials stored for `self` may go with `next` unasked: the same fields, and
-    /// the same hosts for the address and the front.
+    /// Whether credentials stored for `self` may go with `next` unasked: the same fields, the
+    /// same hosts for the address and the front, and no step down from https to http, which
+    /// would send a stored key in the clear.
     pub fn keeps_credentials(&self, next: &Definition) -> bool {
+        let https = |d: &Definition| {
+            d.url
+                .get(..8)
+                .is_some_and(|s| s.eq_ignore_ascii_case("https://"))
+        };
         self.auth_keys() == next.auth_keys()
             && self.host() == next.host()
             && self.front == next.front
+            && (https(next) || !https(self))
     }
 
     /// Whether the address names the person's own server: its whole authority is `{host}`.
@@ -209,7 +216,7 @@ impl Definition {
                 if !bare_host(&v) {
                     return None;
                 }
-                crate::releases::endpoints::quote(v.as_bytes(), ":[]")
+                crate::releases::endpoints::quote(v.as_bytes(), ":")
             } else {
                 crate::releases::endpoints::quote(v.as_bytes(), "")
             };
@@ -227,7 +234,9 @@ pub const HOST_KEY: &str = "host";
 /// carry a path, a login or another placeholder. No bracketed IPv6 literal, which `host_of`
 /// cannot read.
 pub fn bare_host(value: &str) -> bool {
+    // One colon at most: a bare IPv6 address cannot sit in an address unbracketed.
     !value.is_empty()
+        && value.matches(':').count() <= 1
         && !value.chars().any(|c| {
             c.is_whitespace() || matches!(c, '/' | '@' | '?' | '#' | '{' | '}' | '\\' | '[' | ']')
         })
@@ -479,9 +488,11 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
 
 /// Object keys joined by dots, each key plain: letters, digits, '_' and '-'.
 fn plain_path(path: &str) -> bool {
+    // Every step is an object key, so an all-digit step, an array index, could never match.
     !path.is_empty()
         && path.split('.').all(|key| {
             !key.is_empty()
+                && !key.bytes().all(|b| b.is_ascii_digit())
                 && key
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
@@ -757,6 +768,7 @@ pub(crate) mod tests {
             serde_json::json!({"items": "a", "title": "t"}),
             serde_json::json!({"items": "a.", "title": "t", "hash": "h"}),
             serde_json::json!({"items": "a[0]", "title": "t", "hash": "h"}),
+            serde_json::json!({"items": "data.0.hits", "title": "t", "hash": "h"}),
             serde_json::json!({"items": "a", "title": "t", "link": "l", "size": ""}),
             serde_json::json!({"items": "a", "title": "t", "hash": "h", "skip": "x y"}),
         ] {
@@ -915,6 +927,8 @@ pub(crate) mod tests {
             " a",
             "a\t",
             "[::1]:9696",
+            "::1",
+            "fe80::1:9696",
         ] {
             assert!(!bare_host(bad), "{bad:?}");
         }
@@ -948,6 +962,16 @@ pub(crate) mod tests {
         let mut c = a.clone();
         c.front = Some("front.example".into());
         assert!(!a.keeps_credentials(&c));
+    }
+
+    #[test]
+    fn an_update_from_https_to_http_asks_for_the_key_again() {
+        let mut a = jackett();
+        a.url = a.url.replacen("http://", "https://", 1);
+        let down = jackett();
+        assert!(!a.keeps_credentials(&down));
+        assert!(down.keeps_credentials(&a));
+        assert!(down.keeps_credentials(&jackett()));
     }
 
     #[test]
