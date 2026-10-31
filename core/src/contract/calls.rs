@@ -59,6 +59,13 @@ pub enum Call {
         series: u64,
         hidden: bool,
     },
+    /// Sets how many episodes a series has, by hand (#239), or clears it with
+    /// None. Nothing past it is predicted until an aired episode or a file goes
+    /// past it. Ends in `SeriesChanged`.
+    SetEpisodeCount {
+        series: u64,
+        count: Option<u32>,
+    },
     ListFeed {
         sort: FeedSort,
     },
@@ -119,6 +126,10 @@ pub enum Call {
     SetProgress {
         series: u64,
         progress: u32,
+        /// The season the count is within, for a series no tracker knows: its watched
+        /// episodes are kept per season here. None is season 1.
+        #[serde(default)]
+        season: Option<u32>,
     },
     SetScore {
         series: u64,
@@ -200,6 +211,9 @@ pub enum Call {
     /// or serving and on which URLs. Never touches the network; changes
     /// arrive as `HostChanged`.
     GetHost,
+    /// Whether this build can show what plays on Discord, and whether it is
+    /// talking to a Discord client right now. Never touches the socket.
+    GetPresence,
     GetSettings,
     SetSubtitleDefaults {
         defaults: SubtitleDefaults,
@@ -341,6 +355,13 @@ pub enum Call {
     DeleteEpisodes {
         series: u64,
         files: Vec<u64>,
+    },
+    /// Deletes across the whole library (#266), as `DeleteEpisodes` does: every
+    /// watched episode's file, or with `finished_shows` every file of each show
+    /// confirmed done with (`SeriesCard::finished_watched`). A torrent that held
+    /// one of the files leaves the client. Replies `Deleted` with what went.
+    DeleteWatched {
+        finished_shows: bool,
     },
     /// Says what files of a series are, against how the scan read their names
     /// (#170): each fix is stored by the file's path, so every later scan reads
@@ -584,6 +605,13 @@ pub enum Call {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
 pub enum Reply {
     Ok,
+    /// What `DeleteWatched` took: the series it touched, their episodes, and the
+    /// bytes, extras included.
+    Deleted {
+        series: u64,
+        episodes: u64,
+        bytes: u64,
+    },
     Started {
         job: u64,
     },
@@ -647,6 +675,12 @@ pub enum Reply {
     },
     Host {
         status: HostStatus,
+    },
+    /// `available` is false for a build with no Discord application id,
+    /// where the switch can do nothing.
+    Presence {
+        available: bool,
+        connected: bool,
     },
     Settings {
         settings: Settings,

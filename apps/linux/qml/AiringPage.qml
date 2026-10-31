@@ -11,6 +11,11 @@
 // A click on a card opens what can be done with it: the series when the library has it,
 // Plan to watch, Get episodes, AniList, Not interested.
 //
+// Several at once: press and hold a card, or Ctrl+click it, and the page starts picking.
+// Every click then picks or unpicks, and a bar at the foot offers the two things that make
+// sense for many shows, Plan to watch and Not interested. Escape, Cancel or unpicking the
+// last one ends it.
+//
 // No poll. The page re-reads the cache (never AniList) when the next episode it knows of is
 // due, so that episode moves into Out now on time, and a half-minute clock keeps "2h ago"
 // honest, the way Watching keeps its countdowns.
@@ -24,22 +29,41 @@ Item {
     property string title: "Airing now"
     property alias scrollY: scroll.contentY
     function escapePressed() {
+        if (page.selecting) { page.clearPicks(); return true }
         if (page.undo) { page.undo = null; return true }
         return false
     }
 
-    // "Now" or "Next", as the core spells SeasonPick
-    property string season: "Now"
+    // "Now" or "Next", as the core spells SeasonPick; kept in the page's props, so the rail
+    // brings the page back on the season and filter it was left on
+    property string season: props.season || "Now"
     // 0 everything, 1 on my lists, 2 in my library
-    property int filter: 0
+    property int filter: props.filter || 0
+    function keepView() { frame.nav.current.props = { season: page.season, filter: page.filter } }
     property var listed: null
     property bool refreshing: false
     // The season read this page waits on: events of the other season's read are not its own
     property int refreshJob: -1
     property bool loadFailed: false
     property real nowMs: Date.now()
-    // The show just marked, while its Undo is up: { id, title }
+    // The shows just marked, while their Undo is up: { ids, text }
     property var undo: null
+    // The cards picked, by AniList id; picking runs while any is
+    property var picked: ({})
+    readonly property int pickedCount: Object.keys(picked).length
+    readonly property bool selecting: pickedCount > 0
+    function togglePick(s) {
+        var next = Object.assign({}, page.picked)
+        if (next[s.anilist_id]) delete next[s.anilist_id]
+        else next[s.anilist_id] = s
+        page.picked = next
+    }
+    function clearPicks() { page.picked = ({}) }
+    function pickedShows() {
+        var out = []
+        for (var k in page.picked) out.push(page.picked[k])
+        return out
+    }
     property bool allOut: false
 
     readonly property var statusWords: ({ Watching: "Watching", Repeating: "Rewatching", Completed: "Completed",
@@ -113,9 +137,13 @@ Item {
         for (var i = 0; i < aired.length; i++) if (nowMs / 1000 - aired[i].at < 86400) n++
         return n
     }
+    // How many each filter holds, for its pill
+    readonly property int listedCount: listed ? listed.shows.filter(function(s) { return !!s.list_status }).length : 0
+    readonly property int ownedCount: listed ? listed.shows.filter(function(s) { return page.owned(s) }).length : 0
+    // The line counts what the filter shows, not everything on air
     readonly property string summary: {
-        if (!listed || listed.shows.length === 0) return ""
-        var line = Fmt.plural(listed.shows.length, "show", "shows") + (page.season === "Now" ? " on air" : "")
+        if (!listed || page.shows.length === 0) return ""
+        var line = Fmt.plural(page.shows.length, "show", "shows") + (page.season === "Now" ? " on air" : "")
         if (page.season === "Now" && outToday > 0) line += ", " + Fmt.plural(outToday, "episode", "episodes") + " out today"
         return line
     }
@@ -145,10 +173,12 @@ Item {
     function pickSeason(s) {
         if (s === page.season) return
         page.season = s
+        page.keepView()
         page.allOut = false
         page.refreshing = false
         page.refreshJob = -1
         page.listed = null
+        page.clearPicks()
         page.reload()
         page.refresh(false)
         scroll.contentY = 0
@@ -167,26 +197,48 @@ Item {
     }
 
     // ---- What a card can do
-    function dismiss(s) {
-        var r = Door.setNotInterested(s.anilist_id, true)
-        if (r.error) { frame.toast(r.error.message); return }
-        page.undo = { id: s.anilist_id, title: s.title }
+    function dismiss(s) { page.dismissAll([s]) }
+    function dismissAll(list) {
+        var ids = []
+        for (var i = 0; i < list.length; i++) {
+            var r = Door.setNotInterested(list[i].anilist_id, true)
+            if (r.error) { frame.toast(r.error.message); break }
+            ids.push(list[i].anilist_id)
+        }
+        if (ids.length === 0) return
+        page.undo = { ids: ids, text: ids.length === 1 ? list[0].title + " won't show up here again"
+                                                      : ids.length + " shows won't show up here again" }
         undoTimer.restart()
         page.reload()
     }
     function takeBack() {
         if (!page.undo) return
-        var r = Door.setNotInterested(page.undo.id, false)
-        if (r.error) { frame.toast(r.error.message); return }
+        for (var i = 0; i < page.undo.ids.length; i++) {
+            var r = Door.setNotInterested(page.undo.ids[i], false)
+            if (r.error) { frame.toast(r.error.message); return }
+        }
         page.undo = null
         page.reload()
     }
-    function plan(s) {
+    function plan(s) { page.planAll([s]) }
+    function planAll(list) {
         if (!page.trackerConnected) { frame.openConnect("Anilist"); return }
-        var r = Door.planToWatch(s.anilist_id)
-        if (r.error) { frame.toast(r.error.message); return }
-        if (!r.reply || r.reply.job === undefined) frame.toast(s.title + " is on your list already")
+        var sent = 0, already = 0
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].list_status) { already++; continue }
+            var r = Door.planToWatch(list[i].anilist_id)
+            if (r.error) { frame.toast(r.error.message); return }
+            if (r.reply && r.reply.job !== undefined) sent++
+            else already++
+        }
+        if (list.length === 1) { if (sent === 0) frame.toast(list[0].title + " is on your list already"); return }
+        frame.toast(sent === 0 ? "They are all on your list already"
+                               : Fmt.plural(sent, "show goes", "shows go") + " on your Planning list"
+                                 + (already > 0 ? ", " + already + " were on it already" : ""))
     }
+    // The bar's two actions: they act on every card picked, then picking ends
+    function planPicked() { var l = page.pickedShows(); page.clearPicks(); page.planAll(l) }
+    function dismissPicked() { var l = page.pickedShows(); page.clearPicks(); page.dismissAll(l) }
     function getEpisodes(s) {
         if (page.owned(s)) { frame.go("downloads", { series: s.owned }, "Downloads"); return }
         frame.go("downloads", { hit: { id: s.anilist_id, title: s.title, romaji: s.romaji || "", english: s.english || "", native: s.native || "",
@@ -195,6 +247,7 @@ Item {
     function siteOf(s) { return s.site_url || "https://anilist.co/anime/" + s.anilist_id }
     function actionsFor(s) {
         var items = []
+        if (page.owned(s)) items.push({ text: "Play next", icon: "play", action: function() { frame.playNext(s.owned, s.title) } })
         if (page.owned(s)) items.push({ text: "Open series", icon: "layers", action: function() { frame.go("series", { id: s.owned }, s.title) } })
         if (!s.list_status) items.push({ text: "Plan to watch", icon: "bookmark", action: function() { page.plan(s) } })
         items.push({ text: page.owned(s) ? "Get more episodes" : "Get episodes", icon: "download", action: function() { page.getEpisodes(s) } })
@@ -297,9 +350,11 @@ Item {
                 }
                 Seg {
                     objectName: "airing-filter"
-                    options: [{ text: "Everything", name: "all" }, { text: "On my lists", name: "lists" }, { text: "In my library", name: "library" }]
+                    options: [{ text: "Everything", name: "all", count: page.listed ? page.listed.shows.length : undefined },
+                              { text: "On my lists", name: "lists", count: page.listed ? page.listedCount : undefined },
+                              { text: "In my library", name: "library", count: page.listed ? page.ownedCount : undefined }]
                     index: page.filter
-                    onPicked: function(i) { page.filter = i }
+                    onPicked: function(i) { page.filter = i; page.keepView(); page.clearPicks() }
                 }
             }
             Button {
@@ -398,18 +453,27 @@ Item {
             spacing: page.gap
             Repeater {
                 model: page.shows
-                Card {
-                    id: card
+                LazyTile {
+                    id: tile
                     required property var modelData
-                    objectName: "tile-" + modelData.anilist_id
-                    item: page.cardItem(modelData)
-                    metaOverride: page.metaOf(modelData)
-                    posterWidth: page.cardWidth
-                    nowMs: page.nowMs
-                    dismissible: true
-                    onOpened: page.openActions(modelData, card)
-                    onPlayed: page.openActions(modelData, card)
-                    onDismissed: page.dismiss(modelData)
+                    width: page.cardWidth
+                    height: Math.round(page.cardWidth * 1.5)
+                    sourceComponent: Card {
+                        id: card
+                        objectName: "tile-" + tile.modelData.anilist_id
+                        item: page.cardItem(tile.modelData)
+                        metaOverride: page.metaOf(tile.modelData)
+                        posterWidth: page.cardWidth
+                        nowMs: page.nowMs
+                        dismissible: true
+                        selectable: true
+                        selecting: page.selecting
+                        selected: !!page.picked[tile.modelData.anilist_id]
+                        onSelectToggled: page.togglePick(tile.modelData)
+                        onOpened: page.openActions(tile.modelData, card)
+                        onPlayed: page.openActions(tile.modelData, card)
+                        onDismissed: page.dismiss(tile.modelData)
+                    }
                 }
             }
         }
@@ -443,10 +507,38 @@ Item {
         }
     }
 
-    // ---- Undo, at the foot, for the show just marked
+    // ---- Picking: how many, and the two things to do with them
+    Rectangle {
+        objectName: "airing-picked"
+        visible: page.selecting
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: theme.space(6)
+        width: Math.min(parent.width - theme.space(8), pickRow.implicitWidth + theme.space(6))
+        height: theme.controlHeight + theme.space(3)
+        radius: theme.radiusTile
+        color: theme.raised
+        border.color: theme.accent
+        border.width: 1
+        Row {
+            id: pickRow
+            anchors.centerIn: parent
+            spacing: theme.space(3)
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                text: page.pickedCount + " picked"
+                role: "ui"
+            }
+            Button { objectName: "airing-picked-plan"; small: true; text: "Plan to watch"; icon: "bookmark"; onClicked: page.planPicked() }
+            Button { objectName: "airing-picked-dismiss"; small: true; text: "Not interested"; icon: "eye-off"; onClicked: page.dismissPicked() }
+            Button { objectName: "airing-picked-cancel"; small: true; flat: true; text: "Cancel"; onClicked: page.clearPicks() }
+        }
+    }
+
+    // ---- Undo, at the foot, for the shows just marked
     Rectangle {
         objectName: "airing-undo"
-        visible: !!page.undo
+        visible: !!page.undo && !page.selecting
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: theme.space(6)
@@ -463,7 +555,7 @@ Item {
             Label {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(implicitWidth, theme.space(110))
-                text: page.undo ? page.undo.title + " won't show up here again" : ""
+                text: page.undo ? page.undo.text : ""
                 role: "ui"
                 elide: Text.ElideRight
             }

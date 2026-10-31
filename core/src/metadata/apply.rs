@@ -93,6 +93,7 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
             };
             let n = results.len();
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: format!("Search: {n} {} results for \"{query}\"", provider.label()),
                 body: EventBody::SearchFinished { results },
@@ -160,6 +161,7 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
                 }
             };
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: format!("Link resolved to {named}"),
                 body: EventBody::LinkResolved { target },
@@ -200,6 +202,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                         ctx.changed(card);
                     }
                     return Ok(Finished {
+                        plain: Some(format!("Matched {folder}.")),
                         level: Level::Info,
                         message: format!("matched {folder} to TVmaze {id}"),
                         body: EventBody::MatchApplied { series },
@@ -229,6 +232,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                         // A MAL-only match carries no record format.
                         fetch::reread_after_record(&owner, series).await;
                         return Ok(Finished {
+                            plain: Some(format!("Matched {folder}.")),
                             level: Level::Info,
                             message: format!("Matched {folder} to MyAnimeList {id}"),
                             body: EventBody::MatchApplied { series },
@@ -301,6 +305,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
             }
 
             Ok(Finished {
+                plain: Some(format!("Matched {folder}.")),
                 level: Level::Info,
                 message: format!("Matched {folder} to AniList {anilist_id}"),
                 body: EventBody::MatchApplied { series },
@@ -360,7 +365,16 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
             };
             images::sweep_after(&owner, "a refresh").await;
             Ok(Finished {
-                level: Level::Info,
+                plain: Some(if failed == 0 {
+                    format!("Updated the info for {folder}.")
+                } else {
+                    format!("Could not update the info for {folder}. Try again later.")
+                }),
+                level: if failed == 0 {
+                    Level::Info
+                } else {
+                    Level::Warn
+                },
                 message: if failed == 0 {
                     format!("refreshed {folder}")
                 } else {
@@ -483,8 +497,26 @@ fn start_refresh_walk(
         // portraits in, and both owe the sweep that keeps the directory
         // from only ever growing.
         images::sweep_after(&owner, label).await;
+        let shows = |n: u64| crate::words::pick(n, "show", "shows");
+        let said = match (refreshed, failed) {
+            (0, 0) => None,
+            (n, 0) => Some(format!("Updated the info for {n} {}.", shows(n))),
+            (0, f) => Some(format!(
+                "Could not update the info for {f} {}. Try again later.",
+                shows(f)
+            )),
+            (n, f) => Some(format!(
+                "Updated the info for {n} {}; {f} could not be updated.",
+                shows(n)
+            )),
+        };
         Ok(Finished {
-            level: Level::Info,
+            plain: said,
+            level: if failed == 0 {
+                Level::Info
+            } else {
+                Level::Warn
+            },
             message: format!("{label}: {refreshed} refreshed, {failed} failed"),
             body: EventBody::RefreshFinished { refreshed, failed },
         })

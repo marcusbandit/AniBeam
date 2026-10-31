@@ -125,8 +125,17 @@ Corner {
         frame.escapeStack.push("sheet", root)
         panelFocus.forceActiveFocus()
     }
+    // Every way out (Cancel, the x, Escape, the shield) comes here: with fixes typed and not
+    // applied it asks first, once, in the foot; a second try goes
+    property bool confirmingClose: false
     function close() {
         if (!visible) return
+        if (root.changes.length > 0 && !root.applying && !root.confirmingClose) { root.confirmingClose = true; return }
+        shut()
+    }
+    function shut() {
+        if (!visible) return
+        root.confirmingClose = false
         visible = false
         frame.escapeStack.pop(root)
     }
@@ -155,7 +164,7 @@ Corner {
             if (token !== root.applyToken) return
             root.applyToken = -1
             if (reply.error) { root.error = frame.errorText(reply.error); return }
-            root.close()
+            root.shut()
         }
     }
 
@@ -413,8 +422,18 @@ Corner {
             anchors.right: parent.right
             anchors.top: parent.top
             spacing: theme.space(2)
-            Button { objectName: "fix-cancel"; text: "Cancel"; flat: true; onClicked: root.close() }
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.confirmingClose || (root.anyInvalid && root.changes.length > 0)
+                text: root.confirmingClose ? "Close without applying " + Fmt.plural(root.changes.length, "fix", "fixes") + "?"
+                    : "A number in red needs fixing first"
+                role: "ui"; color: root.confirmingClose ? theme.text : theme.red
+            }
+            Button { visible: root.confirmingClose; objectName: "fix-close-anyway"; text: "Close anyway"; danger: true; onClicked: root.shut() }
+            Button { visible: root.confirmingClose; text: "Keep editing"; flat: true; onClicked: root.confirmingClose = false }
+            Button { visible: !root.confirmingClose; objectName: "fix-cancel"; text: "Cancel"; flat: true; onClicked: root.close() }
             Button {
+                visible: !root.confirmingClose
                 objectName: "fix-apply"
                 primary: true
                 icon: "wrench"

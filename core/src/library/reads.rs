@@ -295,6 +295,56 @@ pub fn set_hidden(core: &Core, series: u64, hidden: bool) -> Result<Reply, CoreE
     Ok(Reply::Ok)
 }
 
+/// Sets or clears the episode count the person gave a series (#239). For a
+/// TVmaze match it is the length of the card's season, and keeps that season
+/// (#283).
+pub fn set_episode_count(core: &Core, series: u64, count: Option<u32>) -> Result<Reply, CoreError> {
+    let count = count.filter(|n| *n > 0);
+    let images_dir = core.paths.images_dir();
+    let season = core
+        .store
+        .read(|c| cards::cards_for(c, &images_dir, &[series]))?
+        .first()
+        .ok_or(CoreError::NotFound {
+            what: Entity::Series,
+            id: series,
+        })?
+        .count_season
+        .filter(|_| count.is_some());
+    let changed = core.store.write(move |c| {
+        Ok(c.execute(
+            "UPDATE series SET episodes_set = ?1, episodes_set_season = ?2 WHERE id = ?3",
+            params![count.map(i64::from), season.map(i64::from), series as i64],
+        )?)
+    })?;
+    if changed == 0 {
+        return Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: series,
+        });
+    }
+    let cards = core
+        .store
+        .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
+    let title = cards.first().map_or_else(String::new, |c| c.title.clone());
+    let what = match count {
+        Some(n) => format!("{title} set to {n} episodes"),
+        None => format!("{title}'s episode count cleared"),
+    };
+    let said = match count {
+        Some(n) => format!("{title} now has {n} episodes."),
+        None => format!("Cleared the episode count of {title}."),
+    };
+    core.bus.say(
+        Level::Info,
+        Stage::Library,
+        said,
+        what,
+        EventBody::SeriesChanged { series: cards },
+    );
+    Ok(Reply::Ok)
+}
+
 /// The metadata table. The counts are over the visible set, so they answer
 /// "how many of what you can see", and only this call reveals hidden rows.
 pub fn list_metadata(

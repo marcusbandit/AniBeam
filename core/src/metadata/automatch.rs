@@ -407,7 +407,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
                     let score = hit.score;
                     let title = hit.title;
                     let label = hit.provider.label();
-                    ctx.emit(Level::Info, format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
+                    ctx.say(Level::Info, format!("Matched {folder} to {title}."), format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
                     let dir = images_dir.clone();
                     let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
@@ -449,7 +449,18 @@ pub fn start(core: &Arc<Core>) -> u64 {
 
         images::sweep_after(&owner, "auto-match").await;
 
+        let said = match (matched, unmatched) {
+            (0, 0) => None,
+            (m, 0) => Some(format!("Matched {m} {}.", crate::words::pick(m, "show", "shows"))),
+            (0, u) => Some(format!("{u} {} a match.", crate::words::pick(u, "show still needs", "shows still need"))),
+            (m, u) => Some(format!(
+                "Matched {m} {}; {u} still {} a match.",
+                crate::words::pick(m, "show", "shows"),
+                crate::words::pick(u, "needs", "need")
+            )),
+        };
         Ok(Finished {
+            plain: said,
             level: Level::Info,
             message: format!("Auto-match: {matched} matched, {unmatched} unmatched, {backfilled} backfilled"),
             body: EventBody::AutoMatchFinished { backfilled, matched, unmatched },
@@ -469,7 +480,7 @@ pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
         Ok(c.execute(
             "UPDATE series SET provider = NULL, anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
                     tvmaze_id = NULL, confirmed = 0, matched_at = NULL,
-                    attempted_at = COALESCE(attempted_at, ?2), attempt_version = NULL
+                    attempted_at = COALESCE(attempted_at, ?2), attempt_version = NULL, episodes_set = NULL
              WHERE id = ?1",
             params![series as i64, now],
         )?)

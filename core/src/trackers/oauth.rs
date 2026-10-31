@@ -74,7 +74,7 @@ const NO_TOKEN: &str = "no access_token in callback";
 /// What the pages call each provider. The site's own name, so the tab a
 /// user is looking at says what they just signed in to; `Tracker::label`
 /// says MAL, which is the shorthand the rest of the interface uses.
-fn site_name(t: Tracker) -> &'static str {
+pub(crate) fn site_name(t: Tracker) -> &'static str {
     match t {
         Tracker::Anilist => "AniList",
         Tracker::Mal => "MyAnimeList",
@@ -134,8 +134,12 @@ async fn run(
     let redirect_url = format!("http://127.0.0.1:{port}{CALLBACK_PATH}");
     let open_url = auth_url(t, &client_id, &state, &verifier, &redirect_url);
     // The line the activity log keeps, with no url in it.
-    ctx.emit(
+    ctx.say(
         Level::Info,
+        format!(
+            "Waiting for you to sign in to {} in your browser.",
+            site_name(t)
+        ),
         format!("{} sign-in: waiting for the browser", site_name(t)),
         EventBody::Notice,
     );
@@ -206,6 +210,7 @@ async fn run(
     // be inside anybody's freshness window.
     cache::start_refresh(&core, Some(t), true);
     Ok(Finished {
+        plain: Some(format!("Connected {} as {username}.", site_name(t))),
         level: Level::Info,
         message: format!("{} connected as {username}", site_name(t)),
         body: EventBody::TrackerConnected {

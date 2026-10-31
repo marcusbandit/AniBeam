@@ -2,6 +2,7 @@
 //! across directories of one QML module (QTBUG-93443). Nothing outside `bridge/` mentions
 //! a Qt type except `main.rs`, which constructs the application.
 
+pub mod dev;
 pub mod door;
 pub mod fmt;
 pub mod helpers;
@@ -13,7 +14,9 @@ pub mod model;
 #[allow(clippy::too_many_arguments)]
 pub mod player;
 // quitRequested's one sender is MPRIS's Quit, and the Mac has no MPRIS, so there nothing
-// emits it; Main.qml still listens. The allow sits here for the same reason as player's.
+// emits it; Main.qml still listens. updateAvailable carries seven fields, one past the
+// argument limit. Both allows sit here for the same reason as player's.
 #[cfg_attr(target_os = "macos", allow(dead_code))]
+#[allow(clippy::too_many_arguments)]
 pub mod shell;
 pub mod theme;

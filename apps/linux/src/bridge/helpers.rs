@@ -70,4 +70,23 @@ pub mod ffi {
         /// A URL opened with the desktop's handler through xdg-open, detached.
         fn open_url(url: &QString) -> bool;
     }
+
+    unsafe extern "C++" {
+        include!("devtools.h");
+        /// Qt's QML debugging services for qmlprofiler, under ANIBEAM_QML_PROFILE=1; before
+        /// the engine exists.
+        fn dev_enable_qml_profiling();
+        /// Developer options (#287): the image interceptor and the `dev` image provider.
+        fn install_dev_tools(engine: Pin<&mut QQmlApplicationEngine>);
+        /// Measure decodes through the provider; with `images` false nothing loads.
+        fn dev_set_image_flags(measure: bool, images: bool);
+        /// Milliseconds since the process started, the clock every record shares.
+        fn dev_now_ms() -> f64;
+        /// The decodes since `since` and the running totals, as JSON text.
+        fn dev_image_stats(since: f64) -> QString;
+        /// The x-ray of an item tree, as JSON text. Both pointers are QML objects.
+        unsafe fn dev_scene(item: *mut QObject, window: *mut QObject) -> QString;
+        /// Drops what the scene graph can rebuild, collects JS garbage, trims the heap.
+        unsafe fn dev_release(window: *mut QObject);
+    }
 }

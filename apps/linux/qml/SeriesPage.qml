@@ -52,6 +52,23 @@ Item {
     // The band's tone, read off the poster; kept as a string for old readers of `tone`
     readonly property string tone: String(toneOf.tone)
 
+    // The episode count set by hand (#239); null clears it
+    function setEpisodeCount(n) {
+        var r = Door.call("SetEpisodeCount", { series: page.props.id, count: n })
+        if (r && r.error) frame.toast(frame.errorText(r.error))
+        else frame.toast(n === null ? "Episode count cleared" : "Set to " + n + " episodes")
+    }
+    // Fixes (#283): every way to correct what the page shows, in one menu
+    function fixItems() {
+        var items = []
+        if (page.filesHere > 0)
+            items.push({ text: "Fix files", icon: "pencil", action: function() { page.openFix(page.detail ? page.detail.suggested_fix : null, false) } })
+        if (countRow.offered)
+            items.push({ text: countRow.set === null ? "Set episode count" : "Change episode count", icon: "list-video", action: countRow.edit })
+        items.push({ text: page.matched ? "Change match" : "Find a match", icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
+        items.push({ text: "Rescan", icon: "refresh-cw", action: page.rescan })
+        return items
+    }
     function contextItems() {
         return [
             { text: "Rescan show", icon: "refresh-cw", action: page.rescan },
@@ -156,9 +173,20 @@ Item {
         target: Door
         function onSeriesChanged(cards) { for (var i = 0; i < cards.length; i++) if (cards[i].id === page.props.id) { reloadDebounce.restart(); return } }
         function onAiringRefreshed(series, updated) { if (series === page.props.id && updated) reloadDebounce.restart() }
-        function onProgressSet(series, progress, outcomes) { if (series === page.props.id) reloadDebounce.restart() }
+        // A write a tracker refused says so; the cubes go back to what the tracker holds
+        function onProgressSet(series, progress, outcomes) {
+            if (series !== page.props.id) return
+            reloadDebounce.restart()
+            var bad = page.failedOutcomes(outcomes)
+            if (bad !== "") frame.toast(bad, 8)
+        }
         function onScored(series, score, outcomes) { if (series === page.props.id) { reloadDebounce.restart(); frame.toast(outcomes.every(function(o) { return o.ok }) ? "Rated " + (score < 0 ? "cleared" : Fmt.score(score)) : "Score failed") } }
-        function onMarked(series, episode, outcomes) { if (series === page.props.id) reloadDebounce.restart() }
+        function onMarked(series, episode, outcomes) {
+            if (series !== page.props.id) return
+            reloadDebounce.restart()
+            var bad = page.failedOutcomes(outcomes)
+            if (bad !== "") frame.toast(bad, 8)
+        }
         function onMatchApplied(series) { if (series === page.props.id) reloadDebounce.restart() }
         // The crawl fills the franchise in behind the first read; its root is an AniList id
         function onGraphChanged(root) { if (page.graph === null || page.graph.root === root) graphDebounce.restart() }
@@ -193,15 +221,33 @@ Item {
     // target of 12, and 12.5 <= 12 is false, so the row just clicked would not flip.
     // optimisticFile pins the clicked row to the intended state regardless of the number
     // comparison; every other row still reads the integral target normally.
+    // "AniList did not take it: ..." for each tracker that refused a write, "" when all did
+    function failedOutcomes(outcomes) {
+        var names = { Anilist: "AniList", Mal: "MyAnimeList" }
+        var list = []
+        for (var i = 0; i < outcomes.length; i++) {
+            var o = outcomes[i]
+            if (o.ok) continue
+            list.push((names[o.tracker] || o.tracker) + " did not take it" + (o.message ? ": " + o.message : ""))
+        }
+        return list.join("; ")
+    }
     function marker(ep) {
         var watched = !!ep.watched
         var target = watched ? Math.max(0, Math.floor(ep.number) - 1) : Math.floor(ep.number)
+        var before = card.watched !== null && card.watched !== undefined ? card.watched : -1
         optimisticProgress = target
         // An absent episode has no file; its integral number reads the target on its own
         optimisticFile = ep.file !== undefined ? ep.file : -1
         optimisticWatched = !watched
-        var r = Door.setProgress(props.id, target)
-        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.toast(r.error.message) }
+        // The season goes along for a show with no tracker, whose marks are kept per season
+        var id = props.id, season = ep.season || 1
+        var r = Door.setProgress(id, target, season)
+        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.toast(r.error.message); return }
+        // A mark that moves more than one episode says so, with the way back
+        if (before >= 0 && Math.abs(target - before) > 1)
+            frame.toast(target > before ? "Watched up to " + Fmt.episodeName("", target) : "Unwatched from " + Fmt.episodeName("", target + 1), 8, "Undo",
+                        function() { Door.setProgress(id, before, season); optimisticProgress = -1; optimisticFile = -1 })
     }
     function watchedWithOptimism(ep) {
         if (optimisticProgress < 0) return !!ep.watched
@@ -419,6 +465,19 @@ Item {
                     enabled: page.deletePicked.length > 0 && page.deleteToken < 0
                     text: page.deletePicked.length === 0 ? "Move to the trash" : "Move " + page.pickWords(page.deletePicked.length) + " to the trash"
                     onClicked: page.deletePickedFiles()
+                }
+                // Every file on the page but the ones a torrent is still writing; again to drop them all
+                Button {
+                    objectName: "delete-all"
+                    small: true; flat: true
+                    readonly property var all: page.pageFiles.filter(function(f) {
+                        return !page.episodes.some(function(e) { return e.file === f && page.isDownloading(e) })
+                    })
+                    readonly property bool allPicked: all.length > 0 && all.every(function(f) { return page.deletePicked.indexOf(f) >= 0 })
+                    text: allPicked ? "Pick none" : "Pick all"
+                    icon: allPicked ? "x" : "check-check"
+                    enabled: page.deleteToken < 0
+                    onClicked: page.deletePicked = allPicked ? [] : all
                 }
                 Button { objectName: "delete-cancel"; small: true; flat: true; text: "Cancel"; onClicked: { page.deleting = false; page.deleteError = "" } }
             }
@@ -644,6 +703,96 @@ Item {
                         color: page.downloadInk
                     }
                 }
+                // The episode count set by hand (#239): Fixes offers it while the record names no
+                // count or a guess is out, so a predicted episode past the real end can be stopped.
+                // A TVmaze show's count is its current season's (#283). The row shows while it is
+                // being typed or a count is set, and a count the schedule or a file went past says
+                // it gave way.
+                Row {
+                    id: countRow
+                    objectName: "episode-count"
+                    property bool editing: false
+                    readonly property var set: card.episodes_set === undefined ? null : card.episodes_set
+                    readonly property bool gaveWay: set !== null && card.episodes_set_applied !== true
+                    // A TVmaze count is one season's, so the row names it
+                    readonly property string seasonWord: card.count_season ? "Season " + card.count_season : ""
+                    // A set count is always offered, so it can be cleared once the show is over
+                    readonly property bool offered: !page.isMovie && (set !== null || (card.status === "Releasing"
+                             && (card.total_is_estimate || !card.total_episodes || (!!card.next_airing && card.next_airing.predicted))))
+                    visible: editing || set !== null
+                    spacing: theme.space(2)
+                    function edit() { editing = true; countField.text = set === null ? "" : String(set); Qt.callLater(countField.focusInput) }
+                    function save(text) {
+                        var t = String(text).trim()
+                        var n = /^\d{1,4}$/.test(t) ? parseInt(t, 10) : 0
+                        if (!(n > 0)) { frame.toast("Type the number of episodes, such as 13"); return }
+                        countRow.editing = false
+                        page.setEpisodeCount(n)
+                    }
+                    Label {
+                        visible: !countRow.editing && countRow.set !== null
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: countRow.set === null ? "" : countRow.gaveWay
+                              ? "You set " + countRow.set + " episodes; that no longer applies"
+                              : (countRow.seasonWord ? countRow.seasonWord + " ends" : "Ends") + " at episode " + countRow.set + ", set by you"
+                        role: "ledger"
+                        color: page.inkDim
+                    }
+                    Button {
+                        visible: !countRow.editing
+                        objectName: "episode-count-set"
+                        small: true; flat: true
+                        tint: page.inkAccent
+                        icon: "pencil"
+                        text: "Change"
+                        onClicked: countRow.edit()
+                    }
+                    Button {
+                        visible: !countRow.editing && countRow.set !== null
+                        small: true; flat: true
+                        text: "Clear"
+                        onClicked: page.setEpisodeCount(null)
+                    }
+                    Label {
+                        visible: countRow.editing && countRow.seasonWord !== ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: countRow.seasonWord + " episodes"
+                        role: "ledger"
+                        color: page.inkDim
+                    }
+                    Field {
+                        id: countField
+                        objectName: "episode-count-field"
+                        visible: countRow.editing
+                        width: theme.space(22)
+                        mono: true
+                        placeholder: "13"
+                        Keys.onEscapePressed: countRow.editing = false
+                        Keys.onReturnPressed: countRow.save(countField.text)
+                        Keys.onEnterPressed: countRow.save(countField.text)
+                    }
+                    Button {
+                        visible: countRow.editing
+                        objectName: "episode-count-save"
+                        small: true; primary: true
+                        tint: page.inkAccent
+                        text: "Save"
+                        onClicked: countRow.save(countField.text)
+                    }
+                    Button {
+                        visible: countRow.editing
+                        small: true; flat: true
+                        text: "Cancel"
+                        onClicked: countRow.editing = false
+                    }
+                    Label {
+                        visible: countRow.editing
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Nothing past it is predicted. A real episode past it wins."
+                        role: "ledger"
+                        color: page.inkDim
+                    }
+                }
                 Item { width: 1; height: theme.space(1.5) }
                 // Continue, with the progress beside it
                 Row {
@@ -694,7 +843,7 @@ Item {
                 }
                 // The quiet row: your score (rate, on a tracker), the average score, the IMDb
                 // score with its votes on hover, the list status and rewatches, then hide, the
-                // record's site, rescan
+                // record's site, and Fixes
                 Flow {
                     width: parent.width
                     spacing: theme.space(2)
@@ -723,19 +872,26 @@ Item {
                         small: true; ghost: true
                         text: card.hidden ? "Unhide" : "Hide"
                         icon: card.hidden ? "eye" : "eye-off"
-                        onClicked: { var r = Door.setHidden(props.id, !card.hidden); if (r.error) frame.toast(r.error.message) }
+                        onClicked: {
+                            var hide = !card.hidden
+                            // The id is kept here: Undo can come after the page is gone
+                            var id = props.id
+                            var r = Door.setHidden(id, hide)
+                            if (r.error) { frame.toast(r.error.message); return }
+                            frame.toast(hide ? page.title + " is hidden, and its tracker sync stops" : page.title + " is back, and syncs again", 6, "Undo",
+                                        function() { Door.setHidden(id, !hide) })
+                        }
                         Tooltip { text: page.hasTracker ? "Hidden from every list, and tracker sync stops" : "Hidden from every list" }
                     }
                     Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: frame.openLink(page.detail.site_url) }
                     Button {
-                        objectName: "series-fix"
-                        visible: page.filesHere > 0
+                        id: fixesButton
+                        objectName: "series-fixes"
                         small: true; ghost: true
-                        text: "Fix files"; icon: "wrench"
-                        onClicked: page.openFix(page.detail ? page.detail.suggested_fix : null, false)
-                        Tooltip { text: "Say what a file really is when its name read wrong" }
+                        text: "Fixes"; icon: "wrench"
+                        onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, page.fixItems()) }
+                        Tooltip { text: "Fix files, the episode count, the match, or rescan" }
                     }
-                    Button { small: true; ghost: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
                 }
             }
         }
@@ -915,14 +1071,26 @@ Item {
                     width: parent.width
                     spacing: theme.space(3)
                     Heading { text: "Synopsis" }
-                    Label {
+                    // Selectable, so a line of it can be copied; folded to eight lines until More
+                    TextEdit {
                         id: synopsis
                         width: Math.min(parent.width, theme.space(140))
-                        text: page.synopsisText
-                        role: "ui"; color: theme.textDim
-                        wrapMode: Text.Wrap; elide: Text.ElideRight
-                        maximumLineCount: page.synopsisOpen ? 1000 : 8
-                        lineHeight: 1.2
+                        readonly property real lineStep: synopsisMetrics.height * 1.2
+                        readonly property real folded: lineStep * 8
+                        readonly property bool truncated: implicitHeight > folded + 1
+                        height: page.synopsisOpen ? implicitHeight : Math.min(implicitHeight, folded)
+                        clip: true
+                        readOnly: true
+                        selectByMouse: true
+                        textFormat: TextEdit.RichText
+                        text: "<div style=\"line-height:120%\">" + page.synopsisText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") + "</div>"
+                        color: theme.textDim
+                        selectionColor: theme.accentSoft
+                        selectedTextColor: theme.text
+                        wrapMode: TextEdit.Wrap
+                        font.family: theme.roleFamily("ui"); font.pointSize: theme.roleSize("ui"); font.weight: theme.roleWeight("ui")
+                        font.variableAxes: theme.roleAxes("ui")
+                        FontMetrics { id: synopsisMetrics; font: synopsis.font }
                     }
                     Button { visible: synopsis.truncated || page.synopsisOpen; small: true; flat: true; text: page.synopsisOpen ? "Less" : "More"; icon: page.synopsisOpen ? "chevron-up" : "chevron-down"; onClicked: page.synopsisOpen = !page.synopsisOpen }
                 }
@@ -944,6 +1112,35 @@ Item {
                         spacing: theme.space(2)
                         Button { objectName: "series-find-match"; text: "Find a match"; icon: "search"; primary: true; onClicked: matchPanel.openFor(page.props.id, page.title, card.match_info) }
                         Button { text: "Open in Metadata"; icon: "database"; flat: true; onClicked: frame.go("metadata", { q: page.title }) }
+                    }
+                    // What a name that matches looks like (#207): the show's title as AniList
+                    // writes it, then the season, then the episode
+                    Tile {
+                        objectName: "series-naming-help"
+                        width: Math.min(parent.width, theme.space(140))
+                        height: namingCol.implicitHeight + padding * 2
+                        padding: theme.space(4)
+                        Column {
+                            id: namingCol
+                            width: parent.width
+                            spacing: theme.space(2)
+                            Label { text: "Names that match"; role: "title"; font.pointSize: theme.typeNormal }
+                            Label { width: parent.width; wrapMode: Text.Wrap; role: "ui"; color: theme.textDim
+                                text: "The folder is the show's title, the way AniList writes it, with the season after it when it is not the first. Each file carries the episode number." }
+                            Repeater {
+                                model: [["Spy x Family Season 2", "Spy x Family S02E01.mkv"],
+                                        ["Spy x Family Season 2", "[Group] Spy x Family Season 2 - 01 [1080p].mkv"],
+                                        ["Your Name (2016)", "Your Name (2016).mkv"]]
+                                Row {
+                                    required property var modelData
+                                    spacing: theme.space(2)
+                                    Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "folder"; size: theme.space(4); color: theme.textFaint }
+                                    Label { anchors.verticalCenter: parent.verticalCenter; text: modelData[0] + "/"; role: "ledger"; color: theme.text }
+                                    Label { anchors.verticalCenter: parent.verticalCenter; text: modelData[1]; role: "ledger"; color: theme.textDim }
+                                }
+                            }
+                            Button { text: "Fix how files read"; icon: "wrench"; flat: true; small: true; onClicked: page.openFix(null, false) }
+                        }
                     }
                 }
 
@@ -1089,7 +1286,7 @@ Item {
         onDismissed: fixSheet.close()
     }
 
-    // The match, for an unmatched series: the same popover Metadata opens, over the overlay
+    // The match, from Find a match or Fixes: the same popover Metadata opens, over the overlay
     MatchPanel {
         id: matchPanel
         parent: frame.overlay

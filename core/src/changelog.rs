@@ -13,7 +13,9 @@
 //! - The seek bar previews in the bubble while you drag
 //! ```
 //!
-//! A heading per version, newest first, with the day it was made; under it one or more of
+//! A heading per version, newest first, with the day it was made and, when the version has
+//! one, a title to remember it by between the two: `## 2.5.0 · Quality of life · 2026-11-02`.
+//! The Release workflow names the GitHub release after it. Under each heading one or more of
 //! the sections New, Changed, Fixed and Removed, in that order; under each, one line per
 //! change. The `# ` title and `<!-- -->` comments are skipped.
 
@@ -25,10 +27,15 @@ pub const KINDS: [&str; 4] = ["New", "Changed", "Fixed", "Removed"];
 /// The most characters a line may have: two lines on a phone.
 pub const MAX_LINE: usize = 80;
 
+/// The most characters a version's title may have: one line beside its number.
+pub const MAX_TITLE: usize = 40;
+
 /// One version's notes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Notes {
     pub version: String,
+    /// `Quality of life`, the version's own name; empty for a version known by its number.
+    pub title: String,
     /// `2026-10-24`, as the heading has it; empty when it has none.
     pub date: String,
     pub sections: Vec<Section>,
@@ -49,8 +56,14 @@ pub fn parse(text: &str) -> Vec<Notes> {
     let mut out: Vec<Notes> = Vec::new();
     for (_, line) in read(text) {
         match line {
-            Line::Heading { version, date, .. } => out.push(Notes {
+            Line::Heading {
                 version,
+                title,
+                date,
+                ..
+            } => out.push(Notes {
+                version,
+                title,
                 date,
                 sections: Vec::new(),
             }),
@@ -96,23 +109,34 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
         }
     };
     let mut heading_at = 0;
+    // The newest version may have no sections yet: main moves to it the moment the last
+    // one ships, before anything is written under it.
+    let mut headings = 0;
     for (n, line) in read(text) {
         match line {
             Line::Title => {}
             Line::Heading {
                 version: v,
+                title,
                 date,
                 exact,
             } => {
                 close(&mut problems, open.take());
-                if above.is_some() && kinds.is_empty() {
+                if headings > 1 && kinds.is_empty() {
                     problems.push(format!("line {heading_at}: a version with no sections"));
                 }
+                headings += 1;
                 heading_at = n;
                 kinds.clear();
                 if !exact {
                     problems.push(format!(
-                        "line {n}: write a heading as \"## 2.0.8 · 2026-10-24\""
+                        "line {n}: write a heading as \"## 2.0.8 · 2026-10-24\", or with a title as \"## 2.0.8 · Quality of life · 2026-10-24\""
+                    ));
+                }
+                let len = title.chars().count();
+                if len > MAX_TITLE {
+                    problems.push(format!(
+                        "line {n}: a title of {len} characters, {MAX_TITLE} at most: \"{title}\""
                     ));
                 }
                 if parts(&v).is_none() {
@@ -191,7 +215,7 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
     close(&mut problems, open);
     match above {
         None => problems.push("no version heading".to_string()),
-        Some(_) if kinds.is_empty() => {
+        Some(_) if headings > 1 && kinds.is_empty() => {
             problems.push(format!("line {heading_at}: a version with no sections"))
         }
         Some(_) => {}
@@ -210,10 +234,12 @@ pub fn newer(a: &str, b: &str) -> bool {
 }
 
 /// The app version in one the core logged as it started: `2.1.0` out of `2.1.0`,
-/// `2.1.0.r6.gf1d3824` or `2.1.0.dirty`. None when it does not start with three numbers,
-/// as a build described from one of the phone's tags (`android.v2.0.4`) does not.
+/// `2.1.0.r6.gf1d3824` or `2.1.0.dirty`, and `2.1.0` out of a nightly's
+/// `2.1.0-nightly.20261030.12`. None when it does not start with three numbers, as a build
+/// described from one of the phone's tags (`android.v2.0.4`) does not.
 pub fn version_of(logged: &str) -> Option<String> {
-    let mut numbers = logged.splitn(4, '.');
+    let base = logged.split('-').next()?;
+    let mut numbers = base.splitn(4, '.');
     let version = format!(
         "{}.{}.{}",
         numbers.next()?,
@@ -281,6 +307,8 @@ pub struct WhatsNew {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Shown {
     pub version: String,
+    /// The version's title, or empty.
+    pub title: String,
     /// "24 Oct 2026", or empty.
     pub day: String,
     /// Drawn at full strength: every version, except those under a line that marks where
@@ -337,6 +365,7 @@ pub fn whats_new(notes: &[Notes], current: &str, seen: &Seen, used_before: bool)
             .enumerate()
             .map(|(i, n)| Shown {
                 version: n.version.clone(),
+                title: n.title.clone(),
                 day: day(&n.date),
                 lit: !known || i < above,
                 sections: n.sections.clone(),
@@ -359,9 +388,11 @@ pub fn day(date: &str) -> String {
 enum Line {
     /// `# AniBeam for Android`
     Title,
-    /// `## 2.0.8 · 2026-10-24`, read leniently; `exact` when it is written just so.
+    /// `## 2.0.8 · 2026-10-24` or `## 2.5.0 · Quality of life · 2026-11-02`, read
+    /// leniently; `exact` when it is written just so.
     Heading {
         version: String,
+        title: String,
         date: String,
         exact: bool,
     },
@@ -418,25 +449,52 @@ fn heading(text: &str) -> Line {
         .rfind(|w| w.len() == 10 && w.as_bytes()[4] == b'-')
         .unwrap_or("")
         .to_string();
-    let exact = !date.is_empty() && text == format!("{version} · {date}");
+    // The title is whatever sits between the number and the day, each set off by a " · "
+    let fields: Vec<&str> = text.split(" · ").map(str::trim).collect();
+    let title = match fields.as_slice() {
+        [_, title, _] => title.to_string(),
+        _ => String::new(),
+    };
+    let exact = !date.is_empty()
+        && if title.is_empty() {
+            text == format!("{version} · {date}")
+        } else {
+            text == format!("{version} · {title} · {date}")
+        };
     Line::Heading {
         version,
+        title,
         date,
         exact,
     }
 }
 
 fn parts(v: &str) -> Option<[u64; 3]> {
-    let mut numbers = v.split('.');
-    let mut out = [0; 3];
+    digits::<3>(v)
+}
+
+/// Exactly `N` dot-separated whole numbers: `digits::<3>("2.1.0")`. The update check reads
+/// a nightly's day and run with it too.
+pub(crate) fn digits<const N: usize>(s: &str) -> Option<[u64; N]> {
+    let mut parts = s.split('.');
+    let mut out = [0; N];
     for slot in &mut out {
-        let n = numbers.next()?;
+        let n = parts.next()?;
         if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
             return None;
         }
         *slot = n.parse().ok()?;
     }
-    numbers.next().is_none().then_some(out)
+    parts.next().is_none().then_some(out)
+}
+
+/// Whether `version` has anything to show: main moves to a new version before a line is
+/// written under it, and notes with nothing in them never open What's new by themselves.
+pub fn has_lines(notes: &[Notes], version: &str) -> bool {
+    notes
+        .iter()
+        .find(|n| n.version == version)
+        .is_some_and(|n| n.sections.iter().any(|s| !s.lines.is_empty()))
 }
 
 fn day_parts(date: &str) -> Option<(i32, u32, u32)> {
@@ -503,6 +561,24 @@ How to write a line.
             ["Countdowns read in 3d, not in in 3d"]
         );
         assert_eq!(notes[2].sections[0].kind, "Removed");
+        assert_eq!(notes[0].title, "");
+    }
+
+    #[test]
+    fn a_heading_may_name_its_version() {
+        let named = "## 2.5.0 · Quality of life · 2026-11-02\n### New\n- One\n";
+        let notes = parse(named);
+        assert_eq!(notes[0].version, "2.5.0");
+        assert_eq!(notes[0].title, "Quality of life");
+        assert_eq!(notes[0].date, "2026-11-02");
+        assert_eq!(lint(named, "2.5.0"), Vec::<String>::new());
+        let w = whats_new(&notes, "2.5.0", &Seen::default(), false);
+        assert_eq!(w.versions[0].title, "Quality of life");
+
+        let long = "## 2.5.0 · A title that goes on far longer than any name should · 2026-11-02\n### New\n- One\n";
+        assert!(lint(long, "2.5.0")[0].contains("40 at most"));
+        let sloppy = "## 2.5.0 ·Quality of life· 2026-11-02\n### New\n- One\n";
+        assert!(lint(sloppy, "2.5.0")[0].contains("write a heading as"));
     }
 
     #[test]
@@ -549,6 +625,17 @@ wraps onto a second line
     }
 
     #[test]
+    fn only_the_newest_version_may_be_empty() {
+        let just_begun = "## 2.1.0 · 2026-10-30\n## 2.0.8 · 2026-10-24\n### Fixed\n- One\n";
+        assert_eq!(lint(just_begun, "2.1.0"), Vec::<String>::new());
+        let hollow = "## 2.1.0 · 2026-10-30\n### New\n- One\n## 2.0.8 · 2026-10-24\n";
+        assert_eq!(
+            lint(hollow, "2.1.0"),
+            ["line 4: a version with no sections"]
+        );
+    }
+
+    #[test]
     fn lint_refuses_long_dashes_and_an_empty_file() {
         assert!(
             lint(
@@ -575,6 +662,11 @@ wraps onto a second line
         assert_eq!(version_of("2.1.0").as_deref(), Some("2.1.0"));
         assert_eq!(version_of("2.1.0.r6.gf1d3824").as_deref(), Some("2.1.0"));
         assert_eq!(version_of("2.1.0.dirty").as_deref(), Some("2.1.0"));
+        assert_eq!(
+            version_of("2.1.0-nightly.20261030.12").as_deref(),
+            Some("2.1.0")
+        );
+        assert_eq!(version_of("2.1.0-pr.280.3").as_deref(), Some("2.1.0"));
         assert_eq!(version_of("android.v2.0.4"), None);
         assert_eq!(version_of("2.1"), None);
     }

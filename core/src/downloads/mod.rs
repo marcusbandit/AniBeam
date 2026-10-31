@@ -3,7 +3,9 @@
 //! torrent client is doing. anirss is the tool that owns every rule about
 //! feeds and qBittorrent; this module is its client, and the torrent
 //! client's for what anirss leaves out (live transfer, stop, start,
-//! delete).
+//! delete). The search, a refine step and the subscription preview may
+//! run on the core's own port of anirss instead, as the settings' `engine`
+//! picks (`backend`).
 //!
 //! The core runs anirss as a sidecar by default (`anirss --serve` on a
 //! port and token it picked), started on first use rather than at launch,
@@ -14,6 +16,7 @@
 //! shell holds `{endpoint, query, items}` and its own history.
 
 pub mod anirss;
+pub mod backend;
 pub mod contents;
 pub mod facts;
 pub mod feed;
@@ -40,6 +43,7 @@ use crate::net::{Http, HttpRequest, Method};
 use crate::sync::recover;
 use crate::trackers::accounts::with_secrets;
 use anirss::{AnirssClient, Sidecar, SpawnFailure};
+use backend::DownloadsBackend;
 use qbt::QbtClient;
 
 pub struct Downloads {
@@ -622,7 +626,13 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
     } else {
         Level::Info
     };
+    let said = match level {
+        Level::Debug => None,
+        Level::Warn => Some("Downloads are not ready. Check Downloads in Settings.".to_string()),
+        _ => Some("Downloads are ready.".to_string()),
+    };
     Ok(Finished {
+        plain: said,
         level,
         message: describe(&status, anirss_failure.as_deref()),
         body: EventBody::DownloadsStatusChanged { status },
@@ -741,7 +751,15 @@ pub fn test_torrent_client(core: &Core) -> Result<u64, CoreError> {
                     format!("{client} not connected: {}", status.torrent.message),
                 )
             };
+            let said = match (status.torrent.connected, before) {
+                (true, true) => None,
+                (true, false) => Some("The download app is connected.".to_string()),
+                (false, _) => Some(
+                    "The download app is not connected. Check its address in Settings.".to_string(),
+                ),
+            };
             Ok(Finished {
+                plain: said,
                 level,
                 message,
                 body: EventBody::DownloadsStatusChanged { status },
@@ -801,6 +819,7 @@ pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
             owner.downloads.state().endpoints = endpoints;
             let status = status_async(&owner).await?;
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: if up.is_empty() {
                     "No on-demand endpoint is running".to_string()
@@ -854,6 +873,7 @@ pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
             owner.downloads.state().endpoints = endpoints;
             let status = status_async(&owner).await?;
             Ok(Finished {
+                plain: Some("The download source is running.".to_string()),
                 level: Level::Info,
                 message: format!("{name} is running"),
                 body: EventBody::DownloadsStatusChanged { status },
@@ -945,83 +965,38 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
         .jobs
         .clone()
         .start(JobKind::SearchReleases, move |ctx| async move {
-            let phase = Arc::new(AtomicU8::new(PHASE_CONNECTING));
-            let watch = watch_search(
-                ctx.clone(),
-                owner.http.clone(),
-                phase.clone(),
-                first
-                    .clone()
-                    .unwrap_or_else(|| "the first endpoint".to_string()),
-                ondemand,
-            );
-            let work = async {
-                let client = ensure_client(&owner).await?;
-                let listed = owner.downloads.state().endpoints.clone();
-                let target = default_target(endpoint.clone(), &listed);
-                let fallback =
-                    guard_search(owner.http.as_ref(), &listed, target.as_deref()).await?;
-                phase.store(PHASE_FETCHING, Ordering::Relaxed);
-                let raw = client.search(&query, target.as_deref(), fallback).await?;
-                phase.store(PHASE_READING, Ordering::Relaxed);
-                let fetched = raw.query.clone();
-                let mut search = if raw.items.is_empty() {
-                    ReleaseSearch {
-                        query: raw.query,
-                        endpoint: raw.endpoint,
-                        items: Vec::new(),
-                        groups: Vec::new(),
-                        best_fit: BestFit {
-                            available: false,
-                            query: String::new(),
-                            item: None,
-                            profile: Vec::new(),
-                        },
-                        tried: raw.tried,
-                        fell_back: raw.fell_back,
-                        client_side: false,
-                        auto_resolution: None,
-                        facts: Vec::new(),
-                        show: None,
-                        fetched_query: String::new(),
-                    }
-                } else {
-                    let a = client
-                        .analyze(&raw.query, &raw.endpoint, &raw.items)
-                        .await?;
-                    ReleaseSearch {
-                        query: a.query,
-                        endpoint: raw.endpoint,
-                        items: a.items,
-                        groups: a.groups,
-                        best_fit: a.best_fit,
-                        tried: raw.tried,
-                        fell_back: raw.fell_back,
-                        client_side: a.client_side,
-                        auto_resolution: a.auto_resolution,
-                        facts: Vec::new(),
-                        show: None,
-                        fetched_query: String::new(),
-                    }
-                };
-                let (facts, show) = annotate(&owner, &search.query, &search.items);
-                search.facts = facts;
-                search.show = show;
-                search.fetched_query = fetched;
-                if !search.items.is_empty() {
-                    enrich(
-                        &owner,
-                        client,
-                        &search.query,
-                        &search.endpoint,
-                        &search.items,
-                    );
+            let search = match backend::engine(&owner)? {
+                DownloadsEngine::Native => {
+                    search_native(&owner, &ctx, &query, endpoint.clone()).await?
                 }
-                Ok::<_, CoreError>(search)
-            };
-            let search = tokio::select! {
-                r = work => r?,
-                _ = watch => unreachable!("the watch never ends"),
+                DownloadsEngine::Anirss => {
+                    let phase = Arc::new(AtomicU8::new(PHASE_CONNECTING));
+                    let watch = watch_search(
+                        ctx.clone(),
+                        owner.http.clone(),
+                        phase.clone(),
+                        first
+                            .clone()
+                            .unwrap_or_else(|| "the first endpoint".to_string()),
+                        ondemand,
+                    );
+                    let work = async {
+                        let backend =
+                            DownloadsBackend::with(&owner, DownloadsEngine::Anirss).await?;
+                        let listed = owner.downloads.state().endpoints.clone();
+                        let target = default_target(endpoint.clone(), &listed);
+                        let fallback =
+                            guard_search(owner.http.as_ref(), &listed, target.as_deref()).await?;
+                        phase.store(PHASE_FETCHING, Ordering::Relaxed);
+                        let raw = backend.search(&query, target.as_deref(), fallback).await?;
+                        phase.store(PHASE_READING, Ordering::Relaxed);
+                        read_search(&owner, backend, raw).await
+                    };
+                    tokio::select! {
+                        r = work => r?,
+                        _ = watch => unreachable!("the watch never ends"),
+                    }
+                }
             };
             let message = if search.fell_back {
                 let asked = endpoint
@@ -1042,11 +1017,99 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                 )
             };
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message,
                 body: EventBody::ReleasesFound { search },
             })
         }))
+}
+
+/// The search on the core's own engine. There is no sidecar to start and
+/// nothing behind Jackett or started on demand, so neither the guard nor
+/// the anirss watch runs: the progress line names each step as it starts.
+async fn search_native(
+    owner: &Arc<Core>,
+    ctx: &Arc<JobCtx>,
+    query: &str,
+    endpoint: Option<String>,
+) -> Result<ReleaseSearch, CoreError> {
+    let backend = DownloadsBackend::with(owner, DownloadsEngine::Native).await?;
+    let started = std::time::Instant::now();
+    let on = endpoint
+        .clone()
+        .or_else(|| backend.first_endpoint())
+        .unwrap_or_else(|| "the first endpoint".to_string());
+    ctx.checkpoint()?;
+    ctx.progress(0, None, &format!("Searching {on}"));
+    let raw = backend.search(query, endpoint.as_deref(), true).await?;
+    ctx.checkpoint()?;
+    ctx.progress(started.elapsed().as_secs(), None, "Reading the results");
+    read_search(owner, backend, raw).await
+}
+
+/// A search's answer as the page reads it: the analysis when there is
+/// anything to analyze, each release's facts and the library series, and
+/// the dating read started beside it.
+async fn read_search(
+    owner: &Arc<Core>,
+    backend: DownloadsBackend,
+    raw: anirss::SearchRaw,
+) -> Result<ReleaseSearch, CoreError> {
+    let fetched = raw.query.clone();
+    let mut search = if raw.items.is_empty() {
+        ReleaseSearch {
+            query: raw.query,
+            endpoint: raw.endpoint,
+            items: Vec::new(),
+            groups: Vec::new(),
+            best_fit: BestFit {
+                available: false,
+                query: String::new(),
+                item: None,
+                profile: Vec::new(),
+            },
+            tried: raw.tried,
+            fell_back: raw.fell_back,
+            client_side: false,
+            auto_resolution: None,
+            facts: Vec::new(),
+            show: None,
+            fetched_query: String::new(),
+        }
+    } else {
+        let a = backend
+            .analyze(&raw.query, &raw.endpoint, &raw.items)
+            .await?;
+        ReleaseSearch {
+            query: a.query,
+            endpoint: raw.endpoint,
+            items: a.items,
+            groups: a.groups,
+            best_fit: a.best_fit,
+            tried: raw.tried,
+            fell_back: raw.fell_back,
+            client_side: a.client_side,
+            auto_resolution: a.auto_resolution,
+            facts: Vec::new(),
+            show: None,
+            fetched_query: String::new(),
+        }
+    };
+    let (facts, show) = annotate(owner, &search.query, &search.items);
+    search.facts = facts;
+    search.show = show;
+    search.fetched_query = fetched;
+    if !search.items.is_empty() {
+        enrich(
+            owner,
+            backend,
+            &search.query,
+            &search.endpoint,
+            &search.items,
+        );
+    }
+    Ok(search)
 }
 
 const PHASE_CONNECTING: u8 = 0;
@@ -1140,18 +1203,25 @@ pub(crate) fn annotate(
 
 /// After a search answers: the feed it read, read again by the core for
 /// what anirss drops (when each release was posted, a torznab feed's
-/// counts). The address is anirss's own (`/subscriptions/preview` gives the
-/// feed a search on this query reads), and the read is cheap: nyaa and
-/// Erai answer at once and Jackett serves a repeat query from its cache.
-/// Not a job; a failure is a debug line and the page shows no dates.
-fn enrich(core: &Arc<Core>, client: AnirssClient, query: &str, endpoint: &str, items: &[Release]) {
+/// counts). The address is the subscription preview's (anirss's
+/// `/subscriptions/preview`, or the core's own, gives the feed a search on
+/// this query reads), and the read is cheap: a plain RSS endpoint answers
+/// at once and Jackett serves a repeat query from its cache. Not a job; a
+/// failure is a debug line and the page shows no dates.
+fn enrich(
+    core: &Arc<Core>,
+    backend: DownloadsBackend,
+    query: &str,
+    endpoint: &str,
+    items: &[Release],
+) {
     let owner = core.clone();
     let (query, endpoint, items) = (query.to_string(), endpoint.to_string(), items.to_vec());
     core.handle.spawn(async move {
         let outcome = async {
-            let spec = client.preview(&query, &endpoint, &items).await?;
+            let spec = backend.preview(&query, &endpoint, &items).await?;
             if spec.feed_url.is_empty() {
-                return Err(CoreError::internal("anirss named no feed for this search"));
+                return Err(CoreError::internal("no feed named for this search"));
             }
             feed::read(owner.http.as_ref(), &spec.feed_url).await
         }
@@ -1192,9 +1262,10 @@ pub fn refine(
     Ok(owner
         .jobs
         .clone()
-        .start(JobKind::RefineReleases, move |_| async move {
-            let client = ensure_client(&owner).await?;
-            let mut refinement = client.apply(&query, &endpoint, &items, &op).await?;
+        .start(JobKind::RefineReleases, move |ctx| async move {
+            let backend = DownloadsBackend::open(&owner).await?;
+            ctx.checkpoint()?;
+            let mut refinement = backend.apply(&query, &endpoint, &items, &op).await?;
             if refinement.applied {
                 let (facts, show) = annotate(&owner, &refinement.query, &refinement.items);
                 refinement.facts = facts;
@@ -1203,7 +1274,7 @@ pub fn refine(
                 if refinement.mode == "refetch" && !refinement.items.is_empty() {
                     enrich(
                         &owner,
-                        client,
+                        backend,
                         &refinement.query,
                         &refinement.endpoint,
                         &refinement.items,
@@ -1223,6 +1294,7 @@ pub fn refine(
                 )
             };
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message,
                 body: EventBody::ReleasesRefined { refinement },
@@ -1240,10 +1312,14 @@ pub fn preview(
     Ok(owner
         .jobs
         .clone()
-        .start(JobKind::Subscribe, move |_| async move {
-            let client = ensure_client(&owner).await?;
-            let spec = client.preview(&query, &endpoint, &items).await?;
+        .start(JobKind::Subscribe, move |ctx| async move {
+            // On either engine: `Subscribe` sends the search again rather than
+            // this spec, so anirss makes its own from the same query and items
+            let backend = DownloadsBackend::open(&owner).await?;
+            ctx.checkpoint()?;
+            let spec = backend.preview(&query, &endpoint, &items).await?;
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: format!("Subscription preview for \"{query}\""),
                 body: EventBody::SubscriptionPreviewed { spec },
@@ -1291,6 +1367,7 @@ pub fn subscribe(
                 )
             };
             Ok(Finished {
+                plain: Some(format!("Subscribed to {}.", result.name)),
                 level: Level::Info,
                 message,
                 body: EventBody::Subscribed { result },
@@ -1477,12 +1554,21 @@ pub fn download_with(
         crate::time::now_secs(),
     );
     let followups = replace::prepare(&owner.store, &plan.now, &options)?;
+    let home = show_folder(&owner, options.series)?;
+    let mut plan = plan;
+    for roll in &mut plan.rolls {
+        roll.home = home.clone();
+    }
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::Download, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let result = client.download(&plan.now, name.as_deref()).await?;
+            let result = client
+                .download(&plan.now, name.as_deref(), home.as_deref())
+                .await?;
+            // An anirss older than save_path put them under its own root
+            move_home(&owner, &plan.now, &result, home.as_deref());
             let mut extra = replace::describe(&options, &followups);
             extra.push_str(&rolling::describe(&plan));
             rolling::after_add(&owner, plan.rolls, &plan.now, &result.hashes).await;
@@ -1493,6 +1579,10 @@ pub fn download_with(
                 }
             }
             Ok(Finished {
+                plain: Some(format!(
+                    "Added {} to your downloads.",
+                    plural(result.count, "download", "downloads")
+                )),
                 level: Level::Info,
                 message: format!(
                     "Added {} to {} under {}{extra}",
@@ -1503,6 +1593,103 @@ pub fn download_with(
                 body: EventBody::TorrentsAdded { result },
             })
         }))
+}
+
+/// The folder of the library show a download is for, which the torrents
+/// are saved straight into: the show is already on disk, so its episodes go
+/// where it is, never under anirss's root as a second folder. None when the
+/// download is for no library show, the folder is gone, or the client keeps
+/// its files on another machine, whose paths are its own.
+fn show_folder(core: &Core, series: Option<u64>) -> Result<Option<String>, CoreError> {
+    let Some(id) = series else { return Ok(None) };
+    let (path, s) = core.store.read(|c| {
+        let path = c
+            .query_row(
+                "SELECT path FROM series WHERE id = ?1 AND kind = 'show' AND missing_since IS NULL",
+                [id as i64],
+                |r| r.get::<_, String>(0),
+            )
+            .ok();
+        Ok((path, settings::load_stored(c)?))
+    })?;
+    Ok(path.filter(|p| settings::files_here(&s) && still_there(Some(p)).is_some()))
+}
+
+/// A show folder anirss will take as save_path: still on disk, and a name
+/// with no control characters, which anirss refuses.
+pub(crate) fn still_there(path: Option<&str>) -> Option<&str> {
+    path.filter(|p| !p.chars().any(char::is_control) && std::path::Path::new(p).is_dir())
+}
+
+/// Moves new single-episode torrents into their show's folder when an
+/// anirss that predates save_path put them under its own root. Waits for
+/// qBittorrent to list them first, since a move asked for a hash it does
+/// not hold yet is dropped without a word, and moves only those still where
+/// anirss put them, so a torrent the client already had for another show
+/// stays put. A batch stays where it landed: moved in beside loose episodes
+/// it would make them read as films. Only when this machine sees both
+/// folders, so a client on another host is left alone.
+pub(crate) fn move_home(
+    core: &Arc<Core>,
+    items: &[Release],
+    added: &AddedTorrents,
+    home: Option<&str>,
+) {
+    let Some(home) = home.map(|h| h.trim_end_matches(['/', '\\']).to_string()) else {
+        return;
+    };
+    let saved = added.save_path.trim_end_matches(['/', '\\']).to_string();
+    if saved == home || added.hashes.len() != items.len() {
+        return;
+    }
+    let local = std::path::Path::new(&saved)
+        .parent()
+        .is_some_and(|base| base.is_dir());
+    if !local || !std::path::Path::new(&home).is_dir() {
+        return;
+    }
+    let hashes: Vec<String> = items
+        .iter()
+        .zip(&added.hashes)
+        .filter(|(r, _)| {
+            let f = facts::read(r);
+            !f.batch && f.episode.is_some()
+        })
+        .map(|(_, h)| h.to_lowercase())
+        .collect();
+    if hashes.is_empty() {
+        return;
+    }
+    let core = core.clone();
+    let handle = core.handle.clone();
+    handle.spawn(async move {
+        for _ in 0..60 {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let Ok(qbt) = qbt_client(&core).await else {
+                continue;
+            };
+            let Ok(listed) = qbt.torrents_named(&hashes).await else {
+                continue;
+            };
+            if listed.len() < hashes.len() {
+                continue;
+            }
+            let here: Vec<String> = listed
+                .iter()
+                .filter(|t| t.save_path.trim_end_matches(['/', '\\']) == saved)
+                .map(|t| t.hash.clone())
+                .collect();
+            if here.is_empty() {
+                return;
+            }
+            match qbt.set_location(&here, &home).await {
+                Ok(()) => tracing::info!("moved {} into {home}", here.len()),
+                Err(e) => tracing::warn!("download not moved into {home}: {e}"),
+            }
+            return;
+        }
+        tracing::warn!("download not moved into {home}: the client never listed it");
+    });
 }
 
 pub fn movie(core: &Core, link: String) -> Result<u64, CoreError> {
@@ -1522,6 +1709,7 @@ pub fn movie(core: &Core, link: String) -> Result<u64, CoreError> {
             let client = ensure_client(&owner).await?;
             let result = client.movie(&link).await?;
             Ok(Finished {
+                plain: Some("Added a movie to your downloads.".to_string()),
                 level: Level::Info,
                 message: format!("Added a movie to {}", result.save_path),
                 body: EventBody::TorrentsAdded { result },
@@ -1545,6 +1733,7 @@ pub fn plan_remove(
                 .remove(std::slice::from_ref(&name), torrents, files, true)
                 .await?;
             Ok(Finished {
+                plain: None,
                 level: Level::Debug,
                 message: format!("Planned the removal of {name}"),
                 body: EventBody::RemovalPlanned { plans },
@@ -1569,6 +1758,7 @@ pub fn remove(core: &Core, name: String, torrents: bool, files: bool) -> Result<
                 (false, false) => "",
             };
             Ok(Finished {
+                plain: Some(format!("Unsubscribed from {name}.")),
                 level: Level::Info,
                 message: format!("Removed the subscription {name}{extra}"),
                 body: EventBody::SubscriptionRemoved { name },
@@ -1625,7 +1815,26 @@ pub fn control(core: &Core, hashes: Vec<String>, action: TorrentAction) -> Resul
                     }
                 }
             };
+            let n = hashes.len() as u64;
+            let said = match &action {
+                TorrentAction::Stop => {
+                    Some(format!("Paused {}.", plural(n, "download", "downloads")))
+                }
+                TorrentAction::Start => {
+                    Some(format!("Resumed {}.", plural(n, "download", "downloads")))
+                }
+                TorrentAction::Delete { files: true } => Some(format!(
+                    "Deleted {} and the files.",
+                    plural(n, "download", "downloads")
+                )),
+                TorrentAction::Delete { files: false } => Some(format!(
+                    "Removed {} from your list.",
+                    plural(n, "download", "downloads")
+                )),
+                TorrentAction::Sequential { .. } | TorrentAction::FirstLastPieces { .. } => None,
+            };
             Ok(Finished {
+                plain: said,
                 level: Level::Info,
                 message: format!(
                     "{verb} {}",
@@ -1769,6 +1978,7 @@ pub fn remove_show(
                 ),
             };
             Ok(Finished {
+                plain: Some(format!("Removed {title} from your downloads.")),
                 level: Level::Info,
                 message: format!("Removed {title}: {what}"),
                 body: EventBody::ShowRemoved {
@@ -2030,6 +2240,116 @@ fn writing_of(torrents: &[Torrent]) -> std::collections::HashSet<std::path::Path
         }
     }
     out
+}
+
+/// After episode files went to the trash (#266): each torrent that held one of them leaves
+/// the client too, so the same release can be downloaded again (the client refuses a torrent
+/// it already has) and nothing is left behind under Files missing. A season pack goes when
+/// any of its episodes does; the files of it still on disk stay where they are, since a
+/// torrent's data is never asked for. A torrent still downloading is left alone. Only a
+/// client on this machine, whose paths are the library's own; with no client set up, or one
+/// that does not answer, nothing happens and nothing is said.
+pub fn drop_torrents_of(core: &Core, gone: Vec<std::path::PathBuf>) {
+    if gone.is_empty() {
+        return;
+    }
+    let Ok(owner) = core.owner() else { return };
+    core.handle.spawn(async move {
+        let Ok(s) = load_settings(&owner).await else {
+            return;
+        };
+        if !settings::files_here(&s) {
+            return;
+        }
+        let Ok(client) = qbt_client(&owner).await else {
+            return;
+        };
+        let Ok(torrents) = client.torrents().await else {
+            return;
+        };
+        let gone: Vec<std::path::PathBuf> = gone.iter().map(|p| gone_key(p)).collect();
+        let mut hashes: Vec<String> = Vec::new();
+        for t in torrents.iter().filter(|t| t.progress >= 1.0) {
+            let held = match held(&t.content_path, &gone) {
+                Held::Yes => true,
+                Held::No => false,
+                // A folder a deleted file sat under: the torrent's own file list says
+                // whether it was one of them, so a torrent saved straight into a shared
+                // folder is not taken for every file deleted there
+                Held::Maybe => match client.files(&t.hash).await {
+                    Ok(files) => files.iter().any(|f| {
+                        gone.contains(&gone_key(&std::path::Path::new(&t.save_path).join(&f.name)))
+                    }),
+                    Err(_) => false,
+                },
+            };
+            if held {
+                hashes.push(t.hash.to_ascii_lowercase());
+            }
+        }
+        if hashes.is_empty() {
+            return;
+        }
+        match client.delete(&hashes, false).await {
+            Ok(()) => {
+                owner.bus.info(
+                    Stage::Downloads,
+                    format!(
+                        "{} of the deleted files removed from the torrent client",
+                        plural(hashes.len() as u64, "torrent", "torrents")
+                    ),
+                    EventBody::Notice,
+                );
+                let _ = list_torrents(&owner);
+            }
+            Err(e) => {
+                owner.bus.say(
+                    Level::Warn,
+                    Stage::Downloads,
+                    "Deleted files are still listed in the download app.",
+                    format!("The torrents of the deleted files stay in the client: {e}"),
+                    EventBody::Notice,
+                );
+            }
+        }
+    });
+}
+
+/// A trashed path as one key: its folder resolved on disk (the file itself is gone), so a
+/// symlinked library source still meets the client's own path.
+fn gone_key(p: &std::path::Path) -> std::path::PathBuf {
+    match (
+        p.parent().and_then(|d| std::fs::canonicalize(d).ok()),
+        p.file_name(),
+    ) {
+        (Some(dir), Some(name)) => dir.join(name),
+        _ => p.components().collect(),
+    }
+}
+
+enum Held {
+    Yes,
+    No,
+    Maybe,
+}
+
+/// Whether a torrent's content held one of `gone`: it is one of the paths, or a folder one
+/// of them sat under, which only the torrent's file list can settle.
+fn held(content: &str, gone: &[std::path::PathBuf]) -> Held {
+    if content.trim().is_empty() {
+        return Held::No;
+    }
+    // A content path that still exists resolves on disk; a deleted file resolves through
+    // its folder, the same way the gone paths did
+    let c = std::fs::canonicalize(content.trim())
+        .unwrap_or_else(|_| gone_key(std::path::Path::new(content.trim())));
+    if gone.contains(&c) {
+        Held::Yes
+    } else if gone.iter().any(|g| g.starts_with(&c)) {
+        Held::Maybe
+    } else {
+        Held::No
+    }
 }
 
 /// Whether a torrent is still writing this file.
@@ -2302,6 +2622,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
             let now = feed::read(owner.http.as_ref(), &url).await?;
             if !now.is_empty() {
                 return Ok(Finished {
+                    plain: Some(format!("{name} needs no repair.")),
                     level: Level::Info,
                     message: format!(
                         "{name} needs no repair: its feed finds {}",
@@ -2330,6 +2651,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                 swap_feed(&qbt, &rules, &name, &narrowed, &url, &next).await?;
                 let must = narrowed["mustContain"].as_str().unwrap_or("").to_string();
                 return Ok(Finished {
+                    plain: Some(format!("Repaired the subscription to {name}.")),
                     level: Level::Info,
                     message: format!(
                         "Repaired {name}: {host} is searched for \"{candidate}\" ({}) and the rule keeps {}",
@@ -2524,7 +2846,19 @@ pub fn set_settings(
         .filter(|old| !settings.saved_clients.iter().any(|c| c.id == old.id))
         .map(|old| settings::password_key(&old.id))
         .collect();
+    let engine = (settings.engine != before.engine).then_some(settings.engine);
     restart(core, settings)?;
+    if let Some(engine) = engine {
+        let on = match engine {
+            DownloadsEngine::Anirss => "anirss",
+            DownloadsEngine::Native => "AniBeam's own engine",
+        };
+        core.bus.info(
+            Stage::Downloads,
+            format!("Release search now runs on {on}"),
+            EventBody::Notice,
+        );
+    }
     // A client taken off the list takes its password with it, once the
     // list without it is saved: a failed save keeps both.
     for key in gone {
@@ -2573,8 +2907,10 @@ pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
     settings::validate(&mut s, &[])?;
     restart(core, s)?;
     let status = status(core)?;
-    core.bus.info(
+    core.bus.say(
+        Level::Info,
         Stage::Downloads,
+        "Downloads now use a different download app.",
         format!("Downloads use {name}"),
         EventBody::DownloadsStatusChanged { status },
     );
@@ -2858,6 +3194,27 @@ mod tests {
             describe(&status, Some("anirss exited")),
             "anirss is not available: anirss exited; qBittorrent v5.2.4 connected"
         );
+    }
+
+    #[test]
+    fn a_torrent_held_a_deleted_file_when_it_is_the_file_or_a_folder_above_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let show = dir.path().join("Show");
+        std::fs::create_dir_all(&show).unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let gone = vec![root.join("Show/01.mkv")];
+        let ep = show.join("01.mkv");
+        assert!(matches!(held(&ep.to_string_lossy(), &gone), Held::Yes));
+        assert!(matches!(held(&show.to_string_lossy(), &gone), Held::Maybe));
+        assert!(matches!(
+            held(&dir.path().to_string_lossy(), &gone),
+            Held::Maybe
+        ));
+        assert!(matches!(
+            held(&show.join("02.mkv").to_string_lossy(), &gone),
+            Held::No
+        ));
+        assert!(matches!(held("", &gone), Held::No));
     }
 
     #[test]

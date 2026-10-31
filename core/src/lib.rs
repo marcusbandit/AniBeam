@@ -26,6 +26,7 @@ pub(crate) mod percent;
 pub mod phone;
 pub mod playback;
 pub mod prefs;
+pub mod presence;
 pub(crate) mod process;
 pub mod releases;
 pub mod repos;
@@ -36,6 +37,7 @@ pub mod time;
 pub mod trackers;
 pub mod transfer;
 pub mod update;
+pub mod words;
 
 pub use contract::*;
 pub use core::Core;
@@ -44,6 +46,11 @@ pub use paths::CorePaths;
 /// The describe string computed by build.rs: `2.0.0.r14.g1a2b3c4` at a commit,
 /// `CARGO_PKG_VERSION` when git is absent. The shell and the CLI print it.
 pub const VERSION: &str = env!("ANIBEAM_VERSION");
+
+/// The version this build ships as: `2.4.0` on a stable release, `2.4.0-nightly.20261030.12`
+/// on a nightly, `2.4.0-pr.280.3` on a pull request's test build, and the workspace version
+/// on a build CI did not make. The update check reads its track and its age from this.
+pub const RELEASE: &str = env!("ANIBEAM_RELEASE");
 
 uniffi::setup_scaffolding!();
 

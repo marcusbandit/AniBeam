@@ -100,6 +100,10 @@ pub struct Roll {
     /// the held singles added later included.
     #[serde(default)]
     pub sequential: bool,
+    /// The library show's folder, which the held singles added later are
+    /// saved into (`downloads::show_folder`).
+    #[serde(default)]
+    pub home: Option<String>,
     pub parts: Vec<Part>,
 }
 
@@ -193,6 +197,7 @@ pub fn plan(
         until: None,
         released: false,
         sequential: options.sequential,
+        home: None,
         parts,
     };
     let (singles, others): (Vec<usize>, Vec<usize>) =
@@ -975,7 +980,14 @@ async fn step(
             .map(|&p| roll.parts[p].release.clone())
             .collect();
         match super::ensure_client(core).await {
-            Ok(anirss) => match anirss.download(&items, roll.name.as_deref()).await {
+            Ok(anirss) => match anirss
+                .download(
+                    &items,
+                    roll.name.as_deref(),
+                    super::still_there(roll.home.as_deref()),
+                )
+                .await
+            {
                 Ok(added) => {
                     for &p in &m.add {
                         roll.parts[p].added = true;
@@ -988,6 +1000,7 @@ async fn step(
                         .map(|(_, p)| p)
                         .collect();
                     take_hashes(&mut parts, &added.hashes);
+                    super::move_home(core, &items, &added, roll.home.as_deref());
                     acted.push(format!(
                         "added {}",
                         plural(m.add.len(), "episode", "episodes")
@@ -1073,7 +1086,19 @@ async fn step(
         if !acted.is_empty() {
             line.push_str(&format!(", {}", acted.join(", ")));
         }
-        core.bus.info(Stage::Downloads, line, EventBody::Notice);
+        core.bus.say(
+            Level::Info,
+            Stage::Downloads,
+            format!(
+                "{}: now on episodes {} to {} of {}.",
+                roll.title,
+                (after.start + 1).min(after.total),
+                after.end,
+                after.total
+            ),
+            line,
+            EventBody::Notice,
+        );
     }
     if roll.released && m.add.is_empty() && all_set {
         return Step::Drop;
@@ -1288,6 +1313,7 @@ mod tests {
             until: None,
             released: false,
             sequential: false,
+            home: None,
             parts: vec![Part {
                 release: release("[G] Show (01-170) [Batch]"),
                 hash: "aa".into(),

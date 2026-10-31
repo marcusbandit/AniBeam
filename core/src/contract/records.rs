@@ -87,6 +87,35 @@ pub struct SeriesCard {
     pub extras_on_disk: u64,
     pub total_episodes: Option<u32>,
     pub total_is_estimate: bool,
+    /// The episode count the person set by hand (#239), whether or not it
+    /// is in force: `total_episodes` follows it until the schedule or a
+    /// file goes past it.
+    #[serde(default)]
+    pub episodes_set: Option<u32>,
+    /// Whether `episodes_set` is in force: false once an episode past it
+    /// aired or landed, or while the record names a count of its own.
+    #[serde(default)]
+    pub episodes_set_applied: bool,
+    /// The season a count set by hand belongs to: a TVmaze card's own season,
+    /// since TVmaze numbers within one (#283). None for AniList.
+    #[serde(default)]
+    pub count_season: Option<u32>,
+    /// The bytes every file of the series takes on disk, extras included (#266).
+    #[serde(default)]
+    pub bytes_on_disk: u64,
+    /// The bytes of the files whose episode is watched: within the tracker's
+    /// progress or played to the end here. An extra is never watched.
+    #[serde(default)]
+    pub watched_bytes: u64,
+    /// The watched episodes with a file here, two releases of one counted once.
+    #[serde(default)]
+    pub watched_on_disk: u64,
+    /// Confirmed done with (#266): the provider says Finished, the episode
+    /// count is the provider's own rather than a guess or one set by hand,
+    /// and every episode of it is watched (or the tracker says Completed).
+    /// A film: Finished and watched. What Delete watched shows takes.
+    #[serde(default)]
+    pub finished_watched: bool,
     pub code: Option<String>,
     pub watched: Option<u32>,
     pub watched_state: WatchedState,
@@ -193,6 +222,9 @@ pub struct Person {
     pub name: String,
     pub image: Option<String>,
     pub role: String,
+    /// The character's own AniList id, for a link to its page; None for a row stored
+    /// without one.
+    pub anilist_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -763,6 +795,11 @@ pub struct Preferences {
     /// moves it, `ON_HOLD_DAYS` by default.
     #[serde(default = "default_on_hold_days")]
     pub on_hold_days: u32,
+    /// Whether the player tells a running Discord client what is playing
+    /// (`presence`). Default off, and per machine like `share_over_tailscale`:
+    /// an export never carries it. `serde(default)` because older blobs predate it.
+    #[serde(default)]
+    pub discord_presence: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -926,6 +963,7 @@ impl Default for Preferences {
             share_over_tailscale: false,
             on_hold_auto: true,
             on_hold_days: ON_HOLD_DAYS,
+            discord_presence: false,
         }
     }
 }

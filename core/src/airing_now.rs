@@ -382,6 +382,7 @@ async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreErro
         }
     }
     Ok(Finished {
+        plain: None,
         level: Level::Debug,
         message: format!("{} refreshed: {count} shows", season.label),
         body: EventBody::AiringNowRefreshed { season: pick },
@@ -822,6 +823,12 @@ async fn plan(
             }
         }
     }
+    let names = |ts: &[Tracker]| {
+        ts.iter()
+            .map(|t| crate::trackers::oauth::site_name(*t))
+            .collect::<Vec<_>>()
+            .join(" and ")
+    };
     let labels = |ts: &[Tracker]| {
         ts.iter()
             .map(|t| t.label())
@@ -830,11 +837,20 @@ async fn plan(
     };
     Ok(match (planned.is_empty(), found.first(), failure) {
         (false, _, _) => Finished {
+            plain: Some(format!(
+                "Added {title} to your Planning list on {}.",
+                names(&planned)
+            )),
             level: Level::Info,
             message: format!("{title} is on Planning on {}", labels(&planned)),
             body: EventBody::Notice,
         },
         (true, Some((t, status)), _) => Finished {
+            plain: Some(format!(
+                "{title} is already on your {} list as {}.",
+                crate::trackers::oauth::site_name(*t),
+                status_words(*status)
+            )),
             level: Level::Info,
             message: format!(
                 "{title} is already on {} as {}",
@@ -844,11 +860,15 @@ async fn plan(
             body: EventBody::Notice,
         },
         (true, None, Some(why)) => Finished {
+            plain: Some(format!(
+                "Could not add {title} to your Planning list. Try again later."
+            )),
             level: Level::Warn,
             message: format!("{title} could not go on Planning: {why}"),
             body: EventBody::Notice,
         },
         (true, None, None) => Finished {
+            plain: None,
             level: Level::Debug,
             message: format!("{title} needed no change"),
             body: EventBody::Notice,

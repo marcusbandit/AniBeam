@@ -346,7 +346,7 @@ Item {
         color: em.containsMouse ? theme.raised : theme.tile
         border.width: 1
         border.color: entry.activeFocus ? theme.accent : em.containsMouse ? theme.lineStrong : entry.late ? theme.red : "transparent"
-        scale: em.pressed ? 0.98 : 1
+        scale: theme.reducedMotion ? 1 : (em.pressed ? 0.98 : 1)
 
         Corner {
             id: entryThumb
@@ -510,7 +510,7 @@ Item {
                     text: "See all"
                     small: true
                     flat: true
-                    onClicked: frame.go("library", { arrange: "WatchState" })
+                    onClicked: frame.go("library", { arrange: "WatchState", box: "Watching" })
                 }
             }
             Heading {
@@ -525,7 +525,7 @@ Item {
                     text: "See all"
                     small: true
                     flat: true
-                    onClicked: frame.go("library", { arrange: "WatchState" })
+                    onClicked: frame.go("library", { arrange: "WatchState", box: "On hold" })
                 }
             }
         }
@@ -784,7 +784,10 @@ Item {
             width: parent.width
             spacing: theme.space(4)
             readonly property real labelWidth: theme.space(30)
-            Heading { text: "This week"; fact: page.weekFact }
+            Heading {
+                text: "This week"; fact: page.weekFact
+                action: Button { objectName: "home-week-airing"; flat: true; small: true; text: "Airing now"; icon: "chevron-right"; onClicked: frame.go("airing") }
+            }
             Repeater {
                 model: page.week
                 Item {
@@ -856,7 +859,7 @@ Item {
             fact: page.catchUpList.length ? Fmt.plural(page.catchUpList.length, "series", "series") + " with episodes waiting" : ""
             list: page.catchUpList
             maxRows: 2
-            onMore: frame.go("library", { arrange: "WatchState" })
+            onMore: frame.go("library", { arrange: "WatchState", box: "Watching" })
         }
         Item { width: 1; height: page.catchUpList.length ? theme.space(4) : 0 }
 
@@ -867,7 +870,7 @@ Item {
             fact: Fmt.plural(page.freshList.length, "series", "series") + " not started"
             list: page.freshList
             maxRows: 1
-            onMore: frame.go("library")
+            onMore: frame.go("library", { arrange: "WatchState", box: "Not started" })
         }
         Item { width: 1; height: page.freshList.length ? theme.space(4) : 0 }
 
@@ -901,7 +904,12 @@ Item {
                         color: gm.containsMouse ? theme.raised : theme.tile
                         border.color: gm.containsMouse ? theme.lineStrong : "transparent"
                         border.width: 1
-                        scale: gm.pressed ? 0.97 : 1
+                        scale: theme.reducedMotion ? 1 : (gm.pressed ? 0.97 : 1)
+                        activeFocusOnTab: true
+                        function open() { frame.go("library", { genre: genre.modelData.name }, genre.modelData.name) }
+                        Keys.onReturnPressed: open()
+                        Keys.onSpacePressed: open()
+                        Rectangle { anchors.fill: parent; anchors.margins: -2; radius: height / 2; visible: genre.activeFocus; color: "transparent"; border.width: 2; border.color: theme.focusRing }
                         Row {
                             id: genreRow
                             anchors.centerIn: parent
@@ -914,7 +922,7 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: frame.go("library", { genre: genre.modelData.name }, genre.modelData.name)
+                            onClicked: genre.open()
                         }
                     }
                 }
@@ -930,7 +938,7 @@ Item {
             fact: Fmt.plural(page.droppedFiles, "file", "files") + " still on disk"
             list: page.droppedList
             maxRows: 1
-            onMore: frame.go("library")
+            onMore: frame.go("library", { arrange: "WatchState", box: "Dropped" })
         }
     }
 
@@ -941,5 +949,14 @@ Item {
         title: "No series yet"
         body: "Add the folder your anime lives in and the library fills itself."
         Button { text: "Add a folder"; primary: true; onClicked: frame.go("settings") }
+    }
+    // A new install has no library to hold the tracker nudge, so the empty Home carries it
+    TrackerNudge {
+        objectName: "home-tracker-nudge"
+        visible: page.libraryEmpty && wanted
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
+        width: Math.min(parent.width - theme.space(16), theme.space(220))
+        height: implicitHeight
     }
 }

@@ -2,7 +2,9 @@
 // rising from it, and an overlay for menus and tips. Everything in spec 4.1 unit 1 that
 // is not a page lives here. The player takes the whole window and hides the rest.
 import QtQuick
+import QtCore
 import QtQuick.Window
+import QtCore
 import com.marcusrosado.AniBeam
 
 FocusScope {
@@ -85,14 +87,28 @@ FocusScope {
         downloads: "DownloadsPage.qml", settings: "SettingsPage.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
     })
 
-    // The settings page's own session state: the current tab and each tab's scroll
-    // position, kept here rather than on the page itself so they survive the page being
-    // torn down and rebuilt on every navigation away and back.
-    property int settingsTab: 0
-    property var settingsScroll: [0, 0, 0, 0, 0]
+    // The settings page's own state: the current tab, kept across launches too, and each
+    // tab's scroll position, kept here rather than on the page itself so they survive the
+    // page being torn down and rebuilt on every navigation away and back.
+    property alias settingsTab: shellPrefs.settingsTab
+    property var settingsScroll: [0, 0, 0, 0, 0, 0]
+    // Settings edits not saved yet, by tab, for this run
+    property var settingsDrafts: ({})
 
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
     function go(name, props, label) { nav.open(name, props, label, leavingScroll()) }
+    // The next episode of a series in the library, else the series itself when nothing is
+    // ready to play
+    function playNext(id, title) {
+        var r = Door.getSeries(id)
+        var d = !r.error ? r.reply.detail : null
+        var first = d && d.episodes && d.episodes.length ? d.episodes[0] : null
+        var file = d ? (d.next_up ? d.next_up : (d.card.kind === "Movie" && first && (first.downloading === undefined || first.downloading === null) ? first.file : null)) : null
+        if (file) go("player", { file: file }, title)
+        else go("series", { id: id }, title)
+    }
+    function back() { nav.back(leavingScroll()) }
+    function forward() { nav.forward(leavingScroll()) }
 
     // Loaded by URL with props as an initial property, not a Component swapped onto a
     // standing Loader, so a page's own Component.onCompleted sees nav.current.props from
@@ -111,12 +127,54 @@ FocusScope {
     // context destroyed during incubation". A shared method reference lets Qt.callLater
     // collapse the two calls into one, so loadPageNow runs once per tick and still reads
     // nav.current fresh at execution time.
-    function loadPage() { Qt.callLater(frame.loadPageNow) }
+    function loadPage() { if (frame.devOn) devRecorder.begin(nav.current.page, nav.current.label); Qt.callLater(frame.loadPageNow) }
     function loadPageNow() {
         page.source = ""
         page.setSource(Qt.resolvedUrl(frame.pages[nav.current.page] || "PagePlaceholder.qml"), { props: nav.current.props })
+        if (frame.devOn) devRecorder.built()
     }
-    Component.onCompleted: frame.loadPage()
+
+    // ---- Developer options (#287). On in a debug build or under ANIBEAM_DEV=1, else behind
+    // the switch at the foot of Settings' Data tab. The switches live in shell.conf so a
+    // measuring session survives a restart.
+    Settings {
+        id: devKept
+        location: Shell.settingsUrl
+        category: "developer"
+        property bool enabled: false
+        property bool images: true
+        property bool hud: true
+        property bool readCache: true
+        property bool posterPool: true
+    }
+    readonly property alias devKept: devKept
+    readonly property alias devRecorder: devRecorder
+    readonly property bool devOn: Dev.forced || devKept.enabled
+    function devApply() { Dev.configure(frame.devOn, devKept.images, devKept.readCache) }
+    function devSetImages(on) { devKept.images = on; devRecorder.images = on; devApply() }
+    onDevOnChanged: devApply()
+    DevRecorder {
+        id: devRecorder
+        hostWindow: frame.hostWindow
+        hostFrame: frame
+        enabled: frame.devOn
+        images: devKept.images
+        onSetImages: function(on) { frame.devSetImages(on) }
+    }
+    Connections {
+        target: frame.hostWindow
+        enabled: frame.devOn
+        function onFrameSwapped() { devRecorder.frame() }
+    }
+    // Start-up marks (ANIBEAM_TIMING=1): the first page's first painted frame
+    property bool firstPageMarked: false
+    Connections {
+        id: firstPaint
+        target: frame.hostWindow
+        enabled: false
+        function onFrameSwapped() { firstPaint.enabled = false; Dev.mark("first page painted") }
+    }
+    Component.onCompleted: { frame.devApply(); frame.loadPage() }
     // A hovered item destroyed by the navigation never fires its own exit handler, so a
     // tip or a menu opened on the leaving page would otherwise survive onto the next one.
     // The escape stack is cleared for the identical reason: a popover the leaving page
@@ -136,7 +194,12 @@ FocusScope {
         anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
         active: nav.railIndex
         downloadsBadge: frame.downloadsAttention
-        onPicked: function(i) { if (i !== nav.railIndex || nav.current.page !== nav.railPages[i]) frame.go(nav.railPages[i]) }
+        // A rail page opens as it was left; the icon of the page already open takes it back
+        // to its top
+        onPicked: function(i) {
+            if (i !== nav.railIndex || nav.current.page !== nav.railPages[i]) nav.openRail(nav.railPages[i], frame.leavingScroll())
+            else if (page.item && page.item.scrollY !== undefined) page.item.scrollY = 0
+        }
         onVersionClicked: frame.openWhatsNew()
     }
 
@@ -159,6 +222,7 @@ FocusScope {
             focus: true
             asynchronous: false
             onLoaded: {
+                if (!frame.firstPageMarked) { frame.firstPageMarked = true; Dev.mark("first page built: " + nav.current.page); firstPaint.enabled = true }
                 if (nav.pendingScroll > 0 && item.scrollY !== undefined) Qt.callLater(function() { if (page.item) page.item.scrollY = nav.pendingScroll })
                 item.forceActiveFocus()
                 frame.startNotes()
@@ -171,14 +235,10 @@ FocusScope {
             enabled: !frame.fullWindow
             acceptedButtons: Qt.RightButton
             propagateComposedEvents: true
-            onPressed: function(m) {
-                var p = mapToItem(frame, m.x, m.y)
-                var items = [{ text: "Back", icon: "arrow-left", action: nav.back }]
-                if (page.item && page.item.contextItems) items = items.concat(page.item.contextItems())
-                items = items.concat(frame.seriesDeleteItems())
-                frame.openMenu(p.x, p.y, items)
-            }
+            onPressed: function(m) { frame.openContextMenu(mapToItem(frame, m.x, m.y)) }
         }
+        // The keyboard's way to the same menu: Shift+F10 or the Menu key, at the focused item
+        Shortcut { sequences: ["Shift+F10", "Menu"]; enabled: !frame.fullWindow; onActivated: frame.openContextMenuAtFocus() }
 
         // The drawer is a floating panel over the page: it lives outside content, above it
         // in z, and rises from the strip's top edge, which is content's bottom edge.
@@ -191,15 +251,18 @@ FocusScope {
             width: content.column
             anchors.bottom: parent.bottom
             readonly property var job: Door.runningJobs.length ? Door.runningJobs[0] : null
-            readonly property var line: Door.latestLine
+            // A person reads the plain line; with developer options on, the technical one
+            readonly property var line: frame.devOn ? Door.latestLine : Door.latestPlain
             // A kind or stage as words: "ConnectTracker" reads "Connect tracker", "metadata"
             // reads "Metadata"
             function words(k) {
                 var w = String(k).replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase()
                 return w.charAt(0).toUpperCase() + w.slice(1)
             }
-            stage: job ? words(job.kind) : (line && line.stage ? words(line.stage) : "System")
-            message: job ? (job.label || words(job.kind)) + (job.total > 0 ? ", " + job.done + " of " + job.total : "") : (line && line.message ? line.message : "")
+            // Nothing has happened yet this run: it says so, rather than a bare stage chip
+            stage: frame.devOn ? (job ? words(job.kind) : (line && line.stage ? words(line.stage) : "Ready")) : ""
+            message: job ? (frame.devOn ? (job.label || words(job.kind)) : (job.doing || words(job.kind))) + (job.total > 0 ? ", " + job.done + " of " + job.total : "")
+                         : (line ? (frame.devOn ? line.message : line.plain) || "Nothing is running" : "Nothing is running")
             time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), "hh:mm")
             running: job !== null
             fraction: job && job.total > 0 ? job.done / job.total : 0
@@ -207,8 +270,17 @@ FocusScope {
             onClicked: frame.toggleDrawer()
         }
     }
+    DevHud {
+        visible: frame.devOn && devKept.hud && !frame.fullWindow
+        recorder: devRecorder
+        // Bottom right, over the page's foot: the top right is where pages put search
+        anchors.right: content.right; anchors.rightMargin: theme.space(4)
+        anchors.bottom: content.bottom; anchors.bottomMargin: strip.height + theme.space(2)
+        z: 450
+    }
     ActivityDrawer {
         id: drawer
+        technical: frame.devOn
         visible: !frame.fullWindow && openness > 0.001
         anchors.left: content.left; anchors.right: content.right; anchors.bottom: content.bottom
         maxHeight: Math.round(page.height * 0.6)
@@ -375,7 +447,7 @@ FocusScope {
         WhatsNew { id: whatsNew }
         UpdateNotice {
             id: updateNotice
-            covered: frame.fullWindow || whatsNew.visible
+            covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.bottom: parent.bottom; anchors.bottomMargin: rail.footHeight + theme.space(4)
         }
@@ -386,15 +458,49 @@ FocusScope {
             width: tipText.implicitWidth + theme.space(4); height: tipText.implicitHeight + theme.space(2)
             Label { id: tipText; anchors.centerIn: parent; role: "ui"; font.pointSize: theme.typeSmall }
         }
+        // A toast: one line, an optional action (Undo), and an x. The pointer on it holds it,
+        // so a long line is never taken away mid-read
         Frost {
             id: toastBox
+            objectName: "frame-toast"
             visible: false
             radius: theme.radiusTile
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
-            width: toastText.implicitWidth + theme.space(6); height: theme.controlHeight
-            Label { id: toastText; anchors.centerIn: parent; role: "ui" }
-            Timer { id: toastTimer; onTriggered: toastBox.visible = false }
+            width: Math.min(parent.width - theme.space(8), toastRow.implicitWidth + theme.space(4))
+            height: theme.controlHeight + theme.space(1)
+            property var action: null
+            HoverHandler { id: toastHover }
+            Row {
+                id: toastRow
+                anchors.centerIn: parent
+                spacing: theme.space(2)
+                Label {
+                    id: toastText
+                    anchors.verticalCenter: parent.verticalCenter
+                    leftPadding: theme.space(2)
+                    width: Math.min(implicitWidth, toastBox.parent.width - theme.space(40))
+                    elide: Text.ElideRight
+                    role: "ui"
+                }
+                Button {
+                    id: toastAct
+                    objectName: "frame-toast-action"
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: text !== ""
+                    small: true; flat: true; takesFocus: false
+                    onClicked: { var a = toastBox.action; toastBox.visible = false; if (a) a() }
+                }
+                Button {
+                    objectName: "frame-toast-close"
+                    anchors.verticalCenter: parent.verticalCenter
+                    small: true; flat: true; takesFocus: false
+                    icon: "x"
+                    onClicked: toastBox.visible = false
+                    Tooltip { text: "Close" }
+                }
+            }
+            Timer { id: toastTimer; onTriggered: if (toastHover.hovered) restart(); else toastBox.visible = false }
         }
     }
     // What's new: once the first page is up, so the page taking focus as it loads does not
@@ -405,12 +511,45 @@ FocusScope {
     function startNotes() {
         if (notesStarted) return
         notesStarted = true
-        if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); Shell.checkForUpdate() }
+        if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
     function openWhatsNew() { whatsNew.open() }
+    // The shell's own choices that more than one page reads, kept in shell.conf. One object
+    // for all of them: two Settings on one file do not see each other's writes until they sync.
+    Settings {
+        id: shellPrefs
+        location: Shell.settingsUrl
+        category: "shell"
+        // The auto-next pill names the next episode; off, it says only its number
+        property bool nextNamesEpisode: true
+        // The Settings tab open last
+        property int settingsTab: 0
+        // Downloads comes back with its last search
+        property bool keepDownloadsQuery: true
+    }
+    // The last Downloads search, for this run only
+    property string downloadsQuery: ""
+    readonly property alias prefs: shellPrefs
+    KeyHelp { id: frameKeys; parent: overlay }
     readonly property alias notesPanel: whatsNew
     readonly property alias updatePanel: updateNotice
 
+    // The right-click menu at a point: Back and Forward, then what is under the pointer (an
+    // episode, a card), the page's own rows, and deleting a card's files last
+    function openContextMenu(p) {
+        var items = [{ split: [{ text: "Back", icon: "arrow-left", action: frame.back, enabled: nav.canBack },
+                               { text: "Forward", icon: "arrow-right", action: frame.forward, enabled: nav.canForward, trailing: true }] }]
+        items = items.concat(frame.releaseItems(), frame.episodeItems(), frame.seriesCardItems())
+        if (page.item && page.item.contextItems) items = items.concat(page.item.contextItems())
+        items = items.concat(frame.seriesDeleteItems())
+        frame.openMenu(p.x, p.y, items)
+    }
+    // From the keys: at the focused item, or the middle of the page when nothing has focus
+    function openContextMenuAtFocus() {
+        var f = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
+        var p = f && f !== frame ? f.mapToItem(frame, theme.space(4), Math.min(f.height, theme.space(10))) : Qt.point(frame.width / 2, frame.height / 3)
+        openContextMenu(p)
+    }
     function openMenu(x, y, items) { menu.openAt(x, y, items) }
     function closeMenu() { menu.close() }
     // A tip belongs to the area the pointer is over (`area`, the anchor item itself unless a
@@ -428,9 +567,15 @@ FocusScope {
         var p = area.mapFromItem(frame, pointerWatch.point.position.x, pointerWatch.point.position.y)
         return p.x >= 0 && p.y >= 0 && p.x <= area.width && p.y <= area.height
     }
+    // Where the area is, read at its centre: a hover lift scales a card about its centre, so
+    // the centre holds still while it grows and only a real move or scroll shifts it (#198)
+    function tipCentre(area) { return area.mapToItem(overlay, area.width / 2, area.height / 2) }
+    // A tip shown for keyboard focus stays while the item has focus, wherever the pointer is
+    property bool tipByFocus: false
     function tipStillTrue() {
-        if (!tipArea || !pointerInside(tipArea)) return false
-        var o = tipArea.mapToItem(overlay, 0, 0)
+        if (!tipArea) return false
+        if (tipByFocus ? !tipArea.activeFocus : !pointerInside(tipArea)) return false
+        var o = tipCentre(tipArea)
         return Math.abs(o.x - tipOrigin.x) < 1 && Math.abs(o.y - tipOrigin.y) < 1
     }
     // A tip whose area moved or went goes at once. One the pointer only left waits out
@@ -441,7 +586,7 @@ FocusScope {
         onTriggered: {
             if (frame.tipStillTrue()) { tipGrace.stop(); return }
             if (!frame.tipArea || !frame.tipArea.visible) { frame.hideTip(); return }
-            var o = frame.tipArea.mapToItem(overlay, 0, 0)
+            var o = frame.tipCentre(frame.tipArea)
             if (Math.abs(o.x - frame.tipOrigin.x) >= 1 || Math.abs(o.y - frame.tipOrigin.y) >= 1) frame.hideTip()
             else if (!tipGrace.running) tipGrace.start()
         }
@@ -453,14 +598,18 @@ FocusScope {
     function releaseTip(area) { if (tip.visible && tipArea === area && !tipGrace.running) tipGrace.start() }
     // The item's own hover can reach it before the frame's pointerWatch has seen the same
     // move, so a tip refused for a pointer not yet inside is asked again once, a frame on
-    function showTip(item, text, area, retried) {
+    // `byFocus`: the item took keyboard focus, so where the pointer is does not matter
+    function showTip(item, text, area, retried, byFocus) {
         area = area || item
-        if (item && !retried && !frame.pointerInside(area)) { tipRetry.ask = { item: item, text: text, area: area }; tipRetry.restart(); return }
-        if (!item || !frame.pointerInside(area)) { frame.hideTip(); return }
+        if (!byFocus) {
+            if (item && !retried && !frame.pointerInside(area)) { tipRetry.ask = { item: item, text: text, area: area }; tipRetry.restart(); return }
+            if (!item || !frame.pointerInside(area)) { frame.hideTip(); return }
+        }
         tipRetry.stop()
         tipGrace.stop()
         tipArea = area
-        tipOrigin = area.mapToItem(overlay, 0, 0)
+        tipOrigin = tipCentre(area)
+        tipByFocus = !!byFocus
         var p = item.mapToItem(overlay, item.width / 2, item.height)
         tipText.text = text
         tip.x = Math.max(theme.space(2), Math.min(p.x - tip.width / 2, overlay.width - tip.width - theme.space(2)))
@@ -479,7 +628,15 @@ FocusScope {
     // item's tip comes at once instead of after the hover intent
     property real tipWarmUntil: 0
     function tipWarm() { return tip.visible || Date.now() < tipWarmUntil }
-    function toast(text, seconds) { toastText.text = text; toastBox.visible = true; toastTimer.interval = (seconds || 4) * 1000; toastTimer.restart() }
+    // `actionText` and `action` add a button, Undo for one; it closes the toast and runs
+    function toast(text, seconds, actionText, action) {
+        toastText.text = text
+        toastAct.text = actionText || ""
+        toastBox.action = action || null
+        toastBox.visible = true
+        toastTimer.interval = (seconds || (action ? 8 : 4)) * 1000
+        toastTimer.restart()
+    }
 
     // ---- The removal sheet: every removal on the downloads page asks through it
     readonly property bool removalOpen: removeSheet.visible
@@ -497,6 +654,57 @@ FocusScope {
     }
     // The menu rows come off the card alone; the files are read only once a row is picked
     function seriesNoun(c) { return c.kind === "Movie" ? ["film", "films"] : ["episode", "episodes"] }
+    // The episode row under the pointer, for its own rows in the right-click menu
+    property var hoverEpisodeRow: null
+    function hoverEpisode(row, on) {
+        if (on) hoverEpisodeRow = row
+        else if (hoverEpisodeRow === row) hoverEpisodeRow = null
+    }
+    // The release row under the pointer, on Downloads
+    property var hoverReleaseItem: null
+    function hoverRelease(item, on) {
+        if (on) hoverReleaseItem = item
+        else if (hoverReleaseItem === item) hoverReleaseItem = null
+    }
+    function releaseItems() {
+        var r = hoverReleaseItem
+        if (!r || !r.link) return []
+        var magnet = String(r.link).indexOf("magnet:") === 0
+        var out = [{ text: magnet ? "Copy magnet" : "Copy torrent link", icon: "link", action: function() { frame.copyText(r.link, magnet ? "Magnet copied" : "Link copied") } }]
+        if (r.page) out.push({ text: "Open release page", icon: "external-link", action: function() { frame.openLink(r.page) } })
+        return out
+    }
+    function episodeItems() {
+        var row = hoverEpisodeRow
+        if (!row || !row.episode || !row.episode.path) return []
+        var path = row.episode.path
+        var out = []
+        if (row.playable && !row.picking) out.push({ text: "Play", icon: "play", action: function() { row.play() } })
+        out.push({ text: "Open folder", icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(path.replace(/[\\/][^\\/]*$/, ""))) } })
+        out.push({ text: "Copy path", icon: "copy", action: function() { frame.copyText(path, "Path copied") } })
+        if (row.trackable && !row.picking) out.push({ text: row.watched ? "Mark unwatched from here" : "Mark watched up to here", icon: "check-check", action: function() { row.marker() } })
+        return out
+    }
+    // A card's own rows, above the delete ones: open it, its folder, its title, its page
+    function seriesCardItems() {
+        var c = hoverSeries
+        // A card with no folder is not the library's (Airing, a Watching ghost): its id is not ours
+        if (!c || !c.path || c.id === undefined || c.id === null) return []
+        var out = [{ text: "Open", icon: "layers", action: function() { frame.go("series", { id: c.id }, c.title) } },
+                   { text: "Open folder", icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(c.path)) } }]
+        out.push({ text: "Copy title", icon: "copy", action: function() { frame.copyText(c.title) } })
+        var site = c.site_url || (c.match_info && c.match_info.anilist_id ? "https://anilist.co/anime/" + c.match_info.anilist_id : "")
+        if (site) out.push({ text: "Open on AniList", icon: "external-link", action: function() { frame.openLink(site) } })
+        return out
+    }
+    // Text onto the clipboard, and a word that it went
+    function copyText(text, what) {
+        clipboardBuf.text = String(text || "")
+        clipboardBuf.selectAll()
+        clipboardBuf.copy()
+        frame.toast((what || "Copied") + "")
+    }
+    TextEdit { id: clipboardBuf; visible: false }
     function seriesDeleteItems() {
         var c = hoverSeries, anchor = hoverSeriesItem
         if (!c || !c.path || !(c.episodes_on_disk > 0)) return []
@@ -509,28 +717,47 @@ FocusScope {
         return out
     }
     property var deleteCalls: ({})   // token -> what the toast names
-    function askDeleteFiles(anchor, c, watchedOnly) {
+    // `whole` (Downloads' On disk, #266) takes the extras too, so the series leaves the disk
+    function askDeleteFiles(anchor, c, watchedOnly, whole) {
         var r = Door.getSeries(c.id)
         if (r.error || !r.reply.detail) { frame.toast(r.error ? frame.errorText(r.error) : "That series is gone"); return }
         // An episode a torrent is still writing is not offered
         var files = (r.reply.detail.episodes || [])
             .filter(function(e) { return (e.downloading === undefined || e.downloading === null) && (!watchedOnly || e.watched) })
             .map(function(e) { return e.file })
-        if (!files.length) { frame.toast("No watched episodes of " + c.title + " on disk"); return }
+        var extras = whole ? (r.reply.detail.extras || []).map(function(x) { return x.file }) : []
+        if (!files.length && !extras.length) { frame.toast((watchedOnly ? "No watched episodes of " : "Nothing of ") + c.title + " on disk"); return }
         var noun = seriesNoun(c), which = watchedOnly ? "watched " : ""
-        var words = Fmt.plural(files.length, which + noun[0], which + noun[1])
+        var words = files.length ? Fmt.plural(files.length, which + noun[0], which + noun[1]) : ""
+        if (extras.length) words += (words ? " and " : "") + Fmt.plural(extras.length, "extra", "extras")
+        files = files.concat(extras)
         removeSheet.openAt(anchor, {
             heading: "Delete " + words + " of " + c.title + "?",
-            base: "The files and their subtitles go to the trash, so you can get them back from there.",
+            base: "The files and their subtitles go to the trash, so you can get them back from there. Their torrents leave the torrent client, so they can be downloaded again.",
             rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
         }, function() {
             var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files })
             var m = Object.assign({}, frame.deleteCalls); m[t] = words + " of " + c.title; frame.deleteCalls = m
         })
     }
+    // Delete watched across the library (#266): the frame keeps the reply, so its toast still
+    // comes when the page has gone, and one runs at a time
+    property real deleteWatchedToken: -1
+    function deleteWatched(finished) {
+        if (frame.deleteWatchedToken >= 0) return
+        frame.deleteWatchedToken = Door.callAsync("DeleteWatched", { finished_shows: finished })
+    }
     Connections {
         target: Door
         function onCallDone(token, reply) {
+            if (token === frame.deleteWatchedToken) {
+                frame.deleteWatchedToken = -1
+                var d = reply.reply || {}
+                frame.toast(reply.error ? frame.errorText(reply.error)
+                    : d.episodes > 0 || d.series > 0 ? Fmt.plural(d.episodes, "episode", "episodes") + ", " + Fmt.bytes(d.bytes) + ", moved to the trash"
+                    : "Nothing to delete")
+                return
+            }
             var words = frame.deleteCalls[token]
             if (words === undefined) return
             var m = Object.assign({}, frame.deleteCalls); delete m[token]; frame.deleteCalls = m
@@ -641,8 +868,21 @@ FocusScope {
     Shortcut { sequence: "Ctrl+K"; onActivated: { whatsNew.close(); if (nav.current.page !== "library") frame.go("library"); Qt.callLater(function() { if (page.item && page.item.focusSearch) page.item.focusSearch() }) } }
     // Any page with a search takes "/" (the library, metadata)
     Shortcut { sequence: "/"; enabled: !!(page.item && page.item.focusSearch); onActivated: { whatsNew.close(); if (page.item && page.item.focusSearch) page.item.focusSearch() } }
+    // Ctrl+F is the browser's own key for the same thing
+    Shortcut { sequence: "Ctrl+F"; enabled: !!(page.item && page.item.focusSearch); onActivated: { whatsNew.close(); if (page.item && page.item.focusSearch) page.item.focusSearch() } }
     Shortcut { sequence: "Ctrl+,"; onActivated: if (nav.current.page !== "settings") frame.go("settings") }
     Shortcut { sequence: "Ctrl+L"; enabled: !frame.fullWindow; onActivated: frame.toggleDrawer() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
-    Shortcut { sequence: "Alt+Left"; onActivated: nav.back() }
+    // The mouse's own back and forward buttons, anywhere in the window. No other area takes
+    // these two buttons, so a press reaches this one from under whatever it lands on.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.BackButton | Qt.ForwardButton
+        onPressed: function(m) { if (m.button === Qt.BackButton) frame.back(); else frame.forward() }
+    }
+    Shortcut { sequence: "Alt+Left"; onActivated: frame.back() }
+    Shortcut { sequence: "Alt+Right"; onActivated: frame.forward() }
+    // ? anywhere outside the player, which keeps its own list
+    Shortcut { sequence: "?"; enabled: !frame.fullWindow; onActivated: frameKeys.open ? frameKeys.close() : frameKeys.show() }
+    Shortcut { sequence: "F11"; onActivated: frame.hostWindow.visibility = frame.hostWindow.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen }
 }

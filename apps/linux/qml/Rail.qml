@@ -50,6 +50,8 @@ Item {
             width: theme.space(10); height: width
             source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icon.png"
             sourceSize: Qt.size(96, 96)
+            // Decoded off the Qt thread, not inside the frame's first build
+            asynchronous: true
             smooth: true
         }
         Item { width: 1; height: theme.space(3) }
@@ -67,7 +69,7 @@ Item {
                 color: on ? theme.accentSoft : m.containsMouse ? theme.raised : "transparent"
                 border.color: entry.activeFocus ? theme.focusRing : "transparent"
                 border.width: 1
-                scale: m.pressed ? 0.97 : 1
+                scale: theme.reducedMotion ? 1 : (m.pressed ? 0.97 : 1)
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.picked(modelData.index)
                 Keys.onSpacePressed: root.picked(modelData.index)
@@ -114,7 +116,7 @@ Item {
                 color: on ? theme.accentSoft : mm.containsMouse ? theme.raised : "transparent"
                 border.color: minor.activeFocus ? theme.focusRing : "transparent"
                 border.width: 1
-                scale: mm.pressed ? 0.95 : 1
+                scale: theme.reducedMotion ? 1 : (mm.pressed ? 0.95 : 1)
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.picked(modelData.index)
                 Keys.onSpacePressed: root.picked(modelData.index)
@@ -167,7 +169,7 @@ Item {
             height: theme.space(6)
             radius: height / 2
             color: langMouse.containsMouse ? theme.raisedHover : theme.raised
-            scale: langMouse.pressed ? 0.98 : 1
+            scale: theme.reducedMotion ? 1 : (langMouse.pressed ? 0.98 : 1)
             Label {
                 anchors.centerIn: parent
                 text: lang.names[lang.current]
