@@ -56,11 +56,27 @@ impl EventBus {
     }
 
     /// Stamps `seq` and `at`, persists Info and above to the ring, then
-    /// calls every listener with the finished event.
+    /// calls every listener with the finished event. A line emitted here has
+    /// no plain wording, so only the developer log shows it; `emit_said` is
+    /// the same with one.
     pub fn emit(
         &self,
         level: Level,
         stage: Stage,
+        message: impl Into<String>,
+        job: Option<JobRef>,
+        body: EventBody,
+    ) -> Event {
+        self.emit_said(level, stage, None, message, job, body)
+    }
+
+    /// `emit` with the line a person reads in the plain activity log beside
+    /// the developer's `message`.
+    pub fn emit_said(
+        &self,
+        level: Level,
+        stage: Stage,
+        plain: Option<String>,
         message: impl Into<String>,
         job: Option<JobRef>,
         mut body: EventBody,
@@ -77,6 +93,7 @@ impl EventBus {
             level,
             stage,
             message: message.into(),
+            plain,
             job,
             body,
         };
@@ -118,6 +135,19 @@ impl EventBus {
     pub fn error(&self, stage: Stage, message: impl Into<String>, body: EventBody) -> Event {
         self.emit(Level::Error, stage, message, None, body)
     }
+    /// A line for both logs: `plain` for the person, `message` for the
+    /// developer view. The two may say the same thing when the developer
+    /// line is already plain.
+    pub fn say(
+        &self,
+        level: Level,
+        stage: Stage,
+        plain: impl Into<String>,
+        message: impl Into<String>,
+        body: EventBody,
+    ) -> Event {
+        self.emit_said(level, stage, Some(plain.into()), message, None, body)
+    }
 
     /// Fire-and-forget: queued on the writer thread with no reply, so an
     /// `emit` from inside a `write` or `tx` closure never waits on itself.
@@ -137,8 +167,8 @@ impl EventBus {
                 }
             };
             if let Err(err) = c.execute(
-                "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body],
+                "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body, e.plain],
             ) {
                 tracing::warn!("failed to insert event seq {}: {err}", e.seq);
                 return;
@@ -180,7 +210,7 @@ impl EventBus {
         let limit = limit.min(RING_SIZE);
         self.store.write(move |c| {
             let mut stmt = c.prepare_cached(
-                "SELECT seq, at, level, stage, message, job_id, job_kind, job_phase, body FROM events ORDER BY seq DESC LIMIT ?1",
+                "SELECT seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain FROM events ORDER BY seq DESC LIMIT ?1",
             )?;
             let mut rows: Vec<Event> = stmt
                 .query_map(params![limit as i64], |r| {
@@ -193,6 +223,7 @@ impl EventBus {
                     let job_kind_col: Option<String> = r.get(6)?;
                     let job_phase_col: Option<String> = r.get(7)?;
                     let body_col: String = r.get(8)?;
+                    let plain: Option<String> = r.get(9)?;
 
                     let Some(level) = Level::from_column(&level_col) else {
                         tracing::warn!("skipping event seq {seq}: unknown level {level_col:?}");
@@ -221,7 +252,7 @@ impl EventBus {
                         return Ok(None);
                     };
 
-                    Ok(Some(Event { seq: seq as u64, at: time::from_secs(at), level, stage, message, job, body }))
+                    Ok(Some(Event { seq: seq as u64, at: time::from_secs(at), level, stage, message, plain, job, body }))
                 })?
                 .collect::<Result<Vec<Option<Event>>, _>>()?
                 .into_iter()

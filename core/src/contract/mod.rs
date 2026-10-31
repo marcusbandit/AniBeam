@@ -64,6 +64,7 @@ mod tests {
             level: Level::Info,
             stage: Stage::Library,
             message: "scan finished".into(),
+            plain: None,
             job: Some(JobRef {
                 id: 4,
                 kind: JobKind::Scan,
