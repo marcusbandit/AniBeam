@@ -29,17 +29,24 @@ Item {
             ["Up / Down", "Volume up or down by 5"],
             ["M", "Mute"],
             ["C", "Subtitles off and back"],
-            ["z / Z", "Subtitle delay 100 ms earlier or later"]
+            ["z / Z", "Subtitle delay 100 ms earlier or later"],
+            ["x / X", "Audio delay 100 ms earlier or later"],
+            ["Hold the video", "2\u00d7 speed while held"],
+            ["S", "Save a screenshot to Pictures"]
         ] },
         { name: "Navigation", keys: [
             ["N / P", "Next or previous episode"],
-            ["F", "Fullscreen"],
+            ["Page Up / Down", "Previous or next chapter"],
+            ["Home / End", "The start, or the outro"],
+            ["F / F11", "Fullscreen"],
             ["Escape", "Close what is open, else leave fullscreen, else leave the player"],
             ["Alt+Left", "Back"],
             ["?", "Show or hide this list"]
         ] },
         { name: "Library", keys: [
             ["Ctrl+K", "Library and search"],
+            ["/ or Ctrl+F", "Search this page"],
+            ["Ctrl+L", "Activity"],
             ["Ctrl+,", "Settings"],
             ["Ctrl+Q", "Quit"]
         ] }
@@ -47,8 +54,11 @@ Item {
 
     // Guarded the way TrackPicker's openAt is: a second ? on a list already up would count
     // itself twice into page.openMenus and the chrome would never hide again.
-    function show() { if (open) return; open = true; page.openMenus++; frame.escapeStack.push("popover", root) }
-    function close() { if (!open) return; open = false; page.openMenus--; frame.escapeStack.pop(root); page.showChrome() }
+    // The player that holds the list open, when it is the player's; the frame's own list
+    // (? anywhere else) has none
+    property var player: null
+    function show() { if (open) return; open = true; if (player) player.openMenus++; frame.escapeStack.push("popover", root) }
+    function close() { if (!open) return; open = false; if (player) { player.openMenus--; player.showChrome() } frame.escapeStack.pop(root) }
     // A navigation destroys the page and this list with it without ever calling close(), so
     // the count and the escape stack would keep an entry whose closer is gone. close() is
     // already guarded for the never-opened case, so this is safe unconditionally.
