@@ -57,9 +57,10 @@ pub mod qobject {
         #[qsignal]
         fn quit_requested(self: Pin<&mut Self>);
         /// A desktop build newer than this one is out on `track`: its version, its title
-        /// (empty when it has none), its page and how this copy takes it. `how` is `install` (installUpdate does it), `command`
-        /// (the package manager does it, with `command`), `source` (a build from a
-        /// checkout) or `page` (the release has no file for this copy).
+        /// (empty when it has none), its page and how this copy takes it. `how` is
+        /// `install` (installUpdate does it), `command` (the package manager does it, with
+        /// `command`), `source` (a build from a checkout) or `page` (the release has no
+        /// file for this copy).
         #[qsignal]
         fn update_available(
             self: Pin<&mut Self>,

@@ -228,7 +228,7 @@ FocusScope {
             observe("mute", VideoItem.Flag); observe("hwdec-current", VideoItem.String); observe("frame-drop-count", VideoItem.Int64)
             observe("track-list", VideoItem.Node); observe("chapter-list", VideoItem.Node); observe("aid", VideoItem.String)
             observe("sid", VideoItem.String); observe("sub-delay", VideoItem.Double); observe("estimated-frame-number", VideoItem.Int64)
-            observe("speed", VideoItem.Double); observe("audio-delay", VideoItem.Double)
+            observe("speed", VideoItem.Double)
             if (page.session) page.start()
         }
         onLoaded: {
@@ -295,7 +295,6 @@ FocusScope {
         // it seeds the value; the number the HUD shows is read at the step. See readFrame().
         else if (name === "estimated-frame-number") frameNumber = Number(value || 0)
         else if (name === "speed") speed = Number(value || 1)
-        else if (name === "audio-delay") { audioDelay = Number(value || 0); hud.update(audioDelayLine(audioDelay), "audioDelay") }
         else if (name === "chapter-list") {}
     }
     // The last frame is still on screen, because keep-open holds it: the replay button sits
@@ -387,19 +386,6 @@ FocusScope {
         hud.flash(delayLine(v), "subDelay")
         showChrome()
     }
-    // x and X, and the Sync panel: the audio's own delay, the same way. Both go back to 0 at
-    // the next file (reset-on-next-file in the core's owned options)
-    property real audioDelay: 0
-    function audioDelayLine(v) { return "Audio delay " + (v >= 0 ? "+" : "") + v.toFixed(1) + " s" }
-    function nudgeAudioDelay(d) { setAudioDelay(audioDelay + d) }
-    function setAudioDelay(v) {
-        v = Math.round(v * 10) / 10
-        audioDelay = v
-        video.setProperty("audio-delay", v)
-        hud.flash(audioDelayLine(v), "audioDelay")
-        showChrome()
-    }
-    function openSync(anchor) { syncPanel.openAt(anchor) }
 
     // ---- Ticks: once a second while playing, once on pause, once after a seek, once on
     // close. The timer never asks mpv for anything: it sends the last observed time-pos,
@@ -781,67 +767,6 @@ FocusScope {
         id: ratingPicker
         onOpenChanged: page.openMenus += open ? 1 : -1
         onSaved: function(v) { rating.visible = false; var r = Door.setScore(page.session.series, v); if (r.error) notice.show(page.errorLine(r.error)) }
-    }
-
-    // ---- Sync: the subtitle and audio delays, each a step down, the value, a step up and a
-    // reset, above the controls tile like the track pickers
-    Item {
-        id: syncPanel
-        objectName: "player-sync"
-        property bool open: false
-        anchors.fill: parent
-        visible: open
-        z: 900
-        property var anchorItem: null
-        function openAt(anchor) {
-            if (open) return
-            anchorItem = anchor
-            open = true
-            Qt.callLater(place)
-            page.openMenus++
-            frame.escapeStack.push("popover", syncPanel)
-        }
-        function close() { if (!open) return; open = false; page.openMenus--; frame.escapeStack.pop(syncPanel); page.showChrome() }
-        Component.onDestruction: close()
-        function place() {
-            if (!anchorItem) return
-            var p = anchorItem.mapToItem(syncPanel, anchorItem.width / 2, 0)
-            var tile = null
-            for (var t = anchorItem; t; t = t.parent) if (t.objectName === "player-controls") { tile = t; break }
-            var floor = (tile ? tile.mapToItem(syncPanel, 0, 0).y : p.y) - theme.space(2)
-            syncBox.x = Math.max(theme.space(2), Math.min(p.x - syncBox.width / 2, syncPanel.width - syncBox.width - theme.space(2)))
-            syncBox.y = Math.max(theme.space(2), floor - syncBox.height)
-        }
-        Blocker { anchors.fill: parent; scrim: false; dismissOnPress: true; onDismissed: syncPanel.close() }
-        Corner {
-            id: syncBox
-            width: syncCol.implicitWidth + theme.space(8); height: syncCol.implicitHeight + theme.space(6)
-            color: theme.glassFloat; borderColor: theme.lineStrong; borderWidth: 1; highlight: theme.glassHighlight
-            MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
-            Column {
-                id: syncCol
-                anchors.centerIn: parent
-                spacing: theme.space(2)
-                SyncRow { label: "Subtitles"; value: page.subDelay; onNudged: function(d) { page.nudgeDelay(d) }; onReset: page.setSubDelay(0) }
-                SyncRow { label: "Audio"; value: page.audioDelay; onNudged: function(d) { page.nudgeAudioDelay(d) }; onReset: page.setAudioDelay(0) }
-            }
-        }
-    }
-    component SyncRow: Row {
-        id: sr
-        property string label: ""
-        property real value: 0
-        signal nudged(real d)
-        signal reset()
-        spacing: theme.space(2)
-        Label { anchors.verticalCenter: parent.verticalCenter; width: theme.space(22); text: sr.label; role: "ui" }
-        Button { anchors.verticalCenter: parent.verticalCenter; small: true; flat: true; takesFocus: false; icon: "minus"; onClicked: sr.nudged(-0.1)
-            Tooltip { text: "0.1 s earlier" } }
-        Label { anchors.verticalCenter: parent.verticalCenter; width: theme.space(16); horizontalAlignment: Text.AlignHCenter
-            text: (sr.value >= 0 ? "+" : "") + sr.value.toFixed(1) + " s"; role: "ledger"; color: sr.value === 0 ? theme.textDim : theme.text }
-        Button { anchors.verticalCenter: parent.verticalCenter; small: true; flat: true; takesFocus: false; icon: "plus"; onClicked: sr.nudged(0.1)
-            Tooltip { text: "0.1 s later" } }
-        Button { anchors.verticalCenter: parent.verticalCenter; small: true; flat: true; takesFocus: false; text: "Reset"; enabled: sr.value !== 0; onClicked: sr.reset() }
     }
 
     // ---- The key list

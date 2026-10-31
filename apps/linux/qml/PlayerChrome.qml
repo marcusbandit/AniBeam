@@ -153,7 +153,6 @@ Item {
                 Row { id: rightGroup; anchors.right: parent.right; spacing: theme.space(1)
                     PlayerButton { id: audioBtn; objectName: "player-audio"; glyph: "audio-lines"; tip: "Audio track"; visible: page.audioTracks.length > 1; onClicked: page.openAudioPicker(audioBtn) }
                     PlayerButton { id: subBtn; objectName: "player-subs"; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: page.subTracks.length > 0; onClicked: page.openSubPicker(subBtn) }
-                    PlayerButton { id: syncBtn; objectName: "player-sync-button"; glyph: "timer"; tip: "Subtitle and audio sync"; active: page.subDelay !== 0 || page.audioDelay !== 0; onClicked: page.openSync(syncBtn) }
                     PlayerButton { objectName: "player-mark"; glyph: "check-check"; tip: "Mark watched"; visible: page.canMark; onClicked: page.markWatched() }
                     PlayerButton { objectName: "player-help"; glyph: "keyboard"; tip: "Keyboard shortcuts"; onClicked: page.showHelp() }
                     PlayerButton { objectName: "player-fullscreen"; glyph: frame.hostWindow.visibility === Window.FullScreen ? "minimize" : "maximize"; tip: "Fullscreen"; onClicked: page.toggleFullscreen() } } }

@@ -74,8 +74,6 @@ QtObject {
         else if (e.key === Qt.Key_C) page.toggleSubtitles()
         else if (e.key === Qt.Key_Z && !(e.modifiers & Qt.ShiftModifier)) page.nudgeDelay(-0.1)
         else if (e.key === Qt.Key_Z) page.nudgeDelay(0.1)
-        else if (e.key === Qt.Key_X && !(e.modifiers & Qt.ShiftModifier)) page.nudgeAudioDelay(-0.1)
-        else if (e.key === Qt.Key_X) page.nudgeAudioDelay(0.1)
         else if (e.key === Qt.Key_Question) page.toggleHelp()          // R33: a second press closes it
         else if (e.key === Qt.Key_Escape) {
             if (frame.hostWindow.visibility === Window.FullScreen) frame.hostWindow.visibility = Window.Windowed

@@ -12,9 +12,20 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.5.0 · Quality of life · 2026-10-31
+## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Pick Stable or Nightly updates in Settings, under Data
+- Update installs the new version and restarts, no trip to GitHub
+- An AUR install shows the command that updates it, once the AUR has it
+- Downloaded lists every show on disk, not only what the torrent client holds
+- Downloaded shows how much of the disk is watched and how much is not
+- Delete watched clears every watched episode, or every finished show you saw
+- Right-click a show on Gaps or Downloaded to delete it
+- Deleting episodes removes their torrent too, so they can be downloaded again
+- Ctrl-click a release group or one of its episodes to pick all it has missing
+- Get says it is sending to your torrent client the moment you click it
+- Set how many episodes a TVmaze show's season has, so no more are predicted
 - A version can have a name, shown in What's new and when an update is out
 - Hold a show on Airing now, or Ctrl+click it, to pick several at once
 - Put every picked show on Planning, or mark them all Not interested
@@ -54,11 +65,11 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Click a line in Activity to copy it
 - Shift+F10 or the Menu key opens the right-click menu
 - Tooltips show on keyboard focus too
-- Sync in the player sets subtitle and audio delay; x and X move the audio
 - Press ? anywhere for the list of keys
 - Exports carry an episode count you set by hand
 
 ### Changed
+- A show's Fixes menu holds Fix files, the episode count, the match and Rescan
 - Skip outro stays up with the controls hidden, like Skip intro
 - Skipping an intro lands right where the episode starts
 - The speed you watch at carries over to the next episode
@@ -96,6 +107,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings and errors use plain words instead of anirss terms
 
 ### Fixed
+- A download's speed and time left no longer run under its Stop button
 - The Replay button no longer stays on the video after you go back
 - Watching an episode again after its end keeps your place
 - The rating prompt no longer covers the subtitle delay line
@@ -106,30 +118,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Watching no longer says Connected before you connect AniList
 - An empty Home shows how to connect AniList or MyAnimeList
 - Tooltips no longer blink and vanish when moving between cards
-- Episode cubes in Get react to the pointer, which they never did
 - A show you watched to the end with no tracker reads caught up
 - An unfolded run of repeated lines in Activity folds back up
-
-## 2.4.0 · 2026-10-30
-
-### New
-- Pick Stable or Nightly updates in Settings, under Data
-- Update installs the new version and restarts, no trip to GitHub
-- An AUR install shows the command that updates it, once the AUR has it
-- Downloaded lists every show on disk, not only what the torrent client holds
-- Downloaded shows how much of the disk is watched and how much is not
-- Delete watched clears every watched episode, or every finished show you saw
-- Right-click a show on Gaps or Downloaded to delete it
-- Deleting episodes removes their torrent too, so they can be downloaded again
-- Ctrl-click a release group or one of its episodes to pick all it has missing
-- Get says it is sending to your torrent client the moment you click it
-- Set how many episodes a TVmaze show's season has, so no more are predicted
-
-### Changed
-- A show's Fixes menu holds Fix files, the episode count, the match and Rescan
-
-### Fixed
-- A download's speed and time left no longer run under its Stop button
+- Episode cubes in Get now grow under the pointer
 
 ## 2.3.0 · 2026-10-27
 

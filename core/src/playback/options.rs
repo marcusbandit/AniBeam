@@ -22,7 +22,7 @@ pub fn owned_options() -> Vec<(&'static str, String)> {
         ("ytdl", "no"),
         ("sub-auto", "no"),
         ("audio-file-auto", "no"),
-        ("reset-on-next-file", "sub-delay,audio-delay"),
+        ("reset-on-next-file", "sub-delay"),
         ("volume-max", "100"),
     ]
     .into_iter()
@@ -130,7 +130,7 @@ mod tests {
                 .find(|(n, _)| *n == "reset-on-next-file")
                 .unwrap()
                 .1,
-            "sub-delay,audio-delay"
+            "sub-delay"
         );
         assert_eq!(o.iter().find(|(n, _)| *n == "volume-max").unwrap().1, "100");
     }
