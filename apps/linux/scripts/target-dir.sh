@@ -12,10 +12,13 @@
 # A CARGO_TARGET_DIR outside this checkout gets a warning: if another checkout builds there too,
 # #250 is back, and staging does not help, since the build itself links the stale core.
 #
-# The build and the copy share one lock, so another capture script cannot link between them.
+# The build and the copy share one lock, so another capture script cannot link between them;
+# a plain cargo build run by hand in this checkout still can.
 # Release builds (bench.sh, the launcher) are not touched.
-_ab_checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$_ab_checkout/target}"
+_ab_checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+# Resolved, so a relative CARGO_TARGET_DIR means the same dir to cargo, cp and the check below
+CARGO_TARGET_DIR="$(realpath -m "${CARGO_TARGET_DIR:-$_ab_checkout/target}")"
+export CARGO_TARGET_DIR
 case "$CARGO_TARGET_DIR" in
   "$_ab_checkout"/*) ;;
   *) echo "target-dir.sh: CARGO_TARGET_DIR=$CARGO_TARGET_DIR is outside this checkout;" \
@@ -27,10 +30,13 @@ anibeam_stage() {
   if [ -z "${ANIBEAM_NO_BUILD:-}" ]; then
     mkdir -p "$(dirname "$staged")" "$CARGO_TARGET_DIR"
     # One lock around build and copy, so no other capture script links between them
+    # Each step is chained, since set -e does not hold in a subshell followed by ||: a failed
+    # build must not stage the last good binary as if it were this one.
     (
-      flock 9
-      cargo build -p anibeam --quiet
-      cp "$CARGO_TARGET_DIR/debug/anibeam" "$staged.$$" && mv -f "$staged.$$" "$staged"
+      flock 9 \
+        && cargo build -p anibeam --quiet --manifest-path "$_ab_checkout/Cargo.toml" \
+        && cp "$CARGO_TARGET_DIR/debug/anibeam" "$staged.$$" \
+        && mv -f "$staged.$$" "$staged"
     ) 9> "$CARGO_TARGET_DIR/.anibeam-stage.lock" || return 1
   fi
   if [ ! -x "$staged" ]; then

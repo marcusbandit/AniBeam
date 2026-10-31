@@ -36,8 +36,8 @@ compiled copy. Build before the last run of a task all the same: the binary the 
 
 `shoot.sh` and `drive.sh` build into the checkout's own `target/` through `scripts/target-dir.sh`;
 a `CARGO_TARGET_DIR` already in the environment wins. Never point two checkouts at one target dir:
-cargo keys `anibeam-core` by its path inside the workspace, so a worktree can take another
-checkout's build of it as fresh and run without its own edits (#250). A fresh worktree pays one cold
+cargo keys each workspace member by its path inside the workspace, so a worktree can take another
+checkout's build of `anibeam-core` or the shell as fresh and run without its own edits (#250). A fresh worktree pays one cold
 build (logged cold builds ran 99 s median, 518 s worst) and keeps a debug `target/` of several GB
 until the worktree goes. Right after each build the scripts copy the
 binary to `target/debug/anibeam-staged` and run that copy, so a capture runs this checkout's last
