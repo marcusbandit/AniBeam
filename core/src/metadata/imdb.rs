@@ -167,6 +167,7 @@ fn finished(links: &Step, ratings: &Step, changed: usize) -> Finished {
         parts.join("; ")
     };
     Finished {
+        plain: None,
         level,
         message,
         body: EventBody::Notice,

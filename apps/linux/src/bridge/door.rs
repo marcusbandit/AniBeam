@@ -55,6 +55,8 @@ pub mod qobject {
         #[qproperty(QJsonObject, about, READ = about, WRITE, NOTIFY)]
         #[qproperty(QJsonArray, running_jobs)]
         #[qproperty(QJsonObject, latest_line)]
+        /// The newest line with plain wording: what the status strip says to a person.
+        #[qproperty(QJsonObject, latest_plain)]
         #[qproperty(i32, unseen_errors)]
         type Door = super::DoorRust;
 
@@ -563,14 +565,17 @@ pub struct DoorRust {
     about: QJsonObject,
     running_jobs: QJsonArray,
     latest_line: QJsonObject,
+    latest_plain: QJsonObject,
     unseen_errors: i32,
     subscription: Option<Arc<Subscription>>,
     jobs: Vec<Value>,
     /// Whole-library answers kept while the core's generation stands still.
-    read_cache: RefCell<ReadCache<QJsonObject>>,
+    /// The size of each answer as JSON text rides along, measured only while developer
+    /// options are on, so a hit can report it without walking the answer again.
+    read_cache: RefCell<ReadCache<(QJsonObject, usize)>>,
 }
 
-impl Default for ReadCache<QJsonObject> {
+impl Default for ReadCache<(QJsonObject, usize)> {
     /// On unless `ANIBEAM_READ_CACHE=0`, which is there to measure what it saves.
     fn default() -> Self {
         ReadCache::new(std::env::var("ANIBEAM_READ_CACHE").as_deref() != Ok("0"))
@@ -604,6 +609,9 @@ struct Forwarder {
 impl EventListener for Forwarder {
     fn on_event(&self, event: Event) {
         let envelope = json::event_json(&event);
+        if crate::devstats::on() {
+            crate::devstats::event(&envelope);
+        }
         self.qt
             .queue(move |door: Pin<&mut qobject::Door>| door.receive(event, envelope))
             .ok();
@@ -728,11 +736,15 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
 
 /// One running job as QML reads it. A job seeded from `ListJobs` before it has reported
 /// progress takes the same shape as one that has just started, so a delegate never has to
-/// tell the two apart.
+/// tell the two apart. `doing` is the kind in plain words for the status strip.
 fn job_entry(id: &Value, kind: &Value, progress: &Value) -> Value {
+    let doing = serde_json::from_value::<anibeam_core::JobKind>(kind.clone())
+        .map(|k| k.doing())
+        .unwrap_or("");
     json!({
         "id": id,
         "kind": kind,
+        "doing": doing,
         "done": progress.get("done").cloned().unwrap_or_else(|| json!(0)),
         "total": progress.get("total").cloned().unwrap_or(Value::Null),
         "label": progress.get("label").cloned().unwrap_or_else(|| json!("")),
@@ -816,7 +828,9 @@ impl qobject::Door {
     fn answer(&self, call: Call) -> QJsonObject {
         let core = crate::runtime::core();
         let key = read_cache::key_of(&call);
-        let name = if timing() {
+        let dev = crate::devstats::on();
+        let at = if dev { crate::devstats::now() } else { 0.0 };
+        let name = if timing() || dev {
             call_name(&call)
         } else {
             String::new()
@@ -824,10 +838,24 @@ impl qobject::Door {
         let generation = core.generation();
         let t0 = Instant::now();
         if let Some(k) = &key
-            && let Some(hit) = self.read_cache.borrow_mut().get(k, generation, t0)
+            && let Some((hit, size)) = self.read_cache.borrow_mut().get(k, generation, t0)
         {
             if timing() {
                 eprintln!("timing {name} hit {:.3}ms", ms(t0.elapsed()));
+            }
+            if dev {
+                let total = ms(t0.elapsed());
+                crate::devstats::call(crate::devstats::CallStat {
+                    at,
+                    name,
+                    core: 0.0,
+                    json: 0.0,
+                    qjson: 0.0,
+                    total,
+                    bytes: size,
+                    hit: true,
+                    off_thread: false,
+                });
             }
             return hit;
         }
@@ -838,10 +866,11 @@ impl qobject::Door {
         let t2 = Instant::now();
         let o = to_qjson_object(&v);
         let t3 = Instant::now();
+        let size = if dev { crate::devstats::size_of(&v) } else { 0 };
         if ok && let Some(k) = key {
             self.read_cache
                 .borrow_mut()
-                .put(k, generation, t0, o.clone());
+                .put(k, generation, t0, (o.clone(), size));
         }
         if timing() {
             eprintln!(
@@ -852,11 +881,40 @@ impl qobject::Door {
                 ms(t3 - t0)
             );
         }
+        if dev {
+            crate::devstats::call(crate::devstats::CallStat {
+                at,
+                name,
+                core: ms(t1 - t0),
+                json: ms(t2 - t1),
+                qjson: ms(t3 - t2),
+                total: ms(t3 - t0),
+                bytes: size,
+                hit: false,
+                off_thread: false,
+            });
+        }
         o
     }
 
     fn reply_of(&self, call: Call) -> Option<Value> {
+        let dev = crate::devstats::on().then(|| (crate::devstats::now(), call_name(&call)));
+        let t0 = Instant::now();
         let v = json::dispatch(crate::runtime::core(), call);
+        if let Some((at, name)) = dev {
+            let total = ms(t0.elapsed());
+            crate::devstats::call(crate::devstats::CallStat {
+                at,
+                name,
+                core: total,
+                json: 0.0,
+                qjson: 0.0,
+                total,
+                bytes: crate::devstats::size_of(&v),
+                hit: false,
+                off_thread: false,
+            });
+        }
         v.get("reply").cloned()
     }
 
@@ -950,6 +1008,9 @@ impl qobject::Door {
         let wire = to_qjson_object(&envelope);
         if event.level >= Level::Info {
             self.as_mut().set_latest_line(wire.clone());
+        }
+        if event.plain.is_some() {
+            self.as_mut().set_latest_plain(wire.clone());
         }
         if event.level == Level::Error {
             let n = *self.as_ref().unseen_errors() + 1;
@@ -1755,10 +1816,31 @@ impl qobject::Door {
         let spawned = std::thread::Builder::new()
             .name("door-call".into())
             .spawn(move || {
+                let dev = crate::devstats::on();
+                let at = if dev { crate::devstats::now() } else { 0.0 };
+                let t0 = Instant::now();
+                let name = match (&call, dev) {
+                    (Ok(c), true) => call_name(c),
+                    _ => String::new(),
+                };
                 let reply = match call {
                     Ok(c) => json::reply_json(crate::runtime::core().call(c)),
                     Err(e) => json!({ "error": json::error_json(&e) }),
                 };
+                if dev {
+                    let total = ms(t0.elapsed());
+                    crate::devstats::call(crate::devstats::CallStat {
+                        at,
+                        name,
+                        core: total,
+                        json: 0.0,
+                        qjson: 0.0,
+                        total,
+                        bytes: crate::devstats::size_of(&reply),
+                        hit: false,
+                        off_thread: true,
+                    });
+                }
                 qt.queue(move |door: Pin<&mut qobject::Door>| {
                     door.call_done(token, to_qjson_object(&reply))
                 })
@@ -1796,12 +1878,12 @@ mod tests {
         ]}));
         assert_eq!(
             seeded[0],
-            json!({"id": 4, "kind": "Scan", "done": 0, "total": null, "label": ""}),
+            json!({"id": 4, "kind": "Scan", "doing": "Checking your folders", "done": 0, "total": null, "label": ""}),
             "a job with no progress reads like a job that just started"
         );
         assert_eq!(
             seeded[1],
-            json!({"id": 5, "kind": "Crawl", "done": 3, "total": 9, "label": "one"})
+            json!({"id": 5, "kind": "Crawl", "doing": "Finding related shows", "done": 3, "total": 9, "label": "one"})
         );
 
         let mut fresh = vec![];

@@ -227,6 +227,16 @@ mod imp {
         if moved_only {
             core.bus.debug(Stage::Playback, "cast position", body);
         } else {
+            let device = &state.device;
+            let said = match state.state {
+                CastPlayState::Connecting => Some(format!("Casting to {device}.")),
+                CastPlayState::Ended => Some(format!("Finished casting to {device}.")),
+                CastPlayState::Stopped => Some(format!("Stopped casting to {device}.")),
+                CastPlayState::Failed => Some(format!(
+                    "Casting to {device} failed. Check that it is on the same network."
+                )),
+                CastPlayState::Playing | CastPlayState::Paused | CastPlayState::Buffering => None,
+            };
             let what = match state.state {
                 CastPlayState::Connecting => format!("Casting to {}", state.device),
                 CastPlayState::Playing => format!("Playing on {}", state.device),
@@ -240,7 +250,14 @@ mod imp {
                     state.error.clone().unwrap_or_default()
                 ),
             };
-            core.bus.info(Stage::Playback, what, body);
+            // A failure is a problem the person can act on; the rest is news
+            let level = if state.state == CastPlayState::Failed {
+                Level::Warn
+            } else {
+                Level::Info
+            };
+            core.bus
+                .emit_said(level, Stage::Playback, said, what, None, body);
         }
     }
 

@@ -23,7 +23,11 @@ Window {
     // Filled the way the pages show them — airing soonest, then recently
     // viewed, then the shelf — and refilled (debounced) when the library says
     // a series changed, only ever replacing the pool when the path set moved.
-    PosterPool { id: posterPool }
+    // Developer options can switch the pool off, and switching images off empties it too.
+    PosterPool {
+        id: posterPool
+        capacity: frame.item && frame.item.devOn && (!frame.item.devKept.posterPool || !frame.item.devKept.images) ? 0 : 60
+    }
     // One read for both lists: listLibrary carries the airing rail with the shelf, and
     // the Door keeps the answer until the library changes, so a page reading the same
     // thing in the same beat pays nothing.
@@ -39,6 +43,12 @@ Window {
             posterPool.paths = paths
     }
     Timer { id: poolDebounce; interval: 2000; onTriggered: window.fillPool() }
+    // Measuring sends posters through the image://dev provider, a different url from the
+    // file the pool decoded, so the pool would miss every page; it starts over instead.
+    Connections {
+        target: frame.item && frame.item.devOn !== undefined ? frame.item : null
+        function onDevOnChanged() { posterPool.paths = []; poolDebounce.restart() }
+    }
     Connections { target: Door; function onSeriesChanged(cards) { poolDebounce.restart() } }
     // The first fill waits a beat after the library is ready, so the first page's own
     // posters reach the single pixmap reader thread ahead of the pool's.

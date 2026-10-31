@@ -355,8 +355,13 @@ pub async fn access_token(core: &Arc<Core>, t: Tracker) -> Result<Option<String>
         Ok(fresh) => Ok(Some(fresh)),
         Err(e) => {
             tracing::debug!("the MAL refresh failed: {e}");
-            core.bus
-                .warn(Stage::Trackers, MAL_EXPIRED, EventBody::Notice);
+            core.bus.say(
+                Level::Warn,
+                Stage::Trackers,
+                "Reconnect MyAnimeList in Settings.",
+                MAL_EXPIRED,
+                EventBody::Notice,
+            );
             Ok(None)
         }
     }

@@ -592,7 +592,10 @@ fn cut_short(ctx: &Arc<JobCtx>, tally: &mut Tally, t: Tracker, moved: usize, day
     }
     let line = finished(tally, days);
     if line.level > Level::Debug {
-        ctx.emit(line.level, line.message, EventBody::Notice);
+        match line.plain {
+            Some(said) => ctx.say(line.level, said, line.message, EventBody::Notice),
+            None => ctx.emit(line.level, line.message, EventBody::Notice),
+        }
     }
 }
 
@@ -681,8 +684,13 @@ fn series_for(conn: &Connection, t: Tracker, media_id: u64) -> Result<Vec<u64>, 
     Ok(ids)
 }
 
+fn shows(n: usize) -> &'static str {
+    crate::words::pick(n, "show", "shows")
+}
+
 fn quiet(message: &str) -> Finished {
     Finished {
+        plain: None,
         level: Level::Debug,
         message: message.to_string(),
         body: EventBody::Notice,
@@ -697,7 +705,22 @@ fn finished(tally: &Tally, days: u32) -> Finished {
         return quiet("Nothing to move to On hold");
     }
     let mut message = String::new();
+    let mut said = Vec::new();
     if moved > 0 {
+        let sites: Vec<String> = tally
+            .moved
+            .iter()
+            .enumerate()
+            .map(|(i, (t, n))| {
+                let site = super::oauth::site_name(*t);
+                if i == 0 {
+                    format!("{n} {} to On hold on {site}", shows(*n))
+                } else {
+                    format!("{n} on {site}")
+                }
+            })
+            .collect();
+        said.push(format!("Moved {}.", sites.join(" and ")));
         let wheres: Vec<String> = tally
             .moved
             .iter()
@@ -725,7 +748,19 @@ fn finished(tally: &Tally, days: u32) -> Finished {
             tally.failed
         ));
     }
+    if tally.failed > 0 {
+        said.push(format!(
+            "{} {} not move to On hold.",
+            tally.failed,
+            if tally.failed == 1 {
+                "show could"
+            } else {
+                "shows could"
+            }
+        ));
+    }
     Finished {
+        plain: Some(said.join(" ")),
         level: if tally.failed > 0 {
             Level::Warn
         } else {
@@ -871,6 +906,14 @@ async fn back_to_watching(
         .unwrap_or_else(|| format!("series {series}"));
     Ok(match (moved.is_empty(), failure) {
         (false, _) => Finished {
+            plain: Some(format!(
+                "{name} is back on Watching on {}.",
+                moved
+                    .iter()
+                    .map(|t| super::oauth::site_name(*t))
+                    .collect::<Vec<_>>()
+                    .join(" and ")
+            )),
             level: Level::Info,
             message: format!(
                 "{name} is back on Watching on {}",
@@ -883,6 +926,9 @@ async fn back_to_watching(
             body: EventBody::Notice,
         },
         (true, Some(why)) => Finished {
+            plain: Some(format!(
+                "{name} could not go back on Watching. Try again later."
+            )),
             level: Level::Warn,
             message: format!("{name} could not go back on Watching: {why}"),
             body: EventBody::Notice,

@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · 2026-10-30
 
 ### New
+- Developer options, in Settings under Data, time every page and turn images off
 - Pick Stable or Nightly updates in Settings, under Data
 - Update installs the new version and restarts, no trip to GitHub
 - An AUR install shows the command that updates it, once the AUR has it
@@ -31,6 +32,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Changed
 - A show's Fixes menu holds Fix files, the episode count, the match and Rescan
+- The activity log speaks plain words and leaves out background chores
 
 ### Fixed
 - A download's speed and time left no longer run under its Stop button

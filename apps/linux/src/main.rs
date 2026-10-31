@@ -4,6 +4,7 @@
 mod args;
 mod bridge;
 mod dbus;
+mod devstats;
 mod format;
 mod inhibit;
 #[cfg(target_os = "macos")]
@@ -165,7 +166,8 @@ fn main() {
     bridge::helpers::ffi::set_desktop_file_name(&QString::from(APP_ID));
 
     let mut engine = QQmlApplicationEngine::new();
-    if let Some(engine) = engine.as_mut() {
+    if let Some(mut engine) = engine.as_mut() {
+        bridge::helpers::ffi::install_dev_tools(engine.as_mut());
         #[cfg(debug_assertions)]
         let engine = install_dev_qml_dir(engine);
         engine.load(&QUrl::from(MAIN_QML));

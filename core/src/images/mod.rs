@@ -705,6 +705,7 @@ pub fn start_fill(core: &Arc<Core>) -> u64 {
                 );
             }
             Ok(Finished {
+                plain: None,
                 // Every launch runs this, and on most of them there is
                 // nothing to fill: a line saying so belongs in the trace
                 // rather than in a log of state changes.
@@ -766,6 +767,7 @@ pub fn start_clear(core: &Arc<Core>) -> u64 {
                 );
             }
             Ok(Finished {
+                plain: None,
                 level: Level::Info,
                 message: format!("Images cleared: {removed} removed"),
                 body: EventBody::ImagesCleared { removed },
