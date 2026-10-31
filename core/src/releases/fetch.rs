@@ -809,7 +809,10 @@ mod tests {
 
     #[test]
     fn feed_message_strips_control_characters_and_caps_length() {
-        assert_eq!(feed_message("  bad\u{0}\u{1b}[31m query\r\n\tnow "), "bad [31m query now");
+        assert_eq!(
+            feed_message("  bad\u{0}\u{1b}[31m query\r\n\tnow "),
+            "bad [31m query now"
+        );
         assert_eq!(feed_message("\u{7}\n "), "");
         let long = "\u{e9}".repeat(250);
         let cut = feed_message(&long);

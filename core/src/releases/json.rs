@@ -38,7 +38,10 @@ fn flag(v: &Value) -> bool {
     match v {
         Value::String(s) => {
             let s = s.trim();
-            !s.is_empty() && !["false", "0", "no"].iter().any(|f| s.eq_ignore_ascii_case(f))
+            !s.is_empty()
+                && !["false", "0", "no"]
+                    .iter()
+                    .any(|f| s.eq_ignore_ascii_case(f))
         }
         _ => truthy(v),
     }
@@ -64,9 +67,11 @@ fn bytes(v: &Value) -> Option<u64> {
             if s.starts_with('-') {
                 return None;
             }
-            whole(s.parse::<f64>().ok().or_else(|| {
-                super::bestfit::size_mib(s).map(|mib| mib * 1024.0 * 1024.0)
-            })?)
+            whole(
+                s.parse::<f64>()
+                    .ok()
+                    .or_else(|| super::bestfit::size_mib(s).map(|mib| mib * 1024.0 * 1024.0))?,
+            )
         }
         _ => None,
     }
@@ -146,9 +151,7 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
     let title = at(item, &map.title).and_then(text)?;
     let link = match field(&map.hash).and_then(text).filter(|h| is_hash(h)) {
         Some(hash) => magnet(&hash, &title),
-        None => field(&map.link)
-            .and_then(text)
-            .filter(|l| usable_link(l))?,
+        None => field(&map.link).and_then(text).filter(|l| usable_link(l))?,
     };
     Some(Release {
         link,
@@ -516,11 +519,23 @@ mod tests {
             json!("nope"),
             json!("0.0"),
         ];
-        for (value, says) in unset.iter().map(|v| (v, false)).chain(set.iter().map(|v| (v, true))) {
+        for (value, says) in unset
+            .iter()
+            .map(|v| (v, false))
+            .chain(set.iter().map(|v| (v, true)))
+        {
             let reply = json!({"error": value, "results": []}).to_string();
-            assert_eq!(parse(reply.as_bytes(), &errs, "x").is_err(), says, "error {value}");
+            assert_eq!(
+                parse(reply.as_bytes(), &errs, "x").is_err(),
+                says,
+                "error {value}"
+            );
             let reply = json!([{"t": "x", "h": HASH, "s": value}]).to_string();
-            assert_eq!(parse(reply.as_bytes(), &skips, "x").unwrap().is_empty(), says, "skip {value}");
+            assert_eq!(
+                parse(reply.as_bytes(), &skips, "x").unwrap().is_empty(),
+                says,
+                "skip {value}"
+            );
         }
     }
 
@@ -528,7 +543,10 @@ mod tests {
     fn a_missing_results_list_is_an_error_and_a_null_or_empty_one_is_no_results() {
         let deep = small(json!({"hash": "h", "items": "data.hits"}));
         for empty in [r#"{"data": {"hits": null}}"#, r#"{"data": {"hits": []}}"#] {
-            assert!(parse(empty.as_bytes(), &deep, "s").unwrap().is_empty(), "{empty}");
+            assert!(
+                parse(empty.as_bytes(), &deep, "s").unwrap().is_empty(),
+                "{empty}"
+            );
         }
         for missing in [r#"{"data": {"results": []}}"#, r#"{"other": 1}"#, "[]"] {
             let e = parse(missing.as_bytes(), &deep, "s").unwrap_err();
@@ -548,8 +566,8 @@ mod tests {
             "s",
             Duration::from_secs(5),
         )
-            .await
-            .unwrap_err();
+        .await
+        .unwrap_err();
         assert!(
             matches!(&e, CoreError::Service { code, .. } if code == "unreadable"),
             "{e:?}"
