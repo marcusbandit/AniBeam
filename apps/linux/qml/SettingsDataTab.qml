@@ -45,7 +45,9 @@ SettingsTab {
         title: "Backup"
         SettingRow { label: "Back up the library"; helper: "One file with your folders, matches and what you have watched."
             line: tab.lastExport !== "" ? "Last written to " + tab.lastExport : ""
-            Button { objectName: "data-export"; text: "Back up"; icon: "file-up"; primary: true; onClicked: exportDialog.open() } }
+            Row { spacing: theme.space(2)
+                Button { visible: tab.lastExport !== ""; text: "Open folder"; icon: "folder-open"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.dir(tab.lastExport))) }
+                Button { objectName: "data-export"; text: "Back up"; icon: "file-up"; primary: true; onClicked: exportDialog.open() } } }
         SettingRow { label: "Include private data"; helper: "Adds tracker sign-ins, watch history and preferences. Sign-ins are written as plain text, so keep the file to yourself."
             Switch { objectName: "data-private"; checked: tab.includePrivate; onToggled: function(on) { tab.includePrivate = on } } }
         SettingRow { label: "Restore from a backup"; helper: "Reads a backup into this library. What is on disk wins; the file fills in the rest."

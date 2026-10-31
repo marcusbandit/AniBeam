@@ -251,6 +251,7 @@ fn a_hidden_series_is_refused() {
         Call::SetProgress {
             series,
             progress: 3,
+            season: None,
         },
         Call::SetScore {
             series,
@@ -267,7 +268,8 @@ fn a_hidden_series_is_refused() {
     assert!(http.requests().is_empty());
 }
 
-/// Nothing to write to: an unmatched series carries neither id.
+/// Nothing to write to: an unmatched series carries neither id. Progress is
+/// kept here instead.
 #[test]
 fn an_unmatched_series_is_refused() {
     let http = FakeHttp::new();
@@ -287,16 +289,15 @@ fn an_unmatched_series_is_refused() {
             reason: Refusal::NoMatch
         }
     );
+    // Progress is the one write that still lands: on this device, with no job
     assert_eq!(
         core.call(Call::SetProgress {
             series,
-            progress: 1
+            progress: 1,
+            season: None,
         })
-        .err()
         .unwrap(),
-        CoreError::Refused {
-            reason: Refusal::NoMatch
-        }
+        Reply::Ok
     );
     assert_eq!(
         core.call(Call::SetScore {
@@ -338,7 +339,8 @@ fn no_connected_tracker_names_the_main_one() {
     assert_eq!(
         core.call(Call::SetProgress {
             series,
-            progress: 1
+            progress: 1,
+            season: None,
         })
         .err()
         .unwrap(),
@@ -375,7 +377,8 @@ fn a_missing_series_is_not_found() {
     assert_eq!(
         core.call(Call::SetProgress {
             series,
-            progress: 1
+            progress: 1,
+            season: None,
         })
         .err()
         .unwrap(),
@@ -465,6 +468,7 @@ fn setting_progress_to_nought_plans_the_series() {
         core.call(Call::SetProgress {
             series,
             progress: 0,
+            season: None,
         })
         .unwrap(),
     );

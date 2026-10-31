@@ -1,5 +1,5 @@
 // About: the version with What's new, the update channel with a check, developer options
-// (only a release build shows the switch: a debug build always has them), and IMDb's credit,
+// (the switch, hidden only when ANIBEAM_DEV=1 forces them on), and IMDb's credit,
 // which its terms ask for wherever its data is used.
 import QtQuick
 import com.marcusrosado.AniBeam
@@ -33,13 +33,13 @@ SettingsTab {
                 Seg { objectName: "data-update-track"; options: [{ text: "Stable", icon: "badge-check" }, { text: "Nightly", icon: "moon" }]
                       index: tab.upd.track === "nightly" ? 1 : 0
                       onPicked: function(i) { tab.upd.setTrack(i === 1 ? "nightly" : "stable") } }
-                Button { text: "Check now"; icon: "refresh-cw"; flat: true; onClicked: { tab.upd.check(); frame.toast("Checking for updates") } } } }
+                Button { objectName: "data-check-updates"; text: "Check now"; icon: "refresh-cw"; flat: true; onClicked: tab.upd.checkNow() } } }
     }
     Panel {
         visible: !Dev.forced
         title: "Developer options"
-        // Developer options (#287): always on in a debug build, so the switch is only for a
-        // release build, where it adds the Developer section
+        // Developer options (#287): off by default in every build; ANIBEAM_DEV=1 forces them
+        // on and hides this switch
         SettingRow { label: "Developer options"; helper: "Adds a Developer section that times every page, shows memory and the full technical log, and can turn images off."
             Switch { objectName: "data-developer"; checked: frame.devKept.enabled; onToggled: function(on) { frame.devKept.enabled = on; frame.devApply(); if (on) frame.go("settings", { tab: "developer" }) } } }
     }

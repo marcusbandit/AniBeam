@@ -17,8 +17,6 @@ SettingsTab {
         var r = Door.setPreferences(p)
         if (r.error) frame.toast(r.error.message)
     }
-    function copy(text) { clip.text = text; clip.selectAll(); clip.copy(); frame.toast("Copied") }
-    TextEdit { id: clip; visible: false }
     Component.onCompleted: reloadHost()
     Connections { target: Door; function onHostChanged(status) { tab.host = status } }
     readonly property bool on: !!Door.preferences.share_over_tailscale
@@ -42,7 +40,7 @@ SettingsTab {
             SettingRow {
                 required property var modelData
                 label: modelData
-                Button { text: "Copy"; icon: "copy"; flat: true; small: true; onClicked: tab.copy(modelData) }
+                Button { text: "Copy"; icon: "copy"; flat: true; small: true; onClicked: frame.copyText(modelData, "Address copied") }
             }
         }
     }

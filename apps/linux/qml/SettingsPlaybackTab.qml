@@ -12,7 +12,7 @@ SettingsTab {
     Connections { target: Door; function onSettingsChanged() { tab.defaults = JSON.parse(JSON.stringify(Door.settings.subtitle_defaults)) } }
     Timer { id: save; interval: 250; onTriggered: { var r = Door.setSubtitleDefaults(tab.defaults); if (r.error) frame.toast(r.error.message) } }
     // A change still waiting on the debounce is written on the way out
-    Component.onDestruction: if (save.running) Door.setSubtitleDefaults(tab.defaults)
+    Component.onDestruction: if (save.running) { save.stop(); Door.setSubtitleDefaults(tab.defaults) }
     function edit(f) { var d = JSON.parse(JSON.stringify(defaults)); f(d); defaults = d; save.restart() }
     function codes(t) { return t.split(",").map(function(s) { return s.trim() }).filter(function(s) { return s }) }
     readonly property var skip: Door.settings.auto_skip || ({})
@@ -24,6 +24,11 @@ SettingsTab {
             Switch { checked: !!tab.skip.intro; onToggled: function(on) { Door.setAutoSkip(on, !!tab.skip.outro) } } }
         SettingRow { label: "Skip outros"; helper: "Reaching the outro also marks the episode watched."
             Switch { checked: !!tab.skip.outro; onToggled: function(on) { Door.setAutoSkip(!!tab.skip.intro, on) } } }
+    }
+    Panel {
+        title: "Next episode"
+        SettingRow { label: "Name the next episode"; helper: "The Next button at the end of an episode shows the next one's title. Off, it shows only its number."
+            Switch { checked: frame.prefs.nextNamesEpisode; onToggled: function(on) { frame.prefs.nextNamesEpisode = on } } }
     }
     Panel {
         title: "Languages"

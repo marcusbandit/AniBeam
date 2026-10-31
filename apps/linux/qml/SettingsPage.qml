@@ -38,16 +38,9 @@ FocusScope {
     onCurrentChanged: frame.settingsTab = current
     // Opens a section, and with `focus` the row or group of that name in it. The reveal waits
     // a beat in every case: a section just loaded, or one coming back from behind the search
-    // results, has not laid out yet. Unsaved Downloads edits keep the section open: the bar
-    // with Save stays where it is and says so.
+    // results, has not laid out yet. Unsaved Downloads edits ride along on the frame
+    // (settingsDrafts) and come back with the section.
     function open(id, focus) {
-        if (id !== current && content.item && content.item.dirty === true) {
-            // The results would cover the bar that has Save on it
-            clearSearch()
-            pendingFallback = ""
-            frame.toast("Save or discard the download settings first")
-            return false
-        }
         clearSearch()
         pendingFocus = focus || ""
         if (current === id) { if (pendingFocus !== "") focusLater.restart(); return true }
@@ -126,7 +119,7 @@ FocusScope {
             var mode = ({ AsScripted: "styled files as made", ScaleOnly: "styled files keep their look", Force: "your style on every file" })[sd.ass_override || "ScaleOnly"]
             return "Size " + Math.round((sd.scale || 1) * 100) + " percent, " + mode
         }
-        if (id === "keys") return "Every key the player answers to"
+        if (id === "keys") return "Every key AniBeam answers to"
         if (id === "downloads") {
             if (!downloads) return "Not read yet"
             var t = downloads.torrent || {}
@@ -170,8 +163,10 @@ FocusScope {
         ["playback", "Skip intros", "opening op auto skip aniskip chapters"],
         ["playback", "Skip outros", "ending ed credits auto skip aniskip"],
         ["playback", "Use my mpv settings", "mpv.conf config"],
+        ["playback", "Name the next episode", "next button title autoplay end"],
         ["playback", "Subtitle languages", "language track subs"],
         ["playback", "Audio languages", "language track dub japanese"],
+        ["subtitles", "Start over", "reset default subtitle style"],
         ["subtitles", "Size", "scale subtitle"],
         ["subtitles", "Position", "height margin subtitle"],
         ["subtitles", "Styled subtitles", "ass override force"],
@@ -183,11 +178,13 @@ FocusScope {
         ["subtitles", "Bold", "weight"],
         ["keys", "In the player", "keyboard shortcuts keys hotkeys"],
         ["keys", "Getting around the player", "keyboard shortcuts fullscreen next previous episode back"],
+        ["keys", "Getting around", "keyboard shortcuts back forward right-click menu fullscreen"],
         ["keys", "Anywhere", "keyboard shortcuts keys hotkeys settings quit"],
         ["downloads", "Torrent client", "qbittorrent password username address webui seedbox"],
         ["downloads", "Search with anirss", "anirss rss feeds token command server"],
         ["downloads", "Rolling downloads", "roll episodes ahead delete watched keep disk space"],
         ["downloads", "Unsubscribe from finished shows", "prune feeds finished"],
+        ["downloads", "Keep the last search", "downloads query remember"],
         ["downloads", "Search sources", "endpoints feeds config"],
         ["downloads", "Endpoint repos", "repo signed endpoints jackett prowlarr"],
         ["phone", "Share over Tailscale", "phone android tailnet remote host"],
@@ -197,7 +194,7 @@ FocusScope {
         ["storage", "Where AniBeam keeps its files", "database data config cache folder path"],
         ["about", "Version", "build what's new changelog"],
         ["about", "Updates", "stable nightly channel check"],
-        ["about", "Developer options", "debug timing", "", "release"],
+        ["about", "Developer options", "debug timing", "", "unforced"],
         ["about", "Ratings", "imdb credit"]
     ]
     property string query: ""
@@ -208,8 +205,8 @@ FocusScope {
         var out = []
         searchIndex.forEach(function(e) {
             if (sectionIndex(e[0]) < 0) return
-            // A switch only a release build shows
-            if (e[4] === "release" && Dev.forced) return
+            // The switch ANIBEAM_DEV=1 hides
+            if (e[4] === "unforced" && Dev.forced) return
             var hay = (e[1] + " " + e[2] + " " + sections[sectionIndex(e[0])].name).toLowerCase()
             var named = e[1].toLowerCase().indexOf(q) >= 0
             if (words.every(function(w) { return hay.indexOf(w) >= 0 })) out.push({ section: e[0], label: e[1], named: named, fallback: e[3] || "" })

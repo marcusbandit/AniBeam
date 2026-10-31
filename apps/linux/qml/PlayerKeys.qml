@@ -11,7 +11,7 @@ QtObject {
     // The keys a held press repeats: the seeks, the volume ramp and the speed steps, as every
     // player does. The two frame steps repeat as well; they return above the repeat guard.
     // Everything else acts once however long it is held.
-    readonly property var repeatKeys: [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down,
+    readonly property var repeatKeys: [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down, Qt.Key_PageUp, Qt.Key_PageDown,
                                        Qt.Key_J, Qt.Key_L, Qt.Key_BracketLeft, Qt.Key_BracketRight]
 
     function handle(e) {
@@ -22,6 +22,12 @@ QtObject {
         if (page.openMenus > 0) {
             if (e.key === Qt.Key_Escape || (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) { e.accepted = false; return }
             e.accepted = true
+            // A track picker takes the arrows to move and Return or Space to pick
+            var picker = page.openPicker
+            if (picker) {
+                if (e.key === Qt.Key_Up || e.key === Qt.Key_Down) { picker.move(e.key === Qt.Key_Up ? -1 : 1); return }
+                if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) { if (!e.isAutoRepeat) picker.choose(); return }
+            }
             if (e.key === Qt.Key_Question && !e.isAutoRepeat) page.toggleHelp()
             return
         }
@@ -57,7 +63,12 @@ QtObject {
         else if (e.key === Qt.Key_N) page.openNext()
         else if (e.key === Qt.Key_P) page.openPrevious()
         else if (e.key === Qt.Key_M) page.setMute(!Player.mute)
-        else if (e.key === Qt.Key_F) page.toggleFullscreen()          // F does not bring the chrome back
+        else if (e.key === Qt.Key_F || e.key === Qt.Key_F11) page.toggleFullscreen()   // F does not bring the chrome back
+        else if (e.key === Qt.Key_PageDown) page.chapterJump(1)
+        else if (e.key === Qt.Key_PageUp) page.chapterJump(-1)
+        else if (e.key === Qt.Key_Home) page.seekHome()
+        else if (e.key === Qt.Key_End) page.seekOutro()
+        else if (e.key === Qt.Key_S) page.screenshot()
         else if (e.key === Qt.Key_Up) page.setVolume(page.volume + 5)
         else if (e.key === Qt.Key_Down) page.setVolume(page.volume - 5)
         else if (e.key === Qt.Key_C) page.toggleSubtitles()

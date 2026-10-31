@@ -60,7 +60,7 @@ SettingsTab {
             Switch { objectName: "settings-on-hold"; checked: Door.preferences.on_hold_auto !== false; onToggled: function(on) { tab.setOnHold(on) } } }
         SettingRow { visible: Door.preferences.on_hold_auto !== false; label: "After"
             line: "Days without playing an episode"
-            SliderRow { objectName: "settings-on-hold-days"; from: 7; to: 365; stepSize: 1; value: Door.preferences.on_hold_days || 60
+            SliderRow { objectName: "settings-on-hold-days"; unit: "days"; from: 7; to: 365; stepSize: 1; value: Door.preferences.on_hold_days || 60
                 onMoved: function(v) { tab.pendingDays = Math.round(v); daysDebounce.restart() } } }
     }
 }
