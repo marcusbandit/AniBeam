@@ -941,6 +941,9 @@ Item {
                         busy: root.acting
                         onClicked: root.go()
                     }
+                    // What the last Get or Subscribe did, until the next pick
+                    Label { objectName: "get-action-line"; visible: root.actionLine !== "" && root.actionError === "" && root.planList.length === 0
+                        width: parent.width; text: root.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }
                     Label { visible: root.actionError !== ""; width: parent.width; text: root.actionError; role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap }
                 }
             }
@@ -1090,7 +1093,7 @@ Item {
                             text: {
                                 var t = card.t, bits = []
                                 bits.push(Fmt.bytes(Math.round((t.size || 0) * (t.progress || 0))) + " of " + Fmt.bytes(t.size || 0))
-                                if ((t.dlspeed || 0) > 0) bits.push(Fmt.bytes(t.dlspeed) + "/s")
+                                if ((t.dlspeed || 0) > 0) bits.push(Fmt.bytes(t.dlspeed) + "/s down")
                                 if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(Fmt.countdown(t.eta) + " left")
                                 return bits.join(", ")
                             }
@@ -1184,7 +1187,7 @@ Item {
                 Fact { objectName: "get-torrent-name"; key: "Torrent"; value: card.t.name || "" }
                 Fact { key: "Release"; value: card.release }
                 Fact { key: "From"; value: card.source }
-                Fact { key: "Saving to"; value: card.t.save_path || card.t.content_path || "" }
+                Fact { key: "Saving to"; value: card.t.save_path || card.t.content_path || ""; folder: true }
             }
         }
     }
@@ -1194,9 +1197,13 @@ Item {
         property string key: ""
         property string value: ""
         width: parent ? parent.width : 0
-        height: Math.max(keyLabel.implicitHeight, valueLabel.implicitHeight)
+        height: Math.max(keyLabel.implicitHeight, valueLabel.implicitHeight, openBtn.visible ? openBtn.height : 0)
         Label { id: keyLabel; width: theme.space(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
-        Label { id: valueLabel; x: theme.space(18); width: parent.width - x; text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
+        Label { id: valueLabel; x: theme.space(18); width: parent.width - x - (openBtn.visible ? openBtn.width + theme.space(2) : 0); text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
+        // A folder opens from its line
+        property bool folder: false
+        Button { id: openBtn; visible: parent.folder && parent.value !== ""; anchors.right: parent.right; anchors.verticalCenter: valueLabel.verticalCenter
+            small: true; flat: true; icon: "folder-open"; text: "Open"; onClicked: frame.openLink(Fmt.fileUrl(parent.value)) }
     }
 
     // One row of the grid: who, one line, and the cubes; a click on the name picks the row
@@ -1240,6 +1247,7 @@ Item {
         }
         EpisodeCubes {
             id: cubes
+            objectName: "get-cubes"
             x: grid.whoWidth
             anchors.verticalCenter: parent.verticalCenter
             width: grid.cubeWidth
@@ -1269,6 +1277,28 @@ Item {
             } : null
             onCubeClicked: function(i, mods) { gr.cubePicked(i, mods) }
             onRangeClicked: function(a, z, mods) { gr.rangePicked(a, z, mods) }
+            lit: gr.litCells
+        }
+        // What a click would pick, lit in the cubes before the click: the hovered episode,
+        // a whole batch for a gap in it, and with Ctrl held every missing episode the row has
+        // (the row's name, clicked, picks those too)
+        readonly property bool hot: cubes.hoverCell >= 0 || whoMouse.containsMouse
+        readonly property var litCells: {
+            var row = gr.rowData, out = ({})
+            if (!gr.clickable || !row || !gr.hot) return out
+            var cellOf = function(n) { return Math.floor((n - 1) / cubes.fold) }
+            var light = function(list) { for (var i = 0; i < list.length; i++) out[cellOf(list[i])] = true }
+            if (Keyboard.ctrl || whoMouse.containsMouse) {
+                var w = root.wanted(row)
+                if (!w.length && !Keyboard.ctrl) w = root.covered(row)
+                light(w)
+                return out
+            }
+            var cell = cubes.hoverCell
+            var n = cell * cubes.fold + 1
+            if (row.batch && !root.have(n)) { light(root.wanted(row)); return out }
+            out[cell] = true
+            return out
         }
     }
 }

@@ -39,6 +39,10 @@ Item {
     // The row makes room for it above the cubes.
     property int badgeIndex: -1
     property string badgeText: ""
+    // The cells a click would pick, by index: each shows a small square of the pick colour
+    // inside it, which grows to fill the cube once it is picked (coded `p`). The owner of the
+    // cubes says which, from hoverCell and whatever else it knows (a batch, a held Ctrl).
+    property var lit: ({})
     signal cubeClicked(int index, int modifiers)
     // A folded cube's click: the first and last episode index it stands for
     signal rangeClicked(int first, int last, int modifiers)
@@ -164,7 +168,7 @@ Item {
                 color: filled >= 0 ? theme.cubeState("g").fill : st.fill
                 border.width: st.edge === "transparent" ? 0 : 1
                 border.color: st.edge
-                scale: cubeMouse.containsMouse || (root.spanHot && root.inSpan(cube.index)) ? (root.inSpan(cube.index) ? 1.1 : 1.18) : 1
+                scale: theme.reducedMotion ? 1 : (cubeMouse.containsMouse || (root.spanHot && root.inSpan(cube.index)) ? (root.inSpan(cube.index) ? 1.1 : 1.18) : 1)
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
                 Item {
                     visible: cube.filled > 0
@@ -178,6 +182,18 @@ Item {
                         radius: cube.radius
                         color: cube.st.fill
                     }
+                }
+                // The pick to come: a small square of the pick colour, the whole cube once picked
+                readonly property real grow: code === "p" ? 1 : root.lit[index] && code !== "n" ? 0.42 : 0
+                property real shown: grow
+                Behavior on shown { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast; easing.type: Easing.OutCubic } }
+                Rectangle {
+                    visible: cube.shown > 0.01
+                    anchors.centerIn: parent
+                    width: Math.max(2, parent.width * cube.shown); height: width
+                    radius: cube.radius * cube.shown
+                    color: theme.cubeState("p").fill
+                    opacity: cube.code === "p" ? 1 : 0.9
                 }
                 MouseArea {
                     id: cubeMouse

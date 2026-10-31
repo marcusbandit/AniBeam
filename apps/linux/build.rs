@@ -136,7 +136,13 @@ fn main() {
     .include_dir("cpp")
     // mpvqt_export.h includes mpvqt_version.h bare; CMake's target used to supply this.
     .include_dir(format!("{mpvqt_prefix}/include/MpvQt"))
-    .cpp_files(["cpp/helpers.cpp", "cpp/videoitem.h", "cpp/videoitem.cpp"])
+    .cpp_files([
+        "cpp/helpers.cpp",
+        "cpp/videoitem.h",
+        "cpp/videoitem.cpp",
+        "cpp/keyboard.h",
+        "cpp/keyboard.cpp",
+    ])
     // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/...; a name left out of this list is a
     // blank icon at runtime, not a build error, so it is generated:
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
@@ -211,6 +217,7 @@ fn main() {
         "assets/icons/log-in.svg",
         "assets/icons/log-out.svg",
         "assets/icons/maximize.svg",
+        "assets/icons/minus.svg",
         "assets/icons/minimize.svg",
         "assets/icons/monitor.svg",
         "assets/icons/moon.svg",
@@ -239,6 +246,7 @@ fn main() {
         "assets/icons/step-forward.svg",
         "assets/icons/sun.svg",
         "assets/icons/thumbs-up.svg",
+        "assets/icons/timer.svg",
         "assets/icons/trash-2.svg",
         "assets/icons/trash.svg",
         "assets/icons/triangle-alert.svg",
