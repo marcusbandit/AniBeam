@@ -34,6 +34,9 @@ pub const PAUSE_CLEAR: Duration = Duration::from_secs(5 * 60);
 pub const RETRY: Duration = Duration::from_secs(30);
 /// Discord's limit on every text field of an activity, in characters.
 pub const FIELD_MAX: usize = 128;
+/// The fewest characters Discord takes in `details`, `state` and
+/// `large_text`; a shorter one gets the whole activity refused.
+pub const FIELD_MIN: usize = 2;
 /// The art uploaded to the Discord application, shown when there is no
 /// poster or Discord will not take a poster's URL.
 pub const FALLBACK_ART: &str = "anibeam";
@@ -88,10 +91,10 @@ impl Activity {
             })
         };
         Activity {
-            details: truncate(series_title),
-            state: state.map(|s| truncate(&s)),
+            details: fit(series_title),
+            state: state.map(|s| fit(&s)),
             poster: poster.filter(|p| p.starts_with("https://") || p.starts_with("http://")),
-            large_text: truncate(series_title),
+            large_text: fit(series_title),
             start: None,
         }
     }
@@ -115,6 +118,18 @@ impl Activity {
         }
         v
     }
+}
+
+/// A text field Discord takes: trimmed, cut to `FIELD_MAX`, and padded to
+/// `FIELD_MIN`. The padding is a zero-width space (U+200B): Discord trims
+/// whitespace before it checks the length, so a space would not count, but
+/// U+200B is not whitespace to it and shows as nothing.
+fn fit(s: &str) -> String {
+    let mut out = truncate(s.trim());
+    while out.chars().count() < FIELD_MIN {
+        out.push('\u{200B}');
+    }
+    out
 }
 
 /// A field cut to Discord's limit, with an ellipsis where it was cut.
@@ -1210,6 +1225,21 @@ mod tests {
         assert_eq!(n.details.chars().count(), FIELD_MAX);
         // Short fields are left alone.
         assert_eq!(bebop().details, "Cowboy Bebop");
+    }
+
+    #[test]
+    fn one_letter_fields_are_padded_to_discords_minimum() {
+        let k = Activity::describe("K", "1", None, false, false, None);
+        assert_eq!(k.details, "K\u{200B}");
+        assert_eq!(k.large_text, "K\u{200B}");
+        assert_eq!(k.state.as_deref(), Some("1\u{200B}"));
+        // Whitespace is trimmed first, since Discord would not count it.
+        let spaced = Activity::describe(" K ", "EP 1", None, false, false, None);
+        assert_eq!(spaced.details, "K\u{200B}");
+        let empty = Activity::describe("", "EP 1", None, false, false, None);
+        assert_eq!(empty.details.chars().count(), FIELD_MIN);
+        // Two characters are enough as they are.
+        assert_eq!(Activity::describe("K2", "EP 1", None, false, false, None).details, "K2");
     }
 
     #[test]
