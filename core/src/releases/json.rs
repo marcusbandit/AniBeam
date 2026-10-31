@@ -137,8 +137,9 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
 }
 
 /// The reply's results as releases, read through `map`. Counts stay unknown, since the kind
-/// has no field for them. A reply without its results list has none; one whose list is
-/// something else does not read.
+/// has no field for them. A null or empty results list is no results; a reply missing the
+/// list, or whose list is something else, does not read, so a renamed field shows as an
+/// error rather than as no results.
 pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, String> {
     let reply: Value = serde_json::from_slice(body).map_err(|e| format!("not JSON: {e}"))?;
     if let Some(v) = map.error.as_deref().and_then(|p| at(&reply, p))
@@ -150,7 +151,8 @@ pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, S
         });
     }
     let items = match at(&reply, &map.items) {
-        None | Some(Value::Null) => return Ok(Vec::new()),
+        None => return Err(format!("the reply has no {:?} results list", map.items)),
+        Some(Value::Null) => return Ok(Vec::new()),
         Some(Value::Array(items)) => items,
         Some(_) => return Err("the reply's results are not a list".into()),
     };
@@ -389,9 +391,45 @@ mod tests {
         let e = parse(br#"{"error": "  "}"#, &errs, "s").unwrap_err();
         assert_eq!(e, "the search answered with an error");
         assert!(parse(br#"{"error": false, "results": []}"#, &errs, "s").is_ok());
-        assert!(parse(br#"{"error": 0}"#, &errs, "s").unwrap().is_empty());
+        assert!(
+            parse(br#"{"error": 0, "results": []}"#, &errs, "s")
+                .unwrap()
+                .is_empty()
+        );
         assert!(parse(b"<html>", &errs, "s").is_err());
         assert!(parse(br#"{"results": {"a": 1}}"#, &errs, "s").is_err());
+    }
+
+    #[test]
+    fn a_missing_results_list_is_an_error_and_a_null_or_empty_one_is_no_results() {
+        let deep = small(json!({"hash": "h", "items": "data.hits"}));
+        for empty in [r#"{"data": {"hits": null}}"#, r#"{"data": {"hits": []}}"#] {
+            assert!(parse(empty.as_bytes(), &deep, "s").unwrap().is_empty(), "{empty}");
+        }
+        for missing in [r#"{"data": {"results": []}}"#, r#"{"other": 1}"#, "[]"] {
+            let e = parse(missing.as_bytes(), &deep, "s").unwrap_err();
+            assert!(e.contains("data.hits"), "{missing}: {e}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_missing_results_list_reaches_the_caller_as_unreadable() {
+        let http = crate::net::FakeHttp::new();
+        http.push_json(200, json!({"renamed": []}));
+        let deep = small(json!({"hash": "h", "items": "hits"}));
+        let e = fetch(
+            http.as_ref(),
+            "https://example.org/s",
+            &deep,
+            "s",
+            Duration::from_secs(5),
+        )
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&e, CoreError::Service { code, .. } if code == "unreadable"),
+            "{e:?}"
+        );
     }
 
     #[test]
