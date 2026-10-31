@@ -220,7 +220,7 @@ fn a_phone_source_that_searches_by_address_needs_the_query() {
         url: url.into(),
         enabled: true,
     };
-    for kind in ["tosho", "rss"] {
+    for kind in ["tosho", "rss", "torznab"] {
         let err = core
             .call(Call::SetPhoneSources {
                 sources: vec![source(kind, "https://feed.example/json")],
@@ -910,4 +910,96 @@ fn the_phone_ships_with_no_source() {
         panic!()
     };
     assert!(sources.is_empty());
+}
+
+// Torznab through the person's own Prowlarr (#148) -------------------------------------------
+
+#[test]
+fn a_torznab_endpoint_searches_the_host_it_was_given() {
+    let http = FakeHttp::new();
+    http.push_for(
+        "10.0.0.2:9696",
+        200,
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><title>Example</title>
+<item><title>[Group] Show - 01 (1080p)</title><link>magnet:?xt=urn:btih:aaa</link><torznab:attr name="seeders" value="42"/></item>
+<item><title>[Other] Show - 02 [1080p]</title><link>magnet:?xt=urn:btih:bbb</link><torznab:attr name="seeders" value="7"/></item>
+</channel></rss>"#,
+    );
+    let (dir, core, _) = common::open_core_with_http(http.clone());
+    let path = dir.path().join("repo.json");
+    let url = path.to_string_lossy().into_owned();
+    write_repo(
+        &path,
+        &key(1),
+        1,
+        vec![json!({
+            "id": "indexer", "name": "Indexer", "version": 1, "kind": "torznab",
+            "url": "http://{host}/1/api?t=search&q={query}&apikey={apikey}",
+            "auth": [
+                {"key": "host", "label": "Prowlarr address", "secret": false},
+                {"key": "apikey", "label": "API key", "secret": true},
+            ],
+        })],
+    );
+    trust(&core, &url);
+    let credentials = |host: &str| {
+        vec![
+            EndpointCredential {
+                key: "host".into(),
+                value: host.into(),
+            },
+            EndpointCredential {
+                key: "apikey".into(),
+                value: "k3y".into(),
+            },
+        ]
+    };
+    // An address with a path in it is no host.
+    let e = core
+        .call(Call::InstallEndpoint {
+            repo: url.clone(),
+            id: "indexer".into(),
+            credentials: credentials("evil.example/x"),
+        })
+        .unwrap_err();
+    assert!(matches!(e, CoreError::Invalid { .. }), "{e:?}");
+
+    catalog(core.call(Call::InstallEndpoint {
+        repo: url,
+        id: "indexer".into(),
+        credentials: credentials(" 10.0.0.2:9696 "),
+    }));
+    let Reply::PhoneSearch { search } = core
+        .call(Call::PhoneSearch {
+            query: "Show".into(),
+            endpoint: Some("indexer".into()),
+            fallback: false,
+        })
+        .unwrap()
+    else {
+        panic!()
+    };
+    let sent: Vec<String> = http
+        .requests()
+        .into_iter()
+        .map(|r| r.url)
+        .filter(|u| u.contains("/1/api"))
+        .collect();
+    assert_eq!(
+        sent,
+        ["http://10.0.0.2:9696/1/api?t=search&q=Show&apikey=k3y"]
+    );
+    let mut seen: Vec<(String, Option<i64>)> = search
+        .items
+        .iter()
+        .map(|i| (i.title.clone(), i.seeders))
+        .collect();
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            ("[Group] Show - 01 (1080p)".to_string(), Some(42)),
+            ("[Other] Show - 02 [1080p]".to_string(), Some(7)),
+        ]
+    );
 }

@@ -192,26 +192,57 @@ impl Definition {
             && self.front == next.front
     }
 
+    /// Whether the address names the person's own server: its whole authority is `{host}`.
+    pub fn host_is_placeholder(&self) -> bool {
+        authority_of(&self.url) == format!("{{{HOST_KEY}}}")
+    }
+
     /// The address with every `auth` placeholder filled, percent-encoded; `{query}` stays for
-    /// the search to fill. None when a value is missing.
+    /// the search to fill. None when a value is missing, or when the value for `{host}` is not
+    /// a bare host.
     pub fn filled_url(&self, value: impl Fn(&str) -> Option<String>) -> Option<String> {
+        let own_host = self.host_is_placeholder();
         let mut url = self.url.clone();
         for field in &self.auth {
             let v = value(&field.key)?;
-            url = url.replace(
-                &format!("{{{}}}", field.key),
-                &crate::releases::endpoints::quote(v.as_bytes(), ""),
-            );
+            let filled = if own_host && field.key == HOST_KEY {
+                if !bare_host(&v) {
+                    return None;
+                }
+                crate::releases::endpoints::quote(v.as_bytes(), ":[]")
+            } else {
+                crate::releases::endpoints::quote(v.as_bytes(), "")
+            };
+            url = url.replace(&format!("{{{}}}", field.key), &filled);
         }
         Some(url)
     }
 }
 
-/// The host of an http(s) address, lower case; empty when there is none.
-pub fn host_of(url: &str) -> String {
+/// The placeholder a torznab definition may use as its whole authority, for the person's own
+/// Prowlarr or Jackett.
+pub const HOST_KEY: &str = "host";
+
+/// Whether `value` may stand in for `{host}`: a host or host:port and nothing that could
+/// carry a path, a login or another placeholder. No bracketed IPv6 literal, which `host_of`
+/// cannot read.
+pub fn bare_host(value: &str) -> bool {
+    !value.is_empty()
+        && !value.chars().any(|c| {
+            c.is_whitespace() || matches!(c, '/' | '@' | '?' | '#' | '{' | '}' | '\\' | '[' | ']')
+        })
+}
+
+/// The authority of an http(s) address as written, between `://` and the path.
+pub fn authority_of(url: &str) -> &str {
     let rest = url.split_once("://").map_or("", |(_, r)| r);
     let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let host = &rest[..end];
+    &rest[..end]
+}
+
+/// The host of an http(s) address, lower case; empty when there is none.
+pub fn host_of(url: &str) -> String {
+    let host = authority_of(url);
     let host = host.rsplit_once('@').map_or(host, |(_, h)| h);
     host.split(':').next().unwrap_or("").to_lowercase()
 }
@@ -339,7 +370,8 @@ fn placeholders(url: &str) -> Vec<&str> {
 }
 
 /// A definition this core can run safely: a known kind, an https address on a real host,
-/// and placeholders that are exactly `{query}` and its own `auth` keys.
+/// and placeholders that are exactly `{query}` and its own `auth` keys. A torznab one may
+/// also name the person's own server as `{host}`, and only then be plain http.
 pub fn check(def: &Definition) -> Result<(), String> {
     check_with(def, false)
 }
@@ -363,6 +395,10 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if !VALID_KINDS.contains(&def.kind.as_str()) {
         return Err(format!("{}: unknown kind {:?}", def.id, def.kind));
     }
+    // A torznab search to the person's own Prowlarr or Jackett may be plain http, as it often
+    // is on the home network. Only there: a key never goes in the clear to a host a repo named.
+    let torznab = def.kind == "torznab";
+    let http = http || (torznab && def.host_is_placeholder());
     let scheme_ok = def.url.starts_with("https://") || (http && def.url.starts_with("http://"));
     if !scheme_ok || def.host().is_empty() {
         return Err(format!(
@@ -394,7 +430,22 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
         }
     }
     // The host must be literal: a placeholder there would let a credential pick where it goes.
-    if def.host().contains('{') {
+    // The one exception is torznab's `{host}` as the whole authority, filled from a field the
+    // person sees: their own server, and nothing a secret could steer.
+    if def.host_is_placeholder() {
+        if !torznab {
+            return Err(format!(
+                "{}: only a torznab address may name its host as {{{HOST_KEY}}}",
+                def.id
+            ));
+        }
+        if def.auth.iter().any(|f| f.key == HOST_KEY && f.secret) {
+            return Err(format!(
+                "{}: the {{{HOST_KEY}}} field must not be secret",
+                def.id
+            ));
+        }
+    } else if def.host().contains('{') {
         return Err(format!("{}: a placeholder in the host", def.id));
     }
     let has_query = def.url.contains("{query}");
@@ -626,7 +677,7 @@ pub(crate) mod tests {
                     def("ok", "rss", "https://a.example/?q={query}"),
                     def("plain-http", "rss", "http://a.example/?q={query}"),
                     def("noquery", "rss", "https://a.example/feed"),
-                    def("weird", "torznab", "https://a.example/{query}"),
+                    def("weird", "gopher", "https://a.example/{query}"),
                     def("stray", "rss", "https://a.example/{query}&k={key}"),
                     def("Upper", "rss", "https://a.example/{query}"),
                     too_new,
@@ -759,6 +810,130 @@ pub(crate) mod tests {
             "https://erai.example/feed?s={query}&token=a%20b%26c"
         );
         assert_eq!(d.filled_url(|_| None), None);
+    }
+
+    fn field(key: &str, secret: bool) -> AuthField {
+        AuthField {
+            key: key.into(),
+            label: key.into(),
+            secret,
+            help: String::new(),
+            help_url: None,
+        }
+    }
+
+    /// A Jackett search through the person's own server.
+    fn jackett() -> Definition {
+        let mut d: Definition = serde_json::from_value(def(
+            "indexer",
+            "torznab",
+            "http://{host}/api/v2.0/indexers/example/results/torznab/api?apikey={apikey}&t=search&q={query}",
+        ))
+        .unwrap();
+        d.auth = vec![field("host", false), field("apikey", true)];
+        d
+    }
+
+    #[test]
+    fn a_torznab_definition_may_name_its_own_host() {
+        let d = jackett();
+        assert_eq!(check(&d), Ok(()));
+        let mut https = d.clone();
+        https.url = https.url.replacen("http://", "https://", 1);
+        assert_eq!(check(&https), Ok(()));
+        // Prowlarr's shape, with the key last.
+        let mut prowlarr = d.clone();
+        prowlarr.url = "http://{host}/1/api?t=search&q={query}&apikey={apikey}".into();
+        assert_eq!(check(&prowlarr), Ok(()));
+        let mut no_query = d.clone();
+        no_query.url = "http://{host}/api?apikey={apikey}".into();
+        assert!(check(&no_query).is_err());
+    }
+
+    #[test]
+    fn host_stays_literal_outside_torznab() {
+        // `{host}` in another kind.
+        let mut rss = jackett();
+        rss.kind = "rss".into();
+        rss.url = rss.url.replacen("http://", "https://", 1);
+        assert!(check(&rss).unwrap_err().contains("only a torznab"));
+        assert!(check_custom(&rss).is_err());
+        // `{host}` as only part of the authority.
+        for url in [
+            "https://{host}:9117/api?apikey={apikey}&q={query}",
+            "https://{host}.example/api?apikey={apikey}&q={query}",
+            "https://me@{host}/api?apikey={apikey}&q={query}",
+        ] {
+            let mut d = jackett();
+            d.url = url.into();
+            assert!(
+                check(&d).unwrap_err().contains("placeholder in the host"),
+                "{url}"
+            );
+        }
+        // Another key as the authority.
+        let mut d = jackett();
+        d.url = "https://{apikey}/api?q={query}&h={host}".into();
+        assert!(check(&d).unwrap_err().contains("placeholder in the host"));
+        // A secret host field.
+        let mut d = jackett();
+        d.auth[0].secret = true;
+        assert!(check(&d).unwrap_err().contains("must not be secret"));
+    }
+
+    #[test]
+    fn plain_http_is_for_a_torznab_own_host_and_custom_endpoints_only() {
+        assert_eq!(check(&jackett()), Ok(()));
+        // A torznab repo definition naming its host still needs https.
+        let mut d = jackett();
+        d.url = "http://idx.example/api?apikey={apikey}&q={query}".into();
+        d.auth = vec![field("apikey", true)];
+        assert!(check(&d).unwrap_err().contains("must start with https://"));
+        assert_eq!(check_custom(&d), Ok(()));
+        let mut https = d.clone();
+        https.url = https.url.replacen("http://", "https://", 1);
+        assert_eq!(check(&https), Ok(()));
+        d.kind = "rss".into();
+        assert!(check(&d).is_err());
+        assert_eq!(check_custom(&d), Ok(()));
+    }
+
+    #[test]
+    fn bare_host_takes_a_host_or_host_and_port_only() {
+        for ok in ["192.168.1.10:9696", "localhost", "jackett.lan:9117"] {
+            assert!(bare_host(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "evil.example/x",
+            "me@evil.example",
+            "a?b",
+            "a#b",
+            "{apikey}",
+            "a\\b",
+            "a b",
+            " a",
+            "a\t",
+            "[::1]:9696",
+        ] {
+            assert!(!bare_host(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn filling_the_host_keeps_its_port_and_refuses_a_path() {
+        let fill = |host: &str| {
+            jackett().filled_url(|key| Some(if key == "host" { host } else { "k/1" }.to_string()))
+        };
+        let url = fill("10.0.0.2:9117").unwrap();
+        assert_eq!(
+            url,
+            "http://10.0.0.2:9117/api/v2.0/indexers/example/results/torznab/api?apikey=k%2F1&t=search&q={query}"
+        );
+        assert_eq!(host_of(&url), "10.0.0.2");
+        assert_eq!(fill("evil.example/x"), None);
+        assert_eq!(fill("me@evil.example"), None);
+        assert_eq!(fill(""), None);
     }
 
     #[test]

@@ -242,6 +242,27 @@ fn erai_polish(entry: Node, title: &str) -> Erai {
     }
 }
 
+/// Jackett and Prowlarr answer a bad key or a broken indexer with a whole document of
+/// `<error code="100" description="Invalid API Key"/>` instead of a feed.
+fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreError> {
+    let root = doc.root_element();
+    if root.tag_name().name() != "error" {
+        return None;
+    }
+    let message = match root.attribute("description").map(str::trim) {
+        Some(d) if !d.is_empty() => d.to_string(),
+        _ => format!(
+            "the indexer answered error {}",
+            root.attribute("code").unwrap_or("?")
+        ),
+    };
+    Some(CoreError::Service {
+        service: endpoint_name.to_string(),
+        code: "refused".to_string(),
+        message,
+    })
+}
+
 /// Parse an RSS feed into releases. Reads nyaa's stat extensions when present; otherwise
 /// falls back to Size: and Category: hints in `<description>`. Errors on malformed XML.
 pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreError> {
@@ -251,6 +272,9 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
         code: "unreadable".to_string(),
         message: format!("bad feed: {e}"),
     })?;
+    if let Some(e) = indexer_error(&doc, endpoint_name) {
+        return Err(e);
+    }
     let n = Some(NYAA_NS);
     let mut out = Vec::new();
     for entry in doc.descendants().filter(|d| {
@@ -357,6 +381,15 @@ pub async fn fetch_rss(
             message: e.message,
         })?;
     if !response.is_success() {
+        // Prowlarr can send its error document with a 401 or a 403; its reason beats a status.
+        let body = String::from_utf8_lossy(&response.body);
+        let body = body.strip_prefix('\u{feff}').unwrap_or(&body);
+        if let Some(e) = roxmltree::Document::parse(body)
+            .ok()
+            .and_then(|doc| indexer_error(&doc, source_name))
+        {
+            return Err(e);
+        }
         return Err(CoreError::Service {
             service: source_name.to_string(),
             code: format!("http_{}", response.status),
@@ -670,6 +703,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_rss_torznab_error_document_is_an_error() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><error code="100" description="Invalid API Key"/>"#;
+        match parse_rss(xml, "jackett").unwrap_err() {
+            CoreError::Service {
+                service,
+                code,
+                message,
+            } => {
+                assert_eq!(
+                    (service.as_str(), code.as_str(), message.as_str()),
+                    ("jackett", "refused", "Invalid API Key")
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+        match parse_rss(r#"<error code="900"/>"#, "jackett").unwrap_err() {
+            CoreError::Service { message, .. } => {
+                assert_eq!(message, "the indexer answered error 900");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_rss_skips_items_without_a_title_or_link() {
         let xml = "<rss><channel><item><title>a</title></item><item><link>l</link></item>\
                    <item><title></title><link>l</link></item><item><title>ok</title><link> l </link></item></channel></rss>";
@@ -791,5 +848,37 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn fetch_rss_reads_an_error_document_sent_with_an_error_status() {
+        let http = FakeHttp::new();
+        http.push(
+            401,
+            r#"<?xml version="1.0" encoding="UTF-8"?><error code="100" description="Invalid API Key"/>"#,
+        );
+        http.push(500, "<html><body>Internal Server Error</body></html>");
+        let mut got = Vec::new();
+        for _ in 0..2 {
+            match fetch_rss(
+                http.as_ref(),
+                "http://prowlarr/x",
+                "prowlarr",
+                DEFAULT_TIMEOUT,
+            )
+            .await
+            .unwrap_err()
+            {
+                CoreError::Service { code, message, .. } => got.push((code, message)),
+                other => panic!("{other:?}"),
+            }
+        }
+        assert_eq!(
+            got,
+            [
+                ("refused".to_string(), "Invalid API Key".to_string()),
+                ("http_500".to_string(), "the feed answered 500".to_string()),
+            ]
+        );
     }
 }
