@@ -12,6 +12,8 @@ Item {
     property real position: 0
     property real duration: 0
     property var windows: []
+    // Chapter starts, in seconds: a thin notch cut through the groove at each
+    property var chapters: []
     signal seeked(real secs)
     signal hovered(real secs)
     signal unhovered()
@@ -40,6 +42,17 @@ Item {
         }
     }
     Corner { anchors.verticalCenter: parent.verticalCenter; width: track.width * root.played; height: track.height; color: theme.accent }
+    Repeater {
+        model: root.duration > 0 ? root.chapters : []
+        Rectangle {
+            required property var modelData
+            visible: modelData > 1 && modelData < root.duration - 1
+            anchors.verticalCenter: parent.verticalCenter
+            x: Math.round(modelData / root.duration * root.width) - 1
+            width: 2; height: track.height
+            color: Qt.rgba(0, 0, 0, 0.7)
+        }
+    }
     Corner { x: track.width * root.played - width / 2; anchors.verticalCenter: parent.verticalCenter; width: theme.space(1); height: theme.space(4); color: theme.accent; visible: mouse.containsMouse || mouse.pressed }
     MouseArea {
         id: mouse

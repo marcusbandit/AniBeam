@@ -37,12 +37,14 @@ Corner {
         var current = matchInfo ? matchInfo.provider : ""
         root.provider = root.providers.indexOf(current) >= 0 ? current
             : order.length && root.providers.indexOf(order[0]) >= 0 ? order[0] : "Anilist"
-        search.text = title
+        // An unmatched series is named after its folder: the search starts from that name
+        // without its release brackets and episode range
+        search.text = matchInfo ? title : Fmt.folderTitle(title)
         searchDebounce.stop()
         visible = true
         frame.escapeStack.push("popover", root)
         search.focusInput()
-        runSearch(title)
+        runSearch(search.text)
     }
     function close() {
         if (!visible) return
@@ -58,9 +60,10 @@ Corner {
         root.searchJob = r.reply.job
         root.searching = true
     }
-    function apply(target) {
+    function apply(target, title) {
         var r = Door.applyMatch(root.seriesId, target)
         if (r.error) { frame.toast(r.error.message); return }
+        frame.toast(title ? "Matched to " + title : "Match applied")
         root.close()
     }
     // A result row applies by its provider: a TVmaze show through the id-only call, an
@@ -69,8 +72,9 @@ Corner {
         if (r.provider === "Tvmaze") {
             var out = Door.applyTvmaze(root.seriesId, r.id)
             if (out.error) { frame.toast(out.error.message); return }
+            frame.toast("Matched to " + r.title)
             root.close()
-        } else root.apply({ "Anilist": { "id": r.id, "season": null } })
+        } else root.apply({ "Anilist": { "id": r.id, "season": null } }, r.title)
     }
     // A new provider drops the other's rows and asks again for the same words
     function pickProvider(p) {
@@ -80,18 +84,20 @@ Corner {
         searchDebounce.stop()
         root.runSearch(search.text)
     }
+    // Where a looked-up link points and where the series is matched, in words: the ids are
+    // the provider's business
     function targetText(t) {
         if (!t) return ""
-        if (t.Tvmaze !== undefined) return "TVmaze " + t.Tvmaze.id
-        if (t.Anilist !== undefined) return "AniList " + t.Anilist.id + (t.Anilist.season !== null && t.Anilist.season !== undefined ? ", season " + t.Anilist.season : "")
-        return "MyAnimeList " + t.Mal.id
+        if (t.Tvmaze !== undefined) return "Found the show on TVmaze"
+        if (t.Anilist !== undefined) return "Found it on AniList" + (t.Anilist.season !== null && t.Anilist.season !== undefined ? ", season " + t.Anilist.season : "")
+        return "Found it on MyAnimeList"
     }
     function matchText(m) {
         var bits = []
-        if (m.anilist_id !== null && m.anilist_id !== undefined) bits.push("AniList " + m.anilist_id)
-        if (m.mal_id !== null && m.mal_id !== undefined) bits.push("MyAnimeList " + m.mal_id)
-        if (m.tvmaze_id !== null && m.tvmaze_id !== undefined) bits.push("TVmaze " + m.tvmaze_id)
-        return bits.length ? "Matched to " + bits.join(" and ") : ""
+        if (m.anilist_id !== null && m.anilist_id !== undefined) bits.push("AniList")
+        if (m.mal_id !== null && m.mal_id !== undefined) bits.push("MyAnimeList")
+        if (m.tvmaze_id !== null && m.tvmaze_id !== undefined) bits.push("TVmaze")
+        return bits.length ? "Matched on " + bits.join(" and ") : ""
     }
     // A result's year, then its format (AniList) or its type as TVmaze writes it, then its length
     function resultMeta(r) {
@@ -165,14 +171,23 @@ Corner {
                 role: "ui"; color: theme.textDim
                 anchors.verticalCenter: parent.verticalCenter
             }
+            // Two steps: it drops the tracker link and a hand-set episode count, and the
+            // series is then left alone by the automatic match
             Button {
-                text: "Clear match"
+                id: clearBtn
+                property bool armed: false
+                text: armed ? "Clear it: drops the link and the set episode count" : "Clear match"
                 small: true
+                danger: armed
                 onClicked: {
+                    if (!armed) { armed = true; disarm.restart(); return }
+                    armed = false
                     var r = Door.clearMatch(root.seriesId)
                     if (r.error) frame.toast(r.error.message)
+                    else frame.toast("Match cleared")
                     root.close()
                 }
+                Timer { id: disarm; interval: 5000; onTriggered: clearBtn.armed = false }
             }
         }
 
@@ -194,7 +209,10 @@ Corner {
                 width: parent.width - providerSeg.width - parent.spacing
                 placeholder: "Search " + root.providerName
                 hint: ""
-                onTextChanged: if (root.visible) searchDebounce.restart()
+                onTextChanged: if (root.visible) { searchDebounce.restart(); list.currentIndex = -1 }
+                // Up and Down walk the results, Return applies the one walked to, else the first
+                onStepped: function(by) { if (root.results.length) list.currentIndex = Math.max(0, Math.min(root.results.length - 1, list.currentIndex + by)) }
+                onAccepted: if (root.results.length) root.applyResult(root.results[Math.max(0, list.currentIndex)])
             }
         }
         Timer { id: searchDebounce; interval: 300; onTriggered: root.runSearch(search.text) }
@@ -208,6 +226,7 @@ Corner {
                 width: parent.width - lookUp.width - parent.spacing
                 placeholder: root.provider === "Tvmaze" ? "Paste a TVmaze or IMDb link" : "Paste an AniList or MyAnimeList link"
                 mono: true
+                onEdited: if (linkField.text.trim() !== "" && !root.resolved) lookUp.clicked()
             }
             Button {
                 id: lookUp
@@ -230,7 +249,7 @@ Corner {
                 role: "ui"
                 anchors.verticalCenter: parent.verticalCenter
             }
-            Button { text: "Apply"; small: true; primary: true; onClicked: root.apply(root.resolved) }
+            Button { text: "Apply"; small: true; primary: true; onClicked: root.apply(root.resolved, "") }
         }
 
         Label {
@@ -261,8 +280,10 @@ Corner {
             height: theme.space(18)
             radius: theme.radiusInner(theme.space(1))
             smoothing: theme.cornerSmoothing
-            color: resultMouse.containsMouse ? theme.floatHover : "transparent"
-            MouseArea { id: resultMouse; anchors.fill: parent; hoverEnabled: true }
+            color: resultMouse.pressed ? theme.surfacePressed : resultMouse.containsMouse || ListView.isCurrentItem ? theme.floatHover : "transparent"
+            borderColor: ListView.isCurrentItem ? theme.focusRing : "transparent"; borderWidth: ListView.isCurrentItem ? 1 : 0
+            // The whole row applies, not only its button
+            MouseArea { id: resultMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.applyResult(result.modelData) }
             Corner {
                 id: cover
                 x: theme.space(2)

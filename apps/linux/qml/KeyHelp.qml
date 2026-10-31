@@ -1,6 +1,7 @@
-// The keyboard map, shown by ? or the keyboard button. The list is the keys that work in the
-// player written out: PlayerKeys.qml's handler and the frame's own shortcuts. A key neither
-// acts on has no line here, and every line here is a key that works. Escape or a press
+// The keyboard map, shown by ? or the keyboard button. In the player the list is the keys
+// that work there written out: PlayerKeys.qml's handler and the frame's own shortcuts.
+// Anywhere else it is the frame's shortcuts alone. A key neither acts on has no line here,
+// and every line here is a key that works where the list is open. Escape or a press
 // outside closes it, and it holds the chrome open while it is up.
 //
 // A floating pane of glass on a Blocker scrim, like every sheet. The groups sit side by side when the
@@ -17,7 +18,8 @@ Item {
     visible: open
     z: 950
 
-    readonly property var groups: [
+    readonly property var groups: player ? playerGroups : appGroups
+    readonly property var playerGroups: [
         { name: "Playback", keys: [
             ["Space / K", "Play or pause"],
             ["Left / Right", "Seek 5 s"],
@@ -30,17 +32,40 @@ Item {
             ["M", "Mute"],
             ["C", "Subtitles off and back"],
             ["z / Z", "Subtitle delay 100 ms earlier or later"],
-            ["a / A", "Audio delay 100 ms earlier or later"]
+            ["a / A", "Audio delay 100 ms earlier or later"],
+            ["Hold the video", "2\u00d7 speed while held"],
+            ["S", "Save a screenshot to Pictures"]
         ] },
         { name: "Navigation", keys: [
             ["N / P", "Next or previous episode"],
-            ["F", "Fullscreen"],
+            ["Page Up / Down", "Previous or next chapter"],
+            ["Home / End", "The start, or the outro"],
+            ["F / F11", "Fullscreen"],
             ["Escape", "Close what is open, else leave fullscreen, else leave the player"],
             ["Alt+Left", "Back"],
             ["?", "Show or hide this list"]
         ] },
         { name: "Library", keys: [
             ["Ctrl+K", "Library and search"],
+            ["/ or Ctrl+F", "Search this page"],
+            ["Ctrl+L", "Activity"],
+            ["Ctrl+,", "Settings"],
+            ["Ctrl+Q", "Quit"]
+        ] }
+    ]
+    readonly property var appGroups: [
+        { name: "Navigation", keys: [
+            ["Alt+Left", "Back"],
+            ["Alt+Right", "Forward"],
+            ["Escape", "Close what is open, else back"],
+            ["Shift+F10", "The right-click menu"],
+            ["F11", "Fullscreen"],
+            ["?", "Show or hide this list"]
+        ] },
+        { name: "Library", keys: [
+            ["Ctrl+K", "Library and search"],
+            ["/ or Ctrl+F", "Search this page"],
+            ["Ctrl+L", "Activity"],
             ["Ctrl+,", "Settings"],
             ["Ctrl+Q", "Quit"]
         ] }
@@ -48,8 +73,11 @@ Item {
 
     // Guarded the way TrackPicker's openAt is: a second ? on a list already up would count
     // itself twice into page.openMenus and the chrome would never hide again.
-    function show() { if (open) return; open = true; page.openMenus++; frame.escapeStack.push("popover", root) }
-    function close() { if (!open) return; open = false; page.openMenus--; frame.escapeStack.pop(root); page.showChrome() }
+    // The player that holds the list open, when it is the player's; the frame's own list
+    // (? anywhere else) has none
+    property var player: null
+    function show() { if (open) return; open = true; if (player) player.openMenus++; frame.escapeStack.push("popover", root) }
+    function close() { if (!open) return; open = false; if (player) { player.openMenus--; player.showChrome() } frame.escapeStack.pop(root) }
     // A navigation destroys the page and this list with it without ever calling close(), so
     // the count and the escape stack would keep an entry whose closer is gone. close() is
     // already guarded for the never-opened case, so this is safe unconditionally.

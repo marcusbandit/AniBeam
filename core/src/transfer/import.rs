@@ -311,6 +311,13 @@ async fn import_series(
                 {
                     matched += 1;
                 }
+                // After the match, which would otherwise clear a count set by hand
+                if let Some(n) = entry.episodes_set {
+                    tx.execute(
+                        "UPDATE series SET episodes_set = ?2, episodes_set_season = ?3 WHERE id = ?1",
+                        params![id as i64, n as i64, entry.episodes_set_season.map(|s| s as i64)],
+                    )?;
+                }
                 touched.push(id);
             }
             Ok((touched, created, matched, ignored))

@@ -30,6 +30,8 @@ Frost {
     property bool shown: false
     property bool covered: false
     property string version: ""
+    // The release's own name, "Quality of life"; empty for one known by its number
+    property string title: ""
     property string url: ""
     // install, command, source or page, as Shell offered it
     property string how: ""
@@ -72,8 +74,13 @@ Frost {
     Connections {
         target: Shell
         // An answer for a track since switched away from is dropped
-        function onUpdateAvailable(version, url, track, how, command) {
-            if (track === root.track && !root.busy) root.show(version, url, how, command)
+        function onUpdateAvailable(version, title, url, track, how, command) {
+            if (track === root.track && !root.busy) root.show(version, title, url, how, command)
+        }
+        function onUpdateCurrent(track, error) {
+            if (track !== root.track || !root.asked) return
+            root.asked = false
+            frame.toast(error ? "Could not check for updates: " + error : "AniBeam is up to date")
         }
         function onUpdateProgress(got, total) {
             if (root.phase !== "downloading") return
@@ -89,9 +96,17 @@ Frost {
         function onUpdateFailed(message) { root.failure = message; root.phase = "failed"; root.shown = true }
     }
 
-    function show(version, url, how, command) {
-        if (version === kept.skipped) return
+    // Check for updates in About: like the launch check, but it shows the offer even for a
+    // version put off with Later, and says so when there is nothing newer
+    property bool asked: false
+    function checkNow() { asked = true; laterFor = ""; check() }
+    // Later puts the offer away for this run only: the next start offers it again
+    property string laterFor: ""
+    function show(version, title, url, how, command) {
+        asked = false
+        if (version === laterFor) return
         root.version = version
+        root.title = title
         root.url = url
         root.how = how
         root.command = command
@@ -101,7 +116,7 @@ Frost {
     }
     function later() {
         // A readied update still lands when the app quits; only an offer is passed over
-        if (phase === "offer") kept.skipped = root.version
+        if (phase === "offer") laterFor = root.version
         shown = false
     }
     function install() {
@@ -132,7 +147,7 @@ Frost {
         if (phase === "ready") return "AniBeam " + version + " is ready"
         if (phase === "failed") return "The update failed"
         if (how === "command") return "AniBeam " + version + " is on the AUR"
-        return "AniBeam " + version + " is out"
+        return "AniBeam " + version + (title ? " \u201c" + title + "\u201d" : "") + " is out"
     }
     readonly property string detail: {
         if (phase === "downloading") return Math.floor(progress * 100) + "%  ·  " + mb(got) + " of " + mb(total) + " MB"

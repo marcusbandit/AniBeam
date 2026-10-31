@@ -156,6 +156,15 @@ Item {
                                 font.pointSize: theme.typeLarge * 1.25
                                 color: release.dim ? theme.textDim : theme.text
                             }
+                            // A version's own name, when its heading gives one
+                            Label {
+                                anchors.baseline: number.baseline
+                                visible: text !== ""
+                                text: release.modelData.title || ""
+                                role: "display"
+                                font.pointSize: theme.typeLarge
+                                color: release.dim ? theme.textFaint : theme.textDim
+                            }
                             Label {
                                 anchors.baseline: number.baseline
                                 text: release.modelData.day

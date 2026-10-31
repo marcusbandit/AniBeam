@@ -98,8 +98,9 @@ SettingsTab {
         if (c.error) frame.toast(c.error.message)
     }
     function discard() { dirty = false; tokenText = ""; tokenTouched = false; passwordText = ""; passwordTouched = false; reload() }
+    // Unsaved edits are saved first, then the test runs on them
     function test() {
-        if (dirty) { save(); return }
+        if (dirty) { save(); if (dirty) return }
         var r = Door.testTorrentClient()
         if (r.error) { frame.toast(r.error.message); return }
         tab.testJob = r.reply.job
@@ -115,7 +116,23 @@ SettingsTab {
         function onJobFailed(job, kind, error) { if (job === tab.testJob) { tab.testing = false; frame.toast(error.message) } }
         function onJobCancelled(job, kind) { if (job === tab.testJob) tab.testing = false }
     }
-    Component.onCompleted: reload()
+    // Edits not saved yet outlive a switch to another tab or page: the frame keeps them for
+    // this run, and they come back marked unsaved
+    Component.onCompleted: {
+        reload()
+        var kept = frame.settingsDrafts.downloads
+        if (!kept) return
+        draft = kept.draft
+        tokenText = kept.tokenText; tokenTouched = kept.tokenTouched
+        passwordText = kept.passwordText; passwordTouched = kept.passwordTouched
+        dirty = true
+        frame.settingsDrafts = Object.assign({}, frame.settingsDrafts, { downloads: null })
+    }
+    Component.onDestruction: {
+        if (!dirty) return
+        frame.settingsDrafts = Object.assign({}, frame.settingsDrafts, { downloads: {
+            draft: draft, tokenText: tokenText, tokenTouched: tokenTouched, passwordText: passwordText, passwordTouched: passwordTouched } })
+    }
 
     readonly property string anirssLine: {
         if (!anirss) return ""
@@ -162,20 +179,23 @@ SettingsTab {
         Panel {
             title: "anirss"; icon: "rss"
             helper: "anirss searches the release feeds and registers subscriptions and downloads in the torrent client. AniBeam can run it for you, or talk to one you already run."
-            SettingRow { label: "How it runs"; helper: tab.sidecar ? "AniBeam starts anirss --serve on a port and token of its own and stops it when it quits." : "AniBeam talks to a server you run with anirss --serve, using its address and token."
+            SettingRow { label: "How it runs"; helper: tab.sidecar ? "AniBeam starts anirss itself when it opens and stops it when it quits." : "AniBeam uses an anirss you already run, at the address and with the key below."
                 Seg { options: [{ text: "AniBeam runs it", icon: "play" }, { text: "Already running", icon: "radio" }]; index: tab.sidecar ? 0 : 1
                       onPicked: function(i) { tab.edit(function(d) { d.anirss_mode = i === 0 ? "Sidecar" : "Remote" }) } } }
             SettingRow { visible: tab.sidecar; label: "Command"; helper: "A name on PATH or a full path. ~/.local/bin is searched too."
                 Field { objectName: "downloads-anirss-command"; text: tab.draft ? tab.draft.anirss_command : ""; mono: true; width: theme.space(40); onEdited: function(t) { tab.edit(function(d) { d.anirss_command = t }) } } }
             SettingRow { visible: !tab.sidecar; label: "Address"; helper: "The server's base, without /api/v1."
                 Field { text: tab.draft ? tab.draft.anirss_url : ""; mono: true; width: theme.space(50); onEdited: function(t) { tab.edit(function(d) { d.anirss_url = t }) } } }
-            SettingRow { visible: !tab.sidecar; label: "Token"; helper: tab.settings && tab.settings.has_anirss_token ? "A token is saved. Type a new one to replace it, or clear the field to remove it." : "The bearer token anirss printed when it started, or ANIRSS_API_TOKEN."
+            SettingRow { visible: !tab.sidecar; label: "Token"; helper: tab.settings && tab.settings.has_anirss_token ? "A token is saved. Type a new one to replace it, or clear the field to remove it." : "The key anirss showed when it started. It lets AniBeam in."
                 Field { text: tab.tokenText; secret: true; mono: true; width: theme.space(50); placeholder: tab.settings && tab.settings.has_anirss_token ? "Saved" : "Not set"
                         onEdited: function(t) { tab.tokenText = t; tab.tokenTouched = true; tab.dirty = true } } }
+            SettingRow { label: "Keep the last search"; helper: "Downloads opens with the search you last ran. Off, it opens with an empty search."
+                Switch { checked: frame.prefs.keepDownloadsQuery; onToggled: function(on) { frame.prefs.keepDownloadsQuery = on } } }
             SettingRow { label: "Unsubscribe from finished shows"; helper: "16 days after a show's last episode airs, its RSS feed is removed. The show and its files stay."
                 Switch { objectName: "downloads-prune-finished"; checked: !!tab.draft && tab.draft.prune_finished_feeds !== false; onToggled: function(on) { tab.edit(function(d) { d.prune_finished_feeds = on }) } } }
             SettingRow { label: "State"; line: tab.anirssLine; hairline: false
-                Button { text: tab.anirss && tab.anirss.state === "Starting" ? "Starting" : tab.anirss && tab.anirss.state === "Ready" ? "Reconnect" : "Connect"; icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect() } }
+                Button { text: tab.anirss && tab.anirss.state === "Starting" ? "Starting" : tab.anirss && tab.anirss.state === "Ready" ? "Reconnect" : "Connect"; icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect()
+                    Tooltip { text: tab.dirty ? "Save your changes first" : "" } } }
         }
     }
     Component {
@@ -186,17 +206,17 @@ SettingsTab {
             SettingRow { label: "Roll long downloads"; helper: "A download of more than " + tab.roll.over + " episodes rolls by itself. Its row can still switch it to everything at once."
                 Switch { objectName: "downloads-roll-big"; checked: tab.roll.big !== false; onToggled: function(on) { tab.edit(function(d) { tab.rolling(d).big = on }) } } }
             SettingRow { label: "Episodes ahead"; helper: "How many stay downloaded past the one you are on. 12 is about a season."
-                SliderRow { objectName: "downloads-roll-ahead"; from: 1; to: 52; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.ahead
+                SliderRow { objectName: "downloads-roll-ahead"; unit: "episodes"; from: 1; to: 52; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.ahead
                             onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).ahead = Math.round(v) }) } } }
             SettingRow { label: "Roll above"; helper: "Downloads with more episodes than this roll."
-                SliderRow { objectName: "downloads-roll-over"; from: 12; to: 200; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.over
+                SliderRow { objectName: "downloads-roll-over"; unit: "episodes"; from: 12; to: 200; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.over
                             onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).over = Math.round(v) }) } } }
             SettingRow { label: "Watched episodes"; helper: tab.roll.delete_watched !== false ? "Deleted once you are further along, so the disk only holds what is left to watch." : "Every file stays on the disk after you watch it."
                 Seg { objectName: "downloads-roll-watched"; options: [{ text: "Delete", icon: "trash-2" }, { text: "Keep all", icon: "archive" }]; index: tab.roll.delete_watched !== false ? 0 : 1
                       onPicked: function(i) { tab.edit(function(d) { tab.rolling(d).delete_watched = i === 0 }) } } }
             SettingRow { visible: tab.roll.delete_watched !== false; label: "Keep behind"; hairline: false
                 helper: tab.keepLine
-                SliderRow { objectName: "downloads-roll-keep"; from: 0; to: 12; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.keep_watched === undefined ? 1 : tab.roll.keep_watched
+                SliderRow { objectName: "downloads-roll-keep"; unit: "episodes"; from: 0; to: 12; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.keep_watched === undefined ? 1 : tab.roll.keep_watched
                             onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).keep_watched = Math.round(v) }) } } }
         }
     }

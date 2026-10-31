@@ -222,6 +222,9 @@ pub struct Person {
     pub name: String,
     pub image: Option<String>,
     pub role: String,
+    /// The character's own AniList id, for a link to its page; None for a row stored
+    /// without one.
+    pub anilist_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]

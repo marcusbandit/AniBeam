@@ -21,7 +21,7 @@ Tile {
     readonly property bool ondemand: total > 0
     readonly property string why: {
         if (label === "Starting anirss") return "AniBeam is starting anirss; this takes a second or two."
-        if (starting) return root.endpoint + " runs behind Jackett in a pod that anirss starts when a search needs it. The first search waits for it to come up, up to " + Math.round(root.total) + " seconds; the ones after skip this."
+        if (starting) return root.endpoint + " runs through a helper that anirss starts when a search needs it. The first search waits for it, up to " + Math.round(root.total) + " seconds; the ones after skip this."
         if (label.indexOf("Reading") === 0) return "Splitting the releases into groups and checking them against the library."
         if (root.ondemand) return "Jackett scrapes " + root.endpoint + " for every new query, which usually takes ten to twenty seconds."
         return root.elapsed > 8 ? root.endpoint + " is slow to answer right now." : "This usually takes a second or two."

@@ -39,6 +39,10 @@ Item {
     // The row makes room for it above the cubes.
     property int badgeIndex: -1
     property string badgeText: ""
+    // The cells a click would pick, by index: each shows a small square of the pick colour
+    // inside it, which grows to fill the cube once it is picked (coded `p`). The owner of the
+    // cubes says which, from hoverCell and whatever else it knows (a batch, a held Ctrl).
+    property var lit: ({})
     signal cubeClicked(int index, int modifiers)
     // A folded cube's click: the first and last episode index it stands for
     signal rangeClicked(int first, int last, int modifiers)
@@ -163,7 +167,7 @@ Item {
     // The cube a click would act on, which grows under the pointer
     readonly property int hoverCell: clickable ? pointCell : -1
     // How much a cube grows: under the pointer, or as part of a hot span
-    function scaleOf(i) { return hoverCell === i || (spanHot && inSpan(i)) ? (inSpan(i) ? 1.1 : 1.18) : 1 }
+    function scaleOf(i) { return !theme.reducedMotion && (hoverCell === i || (spanHot && inSpan(i))) ? (inSpan(i) ? 1.1 : 1.18) : 1 }
     HoverHandler { id: hover; cursorShape: root.clickable && root.pointCell >= 0 ? Qt.PointingHandCursor : Qt.ArrowCursor }
 
     Grid {
@@ -218,6 +222,28 @@ Item {
                 radius: Math.max(1, root.size * 0.3)
                 color: parent.st.fill
             }
+        }
+    }
+    // The pick to come: a small square of the pick colour inside each cube a click would
+    // pick, grown to the whole cube once it is picked (coded `p`). Only a grid that takes
+    // clicks has them, one a cube, so a library card builds none.
+    Repeater {
+        model: root.clickable ? root.cells.length : 0
+        Rectangle {
+            required property int index
+            readonly property string code: root.cells[index] || "g"
+            readonly property real grow: code === "p" ? 1 : root.lit[index] && code !== "n" ? 0.42 : 0
+            property real shown: grow
+            Behavior on shown { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast; easing.type: Easing.OutCubic } }
+            visible: shown > 0.01
+            width: Math.max(2, root.size * shown); height: width
+            x: (index % root.perRow) * (root.size + root.gap) + (root.size - width) / 2
+            y: root.gridY + Math.floor(index / root.perRow) * (root.size + root.gap) + (root.size - height) / 2
+            radius: Math.max(1, root.size * 0.3) * shown
+            color: theme.cubeState("p").fill
+            opacity: code === "p" ? 1 : 0.9
+            scale: root.scaleOf(index)
+            Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
         }
     }
     MouseArea {

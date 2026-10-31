@@ -43,8 +43,8 @@ fn in_genre(c: &Value, genre: &str) -> bool {
 fn type_of(c: &Value) -> &'static str {
     match str_of(c, "format") {
         "TV" | "TV_SHORT" => "TV",
-        "MOVIE" => "Films",
-        "" if str_of(c, "kind") == "Movie" => "Films",
+        "MOVIE" => "Movies",
+        "" if str_of(c, "kind") == "Movie" => "Movies",
         "OVA" | "ONA" | "SPECIAL" => "OVA, ONA and specials",
         "MUSIC" => "Music",
         _ => "Unknown",

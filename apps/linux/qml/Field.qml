@@ -9,6 +9,8 @@ Corner {
     property bool mono: false
     // A password: the characters are hidden as typed
     property bool secret: false
+    // A value the owner could not take: the edge goes red until it can
+    property bool invalid: false
     signal edited(string text)
 
     implicitWidth: theme.space(40)
@@ -17,7 +19,7 @@ Corner {
     smoothing: theme.cornerSmoothing
     color: input.activeFocus ? theme.raised : theme.tile
     // Focus is the accent edge
-    borderColor: input.activeFocus ? theme.focusRing : hover.containsMouse ? theme.lineStrong : theme.line
+    borderColor: invalid ? theme.red : input.activeFocus ? theme.focusRing : hover.containsMouse ? theme.lineStrong : theme.line
     borderWidth: 1
 
     function focusInput() { input.forceActiveFocus() }

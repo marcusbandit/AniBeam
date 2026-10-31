@@ -63,10 +63,13 @@ Item {
         if (key === "released") return root.published(i)
         return root.count(i, key)
     }
+    // A sort on what the feed read brings (seeders, downloads, dates) waits for that read, so
+    // the rows move once when it lands instead of each time a number fills in
+    readonly property bool waitsOnFeed: datesState === "loading" && ["seeders", "leechers", "downloads", "released"].indexOf(sortKey) >= 0
     readonly property var order: {
         var idx = []
         for (var i = 0; i < items.length; i++) idx.push(i)
-        if (sortKey === "") return idx
+        if (sortKey === "" || waitsOnFeed) return idx
         var key = sortKey, desc = sortDesc
         return idx.sort(function(a, b) {
             var va = root.value(a, key), vb = root.value(b, key)
@@ -169,6 +172,11 @@ Item {
                 readonly property var seeders: root.count(i, "seeders")
                 width: body.width
                 height: root.rowHeight
+                // A Tab stop: Space or Return ticks it
+                activeFocusOnTab: true
+                Keys.onSpacePressed: root.toggled(row.item)
+                Keys.onReturnPressed: root.toggled(row.item)
+                Rectangle { anchors.fill: parent; visible: row.activeFocus; color: "transparent"; radius: theme.radiusSm; border.width: 2; border.color: theme.focusRing; z: 5 }
                 Rectangle {
                     anchors.fill: parent
                     radius: theme.radiusSm
@@ -176,7 +184,8 @@ Item {
                 }
                 // A ticked row also carries a bar at its left edge, so it reads from across the table
                 Rectangle { visible: row.ticked; x: 0; y: theme.space(2); width: 2; height: parent.height - theme.space(4); radius: 1; color: theme.accent }
-                HoverHandler { id: rowHover; cursorShape: Qt.PointingHandCursor }
+                // The pointer on a row hands it to the frame's right-click menu: copy its link
+                HoverHandler { id: rowHover; cursorShape: Qt.PointingHandCursor; onHoveredChanged: frame.hoverRelease(row.item, hovered) }
                 MouseArea { anchors.fill: parent; onClicked: root.toggled(row.item) }
                 Check { x: (root.wCheck - width) / 2; anchors.verticalCenter: parent.verticalCenter; on: row.ticked; onClicked: root.toggled(row.item) }
 
@@ -347,9 +356,9 @@ Item {
         width: theme.space(4.5); height: width
         radius: theme.radiusSm
         color: on ? theme.accent : "transparent"
-        border.color: on ? theme.accent : theme.lineStrong
+        border.color: on ? theme.accent : checkMouse.containsMouse ? theme.text : theme.lineStrong
         border.width: 1.5
         Icon { visible: parent.on; anchors.centerIn: parent; glyph: "check"; size: theme.space(3.25); color: theme.contrast(theme.accent, Qt.rgba(1, 1, 1, 1)) >= 3 ? "#ffffff" : "#0d0e11" }
-        MouseArea { anchors.fill: parent; anchors.margins: -theme.space(1.5); cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
+        MouseArea { id: checkMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
     }
 }

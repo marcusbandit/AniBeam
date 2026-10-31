@@ -468,6 +468,11 @@ Item {
     component MetaTile: Item {
         id: tile
         required property var modelData
+        // A Tab stop: Return opens it, as a click does
+        activeFocusOnTab: true
+        Keys.onReturnPressed: page.openTile(tile.d)
+        Keys.onSpacePressed: page.openTile(tile.d)
+        Rectangle { anchors.fill: parent; anchors.margins: -2; visible: tile.activeFocus; color: "transparent"; border.width: 2; border.color: theme.focusRing; z: 10 }
         readonly property var d: modelData || ({})
         readonly property var card: d.series || ({})
         readonly property bool gone: card.missing === true
@@ -561,9 +566,13 @@ Item {
                 visible: tile.gone
                 readonly property bool hovered: visible && lift > 0.5
                 objectName: String(tile.card.id) === page.firstGoneId ? "row-forget" : ""
+                // Two clicks: the first arms it and says what goes, the second forgets
+                property bool armed: false
                 icon: "trash-2"; small: true; danger: true
-                onClicked: page.forget(tile.card)
-                Tooltip { text: "The folder is gone: drop this series and its history" }
+                text: armed ? "Forget it" : ""
+                onClicked: { if (!armed) { armed = true; forgetDisarm.restart(); return } armed = false; page.forget(tile.card) }
+                Timer { id: forgetDisarm; interval: 4000; onTriggered: forgetGlyph.armed = false }
+                Tooltip { text: forgetGlyph.armed ? "Click again to drop this series and its watch history" : "The folder is gone: drop this series and its history" }
             }
         }
 
