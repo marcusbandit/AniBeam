@@ -3,9 +3,10 @@
 //! torrent client is doing. anirss is the tool that owns every rule about
 //! feeds and qBittorrent; this module is its client, and the torrent
 //! client's for what anirss leaves out (live transfer, stop, start,
-//! delete). The search, a refine step and the subscription preview may
+//! delete). The search, a refine step, subscribing and adding torrents may
 //! run on the core's own port of anirss instead, as the settings' `engine`
-//! picks (`backend`).
+//! picks (`backend`), which writes rules and torrents to qBittorrent itself
+//! (`native`).
 //!
 //! The core runs anirss as a sidecar by default (`anirss --serve` on a
 //! port and token it picked), started on first use rather than at launch,
@@ -23,6 +24,8 @@ pub mod feed;
 pub mod jackett;
 pub mod link;
 pub mod managed;
+pub mod native;
+pub mod paths;
 pub mod prune;
 pub mod qbt;
 pub mod replace;
@@ -53,6 +56,9 @@ pub struct Downloads {
     connecting: tokio::sync::Mutex<()>,
     /// The same for settling the torrent client and starting AniBeam's own.
     torrent_setup: tokio::sync::Mutex<()>,
+    /// One rule written or removed at a time on the core's own engine:
+    /// picking a free rule name is check-then-act.
+    rules: tokio::sync::Mutex<()>,
     /// Set by a shell that runs against a copy of the library but the
     /// owner's real anirss (a drive script, a screenshot, a sandbox root):
     /// finished feeds are never pruned there.
@@ -99,6 +105,7 @@ impl Default for Downloads {
             state: Mutex::new(State::default()),
             connecting: tokio::sync::Mutex::new(()),
             torrent_setup: tokio::sync::Mutex::new(()),
+            rules: tokio::sync::Mutex::new(()),
             unattended_off: AtomicBool::new(false),
         }
     }
@@ -1348,12 +1355,12 @@ pub fn subscribe(
         .jobs
         .clone()
         .start(JobKind::Subscribe, move |ctx| async move {
-            let client = ensure_client(&owner).await?;
-            let mut result = client
+            let backend = DownloadsBackend::open(&owner).await?;
+            let mut result = backend
                 .subscribe(&query, &endpoint, &items, name.as_deref())
                 .await?;
             let terms = match wire_query.as_deref() {
-                Some(wire) if narrows_locally(&owner, &endpoint) => {
+                Some(wire) if backend.narrows_locally(&owner, &endpoint) => {
                     rewire::local_terms(&query, wire)
                 }
                 _ => rewire::LocalTerms::default(),
@@ -1365,7 +1372,7 @@ pub fn subscribe(
                 )
             } else {
                 let wire = wire_query.clone().unwrap_or_default();
-                let wide = client.preview(&wire, &endpoint, &items).await?.feed_url;
+                let wide = backend.preview(&wire, &endpoint, &items).await?.feed_url;
                 rewire_subscription(&owner, &ctx, &mut result, &wide, &items, &terms).await?;
                 let searched = rewire::search_param(&result.feed_url).map_or(wire, |(_, v)| v);
                 format!(
@@ -1381,18 +1388,6 @@ pub fn subscribe(
                 body: EventBody::Subscribed { result },
             })
         }))
-}
-
-/// An endpoint anirss narrows on its own side, where a refined query is no
-/// query the endpoint can answer: a generic RSS endpoint that is not Erai
-/// (whose subscription anirss already narrows in the rule).
-fn narrows_locally(core: &Core, endpoint: &str) -> bool {
-    core.downloads
-        .state()
-        .endpoints
-        .iter()
-        .find(|e| e.name == endpoint)
-        .is_some_and(|e| e.kind != "nyaa" && !e.url.contains("erai-raws"))
 }
 
 fn describe_terms(terms: &rewire::LocalTerms) -> String {
@@ -1537,8 +1532,8 @@ pub fn download(core: &Core, items: Vec<Release>, name: Option<String>) -> Resul
 }
 
 /// `download` with what anirss cannot be asked for: the new torrents read in
-/// order, and episodes they replace (`downloads::replace`). anirss adds the
-/// torrents; the rest is applied once qBittorrent lists them. The add
+/// order, and episodes they replace (`downloads::replace`). The engine adds
+/// the torrents; the rest is applied once qBittorrent lists them. The add
 /// itself is the same call, so a failure there changes nothing: nothing is
 /// cancelled and nothing is recorded.
 pub fn download_with(
@@ -1571,8 +1566,8 @@ pub fn download_with(
         .jobs
         .clone()
         .start(JobKind::Download, move |_| async move {
-            let client = ensure_client(&owner).await?;
-            let result = client
+            let backend = DownloadsBackend::open(&owner).await?;
+            let result = backend
                 .download(&plan.now, name.as_deref(), home.as_deref())
                 .await?;
             // An anirss older than save_path put them under its own root
@@ -1714,8 +1709,8 @@ pub fn movie(core: &Core, link: String) -> Result<u64, CoreError> {
         .jobs
         .clone()
         .start(JobKind::Download, move |_| async move {
-            let client = ensure_client(&owner).await?;
-            let result = client.movie(&link).await?;
+            let backend = DownloadsBackend::open(&owner).await?;
+            let result = backend.movie(&link).await?;
             Ok(Finished {
                 plain: Some("Added a movie to your downloads.".to_string()),
                 level: Level::Info,
@@ -1736,8 +1731,8 @@ pub fn plan_remove(
         .jobs
         .clone()
         .start(JobKind::RemoveSubscription, move |_| async move {
-            let client = ensure_client(&owner).await?;
-            let plans = client
+            let backend = DownloadsBackend::open(&owner).await?;
+            let plans = backend
                 .remove(std::slice::from_ref(&name), torrents, files, true)
                 .await?;
             Ok(Finished {
@@ -1755,8 +1750,8 @@ pub fn remove(core: &Core, name: String, torrents: bool, files: bool) -> Result<
         .jobs
         .clone()
         .start(JobKind::RemoveSubscription, move |_| async move {
-            let client = ensure_client(&owner).await?;
-            client
+            let backend = DownloadsBackend::open(&owner).await?;
+            backend
                 .remove(std::slice::from_ref(&name), torrents, files, false)
                 .await?;
             let extra = match (torrents, files) {
@@ -1937,8 +1932,8 @@ pub fn remove_show(
             };
 
             if let Some(name) = &rule {
-                let client = ensure_client(&owner).await?;
-                client
+                let backend = DownloadsBackend::open(&owner).await?;
+                backend
                     .remove(std::slice::from_ref(name), false, false, false)
                     .await?;
             }
@@ -2009,12 +2004,12 @@ pub fn remove_show(
 pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
     let owner = core.owner()?;
     core.handle.spawn(async move {
-        let outcome = match ensure_client(&owner).await {
-            Ok(client) => client.subscriptions().await.map(|rules| (client, rules)),
+        let outcome = match DownloadsBackend::open(&owner).await {
+            Ok(backend) => backend.subscriptions().await.map(|rules| (backend, rules)),
             Err(e) => Err(e),
         };
         match outcome {
-            Ok((client, mut rules)) => {
+            Ok((backend, mut rules)) => {
                 link_rules(&owner, &mut rules);
                 owner.bus.debug(
                     Stage::Downloads,
@@ -2026,7 +2021,7 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
                         rules: rules.clone(),
                     },
                 );
-                prune::after_read(&owner, &client, &rules).await;
+                prune::after_read(&owner, &backend, &rules).await;
             }
             Err(error) => {
                 owner.bus.debug(

@@ -49,12 +49,84 @@ pub enum Method {
     Delete,
 }
 
-/// The two body shapes the providers between them need: JSON for AniList's
-/// GraphQL, a form for MAL's list writes and its token exchange.
+/// The body shapes the services between them need: JSON for AniList's
+/// GraphQL, a form for MAL's list writes and its token exchange, and a
+/// multipart form for a .torrent file uploaded to qBittorrent.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Body {
     Json(serde_json::Value),
     Form(Vec<(String, String)>),
+    /// `multipart/form-data`: the text fields, then the files.
+    Multipart {
+        fields: Vec<(String, String)>,
+        files: Vec<FilePart>,
+    },
+}
+
+/// One file in a multipart body.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FilePart {
+    /// The form field it goes in.
+    pub field: String,
+    pub file_name: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
+/// A multipart body's bytes around `boundary`, which must appear in none
+/// of the parts. Names are quoted with `"`, CR and LF percent-encoded, as
+/// browsers send them.
+pub fn multipart_bytes(fields: &[(String, String)], files: &[FilePart], boundary: &str) -> Vec<u8> {
+    fn quoted(s: &str) -> String {
+        s.replace('"', "%22")
+            .replace('\r', "%0D")
+            .replace('\n', "%0A")
+    }
+    let mut out = Vec::new();
+    for (name, value) in fields {
+        out.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{}\"\r\n\r\n",
+                quoted(name)
+            )
+            .as_bytes(),
+        );
+        out.extend_from_slice(value.as_bytes());
+        out.extend_from_slice(b"\r\n");
+    }
+    for f in files {
+        out.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{}\"; filename=\"{}\"\r\n\
+                 Content-Type: {}\r\n\r\n",
+                quoted(&f.field),
+                quoted(&f.file_name),
+                f.content_type
+            )
+            .as_bytes(),
+        );
+        out.extend_from_slice(&f.bytes);
+        out.extend_from_slice(b"\r\n");
+    }
+    out.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    out
+}
+
+/// A boundary that appears in none of the parts.
+fn boundary_for(fields: &[(String, String)], files: &[FilePart]) -> String {
+    loop {
+        let boundary = format!("AniBeamBoundary{:016x}", rand::random::<u64>());
+        let inside = |b: &[u8]| b.windows(boundary.len()).any(|w| w == boundary.as_bytes());
+        let taken = fields
+            .iter()
+            .any(|(k, v)| inside(k.as_bytes()) || inside(v.as_bytes()))
+            || files
+                .iter()
+                .any(|f| inside(&f.bytes) || inside(f.file_name.as_bytes()));
+        if !taken {
+            return boundary;
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -382,6 +454,15 @@ async fn request(
     builder = match &req.body {
         Some(Body::Json(value)) => builder.json(value),
         Some(Body::Form(pairs)) => builder.form(pairs),
+        Some(Body::Multipart { fields, files }) => {
+            let boundary = boundary_for(fields, files);
+            builder
+                .header(
+                    "Content-Type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(multipart_bytes(fields, files, &boundary))
+        }
         None => builder,
     };
     let response = builder.send().await.map_err(|e| HttpError {
@@ -570,6 +651,33 @@ mod tests {
         assert!(!err.message.contains("s3cr3tkey"), "{}", err.message);
         assert!(!err.message.contains("/api"), "{}", err.message);
         assert!(err.message.starts_with("127.0.0.1: "), "{}", err.message);
+    }
+
+    #[test]
+    fn a_multipart_body_frames_each_part() {
+        let body = multipart_bytes(
+            &[("savepath".to_string(), "/srv/TV/Show".to_string())],
+            &[FilePart {
+                field: "torrents".to_string(),
+                file_name: "a \"b\".torrent".to_string(),
+                content_type: "application/x-bittorrent".to_string(),
+                bytes: b"d4:infoe".to_vec(),
+            }],
+            "XyZ",
+        );
+        assert_eq!(
+            String::from_utf8(body).unwrap(),
+            "--XyZ\r\nContent-Disposition: form-data; name=\"savepath\"\r\n\r\n/srv/TV/Show\r\n\
+             --XyZ\r\nContent-Disposition: form-data; name=\"torrents\"; filename=\"a %22b%22.torrent\"\r\n\
+             Content-Type: application/x-bittorrent\r\n\r\nd4:infoe\r\n--XyZ--\r\n"
+        );
+        let file = FilePart {
+            field: "f".to_string(),
+            file_name: "x".to_string(),
+            content_type: "application/octet-stream".to_string(),
+            bytes: b"AniBeamBoundary".to_vec(),
+        };
+        assert!(boundary_for(&[], &[file]).starts_with("AniBeamBoundary"));
     }
 
     #[tokio::test]

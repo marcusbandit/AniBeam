@@ -10,6 +10,8 @@ use std::path::PathBuf;
 
 use crate::contract::*;
 use crate::core::Core;
+#[cfg(feature = "phone")]
+use crate::downloads::paths::name_for;
 
 /// The library folder the phone downloads into, beside the core's own folders. The app
 /// registers the same folder as its one library source.
@@ -264,45 +266,6 @@ pub fn refine(
     refinement.facts = facts;
     refinement.show = show;
     Ok(Reply::PhoneRefined { refinement })
-}
-
-#[cfg(feature = "phone")]
-/// A download or subscription name becomes a folder in the library, so it is one plain
-/// path component (anirss `validate_name`).
-fn validate_name(name: &str) -> Result<String, CoreError> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err(CoreError::invalid("name", "the name cannot be empty"));
-    }
-    if name.contains(['/', '\\']) {
-        return Err(CoreError::invalid(
-            "name",
-            "the name must not contain / or \\",
-        ));
-    }
-    if name == "." || name == ".." || name.chars().any(|c| (c as u32) < 32 || c as u32 == 127) {
-        return Err(CoreError::invalid(
-            "name",
-            format!("{name:?} is not a folder name"),
-        ));
-    }
-    Ok(name.to_string())
-}
-
-#[cfg(feature = "phone")]
-/// The folder for releases: the name given, else the show's from the first title, as
-/// anirss names a download or a subscription.
-fn name_for(name: Option<&str>, items: &[Release], fallback: &str) -> Result<String, CoreError> {
-    match name.map(str::trim).filter(|n| !n.is_empty()) {
-        Some(n) => validate_name(n),
-        None => {
-            let shown = items
-                .first()
-                .map(|i| crate::releases::titles::show_name(&i.title))
-                .unwrap_or_default();
-            validate_name(if shown.is_empty() { fallback } else { &shown })
-        }
-    }
 }
 
 #[cfg(feature = "phone")]

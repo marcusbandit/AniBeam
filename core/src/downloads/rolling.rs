@@ -979,8 +979,8 @@ async fn step(
             .iter()
             .map(|&p| roll.parts[p].release.clone())
             .collect();
-        match super::ensure_client(core).await {
-            Ok(anirss) => match anirss
+        match super::backend::DownloadsBackend::open(core).await {
+            Ok(backend) => match backend
                 .download(
                     &items,
                     roll.name.as_deref(),
