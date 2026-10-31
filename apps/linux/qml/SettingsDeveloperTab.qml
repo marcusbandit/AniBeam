@@ -11,6 +11,9 @@ import com.marcusrosado.AniBeam
 
 SettingsTab {
     id: tab
+    title: "Developer"
+    lead: "Why a page is slow, measured. Each switch applies to the next page you open."
+    wide: true
     readonly property var rec: frame.devRecorder
     readonly property var kept: frame.devKept
     property var picked: rec.last
@@ -66,7 +69,6 @@ SettingsTab {
         id: switchesPanel
         Panel {
             title: "Switches"; icon: "toggle-right"
-            helper: "Each one applies to the next page you open, so an A and B test is one switch and one click."
             SettingRow { label: "Load images"; helper: "Off, no poster, banner or portrait is read or decoded."
                 Switch { objectName: "dev-images"; checked: tab.kept.images; onToggled: function(on) { frame.devSetImages(on); frame.loadPage() } } }
             SettingRow { label: "Page load overlay"; helper: "The last page load and the memory, in the window's bottom right corner."
@@ -76,7 +78,7 @@ SettingsTab {
             SettingRow { label: "Warm posters in the background"; helper: "Decodes the 60 posters you are most likely to see and keeps them in memory."
                 Switch { checked: tab.kept.posterPool; onToggled: function(on) { tab.kept.posterPool = on } } }
             SettingRow { visible: !Dev.forced; label: "Developer options"; helper: "Turns this tab, the overlay and the measuring off."
-                Switch { checked: true; onToggled: function(on) { if (!on) { tab.kept.enabled = false; frame.devApply(); frame.go("settings", { tab: "data" }) } } } }
+                Switch { checked: true; onToggled: function(on) { if (!on) { tab.kept.enabled = false; frame.devApply(); frame.go("settings", { tab: "about" }) } } } }
         }
     }
     Component {
