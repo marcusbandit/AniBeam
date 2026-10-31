@@ -28,6 +28,7 @@ use crate::sync::recover;
 pub struct Streams {
     converter: OnceLock<Converter>,
     probes: Mutex<HashMap<u64, Arc<wire::Probe>>>,
+    subtitles: Mutex<HashMap<(u64, usize), Bytes>>,
 }
 
 /// What a request's `Range` asks of a file.
@@ -199,6 +200,38 @@ pub async fn probe(State(st): State<Arc<Served>>, Path(id): Path<u64>) -> Respon
             "this machine cannot read the file: is ffprobe installed?",
         ),
     }
+}
+
+pub async fn subtitle(
+    State(st): State<Arc<Served>>,
+    Path((id, index)): Path<(u64, usize)>,
+) -> Response {
+    let ass = |bytes: Bytes| {
+        (
+            [(header::CONTENT_TYPE, "text/x-ssa; charset=utf-8")],
+            Body::from(bytes),
+        )
+            .into_response()
+    };
+    if let Some(bytes) = recover(&st.streams.subtitles).get(&(id, index)) {
+        return ass(bytes.clone());
+    }
+    let Some((path, probe)) = probe_of(&st, id).await else {
+        return not_found();
+    };
+    match probe.subtitles.get(index) {
+        Some(t) if !convert::is_bitmap(&t.codec) => {}
+        _ => return not_found(),
+    }
+    let Some(bytes) = convert::subtitle(&path, index).await else {
+        return error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "the subtitles could not be read",
+        );
+    };
+    let bytes = Bytes::from(bytes);
+    recover(&st.streams.subtitles).insert((id, index), bytes.clone());
+    ass(bytes)
 }
 
 /// `audio` and `burn` from the query, the only two it takes.

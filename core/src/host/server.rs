@@ -59,6 +59,10 @@ pub fn router(core: Weak<Core>) -> Router {
         .route("/api/v1/files/{id}", get(stream::file))
         .route("/api/v1/files/{id}/sidecars/{index}", get(stream::sidecar))
         .route("/api/v1/files/{id}/probe", get(stream::probe))
+        .route(
+            "/api/v1/files/{id}/subtitles/{index}",
+            get(stream::subtitle),
+        )
         .route("/api/v1/files/{id}/hls/{height}/{name}", get(stream::hls))
         .route(wire::CALL, post(stream::call))
         .fallback(not_found)

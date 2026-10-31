@@ -24,6 +24,9 @@ pub struct Served {
     pub path: PathBuf,
     pub mime: String,
     pub prepared: Option<Arc<Prepared>>,
+    /// Set for a stream another machine serves: the address of its playlist's directory,
+    /// and every name under the token is fetched from there.
+    pub relay: Option<String>,
 }
 
 #[derive(Default)]
@@ -142,6 +145,9 @@ async fn file(
     let Some(served) = reg.get(&token) else {
         return missing();
     };
+    if let Some(dir) = &served.relay {
+        return relay(dir, &name, &q).await;
+    }
     let p = served.prepared.clone();
     match (name.as_str(), p) {
         ("master.m3u8", Some(p)) => body(
@@ -176,6 +182,64 @@ async fn file(
         }
         (n, _) if n.starts_with("file") => ranged(&served, &method, &headers).await,
         _ => missing(),
+    }
+}
+
+/// One playlist or piece of a stream another machine serves, fetched from it whole. Its
+/// pieces are a few seconds each, so holding one costs little, and a fetch may wait as long
+/// as the other machine takes to convert it.
+async fn relay(dir: &str, name: &str, q: &HashMap<String, String>) -> Response {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .unwrap_or_default()
+    });
+    // Only the names a playlist lists pass: no part of the request becomes a path elsewhere.
+    let plain = name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
+    if !plain {
+        return missing();
+    }
+    let mut url = format!("{dir}{name}");
+    let mut sep = '?';
+    let mut keys: Vec<_> = q.iter().collect();
+    keys.sort();
+    for (k, v) in keys {
+        url.push(sep);
+        url.push_str(&format!(
+            "{}={}",
+            crate::percent::encode(k),
+            crate::percent::encode(v)
+        ));
+        sep = '&';
+    }
+    let answer = match client.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            tracing::warn!("cast relay: {url} answered {}", r.status());
+            return cors(StatusCode::BAD_GATEWAY.into_response());
+        }
+        Err(e) => {
+            tracing::warn!("cast relay: {url}: {e}");
+            return cors(StatusCode::BAD_GATEWAY.into_response());
+        }
+    };
+    let kind = answer
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or(if name.ends_with(".m3u8") {
+            "application/vnd.apple.mpegurl"
+        } else {
+            "video/mp2t"
+        })
+        .to_string();
+    match answer.bytes().await {
+        Ok(bytes) => body(StatusCode::OK, &kind, bytes.to_vec()),
+        Err(_) => cors(StatusCode::BAD_GATEWAY.into_response()),
     }
 }
 

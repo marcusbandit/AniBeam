@@ -1094,6 +1094,7 @@ impl Core {
             Call::PhoneTorrents => crate::phone::torrents(self),
             c @ (Call::CastDevices
             | Call::CastStart { .. }
+            | Call::CastStartStream { .. }
             | Call::CastPlay
             | Call::CastPause
             | Call::CastSeek { .. }

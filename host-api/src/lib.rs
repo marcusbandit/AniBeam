@@ -86,6 +86,12 @@ pub fn sidecar_path(file: u64, index: usize) -> String {
     format!("/api/v1/files/{file}/sidecars/{index}")
 }
 
+/// `GET` the text subtitle track at this index of [`Probe::subtitles`] as an ASS file,
+/// for a client playing a conversion, which carries none. A bitmap track has none.
+pub fn subtitle_path(file: u64, index: usize) -> String {
+    format!("/api/v1/files/{file}/subtitles/{index}")
+}
+
 /// `GET`: [`Probe`] of the episode file.
 pub fn probe_path(file: u64) -> String {
     format!("/api/v1/files/{file}/probe")

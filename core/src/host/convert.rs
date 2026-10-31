@@ -500,8 +500,33 @@ async fn written(dir: &Path, from: u32) -> u32 {
     n
 }
 
+/// One text subtitle track of the file as ASS, read out whole by ffmpeg.
+pub async fn subtitle(path: &Path, index: usize) -> Option<Vec<u8>> {
+    let out = command("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-nostdin", "-i"])
+        .arg(path)
+        .args([
+            "-map",
+            &format!("0:s:{index}"),
+            "-c:s",
+            "ass",
+            "-f",
+            "ass",
+            "-",
+        ])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .output();
+    let out = tokio::time::timeout(Duration::from_secs(60), out)
+        .await
+        .ok()?
+        .ok()?;
+    (out.status.success() && !out.stdout.is_empty()).then_some(out.stdout)
+}
+
 /// Bitmap subtitles are laid over the picture; text ones are drawn by libass.
-fn is_bitmap(codec: &str) -> bool {
+pub fn is_bitmap(codec: &str) -> bool {
     matches!(
         codec,
         "hdmv_pgs_subtitle" | "dvd_subtitle" | "dvb_subtitle" | "xsub"

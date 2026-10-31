@@ -395,6 +395,82 @@ mod imp {
                 });
                 Ok(Reply::CastState { state: Some(state) })
             }
+            Call::CastStartStream {
+                device,
+                url,
+                title,
+                start,
+                duration,
+            } => {
+                let found = inner
+                    .devices
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .iter()
+                    .find(|f| f.device.id == device)
+                    .cloned()
+                    .ok_or_else(|| {
+                        CoreError::invalid("device", "That device is no longer on the network")
+                    })?;
+                if found.device.kind != CastKind::Chromecast {
+                    return Err(CoreError::invalid(
+                        "device",
+                        "An episode from another computer casts to a Chromecast; a TV over DLNA plays this phone's own",
+                    ));
+                }
+                let Some((dir, name)) = url.split('?').next().and_then(|u| u.rsplit_once('/'))
+                else {
+                    return Err(CoreError::invalid("url", "not a playlist address"));
+                };
+                let dir = format!("{dir}/");
+                let query = url.split_once('?').map(|(_, q)| q).unwrap_or_default();
+                let playlist = if query.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{name}?{query}")
+                };
+                stop(core);
+                let id = inner.next.fetch_add(1, Ordering::Relaxed) + 1;
+                let token = format!(
+                    "{:016x}{:016x}",
+                    rand::random::<u64>(),
+                    rand::random::<u64>()
+                );
+                let state = CastState {
+                    device: found.device.name.clone(),
+                    kind: found.device.kind,
+                    file: 0,
+                    state: CastPlayState::Connecting,
+                    position: start,
+                    duration,
+                    error: None,
+                };
+                *inner.session.lock().unwrap_or_else(|e| e.into_inner()) = Some(Session {
+                    id,
+                    token: token.clone(),
+                    state: state.clone(),
+                    control: Control::Starting,
+                    mode: Mode::Hls,
+                    base: String::new(),
+                    title: title.clone(),
+                    prepared: None,
+                    hevc_doubt: false,
+                });
+                emit(core, &state, false);
+                let arc = core
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("the core is closing"))?;
+                core.handle.spawn(async move {
+                    let begun = relay(
+                        &arc, id, found, dir, playlist, token, title, start, duration,
+                    )
+                    .await;
+                    if let Err(e) = begun {
+                        fail(&arc, id, e);
+                    }
+                });
+                Ok(Reply::CastState { state: Some(state) })
+            }
             Call::CastPlay => control(core, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Play),
                 Ctl::Dlna(d) => spawn_dlna(core, id, async move { d.play().await }),
@@ -516,6 +592,59 @@ mod imp {
         }
     }
 
+    /// Starts a relayed stream on a Chromecast: the playlist under this machine's own
+    /// server, every request passed on to `dir`.
+    #[allow(clippy::too_many_arguments)]
+    async fn relay(
+        core: &Arc<Core>,
+        id: u64,
+        found: Found,
+        dir: String,
+        playlist: String,
+        token: String,
+        title: String,
+        start: f64,
+        duration: f64,
+    ) -> Result<(), String> {
+        let inner = inner(core);
+        let port = server(&inner).await?.port();
+        let ip =
+            discover::local_ip_for(found.addr.ip()).ok_or("this device has no route to the TV")?;
+        let host = discover::dev()
+            .advertise
+            .unwrap_or_else(|| format!("{ip}:{port}"));
+        let base = format!("http://{host}/c/{token}");
+        inner.registry.add(
+            token.clone(),
+            Served {
+                path: PathBuf::new(),
+                mime: "application/vnd.apple.mpegurl".to_string(),
+                prepared: None,
+                relay: Some(dir),
+            },
+        );
+        update(core, id, |s| s.base = base.clone());
+        let load = castv2::Load {
+            url: format!("{base}/{playlist}"),
+            content_type: "application/x-mpegurl".to_string(),
+            hls_fmp4: false,
+            start,
+            duration,
+            title,
+            subtitles: None,
+        };
+        let status_core = core.clone();
+        let controller = castv2::start(found.addr, load, move |st| {
+            on_cast_status(&status_core, id, st)
+        });
+        let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+        match s.as_mut().filter(|s| s.id == id) {
+            Some(s) => s.control = Control::Cast(controller),
+            None => drop(controller),
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn begin(
         core: &Arc<Core>,
@@ -565,6 +694,7 @@ mod imp {
                 path: path.clone(),
                 mime: mime(&path).to_string(),
                 prepared: prepared.clone(),
+                relay: None,
             },
         );
         let duration = prepared
@@ -654,6 +784,7 @@ mod imp {
                                         path: path.clone(),
                                         mime: mime(&path).to_string(),
                                         prepared: Some(p.clone()),
+                                        relay: None,
                                     },
                                 );
                                 p

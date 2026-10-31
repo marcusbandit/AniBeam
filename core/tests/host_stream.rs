@@ -161,6 +161,16 @@ fn an_episode_streams_converts_and_keeps_its_place() {
         assert_eq!(probe.bit_depth, Some(10));
         assert_eq!(probe.audio[0].codec, "flac");
         assert_eq!(probe.subtitles[0].codec, "ass");
+        // The subtitle track comes out on its own, for a client playing a conversion.
+        let subs = http
+            .get(format!("{base}{}", wire::subtitle_path(file, 0)))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert!(subs.contains("Styled line"), "{subs}");
 
         if hello.features.iter().any(|f| f == wire::FEATURE_CONVERT) {
             let list_url = format!("{base}{}", wire::hls_path(file, 720, None, Some(0)));
