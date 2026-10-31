@@ -553,7 +553,7 @@ pub fn describe(options: &DownloadOptions, followups: &[Followup]) -> String {
     if n > 0 {
         bits.push(format!(
             "replacing {n} {} once the new files finish",
-            if n == 1 { "episode" } else { "episodes" }
+            crate::words::pick(n, "episode", "episodes")
         ));
     }
     if bits.is_empty() {

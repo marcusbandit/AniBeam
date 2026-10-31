@@ -570,10 +570,12 @@ pub struct DoorRust {
     subscription: Option<Arc<Subscription>>,
     jobs: Vec<Value>,
     /// Whole-library answers kept while the core's generation stands still.
-    read_cache: RefCell<ReadCache<QJsonObject>>,
+    /// The size of each answer as JSON text rides along, measured only while developer
+    /// options are on, so a hit can report it without walking the answer again.
+    read_cache: RefCell<ReadCache<(QJsonObject, usize)>>,
 }
 
-impl Default for ReadCache<QJsonObject> {
+impl Default for ReadCache<(QJsonObject, usize)> {
     /// On unless `ANIBEAM_READ_CACHE=0`, which is there to measure what it saves.
     fn default() -> Self {
         ReadCache::new(std::env::var("ANIBEAM_READ_CACHE").as_deref() != Ok("0"))
@@ -836,7 +838,7 @@ impl qobject::Door {
         let generation = core.generation();
         let t0 = Instant::now();
         if let Some(k) = &key
-            && let Some(hit) = self.read_cache.borrow_mut().get(k, generation, t0)
+            && let Some((hit, size)) = self.read_cache.borrow_mut().get(k, generation, t0)
         {
             if timing() {
                 eprintln!("timing {name} hit {:.3}ms", ms(t0.elapsed()));
@@ -850,7 +852,7 @@ impl qobject::Door {
                     json: 0.0,
                     qjson: 0.0,
                     total,
-                    bytes: crate::devstats::size_of(&from_qjson_object(&hit)),
+                    bytes: size,
                     hit: true,
                     off_thread: false,
                 });
@@ -864,10 +866,11 @@ impl qobject::Door {
         let t2 = Instant::now();
         let o = to_qjson_object(&v);
         let t3 = Instant::now();
+        let size = if dev { crate::devstats::size_of(&v) } else { 0 };
         if ok && let Some(k) = key {
             self.read_cache
                 .borrow_mut()
-                .put(k, generation, t0, o.clone());
+                .put(k, generation, t0, (o.clone(), size));
         }
         if timing() {
             eprintln!(
@@ -886,7 +889,7 @@ impl qobject::Door {
                 json: ms(t2 - t1),
                 qjson: ms(t3 - t2),
                 total: ms(t3 - t0),
-                bytes: crate::devstats::size_of(&v),
+                bytes: size,
                 hit: false,
                 off_thread: false,
             });

@@ -370,7 +370,11 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
                 } else {
                     format!("Could not update the info for {folder}. Try again later.")
                 }),
-                level: Level::Info,
+                level: if failed == 0 {
+                    Level::Info
+                } else {
+                    Level::Warn
+                },
                 message: if failed == 0 {
                     format!("refreshed {folder}")
                 } else {
@@ -493,7 +497,7 @@ fn start_refresh_walk(
         // portraits in, and both owe the sweep that keeps the directory
         // from only ever growing.
         images::sweep_after(&owner, label).await;
-        let shows = |n: u64| if n == 1 { "show" } else { "shows" };
+        let shows = |n: u64| crate::words::pick(n, "show", "shows");
         let said = match (refreshed, failed) {
             (0, 0) => None,
             (n, 0) => Some(format!("Updated the info for {n} {}.", shows(n))),
@@ -508,7 +512,11 @@ fn start_refresh_walk(
         };
         Ok(Finished {
             plain: said,
-            level: Level::Info,
+            level: if failed == 0 {
+                Level::Info
+            } else {
+                Level::Warn
+            },
             message: format!("{label}: {refreshed} refreshed, {failed} failed"),
             body: EventBody::RefreshFinished { refreshed, failed },
         })

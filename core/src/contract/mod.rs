@@ -82,8 +82,9 @@ mod tests {
         assert_eq!(back, event);
     }
 
-    /// Every kind, with a match that stops compiling when one is added, so
-    /// the list below cannot fall behind the enum.
+    /// Every kind. The match below stops compiling when a kind is added, which
+    /// is the reminder to add it to this list too; the list itself is not
+    /// checked by the compiler.
     fn every_job_kind() -> Vec<JobKind> {
         use JobKind::*;
         let all = vec![

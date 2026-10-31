@@ -57,8 +57,10 @@ impl EventBus {
 
     /// Stamps `seq` and `at`, persists Info and above to the ring, then
     /// calls every listener with the finished event. A line emitted here has
-    /// no plain wording, so only the developer log shows it; `emit_said` is
-    /// the same with one.
+    /// no plain wording of its own: at Info and below only the developer log
+    /// shows it, and a warning or an error gets the general line for its
+    /// stage, so a problem never goes unsaid. `emit_said` takes the wording,
+    /// and with `None` keeps even a problem to the developer log.
     pub fn emit(
         &self,
         level: Level,
@@ -67,7 +69,8 @@ impl EventBus {
         job: Option<JobRef>,
         body: EventBody,
     ) -> Event {
-        self.emit_said(level, stage, None, message, job, body)
+        let plain = (level >= Level::Warn).then(|| stage_problem(stage));
+        self.emit_said(level, stage, plain, message, job, body)
     }
 
     /// `emit` with the line a person reads in the plain activity log beside
@@ -271,6 +274,22 @@ impl EventBus {
     }
 }
 
+/// The plain line for a warning or an error whose site has no wording of its
+/// own: which part of the app it touched, and where the details are.
+pub fn stage_problem(stage: Stage) -> String {
+    let area = match stage {
+        Stage::Library => "your library",
+        Stage::Metadata => "show info",
+        Stage::Trackers => "your lists",
+        Stage::Franchise => "related shows",
+        Stage::Playback => "playback",
+        Stage::Store => "saving your data",
+        Stage::System => "AniBeam",
+        Stage::Downloads => "downloads",
+    };
+    format!("Something went wrong with {area}. Developer options have the details.")
+}
+
 /// Handed back by `Core::subscribe`; dropping it or calling `unsubscribe`
 /// removes the listener.
 #[derive(uniffi::Object)]
@@ -381,6 +400,35 @@ mod tests {
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].message, "hello");
         assert_eq!(recent[0].level, Level::Info);
+    }
+
+    #[test]
+    fn a_problem_without_wording_still_reaches_the_plain_log() {
+        let (_d, bus) = bus();
+        let quiet = bus.info(Stage::Library, "scan finished", EventBody::Notice);
+        let loud = bus.warn(Stage::Library, "watcher error: too many", EventBody::Notice);
+        let kept = bus.emit_said(
+            Level::Warn,
+            Stage::Library,
+            None,
+            "chore",
+            None,
+            EventBody::Notice,
+        );
+        assert_eq!(quiet.plain, None);
+        assert_eq!(
+            loud.plain.as_deref(),
+            Some(stage_problem(Stage::Library).as_str())
+        );
+        assert_eq!(
+            kept.plain, None,
+            "emit_said with None keeps it to the developer log"
+        );
+        let stored = bus.recent(10).unwrap();
+        assert_eq!(
+            stored[1].plain, loud.plain,
+            "the plain line is kept in the ring"
+        );
     }
 
     /// What a listener saw the generation as, while it was being told.

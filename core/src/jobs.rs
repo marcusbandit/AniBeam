@@ -84,14 +84,17 @@ impl JobCtx {
         }
     }
 
+    /// A line for the developer log. Inside a job the person started, a
+    /// warning or an error also reaches the plain log in general words
+    /// (`EventBus::emit`); inside a chore it stays with the developer.
     pub fn emit(&self, level: Level, message: impl Into<String>, body: EventBody) {
-        self.bus.emit(
-            level,
-            self.kind.stage(),
-            message,
-            Some(self.job_ref(JobPhase::Running)),
-            body,
-        );
+        let job = Some(self.job_ref(JobPhase::Running));
+        if self.kind.chore() {
+            self.bus
+                .emit_said(level, self.kind.stage(), None, message, job, body);
+        } else {
+            self.bus.emit(level, self.kind.stage(), message, job, body);
+        }
     }
 
     /// `emit` with the line a person reads in the plain activity log.
@@ -283,14 +286,10 @@ impl JobCtx {
     }
 }
 
-/// What a person reads when a job ends in an error or a panic.
-fn stopped_line(kind: JobKind) -> String {
-    format!("{} stopped with a problem.", kind.doing())
-}
-
-/// What a person reads when a job is cancelled.
-fn cancelled_line(kind: JobKind) -> String {
-    format!("{} was stopped.", kind.doing())
+/// What a person reads when a job ends in an error or a panic: nothing for
+/// a chore the app runs on its own, whose failure the next run retries.
+fn stopped_line(kind: JobKind) -> Option<String> {
+    (!kind.chore()).then(|| format!("{} stopped with a problem.", kind.doing()))
 }
 
 /// Guarantees a job's registry entry and terminal event are never lost to a
@@ -324,7 +323,7 @@ impl Drop for JobGuard {
             self.jobs.bus.emit_said(
                 Level::Error,
                 self.kind.stage(),
-                Some(stopped_line(self.kind)),
+                stopped_line(self.kind),
                 format!("{} panicked", self.kind.as_str()),
                 Some(finished),
                 EventBody::JobFailed {
@@ -341,7 +340,7 @@ impl Drop for JobGuard {
             self.jobs.bus.emit_said(
                 Level::Info,
                 self.kind.stage(),
-                Some(cancelled_line(self.kind)),
+                None,
                 format!("{} cancelled", self.kind.as_str()),
                 Some(finished),
                 EventBody::JobCancelled,
@@ -464,7 +463,7 @@ impl Jobs {
                     jobs.bus.emit_said(
                         Level::Info,
                         kind.stage(),
-                        Some(cancelled_line(kind)),
+                        None,
                         format!("{} cancelled", kind.as_str()),
                         Some(finished),
                         EventBody::JobCancelled,
@@ -474,7 +473,7 @@ impl Jobs {
                     jobs.bus.emit_said(
                         Level::Info,
                         kind.stage(),
-                        Some(cancelled_line(kind)),
+                        None,
                         format!("{} cancelled", kind.as_str()),
                         Some(finished),
                         EventBody::JobCancelled,
@@ -484,7 +483,7 @@ impl Jobs {
                     jobs.bus.emit_said(
                         Level::Error,
                         kind.stage(),
-                        Some(stopped_line(kind)),
+                        stopped_line(kind),
                         format!("{} failed: {e}", kind.as_str()),
                         Some(finished),
                         EventBody::JobFailed { error: e },
@@ -694,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_or_cancelled_job_has_a_plain_line_beside_the_developer_one() {
+    fn a_failed_job_has_a_plain_line_and_a_cancelled_one_stays_quiet() {
         let (_d, _rt, jobs, c) = setup();
         let failed = jobs.start(JobKind::Search, |_ctx| async move {
             Err(CoreError::internal("nope"))
@@ -721,12 +720,27 @@ mod tests {
             Some("Searching for a show stopped with a problem.")
         );
         assert!(failed.message.starts_with("Search failed"));
+        // The person cancelled it, or a newer job replaced it: not news
         let cancelled = last(cancelled);
-        assert_eq!(
-            cancelled.plain.as_deref(),
-            Some("Checking your folders was stopped.")
-        );
+        assert_eq!(cancelled.plain, None);
         assert_eq!(cancelled.message, "Scan cancelled");
+    }
+
+    #[test]
+    fn a_chore_that_fails_stays_in_the_developer_log() {
+        let (_d, _rt, jobs, c) = setup();
+        let id = jobs.start(JobKind::FillImages, |ctx| async move {
+            ctx.emit(Level::Warn, "one image failed", EventBody::Notice);
+            Err(CoreError::internal("nope"))
+        });
+        wait_for_finished(&c, id);
+        let mine: Vec<_> = c
+            .events()
+            .into_iter()
+            .filter(|e| e.job.as_ref().is_some_and(|j| j.id == id))
+            .collect();
+        assert!(mine.iter().any(|e| e.level == Level::Error));
+        assert!(mine.iter().all(|e| e.plain.is_none()));
     }
 
     #[test]

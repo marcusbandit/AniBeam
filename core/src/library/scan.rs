@@ -702,7 +702,7 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
         } else {
             format!(
                 "Removed the folder {folder} and its {shows} {} from your library.",
-                if shows == 1 { "show" } else { "shows" }
+                crate::words::pick(shows, "show", "shows")
             )
         },
         format!("source removed: {path}"),
@@ -829,7 +829,7 @@ async fn set_available(
         format!("The folder {folder} is not available. Check that its drive is connected.")
     };
     ctx.say(
-        Level::Info,
+        if available { Level::Info } else { Level::Warn },
         said,
         message,
         EventBody::SourceChanged { source },
@@ -847,7 +847,7 @@ pub(crate) fn folder_of(path: &str) -> String {
 /// What a finished scan tells a person; nothing when it found nothing new,
 /// since the catch-up scan at launch would otherwise say so every time.
 fn scan_line(added: u64, changed: u64, removed: u64) -> Option<String> {
-    let shows = |n: u64| if n == 1 { "show" } else { "shows" };
+    let shows = |n: u64| crate::words::pick(n, "show", "shows");
     let mut parts = Vec::new();
     if added > 0 {
         parts.push(format!("{added} new {}", shows(added)));

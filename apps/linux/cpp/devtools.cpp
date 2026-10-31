@@ -57,6 +57,8 @@ qint64 g_fileBytes = 0;
 double g_decodeMs = 0;
 QHash<Qt::HANDLE, int> g_threads;
 constexpr int KEEP = 4000;
+// The slot the next decode goes in; the oldest record once the ring is full
+int g_next = 0;
 
 bool isImagePath(const QString &path)
 {
@@ -116,15 +118,23 @@ public:
         const double ms = dev_now_ms() - at;
         if (size)
             *size = src;
+        // The file's size and name before the lock, so decoder threads never queue behind
+        // each other's stat calls
+        const QFileInfo info(path);
+        const qint64 bytes = info.size();
+        const QString name = info.fileName();
         {
             QMutexLocker held(&g_lock);
             const Qt::HANDLE t = QThread::currentThreadId();
             if (!g_threads.contains(t))
                 g_threads.insert(t, g_threads.size() + 1);
-            const qint64 bytes = QFileInfo(path).size();
-            g_decodes.push_back({at, ms, QFileInfo(path).fileName(), bytes, src.width(), src.height(), image.width(), image.height(), g_threads.value(t)});
-            if (g_decodes.size() > KEEP)
-                g_decodes.remove(0, g_decodes.size() - KEEP);
+            const Decode d{at, ms, name, bytes, src.width(), src.height(), image.width(), image.height(), g_threads.value(t)};
+            // A ring: once full, the oldest slot is overwritten instead of shifting the rest
+            if (g_decodes.size() < KEEP)
+                g_decodes.push_back(d);
+            else
+                g_decodes[g_next] = d;
+            g_next = (g_next + 1) % KEEP;
             g_decodeCount += 1;
             g_decodedBytes += image.sizeInBytes();
             g_fileBytes += bytes;
@@ -269,12 +279,16 @@ QString dev_image_stats(double since)
     o.insert(QStringLiteral("decodedBytes"), double(g_decodedBytes));
     o.insert(QStringLiteral("fileBytes"), double(g_fileBytes));
     o.insert(QStringLiteral("decodeMs"), g_decodeMs);
-    int first = g_decodes.size();
-    while (first > 0 && g_decodes[first - 1].at >= since)
+    // Oldest first: from the slot after the newest once the ring has wrapped
+    const int n = g_decodes.size();
+    const int oldest = n < KEEP ? 0 : g_next;
+    auto at = [&](int k) -> const Decode & { return g_decodes[(oldest + k) % n]; };
+    int first = n;
+    while (first > 0 && at(first - 1).at >= since)
         first -= 1;
-    first = std::max(first, int(g_decodes.size()) - 400);
-    for (int i = first; i < g_decodes.size(); ++i) {
-        const Decode &d = g_decodes[i];
+    first = std::max(first, n - 400);
+    for (int k = first; k < n; ++k) {
+        const Decode &d = at(k);
         list.append(QJsonObject{{QStringLiteral("at"), d.at},
                                 {QStringLiteral("ms"), d.ms},
                                 {QStringLiteral("file"), d.file},

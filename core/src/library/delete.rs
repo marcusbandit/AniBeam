@@ -130,7 +130,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
         let line = format!(
             "{} {} of {title} {}",
             n,
-            if n == 1 { "episode" } else { "episodes" },
+            crate::words::pick(n, "episode", "episodes"),
             if crate::downloads::trash::WHERE == "deleted" {
                 "deleted"
             } else {
@@ -240,13 +240,13 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
             format!(
                 "{} finished {}",
                 picked.len(),
-                if picked.len() == 1 { "show" } else { "shows" }
+                crate::words::pick(picked.len(), "show", "shows")
             )
         } else {
             format!(
                 "{} watched {} of {} {}",
                 episodes,
-                if episodes == 1 { "episode" } else { "episodes" },
+                crate::words::pick(episodes, "episode", "episodes"),
                 picked.len(),
                 "series"
             )

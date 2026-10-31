@@ -1,5 +1,5 @@
 // Developer options (#287): the page load overlay. The last load in four lines, in the
-// window's top right corner over whatever page is up, and the process's memory now. A
+// window's bottom right corner over whatever page is up, and the process's memory now. A
 // click opens the Developer tab with that load picked.
 import QtQuick
 import com.marcusrosado.AniBeam

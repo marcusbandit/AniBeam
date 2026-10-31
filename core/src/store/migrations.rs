@@ -18,7 +18,7 @@ pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!("sql/0008_file_fixes.sql")).foreign_key_check(),
         M::up(include_str!("sql/0009_airing_now.sql")).foreign_key_check(),
         M::up(include_str!("sql/0010_episodes_set.sql")).foreign_key_check(),
-        M::up(include_str!("sql/0012_event_plain.sql")).foreign_key_check(),
+        M::up(include_str!("sql/0011_event_plain.sql")).foreign_key_check(),
     ])
 });
 

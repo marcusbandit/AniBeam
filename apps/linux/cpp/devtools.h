@@ -4,8 +4,9 @@
 //
 // - An image interceptor on the engine. Every image url QML resolves (a poster, a banner, a
 //   portrait; never the icons in the resources) passes through it. With images off it hands
-//   back an empty url, so nothing is read or decoded. With measuring on it sends a local file
-//   to the `image://dev/` provider instead, which decodes it exactly as Image would (the
+//   back `image://dev/off`, one transparent pixel, so nothing is read or decoded. With
+//   measuring on it sends a local file to the `image://dev/` provider instead, which
+//   decodes it exactly as Image would (the
 //   requested size, aspect kept, never scaled up) and records what it cost. Off, it hands the
 //   url back untouched and Image takes its usual path.
 // - The scene x-ray: a walk over an item tree that counts items by type, images by status,

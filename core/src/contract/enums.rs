@@ -713,6 +713,23 @@ impl JobKind {
         }
     }
 
+    /// Kinds the app starts on its own, on a timer or after another job,
+    /// rather than on something the person did. Their failures stay in the
+    /// developer log: the next run retries, and the person has nothing to do.
+    pub fn chore(self) -> bool {
+        use JobKind::*;
+        match self {
+            RefreshAiring | RefreshImdb | FillImages | RefreshProgress | RefreshWatching
+            | RefreshAiringNow | OnHold | Crawl | SkipWindows | Subscriptions
+            | ConnectDownloads | CheckEndpoints => true,
+            Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
+            | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | Export
+            | Import | SearchReleases | RefineReleases | Subscribe | Download
+            | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
+            | RepairSubscription | StartEndpoint => false,
+        }
+    }
+
     /// Kinds that run one at a time: a second call replies Started with the running id.
     pub fn one_at_a_time(self) -> bool {
         use JobKind::*;

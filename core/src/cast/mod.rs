@@ -250,8 +250,14 @@ mod imp {
                     state.error.clone().unwrap_or_default()
                 ),
             };
+            // A failure is a problem the person can act on; the rest is news
+            let level = if state.state == CastPlayState::Failed {
+                Level::Warn
+            } else {
+                Level::Info
+            };
             core.bus
-                .emit_said(Level::Info, Stage::Playback, said, what, None, body);
+                .emit_said(level, Stage::Playback, said, what, None, body);
         }
     }
 

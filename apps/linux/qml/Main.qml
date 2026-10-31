@@ -43,6 +43,12 @@ Window {
             posterPool.paths = paths
     }
     Timer { id: poolDebounce; interval: 2000; onTriggered: window.fillPool() }
+    // Measuring sends posters through the image://dev provider, a different url from the
+    // file the pool decoded, so the pool would miss every page; it starts over instead.
+    Connections {
+        target: frame.item && frame.item.devOn !== undefined ? frame.item : null
+        function onDevOnChanged() { posterPool.paths = []; poolDebounce.restart() }
+    }
     Connections { target: Door; function onSeriesChanged(cards) { poolDebounce.restart() } }
     // The first fill waits a beat after the library is ready, so the first page's own
     // posters reach the single pixmap reader thread ahead of the pool's.

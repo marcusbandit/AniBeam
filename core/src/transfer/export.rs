@@ -144,7 +144,7 @@ pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
             Ok(Finished {
                 plain: Some(format!(
                     "Saved {count} {} to {}.",
-                    if count == 1 { "show" } else { "shows" },
+                    crate::words::pick(count, "show", "shows"),
                     crate::library::scan::folder_of(&path)
                 )),
                 level: Level::Info,

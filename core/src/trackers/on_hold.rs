@@ -685,7 +685,7 @@ fn series_for(conn: &Connection, t: Tracker, media_id: u64) -> Result<Vec<u64>, 
 }
 
 fn shows(n: usize) -> &'static str {
-    if n == 1 { "show" } else { "shows" }
+    crate::words::pick(n, "show", "shows")
 }
 
 fn quiet(message: &str) -> Finished {
