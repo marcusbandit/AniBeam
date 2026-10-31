@@ -437,14 +437,32 @@ fn plain_path(path: &str) -> bool {
         })
 }
 
+/// Whether a path has a key of digits only, a list index: paths only reach into objects,
+/// so such a path would name nothing.
+fn indexes(path: &str) -> bool {
+    path.split('.')
+        .any(|key| !key.is_empty() && key.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// A path that is plain object keys, with no list index in it.
+fn check_path(what: &str, path: &str) -> Result<(), String> {
+    if !plain_path(path) {
+        return Err(format!("bad {what} path {path:?}"));
+    }
+    if indexes(path) {
+        return Err(format!(
+            "the {what} path {path:?} has a list index, but paths only reach into objects"
+        ));
+    }
+    Ok(())
+}
+
 /// A `json` map's paths and its page template.
 fn check_map(map: &JsonMap) -> Result<(), String> {
-    if !map.items.is_empty() && !plain_path(&map.items) {
-        return Err(format!("bad items path {:?}", map.items));
+    if !map.items.is_empty() {
+        check_path("items", &map.items)?;
     }
-    if !plain_path(&map.title) {
-        return Err(format!("bad title path {:?}", map.title));
-    }
+    check_path("title", &map.title)?;
     if map.hash.is_none() && map.link.is_none() {
         return Err("the json map needs a hash or a link".into());
     }
@@ -455,10 +473,8 @@ fn check_map(map: &JsonMap) -> Result<(), String> {
         ("skip", &map.skip),
         ("error", &map.error),
     ] {
-        if let Some(path) = path
-            && !plain_path(path)
-        {
-            return Err(format!("bad {what} path {path:?}"));
+        if let Some(path) = path {
+            check_path(what, path)?;
         }
     }
     if let Some(page) = &map.page {
@@ -480,7 +496,7 @@ fn check_page(page: &str) -> Result<(), String> {
     }
     let mut left = rest[end..].to_string();
     for p in placeholders(&rest[end..]) {
-        if !plain_path(p) {
+        if !plain_path(p) || indexes(p) {
             return Err(format!("bad page placeholder {{{p}}}"));
         }
         left = left.replacen(&format!("{{{p}}}"), "", 1);
@@ -711,6 +727,18 @@ pub(crate) mod tests {
         ] {
             assert!(check(&json_def(map.clone())).is_err(), "{map}");
         }
+        for map in [
+            serde_json::json!({"items": "data.0.hits", "title": "t", "hash": "h"}),
+            serde_json::json!({"items": "a", "title": "t.1", "hash": "h"}),
+            serde_json::json!({"items": "a", "title": "t", "hash": "files.0.hash"}),
+        ] {
+            let e = check(&json_def(map.clone())).unwrap_err();
+            assert!(e.contains("list index"), "{map}: {e}");
+        }
+        check(&json_def(serde_json::json!({
+            "items": "data.hits", "title": "label", "hash": "q.1080p",
+        })))
+        .unwrap();
         check(&json_def(serde_json::json!({
             "items": "data.hits", "title": "label", "link": "torrent.url",
             "size": "torrent.bytes", "skip": "flags.hidden", "error": "status.failed",
@@ -733,6 +761,7 @@ pub(crate) mod tests {
             "https://example.org/view/{a b}",
             "https://example.org/view/{id",
             "https://example.org/view#{id}",
+            "https://example.org/view/{files.0.id}",
             "example.org/view/{id}",
         ] {
             assert!(check(&with_page(bad)).is_err(), "{bad}");
