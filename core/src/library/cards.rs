@@ -517,8 +517,10 @@ impl Snapshot {
     /// The furthest episode known out, the count the upcoming list starts
     /// past: aired by date, one short of the next scheduled, within the
     /// tracker's progress, or on disk. Only the card's own season counts
-    /// for a TVmaze match, whose numbers restart, and a file numbered past
-    /// a known total is a stray, not a release.
+    /// for a TVmaze match, whose numbers restart, so there what aired is
+    /// read off that season rather than `latest_aired`, which counts every
+    /// season on disk; a file numbered past a known total is a stray, not a
+    /// release.
     pub(crate) fn released_of(
         &self,
         row: &SeriesRow,
@@ -530,6 +532,18 @@ impl Snapshot {
     ) -> u32 {
         let season = self.card_season(row);
         let total = total.filter(|t| *t > 0);
+        let latest_aired = match season {
+            Some(_) => {
+                let now = time::to_secs(self.now);
+                self.airing_of(row)
+                    .iter()
+                    .filter(|a| a.aired_at.is_some_and(|at| at <= now))
+                    .map(|a| a.number)
+                    .max()
+                    .unwrap_or(0)
+            }
+            None => latest_aired,
+        };
         let on_disk = episodes
             .iter()
             .filter(|f| season.is_none_or(|s| f.season.unwrap_or(1) == s))
@@ -636,6 +650,8 @@ impl Snapshot {
             .and_then(|m| m.status.as_deref())
             .and_then(AiringStatus::from_provider);
         let total = media.and_then(|m| m.episodes);
+        // A TVmaze count set by hand runs within the card's season (#283)
+        let plan_total = self.season_total(row, total);
         let entry = self.tracker(row);
         let watched = entry.map(|e| e.progress);
         let (total_episodes, total_is_estimate) = total_with_estimate(total, latest_aired, watched);
@@ -685,6 +701,7 @@ impl Snapshot {
             total_is_estimate,
             episodes_set: row.episodes_set,
             episodes_set_applied: row.episodes_set_applied,
+            count_season: self.card_season(row),
             bytes_on_disk: usage.bytes,
             watched_bytes: usage.watched_bytes,
             watched_on_disk: usage.watched_episodes,
@@ -743,8 +760,8 @@ impl Snapshot {
                 }),
                 None => predict_next(
                     airing,
-                    self.released_of(row, &episodes, total, latest_aired, None, watched),
-                    total,
+                    self.released_of(row, &episodes, plan_total, latest_aired, None, watched),
+                    plan_total,
                     status,
                     now,
                 )
@@ -1135,6 +1152,7 @@ mod tests {
             total_is_estimate: false,
             episodes_set: None,
             episodes_set_applied: false,
+            count_season: None,
             bytes_on_disk: 0,
             watched_bytes: 0,
             watched_on_disk: 0,
