@@ -279,6 +279,7 @@ impl Engine {
                 group: facts.group,
                 resolution: facts.resolution,
                 provider: String::new(),
+                roll: None,
             });
         }
         if changed {
