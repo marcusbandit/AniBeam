@@ -256,12 +256,13 @@ pub enum Call {
         endpoint: String,
         items: Vec<Release>,
     },
-    /// Registers an RSS feed and an auto-download rule in qBittorrent.
-    /// `name` defaults to the show name anirss parses off the first item.
-    /// `wire_query` is the query the endpoint itself was last asked, when
-    /// the page narrowed past it on anirss's side: the subscription then
-    /// reads that query's feed and keeps the narrowing words in its rule.
-    /// Ends in `Subscribed`.
+    /// Registers an RSS feed and an auto-download rule in qBittorrent,
+    /// through anirss or, on the native engine, through qBittorrent's Web
+    /// API directly. `name` defaults to the show name parsed off the first
+    /// item. `wire_query` is the query the endpoint itself was last asked,
+    /// when the page narrowed past it on the engine's side: the
+    /// subscription then reads that query's feed and keeps the narrowing
+    /// words in its rule. Ends in `Subscribed`.
     Subscribe {
         query: String,
         endpoint: String,
@@ -270,8 +271,9 @@ pub enum Call {
         #[serde(default)]
         wire_query: Option<String>,
     },
-    /// Hands these releases to qBittorrent now, under `<save_base>/<name>`.
-    /// Ends in `TorrentsAdded`.
+    /// Hands these releases to qBittorrent now, under `<save_base>/<name>`,
+    /// through anirss or, on the native engine, through qBittorrent's Web
+    /// API directly. Ends in `TorrentsAdded`.
     DownloadReleases {
         items: Vec<Release>,
         name: Option<String>,
@@ -289,20 +291,22 @@ pub enum Call {
     DownloadMovie {
         link: String,
     },
-    /// Reads the subscriptions from anirss. Replies `Ok` at once; the list
-    /// arrives as `SubscriptionsRead`, or `DownloadsUnavailable` when it
-    /// could not be read. Not a job: the page asks on open and after every
-    /// change, and a read is not work worth a line in the log.
+    /// Reads the subscriptions from anirss, or from qBittorrent's rules on
+    /// the native engine. Replies `Ok` at once; the list arrives as
+    /// `SubscriptionsRead`, or `DownloadsUnavailable` when it could not be
+    /// read. Not a job: the page asks on open and after every change, and a
+    /// read is not work worth a line in the log.
     ListSubscriptionRules,
     /// Reads every torrent and the transfer totals from the torrent client
     /// directly. Replies `Ok` at once; the list arrives as `TorrentsRead`,
     /// or `DownloadsUnavailable`. Not a job, for the same reason: the page
     /// polls this while it is open.
     ListTorrents,
-    /// Reads a subscription's feed itself (the RSS anirss registered), so
-    /// the page can show what it holds. Replies `Ok` at once; the entries
-    /// arrive as `FeedRead`, a failure as `DownloadsUnavailable` with
-    /// `what` set to `feed`. Not a job: opening a show reads it.
+    /// Reads a subscription's feed itself (the RSS its subscription
+    /// registered), so the page can show what it holds. Replies `Ok` at
+    /// once; the entries arrive as `FeedRead`, a failure as
+    /// `DownloadsUnavailable` with `what` set to `feed`. Not a job: opening
+    /// a show reads it.
     ReadFeed {
         url: String,
     },

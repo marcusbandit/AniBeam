@@ -1,8 +1,9 @@
 //! Unsubscribing from finished shows. A show whose run ended long enough
 //! ago has no episode left to download, so its RSS feed and rule are
-//! removed, through whichever engine the downloads run on. Only the subscription goes, exactly as the user's
-//! own "keep the files and torrents" removal does it: the library series,
-//! the files and the torrents are never touched.
+//! removed, through whichever engine the downloads run on. Only the
+//! subscription goes, exactly as the user's own "keep the files and
+//! torrents" removal does it: the library series, the files and the
+//! torrents are never touched.
 //!
 //! A show counts as finished for good when all of these hold:
 //! - its rule is linked to a library series that is a show, not a film;
