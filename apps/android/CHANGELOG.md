@@ -19,6 +19,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ### Changed
 - Searches wait a second between requests to one site, except your own server
 
+### Fixed
+- The connection check keeps home-network names off public DNS
+
 ## 2.1.1 · 2026-10-26
 
 ### Fixed

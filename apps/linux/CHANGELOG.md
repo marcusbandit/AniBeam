@@ -15,8 +15,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
-- Developer options, in Settings under Data, time every page and turn images off
-- Pick Stable or Nightly updates in Settings, under Data
+- Developer options, in Settings under About, time every page and turn images off
+- Pick Stable or Nightly updates in Settings, under About
 - Update installs the new version and restarts, no trip to GitHub
 - An AUR install shows the command that updates it, once the AUR has it
 - Downloaded lists every show on disk, not only what the torrent client holds
@@ -61,7 +61,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - A slow search offers the other sources
 - Downloads opens with your last search, unless you switch that off
 - Reset subtitles to how they came, in Settings, Playback
-- Check for updates now, in Settings, Data
+- Check for updates now, in Settings, About
 - Open the folder an export went to
 - Click a line in Activity to copy it
 - Shift+F10 or the Menu key opens the right-click menu
@@ -75,6 +75,10 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Changed
 - Searches wait a second between requests to one site, except your own server
+- Settings lists its sections down the left, each saying how it stands now
+- Search settings: type a word and land on the setting it names
+- Accounts, Subtitles, Keyboard, Phone app and About are sections of their own
+- Unsaved download settings wait in a bar with Save, wherever you scroll
 - A show's Fixes menu holds Fix files, the episode count, the match and Rescan
 - Skip outro stays up with the controls hidden, like Skip intro
 - Skipping an intro lands right where the episode starts

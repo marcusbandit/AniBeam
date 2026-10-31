@@ -6,7 +6,9 @@
 // implicitHeight so it sits in a Column and a ColumnLayout alike; the two blocks are
 // placed by x and y rather than anchors, so the switch between the two arrangements is
 // one binding each and never leaves a stale anchor behind. A hairline closes the row at
-// its foot (`hairline`), so a flat section reads as a list.
+// its foot (`hairline`), so a group reads as a list; the group's last row leaves it off,
+// since the pane's own edge closes it. Search finds a row by its label and `pulse` lights
+// it in the accent for a moment, so the eye lands on the row it asked for.
 import QtQuick
 import QtQuick.Layouts
 
@@ -16,7 +18,16 @@ Item {
     property string line: ""
     property string helper: ""
     property string status: ""
-    property bool hairline: true
+    property bool hairline: !(parent && parent.lastRow === root)
+    readonly property bool settingTarget: true
+    property real flash: 0
+    function pulse() { flashAnim.restart() }
+    SequentialAnimation {
+        id: flashAnim
+        NumberAnimation { target: root; property: "flash"; to: 1; duration: 160 }
+        PauseAnimation { duration: 700 }
+        NumberAnimation { target: root; property: "flash"; to: 0; duration: 600 }
+    }
     default property alias control: slot.data
 
     readonly property real pad: theme.space(2.5)
@@ -28,6 +39,16 @@ Item {
                             : Math.max(theme.space(12), words.implicitHeight + pad * 2, slot.height + pad * 2)
     Layout.fillWidth: true
 
+    // The search highlight: a soft accent wash under the row, reaching past its sides into
+    // the pane's padding
+    Rectangle {
+        visible: root.flash > 0
+        x: -theme.space(3); width: root.width + theme.space(6)
+        y: 1; height: root.height - 2
+        radius: theme.radiusSm
+        color: theme.accentSoft
+        opacity: root.flash
+    }
     Column {
         id: words
         x: 0

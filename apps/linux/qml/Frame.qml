@@ -87,11 +87,11 @@ FocusScope {
         downloads: "DownloadsPage.qml", settings: "SettingsPage.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
     })
 
-    // The settings page's own state: the current tab, kept across launches too, and each
-    // tab's scroll position, kept here rather than on the page itself so they survive the
-    // page being torn down and rebuilt on every navigation away and back.
+    // The settings page's own state: the section open, by its id and kept across launches
+    // too, and each section's scroll position by id, kept here rather than on the page itself
+    // so they survive the page being torn down and rebuilt on every navigation away and back.
     property alias settingsTab: shellPrefs.settingsTab
-    property var settingsScroll: [0, 0, 0, 0, 0, 0]
+    property var settingsScroll: ({})
     // Settings edits not saved yet, by tab, for this run
     property var settingsDrafts: ({})
 
@@ -134,8 +134,8 @@ FocusScope {
         if (frame.devOn) devRecorder.built()
     }
 
-    // ---- Developer options (#287). On in a debug build or under ANIBEAM_DEV=1, else behind
-    // the switch at the foot of Settings' Data tab. The switches live in shell.conf so a
+    // ---- Developer options (#287). Off by default in every build: on under ANIBEAM_DEV=1,
+    // else behind the switch in Settings, About. The switches live in shell.conf so a
     // measuring session survives a restart.
     Settings {
         id: devKept
@@ -522,8 +522,8 @@ FocusScope {
         category: "shell"
         // The auto-next pill names the next episode; off, it says only its number
         property bool nextNamesEpisode: true
-        // The Settings tab open last
-        property int settingsTab: 0
+        // The Settings section open last, by id; an older number reads as no section
+        property string settingsTab: "library"
         // Downloads comes back with its last search
         property bool keepDownloadsQuery: true
     }
