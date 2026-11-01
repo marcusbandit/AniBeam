@@ -80,7 +80,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Changed
 - Library sorts and groups from two menus, with the order said in words
-- This week shows what is out to watch and counts down to the next one
+- This week shows what is out to watch, then a calendar of the days ahead
 - Two files of one episode share one row, and you pick which release plays
 - Searches wait a second between requests to one site, except your own server
 - Settings lists its sections down the left, each saying how it stands now
