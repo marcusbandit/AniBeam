@@ -77,6 +77,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can add a source that answers in JSON
 
 ### Changed
+- This week shows what is out to watch, a countdown to the next one, and the rest
 - Searches wait a second between requests to one site, except your own server
 - Settings lists its sections down the left, each saying how it stands now
 - Search settings: type a word and land on the setting it names
