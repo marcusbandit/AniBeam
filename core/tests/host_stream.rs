@@ -18,6 +18,18 @@ fn has(tool: &str) -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
+/// Whether this machine's ffmpeg has the filter `name`.
+fn has_filter(name: &str) -> bool {
+    std::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-filters"])
+        .output()
+        .is_ok_and(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .any(|l| l.split_whitespace().nth(1) == Some(name))
+        })
+}
+
 fn block_on<T>(f: impl std::future::Future<Output = T>) -> T {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -182,7 +194,11 @@ fn an_episode_streams_converts_and_keeps_its_place() {
         assert!(subs.contains("Styled line"), "{subs}");
 
         if hello.features.iter().any(|f| f == wire::FEATURE_CONVERT) {
-            let list_url = format!("{base}{}", wire::hls_path(file, 720, None, Some(0)));
+            // Drawing subtitles in needs ffmpeg built with libass, which not
+            // every build is.
+            let burn = has_filter("subtitles").then_some(0);
+            let query = burn.map_or(String::new(), |b| format!("?burn={b}"));
+            let list_url = format!("{base}{}", wire::hls_path(file, 720, None, burn));
             let list = http
                 .get(&list_url)
                 .send()
@@ -191,12 +207,12 @@ fn an_episode_streams_converts_and_keeps_its_place() {
                 .text()
                 .await
                 .unwrap();
-            assert!(list.contains("seg4.ts?burn=0"), "{list}");
+            assert!(list.contains(&format!("seg4.ts{query}")), "{list}");
             let dir_url = list_url.rsplit_once('/').unwrap().0.to_string();
             // From the start, then a seek past what the first ffmpeg wrote.
             for i in [0, 4] {
                 let piece = http
-                    .get(format!("{dir_url}/seg{i}.ts?burn=0"))
+                    .get(format!("{dir_url}/seg{i}.ts{query}"))
                     .send()
                     .await
                     .unwrap();

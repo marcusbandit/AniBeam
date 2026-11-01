@@ -28,6 +28,8 @@ use tokio::sync::OnceCell;
 use crate::process::command;
 use crate::sync::recover;
 
+/// ffmpeg's own words, in the job's directory.
+const LOG: &str = "ffmpeg.log";
 /// Seconds per piece. Every piece starts on a keyframe forced at its start.
 pub const PIECE: f64 = 6.0;
 /// A request this many pieces past what ffmpeg has written still waits for it
@@ -440,7 +442,12 @@ impl Converter {
                 // This ffmpeg ended without writing the piece: it failed, or
                 // the file is shorter than its probe said. Starting it again
                 // would only fail again.
-                tracing::warn!("conversion of file {} ended before piece {i}", key.file);
+                let said = std::fs::read_to_string(j.dir.join(LOG)).unwrap_or_default();
+                let last = said.lines().last().unwrap_or("nothing");
+                tracing::warn!(
+                    "conversion of file {} ended before piece {i}; ffmpeg said: {last}",
+                    key.file
+                );
                 return None;
             }
             if covers && i <= written + NEAR {
@@ -622,12 +629,17 @@ fn spawn(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) -> Opt
         #[cfg(not(unix))]
         let _ = std::fs::hard_link(&source.path, &link);
     }
+    // What ffmpeg says goes to a log beside the pieces, for the warning when a
+    // run fails.
+    let log = std::fs::File::create(dir.join(LOG))
+        .map(Stdio::from)
+        .unwrap_or_else(|_| Stdio::null());
     match command("ffmpeg")
         .args(&args)
         .current_dir(dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(log)
         .kill_on_drop(true)
         .spawn()
     {
