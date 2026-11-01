@@ -1434,10 +1434,14 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         })
     });
     data.on_search(|_| with_app(App::tick));
+    // A view's choice: saved, and shown, without the storage figures save_prefs redoes.
     data.on_set_cal_days(|on| {
         with_app(|app| {
             app.prefs.cal_days = on;
-            app.save_prefs();
+            if let Err(e) = prefs::save(&app.data_dir, &app.prefs) {
+                crate::local::log(&format!("could not save the phone's settings: {e}"));
+            }
+            app.data().set_cal_days(on);
         })
     });
     data.on_set_wifi_only(|on| {

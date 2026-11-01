@@ -289,7 +289,7 @@ component BoardCard inherits Rectangle {
     clip: true;
     touch := TouchArea {
         clicked => {
-                root.opened();
+            root.opened();
             if (root.item.remote) {
                 AppData.open-remote(root.item.id);
             } else {
@@ -492,6 +492,10 @@ component Schedule inherits Rectangle {
             CalendarHead { }
             DayStrip { }
             if !root.empty: DayAgenda { day: root.picked; }
+            if root.empty: EmptyNote {
+                title: "No shows on this phone yet";
+                body: "Episodes of the shows you keep here show up on their day, two days back and a week ahead.";
+            }
         }
     }
 }
