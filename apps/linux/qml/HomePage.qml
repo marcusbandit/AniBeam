@@ -118,10 +118,6 @@ Item {
 
     // ---- The lists. The hero's series shows only in the hero.
     readonly property int heroId: resume ? resume.card.id : -1
-    function behindOf(c) {
-        var w = watchedOf(c), reach = Math.max(c.episodes_on_disk || 0, 0)
-        return c.watched_state === "Behind" ? Math.max(1, reach - w) : 0
-    }
     readonly property var airingIds: {
         var m = {}
         for (var i = 0; i < airingRows.length; i++) m[airingRows[i].id] = true
@@ -186,17 +182,81 @@ Item {
         if ((c.downloading || []).some(function(d) { return d.number >= drop.episode && d.number <= last })) return "downloading"
         return drop.predicted ? "overdue" : "late"
     }
-    // The time and the standing as words: "at 17:30, in 3h 12m", "aired 09:00, here",
-    // "aired 09:00, late: not downloaded yet", "expected 17:30, late: not out yet"
-    function dropText(drop, state, today) {
-        if (!drop) return ""
-        var t = Qt.formatTime(new Date(drop.at * 1000), "HH:mm")
-        if (state === "future")
-            return (drop.predicted ? "predicted, " : "at ") + t + (today ? ", in " + page.shortCountdown(drop.at - page.nowMs / 1000) : "")
-        if (state === "here") return "aired " + t + ", here"
-        if (state === "downloading") return "aired " + t + ", downloading"
-        if (state === "overdue") return "expected " + t + ", late: not out yet"
-        return "aired " + t + ", late: not downloaded yet"
+    // This week split by the two questions (#326): what is out and waiting (here and not
+    // watched, downloading, or aired and not downloaded), the next episode to air, and the
+    // rest still to come in air order. An episode here and watched has nothing left to say.
+    // Built from the episodes' standings, not from the clock: the clock ticks every 30 s, and
+    // a fresh split would rebuild every card under it, dropping focus and hover. `weekKey`
+    // reads the clock and changes only when a standing does; the split follows the key.
+    function weekEntries() {
+        var out = [], ahead = [], later = [], seen = {}
+        for (var i = 0; i < week.length; i++) {
+            var day = week[i]
+            for (var k = 0; k < day.cards.length; k++) {
+                var e = day.cards[k]
+                if (day.later) { later.push({ card: e.card, drop: null, state: "none", day: i }); continue }
+                var st = page.dropState(e.card, e.drop, nowMs)
+                if (st === "here" || st === "downloading" || st === "late") {
+                    if (st === "here" && page.dropWatched(e.card, e.drop)) continue
+                    out.push({ card: e.card, drop: e.drop, day: i, state: st })
+                } else ahead.push({ card: e.card, drop: e.drop, day: i, state: st })
+            }
+        }
+        // One card a series: its latest episode out stands for the rest
+        out.sort(function(a, b) { return b.drop.at - a.drop.at })
+        out = out.filter(function(o) { if (seen[o.card.id]) return false; seen[o.card.id] = true; return true })
+        out.sort(function(a, b) { return a.drop.at - b.drop.at })
+        ahead.sort(function(a, b) { return a.drop.at - b.drop.at })
+        return { out: out, ahead: ahead, later: later }
+    }
+    // Watched already: the tracker's progress reaches it, or with no tracker the core reads
+    // the series caught up
+    function dropWatched(c, drop) {
+        if (c.watched !== null && c.watched !== undefined) return c.watched >= (drop.through || drop.episode)
+        return c.watched_state === "CaughtUp"
+    }
+    readonly property string weekKey: {
+        var e = weekEntries()
+        function key(x) { return x.card.id + ":" + (x.drop ? (x.drop.season || 1) + "x" + x.drop.episode + "@" + x.drop.at : "") + ":" + x.state }
+        return dayKey + "|" + e.out.map(key).join(",") + "|" + e.ahead.map(key).join(",") + "|" + e.later.map(key).join(",")
+    }
+    property var weekSplit: ({ out: [], ahead: [], next: null, later: [] })
+    function splitWeek() {
+        var e = weekEntries(), next = null
+        for (var j = 0; j < e.ahead.length; j++) if (e.ahead[j].state === "future") { next = e.ahead.splice(j, 1)[0]; break }
+        weekSplit = { out: e.out, ahead: e.ahead, next: next, later: e.later }
+    }
+    onWeekKeyChanged: splitWeek()
+    // The agenda beside the countdown: a group per day that has something, and a run of
+    // empty days from today on said once ("Nothing today or Monday"). A day whose only
+    // episode is the countdown's says nothing, the countdown names it. Empty days after the
+    // last group, and past days with nothing late on them, are left out.
+    readonly property var agenda: {
+        var rows = [], empties = [], split = weekSplit
+        function dayName(i) { var l = week[i].label; return l === "Today" || l === "Tomorrow" ? l.toLowerCase() : l }
+        // A predicted episode past its time and not out yet leads, under its own words
+        var overdue = split.ahead.filter(function(a) { return a.state === "overdue" })
+        if (overdue.length) rows.push({ label: "Not out yet", date: "", today: false, items: overdue })
+        for (var i = 0; i < week.length; i++) {
+            if (week[i].later) continue
+            var items = split.ahead.filter(function(a) { return a.day === i && a.state !== "overdue" })
+            if (items.length) {
+                if (empties.length) rows.push({ nothing: "Nothing " + (empties.length === 1 ? empties[0] : empties.slice(0, -1).join(", ") + " or " + empties[empties.length - 1]) })
+                empties = []
+                rows.push({ label: week[i].label, date: week[i].date, today: week[i].today, items: items })
+            } else if (!week[i].past && !(split.next && split.next.day === i)) empties.push(dayName(i))
+        }
+        if (split.later.length) rows.push({ label: "No date yet", date: "", today: false, items: split.later })
+        return rows
+    }
+    // "1 day 20 h 36 m" as parts, for the countdown's large figures
+    function countdownParts(secs) {
+        var t = Math.max(0, Math.floor(secs)), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
+        var parts = []
+        if (d > 0) parts.push({ n: d, unit: d === 1 ? "day" : "days" })
+        if (d > 0 || h > 0) parts.push({ n: h, unit: "h" })
+        parts.push({ n: Math.max(d > 0 || h > 0 ? 0 : 1, m), unit: "m" })
+        return parts
     }
     readonly property int lateCount: {
         var n = 0
@@ -207,10 +267,10 @@ Item {
             }
         return n
     }
-    readonly property int airingWaiting: airingRows.filter(function(c) { return page.behindOf(c) > 0 }).length
     readonly property string weekFact: {
         if (lateCount > 0) return Fmt.plural(lateCount, "episode is", "episodes are") + " late"
-        if (airingWaiting > 0) return Fmt.plural(airingWaiting, "series has", "series have") + " a new episode out"
+        var waiting = weekSplit.out.filter(function(o) { return o.state === "here" }).length
+        if (waiting > 0) return Fmt.plural(waiting, "episode", "episodes") + " out to watch"
         var now = nowMs / 1000, next = null
         for (var i = 0; i < airingRows.length; i++) {
             var n = airingRows[i].next_airing
@@ -302,19 +362,10 @@ Item {
         Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); width: childrenRect.width; height: childrenRect.height }
     }
 
-    // The episodes on disk as a phrase: "On disk 1 to 3" while they run from the first,
-    // else the count and the newest. The newest number comes off the card's code (S02E03,
-    // EP 3).
+    // The newest episode number on disk, off the card's code (S02E03, EP 3)
     function newestOnDisk(c) {
         var m = /(\d+(?:\.\d+)?)$/.exec(c.code || "")
         return m ? Number(m[1]) : 0
-    }
-    function diskText(c) {
-        var n = c.episodes_on_disk || 0, top = newestOnDisk(c)
-        if (n === 0) return "Nothing on disk yet"
-        if (n === 1 && top > 0) return "On disk: episode " + top
-        if (top === n) return "On disk: episodes 1 to " + n
-        return "On disk: " + n + " episodes, newest " + top
     }
     // The episodes on disk past the tracker's progress; -1 with no tracker entry
     function toWatchOf(c) {
@@ -323,116 +374,200 @@ Item {
         return Math.min(n, Math.max(0, top - c.watched))
     }
 
-    // ---- One episode in the week: the poster as a thumbnail, the title, which episode and
-    // at what time, where it stands (coming, here, downloading, late), and what is on disk
-    // with how much of it is still to watch
-    component WeekEntry: Rectangle {
-        id: entry
-        property var item: ({})
-        property var drop: null
-        property bool today: false
+    // What an Out now poster says under its title: when it aired, or why it cannot play yet
+    function outLine(o) {
+        var t = Qt.formatTime(new Date(o.drop.at * 1000), "HH:mm"), day = week[o.day] ? week[o.day].label : ""
+        if (o.state === "late") return "Not downloaded yet"
+        if (o.state === "downloading") return "Downloading"
+        return day + " " + t
+    }
+    // A sub-heading inside the week: a word and a dim count
+    component WeekLabel: Row {
+        property alias text: wl.text
+        property alias fact: wf.text
+        spacing: theme.space(2)
+        Label { id: wl; role: "title"; font.pointSize: theme.typeNormal }
+        Label { id: wf; anchors.baseline: wl.baseline; role: "ui"; color: theme.textDim; visible: text !== "" }
+    }
+    // The next episode to air: its art full-bleed under a scrim, a Next up tag, the time left
+    // in large figures with the units a step down, then the title and when. Opens the series.
+    component NextUpCard: Corner {
+        id: nextCard
+        objectName: "home-week-next"
+        property var entry: null
         readonly property bool gridStop: true
-        readonly property var next: drop
-        readonly property string standing: page.dropState(item, drop, page.nowMs)
-        readonly property bool late: standing === "late" || standing === "overdue"
-        Component.onDestruction: frame.hoverCard(entry, null, false)
-        readonly property int toWatch: page.toWatchOf(item)
-        activeFocusOnTab: true
-        Keys.onReturnPressed: page.openSeries(item)
-        Keys.onEnterPressed: page.openSeries(item)
-        Keys.onSpacePressed: page.playSeries(item)
-        height: theme.space(30)
+        readonly property var card: entry ? entry.card : ({})
+        readonly property var parts: entry ? page.countdownParts(entry.drop.at - page.nowMs / 1000) : []
         radius: theme.radiusTile
-        color: em.containsMouse ? theme.raised : theme.tile
-        border.width: 1
-        border.color: entry.activeFocus ? theme.accent : em.containsMouse ? theme.lineStrong : entry.late ? theme.red : "transparent"
-        scale: theme.reducedMotion ? 1 : (em.pressed ? 0.98 : 1)
-
-        Corner {
-            id: entryThumb
-            x: theme.space(2); anchors.verticalCenter: parent.verticalCenter
-            height: parent.height - theme.space(4); width: Math.round(height * 2 / 3)
-            radius: theme.radiusSm
-            color: theme.tileSunken
-            fillItem: entryPoster.status === Image.Ready ? entryPoster : null
-            Image {
-                id: entryPoster
-                visible: false
-                width: entryThumb.width; height: entryThumb.height
-                source: entry.item.poster ? Fmt.fileUrl(entry.item.poster) : ""
-                sourceSize: theme.posterDecodeSize
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
+        smoothing: theme.cornerSmoothing
+        color: theme.tileSunken
+        borderColor: nm.containsMouse || activeFocus ? theme.lineStrong : theme.line
+        borderWidth: 1
+        fillItem: nextArt.status === Image.Ready ? nextArt : null
+        activeFocusOnTab: true
+        Keys.onReturnPressed: page.openSeries(card)
+        Keys.onEnterPressed: page.openSeries(card)
+        Keys.onSpacePressed: page.playSeries(card)
+        scale: theme.reducedMotion ? 1 : (nm.pressed ? 0.99 : 1)
+        Image {
+            id: nextArt
+            visible: false
+            width: nextCard.width; height: nextCard.height
+            source: nextCard.card.poster ? Fmt.fileUrl(nextCard.card.poster) : ""
+            // A fixed decode, so a window being resized does not decode it again at every step
+            sourceSize: Qt.size(Math.ceil(theme.posterWidth * 3), Math.ceil(theme.posterWidth * 4.5))
+            fillMode: Image.PreserveAspectCrop
+            verticalAlignment: Image.AlignTop
+            asynchronous: true
+        }
+        // The one gradient: the poster scrim, rising from the foot
+        Rectangle {
+            anchors.fill: parent
+            radius: nextCard.radius
+            gradient: Gradient {
+                GradientStop { position: 0; color: "transparent" }
+                GradientStop { position: 1 - theme.scrimReach; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, 0.35) }
+                GradientStop { position: 1; color: theme.posterScrim }
             }
         }
+        Chip {
+            x: theme.space(3); y: theme.space(3)
+            small: true; mono: false
+            text: "Next up"
+            color: theme.glassVideo
+            textColor: theme.onPoster
+        }
         Column {
-            anchors.left: entryThumb.right; anchors.leftMargin: theme.space(3)
-            anchors.right: parent.right; anchors.rightMargin: theme.space(3)
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+            anchors.margins: theme.space(4)
             spacing: theme.space(1)
+            Row {
+                spacing: theme.space(2)
+                Repeater {
+                    model: nextCard.parts
+                    Row {
+                        required property var modelData
+                        spacing: theme.space(0.75)
+                        Label { id: fig; text: modelData.n; role: "display"; font.pointSize: theme.typePage * 0.85; font.variableAxes: ({ "wdth": 70, "wght": 560 }); color: theme.onPoster; font.features: { "tnum": 1 } }
+                        Label { anchors.baseline: fig.baseline; text: modelData.unit; role: "title"; color: theme.onPosterDim }
+                    }
+                }
+            }
             Label {
                 width: parent.width
-                text: entry.item.title || ""
+                text: nextCard.card.title || ""
                 role: "title"
-                font.pointSize: theme.typeNormal
-                color: em.containsMouse ? theme.accent : theme.text
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
+                color: theme.onPoster
                 elide: Text.ElideRight
-                lineHeight: 0.95
             }
-            // What lands: "Episode 4 at 17:30", today with the time left after it. A narrow
-            // card wraps the time onto its own line rather than past the edge
-            Flow {
+            Label {
                 width: parent.width
-                spacing: theme.space(1.5)
-                Label {
-                    width: Math.min(implicitWidth, parent.width)
-                    elide: Text.ElideRight
-                    text: entry.next ? (entry.next.season && entry.next.season !== 1 ? "S" + entry.next.season + " " : "") + Fmt.episodeSpan(entry.next.episode, entry.next.through || 0) : "No date yet"
-                    role: "ui"
-                    font.weight: 600
-                    color: entry.next ? theme.text : theme.textDim
-                }
-                Label {
-                    visible: !!entry.next
-                    width: Math.min(implicitWidth, parent.width)
-                    elide: Text.ElideRight
-                    text: page.dropText(entry.next, entry.standing, entry.today)
-                    role: "ui"
-                    font.weight: entry.late ? 650 : 400
-                    color: entry.late ? theme.red : entry.standing === "here" ? theme.textDim : theme.accent
-                }
-            }
-            // What is here: the episodes on disk, then how many of them are still to watch
-            Row {
-                width: parent.width
-                spacing: theme.space(1.5)
-                Label {
-                    id: onDisk
-                    width: Math.min(implicitWidth, parent.width)
-                    elide: Text.ElideRight
-                    text: page.diskText(entry.item); role: "ledger"; color: theme.textDim
-                }
-                Label {
-                    visible: (entry.item.episodes_on_disk || 0) > 0 && entry.toWatch >= 0
-                    width: Math.max(0, parent.width - onDisk.width - parent.spacing)
-                    elide: Text.ElideRight
-                    text: "\u00b7 " + (entry.toWatch > 0 ? entry.toWatch + " to watch" : "all watched")
-                    role: "ledger"
-                    font.weight: entry.toWatch > 0 ? 650 : 400
-                    color: entry.toWatch > 0 ? theme.accent : theme.textFaint
-                }
+                text: nextCard.entry ? (nextCard.entry.drop.season && nextCard.entry.drop.season !== 1 ? "Season " + nextCard.entry.drop.season + ", " : "")
+                      + Fmt.episodeSpan(nextCard.entry.drop.episode, nextCard.entry.drop.through || 0) + ", "
+                      + Qt.formatDateTime(new Date(nextCard.entry.drop.at * 1000), "dddd HH:mm") : ""
+                role: "ui"
+                color: theme.onPosterDim
+                elide: Text.ElideRight
             }
         }
         MouseArea {
-            id: em
+            id: nm
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: { entry.forceActiveFocus(); page.openSeries(entry.item) }
-            onContainsMouseChanged: frame.hoverCard(entry, entry.item, containsMouse)
+            onClicked: page.openSeries(nextCard.card)
+            onContainsMouseChanged: frame.hoverCard(nextCard, nextCard.card, containsMouse)
         }
+        Component.onDestruction: frame.hoverCard(nextCard, null, false)
+    }
+    // One episode still to come: the time first, a poster thumb, the title and the episode,
+    // and at the right what is worth knowing (the time is a guess, it is late, how many of
+    // the series are still to watch). Opens the series.
+    component AgendaRow: Corner {
+        id: arow
+        property var entry: ({})
+        readonly property bool gridStop: true
+        objectName: "week-agenda-" + (card.id || 0) + (drop ? "-" + (drop.season ? drop.season + "x" : "") + drop.episode : "")
+        readonly property var card: entry.card || ({})
+        readonly property var drop: entry.drop || null
+        readonly property int toWatch: page.toWatchOf(card)
+        height: theme.space(11)
+        radius: theme.radiusMd
+        smoothing: theme.cornerSmoothing
+        color: am.containsMouse ? theme.raised : theme.tile
+        borderColor: arow.activeFocus ? theme.focusRing : am.containsMouse ? theme.lineStrong : "transparent"
+        borderWidth: 1
+        activeFocusOnTab: true
+        Keys.onReturnPressed: page.openSeries(card)
+        Keys.onEnterPressed: page.openSeries(card)
+        Keys.onSpacePressed: page.playSeries(card)
+        Row {
+            anchors.left: parent.left; anchors.leftMargin: theme.space(3)
+            anchors.right: parent.right; anchors.rightMargin: theme.space(3)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: theme.space(3)
+            Label {
+                id: atime
+                anchors.verticalCenter: parent.verticalCenter
+                width: theme.space(11)
+                text: arow.drop ? Qt.formatTime(new Date(arow.drop.at * 1000), "HH:mm") : ""
+                role: "figure"
+                font.pointSize: theme.typeNormal
+                color: arow.entry.state === "overdue" ? theme.red : theme.text
+            }
+            Corner {
+                id: athumb
+                anchors.verticalCenter: parent.verticalCenter
+                height: arow.height - theme.space(3); width: Math.round(height * 2 / 3)
+                radius: theme.radiusSm
+                color: theme.tileSunken
+                fillItem: athumbImg.status === Image.Ready ? athumbImg : null
+                Image {
+                    id: athumbImg
+                    visible: false
+                    width: athumb.width; height: athumb.height
+                    source: arow.card.poster ? Fmt.fileUrl(arow.card.poster) : ""
+                    sourceSize: Qt.size(Math.ceil(athumb.width * 2), Math.ceil(athumb.height * 2))
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                }
+            }
+            Label {
+                id: atitle
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, parent.width - atime.width - athumb.width - aep.width - atags.width - parent.spacing * 4)
+                text: arow.card.title || ""
+                role: "ui"
+                font.weight: 600
+                color: am.containsMouse ? theme.accent : theme.text
+                elide: Text.ElideRight
+            }
+            Label {
+                id: aep
+                anchors.verticalCenter: parent.verticalCenter
+                text: arow.drop ? (arow.drop.season && arow.drop.season !== 1 ? "S" + arow.drop.season + " " : "") + Fmt.episodeSpan(arow.drop.episode, arow.drop.through || 0) : ""
+                role: "ui"
+                color: theme.textDim
+            }
+        }
+        Row {
+            id: atags
+            anchors.right: parent.right; anchors.rightMargin: theme.space(3)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: theme.space(2)
+            Chip { visible: arow.entry.state === "overdue"; small: true; mono: false; text: "Late, not out yet"; textColor: theme.red }
+            Chip { visible: arow.entry.state === "future" && !!arow.drop && !!arow.drop.predicted; small: true; mono: false; icon: "clock"; text: "Time not announced"; textColor: theme.yellow }
+            Chip { visible: arow.toWatch > 0; small: true; mono: false; text: arow.toWatch + " to watch" }
+        }
+        MouseArea {
+            id: am
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { arow.forceActiveFocus(); page.openSeries(arow.card) }
+            onContainsMouseChanged: frame.hoverCard(arow, arow.card, containsMouse)
+        }
+        Component.onDestruction: frame.hoverCard(arow, null, false)
     }
 
     // ---- A shelf: a heading over a grid of cards
@@ -775,75 +910,118 @@ Item {
         }
         Item { width: 1; height: page.downloadedList.length ? theme.space(4) : 0 }
 
-        // ---- The week: nine rows, two days back to six ahead, today marked; each episode
-        // says when it airs or aired, whether it landed or is late, and what of the series is
-        // already on disk. The series without a date yet close the list
+        // ---- The week (#326): Out now at the left, the posters of what aired and waits to be
+        // watched (a click plays it; one not downloaded opens the series to get it); Coming up
+        // at the right, the next episode as a countdown over its art and an agenda of the rest
+        // by day. The two share the row by what they hold and stack on a narrow window.
         Column {
+            id: weekBox
             objectName: "home-week"
             visible: page.airingRows.length > 0
             width: parent.width
-            spacing: theme.space(4)
-            readonly property real labelWidth: theme.space(30)
+            spacing: theme.space(3)
+            readonly property var split: page.weekSplit
+            readonly property int outCount: split.out.length
+            readonly property bool hasAhead: split.next !== null || page.agenda.length > 0
+            readonly property real cardW: theme.posterWidth
+            // As many out posters on a line as half the row holds, at least one
+            readonly property int outCols: Math.max(1, Math.min(outCount, Math.floor((width * (hasAhead ? 0.5 : 1) + page.gap) / (cardW + page.gap))))
+            readonly property real outW: outCount ? outCols * cardW + (outCols - 1) * page.gap : 0
+            readonly property bool sideBySide: outCount > 0 && hasAhead && width - outW - theme.space(8) >= theme.space(190)
             Heading {
                 text: "This week"; fact: page.weekFact
                 action: Button { objectName: "home-week-airing"; flat: true; small: true; text: "Airing now"; icon: "chevron-right"; onClicked: frame.go("airing") }
             }
-            Repeater {
-                model: page.week
-                Item {
-                    id: day
-                    required property var modelData
-                    required property int index
-                    objectName: "home-day-" + index
-                    width: parent.width
-                    height: Math.max(dayHead.implicitHeight, dayCards.implicitHeight)
-                    readonly property bool hasCards: modelData.cards.length > 0
-                    // Today's line is drawn in the accent; the others sit on a hairline
-                    Rectangle {
-                        x: 0; y: 0
-                        width: 3; height: parent.height
-                        radius: 1.5
-                        color: day.modelData.today ? theme.accent : theme.line
+            Flow {
+                width: parent.width
+                spacing: theme.space(8)
+                // Out now
+                Column {
+                    objectName: "home-week-out"
+                    visible: weekBox.outCount > 0
+                    width: weekBox.sideBySide ? weekBox.outW : weekBox.width
+                    spacing: theme.space(3)
+                    WeekLabel { text: "Out now"; fact: Fmt.plural(weekBox.outCount, "episode", "episodes") }
+                    Flow {
+                        width: parent.width
+                        spacing: page.gap
+                        Repeater {
+                            model: weekBox.split.out
+                            Card {
+                                required property var modelData
+                                objectName: "week-out-" + modelData.card.id
+                                item: modelData.card
+                                posterWidth: weekBox.cardW
+                                nowMs: page.nowMs
+                                metaOverride: page.outLine(modelData)
+                                onOpened: modelData.state === "late" ? page.openSeries(modelData.card) : page.playSeries(modelData.card)
+                                onPlayed: page.playSeries(modelData.card)
+                            }
+                        }
                     }
-                    Column {
-                        id: dayHead
-                        x: theme.space(4); y: 0
-                        width: parent.parent.labelWidth - x
-                        spacing: theme.space(0.5)
-                        Label {
-                            text: day.modelData.label
-                            role: "title"
-                            font.pointSize: theme.typeNormal
-                            color: day.modelData.today ? theme.accent : day.modelData.past ? theme.textDim : theme.text
-                        }
-                        Label {
-                            text: day.modelData.date
-                            visible: text !== ""
-                            role: "ledger"
-                            color: day.modelData.today ? theme.accent : theme.textDim
-                        }
-                        Label {
-                            visible: !day.hasCards
-                            text: day.modelData.past ? "Nothing aired" : day.modelData.today ? "Nothing today" : "Nothing yet"
-                            role: "ledger"
-                            color: theme.textFaint
-                        }
+                }
+                // Coming up
+                Column {
+                    id: ahead
+                    objectName: "home-week-ahead"
+                    visible: weekBox.hasAhead
+                    width: weekBox.sideBySide ? weekBox.width - weekBox.outW - theme.space(8) : weekBox.width
+                    spacing: theme.space(3)
+                    readonly property bool stacked: width < theme.space(190)
+                    readonly property real cardHeight: weekBox.sideBySide ? Math.round(weekBox.cardW * 1.5) : theme.space(70)
+                    WeekLabel {
+                        text: "Coming up"
+                        fact: { var n = weekBox.split.ahead.length + (weekBox.split.next ? 1 : 0); return n ? Fmt.plural(n, "episode", "episodes") + " this week" : "" }
                     }
                     Flow {
-                        id: dayCards
-                        x: parent.parent.labelWidth
-                        width: parent.width - x
-                        spacing: theme.space(3)
-                        readonly property int cols: Math.max(1, Math.floor((width + spacing) / (theme.space(84) + spacing)))
-                        Repeater {
-                            model: day.modelData.cards
-                            WeekEntry {
-                                required property var modelData
-                                objectName: "week-card-" + modelData.card.id + (modelData.drop ? "-" + (modelData.drop.season ? modelData.drop.season + "x" : "") + modelData.drop.episode : "")
-                                item: modelData.card
-                                drop: modelData.drop
-                                today: day.modelData.today
-                                width: Math.floor((dayCards.width - dayCards.spacing * (dayCards.cols - 1)) / dayCards.cols)
+                        width: parent.width
+                        spacing: theme.space(4)
+                        NextUpCard {
+                            visible: weekBox.split.next !== null
+                            entry: weekBox.split.next
+                            width: ahead.stacked || page.agenda.length === 0 ? ahead.width : Math.max(theme.space(80), Math.round(ahead.width * 0.4))
+                            height: ahead.cardHeight
+                        }
+                        Column {
+                            objectName: "home-week-agenda"
+                            visible: page.agenda.length > 0
+                            width: weekBox.split.next === null || ahead.stacked ? ahead.width : ahead.width - Math.max(theme.space(80), Math.round(ahead.width * 0.4)) - theme.space(4)
+                            spacing: theme.space(2)
+                            Repeater {
+                                model: page.agenda
+                                Column {
+                                    required property var modelData
+                                    width: parent.width
+                                    spacing: theme.space(1.5)
+                                    // A run of empty days, said once over a hairline
+                                    Row {
+                                        visible: !!modelData.nothing
+                                        width: parent.width
+                                        spacing: theme.space(3)
+                                        Label { id: nothingText; text: modelData.nothing || ""; role: "ui"; color: theme.textDim }
+                                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width - nothingText.width - parent.spacing; height: 1; color: theme.line }
+                                    }
+                                    Item {
+                                        visible: !modelData.nothing
+                                        width: parent.width
+                                        height: dayRows.height
+                                        Column {
+                                            width: theme.space(18)
+                                            Label { text: modelData.label || ""; role: "title"; font.pointSize: theme.typeNormal; color: modelData.today ? theme.accent : theme.text }
+                                            Label { visible: !!modelData.date; text: modelData.date || ""; role: "ledger"; color: theme.textDim }
+                                        }
+                                        Column {
+                                            id: dayRows
+                                            x: theme.space(18)
+                                            width: parent.width - x
+                                            spacing: theme.space(1.5)
+                                            Repeater {
+                                                model: modelData.items || []
+                                                AgendaRow { required property var modelData; entry: modelData; width: dayRows.width }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

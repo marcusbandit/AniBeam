@@ -19,9 +19,9 @@
   {"wait": 500},
   {"shot": "keys-01-home-focus"},
 
-  {"log": "Down crosses from the Continue row into the week's first day row with cards"},
+  {"log": "Down crosses from the Continue row into the week's first row"},
   {"key": "Down"},
-  {"eval": "window.activeFocusItem.objectName.indexOf('week-card-')", "expect": 0},
+  {"eval": "/^(week-|home-week-next)/.test(window.activeFocusItem.objectName)", "expect": true},
   {"eval": "window.activeFocusItem.objectName", "as": "week"},
   {"log": "Up comes back to the Continue row at the nearest x, Left one card back along it"},
   {"key": "Up"},

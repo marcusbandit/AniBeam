@@ -79,6 +79,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Changed
 - Library sorts and groups from two menus, with the order said in words
+- This week shows what is out to watch and counts down to the next one
 - Two files of one episode share one row, and you pick which release plays
 - Searches wait a second between requests to one site, except your own server
 - Settings lists its sections down the left, each saying how it stands now
@@ -125,6 +126,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Skip intro skips the opening, not the scene before it
 - A show you watched to the end no longer stays in Catch up
 - Cards count a show's episodes, not its files, when two releases share one
 - A download's speed and time left no longer run under its Stop button
