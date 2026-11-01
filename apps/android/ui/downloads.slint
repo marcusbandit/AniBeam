@@ -7,7 +7,7 @@ import { Theme } from "theme.slint";
 import { AppData, DownloadRow, Nav } from "data.slint";
 import { FindData, Lenses, ReleaseList, ShowView, Suggestions } from "find.slint";
 import { Settings } from "more.slint";
-import { Button, Chip, ClampedText, Cubes, Figure, IconButton, PageTitle, Poster, ProgressLine, SearchField, SectionHead } from "widgets.slint";
+import { Button, CardStack, Chip, ClampedText, Cubes, Figure, IconButton, PageTitle, Poster, ProgressLine, SearchField, SectionHead } from "widgets.slint";
 import { Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
 
@@ -22,17 +22,26 @@ component StateDot inherits Rectangle {
 
 // One download that is not finished: the show's poster, which episodes and how far, the bar
 // or a cube per file, the figures, and Pause and Cancel as round buttons at the side. A tap
-// opens the show.
+// opens the show. A batch, many episodes in one download, is a stack of cards with a Batch
+// tag, the way the show view draws one.
 component DownloadCard inherits Rectangle {
     in property <DownloadRow> data;
     property <color> fill: root.data.tone == 0 ? Theme.purple : root.data.tone == 2 ? Theme.yellow : root.data.tone == 3 ? Theme.bad : Theme.dim;
     property <bool> failed: root.data.state == "Stopped by an error";
-    height: Math.max(row.preferred-height, 20 * Theme.unit);
-    border-radius: Theme.radius;
-    background: touch.pressed && root.data.series >= 0 ? Theme.raised : Theme.surface;
-    border-width: 1px;
-    border-color: Theme.line;
+    property <length> card-height: Math.max(row.preferred-height, 20 * Theme.unit);
+    height: self.card-height + (root.data.batch ? 3 * Theme.unit : 0);
+    if root.data.batch: CardStack { card-height: root.card-height; }
+    Rectangle {
+        y: 0;
+        height: root.card-height;
+        border-radius: Theme.radius;
+        background: touch.pressed && root.data.series >= 0 ? Theme.raised : Theme.surface;
+        border-width: 1px;
+        border-color: Theme.line;
+    }
     touch := TouchArea {
+        y: 0;
+        height: root.card-height;
         clicked => {
             if (root.data.series >= 0) {
                 AppData.open-series(root.data.series);
@@ -40,6 +49,8 @@ component DownloadCard inherits Rectangle {
         }
     }
     row := HorizontalLayout {
+        y: 0;
+        height: root.card-height;
         padding: Theme.unit * 3;
         spacing: Theme.unit * 3.5;
         Poster {
@@ -54,6 +65,16 @@ component DownloadCard inherits Rectangle {
             horizontal-stretch: 1;
             alignment: center;
             spacing: Theme.unit * 1.5;
+            if root.data.batch: HorizontalLayout {
+                alignment: start;
+                Chip {
+                    text: root.data.cubes.length > 1 ? "Batch, " + root.data.cubes.length + " files" : "Batch";
+                    small: true;
+                    selected: true;
+                    has-icon: true;
+                    icon: @image-url("icons/layers.svg");
+                }
+            }
             ClampedText {
                 text: root.data.show != "" ? root.data.show : root.data.name;
                 face: root.data.show != "" ? Theme.title-face : Theme.face;
@@ -78,8 +99,8 @@ component DownloadCard inherits Rectangle {
             }
             if root.data.cubes.length > 0: Cubes {
                 codes: root.data.cubes;
-                size: 12px;
-                spacing: 3px;
+                size: 16px;
+                spacing: 4px;
             }
             if root.data.cubes.length == 0: ProgressLine {
                 height: 4px;
@@ -172,7 +193,6 @@ component FinishedRow inherits Rectangle {
             alignment: center;
             Button {
                 text: "Clear";
-                small: true;
                 clicked => { AppData.torrent-action(root.data.hash, 3); }
             }
         }

@@ -37,6 +37,10 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Episodes watched from your computer keep their place there
 
 ### Changed
+- Stood up half folded, back, cast and lock sit below the crease too
+- A batch in Downloads is a stacked card with a Batch tag
+- Episode squares when picking what to get are bigger, numbered, easier to tap
+- Small buttons and chips take a touch a little outside their edge
 - Bending the phone slides everything into place instead of jumping
 - Half folded, the two sides sit either side of the crease without boxes
 - Turned sideways and half folded, pages keep the unfolded layout
@@ -55,6 +59,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings say search sites instead of endpoints, and plain words for the rest
 
 ### Fixed
+- Opening a folded phone a little no longer splits the outer screen's player
+- The Library's device switch keeps its highlight under the label on a bend
 - Rows of filter and source buttons are no longer cut off at the bottom
 - Library's posters glide into place when the phone bends instead of jittering
 - Sideways and half folded, the video keeps its shape above the crease
