@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<!-- The line art icon's glyph, drawn by hand over glyph.svg: the same katakana a, its brush
+     streaks cut down to two speed lines so the outline stays clean at launcher size. make.py
+     strokes this path; it is never filled. -->
+<path d="M 273 200 H 808 L 868 226 C 832 336 776 436 680 525 L 600 465 C 586 566 536 650 468 712 C 430 746 376 782 324 812 L 276 774 C 364 708 424 646 450 584 C 470 530 476 470 476 420 V 345 H 598 V 422 C 650 395 690 350 712 302 H 273 Z M 226 806 L 150 856 M 272 846 L 110 952"/>
+</svg>

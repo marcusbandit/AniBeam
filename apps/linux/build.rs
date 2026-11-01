@@ -165,6 +165,7 @@ fn main() {
         "shaders/poster.vert.qsb",
         "shaders/poster.frag.qsb",
         "assets/icon.png",
+        "assets/icon-dark.png",
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",
         "assets/fonts/Archivo-Variable-ExtraBold.ttf",

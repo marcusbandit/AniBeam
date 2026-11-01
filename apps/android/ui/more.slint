@@ -30,7 +30,7 @@ export struct SettingHit {
 // Where More is: the index or one section, and the search over every setting.
 export global Settings {
     // The open section, -1 for the index. 0 Accounts, 1 Downloads, 2 Streaming, 3 Search
-    // sites, 4 Connection, 5 Your computer, 6 About.
+    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon.
     in-out property <int> section: -1;
     in-out property <string> query;
     in property <[SettingHit]> hits;
@@ -57,6 +57,7 @@ global Status {
     out property <string> computer: AppData.host-result != "" ? AppData.host-result : "Not connected yet";
     out property <bool> computer-warn: AppData.host-tone == 1;
     out property <string> about: AppData.version;
+    out property <string> icon: ["Default", "Dark", "Line art"][AppData.app-icon];
 }
 
 // The other device's address, editable in place, with its last test underneath.
@@ -229,6 +230,60 @@ component IndexRow inherits Rectangle {
     }
 }
 
+// One launcher icon to pick: how it looks on the home screen, its name under it, and a ring
+// round the one showing now.
+component IconChoice inherits Rectangle {
+    in property <image> source;
+    in property <string> name;
+    in property <bool> picked;
+    // The line art: its outline tinted on the phone's own colours rather than a finished picture.
+    in property <bool> line;
+    callback clicked();
+    height: col.preferred-height;
+    col := VerticalLayout {
+        spacing: Theme.unit * 2;
+        HorizontalLayout {
+            alignment: center;
+            ring := Rectangle {
+                width: 20 * Theme.unit;
+                height: self.width;
+                border-radius: self.width * 0.26;
+                border-width: 2px;
+                border-color: root.picked ? Theme.accent : transparent;
+                if root.line: Rectangle {
+                    x: 2 * Theme.unit;
+                    y: self.x;
+                    width: parent.width - 2 * self.x;
+                    height: self.width;
+                    border-radius: self.width * 0.22;
+                    background: AppData.line-ground;
+                    Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: root.source;
+                        colorize: AppData.line-ink;
+                    }
+                }
+                if !root.line: Image {
+                    x: 2 * Theme.unit;
+                    y: self.x;
+                    width: parent.width - 2 * self.x;
+                    height: self.width;
+                    source: root.source;
+                }
+            }
+        }
+        Text {
+            horizontal-alignment: center;
+            text: root.name;
+            color: root.picked ? Theme.text : Theme.dim;
+            font-size: Theme.small + 0.5px;
+            font-family: root.picked ? Theme.strong-face : "";
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
 // One section as its own page: the pill back to the index, the section's name with how it
 // stands, then its settings. `reveal` scrolls a setting the search landed on into view.
 component SectionPage inherits Rectangle {
@@ -327,6 +382,13 @@ component IndexPage inherits Rectangle {
                     status: Status.computer;
                     warn: Status.computer-warn;
                     clicked => { Settings.open(5, ""); }
+                }
+                IndexRow {
+                    section: 7;
+                    icon: @image-url("icons/palette.svg");
+                    name: "App icon";
+                    status: Status.icon;
+                    clicked => { Settings.open(7, ""); }
                 }
                 IndexRow {
                     section: 6;
@@ -630,6 +692,59 @@ export component MorePage inherits Rectangle {
             corner: Theme.radius;
             ListGroup {
                 HostRow { }
+            }
+        }
+    }
+
+    if root.shown == 7: icons := SectionPage {
+        init => { AppData.read-app-icon(); }
+        title: "App icon";
+        note: Status.icon;
+        Lit {
+            on: Settings.lit == "App icon";
+            reveal(y) => { icons.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                VerticalLayout {
+                    padding: Theme.unit * 3;
+                    spacing: Theme.unit * 3;
+                    Text {
+                        text: "The icon on your home screen and in the app drawer.";
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.unit * 2;
+                        IconChoice {
+                            source: @image-url("icons/app.png");
+                            name: "Default";
+                            picked: AppData.app-icon == 0;
+                            clicked => { AppData.set-app-icon(0); }
+                        }
+                        IconChoice {
+                            source: @image-url("icons/app-dark.png");
+                            name: "Dark";
+                            picked: AppData.app-icon == 1;
+                            clicked => { AppData.set-app-icon(1); }
+                        }
+                        IconChoice {
+                            source: @image-url("icons/app-line.png");
+                            name: "Line art";
+                            line: true;
+                            picked: AppData.app-icon == 2;
+                            clicked => { AppData.set-app-icon(2); }
+                        }
+                    }
+                    Text {
+                        text: AppData.app-icon == 2
+                            ? "Line art takes your wallpaper's colours, like your other Material You icons."
+                            : "Some launchers take the icon off the home screen when it changes. It stays in the app drawer; drag it back from there.";
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                }
             }
         }
     }

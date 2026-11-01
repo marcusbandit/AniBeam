@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by assets/logo/make.py; edit that, not this. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="25.64" android:translateY="20.59"
+        android:scaleX="0.058" android:scaleY="0.058">
+        <path android:strokeColor="@color/line_ink" android:strokeWidth="32"
+            android:strokeLineJoin="round" android:strokeLineCap="round"
+            android:pathData="M 273 200 H 808 L 868 226 C 832 336 776 436 680 525 L 600 465 C 586 566 536 650 468 712 C 430 746 376 782 324 812 L 276 774 C 364 708 424 646 450 584 C 470 530 476 470 476 420 V 345 H 598 V 422 C 650 395 690 350 712 302 H 273 Z M 226 806 L 150 856 M 272 846 L 110 952" />
+    </group>
+</vector>
