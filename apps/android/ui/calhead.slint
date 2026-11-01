@@ -1,0 +1,27 @@
+// The Calendar tab's head: its name and how it stands, and one switch for what it shows:
+// this phone's schedule, the computer's once it has answered, or Airing now.
+
+import { Theme } from "theme.slint";
+import { AppData } from "data.slint";
+import { PageTitle, Segmented } from "widgets.slint";
+
+export component CalendarHead inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    PageTitle {
+        title: "Calendar";
+        note: AppData.airing-view ? "" : AppData.cal-note;
+    }
+    property <int> airing-index: AppData.devices.length;
+    Segmented {
+        options: AppData.cal-views;
+        picked: AppData.airing-view ? root.airing-index : AppData.cal-device;
+        pick(i) => {
+            if (i == root.airing-index) {
+                AppData.open-airing();
+            } else {
+                AppData.airing-view = false;
+                AppData.pick-cal-device(i);
+            }
+        }
+    }
+}

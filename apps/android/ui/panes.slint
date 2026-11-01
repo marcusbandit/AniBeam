@@ -4,33 +4,34 @@
 import { Theme } from "theme.slint";
 import { Area, Fold } from "fold.slint";
 
-// One pane. Half folded it is a sheet of its own either side of the crease, like the two
-// pages of a book; open, the right one is parted from the left by a hairline.
+// One pane. A change of posture slides it to its new place. Open, the right one is parted
+// from the left by a hairline; half folded the crease parts them, so the line fades out.
 export component Leaf inherits Rectangle {
     in property <Area> area;
     x: root.area.x;
     y: root.area.y;
     width: root.area.width;
     height: root.area.height;
-    background: Fold.half ? Theme.surface : transparent;
-    border-radius: Fold.half ? Theme.radius + 6px : 0;
-    border-width: Fold.half ? 1px : 0;
-    border-color: Theme.line;
+    animate x, y, width, height { duration: Fold.settle; easing: ease-in-out; }
     clip: true;
-    if Fold.posture == 1 && root.x > 0: Rectangle {
+    if root.x > 0: Rectangle {
         x: 0;
         width: 1px;
         background: Theme.line;
+        opacity: Fold.posture == 1 ? 1 : 0;
+        animate opacity { duration: Fold.settle; }
     }
     @children
 }
 
-// A page's content as one scrolling column, with the page margins.
+// A page's content as one scrolling column, with the page margins. Content that fits does
+// not move under a finger.
 export component Scroll inherits Flickable {
     in property <length> pad-bottom: Theme.pad * 2;
     // Only ever as wide as the pane: nothing in a page scrolls sideways as a whole.
     content-width: self.width;
     content-height: column.preferred-height;
+    interactive: self.content-height > self.height + 1px;
     column := VerticalLayout {
         width: root.width;
         alignment: start;

@@ -104,6 +104,7 @@ impl<F: Fn(Event)> Worker<F> {
                 );
                 (self.deliver)(Event::Snapshot(cache.clone()));
                 self.syncer.fetch_posters(&address, &cache, |id| self.send_poster(id));
+                crate::airing::sync(&address);
                 (self.deliver)(Event::SyncDone { at: now, error: None });
             }
             Err(error) => {

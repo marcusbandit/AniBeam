@@ -15,14 +15,15 @@ use anibeam_companion::address::HostAddress;
 use anibeam_companion::format;
 use anibeam_companion::store::{AniListCache, Cache, Store};
 use anibeam_core::{
-    Call, Direction, PhoneAction, PhoneSource, Reply, SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
+    AiringNow, AiringShow, Call, Direction, PhoneAction, PhoneSource, Reply, SeasonPick, SeriesCard, SeriesDetail, Sort, Tab,
+    Torrent, Tracker, TrackerAccount,
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
-use crate::{AppData, AppWindow, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, SettingHit, Settings, Shelf, SourceRow, Tile};
+use crate::{AiringMenu, AppData, AppWindow, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, SettingHit, Settings, Shelf, SourceRow, Tile};
 
 /// How often the app looks at the other device while it is open.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -119,6 +120,20 @@ struct App {
     read_on: Option<chrono::NaiveDate>,
     /// Each card's titles, lower case with single spaces, for naming a torrent's show.
     plain_titles: Vec<(u64, Vec<String>)>,
+    /// Whose calendar shows: 0 this phone, 1 the computer.
+    cal_device: usize,
+    /// Airing now as the core last listed it, the season and filter picked, whether a read
+    /// from AniList is under way, the line under the head, and the show just marked not
+    /// interested with the tick it was marked on.
+    airing: Option<AiringNow>,
+    airing_season: SeasonPick,
+    airing_filter: i32,
+    airing_refreshing: bool,
+    airing_listing: bool,
+    airing_note: Option<String>,
+    airing_undo: Option<(u64, String, u32)>,
+    airing_tiles: Rc<VecModel<Tile>>,
+    airing_out: Rc<VecModel<Tile>>,
     coming: Rc<VecModel<CalItem>>,
     library: Rc<VecModel<Tile>>,
     episodes: Rc<VecModel<EpisodeLine>>,
@@ -315,7 +330,17 @@ impl App {
         if data.get_hero() != home.hero {
             data.set_hero(home.hero);
         }
-        self.show_calendar(home.calendar);
+        // The computer's calendar while it is picked and its snapshot is here.
+        if self.cache.is_none() {
+            self.cal_device = 0;
+        }
+        let calendar = if self.cal_device == 1 {
+            crate::remote::calendar(self.cache.as_ref(), &self.anilist, &self.remote_art, now)
+        } else {
+            home.calendar
+        };
+        data.set_cal_device(self.cal_device as i32);
+        self.show_calendar(calendar);
         update(&self.coming, home.coming);
         self.home_shelves.set(vec![("Recently watched", home.watched), ("Recently downloaded", home.downloaded)]);
         data.set_phone_shows(self.cards.len() as i32);
@@ -371,6 +396,9 @@ impl App {
         update(&self.library, tiles);
         if devices != self.devices {
             data.set_devices(ModelRc::new(VecModel::from(devices.clone())));
+            let mut views = devices.clone();
+            views.push("Airing now".into());
+            data.set_cal_views(ModelRc::new(VecModel::from(views)));
             self.devices = devices;
         }
         data.set_device(device as i32);
@@ -432,6 +460,19 @@ impl App {
         if self.ticks.is_multiple_of(2) {
             self.poll_torrents();
         }
+        // Airing now: read again while AniList is being asked, and let an undo lapse.
+        if data.get_airing_view() {
+            if (self.airing_refreshing || changed) && self.ticks.is_multiple_of(2) {
+                self.load_airing(false);
+            } else {
+                // Posters land as they decode, and countdowns move.
+                self.show_airing();
+            }
+        }
+        if self.airing_undo.as_ref().is_some_and(|(_, _, at)| self.ticks.wrapping_sub(*at) > UNDO_TICKS) {
+            self.airing_undo = None;
+            data.set_airing_undo("".into());
+        }
         if self.ticks.is_multiple_of(5) {
             self.hold_for_network();
         }
@@ -474,6 +515,212 @@ impl App {
         if new_day {
             data.set_cal_day(today);
         }
+    }
+
+    fn open_airing(&mut self) {
+        self.data().set_airing_view(true);
+        self.load_airing(true);
+    }
+
+    /// Lists Airing now off the UI thread, and the first time a season is opened asks
+    /// AniList for it when the core's copy is older than the core keeps it.
+    fn load_airing(&mut self, ask: bool) {
+        if self.airing_listing {
+            return;
+        }
+        let Some(core) = crate::local::core() else { return };
+        self.airing_listing = true;
+        let season = self.airing_season;
+        let _ = std::thread::Builder::new().name("airing".into()).spawn(move || {
+            let mut refreshing = false;
+            if ask {
+                match core.call(Call::RefreshAiringNow { season, force: false }) {
+                    Ok(Reply::Started { .. }) => refreshing = true,
+                    Ok(_) => {}
+                    Err(e) => crate::local::log(&format!("airing: {e}")),
+                }
+            }
+            let answer = core.call(Call::ListAiringNow { season });
+            let _ = slint::invoke_from_event_loop(move || {
+                with_app(|app| {
+                    app.airing_listing = false;
+                    match answer {
+                        Ok(Reply::AiringNow { now, refreshing: busy }) => {
+                            app.airing_refreshing = refreshing || busy.is_some();
+                            app.airing_note = None;
+                            app.airing = Some(now);
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            app.airing_refreshing = false;
+                            app.airing_note = Some(format!("AniList could not be read: {e}"));
+                        }
+                    }
+                    app.show_airing();
+                })
+            });
+        });
+    }
+
+    fn show_airing(&mut self) {
+        self.ask_airing_posters();
+        let window = self.window.clone_strong();
+        let data = window.global::<AppData>();
+        let now = anibeam_companion::now();
+        data.set_airing_season(i32::from(self.airing_season == SeasonPick::Next));
+        let Some(airing) = &self.airing else {
+            data.set_airing_line(if self.airing_listing || self.airing_refreshing { "Asking AniList".into() } else { "".into() });
+            return;
+        };
+        let undone = self.airing_undo.as_ref().map(|(id, _, _)| *id);
+        let shows: Vec<&AiringShow> = airing.shows.iter().filter(|s| Some(s.anilist_id) != undone).collect();
+        let listed = shows.iter().filter(|s| s.list_status.is_some()).count();
+        let owned = shows.iter().filter(|s| s.owned.is_some()).count();
+        data.set_airing_filters(ModelRc::new(VecModel::from(vec![
+            SharedString::from(format!("Everything {}", shows.len())),
+            format!("On my lists {listed}").into(),
+            format!("On this phone {owned}").into(),
+        ])));
+        data.set_airing_filter(self.airing_filter);
+        let mut seasons: Vec<SharedString> = vec!["This season".into(), "Next season".into()];
+        if self.airing_season == SeasonPick::Next {
+            seasons[1] = airing.label.clone().into();
+        }
+        data.set_airing_seasons(ModelRc::new(VecModel::from(seasons)));
+        let picked: Vec<&&AiringShow> = shows
+            .iter()
+            .filter(|s| match self.airing_filter {
+                1 => s.list_status.is_some(),
+                2 => s.owned.is_some(),
+                _ => true,
+            })
+            .collect();
+        let mut tiles = Vec::with_capacity(picked.len());
+        for s in &picked {
+            let (poster, has_poster) = self.airing_poster(s.anilist_id);
+            let mut t = Tile {
+                id: i32::try_from(s.anilist_id).unwrap_or(-1),
+                title: s.title.clone().into(),
+                poster,
+                has_poster,
+                initials: format::initials(&s.title).into(),
+                ..Default::default()
+            };
+            if let Some(next) = s.next_airing.as_ref().filter(|a| crate::phone::secs(a.at) > now) {
+                t.badge = format::episode_code(next.season, next.episode).into();
+                t.ledger = format::countdown(crate::phone::secs(next.at) - now).into();
+                t.ledger_tone = 1;
+            } else if let Some(score) = s.average_score {
+                t.ledger = format!("{score}%").into();
+            }
+            if let Some(status) = s.list_status {
+                t.flag = list_word(status).into();
+            }
+            tiles.push(t);
+        }
+        update(&self.airing_tiles, tiles);
+        let out: Vec<Tile> = airing
+            .aired
+            .iter()
+            .filter(|a| Some(a.anilist_id) != undone)
+            .map(|a| {
+                let (poster, has_poster) = self.airing_poster(a.anilist_id);
+                Tile {
+                    id: i32::try_from(a.anilist_id).unwrap_or(-1),
+                    title: a.title.clone().into(),
+                    poster,
+                    has_poster,
+                    initials: format::initials(&a.title).into(),
+                    badge: format!("E{:02}", a.episode).into(),
+                    ledger: format::ago(now - crate::phone::secs(a.at)).into(),
+                    ..Default::default()
+                }
+            })
+            .collect();
+        update(&self.airing_out, out);
+        let line = match (&self.airing_note, self.airing_refreshing) {
+            (Some(note), _) => note.clone(),
+            (None, true) => "Asking AniList for the newest".to_string(),
+            (None, false) if airing.not_interested > 0 => format!("{} hidden as not interested", airing.not_interested),
+            _ => String::new(),
+        };
+        data.set_airing_line(line.into());
+    }
+
+    /// An Airing now poster, once decoded. Its key is set apart from the library's series
+    /// ids, which share the art.
+    fn airing_poster(&self, anilist_id: u64) -> (Image, bool) {
+        self.art.poster(Some(AIRING_ART | anilist_id))
+    }
+
+    /// Asks once for each Airing now poster the core has on disk.
+    fn ask_airing_posters(&mut self) {
+        let Some(airing) = &self.airing else { return };
+        for show in &airing.shows {
+            let key = AIRING_ART | show.anilist_id;
+            if let Some(path) = &show.poster
+                && self.asked.insert(key)
+            {
+                let _ = self.posters.send((key, path.clone()));
+            }
+        }
+    }
+
+    fn airing_tap(&mut self, id: i32) {
+        let Some(show) = self.airing.as_ref().and_then(|a| a.shows.iter().find(|s| s.anilist_id as i64 == id as i64)) else { return };
+        let menu = AiringMenu {
+            show: true,
+            id,
+            title: show.title.clone().into(),
+            listed: show.list_status.is_some(),
+            owned: show.owned.and_then(|o| i32::try_from(o).ok()).unwrap_or(-1),
+        };
+        self.data().set_airing_menu(menu);
+    }
+
+    fn airing_plan(&mut self, id: i32) {
+        self.data().set_airing_menu(Default::default());
+        let Some(core) = crate::local::core() else { return };
+        let anilist_id = id as u64;
+        let _ = std::thread::Builder::new().name("plan".into()).spawn(move || {
+            let note = match core.call(Call::PlanToWatch { anilist_id }) {
+                Ok(_) => None,
+                Err(anibeam_core::CoreError::NotConnected { .. }) => {
+                    Some("Plan to watch needs AniList or MAL. Sign in under More, Accounts.".to_string())
+                }
+                Err(e) => Some(format!("Plan to watch did not go through: {e}")),
+            };
+            let _ = slint::invoke_from_event_loop(move || {
+                with_app(|app| {
+                    app.airing_note = note;
+                    app.load_airing(false);
+                })
+            });
+        });
+    }
+
+    fn airing_dismiss(&mut self, id: i32) {
+        self.data().set_airing_menu(Default::default());
+        let anilist_id = id as u64;
+        let title = self.airing.as_ref().and_then(|a| a.shows.iter().find(|s| s.anilist_id == anilist_id)).map(|s| s.title.clone()).unwrap_or_default();
+        self.airing_undo = Some((anilist_id, title.clone(), self.ticks));
+        self.data().set_airing_undo(title.into());
+        self.show_airing();
+        let address = HostAddress::parse(&self.data().get_host_address()).ok();
+        let _ = std::thread::Builder::new().name("not-interested".into()).spawn(move || {
+            crate::airing::mark(anilist_id, true, address);
+        });
+    }
+
+    fn airing_take_back(&mut self) {
+        let Some((anilist_id, _, _)) = self.airing_undo.take() else { return };
+        self.data().set_airing_undo("".into());
+        let address = HostAddress::parse(&self.data().get_host_address()).ok();
+        let _ = std::thread::Builder::new().name("not-interested".into()).spawn(move || {
+            crate::airing::mark(anilist_id, false, address);
+            let _ = slint::invoke_from_event_loop(|| with_app(|app| app.load_airing(false)));
+        });
+        self.show_airing();
     }
 
     /// Reads the sources once the core is open, for the search page and More.
@@ -913,6 +1160,24 @@ fn demo_torrents() -> Vec<Torrent> {
 
 const DEMO_MARK: &str = "demo:";
 
+/// Set on an Airing now poster's key in the art, apart from every series id.
+const AIRING_ART: u64 = 1 << 48;
+/// How long, in ticks of a second, a not interested mark can be taken back.
+const UNDO_TICKS: u32 = 6;
+
+/// A list status as a poster's flag says it.
+fn list_word(status: anibeam_core::ListStatus) -> &'static str {
+    use anibeam_core::ListStatus::*;
+    match status {
+        Watching => "Watching",
+        Planning => "Planning",
+        Completed => "Completed",
+        Paused => "Paused",
+        Dropped => "Dropped",
+        Repeating => "Rewatching",
+    }
+}
+
 fn is_demo(hash: &str) -> bool {
     hash.starts_with(DEMO_MARK)
 }
@@ -1030,6 +1295,7 @@ fn remote_numbers(cache: &Cache) -> HashMap<u64, f64> {
 /// activity goes away.
 pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> Result<(), Box<dyn std::error::Error>> {
     crate::local::start(data_dir.clone());
+    crate::airing::start(&data_dir);
     crate::stream::init(data_dir.clone());
     let store = Store::open(&data_dir)?;
     let address = HostAddress::parse(&store.settings().address)
@@ -1045,6 +1311,9 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
 
     let home_shelves = Shelves::new();
     let (calendar, coming, library, episodes) = (list(), list(), list(), list());
+    let (airing_tiles, airing_out) = (list(), list());
+    data.set_airing_tiles(airing_tiles.clone().into());
+    data.set_airing_out(airing_out.clone().into());
     let downloads = list();
     data.set_downloads(downloads.clone().into());
     data.set_home_shelves(home_shelves.shelves.clone().into());
@@ -1066,6 +1335,31 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
                 app.prefs.stream_quality = *q;
                 app.save_prefs();
             }
+        })
+    });
+    data.on_open_airing(|| with_app(App::open_airing));
+    data.on_pick_airing_season(|i| {
+        with_app(|app| {
+            app.airing_season = if i == 1 { SeasonPick::Next } else { SeasonPick::Now };
+            app.airing = None;
+            app.load_airing(true);
+        })
+    });
+    data.on_pick_airing_filter(|i| {
+        with_app(|app| {
+            app.airing_filter = i;
+            app.show_airing();
+        })
+    });
+    data.on_airing_tap(|id| with_app(|app| app.airing_tap(id)));
+    data.on_airing_close(|| with_app(|app| app.data().set_airing_menu(Default::default())));
+    data.on_airing_plan(|id| with_app(|app| app.airing_plan(id)));
+    data.on_airing_dismiss(|id| with_app(|app| app.airing_dismiss(id)));
+    data.on_airing_take_back(|| with_app(App::airing_take_back));
+    data.on_pick_cal_device(|i| {
+        with_app(|app| {
+            app.cal_device = usize::from(i == 1);
+            app.tick();
         })
     });
     data.on_pick_device(|i| {
@@ -1192,6 +1486,16 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         cal_models: Vec::new(),
         read_on: None,
         plain_titles: Vec::new(),
+        cal_device: 0,
+        airing: None,
+        airing_season: SeasonPick::Now,
+        airing_filter: 0,
+        airing_refreshing: false,
+        airing_listing: false,
+        airing_note: None,
+        airing_undo: None,
+        airing_tiles,
+        airing_out,
         coming,
         library,
         episodes,

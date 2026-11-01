@@ -13,6 +13,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · 2026-11-01
 
 ### New
+- Airing now, in the Calendar: this season's shows, Plan to watch and Get
+- Not interested hides a show here and on your computer
+- See your computer's calendar beside this phone's
 - A Calendar tab: what airs from two days back to a week ahead
 - Unfolded, the tabs move to a rail and pages split into two columns
 - Half folded, everything moves off the crease to either side of it
@@ -33,6 +36,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Episodes watched from your computer keep their place there
 
 ### Changed
+- Bending the phone slides everything into place instead of jumping
+- Half folded, the two sides sit either side of the crease without boxes
+- Turned sideways and half folded, pages keep the unfolded layout
 - Home lists the next episodes to air, with a way into the Calendar
 - Downloads shows free space instead of upload speed
 - When your computer cannot be reached, the app says what to do about it
@@ -48,6 +54,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings say search sites instead of endpoints, and plain words for the rest
 
 ### Fixed
+- Rows of buttons that fit no longer scroll
 - A long search wraps instead of running off the screen
 - Storage says how much the episodes use
 - A failed sign-in says why

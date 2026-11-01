@@ -645,7 +645,8 @@ export component ReleaseList inherits VerticalLayout {
     if FindData.groups.length > 0: Rectangle {
         height: 9 * Theme.unit;
         Flickable {
-            content-width: group-row.preferred-width;
+            content-width: Math.max(self.width, group-row.preferred-width);
+            interactive: group-row.preferred-width > self.width;
             group-row := HorizontalLayout {
                 spacing: Theme.unit * 1.5;
                 for g[i] in FindData.groups: Chip {
@@ -693,8 +694,10 @@ export component Lenses inherits VerticalLayout {
     }
     Rectangle {
         height: 9 * Theme.unit;
+        // Only a row wider than the page scrolls; one that fits stays put.
         Flickable {
-            content-width: lens-row.preferred-width;
+            content-width: Math.max(self.width, lens-row.preferred-width);
+            interactive: lens-row.preferred-width > self.width;
             lens-row := HorizontalLayout {
                 spacing: Theme.unit * 1.5;
                 for l[i] in FindData.lenses: Chip {

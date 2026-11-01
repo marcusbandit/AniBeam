@@ -60,6 +60,8 @@ export struct CalItem {
     state: int,
     // The next episode to air of all of them.
     soonest: bool,
+    // The computer's show: a tap opens it from there.
+    remote: bool,
 }
 
 // One day of the calendar, from three days back to a week ahead.
@@ -184,6 +186,18 @@ export struct NoteLine {
     lit: bool,
 }
 
+// A show on Airing now, tapped: what can be done to it.
+export struct AiringMenu {
+    show: bool,
+    // AniList's id.
+    id: int,
+    title: string,
+    // On a list on a connected tracker already.
+    listed: bool,
+    // The library series that carries it on this phone; -1 for none.
+    owned: int,
+}
+
 // Which tab is up: 0 Home, 1 Library, 2 Downloads, 3 More, 4 Calendar. A page can send you
 // to another.
 export global Nav {
@@ -199,6 +213,36 @@ export global AppData {
     // The calendar, and the day picked on it; Rust picks today when the days first come.
     in property <[CalDay]> calendar;
     in-out property <int> cal-day: 2;
+    // Airing now, the Calendar tab's other view: this season's shows from AniList, or the
+    // next season's, with the ones marked not interested left out.
+    in-out property <bool> airing-view;
+    // The Calendar's switch: the devices, then Airing now.
+    in property <[string]> cal-views: ["This phone", "Airing now"];
+    in property <[string]> airing-seasons: ["This season", "Next season"];
+    in property <int> airing-season;
+    // "Everything 48", "On my lists 6", "In my library 3".
+    in property <[string]> airing-filters;
+    in property <int> airing-filter;
+    in property <[Tile]> airing-tiles;
+    // The episodes out in the last two days.
+    in property <[Tile]> airing-out;
+    // What the page says under its head: how many, a refresh under way, or what failed.
+    in property <string> airing-line;
+    in property <AiringMenu> airing-menu;
+    // The show just marked not interested, while it can still be taken back.
+    in property <string> airing-undo;
+    callback open-airing();
+    callback pick-airing-season(int);
+    callback pick-airing-filter(int);
+    callback airing-tap(int);
+    callback airing-close();
+    callback airing-plan(int);
+    callback airing-dismiss(int);
+    callback airing-take-back();
+
+    // Whose calendar: 0 this phone, 1 the computer, as in Library's devices.
+    in property <int> cal-device;
+    callback pick-cal-device(int);
     in property <string> cal-note;
     in property <[Shelf]> home-shelves;
     in property <string> home-note;

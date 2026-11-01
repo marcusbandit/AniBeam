@@ -279,6 +279,11 @@ fn an_episode_streams_converts_and_keeps_its_place() {
         assert_eq!(closed.status(), 200);
         let forbidden = call(Call::ForgetSeries { series }).await;
         assert_eq!(forbidden.status(), 403);
+        // Not interested passes, so a phone's marks reach the host.
+        let marked = call(Call::SetNotInterested { anilist_id: 101, not_interested: true }).await;
+        assert_eq!(marked.status(), 200);
+        let listed = call(Call::ListNotInterested).await;
+        assert_eq!(listed.status(), 200);
         // A call that is not sent as JSON is refused, so no web page can send one.
         let plain = http
             .post(format!("{base}{}", wire::CALL))

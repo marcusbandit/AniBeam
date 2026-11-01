@@ -10,7 +10,7 @@ use anibeam_companion::store::{AniListCache, Cache};
 use slint::Image;
 
 use crate::posters;
-use crate::{EpisodeLine, SeriesHead, Tile};
+use crate::{CalDay, CalItem, EpisodeLine, SeriesHead, Tile};
 
 /// Decoded posters and their hues, by series id.
 #[derive(Default)]
@@ -208,4 +208,46 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
         });
     }
     Some((head, lines))
+}
+
+/// The computer's calendar over the same days as this phone's, from its cached snapshot:
+/// what it has on disk, what aired and it lacks, and what is still to air.
+pub fn calendar(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, now: i64) -> Vec<(CalDay, Vec<CalItem>)> {
+    use anibeam_companion::calendar::{self, State};
+    let Some(cache) = cache else { return crate::phone::days_of(Vec::new(), now) };
+    let today = calendar::today(now);
+    let from = calendar::midnight(today - chrono::Days::new(crate::phone::CAL_BACK as u64));
+    let to = calendar::midnight(today + chrono::Days::new((crate::phone::CAL_DAYS - crate::phone::CAL_BACK) as u64));
+    let entries = calendar::entries(cache, anilist, from, to, now);
+    let next_at = entries.iter().map(|e| e.at).find(|at| *at > now);
+    let timed = entries
+        .iter()
+        .map(|e| {
+            let (poster, has_poster) = art.poster(e.series_id);
+            let (state, when) = match e.state {
+                State::Upcoming => (0, format::countdown(e.at - now)),
+                State::OnDisk { .. } => (1, "On your computer".to_string()),
+                State::Missing => (2, format!("Out {}", format::ago(now - e.at))),
+            };
+            let item = CalItem {
+                id: id(e.series_id),
+                title: e.title.clone().into(),
+                poster,
+                has_poster,
+                initials: format::initials(&e.title).into(),
+                time: format::clock(e.at).into(),
+                episode: match e.season {
+                    Some(s) if s > 1 => format!("Season {s}, episode {}", e.episode),
+                    _ => format!("Episode {}", e.episode),
+                }
+                .into(),
+                when: when.into(),
+                state,
+                soonest: Some(e.at) == next_at,
+                remote: true,
+            };
+            (e.at, item)
+        })
+        .collect();
+    crate::phone::days_of(timed, now)
 }

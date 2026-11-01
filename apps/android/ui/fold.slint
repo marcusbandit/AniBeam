@@ -1,14 +1,16 @@
 // How the screen is folded, and where that puts the panes. Three postures, one rule set:
 //
 //   folded    the phone: one column and the bar along the bottom.
-//   open      flat and wide: a rail down the left and two columns, the wider for looking.
-//   half      bent under 170 degrees: the panes sit either side of the crease and nothing
-//             lies on it. Held like a book (crease down the middle) the left page picks and
-//             the right page shows; stood like a laptop (crease across) the top half shows
-//             and the bottom half, on the table, is for the thumbs.
+//   open      flat and wide: a rail down the left and two columns, parted by a hairline.
+//   half      bent under 170 degrees and held like a book: the same two columns, moved so
+//             the crease falls in the gutter between them and nothing lies on it.
 //
-// Rust sets the hinge from the sensor; the window sets its size and insets. Panes are in the
-// coordinates of the body, the area the pages draw in.
+// Stood up like a laptop, with the crease across the screen, the pages keep the open layout
+// and only the player splits: the picture above the crease, the controls below it.
+//
+// A change of posture moves the panes and the rail to their new places over `settle` rather
+// than jumping. Rust sets the hinge from the sensor; the window sets its size and insets.
+// Panes are in the coordinates of the body, the area the pages draw in.
 
 export struct Area {
     x: length,
@@ -34,14 +36,21 @@ export global Fold {
     out property <bool> wide: self.width >= 600px || self.width > self.height;
     // Under 30 degrees the phone is shut and shows its outer screen, which turned on its side
     // is wide too: that is a phone in landscape, not a bent inner screen.
-    out property <bool> half: self.wide && self.hinge < 170 && self.hinge > 30;
-    // 0 folded, 1 open, 2 half as a book, 3 half as a laptop.
-    out property <int> posture: !self.wide ? 0 : !self.half ? 1 : self.crease-across ? 3 : 2;
-    // Two panes side by side, or one above the other.
+    property <bool> bent: self.wide && self.hinge < 170 && self.hinge > 30;
+    out property <bool> half: self.bent && !self.crease-across;
+    // Stood up like a laptop, for the player.
+    out property <bool> stood: self.bent && self.crease-across;
+    // 0 folded, 1 open, 2 half as a book.
+    out property <int> posture: !self.wide ? 0 : self.half ? 2 : 1;
+    // Two panes side by side.
     out property <bool> split: self.posture != 0;
+    // How long a change of posture takes to move things into place. Only a bend glides: a
+    // fold or unfold swaps the whole screen, and the window clears `still` while it resizes.
+    in-out property <bool> still: true;
+    out property <duration> settle: self.still ? 340ms : 0ms;
 
-    // The navigation: a bar along the bottom when folded or stood up, a rail otherwise.
-    out property <bool> rail: self.posture == 1 || self.posture == 2;
+    // The navigation: a bar along the bottom when folded, a rail otherwise.
+    out property <bool> rail: self.posture != 0;
     out property <length> bar-height: 72px;
     out property <length> rail-width: self.posture == 2 ? 84px : 104px;
 
@@ -55,8 +64,6 @@ export global Fold {
     out property <length> gutter: 40px;
     out property <length> crease-x: self.width / 2 - self.body-x;
     out property <length> crease-y: self.height / 2 - self.body-y;
-    // Open, the two columns are parted by a hairline and a margin either side.
-    out property <length> margin: 12px;
 
     // A sheet or a question, in window coordinates: the whole width folded, the right page
     // as a book, and a column in the middle otherwise.
@@ -69,16 +76,13 @@ export global Fold {
 
     // The pane that picks and the pane that shows. `share` is the picking pane's part of an
     // open screen: a page with a grid to pick from gives it more, one with a short list less.
-    // Folded, both are the whole body.
+    // Half folded the crease decides instead. Folded, both are the whole body.
     public pure function pick(share: float) -> Area {
         if (self.posture == 1) {
             return { x: 0, y: 0, width: self.body-width * share - 0.5px, height: self.body-height };
         }
         if (self.posture == 2) {
-            return { x: self.margin, y: self.margin, width: self.crease-x - self.gutter / 2 - self.margin, height: self.body-height - 2 * self.margin };
-        }
-        if (self.posture == 3) {
-            return { x: self.margin, y: self.crease-y + self.gutter / 2, width: self.body-width - 2 * self.margin, height: self.body-height - self.crease-y - self.gutter / 2 - self.margin / 2 };
+            return { x: 0, y: 0, width: self.crease-x - self.gutter / 2, height: self.body-height };
         }
         return { x: 0, y: 0, width: self.body-width, height: self.body-height };
     }
@@ -88,10 +92,7 @@ export global Fold {
             return { x: self.body-width * share + 0.5px, y: 0, width: self.body-width * (1 - share) - 0.5px, height: self.body-height };
         }
         if (self.posture == 2) {
-            return { x: self.crease-x + self.gutter / 2, y: self.margin, width: self.body-width - self.crease-x - self.gutter / 2 - self.margin, height: self.body-height - 2 * self.margin };
-        }
-        if (self.posture == 3) {
-            return { x: self.margin, y: self.margin, width: self.body-width - 2 * self.margin, height: self.crease-y - self.gutter / 2 - self.margin };
+            return { x: self.crease-x + self.gutter / 2, y: 0, width: self.body-width - self.crease-x - self.gutter / 2, height: self.body-height };
         }
         return { x: 0, y: 0, width: self.body-width, height: self.body-height };
     }

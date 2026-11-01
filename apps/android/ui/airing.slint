@@ -1,0 +1,209 @@
+// Airing now on the phone: the desktop's page at phone size. The season, a filter, the
+// episodes out in the last two days, and every show on air as a poster. A tap on one offers
+// Plan to watch, Get episodes and Not interested; Not interested can be taken back for a
+// few seconds, and goes to the computer as well.
+
+import { Theme } from "theme.slint";
+import { AppData, Nav } from "data.slint";
+import { FindData } from "find.slint";
+import { Area, Fold } from "fold.slint";
+import { CalendarHead } from "calhead.slint";
+import { Leaf, Scroll } from "panes.slint";
+import { Button, Chip, EmptyNote, SectionHead, Segmented, TileGrid, TileRow } from "widgets.slint";
+
+// The season and the filter.
+export component AiringControls inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    Segmented {
+        options: AppData.airing-seasons;
+        picked: AppData.airing-season;
+        pick(i) => { AppData.pick-airing-season(i); }
+    }
+    Rectangle {
+        height: 9 * Theme.unit;
+        Flickable {
+            content-width: Math.max(self.width, chips.preferred-width);
+            interactive: chips.preferred-width > self.width;
+            chips := HorizontalLayout {
+                spacing: Theme.unit * 1.5;
+                alignment: start;
+                for f[i] in AppData.airing-filters: Chip {
+                    text: f;
+                    selected: i == AppData.airing-filter;
+                    tappable: true;
+                    clicked => { AppData.pick-airing-filter(i); }
+                }
+            }
+        }
+    }
+    if AppData.airing-line != "": Text {
+        text: AppData.airing-line;
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+}
+
+// Out now: the last two days' episodes, newest first.
+export component OutNow inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    if AppData.airing-out.length > 0: SectionHead {
+        title: "Out now";
+        note: "The last two days";
+    }
+    if AppData.airing-out.length > 0: TileRow {
+        tiles: AppData.airing-out;
+        tile-width: 100px;
+        open(id) => { AppData.airing-tap(id); }
+    }
+}
+
+// Every show on air.
+export component AiringGrid inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    if AppData.airing-tiles.length == 0 && AppData.airing-filter == 0: Text {
+        text: "The season's shows come from AniList.";
+        color: Theme.faint;
+        font-size: Theme.small + 1px;
+    }
+    if AppData.airing-tiles.length > 0: TileGrid {
+        tiles: AppData.airing-tiles;
+        open(id) => { AppData.airing-tap(id); }
+        held(id, title) => { AppData.airing-tap(id); }
+    }
+    if AppData.airing-tiles.length == 0 && AppData.airing-filter > 0: EmptyNote {
+        title: AppData.airing-filter == 1 ? "Nothing on air is on your lists" : "Nothing on air is on this phone";
+        body: AppData.airing-filter == 1 ? "Plan to watch on a show puts it on your list." : "Get episodes on a show downloads it here.";
+    }
+}
+
+// Taken back for a few seconds after a show is marked not interested.
+export component UndoBar inherits Rectangle {
+    height: row.preferred-height;
+    background: Theme.float;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    TouchArea { }
+    row := HorizontalLayout {
+        padding: Theme.unit * 3;
+        padding-left: Theme.unit * 4;
+        spacing: Theme.unit * 3;
+        Text {
+            horizontal-stretch: 1;
+            text: AppData.airing-undo + " is marked not interested.";
+            color: Theme.text;
+            font-size: Theme.small + 0.5px;
+            wrap: word-wrap;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Button {
+                text: "Undo";
+                icon: @image-url("icons/rotate-ccw.svg");
+                has-icon: true;
+                small: true;
+                clicked => { AppData.airing-take-back(); }
+            }
+        }
+    }
+}
+
+// A show tapped: a sheet from the foot, the same glass as the other sheets.
+export component AiringSheet inherits Rectangle {
+    in property <length> inset-bottom;
+    background: #000000b0;
+    TouchArea { clicked => { AppData.airing-close(); } }
+    Rectangle {
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        height: body.preferred-height;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
+            spacing: Theme.unit * 3;
+            Text {
+                text: AppData.airing-menu.title;
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            Rectangle { height: Theme.unit; }
+            if !AppData.airing-menu.listed: Button {
+                text: "Plan to watch";
+                icon: @image-url("icons/check-check.svg");
+                has-icon: true;
+                primary: true;
+                clicked => { AppData.airing-plan(AppData.airing-menu.id); }
+            }
+            Button {
+                text: AppData.airing-menu.owned >= 0 ? "Get more episodes" : "Get episodes";
+                icon: @image-url("icons/download.svg");
+                has-icon: true;
+                primary: AppData.airing-menu.listed;
+                clicked => {
+                    if (AppData.airing-menu.owned >= 0) {
+                        FindData.find-series(AppData.airing-menu.owned);
+                    } else {
+                        FindData.open("");
+                        FindData.text = AppData.airing-menu.title;
+                        FindData.suggest(AppData.airing-menu.title);
+                    }
+                    AppData.airing-close();
+                    Nav.page = 2;
+                }
+            }
+            Button {
+                text: "Not interested";
+                icon: @image-url("icons/x.svg");
+                has-icon: true;
+                clicked => { AppData.airing-dismiss(AppData.airing-menu.id); }
+            }
+            Button {
+                text: "Cancel";
+                clicked => { AppData.airing-close(); }
+            }
+        }
+    }
+}
+
+// Folded, one column; open or half folded, the season, filter and Out now pick on the left,
+// the shows fill the right.
+export component AiringPage inherits Rectangle {
+    if !Fold.split: Scroll {
+        pad-bottom: Theme.pad * 2 + (AppData.airing-undo != "" ? 20 * Theme.unit : 0);
+        CalendarHead { }
+        AiringControls { }
+        OutNow { }
+        AiringGrid { }
+    }
+    if Fold.split: Leaf {
+        area: Fold.pick(0.38);
+        Scroll {
+            CalendarHead { }
+            AiringControls { }
+            OutNow { }
+        }
+    }
+    if Fold.split: Leaf {
+        area: Fold.show(0.38);
+        Scroll {
+            pad-bottom: Theme.pad * 2 + (AppData.airing-undo != "" ? 20 * Theme.unit : 0);
+            AiringGrid { }
+        }
+    }
+    if AppData.airing-undo != "": UndoBar {
+        property <Area> area: Fold.show(0.38);
+        x: self.area.x + Theme.grout;
+        width: self.area.width - 2 * Theme.grout;
+        y: parent.height - self.height - Theme.grout;
+    }
+}

@@ -975,6 +975,7 @@ export component TileRow inherits Rectangle {
     height: self.tile-width * Theme.poster-ratio;
     Flickable {
         content-width: Math.max(self.width, root.tiles.length * (root.tile-width + Theme.gap) - Theme.gap);
+        interactive: self.content-width > self.width;
         for tile[i] in root.tiles: PosterTile {
             x: i * (root.tile-width + Theme.gap);
             width: root.tile-width;

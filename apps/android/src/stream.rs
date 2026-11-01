@@ -152,7 +152,7 @@ impl Host {
     }
 }
 
-fn call_on(client: &HostClient, name: &str, call: &Call) -> Result<Reply, CoreError> {
+pub(crate) fn call_on(client: &HostClient, name: &str, call: &Call) -> Result<Reply, CoreError> {
     let body = serde_json::to_vec(call).map_err(|e| CoreError::internal(e.to_string()))?;
     let (status, answer) = client.post(api::CALL, &body).map_err(|e| CoreError::internal(e.to_string()))?;
     if status == 200 {

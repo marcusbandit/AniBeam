@@ -6,6 +6,7 @@
 
 slint::include_modules!();
 
+mod airing;
 mod android;
 mod app;
 mod find;
