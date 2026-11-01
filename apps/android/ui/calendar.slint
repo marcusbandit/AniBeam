@@ -280,6 +280,7 @@ component DayLine inherits Rectangle {
 // Open, a column a day: the day on top, its episodes as cards with the poster cut wide.
 component BoardCard inherits Rectangle {
     in property <CalItem> item;
+    callback opened();
     height: card.preferred-height;
     border-radius: Theme.radius-small + 4px;
     background: touch.pressed ? Theme.pressed : Theme.surface;
@@ -288,6 +289,7 @@ component BoardCard inherits Rectangle {
     clip: true;
     touch := TouchArea {
         clicked => {
+            root.opened();
             if (root.item.remote) {
                 AppData.open-remote(root.item.id);
             } else {
@@ -404,7 +406,11 @@ component WeekBoard inherits Rectangle {
                         alignment: start;
                         spacing: Theme.gap;
                         padding-bottom: Theme.pad;
-                        for item in day.items: BoardCard { item: item; }
+                        // The day stays picked, so the column beside the series shows it.
+                        for item in day.items: BoardCard {
+                            item: item;
+                            opened => { AppData.cal-day = i; }
+                        }
                     }
                 }
             }
@@ -427,10 +433,14 @@ component Schedule inherits Rectangle {
         }
     }
 
-    // Open: the board, the whole week at a glance. It fades into the book's two pages when
-    // the phone bends, since a column would sit on the crease.
+    // Split, the schedule shows one of three ways, and fades from one to the next:
+    //   board   open: the whole week at a glance, unless days were picked instead.
+    //   days    half folded, or picked: the days on the left page, the picked one on the right.
+    //   beside  a series open on the right: the folded column on the left, all of it in reach.
+    property <int> split-view: AppData.series-open ? 2 : Fold.posture == 1 && !AppData.cal-days ? 0 : 1;
+
     if Fold.split: VerticalLayout {
-        opacity: Fold.posture == 1 ? 1 : 0;
+        opacity: root.split-view == 0 ? 1 : 0;
         visible: self.opacity > 0;
         animate opacity { duration: Fold.settle; }
         padding-top: Theme.unit * 4;
@@ -443,9 +453,8 @@ component Schedule inherits Rectangle {
         WeekBoard { vertical-stretch: 1; }
     }
 
-    // Half, as a book: the days on the left page, the picked one on the right.
     if Fold.split: Rectangle {
-        opacity: Fold.posture == 2 ? 1 : 0;
+        opacity: root.split-view == 1 ? 1 : 0;
         visible: self.opacity > 0;
         animate opacity { duration: Fold.settle; }
         Leaf {
@@ -469,6 +478,23 @@ component Schedule inherits Rectangle {
                     day: root.picked;
                     poster-width: 14 * Theme.unit;
                 }
+            }
+        }
+    }
+
+    // The share matches the series page's on this tab, in app.slint.
+    if Fold.split: Leaf {
+        area: Fold.pick(0.5);
+        opacity: root.split-view == 2 ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: Fold.settle; }
+        Scroll {
+            CalendarHead { }
+            DayStrip { }
+            if !root.empty: DayAgenda { day: root.picked; }
+            if root.empty: EmptyNote {
+                title: "No shows on this phone yet";
+                body: "Episodes of the shows you keep here show up on their day, two days back and a week ahead.";
             }
         }
     }

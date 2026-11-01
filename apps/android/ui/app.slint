@@ -162,7 +162,8 @@ export component AppWindow inherits Window {
     init => { self.measure(); }
     // A change of posture sets Fold.moving for as long as things take to settle.
     property <int> posture: Fold.posture;
-    changed posture => {
+    changed posture => { self.start-moving(); }
+    function start-moving() {
         Fold.moving = true;
         moving-done.running = false;
         moving-done.running = true;
@@ -192,7 +193,13 @@ export component AppWindow inherits Window {
 
     // Where a series page opens in the fold layouts: over the pane that shows, sized for
     // the page it opened from.
-    property <float> series-share: root.page == 1 ? 0.56 : root.page == 4 ? 0.5 : root.page == 0 ? 0.6 : 0.46;
+    property <float> series-share: root.page == 1 ? 0.56 : root.page == 4 ? (AppData.airing-view ? 0.38 : 0.5) : root.page == 0 ? 0.6 : 0.46;
+
+    // How far the series page is in, 0 gone to 1 in place. Leaving the tab takes it away at
+    // once rather than sliding it over the next one.
+    property <float> series-in: AppData.series-open ? 1 : 0;
+    property <bool> series-cut;
+    animate series-in { duration: AppData.series-open ? 200ms : root.series-cut ? 0ms : 320ms; easing: ease-in-out; }
 
     forward-focus: keys;
 
@@ -213,10 +220,21 @@ export component AppWindow inherits Window {
     }
     changed find-view => { keys.focus(); }
     changed notes-shown => { keys.focus(); }
-    changed series-shown => { keys.focus(); }
+    // Split, a series opening or closing narrows or widens the page beside it, and its grid
+    // glides to the new columns as it would on a bend.
+    changed series-shown => {
+        keys.focus();
+        if (AppData.series-open) {
+            root.series-cut = false;
+        }
+        if (Fold.split) {
+            root.start-moving();
+        }
+    }
     changed player-shown => { keys.focus(); }
 
     function go(to: int) {
+        root.series-cut = true;
         AppData.close-series();
         // Downloads opens on its lenses; a show or a list left open stays as it was.
         if (to == 2 && !FindData.shown) {
@@ -319,24 +337,33 @@ export component AppWindow inherits Window {
             }
             if root.page == 4: CalendarPage { }
             // Folded, the series page covers the body; otherwise it opens over the pane that
-            // shows, and the page beside it stays in reach.
-            if AppData.series-open: Rectangle {
+            // shows, and the page beside it stays in reach. It slides in from the right when
+            // nothing was open, quicker in than out; another series picked while one is open
+            // takes its place at once.
+            if AppData.series-open || root.series-in > 0: Rectangle {
                 property <Area> area: Fold.show(root.series-share);
                 x: self.area.x;
                 y: self.area.y;
                 width: self.area.width;
                 height: self.area.height;
                 animate x, y, width, height { duration: Fold.settle; easing: ease-in-out; }
-                background: Theme.ground;
                 clip: true;
-                TouchArea { }
-                SeriesPage { }
-                if Fold.split: Rectangle {
-                    x: 0;
-                    width: 1px;
-                    background: Theme.line;
-                    opacity: Fold.posture == 1 ? 1 : 0;
-                    animate opacity { duration: Fold.settle; }
+                Rectangle {
+                    x: (1 - root.series-in) * parent.width;
+                    width: parent.width;
+                    height: parent.height;
+                    background: Theme.ground;
+                    TouchArea { }
+                    SeriesPage { }
+                    // Sliding out, it is already closed: nothing on it takes a touch.
+                    if !AppData.series-open: TouchArea { }
+                    if Fold.split: Rectangle {
+                        x: 0;
+                        width: 1px;
+                        background: Theme.line;
+                        opacity: Fold.posture == 1 ? 1 : 0;
+                        animate opacity { duration: Fold.settle; }
+                    }
                 }
             }
         }

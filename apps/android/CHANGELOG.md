@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · 2026-11-01
 
 ### New
+- Unfolded, the Calendar shows the week as a board or as days, your pick
 - Airing now, in the Calendar: this season's shows, Plan to watch and Get
 - Not interested hides a show here and on your computer
 - See your computer's calendar beside this phone's
@@ -37,6 +38,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Episodes watched from your computer keep their place there
 
 ### Changed
+- A series page slides in and out; picking another one swaps it at once
+- Airing now unfolded lists its filters and shows Out now as a grid
+- With a series open, the Calendar moves beside it, all of it in reach
 - Stood up half folded, back, cast and lock sit below the crease too
 - A batch in Downloads is a stacked card with a Batch tag
 - Episode squares when picking what to get are bigger, numbered, easier to tap
@@ -59,6 +63,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings say search sites instead of endpoints, and plain words for the rest
 
 ### Fixed
+- A series page beside Home no longer drags sideways
 - Opening a folded phone a little no longer splits the outer screen's player
 - The Library's device switch keeps its highlight under the label on a bend
 - Rows of filter and source buttons are no longer cut off at the bottom

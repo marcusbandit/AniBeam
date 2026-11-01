@@ -11,15 +11,47 @@ import { CalendarHead } from "calhead.slint";
 import { Leaf, Scroll } from "panes.slint";
 import { Button, Chip, EmptyNote, SectionHead, Segmented, TileGrid, TileRow } from "widgets.slint";
 
-// The season and the filter.
+// One filter as a row of the side pane's list, lit when picked.
+component FilterRow inherits Rectangle {
+    in property <string> text;
+    in property <bool> picked;
+    callback clicked();
+    height: Theme.touch;
+    border-radius: self.height / 2;
+    background: root.picked ? Theme.accent-soft : touch.pressed ? Theme.pressed : transparent;
+    border-width: root.picked ? 1px : 0;
+    border-color: Theme.accent-edge;
+    Text {
+        x: Theme.unit * 5;
+        width: parent.width - 2 * self.x;
+        text: root.text;
+        color: root.picked ? Theme.accent : Theme.text;
+        font-family: root.picked ? Theme.strong-face : Theme.face;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// The season and the filter. Folded the filters are a row of chips; in a side pane, where
+// a row would be cut short, they are a list.
 export component AiringControls inherits VerticalLayout {
+    in property <bool> listed;
     spacing: Theme.unit * 3;
     Segmented {
         options: AppData.airing-seasons;
         picked: AppData.airing-season;
         pick(i) => { AppData.pick-airing-season(i); }
     }
-    Rectangle {
+    if root.listed: VerticalLayout {
+        spacing: Theme.unit;
+        for f[i] in AppData.airing-filters: FilterRow {
+            text: f;
+            picked: i == AppData.airing-filter;
+            clicked => { AppData.pick-airing-filter(i); }
+        }
+    }
+    if !root.listed: Rectangle {
         height: chips.preferred-height;
         Flickable {
             content-width: Math.max(self.width, chips.preferred-width);
@@ -44,14 +76,23 @@ export component AiringControls inherits VerticalLayout {
     }
 }
 
-// Out now: the last two days' episodes, newest first.
+// Out now: the last two days' episodes, newest first. A row folded; in a side pane, with
+// the height to spare, a grid.
 export component OutNow inherits VerticalLayout {
+    in property <bool> grid;
+    in property <length> fit-width: self.width;
     spacing: Theme.unit * 3;
     if AppData.airing-out.length > 0: SectionHead {
         title: "Out now";
         note: "The last two days";
     }
-    if AppData.airing-out.length > 0: TileRow {
+    if AppData.airing-out.length > 0 && root.grid: TileGrid {
+        fit-width: root.fit-width;
+        tile-min: 100px;
+        tiles: AppData.airing-out;
+        open(id) => { AppData.airing-tap(id); }
+    }
+    if AppData.airing-out.length > 0 && !root.grid: TileRow {
         tiles: AppData.airing-out;
         tile-width: 100px;
         open(id) => { AppData.airing-tap(id); }
@@ -191,8 +232,11 @@ export component AiringPage inherits Rectangle {
         area: Fold.pick(0.38);
         Scroll {
             CalendarHead { }
-            AiringControls { }
-            OutNow { }
+            AiringControls { listed: true; }
+            OutNow {
+                grid: true;
+                fit-width: Fold.inner(Fold.pick(0.38));
+            }
         }
     }
     if Fold.split: Leaf {

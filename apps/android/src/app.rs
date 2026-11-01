@@ -1032,6 +1032,7 @@ impl App {
         let quality = crate::stream::Quality::ALL.iter().position(|q| *q == self.prefs.stream_quality).unwrap_or(0);
         data.set_stream_quality(quality as i32);
         data.set_limit_on(self.prefs.limit_on);
+        data.set_cal_days(self.prefs.cal_days);
         data.set_limit_gb(self.prefs.limit_gb as f32);
         data.set_limit_label(prefs::limit_label(self.prefs.limit_gb).into());
         self.show_app_icon();
@@ -1433,6 +1434,16 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         })
     });
     data.on_search(|_| with_app(App::tick));
+    // A view's choice: saved, and shown, without the storage figures save_prefs redoes.
+    data.on_set_cal_days(|on| {
+        with_app(|app| {
+            app.prefs.cal_days = on;
+            if let Err(e) = prefs::save(&app.data_dir, &app.prefs) {
+                crate::local::log(&format!("could not save the phone's settings: {e}"));
+            }
+            app.data().set_cal_days(on);
+        })
+    });
     data.on_set_wifi_only(|on| {
         with_app(|app| {
             app.prefs.wifi_only = on;

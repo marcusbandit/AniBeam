@@ -23,11 +23,14 @@ pub struct Prefs {
     pub notes: Seen,
     /// How an episode from the other device streams.
     pub stream_quality: crate::stream::Quality,
+    /// Unfolded, the Calendar shows its days as a list beside the picked one rather than
+    /// the week as a board.
+    pub cal_days: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { onboarded: false, wifi_only: true, limit_on: false, limit_gb: SUGGESTED_LIMIT_GB, notes: Seen::default(), stream_quality: Default::default() }
+        Prefs { onboarded: false, wifi_only: true, limit_on: false, limit_gb: SUGGESTED_LIMIT_GB, notes: Seen::default(), stream_quality: Default::default(), cal_days: false }
     }
 }
 
