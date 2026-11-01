@@ -307,6 +307,30 @@ export component IconButton inherits Rectangle {
     }
 }
 
+// What sits behind a card that stands for many things, a batch: two edges peeking out
+// under it, and ground to hide them behind the card's see-through glass. Goes first in the
+// card, which is `card-height` tall and leaves `peek` under it for the stack.
+export component CardStack inherits Rectangle {
+    in property <length> card-height;
+    out property <length> peek: 3 * Theme.unit;
+    for edge in [2, 1]: Rectangle {
+        x: edge * 2.5 * Theme.unit;
+        y: edge * root.peek / 2;
+        width: parent.width - edge * 5 * Theme.unit;
+        height: root.card-height;
+        border-radius: Theme.radius;
+        background: edge == 1 ? #16181c : #121418;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+    }
+    Rectangle {
+        y: 0;
+        height: root.card-height;
+        border-radius: Theme.radius;
+        background: Theme.ground;
+    }
+}
+
 // An on and off switch, the desktop's: a dark pill with a grey knob, white when on.
 export component Switch inherits Rectangle {
     in property <bool> on;

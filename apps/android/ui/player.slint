@@ -829,7 +829,8 @@ export component PlayerPage inherits Rectangle {
         x: PlayerData.level-kind == 1 ? root.side-left + 6 * Theme.unit : parent.width - self.width - root.side-right - 6 * Theme.unit;
         y: root.mid - self.height / 2;
         width: 14 * Theme.unit;
-        height: root.stood ? Math.min(48 * Theme.unit, controls.y - root.head-top - 4 * Theme.unit) : 48 * Theme.unit;
+        // Stood up, no taller than the ground between the header and the island.
+        height: root.stood ? Math.min(48 * Theme.unit, controls.y - root.head-top - 17 * Theme.unit) : 48 * Theme.unit;
         border-radius: self.width / 2;
         background: #08090bb3;
         Rectangle {

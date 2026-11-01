@@ -1306,7 +1306,8 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
         release: release.into(),
         folder: folder.into(),
         cubes: ModelRc::new(VecModel::from(cubes)),
-        batch: t.batch || t.files.len() > 1,
+        // A subtitle or NFO beside one episode is not a batch: it takes two episodes.
+        batch: t.batch || episodes.len() > 1,
         tone,
         series: show.and_then(|c| i32::try_from(c.id).ok()).unwrap_or(-1),
         show: show.map(|c| c.title.clone()).unwrap_or_default().into(),

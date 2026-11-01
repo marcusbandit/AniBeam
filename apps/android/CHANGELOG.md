@@ -39,7 +39,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ### Changed
 - Stood up half folded, back, cast and lock sit below the crease too
 - A batch in Downloads is a stacked card with a Batch tag
-- Episode squares in Downloads are bigger and numbered, easier to tap
+- Episode squares when picking what to get are bigger, numbered, easier to tap
 - Small buttons and chips take a touch a little outside their edge
 - Bending the phone slides everything into place instead of jumping
 - Half folded, the two sides sit either side of the crease without boxes

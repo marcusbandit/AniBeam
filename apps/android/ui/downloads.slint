@@ -7,7 +7,7 @@ import { Theme } from "theme.slint";
 import { AppData, DownloadRow, Nav } from "data.slint";
 import { FindData, Lenses, ReleaseList, ShowView, Suggestions } from "find.slint";
 import { Settings } from "more.slint";
-import { Button, Chip, ClampedText, Cubes, Figure, IconButton, PageTitle, Poster, ProgressLine, SearchField, SectionHead } from "widgets.slint";
+import { Button, CardStack, Chip, ClampedText, Cubes, Figure, IconButton, PageTitle, Poster, ProgressLine, SearchField, SectionHead } from "widgets.slint";
 import { Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
 
@@ -29,34 +29,8 @@ component DownloadCard inherits Rectangle {
     property <color> fill: root.data.tone == 0 ? Theme.purple : root.data.tone == 2 ? Theme.yellow : root.data.tone == 3 ? Theme.bad : Theme.dim;
     property <bool> failed: root.data.state == "Stopped by an error";
     property <length> card-height: Math.max(row.preferred-height, 20 * Theme.unit);
-    height: self.card-height + (root.data.batch ? 2 * Theme.unit : 0);
-    if root.data.batch: Rectangle {
-        x: 4 * Theme.unit;
-        y: 2 * Theme.unit;
-        width: parent.width - 8 * Theme.unit;
-        height: root.card-height;
-        border-radius: Theme.radius;
-        background: Theme.ground;
-        border-width: 1px;
-        border-color: Theme.line;
-    }
-    if root.data.batch: Rectangle {
-        x: 2 * Theme.unit;
-        y: Theme.unit;
-        width: parent.width - 4 * Theme.unit;
-        height: root.card-height;
-        border-radius: Theme.radius;
-        background: Theme.ground;
-        border-width: 1px;
-        border-color: Theme.line;
-    }
-    // The card's glass is see-through; ground under it hides the stack behind.
-    if root.data.batch: Rectangle {
-        y: 0;
-        height: root.card-height;
-        border-radius: Theme.radius;
-        background: Theme.ground;
-    }
+    height: self.card-height + (root.data.batch ? 3 * Theme.unit : 0);
+    if root.data.batch: CardStack { card-height: root.card-height; }
     Rectangle {
         y: 0;
         height: root.card-height;

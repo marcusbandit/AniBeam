@@ -8,7 +8,7 @@
 import { Theme } from "theme.slint";
 import { Nav, Tile } from "data.slint";
 import { Settings } from "more.slint";
-import { Button, Chip, ClampedText, Cubes, EmptyNote, Field, ListGroup, Pane, PageTitle, Poster, SectionHead, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
+import { Button, CardStack, Chip, ClampedText, Cubes, EmptyNote, Field, ListGroup, Pane, PageTitle, Poster, SectionHead, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
 
 // One source in the show view: its name and what asking it gave.
 export struct SourceChip {
@@ -343,35 +343,9 @@ component GridItem inherits Rectangle {
     callback tapped(int);
     property <bool> batch: root.data.batch != "";
     property <length> card-height: column.preferred-height + 7 * Theme.unit;
-    height: self.card-height + (self.batch ? 2 * Theme.unit : 0);
+    height: self.card-height + (self.batch ? 3 * Theme.unit : 0);
     // The stack: two edges peeking out under the card.
-    if root.batch: Rectangle {
-        x: 4 * Theme.unit;
-        y: 2 * Theme.unit;
-        width: parent.width - 8 * Theme.unit;
-        height: root.card-height;
-        border-radius: Theme.radius;
-        background: Theme.ground;
-        border-width: 1px;
-        border-color: Theme.line;
-    }
-    if root.batch: Rectangle {
-        x: 2 * Theme.unit;
-        y: Theme.unit;
-        width: parent.width - 4 * Theme.unit;
-        height: root.card-height;
-        border-radius: Theme.radius;
-        background: Theme.ground;
-        border-width: 1px;
-        border-color: Theme.line;
-    }
-    // The card's glass is see-through; ground under it hides the stack behind.
-    if root.batch: Rectangle {
-        y: 0;
-        height: root.card-height;
-        border-radius: Theme.radius;
-        background: Theme.ground;
-    }
+    if root.batch: CardStack { card-height: root.card-height; }
     Rectangle {
         height: root.card-height;
         y: 0;
