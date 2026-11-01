@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The line art icon in the phone's Material You colours, the pair Android's own themed
-     icons use. The launcher resolves them when it draws the icon; most launchers keep that
-     drawing until the app updates, so a new wallpaper may not reach it before then. -->
+<!-- The line art icon: lines alone in the phone's Material You colours, no tile behind them,
+     a dark ink for a light theme. The launcher resolves the colour when it draws the icon;
+     most launchers keep that drawing until the app updates, so a new wallpaper may not
+     reach it before then. -->
 <resources>
-    <color name="line_ground">@android:color/system_accent1_100</color>
-    <color name="line_ink">@android:color/system_neutral2_700</color>
+    <color name="line_ground">@android:color/transparent</color>
+    <color name="line_ink">@android:color/system_accent1_800</color>
 </resources>

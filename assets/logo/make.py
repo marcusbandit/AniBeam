@@ -158,7 +158,7 @@ write(anydpi / "ic_launcher_dark.xml", adaptive(
     "The default with its colours swapped: the yellow glyph on the dark ground.",
     "@color/icon_ink", "@drawable/ic_glyph_dark", "@drawable/ic_glyph_mono"))
 write(anydpi / "ic_launcher_line.xml", adaptive(
-    "The glyph's outline alone, in the colours values-v31 takes from Material You.",
+    "The glyph's outline alone on a clear ground, inked in Material You by values-v31.",
     "@color/line_ground", "@drawable/ic_glyph_line", "@drawable/ic_glyph_line_mono"))
 
 # The picker's previews: the two fixed icons as they are, and the outline in white for the
