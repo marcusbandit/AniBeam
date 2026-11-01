@@ -77,6 +77,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can add a source that answers in JSON
 
 ### Changed
+- Library sorts and groups from two menus, with the order said in words
 - Searches wait a second between requests to one site, except your own server
 - Settings lists its sections down the left, each saying how it stands now
 - Search settings: type a word and land on the setting it names

@@ -60,7 +60,7 @@
   "wait": 2500
  },
  {
-  "click": "plain"
+  "eval": "driver.item.findItem('library-page').plain()"
  },
  {
   "wait": 1500
