@@ -55,7 +55,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings say search sites instead of endpoints, and plain words for the rest
 
 ### Fixed
-- The buttons above What to get and the source buttons are no longer cut off
+- Rows of filter and source buttons are no longer cut off at the bottom
 - Library's posters glide into place when the phone bends instead of jittering
 - Sideways and half folded, the video keeps its shape above the crease
 - Rows of buttons that fit no longer scroll

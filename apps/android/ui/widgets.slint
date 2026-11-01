@@ -956,6 +956,7 @@ export component TileGrid inherits Rectangle {
     property <length> tile-width: (self.fit-width - (self.columns - 1) * Theme.gap) / self.columns;
     property <length> tile-height: self.tile-width * Theme.poster-ratio;
     height: Math.max(0, Math.ceil(self.tiles.length / self.columns) * (self.tile-height + Theme.gap) - Theme.gap);
+    animate height { duration: Fold.glide; easing: ease-in-out; }
 
     for tile[i] in root.tiles: PosterTile {
         x: Math.mod(i, root.columns) * (root.tile-width + Theme.gap);
@@ -963,7 +964,7 @@ export component TileGrid inherits Rectangle {
         width: root.tile-width;
         height: root.tile-height;
         // A new column count glides the tiles to their places, in step with the panes.
-        animate x, y, width, height { duration: Fold.settle; easing: ease-in-out; }
+        animate x, y, width, height { duration: Fold.glide; easing: ease-in-out; }
         data: tile;
         holdable: root.holdable;
         open(id) => { root.open(id); }

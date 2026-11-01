@@ -160,6 +160,21 @@ export component AppWindow inherits Window {
         Fold.inset-right = self.inset-right;
     }
     init => { self.measure(); }
+    // A change of posture sets Fold.moving for as long as things take to settle.
+    property <int> posture: Fold.posture;
+    changed posture => {
+        Fold.moving = true;
+        moving-done.running = false;
+        moving-done.running = true;
+    }
+    moving-done := Timer {
+        interval: 450ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            Fold.moving = false;
+        }
+    }
     resize-done := Timer {
         interval: 500ms;
         running: false;
