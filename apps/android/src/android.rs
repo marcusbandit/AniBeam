@@ -259,21 +259,22 @@ pub fn set_activity(activity: *mut std::ffi::c_void) {
     ACTIVITY.store(activity as usize, std::sync::atomic::Ordering::Release);
 }
 
-/// Calls one of `Screen.java`'s static methods with the activity and a flag. The class is
-/// the app's own, so it is loaded through the activity's class loader: a lookup from a
-/// native thread would only see the system's classes.
+/// Calls one of `Screen.java`'s static methods with the activity and one more argument, and
+/// hands back what it returns. The class is the app's own, so it is loaded through the
+/// activity's class loader: a lookup from a native thread would only see the system's
+/// classes.
 #[cfg(target_os = "android")]
-fn screen(method: &str, on: bool) {
+fn screen_call(method: &str, sig: &str, arg: Option<jni::objects::JValue>) -> Option<jni::objects::JValueOwned<'static>> {
     let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
     if raw == 0 {
-        return;
+        return None;
     }
     // `with_env`'s context is the Application, and Screen needs the Activity.
     let r = with_env(|env, _app| {
-        use jni::objects::{JClass, JObject, JValue};
+        use jni::objects::{JClass, JObject, JValue, JValueOwned};
         // The thread stays attached for the life of the app, so the local references made
         // here are freed with a frame of their own rather than piling up per call.
-        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+        env.with_local_frame(8, |env| -> Result<Option<JValueOwned<'static>>, Box<dyn std::error::Error>> {
             let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
             let loader = env.call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
             let name = env.new_string("com.marcusrosado.anibeam.Screen")?;
@@ -281,18 +282,66 @@ fn screen(method: &str, on: bool) {
                 .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&name)])?
                 .l()?;
             let class = JClass::from(class);
-            env.call_static_method(
-                &class,
-                method,
-                "(Landroid/app/Activity;Z)V",
-                &[JValue::Object(activity), JValue::Bool(on.into())],
-            )?;
-            Ok(())
+            let mut args = vec![JValue::Object(activity)];
+            args.extend(arg);
+            let out = env.call_static_method(&class, method, sig, &args)?;
+            // Only plain values come back, which hold no reference into the frame.
+            Ok(match out {
+                JValueOwned::Float(f) => Some(JValueOwned::Float(f)),
+                _ => None,
+            })
         })
     });
-    if let Err(e) = r {
-        crate::local::log(&format!("Screen.{method}: {e}"));
+    match r {
+        Ok(v) => v,
+        Err(e) => {
+            crate::local::log(&format!("Screen.{method}: {e}"));
+            None
+        }
     }
+}
+
+#[cfg(target_os = "android")]
+fn screen(method: &str, on: bool) {
+    screen_call(method, "(Landroid/app/Activity;Z)V", Some(jni::objects::JValue::Bool(on.into())));
+}
+
+/// The window's brightness, 0 to 1.
+pub fn brightness() -> f32 {
+    #[cfg(target_os = "android")]
+    return match screen_call("brightness", "(Landroid/app/Activity;)F", None) {
+        Some(jni::objects::JValueOwned::Float(f)) => f,
+        _ => 0.5,
+    };
+    #[cfg(not(target_os = "android"))]
+    0.5
+}
+
+/// Sets this window's brightness, 0 to 1; below 0 hands it back to the phone's setting.
+pub fn set_brightness(level: f32) {
+    #[cfg(target_os = "android")]
+    screen_call("setBrightness", "(Landroid/app/Activity;F)V", Some(jni::objects::JValue::Float(level)));
+    #[cfg(not(target_os = "android"))]
+    let _ = level;
+}
+
+/// The media volume, 0 to 1.
+pub fn volume() -> f32 {
+    #[cfg(target_os = "android")]
+    return match screen_call("volume", "(Landroid/app/Activity;)F", None) {
+        Some(jni::objects::JValueOwned::Float(f)) => f,
+        _ => 0.5,
+    };
+    #[cfg(not(target_os = "android"))]
+    0.5
+}
+
+/// Sets the media volume, 0 to 1.
+pub fn set_volume(level: f32) {
+    #[cfg(target_os = "android")]
+    screen_call("setVolume", "(Landroid/app/Activity;F)V", Some(jni::objects::JValue::Float(level)));
+    #[cfg(not(target_os = "android"))]
+    let _ = level;
 }
 
 /// The player's screen: landscape with the system bars hidden, or back as it was.

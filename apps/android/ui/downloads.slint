@@ -98,13 +98,15 @@ component DownloadPanel inherits Rectangle {
             spacing: Theme.gap;
             alignment: start;
             padding-top: Theme.unit;
+            // A download an error stopped starts again with Retry.
             if root.data.state != "Waiting for Wi-Fi": Button {
-                text: root.data.paused ? "Start" : "Pause";
-                icon: root.data.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
+                property <bool> failed: root.data.state == "Stopped by an error";
+                text: self.failed ? "Retry" : root.data.paused ? "Start" : "Pause";
+                icon: self.failed ? @image-url("icons/refresh-cw.svg") : root.data.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
                 has-icon: true;
                 small: true;
-                primary: root.data.paused;
-                clicked => { AppData.torrent-action(root.data.hash, root.data.paused ? 1 : 0); }
+                primary: root.data.paused || self.failed;
+                clicked => { AppData.torrent-action(root.data.hash, root.data.paused || self.failed ? 1 : 0); }
             }
             // Cancel deletes what the download had written so far.
             Button {

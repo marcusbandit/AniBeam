@@ -11,6 +11,9 @@ import { RepoData, RepoPanes } from "repos.slint";
 export global Ask {
     // "Download over mobile data?", before Wi-Fi only goes off.
     in-out property <bool> mobile;
+    // A poster of this phone's held down: its series and its title. -1 is none.
+    in-out property <int> menu-id: -1;
+    in-out property <string> menu-title;
 }
 
 // The other device's address, editable in place, with its last test underneath.
@@ -20,7 +23,7 @@ component HostRow inherits Rectangle {
         padding: Theme.pad;
         spacing: Theme.unit * 3;
         Text {
-            text: "Another AniBeam on your tailnet";
+            text: "Your computer's AniBeam";
             color: Theme.text;
             font-family: Theme.strong-face;
         }
@@ -138,7 +141,7 @@ export component MorePage inherits Rectangle {
                 alignment: start;
                 Figure {
                     value: AppData.used-figure;
-                    caption: "episodes";
+                    caption: "used by episodes";
                 }
                 Figure {
                     value: AppData.limit-on ? AppData.limit-label : "None";
@@ -221,7 +224,7 @@ export component MorePage inherits Rectangle {
             }
 
             SectionHead {
-                title: "Endpoints";
+                title: "Search sites";
                 note: RepoData.repos.length == 0 ? "No repo yet" : RepoData.repos.length == 1 ? "From 1 repo" : "From " + RepoData.repos.length + " repos";
             }
             RepoPanes { }
@@ -229,7 +232,7 @@ export component MorePage inherits Rectangle {
             // Feeds saved on this phone before repos existed; a new phone has none.
             if AppData.sources.length > 0: SectionHead {
                 title: "Your own feeds";
-                note: "Searched before the endpoints";
+                note: "Searched before the sites";
             }
             if AppData.sources.length > 0: ListGroup {
                 for source[i] in AppData.sources: SourceItem {
@@ -247,7 +250,7 @@ export component MorePage inherits Rectangle {
             ListGroup {
                 ListRow {
                     label: AppData.checking ? "Checking..." : "Check the connection";
-                    helper: AppData.check-summary != "" ? AppData.check-summary : "Tests each step between this phone and the sources: DNS, encrypted DNS, connecting, and HTTPS.";
+                    helper: AppData.check-summary != "" ? AppData.check-summary : "Tests each step between this phone and the search sites: finding them, reaching them, and a secure connection.";
                     tappable: !AppData.checking;
                     chevron: !AppData.checking;
                     last: AppData.checks.length == 0;

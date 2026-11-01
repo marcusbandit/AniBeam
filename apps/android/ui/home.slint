@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { Ask } from "more.slint";
 import { AppData } from "data.slint";
 import { ClampedText, EmptyNote, PageTitle, Poster, SectionHead, TileGrid, TileRow } from "widgets.slint";
 
@@ -121,6 +122,10 @@ export component HomePage inherits Rectangle {
             if AppData.day-tiles.length > 0: TileGrid {
                 tiles: AppData.day-tiles;
                 open(id) => { AppData.open-series(id); }
+                held(id, title) => {
+                    Ask.menu-id = id;
+                    Ask.menu-title = title;
+                }
             }
             for shelf in AppData.home-shelves: VerticalLayout {
                 spacing: Theme.unit * 3;
@@ -131,9 +136,13 @@ export component HomePage inherits Rectangle {
                 TileRow {
                     tiles: shelf.tiles;
                     open(id) => { AppData.open-series(id); }
+                    held(id, title) => {
+                        Ask.menu-id = id;
+                        Ask.menu-title = title;
+                    }
                 }
             }
-            if !AppData.hero.show && AppData.home-shelves.length == 0: EmptyNote {
+            if AppData.ready && !AppData.hero.show && AppData.home-shelves.length == 0: EmptyNote {
                 title: "Nothing on this phone yet";
                 body: "Shows you download here, and what airs for them, show up on Home. Find one in Downloads.";
             }

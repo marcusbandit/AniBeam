@@ -122,7 +122,7 @@ export component Chip inherits Rectangle {
     in property <bool> tappable;
     in property <bool> small;
     callback clicked();
-    height: root.small ? 7 * Theme.unit : 9 * Theme.unit;
+    height: root.small ? 9 * Theme.unit : 10 * Theme.unit;
     width: row.preferred-width + (root.small ? 5 : 7) * Theme.unit;
     border-radius: self.height / 2;
     background: root.selected ? Theme.accent-soft : touch.pressed ? Theme.pressed : root.dimmed ? transparent : Theme.raised;
@@ -177,9 +177,11 @@ export component Button inherits Rectangle {
     in property <bool> danger;
     in property <bool> small;
     in property <bool> enabled: true;
+    // The widest it grows; a longer label is cut short with an ellipsis.
+    in property <length> widest: 10000px;
     callback clicked();
     height: root.small ? Theme.control-small : Theme.control;
-    min-width: row.preferred-width + (root.small ? 7 : 10) * Theme.unit;
+    min-width: Math.min(row.preferred-width + (root.small ? 7 : 10) * Theme.unit, root.widest);
     border-radius: self.height / 2;
     opacity: root.enabled ? 1 : 0.45;
     background: root.primary ? (touch.pressed ? #c9cdd2 : Theme.accent)
@@ -205,6 +207,7 @@ export component Button inherits Rectangle {
             font-size: root.small ? Theme.small + 0.5px : Theme.normal;
             font-family: Theme.strong-face;
             vertical-alignment: center;
+            overflow: elide;
         }
     }
     touch := TouchArea {
@@ -353,11 +356,13 @@ component DisplayHead inherits Rectangle {
     property <length> beside-gap: 3 * Theme.unit;
     property <bool> beside: root.note != "" && head.preferred-width + root.beside-gap + side.preferred-width <= root.width;
     height: root.note == "" || root.beside ? head.preferred-height : head.preferred-height + Theme.unit + below.preferred-height;
+    // A title longer than the page, a long search say, wraps instead of running off it.
     head := Text {
         x: 0;
         y: 0;
-        width: self.preferred-width;
+        width: Math.min(self.preferred-width, root.width);
         height: self.preferred-height;
+        wrap: word-wrap;
         text: root.title;
         color: Theme.text;
         font-size: root.size;
@@ -514,7 +519,7 @@ export component ListRow inherits Rectangle {
     callback toggled();
     property <length> trailing: root.switch ? 15 * Theme.unit : root.chevron ? 9 * Theme.unit : root.value != "" ? value-text.preferred-width + 4 * Theme.unit : 0;
     height: Math.max(15 * Theme.unit, texts.preferred-height + 7 * Theme.unit);
-    background: touch.pressed && root.tappable ? Theme.raised : transparent;
+    background: touch.pressed && (root.tappable || root.switch) ? Theme.raised : transparent;
     texts := VerticalLayout {
         x: Theme.pad;
         width: parent.width - 2 * Theme.pad - root.trailing;
@@ -533,9 +538,16 @@ export component ListRow inherits Rectangle {
             wrap: word-wrap;
         }
     }
+    // A switch row flips from anywhere on it, its words included.
     touch := TouchArea {
-        enabled: root.tappable;
-        clicked => { root.clicked(); }
+        enabled: root.tappable || root.switch;
+        clicked => {
+            if (root.switch) {
+                root.toggled();
+            } else {
+                root.clicked();
+            }
+        }
     }
     if root.switch: Switch {
         x: parent.width - Theme.pad - self.width;
@@ -665,9 +677,10 @@ export component SearchField inherits Rectangle {
         vertical-alignment: center;
         overflow: elide;
     }
+    property <length> clear-size: 12 * Theme.unit;
     input := TextInput {
         x: root.text-x;
-        width: parent.width - self.x - Theme.pad;
+        width: parent.width - self.x - (root.text != "" ? root.clear-size : Theme.pad);
         height: parent.height;
         text <=> root.text;
         color: Theme.text;
@@ -676,6 +689,27 @@ export component SearchField inherits Rectangle {
         single-line: true;
         edited => { root.edited(self.text); }
         accepted => { root.accepted(self.text); }
+    }
+    // Clears the search in one tap.
+    if root.text != "": Rectangle {
+        x: parent.width - self.width - Theme.unit;
+        y: (parent.height - self.height) / 2;
+        width: root.clear-size;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: clear.pressed ? Theme.pressed : transparent;
+        Image {
+            width: 4.5 * Theme.unit;
+            height: self.width;
+            source: @image-url("icons/x.svg");
+            colorize: Theme.dim;
+        }
+        clear := TouchArea {
+            clicked => {
+                root.text = "";
+                root.edited("");
+            }
+        }
     }
 }
 
@@ -760,6 +794,8 @@ export component NavItem inherits Rectangle {
 export component PosterTile inherits Rectangle {
     in property <Tile> data;
     callback open(int);
+    // Held down: the series and its title, for a menu.
+    callback held(int, string);
     border-radius: Theme.radius;
     clip: true;
     background: Theme.surface;
@@ -825,9 +861,37 @@ export component PosterTile inherits Rectangle {
             spacing: 2px;
         }
     }
+    property <bool> was-held;
+    hold := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.was-held = true;
+            root.held(root.data.id, root.data.title);
+        }
+    }
     touch := TouchArea {
         enabled: root.data.id >= 0;
-        clicked => { root.open(root.data.id); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.was-held = false;
+                hold.running = true;
+            } else if (e.kind != PointerEventKind.move) {
+                hold.running = false;
+            }
+        }
+        // A finger that moves is a scroll, not a hold.
+        moved => {
+            if (Math.abs(self.mouse-x - self.pressed-x) > 3 * Theme.unit || Math.abs(self.mouse-y - self.pressed-y) > 3 * Theme.unit) {
+                hold.running = false;
+            }
+        }
+        clicked => {
+            if (!root.was-held) {
+                root.open(root.data.id);
+            }
+        }
     }
 }
 
@@ -837,6 +901,7 @@ export component TileGrid inherits Rectangle {
     in property <[Tile]> tiles;
     in property <length> tile-min: Theme.tile-min;
     callback open(int);
+    callback held(int, string);
     property <int> columns: Math.max(1, Math.floor((self.width + Theme.gap) / (self.tile-min + Theme.gap)));
     property <length> tile-width: (self.width - (self.columns - 1) * Theme.gap) / self.columns;
     property <length> tile-height: self.tile-width * Theme.poster-ratio;
@@ -849,6 +914,7 @@ export component TileGrid inherits Rectangle {
         height: root.tile-height;
         data: tile;
         open(id) => { root.open(id); }
+        held(id, title) => { root.held(id, title); }
     }
 }
 
@@ -857,6 +923,7 @@ export component TileRow inherits Rectangle {
     in property <[Tile]> tiles;
     in property <length> tile-width: 116px;
     callback open(int);
+    callback held(int, string);
     height: self.tile-width * Theme.poster-ratio;
     Flickable {
         content-width: Math.max(self.width, root.tiles.length * (root.tile-width + Theme.gap) - Theme.gap);
@@ -866,6 +933,7 @@ export component TileRow inherits Rectangle {
             height: root.height;
             data: tile;
             open(id) => { root.open(id); }
+            held(id, title) => { root.held(id, title); }
         }
     }
 }

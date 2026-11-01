@@ -3,6 +3,8 @@ package com.marcusrosado.anibeam;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
+import android.media.AudioManager;
+import android.provider.Settings;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.view.View;
@@ -13,7 +15,9 @@ import android.view.WindowManager;
 
 /**
  * What the player asks of the screen, which Android only lets its UI thread change: the
- * picture in landscape with the system bars hidden, and the display kept on while it plays.
+ * picture in landscape with the system bars hidden, the display kept on while it plays, and
+ * the brightness a swipe sets. The volume a swipe sets is the media stream's, the same the
+ * phone's buttons move.
  * The native side calls these from its own thread; each posts to the UI thread.
  */
 public final class Screen {
@@ -85,5 +89,48 @@ public final class Screen {
                 }
             }
         });
+    }
+
+    /** The window's brightness from 0 to 1: its own when a swipe set one, else the phone's. */
+    public static float brightness(final Activity activity) {
+        float own = activity.getWindow().getAttributes().screenBrightness;
+        if (own >= 0) return own;
+        try {
+            return Settings.System.getInt(activity.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) / 255f;
+        } catch (Settings.SettingNotFoundException e) {
+            return 0.5f;
+        }
+    }
+
+    /** Sets this window's brightness, 0 to 1; below 0 hands it back to the phone's setting. */
+    public static void setBrightness(final Activity activity, final float level) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Window window = activity.getWindow();
+                WindowManager.LayoutParams lp = window.getAttributes();
+                lp.screenBrightness = level < 0
+                        ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                        : Math.max(0.01f, Math.min(1f, level));
+                window.setAttributes(lp);
+            }
+        });
+    }
+
+    /** The media volume from 0 to 1. */
+    public static float volume(final Activity activity) {
+        AudioManager audio = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
+        if (audio == null) return 0.5f;
+        int max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        return max > 0 ? audio.getStreamVolume(AudioManager.STREAM_MUSIC) / (float) max : 0.5f;
+    }
+
+    /** Sets the media volume, 0 to 1, in the stream's own steps. */
+    public static void setVolume(final Activity activity, final float level) {
+        AudioManager audio = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
+        if (audio == null) return;
+        int max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        int step = Math.round(Math.max(0f, Math.min(1f, level)) * max);
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, step, 0);
     }
 }

@@ -312,7 +312,7 @@ impl Repos {
                     let line = format!(
                         "{} {}, signed{}",
                         count,
-                        if count == 1 { "endpoint" } else { "endpoints" },
+                        if count == 1 { "site" } else { "sites" },
                         if preview.trusted { ", already trusted" } else { "" }
                     );
                     r.data(|d| {
