@@ -73,7 +73,10 @@ export global RepoData {
     in-out property <string> edit-name;
     in-out property <string> edit-url;
     in property <string> edit-error;
+    // The labels of its keys, "API key", or empty when it has none.
+    in property <string> edit-keys;
     callback save-edit();
+    callback change-values();
     callback close-edit();
 
     callback add(string);
@@ -486,7 +489,7 @@ export component EndpointItem inherits Rectangle {
                 placeholder: "https://...{query}...";
             }
             Text {
-                text: "A key or token typed into the address replaces the stored one; one left as {key} is kept.";
+                text: RepoData.edit-keys == "" ? "A key or token typed into the address is moved to this phone's secret store." : "Leave each {key} in the address as it is; its value is kept on this phone.";
                 color: Theme.dim;
                 font-size: Theme.small;
                 wrap: word-wrap;
@@ -510,6 +513,11 @@ export component EndpointItem inherits Rectangle {
                     text: "Cancel";
                     small: true;
                     clicked => { RepoData.close-edit(); }
+                }
+                if RepoData.edit-keys != "": Button {
+                    text: "Change its " + RepoData.edit-keys;
+                    small: true;
+                    clicked => { RepoData.change-values(); }
                 }
             }
         }

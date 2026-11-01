@@ -37,6 +37,8 @@ struct Repos {
     asking: Option<Asking>,
     /// The source added by hand that is open for editing, by install id.
     editing: Option<String>,
+    /// An edit is on its way to the core; a second tap on Save waits for it.
+    saving: bool,
     /// The saved catalog was read and the launch refresh sent.
     opened: bool,
 }
@@ -73,6 +75,7 @@ pub fn install(window: &AppWindow) {
                 lines: std::rc::Rc::new(VecModel::default()),
                 asking: None,
                 editing: None,
+                saving: false,
                 opened: false,
             })
     });
@@ -97,6 +100,7 @@ pub fn install(window: &AppWindow) {
     d.on_refresh(|| with(Repos::refresh));
     d.on_save_edit(|| with(Repos::save_edit));
     d.on_close_edit(|| with(Repos::close_edit));
+    d.on_change_values(|| with(Repos::change_values));
     d.on_act(|i| with(|r| r.act(i)));
     d.on_remove_endpoint(|i| with(|r| r.remove_endpoint(i)));
     d.on_toggle(|i| with(|r| r.toggle(i)));
@@ -353,12 +357,34 @@ impl Repos {
         self.dismiss();
         self.editing = Some(e.install_id.clone());
         let (name, address) = (e.name.clone(), e.address.clone().unwrap_or_default());
+        let keys: Vec<&str> = e.auth.iter().map(|a| a.label.as_str()).collect();
+        let keys = keys.join(", ");
         self.data(|d| {
             d.set_edit_name(name.into());
             d.set_edit_url(address.into());
+            d.set_edit_keys(keys.into());
             d.set_edit_error("".into());
             d.set_editing_index(i);
         });
+    }
+
+    /// From the edit form to the source's values: its keys and tokens, the form repo sources
+    /// open on, since a key is never typed into the address shown.
+    fn change_values(&mut self) {
+        let Some(install) = self.editing.clone() else { return };
+        let Some(e) = self.catalog.as_ref().and_then(|c| c.installed.iter().find(|e| e.install_id == install)).cloned()
+        else {
+            return;
+        };
+        let Some(i) = self.rows.iter().position(|r| matches!(r, Row::Installed { install: x, .. } if *x == install)) else {
+            return;
+        };
+        self.ask(
+            i as i32,
+            Row::Fill { install },
+            e.auth.clone(),
+            "Kept on this phone only. A field left empty keeps what is stored.".into(),
+        );
     }
 
     fn close_edit(&mut self) {
@@ -371,22 +397,35 @@ impl Repos {
 
     fn save_edit(&mut self) {
         let Some(install) = self.editing.clone() else { return };
+        if self.saving || crate::local::core().is_none() {
+            return;
+        }
+        self.saving = true;
         let (mut name, mut url) = (String::new(), String::new());
         self.data(|d| {
             name = d.get_edit_name().to_string();
             url = d.get_edit_url().to_string();
         });
-        spawn(Call::EditCustomEndpoint { install, name, url }, |r, answer| match answer {
-            Ok(Reply::EndpointCatalog { catalog }) => {
-                r.close_edit();
-                r.show(catalog);
-                crate::local::touch();
-                crate::app::endpoints_changed();
-            }
-            Ok(_) => {}
-            Err(e) => {
-                let text = e.to_string();
-                r.data(|d| d.set_edit_error(text.into()));
+        let saved = install.clone();
+        spawn(Call::EditCustomEndpoint { install, name, url }, move |r, answer| {
+            r.saving = false;
+            // The answer is for the source that was saved; another may be open by now.
+            let still_open = r.editing.as_deref() == Some(saved.as_str());
+            match answer {
+                Ok(Reply::EndpointCatalog { catalog }) => {
+                    if still_open {
+                        r.close_edit();
+                    }
+                    r.show(catalog);
+                    crate::local::touch();
+                    crate::app::endpoints_changed();
+                }
+                Ok(_) => {}
+                Err(e) if still_open => {
+                    let text = e.to_string();
+                    r.data(|d| d.set_edit_error(text.into()));
+                }
+                Err(_) => {}
             }
         });
     }
@@ -509,6 +548,7 @@ impl Repos {
     }
 
     fn ask(&mut self, index: i32, row: Row, fields: Vec<anibeam_core::EndpointField>, note: String) {
+        self.close_edit();
         let rows: Vec<AuthRow> = fields
             .iter()
             .map(|f| AuthRow {
@@ -542,17 +582,19 @@ impl Repos {
     /// change one that is stored. A field left empty keeps its value.
     fn open(&mut self, i: i32) {
         let Some(Row::Installed { install, update, fill }) = self.row(i) else { return };
-        // A row still missing a value asks for just that, as its button does.
-        if fill && !update {
-            self.act(i);
-            return;
-        }
         let Some(e) = self.catalog.as_ref().and_then(|c| c.installed.iter().find(|e| e.install_id == install)).cloned()
         else {
             return;
         };
+        // A source added by hand opens for editing, a missing value or not: its address
+        // may be what is wrong, and the form leads to its values too.
         if e.custom {
             self.open_edit(i, &e);
+            return;
+        }
+        // A row still missing a value asks for just that, as its button does.
+        if fill && !update {
+            self.act(i);
             return;
         }
         if e.auth.is_empty() {

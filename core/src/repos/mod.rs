@@ -952,26 +952,36 @@ pub fn edit_custom(
     name: String,
     url: String,
 ) -> Result<Reply, CoreError> {
-    let (mut def, lifted) = custom_definition(&name, &url)?;
-    let installed = core.store.read(read_installed)?;
-    let Some(row) = installed.iter().find(|i| i.install_id == install) else {
-        return Err(CoreError::invalid(
-            "endpoint",
-            "that source is not installed",
-        ));
-    };
-    // A secret the address keeps as its `{key}` keeps the label it was given when added.
-    for field in &mut def.auth {
-        if let Some(old) = row.def.auth.iter().find(|a| a.key == field.key) {
-            *field = old.clone();
-        }
-    }
+    let row = find_install(core, &install)?;
     if row.repo_url != CUSTOM {
         return Err(CoreError::invalid(
             "endpoint",
             "only a source added by hand can be edited",
         ));
     }
+    let (mut def, lifted) = custom_definition(&name, &url)?;
+    // A secret the address had as a `{key}` must stay one: a value typed in its place would
+    // be kept in the open, and only some keys are lifted out of an address by their name.
+    for old in &row.def.auth {
+        let kept = def.auth.iter().any(|a| a.key == old.key);
+        let lifted_again = lifted.iter().any(|(k, _)| *k == old.key);
+        if !kept && !lifted_again && !url.contains(&format!("{{{}}}", old.key)) {
+            return Err(CoreError::invalid(
+                "endpoint url",
+                format!(
+                    "keep {{{}}} in the address and change its value with Change its {}, or remove the site and add it again without it",
+                    old.key, old.label
+                ),
+            ));
+        }
+    }
+    // A secret the address keeps as its `{key}` keeps the label it was given when added.
+    for field in &mut def.auth {
+        if let Some(old) = row.def.auth.iter().find(|a| a.key == field.key) {
+            *field = old.clone();
+        }
+    }
+    let installed = core.store.read(read_installed)?;
     if installed
         .iter()
         .any(|i| i.install_id != install && i.def.id == def.id)
@@ -987,6 +997,12 @@ pub fn edit_custom(
         .collect();
     let values = credentials_for(&def, &given, false)?;
     store_credentials(core, &install, &values)?;
+    // A secret the new address no longer has is not left behind in the store.
+    for old in &row.def.auth {
+        if !def.auth.iter().any(|a| a.key == old.key) {
+            core.secrets().delete(&secret_key(&install, &old.key))?;
+        }
+    }
     let (row_id, row_def, json) = (
         install.clone(),
         def.id.clone(),

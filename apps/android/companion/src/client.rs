@@ -62,7 +62,7 @@ pub fn describe(error: &ureq::Error, host: &str) -> String {
                     "{host} is on, but AniBeam there is closed or not sharing. Open AniBeam on it and switch on Share over Tailscale in Settings, Phone app."
                 )
             }
-            std::io::ErrorKind::TimedOut => format!("{host} did not answer in time"),
+            std::io::ErrorKind::TimedOut => format!("{host} did not answer. Is it on, and is Tailscale connected on both?"),
             std::io::ErrorKind::NetworkUnreachable | std::io::ErrorKind::HostUnreachable => {
                 format!("No route to {host}. Is Tailscale connected?")
             }
