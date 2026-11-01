@@ -262,9 +262,13 @@ FocusScope {
         // free, it ticks the core and cancels a running auto-next countdown.
         Timer { id: clickPause; interval: Qt.styleHints.mouseDoubleClickInterval; onTriggered: page.togglePause() }
         // A press held on the video plays at 2x until it lets go; Qt sends no click after it.
-        MouseArea { anchors.fill: parent; onClicked: clickPause.restart(); onDoubleClicked: function() { clickPause.stop(); page.toggleFullscreen() }; hoverEnabled: true; onPositionChanged: function(mouse) { page.pointerMoved(mapToItem(page, mouse.x, mouse.y)) }; cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor
+        // A double-click's second press never holds: Qt leaves the hold timer running through
+        // the double-click, and a release lost while the window goes fullscreen would hold.
+        MouseArea { anchors.fill: parent; onClicked: clickPause.restart(); onDoubleClicked: function() { doubled = true; clickPause.stop(); page.toggleFullscreen() }; hoverEnabled: true; onPositionChanged: function(mouse) { page.pointerMoved(mapToItem(page, mouse.x, mouse.y)) }; cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor
+            property bool doubled: false
+            onPressed: doubled = false
             pressAndHoldInterval: 400
-            onPressAndHold: page.holdFast()
+            onPressAndHold: if (!doubled) page.holdFast()
             onReleased: page.letGoFast()
             onCanceled: page.letGoFast() }
     }
