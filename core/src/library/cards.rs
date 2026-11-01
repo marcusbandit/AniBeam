@@ -307,7 +307,10 @@ pub fn watched_state(
     if reachable > 0 && w < reachable {
         return WatchedState::Behind;
     }
-    if known_total.is_none() {
+    // With no total, everything that aired or is on disk watched is caught up all the same:
+    // a show with no final count (TVmaze's To Be Determined) and no tracker would otherwise
+    // sit in Catch up with nothing to watch (#323). Nothing reachable at all stays unknown.
+    if known_total.is_none() && reachable == 0 {
         return WatchedState::Unknown;
     }
     WatchedState::CaughtUp
@@ -1019,6 +1022,11 @@ mod tests {
         );
         assert_eq!(watched_state(Some(3), None, 0, 0), WatchedState::Unknown);
         assert_eq!(watched_state(Some(3), None, 5, 0), WatchedState::Behind);
+        assert_eq!(
+            watched_state(Some(13), None, 13, 13),
+            WatchedState::CaughtUp,
+            "every reachable episode watched is caught up without a total"
+        );
     }
 
     #[test]
