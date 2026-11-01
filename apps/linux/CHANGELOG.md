@@ -122,6 +122,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Skip intro skips the opening, not the scene before it
 - A download's speed and time left no longer run under its Stop button
 - The Replay button no longer stays on the video after you go back
 - Watching an episode again after its end keeps your place

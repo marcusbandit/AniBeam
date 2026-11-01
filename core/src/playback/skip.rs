@@ -42,8 +42,11 @@ const MISS: &str = "none";
 
 /// Anchored at the start of the title and closed on a word boundary, so
 /// "Episode 1" and "Chapter 1" never match and neither does "Operations".
+/// No "Prologue": it names the cold open before the opening, which is story,
+/// and taking it for the opening skipped the scene and played the song
+/// (#328). The Epilogue after the ending is left alone the same way.
 static OP_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^(intro|opening|prologue|op(?:\s*[0-9]+)?)\b").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i)^(intro|opening|op(?:\s*[0-9]+)?)\b").unwrap());
 static ED_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(outro|ending|closing|credits|end\s*credits|ed(?:\s*[0-9]+)?)\b").unwrap()
 });
@@ -369,6 +372,26 @@ mod tests {
         assert_eq!(
             from_chapters(&chapters, 1400.0),
             vec![intro(0.0, 90.0), outro(1300.0, 1400.0)]
+        );
+    }
+
+    /// The cold open is story: a Prologue before the Opening never takes
+    /// the intro's place (#328, Erai-raws' Netflix chapters)
+    #[test]
+    fn a_prologue_is_story_and_the_opening_after_it_is_the_intro() {
+        let chapters = [
+            chapter("Prologue", 0.0),
+            chapter("Opening", 71.94),
+            chapter("Episode", 161.953),
+            chapter("Ending", 1291.99),
+            chapter("Epilogue", 1382.004),
+        ];
+        assert_eq!(
+            from_chapters(&chapters, 1450.199),
+            vec![intro(71.94, 161.953), outro(1291.99, 1382.004)]
+        );
+        assert!(
+            from_chapters(&[chapter("Prologue", 0.0), chapter("Part A", 60.0)], 1400.0).is_empty()
         );
     }
 
