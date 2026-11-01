@@ -130,6 +130,10 @@ pub struct SeriesCard {
     /// here; this is what is actually here (#156).
     #[serde(default)]
     pub episodes_here: Vec<u32>,
+    /// How many different episodes the files on disk hold: each season counts its own,
+    /// and two releases of one episode count once. `episodes_on_disk` counts files (#323).
+    #[serde(default)]
+    pub distinct_episodes: u64,
     pub community_score: Option<f64>,
     pub my_score: Option<f64>,
     pub list_status: Option<ListStatus>,
