@@ -54,11 +54,13 @@ pub fn describe(error: &ureq::Error, host: &str) -> String {
         ureq::Error::HostNotFound => {
             format!("{host} is not a name the phone can find. Is Tailscale connected?")
         }
-        ureq::Error::Timeout(_) => format!("{host} did not answer in time"),
-        ureq::Error::ConnectionFailed => format!("Could not connect to {host}"),
+        ureq::Error::Timeout(_) => format!("{host} did not answer. Is it on, and is Tailscale connected on both?"),
+        ureq::Error::ConnectionFailed => format!("Could not reach {host}. Is it on, and is Tailscale connected on both?"),
         ureq::Error::Io(io) => match io.kind() {
             std::io::ErrorKind::ConnectionRefused => {
-                format!("{host} is up but nothing listens on that port. Is sharing on?")
+                format!(
+                    "{host} is on, but AniBeam there is closed or not sharing. Open AniBeam on it and switch on Share over Tailscale in Settings, Phone app."
+                )
             }
             std::io::ErrorKind::TimedOut => format!("{host} did not answer in time"),
             std::io::ErrorKind::NetworkUnreachable | std::io::ErrorKind::HostUnreachable => {

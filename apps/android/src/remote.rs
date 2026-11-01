@@ -168,7 +168,8 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
                 code: e.code.clone().into(),
                 title: title.into(),
                 date: e.aired_at.map(format::day_month).unwrap_or_default().into(),
-                note: Default::default(),
+                // A host too old to stream lists no files; the row says what to do.
+                note: if e.file.is_none() { "Update AniBeam on that computer to play this here" } else { "" }.into(),
                 cube: if e.watched { 0 } else { 2 },
                 // Streamed from the other device, from a host that can.
                 file: e.file.and_then(|f| i32::try_from(f).ok()).unwrap_or(0),

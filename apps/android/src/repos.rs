@@ -35,6 +35,8 @@ struct Repos {
     /// element, so an open form's field keeps what was typed when the list is read again.
     lines: std::rc::Rc<VecModel<EndpointRow>>,
     asking: Option<Asking>,
+    /// The source added by hand that is open for editing, by install id.
+    editing: Option<String>,
     /// The saved catalog was read and the launch refresh sent.
     opened: bool,
 }
@@ -70,6 +72,7 @@ pub fn install(window: &AppWindow) {
                 rows: Vec::new(),
                 lines: std::rc::Rc::new(VecModel::default()),
                 asking: None,
+                editing: None,
                 opened: false,
             })
     });
@@ -92,6 +95,8 @@ pub fn install(window: &AppWindow) {
     });
     d.on_remove_repo(|i| with(|r| r.remove_repo(i)));
     d.on_refresh(|| with(Repos::refresh));
+    d.on_save_edit(|| with(Repos::save_edit));
+    d.on_close_edit(|| with(Repos::close_edit));
     d.on_act(|i| with(|r| r.act(i)));
     d.on_remove_endpoint(|i| with(|r| r.remove_endpoint(i)));
     d.on_toggle(|i| with(|r| r.toggle(i)));
@@ -219,6 +224,8 @@ impl Repos {
                 ("No longer offered by its repo".into(), true)
             } else if let Some(host) = &i.update_host {
                 (format!("The update sends requests to {host}"), true)
+            } else if i.custom {
+                ("Tap to change its name or address".into(), false)
             } else if !i.auth.is_empty() {
                 let labels: Vec<&str> = i.auth.iter().map(|a| a.label.as_str()).collect();
                 (format!("Tap to change its {}", labels.join(", ")), false)
@@ -243,7 +250,7 @@ impl Repos {
                     None => String::new(),
                 }
                 .into(),
-                editable: !i.auth.is_empty(),
+                editable: !i.auth.is_empty() || i.custom,
                 warn,
             });
             rows.push(Row::Installed {
@@ -292,6 +299,13 @@ impl Repos {
                 }
             }
         }
+        // An open edit follows its source too, and closes when it is gone.
+        if let Some(install) = &self.editing {
+            match rows.iter().position(|r| matches!(r, Row::Installed { install: i, .. } if i == install)) {
+                Some(at) => self.data(|d| d.set_editing_index(at as i32)),
+                None => self.close_edit(),
+            }
+        }
         self.rows = rows;
         update_rows(&self.lines, lines);
         self.data(|d| d.set_repos(ModelRc::new(VecModel::from(repos))));
@@ -330,6 +344,49 @@ impl Repos {
                     let text = e.to_string();
                     r.data(|d| d.set_error(text.into()));
                 }
+            }
+        });
+    }
+
+    /// Opens a source added by hand for editing: its name and address in its own row.
+    fn open_edit(&mut self, i: i32, e: &anibeam_core::InstalledEndpoint) {
+        self.dismiss();
+        self.editing = Some(e.install_id.clone());
+        let (name, address) = (e.name.clone(), e.address.clone().unwrap_or_default());
+        self.data(|d| {
+            d.set_edit_name(name.into());
+            d.set_edit_url(address.into());
+            d.set_edit_error("".into());
+            d.set_editing_index(i);
+        });
+    }
+
+    fn close_edit(&mut self) {
+        self.editing = None;
+        self.data(|d| {
+            d.set_editing_index(-1);
+            d.set_edit_error("".into());
+        });
+    }
+
+    fn save_edit(&mut self) {
+        let Some(install) = self.editing.clone() else { return };
+        let (mut name, mut url) = (String::new(), String::new());
+        self.data(|d| {
+            name = d.get_edit_name().to_string();
+            url = d.get_edit_url().to_string();
+        });
+        spawn(Call::EditCustomEndpoint { install, name, url }, |r, answer| match answer {
+            Ok(Reply::EndpointCatalog { catalog }) => {
+                r.close_edit();
+                r.show(catalog);
+                crate::local::touch();
+                crate::app::endpoints_changed();
+            }
+            Ok(_) => {}
+            Err(e) => {
+                let text = e.to_string();
+                r.data(|d| d.set_edit_error(text.into()));
             }
         });
     }
@@ -494,6 +551,10 @@ impl Repos {
         else {
             return;
         };
+        if e.custom {
+            self.open_edit(i, &e);
+            return;
+        }
         if e.auth.is_empty() {
             return;
         }

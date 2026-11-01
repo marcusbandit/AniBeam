@@ -846,6 +846,10 @@ pub struct InstalledEndpoint {
     pub enabled: bool,
     /// Added by hand, outside any repo.
     pub custom: bool,
+    /// A source added by hand: its address, each secret in it a `{key}` placeholder, for
+    /// editing it. None for one from a repo.
+    #[serde(default)]
+    pub address: Option<String>,
     /// On the desktop: why anirss searches its own endpoint of this name instead.
     pub desktop_note: Option<String>,
     /// `auth` keys with no value stored; the endpoint is left out of searches until they
