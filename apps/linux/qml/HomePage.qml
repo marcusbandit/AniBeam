@@ -215,10 +215,13 @@ Item {
         if (c.watched !== null && c.watched !== undefined) return c.watched >= (drop.through || drop.episode)
         return c.watched_state === "CaughtUp"
     }
+    // The key is each entry whole, its card, its episode and its standing, so anything a tile
+    // shows changing rebuilds the week: a standing, and also a title when the title language
+    // switches, a score, a hold or a new file on disk (#355)
     readonly property string weekKey: {
         var e = weekEntries()
-        function key(x) { return x.card.id + ":" + (x.drop ? (x.drop.season || 1) + "x" + x.drop.episode + "@" + x.drop.at : "") + ":" + x.state }
-        return dayKey + "|" + e.out.map(key).join(",") + "|" + e.ahead.map(key).join(",") + "|" + e.later.map(key).join(",")
+        function entries(list) { return list.map(function(x) { return [x.card, x.drop, x.state] }) }
+        return JSON.stringify([dayKey, entries(e.out), entries(e.ahead), entries(e.later)])
     }
     property var weekSplit: ({ out: [], ahead: [], next: null, later: [] })
     function splitWeek() {
