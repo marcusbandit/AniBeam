@@ -323,15 +323,23 @@ fn cut<'a>(series: &[&'a Value], ids: &HashSet<u64>, p: &Params) -> Vec<Section<
         .collect();
     let mut rest: Vec<&Value> = vec![];
     if p.group_franchises {
-        let mut fr: HashMap<u64, (String, Vec<&Value>)> = HashMap::new();
-        let mut order: Vec<u64> = vec![];
+        let mut fr: HashMap<String, (String, Vec<&Value>)> = HashMap::new();
+        let mut order: Vec<String> = vec![];
         for c in &kept {
             let Some(f) = c["franchise"].as_object() else {
                 rest.push(c);
                 continue;
             };
-            let key = f.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
-            let b = fr.entry(key).or_insert_with(|| {
+            // The core sends the id as a string (`FranchiseTag::id`); one with no id stands alone
+            let key = match f.get("id") {
+                Some(Value::String(s)) => s.clone(),
+                Some(v) if !v.is_null() => v.to_string(),
+                _ => {
+                    rest.push(c);
+                    continue;
+                }
+            };
+            let b = fr.entry(key.clone()).or_insert_with(|| {
                 order.push(key);
                 (
                     f.get("title")
@@ -474,7 +482,7 @@ mod tests {
 
     #[test]
     fn a_franchise_of_two_is_its_own_section_in_release_order() {
-        let f = json!({ "id": 7, "title": "Saga" });
+        let f = json!({ "id": "7", "title": "Saga" });
         let reply = json!({
             "series": [
                 card(1, json!({ "franchise": f, "start_date": "2020-04-01", "season": "Spring 2020" })),
@@ -486,6 +494,25 @@ mod tests {
         let v = view(&reply, &params("Season"));
         assert_eq!(titles(&v), ["Saga", "Spring 2020"]);
         assert_eq!(v["sections"][0]["ids"], json!([2, 1]));
+    }
+
+    #[test]
+    fn two_franchises_are_two_sections_each_under_its_own_name() {
+        let a = json!({ "id": "101", "title": "Girls und Panzer" });
+        let b = json!({ "id": "202", "title": "Link Click" });
+        let reply = json!({
+            "series": [
+                card(1, json!({ "franchise": b, "start_date": "2021-04-30" })),
+                card(2, json!({ "franchise": a, "start_date": "2012-10-09" })),
+                card(3, json!({ "franchise": b, "start_date": "2023-07-14" })),
+                card(4, json!({ "franchise": a, "start_date": "2015-11-21" })),
+            ],
+            "airing": []
+        });
+        let v = view(&reply, &params("Season"));
+        assert_eq!(titles(&v), ["Link Click", "Girls und Panzer"]);
+        assert_eq!(v["sections"][0]["ids"], json!([1, 3]));
+        assert_eq!(v["sections"][1]["ids"], json!([2, 4]));
     }
 
     #[test]
