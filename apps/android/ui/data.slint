@@ -200,6 +200,8 @@ export global AppData {
     in-out property <int> step;
     in property <string> anilist-state;
     in property <string> mal-state;
+    // The last sign-in to AniList or MAL failed.
+    in property <bool> sign-in-failed;
 
     // Downloads and sources, on More.
     in property <[DownloadRow]> downloads;
@@ -218,6 +220,8 @@ export global AppData {
     in property <[CheckRow]> checks;
     in property <bool> checking;
     in property <string> check-summary;
+    // How many steps of the last check failed.
+    in property <int> check-failed;
 
     // What's new, over everything: opens by itself once after an update, and from More.
     in property <bool> notes-open;

@@ -10,6 +10,13 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.4.2 · 2026-11-01
+
+### Changed
+- More opens on a list of settings, each saying how it stands right now
+- Each part of the settings opens as its own page
+- Search the settings to land right on the one you want
+
 ## 2.4.0 · 2026-11-01
 
 ### New

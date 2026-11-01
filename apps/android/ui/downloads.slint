@@ -7,6 +7,7 @@
 import { Theme } from "theme.slint";
 import { AppData, DownloadRow, Nav } from "data.slint";
 import { FindData, Lenses, ReleaseList, ShowView, Suggestions } from "find.slint";
+import { Settings } from "more.slint";
 import { Button, Chip, Cubes, Fact, Figure, PageTitle, ProgressLine, SearchField, SectionHead } from "widgets.slint";
 
 // The colour of a download's state dot: moving, paused, waiting, trouble, done.
@@ -248,7 +249,10 @@ export component DownloadsPage inherits Rectangle {
                     small: true;
                     dimmed: !s.enabled;
                     tappable: true;
-                    clicked => { Nav.page = 3; }
+                    clicked => {
+                        Settings.open(3, "");
+                        Nav.page = 3;
+                    }
                 }
             }
             if FindData.line != "": Text {
