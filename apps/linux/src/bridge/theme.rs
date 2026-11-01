@@ -10,7 +10,7 @@ use cxx_qt_lib::{
 };
 use tokio::sync::mpsc;
 
-use crate::theme::config::{Corners, Density, ModeSetting, Poster, Source, ThemeSettings};
+use crate::theme::config::{AppIcon, Corners, Density, ModeSetting, Poster, Source, ThemeSettings};
 use crate::theme::engine::{Resolved, resolve};
 use crate::theme::{Mode, Palette, format_hue, status_hue};
 
@@ -49,6 +49,7 @@ pub mod qobject {
         #[qproperty(f64, smoothing)]
         #[qproperty(bool, ready)]
         #[qproperty(bool, reduced_motion)]
+        #[qproperty(QString, app_icon)]
         type Theme = super::ThemeRust;
 
         #[qinvokable]
@@ -67,6 +68,8 @@ pub mod qobject {
         fn pick_theme(self: Pin<&mut Self>, mode: &QString, stem: &QString);
         #[qinvokable]
         fn pick_reduced_motion(self: Pin<&mut Self>, on: bool);
+        #[qinvokable]
+        fn pick_app_icon(self: Pin<&mut Self>, icon: &QString);
         #[qinvokable]
         fn format_hue(self: &Self, format: &QString) -> QString;
         #[qinvokable]
@@ -97,6 +100,7 @@ pub struct ThemeRust {
     smoothing: f64,
     ready: bool,
     reduced_motion: bool,
+    app_icon: QString,
     resolved: Option<Resolved>,
     commands: Option<mpsc::UnboundedSender<ThemeSettings>>,
 }
@@ -123,6 +127,7 @@ impl Default for ThemeRust {
             smoothing: 0.0,
             ready: false,
             reduced_motion: false,
+            app_icon: QString::default(),
             resolved: None,
             commands: None,
         }
@@ -177,6 +182,13 @@ impl qobject::Theme {
         self.as_mut().set_poster_width(s.poster.width());
         self.as_mut().set_smoothing(s.corners.smoothing());
         self.as_mut().set_reduced_motion(s.reduced_motion);
+        let icon = QString::from(s.icon.as_str());
+        if self.as_ref().app_icon() != &icon {
+            crate::bridge::helpers::ffi::set_window_icon(&QString::from(crate::app_icon::qrc(
+                s.icon,
+            )));
+            self.as_mut().set_app_icon(icon);
+        }
         self.as_mut().set_contrast(r.inputs.portal.contrast);
         let mut themes = QJsonArray::default();
         for t in &r.inputs.themes {
@@ -272,6 +284,13 @@ impl qobject::Theme {
     }
     pub fn pick_reduced_motion(self: Pin<&mut Self>, on: bool) {
         self.change(|s| s.reduced_motion = on)
+    }
+    /// Only a pick touches the launcher's icon; a hand edit of theme.toml changes the window's.
+    pub fn pick_app_icon(self: Pin<&mut Self>, icon: &QString) {
+        if let Some(v) = AppIcon::parse(&icon.to_string()) {
+            self.change(|s| s.icon = v);
+            crate::app_icon::install(v);
+        }
     }
     pub fn format_hue(&self, format: &QString) -> QString {
         QString::from(format_hue(&format.to_string()))

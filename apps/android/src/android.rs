@@ -260,11 +260,17 @@ pub fn set_activity(activity: *mut std::ffi::c_void) {
 }
 
 /// Calls one of `Screen.java`'s static methods with the activity and one more argument, and
-/// hands back what it returns. The class is the app's own, so it is loaded through the
-/// activity's class loader: a lookup from a native thread would only see the system's
-/// classes.
+/// hands back what it returns.
 #[cfg(target_os = "android")]
 fn screen_call(method: &str, sig: &str, arg: Option<jni::objects::JValue>) -> Option<jni::objects::JValueOwned<'static>> {
+    java_call("Screen", method, sig, arg)
+}
+
+/// Calls a static method of one of the app's own Java classes with the activity and one more
+/// argument, and hands back what it returns. The class is loaded through the activity's class
+/// loader: a lookup from a native thread would only see the system's classes.
+#[cfg(target_os = "android")]
+fn java_call(class: &str, method: &str, sig: &str, arg: Option<jni::objects::JValue>) -> Option<jni::objects::JValueOwned<'static>> {
     let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
     if raw == 0 {
         return None;
@@ -277,7 +283,7 @@ fn screen_call(method: &str, sig: &str, arg: Option<jni::objects::JValue>) -> Op
         env.with_local_frame(8, |env| -> Result<Option<JValueOwned<'static>>, Box<dyn std::error::Error>> {
             let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
             let loader = env.call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
-            let name = env.new_string("com.marcusrosado.anibeam.Screen")?;
+            let name = env.new_string(format!("com.marcusrosado.anibeam.{class}"))?;
             let class = env
                 .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&name)])?
                 .l()?;
@@ -288,6 +294,8 @@ fn screen_call(method: &str, sig: &str, arg: Option<jni::objects::JValue>) -> Op
             // Only plain values come back, which hold no reference into the frame.
             Ok(match out {
                 JValueOwned::Float(f) => Some(JValueOwned::Float(f)),
+                JValueOwned::Int(i) => Some(JValueOwned::Int(i)),
+                JValueOwned::Long(l) => Some(JValueOwned::Long(l)),
                 _ => None,
             })
         })
@@ -295,7 +303,7 @@ fn screen_call(method: &str, sig: &str, arg: Option<jni::objects::JValue>) -> Op
     match r {
         Ok(v) => v,
         Err(e) => {
-            crate::local::log(&format!("Screen.{method}: {e}"));
+            crate::local::log(&format!("{class}.{method}: {e}"));
             None
         }
     }
@@ -378,4 +386,31 @@ pub fn player_awake(on: bool) {
     screen("awake", on);
     #[cfg(not(target_os = "android"))]
     let _ = on;
+}
+
+/// The launcher icon showing now: 0 Default, 1 Dark, 2 Line art.
+pub fn app_icon() -> i32 {
+    #[cfg(target_os = "android")]
+    if let Some(jni::objects::JValueOwned::Int(i)) = java_call("Icons", "current", "(Landroid/app/Activity;)I", None) {
+        return i;
+    }
+    0
+}
+
+/// Shows launcher icon `which` and hides the others.
+pub fn set_app_icon(which: i32) {
+    #[cfg(target_os = "android")]
+    java_call("Icons", "pick", "(Landroid/app/Activity;I)V", Some(jni::objects::JValue::Int(which)));
+    #[cfg(not(target_os = "android"))]
+    let _ = which;
+}
+
+/// The line art icon's ground and ink as the launcher draws them, ARGB: the phone's Material
+/// You colours on Android 12 and later.
+pub fn line_colours() -> Option<(u32, u32)> {
+    #[cfg(target_os = "android")]
+    if let Some(jni::objects::JValueOwned::Long(l)) = java_call("Icons", "lineColours", "(Landroid/app/Activity;)J", None) {
+        return Some(((l >> 32) as u32, l as u32));
+    }
+    None
 }

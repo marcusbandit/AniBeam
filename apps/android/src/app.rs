@@ -154,7 +154,7 @@ fn with_app(f: impl FnOnce(&mut App)) {
 
 
 /// More's sections, by the index Settings.section uses.
-const SECTIONS: [&str; 7] = ["Accounts", "Downloads", "Streaming", "Search sites", "Connection", "Your computer", "About"];
+const SECTIONS: [&str; 8] = ["Accounts", "Downloads", "Streaming", "Search sites", "Connection", "Your computer", "About", "App icon"];
 
 /// Every setting More's search can land on: its section, its label (the key its page lights),
 /// and the words a person might type for it.
@@ -173,6 +173,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     (6, "What's new", "changelog patch notes changes update"),
     (6, "Set up again", "onboarding first run start over"),
     (6, "Version", "build about"),
+    (7, "App icon", "icon launcher home screen logo dark line art themed material you"),
 ];
 
 /// The settings a search names: each word in the label, the words or the section's name, the
@@ -748,6 +749,18 @@ impl App {
         data.set_limit_on(self.prefs.limit_on);
         data.set_limit_gb(self.prefs.limit_gb as f32);
         data.set_limit_label(prefs::limit_label(self.prefs.limit_gb).into());
+        self.show_app_icon();
+    }
+
+    /// The launcher icon showing now, and the line art's colours as the launcher draws them.
+    /// Read from Android each time, so a new wallpaper's colours show in the preview.
+    fn show_app_icon(&self) {
+        let data = self.data();
+        data.set_app_icon(crate::android::app_icon());
+        if let Some((ground, ink)) = crate::android::line_colours() {
+            data.set_line_ground(slint::Color::from_argb_encoded(ground));
+            data.set_line_ink(slint::Color::from_argb_encoded(ink));
+        }
     }
 
     fn save_prefs(&mut self) {
@@ -1067,6 +1080,10 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
                 app.save_prefs();
             }
         })
+    });
+    data.on_set_app_icon(|i| {
+        crate::android::set_app_icon(i);
+        with_app(|app| app.show_app_icon());
     });
     data.on_pick_device(|i| {
         with_app(|app| {

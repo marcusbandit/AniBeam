@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The line art icon in the phone's Material You colours, dark theme. -->
+<resources>
+    <color name="line_ground">@android:color/system_neutral1_800</color>
+    <color name="line_ink">@android:color/system_accent1_100</color>
+</resources>
