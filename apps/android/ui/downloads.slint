@@ -234,14 +234,14 @@ component Said inherits VerticalLayout {
 
 // Where to look: the field, the sources, what the search said, and the shows as you type.
 component Finder inherits VerticalLayout {
-    in-out property <string> pending;
     callback typed(string);
+    callback accepted(string);
     spacing: Theme.unit * 4;
     SearchField {
         placeholder: "A show, or a release name";
         text <=> FindData.text;
         edited(t) => { root.typed(t); }
-        accepted(t) => { FindData.search(t); }
+        accepted(t) => { root.accepted(t); }
     }
     if AppData.search-sources.length > 0: Rectangle {
         height: 8 * Theme.unit;
@@ -370,6 +370,11 @@ export component DownloadsPage inherits Rectangle {
             FindData.suggest(root.pending);
         }
     }
+    // Return searches now, and the suggestion still waiting on the pause is dropped.
+    function accepted(t: string) {
+        debounce.running = false;
+        FindData.search(t);
+    }
     function typed(t: string) {
         FindData.suggest-done = false;
         root.pending = t;
@@ -380,7 +385,10 @@ export component DownloadsPage inherits Rectangle {
 
     if !Fold.split && FindData.view == 0: Scroll {
         Head { }
-        Finder { typed(t) => { root.typed(t); } }
+        Finder {
+            typed(t) => { root.typed(t); }
+            accepted(t) => { root.accepted(t); }
+        }
         if !root.typing: Queue { }
         if !root.typing: Lenses { }
     }
@@ -390,7 +398,10 @@ export component DownloadsPage inherits Rectangle {
         area: Fold.pick(0.46);
         Scroll {
             Head { }
-            Finder { typed(t) => { root.typed(t); } }
+            Finder {
+                typed(t) => { root.typed(t); }
+                accepted(t) => { root.accepted(t); }
+            }
             if !root.typing: Queue { }
         }
     }

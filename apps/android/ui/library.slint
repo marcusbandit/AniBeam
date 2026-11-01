@@ -111,7 +111,7 @@ component Glance inherits VerticalLayout {
             caption: "free";
         }
     }
-    Text {
+    if AppData.device == 0: Text {
         text: "Hold a poster to get more episodes or delete them.";
         color: Theme.dim;
         font-size: Theme.small + 1px;

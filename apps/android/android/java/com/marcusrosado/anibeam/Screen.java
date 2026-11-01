@@ -42,29 +42,35 @@ public final class Screen {
         synchronized (Screen.class) {
             if (!listening) {
                 listening = true;
-                activity.runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        SensorManager sensors = (SensorManager) activity.getSystemService(Context.SENSOR_SERVICE);
-                        // 36 is TYPE_HINGE_ANGLE; the constant is newer than the --release 8 stubs.
-                        Sensor sensor = sensors == null ? null : sensors.getDefaultSensor(36);
-                        if (sensor == null) return;
-                        hinge = 180;
-                        sensors.registerListener(new SensorEventListener() {
-                            @Override
-                            public void onSensorChanged(SensorEvent event) {
-                                hinge = event.values[0];
-                            }
+                final SensorManager sensors = (SensorManager) activity.getSystemService(Context.SENSOR_SERVICE);
+                // 36 is TYPE_HINGE_ANGLE; the constant is newer than the --release 8 stubs.
+                final Sensor sensor = sensors == null ? null : sensors.getDefaultSensor(36);
+                if (sensor != null) {
+                    // Flat until the first reading, so the caller knows there is a hinge.
+                    hinge = 180;
+                    activity.runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            sensors.registerListener(new SensorEventListener() {
+                                @Override
+                                public void onSensorChanged(SensorEvent event) {
+                                    hinge = event.values[0];
+                                }
 
-                            @Override
-                            public void onAccuracyChanged(Sensor s, int accuracy) {}
-                        }, sensor, SensorManager.SENSOR_DELAY_UI);
-                    }
-                });
+                                @Override
+                                public void onAccuracyChanged(Sensor s, int accuracy) {}
+                            }, sensor, SensorManager.SENSOR_DELAY_UI);
+                        }
+                    });
+                }
             }
         }
         int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
         float angle = hinge;
+        // Beside another app the window does not straddle the hinge: lay out as if flat.
+        if (angle >= 0 && Build.VERSION.SDK_INT >= 24 && activity.isInMultiWindowMode()) {
+            angle = 180;
+        }
         return rotation * 1000 + (angle < 0 ? 999 : angle);
     }
 

@@ -1,4 +1,4 @@
-// The calendar: three days back, today and a week ahead, from the phone's shows. Folded it
+// The calendar: two days back, today and a week ahead, from the phone's shows. Folded it
 // is a strip of days over the picked day's list; open it is a board, a column a day; half
 // folded the days are listed on one side of the crease and the picked day fills the other.
 
@@ -198,7 +198,7 @@ export component DayStrip inherits Rectangle {
     property <length> step: root.width-each + Theme.gap;
     Flickable {
         content-width: AppData.calendar.length * root.step - Theme.gap;
-        content-x: Math.max(-(2 * root.step), Math.min(0, self.width - self.content-width));
+        content-x: Math.max(-root.step, Math.min(0, self.width - self.content-width));
         for day[i] in AppData.calendar: DayPill {
             x: i * root.step;
             width: root.width-each;
@@ -343,7 +343,7 @@ component WeekBoard inherits Rectangle {
     property <length> step: root.column + root.gap;
     Flickable {
         content-width: AppData.calendar.length * root.step + root.gap;
-        content-x: Math.max(-(2 * root.step), Math.min(0, self.width - self.content-width));
+        content-x: Math.max(-root.step, Math.min(0, self.width - self.content-width));
         for day[i] in AppData.calendar: Rectangle {
             x: root.gap + i * root.step;
             width: root.column;
@@ -409,7 +409,7 @@ export component CalendarPage inherits Rectangle {
         if !root.empty: DayAgenda { day: root.picked; }
         if root.empty: EmptyNote {
             title: "No shows on this phone yet";
-            body: "Episodes of the shows you keep here show up on their day, three days back and a week ahead.";
+            body: "Episodes of the shows you keep here show up on their day, two days back and a week ahead.";
         }
     }
 

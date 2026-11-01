@@ -198,7 +198,7 @@ export global AppData {
 
     // The calendar, and the day picked on it; Rust picks today when the days first come.
     in property <[CalDay]> calendar;
-    in-out property <int> cal-day: 3;
+    in-out property <int> cal-day: 2;
     in property <string> cal-note;
     in property <[Shelf]> home-shelves;
     in property <string> home-note;
@@ -274,6 +274,8 @@ export global AppData {
 
     // The series page, over whichever page opened it.
     in property <bool> series-open;
+    // The open series is the other device's, opened from its library: it streams from there.
+    in property <bool> series-remote;
     in property <SeriesHead> series;
     in property <[EpisodeLine]> episodes;
 

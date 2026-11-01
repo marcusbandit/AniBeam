@@ -77,7 +77,7 @@ component EpisodeItem inherits Rectangle {
     // picked while deleting.
     // An aired episode this phone's show lacks opens Downloads on the show. Upcoming ones
     // carry no note, and the other device's show is got on that device.
-    property <bool> gettable: root.data.file == 0 && root.data.note != "" && (AppData.device == 0 || Nav.page == 0);
+    property <bool> gettable: root.data.file == 0 && root.data.note != "" && !AppData.series-remote;
     touch := TouchArea {
         enabled: root.data.file != 0 || (root.gettable && !AppData.deleting);
         clicked => {
@@ -215,13 +215,13 @@ export component SeriesPage inherits Rectangle {
             padding-bottom: Theme.pad * 2;
             spacing: Theme.unit * 4;
             PageTitle {
-                back: Nav.page == 0 ? "Home" : Nav.page == 1 ? "Library" : Nav.page == 2 ? "Downloads" : "Back";
+                back: Nav.page == 0 ? "Home" : Nav.page == 1 ? "Library" : Nav.page == 2 ? "Downloads" : Nav.page == 4 ? "Calendar" : "Back";
                 title: "";
                 go-back => { AppData.close-series(); }
             }
             SeriesHeadView { }
             // Another device's series plays from there, streamed.
-            if AppData.device != 0 && Nav.page != 0 && AppData.series.play-file != 0: HorizontalLayout {
+            if AppData.series-remote && AppData.series.play-file != 0: HorizontalLayout {
                 alignment: start;
                 Button {
                     text: AppData.series.play-label;
@@ -232,7 +232,7 @@ export component SeriesPage inherits Rectangle {
                 }
             }
             // A series of this phone's goes straight to who has it.
-            if AppData.device == 0 || Nav.page == 0: HorizontalLayout {
+            if !AppData.series-remote: HorizontalLayout {
                 alignment: start;
                 spacing: Theme.unit * 2;
                 if AppData.series.play-file != 0: Button {
@@ -266,7 +266,7 @@ export component SeriesPage inherits Rectangle {
                 note: AppData.episodes.length > 0 ? "" + AppData.episodes.length : "";
             }
             // Deleting: off, a button to start; on, what it will do and the two ways out.
-            if (AppData.device == 0 || Nav.page == 0) && !AppData.deleting && AppData.series-has-files: HorizontalLayout {
+            if !AppData.series-remote && !AppData.deleting && AppData.series-has-files: HorizontalLayout {
                 alignment: start;
                 Button {
                     text: "Delete episodes";

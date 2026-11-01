@@ -112,8 +112,13 @@ struct App {
     check_text: String,
     home_shelves: Shelves,
     calendar: Rc<VecModel<CalDay>>,
-    /// Each calendar day's items as last shown, to rebuild only a day that changed.
-    cal_items: Vec<Vec<CalItem>>,
+    /// One model per calendar day, updated in place so a ticking countdown repaints its text
+    /// rather than building the day's rows again.
+    cal_models: Vec<Rc<VecModel<CalItem>>>,
+    /// The day the cards were read on: the core's week airings are a window around then.
+    read_on: Option<chrono::NaiveDate>,
+    /// Each card's titles, lower case with single spaces, for naming a torrent's show.
+    plain_titles: Vec<(u64, Vec<String>)>,
     coming: Rc<VecModel<CalItem>>,
     library: Rc<VecModel<Tile>>,
     episodes: Rc<VecModel<EpisodeLine>>,
@@ -261,6 +266,15 @@ impl App {
         };
         if let Ok(Reply::Library { series, .. }) = core.call(library) {
             self.cards = series;
+            self.read_on = Some(anibeam_companion::calendar::today(anibeam_companion::now()));
+            self.plain_titles = self
+                .cards
+                .iter()
+                .map(|c| {
+                    let titles = [Some(&c.title), c.titles.english.as_ref(), c.titles.romaji.as_ref()];
+                    (c.id, titles.into_iter().flatten().map(|t| plain(t)).filter(|t| t.len() >= 4).collect())
+                })
+                .collect();
             self.data().set_ready(true);
         }
         for card in &self.cards {
@@ -286,7 +300,9 @@ impl App {
     /// Everything the pages show, rebuilt from what is held and the clock. Cheap enough to
     /// run every second; the models only repaint what changed.
     fn tick(&mut self) {
-        if crate::local::take_changed() {
+        // A new day moves the calendar's window, so the airings around it are read again.
+        let changed = crate::local::take_changed();
+        if changed || self.read_on.is_some_and(|d| d != anibeam_companion::calendar::today(anibeam_companion::now())) {
             self.reload();
         }
         let now = anibeam_companion::now();
@@ -377,6 +393,7 @@ impl App {
                     l.picked = self.picked.contains(&l.file);
                 }
                 let local = matches!(self.open, Some(Open::Phone(_)));
+                data.set_series_remote(!local);
                 data.set_series_has_files(local && !files.is_empty());
                 if self.deleting && files.is_empty() {
                     self.deleting = false;
@@ -438,30 +455,25 @@ impl App {
             }
             .into(),
         );
-        let fresh = self.calendar.row_count() != days.len();
-        if fresh {
-            self.cal_items.clear();
+        // The first days, and each new day after, start on today.
+        let today = days.iter().position(|(d, _)| d.today).unwrap_or(crate::phone::CAL_BACK) as i32;
+        let new_day = self.calendar.row_data(today as usize).is_none_or(|d| !d.today);
+        if self.cal_models.len() != days.len() {
+            self.cal_models = days.iter().map(|_| Rc::new(VecModel::default())).collect();
         }
-        let mut rows = Vec::with_capacity(days.len());
-        for (i, (mut day, items)) in days.into_iter().enumerate() {
-            let old = self.calendar.row_data(i).filter(|_| !fresh);
-            match old {
-                Some(o) if self.cal_items.get(i) == Some(&items) => day.items = o.items,
-                _ => {
-                    day.items = ModelRc::new(VecModel::from(items.clone()));
-                    if i < self.cal_items.len() {
-                        self.cal_items[i] = items;
-                    } else {
-                        self.cal_items.push(items);
-                    }
-                }
-            }
-            rows.push(day);
-        }
-        if fresh {
-            data.set_cal_day(crate::phone::CAL_BACK as i32);
-        }
+        let rows = days
+            .into_iter()
+            .zip(&self.cal_models)
+            .map(|((mut day, items), model)| {
+                update(model, items);
+                day.items = ModelRc::from(model.clone());
+                day
+            })
+            .collect();
         update(&self.calendar, rows);
+        if new_day {
+            data.set_cal_day(today);
+        }
     }
 
     /// Reads the sources once the core is open, for the search page and More.
@@ -496,6 +508,9 @@ impl App {
 
     fn torrent_action(&mut self, hash: String, action: i32) {
         let Some(core) = crate::local::core() else { return };
+        if is_demo(&hash) {
+            return;
+        }
         let action = match action {
             0 => PhoneAction::Pause,
             1 => PhoneAction::Resume,
@@ -587,34 +602,31 @@ impl App {
     }
 
     /// The library show a torrent fills: the one the core linked, else the show whose title
-    /// its name carries, the longest such title first so a sequel wins over its first season.
+    /// its name carries as whole words, the longest such title first so a sequel wins over
+    /// its first season.
     fn torrent_show(&self, t: &Torrent) -> Option<&SeriesCard> {
         if let Some(id) = t.series_id {
             return self.cards.iter().find(|c| c.id == id);
         }
-        let plain = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
-        let name = plain(&t.name);
-        self.cards
+        let name = format!(" {} ", plain(&t.name));
+        let (id, _) = self
+            .plain_titles
             .iter()
-            .filter_map(|c| {
-                [Some(&c.title), c.titles.english.as_ref(), c.titles.romaji.as_ref()]
-                    .into_iter()
-                    .flatten()
-                    .map(|t| plain(t))
-                    .filter(|t| t.len() >= 4 && name.contains(t.as_str()))
-                    .max_by_key(String::len)
-                    .map(|t| (c, t.len()))
+            .filter_map(|(id, titles)| {
+                titles.iter().filter(|t| name.contains(&format!(" {t} "))).map(String::len).max().map(|len| (*id, len))
             })
-            .max_by_key(|(_, len)| *len)
-            .map(|(c, _)| c)
+            .max_by_key(|(_, len)| *len)?;
+        self.cards.iter().find(|c| c.id == id)
     }
 
     fn show_torrents(&mut self, mut torrents: Vec<Torrent>, held: bool) {
         torrents.extend(demo_torrents());
         // The service is for torrents that are moving: one in error, stuck with no peers or
         // paused does not keep a notification up.
-        let active: Vec<&Torrent> =
-            torrents.iter().filter(|t| t.progress < 1.0 && matches!(t.state.as_str(), "downloading" | "checkingDL")).collect();
+        let active: Vec<&Torrent> = torrents
+            .iter()
+            .filter(|t| !is_demo(&t.hash) && t.progress < 1.0 && matches!(t.state.as_str(), "downloading" | "checkingDL"))
+            .collect();
         let rows = torrents.iter().map(|t| download_row(t, held, self.torrent_show(t), &self.art)).collect();
         update(&self.downloads, rows);
         let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
@@ -884,13 +896,30 @@ impl App {
     }
 }
 
-/// A test hook for captures: `/data/local/tmp/anibeam-demo/torrents.json`, a list of the
-/// core's torrents, shows beside the real ones. Its rows do nothing when tapped.
+/// A test hook for captures, like the seed list: `/data/local/tmp/anibeam-demo/torrents.json`,
+/// a list of the core's torrents, read once at launch, shows beside the real ones. Their
+/// hashes are marked, so they never keep the service up and their buttons reach nothing.
 fn demo_torrents() -> Vec<Torrent> {
-    std::fs::read_to_string("/data/local/tmp/anibeam-demo/torrents.json")
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+    static DEMO: std::sync::OnceLock<Vec<Torrent>> = std::sync::OnceLock::new();
+    DEMO.get_or_init(|| {
+        let list: Vec<Torrent> = std::fs::read_to_string("/data/local/tmp/anibeam-demo/torrents.json")
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default();
+        list.into_iter().map(|t| Torrent { hash: format!("{DEMO_MARK}{}", t.hash), ..t }).collect()
+    })
+    .clone()
+}
+
+const DEMO_MARK: &str = "demo:";
+
+fn is_demo(hash: &str) -> bool {
+    hash.starts_with(DEMO_MARK)
+}
+
+/// Lower case words with single spaces between them, for matching titles in names.
+fn plain(text: &str) -> String {
+    text.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_lowercase).collect::<Vec<_>>().join(" ")
 }
 
 fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -> DownloadRow {
@@ -1160,7 +1189,9 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         check_text: String::new(),
         home_shelves,
         calendar,
-        cal_items: Vec::new(),
+        cal_models: Vec::new(),
+        read_on: None,
+        plain_titles: Vec::new(),
         coming,
         library,
         episodes,
@@ -1187,11 +1218,19 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || with_app(App::tick));
     // The hinge, for the layout: a bend shows in a fifth of a second, and the sensor costs
     // nothing between changes.
-    let hinge = Timer::default();
+    // A phone without a hinge answers None the first time, and the timer stops there.
+    let hinge = Rc::new(Timer::default());
     let fold_window = window.as_weak();
+    let stop = Rc::downgrade(&hinge);
     hinge.start(TimerMode::Repeated, Duration::from_millis(200), move || {
         let Some(window) = fold_window.upgrade() else { return };
         let (angle, across) = crate::android::fold();
+        if angle.is_none() {
+            if let Some(t) = stop.upgrade() {
+                t.stop();
+            }
+            return;
+        }
         let fold = window.global::<crate::Fold>();
         let angle = angle.unwrap_or(180.0);
         if fold.get_hinge() != angle {

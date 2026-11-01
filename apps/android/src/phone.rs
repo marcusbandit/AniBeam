@@ -109,9 +109,10 @@ pub struct HomeView {
     pub coming: Vec<CalItem>,
 }
 
-/// The calendar's span: three days back, today, and a week ahead. The core's week airings
-/// reach three days back and eight ahead.
-pub const CAL_BACK: usize = 3;
+/// The calendar's span: two days back, today, and a week ahead. The core's week airings
+/// reach from three days before the moment the cards were read to eight after, so these
+/// whole days are inside that window all day.
+pub const CAL_BACK: usize = 2;
 const CAL_DAYS: usize = CAL_BACK + 8;
 /// How many of the next episodes Home lists.
 const COMING: usize = 4;
@@ -124,7 +125,8 @@ pub fn home(cards: &[SeriesCard], art: &Art, now: i64) -> HomeView {
         .collect();
 
     let hero = upcoming.iter().min_by_key(|(_, at)| *at).map(|(c, at)| hero(c, *at, art, now)).unwrap_or_default();
-    let (calendar, coming) = calendar(cards, art, now, usize::from(hero.show));
+    let hero_at = upcoming.iter().min_by_key(|(_, at)| *at).map(|(c, at)| (c.id, *at));
+    let (calendar, coming) = calendar(cards, art, now, hero_at);
 
     let mut watched: Vec<&SeriesCard> = cards.iter().filter(|c| c.last_viewed_at.is_some()).collect();
     watched.sort_by_key(|c| std::cmp::Reverse(c.last_viewed_at.map(secs)));
@@ -173,7 +175,7 @@ fn episodes(drop: &WeekDrop) -> String {
 
 /// Every day from three back to a week ahead with what airs on it, in air order, and the
 /// next few still to air across all of them.
-fn calendar(cards: &[SeriesCard], art: &Art, now: i64, skip: usize) -> (Vec<(CalDay, Vec<CalItem>)>, Vec<CalItem>) {
+fn calendar(cards: &[SeriesCard], art: &Art, now: i64, hero: Option<(u64, i64)>) -> (Vec<(CalDay, Vec<CalItem>)>, Vec<CalItem>) {
     let today = calendar::today(now);
     let first = today - Days::new(CAL_BACK as u64);
     let mut drops: Vec<(&SeriesCard, &WeekDrop, i64)> =
@@ -236,8 +238,8 @@ fn calendar(cards: &[SeriesCard], art: &Art, now: i64, skip: usize) -> (Vec<(Cal
             next = i as i32;
         }
     }
-    // Home's hero is the first to air, so with it shown the list starts after it.
-    let coming = drops.iter().filter(|(_, _, at)| *at > now).skip(skip).take(COMING).map(|(c, d, at)| item(c, d, *at, true)).collect();
+    // Home's hero is the next to air; the list leaves it out rather than say it twice.
+    let coming = drops.iter().filter(|(c, _, at)| *at > now && Some((c.id, *at)) != hero).take(COMING).map(|(c, d, at)| item(c, d, *at, true)).collect();
     (days, coming)
 }
 

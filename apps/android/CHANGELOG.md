@@ -13,7 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.5.0 · 2026-11-01
 
 ### New
-- A Calendar tab: what airs from three days back to a week ahead
+- A Calendar tab: what airs from two days back to a week ahead
 - Unfolded, the tabs move to a rail and pages split into two columns
 - Half folded, everything moves off the crease to either side of it
 - Stood up half folded, the video plays above the crease, controls below
