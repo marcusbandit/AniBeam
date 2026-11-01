@@ -184,14 +184,15 @@ Corner {
                     spacing: theme.space(2)
                     Label { visible: root.nextUp; anchors.verticalCenter: parent.verticalCenter; text: "Next up"; role: "ledger"; color: theme.accent }
                     Chip {
+                        id: versionsChip
                         objectName: "episode-versions"
-                        visible: root.versions.length > 1 && !root.picking
+                        visible: root.versions.length > 1
                         anchors.verticalCenter: parent.verticalCenter
                         small: true
                         clickable: true
                         icon: "layers"
                         text: root.versions.length + " versions"
-                        onClicked: root.openVersions(this)
+                        onClicked: root.openVersions(versionsChip)
                         Tooltip { text: "The same episode from " + root.versions.length + " releases. Click to pick which plays" }
                     }
                     Label {
