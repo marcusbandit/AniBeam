@@ -330,26 +330,24 @@ fn cut<'a>(series: &[&'a Value], ids: &HashSet<u64>, p: &Params) -> Vec<Section<
                 rest.push(c);
                 continue;
             };
-            // The core sends the id as a string (`FranchiseTag::id`); one with no id stands alone
-            let key = match f.get("id") {
-                Some(Value::String(s)) => s.clone(),
-                Some(v) if !v.is_null() => v.to_string(),
-                _ => {
-                    rest.push(c);
-                    continue;
-                }
+            // The core sends the id as a string (`FranchiseTag::id`); one without a usable id
+            // stands alone rather than sharing a fallback key with every other (#322)
+            let Some(key) = f
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            else {
+                rest.push(c);
+                continue;
             };
-            let b = fr.entry(key.clone()).or_insert_with(|| {
-                order.push(key);
-                (
-                    f.get("title")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    vec![],
-                )
-            });
-            b.1.push(c);
+            if !fr.contains_key(key) {
+                order.push(key.to_string());
+                let title = f.get("title").and_then(|t| t.as_str()).unwrap_or("");
+                fr.insert(key.to_string(), (title.to_string(), vec![]));
+            }
+            if let Some(b) = fr.get_mut(key) {
+                b.1.push(c);
+            }
         }
         let position: HashMap<u64, usize> = series
             .iter()
@@ -513,6 +511,22 @@ mod tests {
         assert_eq!(titles(&v), ["Link Click", "Girls und Panzer"]);
         assert_eq!(v["sections"][0]["ids"], json!([1, 3]));
         assert_eq!(v["sections"][1]["ids"], json!([2, 4]));
+    }
+
+    #[test]
+    fn a_franchise_without_a_usable_id_stands_alone() {
+        let reply = json!({
+            "series": [
+                card(1, json!({ "franchise": { "id": "", "title": "A" }, "season": "Spring 2020" })),
+                card(2, json!({ "franchise": { "id": "", "title": "B" }, "season": "Spring 2020" })),
+                card(3, json!({ "franchise": { "title": "C" }, "season": "Spring 2020" })),
+                card(4, json!({ "franchise": { "id": 7, "title": "D" }, "season": "Spring 2020" })),
+            ],
+            "airing": []
+        });
+        let v = view(&reply, &params("Season"));
+        assert_eq!(titles(&v), ["Spring 2020"]);
+        assert_eq!(v["sections"][0]["ids"], json!([1, 2, 3, 4]));
     }
 
     #[test]
