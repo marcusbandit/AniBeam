@@ -91,13 +91,22 @@ public final class Screen {
         });
     }
 
-    /** The window's brightness from 0 to 1: its own when a swipe set one, else the phone's. */
+    /**
+     * The window's brightness from 0 to 1: its own when a swipe set one, else the phone's.
+     * Phones store the setting on scales of their own (255 on most, 2047 or 4095 on some), so
+     * it is read against the phone's own top, and kept within 0 to 1 whatever it says.
+     */
     public static float brightness(final Activity activity) {
         float own = activity.getWindow().getAttributes().screenBrightness;
-        if (own >= 0) return own;
+        if (own >= 0) return Math.min(1f, own);
         try {
-            return Settings.System.getInt(activity.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) / 255f;
-        } catch (Settings.SettingNotFoundException e) {
+            int value = Settings.System.getInt(activity.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS);
+            int top = 255;
+            int id = activity.getResources().getIdentifier("config_screenBrightnessSettingMaximum", "integer", "android");
+            if (id != 0) top = Math.max(1, activity.getResources().getInteger(id));
+            if (value > top) top = value;
+            return Math.max(0f, Math.min(1f, value / (float) top));
+        } catch (Settings.SettingNotFoundException | android.content.res.Resources.NotFoundException e) {
             return 0.5f;
         }
     }

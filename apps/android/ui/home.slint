@@ -121,6 +121,7 @@ export component HomePage inherits Rectangle {
             WeekStrip { }
             if AppData.day-tiles.length > 0: TileGrid {
                 tiles: AppData.day-tiles;
+                holdable: true;
                 open(id) => { AppData.open-series(id); }
                 held(id, title) => {
                     Ask.menu-id = id;
@@ -135,6 +136,7 @@ export component HomePage inherits Rectangle {
                 }
                 TileRow {
                     tiles: shelf.tiles;
+                    holdable: true;
                     open(id) => { AppData.open-series(id); }
                     held(id, title) => {
                         Ask.menu-id = id;

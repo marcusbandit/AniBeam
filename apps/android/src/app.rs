@@ -98,7 +98,8 @@ struct App {
     trackers: Option<(TrackerAccount, TrackerAccount)>,
     /// The tracker a sign-in was last started for (0 AniList, 1 MAL), and why it failed,
     /// which More shows in place of "Not signed in" until it is tried again.
-    signing_in: i32,
+    /// The sign-in jobs started, by job id: which tracker each is for.
+    signing_in: HashMap<u64, i32>,
     sign_in_error: Option<(i32, String)>,
     // The other device.
     cache: Option<Cache>,
@@ -350,8 +351,10 @@ impl App {
         }
 
         // More.
-        if let Some(why) = crate::local::sign_in_failed() {
-            self.sign_in_error = Some((self.signing_in, format!("Sign-in failed: {why}. Tap to try again.")));
+        if let Some((job, why)) = crate::local::sign_in_failed()
+            && let Some(which) = self.signing_in.remove(&job)
+        {
+            self.sign_in_error = Some((which, format!("Sign-in failed: {why}. Tap to try again.")));
         }
         if let Some((anilist, mal)) = &self.trackers {
             let line = |which: i32, a: &TrackerAccount| match &self.sign_in_error {
@@ -721,7 +724,6 @@ impl App {
 
     fn connect_tracker(&mut self, which: i32) {
         let tracker = if which == 0 { Tracker::Anilist } else { Tracker::Mal };
-        self.signing_in = which;
         self.sign_in_error = None;
         let Some(core) = crate::local::core() else {
             let line: SharedString = "AniBeam is still starting. Try again in a moment.".into();
@@ -732,7 +734,11 @@ impl App {
             }
             return;
         };
-        if let Err(e) = core.call(Call::ConnectTracker { tracker }) {
+        let started = core.call(Call::ConnectTracker { tracker });
+        if let Ok(Reply::Started { job }) = &started {
+            self.signing_in.insert(*job, which);
+        }
+        if let Err(e) = started {
             crate::local::log(&format!("sign-in did not start: {e}"));
             self.sign_in_error = Some((which, format!("Sign-in did not start: {e}. Tap to try again.")));
             self.tick();
@@ -772,7 +778,8 @@ fn download_row(t: &Torrent, held: bool) -> DownloadRow {
     let paused = t.state.starts_with("paused") && !done;
     let state = match t.state.as_str() {
         _ if done => "Done",
-        "pausedDL" if held => "Waiting for Wi-Fi",
+        // Held off mobile data, nothing restarts it, a retry included, until Wi-Fi.
+        "pausedDL" | "error" if held => "Waiting for Wi-Fi",
         "pausedDL" => "Paused",
         "stalledDL" => "Looking for peers",
         "checkingDL" => "Checking",
@@ -1007,7 +1014,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         asked: HashSet::new(),
         posters: start_poster_loader(),
         trackers: None,
-        signing_in: 0,
+        signing_in: HashMap::new(),
         sign_in_error: None,
         cache: {
             let cache = store.cache();

@@ -525,7 +525,7 @@ export component PlayerPage inherits Rectangle {
         VerticalLayout {
             x: root.side-left + 14 * Theme.unit;
             y: root.inset-top + Theme.unit * 2;
-            width: parent.width - self.x - root.side-right - 14 * Theme.unit;
+            width: parent.width - self.x - root.side-right - 26 * Theme.unit;
             height: self.preferred-height;
             spacing: 1px;
             Text {
@@ -865,40 +865,6 @@ export component PlayerPage inherits Rectangle {
         }
     }
 
-    // ---- Locked: the picture takes no touch; a tap shows Unlock for a moment.
-    if PlayerData.locked: TouchArea {
-        clicked => {
-            lock-hint.shown = true;
-            lock-hint-hide.running = false;
-            lock-hint-hide.running = true;
-        }
-    }
-    lock-hint-hide := Timer {
-        interval: 2500ms;
-        running: false;
-        triggered => {
-            self.running = false;
-            lock-hint.shown = false;
-        }
-    }
-    lock-hint := Button {
-        in-out property <bool> shown;
-        x: (parent.width - self.width) / 2;
-        width: self.min-width;
-        y: parent.height - self.height - root.inset-bottom - 2 * Theme.grout;
-        visible: PlayerData.locked && self.shown;
-        has-icon: true;
-        icon: @image-url("icons/lock-open.svg");
-        text: "Unlock";
-        primary: true;
-        clicked => {
-            PlayerData.locked = false;
-            self.shown = false;
-            PlayerData.chrome = true;
-            PlayerData.touched();
-        }
-    }
-
     // ---- Replay: keep-open holds the last frame, and this sits on it.
     if PlayerData.replay: Button {
         x: (parent.width - self.width) / 2;
@@ -943,4 +909,39 @@ export component PlayerPage inherits Rectangle {
     }
 
     if PlayerData.picker != 0: Picker { }
+
+    // ---- Locked: nothing under this takes a touch, the replay, the notice and the
+    // pickers included; a tap shows Unlock for a moment. It is last, so it lies on top.
+    if PlayerData.locked: TouchArea {
+        clicked => {
+            lock-hint.shown = true;
+            lock-hint-hide.running = false;
+            lock-hint-hide.running = true;
+        }
+    }
+    lock-hint-hide := Timer {
+        interval: 2500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            lock-hint.shown = false;
+        }
+    }
+    lock-hint := Button {
+        in-out property <bool> shown;
+        x: (parent.width - self.width) / 2;
+        width: self.min-width;
+        y: parent.height - self.height - root.inset-bottom - 2 * Theme.grout;
+        visible: PlayerData.locked && self.shown;
+        has-icon: true;
+        icon: @image-url("icons/lock-open.svg");
+        text: "Unlock";
+        primary: true;
+        clicked => {
+            PlayerData.locked = false;
+            self.shown = false;
+            PlayerData.chrome = true;
+            PlayerData.touched();
+        }
+    }
 }

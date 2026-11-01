@@ -58,6 +58,7 @@ export component LibraryPage inherits Rectangle {
             }
             if AppData.library.length > 0: TileGrid {
                 tiles: AppData.library;
+                holdable: AppData.device == 0;
                 // The menu's Get and Delete are for this phone's shows.
                 held(id, title) => {
                     if (AppData.device == 0) {

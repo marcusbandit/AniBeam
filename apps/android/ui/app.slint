@@ -184,8 +184,11 @@ export component AppWindow inherits Window {
                 PlayerData.close-picker();
                 return accept;
             }
+            // Locked, back does nothing either: an edge swipe is the stray touch most likely.
             if (PlayerData.open) {
-                PlayerData.back();
+                if (!PlayerData.locked) {
+                    PlayerData.back();
+                }
                 return accept;
             }
             if (AppData.notes-open) {

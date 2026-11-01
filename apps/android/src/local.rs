@@ -17,11 +17,11 @@ pub const LIBRARY_DIR: &str = "Anime";
 
 /// Set by any event that can change what a page shows; the UI's clock reads and clears it.
 static CHANGED: AtomicBool = AtomicBool::new(true);
-/// Why the last sign-in failed, once, for More to say.
-static SIGN_IN_FAILED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// The last sign-in job that failed, and why, once, for More to say.
+static SIGN_IN_FAILED: std::sync::Mutex<Option<(u64, String)>> = std::sync::Mutex::new(None);
 
-/// Why the last sign-in failed, if one did since this was last asked.
-pub fn sign_in_failed() -> Option<String> {
+/// The last sign-in job that failed and why, if one did since this was last asked.
+pub fn sign_in_failed() -> Option<(u64, String)> {
     SIGN_IN_FAILED.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
@@ -50,7 +50,7 @@ impl EventListener for Logcat {
         if let (EventBody::JobFailed { error }, Some(job)) = (&event.body, &event.job)
             && job.kind == anibeam_core::JobKind::ConnectTracker
         {
-            *SIGN_IN_FAILED.lock().unwrap_or_else(|e| e.into_inner()) = Some(error.to_string());
+            *SIGN_IN_FAILED.lock().unwrap_or_else(|e| e.into_inner()) = Some((job.id, error.to_string()));
         }
         crate::player::core_event(&event.body);
         // Debug events are progress chatter; the state changes the pages show come as Info

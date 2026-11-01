@@ -794,7 +794,9 @@ export component NavItem inherits Rectangle {
 export component PosterTile inherits Rectangle {
     in property <Tile> data;
     callback open(int);
-    // Held down: the series and its title, for a menu.
+    // Held down: the series and its title, for a menu. Only where `holdable` is set, so a
+    // slow tap elsewhere still opens the show.
+    in property <bool> holdable;
     callback held(int, string);
     border-radius: Theme.radius;
     clip: true;
@@ -876,7 +878,7 @@ export component PosterTile inherits Rectangle {
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
                 root.was-held = false;
-                hold.running = true;
+                hold.running = root.holdable;
             } else if (e.kind != PointerEventKind.move) {
                 hold.running = false;
             }
@@ -900,6 +902,7 @@ export component PosterTile inherits Rectangle {
 export component TileGrid inherits Rectangle {
     in property <[Tile]> tiles;
     in property <length> tile-min: Theme.tile-min;
+    in property <bool> holdable;
     callback open(int);
     callback held(int, string);
     property <int> columns: Math.max(1, Math.floor((self.width + Theme.gap) / (self.tile-min + Theme.gap)));
@@ -913,6 +916,7 @@ export component TileGrid inherits Rectangle {
         width: root.tile-width;
         height: root.tile-height;
         data: tile;
+        holdable: root.holdable;
         open(id) => { root.open(id); }
         held(id, title) => { root.held(id, title); }
     }
@@ -922,6 +926,7 @@ export component TileGrid inherits Rectangle {
 export component TileRow inherits Rectangle {
     in property <[Tile]> tiles;
     in property <length> tile-width: 116px;
+    in property <bool> holdable;
     callback open(int);
     callback held(int, string);
     height: self.tile-width * Theme.poster-ratio;
@@ -932,6 +937,7 @@ export component TileRow inherits Rectangle {
             width: root.tile-width;
             height: root.height;
             data: tile;
+            holdable: root.holdable;
             open(id) => { root.open(id); }
             held(id, title) => { root.held(id, title); }
         }

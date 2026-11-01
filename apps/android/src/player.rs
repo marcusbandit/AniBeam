@@ -524,7 +524,6 @@ fn begin(
         d.set_picker(0);
         d.set_chrome(true);
         d.set_preview(slint::Image::default());
-        d.set_locked(false);
         d.set_holding(false);
         d.set_level_kind(0);
     });
@@ -652,8 +651,14 @@ pub fn close_page(reason: CloseReason) {
     if !switching {
         crate::android::player_awake(false);
         crate::android::player_screen(false);
-        // A swipe's brightness was for the episode; the phone's own comes back with the page.
+        // A swipe's brightness was for the episode; the phone's own comes back with the page,
+        // and so does a phone that is not locked. The lock holds across episodes.
         crate::android::set_brightness(-1.0);
+        WINDOW.with(|w| {
+            if let Some(w) = w.borrow().as_ref() {
+                data(w, |d| d.set_locked(false));
+            }
+        });
     }
     WINDOW.with(|w| {
         if let Some(w) = w.borrow().as_ref() {
@@ -1133,8 +1138,14 @@ impl Player {
                     p.show_chrome();
                     return;
                 }
-                // Paused, the controls stay; playing on starts the count again.
-                if p.paused {
+                // Paused, here or on the TV, the controls stay, and are looked at again in
+                // 2.5 s, so they hide once it plays on whichever way it was started.
+                let paused = match &p.cast {
+                    Some(c) => c.state != CastPlayState::Playing,
+                    None => p.paused,
+                };
+                if paused {
+                    p.show_chrome();
                     return;
                 }
                 p.d(|d| d.set_chrome(false));
@@ -1158,7 +1169,7 @@ impl Player {
         let level = (base + by).clamp(0.0, 1.0);
         self.d(|d| d.set_level(level));
         // A drag moves many times a second; the phone is only told when it shows.
-        if (level - last).abs() < 0.02 && level != 0.0 && level != 1.0 {
+        if level == last || ((level - last).abs() < 0.02 && level != 0.0 && level != 1.0) {
             return;
         }
         self.adjusting = Some((kind, base, level));
