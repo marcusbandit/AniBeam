@@ -3,7 +3,7 @@ import { Ask } from "more.slint";
 import { FindData } from "find.slint";
 import { AppData, Nav } from "data.slint";
 import { Button, EmptyNote, Figure, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
-import { Fold } from "fold.slint";
+import { Area, Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
 
 // The head, the device switch and the search.
@@ -55,8 +55,10 @@ component LibraryControls inherits VerticalLayout {
 
 // The posters, or why there are none.
 component LibraryGrid inherits VerticalLayout {
+    in property <length> fit-width: self.width;
     spacing: Theme.unit * 4;
     if AppData.library.length > 0: TileGrid {
+        fit-width: root.fit-width;
         tiles: AppData.library;
         holdable: AppData.device == 0;
         // The menu's Get and Delete are for this phone's shows.
@@ -128,11 +130,12 @@ export component LibraryPage inherits Rectangle {
         LibraryControls { }
         LibraryGrid { }
     }
+    property <Area> grid-area: AppData.series-open || Fold.posture == 2 ? Fold.pick(0.56) : Fold.pick(1);
     if Fold.split: Leaf {
-        area: AppData.series-open || Fold.posture == 2 ? Fold.pick(0.56) : Fold.pick(1);
+        area: root.grid-area;
         Scroll {
             LibraryControls { }
-            LibraryGrid { }
+            LibraryGrid { fit-width: Fold.inner(root.grid-area); }
         }
     }
     if Fold.split: Leaf {

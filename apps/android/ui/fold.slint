@@ -12,6 +12,8 @@
 // than jumping. Rust sets the hinge from the sensor; the window sets its size and insets.
 // Panes are in the coordinates of the body, the area the pages draw in.
 
+import { Theme } from "theme.slint";
+
 export struct Area {
     x: length,
     y: length,
@@ -48,6 +50,10 @@ export global Fold {
     // fold or unfold swaps the whole screen, and the window clears `still` while it resizes.
     in-out property <bool> still: true;
     out property <duration> settle: self.still ? 340ms : 0ms;
+    // Set by the window while a bend moves things, so what glides then (a grid's tiles)
+    // does not glide when it changes for any other reason.
+    in-out property <bool> moving;
+    out property <duration> glide: self.moving ? self.settle : 0ms;
 
     // The navigation: a bar along the bottom when folded, a rail otherwise.
     out property <bool> rail: self.posture != 0;
@@ -95,5 +101,11 @@ export global Fold {
             return { x: self.crease-x + self.gutter / 2, y: 0, width: self.body-width - self.crease-x - self.gutter / 2, height: self.body-height };
         }
         return { x: 0, y: 0, width: self.body-width, height: self.body-height };
+    }
+
+    // A pane's width without the page margins a Scroll gives it: what a grid in it lays
+    // out for.
+    public pure function inner(area: Area) -> length {
+        return area.width - 2 * (Theme.grout + Theme.unit);
     }
 }

@@ -3,6 +3,7 @@
 // display cut with a dim line of fact on their baseline.
 
 import { Theme } from "theme.slint";
+import { Fold } from "fold.slint";
 import { Tile } from "data.slint";
 
 // Text that wraps onto at most `lines` lines and ends in an ellipsis past that. A Text in
@@ -946,18 +947,24 @@ export component TileGrid inherits Rectangle {
     in property <[Tile]> tiles;
     in property <length> tile-min: Theme.tile-min;
     in property <bool> holdable;
+    // The width the columns are worked out for. A pane sliding to a new size passes the
+    // size it is going to, so the grid lays out once instead of re-flowing every frame.
+    in property <length> fit-width: self.width;
     callback open(int);
     callback held(int, string);
-    property <int> columns: Math.max(1, Math.floor((self.width + Theme.gap) / (self.tile-min + Theme.gap)));
-    property <length> tile-width: (self.width - (self.columns - 1) * Theme.gap) / self.columns;
+    property <int> columns: Math.max(1, Math.floor((self.fit-width + Theme.gap) / (self.tile-min + Theme.gap)));
+    property <length> tile-width: (self.fit-width - (self.columns - 1) * Theme.gap) / self.columns;
     property <length> tile-height: self.tile-width * Theme.poster-ratio;
     height: Math.max(0, Math.ceil(self.tiles.length / self.columns) * (self.tile-height + Theme.gap) - Theme.gap);
+    animate height { duration: Fold.glide; easing: ease-in-out; }
 
     for tile[i] in root.tiles: PosterTile {
         x: Math.mod(i, root.columns) * (root.tile-width + Theme.gap);
         y: Math.floor(i / root.columns) * (root.tile-height + Theme.gap);
         width: root.tile-width;
         height: root.tile-height;
+        // A new column count glides the tiles to their places, in step with the panes.
+        animate x, y, width, height { duration: Fold.glide; easing: ease-in-out; }
         data: tile;
         holdable: root.holdable;
         open(id) => { root.open(id); }

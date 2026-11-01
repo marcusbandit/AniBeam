@@ -352,7 +352,7 @@ pub fn install(window: &AppWindow) {
     fn picture_size(w: &crate::AppWindow) -> (u32, u32) {
         let size = w.window().size();
         let fold = w.global::<crate::Fold>();
-        if fold.get_posture() != 3 {
+        if !fold.get_stood() {
             return (size.width, size.height);
         }
         let scale = w.window().scale_factor();
