@@ -150,6 +150,8 @@ export struct DownloadRow {
     folder: string,
     // One cube per file of a batch (Theme.cube's codes: 2 done, 6 coming, 4 not started).
     cubes: [int],
+    // Several episodes in one download, rather than one episode.
+    batch: bool,
     // The state's dot: 0 moving, 1 paused, 2 waiting, 3 trouble, 4 done.
     tone: int,
     // The library show it fills, for the poster and a tap: -1 and empty when none.

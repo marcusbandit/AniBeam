@@ -21,8 +21,10 @@ export struct SourceChip {
 
 // One row of the show view's grid.
 export struct GridRow {
-    // "SubsPlease 1080p", "Judas 1080p batch 1-12".
+    // "SubsPlease 1080p", "Judas 1080p".
     label: string,
+    // "Batch 1-12" when the row is one download of many episodes, empty otherwise.
+    batch: string,
     // "12 episodes  1.2k seeds  16 GB".
     meta: string,
     // 0 none, 1 there to take, 2 picked, 3 the library has it, 4 on its way.
@@ -136,23 +138,33 @@ export global FindData {
 }
 
 // The grid's cube colours, the desktop's: there to take is glass with an edge, picked is
-// the accent, what the library has is faint glass, on its way the download purple.
+// the accent, what the library has is faint glass, on its way the download purple. The
+// phone's own row is in the library's colours instead.
 component GridCube inherits Rectangle {
     in property <int> code;
-    border-radius: Math.max(2px, self.width / 4);
-    background: root.code == 2 ? Theme.accent : root.code == 1 ? #ffffff1a : root.code == 3 ? #ffffff0d : root.code == 4 ? Theme.purple : transparent;
-    border-width: root.code == 1 ? 1px : 0;
-    border-color: #ffffff52;
+    in property <bool> library;
+    border-radius: Math.max(2px, Math.min(8px, self.width / 4));
+    background: root.library ? (root.code == 5 ? transparent : Theme.cube(root.code))
+        : root.code == 2 ? Theme.accent : root.code == 1 ? #ffffff1a : root.code == 3 ? #ffffff0d : root.code == 4 ? Theme.purple : transparent;
+    border-width: root.library ? (root.code == 5 ? 1px : 0) : root.code == 1 ? 1px : 0;
+    border-color: root.library ? Theme.line-strong : #ffffff52;
 }
 
-// A cube row that answers taps: the grid's rows. A finger is wider than a cube, so each one
-// takes the touches from the gap around it too.
-component TapCubes inherits Rectangle {
+// Episode cells: a row of the grid to tap, or the phone's own row above it. The cells
+// stretch to fill the width, so every row lines up with the next, and their size follows
+// the count: a season's few are big enough for a thumb and carry their episode number, a
+// long show's hundreds shrink to fit and go unnumbered. Each cell takes the
+// touches from the gap around it too.
+export component EpisodeCells inherits Rectangle {
     in property <[int]> codes;
-    in property <length> size: 14px;
-    in property <length> spacing: 4px;
+    // The phone's row uses the library's colours (Theme.cube) and takes no taps.
+    in property <bool> library;
     callback tapped(int);
-    property <int> per-row: Math.max(1, Math.floor((self.width + self.spacing) / (self.size + self.spacing)));
+    property <length> spacing: root.codes.length <= 26 ? 6px : 4px;
+    property <length> least: root.codes.length <= 26 ? 40px : root.codes.length <= 100 ? 30px : 18px;
+    property <int> per-row: Math.max(1, Math.floor((self.width + self.spacing) / (self.least + self.spacing)));
+    property <length> size: (self.width - (self.per-row - 1) * self.spacing) / self.per-row;
+    property <bool> numbered: self.size >= 28px;
     height: self.codes.length == 0 ? 0 : Math.ceil(self.codes.length / self.per-row) * (self.size + self.spacing) - self.spacing;
     for code[i] in root.codes: GridCube {
         x: Math.mod(i, root.per-row) * (root.size + root.spacing);
@@ -160,7 +172,15 @@ component TapCubes inherits Rectangle {
         width: root.size;
         height: root.size;
         code: code;
-        TouchArea {
+        library: root.library;
+        // The phone's row goes unnumbered: the rows under it say which is which.
+        if root.numbered && !root.library: Text {
+            text: i + 1;
+            font-family: Theme.figure;
+            font-size: Math.min(Theme.small, root.size * 0.36);
+            color: code == 2 ? Theme.on-accent : code == 0 ? Theme.faint : Theme.dim;
+        }
+        if !root.library: TouchArea {
             x: -root.spacing / 2;
             y: -root.spacing / 2;
             width: parent.width + root.spacing;
@@ -314,42 +334,95 @@ component SourceItem inherits Rectangle {
     }
 }
 
-// One release group of the grid: its name, its facts, and a cube per episode to tap.
+// One release group of the grid: its name, its facts, and a cell per episode to tap. A
+// batch, one download carrying many episodes, is drawn as a stack of cards with a Batch
+// tag, so it never reads as a row of single episodes.
 component GridItem inherits Rectangle {
     in property <GridRow> data;
     callback picked();
     callback tapped(int);
-    height: column.preferred-height + 7 * Theme.unit;
-    border-radius: Theme.radius;
-    background: root.data.chosen ? Theme.raised : Theme.surface;
-    border-width: 1px;
-    border-color: root.data.chosen ? Theme.accent-edge : Theme.line;
+    property <bool> batch: root.data.batch != "";
+    property <length> card-height: column.preferred-height + 7 * Theme.unit;
+    height: self.card-height + (self.batch ? 2 * Theme.unit : 0);
+    // The stack: two edges peeking out under the card.
+    if root.batch: Rectangle {
+        x: 4 * Theme.unit;
+        y: 2 * Theme.unit;
+        width: parent.width - 8 * Theme.unit;
+        height: root.card-height;
+        border-radius: Theme.radius;
+        background: Theme.ground;
+        border-width: 1px;
+        border-color: Theme.line;
+    }
+    if root.batch: Rectangle {
+        x: 2 * Theme.unit;
+        y: Theme.unit;
+        width: parent.width - 4 * Theme.unit;
+        height: root.card-height;
+        border-radius: Theme.radius;
+        background: Theme.ground;
+        border-width: 1px;
+        border-color: Theme.line;
+    }
+    // The card's glass is see-through; ground under it hides the stack behind.
+    if root.batch: Rectangle {
+        y: 0;
+        height: root.card-height;
+        border-radius: Theme.radius;
+        background: Theme.ground;
+    }
+    Rectangle {
+        height: root.card-height;
+        y: 0;
+        border-radius: Theme.radius;
+        background: root.data.chosen ? Theme.raised : Theme.surface;
+        border-width: 1px;
+        border-color: root.data.chosen ? Theme.accent-edge : Theme.line;
+    }
     column := VerticalLayout {
         x: Theme.unit * 4;
         y: Theme.unit * 3.5;
         width: parent.width - Theme.unit * 8;
-        spacing: Theme.unit * 2;
+        spacing: Theme.unit * 3;
         Rectangle {
             height: head.preferred-height;
-            head := VerticalLayout {
-                spacing: Theme.unit;
-                Text {
-                    text: root.data.label;
-                    color: Theme.text;
-                    font-size: Theme.heading;
-                    font-family: Theme.title-face;
-                    overflow: elide;
+            head := HorizontalLayout {
+                spacing: Theme.unit * 3;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: Theme.unit;
+                    Text {
+                        text: root.data.label;
+                        color: Theme.text;
+                        font-size: Theme.heading;
+                        font-family: Theme.title-face;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: root.data.meta;
+                        color: Theme.dim;
+                        font-size: Theme.small - 0.5px;
+                        font-family: Theme.figure;
+                        overflow: elide;
+                    }
                 }
-                Text {
-                    text: root.data.meta;
-                    color: Theme.dim;
-                    font-size: Theme.small - 0.5px;
-                    font-family: Theme.figure;
+                VerticalLayout {
+                    alignment: center;
+                    Chip {
+                        text: root.batch ? root.data.batch : "Episodes";
+                        small: true;
+                        selected: root.batch;
+                        dimmed: !root.batch;
+                        has-icon: root.batch;
+                        icon: @image-url("icons/layers.svg");
+                    }
                 }
             }
             TouchArea { clicked => { root.picked(); } }
         }
-        TapCubes {
+        EpisodeCells {
             codes: root.data.cubes;
             tapped(n) => { root.tapped(n); }
         }
@@ -427,7 +500,7 @@ export component ShowView inherits VerticalLayout {
 
     if FindData.rows.length > 0: SectionHead {
         title: "What it has";
-        note: "Tap a row to take it, or single cubes.";
+        note: "Tap a row to take it all, or single episodes.";
     }
     if FindData.rows.length > 0 && FindData.library.length > 0: VerticalLayout {
         spacing: Theme.unit * 2;
@@ -438,10 +511,9 @@ export component ShowView inherits VerticalLayout {
             color: Theme.faint;
             font-size: Theme.small;
         }
-        Cubes {
+        EpisodeCells {
             codes: FindData.library;
-            size: 14px;
-            spacing: 4px;
+            library: true;
         }
     }
     for row[r] in FindData.rows: GridItem {

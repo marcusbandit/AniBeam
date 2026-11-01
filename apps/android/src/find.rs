@@ -846,11 +846,10 @@ impl Find {
             grid_rows = rows
                 .iter()
                 .map(|row| {
-                    let label = if row.batch {
-                        format!("{} {} batch {}", row.group, row.resolution, row.label)
-                    } else {
-                        format!("{} {}", row.group, row.resolution)
-                    };
+                    // A batch says so in its tag, with the episodes it covers, rather than in
+                    // its name.
+                    let label = format!("{} {}", row.group, row.resolution);
+                    let batch = if row.batch { format!("Batch {}", row.label).trim().to_string() } else { String::new() };
                     let meta = format!(
                         "{}  {} seeds  {}",
                         if row.count == 1 { "1 episode".to_string() } else { format!("{} episodes", row.count) },
@@ -867,7 +866,13 @@ impl Find {
                             _ => 0,
                         })
                         .collect();
-                    GridRow { label: label.trim().into(), meta: meta.into(), cubes: model(cubes), chosen: row.key == state.picks.chosen }
+                    GridRow {
+                        label: label.trim().into(),
+                        batch: batch.into(),
+                        meta: meta.into(),
+                        cubes: model(cubes),
+                        chosen: row.key == state.picks.chosen,
+                    }
                 })
                 .collect();
             let plan = grid::plan(show, &query, &items, &facts, &rows, &state.picks, &library, state.replace, &provider);

@@ -36,9 +36,14 @@ export global Fold {
 
     // A phone held upright is narrow; an unfolded inner screen or a phone on its side is wide.
     out property <bool> wide: self.width >= 600px || self.width > self.height;
+    // The screen with the crease in it. The outer screen of a book foldable is a phone's,
+    // under 600 across its short side whichever way it is turned; the inner one is not.
+    // Opened a little while the outer screen is still the one lit, the hinge bends but no
+    // crease runs through the picture, so nothing splits.
+    out property <bool> creased: Math.min(self.width, self.height) >= 600px;
     // Under 30 degrees the phone is shut and shows its outer screen, which turned on its side
     // is wide too: that is a phone in landscape, not a bent inner screen.
-    property <bool> bent: self.wide && self.hinge < 170 && self.hinge > 30;
+    property <bool> bent: self.creased && self.hinge < 170 && self.hinge > 30;
     out property <bool> half: self.bent && !self.crease-across;
     // Stood up like a laptop, for the player.
     out property <bool> stood: self.bent && self.crease-across;

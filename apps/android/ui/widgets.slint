@@ -162,7 +162,10 @@ export component Chip inherits Rectangle {
             vertical-alignment: center;
         }
     }
+    // Taller than the chip, so a finger needn't land inside its pill.
     touch := TouchArea {
+        y: Math.min(0, (parent.height - Theme.touch) / 2);
+        height: Math.max(parent.height, Theme.touch);
         enabled: root.tappable;
         clicked => { root.clicked(); }
     }
@@ -212,6 +215,8 @@ export component Button inherits Rectangle {
         }
     }
     touch := TouchArea {
+        y: Math.min(0, (parent.height - Theme.touch) / 2);
+        height: Math.max(parent.height, Theme.touch);
         enabled: root.enabled;
         clicked => { root.clicked(); }
     }
@@ -281,7 +286,7 @@ export component IconButton inherits Rectangle {
     in property <bool> danger;
     in property <bool> primary;
     callback clicked();
-    width: 11 * Theme.unit;
+    width: Theme.touch;
     height: self.width;
     border-radius: self.width / 2;
     background: root.primary ? (touch.pressed ? #c9cdd2 : Theme.accent)
@@ -660,8 +665,12 @@ export component Segmented inherits Rectangle {
     border-width: 1px;
     border-color: Theme.line;
     property <length> cell: (self.width - 2 * 3px) / Math.max(1, self.options.length);
+    // Where the thumb is, in cells. Only a pick glides it; a change of width moves it with
+    // its cell in the same frame, so it never trails the label it sits under.
+    property <float> spot: root.picked;
+    animate spot { duration: 180ms; easing: ease-out; }
     thumb := Rectangle {
-        x: 3px + root.picked * root.cell;
+        x: 3px + root.spot * root.cell;
         y: 3px;
         width: root.cell;
         height: parent.height - 6px;
@@ -669,7 +678,6 @@ export component Segmented inherits Rectangle {
         background: Theme.accent-soft;
         border-width: 1px;
         border-color: Theme.accent-edge;
-        animate x { duration: 180ms; easing: ease-out; }
     }
     for option[i] in root.options: Rectangle {
         x: 3px + i * root.cell;

@@ -246,14 +246,16 @@ component SeekBar inherits Rectangle {
 }
 
 // The picker sheet for audio, subtitles and speed: rows over the floating glass.
+// Stood up, it keeps to the half on the table, `top` down.
 component Picker inherits Rectangle {
+    in property <length> top;
     background: #00000080;
     TouchArea { clicked => { PlayerData.close-picker(); } }
     sheet := Rectangle {
         width: Math.min(parent.width - 2 * Theme.grout, 110 * Theme.unit);
-        height: Math.min(parent.height - 2 * Theme.grout, body.preferred-height);
+        height: Math.min(parent.height - root.top - 2 * Theme.grout, body.preferred-height);
         x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
+        y: root.top + (parent.height - root.top - self.height) / 2;
         background: Theme.float;
         border-radius: Theme.radius;
         border-width: 1px;
@@ -303,9 +305,16 @@ export component PlayerPage inherits Rectangle {
     background: black;
 
     // Stood up half folded like a laptop, the picture keeps to the half above the crease and
-    // the controls to the half below it, on the table.
+    // every control to the half below it, on the table: back, cast and lock too, so nothing
+    // lies on the picture.
     property <bool> stood: Fold.stood;
     property <length> picture-height: root.stood ? Fold.height / 2 - Fold.gutter / 2 : root.height;
+    // Where the controls start: the top of the screen, or the top of the half on the table.
+    property <length> desk-y: root.stood ? Fold.height / 2 + Fold.gutter / 2 : 0;
+    property <length> head-top: root.stood ? root.desk-y : root.inset-top;
+    // The middle of the ground the controls leave free: the screen's, or between the header
+    // and the island on the table.
+    property <length> mid: root.stood ? (root.head-top + 15 * Theme.unit + controls.y) / 2 : root.height / 2;
     changed picture-height => { PlayerData.page-height = self.picture-height; }
     init => { PlayerData.page-height = self.picture-height; }
 
@@ -437,7 +446,7 @@ export component PlayerPage inherits Rectangle {
         in-out property <bool> left;
         in-out property <bool> shown;
         x: self.left ? parent.width / 6 - self.width / 2 : parent.width * 5 / 6 - self.width / 2;
-        y: (parent.height - self.height) / 2;
+        y: root.mid - self.height / 2;
         width: label.preferred-width + 8 * Theme.unit;
         height: 12 * Theme.unit;
         border-radius: self.height / 2;
@@ -461,6 +470,7 @@ export component PlayerPage inherits Rectangle {
     }
 
     if PlayerData.buffering || (!PlayerData.loaded && PlayerData.error == ""): Rectangle {
+        y: (root.picture-height - self.height) / 2;
         width: 12 * Theme.unit;
         height: self.width;
         Image {
@@ -473,6 +483,7 @@ export component PlayerPage inherits Rectangle {
     }
 
     if PlayerData.error != "": Rectangle {
+        y: (root.picture-height - self.height) / 2;
         width: Math.min(parent.width - 8 * Theme.grout, 140 * Theme.unit);
         height: err.preferred-height + 2 * Theme.pad;
         background: Theme.float;
@@ -495,8 +506,8 @@ export component PlayerPage inherits Rectangle {
 
     // The header: back, the series, the episode, over a scrim from the top.
     Rectangle {
-        y: 0;
-        height: root.inset-top + 26 * Theme.unit;
+        y: root.desk-y;
+        height: root.head-top - root.desk-y + 26 * Theme.unit;
         opacity: root.chrome-shown ? 1 : 0;
         visible: self.opacity > 0;
         animate opacity { duration: 200ms; }
@@ -504,20 +515,20 @@ export component PlayerPage inherits Rectangle {
         TouchArea { clicked => { PlayerData.chrome = false; } }
         PlayerButton {
             x: root.side-left;
-            y: root.inset-top + Theme.unit * 2;
+            y: root.head-top - root.desk-y + Theme.unit * 2;
             icon: @image-url("icons/arrow-left.svg");
             clicked => { PlayerData.back(); }
         }
         PlayerButton {
             x: parent.width - self.width - root.side-right;
-            y: root.inset-top + Theme.unit * 2;
+            y: root.head-top - root.desk-y + Theme.unit * 2;
             icon: @image-url("icons/cast.svg");
             active: PlayerData.casting;
             clicked => { PlayerData.cast(); }
         }
         PlayerButton {
             x: parent.width - 2 * self.width - root.side-right - Theme.unit;
-            y: root.inset-top + Theme.unit * 2;
+            y: root.head-top - root.desk-y + Theme.unit * 2;
             icon: @image-url("icons/lock.svg");
             clicked => {
                 PlayerData.locked = true;
@@ -530,7 +541,7 @@ export component PlayerPage inherits Rectangle {
         }
         VerticalLayout {
             x: root.side-left + 14 * Theme.unit;
-            y: root.inset-top + Theme.unit * 2;
+            y: root.head-top - root.desk-y + Theme.unit * 2;
             width: parent.width - self.x - root.side-right - 26 * Theme.unit;
             height: self.preferred-height;
             spacing: 1px;
@@ -554,8 +565,8 @@ export component PlayerPage inherits Rectangle {
     // casting, where the page's middle says where the picture went.
     if !PlayerData.replay && PlayerData.loaded && !PlayerData.casting: HorizontalLayout {
         x: (parent.width - self.preferred-width) / 2;
-        // Stood up, the middle of the half below the crease rather than on it.
-        y: root.stood ? (parent.height * 3 - 2 * 18 * Theme.unit) / 4 - 10 * Theme.unit : (parent.height - 18 * Theme.unit) / 2;
+        // Stood up, between the header and the island on the table rather than on the crease.
+        y: root.mid - 9 * Theme.unit;
         height: 18 * Theme.unit;
         spacing: 10 * Theme.unit;
         opacity: root.chrome-shown ? 1 : 0;
@@ -816,9 +827,9 @@ export component PlayerPage inherits Rectangle {
     // ---- A swipe's level: the sun or the speaker, and a bar.
     if PlayerData.level-kind != 0: Rectangle {
         x: PlayerData.level-kind == 1 ? root.side-left + 6 * Theme.unit : parent.width - self.width - root.side-right - 6 * Theme.unit;
-        y: (parent.height - self.height) / 2;
+        y: root.mid - self.height / 2;
         width: 14 * Theme.unit;
-        height: 48 * Theme.unit;
+        height: root.stood ? Math.min(48 * Theme.unit, controls.y - root.head-top - 4 * Theme.unit) : 48 * Theme.unit;
         border-radius: self.width / 2;
         background: #08090bb3;
         Rectangle {
@@ -848,7 +859,7 @@ export component PlayerPage inherits Rectangle {
     // ---- Held for double speed.
     if PlayerData.holding: Rectangle {
         x: (parent.width - self.width) / 2;
-        y: root.inset-top + 6 * Theme.unit;
+        y: root.head-top + 6 * Theme.unit;
         width: hold-row.preferred-width + 6 * Theme.unit;
         height: 10 * Theme.unit;
         border-radius: self.height / 2;
@@ -876,7 +887,7 @@ export component PlayerPage inherits Rectangle {
     if PlayerData.replay: Button {
         x: (parent.width - self.width) / 2;
         width: self.min-width;
-        y: (parent.height - self.height) / 2;
+        y: root.mid - self.height / 2;
         primary: true;
         has-icon: true;
         icon: @image-url("icons/rotate-ccw.svg");
@@ -887,7 +898,7 @@ export component PlayerPage inherits Rectangle {
     // ---- A notice: what the tracker said, or "Skipped intro" with Undo.
     if PlayerData.notice != "": Rectangle {
         x: (parent.width - self.width) / 2;
-        y: root.inset-top + 6 * Theme.unit;
+        y: root.head-top + 6 * Theme.unit;
         width: Math.min(parent.width - 2 * Theme.grout, notice-row.preferred-width);
         height: notice-row.preferred-height;
         background: Theme.float;
@@ -915,7 +926,7 @@ export component PlayerPage inherits Rectangle {
         }
     }
 
-    if PlayerData.picker != 0: Picker { }
+    if PlayerData.picker != 0: Picker { top: root.desk-y; }
 
     // ---- Locked: nothing under this takes a touch, the replay, the notice and the
     // pickers included; a tap shows Unlock for a moment. It is last, so it lies on top.
