@@ -10,7 +10,7 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.5.0 · 2026-11-01
+## 2.4.0 · 2026-11-01
 
 ### New
 - A Calendar tab: what airs from two days back to a week ahead
@@ -18,31 +18,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Half folded, everything moves off the crease to either side of it
 - Stood up half folded, the video plays above the crease, controls below
 - Downloads show the show's poster; tap one to open the show
-
-### Changed
-- Home lists the next episodes to air, with a way into the Calendar
-- Downloads shows free space instead of upload speed
-
-## 2.4.3 · 2026-11-01
-
-### New
 - Tap a site you added yourself to change its name or address
-
-### Changed
-- When your computer cannot be reached, the app says what to do about it
-- An episode your computer cannot stream yet says to update AniBeam there
-- Editing a site keeps its keys out of the address and offers to change them
-
-## 2.4.2 · 2026-11-01
-
-### Changed
-- More opens on a list of settings, each saying how it stands right now
-- Each part of the settings opens as its own page
-- Search the settings to land right on the one you want
-
-## 2.4.0 · 2026-11-01
-
-### New
 - Lock the player so a stray touch does nothing
 - Swipe up or down on the left for brightness, on the right for volume
 - Hold the picture to play at 2x until you let go
@@ -51,8 +27,20 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Search fields have a clear button
 - Refresh your computer's library, and check repos for new sites
 - A download stopped by an error offers Retry
+- Play episodes from your computer's library over Tailscale
+- Pick how streams play in More: Auto, Original, 1080p, 720p or 480p
+- Cast an episode from your computer to a Chromecast, converted to play
+- Episodes watched from your computer keep their place there
 
 ### Changed
+- Home lists the next episodes to air, with a way into the Calendar
+- Downloads shows free space instead of upload speed
+- When your computer cannot be reached, the app says what to do about it
+- An episode your computer cannot stream yet says to update AniBeam there
+- Editing a site keeps its keys out of the address and offers to change them
+- More opens on a list of settings, each saying how it stands right now
+- Each part of the settings opens as its own page
+- Search the settings to land right on the one you want
 - Paused, the player keeps its controls up
 - Skip intro and Skip outro stay up while the controls hide
 - Tap anywhere on a switch row to flip it
@@ -64,14 +52,6 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Storage says how much the episodes use
 - A failed sign-in says why
 - No more "Nothing on this phone yet" while the app starts
-
-## 2.3.0 · 2026-11-01
-
-### New
-- Play episodes from your computer's library over Tailscale
-- Pick how streams play in More: Auto, Original, 1080p, 720p or 480p
-- Cast an episode from your computer to a Chromecast, converted to play
-- Episodes watched from your computer keep their place there
 
 ## 2.2.0 · 2026-10-31
 
