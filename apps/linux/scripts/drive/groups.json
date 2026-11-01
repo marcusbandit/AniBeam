@@ -13,11 +13,13 @@
   {"click": "group-franchises"},
   {"until": "driver.item.findItem('library-page').groupFranchises === true"},
   {"eval": "driver.item.findItem('library-page').groupFranchises", "expect": true},
-  {"click": "arrange-Type"},
+  {"click": "arrange-menu"},
+  {"click": "arrange-menu-option-1"},
   {"until": "Door.preferences.library_arrange === 'Type'"},
   {"eval": "Door.preferences.library_arrange", "expect": "Type"},
   {"eval": "driver.item.findItem('library-page').boxes().map(function(b){return b.title+':'+b.ids.length}).join(' | ')", "as": "type"},
-  {"click": "arrange-Season"},
+  {"click": "arrange-menu"},
+  {"click": "arrange-menu-option-0"},
   {"until": "Door.preferences.library_arrange === 'Season'"},
   {"eval": "Door.preferences.library_arrange", "expect": "Season"}
 ]

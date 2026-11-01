@@ -1,5 +1,6 @@
-// The library: a title with its count, the search, one row of pill controls (the tab, the
-// order, the sort, the watched switch), then the series in sections. A section is a
+// The library: a title with its count, the search, one row of controls (the tabs at the
+// left; at the right a Sort menu, its direction in words, a Group menu and two toggle chips
+// for franchises and watched shows, #325), then the series in sections. A section is a
 // heading in the display cut with one fact and a count, over a grid of uniform cards whose
 // column count comes from the width. Group franchises (a switch, on by default) pulls every
 // franchise with two or more series in the library out as a section of its own, ahead of
@@ -27,10 +28,19 @@ Item {
     Keys.onPressed: function(event) { scroll.keyPressed(event) }
 
     readonly property var tabs: ["All", "Series", "Movies"]
-    readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"], ["Downloaded", "Recently downloaded"]]
+    readonly property var sorts: [["LastViewed", "Recently watched"], ["Downloaded", "Recently downloaded"], ["Alpha", "Title"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]
+    // The direction in the words of the order it flips: a title runs A to Z, a date newest
+    // first, a score highest first
+    function directionWords(key, dir) {
+        var asc = dir === "Asc"
+        if (key === "Alpha") return asc ? "A to Z" : "Z to A"
+        if (key === "LastViewed" || key === "Downloaded") return asc ? "Oldest first" : "Newest first"
+        if (key === "Progress") return asc ? "Least watched first" : "Most watched first"
+        return asc ? "Lowest first" : "Highest first"
+    }
     // The cuts. A stored "Related" (the cut before the franchise toggle) reads as Season
     // with the toggle on, which is what it was.
-    readonly property var arrangements: [["Season", "Season"], ["Type", "Type"], ["Genre", "Genre"], ["WatchState", "Watch state"], ["None", "None"]]
+    readonly property var arrangements: [["Season", "Season"], ["Type", "Type"], ["Genre", "Genre"], ["WatchState", "Watch state"], ["None", "Nothing"]]
     function cutOf(key) { return key === "Related" ? "Season" : key }
     // Loaded-with copies, not bindings on Door.preferences: seeded once in
     // Component.onCompleted, ordinary state from then on, so the preferences-changed
@@ -61,9 +71,9 @@ Item {
         Door.setPreferences(p)
     }
     function pickArrange(key) { arrange = key; persist() }
-    // Everything in one list, A to Z: no airing, franchise or dropped sections
+    // Everything in one list, A to Z: no airing, franchise or dropped sections. No button
+    // since #325 (Sort Title, Group Nothing says it); the drive scripts call it.
     function plain() { sort = "Alpha"; direction = "Asc"; arrange = "None"; persist(); reload() }
-    readonly property bool isPlain: arrange === "None" && sort === "Alpha" && direction === "Asc"
     function pickGroupFranchises(on) {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.library_group_franchises = on
@@ -219,7 +229,6 @@ Item {
     readonly property real gap: theme.space(4)
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + gap) / (theme.posterWidth + gap)))
     readonly property real cardWidth: Math.floor((scroll.innerWidth - gap * (cols - 1)) / cols)
-    readonly property bool compact: cols < 6
 
     PageScroll {
         id: scroll
@@ -272,36 +281,41 @@ Item {
             }
         }
 
-        // ---- The controls: one line of pills, wrapping on a narrow window
-        Flow {
+        // ---- The controls: the tabs at the left; at the right what orders the grid and what
+        // cuts it, each one pill that names itself ("Sort  Recently downloaded"), the order's
+        // direction in words beside it, then the two switches as toggle chips. One line, or two
+        // when the window is too narrow for both halves.
+        Item {
+            id: controls
             width: parent.width
-            spacing: theme.space(4)
+            // Placed by x, not by anchors that flip: an anchor set and then cleared leaves the
+            // row stretched to the width it was given
+            readonly property bool oneLine: tabSeg.implicitWidth + theme.space(8) + orderRow.fullWidth <= width
+            height: oneLine ? Math.max(tabSeg.height, orderRow.height) : tabSeg.height + theme.space(3) + orderRow.height
             Seg {
+                id: tabSeg
                 objectName: "tab"
+                anchors.left: parent.left
                 options: page.tabOptions
                 index: Math.max(0, page.tabNames.indexOf(page.tab))
                 onPicked: function(i) { page.pickTab(i) }
             }
-            // Order (the core's ordering) and Sort (the cut into sections) read as a pair:
-            // a dim label before each control
-            Row {
-                spacing: theme.space(2.5)
-                Label { anchors.verticalCenter: parent.verticalCenter; text: "Sort by"; role: "ui"; color: theme.textDim }
-                Seg {
-                    objectName: "sort"
-                    visible: !page.compact
-                    options: page.sorts.map(function(s) {
-                        return { text: s[1], name: s[0], icon: s[0] === page.sort ? (page.direction === "Asc" ? "chevron-up" : "chevron-down") : "" }
-                    })
-                    index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
-                    onPicked: function(i) { if (i === index) page.flipDirection(); else page.pickSort(page.sorts[i][0]) }
-                }
+            // The order pair and the cut trio. Fixed widths for the pills and the direction, so
+            // a pick never moves the controls under the pointer or flips the line
+            Flow {
+                id: orderRow
+                readonly property real fullWidth: sortPair.width + spacing + cutGroup.width
+                width: controls.oneLine ? fullWidth : controls.width
+                x: controls.oneLine ? controls.width - fullWidth : 0
+                y: controls.oneLine ? (controls.height - height) / 2 : tabSeg.height + theme.space(3)
+                spacing: theme.space(4)
                 Row {
-                    visible: page.compact
-                    spacing: theme.space(1)
+                    id: sortPair
+                    spacing: theme.space(2)
                     Dropdown {
                         objectName: "sort-menu"
-                        minWidth: theme.space(28)
+                        prefix: "Sort"
+                        minWidth: theme.space(58)
                         options: page.sorts.map(function(s) { return s[1] })
                         index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
                         onPicked: function(i) { page.pickSort(page.sorts[i][0]) }
@@ -309,59 +323,41 @@ Item {
                     Button {
                         objectName: "sort-direction"
                         anchors.verticalCenter: parent.verticalCenter
-                        small: true; flat: true
-                        icon: page.direction === "Asc" ? "chevron-up" : "chevron-down"
+                        width: Math.max(implicitWidth, theme.space(46))
+                        flat: true
+                        icon: page.direction === "Asc" ? "arrow-up-narrow-wide" : "arrow-down-wide-narrow"
+                        text: page.directionWords(page.sort, page.direction)
                         onClicked: page.flipDirection()
                     }
                 }
-            }
-            Row {
-                spacing: theme.space(2.5)
-                Label { anchors.verticalCenter: parent.verticalCenter; text: "Group by"; role: "ui"; color: theme.textDim }
-                Seg {
-                    objectName: "arrange"
-                    visible: !page.compact
-                    options: page.arrangements.map(function(a) { return { text: a[1], name: a[0] } })
-                    index: Math.max(0, page.arrangements.findIndex(function(a) { return a[0] === page.arrange }))
-                    onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }
-                }
-                Dropdown {
-                    objectName: "arrange-menu"
-                    visible: page.compact
-                    minWidth: theme.space(28)
-                    options: page.arrangements.map(function(a) { return a[1] })
-                    index: Math.max(0, page.arrangements.findIndex(function(a) { return a[0] === page.arrange }))
-                    onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }
-                }
-            }
-            Button {
-                objectName: "plain"
-                text: "Plain A to Z"
-                icon: "list"
-                flat: !page.isPlain
-                onClicked: page.plain()
-            }
-            Row {
-                visible: page.arrange !== "None"
-                spacing: theme.space(2.5)
-                height: theme.controlHeight
-                Label { anchors.verticalCenter: parent.verticalCenter; text: "Group franchises"; role: "ui"; color: theme.textDim }
-                Switch {
-                    objectName: "group-franchises"
-                    anchors.verticalCenter: parent.verticalCenter
-                    checked: page.groupFranchises
-                    onToggled: function(on) { page.pickGroupFranchises(on); checked = Qt.binding(function() { return page.groupFranchises }) }
-                }
-            }
-            Row {
-                spacing: theme.space(2.5)
-                height: theme.controlHeight
-                Label { anchors.verticalCenter: parent.verticalCenter; text: "Show watched"; role: "ui"; color: theme.textDim }
-                Switch {
-                    objectName: "show-watched"
-                    anchors.verticalCenter: parent.verticalCenter
-                    checked: page.showWatched
-                    onToggled: function(on) { page.pickShowWatched(on); checked = Qt.binding(function() { return page.showWatched }) }
+                Row {
+                    id: cutGroup
+                    spacing: theme.space(2)
+                    Dropdown {
+                        objectName: "arrange-menu"
+                        prefix: "Group"
+                        minWidth: theme.space(42)
+                        options: page.arrangements.map(function(a) { return a[1] })
+                        index: Math.max(0, page.arrangements.findIndex(function(a) { return a[0] === page.arrange }))
+                        onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }
+                    }
+                    // Kept in place under Nothing, faint and out of play, so the row never shifts
+                    ToggleChip {
+                        objectName: "group-franchises"
+                        anchors.verticalCenter: parent.verticalCenter
+                        interactive: page.arrange !== "None"
+                        checked: page.groupFranchises
+                        text: "Franchises together"
+                        onToggled: function(on) { page.pickGroupFranchises(on) }
+                    }
+                    ToggleChip {
+                        objectName: "show-watched"
+                        anchors.verticalCenter: parent.verticalCenter
+                        interactive: page.tab !== "Watched" && page.tab !== "Hidden"
+                        checked: page.showWatched
+                        text: "Watched shows"
+                        onToggled: function(on) { page.pickShowWatched(on) }
+                    }
                 }
             }
         }

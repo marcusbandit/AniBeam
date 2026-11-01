@@ -98,6 +98,7 @@ fn main() {
             .qml_file("qml/Note.qml")
             .qml_file("qml/Tile.qml")
             .qml_file("qml/Tiles.qml")
+            .qml_file("qml/ToggleChip.qml")
             .qml_file("qml/UsageBar.qml")
             .qml_file("qml/SettingsTab.qml")
             .qml_file("qml/SettingsPair.qml")
@@ -173,10 +174,12 @@ fn main() {
         "assets/icons/activity.svg",
         "assets/icons/archive.svg",
         "assets/icons/arrow-down.svg",
+        "assets/icons/arrow-down-wide-narrow.svg",
         "assets/icons/arrow-left.svg",
         "assets/icons/arrow-right.svg",
         "assets/icons/arrow-up-right.svg",
         "assets/icons/arrow-up.svg",
+        "assets/icons/arrow-up-narrow-wide.svg",
         "assets/icons/audio-lines.svg",
         "assets/icons/badge-check.svg",
         "assets/icons/ban.svg",

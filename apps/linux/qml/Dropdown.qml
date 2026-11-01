@@ -24,11 +24,14 @@ Corner {
     property int index: 0
     property real minWidth: theme.space(40)
     property bool interactive: true
+    // A dim word inside the pill before the value ("Sort", "Group"), so the pill names what it
+    // sets without a label beside it; the list shows the values alone
+    property string prefix: ""
     signal picked(int i)
 
     readonly property string current: options.length > index && index >= 0 ? String(options[index]) : ""
     readonly property bool opened: pop.opened
-    implicitWidth: Math.max(minWidth, label.implicitWidth + theme.space(4) * 2)
+    implicitWidth: Math.max(minWidth, (prefixLabel.visible ? prefixLabel.implicitWidth + theme.space(2) : 0) + label.implicitWidth + theme.space(4) * 2)
     scale: theme.reducedMotion ? 1 : (hover.pressed ? 0.98 : 1)
     implicitHeight: theme.controlHeight
     radius: height / 2
@@ -89,9 +92,19 @@ Corner {
     Keys.onDownPressed: open()
 
     Label {
-        id: label
+        id: prefixLabel
+        visible: root.prefix !== ""
         anchors.left: parent.left
         anchors.leftMargin: theme.space(4)
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.prefix
+        role: "ui"
+        color: theme.textDim
+    }
+    Label {
+        id: label
+        anchors.left: prefixLabel.visible ? prefixLabel.right : parent.left
+        anchors.leftMargin: prefixLabel.visible ? theme.space(2) : theme.space(4)
         anchors.right: parent.right
         anchors.rightMargin: theme.space(4)
         anchors.verticalCenter: parent.verticalCenter
