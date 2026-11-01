@@ -13,8 +13,9 @@ pub fn qrc(icon: AppIcon) -> &'static str {
     }
 }
 
-/// Lays the picked icon over the installed one, or takes ours away. A run under --root is a
-/// sandbox and leaves the user's icon folder alone.
+/// Lays the picked icon over the installed one, or takes ours away. Runs at launch and on
+/// every change, so a hand edit of theme.toml reaches the launcher too. A run under --root is
+/// a sandbox and leaves the user's icon folder alone.
 pub fn install(icon: AppIcon) {
     #[cfg(target_os = "linux")]
     if crate::runtime::args().root.is_none()
@@ -62,25 +63,64 @@ mod linux {
         out
     }
 
+    /// The files the last Dark pick wrote, one path a line, in AniBeam's own data folder.
+    /// Default removes exactly these, so a dark set from an older build goes too, and a file
+    /// the user put in hicolor themselves is never written over nor removed.
+    fn ledger() -> PathBuf {
+        PathBuf::from(&crate::runtime::paths().core.data_dir).join("launcher-icons.txt")
+    }
+
     pub fn install(icon: AppIcon) -> std::io::Result<()> {
-        for (path, bytes) in files() {
-            match icon {
-                AppIcon::Dark => {
+        let ledger = ledger();
+        let ours: Vec<PathBuf> = std::fs::read_to_string(&ledger)
+            .unwrap_or_default()
+            .lines()
+            .map(PathBuf::from)
+            .collect();
+        let mut changed = false;
+        match icon {
+            AppIcon::Dark => {
+                let mut wrote = Vec::new();
+                for (path, bytes) in files() {
+                    if path.exists() && !ours.contains(&path) {
+                        continue;
+                    }
+                    if std::fs::read(&path).is_ok_and(|b| b == bytes) {
+                        wrote.push(path);
+                        continue;
+                    }
                     if let Some(dir) = path.parent() {
                         std::fs::create_dir_all(dir)?;
                     }
                     std::fs::write(&path, bytes)?;
+                    wrote.push(path);
+                    changed = true;
                 }
-                // Only a file that is still ours goes; one the user put there stays.
-                AppIcon::Default => {
-                    if std::fs::read(&path).is_ok_and(|b| b == bytes) {
-                        std::fs::remove_file(&path)?;
+                let list: String = wrote.iter().map(|p| format!("{}\n", p.display())).collect();
+                if let Some(dir) = ledger.parent() {
+                    std::fs::create_dir_all(dir)?;
+                }
+                if changed {
+                    std::fs::write(&ledger, list)?;
+                }
+            }
+            AppIcon::Default => {
+                if ours.is_empty() {
+                    return Ok(());
+                }
+                for path in &ours {
+                    match std::fs::remove_file(path) {
+                        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+                        _ => {}
                     }
                 }
+                std::fs::remove_file(&ledger)?;
+                changed = true;
             }
         }
         // Launchers watch the theme folder's time to know their cache is stale.
-        if let Some(root) = hicolor()
+        if changed
+            && let Some(root) = hicolor()
             && root.exists()
         {
             let now = std::fs::FileTimes::new().set_modified(std::time::SystemTime::now());

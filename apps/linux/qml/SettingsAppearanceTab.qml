@@ -57,13 +57,16 @@ SettingsTab {
                         readonly property bool on: Theme.appIcon === modelData.id
                         objectName: "app-icon-" + modelData.id   // a --drive target
                         spacing: theme.space(1.5)
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: Theme.pickAppIcon(modelData.id)
+                        Keys.onSpacePressed: Theme.pickAppIcon(modelData.id)
                         Item {
                             width: theme.space(16); height: width
                             Corner {
                                 anchors.fill: parent
                                 radius: width * 0.26
                                 smoothing: theme.cornerSmoothing
-                                borderColor: pick.on ? theme.accent : (m.containsMouse ? theme.lineStrong : "transparent")
+                                borderColor: pick.activeFocus ? theme.focusRing : pick.on ? theme.accent : (m.containsMouse ? theme.lineStrong : "transparent")
                                 borderWidth: theme.space(0.5)
                             }
                             Image {

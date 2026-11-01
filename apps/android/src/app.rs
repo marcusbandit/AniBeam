@@ -753,7 +753,8 @@ impl App {
     }
 
     /// The launcher icon showing now, and the line art's colours as the launcher draws them.
-    /// Read from Android each time, so a new wallpaper's colours show in the preview.
+    /// Read again each time the App icon page opens, so a new wallpaper's colours show in the
+    /// preview.
     fn show_app_icon(&self) {
         let data = self.data();
         data.set_app_icon(crate::android::app_icon());
@@ -1081,6 +1082,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
             }
         })
     });
+    data.on_read_app_icon(|| with_app(|app| app.show_app_icon()));
     data.on_set_app_icon(|i| {
         crate::android::set_app_icon(i);
         with_app(|app| app.show_app_icon());

@@ -697,6 +697,7 @@ export component MorePage inherits Rectangle {
     }
 
     if root.shown == 7: icons := SectionPage {
+        init => { AppData.read-app-icon(); }
         title: "App icon";
         note: Status.icon;
         Lit {
@@ -737,7 +738,7 @@ export component MorePage inherits Rectangle {
                     }
                     Text {
                         text: AppData.app-icon == 2
-                            ? "Line art takes its colours from your wallpaper, like the rest of your Material You icons."
+                            ? "Line art takes your wallpaper's colours, like your other Material You icons."
                             : "Some launchers take the icon off the home screen when it changes. It stays in the app drawer; drag it back from there.";
                         color: Theme.dim;
                         font-size: Theme.small;

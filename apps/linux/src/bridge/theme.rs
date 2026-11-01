@@ -187,6 +187,7 @@ impl qobject::Theme {
             crate::bridge::helpers::ffi::set_window_icon(&QString::from(crate::app_icon::qrc(
                 s.icon,
             )));
+            crate::app_icon::install(s.icon);
             self.as_mut().set_app_icon(icon);
         }
         self.as_mut().set_contrast(r.inputs.portal.contrast);
@@ -285,11 +286,9 @@ impl qobject::Theme {
     pub fn pick_reduced_motion(self: Pin<&mut Self>, on: bool) {
         self.change(|s| s.reduced_motion = on)
     }
-    /// Only a pick touches the launcher's icon; a hand edit of theme.toml changes the window's.
     pub fn pick_app_icon(self: Pin<&mut Self>, icon: &QString) {
         if let Some(v) = AppIcon::parse(&icon.to_string()) {
-            self.change(|s| s.icon = v);
-            crate::app_icon::install(v);
+            self.change(|s| s.icon = v)
         }
     }
     pub fn format_hue(&self, format: &QString) -> QString {
