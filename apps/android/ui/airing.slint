@@ -20,7 +20,7 @@ export component AiringControls inherits VerticalLayout {
         pick(i) => { AppData.pick-airing-season(i); }
     }
     Rectangle {
-        height: 9 * Theme.unit;
+        height: chips.preferred-height;
         Flickable {
             content-width: Math.max(self.width, chips.preferred-width);
             interactive: chips.preferred-width > self.width;
@@ -60,6 +60,7 @@ export component OutNow inherits VerticalLayout {
 
 // Every show on air.
 export component AiringGrid inherits VerticalLayout {
+    in property <length> fit-width: self.width;
     spacing: Theme.unit * 3;
     if AppData.airing-tiles.length == 0 && AppData.airing-filter == 0: Text {
         text: "The season's shows come from AniList.";
@@ -67,6 +68,7 @@ export component AiringGrid inherits VerticalLayout {
         font-size: Theme.small + 1px;
     }
     if AppData.airing-tiles.length > 0: TileGrid {
+        fit-width: root.fit-width;
         tiles: AppData.airing-tiles;
         open(id) => { AppData.airing-tap(id); }
         held(id, title) => { AppData.airing-tap(id); }
@@ -197,7 +199,7 @@ export component AiringPage inherits Rectangle {
         area: Fold.show(0.38);
         Scroll {
             pad-bottom: Theme.pad * 2 + (AppData.airing-undo != "" ? 20 * Theme.unit : 0);
-            AiringGrid { }
+            AiringGrid { fit-width: Fold.inner(Fold.show(0.38)); }
         }
     }
     if AppData.airing-undo != "": UndoBar {

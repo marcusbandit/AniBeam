@@ -77,6 +77,11 @@ export global Fold {
     // The pane that picks and the pane that shows. `share` is the picking pane's part of an
     // open screen: a page with a grid to pick from gives it more, one with a short list less.
     // Half folded the crease decides instead. Folded, both are the whole body.
+    // A pane's width without the page margins: what a grid in it lays out for.
+    public pure function inner(area: Area) -> length {
+        return area.width - 2 * 16px;
+    }
+
     public pure function pick(share: float) -> Area {
         if (self.posture == 1) {
             return { x: 0, y: 0, width: self.body-width * share - 0.5px, height: self.body-height };

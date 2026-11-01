@@ -244,7 +244,7 @@ component Finder inherits VerticalLayout {
         accepted(t) => { root.accepted(t); }
     }
     if AppData.search-sources.length > 0: Rectangle {
-        height: 8 * Theme.unit;
+        height: chips.preferred-height;
         Flickable {
             content-width: Math.max(self.width, chips.preferred-width);
             interactive: chips.preferred-width > self.width;
@@ -409,7 +409,7 @@ export component DownloadsPage inherits Rectangle {
     if Fold.split: Leaf {
         area: Fold.show(0.46);
         if FindData.view == 0: Scroll {
-            Lenses { }
+            Lenses { fit-width: Fold.inner(Fold.show(0.46)); }
         }
         if FindData.view != 0: Picked { }
     }

@@ -643,7 +643,7 @@ export component ReleaseList inherits VerticalLayout {
         wrap: word-wrap;
     }
     if FindData.groups.length > 0: Rectangle {
-        height: 9 * Theme.unit;
+        height: group-row.preferred-height;
         Flickable {
             content-width: Math.max(self.width, group-row.preferred-width);
             interactive: group-row.preferred-width > self.width;
@@ -687,13 +687,14 @@ export component ReleaseList inherits VerticalLayout {
 
 // What there is to get with nothing typed: four lenses.
 export component Lenses inherits VerticalLayout {
+    in property <length> fit-width: self.width;
     spacing: Theme.unit * 3;
     SectionHead {
         title: "What to get";
         note: FindData.lens-line;
     }
     Rectangle {
-        height: 9 * Theme.unit;
+        height: lens-row.preferred-height;
         // Only a row wider than the page scrolls; one that fits stays put.
         Flickable {
             content-width: Math.max(self.width, lens-row.preferred-width);
@@ -710,6 +711,7 @@ export component Lenses inherits VerticalLayout {
         }
     }
     TileGrid {
+        fit-width: root.fit-width;
         tiles: FindData.lens-tiles;
         open(i) => { FindData.open-tile(i); }
     }

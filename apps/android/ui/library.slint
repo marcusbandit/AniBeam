@@ -55,8 +55,10 @@ component LibraryControls inherits VerticalLayout {
 
 // The posters, or why there are none.
 component LibraryGrid inherits VerticalLayout {
+    in property <length> fit-width: self.width;
     spacing: Theme.unit * 4;
     if AppData.library.length > 0: TileGrid {
+        fit-width: root.fit-width;
         tiles: AppData.library;
         holdable: AppData.device == 0;
         // The menu's Get and Delete are for this phone's shows.
@@ -132,7 +134,7 @@ export component LibraryPage inherits Rectangle {
         area: AppData.series-open || Fold.posture == 2 ? Fold.pick(0.56) : Fold.pick(1);
         Scroll {
             LibraryControls { }
-            LibraryGrid { }
+            LibraryGrid { fit-width: Fold.inner(AppData.series-open || Fold.posture == 2 ? Fold.pick(0.56) : Fold.pick(1)); }
         }
     }
     if Fold.split: Leaf {
