@@ -192,6 +192,9 @@ export component AppWindow inherits Window {
 
     // Where a series page opens in the fold layouts: over the pane that shows, sized for
     // the page it opened from.
+    // How far the series page is in, 0 gone to 1 in place.
+    property <float> series-in: AppData.series-open ? 1 : 0;
+    animate series-in { duration: AppData.series-open ? 200ms : 320ms; easing: ease-in-out; }
     property <float> series-share: root.page == 1 ? 0.56 : root.page == 4 ? 0.5 : root.page == 0 ? 0.6 : 0.46;
 
     forward-focus: keys;
@@ -213,7 +216,16 @@ export component AppWindow inherits Window {
     }
     changed find-view => { keys.focus(); }
     changed notes-shown => { keys.focus(); }
-    changed series-shown => { keys.focus(); }
+    // Split, a series opening or closing narrows or widens the page beside it, and its grid
+    // glides to the new columns as it would on a bend.
+    changed series-shown => {
+        keys.focus();
+        if (Fold.split) {
+            Fold.moving = true;
+            moving-done.running = false;
+            moving-done.running = true;
+        }
+    }
     changed player-shown => { keys.focus(); }
 
     function go(to: int) {
@@ -319,24 +331,31 @@ export component AppWindow inherits Window {
             }
             if root.page == 4: CalendarPage { }
             // Folded, the series page covers the body; otherwise it opens over the pane that
-            // shows, and the page beside it stays in reach.
-            if AppData.series-open: Rectangle {
+            // shows, and the page beside it stays in reach. It slides in from the right when
+            // nothing was open, quicker in than out; another series picked while one is open
+            // takes its place at once.
+            if AppData.series-open || root.series-in > 0: Rectangle {
                 property <Area> area: Fold.show(root.series-share);
                 x: self.area.x;
                 y: self.area.y;
                 width: self.area.width;
                 height: self.area.height;
                 animate x, y, width, height { duration: Fold.settle; easing: ease-in-out; }
-                background: Theme.ground;
                 clip: true;
-                TouchArea { }
-                SeriesPage { }
-                if Fold.split: Rectangle {
-                    x: 0;
-                    width: 1px;
-                    background: Theme.line;
-                    opacity: Fold.posture == 1 ? 1 : 0;
-                    animate opacity { duration: Fold.settle; }
+                Rectangle {
+                    x: (1 - root.series-in) * parent.width;
+                    width: parent.width;
+                    height: parent.height;
+                    background: Theme.ground;
+                    TouchArea { }
+                    SeriesPage { }
+                    if Fold.split: Rectangle {
+                        x: 0;
+                        width: 1px;
+                        background: Theme.line;
+                        opacity: Fold.posture == 1 ? 1 : 0;
+                        animate opacity { duration: Fold.settle; }
+                    }
                 }
             }
         }

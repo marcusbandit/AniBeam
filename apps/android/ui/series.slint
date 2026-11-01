@@ -206,8 +206,12 @@ export component SeriesPage inherits Rectangle {
 
     // Swallow touches so nothing under the page reacts.
     TouchArea { }
+    // Only ever as wide as the pane: the page scrolls up and down, never sideways.
     Flickable {
-        VerticalLayout {
+        content-width: self.width;
+        content-height: column.preferred-height;
+        column := VerticalLayout {
+            width: parent.width;
             alignment: start;
             padding-left: Theme.grout + Theme.unit;
             padding-right: Theme.grout + Theme.unit;

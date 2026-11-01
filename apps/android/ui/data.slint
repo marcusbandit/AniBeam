@@ -261,6 +261,8 @@ export global AppData {
 
     // More.
     in property <bool> wifi-only: true;
+    // Unfolded, the Calendar's days as a list rather than the week as a board.
+    in property <bool> cal-days;
     in property <bool> limit-on;
     // The limit in GB, set with a slider from 1 GB to the whole of the phone's storage.
     in-out property <float> limit-gb: 18;
@@ -358,6 +360,7 @@ export global AppData {
     callback pick-device(int);
     callback search(string);
     callback set-wifi-only(bool);
+    callback set-cal-days(bool);
     // On or off, and the amount in GB.
     callback set-limit(bool, float);
     callback connect-tracker(int);
