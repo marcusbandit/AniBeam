@@ -280,7 +280,11 @@ fn an_episode_streams_converts_and_keeps_its_place() {
         let forbidden = call(Call::ForgetSeries { series }).await;
         assert_eq!(forbidden.status(), 403);
         // Not interested passes, so a phone's marks reach the host.
-        let marked = call(Call::SetNotInterested { anilist_id: 101, not_interested: true }).await;
+        let marked = call(Call::SetNotInterested {
+            anilist_id: 101,
+            not_interested: true,
+        })
+        .await;
         assert_eq!(marked.status(), 200);
         let listed = call(Call::ListNotInterested).await;
         assert_eq!(listed.status(), 200);
