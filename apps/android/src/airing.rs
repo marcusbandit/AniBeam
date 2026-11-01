@@ -20,11 +20,19 @@ struct Waiting {
 }
 
 static FILE: OnceLock<PathBuf> = OnceLock::new();
+static DATA: OnceLock<PathBuf> = OnceLock::new();
 /// One sync or one send at a time, so a mark is never sent twice or lost between them.
 static LOCK: Mutex<()> = Mutex::new(());
 
 pub fn start(data_dir: &std::path::Path) {
     let _ = FILE.set(data_dir.join("not-interested.json"));
+    let _ = DATA.set(data_dir.to_path_buf());
+}
+
+/// The computer as saved in More, not as the address field reads while it is edited.
+fn saved_address() -> Option<HostAddress> {
+    let store = anibeam_companion::store::Store::open(DATA.get()?).ok()?;
+    HostAddress::parse(&store.settings().address).ok()
 }
 
 fn waiting() -> Vec<Waiting> {
@@ -44,14 +52,16 @@ fn keep(list: &[Waiting]) {
 }
 
 /// Marks a show, or takes the mark back, here and then on the computer. Blocking; call it
-/// off the UI thread.
-pub fn mark(anilist_id: u64, on: bool, address: Option<HostAddress>) {
+/// off the UI thread. The lock is held from the local mark on, so a sync never sees the
+/// mark here without it waiting to go out.
+pub fn mark(anilist_id: u64, on: bool) {
     let Some(core) = crate::local::core() else { return };
+    let _held = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if let Err(e) = core.call(Call::SetNotInterested { anilist_id, not_interested: on }) {
         crate::local::log(&format!("not interested: {e}"));
         return;
     }
-    let _held = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let address = saved_address();
     let mut list = waiting();
     // A later mark of the same show replaces the earlier one.
     list.retain(|w| w.anilist_id != anilist_id);

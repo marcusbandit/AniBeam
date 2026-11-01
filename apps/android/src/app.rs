@@ -131,7 +131,15 @@ struct App {
     airing_refreshing: bool,
     airing_listing: bool,
     airing_note: Option<String>,
+    /// What Plan to watch said, kept apart from the list's own note.
+    airing_plan_note: Option<String>,
     airing_undo: Option<(u64, String, u32)>,
+    /// Shows marked not interested here and not yet gone from the core's list.
+    airing_hidden: HashSet<u64>,
+    /// A read asked for while one was out: run it, asking AniList or not, when that lands.
+    airing_again: Option<bool>,
+    airing_filters: Rc<VecModel<SharedString>>,
+    airing_seasons: Rc<VecModel<SharedString>>,
     airing_tiles: Rc<VecModel<Tile>>,
     airing_out: Rc<VecModel<Tile>>,
     coming: Rc<VecModel<CalItem>>,
@@ -462,7 +470,7 @@ impl App {
         }
         // Airing now: read again while AniList is being asked, and let an undo lapse.
         if data.get_airing_view() {
-            if (self.airing_refreshing || changed) && self.ticks.is_multiple_of(2) {
+            if changed || (self.airing_refreshing && self.ticks.is_multiple_of(2)) {
                 self.load_airing(false);
             } else {
                 // Posters land as they decode, and countdowns move.
@@ -526,6 +534,7 @@ impl App {
     /// AniList for it when the core's copy is older than the core keeps it.
     fn load_airing(&mut self, ask: bool) {
         if self.airing_listing {
+            self.airing_again = Some(ask || self.airing_again.unwrap_or(false));
             return;
         }
         let Some(core) = crate::local::core() else { return };
@@ -544,6 +553,12 @@ impl App {
             let _ = slint::invoke_from_event_loop(move || {
                 with_app(|app| {
                     app.airing_listing = false;
+                    // The season changed while this was out: its answer is for the other one.
+                    if app.airing_season != season {
+                        app.airing_again = None;
+                        app.load_airing(true);
+                        return;
+                    }
                     match answer {
                         Ok(Reply::AiringNow { now, refreshing: busy }) => {
                             app.airing_refreshing = refreshing || busy.is_some();
@@ -557,6 +572,9 @@ impl App {
                         }
                     }
                     app.show_airing();
+                    if let Some(ask) = app.airing_again.take() {
+                        app.load_airing(ask);
+                    }
                 })
             });
         });
@@ -572,21 +590,24 @@ impl App {
             data.set_airing_line(if self.airing_listing || self.airing_refreshing { "Asking AniList".into() } else { "".into() });
             return;
         };
-        let undone = self.airing_undo.as_ref().map(|(id, _, _)| *id);
-        let shows: Vec<&AiringShow> = airing.shows.iter().filter(|s| Some(s.anilist_id) != undone).collect();
+        let hidden = &self.airing_hidden;
+        let shows: Vec<&AiringShow> = airing.shows.iter().filter(|s| !hidden.contains(&s.anilist_id)).collect();
         let listed = shows.iter().filter(|s| s.list_status.is_some()).count();
         let owned = shows.iter().filter(|s| s.owned.is_some()).count();
-        data.set_airing_filters(ModelRc::new(VecModel::from(vec![
-            SharedString::from(format!("Everything {}", shows.len())),
-            format!("On my lists {listed}").into(),
-            format!("On this phone {owned}").into(),
-        ])));
+        update(
+            &self.airing_filters,
+            vec![
+                format!("Everything {}", shows.len()).into(),
+                format!("On my lists {listed}").into(),
+                format!("On this phone {owned}").into(),
+            ],
+        );
         data.set_airing_filter(self.airing_filter);
         let mut seasons: Vec<SharedString> = vec!["This season".into(), "Next season".into()];
         if self.airing_season == SeasonPick::Next {
             seasons[1] = airing.label.clone().into();
         }
-        data.set_airing_seasons(ModelRc::new(VecModel::from(seasons)));
+        update(&self.airing_seasons, seasons);
         let picked: Vec<&&AiringShow> = shows
             .iter()
             .filter(|s| match self.airing_filter {
@@ -622,7 +643,7 @@ impl App {
         let out: Vec<Tile> = airing
             .aired
             .iter()
-            .filter(|a| Some(a.anilist_id) != undone)
+            .filter(|a| !hidden.contains(&a.anilist_id))
             .map(|a| {
                 let (poster, has_poster) = self.airing_poster(a.anilist_id);
                 Tile {
@@ -638,7 +659,7 @@ impl App {
             })
             .collect();
         update(&self.airing_out, out);
-        let line = match (&self.airing_note, self.airing_refreshing) {
+        let line = match (self.airing_plan_note.as_ref().or(self.airing_note.as_ref()), self.airing_refreshing) {
             (Some(note), _) => note.clone(),
             (None, true) => "Asking AniList for the newest".to_string(),
             (None, false) if airing.not_interested > 0 => format!("{} hidden as not interested", airing.not_interested),
@@ -666,15 +687,24 @@ impl App {
         }
     }
 
+    /// A show tapped, from the grid or Out now. A finished show's last episode is on Out now
+    /// without being on the season's list; its sheet knows only its name.
     fn airing_tap(&mut self, id: i32) {
-        let Some(show) = self.airing.as_ref().and_then(|a| a.shows.iter().find(|s| s.anilist_id as i64 == id as i64)) else { return };
-        let menu = AiringMenu {
-            show: true,
-            id,
-            title: show.title.clone().into(),
-            listed: show.list_status.is_some(),
-            owned: show.owned.and_then(|o| i32::try_from(o).ok()).unwrap_or(-1),
+        let Some(airing) = &self.airing else { return };
+        let menu = match airing.shows.iter().find(|s| s.anilist_id as i64 == id as i64) {
+            Some(show) => AiringMenu {
+                show: true,
+                id,
+                title: show.title.clone().into(),
+                listed: show.list_status.is_some(),
+                owned: show.owned.and_then(|o| i32::try_from(o).ok()).unwrap_or(-1),
+            },
+            None => match airing.aired.iter().find(|a| a.anilist_id as i64 == id as i64) {
+                Some(aired) => AiringMenu { show: true, id, title: aired.title.clone().into(), listed: false, owned: -1 },
+                None => return,
+            },
         };
+        self.airing_plan_note = None;
         self.data().set_airing_menu(menu);
     }
 
@@ -692,7 +722,7 @@ impl App {
             };
             let _ = slint::invoke_from_event_loop(move || {
                 with_app(|app| {
-                    app.airing_note = note;
+                    app.airing_plan_note = note;
                     app.load_airing(false);
                 })
             });
@@ -702,22 +732,30 @@ impl App {
     fn airing_dismiss(&mut self, id: i32) {
         self.data().set_airing_menu(Default::default());
         let anilist_id = id as u64;
-        let title = self.airing.as_ref().and_then(|a| a.shows.iter().find(|s| s.anilist_id == anilist_id)).map(|s| s.title.clone()).unwrap_or_default();
+        let title = self
+            .airing
+            .as_ref()
+            .and_then(|a| {
+                a.shows.iter().find(|s| s.anilist_id == anilist_id).map(|s| s.title.clone()).or_else(|| a.aired.iter().find(|e| e.anilist_id == anilist_id).map(|e| e.title.clone()))
+            })
+            .unwrap_or_default();
         self.airing_undo = Some((anilist_id, title.clone(), self.ticks));
+        self.airing_hidden.insert(anilist_id);
         self.data().set_airing_undo(title.into());
         self.show_airing();
-        let address = HostAddress::parse(&self.data().get_host_address()).ok();
+        // Read again once the core has the mark, so the show stays gone after Undo lapses.
         let _ = std::thread::Builder::new().name("not-interested".into()).spawn(move || {
-            crate::airing::mark(anilist_id, true, address);
+            crate::airing::mark(anilist_id, true);
+            let _ = slint::invoke_from_event_loop(|| with_app(|app| app.load_airing(false)));
         });
     }
 
     fn airing_take_back(&mut self) {
         let Some((anilist_id, _, _)) = self.airing_undo.take() else { return };
+        self.airing_hidden.remove(&anilist_id);
         self.data().set_airing_undo("".into());
-        let address = HostAddress::parse(&self.data().get_host_address()).ok();
         let _ = std::thread::Builder::new().name("not-interested".into()).spawn(move || {
-            crate::airing::mark(anilist_id, false, address);
+            crate::airing::mark(anilist_id, false);
             let _ = slint::invoke_from_event_loop(|| with_app(|app| app.load_airing(false)));
         });
         self.show_airing();
@@ -1172,7 +1210,7 @@ fn list_word(status: anibeam_core::ListStatus) -> &'static str {
         Watching => "Watching",
         Planning => "Planning",
         Completed => "Completed",
-        Paused => "Paused",
+        Paused => "On hold",
         Dropped => "Dropped",
         Repeating => "Rewatching",
     }
@@ -1312,6 +1350,9 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     let home_shelves = Shelves::new();
     let (calendar, coming, library, episodes) = (list(), list(), list(), list());
     let (airing_tiles, airing_out) = (list(), list());
+    let (airing_filters, airing_seasons) = (list(), list());
+    data.set_airing_filters(airing_filters.clone().into());
+    data.set_airing_seasons(airing_seasons.clone().into());
     data.set_airing_tiles(airing_tiles.clone().into());
     data.set_airing_out(airing_out.clone().into());
     let downloads = list();
@@ -1342,6 +1383,8 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         with_app(|app| {
             app.airing_season = if i == 1 { SeasonPick::Next } else { SeasonPick::Now };
             app.airing = None;
+            app.airing_note = None;
+            app.show_airing();
             app.load_airing(true);
         })
     });
@@ -1493,7 +1536,12 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         airing_refreshing: false,
         airing_listing: false,
         airing_note: None,
+        airing_plan_note: None,
         airing_undo: None,
+        airing_hidden: HashSet::new(),
+        airing_again: None,
+        airing_filters,
+        airing_seasons,
         airing_tiles,
         airing_out,
         coming,

@@ -32,6 +32,12 @@ export component Scroll inherits Flickable {
     content-width: self.width;
     content-height: column.preferred-height;
     interactive: self.content-height > self.height + 1px;
+    // Content that shrinks to fit comes back into view rather than staying scrolled away.
+    changed interactive => {
+        if (!self.interactive) {
+            self.content-y = 0;
+        }
+    }
     column := VerticalLayout {
         width: root.width;
         alignment: start;
