@@ -475,6 +475,8 @@ impl Drop for Job {
 fn pace(j: &mut Job, asked: u32) {
     let dir = j.dir.clone();
     let Some(r) = j.run.as_mut() else { return };
+    // An ffmpeg that has written its last piece is reaped here, not left a zombie.
+    let _ = r.child.try_wait();
     // Counting the files is cheap next to a piece's bytes.
     let ahead = (r.from..)
         .take_while(|n| dir.join(format!("seg{n}.ts")).exists())

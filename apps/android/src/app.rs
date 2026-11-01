@@ -2,7 +2,7 @@
 //!
 //! Two sources feed the pages. This phone's own core is the default for everything; another
 //! AniBeam on the tailnet, synced by the worker thread, only fills Library when it is picked
-//! there, and its pages are read only.
+//! there, and its episodes stream from it.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -290,7 +290,7 @@ impl App {
                 format!("This phone, {}", shows(self.cards.len()))
             } else {
                 let at = self.cache.as_ref().map(|c| format::ago(now - c.synced_at)).unwrap_or_default();
-                format!("{}, read only, synced {at}", devices[device])
+                format!("{}, synced {at}", devices[device])
             }
             .into(),
         );
