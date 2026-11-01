@@ -24,6 +24,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Home lists the next episodes to air, with a way into the Calendar
 - Downloads shows free space instead of upload speed
 
+### Fixed
+- Skip intro skips the opening, not the scene before it
+
 ## 2.4.3 · 2026-11-01
 
 ### New
