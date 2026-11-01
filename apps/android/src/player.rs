@@ -353,6 +353,7 @@ pub fn install(window: &AppWindow) {
 /// Opens `file` in the player. A file the core will not open, one still downloading, say,
 /// leaves the page shut and says why on the series page's log.
 pub fn open(file: u64) {
+    OPENING.with(|o| o.set(o.get() + 1));
     let Some(window) = WINDOW.with(|w| w.borrow().clone()) else { return };
     let Some(core) = crate::local::core() else { return };
     if PLAYER.with(|p| p.borrow().is_some()) {
@@ -384,6 +385,12 @@ thread_local! {
     static REMOTE_NUMBERS: RefCell<std::collections::HashMap<u64, f64>> = RefCell::new(Default::default());
 }
 
+thread_local! {
+    /// Moves on with every open and every close, so an episode of the other device that
+    /// answers after the user has moved on is let go instead of opened over the page.
+    static OPENING: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 pub fn set_remote_numbers(numbers: std::collections::HashMap<u64, f64>) {
     REMOTE_NUMBERS.with(|n| *n.borrow_mut() = numbers);
 }
@@ -399,10 +406,22 @@ pub fn open_remote(file: u64) {
     data(&window, |d| d.set_title("Connecting".into()));
     let quality = crate::stream::quality();
     let unmetered = crate::android::unmetered().unwrap_or(false);
+    let ticket = OPENING.with(|o| {
+        o.set(o.get() + 1);
+        o.get()
+    });
     std::thread::spawn(move || {
         let opened = crate::stream::open(file, quality, unmetered);
         let _ = slint::invoke_from_event_loop(move || {
-            let Some(window) = WINDOW.with(|w| w.borrow().clone()) else { return };
+            let window = WINDOW.with(|w| w.borrow().clone());
+            let waiting = OPENING.with(|o| o.get()) == ticket;
+            let (Some(window), true) = (window, waiting) else {
+                // Gone back, or opened something else, while this one connected.
+                if let Ok(o) = opened {
+                    o.host.send(Call::ClosePlayback { session: o.session.session, position: 0.0, reason: CloseReason::Stopped });
+                }
+                return;
+            };
             match opened {
                 Ok(o) => {
                     let number = REMOTE_NUMBERS.with(|n| n.borrow().get(&file).copied());
@@ -426,6 +445,9 @@ fn begin(
     tracked: bool,
     note: Option<String>,
 ) {
+    if PLAYER.with(|p| p.borrow().is_some()) {
+        close_page(CloseReason::Switched);
+    }
     let auto = match crate::local::core().map(|core| core.call(Call::GetSettings)) {
         Some(Ok(Reply::Settings { settings })) => settings.auto_skip,
         _ => AutoSkip::default(),
@@ -556,14 +578,7 @@ fn begin(
 /// device goes from its own thread, so the page never waits on the network.
 fn send(host: &Option<Arc<crate::stream::Host>>, call: Call) {
     match host {
-        Some(host) => {
-            let host = host.clone();
-            std::thread::spawn(move || {
-                if let Err(e) = host.call(&call) {
-                    crate::local::log(&format!("player: the other device refused a call: {e}"));
-                }
-            });
-        }
+        Some(host) => host.send(call),
         None => {
             if let Some(core) = crate::local::core() {
                 let _ = core.call(call);
@@ -602,6 +617,7 @@ fn failed(window: &slint::Weak<AppWindow>, reason: String) {
 /// Closes the page: the session with its reason, mpv, and the landscape hold. A switch to
 /// another episode keeps the screen as it is, so auto-next does not turn the phone twice.
 pub fn close_page(reason: CloseReason) {
+    OPENING.with(|o| o.set(o.get() + 1));
     let switching = reason == CloseReason::Switched;
     let player = PLAYER.with(|p| p.borrow_mut().take());
     if let Some(mut p) = player {
@@ -672,6 +688,10 @@ pub fn core_event(body: &EventBody) {
     }
     let _ = slint::invoke_from_event_loop(move || {
         with_player(|p| match body {
+            // This phone's core speaks of its own sessions and series; one of the other
+            // device's has ids of that device's, so only the cast's word is for it.
+            EventBody::SkipWindowsReady { .. } | EventBody::Marked { .. } | EventBody::Scored { .. }
+                if p.host.is_some() => {}
             EventBody::SkipWindowsReady { session, windows } if session == p.session.session => {
                 p.rules.windows = windows;
                 p.show_bands();
@@ -847,6 +867,7 @@ impl Player {
         if duration > 0.0 {
             let chapters = self.mpv.get("chapter-list").map(|j| chapters(&j)).unwrap_or_default();
             send(&self.host, Call::ReportChapters { session: self.session.session, chapters, duration });
+            self.ask_for_windows();
         }
         // Every sidecar the core found beside the file; mpv adds none of its own.
         for s in &self.session.sidecars {
@@ -1344,6 +1365,33 @@ impl Player {
         crate::local::touch();
     }
 
+    /// A session on the other device finds its skip windows there, a few seconds after the
+    /// chapters are reported; this asks for them a few times, since its event never comes
+    /// here.
+    fn ask_for_windows(&self) {
+        let Some(host) = self.host.clone() else { return };
+        if !self.rules.windows.is_empty() {
+            return;
+        }
+        let session = self.session.session;
+        std::thread::spawn(move || {
+            for _ in 0..6 {
+                std::thread::sleep(Duration::from_secs(3));
+                let Some(windows) = host.skip_windows(session).filter(|w| !w.is_empty()) else { continue };
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_player(|p| {
+                        if p.session.session == session && p.host.is_some() {
+                            p.rules.windows = windows;
+                            p.show_bands();
+                            p.show_skip();
+                        }
+                    })
+                });
+                return;
+            }
+        });
+    }
+
     /// The audio and subtitle tracks picked here, as indexes into the other device's probe
     /// of the file. The file's own tracks count from 1 in mpv; a converted stream's
     /// subtitles are the file's tracks loaded one by one, in order.
@@ -1353,8 +1401,11 @@ impl Player {
             list.as_array().and_then(|a| a.iter().find(|t| t["id"].as_i64() == Some(id) && t["type"] == kind)).cloned()
         };
         let converted = self.session.path.contains("/hls/");
+        // A conversion has the one audio track it was asked for, named in its address.
+        let asked = self.session.path.split(['?', '&']).find_map(|p| p.strip_prefix("audio=")?.parse().ok());
         let audio = match entry(self.aid, "audio") {
-            Some(t) if !converted && t["external"].as_bool() != Some(true) => usize::try_from(self.aid - 1).ok(),
+            _ if converted => asked,
+            Some(t) if t["external"].as_bool() != Some(true) => usize::try_from(self.aid - 1).ok(),
             _ => None,
         };
         let burn = entry(self.sid, "sub").and_then(|t| {

@@ -185,7 +185,7 @@ async fn probe_of(st: &Served, id: u64) -> Option<(PathBuf, Arc<wire::Probe>)> {
         return Some((path, p.clone()));
     }
     let p = Arc::new(convert::probe(&path).await?);
-    recover(&st.streams.probes).insert(id, p.clone());
+    remember(&st.streams.probes, id, p.clone());
     Some((path, p))
 }
 
@@ -230,8 +230,33 @@ pub async fn subtitle(
         );
     };
     let bytes = Bytes::from(bytes);
-    recover(&st.streams.subtitles).insert((id, index), bytes.clone());
+    remember(&st.streams.subtitles, (id, index), bytes.clone());
     ass(bytes)
+}
+
+pub async fn skip(State(st): State<Arc<Served>>, Path(session): Path<u64>) -> Response {
+    let Some(core) = st.core.upgrade() else {
+        return not_found();
+    };
+    match crate::playback::session::windows_of(&core, session) {
+        Ok(windows) => match serde_json::to_vec(&windows) {
+            Ok(body) => json(StatusCode::OK, body),
+            Err(_) => not_found(),
+        },
+        Err(_) => not_found(),
+    }
+}
+
+/// A cache of things read from files holds at most this many; past it, it
+/// starts over.
+const CACHE_CAP: usize = 64;
+
+fn remember<K: std::hash::Hash + Eq, V>(map: &Mutex<HashMap<K, V>>, key: K, value: V) {
+    let mut map = recover(map);
+    if map.len() >= CACHE_CAP {
+        map.clear();
+    }
+    map.insert(key, value);
 }
 
 /// `audio` and `burn` from the query, the only two it takes.
@@ -279,6 +304,12 @@ pub async fn hls(
         );
     }
     let (audio, burn) = picks(&uri);
+    // A track the file does not have would only make ffmpeg fail.
+    if audio.is_some_and(|a| a >= probe.audio.len())
+        || burn.is_some_and(|b| b >= probe.subtitles.len())
+    {
+        return error(StatusCode::BAD_REQUEST, "the file has no such track");
+    }
     if name == "index.m3u8" {
         let list = convert::playlist(probe.duration, &query_of(audio, burn));
         return (
@@ -333,7 +364,20 @@ fn json(status: StatusCode, body: Vec<u8>) -> Response {
 }
 
 /// One player call, run on this core as if its own player had made it.
-pub async fn call(State(st): State<Arc<Served>>, body: Bytes) -> Response {
+pub async fn call(State(st): State<Arc<Served>>, headers: HeaderMap, body: Bytes) -> Response {
+    // A web page can send a plain form or text POST anywhere without asking,
+    // but JSON only after a preflight this host never answers, so a page in
+    // a browser on the tailnet cannot make these calls.
+    let is_json = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim().starts_with("application/json"));
+    if !is_json {
+        return error(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "send the call as application/json",
+        );
+    }
     let call: Call = match serde_json::from_slice(&body) {
         Ok(c) => c,
         Err(e) => return error(StatusCode::BAD_REQUEST, &format!("not a call: {e}")),

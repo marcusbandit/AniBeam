@@ -158,6 +158,11 @@ impl HostClient {
         serde_json::from_slice(&body).map_err(|e| HostError::Bad(format!("The snapshot did not read: {e}")))
     }
 
+    /// The body of any `GET` on the host, up to 1 MB.
+    pub fn get_bytes(&self, path: &str) -> Result<Vec<u8>, HostError> {
+        self.get(path, 1024 * 1024).map(|(body, _)| body)
+    }
+
     /// What is in one of the host's episode files.
     pub fn probe(&self, file: u64) -> Result<api::Probe, HostError> {
         let (body, _) = self.get(&api::probe_path(file), 1024 * 1024)?;

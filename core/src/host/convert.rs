@@ -8,8 +8,9 @@
 //! order from wherever it was started. A request for a piece it is about to
 //! write waits for it; a request far from it (a seek) starts ffmpeg again at
 //! that piece. Running too far ahead of what is asked stops ffmpeg until the
-//! player catches up, so a paused episode costs nothing. A conversion nobody
-//! has asked for in [`IDLE`] is ended and its directory removed.
+//! player catches up, and so does a player that stops asking, so a paused
+//! episode costs nothing. A conversion nobody has asked for in [`IDLE`] is
+//! ended and its directory removed.
 //!
 //! The encoder is the first that works of NVENC, VAAPI and libx264, tried
 //! once per launch on a tiny test picture.
@@ -159,10 +160,11 @@ impl Encoder {
     }
 }
 
+static FOUND: OnceCell<Option<Encoder>> = OnceCell::const_new();
+
 /// The encoder this machine has, or None when ffmpeg is missing or none of
 /// them works.
 async fn encoder() -> Option<Encoder> {
-    static FOUND: OnceCell<Option<Encoder>> = OnceCell::const_new();
     *FOUND
         .get_or_init(|| async {
             for enc in [Encoder::Nvenc, Encoder::Vaapi, Encoder::X264] {
@@ -208,6 +210,20 @@ async fn works(enc: Encoder) -> bool {
 /// Whether this machine can convert at all.
 pub async fn available() -> bool {
     encoder().await.is_some()
+}
+
+/// Whether this machine can convert, without waiting: None until the encoders
+/// have been tried, which this starts in the background.
+pub fn known() -> Option<bool> {
+    if let Some(found) = FOUND.get() {
+        return Some(found.is_some());
+    }
+    if let Ok(rt) = tokio::runtime::Handle::try_current() {
+        rt.spawn(async {
+            encoder().await;
+        });
+    }
+    None
 }
 
 /// What ffprobe reads of a file, or None without ffprobe.
@@ -315,10 +331,13 @@ fn pieces(duration: f64) -> u32 {
 /// One conversion and the ffmpeg writing it.
 struct Job {
     dir: PathBuf,
+    /// When a player last asked for a piece.
     used: Instant,
     /// The newest piece a player asked for.
     asked: u32,
     run: Option<Run>,
+    /// Counts the runs, so a pacer knows when its run was replaced.
+    runs: u64,
 }
 
 struct Run {
@@ -326,11 +345,13 @@ struct Run {
     /// The piece this ffmpeg started at.
     from: u32,
     stopped: bool,
+    /// How it ended, once it has.
+    ended: Option<bool>,
 }
 
 impl Run {
     fn signal(&mut self, stop: bool) {
-        if self.stopped == stop {
+        if self.stopped == stop || self.ended.is_some() {
             return;
         }
         #[cfg(unix)]
@@ -348,6 +369,22 @@ impl Run {
         }
         self.stopped = stop;
     }
+
+    /// Reaps an ffmpeg that has ended, so none is left a zombie, and says
+    /// whether it is still running.
+    fn alive(&mut self) -> bool {
+        if self.ended.is_none()
+            && let Ok(Some(status)) = self.child.try_wait()
+        {
+            self.ended = Some(status.success());
+        }
+        self.ended.is_none()
+    }
+
+    fn kill(mut self) {
+        self.signal(false);
+        let _ = self.child.start_kill();
+    }
 }
 
 /// What a conversion needs to start ffmpeg: the source and its probe.
@@ -359,6 +396,9 @@ pub struct Source {
 pub struct Converter {
     root: PathBuf,
     jobs: Mutex<HashMap<Key, Arc<tokio::sync::Mutex<Job>>>>,
+    /// Names each job's directory, so a job that is replaced while a request
+    /// still holds it never shares, or removes, its successor's.
+    made: std::sync::atomic::AtomicU64,
 }
 
 impl Converter {
@@ -369,6 +409,7 @@ impl Converter {
         Converter {
             root,
             jobs: Mutex::new(HashMap::new()),
+            made: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -387,31 +428,38 @@ impl Converter {
             j.asked = i;
             let file = j.dir.join(format!("seg{i}.ts"));
             if let Ok(bytes) = tokio::fs::read(&file).await {
-                pace(&mut j, i);
+                let written = written(&j.dir, j.run.as_ref().map_or(i, |r| r.from)).await;
+                pace(&mut j, written);
                 return Some(bytes);
             }
-            let written = written(&j.dir, j.run.as_ref().map_or(0, |r| r.from)).await;
-            let alive = match j.run.as_mut() {
-                Some(r) => r.child.try_wait().ok().flatten().is_none(),
-                None => false,
-            };
-            let close = j
-                .run
-                .as_ref()
-                .is_some_and(|r| r.from <= i && i <= written.max(r.from) + NEAR);
-            if !(alive && close) {
-                if let Some(mut old) = j.run.take() {
-                    old.signal(false);
-                    let _ = old.child.start_kill();
+            let from = j.run.as_ref().map(|r| r.from);
+            let written = written(&j.dir, from.unwrap_or(i)).await;
+            let alive = j.run.as_mut().is_some_and(Run::alive);
+            let covers = from.is_some_and(|f| f <= i);
+            if covers && !alive {
+                // This ffmpeg ended without writing the piece: it failed, or
+                // the file is shorter than its probe said. Starting it again
+                // would only fail again.
+                tracing::warn!("conversion of file {} ended before piece {i}", key.file);
+                return None;
+            }
+            if covers && i <= written + NEAR {
+                if let Some(r) = j.run.as_mut() {
+                    r.signal(false);
+                }
+            } else {
+                if let Some(old) = j.run.take() {
+                    old.kill();
                 }
                 let child = spawn(enc, key, source, &j.dir, i)?;
                 j.run = Some(Run {
                     child,
                     from: i,
                     stopped: false,
+                    ended: None,
                 });
-            } else if let Some(r) = j.run.as_mut() {
-                r.signal(false);
+                j.runs += 1;
+                tokio::spawn(pacer(Arc::downgrade(&job), j.runs));
             }
             drop(j);
             if Instant::now() > deadline {
@@ -422,7 +470,7 @@ impl Converter {
         }
     }
 
-    /// The job for `key`, made when there is none. Reaps idle jobs, and the
+    /// The job for `key`, made when there is none. Drops idle jobs, and the
     /// oldest when there are too many, on the way.
     fn job(&self, key: &Key) -> Arc<tokio::sync::Mutex<Job>> {
         let mut jobs = recover(&self.jobs);
@@ -446,14 +494,15 @@ impl Converter {
                 None => break,
             }
         }
-        let dir = self.root.join(key.dir_name());
-        let _ = std::fs::remove_dir_all(&dir);
+        let n = self.made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = self.root.join(format!("{}-{n}", key.dir_name()));
         let _ = std::fs::create_dir_all(&dir);
         let job = Arc::new(tokio::sync::Mutex::new(Job {
             dir,
             used: Instant::now(),
             asked: 0,
             run: None,
+            runs: 0,
         }));
         jobs.insert(key.clone(), job.clone());
         job
@@ -462,35 +511,61 @@ impl Converter {
 
 impl Drop for Job {
     fn drop(&mut self) {
-        if let Some(mut r) = self.run.take() {
-            r.signal(false);
-            let _ = r.child.start_kill();
+        if let Some(r) = self.run.take() {
+            r.kill();
         }
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
-/// Stops ffmpeg far ahead of the player, and lets it go on when the player
-/// comes near.
-fn pace(j: &mut Job, asked: u32) {
-    let dir = j.dir.clone();
+/// A player that stopped asking for this long has paused or gone; its ffmpeg
+/// stops until it asks again.
+const QUIET: Duration = Duration::from_secs(20);
+/// How often a pacer looks.
+const PACE_EVERY: Duration = Duration::from_secs(1);
+
+/// Watches one run for as long as it is the job's run: stops it far ahead of
+/// the player or once the player goes quiet, lets it go on when the player
+/// comes near, reaps it when it ends, and ends it once the job is idle. It
+/// runs on a clock, since a paused player asks for nothing.
+async fn pacer(job: std::sync::Weak<tokio::sync::Mutex<Job>>, run: u64) {
+    loop {
+        tokio::time::sleep(PACE_EVERY).await;
+        let Some(job) = job.upgrade() else { return };
+        let mut j = job.lock().await;
+        if j.runs != run {
+            return;
+        }
+        let Some(r) = j.run.as_mut() else { return };
+        if !r.alive() {
+            return;
+        }
+        let from = r.from;
+        if j.used.elapsed() >= IDLE {
+            if let Some(r) = j.run.take() {
+                r.kill();
+            }
+            return;
+        }
+        let written = written(&j.dir, from).await;
+        pace(&mut j, written);
+    }
+}
+
+/// Stops ffmpeg far ahead of the player or once it goes quiet, and lets it
+/// go on when the player comes near. `written` is the last piece on disk.
+fn pace(j: &mut Job, written: u32) {
+    let (asked, quiet) = (j.asked, j.used.elapsed() >= QUIET);
     let Some(r) = j.run.as_mut() else { return };
-    // An ffmpeg that has written its last piece is reaped here, not left a zombie.
-    let _ = r.child.try_wait();
-    // Counting the files is cheap next to a piece's bytes.
-    let ahead = (r.from..)
-        .take_while(|n| dir.join(format!("seg{n}.ts")).exists())
-        .last()
-        .unwrap_or(r.from)
-        .saturating_sub(asked);
-    if ahead >= AHEAD {
+    let ahead = written.saturating_sub(asked);
+    if quiet || ahead >= AHEAD {
         r.signal(true);
     } else if ahead <= RESUME_AT {
         r.signal(false);
     }
 }
 
-/// The last piece this ffmpeg has finished, counting up from where it started.
+/// The last piece on disk, counting up from `from`.
 async fn written(dir: &Path, from: u32) -> u32 {
     let mut n = from;
     while tokio::fs::try_exists(dir.join(format!("seg{}.ts", n + 1)))
@@ -581,14 +656,16 @@ fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) 
     if enc == Encoder::Vaapi {
         push(&["-vaapi_device", VAAPI_DEVICE]);
     }
-    // The timestamps stay the file's own, so a piece made by a later ffmpeg
-    // lines up with one made by an earlier, and so do drawn-in subtitles.
+    // Each run counts from zero at its first piece and is moved to that
+    // piece's place in the episode on the way out, so a piece made by a later
+    // ffmpeg lines up with one made by an earlier, whatever time the file's
+    // own clock starts at.
     let input = if key.burn.is_some() {
         input_name(&source.path)
     } else {
         source.path.to_string_lossy().into_owned()
     };
-    push(&["-ss", &format!("{start:.3}"), "-copyts", "-i", &input]);
+    push(&["-ss", &format!("{start:.3}"), "-i", &input]);
     let scale = format!("scale=-2:{height}:flags=bicubic{}", enc.upload());
     let bitmap = key
         .burn
@@ -608,7 +685,12 @@ fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) 
                 "-map",
                 "0:v:0",
                 "-vf",
-                &format!("subtitles={}:si={b},{scale}", input_name(&source.path)),
+                // libass reads the subtitles on the file's clock, so the
+                // picture is moved onto it for the drawing and back after.
+                &format!(
+                    "setpts=PTS+{start:.3}/TB,subtitles={}:si={b},setpts=PTS-{start:.3}/TB,{scale}",
+                    input_name(&source.path)
+                ),
             ]);
         }
         None => push(&["-map", "0:v:0", "-vf", &scale]),
@@ -637,9 +719,8 @@ fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) 
     let mut enc_args = Vec::new();
     enc.args(height, &mut enc_args);
     a.extend(enc_args);
-    // A keyframe at every piece's start, counted from where this ffmpeg
-    // starts, which is itself a piece's start.
-    let gop = format!("expr:gte(t,{start:.3}+n_forced*{PIECE})");
+    // A keyframe at every piece's start: this run starts at one.
+    let gop = format!("expr:gte(t,n_forced*{PIECE})");
     let mut push = |v: &[&str]| a.extend(v.iter().map(|s| s.to_string()));
     push(&["-force_key_frames", &gop, "-sc_threshold", "0"]);
     push(&[
@@ -655,6 +736,8 @@ fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) 
         "temp_file+independent_segments",
         "-start_number",
         &from.to_string(),
+        "-output_ts_offset",
+        &format!("{start:.3}"),
         "-hls_segment_filename",
         &dir.join("seg%d.ts").to_string_lossy(),
         &dir.join("ffmpeg.m3u8").to_string_lossy(),
@@ -736,10 +819,13 @@ mod tests {
         };
         let a = ffmpeg_args(Encoder::X264, &key, &source, Path::new("/c/x"), 10);
         let joined = a.join(" ");
-        assert!(joined.contains("-ss 60.000 -copyts -i in.mkv"));
-        assert!(joined.contains("subtitles=in.mkv:si=0,scale=-2:720"));
+        assert!(joined.contains("-ss 60.000 -i in.mkv"));
+        assert!(joined.contains(
+            "setpts=PTS+60.000/TB,subtitles=in.mkv:si=0,setpts=PTS-60.000/TB,scale=-2:720"
+        ));
         assert!(joined.contains("-map 0:a:1"));
-        assert!(joined.contains("expr:gte(t,60.000+n_forced*6)"));
+        assert!(joined.contains("expr:gte(t,n_forced*6)"));
+        assert!(joined.contains("-output_ts_offset 60.000"));
         assert!(joined.contains("-start_number 10"));
     }
 }

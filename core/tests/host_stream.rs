@@ -109,14 +109,23 @@ fn an_episode_streams_converts_and_keeps_its_place() {
         .unwrap();
 
     block_on(async {
-        let hello: wire::Hello = http
-            .get(format!("{base}{}", wire::HELLO))
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
+        // Hello answers at once; whether this machine converts shows once its
+        // encoders have been tried, a moment after the host starts.
+        let tried = Instant::now() + Duration::from_secs(30);
+        let hello = loop {
+            let hello: wire::Hello = http
+                .get(format!("{base}{}", wire::HELLO))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            if hello.features.iter().any(|f| f == wire::FEATURE_CONVERT) || Instant::now() > tried {
+                break hello;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        };
         assert!(hello.features.iter().any(|f| f == wire::FEATURE_STREAM));
         let snapshot: wire::Snapshot = http
             .get(format!("{base}{}", wire::SNAPSHOT))
@@ -254,6 +263,31 @@ fn an_episode_streams_converts_and_keeps_its_place() {
         assert_eq!(closed.status(), 200);
         let forbidden = call(Call::ForgetSeries { series }).await;
         assert_eq!(forbidden.status(), 403);
+        // A call that is not sent as JSON is refused, so no web page can send one.
+        let plain = http
+            .post(format!("{base}{}", wire::CALL))
+            .header("content-type", "text/plain")
+            .body(
+                serde_json::to_vec(&Call::Tick {
+                    session,
+                    position: 1.0,
+                    paused: false,
+                })
+                .unwrap(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(plain.status(), 415);
+        let wrong_track = http
+            .get(format!(
+                "{base}{}",
+                wire::hls_path(file, 480, Some(7), None)
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(wrong_track.status(), 400);
     });
 
     // The place is kept on this machine, as if it had played here.

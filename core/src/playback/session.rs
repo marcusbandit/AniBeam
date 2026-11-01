@@ -396,6 +396,17 @@ fn neighbours(
 
 /// The windows the last session on this episode settled on. A `none` row is
 /// a miss the skip windows job will ask about again, so it reads as absent.
+/// The skip windows found so far for an open session, for a player whose
+/// session runs on another machine and so never hears `SkipWindowsReady`.
+pub fn windows_of(core: &Core, session: u64) -> Result<Vec<SkipWindow>, CoreError> {
+    let s = core.sessions.get(session).ok_or(CoreError::NotFound {
+        what: Entity::Session,
+        id: session,
+    })?;
+    core.store
+        .read(|c| cached_windows(c, s.series, &s.episode_key))
+}
+
 fn cached_windows(conn: &Connection, series: u64, key: &str) -> Result<Vec<SkipWindow>, CoreError> {
     let raw: Option<String> = conn
         .query_row(

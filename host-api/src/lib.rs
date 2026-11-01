@@ -86,6 +86,13 @@ pub fn sidecar_path(file: u64, index: usize) -> String {
     format!("/api/v1/files/{file}/sidecars/{index}")
 }
 
+/// `GET` the skip windows found so far for a session opened through [`CALL`],
+/// as the core's `SkipWindow` JSON list. The host finds them after the
+/// player reports its chapters, a few seconds into the episode.
+pub fn skip_path(session: u64) -> String {
+    format!("/api/v1/sessions/{session}/skip")
+}
+
 /// `GET` the text subtitle track at this index of [`Probe::subtitles`] as an ASS file,
 /// for a client playing a conversion, which carries none. A bitmap track has none.
 pub fn subtitle_path(file: u64, index: usize) -> String {

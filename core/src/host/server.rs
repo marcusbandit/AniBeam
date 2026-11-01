@@ -45,6 +45,9 @@ pub fn hostname() -> String {
 }
 
 pub fn router(core: Weak<Core>) -> Router {
+    // The encoders are tried now, so the first phone to say hello hears
+    // whether this machine converts.
+    let _ = convert::known();
     let served = Arc::new(Served {
         core,
         streams: stream::Streams::default(),
@@ -65,6 +68,7 @@ pub fn router(core: Weak<Core>) -> Router {
         )
         .route("/api/v1/files/{id}/hls/{height}/{name}", get(stream::hls))
         .route(wire::CALL, post(stream::call))
+        .route("/api/v1/sessions/{id}/skip", get(stream::skip))
         .fallback(not_found)
         .method_not_allowed_fallback(not_allowed)
         .layer(axum::middleware::from_fn(known_host))
@@ -152,7 +156,7 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
         version: crate::VERSION.to_string(),
         host: st.host.clone(),
         now: time::now_secs(),
-        features: features().await,
+        features: features(),
     };
     match serde_json::to_vec(&hello) {
         Ok(body) => json(Bytes::from(body)),
@@ -161,10 +165,11 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
 }
 
 /// What this host serves past the snapshot. Streaming always; converting
-/// when ffmpeg and an encoder work here.
-async fn features() -> Vec<String> {
+/// when ffmpeg and an encoder work here, which the first hello starts finding
+/// out rather than waits for, so hello stays quick.
+fn features() -> Vec<String> {
     let mut out = vec![wire::FEATURE_STREAM.to_string()];
-    if convert::available().await {
+    if convert::known() == Some(true) {
         out.push(wire::FEATURE_CONVERT.to_string());
     }
     out

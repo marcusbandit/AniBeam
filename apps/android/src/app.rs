@@ -836,8 +836,6 @@ fn start_poster_loader() -> Sender<(u64, String)> {
     tx
 }
 
-/// Builds the window, starts the core, the sync thread and the clocks, and runs until the
-/// activity goes away.
 /// Each streamable file of the other device's, with its episode number.
 fn remote_numbers(cache: &Cache) -> HashMap<u64, f64> {
     cache
@@ -849,6 +847,8 @@ fn remote_numbers(cache: &Cache) -> HashMap<u64, f64> {
         .collect()
 }
 
+/// Builds the window, starts the core, the sync thread and the clocks, and runs until the
+/// activity goes away.
 pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> Result<(), Box<dyn std::error::Error>> {
     crate::local::start(data_dir.clone());
     crate::stream::init(data_dir.clone());
