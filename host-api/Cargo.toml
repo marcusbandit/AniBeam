@@ -1,6 +1,6 @@
 [package]
 name = "anibeam-host-api"
-description = "The read-only JSON AniBeam serves over a tailnet, shared by the host and the phone app"
+description = "What AniBeam serves over a tailnet, shared by the host and the phone app"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

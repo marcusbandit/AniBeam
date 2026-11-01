@@ -4,7 +4,7 @@
 
 import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
-import { Button, Field, Figure, ListGroup, ListRow, PageTitle, SectionHead, Slider } from "widgets.slint";
+import { Button, Field, Figure, ListGroup, ListRow, PageTitle, SectionHead, Segmented, Slider } from "widgets.slint";
 import { RepoData, RepoPanes } from "repos.slint";
 
 // Questions a page asks over everything else; the window draws them.
@@ -25,7 +25,7 @@ component HostRow inherits Rectangle {
             font-family: Theme.strong-face;
         }
         Text {
-            text: "Its library shows in Library, read only. A name like banditbox or an address like 100.94.40.21.";
+            text: "Its library shows in Library, and its episodes play here. A name like banditbox or an address like 100.94.40.21.";
             color: Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;
@@ -195,6 +195,32 @@ export component MorePage inherits Rectangle {
             }
 
             SectionHead {
+                title: "Streaming";
+                note: "From the other device";
+            }
+            ListGroup {
+                VerticalLayout {
+                    padding: Theme.unit * 3;
+                    spacing: Theme.unit * 2;
+                    Text {
+                        text: AppData.stream-quality == 0
+                            ? "Auto plays the file as it is on Wi-Fi, and converted to 720p on mobile data."
+                            : AppData.stream-quality == 1
+                                ? "The file as it is, every time. Big files need a fast link."
+                                : "Converted on the other device to " + AppData.stream-qualities[AppData.stream-quality] + ". Uses less data; seeking takes a moment.";
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                    Segmented {
+                        options: AppData.stream-qualities;
+                        picked: AppData.stream-quality;
+                        pick(i) => { AppData.set-stream-quality(i); }
+                    }
+                }
+            }
+
+            SectionHead {
                 title: "Endpoints";
                 note: RepoData.repos.length == 0 ? "No repo yet" : RepoData.repos.length == 1 ? "From 1 repo" : "From " + RepoData.repos.length + " repos";
             }
@@ -305,7 +331,7 @@ export component MorePage inherits Rectangle {
 
             SectionHead {
                 title: "Devices";
-                note: "Read only";
+                note: "Plays here";
             }
             ListGroup {
                 HostRow { }

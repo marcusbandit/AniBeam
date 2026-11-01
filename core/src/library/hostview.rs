@@ -134,6 +134,7 @@ impl Snapshot {
             number: f.number,
             season: f.season,
             code: episode_code(f.season, f.number),
+            file: Some(f.id),
             title: air.and_then(|a| a.title.clone()),
             watched: completed.contains(f.episode_key.as_str())
                 || tracked.is_some_and(|w| f.number <= f64::from(w)),

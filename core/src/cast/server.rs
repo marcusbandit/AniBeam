@@ -17,12 +17,16 @@ use axum::routing::get;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use super::media::Prepared;
+use crate::host::stream::{Range, byte_range};
 
 /// What one token serves.
 pub struct Served {
     pub path: PathBuf,
     pub mime: String,
     pub prepared: Option<Arc<Prepared>>,
+    /// Set for a stream another machine serves: the address of its playlist's directory,
+    /// and every name under the token is fetched from there.
+    pub relay: Option<String>,
 }
 
 #[derive(Default)]
@@ -141,6 +145,9 @@ async fn file(
     let Some(served) = reg.get(&token) else {
         return missing();
     };
+    if let Some(dir) = &served.relay {
+        return relay(dir, &name, &q).await;
+    }
     let p = served.prepared.clone();
     match (name.as_str(), p) {
         ("master.m3u8", Some(p)) => body(
@@ -175,6 +182,64 @@ async fn file(
         }
         (n, _) if n.starts_with("file") => ranged(&served, &method, &headers).await,
         _ => missing(),
+    }
+}
+
+/// One playlist or piece of a stream another machine serves, fetched from it whole. Its
+/// pieces are a few seconds each, so holding one costs little, and a fetch may wait as long
+/// as the other machine takes to convert it.
+async fn relay(dir: &str, name: &str, q: &HashMap<String, String>) -> Response {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .unwrap_or_default()
+    });
+    // Only the names a playlist lists pass: no part of the request becomes a path elsewhere.
+    let plain = name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
+    if !plain {
+        return missing();
+    }
+    let mut url = format!("{dir}{name}");
+    let mut sep = '?';
+    let mut keys: Vec<_> = q.iter().collect();
+    keys.sort();
+    for (k, v) in keys {
+        url.push(sep);
+        url.push_str(&format!(
+            "{}={}",
+            crate::percent::encode(k),
+            crate::percent::encode(v)
+        ));
+        sep = '&';
+    }
+    let answer = match client.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            tracing::warn!("cast relay: {url} answered {}", r.status());
+            return cors(StatusCode::BAD_GATEWAY.into_response());
+        }
+        Err(e) => {
+            tracing::warn!("cast relay: {url}: {e}");
+            return cors(StatusCode::BAD_GATEWAY.into_response());
+        }
+    };
+    let kind = answer
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or(if name.ends_with(".m3u8") {
+            "application/vnd.apple.mpegurl"
+        } else {
+            "video/mp2t"
+        })
+        .to_string();
+    match answer.bytes().await {
+        Ok(bytes) => body(StatusCode::OK, &kind, bytes.to_vec()),
+        Err(_) => cors(StatusCode::BAD_GATEWAY.into_response()),
     }
 }
 
@@ -224,26 +289,8 @@ async fn ranged(served: &Served, method: &Method, headers: &HeaderMap) -> Respon
         return missing();
     };
     let len = f.metadata().await.map(|m| m.len()).unwrap_or(0);
-    let range = headers
-        .get(header::RANGE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("bytes="))
-        .and_then(|v| v.split(',').next())
-        .and_then(|v| {
-            let (a, b) = v.split_once('-')?;
-            let (start, end) = match (a.trim(), b.trim()) {
-                ("", suffix) => (
-                    len.saturating_sub(suffix.parse().ok()?),
-                    len.saturating_sub(1),
-                ),
-                (a, "") => (a.parse().ok()?, len.saturating_sub(1)),
-                (a, b) => (
-                    a.parse().ok()?,
-                    b.parse::<u64>().ok()?.min(len.saturating_sub(1)),
-                ),
-            };
-            (start <= end && start < len).then_some((start, end))
-        });
+    let asked = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
+    let range = byte_range(asked, len);
     let mut h = HeaderMap::new();
     h.insert(
         header::CONTENT_TYPE,
@@ -262,21 +309,21 @@ async fn ranged(served: &Served, method: &Method, headers: &HeaderMap) -> Respon
         ),
     );
     let (status, start, count) = match range {
-        Some((s, e)) => {
+        Range::Part(s, e) => {
             h.insert(
                 header::CONTENT_RANGE,
                 HeaderValue::from_str(&format!("bytes {s}-{e}/{len}")).unwrap(),
             );
             (StatusCode::PARTIAL_CONTENT, s, e - s + 1)
         }
-        None if headers.contains_key(header::RANGE) => {
+        Range::Unmet => {
             h.insert(
                 header::CONTENT_RANGE,
                 HeaderValue::from_str(&format!("bytes */{len}")).unwrap(),
             );
             return cors((StatusCode::RANGE_NOT_SATISFIABLE, h).into_response());
         }
-        None => (StatusCode::OK, 0, len),
+        Range::Whole => (StatusCode::OK, 0, len),
     };
     h.insert(header::CONTENT_LENGTH, HeaderValue::from(count));
     if *method == Method::HEAD {

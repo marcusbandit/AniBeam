@@ -597,6 +597,17 @@ pub enum Call {
         audio_track: Option<u64>,
         subtitle: CastSubtitle,
     },
+    /// Plays an HLS stream another machine serves on a device, through this one: the
+    /// device reaches this machine on the local network, and this machine fetches every
+    /// playlist and piece from `url`, which the device may have no route to (a tailnet
+    /// address). For an episode another AniBeam converts as it plays.
+    CastStartStream {
+        device: String,
+        url: String,
+        title: String,
+        start: f64,
+        duration: f64,
+    },
     CastPlay,
     CastPause,
     CastSeek {

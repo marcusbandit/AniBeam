@@ -73,6 +73,8 @@ export struct SeriesHead {
     // 5". Zero when nothing on the phone is next.
     play-file: int,
     play-label: string,
+    // play-file is the other device's, streamed from it.
+    play-remote: bool,
 }
 
 // One episode row on a series page.
@@ -89,6 +91,8 @@ export struct EpisodeLine {
     file: int,
     // Picked for deleting.
     picked: bool,
+    // file is the other device's: a tap streams it from there.
+    remote: bool,
 }
 
 // One download on this phone, the desktop's Downloading panel.
@@ -228,7 +232,7 @@ export global AppData {
     in property <[EpisodeLine]> episodes;
 
     callback open-series(int);
-    // A series from the other device's library, read only.
+    // A series from the other device's library, played from there.
     callback open-remote(int);
     callback close-series();
     // Deleting episodes from the series page: pick them, then confirm.
@@ -244,6 +248,12 @@ export global AppData {
     callback confirm-delete();
     // Opens the player on a file of this phone's.
     callback play(int);
+    // Opens the player on a file of the other device's, streamed.
+    callback play-remote(int);
+    // How a stream from the other device plays: Auto, Original, 1080p, 720p, 480p.
+    in property <int> stream-quality;
+    in property <[string]> stream-qualities;
+    callback set-stream-quality(int);
     callback pick-day(int);
     callback pick-device(int);
     callback search(string);

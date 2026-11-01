@@ -2,7 +2,7 @@
 //!
 //! Two sources feed the pages. This phone's own core is the default for everything; another
 //! AniBeam on the tailnet, synced by the worker thread, only fills Library when it is picked
-//! there, and its pages are read only.
+//! there, and its episodes stream from it.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -176,7 +176,10 @@ impl App {
                 self.data().set_host_tone(tone);
                 self.data().set_host_result(text.into());
             }
-            Event::Snapshot(cache) => self.cache = Some(cache),
+            Event::Snapshot(cache) => {
+                crate::player::set_remote_numbers(remote_numbers(&cache));
+                self.cache = Some(cache);
+            }
             Event::Poster(id, decoded) => {
                 self.remote_art.posters.insert(id, Image::from_rgba8(decoded.buffer));
                 self.remote_art.tones.insert(id, decoded.tone);
@@ -287,7 +290,7 @@ impl App {
                 format!("This phone, {}", shows(self.cards.len()))
             } else {
                 let at = self.cache.as_ref().map(|c| format::ago(now - c.synced_at)).unwrap_or_default();
-                format!("{}, read only, synced {at}", devices[device])
+                format!("{}, synced {at}", devices[device])
             }
             .into(),
         );
@@ -602,6 +605,8 @@ impl App {
         let data = self.data();
         data.set_onboarding(!self.prefs.onboarded);
         data.set_wifi_only(self.prefs.wifi_only);
+        let quality = crate::stream::Quality::ALL.iter().position(|q| *q == self.prefs.stream_quality).unwrap_or(0);
+        data.set_stream_quality(quality as i32);
         data.set_limit_on(self.prefs.limit_on);
         data.set_limit_gb(self.prefs.limit_gb as f32);
         data.set_limit_label(prefs::limit_label(self.prefs.limit_gb).into());
@@ -831,10 +836,22 @@ fn start_poster_loader() -> Sender<(u64, String)> {
     tx
 }
 
+/// Each streamable file of the other device's, with its episode number.
+fn remote_numbers(cache: &Cache) -> HashMap<u64, f64> {
+    cache
+        .snapshot
+        .series
+        .iter()
+        .flat_map(|s| s.episodes.iter())
+        .filter_map(|e| Some((e.file?, e.number)))
+        .collect()
+}
+
 /// Builds the window, starts the core, the sync thread and the clocks, and runs until the
 /// activity goes away.
 pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> Result<(), Box<dyn std::error::Error>> {
     crate::local::start(data_dir.clone());
+    crate::stream::init(data_dir.clone());
     let store = Store::open(&data_dir)?;
     let address = HostAddress::parse(&store.settings().address)
         .unwrap_or_else(|_| HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap());
@@ -861,6 +878,17 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     data.on_open_remote(|id| with_app(|app| app.open_series(id, true)));
     data.on_close_series(|| with_app(App::close_series));
     data.on_play(|file| crate::player::open(file as u64));
+    data.on_play_remote(|file| crate::player::open_remote(file as u64));
+    let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL.iter().map(|q| q.label().into()).collect();
+    data.set_stream_qualities(ModelRc::new(VecModel::from(qualities)));
+    data.on_set_stream_quality(|i| {
+        with_app(|app| {
+            if let Some(q) = usize::try_from(i).ok().and_then(|i| crate::stream::Quality::ALL.get(i)) {
+                app.prefs.stream_quality = *q;
+                app.save_prefs();
+            }
+        })
+    });
     data.on_pick_day(|day| {
         with_app(|app| {
             app.day = usize::try_from(day).unwrap_or(0).min(6);
@@ -962,7 +990,13 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         asked: HashSet::new(),
         posters: start_poster_loader(),
         trackers: None,
-        cache: store.cache(),
+        cache: {
+            let cache = store.cache();
+            if let Some(c) = &cache {
+                crate::player::set_remote_numbers(remote_numbers(c));
+            }
+            cache
+        },
         anilist: store.anilist(),
         remote_art: Art::default(),
         day: today_index(now),

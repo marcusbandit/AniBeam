@@ -1,9 +1,10 @@
 //! What an AniBeam host serves over a tailnet, and what the phone app reads.
 //!
 //! The desktop app, with "Share over Tailscale" on, listens on its Tailscale
-//! addresses only, so the tailnet itself is the access control. Every route is
-//! a `GET` and nothing on it changes the library. Two documents and one kind of
-//! file:
+//! addresses only, so the tailnet itself is the access control. Nothing a
+//! client sends changes the library itself: the routes are `GET`s, apart from
+//! the playback calls below, which keep watch history. Two documents and one
+//! kind of file:
 //!
 //! - [`HELLO`]: who answers ([`Hello`]). Cheap; a client uses it to tell "host
 //!   is up" from "host is down".
@@ -14,6 +15,21 @@
 //! - [`poster_path`]: one series' poster, as the host cached it (jpeg, png or
 //!   webp; the `Content-Type` says which). [`Series::poster`] changes whenever
 //!   the image does, so it doubles as the client's cache key.
+//!
+//! A host that lists [`FEATURE_STREAM`] in [`Hello::features`] also serves its
+//! episodes, so a client plays them where it is:
+//!
+//! - [`file_path`]: the file as it is, honouring a `Range`, for a player that
+//!   seeks by byte. [`sidecar_path`] is one of its external subtitle files.
+//! - [`probe_path`]: what is in the file ([`Probe`]), for the client to pick
+//!   between the file and a conversion.
+//! - [`hls_path`], with [`FEATURE_CONVERT`]: the file converted as it plays to
+//!   8-bit H.264 and stereo AAC at a height the client picks, as HLS. The host
+//!   converts only the part being watched, so a seek costs a few seconds.
+//! - [`CALL`]: `POST` one playback call of the core's contract as JSON, and
+//!   read its reply. Only the calls a player makes pass ([`PLAYER_CALLS`]), so
+//!   an episode watched on the client keeps its place, its history and its
+//!   tracker progress on the host, as if it had played there.
 //!
 //! Times are Unix seconds. Every optional field may be absent or `null`, and a
 //! client must ignore fields it does not know: [`API_VERSION`] only moves for a
@@ -33,9 +49,78 @@ pub const SNAPSHOT: &str = "/api/v1/snapshot";
 /// something else on the port.
 pub const APP: &str = "anibeam";
 
+/// `POST`: one playback call ([`PLAYER_CALLS`]) as the core's `Call` JSON.
+/// The answer is the core's `Reply` JSON, or `{"error": ...}` with a status
+/// that is not 200.
+pub const CALL: &str = "/api/v1/call";
+/// In [`Hello::features`] when the host serves its files and playback calls.
+pub const FEATURE_STREAM: &str = "stream";
+/// In [`Hello::features`] when the host can also convert ([`hls_path`]).
+pub const FEATURE_CONVERT: &str = "convert";
+/// The `Call` variants [`CALL`] takes: the ones a player makes.
+pub const PLAYER_CALLS: &[&str] = &[
+    "OpenPlayback",
+    "ReportChapters",
+    "Tick",
+    "ClosePlayback",
+    "MarkEpisode",
+    "SetTrackChoice",
+];
+/// The heights a conversion comes in. A client asking for another gets the
+/// nearest one below it.
+pub const CONVERT_HEIGHTS: &[u32] = &[1080, 720, 480];
+
 /// `GET` this for the poster of the series with this [`Series::id`].
 pub fn poster_path(series_id: u64) -> String {
     format!("/api/v1/posters/{series_id}")
+}
+
+/// `GET` the episode file with this [`Episode::file`], ranges honoured.
+pub fn file_path(file: u64) -> String {
+    format!("/api/v1/files/{file}")
+}
+
+/// `GET` the external subtitle file at this index of the file's sidecars, in
+/// the order the playback session lists them.
+pub fn sidecar_path(file: u64, index: usize) -> String {
+    format!("/api/v1/files/{file}/sidecars/{index}")
+}
+
+/// `GET` the skip windows found so far for a session opened through [`CALL`],
+/// as the core's `SkipWindow` JSON list. The host finds them after the
+/// player reports its chapters, a few seconds into the episode.
+pub fn skip_path(session: u64) -> String {
+    format!("/api/v1/sessions/{session}/skip")
+}
+
+/// `GET` the text subtitle track at this index of [`Probe::subtitles`] as an ASS file,
+/// for a client playing a conversion, which carries none. A bitmap track has none.
+pub fn subtitle_path(file: u64, index: usize) -> String {
+    format!("/api/v1/files/{file}/subtitles/{index}")
+}
+
+/// `GET`: [`Probe`] of the episode file.
+pub fn probe_path(file: u64) -> String {
+    format!("/api/v1/files/{file}/probe")
+}
+
+/// `GET` the HLS playlist of the file converted to `height` lines, with the
+/// audio track `audio` (an index into [`Probe::audio`], or the file's default
+/// when `None`). Subtitles stay out: a client that wants them loads the
+/// file's own tracks from [`file_path`] or a sidecar. With `burn` set to a
+/// [`Probe::subtitles`] index, that track is drawn into the picture instead,
+/// styling and all, for a receiver that cannot draw it.
+pub fn hls_path(file: u64, height: u32, audio: Option<usize>, burn: Option<usize>) -> String {
+    let mut path = format!("/api/v1/files/{file}/hls/{height}/index.m3u8");
+    let mut sep = '?';
+    if let Some(a) = audio {
+        path.push_str(&format!("{sep}audio={a}"));
+        sep = '&';
+    }
+    if let Some(b) = burn {
+        path.push_str(&format!("{sep}burn={b}"));
+    }
+    path
 }
 
 /// `GET /api/v1/hello`.
@@ -51,6 +136,51 @@ pub struct Hello {
     pub host: String,
     /// The host's clock, so a client can tell how far apart they are.
     pub now: i64,
+    /// What the host serves past the snapshot: [`FEATURE_STREAM`],
+    /// [`FEATURE_CONVERT`]. Empty from a host older than streaming.
+    #[serde(default)]
+    pub features: Vec<String>,
+}
+
+/// `GET` [`probe_path`]: what one episode file holds.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Probe {
+    /// Seconds.
+    pub duration: f64,
+    /// Bytes.
+    pub size: u64,
+    /// Bits per second over the whole file.
+    pub bitrate: u64,
+    /// ffmpeg's codec name: `h264`, `hevc`, `av1`.
+    #[serde(default)]
+    pub video_codec: Option<String>,
+    /// `main`, `high`, `high 10`.
+    #[serde(default)]
+    pub video_profile: Option<String>,
+    /// 8, 10.
+    #[serde(default)]
+    pub bit_depth: Option<u32>,
+    #[serde(default)]
+    pub width: Option<u32>,
+    #[serde(default)]
+    pub height: Option<u32>,
+    #[serde(default)]
+    pub audio: Vec<Track>,
+    #[serde(default)]
+    pub subtitles: Vec<Track>,
+}
+
+/// One audio or subtitle track of a [`Probe`], in the file's order.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Track {
+    /// ffmpeg's codec name: `aac`, `flac`, `ass`, `subrip`.
+    pub codec: String,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub default: bool,
 }
 
 /// `GET /api/v1/snapshot`.
@@ -168,6 +298,10 @@ pub struct Airing {
 pub struct Episode {
     /// The host's episode key: `"7"`, or `"S02E01"` past the first season.
     pub key: String,
+    /// The host's id for the file, for [`file_path`] and the playback calls.
+    /// Absent from a host older than streaming.
+    #[serde(default)]
+    pub file: Option<u64>,
     pub number: f64,
     #[serde(default)]
     pub season: Option<u32>,

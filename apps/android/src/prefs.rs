@@ -21,11 +21,13 @@ pub struct Prefs {
     pub limit_gb: f64,
     /// The newest version whose What's new was closed, and the one before it.
     pub notes: Seen,
+    /// How an episode from the other device streams.
+    pub stream_quality: crate::stream::Quality,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { onboarded: false, wifi_only: true, limit_on: false, limit_gb: SUGGESTED_LIMIT_GB, notes: Seen::default() }
+        Prefs { onboarded: false, wifi_only: true, limit_on: false, limit_gb: SUGGESTED_LIMIT_GB, notes: Seen::default(), stream_quality: Default::default() }
     }
 }
 

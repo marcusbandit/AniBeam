@@ -15,6 +15,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- The phone app plays this library's episodes over Tailscale
+- Episodes too big for the phone's link are converted as they play
 - Developer options, in Settings under About, time every page and turn images off
 - Magnet-only search results show their seeders and leechers
 - Pick Stable or Nightly updates in Settings, under About

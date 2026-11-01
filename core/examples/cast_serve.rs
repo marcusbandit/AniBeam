@@ -19,6 +19,7 @@ async fn main() {
             path: path.clone(),
             mime: "video/x-matroska".into(),
             prepared: Some(p),
+            relay: None,
         },
     );
     let at = serve(reg, 0).await.unwrap();

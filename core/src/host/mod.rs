@@ -12,7 +12,9 @@
 
 pub mod addr;
 pub mod build;
+pub mod convert;
 pub mod server;
+pub mod stream;
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, Weak};
