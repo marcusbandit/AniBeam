@@ -159,7 +159,13 @@ export component AppWindow inherits Window {
     property <bool> player-shown: PlayerData.open;
     property <bool> notes-shown: AppData.notes-open;
     property <int> settings-section: Settings.section;
-    changed settings-section => { keys.focus(); }
+    // Back on the index with a search, the hits are found again: a feed or repo may be gone.
+    changed settings-section => {
+        if (Settings.section == -1 && Settings.query != "") {
+            Settings.find(Settings.query);
+        }
+        keys.focus();
+    }
     changed find-view => { keys.focus(); }
     changed notes-shown => { keys.focus(); }
     changed series-shown => { keys.focus(); }

@@ -50,9 +50,9 @@ global Status {
     out property <string> streaming: AppData.stream-quality == 0 ? "Auto, 720p on mobile data" : AppData.stream-quality == 1 ? "The original file, every time" : "Converted to " + AppData.stream-qualities[AppData.stream-quality];
     out property <string> sites: RepoData.repos.length == 0 && RepoData.on-count == 0 ? "No repo yet" : (RepoData.on-count == 1 ? "1 site on" : RepoData.on-count + " sites on") + (RepoData.repos.length == 1 ? ", from 1 repo" : RepoData.repos.length > 1 ? ", from " + RepoData.repos.length + " repos" : "");
     out property <bool> sites-warn: RepoData.repos.length > 0 && RepoData.on-count == 0;
-    out property <string> connection: AppData.checking ? "Checking..." : AppData.check-summary != "" ? AppData.check-summary : "Not checked yet";
-    out property <bool> connection-warn: !AppData.checking && AppData.checks.length > 0 && AppData.check-summary != "Every step went through.";
-    out property <string> computer: AppData.host-result != "" && AppData.host-tone != 2 ? AppData.host-result : AppData.host-address;
+    out property <string> connection: AppData.checking ? "Checking..." : AppData.checks.length == 0 ? "Not checked yet" : AppData.check-failed == 0 ? "Every step went through" : AppData.check-failed + " of " + AppData.checks.length + " steps failed";
+    out property <bool> connection-warn: !AppData.checking && AppData.check-failed > 0;
+    out property <string> computer: AppData.host-result != "" ? AppData.host-result : "Not connected yet";
     out property <bool> computer-warn: AppData.host-tone == 1;
     out property <string> about: AppData.version;
 }

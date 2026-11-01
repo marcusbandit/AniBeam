@@ -409,7 +409,9 @@ impl App {
             };
             data.set_anilist_state(line(0, anilist).into());
             data.set_mal_state(line(1, mal).into());
-            data.set_sign_in_failed(self.sign_in_error.is_some());
+            // The warn dot shows only while a row says its sign-in failed.
+            let failed = |which: i32, a: &TrackerAccount| matches!(&self.sign_in_error, Some((w, _)) if *w == which && !a.connected);
+            data.set_sign_in_failed(failed(0, anilist) || failed(1, mal));
             let signed: Vec<&str> =
                 [("AniList", anilist), ("MAL", mal)].iter().filter(|(_, a)| a.connected).map(|(n, _)| *n).collect();
             data.set_trackers_line(if signed.is_empty() { "Not signed in".into() } else { signed.join(" and ").into() });
@@ -505,6 +507,7 @@ impl App {
                         .collect::<Vec<_>>()
                         .join("\n");
                     let failed = checks.iter().filter(|c| !c.ok).count();
+                    data.set_check_failed(failed as i32);
                     data.set_check_summary(
                         if failed == 0 { "Every step went through.".to_string() } else { format!("{failed} of {} steps failed. A screenshot of this list says where.", checks.len()) }
                             .into(),
