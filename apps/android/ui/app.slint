@@ -3,7 +3,7 @@ import { AppData, CheckRow, Day, DownloadRow, EpisodeLine, Hero, Nav, NoteLine, 
 import { Button, NavItem, Pane } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
-import { Ask, MorePage } from "more.slint";
+import { Ask, MorePage, SettingHit, Settings } from "more.slint";
 import { SeriesPage } from "series.slint";
 import { Onboarding } from "onboarding.slint";
 import { FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion } from "find.slint";
@@ -12,7 +12,7 @@ import { AuthRow, EndpointRow, RepoData, RepoRow } from "repos.slint";
 import { Band, PickRow, PlayerData, PlayerPage } from "player.slint";
 import { NotesPage } from "notes.slint";
 
-export { AppData, AuthRow, Band, CheckRow, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
+export { AppData, AuthRow, Band, CheckRow, SettingHit, Settings, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -158,6 +158,8 @@ export component AppWindow inherits Window {
     property <bool> series-shown: AppData.series-open;
     property <bool> player-shown: PlayerData.open;
     property <bool> notes-shown: AppData.notes-open;
+    property <int> settings-section: Settings.section;
+    changed settings-section => { keys.focus(); }
     changed find-view => { keys.focus(); }
     changed notes-shown => { keys.focus(); }
     changed series-shown => { keys.focus(); }
@@ -168,6 +170,10 @@ export component AppWindow inherits Window {
         // Downloads opens on its lenses; a show or a list left open stays as it was.
         if (to == 2 && !FindData.shown) {
             FindData.open("");
+        }
+        // More's tab, tapped on More, goes back to its index.
+        if (to == 3 && root.page == 3) {
+            Settings.section = -1;
         }
         Nav.page = to;
         keys.focus();
@@ -217,6 +223,16 @@ export component AppWindow inherits Window {
             }
             if (root.page == 2 && FindData.shown && FindData.view > 0) {
                 FindData.back();
+                return accept;
+            }
+            // In More, Back leaves a section for the index, then clears the search.
+            if (root.page == 3 && Settings.section >= 0) {
+                Settings.section = -1;
+                return accept;
+            }
+            if (root.page == 3 && Settings.query != "") {
+                Settings.query = "";
+                Settings.find("");
                 return accept;
             }
             if (root.page != 0) {

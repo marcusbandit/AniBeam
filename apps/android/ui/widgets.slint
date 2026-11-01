@@ -582,6 +582,49 @@ export component ListRow inherits Rectangle {
     }
 }
 
+// A setting the settings search landed on: once the page has laid out it hands the page
+// its position to scroll to, then glows soft accent for a moment and fades.
+export component Lit inherits Rectangle {
+    in property <bool> on;
+    // The glow's corner: a pane's when the setting is a whole pane.
+    in property <length> corner;
+    callback reveal(length);
+    height: body.preferred-height;
+    // 0 at rest, 1 waiting for the layout, 2 glowing.
+    property <int> phase;
+    init => {
+        if (root.on) {
+            root.phase = 1;
+        }
+    }
+    changed on => {
+        if (root.on) {
+            root.phase = 1;
+        }
+    }
+    Timer {
+        interval: 80ms;
+        running: root.phase == 1;
+        triggered => {
+            root.phase = 2;
+            root.reveal(root.absolute-position.y);
+        }
+    }
+    Timer {
+        interval: 1600ms;
+        running: root.phase == 2;
+        triggered => { root.phase = 0; }
+    }
+    body := VerticalLayout {
+        @children
+    }
+    Rectangle {
+        border-radius: root.corner;
+        background: root.phase == 2 ? Theme.accent-soft : transparent;
+        animate background { duration: 500ms; easing: ease-out; }
+    }
+}
+
 // A pane of glass: the resting fill, a hairline edge, the tile's corner.
 export component Pane inherits Rectangle {
     in property <bool> lit;

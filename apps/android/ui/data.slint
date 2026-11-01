@@ -200,6 +200,8 @@ export global AppData {
     in-out property <int> step;
     in property <string> anilist-state;
     in property <string> mal-state;
+    // The last sign-in to AniList or MAL failed.
+    in property <bool> sign-in-failed;
 
     // Downloads and sources, on More.
     in property <[DownloadRow]> downloads;

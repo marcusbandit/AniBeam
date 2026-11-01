@@ -23,7 +23,7 @@ use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMo
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
-use crate::{AppData, AppWindow, CheckRow, Day, DownloadRow, EpisodeLine, Shelf, SourceRow, Tile};
+use crate::{AppData, AppWindow, CheckRow, Day, DownloadRow, EpisodeLine, SettingHit, Settings, Shelf, SourceRow, Tile};
 
 /// How often the app looks at the other device while it is open.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -149,6 +149,52 @@ fn with_app(f: impl FnOnce(&mut App)) {
 
 fn today_index(now: i64) -> usize {
     anibeam_companion::calendar::today(now).weekday().num_days_from_monday() as usize
+}
+
+/// More's sections, by the index Settings.section uses.
+const SECTIONS: [&str; 7] = ["Accounts", "Downloads", "Streaming", "Search sites", "Connection", "Your computer", "About"];
+
+/// Every setting More's search can land on: its section, its label (the key its page lights),
+/// and the words a person might type for it.
+const SETTINGS: &[(i32, &str, &str)] = &[
+    (0, "AniList", "anilist tracker sign in login account connect list progress"),
+    (0, "MyAnimeList", "mal myanimelist tracker sign in login account connect list progress"),
+    (1, "Storage cap", "space disk limit gb full storage delete size"),
+    (1, "Only on Wi-Fi", "wifi wi-fi mobile data cellular network"),
+    (2, "Stream quality", "auto original 1080p 720p 480p convert data computer play"),
+    (3, "Check repos for new sites", "refresh update repo endpoint"),
+    (3, "Add a repo", "repo endpoint trust fingerprint address url"),
+    (3, "Add a site by hand", "custom endpoint feed rss torznab jackett prowlarr address"),
+    (3, "Your own feeds", "feed rss source remove"),
+    (4, "Check the connection", "network dns test https secure reach internet"),
+    (5, "Your computer's AniBeam", "tailscale tailnet host address desktop library stream test save device"),
+    (6, "What's new", "changelog patch notes changes update"),
+    (6, "Set up again", "onboarding first run start over"),
+    (6, "Version", "build about"),
+];
+
+/// The settings a search names: each word in the label, the words or the section's name, the
+/// ones whose label holds the whole search first.
+/// Feeds and the repo refresh are found only once there are feeds or repos to show them.
+fn find_settings(query: &str, has_feeds: bool, has_repos: bool) -> Vec<SettingHit> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let mut hits: Vec<(bool, SettingHit)> = SETTINGS
+        .iter()
+        .filter(|(_, label, _)| has_feeds || *label != "Your own feeds")
+        .filter(|(_, label, _)| has_repos || *label != "Check repos for new sites")
+        .filter_map(|&(section, label, words)| {
+            let place = SECTIONS[section as usize];
+            let hay = format!("{label} {words} {place}").to_lowercase();
+            q.split_whitespace().all(|w| hay.contains(w)).then(|| {
+                (label.to_lowercase().contains(&q), SettingHit { section, label: label.into(), place: place.into() })
+            })
+        })
+        .collect();
+    hits.sort_by_key(|(named, _)| !named);
+    hits.into_iter().map(|(_, hit)| hit).collect()
 }
 
 fn account_line(a: &TrackerAccount) -> String {
@@ -363,6 +409,7 @@ impl App {
             };
             data.set_anilist_state(line(0, anilist).into());
             data.set_mal_state(line(1, mal).into());
+            data.set_sign_in_failed(self.sign_in_error.is_some());
             let signed: Vec<&str> =
                 [("AniList", anilist), ("MAL", mal)].iter().filter(|(_, a)| a.connected).map(|(n, _)| *n).collect();
             data.set_trackers_line(if signed.is_empty() { "Not signed in".into() } else { signed.join(" and ").into() });
@@ -971,6 +1018,16 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         })
     });
     data.on_open_notes(|| with_app(|app| app.show_notes()));
+    window.global::<Settings>().on_find({
+        let window = window.as_weak();
+        move |query| {
+            let Some(window) = window.upgrade() else { return };
+            let has_feeds = window.global::<AppData>().get_sources().row_count() > 0;
+            let has_repos = window.global::<crate::RepoData>().get_repos().row_count() > 0;
+            let hits = find_settings(&query, has_feeds, has_repos);
+            window.global::<Settings>().set_hits(ModelRc::new(VecModel::from(hits)));
+        }
+    });
     data.on_close_notes(|| with_app(App::close_notes));
     data.on_restart_onboarding(|| {
         with_app(|app| {
