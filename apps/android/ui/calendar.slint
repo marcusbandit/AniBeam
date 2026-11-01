@@ -7,7 +7,9 @@ import { AppData, CalDay, CalItem, Nav } from "data.slint";
 import { FindData } from "find.slint";
 import { Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
-import { Button, ClampedText, EmptyNote, PageTitle, Poster, SectionHead } from "widgets.slint";
+import { CalendarHead } from "calhead.slint";
+import { AiringPage } from "airing.slint";
+import { Button, ClampedText, EmptyNote, PageTitle, Poster, SectionHead, Segmented } from "widgets.slint";
 
 // The colour of an episode's state: to come is the ink, here is the cube's cyan, out and
 // not here the cube's amber.
@@ -31,7 +33,13 @@ export component CalRow inherits Rectangle {
     border-width: 1px;
     border-color: root.item.soonest ? Theme.accent-edge : Theme.line;
     touch := TouchArea {
-        clicked => { AppData.open-series(root.item.id); }
+        clicked => {
+            if (root.item.remote) {
+                AppData.open-remote(root.item.id);
+            } else {
+                AppData.open-series(root.item.id);
+            }
+        }
     }
     row := HorizontalLayout {
         padding: Theme.unit * 3;
@@ -95,7 +103,7 @@ export component CalRow inherits Rectangle {
                 }
             }
         }
-        if root.item.state == 2: VerticalLayout {
+        if root.item.state == 2 && !root.item.remote: VerticalLayout {
             alignment: center;
             Button {
                 text: "Get";
@@ -198,6 +206,7 @@ export component DayStrip inherits Rectangle {
     property <length> step: root.width-each + Theme.gap;
     Flickable {
         content-width: AppData.calendar.length * root.step - Theme.gap;
+        interactive: self.content-width > self.width + 1px;
         content-x: Math.max(-root.step, Math.min(0, self.width - self.content-width));
         for day[i] in AppData.calendar: DayPill {
             x: i * root.step;
@@ -278,7 +287,13 @@ component BoardCard inherits Rectangle {
     border-color: root.item.soonest ? Theme.accent-edge : Theme.line;
     clip: true;
     touch := TouchArea {
-        clicked => { AppData.open-series(root.item.id); }
+        clicked => {
+            if (root.item.remote) {
+                AppData.open-remote(root.item.id);
+            } else {
+                AppData.open-series(root.item.id);
+            }
+        }
     }
     card := VerticalLayout {
         Rectangle {
@@ -343,6 +358,7 @@ component WeekBoard inherits Rectangle {
     property <length> step: root.column + root.gap;
     Flickable {
         content-width: AppData.calendar.length * root.step + root.gap;
+        interactive: self.content-width > self.width + 1px;
         content-x: Math.max(-root.step, Math.min(0, self.width - self.content-width));
         for day[i] in AppData.calendar: Rectangle {
             x: root.gap + i * root.step;
@@ -383,6 +399,7 @@ component WeekBoard inherits Rectangle {
                 }
                 Flickable {
                     content-height: cards.preferred-height;
+                    interactive: self.content-height > self.height + 1px;
                     cards := VerticalLayout {
                         alignment: start;
                         spacing: Theme.gap;
@@ -395,16 +412,13 @@ component WeekBoard inherits Rectangle {
     }
 }
 
-export component CalendarPage inherits Rectangle {
+component Schedule inherits Rectangle {
     property <CalDay> picked: AppData.calendar[AppData.cal-day];
-    property <bool> empty: AppData.ready && AppData.phone-shows == 0;
+    property <bool> empty: AppData.ready && AppData.cal-device == 0 && AppData.phone-shows == 0;
 
     // Folded: the head, the strip, the picked day.
-    if Fold.posture == 0: Scroll {
-        PageTitle {
-            title: "Calendar";
-            note: AppData.cal-note;
-        }
+    if !Fold.split: Scroll {
+        CalendarHead { }
         DayStrip { }
         if !root.empty: DayAgenda { day: root.picked; }
         if root.empty: EmptyNote {
@@ -413,67 +427,55 @@ export component CalendarPage inherits Rectangle {
         }
     }
 
-    // Open: the board, the whole week at a glance.
-    if Fold.posture == 1: VerticalLayout {
+    // Open: the board, the whole week at a glance. It fades into the book's two pages when
+    // the phone bends, since a column would sit on the crease.
+    if Fold.split: VerticalLayout {
+        opacity: Fold.posture == 1 ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: Fold.settle; }
         padding-top: Theme.unit * 4;
         spacing: Theme.unit * 2;
         HorizontalLayout {
             padding-left: Theme.grout + Theme.unit;
             padding-right: Theme.grout + Theme.unit;
-            PageTitle {
-                title: "Calendar";
-                note: AppData.cal-note;
-            }
+            CalendarHead { width: Math.min(parent.width - 2 * (Theme.grout + Theme.unit), 560px); }
         }
         WeekBoard { vertical-stretch: 1; }
     }
 
     // Half, as a book: the days on the left page, the picked one on the right.
-    if Fold.posture == 2: Leaf {
-        area: Fold.pick(0.4);
-        Scroll {
-            PageTitle {
-                title: "Calendar";
-                note: AppData.cal-note;
+    if Fold.split: Rectangle {
+        opacity: Fold.posture == 2 ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: Fold.settle; }
+        Leaf {
+            area: Fold.pick(0.4);
+            Scroll {
+                CalendarHead { }
+                VerticalLayout {
+                    spacing: Theme.unit;
+                    for day[i] in AppData.calendar: DayLine {
+                        day: day;
+                        picked: i == AppData.cal-day;
+                        clicked => { AppData.cal-day = i; }
+                    }
+                }
             }
-            VerticalLayout {
-                spacing: Theme.unit;
-                for day[i] in AppData.calendar: DayLine {
-                    day: day;
-                    picked: i == AppData.cal-day;
-                    clicked => { AppData.cal-day = i; }
+        }
+        Leaf {
+            area: Fold.show(0.4);
+            Scroll {
+                DayAgenda {
+                    day: root.picked;
+                    poster-width: 14 * Theme.unit;
                 }
             }
         }
     }
-    if Fold.posture == 2: Leaf {
-        area: Fold.show(0.4);
-        Scroll {
-            DayAgenda {
-                day: root.picked;
-                poster-width: 14 * Theme.unit;
-            }
-        }
-    }
+}
 
-    // Half, as a laptop: the picked day above the crease, the strip below it for the thumbs.
-    if Fold.posture == 3: Leaf {
-        area: Fold.show(0.4);
-        Scroll {
-            DayAgenda { day: root.picked; }
-        }
-    }
-    if Fold.posture == 3: Leaf {
-        area: Fold.pick(0.4);
-        VerticalLayout {
-            padding: Theme.grout + Theme.unit;
-            spacing: Theme.unit * 3;
-            PageTitle {
-                title: "Calendar";
-                note: AppData.cal-note;
-            }
-            DayStrip { cell: 18 * Theme.unit; }
-            Rectangle { }
-        }
-    }
+// The tab: the schedule, or Airing now.
+export component CalendarPage inherits Rectangle {
+    if AppData.airing-view: AiringPage { }
+    if !AppData.airing-view: Schedule { }
 }

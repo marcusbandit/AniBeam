@@ -120,22 +120,21 @@ component Showcase inherits VerticalLayout {
     }
 }
 
-// Folded, one column. Open and half folded as a book, the next to air and the shelves get
-// the left and wider side, Coming up the right; stood up, the shelves sit above the crease
-// and Coming up below it, by the thumbs.
+// Folded, one column. Open and half folded, the next to air and the shelves get the left
+// and wider side, Coming up the right.
 export component HomePage inherits Rectangle {
     if !Fold.split: Scroll {
         Showcase { }
         if AppData.coming.length > 0: ComingUp { }
     }
     if Fold.split: Leaf {
-        area: Fold.posture == 3 ? Fold.show(0.6) : Fold.pick(0.6);
+        area: Fold.pick(0.6);
         Scroll {
             Showcase { }
         }
     }
     if Fold.split: Leaf {
-        area: Fold.posture == 3 ? Fold.pick(0.6) : Fold.show(0.6);
+        area: Fold.show(0.6);
         Scroll {
             ComingUp { }
         }

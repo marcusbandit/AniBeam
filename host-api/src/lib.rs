@@ -27,9 +27,10 @@
 //!   8-bit H.264 and stereo AAC at a height the client picks, as HLS. The host
 //!   converts only the part being watched, so a seek costs a few seconds.
 //! - [`CALL`]: `POST` one playback call of the core's contract as JSON, and
-//!   read its reply. Only the calls a player makes pass ([`PLAYER_CALLS`]), so
-//!   an episode watched on the client keeps its place, its history and its
-//!   tracker progress on the host, as if it had played there.
+//!   read its reply. Only the calls a player makes pass, and the two for Not
+//!   interested ([`PLAYER_CALLS`]), so an episode watched on the client keeps
+//!   its place, its history and its tracker progress on the host, as if it had
+//!   played there, and a show marked not interested is hidden on both.
 //!
 //! Times are Unix seconds. Every optional field may be absent or `null`, and a
 //! client must ignore fields it does not know: [`API_VERSION`] only moves for a
@@ -57,7 +58,8 @@ pub const CALL: &str = "/api/v1/call";
 pub const FEATURE_STREAM: &str = "stream";
 /// In [`Hello::features`] when the host can also convert ([`hls_path`]).
 pub const FEATURE_CONVERT: &str = "convert";
-/// The `Call` variants [`CALL`] takes: the ones a player makes.
+/// The `Call` variants [`CALL`] takes: the ones a player makes, and the two that keep
+/// Not interested the same on a client as on the host.
 pub const PLAYER_CALLS: &[&str] = &[
     "OpenPlayback",
     "ReportChapters",
@@ -65,6 +67,8 @@ pub const PLAYER_CALLS: &[&str] = &[
     "ClosePlayback",
     "MarkEpisode",
     "SetTrackChoice",
+    "SetNotInterested",
+    "ListNotInterested",
 ];
 /// The heights a conversion comes in. A client asking for another gets the
 /// nearest one below it.

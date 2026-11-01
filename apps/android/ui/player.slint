@@ -304,7 +304,7 @@ export component PlayerPage inherits Rectangle {
 
     // Stood up half folded like a laptop, the picture keeps to the half above the crease and
     // the controls to the half below it, on the table.
-    property <bool> stood: Fold.posture == 3;
+    property <bool> stood: Fold.stood;
     property <length> picture-height: root.stood ? Fold.height / 2 - Fold.gutter / 2 : root.height;
     changed picture-height => { PlayerData.page-height = self.picture-height; }
     init => { PlayerData.page-height = self.picture-height; }

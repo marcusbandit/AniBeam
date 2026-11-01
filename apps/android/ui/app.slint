@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
+import { AiringMenu, AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
 import { Button, NavItem, Pane } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
@@ -12,9 +12,10 @@ import { AuthRow, EndpointRow, RepoData, RepoRow } from "repos.slint";
 import { Band, PickRow, PlayerData, PlayerPage } from "player.slint";
 import { NotesPage } from "notes.slint";
 import { CalendarPage } from "calendar.slint";
+import { AiringSheet } from "airing.slint";
 import { Area, Fold } from "fold.slint";
 
-export { AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
+export { AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -146,6 +147,11 @@ export component AppWindow inherits Window {
 
     // Fold works the layout out from the window's size and insets and the hinge.
     function measure() {
+        if (Fold.width != self.width || Fold.height != self.height) {
+            Fold.still = false;
+            resize-done.running = false;
+            resize-done.running = true;
+        }
         Fold.width = self.width;
         Fold.height = self.height;
         Fold.inset-top = self.inset-top;
@@ -154,6 +160,14 @@ export component AppWindow inherits Window {
         Fold.inset-right = self.inset-right;
     }
     init => { self.measure(); }
+    resize-done := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            Fold.still = true;
+        }
+    }
     changed width => { self.measure(); }
     changed height => { self.measure(); }
     changed inset-top => { self.measure(); }
@@ -231,6 +245,10 @@ export component AppWindow inherits Window {
                 Ask.menu-id = -1;
                 return accept;
             }
+            if (AppData.airing-menu.show) {
+                AppData.airing-close();
+                return accept;
+            }
             if (AppData.onboarding && AppData.step > 0) {
                 AppData.step -= 1;
                 return accept;
@@ -269,6 +287,7 @@ export component AppWindow inherits Window {
             y: Fold.body-y;
             width: Fold.body-width;
             height: Fold.body-height;
+            animate x, width { duration: Fold.settle; easing: ease-in-out; }
             clip: true;
 
             HomePage {
@@ -292,31 +311,29 @@ export component AppWindow inherits Window {
                 y: self.area.y;
                 width: self.area.width;
                 height: self.area.height;
+                animate x, y, width, height { duration: Fold.settle; easing: ease-in-out; }
                 background: Theme.ground;
-                border-radius: Fold.half ? Theme.radius + 6px : 0;
+                clip: true;
                 TouchArea { }
-                Rectangle {
-                    background: Fold.half ? Theme.surface : transparent;
-                    border-radius: parent.border-radius;
-                    border-width: Fold.half ? 1px : 0;
-                    border-color: Theme.line;
-                    clip: true;
-                    SeriesPage { }
-                }
-                if Fold.posture == 1: Rectangle {
+                SeriesPage { }
+                if Fold.split: Rectangle {
                     x: 0;
                     width: 1px;
                     background: Theme.line;
+                    opacity: Fold.posture == 1 ? 1 : 0;
+                    animate opacity { duration: Fold.settle; }
                 }
             }
         }
 
-        // Navigation: along the bottom folded or stood up, down the left otherwise.
+        // Navigation: along the bottom folded, down the left otherwise. The rail narrows as
+        // the phone bends, and the body slides with it.
         nav := Rectangle {
             x: 0;
             y: Fold.rail ? 0 : root.height - Fold.bar-height - root.inset-bottom;
             width: Fold.rail ? root.inset-left + Fold.rail-width : root.width;
             height: Fold.rail ? root.height : Fold.bar-height + root.inset-bottom;
+            animate width { duration: Fold.settle; easing: ease-in-out; }
             background: Theme.ground;
             Rectangle {
                 x: Fold.rail ? parent.width - 1px : 0;
@@ -326,7 +343,7 @@ export component AppWindow inherits Window {
                 background: Theme.line;
             }
             // Stood up, the bar keeps to a phone's width in the middle, under the thumbs.
-            property <length> bar-span: Fold.posture == 3 ? Math.min(560px, self.width - root.inset-left - root.inset-right) : self.width - root.inset-left - root.inset-right;
+            property <length> bar-span: self.width - root.inset-left - root.inset-right;
             property <length> bar-x: root.inset-left + (self.width - root.inset-left - root.inset-right - self.bar-span) / 2;
             property <length> item-width: Fold.rail ? Fold.rail-width : self.bar-span / root.destinations.length;
             property <length> item-height: Fold.rail ? 19 * Theme.unit : Fold.bar-height;
@@ -338,6 +355,7 @@ export component AppWindow inherits Window {
                 y: Fold.rail ? parent.rail-top + i * parent.item-height : 0;
                 width: parent.item-width;
                 height: parent.item-height;
+                animate width { duration: Fold.settle; easing: ease-in-out; }
                 icon: destination.icon;
                 label: destination.label;
                 active: root.page == destination.page;
@@ -363,6 +381,10 @@ export component AppWindow inherits Window {
         }
 
         if Ask.menu-id >= 0: ShowMenu {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if AppData.airing-menu.show: AiringSheet {
             inset-bottom: root.inset-bottom;
         }
 

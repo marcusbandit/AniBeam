@@ -246,7 +246,8 @@ component Finder inherits VerticalLayout {
     if AppData.search-sources.length > 0: Rectangle {
         height: 8 * Theme.unit;
         Flickable {
-            content-width: chips.preferred-width;
+            content-width: Math.max(self.width, chips.preferred-width);
+            interactive: chips.preferred-width > self.width;
             chips := HorizontalLayout {
                 spacing: Theme.unit * 1.5;
                 alignment: start;

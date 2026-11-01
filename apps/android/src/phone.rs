@@ -113,7 +113,7 @@ pub struct HomeView {
 /// reach from three days before the moment the cards were read to eight after, so these
 /// whole days are inside that window all day.
 pub const CAL_BACK: usize = 2;
-const CAL_DAYS: usize = CAL_BACK + 8;
+pub const CAL_DAYS: usize = CAL_BACK + 8;
 /// How many of the next episodes Home lists.
 const COMING: usize = 4;
 
@@ -173,11 +173,10 @@ fn episodes(drop: &WeekDrop) -> String {
     }
 }
 
-/// Every day from three back to a week ahead with what airs on it, in air order, and the
+/// Every day from two back to a week ahead with what airs on it, in air order, and the
 /// next few still to air across all of them.
 fn calendar(cards: &[SeriesCard], art: &Art, now: i64, hero: Option<(u64, i64)>) -> (Vec<(CalDay, Vec<CalItem>)>, Vec<CalItem>) {
     let today = calendar::today(now);
-    let first = today - Days::new(CAL_BACK as u64);
     let mut drops: Vec<(&SeriesCard, &WeekDrop, i64)> =
         cards.iter().flat_map(|c| c.week_airings.iter().map(move |d| (c, d, secs(d.at)))).collect();
     drops.sort_by_key(|(c, _, at)| (*at, c.id));
@@ -209,15 +208,28 @@ fn calendar(cards: &[SeriesCard], art: &Art, now: i64, hero: Option<(u64, i64)>)
             when: when.into(),
             state,
             soonest: Some(at) == next_at,
+            remote: false,
         }
     };
 
+    let timed: Vec<(i64, CalItem)> = drops.iter().map(|(c, d, at)| (*at, item(c, d, *at, false))).collect();
+    let days = days_of(timed, now);
+    // Home's hero is the next to air; the list leaves it out rather than say it twice.
+    let coming = drops.iter().filter(|(c, _, at)| *at > now && Some((c.id, *at)) != hero).take(COMING).map(|(c, d, at)| item(c, d, *at, true)).collect();
+    (days, coming)
+}
+
+/// The calendar's days, from two back to a week ahead, each with the items that air on it.
+/// `timed` is in air order; each item carries its air time beside it.
+pub fn days_of(timed: Vec<(i64, CalItem)>, now: i64) -> Vec<(CalDay, Vec<CalItem>)> {
+    let today = calendar::today(now);
+    let first = today - Days::new(CAL_BACK as u64);
     let mut days: Vec<(CalDay, Vec<CalItem>)> = (0..CAL_DAYS)
         .map(|i| {
             let date = first + Days::new(i as u64);
             let (start, end) = (calendar::midnight(date), calendar::midnight(date + Days::new(1)));
             let items: Vec<CalItem> =
-                drops.iter().filter(|(_, _, at)| *at >= start && *at < end).map(|(c, d, at)| item(c, d, *at, false)).collect();
+                timed.iter().filter(|(at, _)| *at >= start && *at < end).map(|(_, item)| item.clone()).collect();
             let day = CalDay {
                 weekday: date.format("%a").to_string().into(),
                 date: date.day().to_string().into(),
@@ -238,9 +250,7 @@ fn calendar(cards: &[SeriesCard], art: &Art, now: i64, hero: Option<(u64, i64)>)
             next = i as i32;
         }
     }
-    // Home's hero is the next to air; the list leaves it out rather than say it twice.
-    let coming = drops.iter().filter(|(c, _, at)| *at > now && Some((c.id, *at)) != hero).take(COMING).map(|(c, d, at)| item(c, d, *at, true)).collect();
-    (days, coming)
+    days
 }
 
 /// "Today", "Tomorrow", "Yesterday", else the weekday: "Thursday".

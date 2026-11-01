@@ -120,42 +120,26 @@ component Glance inherits VerticalLayout {
 }
 
 // Everything on this phone, or, picked above, what another AniBeam on the tailnet has.
-// Open, the grid gives up its right side to a show while one is open; as a book the grid is
-// the left page and the show the right; stood up, the grid is above the crease and the
-// search below it.
+// Open, the grid fills the page and gives up its right side to a show while one is open; as a
+// book the grid is the left page and the right says how to open one. The grid slides between
+// the two when the phone bends.
 export component LibraryPage inherits Rectangle {
-    if Fold.posture == 0: Scroll {
+    if !Fold.split: Scroll {
         LibraryControls { }
         LibraryGrid { }
     }
-    if Fold.posture == 1: Leaf {
-        area: AppData.series-open ? Fold.pick(0.56) : Fold.pick(1);
+    if Fold.split: Leaf {
+        area: AppData.series-open || Fold.posture == 2 ? Fold.pick(0.56) : Fold.pick(1);
         Scroll {
             LibraryControls { }
             LibraryGrid { }
         }
     }
-    if Fold.posture == 2: Leaf {
-        area: Fold.pick(0.5);
-        Scroll {
-            LibraryControls { }
-            LibraryGrid { }
-        }
-    }
-    if Fold.posture == 2: Leaf {
-        area: Fold.show(0.5);
+    if Fold.split: Leaf {
+        area: Fold.show(0.56);
+        opacity: Fold.posture == 2 && !AppData.series-open ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: Fold.settle; }
         Glance { }
-    }
-    if Fold.posture == 3: Leaf {
-        area: Fold.show(0.5);
-        Scroll {
-            LibraryGrid { }
-        }
-    }
-    if Fold.posture == 3: Leaf {
-        area: Fold.pick(0.5);
-        Scroll {
-            LibraryControls { }
-        }
     }
 }
