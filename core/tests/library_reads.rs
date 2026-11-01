@@ -573,3 +573,70 @@ fn a_kept_snapshot_lasts_until_a_change_event() {
     let third = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/C", "C");
     assert_eq!(ids(), vec![second, third], "off, every read loads");
 }
+
+/// With no tracker, a show whose every episode on disk is finished here is caught up,
+/// however its seasons count, and its card counts episodes rather than files (#323)
+#[test]
+fn an_untracked_show_watched_through_is_caught_up_and_counts_episodes() {
+    let (_dir, core, _c) = common::open_core();
+    // The fixtures write the store directly, past what a cached snapshot would see
+    core.set_snapshot_cache(false);
+    let src = fixtures::insert_source(&core, "/lib");
+    let now = anibeam_core::time::now_secs();
+    let show = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Havens", "Havens");
+    let mut keys = vec![];
+    for (season, last) in [(1u32, 10u32), (2, 3)] {
+        for n in 1..=last {
+            fixtures::insert_file(
+                &core,
+                show,
+                &format!("/lib/Havens/S{season:02}E{n:02}.mkv"),
+                n as f64,
+                Some(season),
+                "episode",
+                now,
+            );
+            keys.push(anibeam_core::library::classifier::number_key(
+                Some(season),
+                n as f64,
+            ));
+        }
+    }
+    // A second release of S02E02
+    fixtures::insert_file(
+        &core,
+        show,
+        "/lib/Havens/other/S02E02.mkv",
+        2.0,
+        Some(2),
+        "episode",
+        now,
+    );
+    let card = || match core
+        .call(Call::ListSeries {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
+        Reply::Series { series } => series.into_iter().find(|s| s.id == show).unwrap(),
+        other => panic!("{other:?}"),
+    };
+    let (last, rest) = keys.split_last().unwrap();
+    for k in rest {
+        fixtures::insert_completed(&core, show, k, now - 10);
+    }
+    let c = card();
+    assert_eq!(c.episodes_on_disk, 14);
+    assert_eq!(c.distinct_episodes, 13);
+    assert_ne!(
+        c.watched_state,
+        WatchedState::CaughtUp,
+        "one episode still to watch"
+    );
+    fixtures::insert_completed(&core, show, last, now - 5);
+    assert_eq!(card().watched_state, WatchedState::CaughtUp);
+}
