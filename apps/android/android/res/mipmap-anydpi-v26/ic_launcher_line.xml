@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The glyph's outline alone, in the colours values-v31 takes from Material You. Written by assets/logo/make.py. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/line_ground" />
+    <foreground android:drawable="@drawable/ic_glyph_line" />
+    <monochrome android:drawable="@drawable/ic_glyph_line_mono" />
+</adaptive-icon>

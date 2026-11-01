@@ -174,6 +174,7 @@ mod tests {
             },
             cubes: String::new(),
             episodes_here: Vec::new(),
+            distinct_episodes: 0,
             community_score: score,
             my_score: my,
             list_status: status,

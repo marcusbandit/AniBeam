@@ -16,6 +16,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Airing now, in the Calendar: this season's shows, Plan to watch and Get
 - Not interested hides a show here and on your computer
 - See your computer's calendar beside this phone's
+- Pick the app icon in More: Default, Dark, or Line art in your wallpaper colours
 - A Calendar tab: what airs from two days back to a week ahead
 - Unfolded, the tabs move to a rail and pages split into two columns
 - Half folded, everything moves off the crease to either side of it
@@ -55,6 +56,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - Rows of buttons that fit no longer scroll
+- Skip intro skips the opening, not the scene before it
 - A long search wraps instead of running off the screen
 - Storage says how much the episodes use
 - A failed sign-in says why

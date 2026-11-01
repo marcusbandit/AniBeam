@@ -346,6 +346,13 @@ export global AppData {
     in property <int> stream-quality;
     in property <[string]> stream-qualities;
     callback set-stream-quality(int);
+    // The launcher icon: 0 Default, 1 Dark, 2 Line art. The line art's ground and ink are
+    // the phone's Material You colours, read again each time the App icon page opens.
+    in property <int> app-icon;
+    in property <color> line-ground: #1d1b20;
+    in property <color> line-ink: #fdc901;
+    callback set-app-icon(int);
+    callback read-app-icon();
     callback pick-device(int);
     callback search(string);
     callback set-wifi-only(bool);

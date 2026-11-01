@@ -15,6 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Pick a dark app icon in Settings, under Appearance
 - The phone app plays this library's episodes over Tailscale
 - Shows you mark not interested on the phone are hidden here too
 - Episodes too big for the phone's link are converted as they play
@@ -78,6 +79,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can add a source that answers in JSON
 
 ### Changed
+- Two files of one episode share one row, and you pick which release plays
 - Searches wait a second between requests to one site, except your own server
 - Settings lists its sections down the left, each saying how it stands now
 - Search settings: type a word and land on the setting it names
@@ -123,6 +125,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Skip intro skips the opening, not the scene before it
+- A show you watched to the end no longer stays in Catch up
+- Cards count a show's episodes, not its files, when two releases share one
 - A download's speed and time left no longer run under its Stop button
 - The Replay button no longer stays on the video after you go back
 - Watching an episode again after its end keeps your place
