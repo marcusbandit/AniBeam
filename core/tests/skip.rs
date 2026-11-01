@@ -380,3 +380,53 @@ fn an_extra_uses_its_chapters_alone() {
         Some("chapters".to_string())
     );
 }
+
+/// (#328) A Prologue is story and an Ending names the outro: the file's own
+/// outro stands, and AniSkip is asked for the intro the chapters leave open.
+#[test]
+fn a_prologue_and_an_ending_keep_the_outro_and_ask_aniskip_for_the_intro() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let lib = library(&core);
+    let s = open(&core, lib.ep2);
+    http.push_json(
+        200,
+        serde_json::json!({ "found": true, "results": [
+            { "interval": { "startTime": 72.0, "endTime": 162.0 }, "skipType": "op" },
+            { "interval": { "startTime": 1290.0, "endTime": 1380.0 }, "skipType": "ed" }
+        ] }),
+    );
+
+    let e = ready(
+        &c,
+        report(
+            &core,
+            s.session,
+            vec![
+                chapter("Prologue", 0.0),
+                chapter("Part A", 72.0),
+                chapter("Ending", 1292.0),
+                chapter("Epilogue", 1382.0),
+            ],
+            1440.0,
+        ),
+    );
+    assert_eq!(
+        windows_of(&e),
+        vec![
+            SkipWindow {
+                kind: SkipKind::Intro,
+                start: 72.0,
+                end: 162.0,
+                source: SkipSource::AniSkip
+            },
+            SkipWindow {
+                kind: SkipKind::Outro,
+                start: 1292.0,
+                end: 1382.0,
+                source: SkipSource::Chapters
+            },
+        ]
+    );
+    assert_eq!(http.requests().len(), 1);
+}

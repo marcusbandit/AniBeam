@@ -124,6 +124,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Skip intro skips the opening, not the scene before it
 - A show you watched to the end no longer stays in Catch up
 - Cards count a show's episodes, not its files, when two releases share one
 - A download's speed and time left no longer run under its Stop button
