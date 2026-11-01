@@ -8,7 +8,8 @@ ImageMagick's magick on PATH.
 The icons:
   default    the yellow ground with the dark glyph
   dark       the same, colours swapped, for people who keep a dark home screen
-  line       Android only: the glyph's outline on its own, drawn in the phone's Material You
+  line       Android only: line.svg, a simpler glyph with two speed lines for streaks,
+             stroked on its own and drawn in the phone's Material You
              colours on Android 12 and later
 """
 
@@ -32,6 +33,12 @@ SQUARE = '<rect x="14" y="14" width="996" height="996" rx="225" fill="{}"/>'
 LINE = 32
 
 glyph = re.search(r' d="([^"]+)"', (here / "glyph.svg").read_text()).group(1)
+line = re.search(r' d="([^"]+)"', (here / "line.svg").read_text()).group(1)
+# line.svg's drawing sits low and left in its square, and its streaks reach the corner, so it
+# gets its own fit: its middle (489, 576) on the canvas's middle, and every point within
+# 31 dp of it, inside the 33 dp circle every launcher mask keeps.
+LINE_SCALE = 0.058
+LINE_MIDDLE = (489, 576)
 
 
 def icon(ground: str, ink: str) -> str:
@@ -46,7 +53,7 @@ def outline(ink: str) -> str:
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
         f'<path fill="none" stroke="{ink}" stroke-width="{LINE}" stroke-linejoin="round" '
-        f'stroke-linecap="round" d="{glyph}"/></svg>\n'
+        f'stroke-linecap="round" transform="{line_fit(1024 / 72)}" d="{line}"/></svg>\n'
     )
 
 
@@ -94,17 +101,25 @@ SCALE = 62 / 1024
 SHIFT = (108 - 62) / 2
 
 
-def vector(body: str) -> str:
+def line_fit(unit: float) -> str:
+    """line.svg as the launcher shows it, as an SVG transform: the middle 72 dp of the canvas,
+    which is what a mask leaves visible, at `unit` pixels per dp."""
+    k = LINE_SCALE * unit
+    x, y = ((54 - 18 - m * LINE_SCALE) * unit for m in LINE_MIDDLE)
+    return f"translate({x:.2f} {y:.2f}) scale({k:.5f})"
+
+
+def vector(body: str, path: str = glyph, scale: float = SCALE, at: tuple = (SHIFT, SHIFT)) -> str:
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         "<!-- Written by assets/logo/make.py; edit that, not this. -->\n"
         '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
         '    android:width="108dp" android:height="108dp"\n'
         '    android:viewportWidth="108" android:viewportHeight="108">\n'
-        f'    <group android:translateX="{SHIFT}" android:translateY="{SHIFT}"\n'
-        f'        android:scaleX="{SCALE}" android:scaleY="{SCALE}">\n'
+        f'    <group android:translateX="{at[0]:.2f}" android:translateY="{at[1]:.2f}"\n'
+        f'        android:scaleX="{scale}" android:scaleY="{scale}">\n'
         f"        <path {body}\n"
-        f'            android:pathData="{glyph}" />\n'
+        f'            android:pathData="{path}" />\n'
         "    </group>\n"
         "</vector>\n"
     )
@@ -118,8 +133,9 @@ stroke = (
 write(res / "drawable/ic_glyph.xml", vector(fill.format("@color/icon_ink")))
 write(res / "drawable/ic_glyph_dark.xml", vector(fill.format("@color/icon_ground")))
 write(res / "drawable/ic_glyph_mono.xml", vector(fill.format("#FFFFFFFF")))
-write(res / "drawable/ic_glyph_line.xml", vector(stroke.format("@color/line_ink")))
-write(res / "drawable/ic_glyph_line_mono.xml", vector(stroke.format("#FFFFFFFF")))
+line_at = tuple(54 - m * LINE_SCALE for m in LINE_MIDDLE)
+write(res / "drawable/ic_glyph_line.xml", vector(stroke.format("@color/line_ink"), line, LINE_SCALE, line_at))
+write(res / "drawable/ic_glyph_line_mono.xml", vector(stroke.format("#FFFFFFFF"), line, LINE_SCALE, line_at))
 
 
 def adaptive(note: str, ground: str, fore: str, mono: str) -> str:
