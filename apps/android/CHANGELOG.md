@@ -17,7 +17,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Airing now, in the Calendar: this season's shows, Plan to watch and Get
 - Not interested hides a show here and on your computer
 - See your computer's calendar beside this phone's
-- Pick the app icon in More: Default, Dark, or Line art in your wallpaper colours
+- Pick the app icon in More: Default, Dark, or bare Line art in your colours
 - A Calendar tab: what airs from two days back to a week ahead
 - Unfolded, the tabs move to a rail and pages split into two columns
 - Half folded, everything moves off the crease to either side of it
