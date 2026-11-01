@@ -25,8 +25,8 @@ Item {
     readonly property string subline: {
         var parts = []
         parts.push(item.format ? item.format.replace(/_/g, " ") : (item.kind === "Movie" ? "Film" : "TV"))
-        var distinct = (item.episodes_here || []).length
-        parts.push(item.kind !== "Movie" && distinct > 0 ? Fmt.plural(distinct, "episode", "episodes") : Fmt.plural(item.episodes_on_disk || 0, "file", "files"))
+        var film = item.kind === "Movie" || item.format === "MOVIE", distinct = item.distinct_episodes || 0
+        parts.push(!film && distinct > 0 ? Fmt.plural(distinct, "episode", "episodes") : Fmt.plural(item.episodes_on_disk || 0, "file", "files"))
         return parts.join(", ")
     }
 

@@ -377,9 +377,10 @@ void CardFace::updatePolish()
                 + (it.value(QStringLiteral("total_is_estimate")).toBool() ? QStringLiteral("+") : QString())
         : count(it.value(QStringLiteral("watched"))) + QStringLiteral(" watched");
     // A show counts its episodes, not its files: a second release of an episode is the same
-    // episode, so 15 files holding 13 episodes read "13 episodes" (#323)
-    const qint64 distinct = it.value(QStringLiteral("episodes_here")).toList().size();
-    const bool isMovie = it.value(QStringLiteral("kind")).toString() == QLatin1String("Movie");
+    // episode, so 15 files holding 13 episodes read "13 episodes" (#323). A film is a file.
+    const qint64 distinct = qint64(it.value(QStringLiteral("distinct_episodes")).toDouble());
+    const bool isMovie = it.value(QStringLiteral("kind")).toString() == QLatin1String("Movie")
+        || it.value(QStringLiteral("format")).toString() == QLatin1String("MOVIE");
     const QString filesText = !isMovie && distinct > 0 ? plural(distinct, "episode", "episodes")
         : plural(qint64(it.value(QStringLiteral("episodes_on_disk")).toDouble()), "file", "files");
     const QString ledgerText = !m_meta.isEmpty() ? m_meta : !watchedText.isEmpty() ? watchedText : filesText;

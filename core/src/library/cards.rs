@@ -307,10 +307,7 @@ pub fn watched_state(
     if reachable > 0 && w < reachable {
         return WatchedState::Behind;
     }
-    // With no total, everything that aired or is on disk watched is caught up all the same:
-    // a show with no final count (TVmaze's To Be Determined) and no tracker would otherwise
-    // sit in Catch up with nothing to watch (#323). Nothing reachable at all stays unknown.
-    if known_total.is_none() && reachable == 0 {
+    if known_total.is_none() {
         return WatchedState::Unknown;
     }
     WatchedState::CaughtUp
@@ -693,6 +690,21 @@ impl Snapshot {
         } else {
             (1..).take_while(|n| watched_here.contains(n)).last()
         };
+        // With no tracker, every episode on disk finished here is caught up, whatever the
+        // provider says has aired: the series page's All watched reads the same files, and a
+        // show with no final count (TVmaze's To Be Determined) or a second season counted
+        // apart would otherwise sit in Catch up with nothing to play (#323)
+        let all_here_watched = watched.is_none()
+            && !episodes.is_empty()
+            && episodes
+                .iter()
+                .all(|f| done.contains(f.episode_key.as_str()));
+        // Each season counts its own episodes and a second release of one counts once
+        let distinct_episodes = episodes
+            .iter()
+            .map(|f| (season_of(f), f.number.to_bits()))
+            .collect::<HashSet<_>>()
+            .len() as u64;
         SeriesCard {
             id: row.id,
             kind: row.kind,
@@ -732,12 +744,17 @@ impl Snapshot {
             finished_watched: usage.finished,
             code,
             watched,
-            watched_state: watched_state(
-                watched.or(watched_run_here),
-                total,
-                latest_aired,
-                latest_downloaded,
-            ),
+            watched_state: if all_here_watched {
+                WatchedState::CaughtUp
+            } else {
+                watched_state(
+                    watched.or(watched_run_here),
+                    total,
+                    latest_aired,
+                    latest_downloaded,
+                )
+            },
+            distinct_episodes,
             episodes_here: on_disk.iter().copied().collect(),
             cubes: if row.kind == SeriesKind::Movie {
                 String::new()
@@ -1022,11 +1039,6 @@ mod tests {
         );
         assert_eq!(watched_state(Some(3), None, 0, 0), WatchedState::Unknown);
         assert_eq!(watched_state(Some(3), None, 5, 0), WatchedState::Behind);
-        assert_eq!(
-            watched_state(Some(13), None, 13, 13),
-            WatchedState::CaughtUp,
-            "every reachable episode watched is caught up without a total"
-        );
     }
 
     #[test]
@@ -1191,6 +1203,7 @@ mod tests {
             },
             cubes: String::new(),
             episodes_here: Vec::new(),
+            distinct_episodes: 0,
             community_score: None,
             my_score: None,
             list_status: None,
