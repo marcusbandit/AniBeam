@@ -8,7 +8,8 @@
 //! AniSkip's data arrives over time.
 //!
 //! Carried from Electron's `src/main/utils/chapterProbe.ts` (`OP_PATTERN`,
-//! `ED_PATTERN`, `MAX_CHAPTER_SECONDS`) and
+//! `ED_PATTERN`, `MAX_CHAPTER_SECONDS`; `OP_PATTERN` leaves out Electron's
+//! `prologue`, see #328) and
 //! `src/main/handlers/aniSkipHandler.ts` (chapters first, the 404 that is
 //! a miss rather than an error, and the network failure that caches
 //! nothing so the next session asks again).
@@ -224,13 +225,44 @@ async fn resolve(
     chapters: &[Chapter],
     duration: f64,
 ) -> Result<Vec<SkipWindow>, CoreError> {
-    // The encoder's own word, and free: when the file names an opening or
-    // an ending there is nothing to ask anyone about.
+    // The encoder's own word, and free: when the file names both an opening
+    // and an ending there is nothing to ask anyone about. A file that names
+    // one of them (an Ending, and a Prologue that is story) keeps its own
+    // window and asks AniSkip for the other (#328).
     let from_file = from_chapters(chapters, duration);
-    if !from_file.is_empty() {
+    // An extra, or an episode with no MAL id or number, has nobody to ask:
+    // whatever its chapters name is all it gets, cached as before.
+    let askable =
+        !s.is_extra && s.mal_id.is_some() && s.number.is_some_and(|n| n.is_finite() && n > 0.0);
+    if from_file.len() == 2 || (!from_file.is_empty() && !askable) {
         write_cache(core, s, &from_file, SkipSource::Chapters.as_str()).await?;
         return Ok(from_file);
     }
+    let asked = ask(core, ctx, s, duration).await?;
+    Ok(merge(from_file, asked))
+}
+
+/// The file's windows, and of the other answer only the kinds the file
+/// does not name: the chapters win a kind they both have.
+fn merge(from_file: Vec<SkipWindow>, asked: Vec<SkipWindow>) -> Vec<SkipWindow> {
+    let mut out = from_file;
+    for w in asked {
+        if !out.iter().any(|f| f.kind == w.kind) {
+            out.push(w);
+        }
+    }
+    out.sort_by(|a, b| a.start.total_cmp(&b.start));
+    out
+}
+
+/// The cached answer for the episode, else AniSkip's, cached as found or
+/// as a miss.
+async fn ask(
+    core: &Core,
+    ctx: &JobCtx,
+    s: &Session,
+    duration: f64,
+) -> Result<Vec<SkipWindow>, CoreError> {
     let (series, key, now) = (s.series, s.episode_key.clone(), time::now_secs());
     if let Some(windows) = core
         .store
@@ -392,6 +424,29 @@ mod tests {
         );
         assert!(
             from_chapters(&[chapter("Prologue", 0.0), chapter("Part A", 60.0)], 1400.0).is_empty()
+        );
+    }
+
+    /// A file that names one kind keeps it; the other answer fills only the
+    /// kind the file leaves open
+    #[test]
+    fn the_chapters_keep_their_kind_and_the_other_answer_fills_the_rest() {
+        let aniskip = |kind, start, end| SkipWindow {
+            kind,
+            start,
+            end,
+            source: SkipSource::AniSkip,
+        };
+        let merged = merge(
+            vec![outro(1291.0, 1381.0)],
+            vec![
+                aniskip(SkipKind::Intro, 72.0, 162.0),
+                aniskip(SkipKind::Outro, 1290.0, 1380.0),
+            ],
+        );
+        assert_eq!(
+            merged,
+            vec![aniskip(SkipKind::Intro, 72.0, 162.0), outro(1291.0, 1381.0)]
         );
     }
 
