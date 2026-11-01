@@ -3,6 +3,10 @@ package com.marcusrosado.anibeam;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.media.AudioManager;
 import android.provider.Settings;
 import android.net.wifi.WifiManager;
@@ -24,6 +28,45 @@ public final class Screen {
     private Screen() {}
 
     private static WifiManager.MulticastLock multicast;
+
+    /** The hinge's last angle in degrees; -1 on a phone without one. Set on the UI thread. */
+    private static volatile float hinge = -1;
+    private static boolean listening;
+
+    /**
+     * How the screen is folded, for the layout: the display's rotation times 1000 plus the
+     * hinge angle in degrees, or plus 999 on a phone with no hinge sensor. The first call
+     * starts listening to the hinge (Sensor.TYPE_HINGE_ANGLE, Android 11 and later).
+     */
+    public static float fold(final Activity activity) {
+        synchronized (Screen.class) {
+            if (!listening) {
+                listening = true;
+                activity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        SensorManager sensors = (SensorManager) activity.getSystemService(Context.SENSOR_SERVICE);
+                        // 36 is TYPE_HINGE_ANGLE; the constant is newer than the --release 8 stubs.
+                        Sensor sensor = sensors == null ? null : sensors.getDefaultSensor(36);
+                        if (sensor == null) return;
+                        hinge = 180;
+                        sensors.registerListener(new SensorEventListener() {
+                            @Override
+                            public void onSensorChanged(SensorEvent event) {
+                                hinge = event.values[0];
+                            }
+
+                            @Override
+                            public void onAccuracyChanged(Sensor s, int accuracy) {}
+                        }, sensor, SensorManager.SENSOR_DELAY_UI);
+                    }
+                });
+            }
+        }
+        int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
+        float angle = hinge;
+        return rotation * 1000 + (angle < 0 ? 999 : angle);
+    }
 
     /**
      * Holds or lets go of Wi-Fi multicast while the player looks for Chromecasts and TVs:

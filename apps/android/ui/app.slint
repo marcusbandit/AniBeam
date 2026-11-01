@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { AppData, CheckRow, Day, DownloadRow, EpisodeLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
+import { AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
 import { Button, NavItem, Pane } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
@@ -11,8 +11,10 @@ import { DownloadsPage } from "downloads.slint";
 import { AuthRow, EndpointRow, RepoData, RepoRow } from "repos.slint";
 import { Band, PickRow, PlayerData, PlayerPage } from "player.slint";
 import { NotesPage } from "notes.slint";
+import { CalendarPage } from "calendar.slint";
+import { Area, Fold } from "fold.slint";
 
-export { AppData, AuthRow, Band, CheckRow, SettingHit, Settings, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
+export { AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -21,8 +23,8 @@ component MobileDataQuestion inherits Rectangle {
     background: #000000b0;
     TouchArea { clicked => { Ask.mobile = false; } }
     sheet := Rectangle {
-        x: Theme.grout;
-        width: parent.width - 2 * Theme.grout;
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
         y: parent.height - self.height - root.inset-bottom - Theme.grout;
         height: body.preferred-height;
         background: Theme.float;
@@ -70,8 +72,8 @@ component ShowMenu inherits Rectangle {
     background: #000000b0;
     TouchArea { clicked => { Ask.menu-id = -1; } }
     Rectangle {
-        x: Theme.grout;
-        width: parent.width - 2 * Theme.grout;
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
         y: parent.height - self.height - root.inset-bottom - Theme.grout;
         height: body.preferred-height;
         background: Theme.float;
@@ -127,12 +129,13 @@ export component AppWindow inherits Window {
 
     property <int> page: Nav.page;
 
-    property <bool> wide: self.width > self.height;
-    property <[{icon: image, label: string}]> destinations: [
-        { icon: @image-url("icons/house.svg"), label: "Home" },
-        { icon: @image-url("icons/layers.svg"), label: "Library" },
-        { icon: @image-url("icons/download.svg"), label: "Downloads" },
-        { icon: @image-url("icons/ellipsis.svg"), label: "More" },
+    // Each tab, in the order the bar shows them, with the page it opens.
+    property <[{icon: image, label: string, page: int}]> destinations: [
+        { icon: @image-url("icons/house.svg"), label: "Home", page: 0 },
+        { icon: @image-url("icons/calendar-days.svg"), label: "Calendar", page: 4 },
+        { icon: @image-url("icons/layers.svg"), label: "Library", page: 1 },
+        { icon: @image-url("icons/download.svg"), label: "Downloads", page: 2 },
+        { icon: @image-url("icons/ellipsis.svg"), label: "More", page: 3 },
     ];
 
     // The system bars draw over the window; keep touch targets out from under them.
@@ -141,13 +144,26 @@ export component AppWindow inherits Window {
     property <length> inset-left: self.safe-area-insets.left;
     property <length> inset-right: self.safe-area-insets.right;
 
-    // The bottom bar in portrait turns into a rail down the left in landscape.
-    property <length> bar-height: 18 * Theme.unit;
-    property <length> rail-width: 24 * Theme.unit;
-    property <length> rail-item: 18 * Theme.unit;
-    property <length> content-x: self.wide ? self.inset-left + self.rail-width : self.inset-left;
-    property <length> content-width: self.width - self.content-x - self.inset-right;
-    property <length> content-bottom: self.wide ? self.inset-bottom : self.inset-bottom + self.bar-height;
+    // Fold works the layout out from the window's size and insets and the hinge.
+    function measure() {
+        Fold.width = self.width;
+        Fold.height = self.height;
+        Fold.inset-top = self.inset-top;
+        Fold.inset-bottom = self.inset-bottom;
+        Fold.inset-left = self.inset-left;
+        Fold.inset-right = self.inset-right;
+    }
+    init => { self.measure(); }
+    changed width => { self.measure(); }
+    changed height => { self.measure(); }
+    changed inset-top => { self.measure(); }
+    changed inset-bottom => { self.measure(); }
+    changed inset-left => { self.measure(); }
+    changed inset-right => { self.measure(); }
+
+    // Where a series page opens in the fold layouts: over the pane that shows, sized for
+    // the page it opened from.
+    property <float> series-share: root.page == 1 ? 0.56 : root.page == 4 ? 0.5 : root.page == 0 ? 0.5 : 0.46;
 
     forward-focus: keys;
 
@@ -249,10 +265,10 @@ export component AppWindow inherits Window {
         }
 
         body := Rectangle {
-            x: root.content-x;
-            y: root.inset-top;
-            width: root.content-width;
-            height: root.height - self.y - root.content-bottom;
+            x: Fold.body-x;
+            y: Fold.body-y;
+            width: Fold.body-width;
+            height: Fold.body-height;
             clip: true;
 
             HomePage {
@@ -267,47 +283,79 @@ export component AppWindow inherits Window {
             MorePage {
                 visible: root.page == 3;
             }
+            if root.page == 4: CalendarPage { }
+            // Folded, the series page covers the body; otherwise it opens over the pane that
+            // shows, and the page beside it stays in reach.
             if AppData.series-open: Rectangle {
+                property <Area> area: Fold.show(root.series-share);
+                x: self.area.x;
+                y: self.area.y;
+                width: self.area.width;
+                height: self.area.height;
                 background: Theme.ground;
+                border-radius: Fold.half ? Theme.radius + 6px : 0;
                 TouchArea { }
-                SeriesPage { }
+                Rectangle {
+                    background: Fold.half ? Theme.surface : transparent;
+                    border-radius: parent.border-radius;
+                    border-width: Fold.half ? 1px : 0;
+                    border-color: Theme.line;
+                    clip: true;
+                    SeriesPage { }
+                }
+                if Fold.posture == 1: Rectangle {
+                    x: 0;
+                    width: 1px;
+                    background: Theme.line;
+                }
             }
         }
 
-        // Navigation: along the bottom, or down the left when the screen is wide.
+        // Navigation: along the bottom folded or stood up, down the left otherwise.
         nav := Rectangle {
             x: 0;
-            y: root.wide ? 0 : root.height - root.bar-height - root.inset-bottom;
-            width: root.wide ? root.inset-left + root.rail-width : root.width;
-            height: root.wide ? root.height : root.bar-height + root.inset-bottom;
+            y: Fold.rail ? 0 : root.height - Fold.bar-height - root.inset-bottom;
+            width: Fold.rail ? root.inset-left + Fold.rail-width : root.width;
+            height: Fold.rail ? root.height : Fold.bar-height + root.inset-bottom;
             background: Theme.ground;
             Rectangle {
-                x: root.wide ? parent.width - 1px : 0;
+                x: Fold.rail ? parent.width - 1px : 0;
                 y: 0;
-                width: root.wide ? 1px : parent.width;
-                height: root.wide ? parent.height : 1px;
+                width: Fold.rail ? 1px : parent.width;
+                height: Fold.rail ? parent.height : 1px;
                 background: Theme.line;
             }
-            property <length> item-width: root.wide ? root.rail-width : (self.width - root.inset-left - root.inset-right) / root.destinations.length;
-            property <length> item-height: root.wide ? root.rail-item : root.bar-height;
-            property <length> rail-top: (self.height - root.destinations.length * self.item-height) / 2;
+            // Stood up, the bar keeps to a phone's width in the middle, under the thumbs.
+            property <length> bar-span: Fold.posture == 3 ? Math.min(560px, self.width - root.inset-left - root.inset-right) : self.width - root.inset-left - root.inset-right;
+            property <length> bar-x: root.inset-left + (self.width - root.inset-left - root.inset-right - self.bar-span) / 2;
+            property <length> item-width: Fold.rail ? Fold.rail-width : self.bar-span / root.destinations.length;
+            property <length> item-height: Fold.rail ? 19 * Theme.unit : Fold.bar-height;
+            // The rail's tabs sit high, where a thumb holding the side reaches them, and
+            // clear of the top inset.
+            property <length> rail-top: root.inset-top + 6 * Theme.unit;
             for destination[i] in root.destinations: NavItem {
-                x: root.wide ? root.inset-left : root.inset-left + i * parent.item-width;
-                y: root.wide ? parent.rail-top + i * parent.item-height : 0;
+                x: Fold.rail ? root.inset-left : parent.bar-x + i * parent.item-width;
+                y: Fold.rail ? parent.rail-top + i * parent.item-height : 0;
                 width: parent.item-width;
                 height: parent.item-height;
                 icon: destination.icon;
                 label: destination.label;
-                active: root.page == i;
-                clicked => { root.go(i); }
+                active: root.page == destination.page;
+                clicked => { root.go(destination.page); }
             }
         }
 
-        if AppData.onboarding: Onboarding {
-            x: root.inset-left;
-            y: root.inset-top;
-            width: root.width - root.inset-left - root.inset-right;
-            height: root.height - root.inset-top - root.inset-bottom;
+        // Onboarding covers the bars too, on a ground of its own; unfolded it keeps to a
+        // readable column, and as a book to the right page.
+        if AppData.onboarding: Rectangle {
+            background: Theme.ground;
+            TouchArea { }
+            Onboarding {
+                x: Fold.posture == 0 ? root.inset-left : Fold.sheet-x;
+                y: root.inset-top;
+                width: Fold.posture == 0 ? root.width - root.inset-left - root.inset-right : Fold.sheet-width;
+                height: root.height - root.inset-top - root.inset-bottom;
+            }
         }
 
         if Ask.mobile: MobileDataQuestion {
@@ -319,11 +367,12 @@ export component AppWindow inherits Window {
         }
 
         // What's new covers the pages and the bars, onboarding included.
+        // Unfolded it keeps to the same readable column as onboarding.
         if AppData.notes-open: NotesPage {
             width: root.width;
             height: root.height;
-            inset-left: root.inset-left;
-            inset-right: root.inset-right;
+            inset-left: Fold.posture == 0 ? root.inset-left : Fold.sheet-x;
+            inset-right: Fold.posture == 0 ? root.inset-right : root.width - Fold.sheet-x - Fold.sheet-width;
             inset-top: root.inset-top;
             inset-bottom: root.inset-bottom;
         }

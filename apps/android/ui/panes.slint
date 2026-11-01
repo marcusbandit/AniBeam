@@ -1,0 +1,44 @@
+// The two pieces every page is built from in the fold layouts: a Leaf is one pane at an
+// Area of Fold's, a Scroll is a page's column of content.
+
+import { Theme } from "theme.slint";
+import { Area, Fold } from "fold.slint";
+
+// One pane. Half folded it is a sheet of its own either side of the crease, like the two
+// pages of a book; open, the right one is parted from the left by a hairline.
+export component Leaf inherits Rectangle {
+    in property <Area> area;
+    x: root.area.x;
+    y: root.area.y;
+    width: root.area.width;
+    height: root.area.height;
+    background: Fold.half ? Theme.surface : transparent;
+    border-radius: Fold.half ? Theme.radius + 6px : 0;
+    border-width: Fold.half ? 1px : 0;
+    border-color: Theme.line;
+    clip: true;
+    if Fold.posture == 1 && root.x > 0: Rectangle {
+        x: 0;
+        width: 1px;
+        background: Theme.line;
+    }
+    @children
+}
+
+// A page's content as one scrolling column, with the page margins.
+export component Scroll inherits Flickable {
+    in property <length> pad-bottom: Theme.pad * 2;
+    // Only ever as wide as the pane: nothing in a page scrolls sideways as a whole.
+    content-width: self.width;
+    content-height: column.preferred-height;
+    column := VerticalLayout {
+        width: root.width;
+        alignment: start;
+        padding-left: Theme.grout + Theme.unit;
+        padding-right: Theme.grout + Theme.unit;
+        padding-top: Theme.unit * 4;
+        padding-bottom: root.pad-bottom;
+        spacing: Theme.unit * 4;
+        @children
+    }
+}

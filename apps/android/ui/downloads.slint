@@ -1,14 +1,15 @@
 // Downloads: the desktop's Downloads page at phone size. The head names the page and says
-// how downloads stand, the rates sit under it as figures, then one wide field: typing lists
-// shows, Return searches release names. The sources sit under the field as chips. What is
-// moving comes next as the desktop's Downloading panels, then the lenses. A show or a
-// release list takes the page over until Back.
+// how downloads stand in figures, then one wide field: typing lists shows, Return searches
+// release names. The sources sit under the field as chips. What is moving comes next, a card
+// per download with its show's poster, then what finished, then the lenses.
 
 import { Theme } from "theme.slint";
 import { AppData, DownloadRow, Nav } from "data.slint";
 import { FindData, Lenses, ReleaseList, ShowView, Suggestions } from "find.slint";
 import { Settings } from "more.slint";
-import { Button, Chip, Cubes, Fact, Figure, PageTitle, ProgressLine, SearchField, SectionHead } from "widgets.slint";
+import { Button, Chip, ClampedText, Cubes, Figure, IconButton, PageTitle, Poster, ProgressLine, SearchField, SectionHead } from "widgets.slint";
+import { Fold } from "fold.slint";
+import { Leaf, Scroll } from "panes.slint";
 
 // The colour of a download's state dot: moving, paused, waiting, trouble, done.
 component StateDot inherits Rectangle {
@@ -19,102 +20,99 @@ component StateDot inherits Rectangle {
     background: root.tone == 0 ? Theme.purple : root.tone == 2 ? Theme.yellow : root.tone == 3 ? Theme.bad : root.tone == 4 ? Theme.ok : Theme.dim;
 }
 
-// One download that is not finished, the desktop's panel: the state and how far, which
-// episodes, the release's name, its facts, the cubes or the bar, and Pause and Cancel.
-component DownloadPanel inherits Rectangle {
+// One download that is not finished: the show's poster, which episodes and how far, the bar
+// or a cube per file, the figures, and Pause and Cancel as round buttons at the side. A tap
+// opens the show.
+component DownloadCard inherits Rectangle {
     in property <DownloadRow> data;
-    height: column.preferred-height;
+    property <color> fill: root.data.tone == 0 ? Theme.purple : root.data.tone == 2 ? Theme.yellow : root.data.tone == 3 ? Theme.bad : Theme.dim;
+    property <bool> failed: root.data.state == "Stopped by an error";
+    height: Math.max(row.preferred-height, 20 * Theme.unit);
     border-radius: Theme.radius;
-    background: Theme.surface;
+    background: touch.pressed && root.data.series >= 0 ? Theme.raised : Theme.surface;
     border-width: 1px;
     border-color: Theme.line;
-    column := VerticalLayout {
-        padding: Theme.unit * 4;
-        spacing: Theme.unit * 2.5;
-        HorizontalLayout {
-            spacing: Theme.unit * 2;
-            StateDot {
-                y: (parent.height - self.height) / 2;
-                tone: root.data.tone;
-            }
-            Text {
-                text: root.data.state + ", " + root.data.percent;
-                color: Theme.text;
-                font-family: Theme.strong-face;
-                vertical-alignment: center;
-            }
-            Text {
-                horizontal-stretch: 1;
-                text: root.data.what;
-                color: Theme.dim;
-                vertical-alignment: center;
-                overflow: elide;
+    touch := TouchArea {
+        clicked => {
+            if (root.data.series >= 0) {
+                AppData.open-series(root.data.series);
             }
         }
-        Text {
-            text: root.data.name;
-            color: Theme.text;
-            font-size: Theme.small + 0.5px;
-            wrap: word-wrap;
+    }
+    row := HorizontalLayout {
+        padding: Theme.unit * 3;
+        spacing: Theme.unit * 3.5;
+        Poster {
+            width: 12 * Theme.unit;
+            height: self.width * Theme.poster-ratio;
+            y: (parent.height - self.height) / 2;
+            source: root.data.poster;
+            has-image: root.data.has-poster;
+            initials: root.data.initials;
         }
-        if root.data.release != "" || root.data.folder != "": VerticalLayout {
-            spacing: Theme.unit;
-            if root.data.release != "": Fact {
-                label: "Release";
-                value: root.data.release;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Theme.unit * 1.5;
+            ClampedText {
+                text: root.data.show != "" ? root.data.show : root.data.name;
+                face: root.data.show != "" ? Theme.title-face : Theme.face;
+                font-size: root.data.show != "" ? Theme.normal + 1px : Theme.small + 0.5px;
+                lines: 2;
             }
-            if root.data.folder != "": Fact {
-                label: "Saving to";
-                value: root.data.folder;
+            HorizontalLayout {
+                spacing: Theme.unit * 2;
+                Text {
+                    text: root.data.percent;
+                    color: root.fill;
+                    font-family: Theme.figure;
+                    font-size: Theme.small + 0.5px;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.data.state == "Downloading" ? root.data.what : root.data.what != "" ? root.data.state + ", " + root.data.what : root.data.state;
+                    color: Theme.dim;
+                    font-size: Theme.small + 0.5px;
+                    overflow: elide;
+                }
             }
-        }
-        HorizontalLayout {
-            spacing: Theme.unit * 3;
-            Text {
-                text: root.data.amount;
-                color: Theme.text;
-                font-size: Theme.small;
-                font-family: Theme.figure;
+            if root.data.cubes.length > 0: Cubes {
+                codes: root.data.cubes;
+                size: 12px;
+                spacing: 3px;
             }
-            Text {
-                horizontal-stretch: 1;
+            if root.data.cubes.length == 0: ProgressLine {
+                height: 4px;
+                progress: root.data.progress;
+                fill: root.fill;
+            }
+            // The speed and time left first: on a narrow card they are what is read.
+            if root.data.speed != "": Text {
                 text: root.data.speed;
                 color: Theme.dim;
-                font-size: Theme.small;
+                font-size: Theme.small - 0.5px;
                 font-family: Theme.figure;
                 overflow: elide;
             }
+            Text {
+                text: root.data.release != "" ? root.data.amount + ", " + root.data.release : root.data.amount;
+                color: Theme.faint;
+                font-size: Theme.small - 0.5px;
+                overflow: elide;
+            }
         }
-        if root.data.cubes.length > 0: Cubes {
-            codes: root.data.cubes;
-            size: 14px;
-            spacing: 4px;
-        }
-        if root.data.cubes.length == 0: ProgressLine {
-            height: 4px;
-            progress: root.data.progress;
-            fill: root.data.paused ? Theme.dim : Theme.purple;
-        }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
-            padding-top: Theme.unit;
-            // A download an error stopped starts again with Retry.
-            if root.data.state != "Waiting for Wi-Fi": Button {
-                property <bool> failed: root.data.state == "Stopped by an error";
-                text: self.failed ? "Retry" : root.data.paused ? "Start" : "Pause";
-                icon: self.failed ? @image-url("icons/refresh-cw.svg") : root.data.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
-                has-icon: true;
-                small: true;
-                primary: root.data.paused || self.failed;
-                clicked => { AppData.torrent-action(root.data.hash, root.data.paused || self.failed ? 1 : 0); }
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.unit * 2;
+            // Held for Wi-Fi, nothing restarts it, so there is nothing to press.
+            if root.data.state != "Waiting for Wi-Fi": IconButton {
+                icon: root.failed ? @image-url("icons/refresh-cw.svg") : root.data.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
+                primary: root.data.paused || root.failed;
+                clicked => { AppData.torrent-action(root.data.hash, root.data.paused || root.failed ? 1 : 0); }
             }
             // Cancel deletes what the download had written so far.
-            Button {
-                text: "Cancel";
+            IconButton {
                 icon: @image-url("icons/x.svg");
-                has-icon: true;
-                small: true;
                 danger: true;
                 clicked => { AppData.torrent-action(root.data.hash, 2); }
             }
@@ -122,34 +120,52 @@ component DownloadPanel inherits Rectangle {
     }
 }
 
-// A finished download: one line, its size, and taking it off the list (the episode stays).
+// A finished download: the poster, the show and the episode, its size, and taking it off the
+// list (the episode stays). A tap opens the show.
 component FinishedRow inherits Rectangle {
     in property <DownloadRow> data;
-    height: row.preferred-height + 6 * Theme.unit;
+    height: row.preferred-height;
+    touch := TouchArea {
+        clicked => {
+            if (root.data.series >= 0) {
+                AppData.open-series(root.data.series);
+            }
+        }
+    }
     row := HorizontalLayout {
-        x: 0;
-        width: parent.width;
-        y: 3 * Theme.unit;
+        padding-top: Theme.unit * 2.5;
+        padding-bottom: Theme.unit * 2.5;
         spacing: Theme.unit * 3;
-        StateDot {
-            y: (parent.height - self.height) / 2;
-            tone: 4;
+        Poster {
+            width: 8 * Theme.unit;
+            height: self.width * Theme.poster-ratio;
+            source: root.data.poster;
+            has-image: root.data.has-poster;
+            initials: root.data.initials;
         }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: Theme.unit / 2;
+            spacing: Theme.unit;
             Text {
-                text: root.data.what != "" ? root.data.what : root.data.name;
+                text: root.data.show != "" ? root.data.show : root.data.what != "" ? root.data.what : root.data.name;
                 color: Theme.text;
                 font-family: Theme.strong-face;
                 overflow: elide;
             }
-            Text {
-                text: root.data.what != "" ? root.data.name : root.data.amount;
-                color: Theme.faint;
-                font-size: Theme.small - 0.5px;
-                overflow: elide;
+            HorizontalLayout {
+                spacing: Theme.unit * 1.5;
+                StateDot {
+                    y: (parent.height - self.height) / 2;
+                    tone: 4;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: (root.data.show != "" && root.data.what != "" ? root.data.what + ", " : "") + root.data.amount;
+                    color: Theme.dim;
+                    font-size: Theme.small;
+                    overflow: elide;
+                }
             }
         }
         VerticalLayout {
@@ -168,8 +184,9 @@ component FinishedRow inherits Rectangle {
     }
 }
 
-// Nothing searched: the head, the rates, the field, the sources, what is moving, the lenses.
-component Home inherits VerticalLayout {
+// The head: how downloads stand, in three figures. The rate only while something moves; the
+// phone never seeds, so there is no upload to show.
+component Head inherits VerticalLayout {
     spacing: Theme.unit * 4;
     PageTitle {
         title: "Downloads";
@@ -178,64 +195,59 @@ component Home inherits VerticalLayout {
     HorizontalLayout {
         spacing: Theme.unit * 8;
         alignment: start;
-        Figure {
+        if AppData.moving-count > 0: Figure {
             value: AppData.rate-down;
-            caption: "down";
+            caption: AppData.moving-count == 1 ? "1 downloading" : AppData.moving-count + " downloading";
         }
         Figure {
-            value: AppData.rate-up;
-            caption: "up";
-        }
-        Figure {
-            value: AppData.moving-count + "";
-            caption: "downloading now";
+            value: AppData.free-figure;
+            caption: "free on the phone";
         }
     }
 }
 
-export component DownloadsPage inherits Rectangle {
-    // The search a few hundred milliseconds after the last key, so AniList is asked once
-    // per pause in typing rather than once per letter.
-    property <string> pending;
-    debounce := Timer {
-        interval: 350ms;
-        running: false;
-        triggered => {
-            self.running = false;
-            FindData.suggest(root.pending);
+// What the last search or fetch said, and why it failed when it did.
+component Said inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    if FindData.line != "": Text {
+        text: FindData.line;
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    if FindData.error != "": Rectangle {
+        height: error-text.preferred-height + 6 * Theme.unit;
+        border-radius: Theme.radius;
+        background: Theme.bad-soft;
+        border-width: 1px;
+        border-color: Theme.bad-edge;
+        error-text := Text {
+            x: Theme.unit * 4;
+            width: parent.width - 8 * Theme.unit;
+            text: FindData.error;
+            color: Theme.text;
+            font-size: Theme.small + 0.5px;
+            wrap: word-wrap;
         }
     }
-    property <bool> typing: FindData.view == 0 && FindData.text != "";
-    // The show view's plan stays in view at the foot while the grid scrolls, as the desktop
-    // keeps its plan pane beside the table.
-    property <bool> planning: FindData.view == 1 && FindData.rows.length > 0;
+}
 
-    Flickable {
-        VerticalLayout {
-            alignment: start;
-            padding-left: Theme.grout + Theme.unit;
-            padding-right: Theme.grout + Theme.unit;
-            padding-top: Theme.unit * 4;
-            padding-bottom: Theme.pad * 2 + (root.planning ? bar.height : 0);
-            spacing: Theme.unit * 4;
-
-            if FindData.view == 0: Home { }
-
-            if FindData.view == 0: SearchField {
-                placeholder: "A show, or a release name";
-                text <=> FindData.text;
-                edited(t) => {
-                    FindData.suggest-done = false;
-                    root.pending = t;
-                    debounce.running = false;
-                    debounce.running = true;
-                }
-                accepted(t) => {
-                    debounce.running = false;
-                    FindData.search(t);
-                }
-            }
-            if FindData.view == 0 && AppData.search-sources.length > 0: HorizontalLayout {
+// Where to look: the field, the sources, what the search said, and the shows as you type.
+component Finder inherits VerticalLayout {
+    in-out property <string> pending;
+    callback typed(string);
+    spacing: Theme.unit * 4;
+    SearchField {
+        placeholder: "A show, or a release name";
+        text <=> FindData.text;
+        edited(t) => { root.typed(t); }
+        accepted(t) => { FindData.search(t); }
+    }
+    if AppData.search-sources.length > 0: Rectangle {
+        height: 8 * Theme.unit;
+        Flickable {
+            content-width: chips.preferred-width;
+            chips := HorizontalLayout {
                 spacing: Theme.unit * 1.5;
                 alignment: start;
                 Text {
@@ -255,96 +267,138 @@ export component DownloadsPage inherits Rectangle {
                     }
                 }
             }
-            if FindData.line != "": Text {
-                text: FindData.line;
-                color: Theme.dim;
-                font-size: Theme.small;
-                wrap: word-wrap;
-            }
-            if FindData.error != "": Rectangle {
-                height: error-text.preferred-height + 6 * Theme.unit;
-                border-radius: Theme.radius;
-                background: Theme.bad-soft;
-                border-width: 1px;
-                border-color: Theme.bad-edge;
-                error-text := Text {
-                    x: Theme.unit * 4;
-                    width: parent.width - 8 * Theme.unit;
-                    text: FindData.error;
-                    color: Theme.text;
-                    font-size: Theme.small + 0.5px;
-                    wrap: word-wrap;
-                }
-            }
-
-            if root.typing: Suggestions { }
-
-            // Spacing 0: a finished download is an empty item here, and spacing between
-            // empty items would stack up as gaps. Each panel brings its own space under it.
-            if FindData.view == 0 && !root.typing && AppData.downloading-count > 0: VerticalLayout {
-                spacing: 0;
-                SectionHead {
-                    title: "Downloading";
-                    note: AppData.downloads-note != "" ? AppData.downloads-note : "Cancel deletes what it had; Pause keeps it.";
-                }
-                Rectangle { height: Theme.unit * 3; }
-                for row in AppData.downloads: VerticalLayout {
-                    padding-bottom: row.done ? 0 : Theme.unit * 3;
-                    if !row.done: DownloadPanel { data: row; }
-                }
-            }
-            if FindData.view == 0 && !root.typing && AppData.finished-count > 0: VerticalLayout {
-                spacing: 0;
-                SectionHead {
-                    title: "Finished";
-                    note: AppData.finished-count == 1 ? "1 download, in your library" : AppData.finished-count + " downloads, in your library";
-                }
-                Rectangle { height: Theme.unit; }
-                for row in AppData.downloads: VerticalLayout {
-                    if row.done: FinishedRow { data: row; }
-                }
-            }
-            if FindData.view == 0 && !root.typing: Lenses { }
-
-            if FindData.view == 1: ShowView { }
-            if FindData.view == 2: ReleaseList { }
         }
     }
+    Said { }
+    if FindData.view == 0 && FindData.text != "": Suggestions { }
+}
 
-    bar := Rectangle {
+// What is moving and what finished.
+component Queue inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    // Spacing 0: a finished download is an empty item here, and spacing between empty items
+    // would stack up as gaps. Each card brings its own space under it.
+    if AppData.downloading-count > 0: VerticalLayout {
+        spacing: 0;
+        SectionHead {
+            title: "Downloading";
+            note: AppData.downloads-note != "" ? AppData.downloads-note : AppData.downloading-count == 1 ? "1 episode" : AppData.downloading-count + " downloads";
+        }
+        Rectangle { height: Theme.unit * 3; }
+        for row in AppData.downloads: VerticalLayout {
+            padding-bottom: row.done ? 0 : Theme.unit * 2.5;
+            if !row.done: DownloadCard { data: row; }
+        }
+    }
+    if AppData.finished-count > 0: VerticalLayout {
+        spacing: 0;
+        SectionHead {
+            title: "Finished";
+            note: AppData.finished-count == 1 ? "1 download, in your library" : AppData.finished-count + " downloads, in your library";
+        }
+        Rectangle { height: Theme.unit; }
+        for row in AppData.downloads: VerticalLayout {
+            if row.done: FinishedRow { data: row; }
+        }
+    }
+}
+
+// The show view's plan, kept in view at the foot of its pane while the grid scrolls, as the
+// desktop keeps its plan pane beside the table.
+component PlanBar inherits Rectangle {
+    height: bar-row.preferred-height;
+    background: Theme.float;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    TouchArea { }
+    bar-row := HorizontalLayout {
+        padding: Theme.unit * 3;
+        padding-left: Theme.unit * 4;
+        spacing: Theme.unit * 3;
+        Text {
+            horizontal-stretch: 1;
+            text: FindData.plan;
+            color: Theme.text;
+            font-size: Theme.small + 0.5px;
+            wrap: word-wrap;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Button {
+                text: FindData.can-go ? "Get" : "Pick";
+                icon: @image-url("icons/download.svg");
+                has-icon: true;
+                primary: true;
+                enabled: FindData.can-go && !FindData.busy;
+                clicked => { FindData.go(); }
+            }
+        }
+    }
+}
+
+// A show or a release list, with the plan at its foot.
+component Picked inherits Rectangle {
+    property <bool> planning: FindData.view == 1 && FindData.rows.length > 0;
+    Scroll {
+        pad-bottom: Theme.pad * 2 + (root.planning ? plan.height + Theme.grout : 0);
+        if !Fold.split: Said { }
+        if FindData.view == 1: ShowView { }
+        if FindData.view == 2: ReleaseList { }
+    }
+    plan := PlanBar {
         visible: root.planning;
         x: Theme.grout;
         width: parent.width - 2 * Theme.grout;
-        height: bar-row.preferred-height;
         y: parent.height - self.height - Theme.grout;
-        background: Theme.float;
-        border-radius: Theme.radius;
-        border-width: 1px;
-        border-color: Theme.line-strong;
-        TouchArea { }
-        bar-row := HorizontalLayout {
-            padding: Theme.unit * 3;
-            padding-left: Theme.unit * 4;
-            spacing: Theme.unit * 3;
-            Text {
-                horizontal-stretch: 1;
-                text: FindData.plan;
-                color: Theme.text;
-                font-size: Theme.small + 0.5px;
-                wrap: word-wrap;
-                vertical-alignment: center;
-            }
-            VerticalLayout {
-                alignment: center;
-                Button {
-                    text: FindData.can-go ? "Get" : "Pick";
-                    icon: @image-url("icons/download.svg");
-                    has-icon: true;
-                    primary: true;
-                    enabled: FindData.can-go && !FindData.busy;
-                    clicked => { FindData.go(); }
-                }
-            }
+    }
+}
+
+// Folded, the page is one column, and a show or a release list takes it over until Back.
+// Open and half folded, finding and the queue keep the narrow side, or the bottom half stood
+// up, and the other side shows what to get, or the show picked, with its plan.
+export component DownloadsPage inherits Rectangle {
+    // The search a few hundred milliseconds after the last key, so AniList is asked once
+    // per pause in typing rather than once per letter.
+    property <string> pending;
+    debounce := Timer {
+        interval: 350ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            FindData.suggest(root.pending);
         }
+    }
+    function typed(t: string) {
+        FindData.suggest-done = false;
+        root.pending = t;
+        debounce.running = false;
+        debounce.running = true;
+    }
+    property <bool> typing: FindData.view == 0 && FindData.text != "";
+
+    if !Fold.split && FindData.view == 0: Scroll {
+        Head { }
+        Finder { typed(t) => { root.typed(t); } }
+        if !root.typing: Queue { }
+        if !root.typing: Lenses { }
+    }
+    if !Fold.split && FindData.view != 0: Picked { }
+
+    if Fold.split: Leaf {
+        area: Fold.pick(0.46);
+        Scroll {
+            Head { }
+            Finder { typed(t) => { root.typed(t); } }
+            if !root.typing: Queue { }
+        }
+    }
+    if Fold.split: Leaf {
+        area: Fold.show(0.46);
+        if FindData.view == 0: Scroll {
+            Lenses { }
+        }
+        if FindData.view != 0: Picked { }
     }
 }

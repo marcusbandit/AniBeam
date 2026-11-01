@@ -306,6 +306,18 @@ fn screen(method: &str, on: bool) {
     screen_call(method, "(Landroid/app/Activity;Z)V", Some(jni::objects::JValue::Bool(on.into())));
 }
 
+/// How the screen is folded: the hinge angle in degrees, None on a phone without a hinge,
+/// and whether the display is turned a quarter, which lays the crease across the screen.
+pub fn fold() -> (Option<f32>, bool) {
+    #[cfg(target_os = "android")]
+    if let Some(jni::objects::JValueOwned::Float(f)) = screen_call("fold", "(Landroid/app/Activity;)F", None) {
+        let rotation = (f / 1000.0).floor();
+        let angle = f - rotation * 1000.0;
+        return ((angle < 900.0).then_some(angle), rotation as i32 % 2 == 1);
+    }
+    (None, false)
+}
+
 /// The window's brightness, 0 to 1.
 pub fn brightness() -> f32 {
     #[cfg(target_os = "android")]

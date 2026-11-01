@@ -4,12 +4,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anibeam_companion::calendar;
 use anibeam_companion::format;
-use anibeam_core::{SeriesCard, SeriesDetail, SeriesKind};
+use anibeam_core::{SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
 use chrono::{Datelike, Days, NaiveDate};
 
 use crate::posters;
 use crate::remote::Art;
-use crate::{Day, EpisodeLine, Hero, SeriesHead, Tile};
+use crate::{CalDay, CalItem, EpisodeLine, Hero, SeriesHead, Tile};
 
 /// How many tiles a Home shelf holds.
 const SHELF: usize = 12;
@@ -98,18 +98,25 @@ pub fn library<'a>(cards: impl IntoIterator<Item = &'a SeriesCard>, art: &Art, n
     cards.into_iter().map(|c| library_tile(c, art, now)).collect()
 }
 
-/// Home, in one read of the cards: the hero, the week, the picked day's tiles, and the
-/// recently watched and recently downloaded shelves.
+/// Home, in one read of the cards: the hero, the recently watched and recently downloaded
+/// shelves, and the calendar with the few episodes that air next.
 pub struct HomeView {
     pub hero: Hero,
-    pub days: Vec<Day>,
-    pub day_title: String,
-    pub day_tiles: Vec<Tile>,
     pub watched: Vec<Tile>,
     pub downloaded: Vec<Tile>,
+    /// Each day, and what airs on it apart, so the app only rebuilds the days that changed.
+    pub calendar: Vec<(CalDay, Vec<CalItem>)>,
+    pub coming: Vec<CalItem>,
 }
 
-pub fn home(cards: &[SeriesCard], art: &Art, now: i64, day: usize) -> HomeView {
+/// The calendar's span: three days back, today, and a week ahead. The core's week airings
+/// reach three days back and eight ahead.
+pub const CAL_BACK: usize = 3;
+const CAL_DAYS: usize = CAL_BACK + 8;
+/// How many of the next episodes Home lists.
+const COMING: usize = 4;
+
+pub fn home(cards: &[SeriesCard], art: &Art, now: i64) -> HomeView {
     let upcoming: Vec<(&SeriesCard, i64)> = cards
         .iter()
         .filter_map(|c| c.next_airing.as_ref().map(|a| (c, secs(a.at))))
@@ -117,43 +124,7 @@ pub fn home(cards: &[SeriesCard], art: &Art, now: i64, day: usize) -> HomeView {
         .collect();
 
     let hero = upcoming.iter().min_by_key(|(_, at)| *at).map(|(c, at)| hero(c, *at, art, now)).unwrap_or_default();
-
-    let monday = calendar::week_start(now, 0);
-    let today = calendar::today(now);
-    let dates: Vec<NaiveDate> = (0..7).map(|i| monday + Days::new(i)).collect();
-    let bounds = |d: NaiveDate| (calendar::midnight(d), calendar::midnight(d + Days::new(1)));
-    let days = dates
-        .iter()
-        .map(|&d| {
-            let (start, end) = bounds(d);
-            Day {
-                weekday: d.format("%a").to_string().into(),
-                date: d.day().to_string().into(),
-                count: upcoming.iter().filter(|(_, at)| *at >= start && *at < end).count() as i32,
-                today: d == today,
-            }
-        })
-        .collect();
-    let picked = dates[day.min(6)];
-    let (start, end) = bounds(picked);
-    let mut on_day: Vec<&(&SeriesCard, i64)> = upcoming.iter().filter(|(_, at)| *at >= start && *at < end).collect();
-    on_day.sort_by_key(|(_, at)| *at);
-    let day_tiles: Vec<Tile> = on_day
-        .iter()
-        .map(|(c, at)| {
-            let mut t = tile(c, art);
-            t.badge = format::clock(*at).into();
-            t.ledger = format!("{} {}", next_code(c).unwrap_or_default(), format::countdown(at - now)).into();
-            t.ledger_tone = 1;
-            t
-        })
-        .collect();
-    let day_title = match (picked == today, day_tiles.len()) {
-        (true, 0) => "Nothing airs today.".to_string(),
-        (false, 0) => format!("Nothing airs {}.", picked.format("%A")),
-        (true, n) => format!("Today, {n} airing"),
-        (false, n) => format!("{}, {n} airing", picked.format("%A %-d %B")),
-    };
+    let (calendar, coming) = calendar(cards, art, now, usize::from(hero.show));
 
     let mut watched: Vec<&SeriesCard> = cards.iter().filter(|c| c.last_viewed_at.is_some()).collect();
     watched.sort_by_key(|c| std::cmp::Reverse(c.last_viewed_at.map(secs)));
@@ -185,7 +156,99 @@ pub fn home(cards: &[SeriesCard], art: &Art, now: i64, day: usize) -> HomeView {
         })
         .collect();
 
-    HomeView { hero, days, day_title, day_tiles, watched, downloaded }
+    HomeView { hero, watched, downloaded, calendar, coming }
+}
+
+/// "Episode 5", or "Episodes 5 to 7" for a drop of several at once.
+fn episodes(drop: &WeekDrop) -> String {
+    let code = |e: u32| match drop.season {
+        Some(s) if s > 1 => format!("S{s} E{e}"),
+        _ => format!("{e}"),
+    };
+    match drop.through.filter(|t| *t > drop.episode) {
+        Some(t) => format!("Episodes {} to {}", code(drop.episode), code(t)),
+        None => format!("Episode {}", code(drop.episode)),
+    }
+}
+
+/// Every day from three back to a week ahead with what airs on it, in air order, and the
+/// next few still to air across all of them.
+fn calendar(cards: &[SeriesCard], art: &Art, now: i64, skip: usize) -> (Vec<(CalDay, Vec<CalItem>)>, Vec<CalItem>) {
+    let today = calendar::today(now);
+    let first = today - Days::new(CAL_BACK as u64);
+    let mut drops: Vec<(&SeriesCard, &WeekDrop, i64)> =
+        cards.iter().flat_map(|c| c.week_airings.iter().map(move |d| (c, d, secs(d.at)))).collect();
+    drops.sort_by_key(|(c, _, at)| (*at, c.id));
+    let next_at = drops.iter().map(|(_, _, at)| *at).find(|at| *at > now);
+
+    let item = |c: &SeriesCard, d: &WeekDrop, at: i64, with_day: bool| {
+        let (poster, has_poster) = art.poster(Some(c.id));
+        let state = if at > now {
+            0
+        } else if d.here {
+            1
+        } else {
+            2
+        };
+        let when = match state {
+            0 => format::countdown(at - now),
+            1 => "On the phone".to_string(),
+            _ => format!("Out {}", format::ago(now - at)),
+        };
+        CalItem {
+            id: id(c.id),
+            title: title(c).into(),
+            poster,
+            has_poster,
+            initials: format::initials(title(c)).into(),
+            time: format::clock(at).into(),
+            // Home's list spans days, so its rows say which.
+            episode: if with_day { format!("{}, {}", episodes(d), day_word(calendar::today(at), today)) } else { episodes(d) }.into(),
+            when: when.into(),
+            state,
+            soonest: Some(at) == next_at,
+        }
+    };
+
+    let mut days: Vec<(CalDay, Vec<CalItem>)> = (0..CAL_DAYS)
+        .map(|i| {
+            let date = first + Days::new(i as u64);
+            let (start, end) = (calendar::midnight(date), calendar::midnight(date + Days::new(1)));
+            let items: Vec<CalItem> =
+                drops.iter().filter(|(_, _, at)| *at >= start && *at < end).map(|(c, d, at)| item(c, d, *at, false)).collect();
+            let day = CalDay {
+                weekday: date.format("%a").to_string().into(),
+                date: date.day().to_string().into(),
+                title: day_word(date, today).into(),
+                full: date.format("%A %-d %B").to_string().into(),
+                today: date == today,
+                past: date < today,
+                count: items.len() as i32,
+                ..Default::default()
+            };
+            (day, items)
+        })
+        .collect();
+    let mut next = -1;
+    for (i, (day, items)) in days.iter_mut().enumerate().rev() {
+        day.next = next;
+        if !items.is_empty() {
+            next = i as i32;
+        }
+    }
+    // Home's hero is the first to air, so with it shown the list starts after it.
+    let coming = drops.iter().filter(|(_, _, at)| *at > now).skip(skip).take(COMING).map(|(c, d, at)| item(c, d, *at, true)).collect();
+    (days, coming)
+}
+
+/// "Today", "Tomorrow", "Yesterday", else the weekday: "Thursday".
+fn day_word(date: NaiveDate, today: NaiveDate) -> String {
+    match (date - today).num_days() {
+        0 => "Today".to_string(),
+        1 => "Tomorrow".to_string(),
+        -1 => "Yesterday".to_string(),
+        _ => date.format("%A").to_string(),
+    }
 }
 
 fn hero(card: &SeriesCard, at: i64, art: &Art, now: i64) -> Hero {

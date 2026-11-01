@@ -1,0 +1,98 @@
+// How the screen is folded, and where that puts the panes. Three postures, one rule set:
+//
+//   folded    the phone: one column and the bar along the bottom.
+//   open      flat and wide: a rail down the left and two columns, the wider for looking.
+//   half      bent under 170 degrees: the panes sit either side of the crease and nothing
+//             lies on it. Held like a book (crease down the middle) the left page picks and
+//             the right page shows; stood like a laptop (crease across) the top half shows
+//             and the bottom half, on the table, is for the thumbs.
+//
+// Rust sets the hinge from the sensor; the window sets its size and insets. Panes are in the
+// coordinates of the body, the area the pages draw in.
+
+export struct Area {
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+}
+
+export global Fold {
+    // The hinge in degrees, 180 flat. A phone with no hinge stays at 180.
+    in property <float> hinge: 180;
+    // The display is turned a quarter, so the crease runs from left to right.
+    in property <bool> crease-across;
+
+    in-out property <length> width;
+    in-out property <length> height;
+    in-out property <length> inset-top;
+    in-out property <length> inset-bottom;
+    in-out property <length> inset-left;
+    in-out property <length> inset-right;
+
+    // A phone held upright is narrow; an unfolded inner screen or a phone on its side is wide.
+    out property <bool> wide: self.width >= 600px || self.width > self.height;
+    // Under 30 degrees the phone is shut and shows its outer screen, which turned on its side
+    // is wide too: that is a phone in landscape, not a bent inner screen.
+    out property <bool> half: self.wide && self.hinge < 170 && self.hinge > 30;
+    // 0 folded, 1 open, 2 half as a book, 3 half as a laptop.
+    out property <int> posture: !self.wide ? 0 : !self.half ? 1 : self.crease-across ? 3 : 2;
+    // Two panes side by side, or one above the other.
+    out property <bool> split: self.posture != 0;
+
+    // The navigation: a bar along the bottom when folded or stood up, a rail otherwise.
+    out property <bool> rail: self.posture == 1 || self.posture == 2;
+    out property <length> bar-height: 72px;
+    out property <length> rail-width: self.posture == 2 ? 84px : 104px;
+
+    // The body, in window coordinates.
+    out property <length> body-x: self.inset-left + (self.rail ? self.rail-width : 0);
+    out property <length> body-y: self.inset-top;
+    out property <length> body-width: self.width - self.body-x - self.inset-right;
+    out property <length> body-height: self.height - self.body-y - self.inset-bottom - (self.rail ? 0 : self.bar-height);
+
+    // The crease, in body coordinates, and the ground kept clear around it.
+    out property <length> gutter: 40px;
+    out property <length> crease-x: self.width / 2 - self.body-x;
+    out property <length> crease-y: self.height / 2 - self.body-y;
+    // Open, the two columns are parted by a hairline and a margin either side.
+    out property <length> margin: 12px;
+
+    // A sheet or a question, in window coordinates: the whole width folded, the right page
+    // as a book, and a column in the middle otherwise.
+    out property <length> sheet-x: self.posture == 0 ? self.inset-left
+        : self.posture == 2 ? self.width / 2 + self.gutter / 2
+        : (self.width - self.sheet-width) / 2;
+    out property <length> sheet-width: self.posture == 0 ? self.width - self.inset-left - self.inset-right
+        : self.posture == 2 ? self.width / 2 - self.gutter / 2 - self.inset-right
+        : Math.min(560px, self.width - self.inset-left - self.inset-right);
+
+    // The pane that picks and the pane that shows. `share` is the picking pane's part of an
+    // open screen: a page with a grid to pick from gives it more, one with a short list less.
+    // Folded, both are the whole body.
+    public pure function pick(share: float) -> Area {
+        if (self.posture == 1) {
+            return { x: 0, y: 0, width: self.body-width * share - 0.5px, height: self.body-height };
+        }
+        if (self.posture == 2) {
+            return { x: self.margin, y: self.margin, width: self.crease-x - self.gutter / 2 - self.margin, height: self.body-height - 2 * self.margin };
+        }
+        if (self.posture == 3) {
+            return { x: self.margin, y: self.crease-y + self.gutter / 2, width: self.body-width - 2 * self.margin, height: self.body-height - self.crease-y - self.gutter / 2 - self.margin / 2 };
+        }
+        return { x: 0, y: 0, width: self.body-width, height: self.body-height };
+    }
+
+    public pure function show(share: float) -> Area {
+        if (self.posture == 1) {
+            return { x: self.body-width * share + 0.5px, y: 0, width: self.body-width * (1 - share) - 0.5px, height: self.body-height };
+        }
+        if (self.posture == 2) {
+            return { x: self.crease-x + self.gutter / 2, y: self.margin, width: self.body-width - self.crease-x - self.gutter / 2 - self.margin, height: self.body-height - 2 * self.margin };
+        }
+        if (self.posture == 3) {
+            return { x: self.margin, y: self.margin, width: self.body-width - 2 * self.margin, height: self.crease-y - self.gutter / 2 - self.margin };
+        }
+        return { x: 0, y: 0, width: self.body-width, height: self.body-height };
+    }
+}

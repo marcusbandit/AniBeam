@@ -10,6 +10,19 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.5.0 · 2026-11-01
+
+### New
+- A Calendar tab: what airs from three days back to a week ahead
+- Unfolded, the tabs move to a rail and pages split into two columns
+- Half folded, everything moves off the crease to either side of it
+- Stood up half folded, the video plays above the crease, controls below
+- Downloads show the show's poster; tap one to open the show
+
+### Changed
+- Home lists the next episodes to air, with a way into the Calendar
+- Downloads shows free space instead of upload speed
+
 ## 2.4.3 · 2026-11-01
 
 ### New
