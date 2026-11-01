@@ -27,7 +27,7 @@ export struct EndpointRow {
     note: string,
     // "Update to version 2", or empty.
     update: string,
-    // Installed with values of its own, so a tap opens them.
+    // Installed with values of its own, or added by hand, so a tap opens it.
     editable: bool,
     // The note is something to fix, not a hint.
     warn: bool,
@@ -70,6 +70,16 @@ export global RepoData {
     in-out property <string> custom-name;
     in-out property <string> custom-url;
     in property <string> custom-error;
+    // A source added by hand, open for editing in the row of `editing-index`.
+    in property <int> editing-index: -1;
+    in-out property <string> edit-name;
+    in-out property <string> edit-url;
+    in property <string> edit-error;
+    // The labels of its keys, "API key", or empty when it has none.
+    in property <string> edit-keys;
+    callback save-edit();
+    callback change-values();
+    callback close-edit();
 
     callback add(string);
     callback trust();
@@ -400,6 +410,7 @@ export component EndpointItem inherits Rectangle {
     in property <EndpointRow> endpoint;
     // This row is asking for its values.
     in property <bool> asking;
+    in property <bool> editing;
     callback act();
     callback remove();
     callback toggle();
@@ -408,7 +419,7 @@ export component EndpointItem inherits Rectangle {
     background: tap.pressed && root.endpoint.editable ? Theme.pressed : transparent;
     // Under the buttons and the switch, which take their own taps.
     tap := TouchArea {
-        enabled: root.endpoint.editable && !root.asking;
+        enabled: root.endpoint.editable && !root.asking && !root.editing;
         clicked => { root.open(); }
     }
     column := VerticalLayout {
@@ -467,7 +478,52 @@ export component EndpointItem inherits Rectangle {
             wrap: word-wrap;
         }
         if root.asking: AskValues { }
-        if root.endpoint.installed && !root.asking: HorizontalLayout {
+        if root.editing: VerticalLayout {
+            spacing: Theme.unit * 2;
+            padding-top: Theme.unit;
+            Field {
+                text <=> RepoData.edit-name;
+                placeholder: "Name";
+            }
+            Field {
+                text <=> RepoData.edit-url;
+                figure: true;
+                placeholder: "https://...{query}...";
+            }
+            Text {
+                text: RepoData.edit-keys == "" ? "A key or token typed into the address is moved to this phone's secret store." : "Leave each {key} in the address as it is; its value is kept on this phone.";
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            if RepoData.edit-error != "": Text {
+                text: RepoData.edit-error;
+                color: Theme.bad;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: Theme.gap;
+                alignment: start;
+                Button {
+                    text: "Save";
+                    small: true;
+                    primary: true;
+                    clicked => { RepoData.save-edit(); }
+                }
+                Button {
+                    text: "Cancel";
+                    small: true;
+                    clicked => { RepoData.close-edit(); }
+                }
+                if RepoData.edit-keys != "": Button {
+                    text: "Change its " + RepoData.edit-keys;
+                    small: true;
+                    clicked => { RepoData.change-values(); }
+                }
+            }
+        }
+        if root.endpoint.installed && !root.asking && !root.editing: HorizontalLayout {
             spacing: Theme.gap;
             alignment: start;
             if root.endpoint.update != "": Button {
@@ -544,6 +600,7 @@ export component RepoPanes inherits VerticalLayout {
             for e[i] in RepoData.endpoints: EndpointItem {
                 endpoint: e;
                 asking: RepoData.asking && RepoData.asking-index == i;
+                editing: RepoData.editing-index == i;
                 act => { RepoData.act(i); }
                 remove => { RepoData.remove-endpoint(i); }
                 toggle => { RepoData.toggle(i); }

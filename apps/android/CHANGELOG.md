@@ -10,6 +10,16 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.4.3 · 2026-11-01
+
+### New
+- Tap a site you added yourself to change its name or address
+
+### Changed
+- When your computer cannot be reached, the app says what to do about it
+- An episode your computer cannot stream yet says to update AniBeam there
+- Editing a site keeps its keys out of the address and offers to change them
+
 ## 2.4.2 · 2026-11-01
 
 ### Changed

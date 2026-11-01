@@ -85,7 +85,7 @@ fn a_host_that_is_not_there_is_unreachable() {
     let address = HostAddress::parse(&format!("127.0.0.1:{port}")).unwrap();
     let syncer = Syncer::new(Store::open(scratch("down")).unwrap());
     match syncer.fetch_snapshot(&address, 1_000) {
-        Err(HostError::Unreachable(why)) => assert!(why.contains("nothing listens"), "{why}"),
+        Err(HostError::Unreachable(why)) => assert!(why.contains("not sharing"), "{why}"),
         other => panic!("expected unreachable, got {other:?}"),
     }
 }

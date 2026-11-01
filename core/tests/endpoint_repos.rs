@@ -773,6 +773,92 @@ fn a_repo_over_https_is_fetched_through_the_core_client() {
 
 // Endpoints added by hand -------------------------------------------------------------------
 
+#[test]
+fn a_source_added_by_hand_is_edited_in_place_and_keeps_its_secret() {
+    let http = FakeHttp::new();
+    let (_dir, core, _) = common::open_core_with_http(http.clone());
+    let secret = "jackettkey0123456789";
+    let c = catalog(add_custom(
+        &core,
+        "1337x",
+        &format!("http://127.0.0.1:9117/api?apikey={secret}&t=search&q={{query}}"),
+    ));
+    let x = c.installed.iter().find(|i| i.id == "1337x").unwrap();
+    // The address comes back for editing with its secret as a placeholder.
+    let address = x.address.clone().unwrap();
+    assert!(address.contains("apikey={apikey}"), "{address}");
+    assert!(!address.contains(secret));
+
+    // A new name and host, the placeholder left as it was: the key stays.
+    let edited = address.replace("127.0.0.1:9117", "192.168.1.5:9117");
+    let c = catalog(core.call(Call::EditCustomEndpoint {
+        install: x.install_id.clone(),
+        name: "1337x Jackett".into(),
+        url: edited,
+    }));
+    assert_eq!(c.installed.len(), 1);
+    let y = &c.installed[0];
+    assert_eq!(y.install_id, x.install_id);
+    assert_eq!(y.name, "1337x Jackett");
+    assert_eq!(y.host, "192.168.1.5");
+    assert!(
+        y.address
+            .as_deref()
+            .is_some_and(|a| a.contains("192.168.1.5:9117"))
+    );
+    assert!(y.missing.is_empty());
+    assert_eq!(y.auth[0].label, x.auth[0].label);
+
+    // A new key typed into the address replaces the stored one.
+    let c = catalog(core.call(Call::EditCustomEndpoint {
+        install: x.install_id.clone(),
+        name: "1337x Jackett".into(),
+        url: "http://192.168.1.5:9117/api?apikey=newkey987&t=search&q={query}".into(),
+    }));
+    let z = &c.installed[0];
+    assert!(z.missing.is_empty());
+    assert!(
+        z.address
+            .as_deref()
+            .is_some_and(|a| a.contains("apikey={apikey}") && !a.contains("newkey987"))
+    );
+
+    // An address that loses a key it had is refused: its value could have been typed in its
+    // place, where it would be kept in the open.
+    let typed_over = core.call(Call::EditCustomEndpoint {
+        install: x.install_id.clone(),
+        name: "1337x Jackett".into(),
+        url: "http://192.168.1.5:9117/api?t=search&q={query}".into(),
+    });
+    assert!(typed_over.is_err());
+
+    // A source from a repo is not edited this way.
+    let general = trust(&core, &fixture("general.json"));
+    if let Some(offered) = general.offered.iter().find(|o| o.auth.is_empty()) {
+        let c = catalog(core.call(Call::InstallEndpoint {
+            repo: offered.repo_url.clone(),
+            id: offered.id.clone(),
+            credentials: vec![],
+        }));
+        let repo_one = c.installed.iter().find(|i| !i.custom).unwrap();
+        let refused = core.call(Call::EditCustomEndpoint {
+            install: repo_one.install_id.clone(),
+            name: "Mine".into(),
+            url: "http://127.0.0.1:1/rss?q={query}".into(),
+        });
+        assert!(refused.is_err());
+    }
+
+    // Only a source added by hand can be edited, and not into a name another one has.
+    add_custom(&core, "Other", "http://127.0.0.1:1/rss?q={query}").unwrap();
+    let clash = core.call(Call::EditCustomEndpoint {
+        install: x.install_id.clone(),
+        name: "Other".into(),
+        url: "http://127.0.0.1:1/rss?q={query}".into(),
+    });
+    assert!(clash.is_err());
+}
+
 fn add_custom(core: &anibeam_core::Core, name: &str, url: &str) -> Result<Reply, CoreError> {
     core.call(Call::AddCustomEndpoint {
         name: name.into(),

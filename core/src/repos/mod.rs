@@ -364,6 +364,7 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
                     .map(|a| a.key.clone())
                     .collect(),
                 custom: i.repo_url == CUSTOM,
+                address: (i.repo_url == CUSTOM).then(|| i.def.url.clone()),
                 offered: next.is_some() || i.repo_url == CUSTOM,
                 desktop_note: desktop_note(core, &i.def, &synced),
                 update: update.map(|d| d.version),
@@ -843,15 +844,11 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
     (template, fields, lifted)
 }
 
-/// Adds an endpoint by hand, beside whatever repos there are: a name and an address, for a
-/// site no repo carries (1337x through Jackett, a private tracker's feed). A secret in the
-/// address goes to the secret store like a repo endpoint's.
-pub fn add_custom(
-    core: &Core,
-    name: String,
-    url: String,
-    credentials: Vec<EndpointCredential>,
-) -> Result<Reply, CoreError> {
+/// The definition of a source added by hand, and the secrets lifted out of its address.
+fn custom_definition(
+    name: &str,
+    url: &str,
+) -> Result<(Definition, Vec<(String, String)>), CoreError> {
     let name = name.trim().to_string();
     let id = id_of(&name);
     if id.is_empty() {
@@ -892,6 +889,20 @@ pub fn add_custom(
         json: None,
     };
     index::check_custom(&def).map_err(|e| CoreError::invalid("endpoint", e))?;
+    Ok((def, lifted))
+}
+
+/// Adds an endpoint by hand, beside whatever repos there are: a name and an address, for a
+/// site no repo carries (1337x through Jackett, a private tracker's feed). A secret in the
+/// address goes to the secret store like a repo endpoint's.
+pub fn add_custom(
+    core: &Core,
+    name: String,
+    url: String,
+    credentials: Vec<EndpointCredential>,
+) -> Result<Reply, CoreError> {
+    let (def, lifted) = custom_definition(&name, &url)?;
+    let (id, name) = (def.id.clone(), def.name.clone());
     let installed = core.store.read(read_installed)?;
     if installed.iter().any(|i| i.def.id == id) {
         return Err(CoreError::invalid(
@@ -928,6 +939,87 @@ pub fn add_custom(
         Stage::Downloads,
         "Added a download source.",
         format!("Added the endpoint {name}"),
+        EventBody::Notice,
+    );
+    changed(core)
+}
+
+/// Changes a source added by hand: its name and its address. A secret typed into the new
+/// address replaces the stored one; one left out, or left as its `{key}`, is kept.
+pub fn edit_custom(
+    core: &Core,
+    install: String,
+    name: String,
+    url: String,
+) -> Result<Reply, CoreError> {
+    let row = find_install(core, &install)?;
+    if row.repo_url != CUSTOM {
+        return Err(CoreError::invalid(
+            "endpoint",
+            "only a source added by hand can be edited",
+        ));
+    }
+    let (mut def, lifted) = custom_definition(&name, &url)?;
+    // A secret the address had as a `{key}` must stay one: a value typed in its place would
+    // be kept in the open, and only some keys are lifted out of an address by their name.
+    for old in &row.def.auth {
+        let kept = def.auth.iter().any(|a| a.key == old.key);
+        let lifted_again = lifted.iter().any(|(k, _)| *k == old.key);
+        if !kept && !lifted_again && !url.contains(&format!("{{{}}}", old.key)) {
+            return Err(CoreError::invalid(
+                "endpoint url",
+                format!(
+                    "keep {{{}}} in the address and change its value with Change its {}, or remove the site and add it again without it",
+                    old.key, old.label
+                ),
+            ));
+        }
+    }
+    // A secret the address keeps as its `{key}` keeps the label it was given when added.
+    for field in &mut def.auth {
+        if let Some(old) = row.def.auth.iter().find(|a| a.key == field.key) {
+            *field = old.clone();
+        }
+    }
+    let installed = core.store.read(read_installed)?;
+    if installed
+        .iter()
+        .any(|i| i.install_id != install && i.def.id == def.id)
+    {
+        return Err(CoreError::invalid(
+            "endpoint name",
+            format!("an endpoint called {} is already installed", def.id),
+        ));
+    }
+    let given: Vec<EndpointCredential> = lifted
+        .into_iter()
+        .map(|(key, value)| EndpointCredential { key, value })
+        .collect();
+    let values = credentials_for(&def, &given, false)?;
+    store_credentials(core, &install, &values)?;
+    // A secret the new address no longer has is not left behind in the store.
+    for old in &row.def.auth {
+        if !def.auth.iter().any(|a| a.key == old.key) {
+            core.secrets().delete(&secret_key(&install, &old.key))?;
+        }
+    }
+    let (row_id, row_def, json) = (
+        install.clone(),
+        def.id.clone(),
+        serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
+    );
+    core.store.write(move |conn| {
+        conn.execute(
+            "UPDATE installed_endpoints SET endpoint_id = ?2, definition = ?3 WHERE install_id = ?1",
+            params![row_id, row_def, json],
+        )?;
+        Ok(())
+    })?;
+    core.bus.say(
+        Level::Info,
+        Stage::Downloads,
+        "Changed a download source.",
+        format!("Changed the endpoint {}", def.name),
         EventBody::Notice,
     );
     changed(core)

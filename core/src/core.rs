@@ -1064,6 +1064,9 @@ impl Core {
                 url,
                 credentials,
             } => crate::repos::add_custom(self, name, url, credentials),
+            Call::EditCustomEndpoint { install, name, url } => {
+                crate::repos::edit_custom(self, install, name, url)
+            }
             Call::PhoneSearch {
                 query,
                 endpoint,

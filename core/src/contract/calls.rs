@@ -583,6 +583,12 @@ pub enum Call {
         url: String,
         credentials: Vec<EndpointCredential>,
     },
+    /// Changes a source added by hand. A secret in the new address replaces the stored one.
+    EditCustomEndpoint {
+        install: String,
+        name: String,
+        url: String,
+    },
     // Casting
     /// The devices found so far; asking starts a look around the network, and what turns up
     /// arrives as `CastDevicesChanged`.
