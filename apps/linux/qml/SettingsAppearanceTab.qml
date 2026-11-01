@@ -45,6 +45,58 @@ SettingsTab {
         stretch: LookPreview { nowMs: tab.nowMs }
     }
     Panel {
+        title: "Icon"
+        SettingRow { label: "App icon"; helper: "The window's, the taskbar's and the launcher's. Dark swaps the yellow and the black."
+            Row {
+                spacing: theme.space(3)
+                Repeater {
+                    model: [{ id: "default", text: "Default", file: "icon.png" }, { id: "dark", text: "Dark", file: "icon-dark.png" }]
+                    Column {
+                        id: pick
+                        required property var modelData
+                        readonly property bool on: Theme.appIcon === modelData.id
+                        objectName: "app-icon-" + modelData.id   // a --drive target
+                        spacing: theme.space(1.5)
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: Theme.pickAppIcon(modelData.id)
+                        Keys.onSpacePressed: Theme.pickAppIcon(modelData.id)
+                        Item {
+                            width: theme.space(16); height: width
+                            Corner {
+                                anchors.fill: parent
+                                radius: width * 0.26
+                                smoothing: theme.cornerSmoothing
+                                borderColor: pick.activeFocus ? theme.focusRing : pick.on ? theme.accent : (m.containsMouse ? theme.lineStrong : "transparent")
+                                borderWidth: theme.space(0.5)
+                            }
+                            Image {
+                                anchors.fill: parent
+                                anchors.margins: theme.space(1.5)
+                                source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/" + pick.modelData.file
+                                sourceSize: Qt.size(128, 128)
+                                smooth: true
+                            }
+                            MouseArea {
+                                id: m
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Theme.pickAppIcon(pick.modelData.id)
+                            }
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: pick.modelData.text
+                            color: pick.on ? theme.text : theme.textDim
+                            font.family: theme.fontUi
+                            font.pointSize: theme.typeSmall
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Panel {
         title: "Size and motion"
         SettingRow { label: "Density"; helper: "The room around everything, from tight to airy."
             Seg { options: ["Compact", "Normal", "Comfortable"]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }

@@ -20,6 +20,9 @@ pub mod ffi {
         fn use_opengl_scene_graph();
         /// QGuiApplication::setDesktopFileName, so the Wayland app id is the desktop entry's.
         fn set_desktop_file_name(name: &QString);
+        /// QGuiApplication::setWindowIcon from a qrc path: every window's icon, and the
+        /// Dock's on a Mac.
+        fn set_window_icon(path: &QString);
         /// The two environment variables the spikes settled, before QGuiApplication reads them.
         fn set_render_loop_env();
         /// Shows, raises and activates a window, with the launcher's xdg-activation token

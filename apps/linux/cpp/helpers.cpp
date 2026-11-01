@@ -2,6 +2,7 @@
 #include <QtCore/QByteArray>
 #include <QtCore/qglobal.h>
 #include <QtGui/QGuiApplication>
+#include <QtGui/QIcon>
 #include <QtGui/QPalette>
 #include <QtGui/QSurfaceFormat>
 #include <QtGui/QWindow>
@@ -61,6 +62,11 @@ void use_opengl_scene_graph()
 void set_desktop_file_name(const QString &name)
 {
     QGuiApplication::setDesktopFileName(name);
+}
+
+void set_window_icon(const QString &path)
+{
+    QGuiApplication::setWindowIcon(QIcon(path));
 }
 
 void set_render_loop_env()

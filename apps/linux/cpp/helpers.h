@@ -10,6 +10,7 @@ class QQmlApplicationEngine;
 
 void use_opengl_scene_graph();
 void set_desktop_file_name(const QString &name);
+void set_window_icon(const QString &path);
 // QSG_RENDER_LOOP=threaded on both GPUs (never on a Mac, where AppKit forbids it for
 // OpenGL) and QT_XCB_GL_INTEGRATION=xcb_egl for the X11 fallback, set into this process's
 // environment before QGuiApplication reads it. A value the user set in the environment wins.

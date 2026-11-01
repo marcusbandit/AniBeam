@@ -1,6 +1,7 @@
 // A release build on Windows is a GUI program: no console window opens beside it.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod app_icon;
 mod args;
 mod bridge;
 mod dbus;
