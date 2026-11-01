@@ -3,7 +3,7 @@
 // use these pieces.
 
 import { Theme } from "theme.slint";
-import { Button, Field, GlassTag, Switch, TextButton } from "widgets.slint";
+import { Button, Field, GlassTag, Lit, Switch, TextButton } from "widgets.slint";
 
 // A trusted repo.
 export struct RepoRow {
@@ -55,6 +55,8 @@ export global RepoData {
     in property <[RepoRow]> repos;
     // Installed first, in search order, then what the repos offer.
     in property <[EndpointRow]> endpoints;
+    // Installed and switched on: the sites a search asks.
+    in property <int> on-count;
     // An install or update asking for values, in the row of `asking-index`.
     in property <bool> asking;
     in property <int> asking-index: -1;
@@ -549,16 +551,23 @@ export component EndpointItem inherits Rectangle {
 
 // The repos, then what they offer: More shows all of it, the first run the same list.
 export component RepoPanes inherits VerticalLayout {
+    // The setting More's search landed on, by its label, and where to scroll for it.
+    in property <string> lit;
+    callback reveal(length);
     spacing: Theme.unit * 4;
     // Each repo's list is read again, for sites it added or changed.
-    if RepoData.repos.length > 0: HorizontalLayout {
-        alignment: start;
-        Button {
-            text: "Check repos for new sites";
-            icon: @image-url("icons/refresh-cw.svg");
-            has-icon: true;
-            small: true;
-            clicked => { RepoData.refresh(); }
+    if RepoData.repos.length > 0: Lit {
+        on: root.lit == "Check repos for new sites";
+        reveal(y) => { root.reveal(y); }
+        HorizontalLayout {
+            alignment: start;
+            Button {
+                text: "Check repos for new sites";
+                icon: @image-url("icons/refresh-cw.svg");
+                has-icon: true;
+                small: true;
+                clicked => { RepoData.refresh(); }
+            }
         }
     }
     Rectangle {
@@ -573,7 +582,11 @@ export component RepoPanes inherits VerticalLayout {
                 repo: r;
                 remove => { RepoData.remove-repo(i); }
             }
-            RepoAdd { }
+            Lit {
+                on: root.lit == "Add a repo";
+                reveal(y) => { root.reveal(y); }
+                RepoAdd { }
+            }
         }
     }
     Rectangle {
@@ -593,7 +606,11 @@ export component RepoPanes inherits VerticalLayout {
                 toggle => { RepoData.toggle(i); }
                 open => { RepoData.open(i); }
             }
-            CustomAdd { }
+            Lit {
+                on: root.lit == "Add a site by hand";
+                reveal(y) => { root.reveal(y); }
+                CustomAdd { }
+            }
         }
     }
 }

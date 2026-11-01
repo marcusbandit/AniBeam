@@ -7,6 +7,7 @@
 
 import { Theme } from "theme.slint";
 import { Nav, Tile } from "data.slint";
+import { Settings } from "more.slint";
 import { Button, Chip, ClampedText, Cubes, EmptyNote, Field, ListGroup, Pane, PageTitle, Poster, SectionHead, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
 
 // One source in the show view: its name and what asking it gave.
@@ -417,7 +418,10 @@ export component ShowView inherits VerticalLayout {
         Button {
             text: "Open More";
             small: true;
-            clicked => { Nav.page = 3; }
+            clicked => {
+                Settings.open(3, "");
+                Nav.page = 3;
+            }
         }
     }
 

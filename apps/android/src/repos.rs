@@ -311,8 +311,12 @@ impl Repos {
             }
         }
         self.rows = rows;
+        let on = lines.iter().filter(|l| l.installed && l.enabled).count() as i32;
         update_rows(&self.lines, lines);
-        self.data(|d| d.set_repos(ModelRc::new(VecModel::from(repos))));
+        self.data(|d| {
+            d.set_repos(ModelRc::new(VecModel::from(repos)));
+            d.set_on_count(on);
+        });
         self.catalog = Some(catalog);
     }
 
