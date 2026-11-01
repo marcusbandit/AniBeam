@@ -56,8 +56,13 @@ package() {
   install -Dm755 target/release/anibeam "$pkgdir/usr/bin/anibeam"
   install -Dm644 "$shell/com.marcusrosado.AniBeam.desktop" \
     "$pkgdir/usr/share/applications/com.marcusrosado.AniBeam.desktop"
-  install -Dm644 "$shell/assets/icon.png" \
-    "$pkgdir/usr/share/icons/hicolor/512x512/apps/com.marcusrosado.AniBeam.png"
+  local size
+  for size in 16 24 32 48 64 128 256 512; do
+    install -Dm644 "$shell/assets/hicolor/default/$size.png" \
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/com.marcusrosado.AniBeam.png"
+  done
+  install -Dm644 "$shell/assets/icon.svg" \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/com.marcusrosado.AniBeam.svg"
   install -Dm644 "$shell/mpv.conf" "$pkgdir/usr/share/anibeam/mpv.conf"
   cp -r "$shell/themes" "$pkgdir/usr/share/anibeam/themes"
   find "$pkgdir/usr/share/anibeam/themes" -type d -exec chmod 755 {} +

@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.5.0 · 2026-11-01
 
 ### New
+- Pick the app icon in More: Default, Dark, or Line art in your wallpaper colours
 - A Calendar tab: what airs from two days back to a week ahead
 - Unfolded, the tabs move to a rail and pages split into two columns
 - Half folded, everything moves off the crease to either side of it

@@ -15,6 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Pick a dark app icon in Settings, under Appearance
 - The phone app plays this library's episodes over Tailscale
 - Episodes too big for the phone's link are converted as they play
 - Developer options, in Settings under About, time every page and turn images off
@@ -78,6 +79,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Changed
 - This week shows what is out to watch and counts down to the next one
+- Two files of one episode share one row, and you pick which release plays
 - Searches wait a second between requests to one site, except your own server
 - Settings lists its sections down the left, each saying how it stands now
 - Search settings: type a word and land on the setting it names

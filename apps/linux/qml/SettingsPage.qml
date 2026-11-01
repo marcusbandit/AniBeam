@@ -160,6 +160,7 @@ FocusScope {
         ["appearance", "Density", "compact comfortable spacing size"],
         ["appearance", "Poster size", "cards small medium large"],
         ["appearance", "Reduce motion", "animation accessibility"],
+        ["appearance", "App icon", "logo launcher dock taskbar window dark"],
         ["playback", "Skip intros", "opening op auto skip aniskip chapters"],
         ["playback", "Skip outros", "ending ed credits auto skip aniskip"],
         ["playback", "Use my mpv settings", "mpv.conf config"],

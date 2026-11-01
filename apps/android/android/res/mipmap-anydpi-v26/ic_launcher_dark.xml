@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The default with its colours swapped: the yellow glyph on the dark ground. Written by assets/logo/make.py. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/icon_ink" />
+    <foreground android:drawable="@drawable/ic_glyph_dark" />
+    <monochrome android:drawable="@drawable/ic_glyph_mono" />
+</adaptive-icon>

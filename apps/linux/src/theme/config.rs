@@ -22,6 +22,7 @@ choice!(Source { System = "system", Theme = "theme" }, default Theme);
 choice!(Density { Compact = "compact", Normal = "normal", Comfortable = "comfortable" }, default Normal);
 choice!(Poster { S = "s", M = "m", L = "l" }, default M);
 choice!(Corners { Smooth = "smooth", Plain = "plain" }, default Smooth);
+choice!(AppIcon { Default = "default", Dark = "dark" }, default Default);
 
 impl Density {
     pub fn factor(self) -> f64 {
@@ -64,6 +65,8 @@ pub struct ThemeSettings {
     pub theme_light: String,
     /// Skip the orchestrated motion (the library's opening sweep); smoothing still runs.
     pub reduced_motion: bool,
+    /// The window's and the launcher's icon: the yellow one, or its colours swapped.
+    pub icon: AppIcon,
 }
 
 impl Default for ThemeSettings {
@@ -78,6 +81,7 @@ impl Default for ThemeSettings {
             theme_dark: "tesserae-dark".into(),
             theme_light: "tesserae-light".into(),
             reduced_motion: false,
+            icon: AppIcon::Default,
         }
     }
 }
@@ -130,6 +134,9 @@ pub fn load(path: &Path) -> ThemeSettings {
             .get("reduced_motion")
             .and_then(Item::as_bool)
             .unwrap_or(d.reduced_motion),
+        icon: str_of(&doc, "icon")
+            .and_then(|s| AppIcon::parse(&s))
+            .unwrap_or(d.icon),
     }
 }
 
@@ -148,6 +155,7 @@ pub fn save(path: &Path, s: &ThemeSettings) -> std::io::Result<()> {
     doc["poster"] = value(s.poster.as_str());
     doc["corners"] = value(s.corners.as_str());
     doc["reduced_motion"] = value(s.reduced_motion);
+    doc["icon"] = value(s.icon.as_str());
     if !doc.contains_table("theme") {
         doc["theme"] = Item::Table(Table::new());
     }
@@ -188,6 +196,7 @@ mod tests {
         s.poster = Poster::L;
         s.theme_light = "catppuccin-latte".into();
         s.reduced_motion = true;
+        s.icon = AppIcon::Dark;
         save(&path, &s).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# my notes"));
@@ -197,6 +206,7 @@ mod tests {
         assert!(text.contains("poster = \"l\""));
         assert!(text.contains("light = \"catppuccin-latte\""));
         assert!(text.contains("reduced_motion = true"));
+        assert!(text.contains("icon = \"dark\""));
         assert_eq!(load(&path), s);
     }
 
