@@ -267,9 +267,45 @@ Item {
         var ahead = (detail.upcoming || []).map(function(u) {
             return { number: u.number, season: u.season, code: u.code, title: u.title, air_date: u.at, predicted: u.predicted, cube: "f", upcoming: true, watched: false, next_up: false }
         })
-        return episodes.concat(absent, ahead).sort(function(a, b) {
+        return grouped(episodes).concat(absent, ahead).sort(function(a, b) {
             return ((a.season || 1) - (b.season || 1)) || (a.number - b.number)
         })
+    }
+    // Two files of one episode (two releases of it) are one row: the row plays the one the
+    // core put next up, else the one with a resume point, else the first, and carries every
+    // file as `versions` so the row can offer the others (#324). While picking files to
+    // delete, every file stands on its own row so each can be picked.
+    function grouped(list) {
+        if (page.deleting) return list
+        var by = {}, order = []
+        for (var i = 0; i < list.length; i++) {
+            var k = (list[i].season || 1) + ":" + list[i].number
+            if (!by[k]) { by[k] = []; order.push(k) }
+            by[k].push(list[i])
+        }
+        return order.map(function(k) {
+            var all = by[k]
+            if (all.length === 1) return all[0]
+            var lead = all.find(function(e) { return e.next_up }) || all.find(function(e) { return !!e.resume }) || all[0]
+            var row = Object.assign({}, lead)
+            row.versions = all
+            row.watched = all.some(function(e) { return e.watched })
+            return row
+        })
+    }
+    // One release told from another by its file name: the group and what it is,
+    // "TBK, 1080p WEB-DL H264", "ELiTE, 1080p x265", else the name itself
+    function versionLabel(path) {
+        var name = String(path || "").replace(/[\\/]+$/, "")
+        name = name.slice(Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\")) + 1).replace(/\.[A-Za-z0-9]{2,4}$/, "")
+        var lead = name.match(/^\[([^\]]+)\]/), tail = name.match(/-([A-Za-z0-9]+)$/)
+        var group = lead ? lead[1] : tail ? tail[1] : ""
+        var tags = []
+        var res = name.match(/\b(2160|1080|720|480)p\b/i); if (res) tags.push(res[0].toLowerCase())
+        var src = name.match(/\b(WEB-?DL|WEBRip|BluRay|BDRip|BD|DVD)\b/i); if (src) tags.push(src[0])
+        var codec = name.match(/\b(x265|x264|HEVC|AVC|H\.?26[45]|AV1)\b/i); if (codec) tags.push(codec[0])
+        var what = tags.join(" ")
+        return group && what ? group + ", " + what : group || what || name
     }
     readonly property var nextEpisode: {
         if (!detail || !detail.next_up) return null
@@ -974,7 +1010,9 @@ Item {
                                 hasTracker: page.hasTracker
                                 title: page.episodeName(modelData)
                                 watched: page.watchedWithOptimism(modelData)
+                                versions: (modelData.versions || []).map(function(v) { return { file: v.file, label: page.versionLabel(v.path) } })
                                 onPlay: page.openFile(modelData.file)
+                                onPlayVersion: function(file) { page.openFile(file) }
                                 onMarker: page.marker(modelData)
                                 picking: page.deleting
                                 picked: page.deletePicked.indexOf(modelData.file) >= 0

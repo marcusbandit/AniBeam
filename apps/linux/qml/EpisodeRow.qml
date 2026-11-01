@@ -23,6 +23,16 @@ Corner {
     property string detailText: ""
     signal play()
     signal marker()
+    // More than one file of this episode: [{ file, label }], the row's own file among them.
+    // A chip beside the title says how many and opens a menu that plays any of them (#324).
+    property var versions: []
+    signal playVersion(real file)
+    function openVersions(chip) {
+        var p = chip.mapToItem(frame, 0, chip.height + theme.space(1))
+        frame.openMenu(p.x, p.y, root.versions.map(function(v) {
+            return { text: v.label, icon: v.file === root.episode.file ? "play" : "", action: function() { root.playVersion(v.file) } }
+        }))
+    }
     // Picking files to delete: a click picks this one instead of playing it.
     property bool picking: false
     property bool picked: false
@@ -173,6 +183,17 @@ Corner {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(2)
                     Label { visible: root.nextUp; anchors.verticalCenter: parent.verticalCenter; text: "Next up"; role: "ledger"; color: theme.accent }
+                    Chip {
+                        objectName: "episode-versions"
+                        visible: root.versions.length > 1 && !root.picking
+                        anchors.verticalCenter: parent.verticalCenter
+                        small: true
+                        clickable: true
+                        icon: "layers"
+                        text: root.versions.length + " versions"
+                        onClicked: root.openVersions(this)
+                        Tooltip { text: "The same episode from " + root.versions.length + " releases. Click to pick which plays" }
+                    }
                     Label {
                         objectName: "episode-downloading"
                         visible: root.downloading
