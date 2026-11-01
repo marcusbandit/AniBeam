@@ -17,13 +17,12 @@ use anibeam_companion::store::{AniListCache, Cache, Store};
 use anibeam_core::{
     Call, Direction, PhoneAction, PhoneSource, Reply, SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
 };
-use chrono::Datelike;
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
-use crate::{AppData, AppWindow, CheckRow, Day, DownloadRow, EpisodeLine, SettingHit, Settings, Shelf, SourceRow, Tile};
+use crate::{AppData, AppWindow, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, SettingHit, Settings, Shelf, SourceRow, Tile};
 
 /// How often the app looks at the other device while it is open.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -106,15 +105,21 @@ struct App {
     anilist: AniListCache,
     remote_art: Art,
     // What is picked.
-    day: usize,
     open: Option<Open>,
     ticks: u32,
     devices: Vec<SharedString>,
     /// The last connection check as plain text, for Copy.
     check_text: String,
     home_shelves: Shelves,
-    days: Rc<VecModel<Day>>,
-    day_tiles: Rc<VecModel<Tile>>,
+    calendar: Rc<VecModel<CalDay>>,
+    /// One model per calendar day, updated in place so a ticking countdown repaints its text
+    /// rather than building the day's rows again.
+    cal_models: Vec<Rc<VecModel<CalItem>>>,
+    /// The day the cards were read on: the core's week airings are a window around then.
+    read_on: Option<chrono::NaiveDate>,
+    /// Each card's titles, lower case with single spaces, for naming a torrent's show.
+    plain_titles: Vec<(u64, Vec<String>)>,
+    coming: Rc<VecModel<CalItem>>,
     library: Rc<VecModel<Tile>>,
     episodes: Rc<VecModel<EpisodeLine>>,
     /// Picking episodes to delete on the open series page, and the files picked.
@@ -147,9 +152,6 @@ fn with_app(f: impl FnOnce(&mut App)) {
     });
 }
 
-fn today_index(now: i64) -> usize {
-    anibeam_companion::calendar::today(now).weekday().num_days_from_monday() as usize
-}
 
 /// More's sections, by the index Settings.section uses.
 const SECTIONS: [&str; 7] = ["Accounts", "Downloads", "Streaming", "Search sites", "Connection", "Your computer", "About"];
@@ -264,6 +266,15 @@ impl App {
         };
         if let Ok(Reply::Library { series, .. }) = core.call(library) {
             self.cards = series;
+            self.read_on = Some(anibeam_companion::calendar::today(anibeam_companion::now()));
+            self.plain_titles = self
+                .cards
+                .iter()
+                .map(|c| {
+                    let titles = [Some(&c.title), c.titles.english.as_ref(), c.titles.romaji.as_ref()];
+                    (c.id, titles.into_iter().flatten().map(|t| plain(t)).filter(|t| t.len() >= 4).collect())
+                })
+                .collect();
             self.data().set_ready(true);
         }
         for card in &self.cards {
@@ -289,7 +300,9 @@ impl App {
     /// Everything the pages show, rebuilt from what is held and the clock. Cheap enough to
     /// run every second; the models only repaint what changed.
     fn tick(&mut self) {
-        if crate::local::take_changed() {
+        // A new day moves the calendar's window, so the airings around it are read again.
+        let changed = crate::local::take_changed();
+        if changed || self.read_on.is_some_and(|d| d != anibeam_companion::calendar::today(anibeam_companion::now())) {
             self.reload();
         }
         let now = anibeam_companion::now();
@@ -298,15 +311,14 @@ impl App {
         let data = window.global::<AppData>();
 
         // Home: this phone only.
-        let home = crate::phone::home(&self.cards, &self.art, now, self.day);
+        let home = crate::phone::home(&self.cards, &self.art, now);
         if data.get_hero() != home.hero {
             data.set_hero(home.hero);
         }
-        update(&self.days, home.days);
-        data.set_day(self.day as i32);
-        data.set_day_title(home.day_title.into());
-        update(&self.day_tiles, home.day_tiles);
+        self.show_calendar(home.calendar);
+        update(&self.coming, home.coming);
         self.home_shelves.set(vec![("Recently watched", home.watched), ("Recently downloaded", home.downloaded)]);
+        data.set_phone_shows(self.cards.len() as i32);
         data.set_home_note(
             match self.cards.len() {
                 0 => "On this phone".to_string(),
@@ -381,6 +393,7 @@ impl App {
                     l.picked = self.picked.contains(&l.file);
                 }
                 let local = matches!(self.open, Some(Open::Phone(_)));
+                data.set_series_remote(!local);
                 data.set_series_has_files(local && !files.is_empty());
                 if self.deleting && files.is_empty() {
                     self.deleting = false;
@@ -428,6 +441,41 @@ impl App {
         self.ticks = self.ticks.wrapping_add(1);
     }
 
+    /// The calendar's days, each with its own model of what airs, rebuilt only where it
+    /// changed: a new model per day per tick would build every card again each second.
+    fn show_calendar(&mut self, days: Vec<(CalDay, Vec<CalItem>)>) {
+        let window = self.window.clone_strong();
+        let data = window.global::<AppData>();
+        let total: usize = days.iter().skip(crate::phone::CAL_BACK).take(7).map(|(_, items)| items.len()).sum();
+        data.set_cal_note(
+            match total {
+                0 => "Nothing airs this week".to_string(),
+                1 => "1 episode in the next 7 days".to_string(),
+                n => format!("{n} episodes in the next 7 days"),
+            }
+            .into(),
+        );
+        // The first days, and each new day after, start on today.
+        let today = days.iter().position(|(d, _)| d.today).unwrap_or(crate::phone::CAL_BACK) as i32;
+        let new_day = self.calendar.row_data(today as usize).is_none_or(|d| !d.today);
+        if self.cal_models.len() != days.len() {
+            self.cal_models = days.iter().map(|_| Rc::new(VecModel::default())).collect();
+        }
+        let rows = days
+            .into_iter()
+            .zip(&self.cal_models)
+            .map(|((mut day, items), model)| {
+                update(model, items);
+                day.items = ModelRc::from(model.clone());
+                day
+            })
+            .collect();
+        update(&self.calendar, rows);
+        if new_day {
+            data.set_cal_day(today);
+        }
+    }
+
     /// Reads the sources once the core is open, for the search page and More.
     fn load_sources(&mut self) {
         let Some(core) = crate::local::core() else { return };
@@ -460,6 +508,9 @@ impl App {
 
     fn torrent_action(&mut self, hash: String, action: i32) {
         let Some(core) = crate::local::core() else { return };
+        if is_demo(&hash) {
+            return;
+        }
         let action = match action {
             0 => PhoneAction::Pause,
             1 => PhoneAction::Resume,
@@ -550,12 +601,34 @@ impl App {
         });
     }
 
-    fn show_torrents(&mut self, torrents: Vec<Torrent>, held: bool) {
+    /// The library show a torrent fills: the one the core linked, else the show whose title
+    /// its name carries as whole words, the longest such title first so a sequel wins over
+    /// its first season.
+    fn torrent_show(&self, t: &Torrent) -> Option<&SeriesCard> {
+        if let Some(id) = t.series_id {
+            return self.cards.iter().find(|c| c.id == id);
+        }
+        let name = format!(" {} ", plain(&t.name));
+        let (id, _) = self
+            .plain_titles
+            .iter()
+            .filter_map(|(id, titles)| {
+                titles.iter().filter(|t| name.contains(&format!(" {t} "))).map(String::len).max().map(|len| (*id, len))
+            })
+            .max_by_key(|(_, len)| *len)?;
+        self.cards.iter().find(|c| c.id == id)
+    }
+
+    fn show_torrents(&mut self, mut torrents: Vec<Torrent>, held: bool) {
+        torrents.extend(demo_torrents());
         // The service is for torrents that are moving: one in error, stuck with no peers or
         // paused does not keep a notification up.
-        let active: Vec<&Torrent> =
-            torrents.iter().filter(|t| t.progress < 1.0 && matches!(t.state.as_str(), "downloading" | "checkingDL")).collect();
-        update(&self.downloads, torrents.iter().map(|t| download_row(t, held)).collect());
+        let active: Vec<&Torrent> = torrents
+            .iter()
+            .filter(|t| !is_demo(&t.hash) && t.progress < 1.0 && matches!(t.state.as_str(), "downloading" | "checkingDL"))
+            .collect();
+        let rows = torrents.iter().map(|t| download_row(t, held, self.torrent_show(t), &self.art)).collect();
+        update(&self.downloads, rows);
         let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
             "Waiting for Wi-Fi. Downloads go on by themselves when the phone is on Wi-Fi."
         } else if torrents.is_empty() {
@@ -823,7 +896,33 @@ impl App {
     }
 }
 
-fn download_row(t: &Torrent, held: bool) -> DownloadRow {
+/// A test hook for captures, like the seed list: `/data/local/tmp/anibeam-demo/torrents.json`,
+/// a list of the core's torrents, read once at launch, shows beside the real ones. Their
+/// hashes are marked, so they never keep the service up and their buttons reach nothing.
+fn demo_torrents() -> Vec<Torrent> {
+    static DEMO: std::sync::OnceLock<Vec<Torrent>> = std::sync::OnceLock::new();
+    DEMO.get_or_init(|| {
+        let list: Vec<Torrent> = std::fs::read_to_string("/data/local/tmp/anibeam-demo/torrents.json")
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default();
+        list.into_iter().map(|t| Torrent { hash: format!("{DEMO_MARK}{}", t.hash), ..t }).collect()
+    })
+    .clone()
+}
+
+const DEMO_MARK: &str = "demo:";
+
+fn is_demo(hash: &str) -> bool {
+    hash.starts_with(DEMO_MARK)
+}
+
+/// Lower case words with single spaces between them, for matching titles in names.
+fn plain(text: &str) -> String {
+    text.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_lowercase).collect::<Vec<_>>().join(" ")
+}
+
+fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -> DownloadRow {
     let done = t.progress >= 1.0;
     let paused = t.state.starts_with("paused") && !done;
     let state = match t.state.as_str() {
@@ -867,6 +966,7 @@ fn download_row(t: &Torrent, held: bool) -> DownloadRow {
     } else {
         Vec::new()
     };
+    let (poster, has_poster) = show.map(|c| art.poster(Some(c.id))).unwrap_or_default();
     let tone = match state {
         "Done" => 4,
         "Waiting for Wi-Fi" => 2,
@@ -890,6 +990,11 @@ fn download_row(t: &Torrent, held: bool) -> DownloadRow {
         folder: folder.into(),
         cubes: ModelRc::new(VecModel::from(cubes)),
         tone,
+        series: show.and_then(|c| i32::try_from(c.id).ok()).unwrap_or(-1),
+        show: show.map(|c| c.title.clone()).unwrap_or_default().into(),
+        poster,
+        has_poster,
+        initials: show.map(|c| format::initials(&c.title)).unwrap_or_default().into(),
     }
 }
 
@@ -939,12 +1044,12 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     data.set_host_address(address.display().into());
 
     let home_shelves = Shelves::new();
-    let (days, day_tiles, library, episodes) = (list(), list(), list(), list());
+    let (calendar, coming, library, episodes) = (list(), list(), list(), list());
     let downloads = list();
     data.set_downloads(downloads.clone().into());
     data.set_home_shelves(home_shelves.shelves.clone().into());
-    data.set_days(days.clone().into());
-    data.set_day_tiles(day_tiles.clone().into());
+    data.set_calendar(calendar.clone().into());
+    data.set_coming(coming.clone().into());
     data.set_library(library.clone().into());
     data.set_episodes(episodes.clone().into());
 
@@ -961,12 +1066,6 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
                 app.prefs.stream_quality = *q;
                 app.save_prefs();
             }
-        })
-    });
-    data.on_pick_day(|day| {
-        with_app(|app| {
-            app.day = usize::try_from(day).unwrap_or(0).min(6);
-            app.tick();
         })
     });
     data.on_pick_device(|i| {
@@ -1060,7 +1159,6 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     crate::find::install(&window, data_dir.clone());
     crate::repos::install(&window);
 
-    let now = anibeam_companion::now();
     let mut app = App {
         window: window.clone_strong(),
         commands: commands.clone(),
@@ -1085,14 +1183,16 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         },
         anilist: store.anilist(),
         remote_art: Art::default(),
-        day: today_index(now),
         open: None,
         ticks: 0,
         devices: Vec::new(),
         check_text: String::new(),
         home_shelves,
-        days,
-        day_tiles,
+        calendar,
+        cal_models: Vec::new(),
+        read_on: None,
+        plain_titles: Vec::new(),
+        coming,
         library,
         episodes,
         deleting: false,
@@ -1116,6 +1216,30 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
 
     let clock = Timer::default();
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || with_app(App::tick));
+    // The hinge, for the layout: a bend shows in a fifth of a second, and the sensor costs
+    // nothing between changes.
+    // A phone without a hinge answers None the first time, and the timer stops there.
+    let hinge = Rc::new(Timer::default());
+    let fold_window = window.as_weak();
+    let stop = Rc::downgrade(&hinge);
+    hinge.start(TimerMode::Repeated, Duration::from_millis(200), move || {
+        let Some(window) = fold_window.upgrade() else { return };
+        let (angle, across) = crate::android::fold();
+        if angle.is_none() {
+            if let Some(t) = stop.upgrade() {
+                t.stop();
+            }
+            return;
+        }
+        let fold = window.global::<crate::Fold>();
+        let angle = angle.unwrap_or(180.0);
+        if fold.get_hinge() != angle {
+            fold.set_hinge(angle);
+        }
+        if fold.get_crease_across() != across {
+            fold.set_crease_across(across);
+        }
+    });
     let syncs = Timer::default();
     syncs.start(TimerMode::Repeated, SYNC_EVERY, move || {
         let _ = commands.send(Command::Sync);

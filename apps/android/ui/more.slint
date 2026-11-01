@@ -8,6 +8,8 @@ import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
 import { Button, Field, Figure, ListGroup, ListRow, Lit, PageTitle, SearchField, SectionHead, Segmented, Slider } from "widgets.slint";
 import { RepoData, RepoPanes } from "repos.slint";
+import { Area, Fold } from "fold.slint";
+import { Leaf } from "panes.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -166,9 +168,12 @@ component IndexRow inherits Rectangle {
     in property <string> status;
     in property <bool> warn;
     in property <bool> last;
+    // The section the row opens; split, the open one is lit.
+    in property <int> section: -2;
+    property <bool> active: Fold.split && Math.max(Settings.section, 0) == root.section;
     callback clicked();
     height: Math.max(17 * Theme.unit, texts.preferred-height + 7 * Theme.unit);
-    background: touch.pressed ? Theme.raised : transparent;
+    background: touch.pressed || root.active ? Theme.raised : transparent;
     Image {
         x: Theme.pad;
         y: (parent.height - self.height) / 2;
@@ -242,7 +247,7 @@ component SectionPage inherits Rectangle {
             padding-bottom: Theme.pad * 2;
             spacing: Theme.unit * 4;
             PageTitle {
-                back: "More";
+                back: Fold.split ? "" : "More";
                 title: root.title;
                 note: root.note;
                 go-back => { Settings.section = -1; }
@@ -278,6 +283,7 @@ component IndexPage inherits Rectangle {
             }
             if Settings.query == "": ListGroup {
                 IndexRow {
+                    section: 0;
                     icon: @image-url("icons/user.svg");
                     name: "Accounts";
                     status: Status.accounts;
@@ -285,18 +291,21 @@ component IndexPage inherits Rectangle {
                     clicked => { Settings.open(0, ""); }
                 }
                 IndexRow {
+                    section: 1;
                     icon: @image-url("icons/download.svg");
                     name: "Downloads";
                     status: Status.downloads;
                     clicked => { Settings.open(1, ""); }
                 }
                 IndexRow {
+                    section: 2;
                     icon: @image-url("icons/play.svg");
                     name: "Streaming";
                     status: Status.streaming;
                     clicked => { Settings.open(2, ""); }
                 }
                 IndexRow {
+                    section: 3;
                     icon: @image-url("icons/globe.svg");
                     name: "Search sites";
                     status: Status.sites;
@@ -304,6 +313,7 @@ component IndexPage inherits Rectangle {
                     clicked => { Settings.open(3, ""); }
                 }
                 IndexRow {
+                    section: 4;
                     icon: @image-url("icons/wifi.svg");
                     name: "Connection";
                     status: Status.connection;
@@ -311,6 +321,7 @@ component IndexPage inherits Rectangle {
                     clicked => { Settings.open(4, ""); }
                 }
                 IndexRow {
+                    section: 5;
                     icon: @image-url("icons/monitor.svg");
                     name: "Your computer";
                     status: Status.computer;
@@ -318,6 +329,7 @@ component IndexPage inherits Rectangle {
                     clicked => { Settings.open(5, ""); }
                 }
                 IndexRow {
+                    section: 6;
                     icon: @image-url("icons/info.svg");
                     name: "About";
                     status: Status.about;
@@ -348,10 +360,19 @@ component IndexPage inherits Rectangle {
     }
 }
 
+// Folded, the index and a section take turns. Open or half folded, the index stays on the
+// left and the section picked, Accounts to begin with, fills the right.
 export component MorePage inherits Rectangle {
-    if Settings.section == -1: IndexPage { }
+    property <int> shown: Fold.split ? Math.max(Settings.section, 0) : Settings.section;
+    if !Fold.split && Settings.section == -1: IndexPage { }
+    if Fold.split: Leaf {
+        area: Fold.pick(0.42);
+        IndexPage { }
+    }
+    detail := Leaf {
+        area: Fold.split ? Fold.show(0.42) : { x: 0, y: 0, width: root.width, height: root.height };
 
-    if Settings.section == 0: accounts := SectionPage {
+    if root.shown == 0: accounts := SectionPage {
         title: "Accounts";
         note: Status.accounts;
         ListGroup {
@@ -387,7 +408,7 @@ export component MorePage inherits Rectangle {
         }
     }
 
-    if Settings.section == 1: downloads := SectionPage {
+    if root.shown == 1: downloads := SectionPage {
         title: "Downloads";
         note: Status.downloads;
         SectionHead {
@@ -464,7 +485,7 @@ export component MorePage inherits Rectangle {
         }
     }
 
-    if Settings.section == 2: streaming := SectionPage {
+    if root.shown == 2: streaming := SectionPage {
         title: "Streaming";
         note: Status.streaming;
         Lit {
@@ -501,7 +522,7 @@ export component MorePage inherits Rectangle {
         }
     }
 
-    if Settings.section == 3: sites := SectionPage {
+    if root.shown == 3: sites := SectionPage {
         title: "Search sites";
         note: Status.sites;
         RepoPanes {
@@ -528,7 +549,7 @@ export component MorePage inherits Rectangle {
         }
     }
 
-    if Settings.section == 4: connection := SectionPage {
+    if root.shown == 4: connection := SectionPage {
         title: "Connection";
         note: Status.connection;
         Lit {
@@ -600,7 +621,7 @@ export component MorePage inherits Rectangle {
         }
     }
 
-    if Settings.section == 5: computer := SectionPage {
+    if root.shown == 5: computer := SectionPage {
         title: "Your computer";
         note: Status.computer;
         Lit {
@@ -613,7 +634,7 @@ export component MorePage inherits Rectangle {
         }
     }
 
-    if Settings.section == 6: about := SectionPage {
+    if root.shown == 6: about := SectionPage {
         title: "About";
         note: Status.about;
         ListGroup {
@@ -649,5 +670,6 @@ export component MorePage inherits Rectangle {
                 }
             }
         }
+    }
     }
 }

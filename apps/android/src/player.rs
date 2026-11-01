@@ -347,11 +347,24 @@ pub fn install(window: &AppWindow) {
     d.on_hold(|on| with_player(|p| p.hold(on)));
     d.on_relift(|| with_player(|p| p.lift_subtitles()));
 
+    // The picture's size in pixels: the window's, or stood up half folded the half above
+    // the crease, where the page draws it.
+    fn picture_size(w: &crate::AppWindow) -> (u32, u32) {
+        let size = w.window().size();
+        let fold = w.global::<crate::Fold>();
+        if fold.get_posture() != 3 {
+            return (size.width, size.height);
+        }
+        let scale = w.window().scale_factor();
+        let height = ((fold.get_height() / 2.0 - fold.get_gutter() / 2.0) * scale).round().max(1.0) as u32;
+        (size.width, height.min(size.height))
+    }
+
     let weak = window.as_weak();
     let r = window.window().set_rendering_notifier(move |state, _api| match state {
         slint::RenderingState::BeforeRendering => {
             let Some(share) = crate::video::current_share() else { return };
-            let size = weak.upgrade().map(|w| w.window().size()).map(|s| (s.width, s.height)).unwrap_or_default();
+            let size = weak.upgrade().map(|w| picture_size(&w)).unwrap_or_default();
             with_player(|p| p.ensure_video(share, size));
         }
         slint::RenderingState::RenderingTeardown => with_player(|p| p.drop_video()),

@@ -1,0 +1,479 @@
+// The calendar: two days back, today and a week ahead, from the phone's shows. Folded it
+// is a strip of days over the picked day's list; open it is a board, a column a day; half
+// folded the days are listed on one side of the crease and the picked day fills the other.
+
+import { Theme } from "theme.slint";
+import { AppData, CalDay, CalItem, Nav } from "data.slint";
+import { FindData } from "find.slint";
+import { Fold } from "fold.slint";
+import { Leaf, Scroll } from "panes.slint";
+import { Button, ClampedText, EmptyNote, PageTitle, Poster, SectionHead } from "widgets.slint";
+
+// The colour of an episode's state: to come is the ink, here is the cube's cyan, out and
+// not here the cube's amber.
+component StateDot inherits Rectangle {
+    in property <int> state;
+    width: 2 * Theme.unit;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: root.state == 1 ? Theme.cube-here : root.state == 2 ? Theme.cube-missing : Theme.dim;
+}
+
+// One episode in a day's list: the time as a figure, the poster, the show, the episode and
+// when. The next to air of all of them carries the accent's edge. One that is out and not on
+// the phone has Get.
+export component CalRow inherits Rectangle {
+    in property <CalItem> item;
+    in property <length> poster-width: 12 * Theme.unit;
+    height: Math.max(row.preferred-height, self.poster-width * Theme.poster-ratio + 6 * Theme.unit);
+    border-radius: Theme.radius;
+    background: touch.pressed ? Theme.pressed : root.item.soonest ? Theme.raised : Theme.surface;
+    border-width: 1px;
+    border-color: root.item.soonest ? Theme.accent-edge : Theme.line;
+    touch := TouchArea {
+        clicked => { AppData.open-series(root.item.id); }
+    }
+    row := HorizontalLayout {
+        padding: Theme.unit * 3;
+        padding-left: Theme.unit * 4;
+        spacing: Theme.unit * 3.5;
+        VerticalLayout {
+            alignment: center;
+            width: 13 * Theme.unit;
+            Text {
+                text: root.item.time;
+                color: root.item.state == 0 ? Theme.text : Theme.dim;
+                font-size: Theme.heading;
+                font-family: Theme.figure;
+            }
+            if root.item.soonest: Text {
+                text: "Next";
+                color: Theme.accent;
+                font-size: Theme.small - 1px;
+                font-family: Theme.strong-face;
+            }
+        }
+        Poster {
+            width: root.poster-width;
+            height: self.width * Theme.poster-ratio;
+            y: (parent.height - self.height) / 2;
+            source: root.item.poster;
+            has-image: root.item.has-poster;
+            initials: root.item.initials;
+            opacity: root.item.state == 0 ? 1 : 0.75;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Theme.unit * 1.5;
+            ClampedText {
+                text: root.item.title;
+                font-size: Theme.normal + 1px;
+                face: Theme.title-face;
+                lines: 2;
+            }
+            Text {
+                text: root.item.episode;
+                color: Theme.dim;
+                font-size: Theme.small;
+                font-family: Theme.figure;
+            }
+            HorizontalLayout {
+                spacing: Theme.unit * 1.5;
+                alignment: start;
+                StateDot {
+                    y: (parent.height - self.height) / 2;
+                    state: root.item.state;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                    text: root.item.when;
+                    color: root.item.state == 0 ? Theme.accent : root.item.state == 1 ? Theme.cube-here : Theme.cube-missing;
+                    font-size: Theme.small;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        if root.item.state == 2: VerticalLayout {
+            alignment: center;
+            Button {
+                text: "Get";
+                small: true;
+                clicked => {
+                    FindData.find-series(root.item.id);
+                    Nav.page = 2;
+                }
+            }
+        }
+    }
+}
+
+// The picked day: its name, how many, and every episode in air order.
+export component DayAgenda inherits VerticalLayout {
+    in property <CalDay> day;
+    in property <length> poster-width: 12 * Theme.unit;
+    spacing: Theme.unit * 2.5;
+    SectionHead {
+        title: root.day.title;
+        note: root.day.count == 0 ? root.day.full : root.day.full + ", " + (root.day.count == 1 ? "1 episode" : root.day.count + " episodes");
+    }
+    for item in root.day.items: CalRow {
+        item: item;
+        poster-width: root.poster-width;
+    }
+    if root.day.count == 0: Rectangle {
+        height: root.day.next >= 0 ? 30 * Theme.unit : 18 * Theme.unit;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.line;
+        if root.day.next >= 0: Button {
+            y: parent.height - self.height - 5 * Theme.unit;
+            x: (parent.width - self.width) / 2;
+            width: self.min-width;
+            text: "Next airing: " + AppData.calendar[root.day.next].title;
+            widest: parent.width - 8 * Theme.unit;
+            small: true;
+            clicked => { AppData.cal-day = root.day.next; }
+        }
+        Text {
+            y: root.day.next >= 0 ? 7 * Theme.unit : (parent.height - self.height) / 2;
+            text: root.day.past ? "Nothing aired " + (root.day.title == "Yesterday" ? "yesterday." : "that day.") : root.day.today ? "Nothing airs today." : "Nothing airs " + (root.day.title == "Tomorrow" ? "tomorrow." : "that day.");
+            color: Theme.faint;
+            font-size: Theme.small + 1px;
+        }
+    }
+}
+
+// A day in the strip: the weekday, the date as a figure, and a dot per episode, up to four.
+component DayPill inherits Rectangle {
+    in property <CalDay> day;
+    in property <bool> picked;
+    callback clicked();
+    border-radius: Theme.radius;
+    background: root.picked ? Theme.accent-soft : touch.pressed ? Theme.pressed : root.day.past ? transparent : Theme.surface;
+    border-width: 1px;
+    border-color: root.picked ? Theme.accent-edge : root.day.today ? Theme.line-strong : Theme.line;
+    animate background { duration: 120ms; }
+    VerticalLayout {
+        alignment: center;
+        spacing: Theme.unit * 1.5;
+        Text {
+            text: root.day.today ? "Today" : root.day.weekday;
+            color: root.picked ? Theme.accent : root.day.today ? Theme.text : Theme.dim;
+            font-size: Theme.small - 1px;
+            font-family: root.day.today ? Theme.strong-face : Theme.face;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: root.day.date;
+            color: root.picked ? Theme.accent : root.day.past ? Theme.dim : Theme.text;
+            font-size: Theme.large;
+            font-family: Theme.figure;
+            horizontal-alignment: center;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 3px;
+            height: 5px;
+            for n in Math.min(root.day.count, 4): Rectangle {
+                width: 5px;
+                height: 5px;
+                border-radius: 2.5px;
+                background: root.picked ? Theme.accent : Theme.dim;
+            }
+        }
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Every day side by side, scrolled so yesterday is the first in view.
+// When every day fits, the cells stretch to fill the width instead of scrolling.
+export component DayStrip inherits Rectangle {
+    in property <length> cell: 15 * Theme.unit;
+    height: 21 * Theme.unit;
+    property <int> days: AppData.calendar.length;
+    property <length> fit: (self.width - (root.days - 1) * Theme.gap) / Math.max(1, root.days);
+    property <length> width-each: Math.max(root.cell, root.fit);
+    property <length> step: root.width-each + Theme.gap;
+    Flickable {
+        content-width: AppData.calendar.length * root.step - Theme.gap;
+        content-x: Math.max(-root.step, Math.min(0, self.width - self.content-width));
+        for day[i] in AppData.calendar: DayPill {
+            x: i * root.step;
+            width: root.width-each;
+            height: root.height;
+            day: day;
+            picked: i == AppData.cal-day;
+            clicked => { AppData.cal-day = i; }
+        }
+    }
+}
+
+// Half folded as a book, the left page: the days down it, each with its posters.
+component DayLine inherits Rectangle {
+    in property <CalDay> day;
+    in property <bool> picked;
+    callback clicked();
+    height: 17 * Theme.unit;
+    border-radius: Theme.radius;
+    background: root.picked ? Theme.accent-soft : touch.pressed ? Theme.pressed : transparent;
+    border-width: root.picked || root.day.today ? 1px : 0;
+    border-color: root.picked ? Theme.accent-edge : Theme.line-strong;
+    HorizontalLayout {
+        padding-left: Theme.unit * 3;
+        padding-right: Theme.unit * 3;
+        spacing: Theme.unit * 3;
+        Text {
+            width: 9 * Theme.unit;
+            text: root.day.date;
+            color: root.picked ? Theme.accent : root.day.past ? Theme.dim : Theme.text;
+            font-size: Theme.large + 4px;
+            font-family: Theme.figure;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Theme.unit / 2;
+            Text {
+                text: root.day.title;
+                color: root.picked ? Theme.accent : Theme.text;
+                font-family: Theme.strong-face;
+                overflow: elide;
+            }
+            Text {
+                text: root.day.count == 0 ? "Nothing" : root.day.count == 1 ? "1 episode" : root.day.count + " episodes";
+                color: Theme.faint;
+                font-size: Theme.small;
+            }
+        }
+        // Up to three posters, overlapping like a fanned hand.
+        Rectangle {
+            width: 3 * 7 * Theme.unit;
+            for item[j] in root.day.items: Poster {
+                visible: j < 3;
+                x: parent.width - (j + 1) * 7 * Theme.unit;
+                y: (parent.height - self.height) / 2;
+                width: 9 * Theme.unit;
+                height: self.width * Theme.poster-ratio;
+                source: item.poster;
+                has-image: item.has-poster;
+                initials: item.initials;
+                border-width: 1px;
+                border-color: Theme.ground;
+            }
+        }
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Open, a column a day: the day on top, its episodes as cards with the poster cut wide.
+component BoardCard inherits Rectangle {
+    in property <CalItem> item;
+    height: card.preferred-height;
+    border-radius: Theme.radius-small + 4px;
+    background: touch.pressed ? Theme.pressed : Theme.surface;
+    border-width: 1px;
+    border-color: root.item.soonest ? Theme.accent-edge : Theme.line;
+    clip: true;
+    touch := TouchArea {
+        clicked => { AppData.open-series(root.item.id); }
+    }
+    card := VerticalLayout {
+        Rectangle {
+            height: 20 * Theme.unit;
+            Poster {
+                border-radius: 0;
+                source: root.item.poster;
+                has-image: root.item.has-poster;
+                initials: root.item.initials;
+                opacity: root.item.state == 0 ? 1 : 0.7;
+            }
+            Rectangle {
+                x: Theme.unit * 2;
+                y: Theme.unit * 2;
+                width: time.preferred-width + 4 * Theme.unit;
+                height: 6 * Theme.unit;
+                border-radius: self.height / 2;
+                background: Theme.chip;
+                border-width: 1px;
+                border-color: Theme.chip-edge;
+                time := Text {
+                    text: root.item.time;
+                    color: Theme.on-poster;
+                    font-size: Theme.small;
+                    font-family: Theme.figure;
+                }
+            }
+        }
+        VerticalLayout {
+            padding: Theme.unit * 2.5;
+            spacing: Theme.unit;
+            ClampedText {
+                text: root.item.title;
+                font-size: Theme.small + 1px;
+                face: Theme.strong-face;
+                lines: 3;
+            }
+            HorizontalLayout {
+                spacing: Theme.unit * 1.5;
+                StateDot {
+                    y: (parent.height - self.height) / 2;
+                    state: root.item.state;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.item.state == 0 ? root.item.episode : root.item.when;
+                    color: root.item.state == 0 ? Theme.dim : root.item.state == 1 ? Theme.cube-here : Theme.cube-missing;
+                    font-size: Theme.small - 0.5px;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+component WeekBoard inherits Rectangle {
+    // Five days in view on an unfolded screen, more on a wider one.
+    // The gap between columns is the page margin, so the day before the first in view is
+    // wholly out of it rather than a sliver at the edge.
+    property <length> gap: Theme.grout + Theme.unit;
+    property <length> column: Math.max(34 * Theme.unit, (self.width - 2 * root.gap - 4 * root.gap) / 5);
+    property <length> step: root.column + root.gap;
+    Flickable {
+        content-width: AppData.calendar.length * root.step + root.gap;
+        content-x: Math.max(-root.step, Math.min(0, self.width - self.content-width));
+        for day[i] in AppData.calendar: Rectangle {
+            x: root.gap + i * root.step;
+            width: root.column;
+            height: parent.height;
+            border-radius: Theme.radius;
+            background: day.today ? Theme.surface : transparent;
+            border-width: day.today ? 1px : 0;
+            border-color: Theme.line-strong;
+            VerticalLayout {
+                padding: day.today ? Theme.unit * 2 : 0;
+                padding-top: Theme.unit * 3;
+                spacing: Theme.unit * 2.5;
+                HorizontalLayout {
+                    padding-left: Theme.unit;
+                    spacing: Theme.unit * 2;
+                    Text {
+                        text: day.date;
+                        color: day.past ? Theme.dim : Theme.text;
+                        font-size: Theme.section - 3px;
+                        font-family: Theme.figure;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: day.title;
+                            color: day.today ? Theme.accent : day.past ? Theme.dim : Theme.text;
+                            font-family: Theme.strong-face;
+                            font-size: Theme.small + 1px;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: day.count == 0 ? "Nothing" : day.count == 1 ? "1 episode" : day.count + " episodes";
+                            color: Theme.faint;
+                            font-size: Theme.small - 1px;
+                        }
+                    }
+                }
+                Flickable {
+                    content-height: cards.preferred-height;
+                    cards := VerticalLayout {
+                        alignment: start;
+                        spacing: Theme.gap;
+                        padding-bottom: Theme.pad;
+                        for item in day.items: BoardCard { item: item; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component CalendarPage inherits Rectangle {
+    property <CalDay> picked: AppData.calendar[AppData.cal-day];
+    property <bool> empty: AppData.ready && AppData.phone-shows == 0;
+
+    // Folded: the head, the strip, the picked day.
+    if Fold.posture == 0: Scroll {
+        PageTitle {
+            title: "Calendar";
+            note: AppData.cal-note;
+        }
+        DayStrip { }
+        if !root.empty: DayAgenda { day: root.picked; }
+        if root.empty: EmptyNote {
+            title: "No shows on this phone yet";
+            body: "Episodes of the shows you keep here show up on their day, two days back and a week ahead.";
+        }
+    }
+
+    // Open: the board, the whole week at a glance.
+    if Fold.posture == 1: VerticalLayout {
+        padding-top: Theme.unit * 4;
+        spacing: Theme.unit * 2;
+        HorizontalLayout {
+            padding-left: Theme.grout + Theme.unit;
+            padding-right: Theme.grout + Theme.unit;
+            PageTitle {
+                title: "Calendar";
+                note: AppData.cal-note;
+            }
+        }
+        WeekBoard { vertical-stretch: 1; }
+    }
+
+    // Half, as a book: the days on the left page, the picked one on the right.
+    if Fold.posture == 2: Leaf {
+        area: Fold.pick(0.4);
+        Scroll {
+            PageTitle {
+                title: "Calendar";
+                note: AppData.cal-note;
+            }
+            VerticalLayout {
+                spacing: Theme.unit;
+                for day[i] in AppData.calendar: DayLine {
+                    day: day;
+                    picked: i == AppData.cal-day;
+                    clicked => { AppData.cal-day = i; }
+                }
+            }
+        }
+    }
+    if Fold.posture == 2: Leaf {
+        area: Fold.show(0.4);
+        Scroll {
+            DayAgenda {
+                day: root.picked;
+                poster-width: 14 * Theme.unit;
+            }
+        }
+    }
+
+    // Half, as a laptop: the picked day above the crease, the strip below it for the thumbs.
+    if Fold.posture == 3: Leaf {
+        area: Fold.show(0.4);
+        Scroll {
+            DayAgenda { day: root.picked; }
+        }
+    }
+    if Fold.posture == 3: Leaf {
+        area: Fold.pick(0.4);
+        VerticalLayout {
+            padding: Theme.grout + Theme.unit;
+            spacing: Theme.unit * 3;
+            PageTitle {
+                title: "Calendar";
+                note: AppData.cal-note;
+            }
+            DayStrip { cell: 18 * Theme.unit; }
+            Rectangle { }
+        }
+    }
+}

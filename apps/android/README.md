@@ -138,6 +138,22 @@ scripts/stop-emulator.sh   # sync the guest, then stop it
 The scripts only talk to `emulator-5580`, so other emulators on the same adb server are
 left alone.
 
+The phone lays out for three postures, worked out in `ui/fold.slint`: folded (the bar along
+the bottom, one column), open (a rail and two columns) and half folded, where the panes sit
+either side of the crease, left and right held like a book or above and below stood up like
+a laptop. To try them, use the fold AVD, which has a hinge:
+
+```sh
+scripts/create-avd.sh --fold                     # once: anibeam_fold, Pixel 10 Pro Fold
+ANIBEAM_AVD=anibeam_fold scripts/emulator.sh
+ANIBEAM_AVD=anibeam_fold scripts/fold.sh half 120  # fold, unfold, half [degrees], state
+scripts/seed-demo.sh                             # shows airing this week, and downloads
+```
+
+Its guest takes 4 GB, so the 7 GB cap is the floor. Folding locks the emulator unless
+`adb shell settings put secure fold_lock_behavior_setting stay_awake_on_fold_key` is set
+once.
+
 Without a desktop to talk to, run the mock host and point the app at `10.0.2.2:8790`,
 which is how the emulator reaches the machine it runs on:
 

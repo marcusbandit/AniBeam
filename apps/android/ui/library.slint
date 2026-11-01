@@ -2,84 +2,160 @@ import { Theme } from "theme.slint";
 import { Ask } from "more.slint";
 import { FindData } from "find.slint";
 import { AppData, Nav } from "data.slint";
-import { Button, EmptyNote, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
+import { Button, EmptyNote, Figure, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
+import { Fold } from "fold.slint";
+import { Leaf, Scroll } from "panes.slint";
+
+// The head, the device switch and the search.
+component LibraryControls inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    PageTitle {
+        title: "Library";
+        note: AppData.library-note;
+    }
+    if AppData.devices.length > 1: Segmented {
+        options: AppData.devices;
+        picked: AppData.device;
+        pick(i) => { AppData.pick-device(i); }
+    }
+    // The other device's library comes once a minute; this asks for it now.
+    if AppData.device != 0: HorizontalLayout {
+        alignment: start;
+        Button {
+            text: "Refresh";
+            icon: @image-url("icons/refresh-cw.svg");
+            has-icon: true;
+            small: true;
+            clicked => { AppData.refresh(); }
+        }
+    }
+    SearchField {
+        placeholder: AppData.device == 0 ? "Search this phone" : "Search " + AppData.devices[AppData.device];
+        text <=> AppData.query;
+        edited(text) => { AppData.search(text); }
+    }
+    // Not here: the same words in Downloads, which looks for the show itself.
+    if AppData.device == 0 && AppData.query != "": HorizontalLayout {
+        alignment: start;
+        Button {
+            text: "Find \"" + AppData.query + "\" in Downloads";
+            widest: root.width;
+            icon: @image-url("icons/download.svg");
+            has-icon: true;
+            small: true;
+            clicked => {
+                FindData.open("");
+                FindData.text = AppData.query;
+                FindData.suggest(AppData.query);
+                Nav.page = 2;
+            }
+        }
+    }
+}
+
+// The posters, or why there are none.
+component LibraryGrid inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    if AppData.library.length > 0: TileGrid {
+        tiles: AppData.library;
+        holdable: AppData.device == 0;
+        // The menu's Get and Delete are for this phone's shows.
+        held(id, title) => {
+            if (AppData.device == 0) {
+                Ask.menu-id = id;
+                Ask.menu-title = title;
+            }
+        }
+        open(id) => {
+            if (AppData.device == 0) {
+                AppData.open-series(id);
+            } else {
+                AppData.open-remote(id);
+            }
+        }
+    }
+    if AppData.ready && AppData.library.length == 0: EmptyNote {
+        title: AppData.library-empty;
+        body: AppData.device == 0 && AppData.query == ""
+            ? "Episodes you download on this phone land here. Find a show in Downloads."
+            : "";
+    }
+}
+
+// Half folded as a book with no show open, the right page says what the phone holds and how
+// to open one, rather than standing empty.
+component Glance inherits VerticalLayout {
+    alignment: center;
+    padding: Theme.pad;
+    spacing: Theme.unit * 6;
+    Text {
+        text: "Pick a show to open it here.";
+        color: Theme.text;
+        font-size: Theme.section - 3px;
+        font-family: Theme.display-face;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        alignment: start;
+        spacing: Theme.unit * 8;
+        Figure {
+            value: AppData.library.length + "";
+            caption: AppData.library.length == 1 ? "show" : "shows";
+        }
+        if AppData.device == 0: Figure {
+            value: AppData.used-figure;
+            caption: "on the phone";
+        }
+        if AppData.device == 0: Figure {
+            value: AppData.free-figure;
+            caption: "free";
+        }
+    }
+    if AppData.device == 0: Text {
+        text: "Hold a poster to get more episodes or delete them.";
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+}
 
 // Everything on this phone, or, picked above, what another AniBeam on the tailnet has.
+// Open, the grid gives up its right side to a show while one is open; as a book the grid is
+// the left page and the show the right; stood up, the grid is above the crease and the
+// search below it.
 export component LibraryPage inherits Rectangle {
-    Flickable {
-        VerticalLayout {
-            alignment: start;
-            padding-left: Theme.grout + Theme.unit;
-            padding-right: Theme.grout + Theme.unit;
-            padding-top: Theme.unit * 4;
-            padding-bottom: Theme.pad * 2;
-            spacing: Theme.unit * 4;
-            PageTitle {
-                title: "Library";
-                note: AppData.library-note;
-            }
-            if AppData.devices.length > 1: Segmented {
-                options: AppData.devices;
-                picked: AppData.device;
-                pick(i) => { AppData.pick-device(i); }
-            }
-            // The other device's library comes once a minute; this asks for it now.
-            if AppData.device != 0: HorizontalLayout {
-                alignment: start;
-                Button {
-                    text: "Refresh";
-                    icon: @image-url("icons/refresh-cw.svg");
-                    has-icon: true;
-                    small: true;
-                    clicked => { AppData.refresh(); }
-                }
-            }
-            SearchField {
-                placeholder: AppData.device == 0 ? "Search this phone" : "Search " + AppData.devices[AppData.device];
-                text <=> AppData.query;
-                edited(text) => { AppData.search(text); }
-            }
-            // Not here: the same words in Downloads, which looks for the show itself.
-            if AppData.device == 0 && AppData.query != "": HorizontalLayout {
-                alignment: start;
-                Button {
-                    text: "Find \"" + AppData.query + "\" in Downloads";
-                    widest: root.width - 2 * (Theme.grout + Theme.unit);
-                    icon: @image-url("icons/download.svg");
-                    has-icon: true;
-                    small: true;
-                    clicked => {
-                        FindData.open("");
-                        FindData.text = AppData.query;
-                        FindData.suggest(AppData.query);
-                        Nav.page = 2;
-                    }
-                }
-            }
-            if AppData.library.length > 0: TileGrid {
-                tiles: AppData.library;
-                holdable: AppData.device == 0;
-                // The menu's Get and Delete are for this phone's shows.
-                held(id, title) => {
-                    if (AppData.device == 0) {
-                        Ask.menu-id = id;
-                        Ask.menu-title = title;
-                    }
-                }
-                open(id) => {
-                    if (AppData.device == 0) {
-                        AppData.open-series(id);
-                    } else {
-                        AppData.open-remote(id);
-                    }
-                }
-            }
-            if AppData.ready && AppData.library.length == 0: EmptyNote {
-                title: AppData.library-empty;
-                body: AppData.device == 0 && AppData.query == ""
-                    ? "Episodes you download on this phone land here. Find a show in Downloads."
-                    : "";
-            }
+    if Fold.posture == 0: Scroll {
+        LibraryControls { }
+        LibraryGrid { }
+    }
+    if Fold.posture == 1: Leaf {
+        area: AppData.series-open ? Fold.pick(0.56) : Fold.pick(1);
+        Scroll {
+            LibraryControls { }
+            LibraryGrid { }
+        }
+    }
+    if Fold.posture == 2: Leaf {
+        area: Fold.pick(0.5);
+        Scroll {
+            LibraryControls { }
+            LibraryGrid { }
+        }
+    }
+    if Fold.posture == 2: Leaf {
+        area: Fold.show(0.5);
+        Glance { }
+    }
+    if Fold.posture == 3: Leaf {
+        area: Fold.show(0.5);
+        Scroll {
+            LibraryGrid { }
+        }
+    }
+    if Fold.posture == 3: Leaf {
+        area: Fold.pick(0.5);
+        Scroll {
+            LibraryControls { }
         }
     }
 }

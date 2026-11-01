@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Create the project's phone emulator, the same way on any machine.
-# Usage: scripts/create-avd.sh   (AVD anibeam_pixel, Pixel 10 Pro profile, Android 16)
+# Usage: scripts/create-avd.sh          AVD anibeam_pixel, Pixel 10 Pro profile, Android 16
+#        scripts/create-avd.sh --fold   AVD anibeam_fold, Pixel 10 Pro Fold with a hinge
+# Use the fold one with ANIBEAM_AVD=anibeam_fold in front of the other scripts.
 set -euo pipefail
+if [[ "${1:-}" == "--fold" ]]; then
+  export ANIBEAM_AVD="${ANIBEAM_AVD:-anibeam_fold}"
+fi
 source "$(dirname "$0")/env.sh"
 IMAGE="system-images;android-36;google_apis_playstore;x86_64"
 DEVICE=pixel_10_pro
+[[ "${1:-}" == "--fold" ]] && DEVICE=pixel_10_pro_fold
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk}"
 mkdir -p "$ANDROID_AVD_HOME"
 

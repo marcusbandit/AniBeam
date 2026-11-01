@@ -43,12 +43,40 @@ export struct Hero {
     ink: color,
 }
 
-// One day in Home's week strip.
-export struct Day {
+// One episode on the calendar.
+export struct CalItem {
+    id: int,
+    title: string,
+    poster: image,
+    has-poster: bool,
+    initials: string,
+    // "17:30".
+    time: string,
+    // "Episode 5", "Episodes 5 to 7".
+    episode: string,
+    // "in 3h 20m", "Tue in 2d 4h", "On the phone", "Out 2h ago".
+    when: string,
+    // 0 still to air, 1 out and on the phone, 2 out and not on the phone.
+    state: int,
+    // The next episode to air of all of them.
+    soonest: bool,
+}
+
+// One day of the calendar, from three days back to a week ahead.
+export struct CalDay {
+    // "Mon", "3".
     weekday: string,
     date: string,
-    count: int,
+    // "Today", "Tomorrow", "Yesterday", "Thursday".
+    title: string,
+    // "Thursday 5 November".
+    full: string,
     today: bool,
+    past: bool,
+    count: int,
+    items: [CalItem],
+    // The next day after this one with something on it, for an empty day's way on; -1 none.
+    next: int,
 }
 
 // A series page, the head of it.
@@ -122,6 +150,12 @@ export struct DownloadRow {
     cubes: [int],
     // The state's dot: 0 moving, 1 paused, 2 waiting, 3 trouble, 4 done.
     tone: int,
+    // The library show it fills, for the poster and a tap: -1 and empty when none.
+    series: int,
+    show: string,
+    poster: image,
+    has-poster: bool,
+    initials: string,
 }
 
 // One line of the connection check.
@@ -150,7 +184,8 @@ export struct NoteLine {
     lit: bool,
 }
 
-// Which tab is up: 0 Home, 1 Library, 2 Downloads, 3 More. A page can send you to another.
+// Which tab is up: 0 Home, 1 Library, 2 Downloads, 3 More, 4 Calendar. A page can send you
+// to another.
 export global Nav {
     in-out property <int> page;
 }
@@ -158,12 +193,17 @@ export global Nav {
 export global AppData {
     // Home.
     in property <Hero> hero;
-    in property <[Day]> days;
-    in property <int> day;
-    in property <string> day-title;
-    in property <[Tile]> day-tiles;
+    // The next few episodes to air, for Home.
+    in property <[CalItem]> coming;
+
+    // The calendar, and the day picked on it; Rust picks today when the days first come.
+    in property <[CalDay]> calendar;
+    in-out property <int> cal-day: 2;
+    in property <string> cal-note;
     in property <[Shelf]> home-shelves;
     in property <string> home-note;
+    // How many shows the phone has.
+    in property <int> phone-shows;
 
     // Library: the devices it can show (this phone first), the one picked, and its tiles.
     in property <[string]> devices;
@@ -234,6 +274,8 @@ export global AppData {
 
     // The series page, over whichever page opened it.
     in property <bool> series-open;
+    // The open series is the other device's, opened from its library: it streams from there.
+    in property <bool> series-remote;
     in property <SeriesHead> series;
     in property <[EpisodeLine]> episodes;
 
@@ -260,7 +302,6 @@ export global AppData {
     in property <int> stream-quality;
     in property <[string]> stream-qualities;
     callback set-stream-quality(int);
-    callback pick-day(int);
     callback pick-device(int);
     callback search(string);
     callback set-wifi-only(bool);
