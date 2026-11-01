@@ -227,27 +227,26 @@ Item {
         weekSplit = { out: e.out, ahead: e.ahead, next: next, later: e.later }
     }
     onWeekKeyChanged: splitWeek()
-    // The agenda beside the countdown: a group per day that has something, and a run of
-    // empty days from today on said once ("Nothing today or Monday"). A day whose only
-    // episode is the countdown's says nothing, the countdown names it. Empty days after the
-    // last group, and past days with nothing late on them, are left out.
-    readonly property var agenda: {
-        var rows = [], empties = [], split = weekSplit
-        function dayName(i) { var l = week[i].label; return l === "Today" || l === "Tomorrow" ? l.toLowerCase() : l }
-        // A predicted episode past its time and not out yet leads, under its own words
+    // The board (#352): today and the six days after as columns, each with its episodes
+    // still to come in air order, the next one first in its day. A day with nothing on it
+    // stays as a narrow column, so the week keeps its shape and a gap reads as a gap. A
+    // guessed episode past its time and not out yet sits on today; the series with no date
+    // close the board in a column of their own.
+    readonly property var board: {
+        var cols = [], split = weekSplit
         var overdue = split.ahead.filter(function(a) { return a.state === "overdue" })
-        if (overdue.length) rows.push({ label: "Not out yet", date: "", today: false, items: overdue })
         for (var i = 0; i < week.length; i++) {
-            if (week[i].later) continue
+            var day = week[i]
+            if (day.later || day.past) continue
             var items = split.ahead.filter(function(a) { return a.day === i && a.state !== "overdue" })
-            if (items.length) {
-                if (empties.length) rows.push({ nothing: "Nothing " + (empties.length === 1 ? empties[0] : empties.slice(0, -1).join(", ") + " or " + empties[empties.length - 1]) })
-                empties = []
-                rows.push({ label: week[i].label, date: week[i].date, today: week[i].today, items: items })
-            } else if (!week[i].past && !(split.next && split.next.day === i)) empties.push(dayName(i))
+            if (split.next && split.next.day === i) items.unshift({ card: split.next.card, drop: split.next.drop, day: i, state: split.next.state, next: true })
+            if (day.today) items = overdue.concat(items)
+            var d = new Date(day.from * 1000), near = day.today || day.label === "Tomorrow"
+            cols.push({ name: day.label, short: near ? day.label : Qt.formatDate(d, "ddd"),
+                        date: near ? Qt.formatDate(d, "ddd d MMM") : day.date, today: day.today, later: false, items: items })
         }
-        if (split.later.length) rows.push({ label: "No date yet", date: "", today: false, items: split.later })
-        return rows
+        if (split.later.length) cols.push({ name: "No date yet", short: "No date yet", date: "", today: false, later: true, items: split.later })
+        return cols
     }
     // "1 day 20 h 36 m" as parts, for the countdown's large figures
     function countdownParts(secs) {
@@ -271,6 +270,9 @@ Item {
         if (lateCount > 0) return Fmt.plural(lateCount, "episode is", "episodes are") + " late"
         var waiting = weekSplit.out.filter(function(o) { return o.state === "here" }).length
         if (waiting > 0) return Fmt.plural(waiting, "episode", "episodes") + " out to watch"
+        // The board names the next episode itself; the fact counts what is on it instead
+        var coming = weekSplit.ahead.length + (weekSplit.next ? 1 : 0)
+        if (coming > 0) return Fmt.plural(coming, "episode", "episodes") + " in the next seven days"
         var now = nowMs / 1000, next = null
         for (var i = 0; i < airingRows.length; i++) {
             var n = airingRows[i].next_airing
@@ -389,85 +391,107 @@ Item {
         Label { id: wl; role: "title"; font.pointSize: theme.typeNormal }
         Label { id: wf; anchors.baseline: wl.baseline; role: "ui"; color: theme.textDim; visible: text !== "" }
     }
-    // The next episode to air: its art full-bleed under a scrim, a Next up tag, the time left
-    // in large figures with the units a step down, then the title and when. Opens the series.
-    component NextUpCard: Corner {
-        id: nextCard
+    // The next episode to air, first in its day on the board: the poster on a band in its
+    // own tone, the time left in large figures, then the title and when. The one loud thing
+    // on the board. Opens the series.
+    component NextTile: Corner {
+        id: nextTile
         objectName: "home-week-next"
         property var entry: null
         readonly property bool gridStop: true
         readonly property var card: entry ? entry.card : ({})
-        readonly property var parts: entry ? page.countdownParts(entry.drop.at - page.nowMs / 1000) : []
+        readonly property var drop: entry ? entry.drop : null
+        readonly property var parts: drop ? page.countdownParts(drop.at - page.nowMs / 1000) : []
+        readonly property color base: theme.bandBase(nextTone.tone, 0.5)
+        readonly property color inkAccent: theme.bandAccent(nextTone.tone, base)
+        readonly property color ink: "#f4f6f8"
+        readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
         radius: theme.radiusTile
         smoothing: theme.cornerSmoothing
-        color: theme.tileSunken
-        borderColor: nm.containsMouse || activeFocus ? theme.lineStrong : theme.line
+        color: base
+        borderColor: activeFocus ? theme.focusRing : nm.containsMouse ? Qt.rgba(1, 1, 1, 0.3) : "transparent"
         borderWidth: 1
-        fillItem: nextArt.status === Image.Ready ? nextArt : null
         activeFocusOnTab: true
         Keys.onReturnPressed: page.openSeries(card)
         Keys.onEnterPressed: page.openSeries(card)
         Keys.onSpacePressed: page.playSeries(card)
         scale: theme.reducedMotion ? 1 : (nm.pressed ? 0.99 : 1)
-        Image {
-            id: nextArt
-            visible: false
-            width: nextCard.width; height: nextCard.height
-            source: nextCard.card.poster ? Fmt.fileUrl(nextCard.card.poster) : ""
-            // A fixed decode, so a window being resized does not decode it again at every step
-            sourceSize: Qt.size(Math.ceil(theme.posterWidth * 3), Math.ceil(theme.posterWidth * 4.5))
-            fillMode: Image.PreserveAspectCrop
-            verticalAlignment: Image.AlignTop
-            asynchronous: true
-        }
-        // The one gradient: the poster scrim, rising from the foot
-        Rectangle {
-            anchors.fill: parent
-            radius: nextCard.radius
-            gradient: Gradient {
-                GradientStop { position: 0; color: "transparent" }
-                GradientStop { position: 1 - theme.scrimReach; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, 0.35) }
-                GradientStop { position: 1; color: theme.posterScrim }
+        PosterTone { id: nextTone; source: nextTile.card.poster ? Fmt.fileUrl(nextTile.card.poster) : "" }
+        // Wide, the poster stands at the left and the words beside it; in a narrow column the
+        // time left runs across the top and a smaller poster sits beside the title under it.
+        // Every size here follows the width, so the height never feeds back into it.
+        readonly property bool compact: width < theme.space(110)
+        readonly property real pad: compact ? theme.space(4) : theme.space(3)
+        readonly property real gap: theme.space(2)
+        readonly property real wordsH: lead.height + gap + info.height
+        readonly property real wideH: Math.max(nextPoster.height, wordsH)
+        height: compact ? nextPoster.y + Math.max(nextPoster.height, info.height) + pad : wideH + pad * 2
+        Corner {
+            id: nextPoster
+            x: nextTile.pad
+            y: nextTile.compact ? lead.y + lead.height + theme.space(3) : nextTile.pad + Math.round((nextTile.wideH - height) / 2)
+            height: nextTile.compact ? theme.space(24) : theme.space(40); width: Math.round(height * 2 / 3)
+            radius: theme.radiusInner(theme.space(3))
+            color: Qt.rgba(0, 0, 0, 0.3)
+            fillItem: nextArt.status === Image.Ready ? nextArt : null
+            Image {
+                id: nextArt
+                visible: false
+                width: nextPoster.width; height: nextPoster.height
+                source: nextTile.card.poster ? Fmt.fileUrl(nextTile.card.poster) : ""
+                sourceSize: theme.posterDecodeSize
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
             }
         }
-        Chip {
-            x: theme.space(3); y: theme.space(3)
-            small: true; mono: false
-            text: "Next up"
-            color: theme.glassVideo
-            textColor: theme.onPoster
-        }
+        // The time left
         Column {
-            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
-            anchors.margins: theme.space(4)
+            id: lead
+            x: nextTile.compact ? nextTile.pad : nextPoster.x + nextPoster.width + theme.space(5)
+            y: nextTile.compact ? nextTile.pad : nextTile.pad + Math.round((nextTile.wideH - nextTile.wordsH) / 2)
+            width: nextTile.width - x - nextTile.pad
             spacing: theme.space(1)
-            Row {
+            Label { text: "Next up"; role: "ledger"; color: nextTile.inkAccent }
+            Flow {
+                width: parent.width
                 spacing: theme.space(2)
                 Repeater {
-                    model: nextCard.parts
+                    model: nextTile.parts
                     Row {
                         required property var modelData
                         spacing: theme.space(0.75)
-                        Label { id: fig; text: modelData.n; role: "display"; font.pointSize: theme.typePage * 0.85; font.variableAxes: ({ "wdth": 70, "wght": 560 }); color: theme.onPoster; font.features: { "tnum": 1 } }
-                        Label { anchors.baseline: fig.baseline; text: modelData.unit; role: "title"; color: theme.onPosterDim }
+                        Label { id: fig; text: modelData.n; role: "display"; font.pointSize: theme.typeHeading * (nextTile.compact ? 1 : 1.2); font.variableAxes: ({ "wdth": 70, "wght": 560 }); color: nextTile.ink; font.features: { "tnum": 1 } }
+                        Label { anchors.baseline: fig.baseline; text: modelData.unit; role: "title"; font.pointSize: theme.typeNormal; color: nextTile.inkDim }
                     }
                 }
             }
+        }
+        // The series and when
+        Column {
+            id: info
+            x: nextTile.compact ? nextPoster.x + nextPoster.width + theme.space(3) : lead.x
+            y: nextTile.compact ? nextPoster.y : lead.y + lead.height + nextTile.gap
+            width: nextTile.width - x - nextTile.pad
+            spacing: theme.space(1)
             Label {
                 width: parent.width
-                text: nextCard.card.title || ""
+                text: nextTile.card.title || ""
                 role: "title"
-                color: theme.onPoster
+                font.pointSize: theme.typeNormal * (nextTile.compact ? 1 : 1.15)
+                color: nextTile.ink
+                wrapMode: Text.Wrap
+                maximumLineCount: 3
                 elide: Text.ElideRight
             }
             Label {
                 width: parent.width
-                text: nextCard.entry ? (nextCard.entry.drop.season && nextCard.entry.drop.season !== 1 ? "Season " + nextCard.entry.drop.season + ", " : "")
-                      + Fmt.episodeSpan(nextCard.entry.drop.episode, nextCard.entry.drop.through || 0) + ", "
-                      + Qt.formatDateTime(new Date(nextCard.entry.drop.at * 1000), "dddd HH:mm") : ""
+                text: nextTile.drop ? (nextTile.drop.season && nextTile.drop.season !== 1 ? "Season " + nextTile.drop.season + ", " : "")
+                      + Fmt.episodeSpan(nextTile.drop.episode, nextTile.drop.through || 0) + ", "
+                      + Qt.formatDateTime(new Date(nextTile.drop.at * 1000), "dddd HH:mm")
+                      + (nextTile.drop.predicted ? ", time estimated" : "") : ""
                 role: "ui"
-                color: theme.onPosterDim
-                elide: Text.ElideRight
+                color: nextTile.inkDim
+                wrapMode: Text.Wrap
             }
         }
         MouseArea {
@@ -475,101 +499,169 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: page.openSeries(nextCard.card)
-            onContainsMouseChanged: frame.hoverCard(nextCard, nextCard.card, containsMouse)
+            onClicked: { nextTile.forceActiveFocus(); page.openSeries(nextTile.card) }
+            onContainsMouseChanged: frame.hoverCard(nextTile, nextTile.card, containsMouse)
         }
-        Component.onDestruction: frame.hoverCard(nextCard, null, false)
+        Component.onDestruction: frame.hoverCard(nextTile, null, false)
     }
-    // One episode still to come: the time first, a poster thumb, the title and the episode,
-    // and at the right what is worth knowing (the time is a guess, it is late, how many of
-    // the series are still to watch). Opens the series.
-    component AgendaRow: Corner {
-        id: arow
+    // One episode on the board: a poster thumb, then the time, the title and the episode. A
+    // guessed time says so beside the time, a late one says it is not out yet, and how many of
+    // the series wait on disk follows the episode. Opens the series, Space plays it.
+    component BoardTile: Corner {
+        id: tile
         property var entry: ({})
         readonly property bool gridStop: true
-        objectName: "week-agenda-" + (card.id || 0) + (drop ? "-" + (drop.season ? drop.season + "x" : "") + drop.episode : "")
+        objectName: "week-" + (card.id || 0) + (drop ? "-" + (drop.season ? drop.season + "x" : "") + drop.episode : "")
         readonly property var card: entry.card || ({})
         readonly property var drop: entry.drop || null
+        readonly property bool overdue: entry.state === "overdue"
+        readonly property bool guessed: entry.state === "future" && !!drop && !!drop.predicted
         readonly property int toWatch: page.toWatchOf(card)
-        height: theme.space(11)
+        height: Math.max(theme.space(21), tileText.implicitHeight + theme.space(4))
         radius: theme.radiusMd
         smoothing: theme.cornerSmoothing
-        color: am.containsMouse ? theme.raised : theme.tile
-        borderColor: arow.activeFocus ? theme.focusRing : am.containsMouse ? theme.lineStrong : "transparent"
+        color: tm.containsMouse ? theme.raised : theme.tile
+        borderColor: tile.activeFocus ? theme.focusRing : tm.containsMouse ? theme.lineStrong : "transparent"
         borderWidth: 1
         activeFocusOnTab: true
         Keys.onReturnPressed: page.openSeries(card)
         Keys.onEnterPressed: page.openSeries(card)
         Keys.onSpacePressed: page.playSeries(card)
-        Row {
-            anchors.left: parent.left; anchors.leftMargin: theme.space(3)
+        Corner {
+            id: thumb
+            x: theme.space(2)
+            anchors.verticalCenter: parent.verticalCenter
+            height: theme.space(17); width: Math.round(height * 2 / 3)
+            radius: theme.radiusSm
+            color: theme.tileSunken
+            fillItem: thumbImg.status === Image.Ready ? thumbImg : null
+            Image {
+                id: thumbImg
+                visible: false
+                width: thumb.width; height: thumb.height
+                source: tile.card.poster ? Fmt.fileUrl(tile.card.poster) : ""
+                sourceSize: Qt.size(Math.ceil(thumb.width * 2), Math.ceil(thumb.height * 2))
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+            }
+        }
+        Column {
+            id: tileText
+            anchors.left: thumb.right; anchors.leftMargin: theme.space(3)
             anchors.right: parent.right; anchors.rightMargin: theme.space(3)
             anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(3)
-            Label {
-                id: atime
-                anchors.verticalCenter: parent.verticalCenter
-                width: theme.space(11)
-                text: arow.drop ? Qt.formatTime(new Date(arow.drop.at * 1000), "HH:mm") : ""
-                role: "figure"
-                font.pointSize: theme.typeNormal
-                color: arow.entry.state === "overdue" ? theme.red : theme.text
-            }
-            Corner {
-                id: athumb
-                anchors.verticalCenter: parent.verticalCenter
-                height: arow.height - theme.space(3); width: Math.round(height * 2 / 3)
-                radius: theme.radiusSm
-                color: theme.tileSunken
-                fillItem: athumbImg.status === Image.Ready ? athumbImg : null
-                Image {
-                    id: athumbImg
-                    visible: false
-                    width: athumb.width; height: athumb.height
-                    source: arow.card.poster ? Fmt.fileUrl(arow.card.poster) : ""
-                    sourceSize: Qt.size(Math.ceil(athumb.width * 2), Math.ceil(athumb.height * 2))
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
+            spacing: theme.space(0.5)
+            Row {
+                spacing: theme.space(1.5)
+                Label {
+                    id: when
+                    text: !tile.drop ? "No date" : Qt.formatDateTime(new Date(tile.drop.at * 1000), tile.overdue ? "ddd HH:mm" : "HH:mm")
+                    role: "ledger"
+                    font.pointSize: theme.typeNormal
+                    color: tile.overdue ? theme.red : tile.guessed ? theme.yellow : tile.drop ? theme.text : theme.textDim
+                }
+                Label {
+                    anchors.baseline: when.baseline
+                    visible: tile.overdue || tile.guessed
+                    text: tile.overdue ? "not out yet" : "estimated"
+                    role: "ledger"
+                    color: tile.overdue ? theme.red : theme.yellow
+                    opacity: 0.8
                 }
             }
             Label {
-                id: atitle
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, parent.width - atime.width - athumb.width - aep.width - atags.width - parent.spacing * 4)
-                text: arow.card.title || ""
+                width: parent.width
+                text: tile.card.title || ""
                 role: "ui"
                 font.weight: 600
-                color: am.containsMouse ? theme.accent : theme.text
+                color: tm.containsMouse ? theme.accent : theme.text
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
                 elide: Text.ElideRight
             }
-            Label {
-                id: aep
-                anchors.verticalCenter: parent.verticalCenter
-                text: arow.drop ? (arow.drop.season && arow.drop.season !== 1 ? "S" + arow.drop.season + " " : "") + Fmt.episodeSpan(arow.drop.episode, arow.drop.through || 0) : ""
-                role: "ui"
-                color: theme.textDim
+            Row {
+                spacing: theme.space(2)
+                Label {
+                    text: tile.drop ? (tile.drop.season && tile.drop.season !== 1 ? "S" + tile.drop.season + " " : "") + Fmt.episodeSpan(tile.drop.episode, tile.drop.through || 0) : ""
+                    visible: text !== ""
+                    role: "ledger"
+                    color: theme.textDim
+                }
+                Label { visible: tile.toWatch > 0; text: tile.toWatch + " to watch"; role: "ledger"; color: theme.accent }
             }
         }
-        Row {
-            id: atags
-            anchors.right: parent.right; anchors.rightMargin: theme.space(3)
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(2)
-            Chip { visible: arow.entry.state === "overdue"; small: true; mono: false; text: "Late, not out yet"; textColor: theme.red }
-            Chip { visible: arow.entry.state === "future" && !!arow.drop && !!arow.drop.predicted; small: true; mono: false; icon: "clock"; text: "Time not announced"; textColor: theme.yellow }
-            Chip { visible: arow.toWatch > 0; small: true; mono: false; text: arow.toWatch + " to watch" }
-        }
         MouseArea {
-            id: am
+            id: tm
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: { arow.forceActiveFocus(); page.openSeries(arow.card) }
-            onContainsMouseChanged: frame.hoverCard(arow, arow.card, containsMouse)
+            onClicked: { tile.forceActiveFocus(); page.openSeries(tile.card) }
+            onContainsMouseChanged: frame.hoverCard(tile, tile.card, containsMouse)
         }
-        Component.onDestruction: frame.hoverCard(arow, null, false)
+        Component.onDestruction: frame.hoverCard(tile, null, false)
     }
-
+    // A day on the board: its name and date over a rule, the accent's on today, then its
+    // episodes. A day with nothing says so once, small. `across` is the narrow window's
+    // layout: the name at the left of a row, the episodes flowing beside it, the rule on top.
+    component BoardDay: Item {
+        id: bday
+        property var day: ({})
+        property bool narrow: false
+        property bool across: false
+        readonly property real headW: across ? theme.space(28) : width
+        // Across, as many tiles on a line as hold a readable title, sharing it evenly
+        readonly property real tileMin: theme.space(64)
+        readonly property int perLine: Math.max(1, Math.floor((list.width + list.spacing) / (tileMin + list.spacing)))
+        readonly property real tileW: across ? (list.width - (perLine - 1) * list.spacing) / perLine : list.width
+        height: across ? Math.max(rule.height + theme.space(3) + head.height, list.y + list.height) : list.y + list.height
+        Rectangle {
+            id: rule
+            y: bday.across ? 0 : head.height + theme.space(2)
+            width: parent.width
+            height: bday.across && !bday.day.today ? 1 : 2
+            radius: 1
+            color: bday.day.today ? theme.accent : theme.line
+        }
+        Column {
+            id: head
+            y: bday.across ? rule.height + theme.space(3) : 0
+            width: bday.headW - (bday.across ? theme.space(3) : 0)
+            Label {
+                width: parent.width
+                text: bday.narrow && !bday.across ? bday.day.short : bday.day.name
+                role: "title"
+                font.pointSize: theme.typeNormal
+                color: bday.day.today ? theme.accent : bday.day.later ? theme.textDim : theme.text
+                elide: Text.ElideRight
+            }
+            Label {
+                width: parent.width
+                text: bday.day.date || " "
+                role: "ledger"
+                color: theme.textDim
+                elide: Text.ElideRight
+            }
+        }
+        Flow {
+            id: list
+            x: bday.across ? bday.headW : 0
+            y: bday.across ? rule.height + theme.space(3) : rule.y + rule.height + theme.space(2)
+            width: bday.width - x
+            spacing: theme.space(2)
+            Label { visible: !(bday.day.items && bday.day.items.length); text: "Nothing"; role: "ledger"; color: theme.textFaint }
+            Repeater {
+                model: bday.day.items || []
+                Loader {
+                    id: slot
+                    required property var modelData
+                    width: slot.modelData.next && bday.across ? Math.min(list.width, bday.tileW * 2 + list.spacing) : bday.tileW
+                    sourceComponent: slot.modelData.next ? nextComp : tileComp
+                    Component { id: nextComp; NextTile { entry: slot.modelData } }
+                    Component { id: tileComp; BoardTile { entry: slot.modelData } }
+                }
+            }
+        }
+    }
     // ---- A shelf: a heading over a grid of cards
     component Shelf: Column {
         id: shelfBox
@@ -910,10 +1002,11 @@ Item {
         }
         Item { width: 1; height: page.downloadedList.length ? theme.space(4) : 0 }
 
-        // ---- The week (#326): Out now at the left, the posters of what aired and waits to be
-        // watched (a click plays it; one not downloaded opens the series to get it); Coming up
-        // at the right, the next episode as a countdown over its art and an agenda of the rest
-        // by day. The two share the row by what they hold and stack on a narrow window.
+        // ---- The week (#326, #352): Out now first, the posters of what aired and waits to be
+        // watched (a click plays it; one not downloaded opens the series to get it); then the
+        // board of the days ahead, a column a day. The board takes the whole row: days with
+        // episodes share it, empty days keep a narrow column, and a window too narrow for all
+        // of them wraps the days onto a second line.
         Column {
             id: weekBox
             objectName: "home-week"
@@ -922,108 +1015,65 @@ Item {
             spacing: theme.space(3)
             readonly property var split: page.weekSplit
             readonly property int outCount: split.out.length
-            readonly property bool hasAhead: split.next !== null || page.agenda.length > 0
+            readonly property bool hasAhead: page.board.some(function(d) { return d.items.length > 0 })
             readonly property real cardW: theme.posterWidth
-            // As many out posters on a line as half the row holds, at least one
-            readonly property int outCols: Math.max(1, Math.min(outCount, Math.floor((width * (hasAhead ? 0.5 : 1) + page.gap) / (cardW + page.gap))))
-            readonly property real outW: outCount ? outCols * cardW + (outCols - 1) * page.gap : 0
-            readonly property bool sideBySide: outCount > 0 && hasAhead && width - outW - theme.space(8) >= theme.space(190)
             Heading {
                 text: "This week"; fact: page.weekFact
                 action: Button { objectName: "home-week-airing"; flat: true; small: true; text: "Airing now"; icon: "chevron-right"; onClicked: frame.go("airing") }
             }
-            Flow {
+            // Out now
+            Column {
+                objectName: "home-week-out"
+                visible: weekBox.outCount > 0
                 width: parent.width
-                spacing: theme.space(8)
-                // Out now
-                Column {
-                    objectName: "home-week-out"
-                    visible: weekBox.outCount > 0
-                    width: weekBox.sideBySide ? weekBox.outW : weekBox.width
-                    spacing: theme.space(3)
-                    WeekLabel { text: "Out now"; fact: Fmt.plural(weekBox.outCount, "episode", "episodes") }
-                    Flow {
-                        width: parent.width
-                        spacing: page.gap
-                        Repeater {
-                            model: weekBox.split.out
-                            Card {
-                                required property var modelData
-                                objectName: "week-out-" + modelData.card.id
-                                item: modelData.card
-                                posterWidth: weekBox.cardW
-                                nowMs: page.nowMs
-                                metaOverride: page.outLine(modelData)
-                                onOpened: modelData.state === "late" ? page.openSeries(modelData.card) : page.playSeries(modelData.card)
-                                onPlayed: page.playSeries(modelData.card)
-                            }
+                spacing: theme.space(3)
+                WeekLabel { text: "Out now"; fact: Fmt.plural(weekBox.outCount, "episode", "episodes") }
+                Flow {
+                    width: parent.width
+                    spacing: page.gap
+                    Repeater {
+                        model: weekBox.split.out
+                        Card {
+                            required property var modelData
+                            objectName: "week-out-" + modelData.card.id
+                            item: modelData.card
+                            posterWidth: weekBox.cardW
+                            nowMs: page.nowMs
+                            metaOverride: page.outLine(modelData)
+                            onOpened: modelData.state === "late" ? page.openSeries(modelData.card) : page.playSeries(modelData.card)
+                            onPlayed: page.playSeries(modelData.card)
                         }
                     }
                 }
-                // Coming up
-                Column {
-                    id: ahead
-                    objectName: "home-week-ahead"
-                    visible: weekBox.hasAhead
-                    width: weekBox.sideBySide ? weekBox.width - weekBox.outW - theme.space(8) : weekBox.width
-                    spacing: theme.space(3)
-                    readonly property bool stacked: width < theme.space(190)
-                    readonly property real cardHeight: weekBox.sideBySide ? Math.round(weekBox.cardW * 1.5) : theme.space(70)
-                    WeekLabel {
-                        text: "Coming up"
-                        fact: { var n = weekBox.split.ahead.length + (weekBox.split.next ? 1 : 0); return n ? Fmt.plural(n, "episode", "episodes") + " this week" : "" }
-                    }
-                    Flow {
-                        width: parent.width
-                        spacing: theme.space(4)
-                        NextUpCard {
-                            visible: weekBox.split.next !== null
-                            entry: weekBox.split.next
-                            width: ahead.stacked || page.agenda.length === 0 ? ahead.width : Math.max(theme.space(80), Math.round(ahead.width * 0.4))
-                            height: ahead.cardHeight
-                        }
-                        Column {
-                            objectName: "home-week-agenda"
-                            visible: page.agenda.length > 0
-                            width: weekBox.split.next === null || ahead.stacked ? ahead.width : ahead.width - Math.max(theme.space(80), Math.round(ahead.width * 0.4)) - theme.space(4)
-                            spacing: theme.space(2)
-                            Repeater {
-                                model: page.agenda
-                                Column {
-                                    required property var modelData
-                                    width: parent.width
-                                    spacing: theme.space(1.5)
-                                    // A run of empty days, said once over a hairline
-                                    Row {
-                                        visible: !!modelData.nothing
-                                        width: parent.width
-                                        spacing: theme.space(3)
-                                        Label { id: nothingText; text: modelData.nothing || ""; role: "ui"; color: theme.textDim }
-                                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width - nothingText.width - parent.spacing; height: 1; color: theme.line }
-                                    }
-                                    Item {
-                                        visible: !modelData.nothing
-                                        width: parent.width
-                                        height: dayRows.height
-                                        Column {
-                                            width: theme.space(18)
-                                            Label { text: modelData.label || ""; role: "title"; font.pointSize: theme.typeNormal; color: modelData.today ? theme.accent : theme.text }
-                                            Label { visible: !!modelData.date; text: modelData.date || ""; role: "ledger"; color: theme.textDim }
-                                        }
-                                        Column {
-                                            id: dayRows
-                                            x: theme.space(18)
-                                            width: parent.width - x
-                                            spacing: theme.space(1.5)
-                                            Repeater {
-                                                model: modelData.items || []
-                                                AgendaRow { required property var modelData; entry: modelData; width: dayRows.width }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+            }
+            Item { visible: weekBox.outCount > 0 && weekBox.hasAhead; width: 1; height: theme.space(3) }
+            WeekLabel {
+                visible: weekBox.outCount > 0 && weekBox.hasAhead
+                text: "Coming up"
+                fact: { var n = weekBox.split.ahead.length + (weekBox.split.next ? 1 : 0); return n ? Fmt.plural(n, "episode", "episodes") : "" }
+            }
+            // The board
+            Flow {
+                id: board
+                objectName: "home-week-board"
+                visible: weekBox.hasAhead
+                width: parent.width
+                spacing: across ? theme.space(4) : theme.space(3)
+                readonly property real narrowW: theme.space(20)
+                readonly property real minDayW: theme.space(52)
+                readonly property int busy: page.board.filter(function(d) { return d.items.length > 0 }).length
+                readonly property int idle: page.board.length - busy
+                readonly property real dayW: busy ? Math.floor((width - idle * narrowW - (page.board.length - 1) * theme.space(3)) / busy) : 0
+                // Too narrow for a column a day: a row a day instead, the days down the page
+                readonly property bool across: dayW < minDayW
+                Repeater {
+                    model: page.board
+                    BoardDay {
+                        required property var modelData
+                        day: modelData
+                        narrow: modelData.items.length === 0
+                        across: board.across
+                        width: across ? board.width : narrow ? board.narrowW : board.dayW
                     }
                 }
             }

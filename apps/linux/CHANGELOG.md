@@ -79,6 +79,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can add a source that answers in JSON
 
 ### Changed
+- This week on Home is a calendar, a column a day, the next episode counting down
 - Library sorts and groups from two menus, with the order said in words
 - This week shows what is out to watch and counts down to the next one
 - Two files of one episode share one row, and you pick which release plays
