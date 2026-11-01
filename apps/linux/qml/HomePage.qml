@@ -215,9 +215,11 @@ Item {
         if (c.watched !== null && c.watched !== undefined) return c.watched >= (drop.through || drop.episode)
         return c.watched_state === "CaughtUp"
     }
+    // The title and poster are in the key too: the title language switching, or a series
+    // taking new art, changes nothing else, and the week has to show it (#355)
     readonly property string weekKey: {
         var e = weekEntries()
-        function key(x) { return x.card.id + ":" + (x.drop ? (x.drop.season || 1) + "x" + x.drop.episode + "@" + x.drop.at : "") + ":" + x.state }
+        function key(x) { return x.card.id + ":" + (x.drop ? (x.drop.season || 1) + "x" + x.drop.episode + "@" + x.drop.at : "") + ":" + x.state + ":" + (x.card.title || "") + ":" + (x.card.poster || "") }
         return dayKey + "|" + e.out.map(key).join(",") + "|" + e.ahead.map(key).join(",") + "|" + e.later.map(key).join(",")
     }
     property var weekSplit: ({ out: [], ahead: [], next: null, later: [] })
