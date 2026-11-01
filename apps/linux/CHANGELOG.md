@@ -123,7 +123,6 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - Skip intro skips the opening, not the scene before it
-||||||| 884f4fac
 - A show you watched to the end no longer stays in Catch up
 - Cards count a show's episodes, not its files, when two releases share one
 - A download's speed and time left no longer run under its Stop button
