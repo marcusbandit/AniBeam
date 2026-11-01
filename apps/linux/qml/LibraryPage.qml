@@ -28,7 +28,7 @@ Item {
     Keys.onPressed: function(event) { scroll.keyPressed(event) }
 
     readonly property var tabs: ["All", "Series", "Movies"]
-    readonly property var sorts: [["LastViewed", "Recently watched"], ["Downloaded", "Recently added"], ["Alpha", "Title"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]
+    readonly property var sorts: [["LastViewed", "Recently watched"], ["Downloaded", "Recently downloaded"], ["Alpha", "Title"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]
     // The direction in the words of the order it flips: a title runs A to Z, a date newest
     // first, a score highest first
     function directionWords(key, dir) {
@@ -71,9 +71,9 @@ Item {
         Door.setPreferences(p)
     }
     function pickArrange(key) { arrange = key; persist() }
-    // Everything in one list, A to Z: no airing, franchise or dropped sections
+    // Everything in one list, A to Z: no airing, franchise or dropped sections. No button
+    // since #325 (Sort Title, Group Nothing says it); the drive scripts call it.
     function plain() { sort = "Alpha"; direction = "Asc"; arrange = "None"; persist(); reload() }
-    readonly property bool isPlain: arrange === "None" && sort === "Alpha" && direction === "Asc"
     function pickGroupFranchises(on) {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.library_group_franchises = on
@@ -229,7 +229,6 @@ Item {
     readonly property real gap: theme.space(4)
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + gap) / (theme.posterWidth + gap)))
     readonly property real cardWidth: Math.floor((scroll.innerWidth - gap * (cols - 1)) / cols)
-    readonly property bool compact: cols < 6
 
     PageScroll {
         id: scroll
@@ -283,7 +282,7 @@ Item {
         }
 
         // ---- The controls: the tabs at the left; at the right what orders the grid and what
-        // cuts it, each one pill that names itself ("Sort  Recently added"), the order's
+        // cuts it, each one pill that names itself ("Sort  Recently downloaded"), the order's
         // direction in words beside it, then the two switches as toggle chips. One line, or two
         // when the window is too narrow for both halves.
         Item {
@@ -291,7 +290,7 @@ Item {
             width: parent.width
             // Placed by x, not by anchors that flip: an anchor set and then cleared leaves the
             // row stretched to the width it was given
-            readonly property bool oneLine: tabSeg.implicitWidth + theme.space(8) + orderRow.implicitWidth <= width
+            readonly property bool oneLine: tabSeg.implicitWidth + theme.space(8) + orderRow.fullWidth <= width
             height: oneLine ? Math.max(tabSeg.height, orderRow.height) : tabSeg.height + theme.space(3) + orderRow.height
             Seg {
                 id: tabSeg
@@ -301,61 +300,64 @@ Item {
                 index: Math.max(0, page.tabNames.indexOf(page.tab))
                 onPicked: function(i) { page.pickTab(i) }
             }
-            Row {
+            // The order pair and the cut trio. Fixed widths for the pills and the direction, so
+            // a pick never moves the controls under the pointer or flips the line
+            Flow {
                 id: orderRow
-                x: controls.oneLine ? controls.width - implicitWidth : 0
+                readonly property real fullWidth: sortPair.width + spacing + cutGroup.width
+                width: controls.oneLine ? fullWidth : controls.width
+                x: controls.oneLine ? controls.width - fullWidth : 0
                 y: controls.oneLine ? (controls.height - height) / 2 : tabSeg.height + theme.space(3)
-                spacing: theme.space(2)
-                Dropdown {
-                    objectName: "sort-menu"
-                    prefix: "Sort"
-                    minWidth: 0
-                    options: page.sorts.map(function(s) { return s[1] })
-                    index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
-                    onPicked: function(i) { page.pickSort(page.sorts[i][0]) }
+                spacing: theme.space(4)
+                Row {
+                    id: sortPair
+                    spacing: theme.space(2)
+                    Dropdown {
+                        objectName: "sort-menu"
+                        prefix: "Sort"
+                        minWidth: theme.space(58)
+                        options: page.sorts.map(function(s) { return s[1] })
+                        index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
+                        onPicked: function(i) { page.pickSort(page.sorts[i][0]) }
+                    }
+                    Button {
+                        objectName: "sort-direction"
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.max(implicitWidth, theme.space(46))
+                        flat: true
+                        icon: page.direction === "Asc" ? "arrow-up-narrow-wide" : "arrow-down-wide-narrow"
+                        text: page.directionWords(page.sort, page.direction)
+                        onClicked: page.flipDirection()
+                    }
                 }
-                Button {
-                    objectName: "sort-direction"
-                    anchors.verticalCenter: parent.verticalCenter
-                    flat: true
-                    icon: page.direction === "Asc" ? "arrow-up-narrow-wide" : "arrow-down-wide-narrow"
-                    text: page.directionWords(page.sort, page.direction)
-                    onClicked: page.flipDirection()
-                }
-                Item { width: theme.space(2); height: 1 }
-                Dropdown {
-                    objectName: "arrange-menu"
-                    prefix: "Group"
-                    minWidth: 0
-                    options: page.arrangements.map(function(a) { return a[1] })
-                    index: Math.max(0, page.arrangements.findIndex(function(a) { return a[0] === page.arrange }))
-                    onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }
-                }
-                Chip {
-                    objectName: "group-franchises"
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: theme.controlHeight
-                    visible: page.arrange !== "None"
-                    mono: false
-                    clickable: true
-                    selected: page.groupFranchises
-                    dimmed: !page.groupFranchises
-                    icon: page.groupFranchises ? "check" : "plus"
-                    text: "Franchises together"
-                    onClicked: page.pickGroupFranchises(!page.groupFranchises)
-                }
-                Chip {
-                    objectName: "show-watched"
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: theme.controlHeight
-                    visible: page.tab !== "Watched" && page.tab !== "Hidden"
-                    mono: false
-                    clickable: true
-                    selected: page.showWatched
-                    dimmed: !page.showWatched
-                    icon: page.showWatched ? "check" : "plus"
-                    text: "Watched shows"
-                    onClicked: page.pickShowWatched(!page.showWatched)
+                Row {
+                    id: cutGroup
+                    spacing: theme.space(2)
+                    Dropdown {
+                        objectName: "arrange-menu"
+                        prefix: "Group"
+                        minWidth: theme.space(42)
+                        options: page.arrangements.map(function(a) { return a[1] })
+                        index: Math.max(0, page.arrangements.findIndex(function(a) { return a[0] === page.arrange }))
+                        onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }
+                    }
+                    // Kept in place under Nothing, faint and out of play, so the row never shifts
+                    ToggleChip {
+                        objectName: "group-franchises"
+                        anchors.verticalCenter: parent.verticalCenter
+                        interactive: page.arrange !== "None"
+                        checked: page.groupFranchises
+                        text: "Franchises together"
+                        onToggled: function(on) { page.pickGroupFranchises(on) }
+                    }
+                    ToggleChip {
+                        objectName: "show-watched"
+                        anchors.verticalCenter: parent.verticalCenter
+                        interactive: page.tab !== "Watched" && page.tab !== "Hidden"
+                        checked: page.showWatched
+                        text: "Watched shows"
+                        onToggled: function(on) { page.pickShowWatched(on) }
+                    }
                 }
             }
         }

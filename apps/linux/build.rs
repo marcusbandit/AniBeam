@@ -98,6 +98,7 @@ fn main() {
             .qml_file("qml/Note.qml")
             .qml_file("qml/Tile.qml")
             .qml_file("qml/Tiles.qml")
+            .qml_file("qml/ToggleChip.qml")
             .qml_file("qml/UsageBar.qml")
             .qml_file("qml/SettingsTab.qml")
             .qml_file("qml/SettingsPair.qml")
