@@ -230,22 +230,27 @@ Item {
     // The board (#352): today and the six days after as columns, each with its episodes
     // still to come in air order, the next one first in its day. A day with nothing on it
     // stays as a narrow column, so the week keeps its shape and a gap reads as a gap. A
-    // guessed episode past its time and not out yet sits on today; the series with no date
-    // close the board in a column of their own.
+    // guessed episode past its time and not out yet sits on today, after the next one; the
+    // series with no date close the board in a column of their own.
     readonly property var board: {
-        var cols = [], split = weekSplit
+        // Built from the day and the split alone, not from `week`, so a reload that leaves
+        // every standing as it was keeps the board's tiles, their focus and hover
+        var cols = [], split = weekSplit, now = new Date(dayKey + "T00:00:00")
         var overdue = split.ahead.filter(function(a) { return a.state === "overdue" })
-        for (var i = 0; i < week.length; i++) {
-            var day = week[i]
-            if (day.later || day.past) continue
+        for (var o = 0; o < 7; o++) {
+            var i = o + 2   // the week's index: it starts two days back
             var items = split.ahead.filter(function(a) { return a.day === i && a.state !== "overdue" })
-            if (split.next && split.next.day === i) items.unshift({ card: split.next.card, drop: split.next.drop, day: i, state: split.next.state, next: true })
-            if (day.today) items = overdue.concat(items)
-            var d = new Date(day.from * 1000), near = day.today || day.label === "Tomorrow"
-            cols.push({ name: day.label, short: near ? day.label : Qt.formatDate(d, "ddd"),
-                        date: near ? Qt.formatDate(d, "ddd d MMM") : day.date, today: day.today, later: false, items: items })
+            if (o === 0) items = items.concat(overdue)
+            // A copy marked as the next, since a model hands the tiles copies, never the same object
+            var next = split.next && split.next.day === i ? { card: split.next.card, drop: split.next.drop, day: i, state: split.next.state, next: true } : null
+            if (next) items.unshift(next)
+            var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + o)
+            var name = o === 0 ? "Today" : o === 1 ? "Tomorrow" : Qt.formatDate(d, "dddd")
+            cols.push({ name: name, short: o === 0 ? name : Qt.formatDate(d, "ddd"),
+                        date: o < 2 ? Qt.formatDate(d, "ddd d MMM") : Qt.formatDate(d, "d MMM"), shortDate: Qt.formatDate(d, "d MMM"),
+                        today: o === 0, later: false, items: items, next: next })
         }
-        if (split.later.length) cols.push({ name: "No date yet", short: "No date yet", date: "", today: false, later: true, items: split.later })
+        if (split.later.length) cols.push({ name: "No date yet", short: "No date yet", date: "", shortDate: "", today: false, later: true, items: split.later, next: null })
         return cols
     }
     // "1 day 20 h 36 m" as parts, for the countdown's large figures
@@ -266,6 +271,7 @@ Item {
             }
         return n
     }
+    readonly property bool weekFactCounts: lateCount === 0 && weekSplit.out.every(function(o) { return o.state !== "here" })
     readonly property string weekFact: {
         if (lateCount > 0) return Fmt.plural(lateCount, "episode is", "episodes are") + " late"
         var waiting = weekSplit.out.filter(function(o) { return o.state === "here" }).length
@@ -552,6 +558,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
             Row {
+                width: parent.width
                 spacing: theme.space(1.5)
                 Label {
                     id: when
@@ -562,6 +569,8 @@ Item {
                 }
                 Label {
                     anchors.baseline: when.baseline
+                    width: Math.min(implicitWidth, parent.width - when.width - parent.spacing)
+                    elide: Text.ElideRight
                     visible: tile.overdue || tile.guessed
                     text: tile.overdue ? "not out yet" : "estimated"
                     role: "ledger"
@@ -580,14 +589,17 @@ Item {
                 elide: Text.ElideRight
             }
             Row {
+                width: parent.width
                 spacing: theme.space(2)
                 Label {
+                    width: Math.min(implicitWidth, parent.width - (waits.visible ? waits.implicitWidth + parent.spacing : 0))
+                    elide: Text.ElideRight
                     text: tile.drop ? (tile.drop.season && tile.drop.season !== 1 ? "S" + tile.drop.season + " " : "") + Fmt.episodeSpan(tile.drop.episode, tile.drop.through || 0) : ""
                     visible: text !== ""
                     role: "ledger"
                     color: theme.textDim
                 }
-                Label { visible: tile.toWatch > 0; text: tile.toWatch + " to watch"; role: "ledger"; color: theme.accent }
+                Label { id: waits; visible: tile.toWatch > 0; text: tile.toWatch + " to watch"; role: "ledger"; color: theme.accent }
             }
         }
         MouseArea {
@@ -636,7 +648,7 @@ Item {
             }
             Label {
                 width: parent.width
-                text: bday.day.date || " "
+                text: (bday.narrow && !bday.across ? bday.day.shortDate : bday.day.date) || " "
                 role: "ledger"
                 color: theme.textDim
                 elide: Text.ElideRight
@@ -649,19 +661,18 @@ Item {
             width: bday.width - x
             spacing: theme.space(2)
             Label { visible: !(bday.day.items && bday.day.items.length); text: "Nothing"; role: "ledger"; color: theme.textFaint }
+            NextTile {
+                visible: !!bday.day.next
+                entry: bday.day.next
+                width: bday.across ? Math.min(list.width, bday.tileW * 2 + list.spacing) : bday.tileW
+            }
             Repeater {
-                model: bday.day.items || []
-                Loader {
-                    id: slot
-                    required property var modelData
-                    width: slot.modelData.next && bday.across ? Math.min(list.width, bday.tileW * 2 + list.spacing) : bday.tileW
-                    sourceComponent: slot.modelData.next ? nextComp : tileComp
-                    Component { id: nextComp; NextTile { entry: slot.modelData } }
-                    Component { id: tileComp; BoardTile { entry: slot.modelData } }
-                }
+                model: (bday.day.items || []).filter(function(e) { return !e.next })
+                BoardTile { required property var modelData; entry: modelData; width: bday.tileW }
             }
         }
     }
+
     // ---- A shelf: a heading over a grid of cards
     component Shelf: Column {
         id: shelfBox
@@ -1050,7 +1061,8 @@ Item {
             WeekLabel {
                 visible: weekBox.outCount > 0 && weekBox.hasAhead
                 text: "Coming up"
-                fact: { var n = weekBox.split.ahead.length + (weekBox.split.next ? 1 : 0); return n ? Fmt.plural(n, "episode", "episodes") : "" }
+                // The heading counts them already when it has nothing more pressing to say
+                fact: { var n = weekBox.split.ahead.length + (weekBox.split.next ? 1 : 0); return n && !page.weekFactCounts ? Fmt.plural(n, "episode", "episodes") : "" }
             }
             // The board
             Flow {
@@ -1066,6 +1078,9 @@ Item {
                 readonly property real dayW: busy ? Math.floor((width - idle * narrowW - (page.board.length - 1) * theme.space(3)) / busy) : 0
                 // Too narrow for a column a day: a row a day instead, the days down the page
                 readonly property bool across: dayW < minDayW
+                // Its days are lanes for the arrow keys (GridKeys)
+                readonly property bool gridBoard: true
+                readonly property bool gridAcross: across
                 Repeater {
                     model: page.board
                     BoardDay {
