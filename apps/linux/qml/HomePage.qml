@@ -118,10 +118,6 @@ Item {
 
     // ---- The lists. The hero's series shows only in the hero.
     readonly property int heroId: resume ? resume.card.id : -1
-    function behindOf(c) {
-        var w = watchedOf(c), reach = Math.max(c.episodes_on_disk || 0, 0)
-        return c.watched_state === "Behind" ? Math.max(1, reach - w) : 0
-    }
     readonly property var airingIds: {
         var m = {}
         for (var i = 0; i < airingRows.length; i++) m[airingRows[i].id] = true
@@ -189,29 +185,48 @@ Item {
     // This week split by the two questions (#326): what is out and waiting (here and not
     // watched, downloading, or aired and not downloaded), the next episode to air, and the
     // rest still to come in air order. An episode here and watched has nothing left to say.
-    readonly property var weekSplit: {
-        var out = [], ahead = [], later = []
+    // Built from the episodes' standings, not from the clock: the clock ticks every 30 s, and
+    // a fresh split would rebuild every card under it, dropping focus and hover. `weekKey`
+    // reads the clock and changes only when a standing does; the split follows the key.
+    function weekEntries() {
+        var out = [], ahead = [], later = [], seen = {}
         for (var i = 0; i < week.length; i++) {
             var day = week[i]
             for (var k = 0; k < day.cards.length; k++) {
                 var e = day.cards[k]
-                if (day.later) { later.push(e); continue }
+                if (day.later) { later.push({ card: e.card, drop: null, state: "none", day: i }); continue }
                 var st = page.dropState(e.card, e.drop, nowMs)
-                if (st === "here") {
-                    var left = page.toWatchOf(e.card)
-                    if (left === 0 || (left < 0 && e.card.watched_state === "CaughtUp")) continue
-                    out.push({ card: e.card, drop: e.drop, day: i, state: st })
-                } else if (st === "downloading" || st === "late") {
+                if (st === "here" || st === "downloading" || st === "late") {
+                    if (st === "here" && page.dropWatched(e.card, e.drop)) continue
                     out.push({ card: e.card, drop: e.drop, day: i, state: st })
                 } else ahead.push({ card: e.card, drop: e.drop, day: i, state: st })
             }
         }
+        // One card a series: its latest episode out stands for the rest
+        out.sort(function(a, b) { return b.drop.at - a.drop.at })
+        out = out.filter(function(o) { if (seen[o.card.id]) return false; seen[o.card.id] = true; return true })
         out.sort(function(a, b) { return a.drop.at - b.drop.at })
         ahead.sort(function(a, b) { return a.drop.at - b.drop.at })
-        var next = null
-        for (var j = 0; j < ahead.length; j++) if (ahead[j].state === "future") { next = ahead.splice(j, 1)[0]; break }
-        return { out: out, ahead: ahead, next: next, later: later }
+        return { out: out, ahead: ahead, later: later }
     }
+    // Watched already: the tracker's progress reaches it, or with no tracker the core reads
+    // the series caught up
+    function dropWatched(c, drop) {
+        if (c.watched !== null && c.watched !== undefined) return c.watched >= (drop.through || drop.episode)
+        return c.watched_state === "CaughtUp"
+    }
+    readonly property string weekKey: {
+        var e = weekEntries()
+        function key(x) { return x.card.id + ":" + (x.drop ? (x.drop.season || 1) + "x" + x.drop.episode + "@" + x.drop.at : "") + ":" + x.state }
+        return dayKey + "|" + e.out.map(key).join(",") + "|" + e.ahead.map(key).join(",") + "|" + e.later.map(key).join(",")
+    }
+    property var weekSplit: ({ out: [], ahead: [], next: null, later: [] })
+    function splitWeek() {
+        var e = weekEntries(), next = null
+        for (var j = 0; j < e.ahead.length; j++) if (e.ahead[j].state === "future") { next = e.ahead.splice(j, 1)[0]; break }
+        weekSplit = { out: e.out, ahead: e.ahead, next: next, later: e.later }
+    }
+    onWeekKeyChanged: splitWeek()
     // The agenda beside the countdown: a group per day that has something, and a run of
     // empty days from today on said once ("Nothing today or Monday"). A day whose only
     // episode is the countdown's says nothing, the countdown names it. Empty days after the
@@ -219,16 +234,19 @@ Item {
     readonly property var agenda: {
         var rows = [], empties = [], split = weekSplit
         function dayName(i) { var l = week[i].label; return l === "Today" || l === "Tomorrow" ? l.toLowerCase() : l }
+        // A predicted episode past its time and not out yet leads, under its own words
+        var overdue = split.ahead.filter(function(a) { return a.state === "overdue" })
+        if (overdue.length) rows.push({ label: "Not out yet", date: "", today: false, items: overdue })
         for (var i = 0; i < week.length; i++) {
             if (week[i].later) continue
-            var items = split.ahead.filter(function(a) { return a.day === i })
+            var items = split.ahead.filter(function(a) { return a.day === i && a.state !== "overdue" })
             if (items.length) {
                 if (empties.length) rows.push({ nothing: "Nothing " + (empties.length === 1 ? empties[0] : empties.slice(0, -1).join(", ") + " or " + empties[empties.length - 1]) })
                 empties = []
                 rows.push({ label: week[i].label, date: week[i].date, today: week[i].today, items: items })
             } else if (!week[i].past && !(split.next && split.next.day === i)) empties.push(dayName(i))
         }
-        if (split.later.length) rows.push({ label: "No date yet", date: "", today: false, items: split.later.map(function(e) { return { card: e.card, drop: null, state: "none" } }) })
+        if (split.later.length) rows.push({ label: "No date yet", date: "", today: false, items: split.later })
         return rows
     }
     // "1 day 20 h 36 m" as parts, for the countdown's large figures
@@ -249,7 +267,6 @@ Item {
             }
         return n
     }
-    readonly property int airingWaiting: airingRows.filter(function(c) { return page.behindOf(c) > 0 }).length
     readonly property string weekFact: {
         if (lateCount > 0) return Fmt.plural(lateCount, "episode is", "episodes are") + " late"
         var waiting = weekSplit.out.filter(function(o) { return o.state === "here" }).length
@@ -390,13 +407,15 @@ Item {
         activeFocusOnTab: true
         Keys.onReturnPressed: page.openSeries(card)
         Keys.onEnterPressed: page.openSeries(card)
+        Keys.onSpacePressed: page.playSeries(card)
         scale: theme.reducedMotion ? 1 : (nm.pressed ? 0.99 : 1)
         Image {
             id: nextArt
             visible: false
             width: nextCard.width; height: nextCard.height
             source: nextCard.card.poster ? Fmt.fileUrl(nextCard.card.poster) : ""
-            sourceSize: Qt.size(Math.ceil(nextCard.width * 1.25), Math.ceil(nextCard.width * 1.25 * 1.5))
+            // A fixed decode, so a window being resized does not decode it again at every step
+            sourceSize: Qt.size(Math.ceil(theme.posterWidth * 3), Math.ceil(theme.posterWidth * 4.5))
             fillMode: Image.PreserveAspectCrop
             verticalAlignment: Image.AlignTop
             asynchronous: true
@@ -468,7 +487,7 @@ Item {
         id: arow
         property var entry: ({})
         readonly property bool gridStop: true
-        objectName: "week-agenda-" + (card.id || 0) + (drop ? "-" + drop.episode : "")
+        objectName: "week-agenda-" + (card.id || 0) + (drop ? "-" + (drop.season ? drop.season + "x" : "") + drop.episode : "")
         readonly property var card: entry.card || ({})
         readonly property var drop: entry.drop || null
         readonly property int toWatch: page.toWatchOf(card)
@@ -481,6 +500,7 @@ Item {
         activeFocusOnTab: true
         Keys.onReturnPressed: page.openSeries(card)
         Keys.onEnterPressed: page.openSeries(card)
+        Keys.onSpacePressed: page.playSeries(card)
         Row {
             anchors.left: parent.left; anchors.leftMargin: theme.space(3)
             anchors.right: parent.right; anchors.rightMargin: theme.space(3)
@@ -490,7 +510,7 @@ Item {
                 id: atime
                 anchors.verticalCenter: parent.verticalCenter
                 width: theme.space(11)
-                text: arow.drop ? Qt.formatTime(new Date(arow.drop.at * 1000), "HH:mm") : "Soon"
+                text: arow.drop ? Qt.formatTime(new Date(arow.drop.at * 1000), "HH:mm") : ""
                 role: "figure"
                 font.pointSize: theme.typeNormal
                 color: arow.entry.state === "overdue" ? theme.red : theme.text
