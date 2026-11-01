@@ -96,6 +96,11 @@ struct App {
     asked: HashSet<u64>,
     posters: Sender<(u64, String)>,
     trackers: Option<(TrackerAccount, TrackerAccount)>,
+    /// The tracker a sign-in was last started for (0 AniList, 1 MAL), and why it failed,
+    /// which More shows in place of "Not signed in" until it is tried again.
+    /// The sign-in jobs started, by job id: which tracker each is for.
+    signing_in: HashMap<u64, i32>,
+    sign_in_error: Option<(i32, String)>,
     // The other device.
     cache: Option<Cache>,
     anilist: AniListCache,
@@ -213,6 +218,7 @@ impl App {
         };
         if let Ok(Reply::Library { series, .. }) = core.call(library) {
             self.cards = series;
+            self.data().set_ready(true);
         }
         for card in &self.cards {
             if let Some(path) = &card.poster
@@ -345,9 +351,18 @@ impl App {
         }
 
         // More.
+        if let Some((job, why)) = crate::local::sign_in_failed()
+            && let Some(which) = self.signing_in.remove(&job)
+        {
+            self.sign_in_error = Some((which, format!("Sign-in failed: {why}. Tap to try again.")));
+        }
         if let Some((anilist, mal)) = &self.trackers {
-            data.set_anilist_state(account_line(anilist).into());
-            data.set_mal_state(account_line(mal).into());
+            let line = |which: i32, a: &TrackerAccount| match &self.sign_in_error {
+                Some((w, why)) if *w == which && !a.connected => why.clone(),
+                _ => account_line(a),
+            };
+            data.set_anilist_state(line(0, anilist).into());
+            data.set_mal_state(line(1, mal).into());
             let signed: Vec<&str> =
                 [("AniList", anilist), ("MAL", mal)].iter().filter(|(_, a)| a.connected).map(|(n, _)| *n).collect();
             data.set_trackers_line(if signed.is_empty() { "Not signed in".into() } else { signed.join(" and ").into() });
@@ -703,11 +718,13 @@ impl App {
         self.picked.clear();
         self.open = None;
         self.detail = None;
+        self.data().set_deleting(false);
         self.data().set_series_open(false);
     }
 
     fn connect_tracker(&mut self, which: i32) {
         let tracker = if which == 0 { Tracker::Anilist } else { Tracker::Mal };
+        self.sign_in_error = None;
         let Some(core) = crate::local::core() else {
             let line: SharedString = "AniBeam is still starting. Try again in a moment.".into();
             if which == 0 {
@@ -717,8 +734,14 @@ impl App {
             }
             return;
         };
-        if let Err(e) = core.call(Call::ConnectTracker { tracker }) {
+        let started = core.call(Call::ConnectTracker { tracker });
+        if let Ok(Reply::Started { job }) = &started {
+            self.signing_in.insert(*job, which);
+        }
+        if let Err(e) = started {
             crate::local::log(&format!("sign-in did not start: {e}"));
+            self.sign_in_error = Some((which, format!("Sign-in did not start: {e}. Tap to try again.")));
+            self.tick();
         }
     }
 
@@ -755,7 +778,8 @@ fn download_row(t: &Torrent, held: bool) -> DownloadRow {
     let paused = t.state.starts_with("paused") && !done;
     let state = match t.state.as_str() {
         _ if done => "Done",
-        "pausedDL" if held => "Waiting for Wi-Fi",
+        // Held off mobile data, nothing restarts it, a retry included, until Wi-Fi.
+        "pausedDL" | "error" if held => "Waiting for Wi-Fi",
         "pausedDL" => "Paused",
         "stalledDL" => "Looking for peers",
         "checkingDL" => "Checking",
@@ -990,6 +1014,8 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         asked: HashSet::new(),
         posters: start_poster_loader(),
         trackers: None,
+        signing_in: HashMap::new(),
+        sign_in_error: None,
         cache: {
             let cache = store.cache();
             if let Some(c) = &cache {

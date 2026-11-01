@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { Ask } from "more.slint";
 import { FindData } from "find.slint";
 import { AppData, Nav } from "data.slint";
 import { Button, EmptyNote, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
@@ -22,6 +23,17 @@ export component LibraryPage inherits Rectangle {
                 picked: AppData.device;
                 pick(i) => { AppData.pick-device(i); }
             }
+            // The other device's library comes once a minute; this asks for it now.
+            if AppData.device != 0: HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: "Refresh";
+                    icon: @image-url("icons/refresh-cw.svg");
+                    has-icon: true;
+                    small: true;
+                    clicked => { AppData.refresh(); }
+                }
+            }
             SearchField {
                 placeholder: AppData.device == 0 ? "Search this phone" : "Search " + AppData.devices[AppData.device];
                 text <=> AppData.query;
@@ -32,6 +44,7 @@ export component LibraryPage inherits Rectangle {
                 alignment: start;
                 Button {
                     text: "Find \"" + AppData.query + "\" in Downloads";
+                    widest: root.width - 2 * (Theme.grout + Theme.unit);
                     icon: @image-url("icons/download.svg");
                     has-icon: true;
                     small: true;
@@ -45,6 +58,14 @@ export component LibraryPage inherits Rectangle {
             }
             if AppData.library.length > 0: TileGrid {
                 tiles: AppData.library;
+                holdable: AppData.device == 0;
+                // The menu's Get and Delete are for this phone's shows.
+                held(id, title) => {
+                    if (AppData.device == 0) {
+                        Ask.menu-id = id;
+                        Ask.menu-title = title;
+                    }
+                }
                 open(id) => {
                     if (AppData.device == 0) {
                         AppData.open-series(id);
@@ -53,7 +74,7 @@ export component LibraryPage inherits Rectangle {
                     }
                 }
             }
-            if AppData.library.length == 0: EmptyNote {
+            if AppData.ready && AppData.library.length == 0: EmptyNote {
                 title: AppData.library-empty;
                 body: AppData.device == 0 && AppData.query == ""
                     ? "Episodes you download on this phone land here. Find a show in Downloads."

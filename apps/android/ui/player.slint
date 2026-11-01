@@ -63,7 +63,24 @@ export global PlayerData {
     // Where the island's top edge is, so the subtitles can be lifted clear of it.
     in-out property <length> controls-top;
     in-out property <length> page-height;
+    // Locked: every touch on the picture is ignored but the one that unlocks.
+    in-out property <bool> locked;
+    // A swipe's level on show: 1 brightness, 2 volume, 0 none; and where it stands, 0 to 1.
+    in property <int> level-kind;
+    in property <float> level;
+    // Held down for double speed.
+    in property <bool> holding;
 
+    // A vertical swipe on the left half sets the brightness, on the right half the volume:
+    // the kind once at the start, then how far the finger has gone, as a share of the
+    // screen's height, up being more.
+    callback adjust-start(int);
+    callback adjust(float);
+    callback adjust-end();
+    // A long press plays at double speed until the finger lifts.
+    callback hold(bool);
+    // The chrome came or went without the player's own clock: the subtitles move to match.
+    callback relift();
     callback back();
     callback toggle-pause();
     // Seconds. A drag on the bar shows the frame under the finger in the bubble and seeks
@@ -323,15 +340,73 @@ export component PlayerPage inherits Rectangle {
         }
     }
 
-    // The picture: one tap for the chrome, two on a side to jump.
-    TouchArea {
+    // The picture: one tap for the chrome, two on a side to jump, a vertical swipe on either
+    // half for brightness or volume, and a long press for double speed.
+    property <bool> gestured;
+    property <int> adjusting;
+    hold-timer := Timer {
+        interval: 450ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            // A finger already on its way somewhere is a swipe starting slowly, not a hold.
+            if (root.adjusting == 0 && !PlayerData.casting
+                && Math.abs(picture.mouse-y - picture.pressed-y) < 2 * Theme.unit
+                && Math.abs(picture.mouse-x - picture.pressed-x) < 2 * Theme.unit) {
+                root.gestured = true;
+                PlayerData.hold(true);
+            }
+        }
+    }
+    picture := TouchArea {
+        enabled: !PlayerData.locked;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.gestured = false;
+                hold-timer.running = true;
+            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                hold-timer.running = false;
+                if (PlayerData.holding) {
+                    PlayerData.hold(false);
+                }
+                if (root.adjusting != 0) {
+                    root.adjusting = 0;
+                    PlayerData.adjust-end();
+                }
+            }
+        }
+        moved => {
+            if (!self.pressed) {
+                return;
+            }
+            if (root.adjusting == 0 && !PlayerData.holding) {
+                if (Math.abs(self.mouse-y - self.pressed-y) > 4 * Theme.unit
+                    && Math.abs(self.mouse-y - self.pressed-y) > Math.abs(self.mouse-x - self.pressed-x)) {
+                    hold-timer.running = false;
+                    root.gestured = true;
+                    root.adjusting = self.pressed-x < self.width / 2 ? 1 : 2;
+                    PlayerData.adjust-start(root.adjusting);
+                } else if (Math.abs(self.mouse-x - self.pressed-x) > 6 * Theme.unit) {
+                    hold-timer.running = false;
+                }
+            }
+            if (root.adjusting != 0) {
+                PlayerData.adjust((self.pressed-y - self.mouse-y) / (self.height * 0.8));
+            }
+        }
         clicked => {
+            if (root.gestured) {
+                return;
+            }
             PlayerData.chrome = !PlayerData.chrome;
             if (PlayerData.chrome) {
                 PlayerData.touched();
             }
         }
         double-clicked => {
+            if (root.gestured) {
+                return;
+            }
             if (self.mouse-x < self.width / 3) {
                 PlayerData.seek-by(-10);
                 jump.text = "−10 s";
@@ -408,7 +483,7 @@ export component PlayerPage inherits Rectangle {
     }
 
     // ---- Chrome
-    property <bool> chrome-shown: PlayerData.chrome || seek.scrubbing;
+    property <bool> chrome-shown: (PlayerData.chrome || seek.scrubbing) && !PlayerData.locked;
     property <length> side-left: Math.max(root.inset-left, Theme.grout);
     property <length> side-right: Math.max(root.inset-right, Theme.grout);
 
@@ -434,10 +509,23 @@ export component PlayerPage inherits Rectangle {
             active: PlayerData.casting;
             clicked => { PlayerData.cast(); }
         }
+        PlayerButton {
+            x: parent.width - 2 * self.width - root.side-right - Theme.unit;
+            y: root.inset-top + Theme.unit * 2;
+            icon: @image-url("icons/lock.svg");
+            clicked => {
+                PlayerData.locked = true;
+                PlayerData.chrome = false;
+                PlayerData.relift();
+                lock-hint.shown = true;
+                lock-hint-hide.running = false;
+                lock-hint-hide.running = true;
+            }
+        }
         VerticalLayout {
             x: root.side-left + 14 * Theme.unit;
             y: root.inset-top + Theme.unit * 2;
-            width: parent.width - self.x - root.side-right - 14 * Theme.unit;
+            width: parent.width - self.x - root.side-right - 26 * Theme.unit;
             height: self.preferred-height;
             spacing: 1px;
             Text {
@@ -703,9 +791,84 @@ export component PlayerPage inherits Rectangle {
         }
     }
 
+    // ---- Skip intro or outro stays up with the chrome hidden, while inside the window.
+    if PlayerData.skip-label != "" && !root.chrome-shown && !PlayerData.next-visible && !PlayerData.locked: Button {
+        x: parent.width - self.width - root.side-right;
+        width: self.min-width;
+        y: parent.height - self.height - root.inset-bottom - 2 * Theme.grout;
+        primary: true;
+        has-icon: true;
+        icon: @image-url("icons/chevrons-right.svg");
+        text: PlayerData.skip-label;
+        clicked => {
+            PlayerData.touched();
+            PlayerData.skip();
+        }
+    }
+
+    // ---- A swipe's level: the sun or the speaker, and a bar.
+    if PlayerData.level-kind != 0: Rectangle {
+        x: PlayerData.level-kind == 1 ? root.side-left + 6 * Theme.unit : parent.width - self.width - root.side-right - 6 * Theme.unit;
+        y: (parent.height - self.height) / 2;
+        width: 14 * Theme.unit;
+        height: 48 * Theme.unit;
+        border-radius: self.width / 2;
+        background: #08090bb3;
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: 4 * Theme.unit;
+            width: 1.5 * Theme.unit;
+            height: parent.height - 18 * Theme.unit;
+            border-radius: self.width / 2;
+            background: Theme.line;
+            Rectangle {
+                y: parent.height * (1 - Math.clamp(PlayerData.level, 0, 1));
+                height: parent.height * Math.clamp(PlayerData.level, 0, 1);
+                border-radius: parent.border-radius;
+                background: Theme.text;
+            }
+        }
+        Image {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 4 * Theme.unit;
+            width: 5.5 * Theme.unit;
+            height: self.width;
+            source: PlayerData.level-kind == 1 ? @image-url("icons/sun.svg") : @image-url("icons/volume-2.svg");
+            colorize: Theme.text;
+        }
+    }
+
+    // ---- Held for double speed.
+    if PlayerData.holding: Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: root.inset-top + 6 * Theme.unit;
+        width: hold-row.preferred-width + 6 * Theme.unit;
+        height: 10 * Theme.unit;
+        border-radius: self.height / 2;
+        background: #08090bb3;
+        hold-row := HorizontalLayout {
+            alignment: center;
+            spacing: 2 * Theme.unit;
+            Image {
+                y: (parent.height - self.height) / 2;
+                width: 4.5 * Theme.unit;
+                height: self.width;
+                source: @image-url("icons/fast-forward.svg");
+                colorize: Theme.text;
+            }
+            Text {
+                vertical-alignment: center;
+                text: "2× speed";
+                color: Theme.text;
+                font-family: Theme.figure;
+            }
+        }
+    }
+
     // ---- Replay: keep-open holds the last frame, and this sits on it.
     if PlayerData.replay: Button {
         x: (parent.width - self.width) / 2;
+        width: self.min-width;
         y: (parent.height - self.height) / 2;
         primary: true;
         has-icon: true;
@@ -746,4 +909,39 @@ export component PlayerPage inherits Rectangle {
     }
 
     if PlayerData.picker != 0: Picker { }
+
+    // ---- Locked: nothing under this takes a touch, the replay, the notice and the
+    // pickers included; a tap shows Unlock for a moment. It is last, so it lies on top.
+    if PlayerData.locked: TouchArea {
+        clicked => {
+            lock-hint.shown = true;
+            lock-hint-hide.running = false;
+            lock-hint-hide.running = true;
+        }
+    }
+    lock-hint-hide := Timer {
+        interval: 2500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            lock-hint.shown = false;
+        }
+    }
+    lock-hint := Button {
+        in-out property <bool> shown;
+        x: (parent.width - self.width) / 2;
+        width: self.min-width;
+        y: parent.height - self.height - root.inset-bottom - 2 * Theme.grout;
+        visible: PlayerData.locked && self.shown;
+        has-icon: true;
+        icon: @image-url("icons/lock-open.svg");
+        text: "Unlock";
+        primary: true;
+        clicked => {
+            PlayerData.locked = false;
+            self.shown = false;
+            PlayerData.chrome = true;
+            PlayerData.touched();
+        }
+    }
 }

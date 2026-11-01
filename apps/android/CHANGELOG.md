@@ -10,6 +10,31 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.4.0 · 2026-11-01
+
+### New
+- Lock the player so a stray touch does nothing
+- Swipe up or down on the left for brightness, on the right for volume
+- Hold the picture to play at 2x until you let go
+- Hold a poster to get or delete its episodes
+- Tap a missing episode to find it in Downloads
+- Search fields have a clear button
+- Refresh your computer's library, and check repos for new sites
+- A download stopped by an error offers Retry
+
+### Changed
+- Paused, the player keeps its controls up
+- Skip intro and Skip outro stay up while the controls hide
+- Tap anywhere on a switch row to flip it
+- Back leaves delete mode before it leaves the show
+- Settings say search sites instead of endpoints, and plain words for the rest
+
+### Fixed
+- A long search wraps instead of running off the screen
+- Storage says how much the episodes use
+- A failed sign-in says why
+- No more "Nothing on this phone yet" while the app starts
+
 ## 2.3.0 · 2026-11-01
 
 ### New

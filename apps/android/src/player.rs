@@ -277,6 +277,13 @@ struct Player {
     /// mpv's track list as it last came, for the track numbers a cast names.
     track_json: String,
     look: Timer,
+    /// A swipe under way: brightness (1) or volume (2), where it started, and the level last
+    /// applied.
+    adjusting: Option<(i32, f32, f32)>,
+    /// The swipe's level hides a moment after the finger lifts.
+    level_hide: Timer,
+    /// The speed to go back to when a long press lets go.
+    held_from: Option<String>,
 }
 
 thread_local! {
@@ -334,6 +341,11 @@ pub fn install(window: &AppWindow) {
     d.on_notice_clicked(|| with_player(|p| p.notice_clicked()));
     d.on_touched(|| with_player(|p| p.show_chrome()));
     d.on_cast(|| with_player(|p| p.open_picker(4)));
+    d.on_adjust_start(|kind| with_player(|p| p.adjust_start(kind)));
+    d.on_adjust(|by| with_player(|p| p.adjust(by)));
+    d.on_adjust_end(|| with_player(|p| p.adjust_end()));
+    d.on_hold(|on| with_player(|p| p.hold(on)));
+    d.on_relift(|| with_player(|p| p.lift_subtitles()));
 
     let weak = window.as_weak();
     let r = window.window().set_rendering_notifier(move |state, _api| match state {
@@ -512,6 +524,8 @@ fn begin(
         d.set_picker(0);
         d.set_chrome(true);
         d.set_preview(slint::Image::default());
+        d.set_holding(false);
+        d.set_level_kind(0);
     });
     crate::android::player_screen(true);
 
@@ -547,6 +561,9 @@ fn begin(
         cast_on_load: PENDING_CAST.with(|c| c.borrow_mut().take()),
         track_json: String::new(),
         look: Timer::default(),
+        adjusting: None,
+        level_hide: Timer::default(),
+        held_from: None,
     };
     player.start();
     player.show_cast();
@@ -634,6 +651,14 @@ pub fn close_page(reason: CloseReason) {
     if !switching {
         crate::android::player_awake(false);
         crate::android::player_screen(false);
+        // A swipe's brightness was for the episode; the phone's own comes back with the page,
+        // and so does a phone that is not locked. The lock holds across episodes.
+        crate::android::set_brightness(-1.0);
+        WINDOW.with(|w| {
+            if let Some(w) = w.borrow().as_ref() {
+                data(w, |d| d.set_locked(false));
+            }
+        });
     }
     WINDOW.with(|w| {
         if let Some(w) = w.borrow().as_ref() {
@@ -751,7 +776,7 @@ impl Player {
         let mut pos = self.sub_pos_setting;
         self.d(|d| {
             let (top, height) = (d.get_controls_top(), d.get_page_height());
-            if d.get_chrome() && height > 0.0 && top > 0.0 {
+            if d.get_chrome() && !d.get_locked() && height > 0.0 && top > 0.0 {
                 pos = pos.min((100.0 * (top - 12.0) / height).floor() as f64).max(0.0);
             }
         });
@@ -928,6 +953,11 @@ impl Player {
                 if was != p {
                     self.send_tick();
                     crate::android::player_awake(!p && self.rules.loaded);
+                    let mut shown = false;
+                    self.d(|d| shown = d.get_chrome());
+                    if !p && shown {
+                        self.show_chrome();
+                    }
                 }
                 // A pause stops the countdown; playing back into the zone starts it again.
                 if p && let Some(step) = self.rules.stop_count() {
@@ -1010,6 +1040,7 @@ impl Player {
             let _ = core.call(Call::CastStop);
         }
         send(&self.host, Call::ClosePlayback { session: self.session.session, position: self.rules.position, reason });
+
         crate::local::touch();
     }
 
@@ -1107,10 +1138,71 @@ impl Player {
                     p.show_chrome();
                     return;
                 }
+                // Paused, here or on the TV, the controls stay, and are looked at again in
+                // 2.5 s, so they hide once it plays on whichever way it was started.
+                let paused = match &p.cast {
+                    Some(c) => c.state != CastPlayState::Playing,
+                    None => p.paused,
+                };
+                if paused {
+                    p.show_chrome();
+                    return;
+                }
                 p.d(|d| d.set_chrome(false));
                 p.lift_subtitles();
             })
         });
+    }
+
+    fn adjust_start(&mut self, kind: i32) {
+        let base = if kind == 1 { crate::android::brightness() } else { crate::android::volume() };
+        self.adjusting = Some((kind, base, base));
+        self.level_hide.stop();
+        self.d(|d| {
+            d.set_level_kind(kind);
+            d.set_level(base);
+        });
+    }
+
+    fn adjust(&mut self, by: f32) {
+        let Some((kind, base, last)) = self.adjusting else { return };
+        let level = (base + by).clamp(0.0, 1.0);
+        self.d(|d| d.set_level(level));
+        // A drag moves many times a second; the phone is only told when it shows.
+        if level == last || ((level - last).abs() < 0.02 && level != 0.0 && level != 1.0) {
+            return;
+        }
+        self.adjusting = Some((kind, base, level));
+        if kind == 1 {
+            crate::android::set_brightness(level);
+        } else {
+            crate::android::set_volume(level);
+        }
+    }
+
+    fn adjust_end(&mut self) {
+        self.adjusting = None;
+        let session = self.session.session;
+        self.level_hide.start(TimerMode::SingleShot, Duration::from_millis(700), move || {
+            with_player(|p| {
+                if p.session.session == session {
+                    p.d(|d| d.set_level_kind(0));
+                }
+            })
+        });
+    }
+
+    /// Double speed while a finger holds the picture, then the speed it had.
+    fn hold(&mut self, on: bool) {
+        if on {
+            if self.held_from.is_none() {
+                self.held_from = Some(self.mpv.get("speed").unwrap_or_else(|| "1".into()));
+                self.mpv.set("speed", "2");
+            }
+        } else if let Some(speed) = self.held_from.take() {
+            self.mpv.set("speed", &speed);
+        }
+        self.d(|d| d.set_holding(on));
     }
 
     fn show_skip(&self) {

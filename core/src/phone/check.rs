@@ -117,7 +117,7 @@ async fn host(
                 .collect::<Vec<_>>()
                 .join(", ");
             out.push(line(
-                format!("{label}: network DNS"),
+                format!("{label}: finding its address"),
                 !found.is_empty(),
                 shown,
                 ms(start),
@@ -125,20 +125,20 @@ async fn host(
             ips.extend(found);
         }
         Ok(Err(e)) => out.push(line(
-            format!("{label}: network DNS"),
+            format!("{label}: finding its address"),
             false,
             format!("failed: {e}"),
             ms(start),
         )),
         Err(_) => out.push(line(
-            format!("{label}: network DNS"),
+            format!("{label}: finding its address"),
             false,
             "no answer".into(),
             ms(start),
         )),
     }
 
-    let doh_line = format!("{label}: DNS over HTTPS");
+    let doh_line = format!("{label}: finding it privately");
     if name.parse::<IpAddr>().is_ok() {
         out.push(line(doh_line, true, "skipped, an address".into(), 0));
     } else if crate::net::doh::is_home_name(name) {
@@ -170,7 +170,7 @@ async fn host(
 
     for ip in ips.iter().filter(|ip| ip.is_ipv4()).take(3) {
         let (ok, detail, t) = tcp(*ip, port).await;
-        out.push(line(format!("{label}: connect {ip}"), ok, detail, t));
+        out.push(line(format!("{label}: reaching {ip}"), ok, detail, t));
     }
 
     let start = Instant::now();

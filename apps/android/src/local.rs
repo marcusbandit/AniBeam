@@ -17,6 +17,13 @@ pub const LIBRARY_DIR: &str = "Anime";
 
 /// Set by any event that can change what a page shows; the UI's clock reads and clears it.
 static CHANGED: AtomicBool = AtomicBool::new(true);
+/// The last sign-in job that failed, and why, once, for More to say.
+static SIGN_IN_FAILED: std::sync::Mutex<Option<(u64, String)>> = std::sync::Mutex::new(None);
+
+/// The last sign-in job that failed and why, if one did since this was last asked.
+pub fn sign_in_failed() -> Option<(u64, String)> {
+    SIGN_IN_FAILED.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
 
 /// Whether the core said something since the last call.
 pub fn take_changed() -> bool {
@@ -39,6 +46,11 @@ impl EventListener for Logcat {
     fn on_event(&self, event: Event) {
         if let EventBody::AuthUrlReady { open_url, .. } = &event.body {
             crate::android::open_url(open_url);
+        }
+        if let (EventBody::JobFailed { error }, Some(job)) = (&event.body, &event.job)
+            && job.kind == anibeam_core::JobKind::ConnectTracker
+        {
+            *SIGN_IN_FAILED.lock().unwrap_or_else(|e| e.into_inner()) = Some((job.id, error.to_string()));
         }
         crate::player::core_event(&event.body);
         // Debug events are progress chatter; the state changes the pages show come as Info

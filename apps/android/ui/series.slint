@@ -75,10 +75,17 @@ component EpisodeItem inherits Rectangle {
     }
     // A whole episode plays at a tap, streamed when it is the other device's, or is
     // picked while deleting.
+    // An aired episode this phone's show lacks opens Downloads on the show. Upcoming ones
+    // carry no note, and the other device's show is got on that device.
+    property <bool> gettable: root.data.file == 0 && root.data.note != "" && (AppData.device == 0 || Nav.page == 0);
     touch := TouchArea {
-        enabled: root.data.file != 0;
+        enabled: root.data.file != 0 || (root.gettable && !AppData.deleting);
         clicked => {
-            if (root.data.remote) {
+            if (root.data.file == 0) {
+                FindData.find-series(AppData.series.id);
+                AppData.close-series();
+                Nav.page = 2;
+            } else if (root.data.remote) {
                 AppData.play-remote(root.data.file);
             } else if (AppData.deleting) {
                 AppData.toggle-delete(root.data.file);

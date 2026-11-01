@@ -118,7 +118,7 @@ export component CustomAdd inherits Rectangle {
         HorizontalLayout {
             alignment: start;
             Button {
-                text: "Add endpoint";
+                text: "Add site";
                 small: true;
                 enabled: RepoData.custom-name != "" && RepoData.custom-url != "";
                 clicked => { RepoData.add-custom(RepoData.custom-name, RepoData.custom-url); }
@@ -214,7 +214,7 @@ component RepoPreview inherits Rectangle {
             wrap: word-wrap;
         }
         Text {
-            text: "Its endpoints decide where your searches go. Trust a repo only from someone you trust.";
+            text: "Its sites decide where your searches go. Trust a repo only from someone you trust.";
             color: Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;
@@ -494,6 +494,17 @@ export component EndpointItem inherits Rectangle {
 // The repos, then what they offer: More shows all of it, the first run the same list.
 export component RepoPanes inherits VerticalLayout {
     spacing: Theme.unit * 4;
+    // Each repo's list is read again, for sites it added or changed.
+    if RepoData.repos.length > 0: HorizontalLayout {
+        alignment: start;
+        Button {
+            text: "Check repos for new sites";
+            icon: @image-url("icons/refresh-cw.svg");
+            has-icon: true;
+            small: true;
+            clicked => { RepoData.refresh(); }
+        }
+    }
     Rectangle {
         background: Theme.surface;
         border-radius: Theme.radius;

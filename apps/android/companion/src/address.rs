@@ -22,7 +22,7 @@ impl HostAddress {
             }
         }
         if rest.starts_with("https://") {
-            return Err("The host serves plain HTTP inside the tailnet; drop the https://.".into());
+            return Err("Your computer's AniBeam answers on plain http over Tailscale; drop the https://.".into());
         }
         let rest = rest.split('/').next().unwrap_or("");
         if rest.is_empty() {

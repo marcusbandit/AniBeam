@@ -6,7 +6,7 @@
 // lenses into what there is to get: Gaps, Airing, Following, Downloaded.
 
 import { Theme } from "theme.slint";
-import { Tile } from "data.slint";
+import { Nav, Tile } from "data.slint";
 import { Button, Chip, ClampedText, Cubes, EmptyNote, Field, ListGroup, Pane, PageTitle, Poster, SectionHead, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
 
 // One source in the show view: its name and what asking it gave.
@@ -409,8 +409,16 @@ export component ShowView inherits VerticalLayout {
         }
     }
     if FindData.sources.length == 0: EmptyNote {
-        title: "No sources on";
-        body: "Switch on nyaa or erai, or add an RSS feed, in More.";
+        title: "No search sites yet";
+        body: "Add a repo of search sites, or a feed of your own, in More.";
+    }
+    if FindData.sources.length == 0: HorizontalLayout {
+        alignment: start;
+        Button {
+            text: "Open More";
+            small: true;
+            clicked => { Nav.page = 3; }
+        }
     }
 
     if FindData.rows.length > 0: SectionHead {

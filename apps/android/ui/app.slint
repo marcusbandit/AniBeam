@@ -64,6 +64,61 @@ component MobileDataQuestion inherits Rectangle {
     }
 }
 
+// A poster held down: what can be done to the show without opening it.
+component ShowMenu inherits Rectangle {
+    in property <length> inset-bottom;
+    background: #000000b0;
+    TouchArea { clicked => { Ask.menu-id = -1; } }
+    Rectangle {
+        x: Theme.grout;
+        width: parent.width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        height: body.preferred-height;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
+            spacing: Theme.unit * 3;
+            Text {
+                text: Ask.menu-title;
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            Rectangle { height: Theme.unit; }
+            Button {
+                text: "Get episodes";
+                icon: @image-url("icons/download.svg");
+                has-icon: true;
+                primary: true;
+                clicked => {
+                    FindData.find-series(Ask.menu-id);
+                    Ask.menu-id = -1;
+                    Nav.page = 2;
+                }
+            }
+            Button {
+                text: "Delete episodes";
+                danger: true;
+                clicked => {
+                    AppData.open-series(Ask.menu-id);
+                    AppData.start-delete();
+                    Ask.menu-id = -1;
+                }
+            }
+            Button {
+                text: "Cancel";
+                clicked => { Ask.menu-id = -1; }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "AniBeam";
     background: Theme.ground;
@@ -129,8 +184,11 @@ export component AppWindow inherits Window {
                 PlayerData.close-picker();
                 return accept;
             }
+            // Locked, back does nothing either: an edge swipe is the stray touch most likely.
             if (PlayerData.open) {
-                PlayerData.back();
+                if (!PlayerData.locked) {
+                    PlayerData.back();
+                }
                 return accept;
             }
             if (AppData.notes-open) {
@@ -141,8 +199,16 @@ export component AppWindow inherits Window {
                 Ask.mobile = false;
                 return accept;
             }
+            if (Ask.menu-id >= 0) {
+                Ask.menu-id = -1;
+                return accept;
+            }
             if (AppData.onboarding && AppData.step > 0) {
                 AppData.step -= 1;
+                return accept;
+            }
+            if (AppData.series-open && AppData.deleting) {
+                AppData.cancel-delete();
                 return accept;
             }
             if (AppData.series-open) {
@@ -223,6 +289,10 @@ export component AppWindow inherits Window {
         }
 
         if Ask.mobile: MobileDataQuestion {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if Ask.menu-id >= 0: ShowMenu {
             inset-bottom: root.inset-bottom;
         }
 

@@ -195,6 +195,8 @@ export global AppData {
 
     // Onboarding, over everything until it is done.
     in property <bool> onboarding;
+    // The phone's library has been read once: until then an empty list means nothing yet.
+    in property <bool> ready;
     in-out property <int> step;
     in property <string> anilist-state;
     in property <string> mal-state;
