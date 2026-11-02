@@ -304,17 +304,66 @@ impl Native {
     }
 }
 
-/// A URL with any key in it cut short, for a list a person reads.
+/// Query parameters that hold a secret, with the label a person reads for each. A source
+/// added by hand has these lifted out of its address, a listed address has them masked, and
+/// the tailnet snapshot leaves them out. Names match case-insensitively.
+pub const SECRET_PARAMS: [(&str, &str); 15] = [
+    ("apikey", "API key"),
+    ("api_key", "API key"),
+    ("jackett_apikey", "API key"),
+    ("token", "Token"),
+    ("passkey", "Passkey"),
+    ("torrent_pass", "Passkey"),
+    ("rsskey", "RSS key"),
+    ("authkey", "Auth key"),
+    ("auth", "Auth key"),
+    ("key", "Key"),
+    ("secret", "Secret"),
+    ("sig", "Signature"),
+    ("pass", "Password"),
+    ("password", "Password"),
+    ("uid", "User id"),
+];
+
+/// The label of a query parameter that holds a secret; None for any other.
+pub fn secret_param(name: &str) -> Option<&'static str> {
+    SECRET_PARAMS
+        .iter()
+        .find(|(p, _)| p.eq_ignore_ascii_case(name))
+        .map(|(_, label)| *label)
+}
+
+/// A URL with any key in it cut short, for a list a person reads: the value of each secret
+/// query parameter, and the password of a `user:password@` login.
 pub fn mask(url: &str) -> String {
-    let mut out = url.to_string();
-    for key in ["token=", "apikey=", "passkey=", "api_key="] {
-        let mut from = 0;
-        while let Some(at) = out[from..].find(key) {
-            let start = from + at + key.len();
-            let end = out[start..].find('&').map_or(out.len(), |e| start + e);
-            out.replace_range(start..end, "...");
-            from = start + 3;
+    let (base, query) = match url.split_once('?') {
+        Some((b, q)) => (b, Some(q)),
+        None => (url, None),
+    };
+    let hidden = |part: &str| part.is_empty() || part.starts_with('{');
+    let mut out = match crate::repos::index::split_login(base) {
+        Some((scheme, login, host)) => {
+            let login = match login.split_once(':') {
+                Some((user, pw)) if !hidden(pw) => format!("{user}:..."),
+                Some((user, pw)) if !hidden(user) => format!("...:{pw}"),
+                None if !hidden(login) => "...".to_string(),
+                _ => login.to_string(),
+            };
+            format!("{scheme}{login}@{host}")
         }
+        None => base.to_string(),
+    };
+    if let Some(query) = query {
+        let pairs: Vec<String> = query
+            .split('&')
+            .map(|pair| match pair.split_once('=') {
+                Some((k, v)) if secret_param(k).is_some() && !v.starts_with('{') => {
+                    format!("{k}=...")
+                }
+                _ => pair.to_string(),
+            })
+            .collect();
+        out = format!("{out}?{}", pairs.join("&"));
     }
     out
 }
@@ -367,6 +416,24 @@ mod tests {
         assert_eq!(
             mask("https://x/feed/?s={query}&token=abc&res=1080p"),
             "https://x/feed/?s={query}&token=...&res=1080p"
+        );
+    }
+
+    #[test]
+    fn every_key_name_and_a_login_are_masked_whatever_their_case() {
+        assert_eq!(
+            mask("https://me:pw@x/rss?q={query}&RssKey=a&authkey=b&key=c&monkey=d"),
+            "https://me:...@x/rss?q={query}&RssKey=...&authkey=...&key=...&monkey=d"
+        );
+        assert_eq!(mask("https://tok@x/rss"), "https://...@x/rss");
+        assert_eq!(mask("https://tok:@x/rss"), "https://...:@x/rss");
+        assert_eq!(
+            mask("https://x/rss?uid=1&PASS=2&q={query}"),
+            "https://x/rss?uid=...&PASS=...&q={query}"
+        );
+        assert_eq!(
+            mask("https://x/rss?q={query}&passkey={passkey}"),
+            "https://x/rss?q={query}&passkey={passkey}"
         );
     }
 }

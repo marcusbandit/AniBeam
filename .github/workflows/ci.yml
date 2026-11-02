@@ -48,5 +48,11 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
 
+      # Only the phone build compiles the core's phone and cast features, and no other
+      # workflow builds the phone, so without this a desktop change can break the APK and
+      # stay green (#309). The host target is enough: these features need no NDK.
+      - name: Clippy (phone features)
+        run: cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
+
       - name: Test
         run: cargo test --locked -p anibeam-core -p anibeam-host-api -p anibeam-cli

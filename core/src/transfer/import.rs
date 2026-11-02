@@ -520,20 +520,22 @@ async fn import_history(
             let mut views = 0u64;
             for view in &history.views {
                 let (Some(row), Some(at)) = (series.get(&normalise(&view.series)), format::parse_instant(&view.at)) else { continue };
+                let Some(key) = row.entry_key(view.last_episode, view.season, view.file.as_deref()) else { continue };
                 views += tx.execute(
                     "INSERT INTO views (series_id, episode_key, at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
                      WHERE excluded.at > views.at",
-                    params![row.id as i64, row.key(view.last_episode, view.season), at],
+                    params![row.id as i64, key, at],
                 )? as u64;
             }
             let mut completed = 0u64;
             for entry in &history.completed {
                 let (Some(row), Some(at)) = (series.get(&normalise(&entry.series)), format::parse_instant(&entry.at)) else { continue };
+                let Some(key) = row.entry_key(entry.episode, entry.season, entry.file.as_deref()) else { continue };
                 completed += tx.execute(
                     "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(series_id, episode_key) DO UPDATE SET at = excluded.at WHERE excluded.at > completed.at",
-                    params![row.id as i64, row.key(entry.episode, entry.season), at],
+                    params![row.id as i64, key, at],
                 )? as u64;
             }
             let mut resume = 0u64;
@@ -574,6 +576,19 @@ impl HistorySeries {
             SeriesKind::Movie => file_name(&self.path),
             SeriesKind::Show => classifier::number_key(season, number),
         }
+    }
+
+    /// The key a view or a completed entry lands on. One that names a file
+    /// keys by its name when the file sits inside this show's folder; a
+    /// file anywhere else matches no episode here, so the entry is skipped
+    /// rather than landing on a number it never had.
+    fn entry_key(&self, number: f64, season: Option<u32>, file: Option<&str>) -> Option<String> {
+        let Some(file) = file else {
+            return Some(self.key(number, season));
+        };
+        let file = normalise(file);
+        (self.kind == SeriesKind::Show && file != self.path && under(&file, &self.path))
+            .then(|| file_name(&file))
     }
 }
 
@@ -837,6 +852,33 @@ mod tests {
         assert_eq!(show.key(12.0, None), "12");
         assert_eq!(show.key(12.5, None), "12.5");
         assert_eq!(show.key(1.0, Some(2)), "S02E01");
+    }
+
+    /// An entry that names a file keys by it only when the show owns the
+    /// file, and is skipped otherwise; one without keys by number.
+    #[test]
+    fn an_entry_by_file_keys_by_name_inside_its_show_only() {
+        let show = HistorySeries {
+            id: 2,
+            kind: SeriesKind::Show,
+            path: "/lib/Show".to_string(),
+        };
+        assert_eq!(
+            show.entry_key(0.0, None, Some("/lib/Show/NCOP1.mkv")),
+            Some("NCOP1.mkv".to_string())
+        );
+        assert_eq!(show.entry_key(0.0, None, Some("/old/Show/NCOP1.mkv")), None);
+        assert_eq!(show.entry_key(0.0, None, Some("/lib/Show")), None);
+        assert_eq!(show.entry_key(12.0, None, None), Some("12".to_string()));
+        let film = HistorySeries {
+            id: 3,
+            kind: SeriesKind::Movie,
+            path: "/lib/Movies/Film.mkv".to_string(),
+        };
+        assert_eq!(
+            film.entry_key(0.0, None, None),
+            Some("Film.mkv".to_string())
+        );
     }
 
     /// A resume point keyed by file lands on the series that owns the

@@ -63,6 +63,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings say search sites instead of endpoints, and plain words for the rest
 
 ### Fixed
+- Seeders and leechers show for trackers whose address carries a passkey
+- Next from a season's last episode plays the next season's first
 - A series page beside Home no longer drags sideways
 - Opening a folded phone a little no longer splits the outer screen's player
 - The Library's device switch keeps its highlight under the label on a bend
@@ -75,6 +77,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Storage says how much the episodes use
 - A failed sign-in says why
 - No more "Nothing on this phone yet" while the app starts
+- A password or key in a site's address is stored as a secret, not in the open
 
 ## 2.2.0 · 2026-10-31
 

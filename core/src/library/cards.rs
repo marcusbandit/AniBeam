@@ -705,8 +705,9 @@ impl Snapshot {
             .map(|f| (season_of(f), f.number.to_bits()))
             .collect::<HashSet<_>>()
             .len() as u64;
-        SeriesCard {
+        let mut card = SeriesCard {
             id: row.id,
+            film: false,
             kind: row.kind,
             path: row.path.clone(),
             title: self.title_of(row),
@@ -847,7 +848,9 @@ impl Snapshot {
             imdb_id: imdb.map(|p| format!("tt{:07}", p.id)),
             imdb_score: imdb.and_then(|p| p.rating).map(|t| f64::from(t) / 10.0),
             imdb_votes: imdb.and_then(|p| p.votes),
-        }
+        };
+        card.film = is_film(&card);
+        card
     }
 
     fn title_of(&self, row: &SeriesRow) -> String {
@@ -1177,6 +1180,7 @@ mod tests {
             },
             poster: None,
             format: None,
+            film: false,
             genres: Vec::new(),
             status: Some(AiringStatus::Finished),
             hidden: false,
