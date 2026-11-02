@@ -292,7 +292,7 @@ fn unfiltered(ep: &Endpoint) -> Endpoint {
 }
 
 /// Whether `items` are what an endpoint found only with its filter off.
-fn found_unfiltered(items: &[Release]) -> bool {
+pub fn found_unfiltered(items: &[Release]) -> bool {
     !items.is_empty() && items.iter().all(|it| it.source.ends_with(ALL_UPLOADS))
 }
 
@@ -451,30 +451,63 @@ pub fn filter_excluded(items: Vec<Release>, terms: &[String]) -> Vec<Release> {
 
 /// Fetch `query` from `ep`. Errors are the feed's: unreachable, refused or unreadable. A nyaa
 /// endpoint whose filter finds nothing is asked again unfiltered, and those results carry
-/// `source` "<name>: all uploads".
+/// `source` "<name>: all uploads". When that second request fails, the answer stays the
+/// first one: nothing found.
 pub async fn fetch_items(
+    http: &dyn Http,
+    ep: &Endpoint,
+    query: &str,
+) -> Result<Vec<Release>, CoreError> {
+    let items = fetch_exact(http, ep, query).await?;
+    if ep.kind != "nyaa" || !items.is_empty() || matches!(ep.filter.as_str(), "" | "0") {
+        return Ok(items);
+    }
+    // A show nobody trusted has uploaded (or that trusted groups name differently)
+    // would vanish behind "trusted only": ask again for every upload, and say so.
+    Ok(fetch_all_uploads(http, ep, query).await.unwrap_or_default())
+}
+
+/// `query` from `ep` with its nyaa filter off, tagged "<name>: all uploads".
+async fn fetch_all_uploads(
+    http: &dyn Http,
+    ep: &Endpoint,
+    query: &str,
+) -> Result<Vec<Release>, CoreError> {
+    let items = fetch_exact(http, &unfiltered(ep), query).await?;
+    let tag = format!("{}{ALL_UPLOADS}", ep.name);
+    Ok(items
+        .into_iter()
+        .map(|mut it| {
+            it.source = tag.clone();
+            it
+        })
+        .collect())
+}
+
+/// What a refine refetches with: the filter the list it narrows was found with
+/// (`all_uploads`, from `found_unfiltered`), and no unfiltered retry, so narrowing a trusted
+/// list never comes back with untrusted uploads.
+pub async fn refetch(
+    http: &dyn Http,
+    ep: &Endpoint,
+    query: &str,
+    all_uploads: bool,
+) -> Result<Vec<Release>, CoreError> {
+    if ep.kind == "nyaa" && all_uploads {
+        return fetch_all_uploads(http, ep, query).await;
+    }
+    fetch_exact(http, ep, query).await
+}
+
+/// One fetch of `query` from `ep`, exactly as configured.
+async fn fetch_exact(
     http: &dyn Http,
     ep: &Endpoint,
     query: &str,
 ) -> Result<Vec<Release>, CoreError> {
     let timeout = seconds(ep.timeout);
     if ep.kind == "nyaa" {
-        let items = fetch::fetch_rss(http, &search_url(ep, query), &ep.name, timeout).await?;
-        if !items.is_empty() || matches!(ep.filter.as_str(), "" | "0") {
-            return Ok(items);
-        }
-        // A show nobody trusted has uploaded (or that trusted groups name differently)
-        // would vanish behind "trusted only": ask again for every upload, and say so.
-        let items =
-            fetch::fetch_rss(http, &search_url(&unfiltered(ep), query), &ep.name, timeout).await?;
-        let tag = format!("{}{ALL_UPLOADS}", ep.name);
-        return Ok(items
-            .into_iter()
-            .map(|mut it| {
-                it.source = tag.clone();
-                it
-            })
-            .collect());
+        return fetch::fetch_rss(http, &search_url(ep, query), &ep.name, timeout).await;
     }
     if ep.kind == "tosho" {
         // Exclusions are applied here: AnimeTosho's search does not take `-tag`.
@@ -912,6 +945,46 @@ pub(crate) mod tests {
                 .is_empty()
         );
         assert_eq!(http.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_failed_unfiltered_retry_still_answers_nothing_found() {
+        let trusted = Endpoint {
+            filter: "2".to_string(),
+            ..nyaa()
+        };
+        let http = FakeHttp::new();
+        http.push(200, feed(&[]));
+        http.push(503, "busy");
+        let items = fetch_items(http.as_ref(), &trusted, "show").await.unwrap();
+        assert!(items.is_empty());
+        assert_eq!(http.requests().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_refine_refetches_with_the_filter_its_list_was_found_with() {
+        let trusted = Endpoint {
+            filter: "2".to_string(),
+            ..nyaa()
+        };
+        // A trusted list narrowed to nothing stays nothing: no unfiltered retry.
+        let http = FakeHttp::new();
+        http.push(200, feed(&[]));
+        let items = refetch(http.as_ref(), &trusted, "show -HEVC", false)
+            .await
+            .unwrap();
+        assert!(items.is_empty());
+        let sent: Vec<String> = http.requests().iter().map(|r| f_param(&r.url)).collect();
+        assert_eq!(sent, ["2"]);
+
+        // An all-uploads list is narrowed among all uploads and keeps its marker.
+        let http = FakeHttp::new();
+        http.push(200, feed(&[("[g] show - 05", "l")]));
+        let items = refetch(http.as_ref(), &trusted, "show -HEVC", true)
+            .await
+            .unwrap();
+        assert_eq!(f_param(&http.requests()[0].url), "0");
+        assert_eq!(items[0].source, "nyaa: all uploads");
     }
 
     #[tokio::test]

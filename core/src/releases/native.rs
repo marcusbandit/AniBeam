@@ -260,11 +260,12 @@ impl Native {
     ) -> Result<Refinement, CoreError> {
         let ep = self.endpoint(Some(endpoint))?.clone();
         let http = self.http.clone();
+        let all_uploads = endpoints::found_unfiltered(items);
         // Typed as the callback so the closure is generic over the borrows it is given.
         let fetch: Box<refinement::FetchFn<'_>> = Box::new(move |ep: &Endpoint, q: &str| {
             let http = http.clone();
             let (ep, q) = (ep.clone(), q.to_string());
-            Box::pin(async move { endpoints::fetch_items(http.as_ref(), &ep, &q).await })
+            Box::pin(async move { endpoints::refetch(http.as_ref(), &ep, &q, all_uploads).await })
         });
         let outcome =
             refinement::apply(&ep, query, items, op, &self.bestfit, fetch.as_ref(), None).await?;
