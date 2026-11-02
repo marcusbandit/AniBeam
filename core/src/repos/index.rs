@@ -231,8 +231,7 @@ impl Definition {
 pub const HOST_KEY: &str = "host";
 
 /// Whether `value` may stand in for `{host}`: a host or host:port and nothing that could
-/// carry a path, a login or another placeholder. No bracketed IPv6 literal, which `host_of`
-/// cannot read.
+/// carry a path, a login or another placeholder. No bracketed IPv6 literal.
 pub fn bare_host(value: &str) -> bool {
     // One colon at most: a bare IPv6 address cannot sit in an address unbracketed.
     !value.is_empty()
@@ -242,18 +241,27 @@ pub fn bare_host(value: &str) -> bool {
         })
 }
 
-/// The authority of an http(s) address as written, between `://` and the path.
+/// The authority of an http(s) address as written, between `://` and the path. A backslash
+/// ends it too, as the HTTP client reads it.
 pub fn authority_of(url: &str) -> &str {
     let rest = url.split_once("://").map_or("", |(_, r)| r);
-    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let end = rest.find(['/', '?', '#', '\\']).unwrap_or(rest.len());
     &rest[..end]
 }
 
-/// The host of an http(s) address, lower case; empty when there is none.
+/// The host of an http(s) address, lower case, without port; empty when there is none.
+/// An IPv6 literal comes back without its brackets.
 pub fn host_of(url: &str) -> String {
     let host = authority_of(url);
     let host = host.rsplit_once('@').map_or(host, |(_, h)| h);
-    host.split(':').next().unwrap_or("").to_lowercase()
+    let host = match host.strip_prefix('[') {
+        Some(rest) => match rest.split_once(']') {
+            Some((inner, after)) if after.is_empty() || after.starts_with(':') => inner,
+            _ => "",
+        },
+        None => host.split(':').next().unwrap_or(""),
+    };
+    host.to_lowercase()
 }
 
 /// A short hash of a key for people to compare: the first 16 bytes of its SHA-256, in groups.
@@ -948,6 +956,20 @@ pub(crate) mod tests {
         assert_eq!(fill("evil.example/x"), None);
         assert_eq!(fill("me@evil.example"), None);
         assert_eq!(fill(""), None);
+    }
+
+    #[test]
+    fn host_of_reads_a_bracketed_ipv6_host() {
+        assert_eq!(host_of("http://[fd00::1]:9696/"), "fd00::1");
+        assert_eq!(host_of("http://[fd00::1]/x"), "fd00::1");
+        assert_eq!(host_of("http://[FD00::1]/x"), "fd00::1");
+        assert_eq!(host_of("http://user:pw@[::1]:8080/"), "::1");
+        assert_eq!(host_of("https://Example.com:443/a"), "example.com");
+        assert_eq!(host_of("http://user:pw@host:9696"), "host");
+        assert_eq!(host_of("no-scheme:80"), "");
+        assert_eq!(host_of("http://evil.com\\@127.0.0.1/"), "evil.com");
+        assert_eq!(host_of("http://[::1]evil.com/"), "");
+        assert_eq!(host_of("http://[::1/"), "");
     }
 
     #[test]
