@@ -453,6 +453,7 @@ mod tests {
         assert_eq!(bytes(&json!("1.5 GB")), Some(1_610_612_736));
         assert_eq!(bytes(&json!(1.0e30)), None);
         assert_eq!(bytes(&json!("1e30")), None);
+        assert_eq!(bytes(&json!("99999999999 TiB")), None);
         assert_eq!(bytes(&json!(-1)), None);
         assert_eq!(bytes(&json!("big")), None);
     }
