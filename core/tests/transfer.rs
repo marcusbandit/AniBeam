@@ -455,3 +455,123 @@ fn a_newer_document_and_an_unreadable_one_fail_at_once() {
         matches!(core.call(Call::Import { path: missing }), Err(CoreError::Invalid { field, .. }) if field == "path")
     );
 }
+
+#[test]
+fn a_view_of_an_extra_keeps_its_file_through_a_round_trip() {
+    let (dir, core, c) = common::open_core();
+    let path = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
+    let job = started(core.call(Call::Import { path }).unwrap());
+    common::wait_job(&c, job);
+
+    // Frieren's latest session was its opening; the unmatched show's was
+    // an episode. Neither key goes through a shell call, so straight in.
+    core.store()
+        .tx(|tx| {
+            tx.execute_batch(
+                "INSERT INTO views (series_id, episode_key, at)
+                   SELECT id, 'NCOP1.mkv', 2000000000 FROM series WHERE path LIKE '%Sousou no Frieren'
+                   ON CONFLICT(series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at;
+                 INSERT INTO views (series_id, episode_key, at)
+                   SELECT id, '3', 2000000000 FROM series WHERE path LIKE '%Some Unmatched Folder';
+                 INSERT INTO completed (series_id, episode_key, at)
+                   SELECT id, 'NCOP1.mkv', 2000000000 FROM series WHERE path LIKE '%Sousou no Frieren';",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let before = views(&core);
+    assert_eq!(before.len(), 2);
+    assert!(
+        before
+            .iter()
+            .any(|(p, k)| p.ends_with("Sousou no Frieren") && k == "NCOP1.mkv")
+    );
+    assert!(
+        before
+            .iter()
+            .any(|(p, k)| p.ends_with("Some Unmatched Folder") && k == "3")
+    );
+
+    let out = dir.path().join("anibeam-export-full.json");
+    let out_path = out.to_string_lossy().into_owned();
+    let job = started(
+        core.call(Call::Export {
+            path: out_path.clone(),
+            private: true,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+    let (doc, ignored) = format::parse(&fs::read(&out).unwrap()).unwrap();
+    assert!(ignored.is_empty(), "{ignored:?}");
+    let history = doc.history.as_ref().unwrap();
+    assert!(
+        history
+            .views
+            .iter()
+            .any(|v| matches!(v, format::View::File { file, .. } if file.ends_with("NCOP1.mkv")))
+    );
+    assert!(
+        history.completed.iter().any(
+            |v| matches!(v, format::Completed::File { file, .. } if file.ends_with("NCOP1.mkv"))
+        )
+    );
+
+    let (_dir2, fresh, c2) = common::open_core();
+    let job = started(fresh.call(Call::Import { path: out_path }).unwrap());
+    let summary = summary_of(common::wait_job(&c2, job));
+    assert_eq!(summary.views_merged, 2);
+    assert_eq!(views(&fresh), before);
+    assert_eq!(completed(&fresh), completed(&core));
+    assert!(
+        completed(&fresh)
+            .iter()
+            .any(|(p, k)| p.ends_with("Sousou no Frieren") && k == "NCOP1.mkv")
+    );
+}
+
+/// A version 2 document from before the file shape: every view and
+/// completion in the series shape, a film's as episode 0.
+#[test]
+fn a_document_without_the_file_shape_still_imports() {
+    let (dir, core, c) = common::open_core();
+    let show = dir.path().join("Show").to_string_lossy().into_owned();
+    let film = dir.path().join("Film.mkv").to_string_lossy().into_owned();
+    let other = dir.path().join("Other").to_string_lossy().into_owned();
+    let at = "2026-08-30T21:04:11Z";
+    let doc = serde_json::json!({
+        "format": "anibeam-export",
+        "version": 2,
+        "private": true,
+        "sources": [{ "path": dir.path().to_string_lossy() }],
+        "series": [
+            { "kind": "series", "path": show, "match": null },
+            { "kind": "movie", "path": film, "match": null },
+            { "kind": "series", "path": other, "match": null }
+        ],
+        "history": {
+            "views": [
+                { "series": show, "lastEpisode": 12, "at": at },
+                { "series": film, "lastEpisode": 0, "at": at },
+                { "series": other, "lastEpisode": 1, "season": 2, "at": at }
+            ],
+            "completed": [
+                { "series": show, "episode": 12.5, "at": at },
+                { "series": film, "episode": 0, "at": at }
+            ],
+            "resumePoints": []
+        }
+    });
+    let path = write_document(dir.path(), "old.json", &doc.to_string());
+    let job = started(core.call(Call::Import { path }).unwrap());
+    let summary = summary_of(common::wait_job(&c, job));
+    assert!(
+        summary.fields_ignored.is_empty(),
+        "{:?}",
+        summary.fields_ignored
+    );
+    assert_eq!((summary.views_merged, summary.completed_merged), (3, 2));
+    let keys = |rows: Vec<(String, String)>| rows.into_iter().map(|(_, k)| k).collect::<Vec<_>>();
+    assert_eq!(keys(views(&core)), ["Film.mkv", "S02E01", "12"]);
+    assert_eq!(keys(completed(&core)), ["12.5", "Film.mkv"]);
+}

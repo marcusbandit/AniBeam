@@ -344,13 +344,20 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
             let Some(series) = by_id.get(&id) else {
                 continue;
             };
-            let (last_episode, season) = number_of(&key);
-            views.push(View {
-                series: series.path.clone(),
-                last_episode,
-                season,
-                at: Value::String(format::format_instant(at)),
-                extra: HashMap::new(),
+            let at = Value::String(format::format_instant(at));
+            views.push(match classifier::parse_episode_key(&key) {
+                Some((season, last_episode)) => View::Series {
+                    series: series.path.clone(),
+                    last_episode,
+                    season: later_season(season),
+                    at,
+                    extra: HashMap::new(),
+                },
+                // As a resume point: an extra has no number, so its file.
+                None => View::File {
+                    file: file_of(series, &key),
+                    at,
+                },
             });
         }
     }
@@ -372,13 +379,19 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
             let Some(series) = by_id.get(&id) else {
                 continue;
             };
-            let (episode, season) = number_of(&key);
-            completed.push(Completed {
-                series: series.path.clone(),
-                episode,
-                season,
-                at: Value::String(format::format_instant(at)),
-                extra: HashMap::new(),
+            let at = Value::String(format::format_instant(at));
+            completed.push(match classifier::parse_episode_key(&key) {
+                Some((season, episode)) => Completed::Series {
+                    series: series.path.clone(),
+                    episode,
+                    season: later_season(season),
+                    at,
+                    extra: HashMap::new(),
+                },
+                None => Completed::File {
+                    file: file_of(series, &key),
+                    at,
+                },
             });
         }
     }
@@ -431,16 +444,6 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
     })
 }
 
-/// The number and season a history key names. A film's key is its file
-/// name rather than a number, and the format writes 0 for it; season 1 is
-/// the format's default and is left out.
-fn number_of(key: &str) -> (f64, Option<u32>) {
-    match classifier::parse_episode_key(key) {
-        Some((season, number)) => (number, later_season(season)),
-        None => (0.0, None),
-    }
-}
-
 /// Season 1 is what a document without a season means, so only a later
 /// season is written.
 fn later_season(season: u32) -> Option<u32> {
@@ -489,10 +492,6 @@ mod tests {
             file_of(&row(SeriesKind::Movie, "/lib/Movies/Film.mkv"), "Film.mkv"),
             "/lib/Movies/Film.mkv"
         );
-        assert_eq!(number_of("12"), (12.0, None));
-        assert_eq!(number_of("12.5"), (12.5, None));
-        assert_eq!(number_of("S02E01"), (1.0, Some(2)));
-        assert_eq!(number_of("Film.mkv"), (0.0, None));
     }
 
     /// Only the provider the row names: applying an AniList match over a

@@ -11,10 +11,16 @@
 //! reads exactly as before, and the ids behind it are filled by the next
 //! refresh rather than carried in the file.
 //!
+//! Views and completed episodes also have a file shape, `{ "file", "at" }`,
+//! beside the series one, the way resume points always had: an OP or an ED
+//! has no number to key by. Additive too, with no version bump.
+//!
 //! Every struct carries a flattened `extra` map, so a field this version
 //! has never heard of survives the read and is reported by name rather
-//! than dropped in silence. The two untagged enums carry none: an untagged
-//! variant with a catch-all map would swallow every document.
+//! than dropped in silence. The match and resume point enums carry none: an
+//! untagged variant with a catch-all map would swallow every document. A
+//! view's or a completion's series shape does, since its required `series`
+//! keeps the file shape out of it.
 
 use std::collections::HashMap;
 
@@ -204,35 +210,52 @@ pub struct History {
     pub extra: HashMap<String, Value>,
 }
 
+/// A view is keyed by series and episode when the key has a number, and
+/// by file when it has not, as a resume point is. The file shape is
+/// additive: a document without one reads exactly as before.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct View {
-    /// The series' path, which is what identifies it in this document.
-    pub series: String,
-    /// The number of the latest episode watched, 0 for a film.
-    #[serde(default)]
-    pub last_episode: f64,
-    /// The episode's season when it is not the first: a later season of a
-    /// multi-season folder keys its history apart from season 1's.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub season: Option<u32>,
-    pub at: Value,
-    #[serde(flatten)]
-    pub extra: HashMap<String, Value>,
+#[serde(untagged)]
+pub enum View {
+    Series {
+        /// The series' path, which is what identifies it in this document.
+        series: String,
+        /// The number of the latest episode watched, 0 for a film.
+        #[serde(default, rename = "lastEpisode")]
+        last_episode: f64,
+        /// The episode's season when it is not the first: a later season of a
+        /// multi-season folder keys its history apart from season 1's.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        season: Option<u32>,
+        at: Value,
+        /// `series` is required, so this map cannot swallow the file shape.
+        #[serde(flatten)]
+        extra: HashMap<String, Value>,
+    },
+    File {
+        file: String,
+        at: Value,
+    },
 }
 
+/// As `View`: by series and episode, or by file.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Completed {
-    pub series: String,
-    #[serde(default)]
-    pub episode: f64,
-    /// As `View::season`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub season: Option<u32>,
-    pub at: Value,
-    #[serde(flatten)]
-    pub extra: HashMap<String, Value>,
+#[serde(untagged)]
+pub enum Completed {
+    Series {
+        series: String,
+        #[serde(default)]
+        episode: f64,
+        /// As `View::Series::season`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        season: Option<u32>,
+        at: Value,
+        #[serde(flatten)]
+        extra: HashMap<String, Value>,
+    },
+    File {
+        file: String,
+        at: Value,
+    },
 }
 
 /// A resume point is keyed by series and episode when the entry has a
@@ -243,7 +266,7 @@ pub enum ResumeEntry {
     Series {
         series: String,
         episode: f64,
-        /// As `View::season`.
+        /// As `View::Series::season`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         season: Option<u32>,
         position: f64,
@@ -346,8 +369,8 @@ pub fn format_instant(secs: i64) -> String {
 
 /// Every unknown field's name, one container at a time, so a name reads as
 /// the path to the field: `foo`, `series[2].bar`, `accounts.anilist.baz`.
-/// The two untagged enums carry no `extra` map, so an unknown field inside
-/// a match or a resume point is dropped rather than named.
+/// The match and resume point enums, and every file shape, carry no `extra`
+/// map, so an unknown field inside one is dropped rather than named.
 fn names(prefix: &str, extra: &HashMap<String, Value>, out: &mut Vec<String>) {
     let mut keys: Vec<&str> = extra.keys().map(String::as_str).collect();
     keys.sort_unstable();
@@ -382,10 +405,14 @@ impl Document {
         if let Some(history) = &self.history {
             names("history", &history.extra, &mut out);
             for (i, v) in history.views.iter().enumerate() {
-                names(&format!("history.views[{i}]"), &v.extra, &mut out);
+                if let View::Series { extra, .. } = v {
+                    names(&format!("history.views[{i}]"), extra, &mut out);
+                }
             }
             for (i, v) in history.completed.iter().enumerate() {
-                names(&format!("history.completed[{i}]"), &v.extra, &mut out);
+                if let Completed::Series { extra, .. } = v {
+                    names(&format!("history.completed[{i}]"), extra, &mut out);
+                }
             }
         }
         if let Some(preferences) = &self.preferences {
@@ -480,6 +507,25 @@ mod tests {
             doc.series[0].match_,
             Some(MatchEntry::Tracker { .. })
         ));
+    }
+
+    /// The file shape reads beside the series one, and the series shape
+    /// still names a field it does not know.
+    #[test]
+    fn a_view_by_file_reads_as_its_own_shape() {
+        let text = FIXTURE.replacen(
+            "{ \"series\": \"/mnt/media/anime/Sousou no Frieren\", \"lastEpisode\": 12,",
+            "{ \"file\": \"/mnt/media/anime/Sousou no Frieren/NCOP1.mkv\", \"at\": \"2026-08-30T21:04:11Z\" },\n      { \"series\": \"/x\", \"lastEpisode\": 12, \"bar\": 1,",
+            1,
+        );
+        let (doc, ignored) = parse(text.as_bytes()).unwrap();
+        let views = &doc.history.as_ref().unwrap().views;
+        assert!(
+            matches!(&views[0], View::File { file, .. } if file.ends_with("NCOP1.mkv")),
+            "{views:?}"
+        );
+        assert!(matches!(views[1], View::Series { last_episode, .. } if last_episode == 12.0));
+        assert_eq!(ignored, vec!["history.views[1].bar".to_string()]);
     }
 
     #[test]

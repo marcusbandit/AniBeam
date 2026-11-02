@@ -34,7 +34,7 @@ use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::trackers::secrets::StoreKind;
 use crate::transfer::file_name;
 use crate::transfer::format::{
-    self, Account, Document, MatchEntry, ResumeEntry, SeriesEntry, TrackerName,
+    self, Account, Completed, Document, MatchEntry, ResumeEntry, SeriesEntry, TrackerName, View,
 };
 
 /// The five sections a `JobProgress` counts through.
@@ -506,7 +506,7 @@ fn current_match(tx: &Transaction, series: u64) -> Result<Option<Wanted>, CoreEr
 // History --------------------------------------------------------------------
 
 /// Views, completed episodes and resume points, all keyed by the series'
-/// path and the episode's number. The newer `at` wins on every one of
+/// path and the episode's number, or by file where there is none. The newer `at` wins on every one of
 /// them, so a re-import never rewinds what the library already knows.
 async fn import_history(
     core: &Arc<Core>,
@@ -519,21 +519,21 @@ async fn import_history(
             let series = series_by_path(tx)?;
             let mut views = 0u64;
             for view in &history.views {
-                let (Some(row), Some(at)) = (series.get(&normalise(&view.series)), format::parse_instant(&view.at)) else { continue };
+                let Some((id, key, at)) = view_target(&series, view) else { continue };
                 views += tx.execute(
                     "INSERT INTO views (series_id, episode_key, at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
                      WHERE excluded.at > views.at",
-                    params![row.id as i64, row.key(view.last_episode, view.season), at],
+                    params![id as i64, key, at],
                 )? as u64;
             }
             let mut completed = 0u64;
             for entry in &history.completed {
-                let (Some(row), Some(at)) = (series.get(&normalise(&entry.series)), format::parse_instant(&entry.at)) else { continue };
+                let Some((id, key, at)) = completed_target(&series, entry) else { continue };
                 completed += tx.execute(
                     "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(series_id, episode_key) DO UPDATE SET at = excluded.at WHERE excluded.at > completed.at",
-                    params![row.id as i64, row.key(entry.episode, entry.season), at],
+                    params![id as i64, key, at],
                 )? as u64;
             }
             let mut resume = 0u64;
@@ -591,9 +591,73 @@ fn series_by_path(conn: &Connection) -> Result<HashMap<String, HistorySeries>, C
     Ok(rows.into_iter().map(|r| (r.path.clone(), r)).collect())
 }
 
+/// The series that owns a file, its folder for a show and the file itself
+/// for a film, and the file name as the key.
+fn file_target(series: &HashMap<String, HistorySeries>, file: &str) -> Option<(u64, String)> {
+    let file = normalise(file);
+    let row = series
+        .values()
+        .filter(|r| under(&file, &r.path))
+        .max_by_key(|r| r.path.len())?;
+    Some((row.id, file_name(&file)))
+}
+
+/// Where a view lands, by series and episode or by file, as a resume point.
+fn view_target(
+    series: &HashMap<String, HistorySeries>,
+    entry: &View,
+) -> Option<(u64, String, i64)> {
+    match entry {
+        View::Series {
+            series: path,
+            last_episode,
+            season,
+            at,
+            ..
+        } => {
+            let row = series.get(&normalise(path))?;
+            Some((
+                row.id,
+                row.key(*last_episode, *season),
+                format::parse_instant(at)?,
+            ))
+        }
+        View::File { file, at } => {
+            let (id, key) = file_target(series, file)?;
+            Some((id, key, format::parse_instant(at)?))
+        }
+    }
+}
+
+/// As `view_target`, for a completed episode.
+fn completed_target(
+    series: &HashMap<String, HistorySeries>,
+    entry: &Completed,
+) -> Option<(u64, String, i64)> {
+    match entry {
+        Completed::Series {
+            series: path,
+            episode,
+            season,
+            at,
+            ..
+        } => {
+            let row = series.get(&normalise(path))?;
+            Some((
+                row.id,
+                row.key(*episode, *season),
+                format::parse_instant(at)?,
+            ))
+        }
+        Completed::File { file, at } => {
+            let (id, key) = file_target(series, file)?;
+            Some((id, key, format::parse_instant(at)?))
+        }
+    }
+}
+
 /// Where a resume point lands: on the series and episode it names, or on
-/// the series that owns the file, its folder for a show and the file
-/// itself for a film, with the file name as the key.
+/// the file's owner as `file_target` finds it.
 fn resume_target(
     series: &HashMap<String, HistorySeries>,
     entry: &ResumeEntry,
@@ -622,18 +686,8 @@ fn resume_target(
             duration,
             at,
         } => {
-            let file = normalise(file);
-            let row = series
-                .values()
-                .filter(|r| under(&file, &r.path))
-                .max_by_key(|r| r.path.len())?;
-            Some((
-                row.id,
-                file_name(&file),
-                *position,
-                *duration,
-                format::parse_instant(at)?,
-            ))
+            let (id, key) = file_target(series, file)?;
+            Some((id, key, *position, *duration, format::parse_instant(at)?))
         }
     }
 }
