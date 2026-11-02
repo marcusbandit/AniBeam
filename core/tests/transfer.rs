@@ -2,6 +2,7 @@ mod common;
 
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 use anibeam_core::transfer::format;
 use anibeam_core::*;
@@ -481,6 +482,125 @@ fn an_extra_round_trips_by_its_file() {
     assert_eq!(done, completed(&core));
     assert!(done.iter().any(|(_, k)| k == "NCED1.mkv"), "{done:?}");
     assert!(done.iter().all(|(_, k)| k != "0"), "{done:?}");
+}
+
+/// One column of `files` for the file whose path ends this way.
+fn file_column(core: &Core, column: &str, tail: &str) -> Option<f64> {
+    core.store()
+        .read(|c| {
+            Ok(c.query_row(
+                &format!("SELECT {column} FROM files WHERE path LIKE ?1"),
+                [format!("%{tail}")],
+                |r| r.get::<_, Option<f64>>(0),
+            )?)
+        })
+        .unwrap()
+}
+
+/// A quick fix goes out beside the series it belongs to, by the file's path
+/// below the series folder and with the reading it replaced, and an import
+/// stores it and reads the file that way.
+#[test]
+fn a_quick_fix_round_trips_beside_its_series() {
+    let (dir, core, c) = common::open_core();
+    let path = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
+    let job = started(core.call(Call::Import { path }).unwrap());
+    common::wait_job(&c, job);
+    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    common::wait_job(&c, job);
+
+    let frieren = metadata(&core)
+        .into_iter()
+        .find(|r| r.series.path.ends_with("Sousou no Frieren"))
+        .unwrap()
+        .series
+        .id;
+    let file = file_column(&core, "id", "Sousou no Frieren - 01.mkv").unwrap() as u64;
+    core.call(Call::FixFiles {
+        series: frieren,
+        fixes: vec![FileFix {
+            file,
+            reading: Some(FileReading::Episode {
+                number: 13.0,
+                season: None,
+            }),
+        }],
+    })
+    .unwrap();
+
+    let out = dir.path().join("anibeam-export-library.json");
+    let out_path = out.to_string_lossy().into_owned();
+    let job = started(
+        core.call(Call::Export {
+            path: out_path.clone(),
+            private: false,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+    let (doc, ignored) = format::parse(&fs::read(&out).unwrap()).unwrap();
+    assert!(ignored.is_empty(), "{ignored:?}");
+    let entry = doc
+        .series
+        .iter()
+        .find(|s| s.path.ends_with("Sousou no Frieren"))
+        .unwrap();
+    assert_eq!(entry.fixes.len(), 1, "{:?}", entry.fixes);
+    let fix = &entry.fixes[0];
+    assert_eq!(fix.path, "Sousou no Frieren - 01.mkv");
+    assert_eq!(
+        fix.reading,
+        FileReading::Episode {
+            number: 13.0,
+            season: None
+        }
+    );
+    assert_eq!(
+        fix.was,
+        Some(FileReading::Episode {
+            number: 1.0,
+            season: None
+        })
+    );
+    // Only the series that owns the file carries it.
+    assert!(
+        doc.series
+            .iter()
+            .filter(|s| !s.path.ends_with("Sousou no Frieren"))
+            .all(|s| s.fixes.is_empty())
+    );
+
+    let (_dir2, fresh, c2) = common::open_core();
+    let job = started(fresh.call(Call::Import { path: out_path }).unwrap());
+    let summary = summary_of(common::wait_job(&c2, job));
+    assert!(
+        summary.fields_ignored.is_empty(),
+        "{:?}",
+        summary.fields_ignored
+    );
+    // The import reads the fixed series again, so its file takes the fix.
+    common::wait_for(
+        &c2,
+        |e| {
+            e.job
+                .as_ref()
+                .is_some_and(|j| j.kind == JobKind::Scan && j.phase == JobPhase::Finished)
+        },
+        Duration::from_secs(30),
+    );
+    assert_eq!(
+        file_column(&fresh, "number", "Sousou no Frieren - 01.mkv"),
+        Some(13.0)
+    );
+    let stored = rows(&fresh, "SELECT reading, was FROM file_fixes");
+    assert_eq!(stored.len(), 1, "{stored:?}");
+    assert_eq!(
+        serde_json::from_str::<FileReading>(&stored[0].1).unwrap(),
+        FileReading::Episode {
+            number: 1.0,
+            season: None
+        }
+    );
 }
 
 #[test]

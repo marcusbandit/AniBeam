@@ -13,7 +13,7 @@
 //! rolling a whole library back over one bad entry.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
@@ -95,7 +95,7 @@ async fn run(
     let sources = import_sources(&core, sources, now, &mut summary).await?;
 
     ctx.progress(1, Some(SECTIONS), "series");
-    let touched = import_series(&core, series, now, &mut summary).await?;
+    let (touched, fixed) = import_series(&core, series, now, &mut summary).await?;
 
     ctx.progress(2, Some(SECTIONS), "history");
     if let Some(history) = history {
@@ -124,7 +124,7 @@ async fn run(
 
     // What changed, in the order a shell wants to redraw it. The scan the
     // launch runs is what attaches files to the series this created; the
-    // import itself starts none.
+    // import itself starts none, bar the rescans its quick fixes need.
     for id in sources {
         let state = core.clone();
         if let Some(source) = core
@@ -161,6 +161,12 @@ async fn run(
             "preferences changed",
             EventBody::PreferencesChanged { preferences },
         );
+    }
+    // A series whose fixes changed is read again, so its files take them
+    // and their history follows. A source away right now reads them when
+    // it is back, as a fix made by hand would.
+    for series in fixed {
+        let _ = scan::rescan_series(&core, series);
     }
     images::sweep_after(&core, "an import").await;
 
@@ -253,20 +259,21 @@ async fn import_sources(
 
 /// A series whose path is unknown is created anyway, so its match, its
 /// flag and its history have a home; the scanner fills in the files when
-/// the path appears.
+/// the path appears. Answers the series touched, and the ones whose quick
+/// fixes changed.
 async fn import_series(
     core: &Arc<Core>,
     entries: Vec<SeriesEntry>,
     now: i64,
     summary: &mut ImportSummary,
-) -> Result<Vec<u64>, CoreError> {
-    let (touched, created, matched, ignored) = core
+) -> Result<(Vec<u64>, Vec<u64>), CoreError> {
+    let (touched, fixed, created, matched, ignored) = core
         .store
         .tx_async(move |tx| {
             // Every source, not only the file's: a series may well belong
             // to one this library already had.
             let sources = all_sources(tx)?;
-            let (mut touched, mut created, mut matched, mut ignored) = (Vec::new(), 0u64, 0u64, Vec::new());
+            let (mut touched, mut fixed, mut created, mut matched, mut ignored) = (Vec::new(), Vec::new(), 0u64, 0u64, Vec::new());
             for (n, entry) in entries.iter().enumerate() {
                 let path = normalise(&entry.path);
                 let kind = if entry.kind == "movie" { SeriesKind::Movie } else { SeriesKind::Show };
@@ -318,15 +325,63 @@ async fn import_series(
                         params![id as i64, n as i64, entry.episodes_set_season.map(|s| s as i64)],
                     )?;
                 }
+                if apply_fixes(tx, &path, &entry.fixes, now)? {
+                    fixed.push(id);
+                }
                 touched.push(id);
             }
-            Ok((touched, created, matched, ignored))
+            Ok((touched, fixed, created, matched, ignored))
         })
         .await?;
     summary.series_created = created;
     summary.matches_applied = matched;
     summary.fields_ignored.extend(ignored);
-    Ok(touched)
+    Ok((touched, fixed))
+}
+
+/// The series' quick fixes, by the file's path in this library. The file
+/// wins, `was` included, which a fix made by hand would keep from the
+/// first time. A row already saying the same is left alone, so a second
+/// import of the same file changes nothing. Answers whether any row did.
+fn apply_fixes(
+    tx: &Transaction,
+    series_path: &str,
+    fixes: &[format::FixEntry],
+    now: i64,
+) -> Result<bool, CoreError> {
+    let mut changed = false;
+    for fix in fixes {
+        let Some(path) = fix_path(series_path, &fix.path) else {
+            continue;
+        };
+        let reading = serde_json::to_string(&fix.reading)?;
+        let was = match &fix.was {
+            Some(was) => serde_json::to_string(was)?,
+            None => reading.clone(),
+        };
+        let rows = tx.execute(
+            "INSERT INTO file_fixes (path, reading, was, fixed_at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(path) DO UPDATE SET reading = excluded.reading, was = excluded.was, fixed_at = excluded.fixed_at
+             WHERE file_fixes.reading IS NOT excluded.reading OR file_fixes.was IS NOT excluded.was",
+            params![path, reading, was, now],
+        )?;
+        changed |= rows > 0;
+    }
+    Ok(changed)
+}
+
+/// A fix's path below the series folder joined onto this library's series
+/// path; the empty path is the series' own file. A path that climbs out of
+/// the series is no file of it.
+fn fix_path(series_path: &str, rel: &str) -> Option<String> {
+    let mut path = PathBuf::from(series_path);
+    for part in rel.split('/').filter(|p| !p.is_empty() && *p != ".") {
+        if part == ".." {
+            return None;
+        }
+        path.push(part);
+    }
+    Some(normalise(&path.to_string_lossy()))
 }
 
 fn all_sources(conn: &Connection) -> Result<Vec<(u64, String)>, CoreError> {
