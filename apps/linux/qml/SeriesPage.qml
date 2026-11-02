@@ -128,12 +128,11 @@ Item {
     // The quick fix (#170): every file on the page as the sheet lists them, by name
     function fixRows() {
         if (!detail) return []
-        function name(path) { return String(path || "").split(/[\\/]/).pop() }
         function season(e) { return e.season === undefined ? null : e.season }
         var rows = detail.episodes.concat(detail.unmatched_files).map(function(e) {
-            return { file: e.file, name: name(e.path), reading: { Episode: { number: e.number, season: season(e) } }, fixed: !!e.fixed }
+            return { file: e.file, name: Fmt.baseName(e.path || ""), reading: { Episode: { number: e.number, season: season(e) } }, fixed: !!e.fixed }
         }).concat(detail.extras.map(function(x) {
-            return { file: x.file, name: name(x.path), reading: { Extra: { kind: x.kind, index: x.index === undefined ? null : x.index } }, fixed: !!x.fixed }
+            return { file: x.file, name: Fmt.baseName(x.path || ""), reading: { Extra: { kind: x.kind, index: x.index === undefined ? null : x.index } }, fixed: !!x.fixed }
         }))
         // Natural order: OVA 2 before OVA 10
         function chunks(s) { return String(s).toLowerCase().match(/\d+|\D+/g) || [] }
@@ -312,15 +311,14 @@ Item {
         var seen = {}
         list.forEach(function(v) { seen[v.label] = (seen[v.label] || 0) + 1 })
         return list.map(function(v) {
-            var name = String(v.path).slice(Math.max(String(v.path).lastIndexOf("/"), String(v.path).lastIndexOf("\\")) + 1)
+            var name = Fmt.baseName(String(v.path))
             return { file: v.file, label: seen[v.label] > 1 ? name : v.label }
         })
     }
     // One release told from another by its file name: the group and what it is,
     // "TBK, 1080p WEB-DL H264", "ELiTE, 1080p x265", else the name itself
     function versionLabel(path) {
-        var name = String(path || "").replace(/[\\/]+$/, "")
-        name = name.slice(Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\")) + 1).replace(/\.[A-Za-z0-9]{2,4}$/, "")
+        var name = Fmt.baseName(path || "").replace(/\.[A-Za-z0-9]{2,4}$/, "")
         var lead = name.match(/^\[([^\]]+)\]/), tail = name.match(/-([A-Za-z0-9]+)$/)
         // A trailing "-DL" or "-x265" is a tag, not a group
         if (tail && /^(DL|Rip|x26[45]|HEVC|AVC|AV1|\d{3,4}p|AAC|FLAC|DDP?\d?)$/i.test(tail[1])) tail = null
@@ -1113,7 +1111,7 @@ Item {
                                 required property var modelData
                                 episode: modelData; extra: true
                                 title: Fmt.episodeName(modelData.title || "", modelData.number)
-                                detailText: modelData.path.split(/[\\/]/).pop()
+                                detailText: Fmt.baseName(modelData.path)
                                 onPlay: page.openFile(modelData.file)
                                 picking: page.deleting
                                 picked: page.deletePicked.indexOf(modelData.file) >= 0
