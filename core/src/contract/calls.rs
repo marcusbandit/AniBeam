@@ -135,6 +135,11 @@ pub enum Call {
         series: u64,
         score: Option<f64>,
     },
+    /// Sets one list status on every connected tracker. Started with the job.
+    SetListStatus {
+        series: u64,
+        status: ListStatus,
+    },
     RefreshProgress {
         tracker: Option<Tracker>,
     },

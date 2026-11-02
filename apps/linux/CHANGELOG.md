@@ -77,6 +77,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Discord shows what you are watching, a switch in Settings, Playback
 - An endpoint repo can search your own Prowlarr or Jackett over torznab
 - An endpoint repo can add a source that answers in JSON
+- Change a show's list status from its status pill or right-click menu
 
 ### Changed
 - Library sorts and groups from two menus, with the order said in words

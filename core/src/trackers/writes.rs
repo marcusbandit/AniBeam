@@ -1,8 +1,8 @@
-//! The three writes a shell asks a tracker for: a mark, a corrective
-//! progress and a score. Every one of them answers the shell before a
-//! request is made if it can, and otherwise becomes a job that writes to
-//! every connected tracker the match carries an id for. The On hold sweep
-//! (`on_hold`) sends a fourth, the status alone, through `send_status`.
+//! The four writes a shell asks a tracker for: a mark, a corrective
+//! progress, a score and a list status. Every one of them answers the shell
+//! before a request is made if it can, and otherwise becomes a job that
+//! writes to every connected tracker the match carries an id for. The On
+//! hold sweep (`on_hold`) also sends a status alone, through `send_status`.
 //!
 //! Three rules shape the file. A write goes to *both* trackers, because a
 //! user with two accounts connected expects both lists to move, so the
@@ -308,6 +308,33 @@ pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<u64, Co
     start(core, JobKind::Score, target, Action::Score { score })
 }
 
+/// Puts a series on one list on every connected tracker: the status pill's
+/// menu. Repeating is a rewatch the trackers keep their own count for, so
+/// it is not a status this menu sets.
+pub fn set_list_status(core: &Core, series: u64, status: ListStatus) -> Result<u64, CoreError> {
+    if status == ListStatus::Repeating {
+        return Err(CoreError::invalid(
+            "status",
+            "a rewatch is not a status to set by hand",
+        ));
+    }
+    let target = core.store.read(|c| targets(c, series))?;
+    guard(core, &target)?;
+    start(core, JobKind::SetStatus, target, Action::Status { status })
+}
+
+/// A list status as the status pill names it.
+fn status_label(status: ListStatus) -> &'static str {
+    match status {
+        ListStatus::Watching => "Watching",
+        ListStatus::Planning => "Planning",
+        ListStatus::Completed => "Completed",
+        ListStatus::Paused => "On hold",
+        ListStatus::Dropped => "Dropped",
+        ListStatus::Repeating => "Repeating",
+    }
+}
+
 /// The guards every write shares, in the order the shell expects them:
 /// nothing to write to, a series the user hid, and no account behind
 /// either id. Answers with the main tracker, which is the one the
@@ -378,13 +405,14 @@ fn other(t: Tracker) -> Tracker {
 
 // The job --------------------------------------------------------------------
 
-/// What one write does to an entry. The three actions share a job, a read
-/// and a cache patch, so they share a type rather than three near-copies.
+/// What one write does to an entry. The four actions share a job, a read
+/// and a cache patch, so they share a type rather than four near-copies.
 #[derive(Clone, Copy, Debug)]
 enum Action {
     Mark { episode: u32 },
     Progress { progress: u32 },
     Score { score: f64 },
+    Status { status: ListStatus },
 }
 
 impl Action {
@@ -394,6 +422,7 @@ impl Action {
             Action::Mark { .. } => "mark",
             Action::Progress { .. } => "set progress",
             Action::Score { .. } => "score",
+            Action::Status { .. } => "set status",
         }
     }
 }
@@ -509,6 +538,15 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
                     score: rated,
                     outcomes,
                 },
+            }
+        }
+        Action::Status { status } => {
+            let label = status_label(status);
+            Finished {
+                plain: sites.map(|s| format!("Set {folder} to {label} on {s}.")),
+                level,
+                message: format!("status of {folder} set to {}", status.as_str()),
+                body: EventBody::Notice,
             }
         }
     }
@@ -644,6 +682,29 @@ async fn attempt(
             ctx.emit(
                 Level::Debug,
                 format!("{} score -> {sent} (mediaId {media_id}){tail}", t.as_str()),
+                EventBody::Notice,
+            );
+            Ok(TrackerOutcome {
+                tracker: t,
+                ok: true,
+                progress: None,
+                reason: None,
+                message: None,
+            })
+        }
+        Action::Status { status } => {
+            let stamp = send_status(core, t, media_id, &token, status).await?;
+            // A series not on the list yet has no cached entry to patch, so
+            // the entry is upserted with the progress the tracker just gave,
+            // which this write leaves as it is.
+            record_progress(core, t, media_id, current, status, stamp).await?;
+            ctx.emit(
+                Level::Debug,
+                format!(
+                    "{} status -> {} (mediaId {media_id})",
+                    t.as_str(),
+                    status.as_str()
+                ),
                 EventBody::Notice,
             );
             Ok(TrackerOutcome {

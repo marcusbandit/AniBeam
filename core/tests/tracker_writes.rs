@@ -257,6 +257,10 @@ fn a_hidden_series_is_refused() {
             series,
             score: Some(8.0),
         },
+        Call::SetListStatus {
+            series,
+            status: ListStatus::Dropped,
+        },
     ] {
         assert_eq!(
             core.call(call).err().unwrap(),
@@ -605,6 +609,77 @@ fn a_score_goes_to_both_trackers_and_completes_a_finished_list() {
         "{:?}",
         forms[1]
     );
+}
+
+/// A status from the pill's menu is one status across both trackers, sent
+/// alone so the progress and the score stay as the lists have them, and the
+/// card follows it at once.
+#[test]
+fn a_status_goes_to_both_trackers_and_the_card_follows() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"MediaList":{"progress":3,"status":"CURRENT"}}}"#,
+    );
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"SaveMediaListEntry":{"id":9,"status":"DROPPED"}}}"#,
+    );
+    http.push_for(
+        "myanimelist",
+        200,
+        r#"{"my_list_status":{"num_episodes_watched":3}}"#,
+    );
+    http.push_for("myanimelist", 200, "{}");
+
+    let job = started(
+        core.call(Call::SetListStatus {
+            series,
+            status: ListStatus::Dropped,
+        })
+        .unwrap(),
+    );
+    let done = common::wait_job(&c, job);
+    assert_eq!(done.level, Level::Info, "{done:?}");
+
+    assert_eq!(
+        graphql_variables(&http, "SaveMediaListEntry"),
+        vec![serde_json::json!({ "mediaId": 1, "status": "DROPPED" })]
+    );
+    let forms = mal_forms(&http);
+    assert_eq!(forms.len(), 1);
+    assert_eq!(
+        forms[0],
+        vec![("status".to_string(), "dropped".to_string())]
+    );
+    assert_eq!(card(&core, series).list_status, Some(ListStatus::Dropped));
+}
+
+/// Repeating is the trackers' own rewatch count, not a status the menu
+/// offers, so it is refused before any request is made.
+#[test]
+fn repeating_is_not_a_status_to_set() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+
+    let err = core
+        .call(Call::SetListStatus {
+            series,
+            status: ListStatus::Repeating,
+        })
+        .err()
+        .unwrap();
+    assert!(matches!(err, CoreError::Invalid { .. }), "{err:?}");
+    assert!(http.requests().is_empty());
 }
 
 /// A rate limit the limiter could not ride out is one tracker's failure,

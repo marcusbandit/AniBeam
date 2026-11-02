@@ -695,7 +695,33 @@ FocusScope {
         out.push({ text: "Copy title", icon: "copy", action: function() { frame.copyText(c.title) } })
         var site = c.site_url || (c.match_info && c.match_info.anilist_id ? "https://anilist.co/anime/" + c.match_info.anilist_id : "")
         if (site) out.push({ text: "Open on AniList", icon: "external-link", action: function() { frame.openLink(site) } })
+        if (frame.canSetListStatus(c)) out = out.concat(frame.listStatusItems(c.id, c.list_status))
         return out
+    }
+    // A list status is the trackers': it is offered for a series one of them carries, with an
+    // account connected, and not for a hidden one, whose tracker sync is off.
+    readonly property bool trackerConnected: !!Door.trackers && ((!!Door.trackers.anilist && Door.trackers.anilist.connected === true)
+                                                                 || (!!Door.trackers.mal && Door.trackers.mal.connected === true))
+    function canSetListStatus(c) {
+        return frame.trackerConnected && !!c && !c.hidden && !!(c.match_info && (c.match_info.anilist_id || c.match_info.mal_id))
+    }
+    // The five lists a status pill or a card's right-click moves a series to, the one it is on
+    // already greyed out. The core writes it to every connected tracker.
+    function listStatusItems(id, current) {
+        var lists = [{ status: "Watching", text: "Watching", icon: "play" },
+                     { status: "Planning", text: "Planning", icon: "bookmark" },
+                     { status: "Completed", text: "Completed", icon: "circle-check" },
+                     { status: "Paused", text: "On hold", icon: "pause" },
+                     { status: "Dropped", text: "Dropped", icon: "ban" }]
+        return lists.map(function(l) {
+            return { text: l.text, icon: l.icon, enabled: l.status !== current,
+                     action: function() { frame.setListStatus(id, l.status, l.text) } }
+        })
+    }
+    function setListStatus(id, status, label) {
+        var r = Door.call("SetListStatus", { series: id, status: status })
+        if (r.error) { frame.toast(r.error.message); return }
+        frame.toast("Moving to " + label)
     }
     // Text onto the clipboard, and a word that it went
     function copyText(text, what) {
