@@ -419,13 +419,24 @@ impl QbtClient {
             });
         }
         // 4.x answers a good login with `Ok.` and a bad one with `Fails.`, both 200;
-        // 5.x answers a good one with 204 and nothing. Only a refusal is a rejection.
+        // 5.x answers a good one with 204 and nothing. Only a refusal is a rejection;
+        // anything else, a proxy's 502 say, is worth another try on the next call.
         let text = String::from_utf8_lossy(&r.body).trim().to_string();
-        if !r.is_success() || text == "Fails." {
+        if r.status == 401 || (r.is_success() && text == "Fails.") {
             *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) = true;
             return Err(unauthorized(
                 "qBittorrent rejected the username or password",
             ));
+        }
+        if !r.is_success() {
+            return Err(CoreError::Service {
+                service: SERVICE.to_string(),
+                code: "unreachable".to_string(),
+                message: format!(
+                    "qBittorrent's login at {} answered {}; trying again on the next call",
+                    self.base, r.status
+                ),
+            });
         }
         // The cookie's own `name=value`, the first part before the attributes
         let sid = r
@@ -728,6 +739,33 @@ mod tests {
             3,
             "version, login, transfer: no second login"
         );
+    }
+
+    #[tokio::test]
+    async fn a_proxys_502_at_login_is_unreachable_and_the_next_call_logs_in() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for("app/version", 403, "");
+        http.push_for("auth/login", 502, "Bad Gateway");
+        let c = client(&http);
+        let e = c.version().await.unwrap_err();
+        assert!(matches!(&e, CoreError::Service { code, .. } if code == "unreachable"));
+        http.push_for("app/version", 403, "");
+        http.push_for("auth/login", 200, "Ok.");
+        http.push_for("app/version", 200, "v5.2.4");
+        assert_eq!(c.version().await.unwrap(), "v5.2.4");
+    }
+
+    #[tokio::test]
+    async fn a_401_at_login_is_a_rejection() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for("app/version", 403, "");
+        http.push_for("auth/login", 401, "");
+        let c = client(&http);
+        let e = c.version().await.unwrap_err();
+        assert!(matches!(&e, CoreError::Service { code, .. } if code == "unauthorized"));
+        http.push_for("transfer/info", 403, "");
+        c.transfer().await.unwrap_err();
+        assert_eq!(http.requests().len(), 3, "no second login after a 401");
     }
 
     #[tokio::test]
