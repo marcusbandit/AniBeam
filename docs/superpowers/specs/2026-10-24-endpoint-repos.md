@@ -280,7 +280,9 @@ synced to anirss as kind `rss`.
 - Endpoints added by hand (`AddCustomEndpoint`, owner's ask 2026-10-24): a name
   and an address, beside whatever repos there are, for a site no repo carries
   (1337x through Jackett). A secret in the address (`apikey=`, `token=`,
-  `passkey=`) moves to the secret store and the address keeps a placeholder.
+  `rsskey=` and the rest of `releases::native::SECRET_PARAMS`, any case) moves
+  to the secret store and the address keeps a placeholder. A typed
+  `user:password@` is refused; `{user}:{password}@` takes fields instead.
   Plain http is allowed for these, for a Jackett on the same machine. They are
   stored with an empty repo url and behave like installed endpoints otherwise.
 - Credentials go to `secrets.json` under `endpoint/<install id>/<key>`. They never

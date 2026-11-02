@@ -304,19 +304,59 @@ impl Native {
     }
 }
 
-/// A URL with any key in it cut short, for a list a person reads.
+/// Query parameters that hold a secret, with the label a person sees for each. A source added
+/// by hand keeps their values in the secret store, and every address shown or sent hides them.
+pub const SECRET_PARAMS: [(&str, &str); 15] = [
+    ("apikey", "API key"),
+    ("api_key", "API key"),
+    ("jackett_apikey", "API key"),
+    ("token", "Token"),
+    ("passkey", "Passkey"),
+    ("torrent_pass", "Passkey"),
+    ("rsskey", "RSS key"),
+    ("authkey", "Auth key"),
+    ("auth", "Auth key"),
+    ("key", "Key"),
+    ("pass", "Password"),
+    ("password", "Password"),
+    ("secret", "Secret"),
+    ("sid", "Session id"),
+    ("sig", "Signature"),
+];
+
+/// The label of a query parameter that holds a secret, whatever its case; None for any other.
+pub fn secret_label(name: &str) -> Option<&'static str> {
+    SECRET_PARAMS
+        .iter()
+        .find(|(p, _)| name.eq_ignore_ascii_case(p))
+        .map(|(_, label)| *label)
+}
+
+/// A URL with any key or login in it cut short, for a list a person reads.
 pub fn mask(url: &str) -> String {
-    let mut out = url.to_string();
-    for key in ["token=", "apikey=", "passkey=", "api_key="] {
-        let mut from = 0;
-        while let Some(at) = out[from..].find(key) {
-            let start = from + at + key.len();
-            let end = out[start..].find('&').map_or(out.len(), |e| start + e);
-            out.replace_range(start..end, "...");
-            from = start + 3;
+    let (base, query) = match url.split_once('?') {
+        Some((b, q)) => (b, Some(q)),
+        None => (url, None),
+    };
+    let base = match base.split_once("://") {
+        Some((scheme, rest)) => {
+            let end = rest.find(['/', '#']).unwrap_or(rest.len());
+            match rest[..end].rfind('@') {
+                Some(at) => format!("{scheme}://...{}", &rest[at..]),
+                None => base.to_string(),
+            }
         }
-    }
-    out
+        None => base.to_string(),
+    };
+    let Some(query) = query else { return base };
+    let pairs: Vec<String> = query
+        .split('&')
+        .map(|pair| match pair.split_once('=') {
+            Some((k, _)) if secret_label(k).is_some() => format!("{k}=..."),
+            _ => pair.to_string(),
+        })
+        .collect();
+    format!("{base}?{}", pairs.join("&"))
 }
 
 #[cfg(test)]
@@ -367,6 +407,28 @@ mod tests {
         assert_eq!(
             mask("https://x/feed/?s={query}&token=abc&res=1080p"),
             "https://x/feed/?s={query}&token=...&res=1080p"
+        );
+    }
+
+    #[test]
+    fn a_key_is_masked_whatever_its_case() {
+        assert_eq!(
+            mask("https://feed.example/rss?ApiKey=abc&q={query}&RSSKEY=def&rsskey=ghi"),
+            "https://feed.example/rss?ApiKey=...&q={query}&RSSKEY=...&rsskey=..."
+        );
+    }
+
+    #[test]
+    fn only_whole_parameter_names_are_masked() {
+        let url = "https://feed.example/rss?monkey=1&passage=2&q={query}";
+        assert_eq!(mask(url), url);
+    }
+
+    #[test]
+    fn a_login_in_the_address_is_masked() {
+        assert_eq!(
+            mask("https://user:pw@feed.example/rss?q=a@b"),
+            "https://...@feed.example/rss?q=a@b"
         );
     }
 }

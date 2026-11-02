@@ -576,8 +576,8 @@ pub enum Call {
     },
     /// Adds an endpoint by hand, outside any repo: a name, and an address with `{query}`
     /// where the search goes (or a bare nyaa-style site). A secret in the address
-    /// (`apikey=`, `token=`, `passkey=`) moves to the secret store; other placeholders take
-    /// their value from `credentials`.
+    /// (`apikey=`, `token=`, `rsskey=` and the like) moves to the secret store, and a typed
+    /// `user:password@` is refused; other placeholders take their value from `credentials`.
     AddCustomEndpoint {
         name: String,
         url: String,

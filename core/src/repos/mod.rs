@@ -758,15 +758,6 @@ pub fn set_enabled(core: &Core, install: String, enabled: bool) -> Result<Reply,
 /// The repo url of an endpoint the person added by hand, outside any repo.
 pub const CUSTOM: &str = "";
 
-/// Query parameters that hold a secret: their value moves to the secret store and the
-/// address keeps a placeholder (the same names `releases::native::mask` hides).
-const SECRET_PARAMS: [(&str, &str); 4] = [
-    ("apikey", "API key"),
-    ("api_key", "API key"),
-    ("token", "Token"),
-    ("passkey", "Passkey"),
-];
-
 /// An id from a name: lower case, anything but a-z, 0-9, '.', '_' and '-' becomes '-'.
 fn id_of(name: &str) -> String {
     let id: String = name
@@ -785,8 +776,9 @@ fn id_of(name: &str) -> String {
 }
 
 /// Takes the secret values out of a pasted address: each `apikey=...`, `token=...` and the
-/// like becomes a placeholder and an `auth` field, and its value a credential. Any other
-/// placeholder the person wrote (`{user}`) becomes a field too, to be filled from `given`.
+/// like (`releases::native::SECRET_PARAMS`, any case) becomes a placeholder and an `auth`
+/// field, and its value a credential. Any other placeholder the person wrote (`{user}`)
+/// becomes a field too, to be filled from `given`.
 fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, String)>) {
     let mut fields: Vec<index::AuthField> = Vec::new();
     let mut lifted: Vec<(String, String)> = Vec::new();
@@ -802,10 +794,10 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
                 let Some((k, v)) = pair.split_once('=') else {
                     return pair.to_string();
                 };
-                let lower = k.to_lowercase();
-                let Some((_, label)) = SECRET_PARAMS.iter().find(|(p, _)| *p == lower) else {
+                let Some(label) = crate::releases::native::secret_label(k) else {
                     return pair.to_string();
                 };
+                let lower = k.to_ascii_lowercase();
                 if v.is_empty() || v.starts_with('{') {
                     return pair.to_string();
                 }
@@ -844,6 +836,13 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
     (template, fields, lifted)
 }
 
+fn is_placeholder(part: &str) -> bool {
+    part.len() > 2
+        && part.starts_with('{')
+        && part.ends_with('}')
+        && !part[1..part.len() - 1].contains(['{', '}'])
+}
+
 /// The definition of a source added by hand, and the secrets lifted out of its address.
 fn custom_definition(
     name: &str,
@@ -859,6 +858,15 @@ fn custom_definition(
         Some((scheme, rest)) => format!("{}://{rest}", scheme.to_ascii_lowercase()),
         None => url.to_string(),
     };
+    // A login before the host would be stored as typed: only placeholders may stand there.
+    if let Some((login, _)) = index::authority_of(&url).rsplit_once('@')
+        && !login.split(':').all(is_placeholder)
+    {
+        return Err(CoreError::invalid(
+            "endpoint url",
+            "take the login out of the address: write {user}:{password}@ in its place and fill them in when asked, or put the key in the address's query",
+        ));
+    }
     let (template, auth, lifted) = lift_secrets(&url);
     // An address with the search in it is a feed; a bare site address is nyaa's kind,
     // which adds its own search.
@@ -1423,6 +1431,63 @@ mod tests {
         let keys: Vec<&str> = fields.iter().map(|f| f.key.as_str()).collect();
         assert_eq!(keys, ["passkey", "user"]);
         assert_eq!(lifted.len(), 1);
+    }
+
+    #[test]
+    fn other_key_names_move_out_of_the_address_whatever_their_case() {
+        let (def, lifted) = custom_definition(
+            "Feed",
+            "https://feed.example/rss?q={query}&rsskey=abc&AuthKey=def",
+        )
+        .unwrap();
+        assert_eq!(
+            def.url,
+            "https://feed.example/rss?q={query}&rsskey={rsskey}&AuthKey={authkey}"
+        );
+        assert!(!def.url.contains("abc") && !def.url.contains("def"));
+        let labels: Vec<&str> = def.auth.iter().map(|f| f.label.as_str()).collect();
+        assert_eq!(labels, ["RSS key", "Auth key"]);
+        assert_eq!(
+            lifted,
+            vec![
+                ("rsskey".to_string(), "abc".to_string()),
+                ("authkey".to_string(), "def".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn a_login_typed_into_the_address_is_refused() {
+        for url in [
+            "https://user:pw@feed.example/rss?q={query}",
+            "https://{user}:pw@feed.example/rss?q={query}",
+            "https://tok3n@feed.example/rss?q={query}",
+        ] {
+            match custom_definition("Feed", url) {
+                Err(CoreError::Invalid { field, message }) => {
+                    assert_eq!(field, "endpoint url");
+                    assert!(message.contains("{user}:{password}@"), "{message}");
+                }
+                other => panic!("{url}: {other:?}"),
+            }
+        }
+        let (def, lifted) = custom_definition(
+            "Feed",
+            "https://{user}:{password}@feed.example/rss?q={query}",
+        )
+        .unwrap();
+        let keys: Vec<&str> = def.auth.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(keys, ["user", "password"]);
+        assert!(lifted.is_empty());
+    }
+
+    #[test]
+    fn an_address_without_secrets_is_kept_as_typed() {
+        let url = "https://feed.example/rss?q={query}&res=1080p";
+        let (def, lifted) = custom_definition("Feed", url).unwrap();
+        assert_eq!(def.url, url);
+        assert_eq!(def.kind, "rss");
+        assert!(def.auth.is_empty() && lifted.is_empty());
     }
 
     #[test]

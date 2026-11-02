@@ -132,30 +132,10 @@ pub fn subscriptions(rules: Vec<SubscriptionRule>) -> Vec<wire::Subscription> {
         .collect()
 }
 
-/// Query parameters that carry a credential. A Jackett or Torznab feed puts
-/// the indexer's key in the URL, and every device on the tailnet reads the
-/// snapshot.
-const SECRET_PARAMS: [&str; 15] = [
-    "apikey",
-    "api_key",
-    "jackett_apikey",
-    "passkey",
-    "torrent_pass",
-    "authkey",
-    "auth",
-    "token",
-    "key",
-    "rsskey",
-    "secret",
-    "sig",
-    "pass",
-    "password",
-    "uid",
-];
-
-/// `url` without its credential parameters. A feed that needed one will not
-/// open from a phone, which is the point; a public feed such as nyaa's has
-/// none and passes through unchanged.
+/// `url` without its credential parameters (`releases::native::SECRET_PARAMS`). A Jackett or
+/// Torznab feed puts the indexer's key in the URL, and every device on the tailnet reads the
+/// snapshot. A feed that needed one will not open from a phone, which is the point; a public
+/// feed such as nyaa's has none and passes through unchanged.
 pub fn without_secrets(url: &str) -> String {
     let url = &without_userinfo(url);
     let Some((base, query)) = url.split_once('?') else {
@@ -165,7 +145,9 @@ pub fn without_secrets(url: &str) -> String {
         .split('&')
         .filter(|pair| {
             let name = pair.split('=').next().unwrap_or("");
-            !SECRET_PARAMS.iter().any(|s| name.eq_ignore_ascii_case(s))
+            // A tracker's user id is no secret to lift, but the snapshot needn't carry it.
+            crate::releases::native::secret_label(name).is_none()
+                && !name.eq_ignore_ascii_case("uid")
         })
         .collect();
     if kept.is_empty() {
