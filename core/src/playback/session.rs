@@ -363,35 +363,49 @@ fn track_choice_of(raw: Option<&str>) -> TrackChoice {
     }
 }
 
+/// The episodes either side of one in the running order.
+#[derive(Debug, Default, PartialEq)]
+struct Neighbours {
+    prev: Option<u64>,
+    next: Option<u64>,
+    /// The first season with an episode in the running order, the one a
+    /// published total counts.
+    first_season: Option<u32>,
+}
+
 /// The episodes either side of this one on disk, in (season, number)
 /// order, a file that names no season being season 1, so the last of one
 /// season steps to the first of the next. Only whole-numbered episodes are
 /// neighbours, so a 12.5 recap sits between twelve and thirteen rather than
-/// in the running order, and Next from it opens thirteen. An episode a
-/// torrent is still writing (`skip`) is no neighbour: Next steps over it.
-/// The third value says whether a later season is on disk at all.
+/// in the running order, and Next from it opens thirteen; season 0 holds
+/// specials, which stand outside it the same way. An episode a torrent is
+/// still writing (`skip`, by path) is no neighbour: Next steps over it.
 fn neighbours(
     conn: &Connection,
     series: u64,
     season: u32,
     number: f64,
-    skip: &dyn Fn(f64) -> bool,
-) -> Result<(Option<u64>, Option<u64>, bool), CoreError> {
+    skip: &dyn Fn(&str) -> bool,
+) -> Result<Neighbours, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT id, COALESCE(season, 1), number FROM files WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL ORDER BY COALESCE(season, 1), number, id",
+        "SELECT id, COALESCE(season, 1), number, path FROM files WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL ORDER BY COALESCE(season, 1), number, path",
     )?;
     let rows = stmt.query_map(params![series as i64], |r| {
         Ok((
             r.get::<_, i64>(0)? as u64,
             r.get::<_, i64>(1)? as u32,
             r.get::<_, f64>(2)?,
+            r.get::<_, String>(3)?,
         ))
     })?;
-    let (mut prev, mut next, mut later_season) = (None, None, false);
+    let (mut prev, mut next, mut first_season) = (None, None, None);
     for row in rows {
-        let (id, s, n) = row?;
-        later_season |= s > season;
-        if n.fract() != 0.0 || skip(n) {
+        let (id, s, n, path) = row?;
+        if s == 0 || n.fract() != 0.0 {
+            continue;
+        }
+        first_season.get_or_insert(s);
+        if skip(&path) {
             continue;
         }
         if (s, n) < (season, number) {
@@ -400,7 +414,11 @@ fn neighbours(
             next = Some(id);
         }
     }
-    Ok((prev, next, later_season))
+    Ok(Neighbours {
+        prev,
+        next,
+        first_season,
+    })
 }
 
 /// The windows the last session on this episode settled on. A `none` row is
@@ -439,7 +457,7 @@ fn cached_windows(conn: &Connection, series: u64, key: &str) -> Result<Vec<SkipW
 /// ticks that follow belong to.
 pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     let images_dir = core.paths.images_dir();
-    let (f, s, resume_from, skip_windows, (prev, next, later_season), episode_title, subtitle_defaults, lang) =
+    let (f, s, resume_from, skip_windows, Neighbours { prev, next, first_season }, episode_title, subtitle_defaults, lang) =
         core.store.read(|c| {
             let f = file_row(c, file)?;
             // The safety net behind every Play: whatever page asked, a file a
@@ -469,11 +487,11 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             // series, so neither has an episode either side of it.
             let neighbours = match (f.is_extra, s.kind) {
                 (false, SeriesKind::Show) => {
-                    neighbours(c, f.series, f.season.unwrap_or(1), f.number, &|n| {
-                        crate::downloads::episode_progress(core, f.series, n).is_some()
+                    neighbours(c, f.series, f.season.unwrap_or(1), f.number, &|path| {
+                        crate::downloads::is_writing(core, path)
                     })?
                 }
-                _ => (None, None, false),
+                _ => Neighbours::default(),
             };
             // TVmaze numbers within a season, so its title is looked up by
             // both, a file that names no season being season 1.
@@ -528,16 +546,19 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     // anything, and a show ends where the published total says, or where the
     // disk runs out when no total is known. A show still airing with no total
     // has not ended at all: the disk running out there is only this week's
-    // episode not being out yet. A total counts one season, so a later
-    // season on disk means this one is not the end.
+    // episode not being out yet. A total counts the first season on disk,
+    // the way the tracker's progress does, so a later season ends where the
+    // disk does.
     let is_last_episode = if f.is_extra {
         false
     } else if is_film {
         true
     } else {
         match s.total {
-            Some(total) => f.number >= f64::from(total) && !later_season,
-            None => !s.airing && next.is_none(),
+            Some(total) if first_season.is_none_or(|first| first == f.season.unwrap_or(1)) => {
+                f.number >= f64::from(total)
+            }
+            _ => !s.airing && next.is_none(),
         }
     };
 
@@ -1180,5 +1201,47 @@ mod tests {
         let mut s = session(false, None);
         assert_eq!(ended(&mut s), Some(Effect::Complete));
         assert_eq!(ended(&mut s), None);
+    }
+
+    /// A download in one season hides only its own file, and season 0
+    /// specials stand outside the running order.
+    #[test]
+    fn neighbours_skip_by_path_and_leave_specials_out() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE files (id INTEGER, series_id INTEGER, kind TEXT, season INTEGER, number REAL, path TEXT);
+             INSERT INTO files VALUES (1, 1, 'episode', NULL, 4, '/s/S01E04.mkv'),
+                                      (2, 1, 'episode', NULL, 5, '/s/S01E05.mkv'),
+                                      (3, 1, 'episode', NULL, 6, '/s/S01E06.mkv'),
+                                      (4, 1, 'episode', 2, 5, '/s/S02E05.mkv'),
+                                      (5, 1, 'episode', 0, 1, '/s/S00E01.mkv'),
+                                      (6, 1, 'episode', NULL, 1, '/s/S01E01.mkv');",
+        )
+        .unwrap();
+        let writing = |p: &str| p == "/s/S02E05.mkv";
+        assert_eq!(
+            neighbours(&c, 1, 1, 4.0, &writing).unwrap(),
+            Neighbours {
+                prev: Some(6),
+                next: Some(2),
+                first_season: Some(1),
+            }
+        );
+        assert_eq!(
+            neighbours(&c, 1, 1, 6.0, &writing).unwrap(),
+            Neighbours {
+                prev: Some(2),
+                next: None,
+                first_season: Some(1),
+            }
+        );
+        assert_eq!(
+            neighbours(&c, 1, 1, 1.0, &|_| false).unwrap(),
+            Neighbours {
+                prev: None,
+                next: Some(1),
+                first_season: Some(1),
+            }
+        );
     }
 }

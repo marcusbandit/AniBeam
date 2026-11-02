@@ -362,8 +362,8 @@ fn next_and_previous_walk_the_seasons_in_order() {
     assert_eq!(open(&core, ep[&(2, 1)]).prev, Some(ep[&(1, 12)]));
     assert_eq!(open(&core, ep[&(2, 12)]).next, None);
 
-    // A published total counts one season: twelve of twelve is not the end
-    // while a second season sits on disk.
+    // A published total counts the first season on disk: twelve of twelve
+    // ends it, and a later season ends where the disk does.
     fixtures::insert_media(
         &core,
         3,
@@ -375,7 +375,9 @@ fn next_and_previous_walk_the_seasons_in_order() {
         None,
     );
     fixtures::match_series(&core, series, Some(3), None);
-    assert!(!open(&core, ep[&(1, 12)]).is_last_episode);
+    assert!(open(&core, ep[&(1, 12)]).is_last_episode);
+    assert!(!open(&core, ep[&(2, 11)]).is_last_episode);
+    assert!(open(&core, ep[&(2, 12)]).is_last_episode);
 }
 
 /// (2) to (5) One episode watched end to end: the view at thirty seconds, a
