@@ -136,6 +136,13 @@ fn classify_subfolder_label(folder_name: &str) -> Option<SubfolderLabel> {
     extract_season_number(&cleaned).map(SubfolderLabel::Season)
 }
 
+fn ova_season(cleaned: &str) -> Option<u32> {
+    ORDINAL_SEASON
+        .captures(cleaned)
+        .and_then(|m| m[1].parse().ok())
+        .or_else(|| extract_season_number(cleaned))
+}
+
 /// The byte range of `needle` in `haystack`, matched case-insensitively.
 /// Walks `haystack` a character at a time and compares the lowercase of a
 /// same-char-count window against the lowercase needle, so the returned
@@ -191,7 +198,11 @@ pub fn derive_subfolder_series_name(
     match classify_subfolder_label(subfolder_name) {
         Some(SubfolderLabel::Season(n)) if n <= 1 => (wrapper.to_string(), Some(n)),
         Some(SubfolderLabel::Season(n)) => (format!("{wrapper} Season {n}"), Some(n)),
-        Some(SubfolderLabel::Ova) => (format!("{wrapper} OVA"), None),
+        Some(SubfolderLabel::Ova) => match ova_season(&cleaned_sub) {
+            // A later season's OVAs search apart from the first run's.
+            Some(n) if n >= 2 => (format!("{wrapper} Season {n} OVA"), None),
+            _ => (format!("{wrapper} OVA"), None),
+        },
         Some(SubfolderLabel::Special) => (format!("{wrapper} Specials"), None),
         None => (
             if cleaned_sub.is_empty() {
@@ -716,6 +727,14 @@ mod tests {
         assert_eq!(
             derive_subfolder_series_name("[Judas] Kaminomi - OVAs", "Kami Nomi zo Shiru Sekai"),
             ("Kami Nomi zo Shiru Sekai OVA".to_string(), None)
+        );
+        assert_eq!(
+            derive_subfolder_series_name("Season 2 OVAs", "Seitokai Yakuindomo"),
+            ("Seitokai Yakuindomo Season 2 OVA".to_string(), None)
+        );
+        assert_eq!(
+            derive_subfolder_series_name("Season 1 OVAs", "Seitokai Yakuindomo"),
+            ("Seitokai Yakuindomo OVA".to_string(), None)
         );
         assert_eq!(
             derive_subfolder_series_name("Specials", "Some Show"),

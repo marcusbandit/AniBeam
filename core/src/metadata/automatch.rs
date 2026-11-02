@@ -81,7 +81,10 @@ pub const MIN_DURATION: u32 = 5;
 /// library is tried again under the new rules; a match already made, and a
 /// match the user cleared, are never touched. Version 2 is the
 /// provider order: every series AniList alone missed gets its TVmaze turn.
-pub const AUTO_MATCH_VERSION: u32 = 2;
+/// Version 3 is the first-film retry: a film folder ending in `1` that
+/// AniList missed is searched again without the number, and a later season's
+/// OVA folder searches under its own name.
+pub const AUTO_MATCH_VERSION: u32 = 3;
 
 /// How many hits the search asks for: Electron's ten, the same page the
 /// manual picker shows.
@@ -288,6 +291,15 @@ async fn attempt(
     Ok(None)
 }
 
+/// A film title with a trailing standalone `1` or `01` dropped. AniList
+/// names a franchise's first film without the number, so a search for
+/// "Show Movie 1" finds nothing.
+fn without_first_film_number(title: &str) -> Option<String> {
+    let (head, last) = title.trim_end().rsplit_once(char::is_whitespace)?;
+    let head = head.trim_end();
+    (matches!(last, "1" | "01") && !head.is_empty()).then(|| head.to_string())
+}
+
 /// AniList's turn: the search, the pick, and, on a hit, the whole record.
 async fn attempt_anilist(
     core: &Core,
@@ -295,8 +307,16 @@ async fn attempt_anilist(
     folder: &str,
     kind: SeriesKind,
 ) -> Result<Option<Hit>, CoreError> {
-    let results = core.anilist.search(folder, RESULTS).await?;
-    let Some((media, score)) = pick(folder, kind, &results) else {
+    let mut results = core.anilist.search(folder, RESULTS).await?;
+    let mut query = folder.to_string();
+    if kind == SeriesKind::Movie
+        && pick(folder, kind, &results).is_none()
+        && let Some(stripped) = without_first_film_number(folder)
+    {
+        results = core.anilist.search(&stripped, RESULTS).await?;
+        query = stripped;
+    }
+    let Some((media, score)) = pick(&query, kind, &results) else {
         return Ok(None);
     };
     let title = matched_title(media);
@@ -755,5 +775,58 @@ mod tests {
                 .id,
             21519
         );
+    }
+    fn seitokai_ova_runs() -> Vec<Media> {
+        let mut first = media(10119, "Seitokai Yakuindomo OVA", true);
+        first.format = Some("OVA".into());
+        first.episodes = Some(8);
+        let mut second = media(20826, "Seitokai Yakuindomo\u{FF0A} OVA", true);
+        second.title.english = Some("Seitokai Yakuindomo Season 2 OVA".into());
+        second.format = Some("OVA".into());
+        second.episodes = Some(10);
+        vec![first, second]
+    }
+
+    #[test]
+    fn a_second_ova_run_matches_apart_from_the_first() {
+        let results = seitokai_ova_runs();
+        let pick_id = |q: &str| pick(q, SeriesKind::Show, &results).unwrap().0.id;
+        assert_eq!(pick_id("Seitokai Yakuindomo Season 2 OVA"), 20826);
+        assert_eq!(pick_id("Seitokai Yakuindomo OVA"), 10119);
+    }
+
+    #[test]
+    fn a_first_film_is_found_without_its_number() {
+        let mut first = media(98240, "Seitokai Yakuindomo Movie", true);
+        first.format = Some("MOVIE".into());
+        let mut second = media(113692, "Seitokai Yakuindomo Movie 2", true);
+        second.format = Some("MOVIE".into());
+        let results = vec![first, second];
+        assert_eq!(
+            pick("Seitokai Yakuindomo Movie", SeriesKind::Movie, &results)
+                .unwrap()
+                .0
+                .id,
+            98240
+        );
+
+        assert_eq!(
+            without_first_film_number("Seitokai Yakuindomo Movie 1").as_deref(),
+            Some("Seitokai Yakuindomo Movie")
+        );
+        assert_eq!(
+            without_first_film_number("Seitokai Yakuindomo Movie 01").as_deref(),
+            Some("Seitokai Yakuindomo Movie")
+        );
+        assert_eq!(
+            without_first_film_number("Seitokai Yakuindomo Movie 2"),
+            None
+        );
+        assert_eq!(without_first_film_number("Mob Psycho 100"), None);
+        assert_eq!(
+            without_first_film_number("Seitokai Yakuindomo Movie 11"),
+            None
+        );
+        assert_eq!(without_first_film_number("1"), None);
     }
 }
