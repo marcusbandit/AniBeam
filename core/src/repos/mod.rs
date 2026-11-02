@@ -800,27 +800,23 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
     };
     // A login in front of the host: the user name stays, the password is a secret. A login
     // with no password is a key on its own.
-    let mut template = match base.split_once("://") {
-        Some((scheme, rest)) => {
-            let end = rest.find(['/', '#']).unwrap_or(rest.len());
-            match rest[..end].rsplit_once('@') {
-                Some((login, host)) => {
-                    let after = &rest[end..];
-                    match login.split_once(':') {
-                        Some((user, pw)) if !pw.is_empty() && !pw.starts_with('{') => {
-                            lift("password", "Password", &percent_decode(pw));
-                            format!("{scheme}://{user}:{{password}}@{host}{after}")
-                        }
-                        None if !login.is_empty() && !login.starts_with('{') => {
-                            lift("login", "Login", &percent_decode(login));
-                            format!("{scheme}://{{login}}@{host}{after}")
-                        }
-                        _ => base,
-                    }
-                }
-                None => base,
+    let hidden = |part: &str| part.is_empty() || part.starts_with('{');
+    let mut template = match index::split_login(&base) {
+        Some((scheme, login, host)) => match login.split_once(':') {
+            Some((user, pw)) if !hidden(pw) => {
+                lift("login_password", "Password", &percent_decode(pw));
+                format!("{scheme}{user}:{{login_password}}@{host}")
             }
-        }
+            Some((user, pw)) if !hidden(user) => {
+                lift("login_key", "Login", &percent_decode(user));
+                format!("{scheme}{{login_key}}:{pw}@{host}")
+            }
+            None if !hidden(login) => {
+                lift("login_key", "Login", &percent_decode(login));
+                format!("{scheme}{{login_key}}@{host}")
+            }
+            _ => base,
+        },
         None => base,
     };
     if let Some(query) = query {
@@ -1453,12 +1449,31 @@ mod tests {
     fn a_login_password_moves_out_of_the_address() {
         let (template, fields, lifted) =
             lift_secrets("https://me:p%40ss+1@t.example/rss?q={query}");
-        assert_eq!(template, "https://me:{password}@t.example/rss?q={query}");
+        assert_eq!(
+            template,
+            "https://me:{login_password}@t.example/rss?q={query}"
+        );
         assert_eq!(fields[0].label, "Password");
-        assert_eq!(lifted, vec![("password".to_string(), "p@ss+1".to_string())]);
+        assert_eq!(
+            lifted,
+            vec![("login_password".to_string(), "p@ss+1".to_string())]
+        );
         let (template, _, lifted) = lift_secrets("https://tok@t.example/rss?q={query}");
-        assert_eq!(template, "https://{login}@t.example/rss?q={query}");
-        assert_eq!(lifted, vec![("login".to_string(), "tok".to_string())]);
+        assert_eq!(template, "https://{login_key}@t.example/rss?q={query}");
+        assert_eq!(lifted, vec![("login_key".to_string(), "tok".to_string())]);
+        let (template, _, lifted) = lift_secrets("https://tok:@t.example/rss?q={query}");
+        assert_eq!(template, "https://{login_key}:@t.example/rss?q={query}");
+        assert_eq!(lifted, vec![("login_key".to_string(), "tok".to_string())]);
+    }
+
+    #[test]
+    fn a_login_password_and_a_password_parameter_stay_apart() {
+        let (template, _, lifted) = lift_secrets("https://me:a@t.example/rss?q={query}&password=b");
+        assert_eq!(
+            template,
+            "https://me:{login_password}@t.example/rss?q={query}&password={password}"
+        );
+        assert_eq!(lifted.len(), 2);
     }
 
     #[test]

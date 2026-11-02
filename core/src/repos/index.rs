@@ -242,6 +242,16 @@ pub fn bare_host(value: &str) -> bool {
         })
 }
 
+/// A login in front of an address's host: the address up to and with its `://`, the login,
+/// and the address from the host on. None when there is no login.
+pub fn split_login(url: &str) -> Option<(&str, &str, &str)> {
+    let start = url.find("://")? + 3;
+    let rest = &url[start..];
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let at = rest[..end].rfind('@')?;
+    Some((&url[..start], &rest[..at], &rest[at + 1..]))
+}
+
 /// The authority of an http(s) address as written, between `://` and the path.
 pub fn authority_of(url: &str) -> &str {
     let rest = url.split_once("://").map_or("", |(_, r)| r);

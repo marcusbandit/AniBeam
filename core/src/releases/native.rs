@@ -305,18 +305,24 @@ impl Native {
 }
 
 /// Query parameters that hold a secret, with the label a person reads for each. A source
-/// added by hand has these lifted out of its address, and a listed address has them masked.
-/// Names match case-insensitively.
-pub const SECRET_PARAMS: [(&str, &str); 9] = [
+/// added by hand has these lifted out of its address, a listed address has them masked, and
+/// the tailnet snapshot leaves them out. Names match case-insensitively.
+pub const SECRET_PARAMS: [(&str, &str); 15] = [
     ("apikey", "API key"),
     ("api_key", "API key"),
+    ("jackett_apikey", "API key"),
     ("token", "Token"),
     ("passkey", "Passkey"),
     ("torrent_pass", "Passkey"),
     ("rsskey", "RSS key"),
     ("authkey", "Auth key"),
+    ("auth", "Auth key"),
     ("key", "Key"),
     ("secret", "Secret"),
+    ("sig", "Signature"),
+    ("pass", "Password"),
+    ("password", "Password"),
+    ("uid", "User id"),
 ];
 
 /// The label of a query parameter that holds a secret; None for any other.
@@ -334,16 +340,16 @@ pub fn mask(url: &str) -> String {
         Some((b, q)) => (b, Some(q)),
         None => (url, None),
     };
-    let mut out = match base.split_once("://") {
-        Some((scheme, rest)) => {
-            let end = rest.find(['/', '#']).unwrap_or(rest.len());
-            match rest[..end].rsplit_once('@') {
-                Some((login, host)) => match login.split_once(':') {
-                    Some((user, _)) => format!("{scheme}://{user}:...@{host}{}", &rest[end..]),
-                    None => format!("{scheme}://...@{host}{}", &rest[end..]),
-                },
-                None => base.to_string(),
-            }
+    let hidden = |part: &str| part.is_empty() || part.starts_with('{');
+    let mut out = match crate::repos::index::split_login(base) {
+        Some((scheme, login, host)) => {
+            let login = match login.split_once(':') {
+                Some((user, pw)) if !hidden(pw) => format!("{user}:..."),
+                Some((user, pw)) if !hidden(user) => format!("...:{pw}"),
+                None if !hidden(login) => "...".to_string(),
+                _ => login.to_string(),
+            };
+            format!("{scheme}{login}@{host}")
         }
         None => base.to_string(),
     };
@@ -420,6 +426,11 @@ mod tests {
             "https://me:...@x/rss?q={query}&RssKey=...&authkey=...&key=...&monkey=d"
         );
         assert_eq!(mask("https://tok@x/rss"), "https://...@x/rss");
+        assert_eq!(mask("https://tok:@x/rss"), "https://...:@x/rss");
+        assert_eq!(
+            mask("https://x/rss?uid=1&PASS=2&q={query}"),
+            "https://x/rss?uid=...&PASS=...&q={query}"
+        );
         assert_eq!(
             mask("https://x/rss?q={query}&passkey={passkey}"),
             "https://x/rss?q={query}&passkey={passkey}"
