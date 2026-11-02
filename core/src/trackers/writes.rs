@@ -308,6 +308,21 @@ pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<u64, Co
     start(core, JobKind::Score, target, Action::Score { score })
 }
 
+/// Moves a series to a list status on every connected tracker, with the
+/// status alone: progress and score stay as each tracker has them. Rewatching
+/// is a tracker's own state and not one to pick, so it is refused.
+pub fn set_status(core: &Core, series: u64, status: ListStatus) -> Result<u64, CoreError> {
+    if status == ListStatus::Repeating {
+        return Err(CoreError::invalid(
+            "status",
+            "Rewatching is not a status to set".to_string(),
+        ));
+    }
+    let target = core.store.read(|c| targets(c, series))?;
+    guard(core, &target)?;
+    start(core, JobKind::SetStatus, target, Action::Status { status })
+}
+
 /// The guards every write shares, in the order the shell expects them:
 /// nothing to write to, a series the user hid, and no account behind
 /// either id. Answers with the main tracker, which is the one the
@@ -385,6 +400,7 @@ enum Action {
     Mark { episode: u32 },
     Progress { progress: u32 },
     Score { score: f64 },
+    Status { status: ListStatus },
 }
 
 impl Action {
@@ -394,6 +410,7 @@ impl Action {
             Action::Mark { .. } => "mark",
             Action::Progress { .. } => "set progress",
             Action::Score { .. } => "score",
+            Action::Status { .. } => "set status",
         }
     }
 }
@@ -490,6 +507,15 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
                 outcomes,
             },
         },
+        Action::Status { status } => {
+            let words = status_words(status);
+            Finished {
+                plain: sites.map(|s| format!("Moved {folder} to {words} on {s}.")),
+                level,
+                message: format!("status of {folder} set to {words}"),
+                body: EventBody::Notice,
+            }
+        }
         Action::Score { score } => {
             // A score of nought is unrated on both trackers, so the event
             // carries no score rather than a rating of nothing.
@@ -570,8 +596,32 @@ async fn attempt(
     let token = accounts::access_token(core, t)
         .await?
         .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
-    let current = read_entry(core, t, media_id, user_id, &token).await?;
+    let current = match action {
+        // A status write needs nothing from the entry, so it costs no read.
+        Action::Status { .. } => 0,
+        _ => read_entry(core, t, media_id, user_id, &token).await?,
+    };
     match action {
+        Action::Status { status } => {
+            let stamp = send_status(core, t, media_id, &token, status).await?;
+            record_status(core, t, media_id, status, stamp).await?;
+            ctx.emit(
+                Level::Debug,
+                format!(
+                    "{} status -> {} (mediaId {media_id})",
+                    t.as_str(),
+                    status.as_str()
+                ),
+                EventBody::Notice,
+            );
+            Ok(TrackerOutcome {
+                tracker: t,
+                ok: true,
+                progress: None,
+                reason: None,
+                message: None,
+            })
+        }
         Action::Mark { episode } => {
             // The monotonic rule, decided against the tracker itself: a
             // mark only ever moves progress up, and a list already past
@@ -1018,6 +1068,18 @@ fn mark_synced(conn: &Connection, t: Tracker, now: i64) -> Result<(), CoreError>
         params![t.as_str(), now],
     )?;
     Ok(())
+}
+
+/// A status as a sentence says it.
+fn status_words(status: ListStatus) -> &'static str {
+    match status {
+        ListStatus::Watching => "Watching",
+        ListStatus::Repeating => "Rewatching",
+        ListStatus::Planning => "Planning",
+        ListStatus::Completed => "Completed",
+        ListStatus::Paused => "On hold",
+        ListStatus::Dropped => "Dropped",
+    }
 }
 
 // Vocabulary -----------------------------------------------------------------

@@ -135,6 +135,12 @@ pub enum Call {
         series: u64,
         score: Option<f64>,
     },
+    /// Moves a series to a list status on every connected tracker, the
+    /// status alone. Rewatching is refused. `Started` with the job.
+    SetListStatus {
+        series: u64,
+        status: ListStatus,
+    },
     RefreshProgress {
         tracker: Option<Tracker>,
     },

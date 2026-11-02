@@ -537,12 +537,30 @@ FocusScope {
     // The right-click menu at a point: Back and Forward, then what is under the pointer (an
     // episode, a card), the page's own rows, and deleting a card's files last
     function openContextMenu(p) {
+        frame.contextPoint = p
         var items = [{ split: [{ text: "Back", icon: "arrow-left", action: frame.back, enabled: nav.canBack },
                                { text: "Forward", icon: "arrow-right", action: frame.forward, enabled: nav.canForward, trailing: true }] }]
         items = items.concat(frame.releaseItems(), frame.episodeItems(), frame.seriesCardItems())
         if (page.item && page.item.contextItems) items = items.concat(page.item.contextItems())
         items = items.concat(frame.seriesDeleteItems())
         frame.openMenu(p.x, p.y, items)
+    }
+    property point contextPoint: Qt.point(0, 0)
+    // The list statuses a series can be moved to, as menu rows. The core writes the choice to
+    // every connected tracker; `current` is the status the series has now, marked as the
+    // chosen row
+    function listStatusItems(series, current) {
+        var out = []
+        var all = [["Watching", "Watching", "play"], ["Planning", "Planning", "bookmark"], ["Completed", "Completed", "circle-check"],
+                   ["Paused", "On hold", "pause"], ["Dropped", "Dropped", "ban"]]
+        all.forEach(function(s) {
+            out.push({ text: s[1], icon: current === s[0] ? "check" : s[2], enabled: current !== s[0],
+                       action: function() {
+                           var r = Door.setListStatus(series, s[0])
+                           if (r.error) frame.toast(frame.errorText(r.error))
+                       } })
+        })
+        return out
     }
     // From the keys: at the focused item, or the middle of the page when nothing has focus
     function openContextMenuAtFocus() {
@@ -693,6 +711,9 @@ FocusScope {
         var out = [{ text: "Open", icon: "layers", action: function() { frame.go("series", { id: c.id }, c.title) } },
                    { text: "Open folder", icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(c.path)) } }]
         out.push({ text: "Copy title", icon: "copy", action: function() { frame.copyText(c.title) } })
+        // The status menu opens where this one did: Menu has no submenus
+        if (c.match_info || c.list_status)
+            out.push({ text: "List status", icon: "bookmark", action: function() { frame.openMenu(frame.contextPoint.x, frame.contextPoint.y, frame.listStatusItems(c.id, c.list_status || "")) } })
         var site = c.site_url || (c.match_info && c.match_info.anilist_id ? "https://anilist.co/anime/" + c.match_info.anilist_id : "")
         if (site) out.push({ text: "Open on AniList", icon: "external-link", action: function() { frame.openLink(site) } })
         return out

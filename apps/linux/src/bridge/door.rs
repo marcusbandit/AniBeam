@@ -19,9 +19,9 @@ use std::time::Instant;
 use anibeam_core::events::Subscription;
 use anibeam_core::{
     Call, Chapter, CloseReason, CoreError, Direction, DownloadOptions, DownloadSettings, Event,
-    EventBody, EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences,
-    Provider, RefineOp, Release, SeasonPick, Sort, SubscriptionsResult, SubtitleChoice,
-    SubtitleDefaults, Tab, TorrentAction, TrackRef, Tracker,
+    EventBody, EventListener, FeedSort, JobPhase, Level, ListStatus, MatchTarget, MetadataFilter,
+    Preferences, Provider, RefineOp, Release, SeasonPick, Sort, SubscriptionsResult,
+    SubtitleChoice, SubtitleDefaults, Tab, TorrentAction, TrackRef, Tracker,
 };
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QJsonArray, QJsonObject, QString};
@@ -177,6 +177,8 @@ pub mod qobject {
         fn set_progress(self: &Door, series: f64, progress: i32, season: i32) -> QJsonObject;
         #[qinvokable]
         fn set_score(self: &Door, series: f64, score: f64) -> QJsonObject;
+        #[qinvokable]
+        fn set_list_status(self: &Door, series: f64, status: &QString) -> QJsonObject;
         #[qinvokable]
         fn refresh_progress(self: &Door, tracker: &QString) -> QJsonObject;
         #[qinvokable]
@@ -1733,6 +1735,14 @@ impl qobject::Door {
         self.dispatch(Ok(Call::SetScore {
             series: id(series),
             score: if score < 0.0 { None } else { Some(score) },
+        }))
+    }
+    pub fn set_list_status(&self, series: f64, status: &QString) -> QJsonObject {
+        self.dispatch(parse_enum::<ListStatus>("status", status).map(|status| {
+            Call::SetListStatus {
+                series: id(series),
+                status,
+            }
         }))
     }
     pub fn refresh_progress(&self, tracker: &QString) -> QJsonObject {

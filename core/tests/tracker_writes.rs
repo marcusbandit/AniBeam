@@ -648,3 +648,54 @@ fn an_exhausted_rate_limit_is_one_sanitised_outcome() {
     // Nothing was written, so the cache says nothing either.
     assert_eq!(card(&core, series).watched, None);
 }
+
+/// A status is written alone to every connected tracker, with no read of
+/// the entry first, and the card follows. Rewatching is not one to pick.
+#[test]
+fn a_status_goes_to_both_trackers_alone_and_the_card_follows() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"SaveMediaListEntry":{"id":9,"status":"DROPPED"}}}"#,
+    );
+    http.push_for("myanimelist", 200, "{}");
+
+    let job = started(
+        core.call(Call::SetListStatus {
+            series,
+            status: ListStatus::Dropped,
+        })
+        .unwrap(),
+    );
+    let done = common::wait_job(&c, job);
+    assert_eq!(done.level, Level::Info, "{done:?}");
+
+    assert_eq!(
+        graphql_variables(&http, "SaveMediaListEntry"),
+        vec![serde_json::json!({ "mediaId": 1, "status": "DROPPED" })]
+    );
+    let forms = mal_forms(&http);
+    assert_eq!(forms.len(), 1);
+    assert_eq!(
+        forms[0],
+        vec![("status".to_string(), "dropped".to_string())]
+    );
+    assert_eq!(card(&core, series).list_status, Some(ListStatus::Dropped));
+
+    let err = core
+        .call(Call::SetListStatus {
+            series,
+            status: ListStatus::Repeating,
+        })
+        .unwrap_err();
+    assert!(
+        matches!(&err, CoreError::Invalid { field, .. } if field == "status"),
+        "{err:?}"
+    );
+}

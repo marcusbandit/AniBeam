@@ -927,7 +927,11 @@ Item {
                         text: page.hasImdb ? "IMDb " + Fmt.score(card.imdb_score) : ""
                         Tooltip { text: page.hasImdb && card.imdb_votes ? Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) + " votes" : "" }
                     }
-                    Fact { objectName: "fact-list"; visible: !!card.list_status; icon: page.listIcon(card.list_status); text: card.list_status ? page.listStatus(card.list_status) : "" }
+                    Fact { objectName: "fact-list"; visible: !!card.list_status; icon: page.listIcon(card.list_status); text: card.list_status ? page.listStatus(card.list_status) : ""
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: { var p = parent.mapToItem(frame, 0, parent.height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) } }
+                        Tooltip { text: "Change your list status" }
+                    }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
                     Button {
                         objectName: "series-hide"

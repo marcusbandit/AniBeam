@@ -305,10 +305,10 @@ pub fn patch_score(
     Ok(())
 }
 
-/// One entry's status, after On hold moved it: the progress, the score and
+/// One entry's status, after a status write: the progress, the score and
 /// the rewatch count are the list's and are left alone, and `updated_at`
-/// follows `patch_progress`'s rule. A row the cache does not hold stays
-/// absent, since On hold only ever moves a cached entry.
+/// follows `patch_progress`'s rule. A show the list did not hold yet gets a
+/// row at progress nought, which is what the tracker's new entry says.
 pub fn patch_status(
     conn: &Connection,
     t: Tracker,
@@ -318,8 +318,12 @@ pub fn patch_status(
     now: i64,
 ) -> Result<(), CoreError> {
     conn.execute(
-        "UPDATE tracker_entries SET status = ?3, updated_at = COALESCE(?4, updated_at), fetched_at = ?5
-         WHERE tracker = ?1 AND media_id = ?2",
+        "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
+         VALUES (?1, ?2, ?3, 0, NULL, 0, ?4, ?5)
+         ON CONFLICT(tracker, media_id) DO UPDATE SET
+             status = excluded.status,
+             updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
+             fetched_at = excluded.fetched_at",
         params![
             t.as_str(),
             media_id as i64,
