@@ -658,6 +658,8 @@ const LEAN_CARD_KEYS: &[&str] = &[
     "community_score",
     "downloading",
     "hidden",
+    // The tracker ids a card's right-click reads: Open on AniList and the list status rows
+    "match_info",
     "site_url",
     "franchise",
     "season",

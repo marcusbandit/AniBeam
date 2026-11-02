@@ -128,6 +128,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- A library card's right-click menu offers Open on AniList again
 - Seeders and leechers show for trackers whose address carries a passkey
 - Next from a season's last episode plays the next season's first
 - Double clicking the picture into fullscreen no longer plays at 2x
