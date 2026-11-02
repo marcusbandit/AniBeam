@@ -153,6 +153,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Episodes listed as "S2 Episode 3" get episode 3's title, not episode 2's
 - A password or key in a site's address is stored as a secret, not in the open
 - An imported backup keeps a watched opening or ending as last watched
+- An endpoint at an IPv6 address shows its full host
 
 ## 2.3.0 · 2026-10-27
 

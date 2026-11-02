@@ -85,7 +85,7 @@ fn normal_url(url: &str) -> Result<String, CoreError> {
 fn is_local_http(url: &str) -> bool {
     matches!(
         index::host_of(url).as_str(),
-        "localhost" | "127.0.0.1" | "10.0.2.2"
+        "localhost" | "127.0.0.1" | "::1" | "10.0.2.2"
     )
 }
 
@@ -1511,7 +1511,9 @@ mod tests {
     #[test]
     fn plain_http_only_for_this_machine() {
         assert!(normal_url("http://10.0.2.2:8000/general.json").is_ok());
+        assert!(normal_url("http://[::1]:8080/general.json").is_ok());
         assert!(normal_url("http://example.com/x.json").is_err());
+        assert!(normal_url("http://evil.com\\@127.0.0.1/x.json").is_err());
         assert!(normal_url("https://example.com/x.json").is_ok());
         assert!(normal_url("/tmp/general.json").is_ok());
         assert!(normal_url("  ").is_err());
