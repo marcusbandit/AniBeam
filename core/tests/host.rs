@@ -404,3 +404,33 @@ fn a_port_that_is_taken_says_so() {
     );
     core.shutdown();
 }
+
+/// The headless service holds the host: it serves before and after the
+/// preference says anything, and switching the preference off while held
+/// leaves it serving. Letting go hands it back to the preference.
+#[test]
+fn a_held_host_serves_whatever_the_preference_says() {
+    let (_dir, core, _c) = common::open_core();
+    core.set_host_bind(Some("127.0.0.1:0".to_string()));
+    core.hold_host(true);
+    assert!(!host_status(&core).enabled, "nothing runs before start");
+    core.start().unwrap();
+    let status = wait_status(&core, |s| !s.urls.is_empty());
+    let hello = format!("{}{}", status.urls[0], wire::HELLO);
+    let answered = |url: &str| block_on(async { client().get(url).send().await.is_ok() });
+    assert!(answered(&hello));
+
+    share(&core, true);
+    share(&core, false);
+    assert!(
+        host_status(&core).enabled,
+        "held through the switch going off"
+    );
+    assert!(answered(&hello));
+
+    core.hold_host(false);
+    wait_status(&core, |s| !s.enabled);
+    share(&core, true);
+    wait_status(&core, |s| !s.urls.is_empty());
+    core.shutdown();
+}
