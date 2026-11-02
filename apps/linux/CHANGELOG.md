@@ -15,6 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- An export carries your quick fixes, and an import puts them back
 - Pick a dark app icon in Settings, under Appearance
 - The phone app plays this library's episodes over Tailscale
 - Shows you mark not interested on the phone are hidden here too
