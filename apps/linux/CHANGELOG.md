@@ -128,6 +128,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - A trusted-only source shows every upload when nothing trusted matches
+- A source added by hand earlier moves its key out of the address at launch
+- A search whose picked endpoint fails says why instead of showing no results
 - A web page answering at the qBittorrent address no longer counts as a login
 - Seeders and leechers show for trackers whose address carries a passkey
 - Next from a season's last episode plays the next season's first
@@ -153,6 +155,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Episodes listed as "S2 Episode 3" get episode 3's title, not episode 2's
 - A password or key in a site's address is stored as a secret, not in the open
 - An imported backup keeps a watched opening or ending as last watched
+- An endpoint at an IPv6 address shows its full host
+- An episode folder beside Specials or a sample joins its show
+- Auto-match tells a second OVA run apart from the first, and finds a first film
 
 ## 2.3.0 · 2026-10-27
 

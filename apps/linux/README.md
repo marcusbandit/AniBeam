@@ -76,6 +76,7 @@ adds nothing), so it needs both installed and skips nothing when they are not.
     {"click": [x, y] | "objectName", "button": "right", "double": true}
     {"hover": [x, y] | "objectName"} {"wheel": [x, y, dy]}  or  {"wheel": "objectName", "dy": -120}
     {"key": "Escape" | "Ctrl+K" | "Alt+Left" | "Shift+Tab" | "a"}     {"type": "some text"}
+    {"key": "Down", "repeatUntil": "js", "max": 5}
     {"shot": "name"}                 {"log": "text"}        {"page": "settings", "props": {}}
     {"eval": "frame.item.nav.current.page", "expect": "settings", "as": "k"}
 
@@ -87,6 +88,9 @@ item of that name in the window's tree, open Popups included; `Rail`, `Seg` (cel
 `<name>-<label>`) and `Dropdown` (`<name>-popup`, `<name>-option-<i>`) carry names for this.
 `eval` runs in Main.qml's scope (`window`, `frame`, `Theme`, `driver.item.findItem(name)`), and
 `vars.k` reads what an earlier `"as": "k"` stored.
+
+A `key` with `repeatUntil` presses the key until the JS (same scope as `eval`) is truthy, and fails
+after `max` presses (5 unless set); it walks past rows that are only sometimes on the page.
 
 `{"wait": ms}` is a fixed pause. Use it only for time that is the point, such as an animation
 settling or a hover tip's own delay; a wait for the app to get somewhere is `{"until": "js"}`.

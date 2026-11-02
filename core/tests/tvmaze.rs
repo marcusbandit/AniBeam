@@ -414,7 +414,8 @@ fn a_tvmaze_rate_limit_fails_the_job_and_stamps_nothing() {
 }
 
 /// The version bump: a series AniList alone missed under version 1 is
-/// tried again under 2, which is what puts Avatar in front of TVmaze.
+/// tried again under the current one, which is what puts Avatar in front
+/// of TVmaze.
 #[test]
 fn a_series_stamped_under_version_1_is_tried_again() {
     let http = FakeHttp::new();
@@ -444,9 +445,11 @@ fn a_series_stamped_under_version_1_is_tried_again() {
         "{done:?}"
     );
     assert!(
-        c.events()
-            .iter()
-            .any(|e| e.message == "Auto-match v2: re-attempting 1 unmatched series"),
+        c.events().iter().any(|e| e.message
+            == format!(
+                "Auto-match v{}: re-attempting 1 unmatched series",
+                anibeam_core::metadata::automatch::AUTO_MATCH_VERSION
+            )),
         "{:#?}",
         c.events()
     );
