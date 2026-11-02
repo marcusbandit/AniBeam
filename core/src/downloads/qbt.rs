@@ -428,7 +428,7 @@ impl QbtClient {
                 "qBittorrent rejected the username or password",
             ));
         }
-        if !r.is_success() {
+        if r.status >= 500 {
             return Err(CoreError::Service {
                 service: SERVICE.to_string(),
                 code: "unreachable".to_string(),
@@ -437,6 +437,9 @@ impl QbtClient {
                     self.base, r.status
                 ),
             });
+        }
+        if !r.is_success() {
+            return judge(&self.base, r).map(|_| ());
         }
         // The cookie's own `name=value`, the first part before the attributes
         let sid = r
@@ -753,6 +756,20 @@ mod tests {
         http.push_for("auth/login", 200, "Ok.");
         http.push_for("app/version", 200, "v5.2.4");
         assert_eq!(c.version().await.unwrap(), "v5.2.4");
+    }
+
+    #[tokio::test]
+    async fn a_web_page_answering_the_login_says_so_and_is_not_a_rejection() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for("app/version", 403, "");
+        http.push_for("auth/login", 404, "<!DOCTYPE html><html>");
+        let c = client(&http);
+        let e = c.version().await.unwrap_err();
+        assert!(matches!(&e, CoreError::Service { code, .. } if code == "http_404"));
+        http.push_for("transfer/info", 403, "");
+        http.push_for("auth/login", 200, "Ok.");
+        http.push_for("transfer/info", 200, "{}");
+        c.transfer().await.unwrap();
     }
 
     #[tokio::test]
