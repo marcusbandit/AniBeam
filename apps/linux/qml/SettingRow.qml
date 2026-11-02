@@ -18,7 +18,7 @@ Item {
     property string line: ""
     property string helper: ""
     property string status: ""
-    property bool hairline: !(parent && parent.lastRow === root)
+    property bool hairline: true
     readonly property bool settingTarget: true
     property real flash: 0
     function pulse() { flashAnim.restart() }
@@ -98,5 +98,5 @@ Item {
         width: childrenRect.width
         height: childrenRect.height
     }
-    Rectangle { visible: root.hairline; anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
+    Rectangle { visible: root.hairline && (!root.parent || !root.parent.ruleAfter || root.parent.ruleAfter(root)); anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
 }

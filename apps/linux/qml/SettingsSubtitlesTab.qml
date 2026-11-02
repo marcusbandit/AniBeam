@@ -10,12 +10,8 @@ SettingsTab {
     id: tab
     title: "Subtitles"
     lead: "What every episode starts with. Changes show on the frame below as you make them."
-    property var defaults: JSON.parse(JSON.stringify(Door.settings.subtitle_defaults || {}))
+    readonly property var defaults: frame.subtitleDefaults
     property var preview: ({ path: "", subtitle: "", startAt: 0 })
-    Connections { target: Door; function onSettingsChanged() { tab.defaults = JSON.parse(JSON.stringify(Door.settings.subtitle_defaults)) } }
-    Timer { id: save; interval: 250; onTriggered: { var r = Door.setSubtitleDefaults(tab.defaults); if (r.error) frame.toast(r.error.message) } }
-    // A change still waiting on the debounce is written on the way out
-    Component.onDestruction: if (save.running) { save.stop(); Door.setSubtitleDefaults(tab.defaults) }
     // Back to the look AniBeam ships with; the language orders stay as they are
     function resetStyle() {
         var stock = Player.stockSubtitleDefaults()
@@ -25,7 +21,7 @@ SettingsTab {
     // A value a field cannot take: the field says so in red and nothing is saved
     property var bad: ({})
     function flag(key, ok) { var b = Object.assign({}, bad); if (ok) delete b[key]; else b[key] = true; bad = b; return ok }
-    function edit(f) { var d = JSON.parse(JSON.stringify(defaults)); f(d); defaults = d; save.restart() }
+    function edit(f) { frame.editSubtitleDefaults(f) }
     function isHex(s) { return /^#[0-9a-fA-F]{6}$/.test(s) }
     function hexOf(c) { function h(n) { return ("0" + n.toString(16)).slice(-2) } return "#" + h(c.r) + h(c.g) + h(c.b) }
     function colourOf(hex) { return { r: parseInt(hex.substr(1, 2), 16), g: parseInt(hex.substr(3, 2), 16), b: parseInt(hex.substr(5, 2), 16), a: 255 } }

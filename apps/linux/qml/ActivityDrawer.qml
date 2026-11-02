@@ -118,30 +118,15 @@ Item {
     property bool copied: false
     Timer { id: copiedTimer; interval: 2000; onTriggered: root.copied = false }
     function copyAll() {
-        clipboardLoader.active = true
-        var clipboard = clipboardLoader.item
-        clipboard.text = rows.map(lineOf).join("\n")
-        clipboard.selectAll()
-        clipboard.copy()
+        frame.copyText(rows.map(lineOf).join("\n"), "")
         copied = true
         copiedTimer.restart()
     }
     // One line, by a click on it
-    function copyLine(r) {
-        clipboardLoader.active = true
-        var clipboard = clipboardLoader.item
-        clipboard.text = lineOf(r)
-        clipboard.selectAll()
-        clipboard.copy()
-        frame.toast("Copied the line")
-    }
+    function copyLine(r) { frame.copyText(lineOf(r), "Copied the line") }
     // Clear empties the log for good: the first click asks, the second clears
     property bool clearArmed: false
     Timer { id: clearDisarm; interval: 4000; onTriggered: root.clearArmed = false }
-    // A TextEdit only to reach the clipboard, made on the first Copy: built with the frame
-    // it was 8 ms of every launch (#289)
-    Loader { id: clipboardLoader; active: false; sourceComponent: TextEdit { visible: false } }
-
     Item {
         id: body
         width: parent.width

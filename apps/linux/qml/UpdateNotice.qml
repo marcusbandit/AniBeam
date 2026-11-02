@@ -134,12 +134,9 @@ Frost {
         Qt.quit()
     }
     function copyCommand() {
-        clipboard.text = root.command
-        clipboard.selectAll()
-        clipboard.copy()
+        frame.copyText(root.command, "")
         root.copied = true
     }
-    TextEdit { id: clipboard; visible: false }
 
     function mb(bytes) { return Math.round(bytes / 1048576) }
     readonly property string headline: {

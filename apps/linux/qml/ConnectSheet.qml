@@ -299,10 +299,9 @@ Item {
                             clickable: true
                             icon: urlCopied.running ? "check" : "copy"
                             maxLabelWidth: parent.width - theme.space(30)
-                            onClicked: { copyBuf.text = frame.redirectUrl; copyBuf.selectAll(); copyBuf.copy(); urlCopied.restart() }
+                            onClicked: { frame.copyText(frame.redirectUrl, ""); urlCopied.restart() }
                             Tooltip { text: "Copy the redirect URL" }
                         }
-                        TextEdit { id: copyBuf; visible: false }  // not "clip": that id would shadow Item.clip
                         Timer { id: urlCopied; interval: 1200 }
                     }
                 }

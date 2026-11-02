@@ -9,12 +9,8 @@ SettingsTab {
     id: tab
     title: "Playback"
     lead: "What the player does on its own, so you only reach for it when you want to."
-    property var defaults: JSON.parse(JSON.stringify(Door.settings.subtitle_defaults || {}))
-    Connections { target: Door; function onSettingsChanged() { tab.defaults = JSON.parse(JSON.stringify(Door.settings.subtitle_defaults)) } }
-    Timer { id: save; interval: 250; onTriggered: { var r = Door.setSubtitleDefaults(tab.defaults); if (r.error) frame.toast(r.error.message) } }
-    // A change still waiting on the debounce is written on the way out
-    Component.onDestruction: if (save.running) { save.stop(); Door.setSubtitleDefaults(tab.defaults) }
-    function edit(f) { var d = JSON.parse(JSON.stringify(defaults)); f(d); defaults = d; save.restart() }
+    readonly property var defaults: frame.subtitleDefaults
+    function edit(f) { frame.editSubtitleDefaults(f) }
     function codes(t) { return t.split(",").map(function(s) { return s.trim() }).filter(function(s) { return s }) }
     readonly property var skip: Door.settings.auto_skip || ({})
     // Discord rich presence: a build with no Discord application has nothing to switch on

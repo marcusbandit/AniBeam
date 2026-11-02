@@ -101,8 +101,10 @@ Item {
 
         Column {
             id: body
-            // The row that closes the pane: SettingRow reads it to leave its hairline off
+            // The row that closes the pane: the rows ask ruleAfter, so it draws none
             readonly property Item lastRow: root.laidRows.last
+            // Whether a row draws its hairline: every row but the one that closes the pane
+            function ruleAfter(row) { return lastRow !== row }
             x: root.inset
             y: root.pad
             width: pane.width - root.inset * 2

@@ -34,8 +34,7 @@ SettingsTab {
     function tone(v) { return v < 100 ? theme.green : v < 300 ? theme.yellow : theme.red }
     // A table column: `parts` of the 100 the table's width is cut into
     function col(parts) { return Math.floor((tab.blockWidth - theme.space(2)) * parts / 100) }
-    function copy(text) { clip.text = text; clip.selectAll(); clip.copy(); frame.toast("Copied") }
-    TextEdit { id: clip; visible: false }
+    function copy(text) { frame.copyText(text) }
 
     // Events per kind over the last minute: where the traffic to QML comes from
     readonly property var eventRates: {
