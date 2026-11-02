@@ -33,11 +33,17 @@ use crate::store::sql::{as_i64, placeholders};
 const CHARACTER_CAP: usize = 10;
 const RECOMMENDATION_CAP: usize = 8;
 
-/// The first one to three digit number bounded by non-digits. The prefix
-/// in front of it is whatever the streaming site felt like: "Episode ",
-/// "S2E", nothing at all.
+/// The first one to four digit number bounded by non-digits, a decimal
+/// special such as 12.5 matching none. The prefix in front of it is
+/// whatever the streaming site felt like: "Episode ", "S2E", nothing at all.
 static STREAM_NUMBER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:^|[^\d])(\d{1,3})(?:\D|$)").unwrap());
+    LazyLock::new(|| Regex::new(r"(?:^|[^\d.])(\d{1,4})(?:[^\d.]|$)").unwrap());
+
+/// A number right after "Episode", "Ep" or the E of "S2E3", which beats an
+/// earlier bare number such as the season.
+static STREAM_EPISODE_NUMBER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:^|[^a-z])(?:ep(?:isode)?\.?\s*|e)(\d{1,4})(?:[^\d.]|$)").unwrap()
+});
 
 /// What both providers write when they have no title: AniList in a
 /// streaming entry, Jikan in its episode list.
@@ -192,18 +198,17 @@ fn studio_rank(e: &StudioEdge) -> u8 {
 /// rather than persisted as a placeholder.
 pub fn parse_streaming_title(raw: &str) -> Option<(u32, String)> {
     let trimmed = raw.trim();
-    let number: u32 = STREAM_NUMBER
-        .captures(trimmed)?
-        .get(1)?
-        .as_str()
-        .parse()
-        .ok()?;
-    if number == 0 {
-        return None;
-    }
     // Everything up to and including the first " - " is the prefix. With
     // no separator there is no title, only the numbering.
     let separator = trimmed.find(" - ")?;
+    let prefix = &trimmed[..separator];
+    let captures = STREAM_EPISODE_NUMBER
+        .captures(prefix)
+        .or_else(|| STREAM_NUMBER.captures(prefix))?;
+    let number: u32 = captures.get(1)?.as_str().parse().ok()?;
+    if number == 0 {
+        return None;
+    }
     let title = trimmed[separator + 3..].trim();
     if title.is_empty() || PLACEHOLDER.is_match(title) {
         return None;
@@ -843,8 +848,22 @@ mod tests {
         assert_eq!(parse_streaming_title("Episode 1"), None);
         assert_eq!(
             parse_streaming_title("S2 Episode 3 - The Heroine"),
-            Some((2, "The Heroine".into()))
+            Some((3, "The Heroine".into()))
         );
+        assert_eq!(
+            parse_streaming_title("S2 Ep. 12 - Finale"),
+            Some((12, "Finale".into()))
+        );
+        assert_eq!(
+            parse_streaming_title("S02E05 - The Heroine"),
+            Some((5, "The Heroine".into()))
+        );
+        assert_eq!(
+            parse_streaming_title("Episode 1071 - Gear 5"),
+            Some((1071, "Gear 5".into()))
+        );
+        assert_eq!(parse_streaming_title("Special - Episode 5 Recap"), None);
+        assert_eq!(parse_streaming_title("Episode 12.5 - Recap"), None);
         assert_eq!(parse_streaming_title("Episode 5 - Episode 5"), None);
         let eps = vec![
             StreamingEpisode {
