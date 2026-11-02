@@ -398,7 +398,12 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
     }
     parts.path = format!("{}scrape", &path[..path.len() - "announce".len()]);
     // The announce's own query (a passkey, say) stays and the hashes join it with `&`.
-    let own_query = std::mem::take(&mut parts.query);
+    let mut prefix = std::mem::take(&mut parts.query)
+        .trim_end_matches('&')
+        .to_string();
+    if !prefix.is_empty() {
+        prefix.push('&');
+    }
     parts.fragment.clear();
     let shown = parts.geturl();
     let mut out = HashMap::new();
@@ -408,11 +413,7 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
             .map(|h| format!("info_hash={}", quote(h, "/")))
             .collect::<Vec<_>>()
             .join("&");
-        parts.query = if own_query.is_empty() {
-            qs
-        } else {
-            format!("{own_query}&{qs}")
-        };
+        parts.query = format!("{prefix}{qs}");
         let request = HttpRequest {
             method: Method::Get,
             url: parts.geturl(),
@@ -1295,6 +1296,31 @@ mod tests {
              %01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01"
         );
         assert_eq!(out[&h], (5, 1, 9));
+    }
+
+    #[tokio::test]
+    async fn every_batch_carries_the_announce_query_once() {
+        let hashes: Vec<Hash> = (0..60u8).map(|i| [i; 20]).collect();
+        let http = FakeHttp::new();
+        for _ in 0..2 {
+            http.push(200, scrape_body(&[0u8; 20], 1, 1, 1));
+        }
+        http_scrape(
+            http.as_ref(),
+            "https://t.example/announce?passkey=abc&",
+            &hashes,
+        )
+        .await;
+        let urls: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+        assert_eq!(urls.len(), 2);
+        for url in &urls {
+            assert!(
+                url.starts_with("https://t.example/scrape?passkey=abc&info_hash="),
+                "{url}"
+            );
+            assert_eq!(url.matches("passkey=").count(), 1, "{url}");
+            assert!(!url.contains("&&"), "{url}");
+        }
     }
 
     #[tokio::test]
