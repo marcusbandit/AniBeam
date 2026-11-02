@@ -1267,10 +1267,10 @@ mod tests {
         let h = [1u8; 20];
         let http = FakeHttp::new();
         http.push(200, scrape_body(&h, 5, 1, 9));
-        let out = http_scrape(http.as_ref(), "http://nyaa.tracker.wf:7777/announce", &[h]).await;
+        let out = http_scrape(http.as_ref(), "http://t.example:7777/announce", &[h]).await;
         let req = &http.requests()[0];
         assert!(
-            req.url.starts_with("http://nyaa.tracker.wf:7777/scrape?"),
+            req.url.starts_with("http://t.example:7777/scrape?"),
             "{}",
             req.url
         );

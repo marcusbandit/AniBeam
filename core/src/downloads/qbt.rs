@@ -636,7 +636,7 @@ fn torrent(v: &Value) -> Torrent {
     }
 }
 
-/// `http://nyaa.tracker.wf:7777/announce` to `nyaa.tracker.wf`.
+/// `http://t.example:7777/announce` to `t.example`.
 fn tracker_host(url: &str) -> String {
     let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
     let host = rest.split(['/', '?']).next().unwrap_or("");
@@ -859,11 +859,11 @@ mod tests {
     fn a_torrent_reads_its_order_flags_and_tracker() {
         let t = torrent(
             &json!({"hash": "h", "seq_dl": true, "f_l_piece_prio": false,
-                                "tracker": "http://nyaa.tracker.wf:7777/announce"}),
+                                "tracker": "http://t.example:7777/announce"}),
         );
         assert!(t.seq_dl);
         assert!(!t.f_l_piece_prio);
-        assert_eq!(t.tracker, "nyaa.tracker.wf");
+        assert_eq!(t.tracker, "t.example");
         assert_eq!(tracker_host("udp://[::1]:80/announce"), "::1");
         assert_eq!(tracker_host(""), "");
         assert!(!torrent(&Value::Null).seq_dl);

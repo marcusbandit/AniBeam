@@ -66,7 +66,7 @@
   "shot": "replace-03-batch"
  },
  {
-  "eval": "var g = driver.item.findItem('downloads-get'); var p = frame.item.pageItem; g.clearPicks(); p.torrents = [{ hash: 'ff00', name: '[Erai-raws] x - 25 [1080p].mkv', state: 'downloading', progress: 0.4, size: 400000000, dlspeed: 1500000, upspeed: 0, eta: 300, num_seeds: 5, num_leechs: 1, ratio: 0, save_path: '/mnt/media/x', content_path: '/mnt/media/x/a.mkv', added_on: 1, completion_on: -1, tags: '', category: '', series_id: p.getShow.seriesId, episode: 25, batch: false, files: [], seq_dl: false, f_l_piece_prio: false, tracker: 'nyaa.tracker.wf', group: 'Erai-raws', resolution: '1080p', provider: 'erai' }]; g.toggleCube(g.rows[0], 25); g.toggleCube(g.rows[0], 2); g.replaceOn = true; JSON.stringify([g.hadOnTheWay.length, g.hadOnDisk.length, g.replacing, JSON.stringify(g.options())])",
+  "eval": "var g = driver.item.findItem('downloads-get'); var p = frame.item.pageItem; g.clearPicks(); p.torrents = [{ hash: 'ff00', name: '[Erai-raws] x - 25 [1080p].mkv', state: 'downloading', progress: 0.4, size: 400000000, dlspeed: 1500000, upspeed: 0, eta: 300, num_seeds: 5, num_leechs: 1, ratio: 0, save_path: '/mnt/media/x', content_path: '/mnt/media/x/a.mkv', added_on: 1, completion_on: -1, tags: '', category: '', series_id: p.getShow.seriesId, episode: 25, batch: false, files: [], seq_dl: false, f_l_piece_prio: false, tracker: 't.example', group: 'Erai-raws', resolution: '1080p', provider: 'erai' }]; g.toggleCube(g.rows[0], 25); g.toggleCube(g.rows[0], 2); g.replaceOn = true; JSON.stringify([g.hadOnTheWay.length, g.hadOnDisk.length, g.replacing, JSON.stringify(g.options())])",
   "as": "flight"
  },
  {
