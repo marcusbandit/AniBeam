@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
@@ -26,7 +27,7 @@ enum Command {
         name: String,
         #[arg(long)]
         json: Option<String>,
-        /// Stay attached to a Started job and print its events until the terminal one.
+        /// Print the events of the jobs the call starts. The CLI waits for them either way.
         #[arg(long)]
         wait: bool,
     },
@@ -39,7 +40,7 @@ enum Command {
     },
     /// The sources: id, path, available, series count.
     Sources,
-    /// Start a scan; with --wait, print its events until it finishes.
+    /// Run a scan to its end; with --wait, print its events on the way.
     Scan {
         #[arg(long)]
         source: Option<u64>,
@@ -91,8 +92,8 @@ pub fn parse_call(name: &str, json: Option<&str>) -> Result<Call, String> {
     serde_json::from_value(value).map_err(|e| format!("unknown call {name}: {e}"))
 }
 
-/// Forwards every event it sees into a channel. Both `--wait` and
-/// `events --follow` read from the other end with a blocking `recv`, so
+/// Forwards every event it sees into a channel. Following a call's jobs and
+/// `events --follow` both read from the other end with a blocking `recv`, so
 /// neither ever sleep-polls.
 struct ChannelListener(Sender<Event>);
 
@@ -137,23 +138,36 @@ fn open(root: Option<PathBuf>) -> Arc<Core> {
     core
 }
 
-/// Sends one call and prints the reply as JSON. A `Started` job is always
-/// followed to its finish, because `main` shuts the core down after this
-/// returns and the shutdown cancels whatever is still running; `wait` only
-/// decides whether its events are printed on the way. Returns the exit code:
-/// 1 when the call or its job failed or was cancelled.
+/// Sends one call and prints the reply as JSON, then follows every job the
+/// call started to its finish: the reply's own `Started` job, and any job it
+/// started on the side, such as the scan behind `AddSource`. `main` shuts the
+/// core down after this returns and the shutdown cancels whatever is still
+/// running, so nothing is left behind. `wait` only decides whether the jobs'
+/// events are printed on the way. Returns the exit code: 1 when the call or
+/// one of its jobs failed or was cancelled.
 fn send(core: &Core, call: Call, wait: bool) -> i32 {
     // Subscribed before the call goes in, so a fast job's first events are
     // never missed racing the reply.
     let (tx, rx) = mpsc::channel::<Event>();
     let _sub = core.subscribe(Arc::new(ChannelListener(tx)));
 
+    // A job is registered as running before the call that starts it
+    // returns, so the difference between these two lists is what the call
+    // started.
+    let before = running_jobs(core);
     match core.call(call) {
         Ok(reply) => {
             println!("{}", serde_json::to_string_pretty(&reply).unwrap());
-            match reply {
-                Reply::Started { job } => follow(rx, job, wait),
-                _ => 0,
+            let mut jobs: HashSet<u64> = running_jobs(core).difference(&before).copied().collect();
+            // Listed even when it already finished, or joined a run that was
+            // going before the call: its Finished event is still on its way.
+            if let Reply::Started { job } = reply {
+                jobs.insert(job);
+            }
+            if jobs.is_empty() {
+                0
+            } else {
+                follow(rx, jobs, wait)
             }
         }
         Err(e) => {
@@ -163,12 +177,21 @@ fn send(core: &Core, call: Call, wait: bool) -> i32 {
     }
 }
 
-/// Reads events until job `job` reaches its `Finished` phase, printing them
-/// when `print` is set, and turns the last one into an exit code. A failure
-/// puts its error on stderr whether or not the events were printed.
-fn follow(events: impl IntoIterator<Item = Event>, job: u64, print: bool) -> i32 {
+fn running_jobs(core: &Core) -> HashSet<u64> {
+    match core.call(Call::ListJobs) {
+        Ok(Reply::Jobs { jobs }) => jobs.into_iter().map(|j| j.id).collect(),
+        _ => HashSet::new(),
+    }
+}
+
+/// Reads events until every job in `jobs` reaches its `Finished` phase,
+/// printing theirs when `print` is set, and returns 1 when any of them
+/// failed or was cancelled. A failure puts its error on stderr whether or
+/// not the events were printed.
+fn follow(events: impl IntoIterator<Item = Event>, mut jobs: HashSet<u64>, print: bool) -> i32 {
+    let mut code = 0;
     for event in events {
-        let Some(j) = event.job.as_ref().filter(|j| j.id == job) else {
+        let Some(j) = event.job.as_ref().filter(|j| jobs.contains(&j.id)) else {
             continue;
         };
         if print {
@@ -177,20 +200,25 @@ fn follow(events: impl IntoIterator<Item = Event>, job: u64, print: bool) -> i32
         if j.phase != JobPhase::Finished {
             continue;
         }
-        return match &event.body {
+        match &event.body {
             EventBody::JobFailed { error } => {
                 eprintln!("{}", serde_json::to_string_pretty(error).unwrap());
-                1
+                code = 1;
             }
             EventBody::JobCancelled => {
-                eprintln!("job {job} was cancelled");
-                1
+                eprintln!("job {} was cancelled", j.id);
+                code = 1;
             }
-            _ => 0,
-        };
+            _ => {}
+        }
+        jobs.remove(&j.id);
+        if jobs.is_empty() {
+            return code;
+        }
     }
-    // The core dropped every listener before the job finished.
-    eprintln!("job {job} ended without a result");
+    // Only when the event stream closes with jobs unfinished. The CLI's own
+    // subscription keeps it open today, so this is a guard, not a path.
+    eprintln!("the core stopped before its jobs finished");
     1
 }
 
@@ -356,6 +384,7 @@ mod tests {
     use anibeam_core::{
         Call, CoreError, Event, EventBody, JobKind, JobPhase, JobRef, Level, Stage,
     };
+    use std::collections::HashSet;
 
     fn event(job: u64, phase: JobPhase, body: EventBody) -> Event {
         Event {
@@ -385,31 +414,40 @@ mod tests {
     }
 
     #[test]
-    fn follow_exits_by_how_its_own_job_finished() {
-        let started = || {
+    fn follow_waits_for_every_job_and_fails_if_any_did() {
+        let started = |id| {
             event(
-                1,
+                id,
                 JobPhase::Started,
                 EventBody::JobStarted {
                     kind: JobKind::Export,
                 },
             )
         };
-        let done = event(1, JobPhase::Finished, EventBody::Notice);
-        let failed = event(
-            1,
-            JobPhase::Finished,
-            EventBody::JobFailed {
-                error: CoreError::internal("disk full"),
-            },
-        );
-        let cancelled = event(1, JobPhase::Finished, EventBody::JobCancelled);
-        // Another job finishing first is not this job's result.
-        let other = event(2, JobPhase::Finished, EventBody::Notice);
+        let done = |id| event(id, JobPhase::Finished, EventBody::Notice);
+        let failed = |id| {
+            event(
+                id,
+                JobPhase::Finished,
+                EventBody::JobFailed {
+                    error: CoreError::internal("disk full"),
+                },
+            )
+        };
+        let cancelled = |id| event(id, JobPhase::Finished, EventBody::JobCancelled);
+        let set = |ids: &[u64]| ids.iter().copied().collect::<HashSet<u64>>();
 
-        assert_eq!(follow([started(), other.clone(), done], 1, false), 0);
-        assert_eq!(follow([started(), other, failed], 1, false), 1);
-        assert_eq!(follow([started(), cancelled], 1, false), 1);
-        assert_eq!(follow([started()], 1, false), 1);
+        // A job the call did not start finishing is not its result.
+        assert_eq!(follow([started(1), done(9), done(1)], set(&[1]), false), 0);
+        assert_eq!(
+            follow([started(1), done(9), failed(1)], set(&[1]), false),
+            1
+        );
+        assert_eq!(follow([started(1), cancelled(1)], set(&[1]), false), 1);
+        // A side job failing after the reply's job succeeded still fails.
+        assert_eq!(follow([done(1), failed(2)], set(&[1, 2]), false), 1);
+        assert_eq!(follow([failed(2), done(1)], set(&[1, 2]), false), 1);
+        // A second job still running keeps the CLI waiting.
+        assert_eq!(follow([done(1)], set(&[1, 2]), false), 1);
     }
 }
