@@ -10,6 +10,11 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.4.1 · 2026-11-02
+
+### Fixed
+- The app starts on phones again instead of closing at once
+
 ## 2.4.0 · 2026-11-01
 
 ### New
