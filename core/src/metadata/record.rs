@@ -39,6 +39,11 @@ const RECOMMENDATION_CAP: usize = 8;
 static STREAM_NUMBER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|[^\d])(\d{1,3})(?:\D|$)").unwrap());
 
+/// A number right after "Episode" or "Ep", which beats an earlier bare
+/// number such as the season in "S2 Episode 3".
+static STREAM_EPISODE_NUMBER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?:^|[^a-z])ep(?:isode)?\.?\s*(\d{1,3})(?:\D|$)").unwrap());
+
 /// What both providers write when they have no title: AniList in a
 /// streaming entry, Jikan in its episode list.
 static PLACEHOLDER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^Episode\s+\d+$").unwrap());
@@ -192,18 +197,16 @@ fn studio_rank(e: &StudioEdge) -> u8 {
 /// rather than persisted as a placeholder.
 pub fn parse_streaming_title(raw: &str) -> Option<(u32, String)> {
     let trimmed = raw.trim();
-    let number: u32 = STREAM_NUMBER
-        .captures(trimmed)?
-        .get(1)?
-        .as_str()
-        .parse()
-        .ok()?;
-    if number == 0 {
-        return None;
-    }
     // Everything up to and including the first " - " is the prefix. With
     // no separator there is no title, only the numbering.
     let separator = trimmed.find(" - ")?;
+    let captures = STREAM_EPISODE_NUMBER
+        .captures(&trimmed[..separator])
+        .or_else(|| STREAM_NUMBER.captures(trimmed))?;
+    let number: u32 = captures.get(1)?.as_str().parse().ok()?;
+    if number == 0 {
+        return None;
+    }
     let title = trimmed[separator + 3..].trim();
     if title.is_empty() || PLACEHOLDER.is_match(title) {
         return None;
@@ -843,7 +846,11 @@ mod tests {
         assert_eq!(parse_streaming_title("Episode 1"), None);
         assert_eq!(
             parse_streaming_title("S2 Episode 3 - The Heroine"),
-            Some((2, "The Heroine".into()))
+            Some((3, "The Heroine".into()))
+        );
+        assert_eq!(
+            parse_streaming_title("S2 Ep. 12 - Finale"),
+            Some((12, "Finale".into()))
         );
         assert_eq!(parse_streaming_title("Episode 5 - Episode 5"), None);
         let eps = vec![
