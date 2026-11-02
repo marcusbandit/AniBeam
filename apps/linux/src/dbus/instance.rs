@@ -184,15 +184,22 @@ impl AppInterface {
     fn open(&self, _uris: Vec<String>, platform_data: HashMap<String, OwnedValue>) {
         self.raise(&platform_data);
     }
-    /// The action table is empty today; an unknown action raises the window.
+    /// The host service's two actions keep the host on while it waits for this window and
+    /// hand it back when it stops; neither raises anything. Any other action raises the window.
     fn activate_action(
         &self,
         action_name: String,
         _parameter: Vec<OwnedValue>,
         platform_data: HashMap<String, OwnedValue>,
     ) {
-        eprintln!("anibeam: no action named {action_name}");
-        self.raise(&platform_data);
+        match action_name.as_str() {
+            crate::serve::HOLD_HOST => crate::runtime::core().hold_host(true),
+            crate::serve::RELEASE_HOST => crate::runtime::core().hold_host(false),
+            _ => {
+                eprintln!("anibeam: no action named {action_name}");
+                self.raise(&platform_data);
+            }
+        }
     }
 }
 

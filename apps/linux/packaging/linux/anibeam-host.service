@@ -12,12 +12,17 @@
 
 [Unit]
 Description=AniBeam host service for other devices
+# A core that will not open fails the same way every time: five tries, then stop.
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/anibeam serve
 Restart=on-failure
-RestartSec=5
+RestartSec=10
+# 3 is "another anibeam serve is running", which a restart cannot change.
+RestartPreventExitStatus=3
 
 [Install]
 WantedBy=default.target

@@ -109,13 +109,28 @@ fn main() {
     let mut service = None;
     let lock = match dbus::instance::try_lock(&lock_path) {
         Ok(Some(lock)) => Some(lock),
-        Ok(None) => match serve::ask_to_yield(&runtime::paths().service_socket()) {
-            Some(conn) => {
+        Ok(None) => {
+            let socket = runtime::paths().service_socket();
+            if let Some(conn) = serve::ask_to_yield(&socket) {
                 service = Some(conn);
-                dbus::instance::try_lock(&lock_path).ok().flatten()
+                match dbus::instance::try_lock(&lock_path) {
+                    Ok(Some(lock)) => Some(lock),
+                    _ => {
+                        eprintln!(
+                            "anibeam: the host service let the library go, but another AniBeam took it first"
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            } else if serve::status(&socket) == Some(serve::State::Serving) {
+                // The service holds the library and did not let it go in time; there is no
+                // window to raise.
+                eprintln!("anibeam: the host service did not hand over the library; try again");
+                std::process::exit(1);
+            } else {
+                None
             }
-            None => None,
-        },
+        }
         Err(e) => {
             eprintln!("anibeam: lock {}: {e}", lock_path.display());
             std::process::exit(2);
@@ -165,11 +180,11 @@ fn main() {
             .iter()
             .find_map(|v| anibeam_core::changelog::version_of(v)),
     });
-    // A drive, a shot or a sandbox root runs a copy of the library against the owner's real
-    // anirss and qBittorrent, so nothing may change there on its own: no unsubscribing, no
-    // replacing.
+    // A drive or a shot runs against the owner's real anirss and qBittorrent, so nothing may
+    // change there on its own: no unsubscribing, no replacing. A sandbox root is covered by
+    // `open_core`.
     let args = runtime::args();
-    if args.drive.is_some() || args.shoot.is_some() || args.root.is_some() {
+    if args.drive.is_some() || args.shoot.is_some() {
         core.disable_unattended_changes();
     }
     devstats::startup_mark("core open");

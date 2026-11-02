@@ -22,7 +22,9 @@ window's single-instance lock, so only one of the two has the database open: a w
 while the service runs asks it to step aside over `$XDG_RUNTIME_DIR/anibeam-host.sock`, keeps
 the host on in its place, and the service takes the library back when the window closes. A
 second `serve` exits with "another anibeam serve is running". Settings > Phone app shows whether
-the service runs. `tests/serve.rs` drives the built binary through all of this.
+the service runs. A window that was already open when the service starts is told over its own
+`org.freedesktop.Application` to keep the host on until the service takes over. The tests in
+`src/serve.rs` drive the service loop through all of this against a sandbox core.
 
 `packaging/linux/anibeam-host.service` is the systemd user unit the AUR package installs:
 

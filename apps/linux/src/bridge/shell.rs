@@ -133,8 +133,8 @@ pub mod qobject {
         #[qinvokable]
         fn open_url(self: &Self, url: &QString) -> bool;
         /// What `anibeam serve` on this machine is doing: "serving", "waiting" while this
-        /// window has the library, or empty when none runs. A service found here also keeps
-        /// this window's host on, as it would have been without the window.
+        /// window has the library, or empty when none runs. The window's host follows the
+        /// answer: held while a service exists, back to the preference once none does.
         #[qinvokable]
         fn host_service(self: &Self) -> QString;
         /// What's new for this build, from the two versions QML keeps in shell.conf: whether
@@ -538,13 +538,9 @@ impl qobject::Shell {
     }
 
     pub fn host_service(&self) -> QString {
-        match crate::serve::status(&crate::runtime::paths().service_socket()) {
-            Some(state) => {
-                crate::runtime::core().hold_host(true);
-                QString::from(state.word())
-            }
-            None => QString::default(),
-        }
+        let state = crate::serve::status(&crate::runtime::paths().service_socket());
+        crate::runtime::core().hold_host(state.is_some());
+        state.map_or_else(QString::default, |s| QString::from(s.word()))
     }
 }
 

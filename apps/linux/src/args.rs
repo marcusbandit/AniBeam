@@ -44,6 +44,7 @@ impl Default for Args {
 
 pub fn parse(argv: &[String]) -> Result<Args, String> {
     let mut a = Args::default();
+    let mut sized = false;
     let mut it = argv.iter().skip(1);
     while let Some(arg) = it.next() {
         let mut value = |name: &str| {
@@ -57,11 +58,13 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             "--page" => a.page = Some(value("--page")?),
             "--props" => a.props = Some(value("--props")?),
             "--width" => {
+                sized = true;
                 a.width = value("--width")?
                     .parse()
                     .map_err(|_| "--width needs a number".to_string())?
             }
             "--height" => {
+                sized = true;
                 a.height = value("--height")?
                     .parse()
                     .map_err(|_| "--height needs a number".to_string())?
@@ -85,7 +88,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
     if a.out.is_some() && a.drive.is_none() {
         return Err("--out only means something with --drive".into());
     }
-    let windowed = a.shoot.is_some() || a.drive.is_some() || a.page.is_some();
+    let windowed = a.shoot.is_some() || a.drive.is_some() || a.page.is_some() || sized;
     if a.serve && (windowed || a.props.is_some() || a.action.is_some()) {
         return Err("serve opens no window; it takes --root and nothing else".into());
     }
@@ -159,6 +162,7 @@ mod tests {
             "serve --shoot a.png",
             "serve --page library",
             "serve --action open",
+            "serve --width 800",
         ] {
             assert!(parse(&argv(bad)).is_err(), "{bad}");
         }

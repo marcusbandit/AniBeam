@@ -11,11 +11,24 @@
 //! wait for the lock again; it serves once the window is gone. A service started while a
 //! window is already open waits for the lock the same way.
 //!
+//! A window that was open before the service started never asks, so the service tells it
+//! over the window's own org.freedesktop.Application: `hold-host` while it waits, so the
+//! devices keep their host, and `release-host` when it stops waiting without taking over.
+//!
 //! The socket speaks one line each way. `status` answers `serving` or `waiting`; `yield`
-//! answers `ok` once the lock is free, or `waiting` when the service does not hold it.
+//! answers `ok` once the lock is free, or `waiting` when the service does not hold it. A
+//! second lock beside the socket keeps a second service from starting at all.
 
 #[cfg(unix)]
 pub use unix::{ask_to_yield, run, status};
+
+/// The actions the service sends a running window: keep the host on in the service's
+/// place, or hand it back to the preference.
+pub const HOLD_HOST: &str = "hold-host";
+pub const RELEASE_HOST: &str = "release-host";
+
+/// The exit code for a second service, which the unit does not restart.
+pub const ALREADY_RUNNING: i32 = 3;
 
 /// What a running service is doing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,9 +82,15 @@ mod unix {
 
     /// How long one side waits for the other's line. A yield waits longer: the service
     /// closes its core first, which gives its tasks a couple of seconds to finish.
-    const ANSWER: Duration = Duration::from_secs(2);
+    /// A status read runs on the window's GUI thread, so it gets far less than the yield.
+    const ANSWER: Duration = Duration::from_millis(500);
     const YIELD: Duration = Duration::from_secs(15);
-    const SOCKET_PATH_MAX: usize = 108;
+    /// The room in `sun_path`, terminator included: 108 bytes on Linux, 104 on a Mac.
+    const SOCKET_PATH_MAX: usize = if cfg!(target_os = "macos") { 104 } else { 108 };
+
+    /// What the service tells a window it is waiting on: `true` to hold the host, `false`
+    /// to let it go.
+    pub type TellWindow = Arc<dyn Fn(bool) + Send + Sync>;
 
     enum Event {
         /// The lock is ours: open the core and serve.
@@ -118,11 +137,20 @@ mod unix {
         // A setenv, so before the core's runtime starts a thread, as in `main`.
         crate::paths::name_bundled_helpers();
         let paths = runtime::paths();
-        let service = match Service::bind(paths.lock_path(), paths.service_socket()) {
+        let tell: TellWindow = Arc::new(|hold| {
+            let action = if hold {
+                super::HOLD_HOST
+            } else {
+                super::RELEASE_HOST
+            };
+            // No window, or no session bus: nobody to tell, which is fine.
+            let _ = runtime::runtime().block_on(instance::hand_off(Some(action)));
+        });
+        let service = match Service::bind(paths.lock_path(), paths.service_socket(), tell) {
             Ok(s) => s,
-            Err(e) => {
+            Err((code, e)) => {
                 eprintln!("anibeam: {e}");
-                return 1;
+                return code;
             }
         };
         watch_signals(service.stopper());
@@ -141,6 +169,9 @@ mod unix {
         tx: Sender<Event>,
         rx: Receiver<Event>,
         serving: Arc<AtomicBool>,
+        tell: TellWindow,
+        /// The service's own lock, held for its whole life.
+        _own: Lock,
     }
 
     /// Ends a running service, from a signal handler or a test.
@@ -153,10 +184,25 @@ mod unix {
     }
 
     impl Service {
-        /// Binds the socket and starts answering on it. Fails when another service already
-        /// answers there.
-        pub fn bind(lock_path: PathBuf, socket: PathBuf) -> Result<Service, String> {
-            let listener = bind(&socket)?;
+        /// Takes the service's own lock, binds the socket and starts answering on it. Fails
+        /// with `ALREADY_RUNNING` when another service holds that lock.
+        pub fn bind(
+            lock_path: PathBuf,
+            socket: PathBuf,
+            tell: TellWindow,
+        ) -> Result<Service, (i32, String)> {
+            let own_path = socket.with_file_name("anibeam-host.lock");
+            let own = match instance::try_lock(&own_path) {
+                Ok(Some(lock)) => lock,
+                Ok(None) => {
+                    return Err((
+                        super::ALREADY_RUNNING,
+                        format!("another anibeam serve is running on {}", socket.display()),
+                    ));
+                }
+                Err(e) => return Err((1, format!("lock {}: {e}", own_path.display()))),
+            };
+            let listener = bind(&socket).map_err(|e| (1, e))?;
             let (tx, rx) = mpsc::channel();
             let serving = Arc::new(AtomicBool::new(false));
             {
@@ -169,6 +215,8 @@ mod unix {
                 tx,
                 rx,
                 serving,
+                tell,
+                _own: own,
             })
         }
 
@@ -185,8 +233,10 @@ mod unix {
                 tx,
                 rx,
                 serving,
+                tell,
+                _own,
             } = self;
-            wait_for_lock(&lock_path, &tx);
+            wait_for_lock(&lock_path, &tx, &tell);
             let mut held: Option<(Arc<Core>, Lock)> = None;
             let code = loop {
                 let Ok(event) = rx.recv() else { break 0 };
@@ -219,21 +269,25 @@ mod unix {
                                     let _ = tx.send(Event::Gone);
                                 });
                             } else {
-                                wait_for_lock(&lock_path, &tx);
+                                wait_for_lock(&lock_path, &tx, &tell);
                             }
                         }
                         None => {
                             let _ = conn.write_all(b"waiting\n");
                         }
                     },
-                    Event::Gone => wait_for_lock(&lock_path, &tx),
+                    Event::Gone => wait_for_lock(&lock_path, &tx, &tell),
                     Event::Stop => break 0,
                 }
             };
-            if let Some((core, lock)) = held.take() {
-                core.shutdown();
-                drop(core);
-                drop(lock);
+            match held.take() {
+                Some((core, lock)) => {
+                    core.shutdown();
+                    drop(core);
+                    drop(lock);
+                }
+                // A window may be holding the host on the service's behalf.
+                None => tell(false),
             }
             let _ = std::fs::remove_file(&socket);
             eprintln!("anibeam: stopped");
@@ -241,40 +295,44 @@ mod unix {
         }
     }
 
-    /// Binds the socket. A file left by a service that died is cleared; one a live service
-    /// answers on means this one is not needed.
+    /// Binds the socket. The caller holds the service's own lock, so a file already there was
+    /// left by a service that died, and is cleared.
     fn bind(socket: &Path) -> Result<UnixListener, String> {
         if let Some(dir) = socket.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
-        if UnixStream::connect(socket).is_ok() {
-            return Err(format!(
-                "another anibeam serve is running on {}",
-                socket.display()
-            ));
-        }
-        let _ = std::fs::remove_file(socket);
-        // A Unix socket's path fits in 108 bytes; $XDG_RUNTIME_DIR always does, a deep
-        // --root may not.
+        // $XDG_RUNTIME_DIR always fits; a deep --root may not.
         if socket.as_os_str().len() >= SOCKET_PATH_MAX {
             return Err(format!(
                 "{} is too long for a socket; pick a shorter --root",
                 socket.display()
             ));
         }
+        let _ = std::fs::remove_file(socket);
         UnixListener::bind(socket).map_err(|e| format!("{}: {e}", socket.display()))
     }
 
-    /// Takes the lock on a thread of its own, which blocks while a window holds it.
-    fn wait_for_lock(path: &Path, tx: &Sender<Event>) {
-        let (path, tx): (PathBuf, _) = (path.to_path_buf(), tx.clone());
-        std::thread::spawn(move || match instance::wait_lock(&path) {
-            Ok(lock) => {
-                let _ = tx.send(Event::Locked(lock));
-            }
-            Err(e) => {
-                eprintln!("anibeam: lock {}: {e}", path.display());
-                let _ = tx.send(Event::Stop);
+    /// Takes the lock on a thread of its own. A window holding it is told to keep the host
+    /// on, and the thread blocks until that window is gone.
+    fn wait_for_lock(path: &Path, tx: &Sender<Event>, tell: &TellWindow) {
+        let (path, tx, tell): (PathBuf, _, _) = (path.to_path_buf(), tx.clone(), tell.clone());
+        std::thread::spawn(move || {
+            let taken = match instance::try_lock(&path) {
+                Ok(Some(lock)) => Ok(lock),
+                Ok(None) => {
+                    tell(true);
+                    instance::wait_lock(&path)
+                }
+                Err(e) => Err(e),
+            };
+            match taken {
+                Ok(lock) => {
+                    let _ = tx.send(Event::Locked(lock));
+                }
+                Err(e) => {
+                    eprintln!("anibeam: lock {}: {e}", path.display());
+                    let _ = tx.send(Event::Stop);
+                }
             }
         });
     }
@@ -284,9 +342,6 @@ mod unix {
     /// sandbox root leaves the owner's real clients alone, as the window does.
     fn open(sandbox: bool) -> Result<Arc<Core>, CoreError> {
         let core = runtime::open_core()?;
-        if sandbox {
-            core.disable_unattended_changes();
-        }
         core.hold_host(true);
         core.start()?;
         if !sandbox
@@ -379,8 +434,18 @@ mod unix {
             root.join("runtime").join("anibeam-host.sock")
         }
 
-        fn start(root: &Path, addr: SocketAddr) -> Running {
-            let service = Service::bind(lock_path(root), socket(root)).unwrap();
+        /// What the service told the window, in order.
+        type Told = Arc<std::sync::Mutex<Vec<bool>>>;
+
+        fn bind(root: &Path, told: &Told) -> Result<Service, (i32, String)> {
+            let told = told.clone();
+            let tell: TellWindow = Arc::new(move |hold| told.lock().unwrap().push(hold));
+            Service::bind(lock_path(root), socket(root), tell)
+        }
+
+        fn start(root: &Path, addr: SocketAddr) -> (Running, Told) {
+            let told = Told::default();
+            let service = bind(root, &told).unwrap();
             let stopper = service.stopper();
             let root = root.to_path_buf();
             let done = std::thread::spawn(move || {
@@ -394,7 +459,7 @@ mod unix {
                     Ok(core)
                 })
             });
-            Running { stopper, done }
+            (Running { stopper, done }, told)
         }
 
         fn stop(running: Running) -> i32 {
@@ -447,7 +512,7 @@ mod unix {
             let dir = tempfile::tempdir().unwrap();
             let root = dir.path();
             let addr = free_addr();
-            let running = start(root, addr);
+            let (running, told) = start(root, addr);
 
             eventually("the host answers", || hello(addr).is_some());
             let body = hello(addr).unwrap();
@@ -459,7 +524,8 @@ mod unix {
             );
 
             // A second service on the same socket is refused and says why.
-            let second = Service::bind(lock_path(root), socket(root)).err().unwrap();
+            let (code, second) = bind(root, &Told::default()).err().unwrap();
+            assert_eq!(code, crate::serve::ALREADY_RUNNING);
             assert!(
                 second.contains("another anibeam serve is running"),
                 "{second}"
@@ -495,6 +561,9 @@ mod unix {
                 .try_lock()
                 .expect("the lock is free after stopping");
             assert_eq!(state(root), None);
+            // The window it stepped aside for asked, so it was never told anything.
+            assert!(told.lock().unwrap().is_empty());
+            bind(root, &Told::default()).expect("a new service starts once this one is gone");
         }
 
         #[test]
@@ -505,10 +574,13 @@ mod unix {
             window.try_lock().unwrap();
 
             let addr = free_addr();
-            let running = start(root, addr);
+            let (running, told) = start(root, addr);
             eventually("the service answers", || state(root).is_some());
             assert_eq!(state(root), Some(State::Waiting));
             assert!(hello(addr).is_none(), "the window has the library");
+            eventually("the window is told to hold the host", || {
+                *told.lock().unwrap() == [true]
+            });
 
             drop(window);
             eventually("the service takes the library", || {
@@ -524,10 +596,15 @@ mod unix {
             let root = dir.path();
             let window = open_lock(root);
             window.try_lock().unwrap();
-            let running = start(root, free_addr());
+            let (running, told) = start(root, free_addr());
             eventually("the service answers", || state(root).is_some());
             assert_eq!(stop(running), 0);
             assert!(!socket(root).exists());
+            assert_eq!(
+                *told.lock().unwrap(),
+                [true, false],
+                "held, then handed back"
+            );
         }
 
         #[test]
@@ -537,7 +614,7 @@ mod unix {
             std::fs::create_dir_all(root.join("runtime")).unwrap();
             drop(UnixListener::bind(socket(root)).unwrap());
             assert!(socket(root).exists());
-            let service = Service::bind(lock_path(root), socket(root)).expect("stale file cleared");
+            let service = bind(root, &Told::default()).expect("stale file cleared");
             drop(service);
         }
     }
