@@ -29,6 +29,9 @@ const MAX_SKIPPED: u32 = 16;
 /// How long a read or a write on the socket may take. Discord answers in
 /// milliseconds; one that does not is treated as gone.
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long one connect may spend across every socket it tries. Each that accepts and stays
+/// silent costs `IO_TIMEOUT`; past this the attempt gives up rather than holding the worker.
+const CONNECT_BUDGET: Duration = Duration::from_secs(12);
 
 /// One frame on the wire.
 pub fn encode(op: u32, payload: &Value) -> Vec<u8> {
@@ -131,7 +134,11 @@ impl Transport for Discord {
     fn connect(&mut self, client_id: &str) -> Result<(), SendError> {
         self.conn = None;
         let mut last = SendError::Gone("no Discord socket".to_string());
+        let began = std::time::Instant::now();
         for path in candidates() {
+            if began.elapsed() >= CONNECT_BUDGET {
+                break;
+            }
             let Ok(stream) = open(&path) else { continue };
             match Connection::handshake(stream, client_id) {
                 Ok(conn) => {

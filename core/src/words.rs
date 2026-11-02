@@ -11,9 +11,26 @@ pub fn pick<'a>(n: impl TryInto<u64>, one: &'a str, many: &'a str) -> &'a str {
     }
 }
 
+/// `text` cut to at most `max` characters, the cut marked with "..." inside that limit.
+pub fn cut(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(max.saturating_sub(3)).collect();
+    format!("{}...", kept.trim_end())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cut_keeps_short_text_and_marks_a_long_one_within_the_limit() {
+        assert_eq!(cut("Bebop", 10), "Bebop");
+        assert_eq!(cut("Cowboy Bebop", 10), "Cowboy...");
+        assert_eq!(cut("åäöåäöåäöå", 10), "åäöåäöåäöå");
+        assert_eq!(cut("åäöåäöåäöåä", 10).chars().count(), 10);
+    }
 
     #[test]
     fn one_is_singular_and_every_other_count_is_not() {
