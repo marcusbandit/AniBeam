@@ -148,6 +148,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Episode cubes in Get now grow under the pointer
 - A hiccup reaching qBittorrent no longer reads as a wrong password
 - Episodes listed as "S2 Episode 3" get episode 3's title, not episode 2's
+- An imported backup keeps a watched opening or ending as last watched
 
 ## 2.3.0 · 2026-10-27
 
