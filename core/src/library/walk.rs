@@ -17,6 +17,7 @@ use super::classifier::{
 use super::labels::extra_label;
 use super::sidecar::{is_subtitle, match_sidecars};
 use super::{BRACKETS, SPACES, has_extension};
+use crate::contract::ExtraKind;
 use crate::contract::{CoreError, SeriesKind, Sidecar};
 
 pub const VIDEO_EXTENSIONS: [&str; 9] = [
@@ -394,18 +395,20 @@ fn is_companion_folder(dir: &Path, show: &str) -> bool {
         .chain(SEASON_PATTERNS.iter())
         .fold(cleaned, |s, re| re.replace_all(&s, " ").into_owned());
     let rest = title_key(&rest);
-    rest.is_empty() || (!show.is_empty() && rest.starts_with(show))
+    rest.is_empty() || rest == show
 }
 
 /// A folder that holds one part of a show rather than the show itself:
 /// Specials, OVA, Extras or a second or later season.
+/// An episode folder is never one, whatever its title says ("Special A - 05").
 pub(crate) fn is_side_folder(name: &str) -> bool {
-    EXTRAS_FOLDER.is_match(&clean_folder_title(name))
-        || match classify_subfolder_label(name) {
-            Some(SubfolderLabel::Season(n)) => n >= 2,
-            Some(SubfolderLabel::Ova | SubfolderLabel::Special) => true,
-            None => false,
-        }
+    !ONE_EPISODE.is_match(name)
+        && (EXTRAS_FOLDER.is_match(&clean_folder_title(name))
+            || match classify_subfolder_label(name) {
+                Some(SubfolderLabel::Season(n)) => n >= 2,
+                Some(SubfolderLabel::Ova | SubfolderLabel::Special) => true,
+                None => false,
+            })
 }
 
 /// At least one video-bearing subfolder is an episode folder, every other
@@ -467,6 +470,16 @@ fn scanned_file(p: &Path, folder_season: Option<u32>, subtitles: &[String]) -> S
     let mut classified = classify(&name);
     if classified.season.is_none() {
         classified.season = folder_season;
+    }
+    // A file in an Extras folder is an extra even when its name says nothing, so it
+    // never reads as episode 1.
+    let in_extras = p
+        .parent()
+        .and_then(|d| d.file_name())
+        .is_some_and(|d| EXTRAS_FOLDER.is_match(&clean_folder_title(&d.to_string_lossy())));
+    if in_extras && classified.extra.is_none() {
+        classified.extra = Some(ExtraKind::Other);
+        classified.number = 0.0;
     }
     let label = match classified.extra {
         Some(kind) => extra_label(
@@ -1260,6 +1273,41 @@ mod tests {
                 .unwrap();
             assert!(side.classified.extra.is_some(), "{companion}: {side:?}");
         }
+    }
+
+    #[test]
+    fn a_file_in_extras_with_no_label_is_an_extra_not_episode_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Show");
+        touch(&show.join("Extras").join("Behind the scenes.mkv"));
+        touch(&show.join("Show.S01E11-GRP").join("Show.S01E11-GRP.mkv"));
+        touch(&show.join("Show - 01.mkv"));
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(shows_and_films(&results), (1, 0));
+        let extra = results[0]
+            .files
+            .iter()
+            .find(|f| f.path.contains("Behind"))
+            .unwrap();
+        assert!(extra.classified.extra.is_some(), "{extra:?}");
+        assert_ne!(extra.episode_key, "1");
+    }
+
+    #[test]
+    fn another_titles_ova_is_no_companion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Show");
+        touch(&show.join("Show 2 OVA").join("Show 2 - OVA1.mkv"));
+        touch(&show.join("Show.S01E11-GRP").join("Show.S01E11-GRP.mkv"));
+        assert_eq!(shows_and_films(&scan_source(tmp.path()).unwrap()).0, 2);
+    }
+
+    #[test]
+    fn an_episode_folder_is_never_a_side_folder() {
+        assert!(is_side_folder("Specials"));
+        assert!(is_side_folder("Season 2"));
+        assert!(!is_side_folder("Special A - 05 [GRP]"));
+        assert!(!is_side_folder("Show.S02E05-GRP"));
     }
 
     #[test]

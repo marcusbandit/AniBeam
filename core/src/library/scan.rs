@@ -218,8 +218,9 @@ fn has_match_or_history(tx: &Transaction, id: u64) -> Result<bool, CoreError> {
 }
 
 /// A show now read one folder up keeps its old row, moved to the new path.
-/// The move needs one old row under that path that the show's files cover
-/// (or a missing direct child), or else the only one with a match or a
+/// The move needs one old row under that path that shares a file with the
+/// show (or a missing direct child): a sample it held or an episode deleted
+/// since need not be there, or else the only one with a match or a
 /// history; a Specials, OVA, Extras or later-season row never moves, and a
 /// new-path row is dropped first only when blank. Returns (moved, dropped).
 fn repoint_moved_shows(
@@ -262,7 +263,7 @@ fn repoint_moved_shows(
                 let old: Vec<String> = stmt
                     .query_map(params![*id as i64], |r| r.get(0))?
                     .collect::<Result<_, _>>()?;
-                !old.is_empty() && old.iter().all(|p| files.contains(p.as_str()))
+                old.iter().any(|p| files.contains(p.as_str()))
             };
             if fits {
                 found.push((path, *id));
@@ -1685,6 +1686,60 @@ mod tests {
         assert_eq!(
             rows[1],
             (other, "/lib/Show/Show.S01E12-GRP".to_string(), None, true)
+        );
+        store.close();
+    }
+
+    #[test]
+    fn an_old_row_holding_a_sample_still_moves_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let sample = "/lib/Show/Show.S01E11-GRP/Sample/x-sample.mkv";
+        let id = store
+            .tx(|tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                let r = reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(SeriesKind::Show, INNER, "Show", &[EP11, sample])],
+                    None,
+                    10,
+                )?;
+                tx.execute(
+                    "UPDATE series SET provider = 'anilist', confirmed = 1 WHERE id = ?1",
+                    params![r.added[0] as i64],
+                )?;
+                Ok(r.added[0])
+            })
+            .unwrap();
+        let r = store
+            .tx(|tx| {
+                reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(
+                        SeriesKind::Show,
+                        "/lib/Show",
+                        "Show",
+                        &[EP11, EP12],
+                    )],
+                    None,
+                    20,
+                )
+            })
+            .unwrap();
+        assert!(r.added.is_empty(), "{r:?}");
+        assert_eq!(
+            shows(&store),
+            vec![(
+                id,
+                "/lib/Show".to_string(),
+                Some("anilist".to_string()),
+                false
+            )]
         );
         store.close();
     }
