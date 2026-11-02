@@ -77,6 +77,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Storage says how much the episodes use
 - A failed sign-in says why
 - No more "Nothing on this phone yet" while the app starts
+- A password or key in a site's address is stored as a secret, not in the open
 
 ## 2.2.0 · 2026-10-31
 

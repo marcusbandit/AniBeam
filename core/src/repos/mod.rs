@@ -758,15 +758,6 @@ pub fn set_enabled(core: &Core, install: String, enabled: bool) -> Result<Reply,
 /// The repo url of an endpoint the person added by hand, outside any repo.
 pub const CUSTOM: &str = "";
 
-/// Query parameters that hold a secret: their value moves to the secret store and the
-/// address keeps a placeholder (the same names `releases::native::mask` hides).
-const SECRET_PARAMS: [(&str, &str); 4] = [
-    ("apikey", "API key"),
-    ("api_key", "API key"),
-    ("token", "Token"),
-    ("passkey", "Passkey"),
-];
-
 /// An id from a name: lower case, anything but a-z, 0-9, '.', '_' and '-' becomes '-'.
 fn id_of(name: &str) -> String {
     let id: String = name
@@ -785,16 +776,49 @@ fn id_of(name: &str) -> String {
 }
 
 /// Takes the secret values out of a pasted address: each `apikey=...`, `token=...` and the
-/// like becomes a placeholder and an `auth` field, and its value a credential. Any other
+/// like (`releases::native::SECRET_PARAMS`) becomes a placeholder and an `auth` field, and its
+/// value a credential, and so does the password of a `user:password@` login. Any other
 /// placeholder the person wrote (`{user}`) becomes a field too, to be filled from `given`.
 fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, String)>) {
     let mut fields: Vec<index::AuthField> = Vec::new();
     let mut lifted: Vec<(String, String)> = Vec::new();
+    let mut lift = |key: &str, label: &str, value: &str| {
+        if !fields.iter().any(|f| f.key == key) {
+            fields.push(index::AuthField {
+                key: key.to_string(),
+                label: label.to_string(),
+                secret: true,
+                help: String::new(),
+                help_url: None,
+            });
+            lifted.push((key.to_string(), value.to_string()));
+        }
+    };
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b.to_string(), Some(q.to_string())),
         None => (url.to_string(), None),
     };
-    let mut template = base;
+    // A login in front of the host: the user name stays, the password is a secret. A login
+    // with no password is a key on its own.
+    let hidden = |part: &str| part.is_empty() || part.starts_with('{');
+    let mut template = match index::split_login(&base) {
+        Some((scheme, login, host)) => match login.split_once(':') {
+            Some((user, pw)) if !hidden(pw) => {
+                lift("login_password", "Password", &percent_decode(pw));
+                format!("{scheme}{user}:{{login_password}}@{host}")
+            }
+            Some((user, pw)) if !hidden(user) => {
+                lift("login_key", "Login", &percent_decode(user));
+                format!("{scheme}{{login_key}}:{pw}@{host}")
+            }
+            None if !hidden(login) => {
+                lift("login_key", "Login", &percent_decode(login));
+                format!("{scheme}{{login_key}}@{host}")
+            }
+            _ => base,
+        },
+        None => base,
+    };
     if let Some(query) = query {
         let pairs: Vec<String> = query
             .split('&')
@@ -802,23 +826,14 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
                 let Some((k, v)) = pair.split_once('=') else {
                     return pair.to_string();
                 };
-                let lower = k.to_lowercase();
-                let Some((_, label)) = SECRET_PARAMS.iter().find(|(p, _)| *p == lower) else {
+                let Some(label) = crate::releases::native::secret_param(k) else {
                     return pair.to_string();
                 };
                 if v.is_empty() || v.starts_with('{') {
                     return pair.to_string();
                 }
-                if !fields.iter().any(|f| f.key == lower) {
-                    fields.push(index::AuthField {
-                        key: lower.clone(),
-                        label: label.to_string(),
-                        secret: true,
-                        help: String::new(),
-                        help_url: None,
-                    });
-                    lifted.push((lower.clone(), crate::releases::endpoints::unquote_plus(v)));
-                }
+                let lower = k.to_lowercase();
+                lift(&lower, label, &crate::releases::endpoints::unquote_plus(v));
                 format!("{k}={{{lower}}}")
             })
             .collect();
@@ -842,6 +857,11 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
         rest = &after[close + 1..];
     }
     (template, fields, lifted)
+}
+
+/// A login's percent escapes undone; unlike a query value, its `+` is a plus.
+fn percent_decode(s: &str) -> String {
+    crate::releases::endpoints::unquote_plus(&s.replace('+', "%2B"))
 }
 
 /// The definition of a source added by hand, and the secrets lifted out of its address.
@@ -1423,6 +1443,62 @@ mod tests {
         let keys: Vec<&str> = fields.iter().map(|f| f.key.as_str()).collect();
         assert_eq!(keys, ["passkey", "user"]);
         assert_eq!(lifted.len(), 1);
+    }
+
+    #[test]
+    fn a_login_password_moves_out_of_the_address() {
+        let (template, fields, lifted) =
+            lift_secrets("https://me:p%40ss+1@t.example/rss?q={query}");
+        assert_eq!(
+            template,
+            "https://me:{login_password}@t.example/rss?q={query}"
+        );
+        assert_eq!(fields[0].label, "Password");
+        assert_eq!(
+            lifted,
+            vec![("login_password".to_string(), "p@ss+1".to_string())]
+        );
+        let (template, _, lifted) = lift_secrets("https://tok@t.example/rss?q={query}");
+        assert_eq!(template, "https://{login_key}@t.example/rss?q={query}");
+        assert_eq!(lifted, vec![("login_key".to_string(), "tok".to_string())]);
+        let (template, _, lifted) = lift_secrets("https://tok:@t.example/rss?q={query}");
+        assert_eq!(template, "https://{login_key}:@t.example/rss?q={query}");
+        assert_eq!(lifted, vec![("login_key".to_string(), "tok".to_string())]);
+    }
+
+    #[test]
+    fn a_login_password_and_a_password_parameter_stay_apart() {
+        let (template, _, lifted) = lift_secrets("https://me:a@t.example/rss?q={query}&password=b");
+        assert_eq!(
+            template,
+            "https://me:{login_password}@t.example/rss?q={query}&password={password}"
+        );
+        assert_eq!(lifted.len(), 2);
+    }
+
+    #[test]
+    fn a_login_comes_back_filled_and_checks_as_a_custom_source() {
+        let (def, lifted) =
+            custom_definition("Tracker", "https://me:p%40ss@t.example/rss?q={query}").unwrap();
+        assert!(!def.url.contains("p%40ss"), "{}", def.url);
+        let filled = def
+            .filled_url(|k| lifted.iter().find(|(l, _)| l == k).map(|(_, v)| v.clone()))
+            .unwrap();
+        assert_eq!(filled, "https://me:p%40ss@t.example/rss?q={query}");
+    }
+
+    #[test]
+    fn other_key_names_move_out_whatever_their_case() {
+        let (template, fields, lifted) = lift_secrets(
+            "https://t.example/rss?q={query}&RssKey=a&authkey=b&key=c&torrent_pass=d&monkey=e",
+        );
+        assert_eq!(
+            template,
+            "https://t.example/rss?q={query}&RssKey={rsskey}&authkey={authkey}&key={key}&torrent_pass={torrent_pass}&monkey=e"
+        );
+        let keys: Vec<&str> = fields.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(keys, ["rsskey", "authkey", "key", "torrent_pass"]);
+        assert_eq!(lifted.len(), 4);
     }
 
     #[test]
