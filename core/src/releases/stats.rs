@@ -26,7 +26,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::net::UdpSocket;
 
-use super::endpoints::{quote, split_url, unquote_plus};
+use super::endpoints::{UrlParts, quote, split_url, unquote_plus};
 use crate::contract::Release;
 use crate::downloads::replace::magnet_hash;
 use crate::net::{BoxFuture, Http, HttpRequest, Method};
@@ -383,6 +383,16 @@ fn parse_http_scrape(body: &[u8]) -> Result<HashMap<Hash, Stats>, BadBencode> {
     Ok(out)
 }
 
+/// A tracker as a log line names it: scheme and host only, since a passkey can sit in the
+/// userinfo, the path or the query.
+fn tracker_shown(parts: &UrlParts) -> String {
+    format!(
+        "{}://{}",
+        parts.scheme,
+        parts.hostname().unwrap_or_default()
+    )
+}
+
 /// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching).
 async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMap<Hash, Stats> {
     let Ok(mut parts) = split_url(announce) else {
@@ -397,8 +407,15 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
         return HashMap::new();
     }
     parts.path = format!("{}scrape", &path[..path.len() - "announce".len()]);
-    let scrape_url = parts.geturl();
-    let shown = scrape_url.split('?').next().unwrap_or("").to_string();
+    // The announce's own query (a passkey, say) stays and the hashes join it with `&`.
+    let mut prefix = std::mem::take(&mut parts.query)
+        .trim_end_matches('&')
+        .to_string();
+    if !prefix.is_empty() {
+        prefix.push('&');
+    }
+    parts.fragment.clear();
+    let shown = tracker_shown(&parts);
     let mut out = HashMap::new();
     for batch in hashes.chunks(MAX_HTTP_BATCH) {
         let qs = batch
@@ -406,9 +423,10 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
             .map(|h| format!("info_hash={}", quote(h, "/")))
             .collect::<Vec<_>>()
             .join("&");
+        parts.query = format!("{prefix}{qs}");
         let request = HttpRequest {
             method: Method::Get,
-            url: format!("{scrape_url}?{qs}"),
+            url: parts.geturl(),
             headers: vec![("User-Agent".to_string(), USER_AGENT.to_string())],
             body: None,
             timeout: Some(HTTP_SCRAPE_TIMEOUT),
@@ -1249,10 +1267,10 @@ mod tests {
         let h = [1u8; 20];
         let http = FakeHttp::new();
         http.push(200, scrape_body(&h, 5, 1, 9));
-        let out = http_scrape(http.as_ref(), "http://nyaa.tracker.wf:7777/announce", &[h]).await;
+        let out = http_scrape(http.as_ref(), "http://t.example:7777/announce", &[h]).await;
         let req = &http.requests()[0];
         assert!(
-            req.url.starts_with("http://nyaa.tracker.wf:7777/scrape?"),
+            req.url.starts_with("http://t.example:7777/scrape?"),
             "{}",
             req.url
         );
@@ -1268,6 +1286,62 @@ mod tests {
         );
         assert_eq!(req.timeout, Some(HTTP_SCRAPE_TIMEOUT));
         assert_eq!(out[&h], (5, 1, 9));
+    }
+
+    #[tokio::test]
+    async fn http_scrape_keeps_the_announce_query_and_adds_hashes_with_an_ampersand() {
+        let h = [1u8; 20];
+        let http = FakeHttp::new();
+        http.push(200, scrape_body(&h, 5, 1, 9));
+        let out = http_scrape(
+            http.as_ref(),
+            "https://t.example/announce?passkey=abc#frag",
+            &[h],
+        )
+        .await;
+        let req = &http.requests()[0];
+        assert_eq!(
+            req.url,
+            "https://t.example/scrape?passkey=abc&info_hash=\
+             %01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01%01"
+        );
+        assert_eq!(out[&h], (5, 1, 9));
+    }
+
+    #[tokio::test]
+    async fn every_batch_carries_the_announce_query_once() {
+        let hashes: Vec<Hash> = (0..60u8).map(|i| [i; 20]).collect();
+        let http = FakeHttp::new();
+        for _ in 0..2 {
+            http.push(200, scrape_body(&[0u8; 20], 1, 1, 1));
+        }
+        http_scrape(
+            http.as_ref(),
+            "https://t.example/announce?passkey=abc&",
+            &hashes,
+        )
+        .await;
+        let urls: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+        assert_eq!(urls.len(), 2);
+        for url in &urls {
+            assert!(
+                url.starts_with("https://t.example/scrape?passkey=abc&info_hash="),
+                "{url}"
+            );
+            assert_eq!(url.matches("passkey=").count(), 1, "{url}");
+            assert!(!url.contains("&&"), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_tracker_is_logged_by_scheme_and_host_only() {
+        for url in [
+            "https://t.example/0123abcd/announce",
+            "https://user:0123abcd@t.example:8443/announce?passkey=0123abcd",
+        ] {
+            let shown = tracker_shown(&split_url(url).unwrap());
+            assert_eq!(shown, "https://t.example");
+        }
     }
 
     #[tokio::test]

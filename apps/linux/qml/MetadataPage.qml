@@ -67,10 +67,9 @@ Item {
     function isMatched(card) {
         return !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
     }
-    function isMovie(card) { return card.kind === "Movie" || card.format === "MOVIE" }
     function expectedOf(d) {
         var card = d.series || {}
-        return d.expected !== null && d.expected !== undefined ? d.expected : (isMovie(card) ? 1 : 0)
+        return d.expected !== null && d.expected !== undefined ? d.expected : (!!card.film ? 1 : 0)
     }
     // The next episode while it is still ahead, else null
     function nextOf(card) {
@@ -532,7 +531,7 @@ Item {
             Icon {
                 visible: art.status !== Image.Ready
                 anchors.centerIn: parent
-                glyph: page.isMovie(tile.card) ? "film" : "tv"
+                glyph: tile.card.film ? "film" : "tv"
                 size: theme.space(5)
                 color: theme.textDim
             }

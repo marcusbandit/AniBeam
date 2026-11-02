@@ -241,11 +241,23 @@ pub fn bare_host(value: &str) -> bool {
         })
 }
 
-/// The authority of an http(s) address as written, between `://` and the path. A backslash
-/// ends it too, as the HTTP client reads it.
+/// Where an address's authority ends. A backslash ends it too, as the HTTP client reads it.
+const AUTHORITY_END: [char; 4] = ['/', '?', '#', '\\'];
+
+/// A login in front of an address's host: the address up to and with its `://`, the login,
+/// and the address from the host on. None when there is no login.
+pub fn split_login(url: &str) -> Option<(&str, &str, &str)> {
+    let start = url.find("://")? + 3;
+    let rest = &url[start..];
+    let end = rest.find(AUTHORITY_END).unwrap_or(rest.len());
+    let at = rest[..end].rfind('@')?;
+    Some((&url[..start], &rest[..at], &rest[at + 1..]))
+}
+
+/// The authority of an http(s) address as written, between `://` and the path.
 pub fn authority_of(url: &str) -> &str {
     let rest = url.split_once("://").map_or("", |(_, r)| r);
-    let end = rest.find(['/', '?', '#', '\\']).unwrap_or(rest.len());
+    let end = rest.find(AUTHORITY_END).unwrap_or(rest.len());
     &rest[..end]
 }
 
@@ -256,7 +268,12 @@ pub fn host_of(url: &str) -> String {
     let host = host.rsplit_once('@').map_or(host, |(_, h)| h);
     let host = match host.strip_prefix('[') {
         Some(rest) => match rest.split_once(']') {
-            Some((inner, after)) if after.is_empty() || after.starts_with(':') => inner,
+            Some((inner, after))
+                if (after.is_empty() || after.starts_with(':'))
+                    && inner.parse::<std::net::Ipv6Addr>().is_ok() =>
+            {
+                inner
+            }
             _ => "",
         },
         None => host.split(':').next().unwrap_or(""),
@@ -969,6 +986,11 @@ pub(crate) mod tests {
         assert_eq!(host_of("no-scheme:80"), "");
         assert_eq!(host_of("http://evil.com\\@127.0.0.1/"), "evil.com");
         assert_eq!(host_of("http://[::1]evil.com/"), "");
+        // Only a real IPv6 address counts inside brackets.
+        assert_eq!(host_of("http://[localhost]/"), "");
+        assert_eq!(host_of("http://[127.0.0.1]/"), "");
+        // A backslash ends the authority for the login split as well.
+        assert_eq!(split_login("http://evil.com\\@127.0.0.1/"), None);
         assert_eq!(host_of("http://[::1/"), "");
     }
 

@@ -132,27 +132,6 @@ pub fn subscriptions(rules: Vec<SubscriptionRule>) -> Vec<wire::Subscription> {
         .collect()
 }
 
-/// Query parameters that carry a credential. A Jackett or Torznab feed puts
-/// the indexer's key in the URL, and every device on the tailnet reads the
-/// snapshot.
-const SECRET_PARAMS: [&str; 15] = [
-    "apikey",
-    "api_key",
-    "jackett_apikey",
-    "passkey",
-    "torrent_pass",
-    "authkey",
-    "auth",
-    "token",
-    "key",
-    "rsskey",
-    "secret",
-    "sig",
-    "pass",
-    "password",
-    "uid",
-];
-
 /// `url` without its credential parameters. A feed that needed one will not
 /// open from a phone, which is the point; a public feed such as nyaa's has
 /// none and passes through unchanged.
@@ -165,7 +144,7 @@ pub fn without_secrets(url: &str) -> String {
         .split('&')
         .filter(|pair| {
             let name = pair.split('=').next().unwrap_or("");
-            !SECRET_PARAMS.iter().any(|s| name.eq_ignore_ascii_case(s))
+            crate::releases::native::secret_param(name).is_none()
         })
         .collect();
     if kept.is_empty() {
@@ -177,12 +156,8 @@ pub fn without_secrets(url: &str) -> String {
 
 /// `url` without a `user:password@` in front of its host.
 fn without_userinfo(url: &str) -> String {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return url.to_string();
-    };
-    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    match rest[..end].rfind('@') {
-        Some(at) => format!("{scheme}://{}", &rest[at + 1..]),
+    match crate::repos::index::split_login(url) {
+        Some((scheme, _, host)) => format!("{scheme}{host}"),
         None => url.to_string(),
     }
 }

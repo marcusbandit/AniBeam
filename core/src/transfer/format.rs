@@ -209,13 +209,18 @@ pub struct History {
 pub struct View {
     /// The series' path, which is what identifies it in this document.
     pub series: String,
-    /// The number of the latest episode watched, 0 for a film.
+    /// The number of the latest episode watched, 0 for a film or an extra.
     #[serde(default)]
     pub last_episode: f64,
     /// The episode's season when it is not the first: a later season of a
     /// multi-season folder keys its history apart from season 1's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub season: Option<u32>,
+    /// The file watched when a show's entry has no number to key by: an
+    /// OP, an ED, an SP. `last_episode` is then 0, and a document without
+    /// it keys the view by number as it always did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
     pub at: Value,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
@@ -230,6 +235,9 @@ pub struct Completed {
     /// As `View::season`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub season: Option<u32>,
+    /// As `View::file`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
     pub at: Value,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,

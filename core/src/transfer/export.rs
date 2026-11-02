@@ -344,11 +344,12 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
             let Some(series) = by_id.get(&id) else {
                 continue;
             };
-            let (last_episode, season) = number_of(&key);
+            let (last_episode, season, file) = entry_of(series, &key);
             views.push(View {
                 series: series.path.clone(),
                 last_episode,
                 season,
+                file,
                 at: Value::String(format::format_instant(at)),
                 extra: HashMap::new(),
             });
@@ -372,11 +373,12 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
             let Some(series) = by_id.get(&id) else {
                 continue;
             };
-            let (episode, season) = number_of(&key);
+            let (episode, season, file) = entry_of(series, &key);
             completed.push(Completed {
                 series: series.path.clone(),
                 episode,
                 season,
+                file,
                 at: Value::String(format::format_instant(at)),
                 extra: HashMap::new(),
             });
@@ -431,13 +433,19 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
     })
 }
 
-/// The number and season a history key names. A film's key is its file
-/// name rather than a number, and the format writes 0 for it; season 1 is
+/// The number, season and file a view or a completed entry writes for a
+/// history key. A key with no number writes 0: a film's key is its own
+/// file, which the series path already names, and a show's extra (an OP,
+/// an ED, an SP) names its file the way a resume point does. Season 1 is
 /// the format's default and is left out.
-fn number_of(key: &str) -> (f64, Option<u32>) {
+fn entry_of(series: &Row, key: &str) -> (f64, Option<u32>, Option<String>) {
     match classifier::parse_episode_key(key) {
-        Some((season, number)) => (number, later_season(season)),
-        None => (0.0, None),
+        Some((season, number)) => (number, later_season(season), None),
+        None => (
+            0.0,
+            None,
+            (series.kind == SeriesKind::Show).then(|| file_of(series, key)),
+        ),
     }
 }
 
@@ -489,10 +497,17 @@ mod tests {
             file_of(&row(SeriesKind::Movie, "/lib/Movies/Film.mkv"), "Film.mkv"),
             "/lib/Movies/Film.mkv"
         );
-        assert_eq!(number_of("12"), (12.0, None));
-        assert_eq!(number_of("12.5"), (12.5, None));
-        assert_eq!(number_of("S02E01"), (1.0, Some(2)));
-        assert_eq!(number_of("Film.mkv"), (0.0, None));
+        let show = row(SeriesKind::Show, "/lib/Show");
+        let film = row(SeriesKind::Movie, "/lib/Movies/Film.mkv");
+        assert_eq!(entry_of(&show, "12"), (12.0, None, None));
+        assert_eq!(entry_of(&show, "12.5"), (12.5, None, None));
+        assert_eq!(entry_of(&show, "S02E01"), (1.0, Some(2), None));
+        assert_eq!(
+            entry_of(&show, "NCOP1.mkv"),
+            (0.0, None, Some("/lib/Show/NCOP1.mkv".to_string()))
+        );
+        // A film's path is already its file.
+        assert_eq!(entry_of(&film, "Film.mkv"), (0.0, None, None));
     }
 
     /// Only the provider the row names: applying an AniList match over a
