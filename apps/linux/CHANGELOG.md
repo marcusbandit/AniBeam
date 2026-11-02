@@ -147,6 +147,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An unfolded run of repeated lines in Activity folds back up
 - Episode cubes in Get now grow under the pointer
 - Episodes listed as "S2 Episode 3" get episode 3's title, not episode 2's
+- A password or key in a site's address is stored as a secret, not in the open
 
 ## 2.3.0 · 2026-10-27
 
