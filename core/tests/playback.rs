@@ -323,6 +323,61 @@ fn the_last_episode_and_the_neighbours_follow_the_total_and_the_disk() {
     assert_eq!(f.next, None);
 }
 
+/// Next and Previous walk (season, number), a file that names no season
+/// being season 1: the last of the first season steps to the first of the
+/// second, and a lower number in a later season is never a Previous.
+#[test]
+fn next_and_previous_walk_the_seasons_in_order() {
+    let (_dir, core, _c) = common::open_core();
+    let now = anibeam_core::time::now_secs();
+    let src = fixtures::insert_source(&core, "/tv");
+    let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/tv/Show", "Show");
+    let mut ep = std::collections::HashMap::new();
+    // The second season goes in first, so id order alone would mix them.
+    for season in [2u32, 1] {
+        for n in 1..=12u32 {
+            // The first season names none, the way a lone season often does.
+            let named = (season == 2).then_some(season);
+            let id = fixtures::insert_file(
+                &core,
+                series,
+                &format!("/tv/Show/Show S{season:02}E{n:02}.mkv"),
+                f64::from(n),
+                named,
+                "episode",
+                now,
+            );
+            ep.insert((season, n), id);
+        }
+    }
+    let s1e12 = open(&core, ep[&(1, 12)]);
+    assert_eq!(s1e12.next, Some(ep[&(2, 1)]));
+    assert_eq!(s1e12.prev, Some(ep[&(1, 11)]));
+    let s1e5 = open(&core, ep[&(1, 5)]);
+    assert_eq!(s1e5.prev, Some(ep[&(1, 4)]));
+    assert_eq!(s1e5.next, Some(ep[&(1, 6)]));
+    let s2e3 = open(&core, ep[&(2, 3)]);
+    assert_eq!(s2e3.next, Some(ep[&(2, 4)]));
+    assert_eq!(s2e3.prev, Some(ep[&(2, 2)]));
+    assert_eq!(open(&core, ep[&(2, 1)]).prev, Some(ep[&(1, 12)]));
+    assert_eq!(open(&core, ep[&(2, 12)]).next, None);
+
+    // A published total counts one season: twelve of twelve is not the end
+    // while a second season sits on disk.
+    fixtures::insert_media(
+        &core,
+        3,
+        Some("Show"),
+        None,
+        Some(12),
+        "FINISHED",
+        "TV",
+        None,
+    );
+    fixtures::match_series(&core, series, Some(3), None);
+    assert!(!open(&core, ep[&(1, 12)]).is_last_episode);
+}
+
 /// (2) to (5) One episode watched end to end: the view at thirty seconds, a
 /// resume point on every tick after the fifth, the mark at 85 percent, the
 /// completion inside the last thirty seconds, and a close that adds nothing.

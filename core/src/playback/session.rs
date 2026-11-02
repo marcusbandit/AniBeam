@@ -363,35 +363,44 @@ fn track_choice_of(raw: Option<&str>) -> TrackChoice {
     }
 }
 
-/// The episodes either side of this one on disk. Only whole-numbered
-/// episodes are neighbours, so a 12.5 recap sits between twelve and thirteen
-/// rather than in the running order, and Next from it opens thirteen. An
-/// episode a torrent is still writing (`skip`) is no neighbour: Next steps
-/// over it.
+/// The episodes either side of this one on disk, in (season, number)
+/// order, a file that names no season being season 1, so the last of one
+/// season steps to the first of the next. Only whole-numbered episodes are
+/// neighbours, so a 12.5 recap sits between twelve and thirteen rather than
+/// in the running order, and Next from it opens thirteen. An episode a
+/// torrent is still writing (`skip`) is no neighbour: Next steps over it.
+/// The third value says whether a later season is on disk at all.
 fn neighbours(
     conn: &Connection,
     series: u64,
+    season: u32,
     number: f64,
     skip: &dyn Fn(f64) -> bool,
-) -> Result<(Option<u64>, Option<u64>), CoreError> {
-    let mut stmt =
-        conn.prepare("SELECT id, number FROM files WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL ORDER BY number, id")?;
+) -> Result<(Option<u64>, Option<u64>, bool), CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, COALESCE(season, 1), number FROM files WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL ORDER BY COALESCE(season, 1), number, id",
+    )?;
     let rows = stmt.query_map(params![series as i64], |r| {
-        Ok((r.get::<_, i64>(0)? as u64, r.get::<_, f64>(1)?))
+        Ok((
+            r.get::<_, i64>(0)? as u64,
+            r.get::<_, i64>(1)? as u32,
+            r.get::<_, f64>(2)?,
+        ))
     })?;
-    let (mut prev, mut next) = (None, None);
+    let (mut prev, mut next, mut later_season) = (None, None, false);
     for row in rows {
-        let (id, n) = row?;
+        let (id, s, n) = row?;
+        later_season |= s > season;
         if n.fract() != 0.0 || skip(n) {
             continue;
         }
-        if n < number {
+        if (s, n) < (season, number) {
             prev = Some(id);
-        } else if n > number && next.is_none() {
+        } else if (s, n) > (season, number) && next.is_none() {
             next = Some(id);
         }
     }
-    Ok((prev, next))
+    Ok((prev, next, later_season))
 }
 
 /// The windows the last session on this episode settled on. A `none` row is
@@ -430,7 +439,7 @@ fn cached_windows(conn: &Connection, series: u64, key: &str) -> Result<Vec<SkipW
 /// ticks that follow belong to.
 pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     let images_dir = core.paths.images_dir();
-    let (f, s, resume_from, skip_windows, prev, next, episode_title, subtitle_defaults, lang) =
+    let (f, s, resume_from, skip_windows, (prev, next, later_season), episode_title, subtitle_defaults, lang) =
         core.store.read(|c| {
             let f = file_row(c, file)?;
             // The safety net behind every Play: whatever page asked, a file a
@@ -458,11 +467,13 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             let skip_windows = cached_windows(c, f.series, &f.episode_key)?;
             // An extra stands outside the running order, and a film is its own
             // series, so neither has an episode either side of it.
-            let (prev, next) = match (f.is_extra, s.kind) {
-                (false, SeriesKind::Show) => neighbours(c, f.series, f.number, &|n| {
-                    crate::downloads::episode_progress(core, f.series, n).is_some()
-                })?,
-                _ => (None, None),
+            let neighbours = match (f.is_extra, s.kind) {
+                (false, SeriesKind::Show) => {
+                    neighbours(c, f.series, f.season.unwrap_or(1), f.number, &|n| {
+                        crate::downloads::episode_progress(core, f.series, n).is_some()
+                    })?
+                }
+                _ => (None, None, false),
             };
             // TVmaze numbers within a season, so its title is looked up by
             // both, a file that names no season being season 1.
@@ -500,8 +511,7 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
                 s,
                 resume_from,
                 skip_windows,
-                prev,
-                next,
+                neighbours,
                 episode_title,
                 subtitle_defaults,
                 lang,
@@ -518,14 +528,15 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     // anything, and a show ends where the published total says, or where the
     // disk runs out when no total is known. A show still airing with no total
     // has not ended at all: the disk running out there is only this week's
-    // episode not being out yet.
+    // episode not being out yet. A total counts one season, so a later
+    // season on disk means this one is not the end.
     let is_last_episode = if f.is_extra {
         false
     } else if is_film {
         true
     } else {
         match s.total {
-            Some(total) => f.number >= f64::from(total),
+            Some(total) => f.number >= f64::from(total) && !later_season,
             None => !s.airing && next.is_none(),
         }
     };
