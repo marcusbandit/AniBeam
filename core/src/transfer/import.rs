@@ -524,7 +524,7 @@ async fn import_history(
                     "INSERT INTO views (series_id, episode_key, at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
                      WHERE excluded.at > views.at",
-                    params![row.id as i64, row.key(view.last_episode, view.season), at],
+                    params![row.id as i64, row.view_key(view), at],
                 )? as u64;
             }
             let mut completed = 0u64;
@@ -573,6 +573,17 @@ impl HistorySeries {
         match self.kind {
             SeriesKind::Movie => file_name(&self.path),
             SeriesKind::Show => classifier::number_key(season, number),
+        }
+    }
+    /// A view that names a file inside the series keys by that file's
+    /// name; one without, or with a file the series does not own, keys by
+    /// number.
+    fn view_key(&self, view: &format::View) -> String {
+        match &view.file {
+            Some(file) if self.kind == SeriesKind::Show && under(&normalise(file), &self.path) => {
+                file_name(&normalise(file))
+            }
+            _ => self.key(view.last_episode, view.season),
         }
     }
 }

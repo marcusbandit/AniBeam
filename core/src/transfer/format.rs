@@ -216,6 +216,11 @@ pub struct View {
     /// multi-season folder keys its history apart from season 1's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub season: Option<u32>,
+    /// The file watched when it has no number to key by: an OP, an ED, an
+    /// SP. `last_episode` is then 0, and a document without it keys the
+    /// view by number as it always did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
     pub at: Value,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,

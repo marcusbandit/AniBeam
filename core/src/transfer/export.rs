@@ -345,10 +345,17 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
                 continue;
             };
             let (last_episode, season) = number_of(&key);
+            // A show's extra has no number, so the view names its file,
+            // the way a resume point does. A film's key is its own file,
+            // which the series path already names.
+            let file = (classifier::parse_episode_key(&key).is_none()
+                && series.kind == SeriesKind::Show)
+                .then(|| file_of(series, &key));
             views.push(View {
                 series: series.path.clone(),
                 last_episode,
                 season,
+                file,
                 at: Value::String(format::format_instant(at)),
                 extra: HashMap::new(),
             });

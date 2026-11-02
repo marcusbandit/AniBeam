@@ -430,6 +430,47 @@ fn a_private_export_round_trips_into_a_fresh_core() {
     );
 }
 
+/// A view of an extra has no episode number to key by, so the document
+/// keys it by its file, the way a resume point does; reading it back as
+/// episode 0 would point "last watched" at an episode that is not there.
+#[test]
+fn a_view_of_an_extra_round_trips_by_its_file() {
+    let (dir, core, c) = common::open_core();
+    let path = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
+    let job = started(core.call(Call::Import { path }).unwrap());
+    common::wait_job(&c, job);
+    core.store()
+        .write(|c| {
+            c.execute("UPDATE views SET episode_key = 'NCOP1.mkv'", [])?;
+            Ok(())
+        })
+        .unwrap();
+
+    let out = dir.path().join("anibeam-export-full.json");
+    let out_path = out.to_string_lossy().into_owned();
+    let job = started(
+        core.call(Call::Export {
+            path: out_path.clone(),
+            private: true,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+
+    let (_dir2, fresh, c2) = common::open_core();
+    let job = started(fresh.call(Call::Import { path: out_path }).unwrap());
+    let summary = summary_of(common::wait_job(&c2, job));
+    assert_eq!(summary.views_merged, 1);
+    assert!(
+        summary.fields_ignored.is_empty(),
+        "{:?}",
+        summary.fields_ignored
+    );
+    let viewed = views(&fresh);
+    assert_eq!(viewed, views(&core));
+    assert_eq!(viewed[0].1, "NCOP1.mkv");
+}
+
 #[test]
 fn a_newer_document_and_an_unreadable_one_fail_at_once() {
     let (dir, core, _c) = common::open_core();
