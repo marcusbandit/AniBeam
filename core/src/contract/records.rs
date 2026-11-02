@@ -804,6 +804,11 @@ pub struct Preferences {
     /// an export never carries it. `serde(default)` because older blobs predate it.
     #[serde(default)]
     pub discord_presence: bool,
+    /// Whether the core keeps an iCal file of the airing times of the shows
+    /// on the user's lists (`calendar`). Default off, and per machine like
+    /// `discord_presence`. `serde(default)` because older blobs predate it.
+    #[serde(default)]
+    pub calendar_feed: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -968,6 +973,7 @@ impl Default for Preferences {
             on_hold_auto: true,
             on_hold_days: ON_HOLD_DAYS,
             discord_presence: false,
+            calendar_feed: false,
         }
     }
 }

@@ -2,7 +2,8 @@
 // Remove, then Add a folder and the last scan with Scan all), Matching (the providers in
 // the order matching tries them, and the way to the Metadata page where each match is
 // reviewed), the session's Show hidden shows, and the shows hidden from Airing now, each
-// with a way back. The figures and the per-series ledger the old tab carried are the
+// with a way back, then Calendar (the iCal file of airing times the core keeps while
+// its switch is on, with its path to copy). The figures and the per-series ledger the old tab carried are the
 // Metadata page's job and live there.
 import QtQuick
 import QtQuick.Dialogs
@@ -149,6 +150,33 @@ SettingsTab {
                     onClicked: tab.showAgain(niRow.modelData.anilist_id)
                 }
             }
+        }
+    }
+    // The calendar feed (#217): the core keeps the file current while the switch is on
+    readonly property string calendarPath: Door.about && Door.about.data_dir ? Door.about.data_dir + "/anibeam.ics" : ""
+    function setCalendar(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.calendar_feed = on
+        var r = Door.setPreferences(p)
+        if (r.error) frame.toast(r.error.message)
+    }
+    Panel {
+        objectName: "settings-calendar"
+        title: "Calendar"
+        SettingRow {
+            label: "Airing times in a calendar"
+            helper: "Keeps a calendar file of the coming episodes of the shows on your lists, updated when the schedule changes."
+            Switch { objectName: "settings-calendar-switch"; checked: !!Door.preferences.calendar_feed; onToggled: function(on) { tab.setCalendar(on) } }
+        }
+        SettingRow {
+            objectName: "settings-calendar-file"
+            visible: !!Door.preferences.calendar_feed && tab.calendarPath !== ""
+            label: "Calendar file"
+            helper: "Subscribe to this file in your calendar app."
+            status: tab.calendarPath
+            Row { spacing: theme.space(2)
+                Button { objectName: "settings-calendar-copy"; text: "Copy"; icon: "copy"; flat: true; small: true; onClicked: frame.copyText(tab.calendarPath, "Path copied") }
+                Button { objectName: "settings-calendar-open"; text: "Open folder"; icon: "folder-open"; flat: true; small: true; onClicked: frame.openLink(Fmt.fileUrl(Door.about.data_dir)) } }
         }
     }
     FolderDialog {
