@@ -127,6 +127,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- JSON sources show sizes written with units, and links in capitals
 - A search whose picked endpoint fails says why instead of showing no results
 - A web page answering at the qBittorrent address no longer counts as a login
 - Seeders and leechers show for trackers whose address carries a passkey
