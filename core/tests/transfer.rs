@@ -430,11 +430,12 @@ fn a_private_export_round_trips_into_a_fresh_core() {
     );
 }
 
-/// A view of an extra has no episode number to key by, so the document
-/// keys it by its file, the way a resume point does; reading it back as
-/// episode 0 would point "last watched" at an episode that is not there.
+/// A view or a completed extra has no episode number to key by, so the
+/// document keys it by its file, the way a resume point does; reading it
+/// back as episode 0 would point "last watched" at an episode that is not
+/// there, and merge every finished extra into one.
 #[test]
-fn a_view_of_an_extra_round_trips_by_its_file() {
+fn an_extra_round_trips_by_its_file() {
     let (dir, core, c) = common::open_core();
     let path = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
     let job = started(core.call(Call::Import { path }).unwrap());
@@ -442,6 +443,13 @@ fn a_view_of_an_extra_round_trips_by_its_file() {
     core.store()
         .write(|c| {
             c.execute("UPDATE views SET episode_key = 'NCOP1.mkv'", [])?;
+            // Two extras finished on the same show: as episode 0 both
+            // would land on one key and merge.
+            c.execute(
+                "INSERT INTO completed (series_id, episode_key, at)
+                 SELECT series_id, k, at FROM views, (SELECT 'NCOP1.mkv' AS k UNION SELECT 'NCED1.mkv')",
+                [],
+            )?;
             Ok(())
         })
         .unwrap();
@@ -469,6 +477,10 @@ fn a_view_of_an_extra_round_trips_by_its_file() {
     let viewed = views(&fresh);
     assert_eq!(viewed, views(&core));
     assert_eq!(viewed[0].1, "NCOP1.mkv");
+    let done = completed(&fresh);
+    assert_eq!(done, completed(&core));
+    assert!(done.iter().any(|(_, k)| k == "NCED1.mkv"), "{done:?}");
+    assert!(done.iter().all(|(_, k)| k != "0"), "{done:?}");
 }
 
 #[test]
