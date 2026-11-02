@@ -312,27 +312,30 @@ mod unix {
         UnixListener::bind(socket).map_err(|e| format!("{}: {e}", socket.display()))
     }
 
-    /// Takes the lock on a thread of its own. A window holding it is told to keep the host
-    /// on, and the thread blocks until that window is gone.
+    /// Takes the lock. A window holding it is told to keep the host on, here on the loop's
+    /// thread so a later `release-host` can never overtake it, and a thread of its own then
+    /// blocks until that window is gone.
     fn wait_for_lock(path: &Path, tx: &Sender<Event>, tell: &TellWindow) {
-        let (path, tx, tell): (PathBuf, _, _) = (path.to_path_buf(), tx.clone(), tell.clone());
-        std::thread::spawn(move || {
-            let taken = match instance::try_lock(&path) {
-                Ok(Some(lock)) => Ok(lock),
-                Ok(None) => {
-                    tell(true);
-                    instance::wait_lock(&path)
-                }
-                Err(e) => Err(e),
-            };
-            match taken {
-                Ok(lock) => {
-                    let _ = tx.send(Event::Locked(lock));
-                }
-                Err(e) => {
-                    eprintln!("anibeam: lock {}: {e}", path.display());
-                    let _ = tx.send(Event::Stop);
-                }
+        let (path, tx): (PathBuf, _) = (path.to_path_buf(), tx.clone());
+        match instance::try_lock(&path) {
+            Ok(Some(lock)) => {
+                let _ = tx.send(Event::Locked(lock));
+                return;
+            }
+            Ok(None) => tell(true),
+            Err(e) => {
+                eprintln!("anibeam: lock {}: {e}", path.display());
+                let _ = tx.send(Event::Stop);
+                return;
+            }
+        }
+        std::thread::spawn(move || match instance::wait_lock(&path) {
+            Ok(lock) => {
+                let _ = tx.send(Event::Locked(lock));
+            }
+            Err(e) => {
+                eprintln!("anibeam: lock {}: {e}", path.display());
+                let _ = tx.send(Event::Stop);
             }
         });
     }
@@ -356,7 +359,15 @@ mod unix {
     /// One thread per connection: read the question, answer it or hand it to the loop.
     fn answer(listener: UnixListener, tx: Sender<Event>, serving: Arc<AtomicBool>) {
         for conn in listener.incoming() {
-            let Ok(mut conn) = conn else { continue };
+            let mut conn = match conn {
+                Ok(conn) => conn,
+                Err(e) => {
+                    eprintln!("anibeam: the service socket could not accept: {e}");
+                    // Out of descriptors, most likely: give some back before the next try.
+                    std::thread::sleep(ANSWER);
+                    continue;
+                }
+            };
             let (tx, serving) = (tx.clone(), serving.clone());
             std::thread::spawn(move || {
                 let _ = conn.set_read_timeout(Some(ANSWER));
@@ -483,7 +494,29 @@ mod unix {
         }
 
         fn state(root: &Path) -> Option<State> {
-            status(&socket(root))
+            let answer = status(&socket(root));
+            if answer.is_none() {
+                eprintln!("no status: {}", probe(&socket(root)));
+            }
+            answer
+        }
+
+        /// Why a status read came back empty, for a failure on a machine the test cannot
+        /// be run on by hand.
+        fn probe(socket: &Path) -> String {
+            let mut conn = match UnixStream::connect(socket) {
+                Ok(c) => c,
+                Err(e) => return format!("connect {}: {e}", socket.display()),
+            };
+            let _ = conn.set_read_timeout(Some(Duration::from_secs(5)));
+            if let Err(e) = conn.write_all(b"status\n") {
+                return format!("write: {e}");
+            }
+            let mut line = String::new();
+            match BufReader::new(&conn).read_line(&mut line) {
+                Ok(_) => format!("answered {line:?} given 5 s"),
+                Err(e) => format!("read: {e}"),
+            }
         }
 
         /// Polls `check` until it holds: the service and its host work on threads of their
