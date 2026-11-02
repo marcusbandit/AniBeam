@@ -127,6 +127,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- A search whose picked endpoint fails says why instead of showing no results
 - A web page answering at the qBittorrent address no longer counts as a login
 - Seeders and leechers show for trackers whose address carries a passkey
 - Next from a season's last episode plays the next season's first
@@ -152,6 +153,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Episodes listed as "S2 Episode 3" get episode 3's title, not episode 2's
 - A password or key in a site's address is stored as a secret, not in the open
 - An imported backup keeps a watched opening or ending as last watched
+- An endpoint at an IPv6 address shows its full host
 - Auto-match tells a second OVA run apart from the first, and finds a first film
 
 ## 2.3.0 · 2026-10-27
