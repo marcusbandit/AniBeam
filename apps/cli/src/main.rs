@@ -4,7 +4,8 @@ use std::sync::mpsc::{self, Sender};
 
 use anibeam_core::trackers::Secrets;
 use anibeam_core::{
-    Call, Core, CorePaths, Direction, Event, EventListener, JobPhase, Level, Reply, Sort, Tab,
+    Call, Core, CorePaths, Direction, Event, EventBody, EventListener, JobPhase, Level, Reply,
+    Sort, Tab,
 };
 use clap::{Parser, Subcommand};
 
@@ -136,9 +137,12 @@ fn open(root: Option<PathBuf>) -> Arc<Core> {
     core
 }
 
-/// Sends one call, prints the reply as JSON, and with `wait` set, stays
-/// attached to a `Started` job's own events until its `Finished` phase.
-fn send(core: &Core, call: Call, wait: bool) {
+/// Sends one call and prints the reply as JSON. A `Started` job is always
+/// followed to its finish, because `main` shuts the core down after this
+/// returns and the shutdown cancels whatever is still running; `wait` only
+/// decides whether its events are printed on the way. Returns the exit code:
+/// 1 when the call or its job failed or was cancelled.
+fn send(core: &Core, call: Call, wait: bool) -> i32 {
     // Subscribed before the call goes in, so a fast job's first events are
     // never missed racing the reply.
     let (tx, rx) = mpsc::channel::<Event>();
@@ -147,35 +151,55 @@ fn send(core: &Core, call: Call, wait: bool) {
     match core.call(call) {
         Ok(reply) => {
             println!("{}", serde_json::to_string_pretty(&reply).unwrap());
-            if wait && let Reply::Started { job } = reply {
-                for event in rx {
-                    if !event.job.as_ref().is_some_and(|j| j.id == job) {
-                        continue;
-                    }
-                    println!("{}", serde_json::to_string(&event).unwrap());
-                    if event
-                        .job
-                        .as_ref()
-                        .is_some_and(|j| j.phase == JobPhase::Finished)
-                    {
-                        break;
-                    }
-                }
+            match reply {
+                Reply::Started { job } => follow(rx, job, wait),
+                _ => 0,
             }
         }
         Err(e) => {
             eprintln!("{}", serde_json::to_string_pretty(&e).unwrap());
-            std::process::exit(1);
+            1
         }
     }
 }
 
-fn run_call(core: &Core, name: &str, json: Option<&str>, wait: bool) {
+/// Reads events until job `job` reaches its `Finished` phase, printing them
+/// when `print` is set, and turns the last one into an exit code. A failure
+/// puts its error on stderr whether or not the events were printed.
+fn follow(events: impl IntoIterator<Item = Event>, job: u64, print: bool) -> i32 {
+    for event in events {
+        let Some(j) = event.job.as_ref().filter(|j| j.id == job) else {
+            continue;
+        };
+        if print {
+            println!("{}", serde_json::to_string(&event).unwrap());
+        }
+        if j.phase != JobPhase::Finished {
+            continue;
+        }
+        return match &event.body {
+            EventBody::JobFailed { error } => {
+                eprintln!("{}", serde_json::to_string_pretty(error).unwrap());
+                1
+            }
+            EventBody::JobCancelled => {
+                eprintln!("job {job} was cancelled");
+                1
+            }
+            _ => 0,
+        };
+    }
+    // The core dropped every listener before the job finished.
+    eprintln!("job {job} ended without a result");
+    1
+}
+
+fn run_call(core: &Core, name: &str, json: Option<&str>, wait: bool) -> i32 {
     let call = parse_call(name, json).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(2);
     });
-    send(core, call, wait);
+    send(core, call, wait)
 }
 
 /// A call whose reply the view formats itself. An error ends the process
@@ -280,19 +304,34 @@ fn run_events(core: &Core, follow: bool, level: &str) {
 fn main() {
     let cli = Cli::parse();
     let core = open(cli.root);
-    match cli.command {
+    let code = match cli.command {
         Command::Call { name, json, wait } => run_call(&core, &name, json.as_deref(), wait),
-        Command::Events { follow, level } => run_events(&core, follow, &level),
-        Command::Sources => run_sources(&core),
+        Command::Events { follow, level } => {
+            run_events(&core, follow, &level);
+            0
+        }
+        Command::Sources => {
+            run_sources(&core);
+            0
+        }
         Command::Scan { source, wait } => send(&core, Call::Scan { source }, wait),
         Command::List {
             tab,
             sort,
             direction,
             query,
-        } => run_list(&core, &tab, &sort, &direction, &query),
-        Command::Show { series } => run_show(&core, series),
-        Command::Jobs => run_jobs(&core),
+        } => {
+            run_list(&core, &tab, &sort, &direction, &query);
+            0
+        }
+        Command::Show { series } => {
+            run_show(&core, series);
+            0
+        }
+        Command::Jobs => {
+            run_jobs(&core);
+            0
+        }
         Command::Import { file, wait } => send(&core, Call::Import { path: file }, wait),
         Command::Export {
             file,
@@ -306,14 +345,34 @@ fn main() {
             },
             wait,
         ),
-    }
+    };
     core.shutdown();
+    std::process::exit(code);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_call;
-    use anibeam_core::Call;
+    use super::{follow, parse_call};
+    use anibeam_core::{
+        Call, CoreError, Event, EventBody, JobKind, JobPhase, JobRef, Level, Stage,
+    };
+
+    fn event(job: u64, phase: JobPhase, body: EventBody) -> Event {
+        Event {
+            seq: 0,
+            at: std::time::SystemTime::now(),
+            level: Level::Info,
+            stage: Stage::Store,
+            message: String::new(),
+            plain: None,
+            job: Some(JobRef {
+                id: job,
+                kind: JobKind::Export,
+                phase,
+            }),
+            body,
+        }
+    }
 
     #[test]
     fn parse_call_builds_unit_and_field_variants() {
@@ -323,5 +382,34 @@ mod tests {
             Call::Scan { source: None }
         );
         assert!(parse_call("Nope", None).is_err());
+    }
+
+    #[test]
+    fn follow_exits_by_how_its_own_job_finished() {
+        let started = || {
+            event(
+                1,
+                JobPhase::Started,
+                EventBody::JobStarted {
+                    kind: JobKind::Export,
+                },
+            )
+        };
+        let done = event(1, JobPhase::Finished, EventBody::Notice);
+        let failed = event(
+            1,
+            JobPhase::Finished,
+            EventBody::JobFailed {
+                error: CoreError::internal("disk full"),
+            },
+        );
+        let cancelled = event(1, JobPhase::Finished, EventBody::JobCancelled);
+        // Another job finishing first is not this job's result.
+        let other = event(2, JobPhase::Finished, EventBody::Notice);
+
+        assert_eq!(follow([started(), other.clone(), done], 1, false), 0);
+        assert_eq!(follow([started(), other, failed], 1, false), 1);
+        assert_eq!(follow([started(), cancelled], 1, false), 1);
+        assert_eq!(follow([started()], 1, false), 1);
     }
 }
