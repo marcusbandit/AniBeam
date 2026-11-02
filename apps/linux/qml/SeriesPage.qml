@@ -382,11 +382,11 @@ Item {
 
     // ---- The facts, one ledger line: format, year, studio, a film's runtime, episodes and how
     // long each runs, on disk, status. A film is a loose file or a MOVIE record in its own
-    // folder, the same test as the core's `is_film`. The average score, the IMDb score and the
+    // folder, the core's `film` flag. The average score, the IMDb score and the
     // list status sit in the quiet row, beside your own score.
     readonly property string factsLine: {
         if (!detail) return ""
-        var film = isMovie || card.format === "MOVIE"
+        var film = !!card.film
         var f = [formatLabel(card.format)]
         if (detail.year) f.push(String(detail.year))
         if (detail.studio) f.push(detail.studio)
