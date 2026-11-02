@@ -23,8 +23,9 @@ use crate::prefs;
 use crate::time;
 use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::transfer::format::{
-    self, Account, Accounts, Completed, Document, ExportedBy, History, MatchEntry, PrefsEntry,
-    ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName, TrackerName, TvmazeName, View,
+    self, Account, Accounts, Completed, Document, ExportedBy, FixEntry, History, MatchEntry,
+    PrefsEntry, ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName, TrackerName,
+    TvmazeName, View,
 };
 
 /// One series as the tables hold it, before it becomes a document entry.
@@ -51,12 +52,10 @@ struct Row {
 /// store. Synchronous, and it reads the keyring when `private` is set, so
 /// the job runs it through `spawn_blocking` rather than on a tokio worker.
 pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, CoreError> {
-    let (sources, rows, preferences) = core.store.read(|c| {
-        Ok((
-            source_paths(c)?,
-            series_rows(c)?,
-            prefs::load_preferences(c)?,
-        ))
+    let (sources, rows, preferences, mut fixes) = core.store.read(|c| {
+        let rows = series_rows(c)?;
+        let fixes = fixes_by_series(c, &rows)?;
+        Ok((source_paths(c)?, rows, prefs::load_preferences(c)?, fixes))
     })?;
 
     let mut doc = Document {
@@ -79,7 +78,10 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
             .collect(),
         series: rows
             .iter()
-            .map(|r| entry(r, preferences.title_language))
+            .map(|r| SeriesEntry {
+                quick_fixes: fixes.remove(&r.id).unwrap_or_default(),
+                ..entry(r, preferences.title_language)
+            })
             .collect(),
         accounts: None,
         keys: None,
@@ -258,8 +260,48 @@ fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
             .and_then(|json| serde_json::from_str::<TrackChoice>(json).ok()),
         episodes_set: row.episodes_set,
         episodes_set_season: row.episodes_set_season,
+        quick_fixes: Vec::new(),
         extra: HashMap::new(),
     }
+}
+
+/// Every quick fix, under the series whose path holds its file: the longest one, so a
+/// film inside a show's folder keeps its own. Keyed by path rather than through the file
+/// row, as the fix itself is, so a fix of a file that is not on disk right now goes too.
+fn fixes_by_series(
+    conn: &Connection,
+    rows: &[Row],
+) -> Result<HashMap<u64, Vec<FixEntry>>, CoreError> {
+    let mut stmt = conn.prepare("SELECT path, reading, was FROM file_fixes ORDER BY path")?;
+    let fixes = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut out: HashMap<u64, Vec<FixEntry>> = HashMap::new();
+    for (path, reading, was) in fixes {
+        let Some(row) = rows
+            .iter()
+            .filter(|r| crate::paths::under(&path, &r.path))
+            .max_by_key(|r| r.path.len())
+        else {
+            continue;
+        };
+        let rel = path[row.path.trim_end_matches(std::path::is_separator).len()..]
+            .trim_start_matches(std::path::is_separator)
+            .to_string();
+        out.entry(row.id).or_default().push(FixEntry {
+            path: rel,
+            reading: serde_json::from_str(&reading)?,
+            was: serde_json::from_str(&was)?,
+            extra: HashMap::new(),
+        });
+    }
+    Ok(out)
 }
 
 /// Only the provider the row names, never the columns another provider

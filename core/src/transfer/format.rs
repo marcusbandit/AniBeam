@@ -106,6 +106,25 @@ pub struct SeriesEntry {
     pub episodes_set: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub episodes_set_season: Option<u32>,
+    /// Version 2 too: the quick fixes (#170) of the series' files. Absent when it has none,
+    /// so a reader that has never heard of them reads the rest as before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quick_fixes: Vec<FixEntry>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+/// One quick fix: what the user said a file is, against how its name read before.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FixEntry {
+    /// The file's path relative to the series' own; empty for a film, whose series is the
+    /// file itself.
+    pub path: String,
+    /// A `FileReading` each. Kept as JSON here, so one this build cannot read is skipped
+    /// and named on import rather than failing the whole document.
+    pub reading: Value,
+    pub was: Value,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
 }

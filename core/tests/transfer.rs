@@ -508,3 +508,95 @@ fn a_newer_document_and_an_unreadable_one_fail_at_once() {
         matches!(core.call(Call::Import { path: missing }), Err(CoreError::Invalid { field, .. }) if field == "path")
     );
 }
+
+#[test]
+fn quick_fixes_round_trip_beside_their_series() {
+    let (dir, core, c) = common::open_core();
+    let path = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
+    let job = started(core.call(Call::Import { path }).unwrap());
+    common::wait_job(&c, job);
+    let lib = dir.path().join("anime");
+    let show_file = lib
+        .join("Sousou no Frieren")
+        .join("Sousou no Frieren - 01.mkv");
+    let film = lib.join("Movies").join("Perfect Blue (1997).mkv");
+    let episode = |n: f64| {
+        serde_json::to_string(&FileReading::Episode {
+            number: n,
+            season: None,
+        })
+        .unwrap()
+    };
+    let (show_path, film_path) = (
+        show_file.to_string_lossy().into_owned(),
+        film.to_string_lossy().into_owned(),
+    );
+    let (e1, e2, e5) = (episode(1.0), episode(2.0), episode(5.0));
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "INSERT INTO file_fixes (path, reading, was, fixed_at) VALUES (?1, ?2, ?3, 1), (?4, ?5, ?3, 1)",
+                rusqlite::params![show_path, e2, e1, film_path, e5],
+            )?;
+            // Under no series at all: left out of the export.
+            c.execute(
+                "INSERT INTO file_fixes (path, reading, was, fixed_at) VALUES ('/elsewhere/x.mkv', ?1, ?1, 1)",
+                rusqlite::params![e1],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    let out = dir.path().join("out.json");
+    let out_path = out.to_string_lossy().into_owned();
+    let job = started(
+        core.call(Call::Export {
+            path: out_path.clone(),
+            private: false,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+    let doc: serde_json::Value = serde_json::from_str(&fs::read_to_string(&out).unwrap()).unwrap();
+    let fixes: Vec<(String, String)> = doc["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| {
+            let title = s["path"].as_str().unwrap().to_string();
+            s["quickFixes"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(move |f| (title.clone(), f["path"].as_str().unwrap().to_string()))
+        })
+        .collect();
+    assert_eq!(fixes.len(), 2, "{fixes:?}");
+    assert!(
+        fixes
+            .iter()
+            .any(|(_, rel)| rel == "Sousou no Frieren - 01.mkv")
+    );
+    assert!(
+        fixes
+            .iter()
+            .any(|(s, rel)| rel.is_empty() && s.ends_with(".mkv"))
+    );
+
+    let fixed = |core: &Core| {
+        rows(
+            core,
+            "SELECT path, reading FROM file_fixes WHERE path NOT LIKE '/elsewhere%' ORDER BY path",
+        )
+    };
+    let (_dir2, fresh, c2) = common::open_core();
+    let job = started(fresh.call(Call::Import { path: out_path }).unwrap());
+    let summary = summary_of(common::wait_job(&c2, job));
+    assert!(
+        summary.fields_ignored.is_empty(),
+        "{:?}",
+        summary.fields_ignored
+    );
+    assert_eq!(fixed(&fresh), fixed(&core));
+}

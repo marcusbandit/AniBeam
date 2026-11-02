@@ -34,7 +34,7 @@ use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::trackers::secrets::StoreKind;
 use crate::transfer::file_name;
 use crate::transfer::format::{
-    self, Account, Document, MatchEntry, ResumeEntry, SeriesEntry, TrackerName,
+    self, Account, Document, FixEntry, MatchEntry, ResumeEntry, SeriesEntry, TrackerName,
 };
 
 /// The five sections a `JobProgress` counts through.
@@ -318,6 +318,11 @@ async fn import_series(
                         params![id as i64, n as i64, entry.episodes_set_season.map(|s| s as i64)],
                     )?;
                 }
+                for (i, fix) in entry.quick_fixes.iter().enumerate() {
+                    if !import_fix(tx, &path, fix, now)? {
+                        ignored.push(format!("series[{n}].quickFixes[{i}]"));
+                    }
+                }
                 touched.push(id);
             }
             Ok((touched, created, matched, ignored))
@@ -327,6 +332,39 @@ async fn import_series(
     summary.matches_applied = matched;
     summary.fields_ignored.extend(ignored);
     Ok(touched)
+}
+
+/// A quick fix, at its path under the series. The file wins on the reading, as on a match;
+/// what the scan read first stays as it is here when this library already has a fix, as
+/// `FixFiles` keeps it. The next scan reads the file this way. Answers false for a fix this
+/// build cannot read, which is skipped.
+fn import_fix(tx: &Transaction, series: &str, fix: &FixEntry, now: i64) -> Result<bool, CoreError> {
+    let (Ok(reading), Ok(was)) = (
+        serde_json::from_value::<FileReading>(fix.reading.clone()),
+        serde_json::from_value::<FileReading>(fix.was.clone()),
+    ) else {
+        return Ok(false);
+    };
+    let rel = fix.path.trim_matches(std::path::is_separator);
+    if rel.split(std::path::is_separator).any(|part| part == "..") {
+        return Ok(false);
+    }
+    let path = if rel.is_empty() {
+        series.to_string()
+    } else {
+        Path::new(series).join(rel).to_string_lossy().into_owned()
+    };
+    tx.execute(
+        "INSERT INTO file_fixes (path, reading, was, fixed_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(path) DO UPDATE SET reading = excluded.reading, fixed_at = excluded.fixed_at",
+        params![
+            path,
+            serde_json::to_string(&reading)?,
+            serde_json::to_string(&was)?,
+            now
+        ],
+    )?;
+    Ok(true)
 }
 
 fn all_sources(conn: &Connection) -> Result<Vec<(u64, String)>, CoreError> {
