@@ -178,6 +178,137 @@ pub struct Reconciled {
     pub added: Vec<u64>,
     pub changed: Vec<u64>,
     pub removed: Vec<u64>,
+    /// Blank rows dropped so an older row could take their path.
+    pub deleted: Vec<u64>,
+}
+
+struct Existing {
+    id: u64,
+    missing: bool,
+}
+
+/// True when a series row carries nothing the user gave it: no match, not
+/// hidden, no track choice, no episode count set by hand and no history.
+fn is_blank(tx: &Transaction, id: u64) -> Result<bool, CoreError> {
+    Ok(tx.query_row(
+        "SELECT provider IS NULL AND confirmed = 0 AND anilist_id IS NULL AND mal_id IS NULL
+            AND tmdb_id IS NULL AND tvmaze_id IS NULL AND hidden = 0 AND track_choice IS NULL
+            AND episodes_set IS NULL AND episodes_set_season IS NULL
+            AND NOT EXISTS (SELECT 1 FROM views WHERE series_id = ?1)
+            AND NOT EXISTS (SELECT 1 FROM completed WHERE series_id = ?1)
+            AND NOT EXISTS (SELECT 1 FROM resume_points WHERE series_id = ?1)
+         FROM series WHERE id = ?1",
+        params![id as i64],
+        |r| r.get(0),
+    )?)
+}
+
+/// True when a row has a match or a watch history, the things a tie-break
+/// between old rows may go by.
+fn has_match_or_history(tx: &Transaction, id: u64) -> Result<bool, CoreError> {
+    Ok(tx.query_row(
+        "SELECT provider IS NOT NULL OR confirmed <> 0
+            OR EXISTS (SELECT 1 FROM views WHERE series_id = ?1)
+            OR EXISTS (SELECT 1 FROM completed WHERE series_id = ?1)
+            OR EXISTS (SELECT 1 FROM resume_points WHERE series_id = ?1)
+         FROM series WHERE id = ?1",
+        params![id as i64],
+        |r| r.get(0),
+    )?)
+}
+
+/// A show now read one folder up keeps its old row, moved to the new path.
+/// The move needs one old row under that path that shares a file with the
+/// show (or a missing direct child): a sample it held or an episode deleted
+/// since need not be there, or else the only one with a match or a
+/// history; a Specials, OVA, Extras or later-season row never moves, and a
+/// new-path row is dropped first only when blank. Returns (moved, dropped).
+fn repoint_moved_shows(
+    tx: &Transaction,
+    scanned: &[&ScannedSeries],
+    in_scope: &dyn Fn(&str) -> bool,
+    existing: &mut HashMap<(String, String), Existing>,
+) -> Result<(Vec<u64>, Vec<u64>), CoreError> {
+    let show = SeriesKind::Show.as_str();
+    let scanned_keys: HashSet<(&str, &str)> = scanned
+        .iter()
+        .map(|s| (s.kind.as_str(), s.path.as_str()))
+        .collect();
+    let mut orphans: Vec<(String, u64, bool)> = existing
+        .iter()
+        .filter(|((kind, path), _)| {
+            kind == show
+                && !scanned_keys.contains(&(kind.as_str(), path.as_str()))
+                && in_scope(path)
+        })
+        .map(|((_, path), e)| (path.clone(), e.id, e.missing))
+        .collect();
+    if orphans.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    orphans.sort_unstable();
+    let mut moved: Vec<u64> = Vec::new();
+    let mut deleted: Vec<u64> = Vec::new();
+    for s in scanned.iter().filter(|s| s.kind == SeriesKind::Show) {
+        let files: HashSet<&str> = s.files.iter().map(|f| f.path.as_str()).collect();
+        let mut found: Vec<(&str, u64)> = Vec::new();
+        for (path, id, missing) in &orphans {
+            if path == &s.path || !under(path, &s.path) || moved.contains(id) {
+                continue;
+            }
+            let fits = if *missing {
+                Path::new(path).parent() == Some(Path::new(&s.path))
+            } else {
+                let mut stmt = tx.prepare_cached("SELECT path FROM files WHERE series_id = ?1")?;
+                let old: Vec<String> = stmt
+                    .query_map(params![*id as i64], |r| r.get(0))?
+                    .collect::<Result<_, _>>()?;
+                old.iter().any(|p| files.contains(p.as_str()))
+            };
+            if fits {
+                found.push((path, *id));
+            }
+        }
+        let side = |path: &str| {
+            Path::new(path)
+                .file_name()
+                .is_some_and(|n| walk::is_side_folder(&n.to_string_lossy()))
+        };
+        // Several old rows fit when a wrapper used to split the show: the
+        // one with a match or a history wins, if only one has.
+        if found.len() > 1 {
+            let mut held = Vec::new();
+            for f in found {
+                if !side(f.0) && has_match_or_history(tx, f.1)? {
+                    held.push(f);
+                }
+            }
+            found = held;
+        }
+        let [(old_path, id)] = found[..] else {
+            continue;
+        };
+        if side(old_path) {
+            continue;
+        }
+        let key = (show.to_string(), s.path.clone());
+        if let Some(e) = existing.get(&key) {
+            if !is_blank(tx, e.id)? {
+                continue;
+            }
+            tx.execute("DELETE FROM series WHERE id = ?1", params![e.id as i64])?;
+            deleted.push(e.id);
+        }
+        tx.execute(
+            "UPDATE series SET path = ?2, folder_name = ?3 WHERE id = ?1",
+            params![id as i64, s.path, s.name],
+        )?;
+        if let Some(e) = existing.remove(&(show.to_string(), old_path.to_string())) {
+            existing.insert(key, e);
+        }
+        moved.push(id);
+    }
+    Ok((moved, deleted))
 }
 
 /// Writes one source's walk into the tables. `only_under` limits the work to
@@ -198,10 +329,6 @@ pub fn reconcile_source(
     let in_scope =
         |p: &str| only_under.is_none_or(|roots| roots.iter().any(|r| under(p, r) || under(r, p)));
 
-    struct Existing {
-        id: u64,
-        missing: bool,
-    }
     let mut existing: HashMap<(String, String), Existing> = HashMap::new();
     {
         let mut stmt =
@@ -220,6 +347,10 @@ pub fn reconcile_source(
             existing.insert(key, value);
         }
     }
+    let in_scope_series: Vec<&ScannedSeries> =
+        scanned.iter().filter(|s| in_scope(&s.path)).collect();
+    let (moved, deleted) = repoint_moved_shows(tx, &in_scope_series, &in_scope, &mut existing)?;
+    out.deleted = deleted;
 
     // What the user said files are (#170), by path; few, so read once.
     let fixes = readings::load_fixes(tx)?;
@@ -229,7 +360,7 @@ pub fn reconcile_source(
     // the folder above it, and both rows exist at once inside this
     // transaction, so the row is handed over rather than inserted twice.
     let mut lost_a_file: HashSet<u64> = HashSet::new();
-    for s in scanned.iter().filter(|s| in_scope(&s.path)) {
+    for s in in_scope_series {
         let key = (s.kind.as_str().to_string(), s.path.clone());
         let (id, was_missing, is_new) = match existing.get(&key) {
             Some(e) => {
@@ -380,7 +511,7 @@ pub fn reconcile_source(
 
         if is_new {
             out.added.push(id);
-        } else if was_missing || file_changed {
+        } else if was_missing || file_changed || moved.contains(&id) {
             out.changed.push(id);
         }
     }
@@ -1058,14 +1189,23 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                             continue;
                         }
                     };
+                    if !r.deleted.is_empty() {
+                        ctx.emit(
+                            Level::Debug,
+                            format!("dropped {} blank series for moved shows", r.deleted.len()),
+                            EventBody::SeriesRemoved {
+                                ids: r.deleted.clone(),
+                            },
+                        );
+                    }
                     added += r.added.len() as u64;
                     changed += r.changed.len() as u64;
                     removed += r.removed.len() as u64;
 
                     // The batch carries what went missing too: those cards say
                     // `missing: true`, which is how a shell patching its grid
-                    // from events knows to drop them. `SeriesRemoved` stays
-                    // what it was, the answer to Forget and RemoveSource.
+                    // from events knows to drop them. `SeriesRemoved` answers
+                    // Forget and RemoveSource, and the blank rows dropped above.
                     let touched: Vec<u64> = r
                         .added
                         .iter()
@@ -1300,6 +1440,477 @@ mod tests {
             .unwrap();
         assert_eq!(rows, 1);
         assert_eq!(owner as u64, r.added[0]);
+        store.close();
+    }
+
+    const INNER: &str = "/lib/Show/Show.S01E11-GRP";
+    const EP11: &str = "/lib/Show/Show.S01E11-GRP/Show.S01E11-GRP.mkv";
+    const EP12: &str = "/lib/Show/Show.S01E12-GRP/Show.S01E12-GRP.mkv";
+
+    /// A source holding a matched show at the inner folder a passthrough
+    /// used to read it at, with an episode watched.
+    fn store_with_matched_inner_show() -> (tempfile::TempDir, Arc<Store>, u64) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let id = store
+            .tx(|tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                let r = reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(SeriesKind::Show, INNER, "Show", &[EP11])],
+                    None,
+                    10,
+                )?;
+                let id = r.added[0];
+                tx.execute(
+                    "UPDATE series SET provider = 'anilist', confirmed = 1 WHERE id = ?1",
+                    params![id as i64],
+                )?;
+                tx.execute(
+                    "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, '1', 5)",
+                    params![id as i64],
+                )?;
+                Ok(id)
+            })
+            .unwrap();
+        (dir, store, id)
+    }
+
+    fn shows(store: &Store) -> Vec<(u64, String, Option<String>, bool)> {
+        store
+            .write(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT id, path, provider, missing_since IS NOT NULL FROM series ORDER BY id",
+                )?;
+                let rows = stmt
+                    .query_map([], |r| {
+                        Ok((r.get::<_, i64>(0)? as u64, r.get(1)?, r.get(2)?, r.get(3)?))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn a_show_read_at_its_parent_folder_keeps_its_row() {
+        let (_dir, store, id) = store_with_matched_inner_show();
+        let r = store
+            .tx(|tx| {
+                reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(
+                        SeriesKind::Show,
+                        "/lib/Show",
+                        "Show",
+                        &[EP11, EP12],
+                    )],
+                    None,
+                    20,
+                )
+            })
+            .unwrap();
+        assert!(r.added.is_empty() && r.removed.is_empty() && r.deleted.is_empty());
+        assert_eq!(r.changed, vec![id]);
+        assert_eq!(
+            shows(&store),
+            vec![(
+                id,
+                "/lib/Show".to_string(),
+                Some("anilist".to_string()),
+                false
+            )]
+        );
+        let (files, done): (i64, i64) = store
+            .write(move |c| {
+                Ok(c.query_row(
+                    "SELECT (SELECT count(*) FROM files WHERE series_id = ?1),
+                            (SELECT count(*) FROM completed WHERE series_id = ?1)",
+                    params![id as i64],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?)
+            })
+            .unwrap();
+        assert_eq!((files, done), (2, 1));
+        store.close();
+    }
+
+    /// A past scan already made the parent row and left the old one missing.
+    fn scan_parent_beside_missing_inner(store: &Store) -> u64 {
+        store
+            .tx(|tx| {
+                tx.execute(
+                    "UPDATE series SET missing_since = 15 WHERE path = ?1",
+                    params![INNER],
+                )?;
+                tx.execute("DELETE FROM files", [])?;
+                tx.execute(
+                    "INSERT INTO series (source_id, kind, path, folder_name, added_at) VALUES (1, 'show', '/lib/Show', 'Show', 15)",
+                    [],
+                )?;
+                Ok(tx.last_insert_rowid() as u64)
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn a_blank_parent_row_gives_way_to_the_old_one() {
+        let (_dir, store, id) = store_with_matched_inner_show();
+        let blank = scan_parent_beside_missing_inner(&store);
+        let r = store
+            .tx(|tx| {
+                reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(
+                        SeriesKind::Show,
+                        "/lib/Show",
+                        "Show",
+                        &[EP11, EP12],
+                    )],
+                    None,
+                    20,
+                )
+            })
+            .unwrap();
+        assert_eq!(r.deleted, vec![blank]);
+        assert_eq!(r.changed, vec![id]);
+        assert_eq!(
+            shows(&store),
+            vec![(
+                id,
+                "/lib/Show".to_string(),
+                Some("anilist".to_string()),
+                false
+            )]
+        );
+        store.close();
+    }
+
+    #[test]
+    fn a_parent_row_with_history_is_never_merged() {
+        let (_dir, store, id) = store_with_matched_inner_show();
+        let parent = scan_parent_beside_missing_inner(&store);
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO views (series_id, episode_key, at) VALUES (?1, '2', 16)",
+                    params![parent as i64],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let r = store
+            .tx(|tx| {
+                reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(
+                        SeriesKind::Show,
+                        "/lib/Show",
+                        "Show",
+                        &[EP11, EP12],
+                    )],
+                    None,
+                    20,
+                )
+            })
+            .unwrap();
+        assert!(r.deleted.is_empty());
+        assert_eq!(
+            shows(&store),
+            vec![
+                (id, INNER.to_string(), Some("anilist".to_string()), true),
+                (parent, "/lib/Show".to_string(), None, false),
+            ]
+        );
+        store.close();
+    }
+
+    /// A second live show row under `/lib/Show`, holding `file`, with a
+    /// view when `history` is set.
+    fn add_old_row(store: &Store, path: &'static str, file: &'static str, history: bool) -> u64 {
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO series (source_id, kind, path, folder_name, added_at) VALUES (1, 'show', ?1, 'Show', 10)",
+                    params![path],
+                )?;
+                let id = tx.last_insert_rowid();
+                tx.execute(
+                    "INSERT INTO files (series_id, path, size, mtime, kind, label, episode_key, sidecars, seen_at) VALUES (?1, ?2, 1, 1, 'episode', 'Episode 1', '1', '[]', 10)",
+                    params![id, file],
+                )?;
+                if history {
+                    tx.execute(
+                        "INSERT INTO views (series_id, episode_key, at) VALUES (?1, '1', 12)",
+                        params![id],
+                    )?;
+                }
+                Ok(id as u64)
+            })
+            .unwrap()
+    }
+
+    fn reconcile_parent(store: &Store, files: &'static [&'static str]) -> Reconciled {
+        store
+            .tx(move |tx| {
+                reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(SeriesKind::Show, "/lib/Show", "Show", files)],
+                    None,
+                    20,
+                )
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn two_old_rows_with_history_under_the_new_path_are_left_alone() {
+        let (_dir, store, id) = store_with_matched_inner_show();
+        let other = add_old_row(&store, "/lib/Show/Show.S01E12-GRP", EP12, true);
+        let r = reconcile_parent(&store, &[EP11, EP12]);
+        assert_eq!(r.added.len(), 1);
+        let rows = shows(&store);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(
+            rows[0],
+            (id, INNER.to_string(), Some("anilist".to_string()), true)
+        );
+        assert_eq!(
+            rows[1],
+            (other, "/lib/Show/Show.S01E12-GRP".to_string(), None, true)
+        );
+        store.close();
+    }
+
+    #[test]
+    fn an_old_row_holding_a_sample_still_moves_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let sample = "/lib/Show/Show.S01E11-GRP/Sample/x-sample.mkv";
+        let id = store
+            .tx(|tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                let r = reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(SeriesKind::Show, INNER, "Show", &[EP11, sample])],
+                    None,
+                    10,
+                )?;
+                tx.execute(
+                    "UPDATE series SET provider = 'anilist', confirmed = 1 WHERE id = ?1",
+                    params![r.added[0] as i64],
+                )?;
+                Ok(r.added[0])
+            })
+            .unwrap();
+        let r = store
+            .tx(|tx| {
+                reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(
+                        SeriesKind::Show,
+                        "/lib/Show",
+                        "Show",
+                        &[EP11, EP12],
+                    )],
+                    None,
+                    20,
+                )
+            })
+            .unwrap();
+        assert!(r.added.is_empty(), "{r:?}");
+        assert_eq!(
+            shows(&store),
+            vec![(
+                id,
+                "/lib/Show".to_string(),
+                Some("anilist".to_string()),
+                false
+            )]
+        );
+        store.close();
+    }
+
+    #[test]
+    fn of_several_old_rows_the_only_one_with_a_match_moves_up() {
+        let (_dir, store, id) = store_with_matched_inner_show();
+        let blank = add_old_row(&store, "/lib/Show/Specials", SPECIAL, false);
+        let r = reconcile_parent(&store, &[EP11, EP12, SPECIAL]);
+        assert!(r.added.is_empty() && r.deleted.is_empty());
+        assert_eq!(r.changed, vec![id]);
+        assert_eq!(r.removed, vec![blank]);
+        assert_eq!(
+            shows(&store),
+            vec![
+                (
+                    id,
+                    "/lib/Show".to_string(),
+                    Some("anilist".to_string()),
+                    false
+                ),
+                (blank, "/lib/Show/Specials".to_string(), None, true),
+            ]
+        );
+        store.close();
+    }
+
+    const SPECIAL: &str = "/lib/Show/Specials/Show - SP01.mkv";
+
+    fn store_with_source() -> (tempfile::TempDir, Arc<Store>) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        store
+            .tx(|tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        (dir, store)
+    }
+
+    /// A show row at `path` holding `file`, or missing with none, with
+    /// `set` applied to it.
+    fn old_row(
+        store: &Store,
+        path: &'static str,
+        file: Option<&'static str>,
+        set: &'static str,
+    ) -> u64 {
+        let update = format!("UPDATE series SET {set} WHERE id = ?1");
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO series (source_id, kind, path, folder_name, added_at, missing_since) VALUES (1, 'show', ?1, 'Show', 10, ?2)",
+                    params![path, file.is_none().then_some(15)],
+                )?;
+                let id = tx.last_insert_rowid();
+                if let Some(file) = file {
+                    tx.execute(
+                        "INSERT INTO files (series_id, path, size, mtime, kind, label, episode_key, sidecars, seen_at) VALUES (?1, ?2, 1, 1, 'episode', 'Episode 1', '1', '[]', 10)",
+                        params![id, file],
+                    )?;
+                }
+                if !set.is_empty() {
+                    tx.execute(&update, params![id])?;
+                }
+                Ok(id as u64)
+            })
+            .unwrap()
+    }
+
+    fn paths_of(store: &Store) -> Vec<(u64, String)> {
+        shows(store).into_iter().map(|r| (r.0, r.1)).collect()
+    }
+
+    #[test]
+    fn a_new_path_row_with_a_set_episode_count_blocks_the_move() {
+        let (_dir, store, id) = store_with_matched_inner_show();
+        let parent = scan_parent_beside_missing_inner(&store);
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "UPDATE series SET episodes_set = 12 WHERE id = ?1",
+                    params![parent as i64],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let r = reconcile_parent(&store, &[EP11, EP12]);
+        assert!(r.deleted.is_empty());
+        assert_eq!(
+            paths_of(&store),
+            vec![(id, INNER.to_string()), (parent, "/lib/Show".to_string())]
+        );
+        store.close();
+    }
+
+    #[test]
+    fn a_hidden_or_matched_specials_row_never_wins_a_tie() {
+        for set in ["hidden = 1", "provider = 'anilist'"] {
+            let (_dir, store) = store_with_source();
+            let specials = old_row(&store, "/lib/Show/Specials", Some(SPECIAL), set);
+            let episode = old_row(&store, INNER, Some(EP11), "");
+            let r = reconcile_parent(&store, &[EP11, EP12, SPECIAL]);
+            assert_eq!(r.added.len(), 1, "{set}");
+            let rows = paths_of(&store);
+            assert_eq!(
+                rows[0],
+                (specials, "/lib/Show/Specials".to_string()),
+                "{set}"
+            );
+            assert_eq!(rows[1], (episode, INNER.to_string()), "{set}");
+            store.close();
+        }
+    }
+
+    #[test]
+    fn a_lone_specials_or_later_season_row_never_takes_the_shows_path() {
+        let (_dir, store) = store_with_source();
+        let specials = old_row(
+            &store,
+            "/lib/Show/Specials",
+            Some(SPECIAL),
+            "provider = 'anilist'",
+        );
+        let r = reconcile_parent(&store, &[EP11, SPECIAL]);
+        assert_eq!(r.added.len(), 1);
+        assert_eq!(
+            paths_of(&store)[0],
+            (specials, "/lib/Show/Specials".to_string())
+        );
+        store.close();
+
+        let (_dir, store) = store_with_source();
+        let season = old_row(&store, "/lib/Show/Season 2", None, "provider = 'anilist'");
+        let r = reconcile_parent(&store, &[EP11]);
+        assert_eq!(r.added.len(), 1);
+        assert_eq!(
+            paths_of(&store)[0],
+            (season, "/lib/Show/Season 2".to_string())
+        );
+        store.close();
+    }
+
+    #[test]
+    fn a_scoped_scan_leaves_an_out_of_scope_row_where_it_is() {
+        let (_dir, store, id) = store_with_matched_inner_show();
+        let r = store
+            .tx(|tx| {
+                reconcile_source(
+                    tx,
+                    1,
+                    &[scanned(
+                        SeriesKind::Show,
+                        "/lib/Show",
+                        "Show",
+                        &[EP11, EP12],
+                    )],
+                    Some(&["/lib/Show/Show.S01E12-GRP".to_string()]),
+                    20,
+                )
+            })
+            .unwrap();
+        assert_eq!(r.added.len(), 1);
+        assert_eq!(
+            shows(&store)[0],
+            (id, INNER.to_string(), Some("anilist".to_string()), false)
+        );
         store.close();
     }
 

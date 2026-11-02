@@ -17,6 +17,7 @@ use super::classifier::{
 use super::labels::extra_label;
 use super::sidecar::{is_subtitle, match_sidecars};
 use super::{BRACKETS, SPACES, has_extension};
+use crate::contract::ExtraKind;
 use crate::contract::{CoreError, SeriesKind, Sidecar};
 
 pub const VIDEO_EXTENSIONS: [&str; 9] = [
@@ -85,6 +86,8 @@ static ORDINAL_SEASON: LazyLock<Regex> =
 static PARENS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\(.*?\)\s*").unwrap());
 static DOT_YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.[0-9]{4}\.").unwrap());
 static PURE_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([0-9]+)$").unwrap());
+static EXTRAS_FOLDER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(?:extras?|bonus|featurettes?)$").unwrap());
 /// One episode named in a folder: `S01E11`, or `Show - 11` the way an anime
 /// release names it. A range (`S01E01-E12`, `01-12`) or a season alone is
 /// no episode. Group 1 is the title before the marker.
@@ -225,6 +228,20 @@ pub fn clean_movie_title(file_name: &str) -> String {
     SPACES.replace_all(&s, " ").trim().to_string()
 }
 
+/// A release's `Sample/` folder, a clip of the episode beside it.
+fn is_sample_dir(name: &str) -> bool {
+    matches!(name.to_lowercase().as_str(), "sample" | "samples")
+}
+
+/// `Show.S01E11-sample.mkv`: a clip a release ships beside the episode.
+fn is_sample_video(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    let stem = lower.rsplit_once('.').map_or(lower.as_str(), |(s, _)| s);
+    ["-sample", ".sample", "_sample"]
+        .iter()
+        .any(|tail| stem.len() > tail.len() && stem.ends_with(tail))
+}
+
 struct Listing {
     dirs: Vec<PathBuf>,
     videos: Vec<PathBuf>,
@@ -252,9 +269,13 @@ fn list(dir: &Path) -> Listing {
         }
         let Ok(meta) = fs::metadata(&p) else { continue };
         if meta.is_dir() {
-            out.dirs.push(p);
+            if !is_sample_dir(&name) {
+                out.dirs.push(p);
+            }
         } else if meta.is_file() && is_video(&name) {
-            out.videos.push(p);
+            if !is_sample_video(&name) {
+                out.videos.push(p);
+            }
         } else if meta.is_file() && is_subtitle(&name) {
             out.subtitles.push(p.to_string_lossy().into_owned());
         }
@@ -349,28 +370,71 @@ fn episode_folder_show(state: &mut WalkState, dir: &Path) -> Option<String> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let title = ONE_EPISODE.captures(&name)?.get(1)?.as_str();
-    let title = BRACKETS.replace_all(title, " ");
-    let key: String = title
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect();
+    let key = title_key(&BRACKETS.replace_all(title, " "));
     let l = state.list(dir);
     let only_one = l.videos.len() == 1 && !l.dirs.iter().any(|d| has_videos_shallow(state, d));
     only_one.then_some(key)
 }
 
-/// Every video-bearing subfolder is an episode folder of one same show.
-fn all_episode_folders(state: &mut WalkState, dirs: &[PathBuf]) -> bool {
+fn title_key(title: &str) -> String {
+    title
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// A folder a show keeps beside its episodes: `Season 1`, `Specials`, `OVA`
+/// or `Extras`, bare or after the show's own title. A later season, or a
+/// label after some other title, is not one.
+fn is_companion_folder(dir: &Path, show: &str) -> bool {
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let cleaned = clean_folder_title(&name);
+    if EXTRAS_FOLDER.is_match(&cleaned) {
+        return true;
+    }
+    match classify_subfolder_label(&name) {
+        None => return false,
+        Some(SubfolderLabel::Season(n)) if n > 1 => return false,
+        Some(_) => {}
+    }
+    let rest = [&*OVA, &*SPECIAL, &*ORDINAL_SEASON]
+        .into_iter()
+        .chain(SEASON_PATTERNS.iter())
+        .fold(cleaned, |s, re| re.replace_all(&s, " ").into_owned());
+    let rest = title_key(&rest);
+    rest.is_empty() || rest == show
+}
+
+/// A folder that holds one part of a show rather than the show itself:
+/// Specials, OVA, Extras or a second or later season.
+/// An episode folder is never one, whatever its title says ("Special A - 05").
+pub(crate) fn is_side_folder(name: &str) -> bool {
+    !ONE_EPISODE.is_match(name)
+        && (EXTRAS_FOLDER.is_match(&clean_folder_title(name))
+            || match classify_subfolder_label(name) {
+                Some(SubfolderLabel::Season(n)) => n >= 2,
+                Some(SubfolderLabel::Ova | SubfolderLabel::Special) => true,
+                None => false,
+            })
+}
+
+/// At least one video-bearing subfolder is an episode folder, every other
+/// one an episode folder of the same show or a folder it keeps beside them.
+fn episode_folders_of_one_show(state: &mut WalkState, dirs: &[PathBuf]) -> bool {
     let mut show: Option<String> = None;
+    let mut others: Vec<&PathBuf> = Vec::new();
     for d in dirs {
         match (episode_folder_show(state, d), &show) {
-            (None, _) => return false,
+            (None, _) => others.push(d),
             (Some(k), Some(s)) if &k != s => return false,
             (Some(k), _) => show = Some(k),
         }
     }
-    show.is_some()
+    show.is_some_and(|show| others.iter().all(|d| is_companion_folder(d, &show)))
 }
 
 fn classify_folder(state: &mut WalkState, loose_videos: usize, dirs: &[PathBuf]) -> Shape {
@@ -382,7 +446,7 @@ fn classify_folder(state: &mut WalkState, loose_videos: usize, dirs: &[PathBuf])
     // Episodes loose in the folder make it the show itself: a pack or a
     // season folder saved in beside them belongs to it, and reading the
     // folder as a wrapper would turn every loose episode into a film
-    if all_episode_folders(state, &video_bearing) || loose_videos >= 2 {
+    if episode_folders_of_one_show(state, &video_bearing) || loose_videos >= 2 {
         return Shape::Series;
     }
     if video_bearing.len() >= 2 {
@@ -417,6 +481,16 @@ fn scanned_file(p: &Path, folder_season: Option<u32>, subtitles: &[String]) -> S
     let mut classified = classify(&name);
     if classified.season.is_none() {
         classified.season = folder_season;
+    }
+    // A file in an Extras folder is an extra even when its name says nothing, so it
+    // never reads as episode 1.
+    let in_extras = p
+        .parent()
+        .and_then(|d| d.file_name())
+        .is_some_and(|d| EXTRAS_FOLDER.is_match(&clean_folder_title(&d.to_string_lossy())));
+    if in_extras && classified.extra.is_none() {
+        classified.extra = Some(ExtraKind::Other);
+        classified.number = 0.0;
     }
     let label = match classified.extra {
         Some(kind) => extra_label(
@@ -1185,6 +1259,155 @@ mod tests {
             find_movie_folders(tmp.path()),
             vec![tmp.path().join("Movies").to_string_lossy().into_owned()]
         );
+    }
+
+    fn shows_and_films(results: &[ScannedSeries]) -> (usize, usize) {
+        let shows = results.iter().filter(|r| r.kind == SeriesKind::Show);
+        let films = results.iter().filter(|r| r.kind == SeriesKind::Movie);
+        (shows.count(), films.count())
+    }
+
+    #[test]
+    fn an_episode_folder_beside_specials_and_season_one_joins_the_show() {
+        for companion in ["Specials", "Extras"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let show = tmp.path().join("Show");
+            let extra = if companion == "Specials" {
+                "Show - SP01.mkv"
+            } else {
+                "Show - NCOP1.mkv"
+            };
+            touch(&show.join(companion).join(extra));
+            touch(&show.join("Season 1").join("Show - 01.mkv"));
+            touch(&show.join("Show.S01E11-GRP").join("Show.S01E11-GRP.mkv"));
+            touch(&show.join("Show - 02.mkv"));
+            let results = scan_source(tmp.path()).unwrap();
+            assert_eq!(shows_and_films(&results), (1, 0), "{companion}");
+            assert_eq!(results[0].path, show.to_string_lossy());
+            assert_eq!(results[0].files.len(), 4);
+            let side = results[0]
+                .files
+                .iter()
+                .find(|f| f.path.contains(companion))
+                .unwrap();
+            assert!(side.classified.extra.is_some(), "{companion}: {side:?}");
+        }
+    }
+
+    #[test]
+    fn a_file_in_extras_with_no_label_is_an_extra_not_episode_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Show");
+        touch(&show.join("Extras").join("Behind the scenes.mkv"));
+        touch(&show.join("Show.S01E11-GRP").join("Show.S01E11-GRP.mkv"));
+        touch(&show.join("Show - 01.mkv"));
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(shows_and_films(&results), (1, 0));
+        let extra = results[0]
+            .files
+            .iter()
+            .find(|f| f.path.contains("Behind"))
+            .unwrap();
+        assert!(extra.classified.extra.is_some(), "{extra:?}");
+        assert_ne!(extra.episode_key, "1");
+    }
+
+    #[test]
+    fn another_titles_ova_is_no_companion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Show");
+        touch(&show.join("Show 2 OVA").join("Show 2 - OVA1.mkv"));
+        touch(&show.join("Show.S01E11-GRP").join("Show.S01E11-GRP.mkv"));
+        assert_eq!(shows_and_films(&scan_source(tmp.path()).unwrap()).0, 2);
+    }
+
+    #[test]
+    fn an_episode_folder_is_never_a_side_folder() {
+        assert!(is_side_folder("Specials"));
+        assert!(is_side_folder("Season 2"));
+        assert!(!is_side_folder("Special A - 05 [GRP]"));
+        assert!(!is_side_folder("Show.S02E05-GRP"));
+    }
+
+    #[test]
+    fn a_later_season_or_another_release_keeps_the_wrapper() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Show");
+        touch(&show.join("Season 1").join("Show - 01.mkv"));
+        touch(&show.join("Season 2").join("Show - 01.mkv"));
+        touch(&show.join("Show.S02E05-GRP").join("Show.S02E05-GRP.mkv"));
+        assert_eq!(shows_and_films(&scan_source(tmp.path()).unwrap()), (3, 0));
+
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Show");
+        touch(&show.join("Show.S01E11-GRP").join("Show.S01E11-GRP.mkv"));
+        for ep in 1..=2 {
+            touch(
+                &show
+                    .join("Other Title [1080p]")
+                    .join(format!("Other Title - {ep:02}.mkv")),
+            );
+        }
+        assert_eq!(shows_and_films(&scan_source(tmp.path()).unwrap()), (2, 0));
+
+        // A label after some other title is that title's folder
+        let tmp = tempfile::tempdir().unwrap();
+        let dl = tmp.path().join("Downloads");
+        touch(&dl.join("Foo.S01E03-GRP").join("Foo.S01E03-GRP.mkv"));
+        touch(&dl.join("Bar Specials").join("Bar - SP01.mkv"));
+        assert_eq!(shows_and_films(&scan_source(tmp.path()).unwrap()), (2, 0));
+    }
+
+    #[test]
+    fn a_release_folder_with_a_sample_is_one_episode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Show");
+        let rip = show.join("Show.S01E11-GRP");
+        touch(&rip.join("Show.S01E11-GRP.mkv"));
+        touch(&rip.join("Sample").join("Show.S01E11-sample.mkv"));
+        touch(&show.join("Show.S01E12-GRP").join("Show.S01E12-GRP.mkv"));
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].kind, SeriesKind::Show);
+        assert_eq!(results[0].path, show.to_string_lossy());
+        assert_eq!(results[0].files.len(), 2);
+        assert!(
+            results[0]
+                .files
+                .iter()
+                .all(|f| !f.path.to_lowercase().contains("sample"))
+        );
+    }
+
+    #[test]
+    fn a_loose_sample_is_no_episode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("X");
+        for ep in 10..=12 {
+            touch(&show.join(format!("X.S01E{ep}.mkv")));
+        }
+        touch(&show.join("X.S01E11-sample.mkv"));
+        touch(&show.join("X.S01E12_Sample.mkv"));
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].files.len(), 3);
+        assert!(is_sample_video("a.sample.mp4"));
+        assert!(!is_sample_video("sample.mkv"));
+        assert!(!is_sample_video("Show - Sample Text 01.mkv"));
+    }
+
+    #[test]
+    fn a_film_folder_with_a_sample_takes_the_folders_title() {
+        for sample in ["Akira.1988-sample.mkv", "Sample/Akira.1988-sample.mkv"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let film = tmp.path().join("Movies").join("Akira (1988)");
+            touch(&film.join("Akira.1988.BluRay.Remastered.mkv"));
+            touch(&film.join(sample));
+            let results = scan_source(tmp.path()).unwrap();
+            assert_eq!(results.len(), 1, "{sample}");
+            assert_eq!(results[0].kind, SeriesKind::Movie);
+            assert_eq!(results[0].name, "Akira", "{sample}");
+        }
     }
 
     #[cfg(unix)]
