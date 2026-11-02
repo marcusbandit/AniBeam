@@ -373,7 +373,7 @@ pub struct Torrent {
     /// qBittorrent's "first and last pieces first" is on for this torrent.
     #[serde(default)]
     pub f_l_piece_prio: bool,
-    /// The host of the tracker the client talks to, as `nyaa.tracker.wf`;
+    /// The host of the tracker the client talks to, as `t.example`;
     /// empty for a torrent with none working yet.
     #[serde(default)]
     pub tracker: String,

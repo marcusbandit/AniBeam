@@ -26,7 +26,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::net::UdpSocket;
 
-use super::endpoints::{quote, split_url, unquote_plus};
+use super::endpoints::{UrlParts, quote, split_url, unquote_plus};
 use crate::contract::Release;
 use crate::downloads::replace::magnet_hash;
 use crate::net::{BoxFuture, Http, HttpRequest, Method};
@@ -383,6 +383,16 @@ fn parse_http_scrape(body: &[u8]) -> Result<HashMap<Hash, Stats>, BadBencode> {
     Ok(out)
 }
 
+/// A tracker as a log line names it: scheme and host only, since a passkey can sit in the
+/// userinfo, the path or the query.
+fn tracker_shown(parts: &UrlParts) -> String {
+    format!(
+        "{}://{}",
+        parts.scheme,
+        parts.hostname().unwrap_or_default()
+    )
+}
+
 /// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching).
 async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMap<Hash, Stats> {
     let Ok(mut parts) = split_url(announce) else {
@@ -405,7 +415,7 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
         prefix.push('&');
     }
     parts.fragment.clear();
-    let shown = parts.geturl();
+    let shown = tracker_shown(&parts);
     let mut out = HashMap::new();
     for batch in hashes.chunks(MAX_HTTP_BATCH) {
         let qs = batch
@@ -1257,10 +1267,10 @@ mod tests {
         let h = [1u8; 20];
         let http = FakeHttp::new();
         http.push(200, scrape_body(&h, 5, 1, 9));
-        let out = http_scrape(http.as_ref(), "http://nyaa.tracker.wf:7777/announce", &[h]).await;
+        let out = http_scrape(http.as_ref(), "http://t.example:7777/announce", &[h]).await;
         let req = &http.requests()[0];
         assert!(
-            req.url.starts_with("http://nyaa.tracker.wf:7777/scrape?"),
+            req.url.starts_with("http://t.example:7777/scrape?"),
             "{}",
             req.url
         );
@@ -1320,6 +1330,17 @@ mod tests {
             );
             assert_eq!(url.matches("passkey=").count(), 1, "{url}");
             assert!(!url.contains("&&"), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_tracker_is_logged_by_scheme_and_host_only() {
+        for url in [
+            "https://t.example/0123abcd/announce",
+            "https://user:0123abcd@t.example:8443/announce?passkey=0123abcd",
+        ] {
+            let shown = tracker_shown(&split_url(url).unwrap());
+            assert_eq!(shown, "https://t.example");
         }
     }
 
