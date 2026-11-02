@@ -807,7 +807,9 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
                 lift("login_password", "Password", &percent_decode(pw));
                 format!("{scheme}{user}:{{login_password}}@{host}")
             }
-            Some((user, pw)) if !hidden(user) => {
+            // An empty password: the user name is the key. A placeholder password was lifted
+            // already, so the user name stays.
+            Some((user, pw)) if pw.is_empty() && !hidden(user) => {
                 lift("login_key", "Login", &percent_decode(user));
                 format!("{scheme}{{login_key}}:{pw}@{host}")
             }
@@ -1052,6 +1054,7 @@ pub fn edit_custom(
 pub fn lift_stored_secrets(core: &Core) -> Result<(), CoreError> {
     let installed = core.store.read(read_installed)?;
     let mut any = false;
+    let mut first_error = None;
     for row in installed.into_iter().filter(|r| r.repo_url == CUSTOM) {
         let (template, auth, lifted) = lift_secrets(&row.def.url);
         if lifted.is_empty() {
@@ -1072,19 +1075,11 @@ pub fn lift_stored_secrets(core: &Core) -> Result<(), CoreError> {
             })
             .collect();
         // The secret is stored before the address loses it, so nothing is lost on a crash.
-        store_credentials(core, &row.install_id, &lifted)?;
-        let (row_id, json) = (
-            row.install_id.clone(),
-            serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
-        );
-        core.store.write(move |conn| {
-            conn.execute(
-                "UPDATE installed_endpoints SET definition = ?2 WHERE install_id = ?1",
-                params![row_id, json],
-            )?;
-            Ok(())
-        })?;
-        any = true;
+        // One source that fails does not hold back the rest.
+        match lift_one(core, &row, &def, &lifted) {
+            Ok(()) => any = true,
+            Err(e) => first_error = first_error.or(Some(e)),
+        }
     }
     if any {
         core.bus.info(
@@ -1094,7 +1089,26 @@ pub fn lift_stored_secrets(core: &Core) -> Result<(), CoreError> {
         );
         crate::downloads::repo_endpoints_changed(core);
     }
-    Ok(())
+    first_error.map_or(Ok(()), Err)
+}
+
+/// Stores one source's lifted secrets, then rewrites its address.
+fn lift_one(
+    core: &Core,
+    row: &InstallRow,
+    def: &Definition,
+    lifted: &[(String, String)],
+) -> Result<(), CoreError> {
+    store_credentials(core, &row.install_id, lifted)?;
+    let row_id = row.install_id.clone();
+    let json = serde_json::to_string(def).map_err(|e| CoreError::internal(e.to_string()))?;
+    core.store.write(move |conn| {
+        conn.execute(
+            "UPDATE installed_endpoints SET definition = ?2 WHERE install_id = ?1",
+            params![row_id, json],
+        )?;
+        Ok(())
+    })
 }
 
 // The desktop's anirss ------------------------------------------------------------------
@@ -1568,6 +1582,14 @@ mod tests {
         let (template, _, lifted) = lift_secrets("https://tok:@t.example/rss?q={query}");
         assert_eq!(template, "https://{login_key}:@t.example/rss?q={query}");
         assert_eq!(lifted, vec![("login_key".to_string(), "tok".to_string())]);
+        // An address already lifted keeps its user name.
+        let (template, _, lifted) =
+            lift_secrets("https://me:{login_password}@t.example/rss?q={query}");
+        assert_eq!(
+            template,
+            "https://me:{login_password}@t.example/rss?q={query}"
+        );
+        assert!(lifted.is_empty());
     }
 
     #[test]
