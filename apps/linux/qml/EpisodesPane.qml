@@ -24,7 +24,7 @@ Corner {
 
     readonly property var card: detail ? detail.card : ({})
     readonly property string title: card.title || (card.titles ? card.titles.folder : "") || ""
-    readonly property bool film: card.kind === "Movie" || card.format === "MOVIE"
+    readonly property bool film: !!card.film
     readonly property var episodes: detail ? detail.episodes : []
 
     function openFor(id, line) {

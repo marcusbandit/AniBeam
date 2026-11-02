@@ -300,6 +300,15 @@ fn without_first_film_number(title: &str) -> Option<String> {
     (matches!(last, "1" | "01") && !head.is_empty()).then(|| head.to_string())
 }
 
+/// True when a record's title ends in a film number past the first: `Show Movie 2`.
+fn is_later_film(m: &Media) -> bool {
+    [&m.title.romaji, &m.title.english]
+        .into_iter()
+        .flatten()
+        .filter_map(|t| t.trim_end().rsplit_once(char::is_whitespace))
+        .any(|(_, last)| last.parse::<u32>().is_ok_and(|n| n >= 2))
+}
+
 /// AniList's turn: the search, the pick, and, on a hit, the whole record.
 async fn attempt_anilist(
     core: &Core,
@@ -309,9 +318,11 @@ async fn attempt_anilist(
 ) -> Result<Option<Hit>, CoreError> {
     let mut results = core.anilist.search(folder, RESULTS).await?;
     let mut query = folder.to_string();
+    // A first film searched with its number either finds nothing or a later film of
+    // the same name, which scores high enough to win; either way the bare name goes next.
     if kind == SeriesKind::Movie
-        && pick(folder, kind, &results).is_none()
         && let Some(stripped) = without_first_film_number(folder)
+        && pick(folder, kind, &results).is_none_or(|(m, _)| is_later_film(m))
     {
         results = core.anilist.search(&stripped, RESULTS).await?;
         query = stripped;
@@ -828,5 +839,17 @@ mod tests {
             None
         );
         assert_eq!(without_first_film_number("1"), None);
+
+        // Searched with its number, the first film can find only the second, which would
+        // win on score: that one is read as a later film so the bare name is searched.
+        let results = vec![results[1].clone()];
+        let (sibling, _) =
+            pick("Seitokai Yakuindomo Movie 1", SeriesKind::Movie, &results).unwrap();
+        assert!(is_later_film(sibling));
+        assert!(!is_later_film(&media(
+            98240,
+            "Seitokai Yakuindomo Movie",
+            true
+        )));
     }
 }

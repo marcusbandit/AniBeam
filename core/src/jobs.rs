@@ -599,6 +599,7 @@ mod tests {
             },
             poster: None,
             format: None,
+            film: false,
             genres: Vec::new(),
             status: None,
             hidden: false,

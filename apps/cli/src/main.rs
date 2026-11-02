@@ -1,10 +1,12 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
 
 use anibeam_core::trackers::Secrets;
 use anibeam_core::{
-    Call, Core, CorePaths, Direction, Event, EventListener, JobPhase, Level, Reply, Sort, Tab,
+    Call, Core, CorePaths, Direction, Event, EventBody, EventListener, JobPhase, Level, Reply,
+    Sort, Tab,
 };
 use clap::{Parser, Subcommand};
 
@@ -25,7 +27,7 @@ enum Command {
         name: String,
         #[arg(long)]
         json: Option<String>,
-        /// Stay attached to a Started job and print its events until the terminal one.
+        /// Print the events of the jobs the call starts. The CLI waits for them either way.
         #[arg(long)]
         wait: bool,
     },
@@ -38,7 +40,7 @@ enum Command {
     },
     /// The sources: id, path, available, series count.
     Sources,
-    /// Start a scan; with --wait, print its events until it finishes.
+    /// Run a scan to its end; with --wait, print its events on the way.
     Scan {
         #[arg(long)]
         source: Option<u64>,
@@ -90,8 +92,8 @@ pub fn parse_call(name: &str, json: Option<&str>) -> Result<Call, String> {
     serde_json::from_value(value).map_err(|e| format!("unknown call {name}: {e}"))
 }
 
-/// Forwards every event it sees into a channel. Both `--wait` and
-/// `events --follow` read from the other end with a blocking `recv`, so
+/// Forwards every event it sees into a channel. Following a call's jobs and
+/// `events --follow` both read from the other end with a blocking `recv`, so
 /// neither ever sleep-polls.
 struct ChannelListener(Sender<Event>);
 
@@ -136,46 +138,96 @@ fn open(root: Option<PathBuf>) -> Arc<Core> {
     core
 }
 
-/// Sends one call, prints the reply as JSON, and with `wait` set, stays
-/// attached to a `Started` job's own events until its `Finished` phase.
-fn send(core: &Core, call: Call, wait: bool) {
+/// Sends one call and prints the reply as JSON, then follows every job the
+/// call started to its finish: the reply's own `Started` job, and any job it
+/// started on the side, such as the scan behind `AddSource`. `main` shuts the
+/// core down after this returns and the shutdown cancels whatever is still
+/// running, so nothing is left behind. `wait` only decides whether the jobs'
+/// events are printed on the way. Returns the exit code: 1 when the call or
+/// one of its jobs failed or was cancelled.
+fn send(core: &Core, call: Call, wait: bool) -> i32 {
     // Subscribed before the call goes in, so a fast job's first events are
     // never missed racing the reply.
     let (tx, rx) = mpsc::channel::<Event>();
     let _sub = core.subscribe(Arc::new(ChannelListener(tx)));
 
+    // A job is registered as running before the call that starts it
+    // returns, so the difference between these two lists is what the call
+    // started.
+    let before = running_jobs(core);
     match core.call(call) {
         Ok(reply) => {
             println!("{}", serde_json::to_string_pretty(&reply).unwrap());
-            if wait && let Reply::Started { job } = reply {
-                for event in rx {
-                    if !event.job.as_ref().is_some_and(|j| j.id == job) {
-                        continue;
-                    }
-                    println!("{}", serde_json::to_string(&event).unwrap());
-                    if event
-                        .job
-                        .as_ref()
-                        .is_some_and(|j| j.phase == JobPhase::Finished)
-                    {
-                        break;
-                    }
-                }
+            let mut jobs: HashSet<u64> = running_jobs(core).difference(&before).copied().collect();
+            // Listed even when it already finished, or joined a run that was
+            // going before the call: its Finished event is still on its way.
+            if let Reply::Started { job } = reply {
+                jobs.insert(job);
+            }
+            if jobs.is_empty() {
+                0
+            } else {
+                follow(rx, jobs, wait)
             }
         }
         Err(e) => {
             eprintln!("{}", serde_json::to_string_pretty(&e).unwrap());
-            std::process::exit(1);
+            1
         }
     }
 }
 
-fn run_call(core: &Core, name: &str, json: Option<&str>, wait: bool) {
+fn running_jobs(core: &Core) -> HashSet<u64> {
+    match core.call(Call::ListJobs) {
+        Ok(Reply::Jobs { jobs }) => jobs.into_iter().map(|j| j.id).collect(),
+        _ => HashSet::new(),
+    }
+}
+
+/// Reads events until every job in `jobs` reaches its `Finished` phase,
+/// printing theirs when `print` is set, and returns 1 when any of them
+/// failed or was cancelled. A failure puts its error on stderr whether or
+/// not the events were printed.
+fn follow(events: impl IntoIterator<Item = Event>, mut jobs: HashSet<u64>, print: bool) -> i32 {
+    let mut code = 0;
+    for event in events {
+        let Some(j) = event.job.as_ref().filter(|j| jobs.contains(&j.id)) else {
+            continue;
+        };
+        if print {
+            println!("{}", serde_json::to_string(&event).unwrap());
+        }
+        if j.phase != JobPhase::Finished {
+            continue;
+        }
+        match &event.body {
+            EventBody::JobFailed { error } => {
+                eprintln!("{}", serde_json::to_string_pretty(error).unwrap());
+                code = 1;
+            }
+            EventBody::JobCancelled => {
+                eprintln!("job {} was cancelled", j.id);
+                code = 1;
+            }
+            _ => {}
+        }
+        jobs.remove(&j.id);
+        if jobs.is_empty() {
+            return code;
+        }
+    }
+    // Only when the event stream closes with jobs unfinished. The CLI's own
+    // subscription keeps it open today, so this is a guard, not a path.
+    eprintln!("the core stopped before its jobs finished");
+    1
+}
+
+fn run_call(core: &Core, name: &str, json: Option<&str>, wait: bool) -> i32 {
     let call = parse_call(name, json).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(2);
     });
-    send(core, call, wait);
+    send(core, call, wait)
 }
 
 /// A call whose reply the view formats itself. An error ends the process
@@ -280,19 +332,34 @@ fn run_events(core: &Core, follow: bool, level: &str) {
 fn main() {
     let cli = Cli::parse();
     let core = open(cli.root);
-    match cli.command {
+    let code = match cli.command {
         Command::Call { name, json, wait } => run_call(&core, &name, json.as_deref(), wait),
-        Command::Events { follow, level } => run_events(&core, follow, &level),
-        Command::Sources => run_sources(&core),
+        Command::Events { follow, level } => {
+            run_events(&core, follow, &level);
+            0
+        }
+        Command::Sources => {
+            run_sources(&core);
+            0
+        }
         Command::Scan { source, wait } => send(&core, Call::Scan { source }, wait),
         Command::List {
             tab,
             sort,
             direction,
             query,
-        } => run_list(&core, &tab, &sort, &direction, &query),
-        Command::Show { series } => run_show(&core, series),
-        Command::Jobs => run_jobs(&core),
+        } => {
+            run_list(&core, &tab, &sort, &direction, &query);
+            0
+        }
+        Command::Show { series } => {
+            run_show(&core, series);
+            0
+        }
+        Command::Jobs => {
+            run_jobs(&core);
+            0
+        }
         Command::Import { file, wait } => send(&core, Call::Import { path: file }, wait),
         Command::Export {
             file,
@@ -306,14 +373,35 @@ fn main() {
             },
             wait,
         ),
-    }
+    };
     core.shutdown();
+    std::process::exit(code);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_call;
-    use anibeam_core::Call;
+    use super::{follow, parse_call};
+    use anibeam_core::{
+        Call, CoreError, Event, EventBody, JobKind, JobPhase, JobRef, Level, Stage,
+    };
+    use std::collections::HashSet;
+
+    fn event(job: u64, phase: JobPhase, body: EventBody) -> Event {
+        Event {
+            seq: 0,
+            at: std::time::SystemTime::now(),
+            level: Level::Info,
+            stage: Stage::Store,
+            message: String::new(),
+            plain: None,
+            job: Some(JobRef {
+                id: job,
+                kind: JobKind::Export,
+                phase,
+            }),
+            body,
+        }
+    }
 
     #[test]
     fn parse_call_builds_unit_and_field_variants() {
@@ -323,5 +411,43 @@ mod tests {
             Call::Scan { source: None }
         );
         assert!(parse_call("Nope", None).is_err());
+    }
+
+    #[test]
+    fn follow_waits_for_every_job_and_fails_if_any_did() {
+        let started = |id| {
+            event(
+                id,
+                JobPhase::Started,
+                EventBody::JobStarted {
+                    kind: JobKind::Export,
+                },
+            )
+        };
+        let done = |id| event(id, JobPhase::Finished, EventBody::Notice);
+        let failed = |id| {
+            event(
+                id,
+                JobPhase::Finished,
+                EventBody::JobFailed {
+                    error: CoreError::internal("disk full"),
+                },
+            )
+        };
+        let cancelled = |id| event(id, JobPhase::Finished, EventBody::JobCancelled);
+        let set = |ids: &[u64]| ids.iter().copied().collect::<HashSet<u64>>();
+
+        // A job the call did not start finishing is not its result.
+        assert_eq!(follow([started(1), done(9), done(1)], set(&[1]), false), 0);
+        assert_eq!(
+            follow([started(1), done(9), failed(1)], set(&[1]), false),
+            1
+        );
+        assert_eq!(follow([started(1), cancelled(1)], set(&[1]), false), 1);
+        // A side job failing after the reply's job succeeded still fails.
+        assert_eq!(follow([done(1), failed(2)], set(&[1, 2]), false), 1);
+        assert_eq!(follow([failed(2), done(1)], set(&[1, 2]), false), 1);
+        // A second job still running keeps the CLI waiting.
+        assert_eq!(follow([done(1)], set(&[1, 2]), false), 1);
     }
 }

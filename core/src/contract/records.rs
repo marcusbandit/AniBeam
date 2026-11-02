@@ -78,6 +78,10 @@ pub struct SeriesCard {
     pub titles: Titles,
     pub poster: Option<String>,
     pub format: Option<String>,
+    /// A film, by our own kind or the provider's format (`library::cards::is_film`).
+    /// The shells read this rather than repeating the check.
+    #[serde(default)]
+    pub film: bool,
     pub status: Option<AiringStatus>,
     pub genres: Vec<String>,
     pub hidden: bool,
