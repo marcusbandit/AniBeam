@@ -127,6 +127,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- A search whose picked endpoint fails says why instead of showing no results
 - Seeders and leechers show for trackers whose address carries a passkey
 - Next from a season's last episode plays the next season's first
 - Double clicking the picture into fullscreen no longer plays at 2x
