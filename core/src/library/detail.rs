@@ -64,6 +64,7 @@ impl Snapshot {
             .get(&id)
             .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
             .unwrap_or_default();
+        let versions = episode_versions(&episodes);
         let episode = |f: &FileRow| {
             let air = self.episode_airing(row, f);
             let tracked = card.watched.is_some_and(|w| f.number <= f64::from(w));
@@ -97,6 +98,10 @@ impl Snapshot {
                 }
                 .to_string(),
                 fixed: f.fixed,
+                versions: versions
+                    .get(&(f.season.unwrap_or(1), f.number.to_bits()))
+                    .cloned()
+                    .unwrap_or_default(),
             }
         };
 
@@ -390,6 +395,45 @@ impl Snapshot {
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
+}
+
+/// The versions of every episode that is on disk more than once, keyed by
+/// season (1 when unset) and the number's bits. Files read as an episode of
+/// the same season and number are two releases of it; the web shell's old
+/// rule, moved here so every shell lists one row per episode.
+fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersion>> {
+    let mut by: HashMap<(u32, u64), Vec<&FileRow>> = HashMap::new();
+    for f in files.iter().copied().filter(|f| f.is_episode) {
+        by.entry((f.season.unwrap_or(1), f.number.to_bits()))
+            .or_default()
+            .push(f);
+    }
+    by.into_iter()
+        .filter(|(_, group)| group.len() > 1)
+        .map(|(key, group)| {
+            let labels: Vec<String> = group
+                .iter()
+                .map(|f| classifier::release_label(&f.path))
+                .collect();
+            let versions = group
+                .iter()
+                .zip(&labels)
+                .map(|(f, label)| EpisodeVersion {
+                    file: f.id,
+                    // Two that still read alike get their file names, which
+                    // always differ
+                    label: if labels.iter().filter(|l| *l == label).count() > 1 {
+                        Path::new(&f.path)
+                            .file_name()
+                            .map_or_else(|| f.path.clone(), |n| n.to_string_lossy().into_owned())
+                    } else {
+                        label.clone()
+                    },
+                })
+                .collect();
+            (key, versions)
+        })
+        .collect()
 }
 
 /// A misreading of a series' files the page can see on its own (#170), and
@@ -773,5 +817,34 @@ mod tests {
         assert_eq!(runs(&[1, 2, 3]), "1 to 3");
         assert_eq!(runs(&[2, 4, 7]), "2, 4 and 7");
         assert_eq!(runs(&[1, 2]), "1 and 2");
+    }
+
+    #[test]
+    fn two_files_of_one_episode_are_versions() {
+        let a = file(
+            1,
+            "[TBK] Show - 01 [1080p WEB-DL H264].mkv",
+            Some(1.0),
+            None,
+        );
+        let b = file(2, "Show.S01E01.1080p.x265-ELiTE.mkv", Some(1.0), None);
+        let c = file(3, "Show - 02.mkv", Some(2.0), None);
+        let files = [&a, &b, &c];
+        let v = episode_versions(&files);
+        assert_eq!(v.len(), 1);
+        let list = &v[&(1, 1.0f64.to_bits())];
+        assert_eq!(list.iter().map(|x| x.file).collect::<Vec<_>>(), [1, 2]);
+        assert_eq!(list[0].label, "TBK, 1080p WEB-DL H264");
+        assert_eq!(list[1].label, "ELiTE, 1080p x265");
+    }
+
+    #[test]
+    fn versions_that_read_alike_fall_back_to_file_names() {
+        let a = file(1, "[G] Show - 01 [1080p].mkv", Some(1.0), None);
+        let b = file(2, "[G] Show - 01 [1080p] copy.mkv", Some(1.0), None);
+        let v = episode_versions(&[&a, &b]);
+        let list = &v[&(1, 1.0f64.to_bits())];
+        assert_eq!(list[0].label, "[G] Show - 01 [1080p].mkv");
+        assert_eq!(list[1].label, "[G] Show - 01 [1080p] copy.mkv");
     }
 }

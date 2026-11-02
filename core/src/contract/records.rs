@@ -289,6 +289,20 @@ pub struct Episode {
     /// Read this way because the user said so (`FixFiles`), not by its name.
     #[serde(default)]
     pub fixed: bool,
+    /// Every file of this episode (the same season and number) when there is
+    /// more than one, this one among them; empty for a lone file. Each is
+    /// named by its release, so a shell can offer a pick between them.
+    #[serde(default)]
+    pub versions: Vec<EpisodeVersion>,
+}
+
+/// One file of an episode that is on disk more than once: two releases of it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EpisodeVersion {
+    pub file: u64,
+    /// The release, `group, 1080p WEB-DL H264`; the file name itself where
+    /// two versions of the episode would otherwise read alike.
+    pub label: String,
 }
 
 /// An episode that has aired and has no file, and the tracker does not
