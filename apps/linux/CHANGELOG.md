@@ -127,6 +127,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- A trusted-only source shows every upload when nothing trusted matches
 - A web page answering at the qBittorrent address no longer counts as a login
 - Seeders and leechers show for trackers whose address carries a passkey
 - Next from a season's last episode plays the next season's first

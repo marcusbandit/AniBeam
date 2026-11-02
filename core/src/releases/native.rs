@@ -164,7 +164,7 @@ impl Native {
                     });
                     if !items.is_empty() {
                         if i > 0 {
-                            for it in &mut items {
+                            for it in items.iter_mut().filter(|it| it.source.is_empty()) {
                                 it.source = ep.name.clone();
                             }
                         }

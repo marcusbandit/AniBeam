@@ -279,6 +279,23 @@ pub(crate) fn split_url(url: &str) -> Result<UrlParts, ()> {
 
 // URLs and queries ---------------------------------------------------------------------
 
+/// Tags results a filtered nyaa endpoint found only with its filter off, after the endpoint's
+/// name: the results list heads them with it, and a subscription to them keeps the filter off.
+pub const ALL_UPLOADS: &str = ": all uploads";
+
+/// `ep` with its nyaa filter off: every upload, trusted or not.
+fn unfiltered(ep: &Endpoint) -> Endpoint {
+    Endpoint {
+        filter: "0".to_string(),
+        ..ep.clone()
+    }
+}
+
+/// Whether `items` are what an endpoint found only with its filter off.
+fn found_unfiltered(items: &[Release]) -> bool {
+    !items.is_empty() && items.iter().all(|it| it.source.ends_with(ALL_UPLOADS))
+}
+
 pub fn search_url(ep: &Endpoint, query: &str) -> String {
     if ep.kind == "nyaa" {
         let qs = urlencode(&[
@@ -383,6 +400,13 @@ pub async fn subscription_feed(
     query: &str,
     items: &[Release],
 ) -> (String, String, Vec<String>) {
+    let relaxed;
+    let ep = if ep.kind == "nyaa" && found_unfiltered(items) {
+        relaxed = unfiltered(ep);
+        &relaxed
+    } else {
+        ep
+    };
     let per_show = if erai::is_erai(ep) {
         erai::resolve_show_feed(ep, items, |url: String| async move {
             fetch::fetch_rss(http, &url, "erai per-show probe", DEFAULT_TIMEOUT).await
@@ -425,7 +449,9 @@ pub fn filter_excluded(items: Vec<Release>, terms: &[String]) -> Vec<Release> {
         .collect()
 }
 
-/// Fetch `query` from `ep`. Errors are the feed's: unreachable, refused or unreadable.
+/// Fetch `query` from `ep`. Errors are the feed's: unreachable, refused or unreadable. A nyaa
+/// endpoint whose filter finds nothing is asked again unfiltered, and those results carry
+/// `source` "<name>: all uploads".
 pub async fn fetch_items(
     http: &dyn Http,
     ep: &Endpoint,
@@ -433,7 +459,22 @@ pub async fn fetch_items(
 ) -> Result<Vec<Release>, CoreError> {
     let timeout = seconds(ep.timeout);
     if ep.kind == "nyaa" {
-        return fetch::fetch_rss(http, &search_url(ep, query), &ep.name, timeout).await;
+        let items = fetch::fetch_rss(http, &search_url(ep, query), &ep.name, timeout).await?;
+        if !items.is_empty() || matches!(ep.filter.as_str(), "" | "0") {
+            return Ok(items);
+        }
+        // A show nobody trusted has uploaded (or that trusted groups name differently)
+        // would vanish behind "trusted only": ask again for every upload, and say so.
+        let items =
+            fetch::fetch_rss(http, &search_url(&unfiltered(ep), query), &ep.name, timeout).await?;
+        let tag = format!("{}{ALL_UPLOADS}", ep.name);
+        return Ok(items
+            .into_iter()
+            .map(|mut it| {
+                it.source = tag.clone();
+                it
+            })
+            .collect());
     }
     if ep.kind == "tosho" {
         // Exclusions are applied here: AnimeTosho's search does not take `-tag`.
@@ -524,7 +565,9 @@ where
             let tagged = items
                 .into_iter()
                 .map(|mut it| {
-                    it.source = ep.name.clone();
+                    if it.source.is_empty() {
+                        it.source = ep.name.clone();
+                    }
                     it
                 })
                 .collect();
@@ -812,9 +855,70 @@ pub(crate) mod tests {
         assert!(unquote_plus(&http.requests()[0].url).contains("-HEVC"));
     }
 
+    fn f_param(url: &str) -> String {
+        let qs = url.split_once('?').map_or("", |(_, q)| q);
+        parse_qsl(qs)
+            .into_iter()
+            .find(|(k, _)| k == "f")
+            .map(|(_, v)| v)
+            .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn a_filtered_search_with_nothing_asks_again_for_every_upload() {
+        let trusted = Endpoint {
+            filter: "2".to_string(),
+            ..nyaa()
+        };
+        let http = FakeHttp::new();
+        http.push(200, feed(&[]));
+        http.push(200, feed(&[("[g] Seitokai ni mo Ana wa Aru! - 05", "l")]));
+        let items = fetch_items(http.as_ref(), &trusted, "Seitokai ni mo Ana wa Aru")
+            .await
+            .unwrap();
+        let sent: Vec<String> = http.requests().iter().map(|r| f_param(&r.url)).collect();
+        assert_eq!(sent, ["2", "0"]);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "nyaa: all uploads");
+        // Subscribing to those results keeps the filter off, or the rule finds nothing.
+        let (url, _, _) = subscription_feed(http.as_ref(), &trusted, "Seitokai", &items).await;
+        assert_eq!(f_param(&url), "0");
+    }
+
+    #[tokio::test]
+    async fn a_filtered_search_with_results_or_no_filter_asks_once() {
+        let trusted = Endpoint {
+            filter: "2".to_string(),
+            ..nyaa()
+        };
+        let http = FakeHttp::new();
+        http.push(200, feed(&[("t", "l")]));
+        let items = fetch_items(http.as_ref(), &trusted, "show").await.unwrap();
+        assert_eq!(http.requests().len(), 1);
+        assert_eq!(items[0].source, "");
+        let (url, _, _) = subscription_feed(http.as_ref(), &trusted, "show", &items).await;
+        assert_eq!(f_param(&url), "2");
+
+        let open = Endpoint {
+            filter: "0".to_string(),
+            ..nyaa()
+        };
+        let http = FakeHttp::new();
+        http.push(200, feed(&[]));
+        assert!(
+            fetch_items(http.as_ref(), &open, "x")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(http.requests().len(), 1);
+    }
+
     #[tokio::test]
     async fn fetch_items_sends_a_browser_user_agent_and_the_endpoint_timeout() {
         let http = FakeHttp::new();
+        http.push(200, feed(&[]));
+        // Its filter finds nothing, so it asks again unfiltered
         http.push(200, feed(&[]));
         let mut ep = nyaa();
         ep.timeout = 60.0;
