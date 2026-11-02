@@ -110,7 +110,9 @@ mod unix {
         conn.write_all(format!("{question}\n").as_bytes()).ok()?;
         let mut line = String::new();
         BufReader::new(&conn).read_line(&mut line).ok()?;
-        conn.set_read_timeout(None).ok()?;
+        // Only a yield's connection is read again. A Mac refuses this with EINVAL once the
+        // service has closed its end, which a status answer always has.
+        let _ = conn.set_read_timeout(None);
         Some((line.trim().to_string(), conn))
     }
 
