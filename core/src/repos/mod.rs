@@ -807,7 +807,9 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
                 lift("login_password", "Password", &percent_decode(pw));
                 format!("{scheme}{user}:{{login_password}}@{host}")
             }
-            Some((user, pw)) if !hidden(user) => {
+            // An empty password: the user name is the key. A placeholder password was lifted
+            // already, so the user name stays.
+            Some((user, pw)) if pw.is_empty() && !hidden(user) => {
                 lift("login_key", "Login", &percent_decode(user));
                 format!("{scheme}{{login_key}}:{pw}@{host}")
             }
@@ -1043,6 +1045,70 @@ pub fn edit_custom(
         EventBody::Notice,
     );
     changed(core)
+}
+
+/// Sources added by hand before #385 can still hold a secret in their stored address. This
+/// lifts it into the secret store as adding one does now, and the address keeps the
+/// placeholder. An address with nothing left to lift is untouched, so after the first start
+/// this does nothing.
+pub fn lift_stored_secrets(core: &Core) -> Result<(), CoreError> {
+    let installed = core.store.read(read_installed)?;
+    let mut any = false;
+    let mut first_error = None;
+    for row in installed.into_iter().filter(|r| r.repo_url == CUSTOM) {
+        let (template, auth, lifted) = lift_secrets(&row.def.url);
+        if lifted.is_empty() {
+            continue;
+        }
+        let mut def = row.def.clone();
+        def.url = template;
+        // A field the address already had keeps the label it was given when added.
+        def.auth = auth
+            .into_iter()
+            .map(|f| {
+                row.def
+                    .auth
+                    .iter()
+                    .find(|a| a.key == f.key)
+                    .cloned()
+                    .unwrap_or(f)
+            })
+            .collect();
+        // The secret is stored before the address loses it, so nothing is lost on a crash.
+        // One source that fails does not hold back the rest.
+        match lift_one(core, &row, &def, &lifted) {
+            Ok(()) => any = true,
+            Err(e) => first_error = first_error.or(Some(e)),
+        }
+    }
+    if any {
+        core.bus.info(
+            Stage::Downloads,
+            "Moved a secret in a source added by hand to the secret store",
+            EventBody::Notice,
+        );
+        crate::downloads::repo_endpoints_changed(core);
+    }
+    first_error.map_or(Ok(()), Err)
+}
+
+/// Stores one source's lifted secrets, then rewrites its address.
+fn lift_one(
+    core: &Core,
+    row: &InstallRow,
+    def: &Definition,
+    lifted: &[(String, String)],
+) -> Result<(), CoreError> {
+    store_credentials(core, &row.install_id, lifted)?;
+    let row_id = row.install_id.clone();
+    let json = serde_json::to_string(def).map_err(|e| CoreError::internal(e.to_string()))?;
+    core.store.write(move |conn| {
+        conn.execute(
+            "UPDATE installed_endpoints SET definition = ?2 WHERE install_id = ?1",
+            params![row_id, json],
+        )?;
+        Ok(())
+    })
 }
 
 // The desktop's anirss ------------------------------------------------------------------
@@ -1293,6 +1359,58 @@ mod tests {
     }
 
     #[test]
+    fn a_secret_stored_in_an_old_address_moves_to_the_secret_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = CorePaths::under(dir.path());
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            FakeHttp::new(),
+            Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        custom(&core, "old", "https://a.example/rss?q={query}");
+        // As a source added before #385 was stored: the key in the address itself.
+        let old_url = "https://a.example/rss?q={query}&rsskey=s3cret";
+        core.store
+            .write(move |conn| {
+                let def: String =
+                    conn.query_row("SELECT definition FROM installed_endpoints", [], |r| {
+                        r.get(0)
+                    })?;
+                let mut def: Definition = serde_json::from_str(&def).unwrap();
+                def.url = old_url.to_string();
+                conn.execute(
+                    "UPDATE installed_endpoints SET definition = ?1",
+                    params![serde_json::to_string(&def).unwrap()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        lift_stored_secrets(&core).unwrap();
+        let row = core.store.read(read_installed).unwrap().remove(0);
+        assert_eq!(
+            row.def.url,
+            "https://a.example/rss?q={query}&rsskey={rsskey}"
+        );
+        assert_eq!(row.def.auth.len(), 1);
+        assert_eq!(row.def.auth[0].key, "rsskey");
+        let stored = core
+            .secrets()
+            .get(&secret_key(&row.install_id, "rsskey"), None)
+            .unwrap()
+            .map(|(v, _)| v);
+        assert_eq!(stored.as_deref(), Some("s3cret"));
+
+        // Once lifted, a second start changes nothing.
+        lift_stored_secrets(&core).unwrap();
+        assert_eq!(
+            core.store.read(read_installed).unwrap().remove(0).def,
+            row.def
+        );
+    }
+
+    #[test]
     fn anirss_gets_ours_and_keeps_what_was_written_by_hand() {
         let dir = tempfile::tempdir().unwrap();
         let paths = CorePaths::under(dir.path());
@@ -1464,6 +1582,14 @@ mod tests {
         let (template, _, lifted) = lift_secrets("https://tok:@t.example/rss?q={query}");
         assert_eq!(template, "https://{login_key}:@t.example/rss?q={query}");
         assert_eq!(lifted, vec![("login_key".to_string(), "tok".to_string())]);
+        // An address already lifted keeps its user name.
+        let (template, _, lifted) =
+            lift_secrets("https://me:{login_password}@t.example/rss?q={query}");
+        assert_eq!(
+            template,
+            "https://me:{login_password}@t.example/rss?q={query}"
+        );
+        assert!(lifted.is_empty());
     }
 
     #[test]

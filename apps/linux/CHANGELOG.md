@@ -127,6 +127,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- A source added by hand earlier moves its key out of the address at launch
 - A search whose picked endpoint fails says why instead of showing no results
 - A web page answering at the qBittorrent address no longer counts as a login
 - Seeders and leechers show for trackers whose address carries a passkey
