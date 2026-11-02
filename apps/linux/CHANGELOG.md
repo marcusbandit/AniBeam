@@ -170,6 +170,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An episode that aired earlier today stays on Today and says if it landed
 - An episode that aired with no file yet says it is late
 - Episodes you get for a show land in its folder and join it, not new shows
+- A hiccup while logging in to qBittorrent no longer reads as a wrong password
 
 ## 2.2.0 · 2026-10-26
 
