@@ -27,6 +27,20 @@ pub fn runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
+/// Opens the core over the paths `main` installed. A run under --root keeps its secrets in
+/// that root's own secrets.json and never probes the machine's keyring: a sandbox is asked
+/// for precisely so it touches nothing outside itself.
+pub fn open_core() -> Result<Arc<Core>, anibeam_core::CoreError> {
+    let core_paths = paths().core.clone();
+    match args().root.as_deref() {
+        Some(_) => {
+            let secrets = anibeam_core::trackers::Secrets::file_only(core_paths.secrets_path());
+            Core::open_with_secrets(core_paths, secrets)
+        }
+        None => Core::open(core_paths),
+    }
+}
+
 pub fn install_core(core: Arc<Core>) {
     CORE.set(core).ok();
 }

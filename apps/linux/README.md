@@ -6,11 +6,31 @@ Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec
     cargo build -p anibeam                          # needs qmake6 on PATH, lld, mpvqt, qt6-svg
     target/debug/anibeam --root /tmp/sandbox        # a sandboxed run; without --root the real XDG dirs
     target/debug/anibeam --version
+    target/debug/anibeam serve --root /tmp/sandbox  # the library and the tailnet host, no window
     scripts/shoot.sh library --page library         # one offscreen capture into captures/
     scripts/shoot.sh series --page series --props '{"id":5}'   # a specific series, not the first alphabetically
     scripts/shoot.sh drawer --page library:drawer   # the activity drawer open over a page
     scripts/bench.sh player 2 keep                  # the real window on the main monitor's workspace 2
     packaging/package.sh                            # build, package, install (Task 25)
+
+## The host service
+
+`anibeam serve` runs the core with its tailnet host held on and no window or player, so the
+phone and other devices reach the library while nobody has the app open. It scans, watches and
+keeps downloads that were set up running, and stops on SIGTERM or SIGINT. It shares the
+window's single-instance lock, so only one of the two has the database open: a window launched
+while the service runs asks it to step aside over `$XDG_RUNTIME_DIR/anibeam-host.sock`, keeps
+the host on in its place, and the service takes the library back when the window closes. A
+second `serve` exits with "another anibeam serve is running". Settings > Phone app shows whether
+the service runs. `tests/serve.rs` drives the built binary through all of this.
+
+`packaging/linux/anibeam-host.service` is the systemd user unit the AUR package installs:
+
+    systemctl --user enable --now anibeam-host
+
+A build outside `/usr/bin` points it at its own binary with `systemctl --user edit anibeam-host`
+(an empty `ExecStart=`, then `ExecStart=/path/to/anibeam serve`). Completion for `anibeam` lives
+in `packaging/linux/completions/` for zsh and bash.
 
 Environment the shell sets for itself: QSG_RENDER_LOOP=threaded (not on a Mac, where AppKit
 forbids an OpenGL context off the main thread), QT_XCB_GL_INTEGRATION=xcb_egl.

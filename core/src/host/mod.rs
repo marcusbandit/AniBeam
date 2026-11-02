@@ -17,6 +17,7 @@ pub mod server;
 pub mod stream;
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
@@ -52,6 +53,10 @@ pub struct Host {
     /// A bind override a test sets on one core, where the env var would be
     /// shared by every test in the process.
     bind: Mutex<Option<String>>,
+    /// Set by a shell that serves other devices whatever the preference
+    /// says: the headless host service, and the desktop app while that
+    /// service has stepped aside for it.
+    held: AtomicBool,
 }
 
 struct Run {
@@ -102,6 +107,7 @@ impl Host {
             }),
             run: Mutex::new(None),
             bind: Mutex::new(None),
+            held: AtomicBool::new(false),
         }
     }
 
@@ -114,9 +120,21 @@ impl Host {
         *recover(&self.bind) = bind;
     }
 
-    /// Starts or stops the supervisor to match the preference. Calling it
-    /// with what already holds does nothing.
-    pub fn set_enabled(&self, core: &Core, on: bool) {
+    /// Keeps the host on whatever the preference says, or hands it back to
+    /// the preference. Takes effect at the next `follow`.
+    pub fn hold(&self, held: bool) {
+        self.held.store(held, Ordering::SeqCst);
+    }
+
+    /// Starts or stops the supervisor to match the preference, or keeps it
+    /// running while the host is held.
+    pub fn follow(&self, core: &Core, preference: bool) {
+        self.set_enabled(core, preference || self.held.load(Ordering::SeqCst));
+    }
+
+    /// Starts or stops the supervisor. Calling it with what already holds
+    /// does nothing.
+    fn set_enabled(&self, core: &Core, on: bool) {
         let mut run = recover(&self.run);
         if on == run.is_some() {
             return;
@@ -163,14 +181,14 @@ impl Host {
 }
 
 /// Reads the preference and starts or stops the host to match. Called when
-/// the core starts.
+/// the core starts, and when a shell holds the host or lets it go.
 pub fn sync(core: &Core) {
     let on = core
         .store
         .read(prefs::load_preferences)
         .map(|p| p.share_over_tailscale)
         .unwrap_or(false);
-    core.host.set_enabled(core, on);
+    core.host.follow(core, on);
 }
 
 /// What the supervisor is serving right now.
