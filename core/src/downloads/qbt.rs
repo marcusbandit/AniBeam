@@ -459,7 +459,18 @@ impl QbtClient {
             }
             // Logged in without a cookie: an auth bypass answered the
             // login too. Nothing to carry; later calls go as they are.
-            None => Ok(()),
+            None if text.is_empty() || text == "Ok." => Ok(()),
+            // Anything else with no cookie, a proxy's or a portal's page say,
+            // is some other program answering, not a login qBittorrent took
+            None => Err(CoreError::Service {
+                service: SERVICE.to_string(),
+                code: format!("http_{}", r.status),
+                message: format!(
+                    "{} answered {}, but not as qBittorrent's Web UI. Check the address in Settings, \
+                     and that the Web UI is turned on in qBittorrent",
+                    self.base, r.status
+                ),
+            }),
         }
     }
 }
@@ -625,7 +636,7 @@ fn torrent(v: &Value) -> Torrent {
     }
 }
 
-/// `http://nyaa.tracker.wf:7777/announce` to `nyaa.tracker.wf`.
+/// `http://t.example:7777/announce` to `t.example`.
 fn tracker_host(url: &str) -> String {
     let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
     let host = rest.split(['/', '?']).next().unwrap_or("");
@@ -773,6 +784,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_200_web_page_with_no_cookie_at_login_is_not_qbittorrent() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for("app/version", 403, "");
+        http.push_for(
+            "auth/login",
+            200,
+            "<!DOCTYPE html><html><head><title>Sign in</title>",
+        );
+        let c = client(&http);
+        let err = c.version().await.unwrap_err();
+        let CoreError::Service { code, message, .. } = err else {
+            panic!("{err:?}")
+        };
+        assert_eq!(code, "http_200");
+        assert_eq!(
+            message,
+            "http://localhost:9090 answered 200, but not as qBittorrent's Web UI. Check the address \
+             in Settings, and that the Web UI is turned on in qBittorrent"
+        );
+        assert_eq!(
+            http.requests().len(),
+            2,
+            "no retry after a page that is not qBittorrent"
+        );
+        // Not a rejection: the next call logs in again
+        http.push_for("transfer/info", 403, "");
+        http.push_for("auth/login", 200, "Ok.");
+        http.push_for("transfer/info", 200, "{}");
+        c.transfer().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn a_401_at_login_is_a_rejection() {
         let http = Arc::new(FakeHttp::new());
         http.push_for("app/version", 403, "");
@@ -816,11 +859,11 @@ mod tests {
     fn a_torrent_reads_its_order_flags_and_tracker() {
         let t = torrent(
             &json!({"hash": "h", "seq_dl": true, "f_l_piece_prio": false,
-                                "tracker": "http://nyaa.tracker.wf:7777/announce"}),
+                                "tracker": "http://t.example:7777/announce"}),
         );
         assert!(t.seq_dl);
         assert!(!t.f_l_piece_prio);
-        assert_eq!(t.tracker, "nyaa.tracker.wf");
+        assert_eq!(t.tracker, "t.example");
         assert_eq!(tracker_host("udp://[::1]:80/announce"), "::1");
         assert_eq!(tracker_host(""), "");
         assert!(!torrent(&Value::Null).seq_dl);

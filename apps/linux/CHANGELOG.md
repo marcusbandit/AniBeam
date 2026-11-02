@@ -128,6 +128,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - A search whose picked endpoint fails says why instead of showing no results
+- A web page answering at the qBittorrent address no longer counts as a login
 - Seeders and leechers show for trackers whose address carries a passkey
 - Next from a season's last episode plays the next season's first
 - Double clicking the picture into fullscreen no longer plays at 2x
