@@ -155,6 +155,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - A password or key in a site's address is stored as a secret, not in the open
 - An imported backup keeps a watched opening or ending as last watched
 - An endpoint at an IPv6 address shows its full host
+- An episode folder beside Specials or a sample joins its show
 
 ## 2.3.0 · 2026-10-27
 
