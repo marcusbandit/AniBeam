@@ -132,6 +132,11 @@ pub mod qobject {
         /// Hyprland. False when xdg-open could not start.
         #[qinvokable]
         fn open_url(self: &Self, url: &QString) -> bool;
+        /// What `anibeam serve` on this machine is doing: "serving", "waiting" while this
+        /// window has the library, or empty when none runs. The window's host follows the
+        /// answer: held while a service exists, back to the preference once none does.
+        #[qinvokable]
+        fn host_service(self: &Self) -> QString;
         /// What's new for this build, from the two versions QML keeps in shell.conf: whether
         /// it opens by itself, what to keep now and once it closes, and what it shows.
         #[qinvokable]
@@ -530,6 +535,12 @@ impl qobject::Shell {
     }
     pub fn open_url(&self, url: &QString) -> bool {
         crate::bridge::helpers::ffi::open_url(url)
+    }
+
+    pub fn host_service(&self) -> QString {
+        let state = crate::serve::status(&crate::runtime::paths().service_socket());
+        crate::runtime::core().hold_host(state.is_some());
+        state.map_or_else(QString::default, |s| QString::from(s.word()))
     }
 }
 

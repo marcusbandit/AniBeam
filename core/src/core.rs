@@ -324,6 +324,17 @@ impl Core {
         self.host.set_bind(bind);
     }
 
+    /// Keeps the tailnet host serving whatever "Share over Tailscale" says,
+    /// for a shell that exists to serve other devices, or hands it back to
+    /// the preference. Works before `start` too: the host then comes up with
+    /// it. Not part of the contract.
+    pub fn hold_host(&self, held: bool) {
+        self.host.hold(held);
+        if self.started.load(Ordering::SeqCst) {
+            crate::host::sync(self);
+        }
+    }
+
     /// Speaks Discord presence to `transport` instead of a Discord client,
     /// which also makes presence available in a build with no application
     /// id. Takes effect when the switch is first turned on. Not part of the
@@ -802,8 +813,7 @@ impl Core {
                     prefs::save_preferences(c, &p)?;
                     Ok(before)
                 })?;
-                self.host
-                    .set_enabled(self, preferences.share_over_tailscale);
+                self.host.follow(self, preferences.share_over_tailscale);
                 crate::presence::set_enabled(self, preferences.discord_presence);
                 // On hold switched on: the entries due now move without
                 // waiting for the next launch.

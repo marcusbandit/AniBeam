@@ -1,0 +1,34 @@
+#compdef anibeam
+# zsh completion for the AniBeam desktop app.
+
+_anibeam() {
+  if (( CURRENT == 2 )) && [[ $words[2] != -* ]]; then
+    _alternatives \
+      'commands:command:((serve\:"run the library and the tailnet host with no window"))' \
+      'options:option:_anibeam_options'
+    return
+  fi
+  if [[ ${words[(I)serve]} -gt 0 ]]; then
+    _arguments \
+      '--root[keep every file under this directory]:directory:_files -/'
+    return
+  fi
+  _anibeam_options
+}
+
+_anibeam_options() {
+  _arguments \
+    '(- *)'{--version,-V}'[print the version]' \
+    '--root[keep every file under this directory]:directory:_files -/' \
+    '--shoot[render one page offscreen into this PNG]:png:_files -g "*.png"' \
+    '--page[the page a shot opens]:page:(home library series airing watching downloads metadata settings tokens)' \
+    '--props[the JSON object the page opens with]:json:' \
+    '--width[shot width]:pixels:' \
+    '--height[shot height]:pixels:' \
+    '--action[forward an action to the running window]:action:' \
+    '--drive[run a JSON drive script offscreen]:script:_files -g "*.json"' \
+    '--out[where a drive writes its shots]:directory:_files -/' \
+    '1: :((serve\:"run the library and the tailnet host with no window"))'
+}
+
+_anibeam "$@"

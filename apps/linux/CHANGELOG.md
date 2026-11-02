@@ -15,6 +15,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Run AniBeam as a service with no window, so your devices always reach it
+- Settings shows whether that service runs, under Phone app
 - Pick a dark app icon in Settings, under Appearance
 - The phone app plays this library's episodes over Tailscale
 - Shows you mark not interested on the phone are hidden here too
