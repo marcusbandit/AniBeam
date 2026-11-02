@@ -128,6 +128,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - Seeders and leechers show for trackers whose address carries a passkey
+- Next from a season's last episode plays the next season's first
 - Double clicking the picture into fullscreen no longer plays at 2x
 - Skip intro skips the opening, not the scene before it
 - A show you watched to the end no longer stays in Catch up
@@ -146,6 +147,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - A show you watched to the end with no tracker reads caught up
 - An unfolded run of repeated lines in Activity folds back up
 - Episode cubes in Get now grow under the pointer
+- Episodes listed as "S2 Episode 3" get episode 3's title, not episode 2's
 
 ## 2.3.0 · 2026-10-27
 

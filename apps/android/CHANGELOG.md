@@ -64,6 +64,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - Seeders and leechers show for trackers whose address carries a passkey
+- Next from a season's last episode plays the next season's first
 - A series page beside Home no longer drags sideways
 - Opening a folded phone a little no longer splits the outer screen's player
 - The Library's device switch keeps its highlight under the label on a bend
