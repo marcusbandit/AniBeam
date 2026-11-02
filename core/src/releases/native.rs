@@ -125,8 +125,9 @@ impl Native {
     }
 
     /// Searches one endpoint; when it is empty or unreachable and `fallback` is on, the
-    /// others in order, first hit wins and its items carry `source`. Fails only when
-    /// nothing was reachable at all (anirss `search`).
+    /// others in order, first hit wins and its items carry `source`. Fails when nothing
+    /// was found and the picked endpoint failed, so a bad key is not read as no results
+    /// just because a fallback answered empty (#255).
     pub async fn search(
         &self,
         query: &str,
@@ -144,6 +145,7 @@ impl Native {
         }
         let mut tried = Vec::new();
         let mut errors: Vec<CoreError> = Vec::new();
+        let mut active_failed = false;
         for (i, ep) in order.iter().enumerate() {
             match endpoints::fetch_items(self.http.as_ref(), ep, query).await {
                 Err(e) => {
@@ -153,6 +155,7 @@ impl Native {
                         count: 0,
                         error: Some(e.to_string()),
                     });
+                    active_failed |= i == 0;
                     errors.push(e);
                 }
                 Ok(mut items) => {
@@ -178,8 +181,8 @@ impl Native {
                 }
             }
         }
-        if errors.len() == order.len() {
-            // One endpoint searched: its error as it came. Several: the active endpoint's
+        if active_failed {
+            // One endpoint failed: its error as it came. Several: the active endpoint's
             // code, since that is the one the user picked and can act on (a bad key is
             // `refused`, not `unreachable`), with every endpoint's message joined.
             if errors.len() == 1 {
@@ -409,6 +412,39 @@ mod tests {
         assert_eq!(text.matches("first").count(), 1, "{text}");
         assert!(text.contains("second"), "{text}");
         assert_eq!(code_of(err), ("first".into(), "unreadable".into()));
+    }
+
+    #[tokio::test]
+    async fn a_failed_pick_with_an_empty_fallback_keeps_the_picks_code() {
+        let http = FakeHttp::new();
+        http.push_for("https://a/", 401, "no");
+        http.push_for("https://b/", 200, "<rss><channel></channel></rss>");
+        let native = Native::new(
+            http,
+            vec![
+                Endpoint::new("first", "rss", "https://a/?q={query}"),
+                Endpoint::new("second", "rss", "https://b/?q={query}"),
+            ],
+        );
+        let err = native.search("show", None, true).await.unwrap_err();
+        assert_eq!(code_of(err), ("first".into(), "http_401".into()));
+    }
+
+    #[tokio::test]
+    async fn a_reachable_pick_with_nothing_found_is_no_results() {
+        let http = FakeHttp::new();
+        http.push_for("https://a/", 200, "<rss><channel></channel></rss>");
+        http.push_for("https://b/", 503, "busy");
+        let native = Native::new(
+            http,
+            vec![
+                Endpoint::new("first", "rss", "https://a/?q={query}"),
+                Endpoint::new("second", "rss", "https://b/?q={query}"),
+            ],
+        );
+        let found = native.search("show", None, true).await.unwrap();
+        assert!(found.items.is_empty());
+        assert_eq!(found.tried.len(), 2);
     }
 
     #[test]
