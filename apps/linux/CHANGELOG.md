@@ -127,6 +127,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Next from a season's last episode plays the next season's first
 - Double clicking the picture into fullscreen no longer plays at 2x
 - Skip intro skips the opening, not the scene before it
 - A show you watched to the end no longer stays in Catch up

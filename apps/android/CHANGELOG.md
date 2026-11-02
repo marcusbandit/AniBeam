@@ -63,6 +63,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings say search sites instead of endpoints, and plain words for the rest
 
 ### Fixed
+- Next from a season's last episode plays the next season's first
 - A series page beside Home no longer drags sideways
 - Opening a folded phone a little no longer splits the outer screen's player
 - The Library's device switch keeps its highlight under the label on a bend
