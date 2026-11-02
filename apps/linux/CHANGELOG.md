@@ -145,6 +145,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - A show you watched to the end with no tracker reads caught up
 - An unfolded run of repeated lines in Activity folds back up
 - Episode cubes in Get now grow under the pointer
+- Seeders show for a tracker whose address carries a key
 
 ## 2.3.0 · 2026-10-27
 

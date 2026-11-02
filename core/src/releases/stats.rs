@@ -397,8 +397,12 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
         return HashMap::new();
     }
     parts.path = format!("{}scrape", &path[..path.len() - "announce".len()]);
+    // Keep the announce's own query (a passkey) and add the hashes after it; it never reaches logs.
+    let own_query = std::mem::take(&mut parts.query);
+    parts.fragment.clear();
     let scrape_url = parts.geturl();
-    let shown = scrape_url.split('?').next().unwrap_or("").to_string();
+    let shown = scrape_url.clone();
+    let joiner = if own_query.is_empty() { "" } else { "&" };
     let mut out = HashMap::new();
     for batch in hashes.chunks(MAX_HTTP_BATCH) {
         let qs = batch
@@ -408,7 +412,7 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
             .join("&");
         let request = HttpRequest {
             method: Method::Get,
-            url: format!("{scrape_url}?{qs}"),
+            url: format!("{scrape_url}?{own_query}{joiner}{qs}"),
             headers: vec![("User-Agent".to_string(), USER_AGENT.to_string())],
             body: None,
             timeout: Some(HTTP_SCRAPE_TIMEOUT),
@@ -1267,6 +1271,26 @@ mod tests {
                 .any(|(k, v)| k == "User-Agent" && v == "anirss/1.0")
         );
         assert_eq!(req.timeout, Some(HTTP_SCRAPE_TIMEOUT));
+        assert_eq!(out[&h], (5, 1, 9));
+    }
+
+    #[tokio::test]
+    async fn http_scrape_keeps_the_announce_query() {
+        let h = [1u8; 20];
+        let http = FakeHttp::new();
+        http.push(200, scrape_body(&h, 5, 1, 9));
+        let out = http_scrape(
+            http.as_ref(),
+            "https://t.example/announce?passkey=abc",
+            &[h],
+        )
+        .await;
+        let url = &http.requests()[0].url;
+        assert!(
+            url.starts_with("https://t.example/scrape?passkey=abc&info_hash=%01"),
+            "{url}"
+        );
+        assert_eq!(url.matches('?').count(), 1, "{url}");
         assert_eq!(out[&h], (5, 1, 9));
     }
 
