@@ -635,6 +635,17 @@ impl Core {
         // a phone can reach a machine that was left sharing.
         crate::host::sync(self);
         crate::presence::sync(self);
+        // Off this thread: storing a secret can be a keyring round trip.
+        let lifting = core.clone();
+        self.handle.spawn_blocking(move || {
+            if let Err(e) = crate::repos::lift_stored_secrets(&lifting) {
+                lifting.bus.warn(
+                    Stage::Downloads,
+                    format!("could not move a source's secret to the secret store: {e}"),
+                    EventBody::Notice,
+                );
+            }
+        });
         launch::start(&core)
     }
 

@@ -1045,6 +1045,58 @@ pub fn edit_custom(
     changed(core)
 }
 
+/// Sources added by hand before #385 can still hold a secret in their stored address. This
+/// lifts it into the secret store as adding one does now, and the address keeps the
+/// placeholder. An address with nothing left to lift is untouched, so after the first start
+/// this does nothing.
+pub fn lift_stored_secrets(core: &Core) -> Result<(), CoreError> {
+    let installed = core.store.read(read_installed)?;
+    let mut any = false;
+    for row in installed.into_iter().filter(|r| r.repo_url == CUSTOM) {
+        let (template, auth, lifted) = lift_secrets(&row.def.url);
+        if lifted.is_empty() {
+            continue;
+        }
+        let mut def = row.def.clone();
+        def.url = template;
+        // A field the address already had keeps the label it was given when added.
+        def.auth = auth
+            .into_iter()
+            .map(|f| {
+                row.def
+                    .auth
+                    .iter()
+                    .find(|a| a.key == f.key)
+                    .cloned()
+                    .unwrap_or(f)
+            })
+            .collect();
+        // The secret is stored before the address loses it, so nothing is lost on a crash.
+        store_credentials(core, &row.install_id, &lifted)?;
+        let (row_id, json) = (
+            row.install_id.clone(),
+            serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
+        );
+        core.store.write(move |conn| {
+            conn.execute(
+                "UPDATE installed_endpoints SET definition = ?2 WHERE install_id = ?1",
+                params![row_id, json],
+            )?;
+            Ok(())
+        })?;
+        any = true;
+    }
+    if any {
+        core.bus.info(
+            Stage::Downloads,
+            "Moved a secret in a source added by hand to the secret store",
+            EventBody::Notice,
+        );
+        crate::downloads::repo_endpoints_changed(core);
+    }
+    Ok(())
+}
+
 // The desktop's anirss ------------------------------------------------------------------
 
 /// The kinds anirss itself can search; every other kind is AniBeam's own.
@@ -1290,6 +1342,58 @@ mod tests {
 
     fn custom(core: &Core, name: &str, url: &str) {
         add_custom(core, name.into(), url.into(), Vec::new()).unwrap();
+    }
+
+    #[test]
+    fn a_secret_stored_in_an_old_address_moves_to_the_secret_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = CorePaths::under(dir.path());
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            FakeHttp::new(),
+            Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        custom(&core, "old", "https://a.example/rss?q={query}");
+        // As a source added before #385 was stored: the key in the address itself.
+        let old_url = "https://a.example/rss?q={query}&rsskey=s3cret";
+        core.store
+            .write(move |conn| {
+                let def: String =
+                    conn.query_row("SELECT definition FROM installed_endpoints", [], |r| {
+                        r.get(0)
+                    })?;
+                let mut def: Definition = serde_json::from_str(&def).unwrap();
+                def.url = old_url.to_string();
+                conn.execute(
+                    "UPDATE installed_endpoints SET definition = ?1",
+                    params![serde_json::to_string(&def).unwrap()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        lift_stored_secrets(&core).unwrap();
+        let row = core.store.read(read_installed).unwrap().remove(0);
+        assert_eq!(
+            row.def.url,
+            "https://a.example/rss?q={query}&rsskey={rsskey}"
+        );
+        assert_eq!(row.def.auth.len(), 1);
+        assert_eq!(row.def.auth[0].key, "rsskey");
+        let stored = core
+            .secrets()
+            .get(&secret_key(&row.install_id, "rsskey"), None)
+            .unwrap()
+            .map(|(v, _)| v);
+        assert_eq!(stored.as_deref(), Some("s3cret"));
+
+        // Once lifted, a second start changes nothing.
+        lift_stored_secrets(&core).unwrap();
+        assert_eq!(
+            core.store.read(read_installed).unwrap().remove(0).def,
+            row.def
+        );
     }
 
     #[test]
