@@ -65,8 +65,8 @@ pub struct BestFit {
     pub profile: Vec<String>,
 }
 
-/// One endpoint consulted by a search: `status` is `ok`, `empty` or
-/// `unreachable`.
+/// One endpoint consulted by a search: `status` is `ok`, `empty`, or for a
+/// failure the error's code (`http_401`, `refused`, ...), else `unreachable`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct EndpointTry {
     pub endpoint: String,

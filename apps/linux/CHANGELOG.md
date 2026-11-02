@@ -144,6 +144,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Tooltips no longer blink and vanish when moving between cards
 - A show you watched to the end with no tracker reads caught up
 - An unfolded run of repeated lines in Activity folds back up
+- A search whose source has a bad key says so instead of showing no results
 - Episode cubes in Get now grow under the pointer
 
 ## 2.3.0 · 2026-10-27

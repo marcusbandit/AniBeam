@@ -125,8 +125,9 @@ impl Native {
     }
 
     /// Searches one endpoint; when it is empty or unreachable and `fallback` is on, the
-    /// others in order, first hit wins and its items carry `source`. Fails only when
-    /// nothing was reachable at all (anirss `search`).
+    /// others in order, first hit wins and its items carry `source`. Fails when nothing
+    /// found anything and the picked endpoint failed, with that endpoint's error (anirss
+    /// `search`).
     pub async fn search(
         &self,
         query: &str,
@@ -143,17 +144,25 @@ impl Native {
             order.extend(self.endpoints.iter().filter(|e| e.name != active.name));
         }
         let mut tried = Vec::new();
-        let mut errors: Vec<CoreError> = Vec::new();
+        let mut picked_error: Option<CoreError> = None;
+        let mut other_errors: Vec<String> = Vec::new();
         for (i, ep) in order.iter().enumerate() {
             match endpoints::fetch_items(self.http.as_ref(), ep, query).await {
                 Err(e) => {
                     tried.push(EndpointTry {
                         endpoint: ep.name.clone(),
-                        status: "unreachable".into(),
+                        status: match &e {
+                            CoreError::Service { code, .. } => code.clone(),
+                            _ => "unreachable".into(),
+                        },
                         count: 0,
                         error: Some(e.to_string()),
                     });
-                    errors.push(e);
+                    if i == 0 {
+                        picked_error = Some(e);
+                    } else {
+                        other_errors.push(e.to_string());
+                    }
                 }
                 Ok(mut items) => {
                     tried.push(EndpointTry {
@@ -178,31 +187,10 @@ impl Native {
                 }
             }
         }
-        if errors.len() == order.len() {
-            // One endpoint searched: its error as it came. Several: the active endpoint's
-            // code, since that is the one the user picked and can act on (a bad key is
-            // `refused`, not `unreachable`), with every endpoint's message joined.
-            if errors.len() == 1 {
-                return Err(errors.remove(0));
-            }
-            let rest = errors.drain(1..).map(|e| e.to_string()).collect::<Vec<_>>();
-            return Err(match errors.remove(0) {
-                // The active endpoint's own message leads, so its name is not said twice.
-                CoreError::Service {
-                    service,
-                    code,
-                    message,
-                } => CoreError::Service {
-                    service,
-                    code,
-                    message: [message]
-                        .into_iter()
-                        .chain(rest)
-                        .collect::<Vec<_>>()
-                        .join("; "),
-                },
-                other => other,
-            });
+        // The picked endpoint is the one the user can act on (a bad key is `refused`), so
+        // its failure is not hidden behind another endpoint answering empty.
+        if let Some(e) = picked_error {
+            return Err(with_notes(e, other_errors));
         }
         Ok(Found {
             query: query.to_string(),
@@ -319,6 +307,27 @@ pub fn mask(url: &str) -> String {
     out
 }
 
+/// `lead` with `notes` joined after its message, keeping its service and code. Its own
+/// message leads, so its endpoint's name is not said twice.
+fn with_notes(lead: CoreError, notes: Vec<String>) -> CoreError {
+    match lead {
+        CoreError::Service {
+            service,
+            code,
+            message,
+        } => CoreError::Service {
+            service,
+            code,
+            message: [message]
+                .into_iter()
+                .chain(notes)
+                .collect::<Vec<_>>()
+                .join("; "),
+        },
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,6 +369,60 @@ mod tests {
         assert_eq!(text.matches("first").count(), 1, "{text}");
         assert!(text.contains("second"), "{text}");
         assert_eq!(code_of(err), ("first".into(), "unreadable".into()));
+    }
+
+    const EMPTY_FEED: &str = r#"<rss version="2.0"><channel></channel></rss>"#;
+    const ONE_ITEM_FEED: &str = r#"<rss version="2.0"><channel><item><title>Show 01</title><link>https://b/1.torrent</link></item></channel></rss>"#;
+
+    fn two_endpoints(http: Arc<FakeHttp>) -> Native {
+        Native::new(
+            http,
+            vec![
+                Endpoint::new("first", "rss", "https://a/?q={query}"),
+                Endpoint::new("second", "rss", "https://b/?q={query}"),
+            ],
+        )
+    }
+
+    #[tokio::test]
+    async fn a_picked_endpoint_that_fails_is_not_hidden_by_an_empty_fallback() {
+        let http = FakeHttp::new();
+        http.push_for("https://a/", 401, "no");
+        http.push_for("https://b/", 200, EMPTY_FEED);
+        let err = two_endpoints(http)
+            .search("show", None, true)
+            .await
+            .unwrap_err();
+        assert_eq!(code_of(err), ("first".into(), "http_401".into()));
+    }
+
+    #[tokio::test]
+    async fn a_picked_endpoint_that_fails_falls_back_to_one_with_items() {
+        let http = FakeHttp::new();
+        http.push_for("https://a/", 401, "no");
+        http.push_for("https://b/", 200, ONE_ITEM_FEED);
+        let found = two_endpoints(http)
+            .search("show", None, true)
+            .await
+            .unwrap();
+        assert_eq!(found.endpoint, "second");
+        assert_eq!(found.items.len(), 1);
+        assert_eq!(found.items[0].source, "second");
+        assert_eq!(found.tried[0].status, "http_401");
+    }
+
+    #[tokio::test]
+    async fn a_picked_endpoint_that_is_empty_stays_empty_when_the_fallback_fails() {
+        let http = FakeHttp::new();
+        http.push_for("https://a/", 200, EMPTY_FEED);
+        http.push_for("https://b/", 503, "busy");
+        let found = two_endpoints(http)
+            .search("show", None, true)
+            .await
+            .unwrap();
+        assert_eq!(found.endpoint, "first");
+        assert!(found.items.is_empty());
+        assert_eq!(found.tried.len(), 2);
     }
 
     #[test]
