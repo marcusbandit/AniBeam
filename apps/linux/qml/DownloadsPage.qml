@@ -335,7 +335,6 @@ Item {
     property bool getActing: false
     property string getLine: ""
     property string getError: ""
-    function lastPart(p) { var f = String(p || "").replace(/[\\/]+$/, ""); var i = Math.max(f.lastIndexOf("/"), f.lastIndexOf("\\")); return i >= 0 ? f.slice(i + 1) : f }
     // The torrents that fill a show: linked to its series, or saved under a folder named
     // as it is (a show not scanned into the library yet)
     function keyOf(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "") }
@@ -346,7 +345,7 @@ Item {
         return torrents.filter(function(t) {
             if (show.seriesId >= 0 && t.series_id === show.seriesId) return true
             if (named.indexOf(t.hash) >= 0) return true
-            var k = keyOf(page.lastPart(t.save_path)), c = keyOf(page.lastPart(t.content_path))
+            var k = keyOf(Fmt.baseName(t.save_path || "")), c = keyOf(Fmt.baseName(t.content_path || ""))
             return want.indexOf(k) >= 0 || want.indexOf(c) >= 0
         })
     }
@@ -355,7 +354,7 @@ Item {
         var queries = page.queriesOf(page.namesOfCard(c), t.romaji || c.title)
         return { title: page.nameOfCard(c, typed || ""), query: queries[0], queries: queries, poster: c.poster || "", cubes: c.cubes || "", here: c.episodes_here || null, total: c.total_episodes || 0,
                  seriesId: c.id, status: c.status || "", format: c.format || "", year: c.year || 0, nextAiring: c.next_airing || null,
-                 airing: c.status === "Releasing" || !!c.next_airing, folderName: page.lastPart(c.path) }
+                 airing: c.status === "Releasing" || !!c.next_airing, folderName: Fmt.baseName(c.path || "") }
     }
     function showFromHit(h, typed) {
         var queries = page.queriesOf(page.namesOfHit(h), h.romaji || h.title)
@@ -368,7 +367,7 @@ Item {
     function showFromLink(s) {
         for (var i = 0; i < libCards.length; i++) if (libCards[i].id === s.series_id) return page.showFromCard(libCards[i])
         return { title: s.title, query: s.title, poster: s.poster || "", cubes: s.cubes || "", total: s.total_episodes || 0, seriesId: s.series_id,
-                 status: s.status || "", format: "", year: 0, nextAiring: s.next_airing || null, airing: s.status === "Releasing" || !!s.next_airing, folderName: page.lastPart(s.path) }
+                 status: s.status || "", format: "", year: 0, nextAiring: s.next_airing || null, airing: s.status === "Releasing" || !!s.next_airing, folderName: Fmt.baseName(s.path || "") }
     }
     // A show made from a torrent the library does not know: the name as a release title says
     // it, cut down to the show, unless the folder it saves into is named for the show
@@ -380,7 +379,7 @@ Item {
         return n.replace(/\s+/g, " ").replace(/[\s-]+$/, "").trim()
     }
     function showFromTorrent(t) {
-        var folder = page.lastPart(t.save_path)
+        var folder = Fmt.baseName(t.save_path || "")
         var title = page.showName(t.name)
         if (folder !== "" && keyOf(folder) !== "" && keyOf(t.name).indexOf(keyOf(folder)) >= 0) title = folder
         if (title === "") title = folder !== "" ? folder : String(t.name || "")
@@ -866,7 +865,6 @@ Item {
     // ---- Folders and shows. A torrent and a rule meet on the series their folder fills,
     // or on the folder itself when the library has no series for it.
     function folderOf(path) { return String(path || "").replace(/[\\/]+$/, "") }
-    function lastName(path) { var f = folderOf(path); var i = Math.max(f.lastIndexOf("/"), f.lastIndexOf("\\")); return i >= 0 ? f.slice(i + 1) : f }
     function torrentKey(t) { return t.series_id !== null && t.series_id !== undefined ? "s" + t.series_id : "p" + folderOf(t.save_path) }
     function ruleKey(r) { return r.show ? "s" + r.show.series_id : "p" + folderOf(r.save_path) }
     function titleOf(r) { return r.show ? r.show.title : r.name }
@@ -894,7 +892,7 @@ Item {
             var t = torrents[i], k = page.torrentKey(t), g = m[k]
             if (!g) {
                 var show = t.series_id !== null && t.series_id !== undefined ? (page.shows[t.series_id] || null) : null
-                g = m[k] = { key: k, show: show, title: show ? show.title : page.lastName(t.save_path), folder: page.folderOf(t.save_path),
+                g = m[k] = { key: k, show: show, title: show ? show.title : Fmt.baseName(t.save_path || ""), folder: page.folderOf(t.save_path),
                              rule: page.ruleByKey[k] || null, torrents: [], size: 0, have: 0, active: 0, done: 0, broken: 0, seeding: 0,
                              dlspeed: 0, upspeed: 0, eta: 0, latest: 0 }
                 order.push(g)
@@ -1069,7 +1067,7 @@ Item {
         if (res.error) page.feed = { url: r.feed_url, entries: [], loading: false, error: page.errorWords(res.error) }
     }
     function downloadEntry(e) {
-        var name = page.detailRule ? page.detailRule.name : page.lastName(page.detail.folder)
+        var name = page.detailRule ? page.detailRule.name : Fmt.baseName(page.detail.folder || "")
         page.act(Door.downloadReleases([{ title: e.title, link: e.link, seeders: e.seeders, leechers: e.leechers, downloads: e.downloads, size: e.size, page: e.page }], name))
         frame.toast("Sent " + e.title + " to " + page.clientName)
     }
