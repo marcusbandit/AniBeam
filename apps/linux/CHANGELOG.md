@@ -156,6 +156,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An imported backup keeps a watched opening or ending as last watched
 - An endpoint at an IPv6 address shows its full host
 - An episode folder beside Specials or a sample joins its show
+- Auto-match tells a second OVA run apart from the first, and finds a first film
 
 ## 2.3.0 · 2026-10-27
 
