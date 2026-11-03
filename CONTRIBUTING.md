@@ -105,6 +105,12 @@ Not:
   test output otherwise.
 - `Closes #<issue>` on its own line.
 
+Every PR is attached to an issue, no exceptions. Only a closing keyword
+(`Closes`, `Fixes`, `Resolves`) attaches it: GitHub then lists the PR under the
+issue's Development section, and tools that look work up by issue number can
+find it. `Part of #<issue>` or a bare mention attaches nothing. When a PR does
+only part of an issue, file a sub-issue for that part and close the sub-issue.
+
 ## Patch notes
 
 Each app keeps its own `CHANGELOG.md`: `apps/linux/CHANGELOG.md` for the desktop,
