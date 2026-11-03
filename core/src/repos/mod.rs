@@ -1077,13 +1077,25 @@ pub(crate) fn anirss_takes_endpoints(version: &str) -> bool {
 /// of that name from its config, cannot search the kind, or is too old to take endpoints.
 /// None on the phone, and before the desktop has read its anirss.
 fn desktop_note(core: &Core, def: &Definition, synced: &Synced) -> Option<String> {
-    let (version, theirs) = crate::downloads::anirss_view(core)?;
+    let engine = crate::downloads::backend::engine(core).unwrap_or_default();
+    note_for(engine, crate::downloads::anirss_view(core), def, synced)
+}
+
+/// `desktop_note` once the engine and the anirss view are read. AniBeam's own engine searches
+/// every kind itself, so a kind anirss cannot search is no reason to leave one out then.
+fn note_for(
+    engine: DownloadsEngine,
+    view: Option<(String, Vec<String>)>,
+    def: &Definition,
+    synced: &Synced,
+) -> Option<String> {
+    let (version, theirs) = view?;
     if !anirss_takes_endpoints(&version) {
         return Some(format!(
             "anirss {version} cannot take endpoints from AniBeam; anirss 0.6 or later can, so update it for the desktop to search this"
         ));
     }
-    if !ANIRSS_KINDS.contains(&def.kind.as_str()) {
+    if engine == DownloadsEngine::Anirss && !ANIRSS_KINDS.contains(&def.kind.as_str()) {
         return Some(format!(
             "anirss cannot search the {} kind, so the desktop leaves it out; the phone searches it",
             def.kind
@@ -1287,6 +1299,28 @@ mod tests {
     use crate::net::FakeHttp;
     use crate::trackers::Secrets;
     use crate::{CorePaths, core::Core};
+
+    #[test]
+    fn the_native_engine_leaves_no_kind_out() {
+        let def: Definition = serde_json::from_value(
+            serde_json::json!({"id": "tosho", "name": "tosho", "version": 1,
+                "kind": "tosho", "url": "https://t.example/json?q={query}"}),
+        )
+        .unwrap();
+        let view = || Some(("0.6.0".to_string(), Vec::new()));
+        let synced = Synced::new();
+        assert!(
+            note_for(DownloadsEngine::Anirss, view(), &def, &synced)
+                .is_some_and(|n| n.contains("cannot search the tosho kind"))
+        );
+        assert_eq!(
+            note_for(DownloadsEngine::Native, view(), &def, &synced),
+            None
+        );
+        // An anirss too old to take endpoints still says so: the page lists them from it.
+        let old = Some(("0.5.0".to_string(), Vec::new()));
+        assert!(note_for(DownloadsEngine::Native, old, &def, &synced).is_some());
+    }
 
     fn custom(core: &Core, name: &str, url: &str) {
         add_custom(core, name.into(), url.into(), Vec::new()).unwrap();
