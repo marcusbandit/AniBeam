@@ -331,6 +331,9 @@ pub struct ScheduleNote {
     pub last: u32,
     pub at: Option<SystemTime>,
     pub year: Option<i32>,
+    /// The month, 1 to 12, of `year`, when the day is not known.
+    #[serde(default)]
+    pub month: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]

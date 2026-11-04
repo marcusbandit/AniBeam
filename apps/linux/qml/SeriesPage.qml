@@ -67,7 +67,9 @@ Item {
         if (!held.length) return ""
         var n = held[0]
         var eps = n.first === n.last ? "Episode " + n.first : "Episodes " + n.first + " to " + n.last
-        return eps + (n.year !== null && n.year !== undefined ? " due in " + n.year : " not dated yet") + ", set by you"
+        var due = n.year === null || n.year === undefined ? " not dated yet"
+            : " due in " + (n.month ? Qt.formatDate(new Date(n.year, n.month - 1, 1), "MMMM yyyy") : n.year)
+        return eps + due + ", set by you"
     }
     // Fixes (#283): every way to correct what the page shows, in one menu
     function fixItems() {

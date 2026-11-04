@@ -8,7 +8,8 @@ CREATE TABLE schedule_notes (
     first      INTEGER NOT NULL,
     last       INTEGER NOT NULL,             -- first when the note covers one episode
     at         INTEGER,                      -- Unix seconds, noon UTC for a date with no time
-    year       INTEGER,                      -- set when only the year is known
+    year       INTEGER,                      -- set when only the year, or the year and month, is known
+    month      INTEGER,                      -- 1 to 12, with year, when the month is known and the day is not
     set_at     INTEGER NOT NULL
 );
 CREATE INDEX schedule_notes_series ON schedule_notes(series_id);

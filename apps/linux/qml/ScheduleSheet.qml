@@ -24,6 +24,7 @@ Corner {
     }
     function whenOf(n) {
         if (n.at !== null && n.at !== undefined) return Qt.formatDate(new Date(n.at * 1000), "dddd d MMMM yyyy")
+        if (n.year !== null && n.year !== undefined && n.month) return Qt.formatDate(new Date(n.year, n.month - 1, 1), "MMMM yyyy")
         if (n.year !== null && n.year !== undefined) return "TBC in " + n.year
         return "TBC"
     }
@@ -53,7 +54,7 @@ Corner {
     }
     function save(notes) {
         var wire = notes.map(function(n) {
-            return { first: n.first, last: n.last, year: n.year === undefined ? null : n.year,
+            return { first: n.first, last: n.last, year: n.year === undefined ? null : n.year, month: n.month === undefined ? null : n.month,
                      at: n.at === null || n.at === undefined ? null : { secs_since_epoch: Math.round(n.at), nanos_since_epoch: 0 } }
         })
         // A season the text names wins over the page's own, for a show numbered in seasons
