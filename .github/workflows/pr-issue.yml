@@ -1,0 +1,71 @@
+name: PR issue
+
+# Every PR closes an issue (CONTRIBUTING.md, "The PR body"). This fails a PR that GitHub
+# lists no closing issue for, and says what to write or file. It reads GitHub's own link
+# list rather than the body, because a "Part of #N", a keyword in a code span, or one
+# pointing at an issue that is already closed can leave that list empty. A maintainer exempts a PR with the "no issue" label.
+# Its own workflow, so editing a PR body reruns this and not the cargo jobs in ci.yml.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: pr-issue-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  closes-an-issue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - run: |
+          if gh pr view "$PR" --json labels --jq '.labels[].name' | grep -qx 'no issue'; then
+            echo "Exempt: the PR has the \"no issue\" label."
+            exit 0
+          fi
+
+          # GitHub fills the link list a moment after a body edit, so look a few times.
+          for try in 1 2 3; do
+            linked="$(gh pr view "$PR" --json closingIssuesReferences \
+              --jq '.closingIssuesReferences[] | "#\(.number)"')"
+            [ -n "$linked" ] && break
+            [ "$try" -lt 3 ] && sleep 5
+          done
+          if [ -n "$linked" ]; then
+            echo "Closes" "$linked"
+            exit 0
+          fi
+
+          body="$(gh pr view "$PR" --json body --jq .body)"
+          fail() { echo "::error title=PR closes no issue::$1"; }
+
+          named="$(grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]+' <<<"$body" \
+            | grep -oE '[0-9]+$' | sort -u)"
+          for n in $named; do
+            state="$(gh api "repos/$GH_REPO/issues/$n" \
+              --jq 'if .pull_request then "MISSING" else .state end' 2>/dev/null || echo MISSING)"
+            case "$state" in
+              closed) fail "#$n is already closed and GitHub did not link it. File a new issue for this follow-up and write \"Closes #<new>\" on its own line." ;;
+              MISSING) fail "#$n is not an issue in this repo (a PR number, or a typo). Write \"Closes #<issue>\" with a real open issue." ;;
+              *) fail "#$n is open but GitHub did not link it. Put \"Closes #$n\" on its own line in the body as plain text, outside code spans and quotes, then save the body to rerun this." ;;
+            esac
+          done
+          if [ -n "$named" ]; then
+            exit 1
+          fi
+
+          if grep -qE '#[0-9]+' <<<"$body"; then
+            fail "The body mentions an issue but closes none. \"Part of #N\", \"See #N\" or a bare #N attaches nothing. Write \"Closes #<issue>\" on its own line; for part of an issue, file a sub-issue and close that."
+          else
+            fail "The body closes no issue. Open one (gh issue create), then add \"Closes #<issue>\" on its own line to the PR body. A typo-sized PR can instead get the \"no issue\" label from a maintainer."
+          fi
+          exit 1

@@ -5,7 +5,7 @@ the branch, every commit, the PR title and the squash commit it becomes.
 
 ## The flow
 
-1. **Issue first.** Anything bigger than a typo starts as a GitHub issue. The
+1. **Issue first.** Every change starts as a GitHub issue. The
    title states the outcome, the body says what done looks like. What happens
    to an issue once it is filed is in
    [`docs/agents/triage.md`](docs/agents/triage.md). Every issue sits on the
@@ -18,7 +18,7 @@ the branch, every commit, the PR title and the squash commit it becomes.
 5. **Open a PR** whose title follows the same pattern and whose body ends in
    `Closes #<issue>`.
 6. **Review and checks.** Review comments answered, each fix as a new commit
-   on the branch, and checks green once CI exists (#73). Never amend and force-push a pushed
+   on the branch, and every check green. Never amend and force-push a pushed
    branch.
 7. **Squash merge** with `gh pr merge --squash --delete-branch`. The PR title
    becomes the one commit on main, with `(#N)` appended by GitHub.
@@ -34,7 +34,7 @@ the branch, every commit, the PR title and the squash commit it becomes.
 | `docs`     | README, CONTEXT, CONTRIBUTING, `docs/`              |
 | `test`     | tests only                                          |
 | `chore`    | dependencies, tooling, cleanup                      |
-| `ci`       | `.github/workflows`, once #73 adds them             |
+| `ci`       | `.github/workflows`                                 |
 
 ## Scopes
 
@@ -54,7 +54,7 @@ genuinely spans two scopes lists both, comma separated:
 
 - `feat/69-downloads-redesign`
 - `perf/64-shared-cargo-target`
-- `docs/contributing-naming` when no issue exists, which should be rare
+- `docs/contributing-naming` for a `no issue` PR, the one kind without an issue
 
 The slug is a few lowercase hyphenated words naming the outcome.
 
@@ -105,11 +105,21 @@ Not:
   test output otherwise.
 - `Closes #<issue>` on its own line.
 
-Every PR is attached to an issue, no exceptions. Only a closing keyword
-(`Closes`, `Fixes`, `Resolves`) attaches it: GitHub then lists the PR under the
-issue's Development section, and tools that look work up by issue number can
-find it. `Part of #<issue>` or a bare mention attaches nothing. When a PR does
-only part of an issue, file a sub-issue for that part and close the sub-issue.
+Every PR closes an issue, and the `PR issue` check fails one that does not.
+Only a closing keyword (`Closes`, `Fixes`, `Resolves`) in the body attaches it:
+GitHub then lists the PR under the issue's Development section, and tools that
+look work up by issue number can find it. These do not count:
+
+- `Part of #<issue>`, `See #<issue>` or a bare mention
+- a keyword in the title, a code span or a quote
+- a keyword pointing at an issue that is already closed, such as the one a
+  follow-up PR came from; a follow-up gets its own new issue
+
+When a PR does only part of an issue, file a sub-issue for that part and close
+the sub-issue. A typo-sized PR is the one exception: a maintainer gives it the
+`no issue` label instead. Do not add that label to your own PR to get past the
+check. When the check fails, its message says what to write; fix the body and
+saving it reruns the check.
 
 ## Patch notes
 
