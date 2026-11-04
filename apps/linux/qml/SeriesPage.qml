@@ -58,6 +58,17 @@ Item {
         if (r && r.error) frame.toast(frame.errorText(r.error))
         else frame.toast(n === null ? "Episode count cleared" : "Set to " + n + " episodes")
     }
+    // Schedule notes (#418): what the user told the schedule, for the card's season
+    readonly property var scheduleNotes: detail && detail.schedule_notes ? detail.schedule_notes : []
+    function openSchedule() { scheduleSheet.openFor(page.props.id, page.title, card.count_season === undefined ? null : card.count_season, page.scheduleNotes) }
+    // The notes without a date, in words: "Episodes 8 to 15 TBC in 2027"
+    readonly property string heldLine: {
+        var held = scheduleNotes.filter(function(n) { return n.at === null || n.at === undefined })
+        if (!held.length) return ""
+        var n = held[0]
+        var eps = n.first === n.last ? "Episode " + n.first : "Episodes " + n.first + " to " + n.last
+        return eps + (n.year !== null && n.year !== undefined ? " due in " + n.year : " not dated yet") + ", set by you"
+    }
     // Fixes (#283): every way to correct what the page shows, in one menu
     function fixItems() {
         var items = []
@@ -65,6 +76,8 @@ Item {
             items.push({ text: "Fix files", icon: "pencil", action: function() { page.openFix(page.detail ? page.detail.suggested_fix : null, false) } })
         if (countRow.offered)
             items.push({ text: countRow.set === null ? "Set episode count" : "Change episode count", icon: "list-video", action: countRow.edit })
+        if (!page.isMovie)
+            items.push({ text: page.scheduleNotes.length ? "Change schedule" : "Set schedule", icon: "calendar-clock", action: page.openSchedule })
         items.push({ text: page.matched ? "Change match" : "Find a match", icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
         items.push({ text: "Rescan", icon: "refresh-cw", action: page.rescan })
         return items
@@ -853,6 +866,25 @@ Item {
                         color: page.inkDim
                     }
                 }
+                // A break the user told the schedule about (#418), with the way to change it
+                Row {
+                    objectName: "schedule-held"
+                    visible: page.heldLine !== ""
+                    spacing: theme.space(2)
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.heldLine
+                        role: "ledger"
+                        color: page.inkDim
+                    }
+                    Button {
+                        small: true; flat: true
+                        tint: page.inkAccent
+                        icon: "calendar-clock"
+                        text: "Change"
+                        onClicked: page.openSchedule()
+                    }
+                }
                 Item { width: 1; height: theme.space(1.5) }
                 // Continue, with the progress beside it
                 Row {
@@ -1347,6 +1379,21 @@ Item {
         visible: fixSheet.visible
         dismissOnPress: true
         onDismissed: fixSheet.close()
+    }
+
+    // The schedule notes, from Fixes or the held line (#418)
+    ScheduleSheet {
+        id: scheduleSheet
+        parent: frame.overlay
+        anchors.centerIn: parent
+    }
+    Blocker {
+        parent: frame.overlay
+        anchors.fill: parent
+        z: -1
+        visible: scheduleSheet.visible
+        dismissOnPress: true
+        onDismissed: scheduleSheet.close()
     }
 
     // The match, from Find a match or Fixes: the same popover Metadata opens, over the overlay

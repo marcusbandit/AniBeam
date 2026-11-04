@@ -71,6 +71,7 @@ fn main() {
             .qml_file("qml/AiringPage.qml")
             .qml_file("qml/MetadataPage.qml")
             .qml_file("qml/MatchPanel.qml")
+            .qml_file("qml/ScheduleSheet.qml")
             .qml_file("qml/FixSheet.qml")
             .qml_file("qml/EpisodesPane.qml")
             .qml_file("qml/ConnectSheet.qml")

@@ -142,7 +142,8 @@ impl Snapshot {
             next_scheduled,
             card.watched,
         );
-        let upcoming = upcoming(airing, released, plan_total, card.status, now)
+        let notes = self.notes_of(row);
+        let upcoming = upcoming(airing, &notes, released, plan_total, card.status, now)
             .into_iter()
             .map(|(number, at, predicted)| UpcomingEpisode {
                 number,
@@ -202,6 +203,7 @@ impl Snapshot {
                 .collect(),
             absent,
             upcoming,
+            schedule_notes: notes.iter().map(|n| n.to_wire()).collect(),
             extras: extras
                 .iter()
                 .map(|f| {

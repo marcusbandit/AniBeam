@@ -9,6 +9,7 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::contract::*;
+use crate::library::schedule::{NoteRow, When};
 use crate::library::snapshot::{AiringRow, FileRow, NextEpisode, SeriesRow, Snapshot, season_of};
 use crate::library::{labels, titles};
 use crate::time;
@@ -139,21 +140,26 @@ pub fn cubes(f: &CubeFacts) -> String {
 const DAY: i64 = 86_400;
 const WEEK: i64 = 7 * DAY;
 
-/// The next episode and when it should air, guessed from the episodes
-/// already out, for an airing series whose record names no date ahead (a
-/// real schedule always wins; `card_of` asks only without one). The first
-/// guess `upcoming` makes.
+/// The next episode and when it should air, for an airing series whose
+/// record names no date ahead (a real schedule always wins; `card_of` asks
+/// only without one): a date a schedule note gives, else a guess from the
+/// episodes already out, `(number, at, predicted)`. The first entry
+/// `upcoming` makes that the record does not schedule.
 pub fn predict_next(
     airing: &[AiringRow],
+    notes: &[NoteRow],
     released: u32,
     total: Option<u32>,
     status: Option<AiringStatus>,
     now: i64,
-) -> Option<(u32, i64)> {
-    plan(airing, released, total, status, now, true)
+) -> Option<(u32, i64, bool)> {
+    plan(airing, notes, released, total, status, now, true)
         .into_iter()
-        .find(|u| u.2)
-        .map(|(n, at, _)| (n, at))
+        .find(|u| {
+            u.2 || !airing
+                .iter()
+                .any(|a| a.number == u.0 && a.aired_at == Some(u.1))
+        })
 }
 
 /// The episodes still to come and when each lands, `(number, at,
@@ -167,19 +173,26 @@ pub fn predict_next(
 /// on disk counts. A first guess a full day in the past with nothing
 /// released moves a week later, as many weeks as it takes, and every guess
 /// after it moves with it.
+///
+/// Schedule notes (#418) come in under the record: a dated note counts as
+/// scheduled for an episode the record gives no date, and an episode a note
+/// without a date covers is never guessed, nor is any after it until a date
+/// is known, so a season on a break shows nothing made up.
 pub fn upcoming(
     airing: &[AiringRow],
+    notes: &[NoteRow],
     released: u32,
     total: Option<u32>,
     status: Option<AiringStatus>,
     now: i64,
 ) -> Vec<(u32, i64, bool)> {
-    plan(airing, released, total, status, now, false)
+    plan(airing, notes, released, total, status, now, false)
 }
 
 /// `upcoming`, stopping at the first guess when `first_guess` is set.
 fn plan(
     airing: &[AiringRow],
+    notes: &[NoteRow],
     released: u32,
     total: Option<u32>,
     status: Option<AiringStatus>,
@@ -190,7 +203,20 @@ fn plan(
         .iter()
         .filter_map(|a| a.aired_at.map(|at| (a.number, at)))
         .collect();
+    for note in notes {
+        let When::On(at) = note.when else { continue };
+        for n in note.first..=note.last.min(note.first + CUBES_MAX) {
+            if !dated.iter().any(|d| d.0 == n) {
+                dated.push((n, at));
+            }
+        }
+    }
     dated.sort_unstable();
+    let held = |n: u32| {
+        notes
+            .iter()
+            .any(|x| !matches!(x.when, When::On(_)) && x.covers(n))
+    };
     let aired: Vec<(u32, i64)> = dated.iter().copied().filter(|(_, at)| *at <= now).collect();
     let released = released.max(aired.last().map_or(0, |a| a.0));
     let scheduled: Vec<(u32, i64)> = dated
@@ -218,6 +244,10 @@ fn plan(
         if let Some(&(_, at)) = scheduled.iter().find(|s| s.0 == n) {
             out.push((n, at, false));
             anchor = Some((n, at));
+            continue;
+        }
+        if held(n) {
+            anchor = None;
             continue;
         }
         let Some((an, aat)) = anchor.filter(|_| can_guess) else {
@@ -797,16 +827,17 @@ impl Snapshot {
                 }),
                 None => predict_next(
                     airing,
+                    &self.notes_of(row),
                     self.released_of(row, &episodes, plan_total, latest_aired, None, watched),
                     plan_total,
                     status,
                     now,
                 )
-                .map(|(episode, at)| Airing {
+                .map(|(episode, at, predicted)| Airing {
                     episode,
                     at: time::from_secs(at),
                     season: self.card_season(row),
-                    predicted: true,
+                    predicted,
                     through: None,
                 }),
             },
@@ -1393,8 +1424,8 @@ mod tests {
     fn one_episode_out_predicts_a_week_on() {
         let rows = dated(&[(1, T0)]);
         let now = T0 + 2 * DAY;
-        let got = predict_next(&rows, 1, Some(12), Some(AiringStatus::Releasing), now);
-        assert_eq!(got, Some((2, T0 + WEEK)));
+        let got = predict_next(&rows, &[], 1, Some(12), Some(AiringStatus::Releasing), now);
+        assert_eq!(got, Some((2, T0 + WEEK, true)));
     }
 
     #[test]
@@ -1402,8 +1433,8 @@ mod tests {
         // The 1st and the 14th: thirteen days rounds to two weeks
         let rows = dated(&[(1, T0), (2, T0 + 13 * DAY)]);
         let now = T0 + 14 * DAY;
-        let got = predict_next(&rows, 2, None, Some(AiringStatus::Releasing), now);
-        assert_eq!(got, Some((3, T0 + 13 * DAY + 2 * WEEK)));
+        let got = predict_next(&rows, &[], 2, None, Some(AiringStatus::Releasing), now);
+        assert_eq!(got, Some((3, T0 + 13 * DAY + 2 * WEEK, true)));
     }
 
     #[test]
@@ -1417,8 +1448,8 @@ mod tests {
             (5, T0 + 5 * WEEK),
         ]);
         let now = T0 + 5 * WEEK + DAY;
-        let got = predict_next(&rows, 5, None, Some(AiringStatus::Releasing), now);
-        assert_eq!(got, Some((6, T0 + 6 * WEEK)));
+        let got = predict_next(&rows, &[], 5, None, Some(AiringStatus::Releasing), now);
+        assert_eq!(got, Some((6, T0 + 6 * WEEK, true)));
     }
 
     #[test]
@@ -1426,16 +1457,16 @@ mod tests {
         let rows = dated(&[(1, T0), (2, T0 + WEEK)]);
         // Episode 3 was due at T0 + 2 weeks; it is now a day and a bit past
         let late = T0 + 2 * WEEK + DAY + 1;
-        let got = predict_next(&rows, 2, None, Some(AiringStatus::Releasing), late);
-        assert_eq!(got, Some((3, T0 + 3 * WEEK)));
+        let got = predict_next(&rows, &[], 2, None, Some(AiringStatus::Releasing), late);
+        assert_eq!(got, Some((3, T0 + 3 * WEEK, true)));
         // Within its own day it stands
         let same_day = T0 + 2 * WEEK + 3600;
-        let got = predict_next(&rows, 2, None, Some(AiringStatus::Releasing), same_day);
-        assert_eq!(got, Some((3, T0 + 2 * WEEK)));
+        let got = predict_next(&rows, &[], 2, None, Some(AiringStatus::Releasing), same_day);
+        assert_eq!(got, Some((3, T0 + 2 * WEEK, true)));
         // Three weeks overdue: three weeks later
         let far = T0 + 4 * WEEK + 2 * DAY;
-        let got = predict_next(&rows, 2, None, Some(AiringStatus::Releasing), far);
-        assert_eq!(got, Some((3, T0 + 5 * WEEK)));
+        let got = predict_next(&rows, &[], 2, None, Some(AiringStatus::Releasing), far);
+        assert_eq!(got, Some((3, T0 + 5 * WEEK, true)));
     }
 
     #[test]
@@ -1443,29 +1474,29 @@ mod tests {
         let rows = dated(&[(1, T0), (2, T0 + WEEK)]);
         let now = T0 + 2 * WEEK + 2 * DAY;
         // Episode 3 is on disk with no date: 4 is next, two cadences on from 2
-        let got = predict_next(&rows, 3, None, Some(AiringStatus::Releasing), now);
-        assert_eq!(got, Some((4, T0 + 3 * WEEK)));
+        let got = predict_next(&rows, &[], 3, None, Some(AiringStatus::Releasing), now);
+        assert_eq!(got, Some((4, T0 + 3 * WEEK, true)));
     }
 
     #[test]
     fn no_guess_without_a_date_past_the_end_or_off_air() {
         let none: Vec<AiringRow> = Vec::new();
         assert_eq!(
-            predict_next(&none, 3, None, Some(AiringStatus::Releasing), T0),
+            predict_next(&none, &[], 3, None, Some(AiringStatus::Releasing), T0),
             None
         );
         let rows = dated(&[(11, T0), (12, T0 + WEEK)]);
         let now = T0 + WEEK + DAY;
         assert_eq!(
-            predict_next(&rows, 12, Some(12), Some(AiringStatus::Releasing), now),
+            predict_next(&rows, &[], 12, Some(12), Some(AiringStatus::Releasing), now),
             None
         );
         assert_eq!(
-            predict_next(&rows, 12, None, Some(AiringStatus::Finished), now),
+            predict_next(&rows, &[], 12, None, Some(AiringStatus::Finished), now),
             None
         );
         assert_eq!(
-            predict_next(&rows, 12, None, Some(AiringStatus::Hiatus), now),
+            predict_next(&rows, &[], 12, None, Some(AiringStatus::Hiatus), now),
             None
         );
     }
@@ -1476,7 +1507,7 @@ mod tests {
         let mut rows = dated(&[(1, T0), (2, T0 + WEEK), (3, T0 + 2 * WEEK)]);
         rows.extend(dated(&[(4, T0 + 3 * WEEK), (5, T0 + 4 * WEEK + 3600)]));
         let now = T0 + 2 * WEEK + DAY;
-        let got = upcoming(&rows, 3, Some(12), Some(AiringStatus::Releasing), now);
+        let got = upcoming(&rows, &[], 3, Some(12), Some(AiringStatus::Releasing), now);
         assert_eq!(got.len(), 9);
         assert_eq!(got[0], (4, T0 + 3 * WEEK, false));
         assert_eq!(got[1], (5, T0 + 4 * WEEK + 3600, false));
@@ -1488,11 +1519,86 @@ mod tests {
     fn an_unknown_total_shows_the_schedule_or_one_guess() {
         let rows = dated(&[(1, T0), (2, T0 + WEEK)]);
         let now = T0 + WEEK + DAY;
-        let got = upcoming(&rows, 2, None, Some(AiringStatus::Releasing), now);
+        let got = upcoming(&rows, &[], 2, None, Some(AiringStatus::Releasing), now);
         assert_eq!(got, vec![(3, T0 + 2 * WEEK, true)]);
         // Off air: the schedule alone, never a guess
         let sched = dated(&[(1, T0), (2, T0 + WEEK), (3, T0 + 2 * WEEK)]);
-        let got = upcoming(&sched, 2, Some(12), Some(AiringStatus::Hiatus), now);
+        let got = upcoming(&sched, &[], 2, Some(12), Some(AiringStatus::Hiatus), now);
+        assert_eq!(got, vec![(3, T0 + 2 * WEEK, false)]);
+    }
+
+    #[test]
+    fn a_tbc_note_stops_the_weekly_guess() {
+        // Helluva Boss S3 (#418): two drops a week apart, then a break to 2027
+        let rows = dated(&[(1, T0), (2, T0), (3, T0 + WEEK), (4, T0 + WEEK)]);
+        let now = T0 + WEEK + DAY;
+        let tbc = [NoteRow {
+            first: 5,
+            last: 15,
+            when: When::Year(2027),
+        }];
+        let ahead = [Some(AiringStatus::Releasing)];
+        assert_eq!(
+            predict_next(&rows, &[], 4, None, ahead[0], now),
+            Some((5, T0 + 2 * WEEK, true))
+        );
+        assert_eq!(predict_next(&rows, &tbc, 4, None, ahead[0], now), None);
+        assert!(upcoming(&rows, &tbc, 4, Some(15), ahead[0], now).is_empty());
+    }
+
+    #[test]
+    fn a_dated_note_schedules_and_guessing_goes_on_from_it() {
+        let rows = dated(&[(1, T0), (2, T0 + WEEK)]);
+        let now = T0 + WEEK + DAY;
+        let notes = [
+            NoteRow {
+                first: 3,
+                last: 3,
+                when: When::On(T0 + 5 * WEEK),
+            },
+            NoteRow {
+                first: 6,
+                last: 6,
+                when: When::Unknown,
+            },
+        ];
+        let got = upcoming(
+            &rows,
+            &notes,
+            2,
+            Some(8),
+            Some(AiringStatus::Releasing),
+            now,
+        );
+        assert_eq!(
+            got,
+            vec![
+                (3, T0 + 5 * WEEK, false),
+                (4, T0 + 6 * WEEK, true),
+                (5, T0 + 7 * WEEK, true),
+            ]
+        );
+        assert_eq!(
+            predict_next(
+                &rows,
+                &notes,
+                2,
+                Some(8),
+                Some(AiringStatus::Releasing),
+                now
+            ),
+            Some((3, T0 + 5 * WEEK, false))
+        );
+        // The record's own date wins over the note's
+        let real = dated(&[(1, T0), (2, T0 + WEEK), (3, T0 + 2 * WEEK)]);
+        let got = upcoming(
+            &real,
+            &notes,
+            2,
+            Some(3),
+            Some(AiringStatus::Releasing),
+            now,
+        );
         assert_eq!(got, vec![(3, T0 + 2 * WEEK, false)]);
     }
 

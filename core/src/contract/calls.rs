@@ -66,6 +66,21 @@ pub enum Call {
         series: u64,
         count: Option<u32>,
     },
+    /// Reads a pasted release list ("Episode 8 - TBC in 2027", "Episode 4 -
+    /// Wednesday 21 October 2026") into schedule notes, by rule, saving
+    /// nothing (#418). `season` is the one the text names, if it names one.
+    ParseSchedule {
+        text: String,
+    },
+    /// Replaces a series' schedule notes for one season with `notes`, an
+    /// empty list clearing them (#418). `season` None means the card's own
+    /// season; a record numbering without seasons ignores it. Ends in
+    /// `SeriesChanged`.
+    SetScheduleNotes {
+        series: u64,
+        season: Option<u32>,
+        notes: Vec<ScheduleNote>,
+    },
     ListFeed {
         sort: FeedSort,
     },
@@ -657,6 +672,11 @@ pub enum Reply {
     },
     SeriesDetail {
         detail: Box<SeriesDetail>,
+    },
+    /// What `ParseSchedule` read.
+    Schedule {
+        season: Option<u32>,
+        notes: Vec<ScheduleNote>,
     },
     Feed {
         cards: Vec<FeedCard>,
