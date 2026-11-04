@@ -178,21 +178,25 @@ Item {
         for (var j = 0; j < listed.shows.length; j++) if (!page.kept(listed.shows[j])) drop[listed.shows[j].anilist_id] = true
         return listed.aired.filter(function(a) { return drop[a.anilist_id] !== true })
     }
-    // Out now's grid of small cards: as many columns as fit at a readable title width, two
-    // rows of them until All opens the rest
-    readonly property real outGap: theme.space(3)
-    // Columns by rows, from Settings, Appearance; a window too narrow for the columns at a
-    // readable width gets fewer
-    Settings { id: kept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2" }
+    // Out now's grid, small cards or list rows by Settings, Appearance, until All opens the rest
+    readonly property real outGap: outList ? theme.space(2) : theme.space(3)
+    // Cards come columns by rows, from Settings, Appearance; a window too narrow for the
+    // columns at a readable width gets fewer
+    Settings { id: kept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
     readonly property var outLayout: {
         var m = /^(\d)x(\d)$/.exec(kept.outLayout)
         return m ? [parseInt(m[1]), parseInt(m[2])] : [4, 2]
     }
-    readonly property int outRows: outLayout[1]
-    readonly property int outCols: Math.max(1, Math.min(outLayout[0], Math.floor((scroll.innerWidth + outGap) / (theme.space(45) + outGap))))
+    // Cards unless Settings picks the list: rows of a small poster, title, episode and age,
+    // as many columns as fit at a readable title width, three rows deep
+    readonly property bool outList: kept.outStyle === "list"
+    readonly property int outRows: outList ? 3 : outLayout[1]
+    readonly property int outCols: outList
+        ? Math.max(1, Math.floor((scroll.innerWidth + outGap) / (theme.space(84) + outGap)))
+        : Math.max(1, Math.min(outLayout[0], Math.floor((scroll.innerWidth + outGap) / (theme.space(45) + outGap))))
     readonly property real outCellWidth: Math.floor((scroll.innerWidth - outGap * (outCols - 1)) / outCols)
     // Tall enough for two lines of words, and close to a banner's wide shape as the tile narrows
-    readonly property real outCellHeight: Math.max(theme.space(20), Math.round(outCellWidth / 3.4))
+    readonly property real outCellHeight: outList ? theme.space(17) : Math.max(theme.space(20), Math.round(outCellWidth / 3.4))
     readonly property int outFirst: outCols * outRows
     readonly property var outShown: page.allOut ? page.aired : page.aired.slice(0, page.outFirst)
     readonly property int outToday: {
@@ -538,8 +542,7 @@ Item {
                 spacing: page.outGap
                 Repeater {
                     model: page.outShown
-                    // One episode as a small card: the banner across the whole tile, rounded
-                    // like the cards below, darkened toward the foot so the words read
+                    // One episode, as a small card or a list row
                     Item {
                         id: pill
                         required property var modelData
@@ -549,67 +552,134 @@ Item {
                         width: page.outCellWidth
                         height: page.outCellHeight
                         activeFocusOnTab: true
-                        scale: theme.reducedMotion ? 1 : (pm.pressed ? 0.985 : 1)
+                        scale: theme.reducedMotion || page.outList ? 1 : (pm.pressed ? 0.985 : 1)
                         function open() {
                             if (pill.show) page.openActions(pill.show, pill)
                             else frame.openLink("https://anilist.co/anime/" + pill.modelData.anilist_id)
                         }
                         Keys.onReturnPressed: pill.open()
-                        Image {
-                            id: outPoster
-                            visible: false
-                            width: pill.width; height: pill.height
-                            // AniList's wide banner, made for this shape; the tall cover only
-                            // when a show has none
-                            source: !pill.show ? "" : pill.show.banner ? Fmt.fileUrl(pill.show.banner)
-                                  : pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
-                            // Decoded at the tile's width, its height following the image's own shape
-                            sourceSize.width: Math.ceil(pill.width * (Screen.devicePixelRatio || 1))
-                            fillMode: Image.PreserveAspectCrop
-                            smooth: true
-                            asynchronous: true
-                            cache: true
-                        }
-                        Corner {
+                        // One look per pill, built only for the style Settings picked
+                        Loader {
                             anchors.fill: parent
-                            radius: theme.radiusTile
-                            smoothing: theme.cornerSmoothing
-                            color: theme.tileSunken
-                            fillItem: outPoster.status === Image.Ready ? outPoster : null
+                            sourceComponent: page.outList ? outRow : outCard
                         }
-                        // The shade: light at the top, near black under the words
-                        Corner {
-                            anchors.fill: parent
-                            radius: theme.radiusTile
-                            smoothing: theme.cornerSmoothing
-                            // No outline: on a light banner it read as a gap round the tile.
-                            // Only keyboard focus draws a ring; hover lifts the shade instead
-                            borderColor: pill.activeFocus ? theme.focusRing : "transparent"
-                            borderWidth: pill.activeFocus ? 2 : 0
-                            fillGradient: LinearGradient {
-                                x1: 0; y1: 0; x2: 0; y2: pill.height
-                                GradientStop { position: 0; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.05 : 0.2) }
-                                GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.35 : 0.5) }
-                                GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.88) }
+                        // The card: the banner across the whole tile, rounded like the cards
+                        // below, darkened toward the foot so the words read
+                        Component {
+                            id: outCard
+                            Item {
+                                Image {
+                                    id: outPoster
+                                    visible: false
+                                    width: pill.width; height: pill.height
+                                    // AniList's wide banner, made for this shape; the tall cover only
+                                    // when a show has none
+                                    source: !pill.show ? "" : pill.show.banner ? Fmt.fileUrl(pill.show.banner)
+                                          : pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
+                                    // Decoded at the tile's width, its height following the image's own shape
+                                    sourceSize.width: Math.ceil(pill.width * (Screen.devicePixelRatio || 1))
+                                    fillMode: Image.PreserveAspectCrop
+                                    smooth: true
+                                    asynchronous: true
+                                    cache: true
+                                }
+                                Corner {
+                                    anchors.fill: parent
+                                    radius: theme.radiusTile
+                                    smoothing: theme.cornerSmoothing
+                                    color: theme.tileSunken
+                                    fillItem: outPoster.status === Image.Ready ? outPoster : null
+                                }
+                                // The shade: light at the top, near black under the words
+                                Corner {
+                                    anchors.fill: parent
+                                    radius: theme.radiusTile
+                                    smoothing: theme.cornerSmoothing
+                                    // No outline: on a light banner it read as a gap round the tile.
+                                    // Only keyboard focus draws a ring; hover lifts the shade instead
+                                    borderColor: pill.activeFocus ? theme.focusRing : "transparent"
+                                    borderWidth: pill.activeFocus ? 2 : 0
+                                    fillGradient: LinearGradient {
+                                        x1: 0; y1: 0; x2: 0; y2: pill.height
+                                        GradientStop { position: 0; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.05 : 0.2) }
+                                        GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.35 : 0.5) }
+                                        GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.88) }
+                                    }
+                                }
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.margins: theme.space(3)
+                                    spacing: theme.space(0.5)
+                                    Label {
+                                        width: parent.width
+                                        text: pill.modelData.title
+                                        role: "ui"
+                                        color: "white"
+                                        elide: Text.ElideRight
+                                    }
+                                    Row {
+                                        spacing: theme.space(2)
+                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
+                                        Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : Qt.rgba(1, 1, 1, 0.55) }
+                                    }
+                                }
                             }
                         }
-                        Column {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            anchors.margins: theme.space(3)
-                            spacing: theme.space(0.5)
-                            Label {
-                                width: parent.width
-                                text: pill.modelData.title
-                                role: "ui"
-                                color: "white"
-                                elide: Text.ElideRight
-                            }
-                            Row {
-                                spacing: theme.space(2)
-                                Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
-                                Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : Qt.rgba(1, 1, 1, 0.55) }
+                        // The list row: a small poster, then the title, episode and age
+                        Component {
+                            id: outRow
+                            Item {
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: theme.radiusSm
+                                    color: pm.containsMouse ? theme.raised : "transparent"
+                                    border.color: pill.activeFocus ? theme.focusRing : "transparent"
+                                    border.width: 1
+                                }
+                                Corner {
+                                    id: thumb
+                                    x: theme.space(1.5)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: parent.height - theme.space(3)
+                                    width: Math.round(height / 1.5)
+                                    radius: theme.radiusSm; smoothing: 0
+                                    color: theme.tileSunken
+                                    borderColor: theme.line; borderWidth: 1
+                                    Image {
+                                        id: thumbImage
+                                        visible: false
+                                        width: thumb.width; height: thumb.height
+                                        source: pill.show && pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
+                                        sourceSize: theme.posterDecodeSize
+                                        fillMode: Image.PreserveAspectCrop
+                                        smooth: true
+                                        asynchronous: true
+                                        cache: true
+                                    }
+                                    fillItem: thumbImage.status === Image.Ready ? thumbImage : null
+                                }
+                                Column {
+                                    anchors.left: thumb.right
+                                    anchors.leftMargin: theme.space(3)
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: theme.space(2)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: theme.space(1)
+                                    Label {
+                                        width: parent.width
+                                        text: pill.modelData.title
+                                        role: "ui"
+                                        elide: Text.ElideRight
+                                    }
+                                    Row {
+                                        spacing: theme.space(2)
+                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
+                                        Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : theme.textFaint }
+                                    }
+                                }
                             }
                         }
                         MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.open() }

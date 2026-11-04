@@ -17,8 +17,9 @@ SettingsTab {
     readonly property var lightThemes: Theme.themes.filter(function(t) { return t.mode === "light" })
     function indexOf(list, stem) { for (var i = 0; i < list.length; i++) if (list[i].stem === stem) return i; return 0 }
     readonly property bool fromTheme: Theme.source === "theme"
-    // Out now's grid on Airing, columns by rows; AiringPage reads the same key
-    Settings { id: airingKept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2" }
+    // Out now on Airing: cards or a list, and the cards' grid, columns by rows; AiringPage
+    // reads the same keys
+    Settings { id: airingKept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
     readonly property var outLayouts: ["3x2", "4x2", "5x2", "4x3"]
 
     // The preview's sample cards carry relative labels (last-viewed, countdowns); this
@@ -106,7 +107,9 @@ SettingsTab {
             Seg { options: ["Compact", "Normal", "Comfortable"]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
         SettingRow { label: "Poster size"; helper: "How big a series is in the library and on Home."
             Seg { options: ["Small", "Medium", "Large"]; index: ["s", "m", "l"].indexOf(Theme.poster); onPicked: function(i) { Theme.pickPoster(["s", "m", "l"][i]) } } }
-        SettingRow { label: "Out now on Airing"; helper: "How many new episodes show, columns by rows, before All opens the rest."
+        SettingRow { label: "Out now on Airing"; helper: "Cards with each show's banner, or a list of small posters and titles, three rows deep."
+            Seg { objectName: "out-now-style"; options: ["Cards", "List"]; index: airingKept.outStyle === "list" ? 1 : 0; onPicked: function(i) { airingKept.outStyle = i === 1 ? "list" : "cards" } } }
+        SettingRow { visible: airingKept.outStyle !== "list"; label: "Out now cards"; helper: "How many cards show, columns by rows, before All opens the rest."
             Seg { objectName: "out-now-layout"; options: ["3 × 2", "4 × 2", "5 × 2", "4 × 3"]; index: Math.max(0, tab.outLayouts.indexOf(airingKept.outLayout)); onPicked: function(i) { airingKept.outLayout = tab.outLayouts[i] } } }
         SettingRow { label: "Reduce motion"; helper: "Skips the library's opening sweep and other movement that is only for show."
             Switch { objectName: "reduce-motion"; checked: Theme.reducedMotion; onToggled: function(on) { Theme.pickReducedMotion(on) } } }
