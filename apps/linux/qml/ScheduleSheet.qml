@@ -1,9 +1,10 @@
-// The schedule popover (#418): tell a show's schedule what its provider does not say. Two
-// ways in, one draft between them. Pick: click episodes (shift-click for a range), then give
-// them a day, a month, a year or TBC with the buttons or a typed date. Paste: a release list
-// read by the core as it is typed. A paste that reads wrong is fixed in Pick, since both edit
-// the same draft; Save keeps the draft for the season the page is about. A raised tile over a
-// Blocker the owning page puts under it, on the frame's escape stack like the match panel.
+// Episodes and dates (#418, #432): tell a season what its provider does not say. The grid is
+// the one view: every episode is a tile with its date under its number, the last episode is
+// marked, and nothing past it is predicted. Pick tiles (shift-click for a run), then one row
+// of actions dates them, ends the season there or clears them. Paste a list opens a box above
+// the grid whose reading lands on the tiles, to fix by picking. One control height, one
+// button style and two text sizes throughout. A raised tile over a Blocker the owning page
+// puts under it, on the frame's escape stack like the match panel.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -15,22 +16,20 @@ Corner {
     // The season the notes are for: the card's own for a TVmaze show, else none
     property var season: null
     property var saved: []
-    // The draft both modes edit, in the wire shape: {first, last, at, year, month}
+    // The draft, in the wire shape: {first, last, at, year, month}
     property var draft: []
     property var readSeason: null
-    property int mode: 0            // 0 pick, 1 paste
-    // Pick: how many episode cells, which are out already, which are picked
+    property bool pasting: false
     property int upTo: 12
     property var aired: []
     property var picked: []
     property int anchorEp: 0
     property bool weekly: false
-    // The season's last episode, which is the episode count set by hand (#432); 0 for none
-    property int endAt: 0
-    property int savedEnd: 0
     // The typed date as the core reads it, or null
     property var typed: null
-    readonly property int nextYear: new Date().getFullYear() + 1
+    // The season's last episode, which is the episode count set by hand; 0 for none
+    property int endAt: 0
+    property int savedEnd: 0
 
     function has(v) { return v !== null && v !== undefined }
     function epsText(n) { return n.first === n.last ? "Episode " + n.first : "Episodes " + n.first + " to " + n.last }
@@ -42,6 +41,28 @@ Corner {
     }
     function kindOf(n) { return !n ? "" : has(n.at) ? "day" : has(n.year) && n.month ? "month" : has(n.year) ? "year" : "tbc" }
     function kindColor(k) { return k === "day" ? theme.green : k === "month" ? theme.orange : k === "year" ? theme.purple : theme.textDim }
+    // What a tile says under its number: the date, short
+    function tileText(ep) {
+        if (root.endAt > 0 && ep > root.endAt) return ""
+        var n = root.noteFor(ep)
+        if (n) {
+            if (has(n.at)) return Qt.formatDate(new Date(n.at * 1000), "d MMM")
+            if (has(n.year) && n.month) return Qt.formatDate(new Date(n.year, n.month - 1, 1), "MMM yyyy")
+            if (has(n.year)) return String(n.year)
+            return "No date"
+        }
+        if (root.endAt === ep) return "Last"
+        return root.aired.indexOf(ep) >= 0 ? "Out" : ""
+    }
+    // The footer's one line: where the season ends and how much is dated
+    readonly property string summary: {
+        var dated = 0
+        for (var i = 0; i < draft.length; i++) dated += draft[i].last - draft[i].first + 1
+        var bits = []
+        if (endAt > 0) bits.push("Ends at episode " + endAt)
+        if (dated > 0) bits.push(Fmt.plural(dated, "episode", "episodes") + " dated")
+        return bits.length ? bits.join(" · ") : "Nothing set yet"
+    }
     function keyOf(w) { return [has(w.at) ? w.at : "", has(w.year) ? w.year : "", w.month || ""].join("|") }
 
     // The draft as one entry an episode, and back into ranges of the same date
@@ -96,6 +117,8 @@ Corner {
         }
         root.draft = root.collapse(by)
         root.picked = []
+        dateField.text = ""
+        root.typed = null
     }
     function unset() {
         var by = root.expand(root.draft)
@@ -146,7 +169,7 @@ Corner {
         root.typed = null
         dateField.text = ""
         input.text = ""
-        root.mode = 0
+        root.pasting = false
         visible = true
         frame.escapeStack.push("popover", root)
     }
@@ -163,6 +186,11 @@ Corner {
         if (r.error) return
         root.draft = root.collapse(root.expand(r.reply.notes || []))
         root.readSeason = has(r.reply.season) ? r.reply.season : null
+        // A list naming episodes past the marked end moves the end out of their way
+        var top = 0
+        for (var i = 0; i < root.draft.length; i++) top = Math.max(top, root.draft[i].last)
+        if (root.endAt > 0 && top > root.endAt) root.endAt = 0
+        root.upTo = Math.min(Math.max(root.upTo, top + 1), 200)
     }
     function save(notes) {
         var wire = notes.map(function(n) {
@@ -181,17 +209,20 @@ Corner {
         root.close()
     }
 
-    readonly property real pad: theme.space(5)
-    width: Math.min(theme.space(150), (parent ? parent.width : theme.space(150)) - theme.space(16))
+
+    readonly property real pad: theme.space(6)
+    readonly property real gap: theme.space(4)
+    readonly property real tileSize: theme.space(16)
+    width: Math.min(theme.space(200), (parent ? parent.width : theme.space(200)) - theme.space(16))
     height: Math.min(body.implicitHeight + pad * 2, (parent ? parent.height : theme.space(160)) - theme.space(16))
-    Timer { id: typedDebounce; interval: 120; onTriggered: root.readTyped(dateField.text) }
     visible: false
     color: theme.glassFloat
     borderColor: theme.lineStrong
     borderWidth: 1
     highlight: theme.glassHighlight
 
-    Timer { id: debounce; interval: 120; onTriggered: root.parse() }
+    Timer { id: debounce; interval: 150; onTriggered: root.parse() }
+    Timer { id: typedDebounce; interval: 120; onTriggered: root.readTyped(dateField.text) }
 
     // The panel's own press sink: a press on its padding never reaches the shield under it
     MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; hoverEnabled: true; onWheel: function(w) { w.accepted = true } }
@@ -206,296 +237,262 @@ Corner {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         WheelStep { flick: bodyFlick }
-    Column {
-        id: body
-        width: bodyFlick.width
-        spacing: theme.space(3)
 
-        Item {
-            width: parent.width
-            height: Math.max(heading.height, closeBtn.height)
-            Column {
-                id: heading
-                width: parent.width - closeBtn.width - theme.space(3)
-                Label { text: "Episodes and dates"; role: "title" }
-                Label {
-                    width: parent.width
-                    text: root.seriesTitle + (root.season !== null ? ", season " + (root.readSeason !== null ? root.readSeason : root.season) : "")
-                    role: "ui"; color: theme.textDim; elide: Text.ElideRight
-                }
-            }
-            Button {
-                id: closeBtn
-                objectName: "schedule-close"
-                anchors.right: parent.right; anchors.top: parent.top
-                small: true; icon: "x"; text: "Close"
-                onClicked: root.close()
-            }
-        }
-
-        Seg {
-            id: modeSeg
-            objectName: "schedule-mode"
-            options: ["Pick episodes", "Paste a list"]
-            index: root.mode
-            onPicked: function(i) { root.mode = i; if (i === 1) input.forceActiveFocus() }
-        }
-
-        Label {
-            width: parent.width
-            wrapMode: Text.WordWrap
-            text: root.mode === 0
-                  ? "Click episodes, shift-click for a run, then give them a date. Pick one and press Last episode to end the season there. AniBeam stops guessing at a TBC or the end, and a date the provider lists still wins."
-                  : "Paste what a site or a post says. What AniBeam reads lands below; anything it got wrong, fix under Pick episodes."
-            role: "ui"; color: theme.textDim
-        }
-
-        // Pick: the episode cells
-        Flow {
-            id: cells
-            visible: root.mode === 0
-            objectName: "schedule-cells"
-            width: parent.width
-            spacing: theme.space(1.5)
-            Repeater {
-                model: root.upTo
-                delegate: Corner {
-                    id: cell
-                    required property int index
-                    readonly property int ep: index + 1
-                    readonly property bool isPicked: root.picked.indexOf(ep) >= 0
-                    readonly property bool isOut: root.aired.indexOf(ep) >= 0
-                    readonly property string kind: root.kindOf(root.noteFor(ep))
-                    readonly property bool isEnd: root.endAt === ep
-                    readonly property bool past: root.endAt > 0 && ep > root.endAt
-                    objectName: "schedule-ep-" + ep
-                    width: theme.space(10); height: theme.space(10)
-                    radius: theme.space(2.5)
-                    color: isPicked ? theme.accent : cellMouse.containsMouse ? theme.raisedHover : theme.raised
-                    borderColor: isPicked ? theme.accent : isEnd ? theme.text : kind ? root.kindColor(kind) : theme.line
-                    borderWidth: (kind || isEnd) && !isPicked ? 2 : 1
-                    dashed: past ? 1 : 0
-                    opacity: past && !isPicked ? 0.45 : 1
-                    // The season's end, under its cell
-                    Label {
-                        visible: cell.isEnd
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.top: parent.bottom; anchors.topMargin: -theme.space(1)
-                        text: "END"
-                        role: "ledger"
-                        font.pointSize: theme.typeSmall * 0.7
-                        color: theme.textDim
-                    }
-                    Label {
-                        anchors.centerIn: parent
-                        text: String(cell.ep)
-                        role: "ledger"
-                        font.weight: 600
-                        color: cell.isPicked ? theme.accentText : cell.isOut ? theme.textFaint : theme.text
-                    }
-                    MouseArea {
-                        id: cellMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: function(m) { root.clickEp(cell.ep, (m.modifiers & Qt.ShiftModifier) !== 0) }
-                    }
-                }
-            }
-            // One more row of cells, for a season longer than the page knows
-            Corner {
-                width: theme.space(10); height: theme.space(10)
-                radius: theme.space(2.5)
-                color: moreMouse.containsMouse ? theme.raisedHover : "transparent"
-                borderColor: theme.line; borderWidth: 1; dashed: 1
-                Icon { anchors.centerIn: parent; glyph: "plus"; size: theme.space(4); color: theme.textDim }
-                MouseArea { id: moreMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.upTo = Math.min(root.upTo + 12, 200) }
-            }
-        }
-        Row {
-            visible: root.mode === 0
-            spacing: theme.space(2)
-            Button { small: true; flat: true; text: "Pick the rest"; onClicked: root.pickRest() }
-            Button { small: true; flat: true; text: "Pick none"; enabled: root.picked.length > 0; onClicked: root.picked = [] }
-            Label {
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.picked.length ? Fmt.plural(root.picked.length, "episode", "episodes") + " picked" : "Nothing picked"
-                role: "ledger"; color: theme.textFaint
-            }
-        }
-
-        // Pick: the date for what is picked
-        Row {
-            visible: root.mode === 0
-            width: parent.width
-            spacing: theme.space(2)
-            Field {
-                id: dateField
-                objectName: "schedule-date"
-                width: theme.space(56)
-                placeholder: "7 Jan 2027, March 2027, 2027"
-                onTextChanged: typedDebounce.restart()
-                Keys.onReturnPressed: root.apply(root.typed)
-                Keys.onEnterPressed: root.apply(root.typed)
-            }
-            Button {
-                objectName: "schedule-set"
-                primary: true
-                text: root.typed ? "Set " + root.whenOf(root.typed) : "Set date"
-                enabled: root.picked.length > 0 && root.typed !== null
-                onClicked: root.apply(root.typed)
-            }
-            ToggleChip {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Weekly"
-                checked: root.weekly
-                onToggled: root.weekly = !root.weekly
-            }
-        }
-        Row {
-            visible: root.mode === 0
-            spacing: theme.space(2)
-            Button { objectName: "schedule-tbc"; small: true; text: "No date yet"; enabled: root.picked.length > 0; onClicked: root.apply({ at: null, year: null, month: null }) }
-            Button { small: true; text: String(root.nextYear - 1); enabled: root.picked.length > 0; onClicked: root.apply({ at: null, year: root.nextYear - 1, month: null }) }
-            Button { objectName: "schedule-next-year"; small: true; text: String(root.nextYear); enabled: root.picked.length > 0; onClicked: root.apply({ at: null, year: root.nextYear, month: null }) }
-            Button { small: true; flat: true; text: "Clear their dates"; enabled: root.picked.length > 0; onClicked: root.unset() }
-            Button {
-                objectName: "schedule-last"
-                small: true
-                icon: "list-video"
-                text: root.picked.length === 1 && root.endAt === root.picked[0] ? "Not the last episode" : "Last episode"
-                enabled: root.picked.length === 1
-                onClicked: root.markLast()
-            }
-        }
-
-        // The text, a pane like a Field that grows to a few lines and then scrolls
-        Corner {
-            visible: root.mode === 1
-            width: parent.width
-            height: Math.min(Math.max(input.contentHeight + theme.space(4), theme.space(28)), theme.space(64))
-            radius: theme.radiusTile
-            smoothing: theme.cornerSmoothing
-            color: input.activeFocus ? theme.raised : theme.tile
-            borderColor: input.activeFocus ? theme.focusRing : theme.line
-            borderWidth: 1
-            Flickable {
-                id: textFlick
-                anchors.fill: parent
-                anchors.margins: theme.space(2)
-                anchors.leftMargin: theme.space(3)
-                contentWidth: width
-                contentHeight: input.contentHeight
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                WheelStep { flick: textFlick }
-                function ensureVisible(r) {
-                    if (contentY >= r.y) contentY = r.y
-                    else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
-                }
-                TextEdit {
-                    id: input
-                    objectName: "schedule-input"
-                    width: textFlick.width
-                    textFormat: TextEdit.PlainText
-                    wrapMode: TextEdit.Wrap
-                    color: theme.text
-                    font.family: theme.fontFamily
-                    font.pointSize: theme.typeSmall
-                    font.weight: theme.roleWeight("ledger")
-                    font.variableAxes: theme.roleAxes("ledger")
-                    font.features: theme.roleFeatures("ledger")
-                    selectionColor: theme.accentSoft
-                    selectedTextColor: theme.text
-                    selectByMouse: true
-                    onTextChanged: if (root.visible) debounce.restart()
-                    onCursorRectangleChanged: textFlick.ensureVisible(cursorRectangle)
-                    Keys.onEscapePressed: root.close()
-                    Text {
-                        visible: !input.text
-                        text: "Paste a release list, a table, a post. For example:\nEpisode 7 - Wednesday 28 October 2026\nEpisodes 8 to 15 - TBC in 2027"
-                        color: theme.textFaint
-                        font: input.font
-                    }
-                }
-            }
-        }
-
-
-        // The draft, one line a note, each with its own remove
-        Label {
-            visible: root.endAt > 0
-            text: "The season ends at episode " + root.endAt + ". Nothing after it is predicted."
-            role: "ui"; color: theme.text
-        }
-        Label {
-            text: root.draft.length ? "The schedule you are saving" : (root.mode === 1 && input.text ? "Nothing here names an episode and a date yet" : "Nothing set yet")
-            role: "ledger"; color: theme.textFaint
-        }
         Column {
-            objectName: "schedule-preview"
-            width: parent.width
-            spacing: theme.space(1)
-            Repeater {
-                model: root.draft
-                delegate: Item {
-                    id: noteRow
-                    required property var modelData
-                    width: parent ? parent.width : 0
-                    height: Math.max(eps.height, rm.height)
-                    Rectangle {
-                        id: dot
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: theme.space(2); height: width; radius: width / 2
-                        color: root.kindColor(root.kindOf(noteRow.modelData))
-                    }
+            id: body
+            width: bodyFlick.width
+            spacing: root.gap
+
+            // Head: what and whose, with paste and close on the right
+            Item {
+                width: parent.width
+                height: Math.max(heading.height, headActions.height)
+                Column {
+                    id: heading
+                    width: parent.width - headActions.width - theme.space(4)
+                    Label { text: "Episodes and dates"; role: "title" }
                     Label {
-                        id: eps
-                        anchors.left: dot.right; anchors.leftMargin: theme.space(2)
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.epsText(noteRow.modelData)
-                        role: "ui"
+                        width: parent.width
+                        text: root.seriesTitle + (root.season !== null ? " · Season " + (root.readSeason !== null ? root.readSeason : root.season) : "")
+                        role: "ui"; color: theme.textDim; elide: Text.ElideRight
                     }
-                    Label {
-                        anchors.right: rm.left; anchors.rightMargin: theme.space(2)
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.whenOf(noteRow.modelData)
-                        role: "ledger"
-                        color: root.kindColor(root.kindOf(noteRow.modelData))
+                }
+                Row {
+                    id: headActions
+                    anchors.right: parent.right
+                    anchors.verticalCenter: heading.verticalCenter
+                    spacing: theme.space(2)
+                    Button {
+                        objectName: "schedule-paste-toggle"
+                        flat: true
+                        icon: root.pasting ? "check" : "copy"
+                        text: root.pasting ? "Done pasting" : "Paste a list"
+                        onClicked: { root.pasting = !root.pasting; if (root.pasting) input.forceActiveFocus() }
                     }
                     Button {
-                        id: rm
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        small: true; flat: true; icon: "x"; text: ""
-                        onClicked: root.removeNote(noteRow.modelData)
+                        objectName: "schedule-close"
+                        flat: true
+                        icon: "x"
+                        text: ""
+                        onClicked: root.close()
+                    }
+                }
+            }
+
+            // Paste: the box, and the one line saying where its reading goes
+            Column {
+                visible: root.pasting
+                width: parent.width
+                spacing: theme.space(2)
+                Corner {
+                    width: parent.width
+                    height: theme.space(32)
+                    radius: theme.radiusTile
+                    smoothing: theme.cornerSmoothing
+                    color: input.activeFocus ? theme.raised : theme.tile
+                    borderColor: input.activeFocus ? theme.focusRing : theme.line
+                    borderWidth: 1
+                    Flickable {
+                        id: textFlick
+                        anchors.fill: parent
+                        anchors.margins: theme.space(3)
+                        contentWidth: width
+                        contentHeight: input.contentHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        WheelStep { flick: textFlick }
+                        function ensureVisible(r) {
+                            if (contentY >= r.y) contentY = r.y
+                            else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
+                        }
+                        TextEdit {
+                            id: input
+                            objectName: "schedule-input"
+                            width: textFlick.width
+                            textFormat: TextEdit.PlainText
+                            wrapMode: TextEdit.Wrap
+                            color: theme.text
+                            font.family: theme.fontFamily
+                            font.pointSize: theme.typeNormal
+                            font.weight: theme.roleWeight("ui")
+                            font.variableAxes: theme.roleAxes("ui")
+                            selectionColor: theme.accentSoft
+                            selectedTextColor: theme.text
+                            selectByMouse: true
+                            onTextChanged: if (root.visible) debounce.restart()
+                            onCursorRectangleChanged: textFlick.ensureVisible(cursorRectangle)
+                            Keys.onEscapePressed: root.pasting = false
+                            Text {
+                                visible: !input.text
+                                text: "Paste a release list, a table or a post"
+                                color: theme.textFaint
+                                font: input.font
+                            }
+                        }
+                    }
+                }
+                Label {
+                    text: "What AniBeam reads shows on the episodes below."
+                    role: "ui"; color: theme.textDim
+                }
+            }
+
+            // The episodes: one tile each, its date under its number
+            Flow {
+                id: cells
+                objectName: "schedule-cells"
+                width: parent.width
+                spacing: theme.space(2)
+                Repeater {
+                    model: root.upTo
+                    delegate: Corner {
+                        id: cell
+                        required property int index
+                        readonly property int ep: index + 1
+                        readonly property bool isPicked: root.picked.indexOf(ep) >= 0
+                        readonly property bool isOut: root.aired.indexOf(ep) >= 0
+                        readonly property string kind: root.kindOf(root.noteFor(ep))
+                        readonly property bool isEnd: root.endAt === ep
+                        readonly property bool past: root.endAt > 0 && ep > root.endAt
+                        objectName: "schedule-ep-" + ep
+                        width: root.tileSize; height: root.tileSize
+                        radius: theme.radiusInner(theme.space(1))
+                        color: isPicked ? theme.accent : cellMouse.containsMouse ? theme.raisedHover : theme.raised
+                        borderColor: isPicked ? theme.accent : kind && !past ? root.kindColor(kind) : theme.line
+                        borderWidth: kind && !isPicked && !past ? 2 : 1
+                        opacity: past && !isPicked ? 0.4 : 1
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: theme.space(0.5)
+                            Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: String(cell.ep)
+                                role: "ui"
+                                font.weight: 650
+                                color: cell.isPicked ? theme.accentText : cell.isOut && !cell.kind ? theme.textFaint : theme.text
+                            }
+                            Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: root.tileText(cell.ep) || " "
+                                role: "ledger"
+                                color: cell.isPicked ? theme.accentText : cell.kind && !cell.past ? root.kindColor(cell.kind) : theme.textFaint
+                            }
+                        }
+                        // The last episode: a bar along its foot
+                        Rectangle {
+                            visible: cell.isEnd
+                            anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1.5)
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: parent.width * 0.5; height: theme.space(0.75); radius: height / 2
+                            color: cell.isPicked ? theme.accentText : theme.text
+                        }
+                        MouseArea {
+                            id: cellMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: function(m) { root.clickEp(cell.ep, (m.modifiers & Qt.ShiftModifier) !== 0) }
+                        }
+                    }
+                }
+                // One more row of tiles, for a season longer than the page knows
+                Corner {
+                    objectName: "schedule-more"
+                    width: root.tileSize; height: root.tileSize
+                    radius: theme.radiusInner(theme.space(1))
+                    color: moreMouse.containsMouse ? theme.raisedHover : "transparent"
+                    borderColor: theme.line; borderWidth: 1; dashed: 1
+                    Icon { anchors.centerIn: parent; glyph: "plus"; size: theme.space(5); color: theme.textDim }
+                    MouseArea { id: moreMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.upTo = Math.min(root.upTo + 12, 200) }
+                }
+            }
+
+            // Nothing picked: one line on how to start, at the row's own height
+            Label {
+                visible: root.picked.length === 0
+                height: theme.controlHeight
+                verticalAlignment: Text.AlignVCenter
+                text: "Click an episode to date it. Shift-click picks a run."
+                role: "ui"; color: theme.textDim
+            }
+            // Something picked: the one row of actions for it
+            Flow {
+                visible: root.picked.length > 0
+                width: parent.width
+                spacing: theme.space(2)
+                Label {
+                    height: theme.controlHeight
+                    verticalAlignment: Text.AlignVCenter
+                    text: (root.picked.length === 1 ? "Episode " + root.picked[0] : Fmt.plural(root.picked.length, "episode", "episodes")) + ":"
+                    role: "ui"
+                }
+                Field {
+                    id: dateField
+                    objectName: "schedule-date"
+                    width: theme.space(44)
+                    placeholder: "7 Jan, March 2027, 2027"
+                    onTextChanged: typedDebounce.restart()
+                    Keys.onReturnPressed: root.apply(root.typed)
+                    Keys.onEnterPressed: root.apply(root.typed)
+                }
+                Button {
+                    objectName: "schedule-set"
+                    text: "Set date"
+                    enabled: root.picked.length > 0 && root.typed !== null
+                    onClicked: root.apply(root.typed)
+                }
+                Button {
+                    objectName: "schedule-tbc"
+                    text: "No date yet"
+                    enabled: root.picked.length > 0
+                    onClicked: root.apply({ at: null, year: null, month: null })
+                }
+                Button {
+                    objectName: "schedule-weekly"
+                    visible: root.picked.length > 1
+                    text: "Weekly"
+                    icon: root.weekly ? "check" : ""
+                    flat: !root.weekly
+                    onClicked: root.weekly = !root.weekly
+                }
+                Button {
+                    objectName: "schedule-last"
+                    text: root.picked.length === 1 && root.endAt === root.picked[0] ? "Not the last" : "Last episode"
+                    visible: root.picked.length === 1
+                    onClicked: root.markLast()
+                }
+                Button {
+                    objectName: "schedule-clear-picked"
+                    flat: true
+                    text: "Clear date"
+                    visible: root.picked.some(function(e) { return root.noteFor(e) !== null })
+                    onClicked: root.unset()
+                }
+            }
+
+            // A hairline, then the summary and the way out
+            Rectangle { width: parent.width; height: 1; color: theme.line }
+            Item {
+                width: parent.width
+                height: theme.controlHeight
+                Label {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.summary
+                    role: "ui"; color: theme.textDim
+                }
+                Row {
+                    anchors.right: parent.right
+                    spacing: theme.space(2)
+                    Button { flat: true; text: "Cancel"; onClicked: root.close() }
+                    Button {
+                        objectName: "schedule-save"
+                        primary: true
+                        text: "Save"
+                        enabled: JSON.stringify(root.draft) !== JSON.stringify(root.collapse(root.expand(root.saved))) || root.endAt !== root.savedEnd
+                        onClicked: root.save(root.draft)
                     }
                 }
             }
         }
-
-        Row {
-            spacing: theme.space(2)
-            Button {
-                objectName: "schedule-save"
-                primary: true
-                text: "Save"
-                enabled: root.draft.length > 0 || root.saved.length > 0 || root.endAt !== root.savedEnd
-                onClicked: root.save(root.draft)
-            }
-            Button {
-                visible: root.saved.length > 0
-                objectName: "schedule-clear"
-                flat: true
-                text: "Clear all"
-                onClicked: root.save([])
-            }
-            Button {
-                flat: true
-                text: "Cancel"
-                onClicked: root.close()
-            }
-        }
-    }
     }
 }
