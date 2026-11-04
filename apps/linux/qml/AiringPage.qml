@@ -22,6 +22,7 @@
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Window
+import QtCore
 import com.marcusrosado.AniBeam
 
 Item {
@@ -180,9 +181,19 @@ Item {
     // Out now's grid of small cards: as many columns as fit at a readable title width, two
     // rows of them until All opens the rest
     readonly property real outGap: theme.space(3)
-    readonly property int outCols: Math.max(1, Math.floor((scroll.innerWidth + outGap) / (theme.space(80) + outGap)))
+    // Columns by rows, from Settings, Appearance; a window too narrow for the columns at a
+    // readable width gets fewer
+    Settings { id: kept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2" }
+    readonly property var outLayout: {
+        var m = /^(\d)x(\d)$/.exec(kept.outLayout)
+        return m ? [parseInt(m[1]), parseInt(m[2])] : [4, 2]
+    }
+    readonly property int outRows: outLayout[1]
+    readonly property int outCols: Math.max(1, Math.min(outLayout[0], Math.floor((scroll.innerWidth + outGap) / (theme.space(45) + outGap))))
     readonly property real outCellWidth: Math.floor((scroll.innerWidth - outGap * (outCols - 1)) / outCols)
-    readonly property int outFirst: outCols * 2
+    // Tall enough for two lines of words, and close to a banner's wide shape as the tile narrows
+    readonly property real outCellHeight: Math.max(theme.space(20), Math.round(outCellWidth / 3.4))
+    readonly property int outFirst: outCols * outRows
     readonly property var outShown: page.allOut ? page.aired : page.aired.slice(0, page.outFirst)
     readonly property int outToday: {
         var n = 0
@@ -536,7 +547,7 @@ Item {
                         readonly property bool today: page.nowMs / 1000 - modelData.at < 86400
                         objectName: "airing-out-" + modelData.anilist_id + "-" + modelData.episode
                         width: page.outCellWidth
-                        height: theme.space(26)
+                        height: page.outCellHeight
                         activeFocusOnTab: true
                         scale: theme.reducedMotion ? 1 : (pm.pressed ? 0.985 : 1)
                         function open() {

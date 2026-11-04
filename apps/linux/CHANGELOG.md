@@ -15,6 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Pick how many Out now episodes Airing shows, in Settings under Appearance
 - Sort Airing by score, next episode, episode count or title
 - Airing can show any season: open the arrow beside the next season
 - Hide what is on your lists or in your library from Airing
