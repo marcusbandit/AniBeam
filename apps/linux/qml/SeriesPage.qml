@@ -73,8 +73,12 @@ Item {
         // What the record already says: each episode's air date, from the files, the aired
         // ones with no file, and the ones still to come
         var known = {}
+        var noted = function(n) {
+            return page.scheduleNotes.some(function(x) { return n >= x.first && n <= x.last })
+        }
         var mark = function(n, at, guess) {
-            if (at === null || at === undefined) return
+            // A date from the user's own notes is not the record's
+            if (at === null || at === undefined || noted(Math.floor(n))) return
             known[Math.floor(n)] = { at: at, guess: !!guess }
         }
         ;(page.detail ? page.detail.episodes : []).forEach(function(e) { if (season === null || (e.season || 1) === season) mark(e.number, e.air_date, false) })
@@ -822,15 +826,16 @@ Item {
                     readonly property bool gaveWay: set !== null && card.episodes_set_applied !== true
                     // A TVmaze count is one season's, so the row names it
                     readonly property string seasonWord: card.count_season ? "Season " + card.count_season : ""
-                    readonly property string countText: set === null ? "" : gaveWay
-                        ? "You set " + set + " episodes; that no longer applies"
+                    readonly property string countText: set === null || gaveWay ? ""
                         : (seasonWord ? seasonWord + " ends" : "Ends") + " at episode " + set
                     visible: set !== null || page.heldLine !== ""
                     spacing: theme.space(2)
                     Label {
                         objectName: "schedule-held"
                         anchors.verticalCenter: parent.verticalCenter
-                        text: [countRow.countText, page.heldLine].filter(Boolean).join(" · ") + ", set by you"
+                        text: countRow.gaveWay && !page.heldLine
+                              ? "You set " + countRow.set + " episodes; that no longer applies"
+                              : [countRow.countText, page.heldLine].filter(Boolean).join(" · ") + ", set by you"
                         role: "ledger"
                         color: page.inkDim
                     }

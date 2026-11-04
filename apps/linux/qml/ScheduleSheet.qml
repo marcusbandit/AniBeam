@@ -40,9 +40,11 @@ Corner {
         for (var k in known) if (!known[k].guess) out[k] = known[k].at
         return out
     }
-    // The weekly guesses the season would get from what is set here: after the last date
-    // known, one week on each, up to the last episode (or the one next when none is set),
-    // never at or past an episode with no date or a year or month only
+    // A preview of the weekly guesses cards::plan makes from what is set here: each episode
+    // with no date guesses one cadence on from the dated one before it, up to the last
+    // episode (or one past the last date when none is set); an episode with no date, a year
+    // or a month only stops the run until the next date. Close to what Save gives, not the
+    // core's word: plan also moves an overdue guess a week on.
     readonly property var guesses: {
         var out = {}
         var by = expand(draft)
@@ -59,11 +61,11 @@ Corner {
         }
         var last = nums[nums.length - 1]
         var to = endAt > 0 ? endAt : last + 1
-        var at = dated[last]
-        for (var n = last + 1; n <= to; n++) {
-            if (by[n]) break
-            at += step
-            out[n] = at
+        var anchor = null
+        for (var n = nums[0]; n <= to; n++) {
+            if (dated[n] !== undefined) { anchor = { n: n, at: dated[n] }; continue }
+            if (by[n]) { anchor = null; continue }
+            if (anchor && aired.indexOf(n) < 0) out[n] = anchor.at + (n - anchor.n) * step
         }
         return out
     }
@@ -245,9 +247,8 @@ Corner {
             return { first: n.first, last: n.last, year: has(n.year) ? n.year : null, month: n.month || null,
                      at: has(n.at) ? { secs_since_epoch: Math.round(n.at), nanos_since_epoch: 0 } : null }
         })
-        // A season the text names wins over the page's own, for a show numbered in seasons
-        var season = root.season !== null && root.readSeason !== null ? root.readSeason : root.season
-        var r = Door.call("SetScheduleNotes", { series: root.seriesId, season: season, notes: wire })
+        // Always the season the page is about, the one its count and its tiles belong to
+        var r = Door.call("SetScheduleNotes", { series: root.seriesId, season: root.season, notes: wire })
         if (r.error) { frame.toast(frame.errorText(r.error)); return }
         if (root.endAt !== root.savedEnd) {
             var c = Door.call("SetEpisodeCount", { series: root.seriesId, count: root.endAt > 0 ? root.endAt : null })
@@ -301,7 +302,7 @@ Corner {
                     Label { text: "Episodes and dates"; role: "title" }
                     Label {
                         width: parent.width
-                        text: root.seriesTitle + (root.season !== null ? " · Season " + (root.readSeason !== null ? root.readSeason : root.season) : "")
+                        text: root.seriesTitle + (root.season !== null ? " · Season " + root.season : "")
                         role: "ui"; color: theme.textDim; elide: Text.ElideRight
                     }
                 }

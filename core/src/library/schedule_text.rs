@@ -51,7 +51,7 @@ static NUMERIC: LazyLock<Regex> =
     LazyLock::new(|| re(r"\b(\d{1,2})([/.])(\d{1,2})[/.](\d{4}|\d{2})\b"));
 static DAY_MONTH: LazyLock<Regex> = LazyLock::new(|| {
     re(&format!(
-        r"(?i)(?:{DAYS})?\b(\d{{1,2}})(?:st|nd|rd|th|er|\.)?\s+(?:of\s+|de\s+)?({MONTHS})\b\.?,?(?:\s+(?:de\s+)?(\d{{4}}))?"
+        r"(?i)(?:{DAYS})?\b(\d{{1,2}})(?:st|nd|rd|th|er|\.)? +(?:of +|de +)?({MONTHS})\b\.?,?(?: +(?:de +)?(\d{{4}}))?"
     ))
 });
 static MONTH_DAY: LazyLock<Regex> = LazyLock::new(|| {
@@ -122,6 +122,10 @@ static MARKED: LazyLock<Regex> = LazyLock::new(|| {
         r"(?i)(?:\bs\.?\s*\d{{1,2}}\s*[ .,]?\s*e\.?\s*|\b\d{{1,2}}x|\b{EP_WORD}\s*[#=:]?\s*|#\s*)(\d{{1,4}})\b((?:\s*(?:-|~|to|through|thru|until|bis|al|à|a|,|&|\+|and|y|et|und)\s*(?:{EP_WORD}\s*|#\s*)?\d{{1,4}}\b)*)"
     ))
 });
+/// An episode word ending the text before a number: that number is the
+/// episode's.
+static EP_BEFORE: LazyLock<Regex> =
+    LazyLock::new(|| re(&format!(r"(?i)(?:\b{EP_WORD}|#)\s*[#=:]?\s*$")));
 static TAIL: LazyLock<Regex> = LazyLock::new(|| {
     re(&format!(
         r"(?i)(-|~|to|through|thru|until|bis|al|à|a|,|&|\+|and|y|et|und)\s*(?:{EP_WORD}\s*|#\s*)?(\d{{1,4}})"
@@ -458,6 +462,10 @@ fn dates_of(line: &str, ctx: Ctx) -> Vec<Found> {
         add(c.get(0).unwrap(), 0, dated(Some(y), ctx, m, d));
     }
     for c in DAY_MONTH.captures_iter(line) {
+        // "Episode 8 March 2027": the number is the episode's, not a day
+        if EP_BEFORE.is_match(&line[..c.get(0).unwrap().start()]) {
+            continue;
+        }
         let year = c.get(3).and_then(|y| y.as_str().parse().ok());
         let w = month_num(&c[2]).and_then(|m| dated(year, ctx, m, num(&c[1])?));
         add(c.get(0).unwrap(), 0, w);
@@ -701,13 +709,18 @@ fn dated(year: Option<i32>, ctx: Ctx, month: u8, d: u8) -> Option<When> {
 /// line for an episode already read gives way to the first.
 pub(crate) fn fold(rows: Vec<NoteRow>) -> Vec<NoteRow> {
     let mut out: Vec<NoteRow> = Vec::new();
-    for r in rows {
+    for mut r in rows {
         if let Some(prev) = out.last_mut() {
             if r.first <= prev.last {
-                if r.last > prev.last && r.when == prev.when {
-                    prev.last = r.last;
+                if r.last <= prev.last {
+                    continue;
                 }
-                continue;
+                if r.when == prev.when {
+                    prev.last = r.last;
+                    continue;
+                }
+                // The overlap gives way to the first; the rest keeps its own date
+                r.first = prev.last + 1;
             }
             if r.when == prev.when && r.first == prev.last + 1 {
                 prev.last = r.last;
@@ -763,13 +776,13 @@ pub(crate) mod tests {
     pub const CASES: &[(&str, &str, &str, Option<u32>)] = &[
         (
             "A release list, dates written out",
-            "Helluva Boss season 3 Part 1:\nEpisode 1 – Wednesday 14 October 2026 (out now)\nEpisode 2 – Wednesday 14 October 2026 (out now)\nEpisode 3 – Wednesday 21 October 2026\nEpisode 8 - TBC in 2027\nEpisode 9 - TBC in 2027",
+            "Helluva Boss season 3 Part 1:\nEpisode 1 \u{2013} Wednesday 14 October 2026 (out now)\nEpisode 2 \u{2013} Wednesday 14 October 2026 (out now)\nEpisode 3 \u{2013} Wednesday 21 October 2026\nEpisode 8 - TBC in 2027\nEpisode 9 - TBC in 2027",
             "1-2 14 Oct 2026; 3 21 Oct 2026; 8-9 2027",
             Some(3),
         ),
         (
             "HTML copied from a web page",
-            "<ul><li><strong>Episode 7 – Wednesday 28 October 2026 (out now)</strong></li><li><strong>Episode 8 - TBC in 2027 </strong></li></ul>",
+            "<ul><li><strong>Episode 7 \u{2013} Wednesday 28 October 2026 (out now)</strong></li><li><strong>Episode 8 - TBC in 2027 </strong></li></ul>",
             "7 28 Oct 2026; 8 2027",
             None,
         ),
@@ -793,7 +806,7 @@ pub(crate) mod tests {
         ),
         (
             "European and ISO dates",
-            "Folge 3 - 05.01.2027\nEpisode 4 — 2027-01-12\n#5 19/01/2027",
+            "Folge 3 - 05.01.2027\nEpisode 4 \u{2014} 2027-01-12\n#5 19/01/2027",
             "3 5 Jan 2027; 4 12 Jan 2027; 5 19 Jan 2027",
             None,
         ),
@@ -948,6 +961,12 @@ pub(crate) mod tests {
             None,
         ),
         (
+            "A month after the episode number, in a table or a line",
+            "<table><tr><td>8</td><td>March 2027</td></tr></table>\nEpisode 9 April 2027",
+            "8 Mar 2027; 9 Apr 2027",
+            None,
+        ),
+        (
             "A date heading that is really a note",
             "Updated November 3, 2026\nEpisode 9 is the finale",
             "",
@@ -960,6 +979,37 @@ pub(crate) mod tests {
             None,
         ),
     ];
+
+    #[test]
+    fn an_overlap_gives_way_to_the_first_and_keeps_the_rest() {
+        let rows = vec![
+            NoteRow {
+                first: 5,
+                last: 8,
+                when: When::Unknown,
+            },
+            NoteRow {
+                first: 7,
+                last: 12,
+                when: When::Year(2027),
+            },
+        ];
+        assert_eq!(
+            fold(rows),
+            vec![
+                NoteRow {
+                    first: 5,
+                    last: 8,
+                    when: When::Unknown
+                },
+                NoteRow {
+                    first: 9,
+                    last: 12,
+                    when: When::Year(2027)
+                },
+            ]
+        );
+    }
 
     #[test]
     fn the_catalogue_reads_as_written() {

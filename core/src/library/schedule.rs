@@ -11,6 +11,9 @@ use crate::library::cards;
 use crate::library::schedule_text::{SPAN_MAX, fold, parse};
 use crate::time as clock;
 
+/// The highest episode number a note may name.
+const EPISODE_MAX: u32 = 10_000;
+
 /// When the episodes a note covers land.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum When {
@@ -22,6 +25,29 @@ pub enum When {
     Year(i32),
     /// No date known.
     Unknown,
+}
+
+impl When {
+    /// The note's `at`, `year` and `month` columns, the one mapping both
+    /// ways between them and `When`.
+    pub fn columns(self) -> (Option<i64>, Option<i32>, Option<u8>) {
+        match self {
+            When::On(at) => (Some(at), None, None),
+            When::Month(y, m) => (None, Some(y), Some(m)),
+            When::Year(y) => (None, Some(y), None),
+            When::Unknown => (None, None, None),
+        }
+    }
+
+    /// The reverse of `columns`; a month outside 1 to 12 reads as the year.
+    pub fn from_columns(at: Option<i64>, year: Option<i32>, month: Option<u8>) -> When {
+        match (at, year, month) {
+            (Some(at), _, _) => When::On(at),
+            (None, Some(y), Some(m)) if (1..=12).contains(&m) => When::Month(y, m),
+            (None, Some(y), _) => When::Year(y),
+            (None, None, _) => When::Unknown,
+        }
+    }
 }
 
 /// One note as the snapshot holds it.
@@ -38,12 +64,11 @@ impl NoteRow {
     }
 
     pub fn from_wire(n: &ScheduleNote) -> NoteRow {
-        let when = match (n.at, n.year, n.month) {
-            (Some(at), _, _) => When::On(clock::to_secs(at)),
-            (None, Some(y), Some(m)) if (1..=12).contains(&m) => When::Month(y, m as u8),
-            (None, Some(y), _) => When::Year(y),
-            (None, None, _) => When::Unknown,
-        };
+        let when = When::from_columns(
+            n.at.map(clock::to_secs),
+            n.year,
+            n.month.and_then(|m| u8::try_from(m).ok()),
+        );
         NoteRow {
             first: n.first.min(n.last),
             last: n.first.max(n.last),
@@ -52,18 +77,13 @@ impl NoteRow {
     }
 
     pub fn to_wire(self) -> ScheduleNote {
-        let (at, year, month) = match self.when {
-            When::On(at) => (Some(clock::from_secs(at)), None, None),
-            When::Month(y, m) => (None, Some(y), Some(u32::from(m))),
-            When::Year(y) => (None, Some(y), None),
-            When::Unknown => (None, None, None),
-        };
+        let (at, year, month) = self.when.columns();
         ScheduleNote {
             first: self.first,
             last: self.last,
-            at,
+            at: at.map(clock::from_secs),
             year,
-            month,
+            month: month.map(u32::from),
         }
     }
 }
@@ -94,12 +114,11 @@ pub(crate) fn load(
             NoteRow {
                 first: r.get::<_, i64>(2)? as u32,
                 last: r.get::<_, i64>(3)? as u32,
-                when: match (at, year, month) {
-                    (Some(at), _, _) => When::On(at),
-                    (None, Some(y), Some(m)) => When::Month(y as i32, m as u8),
-                    (None, Some(y), None) => When::Year(y as i32),
-                    (None, None, _) => When::Unknown,
-                },
+                when: When::from_columns(
+                    at,
+                    year.and_then(|y| i32::try_from(y).ok()),
+                    month.and_then(|m| u8::try_from(m).ok()),
+                ),
             },
         ))
     })?;
@@ -138,7 +157,7 @@ pub fn set_notes(
     let mut rows: Vec<NoteRow> = notes
         .iter()
         .map(NoteRow::from_wire)
-        .filter(|n| n.first > 0 && n.last - n.first < SPAN_MAX)
+        .filter(|n| n.first > 0 && n.last <= EPISODE_MAX && n.last - n.first < SPAN_MAX)
         .collect();
     rows.sort_by_key(|r| r.first);
     let rows = fold(rows);
@@ -151,12 +170,7 @@ pub fn set_notes(
             params![series as i64, season.map(i64::from)],
         )?;
         for r in &rows {
-            let (at, year, month) = match r.when {
-                When::On(at) => (Some(at), None, None),
-                When::Month(y, m) => (None, Some(i64::from(y)), Some(i64::from(m))),
-                When::Year(y) => (None, Some(i64::from(y)), None),
-                When::Unknown => (None, None, None),
-            };
+            let (at, year, month) = r.when.columns();
             tx.execute(
                 "INSERT INTO schedule_notes (series_id, season, first, last, at, year, month, set_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -166,8 +180,8 @@ pub fn set_notes(
                     i64::from(r.first),
                     i64::from(r.last),
                     at,
-                    year,
-                    month,
+                    year.map(i64::from),
+                    month.map(i64::from),
                     now
                 ],
             )?;

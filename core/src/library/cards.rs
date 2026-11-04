@@ -205,7 +205,7 @@ fn plan(
         .collect();
     for note in notes {
         let When::On(at) = note.when else { continue };
-        for n in note.first..=note.last.min(note.first + CUBES_MAX) {
+        for n in note.first..=note.last.min(note.first.saturating_add(CUBES_MAX)) {
             if !dated.iter().any(|d| d.0 == n) {
                 dated.push((n, at));
             }

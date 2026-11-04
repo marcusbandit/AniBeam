@@ -13,3 +13,14 @@ CREATE TABLE schedule_notes (
     set_at     INTEGER NOT NULL
 );
 CREATE INDEX schedule_notes_series ON schedule_notes(series_id);
+
+-- Notes belong to the record they were written against: a cleared match or a
+-- different show drops them, the way a new match drops a set episode count.
+CREATE TRIGGER schedule_notes_follow_match
+AFTER UPDATE OF anilist_id, mal_id, tvmaze_id ON series
+WHEN OLD.anilist_id IS NOT NEW.anilist_id
+  OR OLD.mal_id IS NOT NEW.mal_id
+  OR OLD.tvmaze_id IS NOT NEW.tvmaze_id
+BEGIN
+    DELETE FROM schedule_notes WHERE series_id = NEW.id;
+END;
