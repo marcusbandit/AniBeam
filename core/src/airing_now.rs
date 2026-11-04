@@ -60,7 +60,8 @@ const SEASONS: [(&str, &str); 4] = [
 
 /// `Now` is everything releasing, whatever season it started in, which is
 /// what "on air" means to someone watching a long runner. `Next` is the
-/// season after the one this moment falls in, by AniList's quarters.
+/// season after the one this moment falls in, by AniList's quarters, and
+/// `Season` is the one it names.
 pub fn season_of(pick: SeasonPick, now: i64) -> Season {
     match pick {
         SeasonPick::Now => Season {
@@ -79,15 +80,20 @@ pub fn season_of(pick: SeasonPick, now: i64) -> Season {
             } else {
                 (quarter + 1, date.year())
             };
-            let (name, label) = SEASONS[index];
-            Season {
-                key: format!("{name}-{year}"),
-                label: format!("{label} {year}"),
-                status: None,
-                season: Some(name),
-                year: Some(year),
-            }
+            named(index, year)
         }
+        SeasonPick::Season { name, year } => named(name as usize, year),
+    }
+}
+
+fn named(index: usize, year: i32) -> Season {
+    let (name, label) = SEASONS[index];
+    Season {
+        key: format!("{name}-{year}"),
+        label: format!("{label} {year}"),
+        status: None,
+        season: Some(name),
+        year: Some(year),
     }
 }
 
@@ -525,8 +531,9 @@ fn text(value: &serde_json::Value) -> Option<String> {
 }
 
 /// The season replaced whole, in one transaction: a show AniList stopped
-/// listing goes with the old rows. Seasons that are neither on air nor next
-/// go too, and the strip keeps only its window.
+/// listing goes with the old rows. Seasons that are neither on air, next,
+/// nor this one go too, so a season browsed to stays cached only until
+/// another is, and the strip keeps only its window.
 fn write(
     tx: &Transaction,
     key: &str,
@@ -537,12 +544,12 @@ fn write(
 ) -> Result<(), CoreError> {
     tx.execute("DELETE FROM season_shows WHERE season = ?1", params![key])?;
     tx.execute(
-        "DELETE FROM season_shows WHERE season NOT IN ('NOW', ?1)",
-        params![next_key],
+        "DELETE FROM season_shows WHERE season NOT IN ('NOW', ?1, ?2)",
+        params![next_key, key],
     )?;
     tx.execute(
-        "DELETE FROM season_fetches WHERE season NOT IN ('NOW', ?1)",
-        params![next_key],
+        "DELETE FROM season_fetches WHERE season NOT IN ('NOW', ?1, ?2)",
+        params![next_key, key],
     )?;
     let mut insert = tx.prepare(
         "INSERT INTO season_shows (season, anilist_id, rank, mal_id, title_romaji, title_english, title_native,
@@ -903,6 +910,21 @@ mod tests {
         );
         let s = season_of(SeasonPick::Next, MAY);
         assert_eq!(s.key, "SUMMER-2026");
+    }
+
+    #[test]
+    fn a_named_season_asks_for_that_quarter_and_year() {
+        let pick = SeasonPick::Season {
+            name: SeasonName::Spring,
+            year: 2019,
+        };
+        let s = season_of(pick, OCTOBER);
+        assert_eq!(s.key, "SPRING-2019");
+        assert_eq!(s.label, "Spring 2019");
+        assert_eq!(
+            season_variables(&s, 1),
+            serde_json::json!({ "page": 1, "season": "SPRING", "seasonYear": 2019 })
+        );
     }
 
     #[test]

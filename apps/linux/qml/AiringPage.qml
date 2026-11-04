@@ -34,12 +34,18 @@ Item {
         return false
     }
 
-    // "Now" or "Next", as the core spells SeasonPick; kept in the page's props, so the rail
-    // brings the page back on the season and filter it was left on
+    // "Now", "Next", or a season and its year ("Spring 2019"), as the bridge spells SeasonPick;
+    // kept in the page's props, so the rail brings the page back on the season and filter it
+    // was left on
     property string season: props.season || "Now"
     // 0 everything, 1 on my lists, 2 in my library
     property int filter: props.filter || 0
-    function keepView() { frame.nav.current.props = { season: page.season, filter: page.filter } }
+    // What to leave out, on top of the filter: the shows on the user's lists, the library's
+    property bool hideListed: !!props.hideListed
+    property bool hideOwned: !!props.hideOwned
+    function keepView() {
+        frame.nav.current.props = { season: page.season, filter: page.filter, hideListed: page.hideListed, hideOwned: page.hideOwned }
+    }
     property var listed: null
     property bool refreshing: false
     // The season read this page waits on: events of the other season's read are not its own
@@ -114,19 +120,27 @@ Item {
         }
     }
 
+    // The season control's second cell: the season showing when one was picked, else the next
+    readonly property string seasonLabel: page.season === "Now" || page.season === "Next" ? page.nextLabel : page.season
+    function kept(s) {
+        if (page.hideListed && !!s.list_status) return false
+        if (page.hideOwned && page.owned(s)) return false
+        return true
+    }
+    readonly property bool narrowed: page.filter !== 0 || page.hideListed || page.hideOwned
     readonly property var shows: {
         if (!listed) return []
         var f = page.filter
         return listed.shows.filter(function(s) {
-            if (f === 1) return !!s.list_status
-            if (f === 2) return page.owned(s)
-            return true
+            if (f === 1 && !s.list_status) return false
+            if (f === 2 && !page.owned(s)) return false
+            return page.kept(s)
         })
     }
     // The strip follows the narrowing too: On my lists means the episodes of those shows
     readonly property var aired: {
         if (page.season !== "Now" || !listed) return []
-        if (page.filter === 0) return listed.aired
+        if (!page.narrowed) return listed.aired
         var keep = {}
         for (var i = 0; i < page.shows.length; i++) keep[page.shows[i].anilist_id] = true
         return listed.aired.filter(function(a) { return keep[a.anilist_id] === true })
@@ -141,9 +155,10 @@ Item {
         for (var i = 0; i < aired.length; i++) if (nowMs / 1000 - aired[i].at < 86400) n++
         return n
     }
-    // How many each filter holds, for its pill
-    readonly property int listedCount: listed ? listed.shows.filter(function(s) { return !!s.list_status }).length : 0
-    readonly property int ownedCount: listed ? listed.shows.filter(function(s) { return page.owned(s) }).length : 0
+    // How many each filter holds with the hides applied, for its pill
+    readonly property int allCount: listed ? listed.shows.filter(function(s) { return page.kept(s) }).length : 0
+    readonly property int listedCount: listed ? listed.shows.filter(function(s) { return !!s.list_status && page.kept(s) }).length : 0
+    readonly property int ownedCount: listed ? listed.shows.filter(function(s) { return page.owned(s) && page.kept(s) }).length : 0
     // The line says what the pills do not: how many came out today (the show count is on the
     // filter pill already)
     readonly property string summary: {
@@ -174,6 +189,8 @@ Item {
         if (r.reply && r.reply.job !== undefined) { page.refreshing = true; page.refreshJob = r.reply.job }
     }
     function pickSeason(s) {
+        // The next season by name is the next season
+        if (s === page.nextLabel) s = "Next"
         if (s === page.season) return
         page.season = s
         page.keepView()
@@ -308,7 +325,7 @@ Item {
                 id: titleLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: page.season === "Now" ? "Airing now" : (page.listed ? page.listed.label : page.nextLabel)
+                text: page.season === "Now" ? "Airing now" : page.seasonLabel
                 role: "display"
                 font.pointSize: theme.typePage
             }
@@ -316,13 +333,27 @@ Item {
                 objectName: "airing-summary"
                 anchors.left: titleLabel.right
                 anchors.leftMargin: theme.space(3)
-                anchors.right: refreshBtn.left
+                anchors.right: notInterested.left
                 anchors.rightMargin: theme.space(4)
                 anchors.baseline: titleLabel.baseline
                 text: page.summary
                 role: "ui"
                 color: theme.textDim
                 elide: Text.ElideRight
+            }
+            Button {
+                id: notInterested
+                objectName: "airing-not-interested"
+                visible: !!page.listed && page.listed.not_interested > 0
+                width: visible ? implicitWidth : 0
+                anchors.right: refreshBtn.left
+                anchors.rightMargin: visible ? theme.space(2) : 0
+                anchors.verticalCenter: parent.verticalCenter
+                flat: true
+                icon: "eye-off"
+                text: page.listed ? page.listed.not_interested + " not interested" : ""
+                onClicked: frame.go("settings", { tab: "library", focus: "not-interested" }, "Settings")
+                Tooltip { text: "Shows you marked not interested, in Settings" }
             }
             Button {
                 id: refreshBtn
@@ -337,7 +368,7 @@ Item {
             }
         }
 
-        // ---- The two choices, and the way to the shows put aside
+        // ---- The season, the filter, and what to leave out
         Item {
             width: parent.width
             height: theme.controlHeight + theme.space(2)
@@ -346,31 +377,58 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(3)
                 Seg {
+                    id: seasonSeg
                     objectName: "airing-season"
-                    options: [{ text: "Now", icon: "radio", name: "now" }, { text: page.nextLabel, icon: "calendar-clock", name: "next" }]
+                    // The third cell opens every season; it is never the one showing
+                    options: [{ text: "Airing now", icon: "radio", name: "now" },
+                              { text: page.seasonLabel, icon: "calendar-clock", name: "next" },
+                              { icon: "chevron-down", name: "seasons" }]
                     index: page.season === "Now" ? 0 : 1
-                    onPicked: function(i) { page.pickSeason(i === 0 ? "Now" : "Next") }
+                    onPicked: function(i) {
+                        if (i === 0) page.pickSeason("Now")
+                        else if (i === 1) { if (page.season === "Now") page.pickSeason("Next") }
+                        else picker.open()
+                    }
+                    SeasonPicker {
+                        id: picker
+                        anchors.fill: parent
+                        current: page.season === "Now" ? "" : page.seasonLabel
+                        nowMs: page.nowMs
+                        onPicked: function(name, year) { page.pickSeason(name + " " + year) }
+                    }
                 }
                 Seg {
                     objectName: "airing-filter"
-                    options: [{ text: "Everything", name: "all", count: page.listed ? page.listed.shows.length : undefined },
+                    options: [{ text: "Everything", name: "all", count: page.listed ? page.allCount : undefined },
                               { text: "On my lists", name: "lists", count: page.listed ? page.listedCount : undefined },
                               { text: "In my library", name: "library", count: page.listed ? page.ownedCount : undefined }]
                     index: page.filter
                     onPicked: function(i) { page.filter = i; page.keepView(); page.clearPicks() }
                 }
             }
-            Button {
-                objectName: "airing-not-interested"
-                visible: !!page.listed && page.listed.not_interested > 0
+            Row {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                flat: true
-                small: true
-                icon: "eye-off"
-                text: page.listed ? page.listed.not_interested + " not interested" : ""
-                onClicked: frame.go("settings", { tab: "library", focus: "not-interested" }, "Settings")
-                Tooltip { text: "Shows you marked not interested, in Settings" }
+                spacing: theme.space(2)
+                ToggleChip {
+                    objectName: "airing-hide-lists"
+                    text: "Hide my lists"
+                    icon: "eye-off"
+                    checked: page.hideListed
+                    // On my lists with them hidden would be nothing at all
+                    interactive: page.filter !== 1
+                    onToggled: function(on) { page.hideListed = on; page.keepView(); page.clearPicks() }
+                    Tooltip { text: "Leave out the shows on your AniList or MAL lists" }
+                }
+                ToggleChip {
+                    objectName: "airing-hide-library"
+                    text: "Hide my library"
+                    icon: "eye-off"
+                    checked: page.hideOwned
+                    interactive: page.filter !== 2
+                    onToggled: function(on) { page.hideOwned = on; page.keepView(); page.clearPicks() }
+                    Tooltip { text: "Leave out the shows you have episodes of" }
+                }
             }
         }
 
@@ -540,11 +598,18 @@ Item {
                 Button { visible: !page.refreshing; text: "Refresh"; icon: "refresh-cw"; onClicked: page.refresh(true) }
             }
             EmptyState {
-                visible: !page.loadFailed && !!page.listed && page.listed.shows.length > 0 && page.filter > 0
-                icon: page.filter === 1 ? "bookmark" : "layers"
-                title: page.filter === 1 ? "Nothing on air is on your lists" : "Nothing on air is in your library"
-                body: page.filter === 1 ? "Plan to watch on a card puts it on your list." : "Get episodes on a card downloads it into your library."
-                Button { text: "Show everything"; onClicked: page.filter = 0 }
+                visible: !page.loadFailed && !!page.listed && page.listed.shows.length > 0 && page.narrowed
+                icon: page.filter === 1 ? "bookmark" : page.filter === 2 ? "layers" : "eye-off"
+                title: page.filter === 1 ? "Nothing here is on your lists"
+                     : page.filter === 2 ? "Nothing here is in your library"
+                     : "Everything here is yours already"
+                body: page.filter === 1 ? "Plan to watch on a card puts it on your list."
+                    : page.filter === 2 ? "Get episodes on a card downloads it into your library."
+                    : "Every show left is on your lists or in your library, and those are hidden."
+                Button {
+                    text: "Show everything"
+                    onClicked: { page.filter = 0; page.hideListed = false; page.hideOwned = false; page.keepView() }
+                }
             }
         }
     }

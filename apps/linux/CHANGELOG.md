@@ -15,6 +15,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Airing can show any season: open the arrow beside the next season
+- Hide what is on your lists or in your library from Airing
 - Run AniBeam as a service with no window, so your devices always reach it
 - Settings shows whether that service runs, under Phone app
 - Pick a dark app icon in Settings, under Appearance
