@@ -131,7 +131,11 @@ Item {
         for (var i = 0; i < page.shows.length; i++) keep[page.shows[i].anilist_id] = true
         return listed.aired.filter(function(a) { return keep[a.anilist_id] === true })
     }
-    readonly property var outShown: page.allOut ? page.aired : page.aired.slice(0, 12)
+    // Out now's grid: as many columns as fit at a readable title width, three rows of them
+    readonly property int outCols: Math.max(1, Math.floor((scroll.innerWidth + theme.space(2)) / (theme.space(84) + theme.space(2))))
+    readonly property real outCellWidth: Math.floor((scroll.innerWidth - theme.space(2) * (outCols - 1)) / outCols)
+    readonly property int outFirst: outCols * 3
+    readonly property var outShown: page.allOut ? page.aired : page.aired.slice(0, page.outFirst)
     readonly property int outToday: {
         var n = 0
         for (var i = 0; i < aired.length; i++) if (nowMs / 1000 - aired[i].at < 86400) n++
@@ -140,12 +144,11 @@ Item {
     // How many each filter holds, for its pill
     readonly property int listedCount: listed ? listed.shows.filter(function(s) { return !!s.list_status }).length : 0
     readonly property int ownedCount: listed ? listed.shows.filter(function(s) { return page.owned(s) }).length : 0
-    // The line counts what the filter shows, not everything on air
+    // The line says what the pills do not: how many came out today (the show count is on the
+    // filter pill already)
     readonly property string summary: {
-        if (!listed || page.shows.length === 0) return ""
-        var line = Fmt.plural(page.shows.length, "show", "shows") + (page.season === "Now" ? " on air" : "")
-        if (page.season === "Now" && outToday > 0) line += ", " + Fmt.plural(outToday, "episode", "episodes") + " out today"
-        return line
+        if (!listed || page.shows.length === 0 || page.season !== "Now" || outToday === 0) return ""
+        return Fmt.plural(outToday, "episode", "episodes") + " out today"
     }
     function showOf(id) {
         if (!listed) return null
@@ -344,7 +347,7 @@ Item {
                 spacing: theme.space(3)
                 Seg {
                     objectName: "airing-season"
-                    options: [{ text: "Airing now", icon: "radio", name: "now" }, { text: page.nextLabel, icon: "calendar-clock", name: "next" }]
+                    options: [{ text: "Now", icon: "radio", name: "now" }, { text: page.nextLabel, icon: "calendar-clock", name: "next" }]
                     index: page.season === "Now" ? 0 : 1
                     onPicked: function(i) { page.pickSeason(i === 0 ? "Now" : "Next") }
                 }
@@ -371,77 +374,116 @@ Item {
             }
         }
 
-        // ---- Out now: the episodes of the last two days, newest first
+        // ---- Out now: the episodes of the last two days, newest first, as an even grid of
+        // rows (thumb, title, episode and age), three rows deep until All opens the rest
         Column {
             objectName: "airing-out-now"
             visible: page.aired.length > 0
             width: parent.width
             spacing: theme.space(3)
             topPadding: theme.space(2)
-            bottomPadding: theme.space(4)
-            Row {
-                spacing: theme.space(3)
-                Label {
-                    id: outTitle
-                    text: "Out now"
-                    role: "display"
-                    font.pointSize: theme.typeHeading
-                    font.variableAxes: ({ "wdth": 70, "wght": 420 })
-                    color: theme.accent
+            bottomPadding: theme.space(6)
+            Item {
+                width: parent.width
+                height: outTitle.implicitHeight
+                Row {
+                    spacing: theme.space(3)
+                    Label {
+                        id: outTitle
+                        text: "Out now"
+                        role: "display"
+                        font.pointSize: theme.typeHeading
+                        font.variableAxes: ({ "wdth": 70, "wght": 420 })
+                        color: theme.accent
+                    }
+                    Label {
+                        anchors.baseline: outTitle.baseline
+                        text: Fmt.plural(page.aired.length, "episode", "episodes") + " in the last two days"
+                        role: "ui"
+                        color: theme.textDim
+                    }
                 }
-                Label { anchors.baseline: outTitle.baseline; text: page.aired.length; role: "ledger"; color: theme.textFaint }
-                Label { anchors.baseline: outTitle.baseline; text: "The last two days"; role: "ui"; color: theme.textDim }
+                Button {
+                    objectName: "airing-out-all"
+                    visible: page.aired.length > page.outFirst
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    small: true
+                    flat: true
+                    icon: page.allOut ? "chevron-up" : "chevron-down"
+                    text: page.allOut ? "Fewer" : "All " + page.aired.length
+                    onClicked: page.allOut = !page.allOut
+                }
             }
             Flow {
                 width: parent.width
                 spacing: theme.space(2)
                 Repeater {
                     model: page.outShown
-                    Rectangle {
+                    Item {
                         id: pill
                         required property var modelData
                         readonly property var show: page.showOf(modelData.anilist_id)
+                        readonly property bool today: page.nowMs / 1000 - modelData.at < 86400
                         objectName: "airing-out-" + modelData.anilist_id + "-" + modelData.episode
-                        width: pillRow.implicitWidth + theme.space(5)
-                        height: theme.controlHeight
-                        radius: theme.radiusTile
-                        color: pm.containsMouse ? theme.raised : theme.tile
-                        border.color: pill.activeFocus ? theme.focusRing : theme.line
-                        border.width: 1
+                        width: page.outCellWidth
+                        height: theme.space(17)
                         activeFocusOnTab: true
                         function open() {
                             if (pill.show) page.openActions(pill.show, pill)
                             else frame.openLink("https://anilist.co/anime/" + pill.modelData.anilist_id)
                         }
                         Keys.onReturnPressed: pill.open()
-                        Row {
-                            id: pillRow
-                            anchors.centerIn: parent
-                            spacing: theme.space(2)
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: theme.space(2); height: width; radius: width / 2
-                                color: page.nowMs / 1000 - pill.modelData.at < 86400 ? theme.accent : theme.textFaint
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: theme.radiusSm
+                            color: pm.containsMouse ? theme.raised : "transparent"
+                            border.color: pill.activeFocus ? theme.focusRing : "transparent"
+                            border.width: 1
+                        }
+                        Corner {
+                            id: thumb
+                            x: theme.space(1.5)
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: parent.height - theme.space(3)
+                            width: Math.round(height / 1.5)
+                            radius: theme.radiusSm; smoothing: 0
+                            color: theme.tileSunken
+                            borderColor: theme.line; borderWidth: 1
+                            Image {
+                                id: thumbImage
+                                visible: false
+                                width: thumb.width; height: thumb.height
+                                source: pill.show && pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
+                                sourceSize: theme.posterDecodeSize
+                                fillMode: Image.PreserveAspectCrop
+                                smooth: true
+                                asynchronous: true
+                                cache: true
                             }
+                            fillItem: thumbImage.status === Image.Ready ? thumbImage : null
+                        }
+                        Column {
+                            anchors.left: thumb.right
+                            anchors.leftMargin: theme.space(3)
+                            anchors.right: parent.right
+                            anchors.rightMargin: theme.space(2)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: theme.space(1)
                             Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: Math.min(implicitWidth, theme.space(70))
+                                width: parent.width
                                 text: pill.modelData.title
                                 role: "ui"
                                 elide: Text.ElideRight
                             }
-                            Label { anchors.verticalCenter: parent.verticalCenter; text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
-                            Label { anchors.verticalCenter: parent.verticalCenter; text: page.ago(pill.modelData.at); role: "ledger"; color: theme.textFaint }
+                            Row {
+                                spacing: theme.space(2)
+                                Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
+                                Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : theme.textFaint }
+                            }
                         }
                         MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.open() }
                     }
-                }
-                Button {
-                    visible: page.aired.length > 12
-                    small: true
-                    flat: true
-                    text: page.allOut ? "Fewer" : "All " + page.aired.length
-                    onClicked: page.allOut = !page.allOut
                 }
             }
         }

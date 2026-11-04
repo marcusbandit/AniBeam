@@ -81,6 +81,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can add a source that answers in JSON
 
 ### Changed
+- Out now on Airing lays its episodes out in even rows with their posters
 - Library sorts and groups from two menus, with the order said in words
 - This week shows what is out to watch, then a calendar of the days ahead
 - Two files of one episode share one row, and you pick which release plays
