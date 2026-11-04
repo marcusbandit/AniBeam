@@ -527,7 +527,7 @@ Item {
                 spacing: page.outGap
                 Repeater {
                     model: page.outShown
-                    // One episode as a small card: the poster across the whole tile, rounded
+                    // One episode as a small card: the banner across the whole tile, rounded
                     // like the cards below, darkened toward the foot so the words read
                     Item {
                         id: pill
@@ -548,9 +548,11 @@ Item {
                             id: outPoster
                             visible: false
                             width: pill.width; height: pill.height
-                            source: pill.show && pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
-                            // The tile is wider than a card, so the poster decodes at the tile's width
-                            // (its height follows the poster's own shape), not the card's size
+                            // AniList's wide banner, made for this shape; the tall cover only
+                            // when a show has none
+                            source: !pill.show ? "" : pill.show.banner ? Fmt.fileUrl(pill.show.banner)
+                                  : pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
+                            // Decoded at the tile's width, its height following the image's own shape
                             sourceSize.width: Math.ceil(pill.width * (Screen.devicePixelRatio || 1))
                             fillMode: Image.PreserveAspectCrop
                             smooth: true
@@ -569,8 +571,10 @@ Item {
                             anchors.fill: parent
                             radius: theme.radiusTile
                             smoothing: theme.cornerSmoothing
-                            borderColor: pill.activeFocus ? theme.focusRing : pm.containsMouse ? theme.lineStrong : theme.line
-                            borderWidth: 1
+                            // No outline: on a light banner it read as a gap round the tile.
+                            // Only keyboard focus draws a ring; hover lifts the shade instead
+                            borderColor: pill.activeFocus ? theme.focusRing : "transparent"
+                            borderWidth: pill.activeFocus ? 2 : 0
                             fillGradient: LinearGradient {
                                 x1: 0; y1: 0; x2: 0; y2: pill.height
                                 GradientStop { position: 0; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.05 : 0.2) }
