@@ -30,6 +30,43 @@ Corner {
     // The season's last episode, which is the episode count set by hand; 0 for none
     property int endAt: 0
     property int savedEnd: 0
+    // What the record already says, by episode: {at, guess}; guesses are dropped here and
+    // made again live from the record's own dates, so the grid shows what Save would give
+    property var known: ({})
+    property string siteName: ""
+    // The record's real dates, without its guesses
+    readonly property var recordDates: {
+        var out = {}
+        for (var k in known) if (!known[k].guess) out[k] = known[k].at
+        return out
+    }
+    // The weekly guesses the season would get from what is set here: after the last date
+    // known, one week on each, up to the last episode (or the one next when none is set),
+    // never at or past an episode with no date or a year or month only
+    readonly property var guesses: {
+        var out = {}
+        var by = expand(draft)
+        var dated = {}
+        for (var k in recordDates) dated[k] = recordDates[k]
+        for (var e in by) if (has(by[e].at)) dated[e] = by[e].at
+        var nums = Object.keys(dated).map(Number).sort(function(a, b) { return a - b })
+        if (!nums.length) return out
+        // The cadence: the first gap between two neighbours, in whole weeks, at least one
+        var week = 7 * 86400, step = week
+        for (var i = 1; i < nums.length; i++) if (nums[i] === nums[i - 1] + 1) {
+            step = Math.max(1, Math.round((dated[nums[i]] - dated[nums[i - 1]]) / week)) * week
+            break
+        }
+        var last = nums[nums.length - 1]
+        var to = endAt > 0 ? endAt : last + 1
+        var at = dated[last]
+        for (var n = last + 1; n <= to; n++) {
+            if (by[n]) break
+            at += step
+            out[n] = at
+        }
+        return out
+    }
 
     function has(v) { return v !== null && v !== undefined }
     function epsText(n) { return n.first === n.last ? "Episode " + n.first : "Episodes " + n.first + " to " + n.last }
@@ -45,6 +82,10 @@ Corner {
     function tileText(ep) {
         if (root.endAt > 0 && ep > root.endAt) return ""
         var n = root.noteFor(ep)
+        if (!n && root.recordDates[ep] !== undefined && root.aired.indexOf(ep) < 0)
+            return Qt.formatDate(new Date(root.recordDates[ep] * 1000), "d MMM")
+        if (!n && root.guesses[ep] !== undefined)
+            return "≈ " + Qt.formatDate(new Date(root.guesses[ep] * 1000), "d MMM")
         if (n) {
             if (has(n.at)) return Qt.formatDate(new Date(n.at * 1000), "d MMM")
             if (has(n.year) && n.month) return Qt.formatDate(new Date(n.year, n.month - 1, 1), "MMM yyyy")
@@ -60,7 +101,12 @@ Corner {
         for (var i = 0; i < draft.length; i++) dated += draft[i].last - draft[i].first + 1
         var bits = []
         if (endAt > 0) bits.push("Ends at episode " + endAt)
-        if (dated > 0) bits.push(Fmt.plural(dated, "episode", "episodes") + " dated")
+        var fromRecord = 0
+        for (var k in recordDates) if (aired.indexOf(Number(k)) < 0 && !noteFor(Number(k))) fromRecord++
+        if (fromRecord > 0) bits.push(fromRecord + " dated by " + (siteName || "the record"))
+        if (dated > 0) bits.push(dated + " set by you")
+        var guessed = Object.keys(guesses).length
+        if (guessed > 0) bits.push(guessed + " guessed weekly")
         return bits.length ? bits.join(" · ") : "Nothing set yet"
     }
     function keyOf(w) { return [has(w.at) ? w.at : "", has(w.year) ? w.year : "", w.month || ""].join("|") }
@@ -150,7 +196,9 @@ Corner {
         root.draft = root.collapse(by)
         root.picked = []
     }
-    function openFor(id, title, season, notes, upTo, aired, endAt) {
+    function openFor(id, title, season, notes, upTo, aired, endAt, known, siteName) {
+        root.known = known || {}
+        root.siteName = siteName || ""
         root.endAt = endAt || 0
         root.savedEnd = root.endAt
         root.seriesId = id
@@ -375,7 +423,12 @@ Corner {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: root.tileText(cell.ep) || " "
                                 role: "ledger"
-                                color: cell.isPicked ? theme.accentText : cell.kind && !cell.past ? root.kindColor(cell.kind) : theme.textFaint
+                                // A date the user set takes its kind's colour, the record's own date the
+                                // text colour, a guess and Out stay faint
+                                color: cell.isPicked ? theme.accentText
+                                     : cell.kind && !cell.past ? root.kindColor(cell.kind)
+                                     : root.recordDates[cell.ep] !== undefined && !cell.isOut ? theme.text
+                                     : theme.textFaint
                             }
                         }
                         // The last episode: a bar along its foot

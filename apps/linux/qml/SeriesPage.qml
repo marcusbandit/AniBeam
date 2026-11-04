@@ -70,8 +70,18 @@ Item {
             if (!r.upcoming) out.push(Math.floor(r.number))
         })
         var upTo = Math.max(card.total_episodes || 0, top + 8, 16)
+        // What the record already says: each episode's air date, from the files, the aired
+        // ones with no file, and the ones still to come
+        var known = {}
+        var mark = function(n, at, guess) {
+            if (at === null || at === undefined) return
+            known[Math.floor(n)] = { at: at, guess: !!guess }
+        }
+        ;(page.detail ? page.detail.episodes : []).forEach(function(e) { if (season === null || (e.season || 1) === season) mark(e.number, e.air_date, false) })
+        ;(page.detail && page.detail.absent ? page.detail.absent : []).forEach(function(e) { if (season === null || (e.season || 1) === season) mark(e.number, e.air_date, false) })
+        ;(page.detail && page.detail.upcoming ? page.detail.upcoming : []).forEach(function(e) { if (season === null || (e.season || 1) === season) mark(e.number, e.at, e.predicted) })
         var endAt = card.episodes_set === undefined || card.episodes_set === null ? 0 : card.episodes_set
-        scheduleSheet.openFor(page.props.id, page.title, season, page.scheduleNotes, Math.max(upTo, endAt + 2), out, endAt)
+        scheduleSheet.openFor(page.props.id, page.title, season, page.scheduleNotes, Math.max(upTo, endAt + 2), out, endAt, known, page.siteName)
     }
     // The notes without a date, in words: "Episodes 8 to 15 TBC in 2027"
     readonly property string heldLine: {
