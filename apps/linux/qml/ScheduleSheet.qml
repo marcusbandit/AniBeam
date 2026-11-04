@@ -25,6 +25,9 @@ Corner {
     property var picked: []
     property int anchorEp: 0
     property bool weekly: false
+    // The season's last episode, which is the episode count set by hand (#432); 0 for none
+    property int endAt: 0
+    property int savedEnd: 0
     // The typed date as the core reads it, or null
     property var typed: null
     readonly property int nextYear: new Date().getFullYear() + 1
@@ -114,7 +117,19 @@ Corner {
         root.typed = n ? { at: has(n.at) ? n.at : null, year: has(n.year) ? n.year : null, month: n.month || null } : null
     }
 
-    function openFor(id, title, season, notes, upTo, aired) {
+    // Marks the one picked episode as the season's last, or clears the mark when it already is
+    function markLast() {
+        if (root.picked.length !== 1) return
+        root.endAt = root.endAt === root.picked[0] ? 0 : root.picked[0]
+        // Nothing past the end keeps a date
+        var by = root.expand(root.draft)
+        if (root.endAt > 0) for (var e in by) if (Number(e) > root.endAt) delete by[e]
+        root.draft = root.collapse(by)
+        root.picked = []
+    }
+    function openFor(id, title, season, notes, upTo, aired, endAt) {
+        root.endAt = endAt || 0
+        root.savedEnd = root.endAt
         root.seriesId = id
         root.seriesTitle = title
         root.season = season === undefined ? null : season
@@ -158,7 +173,11 @@ Corner {
         var season = root.season !== null && root.readSeason !== null ? root.readSeason : root.season
         var r = Door.call("SetScheduleNotes", { series: root.seriesId, season: season, notes: wire })
         if (r.error) { frame.toast(frame.errorText(r.error)); return }
-        frame.toast(wire.length ? "Schedule saved" : "Schedule notes cleared")
+        if (root.endAt !== root.savedEnd) {
+            var c = Door.call("SetEpisodeCount", { series: root.seriesId, count: root.endAt > 0 ? root.endAt : null })
+            if (c.error) { frame.toast(frame.errorText(c.error)); return }
+        }
+        frame.toast(wire.length || root.endAt ? "Saved" : "Schedule notes cleared")
         root.close()
     }
 
@@ -198,7 +217,7 @@ Corner {
             Column {
                 id: heading
                 width: parent.width - closeBtn.width - theme.space(3)
-                Label { text: "Schedule"; role: "title" }
+                Label { text: "Episodes and dates"; role: "title" }
                 Label {
                     width: parent.width
                     text: root.seriesTitle + (root.season !== null ? ", season " + (root.readSeason !== null ? root.readSeason : root.season) : "")
@@ -226,7 +245,7 @@ Corner {
             width: parent.width
             wrapMode: Text.WordWrap
             text: root.mode === 0
-                  ? "Click episodes, shift-click for a run, then give them a date. AniBeam stops guessing at a TBC, and a date the provider lists still wins."
+                  ? "Click episodes, shift-click for a run, then give them a date. Pick one and press Last episode to end the season there. AniBeam stops guessing at a TBC or the end, and a date the provider lists still wins."
                   : "Paste what a site or a post says. What AniBeam reads lands below; anything it got wrong, fix under Pick episodes."
             role: "ui"; color: theme.textDim
         }
@@ -247,12 +266,26 @@ Corner {
                     readonly property bool isPicked: root.picked.indexOf(ep) >= 0
                     readonly property bool isOut: root.aired.indexOf(ep) >= 0
                     readonly property string kind: root.kindOf(root.noteFor(ep))
+                    readonly property bool isEnd: root.endAt === ep
+                    readonly property bool past: root.endAt > 0 && ep > root.endAt
                     objectName: "schedule-ep-" + ep
                     width: theme.space(10); height: theme.space(10)
                     radius: theme.space(2.5)
                     color: isPicked ? theme.accent : cellMouse.containsMouse ? theme.raisedHover : theme.raised
-                    borderColor: isPicked ? theme.accent : kind ? root.kindColor(kind) : theme.line
-                    borderWidth: kind && !isPicked ? 2 : 1
+                    borderColor: isPicked ? theme.accent : isEnd ? theme.text : kind ? root.kindColor(kind) : theme.line
+                    borderWidth: (kind || isEnd) && !isPicked ? 2 : 1
+                    dashed: past ? 1 : 0
+                    opacity: past && !isPicked ? 0.45 : 1
+                    // The season's end, under its cell
+                    Label {
+                        visible: cell.isEnd
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.bottom; anchors.topMargin: -theme.space(1)
+                        text: "END"
+                        role: "ledger"
+                        font.pointSize: theme.typeSmall * 0.7
+                        color: theme.textDim
+                    }
                     Label {
                         anchors.centerIn: parent
                         text: String(cell.ep)
@@ -326,6 +359,14 @@ Corner {
             Button { small: true; text: String(root.nextYear - 1); enabled: root.picked.length > 0; onClicked: root.apply({ at: null, year: root.nextYear - 1, month: null }) }
             Button { objectName: "schedule-next-year"; small: true; text: String(root.nextYear); enabled: root.picked.length > 0; onClicked: root.apply({ at: null, year: root.nextYear, month: null }) }
             Button { small: true; flat: true; text: "Clear their dates"; enabled: root.picked.length > 0; onClicked: root.unset() }
+            Button {
+                objectName: "schedule-last"
+                small: true
+                icon: "list-video"
+                text: root.picked.length === 1 && root.endAt === root.picked[0] ? "Not the last episode" : "Last episode"
+                enabled: root.picked.length === 1
+                onClicked: root.markLast()
+            }
         }
 
         // The text, a pane like a Field that grows to a few lines and then scrolls
@@ -383,6 +424,11 @@ Corner {
 
         // The draft, one line a note, each with its own remove
         Label {
+            visible: root.endAt > 0
+            text: "The season ends at episode " + root.endAt + ". Nothing after it is predicted."
+            role: "ui"; color: theme.text
+        }
+        Label {
             text: root.draft.length ? "The schedule you are saving" : (root.mode === 1 && input.text ? "Nothing here names an episode and a date yet" : "Nothing set yet")
             role: "ledger"; color: theme.textFaint
         }
@@ -434,7 +480,7 @@ Corner {
                 objectName: "schedule-save"
                 primary: true
                 text: "Save"
-                enabled: root.draft.length > 0 || root.saved.length > 0
+                enabled: root.draft.length > 0 || root.saved.length > 0 || root.endAt !== root.savedEnd
                 onClicked: root.save(root.draft)
             }
             Button {

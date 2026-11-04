@@ -16,6 +16,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### New
 - Set a show's schedule under Fixes: pick episodes and a date, or paste a list
+- Fixes is three items: Episodes and dates, Files and Match
+- Refresh a show's info from its Match panel, and rescan its folder from Files
 - A season on a break stops showing a made-up next episode
 - Airing can show any season: open the arrow beside the next season
 - Hide what is on your lists or in your library from Airing

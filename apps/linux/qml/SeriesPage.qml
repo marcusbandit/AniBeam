@@ -70,7 +70,8 @@ Item {
             if (!r.upcoming) out.push(Math.floor(r.number))
         })
         var upTo = Math.max(card.total_episodes || 0, top + 8, 16)
-        scheduleSheet.openFor(page.props.id, page.title, season, page.scheduleNotes, upTo, out)
+        var endAt = card.episodes_set === undefined || card.episodes_set === null ? 0 : card.episodes_set
+        scheduleSheet.openFor(page.props.id, page.title, season, page.scheduleNotes, Math.max(upTo, endAt + 2), out, endAt)
     }
     // The notes without a date, in words: "Episodes 8 to 15 TBC in 2027"
     readonly property string heldLine: {
@@ -80,19 +81,18 @@ Item {
         var eps = n.first === n.last ? "Episode " + n.first : "Episodes " + n.first + " to " + n.last
         var due = n.year === null || n.year === undefined ? " not dated yet"
             : " due in " + (n.month ? Qt.formatDate(new Date(n.year, n.month - 1, 1), "MMMM yyyy") : n.year)
-        return eps + due + ", set by you"
+        return eps + due
     }
     // Fixes (#283): every way to correct what the page shows, in one menu
+    // Three questions (#432): how many episodes and when, what each file is, which show this is
     function fixItems() {
         var items = []
-        if (page.filesHere > 0)
-            items.push({ text: "Fix files", icon: "pencil", action: function() { page.openFix(page.detail ? page.detail.suggested_fix : null, false) } })
-        if (countRow.offered)
-            items.push({ text: countRow.set === null ? "Set episode count" : "Change episode count", icon: "list-video", action: countRow.edit })
         if (!page.isMovie)
-            items.push({ text: page.scheduleNotes.length ? "Change schedule" : "Set schedule", icon: "calendar-clock", action: page.openSchedule })
-        items.push({ text: page.matched ? "Change match" : "Find a match", icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
-        items.push({ text: "Rescan", icon: "refresh-cw", action: page.rescan })
+            items.push({ text: "Episodes and dates", icon: "calendar-clock", action: page.openSchedule })
+        items.push(page.filesHere > 0
+            ? { text: "Files", icon: "folder", action: function() { page.openFix(page.detail ? page.detail.suggested_fix : null, false) } }
+            : { text: "Rescan folder", icon: "refresh-cw", action: page.rescan })
+        items.push({ text: page.matched ? "Match" : "Find a match", icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
         return items
     }
     function contextItems() {
@@ -789,108 +789,30 @@ Item {
                         color: page.downloadInk
                     }
                 }
-                // The episode count set by hand (#239): Fixes offers it while the record names no
-                // count or a guess is out, so a predicted episode past the real end can be stopped.
-                // A TVmaze show's count is its current season's (#283). The row shows while it is
-                // being typed or a count is set, and a count the schedule or a file went past says
-                // it gave way.
+                // What the user told the season, on one line (#432): the episode count set by hand
+                // (#239, a TVmaze show's is its current season's, #283) and a break in the
+                // schedule (#418), with Change opening Episodes and dates where both are set
                 Row {
                     id: countRow
                     objectName: "episode-count"
-                    property bool editing: false
                     readonly property var set: card.episodes_set === undefined ? null : card.episodes_set
                     readonly property bool gaveWay: set !== null && card.episodes_set_applied !== true
                     // A TVmaze count is one season's, so the row names it
                     readonly property string seasonWord: card.count_season ? "Season " + card.count_season : ""
-                    // A set count is always offered, so it can be cleared once the show is over
-                    readonly property bool offered: !page.isMovie && (set !== null || (card.status === "Releasing"
-                             && (card.total_is_estimate || !card.total_episodes || (!!card.next_airing && card.next_airing.predicted))))
-                    visible: editing || set !== null
+                    readonly property string countText: set === null ? "" : gaveWay
+                        ? "You set " + set + " episodes; that no longer applies"
+                        : (seasonWord ? seasonWord + " ends" : "Ends") + " at episode " + set
+                    visible: set !== null || page.heldLine !== ""
                     spacing: theme.space(2)
-                    function edit() { editing = true; countField.text = set === null ? "" : String(set); Qt.callLater(countField.focusInput) }
-                    function save(text) {
-                        var t = String(text).trim()
-                        var n = /^\d{1,4}$/.test(t) ? parseInt(t, 10) : 0
-                        if (!(n > 0)) { frame.toast("Type the number of episodes, such as 13"); return }
-                        countRow.editing = false
-                        page.setEpisodeCount(n)
-                    }
                     Label {
-                        visible: !countRow.editing && countRow.set !== null
+                        objectName: "schedule-held"
                         anchors.verticalCenter: parent.verticalCenter
-                        text: countRow.set === null ? "" : countRow.gaveWay
-                              ? "You set " + countRow.set + " episodes; that no longer applies"
-                              : (countRow.seasonWord ? countRow.seasonWord + " ends" : "Ends") + " at episode " + countRow.set + ", set by you"
+                        text: [countRow.countText, page.heldLine].filter(Boolean).join(" · ") + ", set by you"
                         role: "ledger"
                         color: page.inkDim
                     }
                     Button {
-                        visible: !countRow.editing
                         objectName: "episode-count-set"
-                        small: true; flat: true
-                        tint: page.inkAccent
-                        icon: "pencil"
-                        text: "Change"
-                        onClicked: countRow.edit()
-                    }
-                    Button {
-                        visible: !countRow.editing && countRow.set !== null
-                        small: true; flat: true
-                        text: "Clear"
-                        onClicked: page.setEpisodeCount(null)
-                    }
-                    Label {
-                        visible: countRow.editing && countRow.seasonWord !== ""
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: countRow.seasonWord + " episodes"
-                        role: "ledger"
-                        color: page.inkDim
-                    }
-                    Field {
-                        id: countField
-                        objectName: "episode-count-field"
-                        visible: countRow.editing
-                        width: theme.space(22)
-                        mono: true
-                        placeholder: "13"
-                        Keys.onEscapePressed: countRow.editing = false
-                        Keys.onReturnPressed: countRow.save(countField.text)
-                        Keys.onEnterPressed: countRow.save(countField.text)
-                    }
-                    Button {
-                        visible: countRow.editing
-                        objectName: "episode-count-save"
-                        small: true; primary: true
-                        tint: page.inkAccent
-                        text: "Save"
-                        onClicked: countRow.save(countField.text)
-                    }
-                    Button {
-                        visible: countRow.editing
-                        small: true; flat: true
-                        text: "Cancel"
-                        onClicked: countRow.editing = false
-                    }
-                    Label {
-                        visible: countRow.editing
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Nothing past it is predicted. A real episode past it wins."
-                        role: "ledger"
-                        color: page.inkDim
-                    }
-                }
-                // A break the user told the schedule about (#418), with the way to change it
-                Row {
-                    objectName: "schedule-held"
-                    visible: page.heldLine !== ""
-                    spacing: theme.space(2)
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: page.heldLine
-                        role: "ledger"
-                        color: page.inkDim
-                    }
-                    Button {
                         small: true; flat: true
                         tint: page.inkAccent
                         icon: "calendar-clock"
