@@ -546,7 +546,11 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
                 plain: sites.map(|s| format!("Set {folder} to {label} on {s}.")),
                 level,
                 message: format!("status of {folder} set to {}", status.as_str()),
-                body: EventBody::Notice,
+                body: EventBody::ListStatusSet {
+                    series,
+                    status,
+                    outcomes,
+                },
             }
         }
     }
@@ -693,11 +697,18 @@ async fn attempt(
             })
         }
         Action::Status { status } => {
-            let stamp = send_status(core, t, media_id, &token, status).await?;
+            // Completed fills the list to the published total, the way a
+            // rating that completes does; every other status leaves the
+            // progress as the tracker has it.
+            let progress = match (status, target.total) {
+                (ListStatus::Completed, Some(total)) if current < total => total,
+                _ => current,
+            };
+            let fill = (progress != current).then_some(progress);
+            let stamp = send_list_status(core, t, media_id, &token, status, fill).await?;
             // A series not on the list yet has no cached entry to patch, so
-            // the entry is upserted with the progress the tracker just gave,
-            // which this write leaves as it is.
-            record_progress(core, t, media_id, current, status, stamp).await?;
+            // the entry is upserted with the progress the tracker now has.
+            record_progress(core, t, media_id, progress, status, stamp).await?;
             ctx.emit(
                 Level::Debug,
                 format!(
@@ -710,7 +721,7 @@ async fn attempt(
             Ok(TrackerOutcome {
                 tracker: t,
                 ok: true,
-                progress: None,
+                progress: Some(progress),
                 reason: None,
                 message: None,
             })
@@ -977,6 +988,43 @@ pub(crate) async fn send_status(
         }
         Tracker::Mal => {
             let form = vec![("status".to_string(), mal_status(status).to_string())];
+            let response = core
+                .mal
+                .patch_form(&list_status_url(media_id), token, form)
+                .await?;
+            if !response.is_success() {
+                return Err(mal_failure(&response));
+            }
+            Ok(mal_stamp(&response))
+        }
+    }
+}
+
+/// A status the user picked from the menu. MAL keeps a rewatch as a flag
+/// beside the status, so the flag is cleared here, or a rewatch moved to
+/// Watching would read back as Rewatching on the next refresh. `fill` is the
+/// progress Completed raises the list to, when it is short of the total.
+async fn send_list_status(
+    core: &Arc<Core>,
+    t: Tracker,
+    media_id: u64,
+    token: &str,
+    status: ListStatus,
+    fill: Option<u32>,
+) -> Result<Option<i64>, CoreError> {
+    match (t, fill) {
+        (Tracker::Anilist, Some(progress)) => {
+            send_progress(core, t, media_id, token, progress, status).await
+        }
+        (Tracker::Anilist, None) => send_status(core, t, media_id, token, status).await,
+        (Tracker::Mal, fill) => {
+            let mut form = vec![
+                ("status".to_string(), mal_status(status).to_string()),
+                ("is_rewatching".to_string(), "false".to_string()),
+            ];
+            if let Some(progress) = fill {
+                form.push(("num_watched_episodes".to_string(), progress.to_string()));
+            }
             let response = core
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)

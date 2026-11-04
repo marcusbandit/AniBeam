@@ -471,6 +471,13 @@ pub mod qobject {
         #[qsignal]
         fn scored(self: Pin<&mut Door>, series: f64, score: f64, outcomes: QJsonArray);
         #[qsignal]
+        fn list_status_set(
+            self: Pin<&mut Door>,
+            series: f64,
+            status: QString,
+            outcomes: QJsonArray,
+        );
+        #[qsignal]
         fn progress_refreshed(self: Pin<&mut Door>, tracker: QString);
         #[qsignal]
         fn watching_refreshed(self: Pin<&mut Door>, list: QJsonObject);
@@ -1322,6 +1329,10 @@ impl qobject::Door {
             EventBody::Scored { .. } => {
                 self.as_mut()
                     .scored(n("series"), n("score"), arr("outcomes"))
+            }
+            EventBody::ListStatusSet { .. } => {
+                self.as_mut()
+                    .list_status_set(n("series"), s("status"), arr("outcomes"))
             }
             EventBody::ProgressRefreshed { .. } => self.as_mut().progress_refreshed(s("tracker")),
             EventBody::WatchingRefreshed { .. } => self.as_mut().watching_refreshed(obj("list")),

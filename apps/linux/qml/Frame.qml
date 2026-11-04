@@ -376,6 +376,14 @@ FocusScope {
     }
     Connections {
         target: Door
+        // A status write that a tracker refused says so, with the tracker's own reason
+        function onListStatusSet(series, status, outcomes) {
+            var names = { Anilist: "AniList", Mal: "MyAnimeList" }
+            var failed = outcomes.filter(function(o) { return !o.ok }).map(function(o) {
+                return (names[o.tracker] || o.tracker) + " did not take it" + (o.message ? ": " + o.message : "")
+            })
+            if (failed.length) frame.toast(failed.join("; "))
+        }
         // Only the url of the job this tracker is waiting on: one from a flow since replaced
         // would open a sign-in page whose listener is already gone.
         function onAuthUrlReady(t, openUrl, redirectUrl, job) {
@@ -698,12 +706,13 @@ FocusScope {
         if (frame.canSetListStatus(c)) out = out.concat(frame.listStatusItems(c.id, c.list_status))
         return out
     }
-    // A list status is the trackers': it is offered for a series one of them carries, with an
-    // account connected, and not for a hidden one, whose tracker sync is off.
-    readonly property bool trackerConnected: !!Door.trackers && ((!!Door.trackers.anilist && Door.trackers.anilist.connected === true)
-                                                                 || (!!Door.trackers.mal && Door.trackers.mal.connected === true))
+    // A list status is the trackers': it is offered for a series that a connected tracker
+    // carries an id for, and not for a hidden one, whose tracker sync is off. A match with only
+    // an AniList id and only MAL connected has nowhere to write, so it gets no menu.
+    function trackerOn(t) { return !!Door.trackers && !!Door.trackers[t] && Door.trackers[t].connected === true }
     function canSetListStatus(c) {
-        return frame.trackerConnected && !!c && !c.hidden && !!(c.match_info && (c.match_info.anilist_id || c.match_info.mal_id))
+        if (!c || c.hidden || !c.match_info) return false
+        return (frame.trackerOn("anilist") && !!c.match_info.anilist_id) || (frame.trackerOn("mal") && !!c.match_info.mal_id)
     }
     // The five lists a status pill or a card's right-click moves a series to, the one it is on
     // already greyed out. The core writes it to every connected tracker.
