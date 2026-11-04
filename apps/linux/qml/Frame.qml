@@ -376,6 +376,14 @@ FocusScope {
     }
     Connections {
         target: Door
+        // A status write that a tracker refused says so, with the tracker's own reason
+        function onListStatusSet(series, status, outcomes) {
+            var names = { Anilist: "AniList", Mal: "MyAnimeList" }
+            var failed = outcomes.filter(function(o) { return !o.ok }).map(function(o) {
+                return (names[o.tracker] || o.tracker) + " did not take it" + (o.message ? ": " + o.message : "")
+            })
+            if (failed.length) frame.toast(failed.join("; "))
+        }
         // Only the url of the job this tracker is waiting on: one from a flow since replaced
         // would open a sign-in page whose listener is already gone.
         function onAuthUrlReady(t, openUrl, redirectUrl, job) {
@@ -695,7 +703,34 @@ FocusScope {
         out.push({ text: "Copy title", icon: "copy", action: function() { frame.copyText(c.title) } })
         var site = c.site_url || (c.match_info && c.match_info.anilist_id ? "https://anilist.co/anime/" + c.match_info.anilist_id : "")
         if (site) out.push({ text: "Open on AniList", icon: "external-link", action: function() { frame.openLink(site) } })
+        if (frame.canSetListStatus(c)) out = out.concat(frame.listStatusItems(c.id, c.list_status))
         return out
+    }
+    // A list status is the trackers': it is offered for a series that a connected tracker
+    // carries an id for, and not for a hidden one, whose tracker sync is off. A match with only
+    // an AniList id and only MAL connected has nowhere to write, so it gets no menu.
+    function trackerOn(t) { return !!Door.trackers && !!Door.trackers[t] && Door.trackers[t].connected === true }
+    function canSetListStatus(c) {
+        if (!c || c.hidden || !c.match_info) return false
+        return (frame.trackerOn("anilist") && !!c.match_info.anilist_id) || (frame.trackerOn("mal") && !!c.match_info.mal_id)
+    }
+    // The five lists a status pill or a card's right-click moves a series to, the one it is on
+    // already greyed out. The core writes it to every connected tracker.
+    function listStatusItems(id, current) {
+        var lists = [{ status: "Watching", text: "Watching", icon: "play" },
+                     { status: "Planning", text: "Planning", icon: "bookmark" },
+                     { status: "Completed", text: "Completed", icon: "circle-check" },
+                     { status: "Paused", text: "On hold", icon: "pause" },
+                     { status: "Dropped", text: "Dropped", icon: "ban" }]
+        return lists.map(function(l) {
+            return { text: l.text, icon: l.icon, enabled: l.status !== current,
+                     action: function() { frame.setListStatus(id, l.status, l.text) } }
+        })
+    }
+    function setListStatus(id, status, label) {
+        var r = Door.call("SetListStatus", { series: id, status: status })
+        if (r.error) { frame.toast(r.error.message); return }
+        frame.toast("Moving to " + label)
     }
     // Text onto the clipboard, and a word that it went
     function copyText(text, what) {

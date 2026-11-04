@@ -83,6 +83,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Discord shows what you are watching, a switch in Settings, Playback
 - An endpoint repo can search your own Prowlarr or Jackett over torznab
 - An endpoint repo can add a source that answers in JSON
+- Change a show's list status from its status pill or right-click menu
 
 ### Changed
 - Out now on Airing shows its episodes as small cards with their wide banners
@@ -139,6 +140,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - A source added by hand earlier moves its key out of the address at launch
 - A search whose picked endpoint fails says why instead of showing no results
 - A web page answering at the qBittorrent address no longer counts as a login
+- A library card's right-click menu offers Open on AniList again
 - Seeders and leechers show for trackers whose address carries a passkey
 - Next from a season's last episode plays the next season's first
 - Double clicking the picture into fullscreen no longer plays at 2x
