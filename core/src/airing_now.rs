@@ -113,9 +113,11 @@ const SHOWS_SQL: &str = "SELECT s.anilist_id, s.mal_id, s.title_romaji, s.title_
           (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker
             WHERE t.tracker = 'anilist' AND t.media_id = s.anilist_id AND a.connected_at IS NOT NULL),
           (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker
-            WHERE t.tracker = 'mal' AND t.media_id = s.mal_id AND a.connected_at IS NOT NULL))
+            WHERE t.tracker = 'mal' AND t.media_id = s.mal_id AND a.connected_at IS NOT NULL)),
+        b.path
      FROM season_shows s
      LEFT JOIN images i ON i.url = s.cover_url
+     LEFT JOIN images b ON b.url = s.banner_url
      WHERE s.season = ?1
        AND NOT EXISTS (SELECT 1 FROM not_interested n WHERE n.anilist_id = s.anilist_id)
        AND NOT EXISTS (SELECT 1 FROM series h WHERE h.hidden = 1
@@ -208,6 +210,7 @@ pub fn list(
             english,
             native,
             poster: local_path(images_dir, r.get(11)?),
+            banner: local_path(images_dir, r.get(14)?),
             format: r.get(5)?,
             episodes: r.get::<_, Option<i64>>(6)?.map(|e| e as u32),
             average_score: r.get::<_, Option<i64>>(7)?.map(|s| s as u32),
@@ -347,6 +350,7 @@ pub struct SeasonRow {
     pub episodes: Option<u32>,
     pub average_score: Option<u32>,
     pub cover_url: Option<String>,
+    pub banner_url: Option<String>,
     pub site_url: Option<String>,
     pub next: Option<(u32, i64)>,
 }
@@ -379,6 +383,17 @@ async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreErro
     };
 
     let covers: Vec<String> = shows.iter().filter_map(|s| s.cover_url.clone()).collect();
+    // Banners only for what Out now draws: a show with an episode out in the
+    // window, or one due before the next refresh is likely
+    let near: HashSet<u64> = aired.iter().map(|a| a.anilist_id).collect();
+    let banners: Vec<String> = shows
+        .iter()
+        .filter(|s| {
+            near.contains(&s.anilist_id)
+                || s.next.is_some_and(|(_, at)| at <= now + AIRED_WINDOW_SECS)
+        })
+        .filter_map(|s| s.banner_url.clone())
+        .collect();
     let count = shows.len();
     let next_key = season_of(SeasonPick::Next, now).key;
     let key = season.key.clone();
@@ -389,6 +404,11 @@ async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreErro
     for (url, outcome) in core.images.ensure(&covers).await {
         if let Err(e) = outcome {
             tracing::debug!("an Airing now cover {url} was not fetched: {e}");
+        }
+    }
+    for (url, outcome) in core.images.ensure(&banners).await {
+        if let Err(e) = outcome {
+            tracing::debug!("an Airing now banner {url} was not fetched: {e}");
         }
     }
     Ok(Finished {
@@ -489,6 +509,7 @@ pub fn parse_shows(data: &serde_json::Value) -> Vec<SeasonRow> {
                 episodes: as_u32(m["episodes"].as_u64()),
                 average_score: as_u32(m["averageScore"].as_u64()),
                 cover_url: text(&m["coverImage"]["large"]),
+                banner_url: text(&m["bannerImage"]),
                 site_url: text(&m["siteUrl"]),
                 next: as_u32(next["episode"].as_u64()).zip(next["airingAt"].as_i64()),
             })
@@ -559,8 +580,8 @@ fn write(
     )?;
     let mut insert = tx.prepare(
         "INSERT INTO season_shows (season, anilist_id, rank, mal_id, title_romaji, title_english, title_native,
-            format, episodes, average_score, cover_url, site_url, next_episode, next_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            format, episodes, average_score, cover_url, site_url, next_episode, next_at, banner_url)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
     )?;
     for (rank, s) in shows.iter().enumerate() {
         insert.execute(params![
@@ -578,6 +599,7 @@ fn write(
             s.site_url,
             s.next.map(|(e, _)| i64::from(e)),
             s.next.map(|(_, at)| at),
+            s.banner_url,
         ])?;
     }
     tx.execute(

@@ -551,6 +551,9 @@ pub struct AiringShow {
     pub english: Option<String>,
     pub native: Option<String>,
     pub poster: Option<String>,
+    /// The wide banner, a local file, when AniList has one and the show has
+    /// an episode in or near Out now: the only place that draws it.
+    pub banner: Option<String>,
     pub format: Option<String>,
     pub episodes: Option<u32>,
     /// AniList's 0 to 100, as it came.
