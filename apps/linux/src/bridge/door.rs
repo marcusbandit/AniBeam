@@ -20,7 +20,7 @@ use anibeam_core::events::Subscription;
 use anibeam_core::{
     Call, Chapter, CloseReason, CoreError, Direction, DownloadOptions, DownloadSettings, Event,
     EventBody, EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences,
-    Provider, RefineOp, Release, SeasonPick, Sort, SubscriptionsResult, SubtitleChoice,
+    Provider, RefineOp, Release, SeasonName, SeasonPick, Sort, SubscriptionsResult, SubtitleChoice,
     SubtitleDefaults, Tab, TorrentAction, TrackRef, Tracker,
 };
 use cxx_qt::{CxxQtType, Threading};
@@ -754,6 +754,38 @@ fn opt_id(v: f64) -> Option<u64> {
     }
 }
 
+/// Airing now's season as QML spells it: `Now`, `Next`, or a season and its
+/// year, `Spring 2019`.
+fn parse_season(s: &QString) -> Result<SeasonPick, CoreError> {
+    let text = s.to_string();
+    let Some((name, year)) = text.split_once(' ') else {
+        return parse_enum::<SeasonPick>("season", s);
+    };
+    let name = serde_json::from_value::<SeasonName>(Value::String(name.to_string())).ok();
+    match (name, year.parse::<i32>().ok()) {
+        (Some(name), Some(year)) => Ok(SeasonPick::Season { name, year }),
+        _ => Err(CoreError::invalid(
+            "season",
+            format!("{text} is not a valid choice"),
+        )),
+    }
+}
+
+/// The other way: the spelling `parse_season` reads.
+fn season_text(pick: SeasonPick) -> String {
+    match pick {
+        SeasonPick::Now => "Now".to_string(),
+        SeasonPick::Next => "Next".to_string(),
+        SeasonPick::Season { name, year } => {
+            let name = serde_json::to_value(name)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            format!("{name} {year}")
+        }
+    }
+}
+
 fn parse_enum<T: DeserializeOwned>(field: &str, s: &QString) -> Result<T, CoreError> {
     serde_json::from_value(Value::String(s.to_string()))
         .map_err(|_| CoreError::invalid(field, format!("{s} is not a valid choice")))
@@ -1323,7 +1355,9 @@ impl qobject::Door {
             }
             EventBody::ProgressRefreshed { .. } => self.as_mut().progress_refreshed(s("tracker")),
             EventBody::WatchingRefreshed { .. } => self.as_mut().watching_refreshed(obj("list")),
-            EventBody::AiringNowRefreshed { .. } => self.as_mut().airing_now_refreshed(s("season")),
+            EventBody::AiringNowRefreshed { season } => self
+                .as_mut()
+                .airing_now_refreshed(QString::from(season_text(*season))),
             EventBody::GraphChanged { .. } => self.as_mut().graph_changed(n("root")),
             EventBody::CrawlFinished { .. } => {
                 self.as_mut().crawl_finished(n("fetched"), n("deferred"))
@@ -1752,15 +1786,10 @@ impl qobject::Door {
     }
     // Airing now
     pub fn list_airing_now(&self, season: &QString) -> QJsonObject {
-        self.dispatch(
-            parse_enum::<SeasonPick>("season", season).map(|season| Call::ListAiringNow { season }),
-        )
+        self.dispatch(parse_season(season).map(|season| Call::ListAiringNow { season }))
     }
     pub fn refresh_airing_now(&self, season: &QString, force: bool) -> QJsonObject {
-        self.dispatch(
-            parse_enum::<SeasonPick>("season", season)
-                .map(|season| Call::RefreshAiringNow { season, force }),
-        )
+        self.dispatch(parse_season(season).map(|season| Call::RefreshAiringNow { season, force }))
     }
     pub fn set_not_interested(&self, anilist_id: f64, not_interested: bool) -> QJsonObject {
         self.dispatch(Ok(Call::SetNotInterested {

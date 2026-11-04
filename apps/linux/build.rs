@@ -33,6 +33,7 @@ fn main() {
             .qml_file("qml/Icon.qml")
             .qml_file("qml/Chip.qml")
             .qml_file("qml/Seg.qml")
+            .qml_file("qml/SeasonPicker.qml")
             .qml_file("qml/Switch.qml")
             .qml_file("qml/Button.qml")
             .qml_file("qml/Field.qml")

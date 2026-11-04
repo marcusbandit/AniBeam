@@ -30,6 +30,9 @@ use crate::trackers::{NO_TOKEN, accounts, as_u32, writes};
 /// back to AniList.
 pub const STALE_AFTER_SECS: i64 = 30 * 60;
 
+/// How long a season browsed to, neither on air nor next, stays cached.
+const BROWSED_KEPT_SECS: i64 = 86_400;
+
 /// How far back the strip of episodes out reaches.
 pub const AIRED_WINDOW_SECS: i64 = 2 * 86_400;
 
@@ -60,7 +63,8 @@ const SEASONS: [(&str, &str); 4] = [
 
 /// `Now` is everything releasing, whatever season it started in, which is
 /// what "on air" means to someone watching a long runner. `Next` is the
-/// season after the one this moment falls in, by AniList's quarters.
+/// season after the one this moment falls in, by AniList's quarters, and
+/// `Season` is the one it names.
 pub fn season_of(pick: SeasonPick, now: i64) -> Season {
     match pick {
         SeasonPick::Now => Season {
@@ -79,15 +83,20 @@ pub fn season_of(pick: SeasonPick, now: i64) -> Season {
             } else {
                 (quarter + 1, date.year())
             };
-            let (name, label) = SEASONS[index];
-            Season {
-                key: format!("{name}-{year}"),
-                label: format!("{label} {year}"),
-                status: None,
-                season: Some(name),
-                year: Some(year),
-            }
+            named(index, year)
         }
+        SeasonPick::Season { name, year } => named(name as usize, year),
+    }
+}
+
+fn named(index: usize, year: i32) -> Season {
+    let (name, label) = SEASONS[index];
+    Season {
+        key: format!("{name}-{year}"),
+        label: format!("{label} {year}"),
+        status: None,
+        season: Some(name),
+        year: Some(year),
     }
 }
 
@@ -270,7 +279,8 @@ pub fn list_call(core: &Core, pick: SeasonPick) -> Result<Reply, CoreError> {
 
 /// This season's read while it is still running.
 fn running(core: &Core, pick: SeasonPick) -> Option<u64> {
-    let id = *core.airing_reads.lock().unwrap().get(&pick)?;
+    let key = season_of(pick, time::now_secs()).key;
+    let id = *core.airing_reads.lock().unwrap().get(&key)?;
     core.jobs
         .list()
         .into_iter()
@@ -299,7 +309,7 @@ pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply,
         return Ok(Reply::Ok);
     }
     let mut reads = core.airing_reads.lock().unwrap();
-    if let Some(id) = reads.get(&pick).copied()
+    if let Some(id) = reads.get(&key).copied()
         && core.jobs.list().into_iter().any(|j| j.id == id)
     {
         return Ok(Reply::Started { job: id });
@@ -311,7 +321,7 @@ pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply,
         .start(JobKind::RefreshAiringNow, move |_| async move {
             refresh(owner, pick).await
         });
-    reads.insert(pick, job);
+    reads.insert(key, job);
     Ok(Reply::Started { job })
 }
 
@@ -525,8 +535,10 @@ fn text(value: &serde_json::Value) -> Option<String> {
 }
 
 /// The season replaced whole, in one transaction: a show AniList stopped
-/// listing goes with the old rows. Seasons that are neither on air nor next
-/// go too, and the strip keeps only its window.
+/// listing goes with the old rows. A season browsed to (neither on air,
+/// next, nor this one) goes once its read is a day old, so a read of
+/// another season landing beside it never empties the page it is on, and
+/// the strip keeps only its window.
 fn write(
     tx: &Transaction,
     key: &str,
@@ -537,12 +549,13 @@ fn write(
 ) -> Result<(), CoreError> {
     tx.execute("DELETE FROM season_shows WHERE season = ?1", params![key])?;
     tx.execute(
-        "DELETE FROM season_shows WHERE season NOT IN ('NOW', ?1)",
-        params![next_key],
+        "DELETE FROM season_shows WHERE season NOT IN ('NOW', ?1, ?2)
+           AND season NOT IN (SELECT season FROM season_fetches WHERE fetched_at >= ?3)",
+        params![next_key, key, now - BROWSED_KEPT_SECS],
     )?;
     tx.execute(
-        "DELETE FROM season_fetches WHERE season NOT IN ('NOW', ?1)",
-        params![next_key],
+        "DELETE FROM season_fetches WHERE season NOT IN ('NOW', ?1, ?2) AND fetched_at < ?3",
+        params![next_key, key, now - BROWSED_KEPT_SECS],
     )?;
     let mut insert = tx.prepare(
         "INSERT INTO season_shows (season, anilist_id, rank, mal_id, title_romaji, title_english, title_native,
@@ -903,6 +916,21 @@ mod tests {
         );
         let s = season_of(SeasonPick::Next, MAY);
         assert_eq!(s.key, "SUMMER-2026");
+    }
+
+    #[test]
+    fn a_named_season_asks_for_that_quarter_and_year() {
+        let pick = SeasonPick::Season {
+            name: SeasonName::Spring,
+            year: 2019,
+        };
+        let s = season_of(pick, OCTOBER);
+        assert_eq!(s.key, "SPRING-2019");
+        assert_eq!(s.label, "Spring 2019");
+        assert_eq!(
+            season_variables(&s, 1),
+            serde_json::json!({ "page": 1, "season": "SPRING", "seasonYear": 2019 })
+        );
     }
 
     #[test]

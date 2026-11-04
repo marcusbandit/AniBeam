@@ -67,7 +67,7 @@ pub struct Core {
     launch: Mutex<Option<Arc<Subscription>>>,
     /// Airing now's read in flight per season, so a second ask for the same
     /// season joins it and the other season's read runs beside it.
-    pub(crate) airing_reads: Mutex<HashMap<SeasonPick, u64>>,
+    pub(crate) airing_reads: Mutex<HashMap<String, u64>>,
     /// Taken out and shut down exactly once, in `shutdown`. `None` after
     /// that: a plain `tokio::runtime::Runtime` panics if dropped from
     /// inside its own worker threads, so ownership lives behind a mutex
