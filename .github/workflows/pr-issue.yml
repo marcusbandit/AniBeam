@@ -3,8 +3,12 @@ name: PR issue
 # Every PR closes an issue (CONTRIBUTING.md, "The PR body"). This fails a PR that GitHub
 # lists no closing issue for, and says what to write or file. It reads GitHub's own link
 # list rather than the body, because a "Part of #N", a keyword in a code span, or one
-# pointing at an issue that is already closed can leave that list empty. A maintainer exempts a PR with the "no issue" label.
+# pointing at an issue that is already closed can leave that list empty. GitHub only fills
+# that list for PRs into the default branch, so a hotfix into release/X.Y is read from its
+# body instead. A maintainer exempts a PR with the "no issue" label.
 # Its own workflow, so editing a PR body reruns this and not the cargo jobs in ci.yml.
+# Not a required check: the Release workflow's bot pushes straight to main, and a required
+# check would block that push. CONTRIBUTING makes green checks a condition of merging.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize, labeled, unlabeled, ready_for_review]
@@ -21,41 +25,57 @@ concurrency:
 jobs:
   closes-an-issue:
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 3
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
+      BASE: ${{ github.event.pull_request.base.ref }}
+      DEFAULT: ${{ github.event.repository.default_branch }}
     steps:
       - run: |
-          if gh pr view "$PR" --json labels --jq '.labels[].name' | grep -qx 'no issue'; then
+          fail() { echo "::error title=PR closes no issue::$1"; }
+          view() { gh pr view "$PR" --json labels,closingIssuesReferences,body; }
+
+          # GitHub fills the link list a moment after a body edit, so look a few times.
+          pr="$(view)"
+          if jq -e '.labels | any(.name == "no issue")' <<<"$pr" > /dev/null; then
             echo "Exempt: the PR has the \"no issue\" label."
             exit 0
           fi
-
-          # GitHub fills the link list a moment after a body edit, so look a few times.
-          for try in 1 2 3; do
-            linked="$(gh pr view "$PR" --json closingIssuesReferences \
-              --jq '.closingIssuesReferences[] | "#\(.number)"')"
-            [ -n "$linked" ] && break
-            [ "$try" -lt 3 ] && sleep 5
-          done
-          if [ -n "$linked" ]; then
-            echo "Closes" "$linked"
-            exit 0
+          if [ "$BASE" = "$DEFAULT" ]; then
+            for wait in 5 10 15; do
+              [ "$(jq '.closingIssuesReferences | length' <<<"$pr")" -gt 0 ] && break
+              sleep "$wait"
+              pr="$(view)"
+            done
+            linked="$(jq -r '[.closingIssuesReferences[] | "#\(.number)"] | join(" ")' <<<"$pr")"
+            if [ -n "$linked" ]; then
+              echo "Closes $linked"
+              exit 0
+            fi
           fi
 
-          body="$(gh pr view "$PR" --json body --jq .body)"
-          fail() { echo "::error title=PR closes no issue::$1"; }
-
-          named="$(grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]+' <<<"$body" \
+          body="$(jq -r .body <<<"$pr")"
+          # Closing keywords in the forms GitHub reads: #N, owner/repo#N and an issue URL.
+          named="$(grep -oiE "\b(close[sd]?|fix(e[sd])?|resolve[sd]?):? +(https://github\.com/$GH_REPO/issues/|$GH_REPO#|#)[0-9]+" <<<"$body" \
             | grep -oE '[0-9]+$' | sort -u)"
           for n in $named; do
-            state="$(gh api "repos/$GH_REPO/issues/$n" \
-              --jq 'if .pull_request then "MISSING" else .state end' 2>/dev/null || echo MISSING)"
+            if ! state="$(gh api "repos/$GH_REPO/issues/$n" \
+                --jq 'if .pull_request then "pr" else .state end' 2> err)"; then
+              if ! grep -q 'HTTP 404' err; then
+                echo "::error title=GitHub lookup failed::Could not read #$n: $(cat err). Rerun the job."
+                exit 1
+              fi
+              state=missing
+            fi
+            if [ "$BASE" != "$DEFAULT" ] && { [ "$state" = open ] || [ "$state" = closed ]; }; then
+              echo "Closes #$n (a PR into $BASE, read from its body)"
+              exit 0
+            fi
             case "$state" in
               closed) fail "#$n is already closed and GitHub did not link it. File a new issue for this follow-up and write \"Closes #<new>\" on its own line." ;;
-              MISSING) fail "#$n is not an issue in this repo (a PR number, or a typo). Write \"Closes #<issue>\" with a real open issue." ;;
+              pr|missing) fail "#$n is not an issue in this repo (a PR number, or a typo). Write \"Closes #<issue>\" with a real open issue." ;;
               *) fail "#$n is open but GitHub did not link it. Put \"Closes #$n\" on its own line in the body as plain text, outside code spans and quotes, then save the body to rerun this." ;;
             esac
           done

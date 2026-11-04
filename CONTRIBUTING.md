@@ -5,7 +5,8 @@ the branch, every commit, the PR title and the squash commit it becomes.
 
 ## The flow
 
-1. **Issue first.** Every change starts as a GitHub issue. The
+1. **Issue first.** Every change starts as a GitHub issue, except a typo-sized
+   one (see "The PR body"). The
    title states the outcome, the body says what done looks like. What happens
    to an issue once it is filed is in
    [`docs/agents/triage.md`](docs/agents/triage.md). Every issue sits on the
