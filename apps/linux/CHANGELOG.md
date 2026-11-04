@@ -15,6 +15,10 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Set a show's schedule under Fixes: pick episodes and a date, or paste a list
+- Fixes is three items: Episodes and dates, Files and Match
+- Refresh a show's info from its Match panel, and rescan its folder from Files
+- A season on a break stops showing a made-up next episode
 - Show Out now on Airing as a list instead of cards, in Settings under Appearance
 - Pick how many Out now episodes Airing shows, in Settings under Appearance
 - Sort Airing by score, next episode, episode count or title

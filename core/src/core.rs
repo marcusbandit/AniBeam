@@ -740,6 +740,12 @@ impl Core {
             }
             Call::GetSeries { series } => reads::get_series(self, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
+            Call::ParseSchedule { text } => Ok(crate::library::schedule::parse_call(&text)),
+            Call::SetScheduleNotes {
+                series,
+                season,
+                notes,
+            } => crate::library::schedule::set_notes(self, series, season, notes),
             Call::SetEpisodeCount { series, count } => {
                 reads::set_episode_count(self, series, count)
             }

@@ -202,7 +202,7 @@ Corner {
             height: Math.max(heading.height, closeBtn.height)
             Row {
                 id: heading
-                width: parent.width - closeBtn.width - theme.space(3)
+                width: parent.width - closeBtn.width - rescanBtn.width - theme.space(5)
                 spacing: theme.space(3)
                 Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "wrench"; size: theme.space(5); color: theme.accent }
                 Column {
@@ -210,6 +210,14 @@ Corner {
                     Label { text: "Fix how files are read"; role: "title" }
                     Label { width: parent.width; text: root.seriesTitle + ". Say what each file really is; every scan after this keeps it."; role: "ui"; color: theme.textDim; elide: Text.ElideRight }
                 }
+            }
+            // Files is one place for what is on disk (#432): read the folder again from here
+            Button {
+                id: rescanBtn
+                objectName: "fix-rescan"
+                anchors.right: closeBtn.left; anchors.rightMargin: theme.space(2); anchors.top: parent.top
+                small: true; flat: true; icon: "refresh-cw"; text: "Rescan folder"
+                onClicked: { var r = Door.rescanSeries(root.seriesId); frame.toast(r.error ? r.error.message : "Reading the folder again") }
             }
             Button {
                 id: closeBtn
