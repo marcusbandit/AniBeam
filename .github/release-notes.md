@@ -8,4 +8,4 @@
 
 **Arch:** `yay -S anibeam` (or `paru -S anibeam`) builds this tag from the AUR.
 
-**Downloads page:** nothing to install. AniBeam brings its own anirss, and the first time the page opens it uses your qBittorrent if its Web UI answers, or sets up its own if not. The README walks through the rest: https://github.com/marcusbandit/AniBeam#getting-started
+**Downloads page:** nothing to install. AniBeam brings its own anirss, and the first time the page opens it uses your qBittorrent if its Web UI answers, or sets up its own if not. The README walks through the rest: https://github.com/marcusbandit/AniBeam#first-steps

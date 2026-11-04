@@ -1,247 +1,229 @@
-# AniBeam
+<div align="center">
 
-<img src="assets/icon.png" alt="AniBeam icon" width="96" align="right" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/wordmark-dark.svg">
+  <img src="docs/readme/wordmark-light.svg" alt="AniBeam" width="560">
+</picture>
 
-AniBeam browses, plays and tracks a local anime library. It scans the folders you point it
-at, matches each series against AniList (TVmaze for what AniList does not carry), plays
-video in the window through libmpv, and syncs watch progress with AniList and MyAnimeList.
-It runs on Linux, Windows and Apple silicon Macs: a Qt 6 shell over a Rust core. The Electron app
-it replaced was retired in October 2026; the `v2.0.0` tag holds its source.
+<br>
+<br>
 
-## Getting started
+**Your anime folder, as a library you can watch and track.**
 
-One install is all AniBeam needs, on every platform. The video player, anirss (which
-searches release feeds) and a qBittorrent for downloads all come with it.
+<br>
 
-### 1. Install
+[![stable](https://img.shields.io/github/v/release/marcusbandit/AniBeam?filter=v*&style=for-the-badge&label=stable&labelColor=0D0E11&color=FDC901)](https://github.com/marcusbandit/AniBeam/releases/latest)
+[![nightly](https://img.shields.io/github/v/release/marcusbandit/AniBeam?include_prereleases&filter=*nightly*&style=for-the-badge&label=nightly&labelColor=0D0E11&color=46E0C4)](https://github.com/marcusbandit/AniBeam/releases)
+[![android](https://img.shields.io/github/v/release/marcusbandit/AniBeam?include_prereleases&filter=android-v*&style=for-the-badge&label=android&logo=android&logoColor=8ADFB5&labelColor=0D0E11&color=8ADFB5)](https://github.com/marcusbandit/AniBeam/releases?q=android&expanded=true)
+<br>
+[![platforms](https://img.shields.io/badge/linux_·_windows_·_macos-7CBCF5?style=for-the-badge&label=runs_on&labelColor=0D0E11)](#install)
+[![downloads](https://img.shields.io/github/downloads/marcusbandit/AniBeam/total?style=for-the-badge&labelColor=0D0E11&color=C0ABF0)](https://github.com/marcusbandit/AniBeam/releases)
+[![license](https://img.shields.io/github/license/marcusbandit/AniBeam?style=for-the-badge&labelColor=0D0E11&color=A3AEC5)](LICENSE)
+[![ko-fi](https://img.shields.io/badge/ko--fi-buy_me_a_coffee-F0A772?style=for-the-badge&logo=kofi&logoColor=F0A772&labelColor=0D0E11)](https://ko-fi.com/marcusbandit)
 
-**Mac** (Apple silicon, macOS 15 or later)
+</div>
 
-With Homebrew:
+<br>
+
+<div align="center">
+<img src="docs/readme/home.webp" alt="AniBeam's Home page with recent and unstarted shows as poster cards" width="100%">
+</div>
+
+<br>
+
+Point AniBeam at the folder your anime lives in. It finds every show, matches it on
+AniList, fetches the posters and airing dates, and plays the episodes right in the window.
+Watch most of an episode and it lands on your AniList or MyAnimeList. New episodes can
+download by themselves as they come out.
+
+It runs on Linux, Windows and Apple silicon Macs, with a companion app for Android. One
+install brings everything it needs: the player, the feed search and a torrent client.
+
+## What's in it
+
+- A library that builds itself. Drop files in the folder and they show up, matched, with
+  posters, synopses and what airs next.
+- A player in the window, built on mpv. It remembers where you stopped, offers the next
+  episode, and every key is one `?` away.
+- AniList and MyAnimeList sync. Progress goes both ways, so the cards show where you are.
+- Airing: this season's shows, what is out now, and when the next episode lands.
+- Downloads with subscriptions. Subscribe to a release once and every new episode arrives
+  on its own.
+- A franchise graph that shows how sequels, prequels and side stories connect.
+- Thirty-five themes, Catppuccin, Gruvbox, Tokyo Night and Nord among them.
+- Updates from inside the app, on a Stable or a Nightly track, with a What's new card.
+- A phone app that keeps its own library and can stream yours from home over Tailscale.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/readme/series.webp" alt="A series page with its banner, episodes and progress"></td>
+    <td width="50%"><img src="docs/readme/library.webp" alt="The Library grid with every show as a poster"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>A series page</sub></td>
+    <td align="center"><sub>The whole library</sub></td>
+  </tr>
+</table>
+
+## Install
+
+Grab the newest version from **[Releases](https://github.com/marcusbandit/AniBeam/releases/latest)**.
+
+| Platform | Get it | Notes |
+| --- | --- | --- |
+| Arch Linux | `yay -S anibeam` | Pulls in anirss and qbittorrent-nox too. |
+| Any other Linux | `AniBeam-<version>-x86_64.AppImage` | glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later. |
+| Windows 10 and 11 | `AniBeam-<version>-windows-x64-setup.exe` | Installs for you alone, no admin prompt. A portable `.zip` sits beside it. |
+| macOS 15 and later | `brew install --cask marcusbandit/anibeam/anibeam` | Apple silicon. Or download the `.dmg` and drag it into Applications. |
+| Android | `AniBeam-<version>.apk` | From the newest `android` release. Sideload it. |
+
+<details>
+<summary><b>Mac</b>: Homebrew needs the tap first, and macOS asks once</summary>
+
+<br>
 
 ```bash
 brew tap marcusbandit/anibeam https://github.com/marcusbandit/AniBeam
 brew install --cask marcusbandit/anibeam/anibeam
 ```
 
-The full name in the install trusts the tap's cask, which Homebrew asks for before it loads
-one from outside its own taps. `brew upgrade` picks up each new release.
+The build is not notarized, so macOS stops the first launch. Go to System Settings >
+Privacy & Security, scroll to the AniBeam line and click Open Anyway. From a terminal,
+`xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
 
-Or by hand:
+</details>
 
-1. Download `AniBeam-<version>-macos-arm64.dmg` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
-2. Open it and drag AniBeam into Applications.
+<details>
+<summary><b>Windows</b>: SmartScreen warns about the unsigned installer</summary>
 
-Either way, open AniBeam once. macOS stops it, because the build is not notarized: go to
-System Settings > Privacy & Security, scroll to the AniBeam line and click Open Anyway.
-From a terminal, `xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
+<br>
 
-**Windows** (64-bit, Windows 10 or later)
+If Windows says it protected your PC, click More info, then Run anyway.
 
-1. Download `AniBeam-<version>-windows-x64-setup.exe` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
-2. Run it. It installs for you alone, with no administrator prompt, and adds AniBeam to the
-   Start menu.
+</details>
 
-The installer is not signed, so SmartScreen may say "Windows protected your PC": click More
-info, then Run anyway. `AniBeam-<version>-windows-x64.zip` is the same app without an
-installer; unzip it anywhere and run `anibeam.exe`.
+<details>
+<summary><b>AppImage</b>: make it executable</summary>
 
-**Arch Linux**
-
-```bash
-yay -S anibeam        # or: paru -S anibeam
-```
-
-The AUR package builds the latest release and pulls in anirss and qbittorrent-nox.
-
-**Any other Linux** (glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later)
-
-Download `AniBeam-<version>-x86_64.AppImage` from
-[Releases](https://github.com/marcusbandit/AniBeam/releases), then:
+<br>
 
 ```bash
 chmod +x AniBeam-*-x86_64.AppImage
 ./AniBeam-*-x86_64.AppImage
 ```
 
-### 2. Add your library
+If it mentions FUSE, install `libfuse2` (`libfuse2t64` on Ubuntu 24.04), or run it with
+`--appimage-extract-and-run`.
 
-The first time AniBeam opens, Home says "No series yet". Click Add a folder (or go to
-Settings > Library > Folders > Add folder) and pick the folder your anime lives in. One
-folder per show works best, for example `Anime/Sousou no Frieren/Frieren - 01.mkv`.
+</details>
 
-AniBeam scans it, matches each show against AniList (and TVmaze for anything that is not
-anime), and fetches posters, synopses and airing dates. Files that land in the folder later
-show up by themselves. A show it could not match says "Needs a match": open it, click Find
-a match, and pick the right one.
+After that, the app updates itself. Settings > About picks Stable or Nightly.
 
-### 3. Connect AniList or MyAnimeList (optional)
+## First steps
 
-Settings > Library > Trackers > Connect. Your browser opens; sign in, approve AniBeam, and
-come back. From then on, watching most of an episode marks it on your list, and the cards
-show your progress. Main tracker picks whose progress wins when you connect both.
+1. **Add your library.** Click Add a folder on Home and pick your anime folder. One folder
+   per show works best: `Anime/Sousou no Frieren/Frieren - 01.mkv`.
+2. **Connect a tracker** (optional). Settings > Library > Trackers > Connect, then approve
+   AniBeam in the browser.
+3. **Watch.** Click a show, then an episode. Space plays and pauses.
+4. **Download new episodes** (optional). AniBeam ships with no sources. Add an endpoint
+   repo in Settings > Downloads > Endpoint repos, install the sources you want, then
+   search a show in Downloads and click Subscribe.
 
-### 4. Watch
+A show AniBeam could not match says "Needs a match". Open it, click Find a match and pick
+the right one.
 
-Click a show, then an episode. Space plays and pauses, and `?` shows every key. AniBeam
-remembers where you stopped and offers the next episode when one ends.
+<details>
+<summary><b>More on downloads</b></summary>
 
-### 5. Download new episodes (optional)
+<br>
 
-Open Downloads (the arrow in the left rail). There is nothing to install or set up first:
+AniBeam starts its own anirss, the tool that searches the release feeds. If a qBittorrent of
+yours already runs with its Web UI on, AniBeam uses it. If not, it sets up its own the first
+time you open Downloads, and that one keeps running after you close the app so
+subscriptions keep downloading.
 
-- AniBeam starts its own anirss, the tool that searches the release feeds.
-- If a qBittorrent of yours is already running with its Web UI on, AniBeam uses it.
-  If not, AniBeam sets up its own qBittorrent the first time you open the page, and
-  says so in the status line at the bottom.
+Episodes land in `~/Downloads/Anime` unless you pick another folder. Add that folder to your
+library so they show up there.
 
-AniBeam comes with no sources to search. In Settings > Downloads > Endpoint repos, add a repo by
-pasting its index URL, then install the endpoints you want from it. A repo is a list of
-sources someone else keeps; AniBeam itself never points at a site.
+To use your own qBittorrent, turn on its Web UI (Preferences > Web UI, set a username and
+password), then in Settings > Downloads > Torrent client choose Mine, fill in the address and
+login, and Save.
 
-Search for a show (`Frieren 1080p`), look over the releases, and click Subscribe. New
-episodes then download by themselves as they come out, into `~/Downloads/Anime` unless you
-pick another folder. Add that folder to your library (step 2) so they show up there. Download
-grabs a single release instead.
+</details>
 
-AniBeam's own qBittorrent keeps running after you close AniBeam, so subscriptions keep
-downloading. Settings > Downloads > Torrent client shows which qBittorrent is in use. To
-switch to your own, turn on its Web UI (in qBittorrent: Preferences > Web UI, tick the box,
-set a username and password), choose Mine, fill in the address, username and password, and
-Save.
+## The phone app
 
-### When something is off
+The Android app keeps a library of its own and tracks to the same AniList or MyAnimeList
+account. It can also show and play your computer's library from anywhere: turn on Settings >
+Library > Phone app > Share over Tailscale on the computer, with
+[Tailscale](https://tailscale.com) signed in on both. Only devices on your tailnet can reach
+it. [apps/android](apps/android/README.md) has the details.
 
-- **macOS says AniBeam "cannot be opened"**: that is the Open Anyway step in 1.
-- **Windows says it protected your PC**: that is SmartScreen on an unsigned installer. Click
-  More info, then Run anyway.
-- **The AppImage does not start and mentions FUSE**: install `libfuse2` (`libfuse2t64` on
-  Ubuntu 24.04), or run it with `--appimage-extract-and-run`.
-- **Downloads says qBittorrent did not answer**: open Settings > Downloads > Torrent client
-  and press Test; the State line says what went wrong. Choosing "Pick for me" and saving
-  makes AniBeam look again on the next connect.
-- **Sign-in stays on "Finish in your browser"**: approve AniBeam in the browser tab it
-  opened. If that tab is gone, click Open the sign-in page again.
-- **Where things are kept**: on a Mac in `~/Library/Application Support/anibeam`, tracker
-  tokens in the login keychain. On Linux in `~/.local/share/anibeam` and
-  `~/.config/anibeam`, tracker tokens in the Secret Service keyring (GNOME Keyring, KWallet)
-  or, without one, in a file only you can read. "Use my mpv.conf" reads
-  `~/.config/mpv/mpv.conf` on both. On Windows in `%LOCALAPPDATA%\anibeam` and
-  `%APPDATA%\anibeam`, tracker tokens in the Credential Manager, and "Use my mpv.conf"
-  reads `%APPDATA%\mpv\mpv.conf`.
+## When something is off
 
-## Share over Tailscale
+<details>
+<summary><b>Downloads says qBittorrent did not answer</b></summary>
 
-AniBeam can share a read-only copy of your library with the AniBeam app on your phone.
-Turn on Settings > Library > Phone app > Share over Tailscale. It needs
-[Tailscale](https://tailscale.com) running on this computer and on the phone, signed in to
-the same tailnet. The phone app lives in `apps/android`; its README covers building it,
-sideloading it and pointing it at this computer.
+<br>
 
-When the switch is on, AniBeam listens on port 8790, on this computer's Tailscale addresses
-only. Nothing on your home network or the internet can reach it, so the tailnet is the
-lock. The setting shows the addresses it answers on, and the MagicDNS name when the
-`tailscale` command can say it. If Tailscale is not connected yet, AniBeam says so and looks
-again every minute.
+Open Settings > Downloads > Torrent client and press Test; the State line says what went
+wrong. Choosing Pick for me and saving makes AniBeam look again on the next connect.
 
-The phone reads three things and changes none of them: your library with its watched
-progress and airing times, your anirss subscriptions, and the torrents qBittorrent holds. If
-anirss or qBittorrent is not running, the phone gets the rest and a short note about which
-half is missing.
+</details>
 
-You can see what it serves with `curl http://<address>:8790/api/v1/hello` and
-`/api/v1/snapshot`. For development, `ANIBEAM_HOST_BIND=127.0.0.1:8790` picks the address by
-hand. `0.0.0.0:8790` lets an Android emulator reach it at `10.0.2.2`. The file
-`host-api/src/lib.rs` describes the JSON.
+<details>
+<summary><b>Sign-in stays on "Finish in your browser"</b></summary>
+
+<br>
+
+Approve AniBeam in the browser tab it opened. If that tab is gone, click Open the sign-in
+page again.
+
+</details>
+
+<details>
+<summary><b>Where AniBeam keeps its data</b></summary>
+
+<br>
+
+| | Data | Tracker tokens | "Use my mpv.conf" reads |
+| --- | --- | --- | --- |
+| Linux | `~/.local/share/anibeam`, `~/.config/anibeam` | Secret Service keyring, or a file only you can read | `~/.config/mpv/mpv.conf` |
+| Mac | `~/Library/Application Support/anibeam` | login keychain | `~/.config/mpv/mpv.conf` |
+| Windows | `%LOCALAPPDATA%\anibeam`, `%APPDATA%\anibeam` | Credential Manager | `%APPDATA%\mpv\mpv.conf` |
+
+</details>
+
+Anything else, [open an issue](https://github.com/marcusbandit/AniBeam/issues/new/choose).
+A screenshot and the version from Settings > About help a lot.
 
 ## Build from source
 
-You need Rust 1.95 or newer, Qt 6.11 or newer (`qmake6` on PATH; base, declarative, svg),
-libmpv, KDE's MpvQt and the lld linker. On Arch that is
-`pacman -S rust lld qt6-base qt6-declarative qt6-svg mpv mpvqt`.
+[docs/build-from-source.md](docs/build-from-source.md) covers building, running from a
+checkout and the CLI. [CONTRIBUTING.md](CONTRIBUTING.md) covers issues, pull requests and how
+releases ship.
 
-```bash
-git clone https://github.com/marcusbandit/AniBeam.git
-cd AniBeam
-cargo build --release -p anibeam     # target/release/anibeam
-```
+## Support
 
-An installed build reads its themes and its bundled `mpv.conf` from `/usr/share/anibeam`. A
-run straight from the checkout points at the checkout's copies instead, and `--root` keeps
-all of its data in one directory so it never touches a real install's:
+AniBeam is free and stays free. If it made your anime nights a little nicer and you feel
+like buying me a coffee, there is a [Ko-fi](https://ko-fi.com/marcusbandit). It is entirely
+optional, and a star or a good bug report helps just as much.
 
-```bash
-ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
-  target/release/anibeam --root /tmp/anibeam-dev
-```
+<div align="center">
 
-A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.5.0 or newer,
-`yay -S anirss qbittorrent-nox` on Arch).
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/marcusbandit)
 
-A build from source has no AniList or MyAnimeList app registration of its own, so the
-Trackers tab asks for a client ID the first time you connect. To bundle your own, copy
-`.env.example` to `.env.local` and fill it in before building; it explains where to
-register.
+</div>
 
-On a Mac, `apps/linux/packaging/macos/deps.sh` builds libmpv and MpvQt, and `bundle.sh`
-turns the binary into `AniBeam.app` and a dmg. `.github/workflows/macos.yml` runs both.
-On Windows, `apps/linux/packaging/windows/deps.sh` and `bundle.sh` do the same for the
-installer and the zip, and `.github/workflows/windows.yml` runs them.
+## Credits
 
-## Development
+- [AniList](https://anilist.co) and [TVmaze](https://www.tvmaze.com) for the show data,
+  [MyAnimeList](https://myanimelist.net) for tracking.
+- [mpv](https://mpv.io) and KDE's [MpvQt](https://invent.kde.org/libraries/mpvqt) for the
+  player, [Qt](https://www.qt.io) for the window.
+- [qBittorrent](https://www.qbittorrent.org) for downloads.
 
-The Rust core lives in `core/`, the Qt shell in `apps/linux/` (it builds for the Mac
-too), and a terminal shell over the
-same core in `apps/cli/`. Cargo builds all three.
+## License
 
-```bash
-cargo build --release -p anibeam-cli   # target/release/anibeam-cli
-cargo test --workspace                 # unit tests plus core/tests/
-cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt --all --check
-```
-
-`CONTRIBUTING.md` covers issues, branch and commit names and the PR flow.
-`apps/linux/README.md` covers the shell's own tooling: sandboxed runs, offscreen captures
-with `scripts/shoot.sh` and scripted drives with `scripts/drive.sh`. `CONTEXT.md` is the
-vocabulary the code and the docs share, and the design behind the native line is
-`docs/superpowers/specs/2026-09-04-native-line-design.md`.
-
-The CLI is the core's door: `sources`, `scan`, `list`, `show`, `jobs`,
-`import`, `export`, `events --follow`, and `call <Name> --json '{...}'` for
-anything else. `--root <dir>` puts the database, the config, the cache and
-the secrets under one directory instead of the XDG ones, which is how you
-drive it against a real library without touching the app's own data.
-
-```bash
-anibeam-cli call AddSource --json '{"path": "/mnt/media/anime"}'
-anibeam-cli scan --wait
-anibeam-cli list --tab all --sort alpha --direction asc
-```
-
-## Releasing
-
-Push a version tag. `.github/workflows/release.yml` builds the Mac dmg, the Linux
-AppImage and the Windows installer and zip, runs the three smoke tests, and leaves a draft release with the files and install
-notes on it. Read the draft, then press Publish.
-
-```bash
-git tag v2.1.0
-git push origin v2.1.0
-```
-
-Once the release is published, point the AUR at it:
-
-```bash
-apps/linux/packaging/aur/publish.sh 2.1.0
-```
-
-and point the Homebrew cask at its dmg, then open a PR with the change to
-`Casks/anibeam.rb`:
-
-```bash
-apps/linux/packaging/brew/bump.sh 2.1.0
-```
-
-Bump `version` in the workspace `Cargo.toml` before tagging: a build from the AUR's
-tarball has no git history and reports the Cargo version.
+[GPL-3.0](LICENSE).
