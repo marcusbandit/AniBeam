@@ -128,6 +128,11 @@ Item {
         return true
     }
     readonly property bool narrowed: page.filter !== 0 || page.hideListed || page.hideOwned
+    // What the filter alone holds, before the hides: tells the empty state which one emptied it
+    readonly property int filterCount: page.filter === 1 ? listedRaw : page.filter === 2 ? ownedRaw : (listed ? listed.shows.length : 0)
+    readonly property int listedRaw: listed ? listed.shows.filter(function(s) { return !!s.list_status }).length : 0
+    readonly property int ownedRaw: listed ? listed.shows.filter(function(s) { return page.owned(s) }).length : 0
+    readonly property bool hidesEmptied: page.filterCount > 0
     readonly property var shows: {
         if (!listed) return []
         var f = page.filter
@@ -141,9 +146,16 @@ Item {
     readonly property var aired: {
         if (page.season !== "Now" || !listed) return []
         if (!page.narrowed) return listed.aired
-        var keep = {}
-        for (var i = 0; i < page.shows.length; i++) keep[page.shows[i].anilist_id] = true
-        return listed.aired.filter(function(a) { return keep[a.anilist_id] === true })
+        // A filter keeps only its shows' episodes; a hide drops only the episodes of the shows
+        // it hides, so a show that just finished, and is no longer listed, stays
+        if (page.filter !== 0) {
+            var keep = {}
+            for (var i = 0; i < page.shows.length; i++) keep[page.shows[i].anilist_id] = true
+            return listed.aired.filter(function(a) { return keep[a.anilist_id] === true })
+        }
+        var drop = {}
+        for (var j = 0; j < listed.shows.length; j++) if (!page.kept(listed.shows[j])) drop[listed.shows[j].anilist_id] = true
+        return listed.aired.filter(function(a) { return drop[a.anilist_id] !== true })
     }
     // Out now's grid: as many columns as fit at a readable title width, three rows of them
     readonly property int outCols: Math.max(1, Math.floor((scroll.innerWidth + theme.space(2)) / (theme.space(84) + theme.space(2))))
@@ -403,7 +415,14 @@ Item {
                               { text: "On my lists", name: "lists", count: page.listed ? page.listedCount : undefined },
                               { text: "In my library", name: "library", count: page.listed ? page.ownedCount : undefined }]
                     index: page.filter
-                    onPicked: function(i) { page.filter = i; page.keepView(); page.clearPicks() }
+                    onPicked: function(i) {
+                        page.filter = i
+                        // A filter to the very shows a hide leaves out takes that hide off
+                        if (i === 1) page.hideListed = false
+                        if (i === 2) page.hideOwned = false
+                        page.keepView()
+                        page.clearPicks()
+                    }
                 }
             }
             Row {
@@ -599,13 +618,13 @@ Item {
             }
             EmptyState {
                 visible: !page.loadFailed && !!page.listed && page.listed.shows.length > 0 && page.narrowed
-                icon: page.filter === 1 ? "bookmark" : page.filter === 2 ? "layers" : "eye-off"
-                title: page.filter === 1 ? "Nothing here is on your lists"
-                     : page.filter === 2 ? "Nothing here is in your library"
-                     : "Everything here is yours already"
-                body: page.filter === 1 ? "Plan to watch on a card puts it on your list."
-                    : page.filter === 2 ? "Get episodes on a card downloads it into your library."
-                    : "Every show left is on your lists or in your library, and those are hidden."
+                icon: page.hidesEmptied ? "eye-off" : page.filter === 1 ? "bookmark" : "layers"
+                title: page.hidesEmptied ? "Your hides leave nothing here"
+                     : page.filter === 1 ? "Nothing here is on your lists"
+                     : "Nothing here is in your library"
+                body: page.hidesEmptied ? "Every show here is on your lists or in your library, and you hid those."
+                    : page.filter === 1 ? "Plan to watch on a card puts it on your list."
+                    : "Get episodes on a card downloads it into your library."
                 Button {
                     text: "Show everything"
                     onClicked: { page.filter = 0; page.hideListed = false; page.hideOwned = false; page.keepView() }

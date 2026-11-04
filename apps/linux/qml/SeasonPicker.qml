@@ -2,7 +2,8 @@
 // quarters. It opens under the control that asked, scrolled to the season showing, and
 // scrolls natively all the way back to 1940. The season showing is in the accent, the
 // quarter this moment falls in carries a dot. Picking emits `picked(name, year)` and closes;
-// Escape or a click outside closes it alone.
+// Escape or a click outside closes it alone. The arrow keys move a highlight over the cells
+// and Return or Space picks it, so the keys that open it can finish the job.
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls.Basic as QC
@@ -24,8 +25,16 @@ Item {
     readonly property bool opened: pop.opened
 
     function open() {
+        // The highlight starts on the season showing, else the one this moment is in
+        var parts = current.split(" ")
+        pop.hiYear = current !== "" ? parseInt(parts[1]) : thisYear
+        pop.hiQuarter = current !== "" ? names.indexOf(parts[0]) : thisQuarter
         place()
         pop.open()
+    }
+    function pickHighlighted() {
+        pop.close()
+        root.picked(names[pop.hiQuarter], pop.hiYear)
     }
 
     function place() {
@@ -54,7 +63,17 @@ Item {
         padding: 0
         focus: true
         background: null
-        closePolicy: QC.Popup.CloseOnEscape | QC.Popup.CloseOnPressOutsideParent
+        // Any press outside the pane closes it, the other cells of the switch under it included
+        closePolicy: QC.Popup.CloseOnEscape | QC.Popup.CloseOnPressOutside
+        property int hiYear: root.thisYear
+        property int hiQuarter: 0
+        function move(dy, dq) {
+            var q = hiQuarter + dq, y = hiYear - dy
+            if (q < 0) { q = 3; y-- } else if (q > 3) { q = 0; y++ }
+            hiYear = Math.max(root.oldest, Math.min(root.newest, y))
+            hiQuarter = q
+            years.positionViewAtIndex(root.newest - hiYear, ListView.Contain)
+        }
 
         onOpened: {
             years.positionViewAtIndex(root.newest - root.currentYear, ListView.Center)
@@ -81,11 +100,18 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
                 interactive: false
                 WheelStep { id: wheel; flick: years }
-                Keys.onUpPressed: wheel.scrollTo(wheel.target - pop.rowHeight)
-                Keys.onDownPressed: wheel.scrollTo(wheel.target + pop.rowHeight)
+                Keys.onUpPressed: pop.move(-1, 0)
+                Keys.onDownPressed: pop.move(1, 0)
+                Keys.onLeftPressed: pop.move(0, -1)
+                Keys.onRightPressed: pop.move(0, 1)
+                Keys.onReturnPressed: root.pickHighlighted()
+                Keys.onEnterPressed: root.pickHighlighted()
+                Keys.onSpacePressed: root.pickHighlighted()
+                Keys.onTabPressed: pop.close()
+                Keys.onBacktabPressed: pop.close()
                 Keys.onPressed: function(e) {
-                    if (e.key === Qt.Key_PageUp) { wheel.scrollTo(wheel.target - years.height); e.accepted = true }
-                    else if (e.key === Qt.Key_PageDown) { wheel.scrollTo(wheel.target + years.height); e.accepted = true }
+                    if (e.key === Qt.Key_PageUp) { pop.move(-8, 0); e.accepted = true }
+                    else if (e.key === Qt.Key_PageDown) { pop.move(8, 0); e.accepted = true }
                 }
                 delegate: Item {
                     id: yearRow
@@ -112,12 +138,13 @@ Item {
                                 readonly property string label: root.names[index] + " " + yearRow.year
                                 readonly property bool on: label === root.current
                                 readonly property bool here: yearRow.year === root.thisYear && index === root.thisQuarter
+                                readonly property bool lit: cm.containsMouse || (yearRow.year === pop.hiYear && index === pop.hiQuarter)
                                 objectName: "season-" + root.names[index].toLowerCase() + "-" + yearRow.year
                                 width: pop.cellWidth - theme.space(1)
                                 height: theme.controlHeight
                                 radius: height / 2
                                 smoothing: theme.cornerSmoothing
-                                color: on ? theme.accentSoft : cm.containsMouse ? theme.floatHover : "transparent"
+                                color: on ? theme.accentSoft : lit ? theme.floatHover : "transparent"
                                 borderColor: on ? theme.accentEdge : "transparent"
                                 borderWidth: 1
                                 Row {
@@ -132,7 +159,7 @@ Item {
                                     Label {
                                         text: root.names[cell.index]
                                         role: "ui"
-                                        color: cell.on ? theme.accent : cm.containsMouse ? theme.text : theme.textDim
+                                        color: cell.on ? theme.accent : cell.lit ? theme.text : theme.textDim
                                     }
                                 }
                                 MouseArea {
@@ -140,6 +167,7 @@ Item {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
+                                    onEntered: { pop.hiYear = yearRow.year; pop.hiQuarter = cell.index }
                                     onClicked: { pop.close(); root.picked(root.names[cell.index], yearRow.year) }
                                 }
                             }

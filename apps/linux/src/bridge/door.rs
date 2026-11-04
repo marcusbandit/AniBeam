@@ -776,7 +776,13 @@ fn season_text(pick: SeasonPick) -> String {
     match pick {
         SeasonPick::Now => "Now".to_string(),
         SeasonPick::Next => "Next".to_string(),
-        SeasonPick::Season { name, year } => format!("{name:?} {year}"),
+        SeasonPick::Season { name, year } => {
+            let name = serde_json::to_value(name)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            format!("{name} {year}")
+        }
     }
 }
 

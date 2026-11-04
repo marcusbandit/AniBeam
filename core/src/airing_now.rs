@@ -30,6 +30,9 @@ use crate::trackers::{NO_TOKEN, accounts, as_u32, writes};
 /// back to AniList.
 pub const STALE_AFTER_SECS: i64 = 30 * 60;
 
+/// How long a season browsed to, neither on air nor next, stays cached.
+const BROWSED_KEPT_SECS: i64 = 86_400;
+
 /// How far back the strip of episodes out reaches.
 pub const AIRED_WINDOW_SECS: i64 = 2 * 86_400;
 
@@ -276,7 +279,8 @@ pub fn list_call(core: &Core, pick: SeasonPick) -> Result<Reply, CoreError> {
 
 /// This season's read while it is still running.
 fn running(core: &Core, pick: SeasonPick) -> Option<u64> {
-    let id = *core.airing_reads.lock().unwrap().get(&pick)?;
+    let key = season_of(pick, time::now_secs()).key;
+    let id = *core.airing_reads.lock().unwrap().get(&key)?;
     core.jobs
         .list()
         .into_iter()
@@ -305,7 +309,7 @@ pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply,
         return Ok(Reply::Ok);
     }
     let mut reads = core.airing_reads.lock().unwrap();
-    if let Some(id) = reads.get(&pick).copied()
+    if let Some(id) = reads.get(&key).copied()
         && core.jobs.list().into_iter().any(|j| j.id == id)
     {
         return Ok(Reply::Started { job: id });
@@ -317,7 +321,7 @@ pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply,
         .start(JobKind::RefreshAiringNow, move |_| async move {
             refresh(owner, pick).await
         });
-    reads.insert(pick, job);
+    reads.insert(key, job);
     Ok(Reply::Started { job })
 }
 
@@ -531,9 +535,10 @@ fn text(value: &serde_json::Value) -> Option<String> {
 }
 
 /// The season replaced whole, in one transaction: a show AniList stopped
-/// listing goes with the old rows. Seasons that are neither on air, next,
-/// nor this one go too, so a season browsed to stays cached only until
-/// another is, and the strip keeps only its window.
+/// listing goes with the old rows. A season browsed to (neither on air,
+/// next, nor this one) goes once its read is a day old, so a read of
+/// another season landing beside it never empties the page it is on, and
+/// the strip keeps only its window.
 fn write(
     tx: &Transaction,
     key: &str,
@@ -544,12 +549,13 @@ fn write(
 ) -> Result<(), CoreError> {
     tx.execute("DELETE FROM season_shows WHERE season = ?1", params![key])?;
     tx.execute(
-        "DELETE FROM season_shows WHERE season NOT IN ('NOW', ?1, ?2)",
-        params![next_key, key],
+        "DELETE FROM season_shows WHERE season NOT IN ('NOW', ?1, ?2)
+           AND season NOT IN (SELECT season FROM season_fetches WHERE fetched_at >= ?3)",
+        params![next_key, key, now - BROWSED_KEPT_SECS],
     )?;
     tx.execute(
-        "DELETE FROM season_fetches WHERE season NOT IN ('NOW', ?1, ?2)",
-        params![next_key, key],
+        "DELETE FROM season_fetches WHERE season NOT IN ('NOW', ?1, ?2) AND fetched_at < ?3",
+        params![next_key, key, now - BROWSED_KEPT_SECS],
     )?;
     let mut insert = tx.prepare(
         "INSERT INTO season_shows (season, anilist_id, rank, mal_id, title_romaji, title_english, title_native,
