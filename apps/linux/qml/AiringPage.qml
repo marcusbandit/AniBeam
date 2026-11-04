@@ -20,6 +20,9 @@
 // due, so that episode moves into Out now on time, and a half-minute clock keeps "2h ago"
 // honest, the way Watching keeps its countdowns.
 import QtQuick
+import QtQuick.Shapes
+import QtQuick.Window
+import QtCore
 import com.marcusrosado.AniBeam
 
 Item {
@@ -43,8 +46,12 @@ Item {
     // What to leave out, on top of the filter: the shows on the user's lists, the library's
     property bool hideListed: !!props.hideListed
     property bool hideOwned: !!props.hideOwned
+    // The cards' order: AniList's popularity as it came, or one of these
+    property string sort: props.sort || "popular"
+    readonly property var sorts: [["popular", "Most popular"], ["score", "Highest score"],
+                                  ["soonest", "Next episode soonest"], ["episodes", "Most episodes"], ["title", "Title"]]
     function keepView() {
-        frame.nav.current.props = { season: page.season, filter: page.filter, hideListed: page.hideListed, hideOwned: page.hideOwned }
+        frame.nav.current.props = { season: page.season, filter: page.filter, hideListed: page.hideListed, hideOwned: page.hideOwned, sort: page.sort }
     }
     property var listed: null
     property bool refreshing: false
@@ -136,11 +143,25 @@ Item {
     readonly property var shows: {
         if (!listed) return []
         var f = page.filter
-        return listed.shows.filter(function(s) {
+        var out = listed.shows.filter(function(s) {
             if (f === 1 && !s.list_status) return false
             if (f === 2 && !page.owned(s)) return false
             return page.kept(s)
         })
+        if (page.sort === "popular") return out
+        // A show missing the value sorts after every show that has it; ties keep popularity
+        var key = page.sort === "score" ? function(s) { return s.average_score === null || s.average_score === undefined ? null : -s.average_score }
+                : page.sort === "soonest" ? function(s) { return s.next_airing ? s.next_airing.at : null }
+                : page.sort === "episodes" ? function(s) { return s.episodes ? -s.episodes : null }
+                : function(s) { return String(s.title).toLocaleLowerCase() }
+        var rows = out.map(function(s, i) { return { s: s, k: key(s), i: i } })
+        rows.sort(function(a, b) {
+            if (a.k === null || b.k === null) return a.k === b.k ? a.i - b.i : a.k === null ? 1 : -1
+            if (a.k < b.k) return -1
+            if (a.k > b.k) return 1
+            return a.i - b.i
+        })
+        return rows.map(function(r) { return r.s })
     }
     // The strip follows the narrowing too: On my lists means the episodes of those shows
     readonly property var aired: {
@@ -157,10 +178,26 @@ Item {
         for (var j = 0; j < listed.shows.length; j++) if (!page.kept(listed.shows[j])) drop[listed.shows[j].anilist_id] = true
         return listed.aired.filter(function(a) { return drop[a.anilist_id] !== true })
     }
-    // Out now's grid: as many columns as fit at a readable title width, three rows of them
-    readonly property int outCols: Math.max(1, Math.floor((scroll.innerWidth + theme.space(2)) / (theme.space(84) + theme.space(2))))
-    readonly property real outCellWidth: Math.floor((scroll.innerWidth - theme.space(2) * (outCols - 1)) / outCols)
-    readonly property int outFirst: outCols * 3
+    // Out now's grid, small cards or list rows by Settings, Appearance, until All opens the rest
+    readonly property real outGap: outList ? theme.space(2) : theme.space(3)
+    // Cards come columns by rows, from Settings, Appearance; a window too narrow for the
+    // columns at a readable width gets fewer
+    Settings { id: kept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
+    readonly property var outLayout: {
+        var m = /^(\d)x(\d)$/.exec(kept.outLayout)
+        return m ? [parseInt(m[1]), parseInt(m[2])] : [4, 2]
+    }
+    // Cards unless Settings picks the list: rows of a small poster, title, episode and age,
+    // as many columns as fit at a readable title width, three rows deep
+    readonly property bool outList: kept.outStyle === "list"
+    readonly property int outRows: outList ? 3 : outLayout[1]
+    readonly property int outCols: outList
+        ? Math.max(1, Math.floor((scroll.innerWidth + outGap) / (theme.space(84) + outGap)))
+        : Math.max(1, Math.min(outLayout[0], Math.floor((scroll.innerWidth + outGap) / (theme.space(45) + outGap))))
+    readonly property real outCellWidth: Math.floor((scroll.innerWidth - outGap * (outCols - 1)) / outCols)
+    // Tall enough for two lines of words, and close to a banner's wide shape as the tile narrows
+    readonly property real outCellHeight: outList ? theme.space(17) : Math.max(theme.space(20), Math.round(outCellWidth / 3.4))
+    readonly property int outFirst: outCols * outRows
     readonly property var outShown: page.allOut ? page.aired : page.aired.slice(0, page.outFirst)
     readonly property int outToday: {
         var n = 0
@@ -429,6 +466,14 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(2)
+                Dropdown {
+                    objectName: "airing-sort"
+                    prefix: "Sort"
+                    minWidth: theme.space(44)
+                    options: page.sorts.map(function(s) { return s[1] })
+                    index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
+                    onPicked: function(i) { page.sort = page.sorts[i][0]; page.keepView(); scroll.contentY = 0 }
+                }
                 ToggleChip {
                     objectName: "airing-hide-lists"
                     text: "Hide my lists"
@@ -494,9 +539,10 @@ Item {
             }
             Flow {
                 width: parent.width
-                spacing: theme.space(2)
+                spacing: page.outGap
                 Repeater {
                     model: page.outShown
+                    // One episode, as a small card or a list row
                     Item {
                         id: pill
                         required property var modelData
@@ -504,59 +550,136 @@ Item {
                         readonly property bool today: page.nowMs / 1000 - modelData.at < 86400
                         objectName: "airing-out-" + modelData.anilist_id + "-" + modelData.episode
                         width: page.outCellWidth
-                        height: theme.space(17)
+                        height: page.outCellHeight
                         activeFocusOnTab: true
+                        scale: theme.reducedMotion || page.outList ? 1 : (pm.pressed ? 0.985 : 1)
                         function open() {
                             if (pill.show) page.openActions(pill.show, pill)
                             else frame.openLink("https://anilist.co/anime/" + pill.modelData.anilist_id)
                         }
                         Keys.onReturnPressed: pill.open()
-                        Rectangle {
+                        // One look per pill, built only for the style Settings picked
+                        Loader {
                             anchors.fill: parent
-                            radius: theme.radiusSm
-                            color: pm.containsMouse ? theme.raised : "transparent"
-                            border.color: pill.activeFocus ? theme.focusRing : "transparent"
-                            border.width: 1
+                            sourceComponent: page.outList ? outRow : outCard
                         }
-                        Corner {
-                            id: thumb
-                            x: theme.space(1.5)
-                            anchors.verticalCenter: parent.verticalCenter
-                            height: parent.height - theme.space(3)
-                            width: Math.round(height / 1.5)
-                            radius: theme.radiusSm; smoothing: 0
-                            color: theme.tileSunken
-                            borderColor: theme.line; borderWidth: 1
-                            Image {
-                                id: thumbImage
-                                visible: false
-                                width: thumb.width; height: thumb.height
-                                source: pill.show && pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
-                                sourceSize: theme.posterDecodeSize
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                asynchronous: true
-                                cache: true
+                        // The card: the banner across the whole tile, rounded like the cards
+                        // below, darkened toward the foot so the words read
+                        Component {
+                            id: outCard
+                            Item {
+                                Image {
+                                    id: outPoster
+                                    visible: false
+                                    width: pill.width; height: pill.height
+                                    // AniList's wide banner, made for this shape; the tall cover only
+                                    // when a show has none
+                                    source: !pill.show ? "" : pill.show.banner ? Fmt.fileUrl(pill.show.banner)
+                                          : pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
+                                    // Decoded at the tile's width, its height following the image's own shape
+                                    sourceSize.width: Math.ceil(pill.width * (Screen.devicePixelRatio || 1))
+                                    fillMode: Image.PreserveAspectCrop
+                                    smooth: true
+                                    asynchronous: true
+                                    cache: true
+                                }
+                                Corner {
+                                    anchors.fill: parent
+                                    radius: theme.radiusTile
+                                    smoothing: theme.cornerSmoothing
+                                    color: theme.tileSunken
+                                    fillItem: outPoster.status === Image.Ready ? outPoster : null
+                                }
+                                // The shade: light at the top, near black under the words
+                                Corner {
+                                    anchors.fill: parent
+                                    radius: theme.radiusTile
+                                    smoothing: theme.cornerSmoothing
+                                    // No outline: on a light banner it read as a gap round the tile.
+                                    // Only keyboard focus draws a ring; hover lifts the shade instead
+                                    borderColor: pill.activeFocus ? theme.focusRing : "transparent"
+                                    borderWidth: pill.activeFocus ? 2 : 0
+                                    fillGradient: LinearGradient {
+                                        x1: 0; y1: 0; x2: 0; y2: pill.height
+                                        GradientStop { position: 0; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.05 : 0.2) }
+                                        GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.35 : 0.5) }
+                                        GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.88) }
+                                    }
+                                }
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.margins: theme.space(3)
+                                    spacing: theme.space(0.5)
+                                    Label {
+                                        width: parent.width
+                                        text: pill.modelData.title
+                                        role: "ui"
+                                        color: "white"
+                                        elide: Text.ElideRight
+                                    }
+                                    Row {
+                                        spacing: theme.space(2)
+                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
+                                        Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : Qt.rgba(1, 1, 1, 0.55) }
+                                    }
+                                }
                             }
-                            fillItem: thumbImage.status === Image.Ready ? thumbImage : null
                         }
-                        Column {
-                            anchors.left: thumb.right
-                            anchors.leftMargin: theme.space(3)
-                            anchors.right: parent.right
-                            anchors.rightMargin: theme.space(2)
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: theme.space(1)
-                            Label {
-                                width: parent.width
-                                text: pill.modelData.title
-                                role: "ui"
-                                elide: Text.ElideRight
-                            }
-                            Row {
-                                spacing: theme.space(2)
-                                Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
-                                Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : theme.textFaint }
+                        // The list row: a small poster, then the title, episode and age
+                        Component {
+                            id: outRow
+                            Item {
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: theme.radiusSm
+                                    color: pm.containsMouse ? theme.raised : "transparent"
+                                    border.color: pill.activeFocus ? theme.focusRing : "transparent"
+                                    border.width: 1
+                                }
+                                Corner {
+                                    id: thumb
+                                    x: theme.space(1.5)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: parent.height - theme.space(3)
+                                    width: Math.round(height / 1.5)
+                                    radius: theme.radiusSm; smoothing: 0
+                                    color: theme.tileSunken
+                                    borderColor: theme.line; borderWidth: 1
+                                    Image {
+                                        id: thumbImage
+                                        visible: false
+                                        width: thumb.width; height: thumb.height
+                                        source: pill.show && pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
+                                        sourceSize: theme.posterDecodeSize
+                                        fillMode: Image.PreserveAspectCrop
+                                        smooth: true
+                                        asynchronous: true
+                                        cache: true
+                                    }
+                                    fillItem: thumbImage.status === Image.Ready ? thumbImage : null
+                                }
+                                Column {
+                                    anchors.left: thumb.right
+                                    anchors.leftMargin: theme.space(3)
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: theme.space(2)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: theme.space(1)
+                                    Label {
+                                        width: parent.width
+                                        text: pill.modelData.title
+                                        role: "ui"
+                                        elide: Text.ElideRight
+                                    }
+                                    Row {
+                                        spacing: theme.space(2)
+                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
+                                        Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : theme.textFaint }
+                                    }
+                                }
                             }
                         }
                         MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.open() }

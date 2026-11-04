@@ -20,10 +20,12 @@ Every open issue sits on the AniBeam project, https://github.com/users/marcusban
 | Status      | When                                                     |
 | ----------- | -------------------------------------------------------- |
 | Backlog     | Filed, nobody picked it                                  |
-| Up next     | The owner picked it for a coming session                 |
+| Up next     | Picked for a coming session, see below                   |
 | In progress | A thread started work on it, set before the first commit |
 | In review   | Its PR is open                                           |
 | Done        | Set by GitHub when the issue closes or the PR merges     |
+
+Up next holds at most 5 issues. The weekly [backlog review](backlog-review.md) fills it with what the owner should look at next; the owner reorders it, and an issue they add themselves stays.
 
 Platform is `Desktop`, `Phone`, `Both` (core work both apps use) or `Dev` (CI, build, tooling). Release names the version an issue is meant for, when one is set.
 

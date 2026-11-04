@@ -485,6 +485,9 @@ Item {
         id: fact
         property string icon: ""
         property string text: ""
+        // A pill that opens a menu: a chevron after the text, and the pointer says so
+        property bool menu: false
+        signal clicked()
         implicitWidth: factContent.implicitWidth + theme.space(3) * 2
         implicitHeight: theme.space(6)
         radius: height / 2
@@ -498,6 +501,16 @@ Item {
             spacing: theme.space(1.5)
             Icon { anchors.verticalCenter: parent.verticalCenter; glyph: fact.icon; color: Qt.rgba(1, 1, 1, 0.82); size: theme.space(3.5) }
             Label { anchors.verticalCenter: parent.verticalCenter; text: fact.text; role: "ui"; font.pointSize: theme.typeSmall; color: Qt.rgba(1, 1, 1, 0.82) }
+            Icon { visible: fact.menu; anchors.verticalCenter: parent.verticalCenter; glyph: "chevron-down"; color: Qt.rgba(1, 1, 1, 0.82); size: theme.space(3) }
+        }
+        // The menu pill's own name, for drive scripts to click
+        property string pressName: ""
+        MouseArea {
+            objectName: fact.pressName
+            anchors.fill: parent
+            visible: fact.menu
+            cursorShape: Qt.PointingHandCursor
+            onClicked: fact.clicked()
         }
     }
     component Caption: Label {
@@ -902,7 +915,19 @@ Item {
                         text: page.hasImdb ? "IMDb " + Fmt.score(card.imdb_score) : ""
                         Tooltip { text: page.hasImdb && card.imdb_votes ? Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) + " votes" : "" }
                     }
-                    Fact { objectName: "fact-list"; visible: !!card.list_status; icon: page.listIcon(card.list_status); text: card.list_status ? page.listStatus(card.list_status) : "" }
+                    // The list status, and with a tracker connected the menu that changes it
+                    Fact {
+                        id: statusFact
+                        objectName: "fact-list"
+                        readonly property bool settable: frame.canSetListStatus(card)
+                        visible: !!card.list_status || settable
+                        menu: settable
+                        icon: page.listIcon(card.list_status)
+                        text: card.list_status ? page.listStatus(card.list_status) : "Add to a list"
+                        pressName: "series-status"
+                        onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
+                        Tooltip { text: statusFact.settable ? "Change the list on every connected tracker" : "" }
+                    }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
                     Button {
                         objectName: "series-hide"
