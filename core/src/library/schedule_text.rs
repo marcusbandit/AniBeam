@@ -64,6 +64,38 @@ static MONTH_YEAR: LazyLock<Regex> = LazyLock::new(|| {
         r"(?i)\b({MONTHS})\b\.?,?\s+(?:of\s+|de\s+)?(\d{{4}})\b"
     ))
 });
+/// A month opening a line on its own, as a heading or a label: "October:",
+/// "Later June -". The year comes from around it.
+static MONTH_ALONE: LazyLock<Regex> = LazyLock::new(|| {
+    re(&format!(
+        r"(?i)^[\s*•-]*(?:later|early|mid|late|end of)?\s*({MONTHS})\b\.?\s*[:-]"
+    ))
+});
+/// An episode named by its place: "the sixth episode", "episode six".
+static ORDINAL: LazyLock<Regex> = LazyLock::new(|| {
+    re(
+        r"(?i)\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|\d{1,3}(?:st|nd|rd|th))\s+episode\b|\bepisode\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen)\b",
+    )
+});
+const ORDINALS: [&str; 13] = [
+    "first",
+    "second",
+    "third",
+    "fourth",
+    "fifth",
+    "sixth",
+    "seventh",
+    "eighth",
+    "ninth",
+    "tenth",
+    "eleventh",
+    "twelfth",
+    "thirteenth",
+];
+const CARDINALS: [&str; 13] = [
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+    "twelve", "thirteen",
+];
 static VAGUE_YEAR: LazyLock<Regex> = LazyLock::new(|| {
     re(
         r"(?i)\b(?:early|mid|late|end of|spring|summer|fall|autumn|winter|q[1-4]|h[12]|first half of|second half of|printemps|été|ete|automne|hiver|frühling|fruehling|frühjahr|sommer|herbst|primavera|verano|otoño|invierno|estate|autunno|inverno|verão|verao|outono)[\s-]*(?:of\s+|de\s+|du\s+)?(\d{4})\b",
@@ -87,12 +119,12 @@ static FORTNIGHT: LazyLock<Regex> =
 const EP_WORD: &str = r"(?:episodes?|eps?\.?|e|no\.?|folge|episodio|épisode|episode|aflevering|odcinek|episódio|cap(?:ítulo|itulo)?\.?|puntata)";
 static MARKED: LazyLock<Regex> = LazyLock::new(|| {
     re(&format!(
-        r"(?i)(?:\bs\d{{1,2}}\s*[ .]?e|\b\d{{1,2}}x|\b{EP_WORD}\s*[#=:]?\s*|#\s*|第\s*)(\d{{1,4}})\s*[話话集]?((?:\s*(?:-|~|〜|to|through|thru|until|bis|al|à|a|,|&|\+|and|y|et|und)\s*(?:{EP_WORD}\s*|#\s*|第\s*)?\d{{1,4}}\s*[話话集]?)*)"
+        r"(?i)(?:\bs\.?\s*\d{{1,2}}\s*[ .,]?\s*e\.?\s*|\b\d{{1,2}}x|\b{EP_WORD}\s*[#=:]?\s*|#\s*)(\d{{1,4}})\b((?:\s*(?:-|~|to|through|thru|until|bis|al|à|a|,|&|\+|and|y|et|und)\s*(?:{EP_WORD}\s*|#\s*)?\d{{1,4}}\b)*)"
     ))
 });
 static TAIL: LazyLock<Regex> = LazyLock::new(|| {
     re(&format!(
-        r"(?i)(-|~|〜|to|through|thru|until|bis|al|à|a|,|&|\+|and|y|et|und)\s*(?:{EP_WORD}\s*|#\s*|第\s*)?(\d{{1,4}})"
+        r"(?i)(-|~|to|through|thru|until|bis|al|à|a|,|&|\+|and|y|et|und)\s*(?:{EP_WORD}\s*|#\s*)?(\d{{1,4}})"
     ))
 });
 /// An episode named by a counter after its number: 第13話, 13話, 13集, 13화,
@@ -117,6 +149,18 @@ static DELAY: LazyLock<Regex> = LazyLock::new(|| {
 static LEADING: LazyLock<Regex> =
     LazyLock::new(|| re(r"^[\s|]*(\d{1,4})\b(?:[\s|.):-]+(\d{1,4})\b(?:\s*[|\t]|\s*$))?"));
 
+/// What places a day given without a year: a year on the same line, the
+/// last year named above, the day read before it (a list runs forward),
+/// any year the text names, and last of all `now`.
+#[derive(Clone, Copy)]
+struct Ctx {
+    line_year: Option<i32>,
+    year_seen: Option<i32>,
+    prev: Option<i64>,
+    doc_year: Option<i32>,
+    now: i64,
+}
+
 /// A date found on a line: where it sits, how exact it is (0 a day, 1 a
 /// month, 2 a year, 3 none at all), and when.
 #[derive(Clone, Copy)]
@@ -132,6 +176,10 @@ struct Clause {
     episodes: Vec<u32>,
     when: Option<When>,
     weekly: Option<i64>,
+    /// The last day of a range of days said with a run of episodes
+    /// ("第48話～第54話：1月8日～2月12日"), which spreads them a week apart
+    /// up to it.
+    until: Option<i64>,
 }
 
 /// A pasted release list read into notes, and the season it names, if any.
@@ -149,14 +197,33 @@ pub fn parse(text: &str, now: i64) -> (Option<u32>, Vec<NoteRow>) {
     let mut waiting: Option<(Vec<u32>, u8)> = None;
     // A day heading the lines under it, until the next date or other text
     let mut heading: Option<When> = None;
-    let mut year_seen: Option<i32> = None;
+    let mut ctx = Ctx {
+        line_year: None,
+        year_seen: None,
+        prev: None,
+        doc_year: YEAR.captures(&text).and_then(|c| c[1].parse().ok()),
+        now,
+    };
     for raw in text.lines() {
         if raw.trim().is_empty() {
             continue;
         }
-        let (clauses, line_when, heads) = read_line(raw, year_seen, now);
-        if let Some(y) = YEAR.captures(raw).and_then(|c| c[1].parse().ok()) {
-            year_seen = Some(y);
+        ctx.line_year = YEAR.captures(raw).and_then(|c| c[1].parse().ok());
+        let (clauses, line_when, heads) = read_line(raw, ctx);
+        if ctx.line_year.is_some() {
+            ctx.year_seen = ctx.line_year;
+        }
+        let latest = clauses
+            .iter()
+            .filter_map(|c| c.when)
+            .chain(line_when)
+            .filter_map(|w| match w {
+                When::On(at) => Some(at),
+                _ => None,
+            })
+            .max();
+        if latest.is_some() {
+            ctx.prev = latest;
         }
         if clauses.is_empty() {
             match line_when {
@@ -182,7 +249,10 @@ pub fn parse(text: &str, now: i64) -> (Option<u32>, Vec<NoteRow>) {
         let mut undated: Vec<u32> = Vec::new();
         for c in clauses {
             match c.when.or(heading) {
-                Some(when) => push(&mut rows, &c.episodes, when, c.weekly),
+                Some(when) => match (when, c.until) {
+                    (When::On(start), Some(end)) => spread(&mut rows, &c.episodes, start, end),
+                    _ => push(&mut rows, &c.episodes, when, c.weekly),
+                },
                 None => undated.extend(c.episodes),
             }
         }
@@ -214,6 +284,24 @@ fn push(rows: &mut Vec<NoteRow>, episodes: &[u32], when: When, weekly: Option<i6
     }
 }
 
+/// A run of episodes a week apart from `start`, the last on `end`; when
+/// the run is longer than the weeks between, the extra ones open together
+/// (a double premiere).
+fn spread(rows: &mut Vec<NoteRow>, episodes: &[u32], start: i64, end: i64) {
+    let week = 7 * 86_400;
+    let weeks = ((end - start) as f64 / week as f64).round() as usize;
+    let extra = (episodes.len() - 1).saturating_sub(weeks);
+    rows.retain(|r| !episodes.contains(&r.first));
+    for (i, &n) in episodes.iter().enumerate() {
+        let step = i.saturating_sub(extra) as i64;
+        rows.push(NoteRow {
+            first: n,
+            last: n,
+            when: When::On(start + step * week),
+        });
+    }
+}
+
 /// HTML to lines of text: a row or a list item ends a line, a cell is a
 /// tab, tags go, and every dash is a hyphen.
 fn clean(text: &str) -> String {
@@ -238,6 +326,7 @@ fn clean(text: &str) -> String {
         .map(|c| match c {
             '\u{2010}'..='\u{2015}' | '\u{2212}' | '\u{FF0D}' => '-',
             '\u{00A0}' | '\u{3000}' => ' ',
+            '\u{FF5E}' | '\u{301C}' => '~',
             '\u{FF10}'..='\u{FF19}' => char::from_u32(c as u32 - 0xFF10 + '0' as u32).unwrap_or(c),
             _ => c,
         })
@@ -247,8 +336,8 @@ fn clean(text: &str) -> String {
 /// A line split into clauses, one per episode mention, each with the date
 /// said in its own stretch of the line (or, for the first, a date said
 /// before it); and the line's best date for a line that names no episode.
-fn read_line(raw: &str, year_seen: Option<i32>, now: i64) -> (Vec<Clause>, Option<When>, bool) {
-    let dates = dates_of(raw, year_seen, now);
+fn read_line(raw: &str, ctx: Ctx) -> (Vec<Clause>, Option<When>, bool) {
+    let dates = dates_of(raw, ctx);
     let best = |list: &mut dyn Iterator<Item = &Found>| {
         list.min_by_key(|f| (f.rank, f.start)).map(|f| f.when)
     };
@@ -301,10 +390,35 @@ fn read_line(raw: &str, year_seen: Option<i32>, now: i64) -> (Vec<Clause>, Optio
             }
             (w, _) => w,
         };
+        // Two days joined by "~", "-" or "to" are a range the run spreads over
+        let days: Vec<&Found> = dates
+            .iter()
+            .filter(own)
+            .filter(|f| matches!(f.when, When::On(_)))
+            .collect();
+        let range = days.windows(2).find(|w| {
+            let between = raw
+                .get(w[0].end..w[1].start)
+                .unwrap_or("")
+                .trim()
+                .to_lowercase();
+            matches!(
+                between.as_str(),
+                "~" | "-" | "to" | "until" | "through" | "thru" | "bis" | "al" | "à"
+            )
+        });
+        let (when, until) = match range {
+            Some(w) if episodes.len() > 1 && after.is_none() => match (w[0].when, w[1].when) {
+                (When::On(a), When::On(b)) if b > a => (Some(When::On(a)), Some(b)),
+                _ => (when, None),
+            },
+            _ => (when, None),
+        };
         clauses.push(Clause {
             episodes: episodes.clone(),
             when,
             weekly: weekly_of(raw.get(from..end).unwrap_or(raw)),
+            until,
         });
     }
     // A line that opens on its date can head the lines under it
@@ -315,18 +429,18 @@ fn read_line(raw: &str, year_seen: Option<i32>, now: i64) -> (Vec<Clause>, Optio
 }
 
 /// Every date-like stretch of a line, the longest kept where two overlap.
-fn dates_of(line: &str, year_seen: Option<i32>, now: i64) -> Vec<Found> {
+fn dates_of(line: &str, ctx: Ctx) -> Vec<Found> {
     let mut all: Vec<(usize, usize, u8, Option<When>)> = Vec::new();
     let mut add = |m: regex::Match, rank: u8, when: Option<When>| {
         all.push((m.start(), m.end(), rank, when));
     };
     for c in JP_DAY.captures_iter(line) {
         let year = c.get(1).and_then(|y| y.as_str().parse().ok());
-        let w = num(&c[2]).and_then(|m| dated(year, year_seen, m, num(&c[3])?, now));
+        let w = num(&c[2]).and_then(|m| dated(year, ctx, m, num(&c[3])?));
         add(c.get(0).unwrap(), 0, w);
     }
     for c in ISO.captures_iter(line) {
-        let w = num(&c[2]).and_then(|m| dated(c[1].parse().ok(), None, m, num(&c[3])?, now));
+        let w = num(&c[2]).and_then(|m| dated(c[1].parse().ok(), ctx, m, num(&c[3])?));
         add(c.get(0).unwrap(), 0, w);
     }
     for c in NUMERIC.captures_iter(line) {
@@ -341,16 +455,16 @@ fn dates_of(line: &str, year_seen: Option<i32>, now: i64) -> Vec<Found> {
         };
         let y: i32 = c[4].parse().unwrap_or(0);
         let y = if y < 100 { 2000 + y } else { y };
-        add(c.get(0).unwrap(), 0, dated(Some(y), None, m, d, now));
+        add(c.get(0).unwrap(), 0, dated(Some(y), ctx, m, d));
     }
     for c in DAY_MONTH.captures_iter(line) {
         let year = c.get(3).and_then(|y| y.as_str().parse().ok());
-        let w = month_num(&c[2]).and_then(|m| dated(year, year_seen, m, num(&c[1])?, now));
+        let w = month_num(&c[2]).and_then(|m| dated(year, ctx, m, num(&c[1])?));
         add(c.get(0).unwrap(), 0, w);
     }
     for c in MONTH_DAY.captures_iter(line) {
         let year = c.get(3).and_then(|y| y.as_str().parse().ok());
-        let w = month_num(&c[1]).and_then(|m| dated(year, year_seen, m, num(&c[2])?, now));
+        let w = month_num(&c[1]).and_then(|m| dated(year, ctx, m, num(&c[2])?));
         add(c.get(0).unwrap(), 0, w);
     }
     for c in JP_MONTH.captures_iter(line) {
@@ -359,6 +473,16 @@ fn dates_of(line: &str, year_seen: Option<i32>, now: i64) -> Vec<Found> {
             .ok()
             .zip(num(&c[2]).filter(|m| (1..=12).contains(m)));
         add(c.get(0).unwrap(), 1, w.map(|(y, m)| When::Month(y, m)));
+    }
+    for c in MONTH_ALONE.captures_iter(line) {
+        let m = c.get(1).unwrap();
+        let w = month_num(m.as_str()).and_then(|mo| match dated(None, ctx, mo, 1)? {
+            When::On(at) => OffsetDateTime::from_unix_timestamp(at)
+                .ok()
+                .map(|d| When::Month(d.year(), mo)),
+            _ => None,
+        });
+        add(m, 1, w);
     }
     for c in MONTH_YEAR.captures_iter(line) {
         let w = c[2].parse().ok().zip(month_num(&c[1]));
@@ -442,6 +566,30 @@ fn mentions_of(rest: &str) -> Vec<(usize, Vec<u32>)> {
         };
         out.push((m.start(), (first..=last).collect()));
     }
+    for c in ORDINAL.captures_iter(rest) {
+        let m = c.get(0).unwrap();
+        if out.iter().any(|(at, _)| *at >= m.start() && *at < m.end()) {
+            continue;
+        }
+        let n = match (c.get(1), c.get(2)) {
+            (Some(w), _) => {
+                let w = w.as_str().to_lowercase();
+                ORDINALS
+                    .iter()
+                    .position(|o| *o == w)
+                    .map(|i| i as u32 + 1)
+                    .or_else(|| num32(w.trim_end_matches(char::is_alphabetic)))
+            }
+            (None, Some(w)) => {
+                let w = w.as_str().to_lowercase();
+                CARDINALS.iter().position(|o| *o == w).map(|i| i as u32 + 1)
+            }
+            _ => None,
+        };
+        if let Some(n) = n.filter(|n| *n > 0) {
+            out.push((m.start(), vec![n]));
+        }
+    }
     out.sort_by_key(|m| m.0);
     out
 }
@@ -504,7 +652,7 @@ fn month_num(name: &str) -> Option<u8> {
 /// Noon UTC on a day: a release list names the day, rarely the hour. A day
 /// with no year takes the last year the text named above it, else the one
 /// that puts it closest ahead of `now`.
-fn dated(year: Option<i32>, year_seen: Option<i32>, month: u8, d: u8, now: i64) -> Option<When> {
+fn dated(year: Option<i32>, ctx: Ctx, month: u8, d: u8) -> Option<When> {
     let at = |y: i32| {
         let date = Date::from_calendar_date(y, Month::try_from(month).ok()?, d).ok()?;
         Some(
@@ -513,13 +661,36 @@ fn dated(year: Option<i32>, year_seen: Option<i32>, month: u8, d: u8, now: i64) 
                 .unix_timestamp(),
         )
     };
-    if let Some(y) = year.or(year_seen) {
+    if let Some(y) = year.or(ctx.line_year).or(ctx.year_seen) {
         return at(y).map(When::On);
     }
-    let this = OffsetDateTime::from_unix_timestamp(now).ok()?.year();
+    let year_of = |t: i64| {
+        OffsetDateTime::from_unix_timestamp(t)
+            .ok()
+            .map(|d| d.year())
+    };
+    // A list runs forward: the year that keeps this day at or after the
+    // one before it, a month's slack for a list out of order
+    if let Some(prev) = ctx.prev {
+        let y = year_of(prev)?;
+        let this = at(y)?;
+        let month_back = 31 * 86_400;
+        return if this < prev - month_back {
+            at(y + 1)
+        } else {
+            Some(this)
+        }
+        .map(When::On);
+    }
+    let this = year_of(ctx.now)?;
+    // A year named only further down places the day when it is in the
+    // past: an older article. One ahead is about later episodes, not this.
+    if let Some(y) = ctx.doc_year.filter(|y| *y < this) {
+        return at(y).map(When::On);
+    }
     let guess = at(this)?;
     let half_year = 183 * 86_400;
-    if guess < now - half_year {
+    if guess < ctx.now - half_year {
         at(this + 1).map(When::On)
     } else {
         Some(When::On(guess))
@@ -756,6 +927,24 @@ pub(crate) mod tests {
             "A later line updates an earlier one",
             "Ep 7 is Dec 3 and ep 8 is Dec 10.\nEdit: site got updated, ep 7 is Dec 4 now and ep 8 is Dec 11.",
             "7 4 Dec 2026; 8 11 Dec 2026",
+            None,
+        ),
+        (
+            "A run of episodes over a run of days",
+            "第48話～第54話：1月8日～2月12日\n閑話：2月19日\nEpisodes 55-59: Feb 26 to Mar 26",
+            "48-49 8 Jan 2027; 50 15 Jan 2027; 51 22 Jan 2027; 52 29 Jan 2027; 53 5 Feb 2027; 54 12 Feb 2027; 55 26 Feb 2027; 56 5 Mar 2027; 57 12 Mar 2027; 58 19 Mar 2027; 59 26 Mar 2027",
+            None,
+        ),
+        (
+            "Real articles: a date first, S.5 E.1, a month on its own",
+            "November 9 - Season 2 episode 1 - 3\nS.5 E.4: \u{201c}Sorcerer\u{201d} \u{2013} Wednesday, Nov. 26\nOctober: Season 2, Episode 10: \u{201c}Ghostfuckers\u{201d}\nFrieren season 2's sixth episode has been pushed back to February 27.",
+            "1-3 9 Nov 2026; 4 26 Nov 2026; 6 27 Feb 2027; 10 Oct 2027",
+            Some(2),
+        ),
+        (
+            "A day with no year, and a later year about other episodes",
+            "Episode 7: YES NO - October 28\nPart 2 (Episodes 8-15) - 2027",
+            "7 28 Oct 2026; 8-15 2027",
             None,
         ),
         (

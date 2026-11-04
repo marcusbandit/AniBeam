@@ -15,7 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
-- Paste a show's release list under Fixes, Set schedule, to fix its dates
+- Set a show's schedule under Fixes: pick episodes and a date, or paste a list
 - A season on a break stops showing a made-up next episode
 - Airing can show any season: open the arrow beside the next season
 - Hide what is on your lists or in your library from Airing

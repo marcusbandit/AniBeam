@@ -60,7 +60,18 @@ Item {
     }
     // Schedule notes (#418): what the user told the schedule, for the card's season
     readonly property var scheduleNotes: detail && detail.schedule_notes ? detail.schedule_notes : []
-    function openSchedule() { scheduleSheet.openFor(page.props.id, page.title, card.count_season === undefined ? null : card.count_season, page.scheduleNotes) }
+    function openSchedule() {
+        // The cells run over the card's season: what is out is faint, a few spare cells after
+        var season = card.count_season === undefined ? null : card.count_season
+        var rows = page.episodeRows.filter(function(r) { return season === null || (r.season || 1) === season })
+        var top = 0, out = []
+        rows.forEach(function(r) {
+            top = Math.max(top, Math.floor(r.number))
+            if (!r.upcoming) out.push(Math.floor(r.number))
+        })
+        var upTo = Math.max(card.total_episodes || 0, top + 8, 16)
+        scheduleSheet.openFor(page.props.id, page.title, season, page.scheduleNotes, upTo, out)
+    }
     // The notes without a date, in words: "Episodes 8 to 15 TBC in 2027"
     readonly property string heldLine: {
         var held = scheduleNotes.filter(function(n) { return n.at === null || n.at === undefined })
