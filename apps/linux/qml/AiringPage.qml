@@ -178,11 +178,10 @@ Item {
         for (var j = 0; j < listed.shows.length; j++) if (!page.kept(listed.shows[j])) drop[listed.shows[j].anilist_id] = true
         return listed.aired.filter(function(a) { return drop[a.anilist_id] !== true })
     }
-    // Out now's grid of small cards: as many columns as fit at a readable title width, two
-    // rows of them until All opens the rest
+    // Out now's grid, small cards or list rows by Settings, Appearance, until All opens the rest
     readonly property real outGap: outList ? theme.space(2) : theme.space(3)
-    // Columns by rows, from Settings, Appearance; a window too narrow for the columns at a
-    // readable width gets fewer
+    // Cards come columns by rows, from Settings, Appearance; a window too narrow for the
+    // columns at a readable width gets fewer
     Settings { id: kept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
     readonly property var outLayout: {
         var m = /^(\d)x(\d)$/.exec(kept.outLayout)
@@ -543,8 +542,7 @@ Item {
                 spacing: page.outGap
                 Repeater {
                     model: page.outShown
-                    // One episode as a small card: the banner across the whole tile, rounded
-                    // like the cards below, darkened toward the foot so the words read
+                    // One episode, as a small card or a list row
                     Item {
                         id: pill
                         required property var modelData
@@ -560,71 +558,80 @@ Item {
                             else frame.openLink("https://anilist.co/anime/" + pill.modelData.anilist_id)
                         }
                         Keys.onReturnPressed: pill.open()
-                        Image {
-                            id: outPoster
-                            visible: false
-                            width: pill.width; height: pill.height
-                            // AniList's wide banner, made for this shape; the tall cover only
-                            // when a show has none
-                            source: !pill.show || page.outList ? "" : pill.show.banner ? Fmt.fileUrl(pill.show.banner)
-                                  : pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
-                            // Decoded at the tile's width, its height following the image's own shape
-                            sourceSize.width: Math.ceil(pill.width * (Screen.devicePixelRatio || 1))
-                            fillMode: Image.PreserveAspectCrop
-                            smooth: true
-                            asynchronous: true
-                            cache: true
-                        }
-                        Corner {
-                            visible: !page.outList
-                            anchors.fill: parent
-                            radius: theme.radiusTile
-                            smoothing: theme.cornerSmoothing
-                            color: theme.tileSunken
-                            fillItem: outPoster.status === Image.Ready ? outPoster : null
-                        }
-                        // The shade: light at the top, near black under the words
-                        Corner {
-                            visible: !page.outList
-                            anchors.fill: parent
-                            radius: theme.radiusTile
-                            smoothing: theme.cornerSmoothing
-                            // No outline: on a light banner it read as a gap round the tile.
-                            // Only keyboard focus draws a ring; hover lifts the shade instead
-                            borderColor: pill.activeFocus ? theme.focusRing : "transparent"
-                            borderWidth: pill.activeFocus ? 2 : 0
-                            fillGradient: LinearGradient {
-                                x1: 0; y1: 0; x2: 0; y2: pill.height
-                                GradientStop { position: 0; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.05 : 0.2) }
-                                GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.35 : 0.5) }
-                                GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.88) }
-                            }
-                        }
-                        Column {
-                            visible: !page.outList
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            anchors.margins: theme.space(3)
-                            spacing: theme.space(0.5)
-                            Label {
-                                width: parent.width
-                                text: pill.modelData.title
-                                role: "ui"
-                                color: "white"
-                                elide: Text.ElideRight
-                            }
-                            Row {
-                                spacing: theme.space(2)
-                                Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
-                                Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : Qt.rgba(1, 1, 1, 0.55) }
-                            }
-                        }
-                        // The list row, when Settings picks it: a small poster, then the words
+                        // One look per pill, built only for the style Settings picked
                         Loader {
                             anchors.fill: parent
-                            active: page.outList
-                            sourceComponent: Item {
+                            sourceComponent: page.outList ? outRow : outCard
+                        }
+                        // The card: the banner across the whole tile, rounded like the cards
+                        // below, darkened toward the foot so the words read
+                        Component {
+                            id: outCard
+                            Item {
+                                Image {
+                                    id: outPoster
+                                    visible: false
+                                    width: pill.width; height: pill.height
+                                    // AniList's wide banner, made for this shape; the tall cover only
+                                    // when a show has none
+                                    source: !pill.show ? "" : pill.show.banner ? Fmt.fileUrl(pill.show.banner)
+                                          : pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
+                                    // Decoded at the tile's width, its height following the image's own shape
+                                    sourceSize.width: Math.ceil(pill.width * (Screen.devicePixelRatio || 1))
+                                    fillMode: Image.PreserveAspectCrop
+                                    smooth: true
+                                    asynchronous: true
+                                    cache: true
+                                }
+                                Corner {
+                                    anchors.fill: parent
+                                    radius: theme.radiusTile
+                                    smoothing: theme.cornerSmoothing
+                                    color: theme.tileSunken
+                                    fillItem: outPoster.status === Image.Ready ? outPoster : null
+                                }
+                                // The shade: light at the top, near black under the words
+                                Corner {
+                                    anchors.fill: parent
+                                    radius: theme.radiusTile
+                                    smoothing: theme.cornerSmoothing
+                                    // No outline: on a light banner it read as a gap round the tile.
+                                    // Only keyboard focus draws a ring; hover lifts the shade instead
+                                    borderColor: pill.activeFocus ? theme.focusRing : "transparent"
+                                    borderWidth: pill.activeFocus ? 2 : 0
+                                    fillGradient: LinearGradient {
+                                        x1: 0; y1: 0; x2: 0; y2: pill.height
+                                        GradientStop { position: 0; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.05 : 0.2) }
+                                        GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.35 : 0.5) }
+                                        GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.88) }
+                                    }
+                                }
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.margins: theme.space(3)
+                                    spacing: theme.space(0.5)
+                                    Label {
+                                        width: parent.width
+                                        text: pill.modelData.title
+                                        role: "ui"
+                                        color: "white"
+                                        elide: Text.ElideRight
+                                    }
+                                    Row {
+                                        spacing: theme.space(2)
+                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
+                                        Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : Qt.rgba(1, 1, 1, 0.55) }
+                                    }
+                                }
+                            }
+                        }
+                        // The list row: a small poster, then the title, episode and age
+                        Component {
+                            id: outRow
+                            Item {
+
                                 Rectangle {
                                     anchors.fill: parent
                                     radius: theme.radiusSm
