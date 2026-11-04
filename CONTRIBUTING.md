@@ -191,7 +191,7 @@ kind, open an issue about the kind and leave the source out.
 
 ## Before you open it
 
-- The test, clippy and fmt commands in the README's Development section pass.
+- The test, clippy and fmt commands in `docs/build-from-source.md` under Working on it pass.
 - A visible change has a capture in the PR body, taken against a sandbox root.
 - A change someone can notice has its line in the app's `CHANGELOG.md`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
