@@ -284,13 +284,46 @@ pub fn files_here(s: &DownloadSettings) -> bool {
 }
 
 fn is_this_machine(host: &str) -> bool {
+    names_this_machine(
+        host,
+        &crate::host::server::hostname(),
+        &crate::host::addr::local_addresses(),
+        resolve,
+    )
+}
+
+/// The addresses a name resolves to, none when it does not.
+fn resolve(name: &str) -> Vec<std::net::IpAddr> {
+    use std::net::ToSocketAddrs;
+    (name, 0)
+        .to_socket_addrs()
+        .map(|all| all.map(|a| a.ip()).collect())
+        .unwrap_or_default()
+}
+
+/// Whether `host` is this machine, named `hostname` and holding `locals`.
+/// An address counts when it is one of `locals`, and a name when it is the
+/// bare hostname. A longer name that only starts with it, a tailnet's
+/// `banditbox.tail1234.ts.net` or a lookalike `banditbox.example.net`,
+/// counts only when it resolves here, since the core trashes files at the
+/// paths that client reports (#446). Only such a name is looked up.
+fn names_this_machine(
+    host: &str,
+    hostname: &str,
+    locals: &[std::net::IpAddr],
+    resolve: impl Fn(&str) -> Vec<std::net::IpAddr>,
+) -> bool {
+    let here = |ip: &std::net::IpAddr| ip.is_loopback() || locals.contains(ip);
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return crate::host::addr::local_addresses().contains(&ip);
+        return here(&ip);
     }
-    let name = crate::host::server::hostname().to_ascii_lowercase();
-    let first = host.to_ascii_lowercase();
-    let first = first.split('.').next().unwrap_or_default();
-    !name.is_empty() && first == name.split('.').next().unwrap_or_default()
+    let name = hostname.trim_end_matches('.').to_ascii_lowercase();
+    let first = |n: &str| n.split('.').next().unwrap_or_default().to_string();
+    if name.is_empty() || host.is_empty() || first(&host) != first(&name) {
+        return false;
+    }
+    host == name || !host.contains('.') || resolve(&host).iter().any(here)
 }
 
 /// The host part of a URL, without port or IPv6 brackets.
@@ -421,6 +454,42 @@ mod tests {
             Some(("http://localhost:9090".to_string(), "bandit".to_string()))
         );
         assert_eq!(anirss_config_qbt(&dir.path().join("missing.toml")), None);
+    }
+
+    #[test]
+    fn only_a_name_that_resolves_here_is_this_machine() {
+        let locals: Vec<std::net::IpAddr> = vec![
+            "127.0.0.1".parse().unwrap(),
+            "192.168.1.20".parse().unwrap(),
+            "100.65.105.9".parse().unwrap(),
+        ];
+        let dns = |name: &str| -> Vec<std::net::IpAddr> {
+            match name {
+                "banditbox.tail1234.ts.net" => vec!["100.65.105.9".parse().unwrap()],
+                "banditbox.example.net" => vec!["203.0.113.7".parse().unwrap()],
+                _ => Vec::new(),
+            }
+        };
+        let here = |host: &str| names_this_machine(host, "banditbox", &locals, dns);
+        assert!(here("banditbox"));
+        assert!(here("BanditBox"));
+        assert!(here("banditbox.tail1234.ts.net"));
+        assert!(here("192.168.1.20"));
+        // A lookalike whose first label is this machine's name is somebody
+        // else's box, and so is a name that resolves nowhere (#446).
+        assert!(!here("banditbox.example.net"));
+        assert!(!here("banditbox.nowhere.invalid"));
+        assert!(!here("seedbox"));
+        assert!(!here("203.0.113.7"));
+        // No hostname, no match.
+        assert!(!names_this_machine("banditbox", "", &locals, dns));
+        // A machine whose own name is dotted still knows itself.
+        assert!(names_this_machine(
+            "banditbox.local",
+            "banditbox.local",
+            &locals,
+            dns
+        ));
     }
 
     fn client(id: &str, name: &str, url: &str) -> SavedTorrentClient {
