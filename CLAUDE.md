@@ -55,7 +55,7 @@ A Cargo workspace with three members:
 
 ### Issue tracker
 
-Issues, specs and wayfinder maps live in this repo's GitHub Issues, driven with `gh`. See `docs/agents/issue-tracker.md`.
+Issues, specs and wayfinder maps live in this repo's GitHub Issues, driven with `gh`. See `docs/agents/issue-tracker.md`, and its "Issue state" section before starting, pausing or finishing work on an issue: labels follow branches and PRs, and the agent files what it notices, ticks boxes and closes what is solved.
 
 ### Triage
 
