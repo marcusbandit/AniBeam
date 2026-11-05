@@ -1135,7 +1135,8 @@ fn read_synced(core: &Core) -> Synced {
 }
 
 /// Why the desktop does not search an installed endpoint, when it does not: anirss has its own
-/// of that name from its config, cannot search the kind, or is too old to take endpoints.
+/// of that name from its config, cannot search the kind, or does not list
+/// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES), whatever its version says.
 /// None on the phone, and before the desktop has read its anirss.
 ///
 /// Only the anirss engine has these limits. AniBeam's own engine searches every installed
@@ -1154,8 +1155,9 @@ fn note_for(
     let view = view?;
     if !view.endpoint_writes {
         return Some(format!(
-            "anirss {} cannot take endpoints from AniBeam, so update it for the desktop to search this",
-            view.version
+            "anirss {} cannot take endpoints from AniBeam; update it to {} or newer for the desktop to search this",
+            view.version,
+            crate::downloads::anirss::MIN_VERSION
         ));
     }
     if !ANIRSS_KINDS.contains(&def.kind.as_str()) {

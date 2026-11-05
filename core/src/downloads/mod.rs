@@ -337,6 +337,7 @@ fn set_anirss_failure(core: &Core, state: AnirssState, message: &str) {
     st.anirss.state = state;
     st.anirss.message = message.to_string();
     st.anirss.version.clear();
+    st.anirss_features.clear();
     st.anirss.url.clear();
     st.endpoints.clear();
 }
@@ -667,10 +668,7 @@ pub(crate) fn anirss_view(core: &Core) -> Option<AnirssView> {
     let st = core.downloads.state();
     (st.anirss.state == AnirssState::Ready).then(|| AnirssView {
         version: st.anirss.version.clone(),
-        endpoint_writes: st
-            .anirss_features
-            .iter()
-            .any(|f| f == anirss::ENDPOINT_WRITES),
+        endpoint_writes: anirss::lists(&st.anirss_features, anirss::ENDPOINT_WRITES),
         endpoints: st.endpoints.iter().map(|e| e.name.clone()).collect(),
     })
 }
@@ -3101,6 +3099,46 @@ pub(crate) async fn host_read(
 
 #[cfg(test)]
 mod tests {
+    /// What `/health` lists is what the endpoint note reads, through the state: kept with
+    /// the version on a read, and gone with it when anirss fails (#476).
+    #[test]
+    fn the_features_anirss_lists_reach_the_view_and_go_with_a_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let http = crate::net::FakeHttp::new();
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            http.clone(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        let client = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
+        http.push_for(
+            "/health",
+            200,
+            serde_json::json!({"ok": true, "version": "dev", "features": ["qbt_env_session", "endpoint_writes"]}).to_string(),
+        );
+        http.push_for(
+            "/endpoints",
+            200,
+            serde_json::json!({"endpoints": []}).to_string(),
+        );
+        http.push_for(
+            "/qbt/status",
+            200,
+            serde_json::json!({"url": "http://127.0.0.1:2"}).to_string(),
+        );
+        core.handle.block_on(read_anirss(&core, &client)).unwrap();
+        let view = anirss_view(&core).unwrap();
+        assert_eq!((view.version.as_str(), view.endpoint_writes), ("dev", true));
+
+        set_anirss_failure(&core, AnirssState::Failed, "gone");
+        assert!(anirss_view(&core).is_none());
+        // Ready again by a path that reads no health: the old features are not carried.
+        core.downloads.state().anirss.state = AnirssState::Ready;
+        assert!(!anirss_view(&core).unwrap().endpoint_writes);
+        core.shutdown();
+    }
 
     #[test]
     fn a_batch_downloads_its_unfinished_files_and_lays_them_over_the_cubes() {

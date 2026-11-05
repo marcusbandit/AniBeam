@@ -77,8 +77,14 @@ pub struct Health {
 
 impl Health {
     pub fn has(&self, feature: &str) -> bool {
-        self.features.iter().any(|f| f == feature)
+        lists(&self.features, feature)
     }
+}
+
+/// Whether a `/health` feature list holds `feature`; [`Health::has`] for a list kept
+/// apart from its `Health`.
+pub fn lists(features: &[String], feature: &str) -> bool {
+    features.iter().any(|f| f == feature)
 }
 /// Set by a shell whose package carries its own anirss.
 const BUNDLED_ENV: &str = "ANIBEAM_ANIRSS";
