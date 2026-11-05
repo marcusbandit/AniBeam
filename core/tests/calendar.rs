@@ -53,6 +53,23 @@ fn set_feed(core: &Core, on: bool) {
     .unwrap();
 }
 
+/// Waits for the file to satisfy `pred`: the rewrite after a change runs
+/// off the caller's thread, a second after the burst settles.
+fn wait_file(path: &std::path::Path, pred: impl Fn(&str) -> bool) -> String {
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        if pred(&text) {
+            return text;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the calendar never got there:\n{text}"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 fn utc(secs: i64) -> String {
     let t = ::time::OffsetDateTime::from_unix_timestamp(secs).unwrap();
     format!(
@@ -75,6 +92,15 @@ fn the_feed_follows_the_switch_the_lists_and_the_schedule() {
     let now = time::now_secs();
 
     let watching = show(&core, src, "Sousou no Frieren", 1, Some("watching"));
+    // A second folder matched to the same show: one event per episode still.
+    let twin = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Show,
+        "/lib/Frieren extras",
+        "Frieren extras",
+    );
+    fixtures::match_series(&core, twin, Some(1), None);
     show(&core, src, "Dropped Show", 2, Some("dropped"));
     show(&core, src, "Unlisted Show", 3, None);
     fixtures::insert_airing(&core, 1, 1, now - 10 * 86_400);
@@ -93,7 +119,7 @@ fn the_feed_follows_the_switch_the_lists_and_the_schedule() {
     assert!(!text.replace("\r\n", "").contains('\n'));
     assert!(text.contains(&format!("DTSTART:{}\r\n", utc(next_at))));
     assert!(text.contains("SUMMARY:Sousou no Frieren - Episode 2\r\n"));
-    assert!(text.contains(&format!("UID:anibeam-{watching}-2@anibeam\r\n")));
+    assert!(text.contains("UID:anibeam-anilist-1-2@anibeam\r\n"));
     // Long gone, dropped, and on no list: none of them.
     assert!(!text.contains("Episode 1\r\n"));
     assert!(!text.contains("Dropped Show"));
@@ -115,15 +141,21 @@ fn the_feed_follows_the_switch_the_lists_and_the_schedule() {
         Reply::Started { job } => job,
         other => panic!("{other:?}"),
     };
-    let done = common::wait_job(&c, job);
-    common::wait_for(
-        &c,
-        |e| e.seq > done.seq && e.message == "calendar written",
-        Duration::from_secs(30),
-    );
-    let text = std::fs::read_to_string(&path).unwrap();
+    common::wait_job(&c, job);
+    let text = wait_file(&path, |t| t.contains("Episode 3\r\n"));
     assert!(text.contains("SUMMARY:Sousou no Frieren - Episode 3\r\n"));
     assert!(text.contains(&format!("DTSTART:{}\r\n", utc(third_at))));
+
+    // Hidden, with no job behind it: both folders' show leaves the file.
+    for id in [watching, twin] {
+        core.call(Call::SetHidden {
+            series: id,
+            hidden: true,
+        })
+        .unwrap();
+    }
+    let text = wait_file(&path, |t| !t.contains("BEGIN:VEVENT"));
+    assert!(text.ends_with("END:VCALENDAR\r\n"));
 
     // Off: the file goes.
     set_feed(&core, false);

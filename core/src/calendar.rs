@@ -3,18 +3,22 @@
 //! so a calendar app can subscribe to it.
 //!
 //! Nothing here is on a timer. The file is written when the switch goes on,
-//! and again whenever a job that can move the schedule or a list status
-//! finishes; turning the switch off deletes it. `render` is the pure part:
+//! and again after any change that can move the schedule, a list status or
+//! a title, unless the new text matches what is already there; turning the
+//! switch off deletes it. `render` is the pure part:
 //! the entries in, the file's text out.
 
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
+use std::time::Duration;
 
 use crate::contract::*;
 use crate::core::Core;
 use crate::events::Subscription;
-use crate::library::snapshot::Snapshot;
+use crate::library::snapshot::{AiringRow, SeriesRow, Snapshot};
 use crate::library::titles;
 use crate::prefs;
 use crate::sync::recover;
@@ -32,19 +36,28 @@ const DEFAULT_MINUTES: u32 = 24;
 const FOLD_OCTETS: usize = 75;
 
 /// The calendar's state on the core: the listener that rewrites the file
-/// when a job finishes, and the lock that keeps two writes (or a write and a
+/// after a change, and the lock that keeps two writes (or a write and a
 /// delete) from crossing on the same file.
 #[derive(Default)]
 pub(crate) struct Calendar {
     listener: Mutex<Option<Arc<Subscription>>>,
     file: Mutex<()>,
+    /// A rewrite is waiting out `SETTLE`.
+    queued: AtomicBool,
+    /// The last write failed and said so; the next failure stays quiet.
+    failing: AtomicBool,
 }
 
 /// One episode on the calendar.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entry {
-    pub series: u64,
+    /// Stable across rewrites and machines: the show's record and the
+    /// episode, so two folders matched to one show share one event.
+    pub uid: String,
     pub title: String,
+    /// TVmaze's season, whose numbers restart every season; None for an
+    /// AniList schedule, which carries none.
+    pub season: Option<u32>,
     pub number: u32,
     /// Unix seconds, UTC.
     pub at: i64,
@@ -65,13 +78,26 @@ fn wanted(status: Option<ListStatus>) -> bool {
     )
 }
 
-/// The episodes the file holds: every listed, unhidden show's airing rows
-/// from `KEEP_PAST_SECS` ago onward, sorted by start time.
+/// The record an event's UID is named for: the matched show where there is
+/// one, the local series otherwise.
+fn record_key(row: &SeriesRow) -> String {
+    match (row.provider, row.tvmaze_id, row.anilist_id) {
+        (Some(Provider::Tvmaze), Some(id), _) => format!("tvmaze-{id}"),
+        (_, _, Some(id)) => format!("anilist-{id}"),
+        _ => format!("series-{}", row.id),
+    }
+}
+
+/// The episodes the file holds: every listed show that is neither hidden
+/// nor gone from disk, with its airing rows from `KEEP_PAST_SECS` ago
+/// onward, every TVmaze season included, sorted by start time. A show two
+/// folders match lands once.
 pub fn entries(snap: &Snapshot, now: i64) -> Vec<Entry> {
     let from = now - KEEP_PAST_SECS;
+    let mut seen = HashSet::new();
     let mut out = Vec::new();
     for row in &snap.series {
-        if row.hidden || !wanted(snap.tracker(row).and_then(|t| t.status)) {
+        if row.hidden || row.missing || !wanted(snap.tracker(row).and_then(|t| t.status)) {
             continue;
         }
         let media = row.media.as_ref();
@@ -86,20 +112,36 @@ pub fn entries(snap: &Snapshot, now: i64) -> Vec<Entry> {
             .and_then(|m| m.duration)
             .filter(|&d| d > 0)
             .unwrap_or(DEFAULT_MINUTES);
-        for ep in snap.airing_of(row) {
+        let key = record_key(row);
+        let episodes: Vec<(Option<u32>, &AiringRow)> = if row.provider == Some(Provider::Tvmaze) {
+            snap.tv_seasons_of(row)
+                .flat_map(|(season, eps)| eps.iter().map(move |a| (Some(season), a)))
+                .collect()
+        } else {
+            snap.airing_of(row).iter().map(|a| (None, a)).collect()
+        };
+        for (season, ep) in episodes {
             let Some(at) = ep.aired_at.filter(|&at| at >= from) else {
                 continue;
             };
+            let uid = match season {
+                Some(s) => format!("anibeam-{key}-s{s}e{}@anibeam", ep.number),
+                None => format!("anibeam-{key}-{}@anibeam", ep.number),
+            };
+            if !seen.insert(uid.clone()) {
+                continue;
+            }
             out.push(Entry {
-                series: row.id,
+                uid,
                 title: title.clone(),
+                season,
                 number: ep.number,
                 at,
                 minutes,
             });
         }
     }
-    out.sort_by_key(|e| (e.at, e.series, e.number));
+    out.sort_by(|a, b| (a.at, &a.uid).cmp(&(b.at, &b.uid)));
     out
 }
 
@@ -116,14 +158,11 @@ pub fn render(entries: &[Entry], now: i64) -> String {
     ];
     for e in entries {
         lines.push("BEGIN:VEVENT".to_string());
-        lines.push(format!("UID:anibeam-{}-{}@anibeam", e.series, e.number));
+        lines.push(format!("UID:{}", e.uid));
         lines.push(format!("DTSTAMP:{stamp}"));
         lines.push(format!("DTSTART:{}", utc(e.at)));
         lines.push(format!("DURATION:PT{}M", e.minutes));
-        lines.push(format!(
-            "SUMMARY:{}",
-            escape(&format!("{} - Episode {}", e.title, e.number))
-        ));
+        lines.push(format!("SUMMARY:{}", escape(&summary(e))));
         lines.push("END:VEVENT".to_string());
     }
     lines.push("END:VCALENDAR".to_string());
@@ -133,6 +172,15 @@ pub fn render(entries: &[Entry], now: i64) -> String {
         out.push_str("\r\n");
     }
     out
+}
+
+/// What the event is called: the show and the episode, with the season
+/// where the schedule has one.
+fn summary(e: &Entry) -> String {
+    match e.season {
+        Some(s) => format!("{} - Season {s} Episode {}", e.title, e.number),
+        None => format!("{} - Episode {}", e.title, e.number),
+    }
 }
 
 /// A time as iCal's UTC form, `YYYYMMDDTHHMMSSZ`.
@@ -206,7 +254,18 @@ fn tmp_sibling(target: &Path) -> PathBuf {
     target.with_file_name(name)
 }
 
-fn write_file(core: &Core) -> Result<(), CoreError> {
+/// The file's text with the DTSTAMP lines left out: what a calendar app
+/// compares, so a rewrite that only moves the stamp is no rewrite at all.
+fn without_stamps(text: &str) -> String {
+    text.split("\r\n")
+        .filter(|line| !line.starts_with("DTSTAMP:"))
+        .collect::<Vec<_>>()
+        .join("\r\n")
+}
+
+/// Writes the file unless what is on disk already says the same. Ok(true)
+/// when it wrote.
+fn write_file(core: &Core) -> Result<bool, CoreError> {
     let images_dir = core.paths.images_dir();
     let now = time::now_secs();
     let text = core.store.read(|c| {
@@ -214,6 +273,11 @@ fn write_file(core: &Core) -> Result<(), CoreError> {
         Ok(render(&entries(&snap, now), now))
     })?;
     let target = core.paths.calendar_path();
+    if let Ok(old) = std::fs::read_to_string(&target)
+        && without_stamps(&old) == without_stamps(&text)
+    {
+        return Ok(false);
+    }
     if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)
             .map_err(|e| CoreError::io_at(parent.to_string_lossy(), e))?;
@@ -221,28 +285,35 @@ fn write_file(core: &Core) -> Result<(), CoreError> {
     let tmp = tmp_sibling(&target);
     std::fs::write(&tmp, text).map_err(|e| CoreError::io_at(tmp.to_string_lossy(), e))?;
     std::fs::rename(&tmp, &target).map_err(|e| CoreError::io_at(target.to_string_lossy(), e))?;
-    Ok(())
+    Ok(true)
 }
 
 /// Rewrites the file if the switch is on, on the calling thread. A failure
-/// is one warning, never an error to the caller: the calendar is a side
-/// effect of whatever changed the schedule.
+/// is a warning the first time only, never an error to the caller: the
+/// calendar is a side effect of whatever changed the schedule, and a disk
+/// that stays full should not fill the activity log too. A success says
+/// nothing on the bus, since every event there invalidates the shell's
+/// caches.
 pub(crate) fn write(core: &Core) {
     let _file = recover(&core.calendar.file);
     if !enabled(core) {
         return;
     }
     match write_file(core) {
-        Ok(()) => {
-            core.bus
-                .debug(Stage::System, "calendar written", EventBody::Notice);
+        Ok(wrote) => {
+            core.calendar.failing.store(false, Ordering::SeqCst);
+            if wrote {
+                tracing::debug!("calendar written");
+            }
         }
         Err(e) => {
-            core.bus.warn(
-                Stage::System,
-                format!("the calendar file could not be written: {e}"),
-                EventBody::Notice,
-            );
+            if !core.calendar.failing.swap(true, Ordering::SeqCst) {
+                core.bus.warn(
+                    Stage::System,
+                    format!("the calendar file could not be written: {e}"),
+                    EventBody::Notice,
+                );
+            }
         }
     }
 }
@@ -251,6 +322,7 @@ pub(crate) fn write(core: &Core) {
 /// there is already the wanted state.
 pub(crate) fn remove(core: &Core) {
     let _file = recover(&core.calendar.file);
+    core.calendar.failing.store(false, Ordering::SeqCst);
     let path = core.paths.calendar_path();
     match std::fs::remove_file(&path) {
         Ok(()) => {}
@@ -270,32 +342,38 @@ pub(crate) fn set_enabled(core: &Core, on: bool) {
     if on { write(core) } else { remove(core) }
 }
 
-/// The job kinds whose end can move an airing time or a list status, and so
-/// what the file shows.
-fn changes_schedule(kind: JobKind) -> bool {
-    use JobKind::*;
+/// Whether an event can change what the file shows. Any job that ends, and
+/// the changes that land without a job: a show hidden, unmatched or gone, a
+/// source removed, a tracker connected, dropped or made main, the
+/// preferences (the title language names every event). A broad net on
+/// purpose: a rewrite that changes nothing is skipped, so a false alarm
+/// costs one read.
+fn may_change(event: &Event) -> bool {
+    if event
+        .job
+        .as_ref()
+        .is_some_and(|j| j.phase == JobPhase::Finished)
+    {
+        return true;
+    }
     matches!(
-        kind,
-        RefreshAiring
-            | Refresh
-            | RefreshAll
-            | AutoMatch
-            | ApplyMatch
-            | ConnectTracker
-            | Mark
-            | SetProgress
-            | RefreshProgress
-            | RefreshWatching
-            | OnHold
-            | SetStatus
-            | Import
+        event.body,
+        EventBody::SeriesChanged { .. }
+            | EventBody::SeriesRemoved { .. }
+            | EventBody::SourceRemoved { .. }
+            | EventBody::TrackersChanged { .. }
+            | EventBody::PreferencesChanged { .. }
     )
 }
 
-/// Subscribes the listener that rewrites the file when such a job ends.
-/// Called once, by `Core::open`; `shutdown` drops it.
+/// How long a burst of changes is gathered before one rewrite: a scan or a
+/// sync emits many events, and the file needs writing once after them.
+const SETTLE: Duration = Duration::from_secs(1);
+
+/// Subscribes the listener that rewrites the file after a change. Called
+/// once, by `Core::open`; `shutdown` drops it.
 pub(crate) fn listen(core: &Arc<Core>) {
-    let listener = Arc::new(AfterJob {
+    let listener = Arc::new(AfterChange {
         core: Arc::downgrade(core),
     });
     *recover(&core.calendar.listener) = Some(core.subscribe(listener));
@@ -309,25 +387,35 @@ pub(crate) fn stop(core: &Core) {
 }
 
 /// Holds a `Weak`, so the bus never keeps the core alive through it.
-struct AfterJob {
+struct AfterChange {
     core: Weak<Core>,
 }
 
-impl EventListener for AfterJob {
+impl EventListener for AfterChange {
     fn on_event(&self, event: Event) {
-        let Some(job) = event.job.as_ref() else {
-            return;
-        };
-        if job.phase != JobPhase::Finished || !changes_schedule(job.kind) {
+        if !may_change(&event) {
             return;
         }
         let Some(core) = self.core.upgrade() else {
             return;
         };
+        // One rewrite queued at a time: the events of a burst join it.
+        if core.calendar.queued.swap(true, Ordering::SeqCst) {
+            return;
+        }
         // Off the emitting thread: the bus calls listeners inline, and a
         // job's runner should not wait on a file write.
-        let handle = core.handle.clone();
-        handle.spawn_blocking(move || write(&core));
+        let weak = self.core.clone();
+        core.handle.spawn(async move {
+            tokio::time::sleep(SETTLE).await;
+            let Some(core) = weak.upgrade() else {
+                return;
+            };
+            // Cleared before the write, so a change during it queues the next.
+            core.calendar.queued.store(false, Ordering::SeqCst);
+            let handle = core.handle.clone();
+            let _ = handle.spawn_blocking(move || write(&core)).await;
+        });
     }
 }
 
@@ -337,8 +425,9 @@ mod tests {
 
     fn entry(title: &str, number: u32, at: i64) -> Entry {
         Entry {
-            series: 7,
+            uid: format!("anibeam-anilist-7-{number}@anibeam"),
             title: title.to_string(),
+            season: None,
             number,
             at,
             minutes: 24,
@@ -386,11 +475,32 @@ mod tests {
         assert!(text.starts_with("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"));
         assert!(text.ends_with("END:VCALENDAR\r\n"));
         assert!(!text.replace("\r\n", "").contains('\n'));
-        assert!(text.contains("UID:anibeam-7-3@anibeam\r\n"));
+        assert!(text.contains("UID:anibeam-anilist-7-3@anibeam\r\n"));
         assert!(text.contains("DTSTAMP:20261102T130509Z\r\n"));
         assert!(text.contains("DTSTART:20261102T140509Z\r\n"));
         assert!(text.contains("DURATION:PT24M\r\n"));
         assert!(text.contains("SUMMARY:Frieren\\, Part 2 - Episode 3\r\n"));
         assert!(text.contains("X-WR-CALNAME:AniBeam\r\n"));
+    }
+
+    #[test]
+    fn a_tvmaze_season_is_named_in_the_summary() {
+        let mut e = entry("Bluey", 4, 0);
+        e.season = Some(3);
+        assert_eq!(summary(&e), "Bluey - Season 3 Episode 4");
+        e.season = None;
+        assert_eq!(summary(&e), "Bluey - Episode 4");
+    }
+
+    #[test]
+    fn a_new_stamp_alone_is_the_same_file() {
+        let at = 1_793_624_709;
+        let e = [entry("Frieren", 3, at)];
+        let first = render(&e, at);
+        let later = render(&e, at + 600);
+        assert_ne!(first, later);
+        assert_eq!(without_stamps(&first), without_stamps(&later));
+        let moved = render(&[entry("Frieren", 3, at + 60)], at);
+        assert_ne!(without_stamps(&first), without_stamps(&moved));
     }
 }
