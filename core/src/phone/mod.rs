@@ -348,7 +348,7 @@ async fn torrent_file(core: &Core, link: &str) -> Result<Option<Vec<u8>>, CoreEr
     )
     .await
     .map_err(|e| CoreError::Service {
-        service: crate::downloads::feed::host_of(link),
+        service: crate::net::host_shown(link),
         code: "unreachable".to_string(),
         message: e.message,
     })?;

@@ -2582,7 +2582,7 @@ pub fn read_feed(core: &Core, url: String) -> Result<Reply, CoreError> {
                 format!(
                     "{} read from {}",
                     plural(entries.len() as u64, "feed entry", "feed entries"),
-                    feed::host_of(&url)
+                    crate::net::host_shown(&url)
                 ),
                 EventBody::FeedRead { url, entries },
             ),
@@ -2619,7 +2619,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                 service(qbt::SERVICE, "rule_missing", format!("no rule named {name}"))
             })?;
             let url = def["affectedFeeds"][0].as_str().unwrap_or("").to_string();
-            let host = feed::host_of(&url);
+            let host = crate::net::host_shown(&url);
             let (key, value) = rewire::search_param(&url).ok_or_else(|| {
                 service(&host, "no_search", "the feed carries no search to shorten".to_string())
             })?;

@@ -16,7 +16,7 @@ const MAX_ENTRIES: usize = 200;
 /// Fetches and reads one feed. A non-2xx answer or a body that is not
 /// XML is a `Service` error naming the feed's host.
 pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreError> {
-    let host = host_of(url);
+    let host = crate::net::host_shown(url);
     let response = http
         .send(HttpRequest {
             method: Method::Get,
@@ -47,15 +47,6 @@ pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreErro
         code: "unreadable".to_string(),
         message,
     })
-}
-
-/// The host a URL names, for an error line: `nyaa.si`, `127.0.0.1:9117`.
-pub fn host_of(url: &str) -> String {
-    let rest = url.split_once("://").map_or(url, |(_, r)| r);
-    rest.split(['/', '?', '#'])
-        .next()
-        .unwrap_or(rest)
-        .to_string()
 }
 
 pub fn parse(text: &str) -> Result<Vec<FeedEntry>, String> {
