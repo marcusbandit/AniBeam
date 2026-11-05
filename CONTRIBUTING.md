@@ -220,9 +220,7 @@ between two releases carries it as its base.
 - **PR test build.** Put the `test build` label on a PR to get installers for it on the
   `pr-builds` pre-release, linked from a comment on the PR. Every push rebuilds them;
   closing the PR or taking the label off removes them. Use it to have someone try a
-  branch before it merges, a Mac change for Liam for example. A plain PR builds only Linux;
-  the label is also how a change that touches platform code gets its macOS and Windows build
-  before it merges, since nightly is otherwise the first to build them.
+  branch before it merges, a Mac change for Liam for example.
 - **Stable.** When the newest nightly has been run for a while and is good, run the Release
   workflow on main from the Actions tab. It promotes that nightly's commit, so what ships is
   a build people have already used: nightly `2.5.0-nightly.20261102.40` ships as `v2.5.0`.
