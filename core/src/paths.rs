@@ -52,6 +52,11 @@ impl CorePaths {
         Path::new(&self.data_dir).join("anibeam.db")
     }
 
+    /// The calendar feed's iCal file, kept current while the switch is on.
+    pub fn calendar_path(&self) -> PathBuf {
+        Path::new(&self.data_dir).join("anibeam.ics")
+    }
+
     pub fn secrets_path(&self) -> PathBuf {
         Path::new(&self.data_dir).join("secrets.json")
     }

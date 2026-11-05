@@ -55,11 +55,15 @@ A Cargo workspace with three members:
 
 ### Issue tracker
 
-Issues, specs and wayfinder maps live in this repo's GitHub Issues, driven with `gh`. See `docs/agents/issue-tracker.md`.
+Issues, specs and wayfinder maps live in this repo's GitHub Issues, driven with `gh`. See `docs/agents/issue-tracker.md`, and its "Issue state" section before starting, pausing or finishing work on an issue: labels follow branches and PRs, and the agent files what it notices, ticks boxes and closes what is solved.
 
 ### Triage
 
 Read `docs/agents/triage.md` before triaging an issue or changing how incoming issues get triaged.
+
+### Backlog review
+
+Read `docs/agents/backlog-review.md` before reviewing the backlog or filling the board's Up next column.
 
 ### Domain docs
 

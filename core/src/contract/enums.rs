@@ -335,11 +335,22 @@ impl Direction {
 }
 
 /// Which shows Airing now lists: everything on air today, whatever season
-/// it started in, or the season after the current one.
+/// it started in, the season after the current one, or any season by name
+/// and year.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum SeasonPick {
     Now,
     Next,
+    Season { name: SeasonName, year: i32 },
+}
+
+/// One of AniList's four quarters, in calendar order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+pub enum SeasonName {
+    Winter,
+    Spring,
+    Summer,
+    Fall,
 }
 
 /// Recently released, coming soon; exports as `recent` | `upcoming`.

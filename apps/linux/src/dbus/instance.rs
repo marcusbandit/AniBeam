@@ -63,22 +63,34 @@ pub fn mpris_bus_suffix() -> String {
 /// the life of the process and never read from.
 pub struct Lock(#[allow(dead_code)] File);
 
-pub fn try_lock(path: &Path) -> std::io::Result<Option<Lock>> {
+fn lock_file(path: &Path) -> std::io::Result<File> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let file = OpenOptions::new()
+    OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .open(path)?;
+        .open(path)
+}
+
+pub fn try_lock(path: &Path) -> std::io::Result<Option<Lock>> {
+    let file = lock_file(path)?;
     // flock on Linux and the Mac, LockFileEx on Windows.
     match file.try_lock() {
         Ok(()) => Ok(Some(Lock(file))),
         Err(std::fs::TryLockError::WouldBlock) => Ok(None),
         Err(std::fs::TryLockError::Error(e)) => Err(e),
     }
+}
+
+/// Blocks until the lock is free and takes it: the headless service waiting out a window.
+#[cfg(unix)]
+pub fn wait_lock(path: &Path) -> std::io::Result<Lock> {
+    let file = lock_file(path)?;
+    file.lock()?;
+    Ok(Lock(file))
 }
 
 /// The a{sv} the Application interface carries. Empty without a token, which is what a
@@ -172,15 +184,22 @@ impl AppInterface {
     fn open(&self, _uris: Vec<String>, platform_data: HashMap<String, OwnedValue>) {
         self.raise(&platform_data);
     }
-    /// The action table is empty today; an unknown action raises the window.
+    /// The host service's two actions keep the host on while it waits for this window and
+    /// hand it back when it stops; neither raises anything. Any other action raises the window.
     fn activate_action(
         &self,
         action_name: String,
         _parameter: Vec<OwnedValue>,
         platform_data: HashMap<String, OwnedValue>,
     ) {
-        eprintln!("anibeam: no action named {action_name}");
-        self.raise(&platform_data);
+        match action_name.as_str() {
+            crate::serve::HOLD_HOST => crate::runtime::core().hold_host(true),
+            crate::serve::RELEASE_HOST => crate::runtime::core().hold_host(false),
+            _ => {
+                eprintln!("anibeam: no action named {action_name}");
+                self.raise(&platform_data);
+            }
+        }
     }
 }
 
@@ -225,6 +244,25 @@ mod tests {
         assert!(try_lock(&path).unwrap().is_none(), "held");
         drop(first);
         assert!(try_lock(&path).unwrap().is_some(), "free again");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_waiting_lock_is_taken_the_moment_the_holder_lets_go() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.lock");
+        let held = try_lock(&path).unwrap().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let waiting = path.clone();
+        std::thread::spawn(move || tx.send(wait_lock(&waiting).unwrap()).unwrap());
+        assert!(rx.recv_timeout(Duration::from_millis(200)).is_err(), "held");
+        drop(held);
+        let taken = rx.recv_timeout(Duration::from_secs(5)).expect("taken");
+        assert!(
+            try_lock(&path).unwrap().is_none(),
+            "the waiter holds it now"
+        );
+        drop(taken);
     }
 
     #[test]

@@ -20,10 +20,12 @@ Every open issue sits on the AniBeam project, https://github.com/users/marcusban
 | Status      | When                                                     |
 | ----------- | -------------------------------------------------------- |
 | Backlog     | Filed, nobody picked it                                  |
-| Up next     | The owner picked it for a coming session                 |
-| In progress | A thread started work on it, set before the first commit |
-| In review   | Its PR is open                                           |
+| Up next     | Picked for a coming session, see below                   |
+| In progress | A thread started work on it, set before the first commit; label `in progress` |
+| In review   | Its PR is open; label `in review`                        |
 | Done        | Set by GitHub when the issue closes or the PR merges     |
+
+Up next holds at most 5 issues. The weekly [backlog review](backlog-review.md) fills it with what the owner should look at next; the owner reorders it, and an issue they add themselves stays.
 
 Platform is `Desktop`, `Phone`, `Both` (core work both apps use) or `Dev` (CI, build, tooling). Release names the version an issue is meant for, when one is set.
 
@@ -32,6 +34,48 @@ The board is private. A collaborator needs two things once: the owner adds them 
 - **Add a new issue**: `gh project item-add 1 --owner marcusbandit --url <issue-url> --format json --jq .id` gives the item id. Every issue you file goes on the board.
 - **Move a card**: look up the ids once with `gh project field-list 1 --owner marcusbandit --format json`, then `gh project item-edit --project-id <project-id> --id <item-id> --field-id <status-field-id> --single-select-option-id <option-id>`.
 - **Find an issue's item**: `gh project item-list 1 --owner marcusbandit --limit 500 --format json --jq '.items[] | select(.content.number == <n>) | .id'`.
+
+## Issue state
+
+An issue says where its work stands through labels, so it reads true on GitHub and on a phone
+without opening the board. `.github/workflows/issue-state.yml` sets them; nobody has to remember.
+
+| Label | Goes on when | Comes off when |
+| --- | --- | --- |
+| `in progress` | a branch `<type>/<n>-<slug>` is pushed, or a draft PR closing #n opens | the PR is marked ready or merged, the branch is deleted with no open PR left on #n, or the issue closes |
+| `in review` | a ready PR that closes #n opens | the PR merges, its body stops closing #n, or it closes unmerged, when #n goes back to `in progress` while the branch still exists |
+
+A merged PR that says `Part of #n` leaves a comment on #n naming itself, and #n stays open. The
+board's Status mirrors the labels through the daily sweep below.
+
+What an agent does, on top of what the workflow does:
+
+- **Starts work**: run `gh issue list` first and work under the matching issue, or file one. Push
+  the branch, named for the issue, before or with the first commit, so `in progress` goes on, and
+  move the card to In progress.
+- **Notices something it was not asked to fix**: file it with one category label (`bug`,
+  `enhancement`, `documentation`, `question`), add it to the board, and leave the code alone.
+- **Finishes part of a tracker**: tick the boxes that are now on main, `[ ]` to `[x]` and nothing
+  else, and put `Part of #n` in the PR body next to the `Closes` line for the sub-issue.
+- **Stops before the work is done**: push a draft PR and comment on the issue with what is on the
+  branch and what is left.
+- **Finds an issue already solved**, by its own route or another: close it with a comment naming
+  the commit, PR or `file:line`. When only a device, a Mac or a person can confirm it, comment
+  and leave it open. An issue that looks stale or superseded gets a comment and a question to
+  the owner, never a close on the agent's own judgment.
+
+### Schedules
+
+Two T3 scheduled tasks on banditbox keep the state true:
+
+- **AniBeam issue sweep**, daily at 07:30, against `marcusbandit/AniBeam`. Every open issue is on the
+  board; the board's Status matches the labels (`in progress` is In progress, `in review` is In
+  review, neither is Backlog or Up next); every open issue has one category label; an
+  `in progress` issue with no branch, PR or commit in 14 days loses the label and goes back to
+  Backlog with a comment; an open issue whose closing PR merged is closed. It only reads
+  GitHub, so it needs no worktree.
+- **AniBeam backlog review**, Mondays at 09:00, a new thread per run: the full pass in
+  [`backlog-review.md`](backlog-review.md).
 
 ## Triage
 

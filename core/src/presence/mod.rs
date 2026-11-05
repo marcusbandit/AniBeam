@@ -119,12 +119,7 @@ impl Activity {
 
 /// A field cut to Discord's limit, with an ellipsis where it was cut.
 fn truncate(s: &str) -> String {
-    if s.chars().count() <= FIELD_MAX {
-        return s.to_string();
-    }
-    let mut out: String = s.chars().take(FIELD_MAX - 3).collect();
-    out.push_str("...");
-    out
+    crate::words::cut(s, FIELD_MAX)
 }
 
 /// A lock's guard back from a condvar wait, poisoned or not, as `recover`.
@@ -167,8 +162,6 @@ pub(crate) struct State {
     /// The session whose activity Discord shows, or showed before a long
     /// pause cleared it.
     owner: Option<u64>,
-    /// The clock's start as last sent: now less the position.
-    start: u64,
     /// The last playing tick's position and the time it came, which the
     /// next tick measures a seek against. None from a pause, close or
     /// switch off until playback shows again.
@@ -277,7 +270,6 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
                         return Vec::new();
                     }
                     let start = clock(now, position);
-                    s.start = start;
                     vec![Action::Set(Activity {
                         start: Some(start),
                         ..activity.clone()
@@ -345,7 +337,6 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
 fn play(s: &mut State, session: u64, activity: &Activity, now: u64, position: f64) -> Vec<Action> {
     let start = clock(now, position);
     s.owner = Some(session);
-    s.start = start;
     s.last = Some((seconds(position), now));
     s.paused = false;
     s.shown = true;
@@ -1131,7 +1122,6 @@ mod tests {
         // the slack between one tick and the next.
         assert!(decide(&mut s, tick(1, &a, 75.0, false), 1_070).is_empty());
         assert!(decide(&mut s, tick(1, &a, 79.0, false), 1_080).is_empty());
-        assert_eq!(s.start, 1_000);
         // A position that is no number is no seek, and the tick after it
         // still measures from the last real one.
         assert!(decide(&mut s, tick(1, &a, f64::NAN, false), 1_081).is_empty());

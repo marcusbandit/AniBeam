@@ -293,6 +293,20 @@ pub struct Episode {
     /// Read this way because the user said so (`FixFiles`), not by its name.
     #[serde(default)]
     pub fixed: bool,
+    /// Every file of this episode (the same season and number) when there is
+    /// more than one, this one among them; empty for a lone file. Each is
+    /// named by its release, so a shell can offer a pick between them.
+    #[serde(default)]
+    pub versions: Vec<EpisodeVersion>,
+}
+
+/// One file of an episode that is on disk more than once: two releases of it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EpisodeVersion {
+    pub file: u64,
+    /// The release, `group, 1080p WEB-DL H264`; the file name itself where
+    /// two versions of the episode would otherwise read alike.
+    pub label: String,
 }
 
 /// An episode that has aired and has no file, and the tracker does not
@@ -318,6 +332,22 @@ pub struct UpcomingEpisode {
     pub title: Option<String>,
     pub at: SystemTime,
     pub predicted: bool,
+}
+
+/// What the user told a series' schedule that its provider does not say
+/// (#418): episodes `first` to `last` land on `at`, or some time in `year`,
+/// or on no known date when both are None. The predictor never guesses an
+/// episode a note without a date covers, nor any after it until a known
+/// date; a provider's own date wins over `at`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct ScheduleNote {
+    pub first: u32,
+    pub last: u32,
+    pub at: Option<SystemTime>,
+    pub year: Option<i32>,
+    /// The month, 1 to 12, of `year`, when the day is not known.
+    #[serde(default)]
+    pub month: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -399,6 +429,9 @@ pub struct SeriesDetail {
     /// The episodes still to come, in number order.
     #[serde(default)]
     pub upcoming: Vec<UpcomingEpisode>,
+    /// The schedule notes of the card's season, in number order (#418).
+    #[serde(default)]
+    pub schedule_notes: Vec<ScheduleNote>,
     pub extras: Vec<Extra>,
     pub unmatched_files: Vec<Episode>,
     pub characters: Vec<Person>,
@@ -551,6 +584,9 @@ pub struct AiringShow {
     pub english: Option<String>,
     pub native: Option<String>,
     pub poster: Option<String>,
+    /// The wide banner, a local file, when AniList has one and the show has
+    /// an episode in or near Out now: the only place that draws it.
+    pub banner: Option<String>,
     pub format: Option<String>,
     pub episodes: Option<u32>,
     /// AniList's 0 to 100, as it came.
@@ -808,6 +844,11 @@ pub struct Preferences {
     /// an export never carries it. `serde(default)` because older blobs predate it.
     #[serde(default)]
     pub discord_presence: bool,
+    /// Whether the core keeps an iCal file of the airing times of the shows
+    /// on the user's lists (`calendar`). Default off, and per machine like
+    /// `discord_presence`. `serde(default)` because older blobs predate it.
+    #[serde(default)]
+    pub calendar_feed: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -972,6 +1013,7 @@ impl Default for Preferences {
             on_hold_auto: true,
             on_hold_days: ON_HOLD_DAYS,
             discord_presence: false,
+            calendar_feed: false,
         }
     }
 }

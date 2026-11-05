@@ -65,9 +65,11 @@ pub struct Core {
     /// catch-up scan finishes, and `shutdown` takes it out if it never
     /// does. Dropping the handle unsubscribes.
     launch: Mutex<Option<Arc<Subscription>>>,
+    /// The calendar feed's listener and file lock (`calendar`).
+    pub(crate) calendar: crate::calendar::Calendar,
     /// Airing now's read in flight per season, so a second ask for the same
     /// season joins it and the other season's read runs beside it.
-    pub(crate) airing_reads: Mutex<HashMap<SeasonPick, u64>>,
+    pub(crate) airing_reads: Mutex<HashMap<String, u64>>,
     /// Taken out and shut down exactly once, in `shutdown`. `None` after
     /// that: a plain `tokio::runtime::Runtime` panics if dropped from
     /// inside its own worker threads, so ownership lives behind a mutex
@@ -263,6 +265,7 @@ impl Core {
             library: LibraryState::default(),
             watcher: Mutex::new(None),
             launch: Mutex::new(None),
+            calendar: crate::calendar::Calendar::default(),
             airing_reads: Mutex::new(HashMap::new()),
             runtime: Mutex::new(Some(runtime)),
             handle,
@@ -299,6 +302,9 @@ impl Core {
                     crate::downloads::overlay(&core, cards);
                 }
             }));
+        // Here rather than in `launch`: a job that moves the schedule can
+        // finish in a core that was never started, as the CLI's are.
+        crate::calendar::listen(&core);
         Ok(core)
     }
 
@@ -322,6 +328,17 @@ impl Core {
     #[doc(hidden)]
     pub fn set_host_bind(&self, bind: Option<String>) {
         self.host.set_bind(bind);
+    }
+
+    /// Keeps the tailnet host serving whatever "Share over Tailscale" says,
+    /// for a shell that exists to serve other devices, or hands it back to
+    /// the preference. Works before `start` too: the host then comes up with
+    /// it. Not part of the contract.
+    pub fn hold_host(&self, held: bool) {
+        self.host.hold(held);
+        if self.started.load(Ordering::SeqCst) {
+            crate::host::sync(self);
+        }
     }
 
     /// Speaks Discord presence to `transport` instead of a Discord client,
@@ -635,6 +652,17 @@ impl Core {
         // a phone can reach a machine that was left sharing.
         crate::host::sync(self);
         crate::presence::sync(self);
+        // Off this thread: storing a secret can be a keyring round trip.
+        let lifting = core.clone();
+        self.handle.spawn_blocking(move || {
+            if let Err(e) = crate::repos::lift_stored_secrets(&lifting) {
+                lifting.bus.warn(
+                    Stage::Downloads,
+                    format!("could not move a source's secret to the secret store: {e}"),
+                    EventBody::Notice,
+                );
+            }
+        });
         launch::start(&core)
     }
 
@@ -718,6 +746,12 @@ impl Core {
             }
             Call::GetSeries { series } => reads::get_series(self, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
+            Call::ParseSchedule { text } => Ok(crate::library::schedule::parse_call(&text)),
+            Call::SetScheduleNotes {
+                series,
+                season,
+                notes,
+            } => crate::library::schedule::set_notes(self, series, season, notes),
             Call::SetEpisodeCount { series, count } => {
                 reads::set_episode_count(self, series, count)
             }
@@ -791,9 +825,11 @@ impl Core {
                     prefs::save_preferences(c, &p)?;
                     Ok(before)
                 })?;
-                self.host
-                    .set_enabled(self, preferences.share_over_tailscale);
+                self.host.follow(self, preferences.share_over_tailscale);
                 crate::presence::set_enabled(self, preferences.discord_presence);
+                if before.calendar_feed != preferences.calendar_feed {
+                    crate::calendar::set_enabled(self, preferences.calendar_feed);
+                }
                 // On hold switched on: the entries due now move without
                 // waiting for the next launch.
                 if on_hold::wants_sweep(&before, &preferences)
@@ -878,6 +914,9 @@ impl Core {
             ),
             Call::SetScore { series, score } => Ok(Reply::Started {
                 job: writes::set_score(self, series, score)?,
+            }),
+            Call::SetListStatus { series, status } => Ok(Reply::Started {
+                job: writes::set_list_status(self, series, status)?,
             }),
             // Nothing to check up front: an unconnected or a fresh tracker
             // is the job's own skip, not a refusal.
@@ -1200,6 +1239,7 @@ impl Core {
         }
         // A launch whose scan never finished has no list left to run.
         self.take_launch_listener();
+        crate::calendar::stop(self);
         // The anirss sidecar goes with the core that started it.
         self.downloads.stop();
         self.host.stop();

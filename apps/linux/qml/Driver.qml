@@ -388,6 +388,25 @@ QtObject {
             } else if (typeof dy !== "number") throw new Error("wheel on an objectName needs \"dy\"")
             out.push(moveTo(target))
             out.push(function() { Shell.driveWheel(hostWindow, point.x, point.y, dx, dy, 0); return settle })
+        } else if (step.key !== undefined && step.repeatUntil !== undefined) {
+            // Presses the key until the JS is truthy, at most "max" times: a walk past rows
+            // that may or may not be on the page
+            if (typeof step.repeatUntil !== "string" || step.repeatUntil === "") throw new Error("repeatUntil takes a JS condition")
+            var most = step.max === undefined ? 5 : step.max
+            if (typeof most !== "number" || most < 1) throw new Error("max takes a count of at least 1")
+            var pk = parseKey(step.key), pressed = 0
+            var check = function() {
+                if (evaluate(step.repeatUntil, vars)) { log("DRIVE REPEAT: ready after " + pressed + " presses"); return 0 }
+                if (pressed >= most) throw new Error("repeatUntil not met after " + most + " presses: " + step.repeatUntil)
+                pressed++
+                var again = []
+                keyActions(pk, again)
+                again.push(function() { return settle })
+                again.push(check)
+                queue = again.concat(queue)
+                return 0
+            }
+            out.push(check)
         } else if (step.key !== undefined) {
             keyActions(parseKey(step.key), out)
             out.push(function() { return settle })

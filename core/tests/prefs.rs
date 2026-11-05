@@ -20,6 +20,7 @@ fn preferences_and_settings_round_trip_with_events() {
         on_hold_auto: false,
         on_hold_days: 90,
         discord_presence: false,
+        calendar_feed: false,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {
