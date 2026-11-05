@@ -1219,8 +1219,9 @@ pub(crate) fn annotate(
 /// this query reads), and the read is cheap: a plain RSS endpoint answers
 /// at once and Jackett serves a repeat query from its cache. anirss's search
 /// counts as a request to the feed's host, so the read waits its pace after
-/// it rather than going back to back. Not a job; a failure is a debug line
-/// and the page shows no dates.
+/// it rather than going back to back. On the native engine an endpoint
+/// whose search answers JSON is not read again: there is no feed to parse.
+/// Not a job; a failure is a debug line and the page shows no dates.
 fn enrich(
     core: &Arc<Core>,
     backend: DownloadsBackend,
@@ -1228,6 +1229,13 @@ fn enrich(
     endpoint: &str,
     items: &[Release],
 ) {
+    // An endpoint whose kind answers JSON there (`endpoints::answers_rss`) could never be
+    // parsed by this read, so the native engine skips it rather than spend a request.
+    if let DownloadsBackend::Native(native, _) = &backend
+        && !native.feed_is_rss(endpoint)
+    {
+        return;
+    }
     let owner = core.clone();
     let (query, endpoint, items) = (query.to_string(), endpoint.to_string(), items.to_vec());
     // The native engine's search booked its host through the paced client already.
