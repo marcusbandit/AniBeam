@@ -393,9 +393,14 @@ fn tracker_shown(parts: &UrlParts) -> String {
     )
 }
 
-/// A torrent link as a log line names it, the same way: a passkey can sit in its path too.
+/// A torrent link as a log line names it: scheme and host only, as for a tracker, since a
+/// passkey can sit in its path too. Read with the HTTP client's own parser, so a link it
+/// fetches with backslashes for slashes cannot pass its path off as the host.
 fn link_shown(url: &str) -> String {
-    split_url(url).map_or_else(|()| "a malformed link".to_string(), |p| tracker_shown(&p))
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| format!("{}://{h}", u.scheme())))
+        .unwrap_or_else(|| "a malformed link".to_string())
 }
 
 /// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching).
@@ -1531,7 +1536,22 @@ mod tests {
         ] {
             assert_eq!(link_shown(url), "https://t.example");
         }
-        assert_eq!(link_shown("http://[t.example/0123abcd"), "a malformed link");
+        // The client reads a backslash as a slash, and so does the log line.
+        assert_eq!(
+            link_shown("https://t.example\\dl\\0123abcd\\file.torrent"),
+            "https://t.example"
+        );
+        assert_eq!(
+            link_shown("http://[2001:db8::1]:8080/0123abcd.torrent"),
+            "http://[2001:db8::1]"
+        );
+        for bad in [
+            "http://[t.example/0123abcd",
+            "/dl/0123abcd.torrent",
+            "0123abcd",
+        ] {
+            assert_eq!(link_shown(bad), "a malformed link", "{bad}");
+        }
     }
 
     #[tokio::test]
