@@ -453,7 +453,12 @@ pub fn subscribe(
         .block_on(native.preview(&query, &endpoint, &items))?;
     let name = name_for(name.as_deref(), &items, &query)?;
     let store = rules_store(core);
-    let (_, subscribed) = store.subscribe(&name, &spec, &library_dir(core))?;
+    // The rules file keeps the endpoint's secrets as placeholders, never the values (#149).
+    let kept = SubscriptionSpec {
+        feed_url: crate::repos::as_template(core, &spec.endpoint_name, &spec.feed_url),
+        ..spec.clone()
+    };
+    let (_, subscribed) = store.subscribe(&name, &kept, &spec.feed_url, &library_dir(core))?;
     // What the feed holds now for episodes the library already has is taken, so the first
     // round does not download them again (qBittorrent's previously matched episodes).
     if let Ok(now) = core
@@ -566,7 +571,14 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
     let _one = core.phone.poll_lock.lock().await;
     let store = rules_store(core);
     for rule in store.load().into_iter().filter(|r| r.enabled) {
-        let items = match feed(core, &rule.feed_url, &rule.name).await {
+        let Some(url) = crate::repos::filled_feed(core, &rule.endpoint, &rule.feed_url) else {
+            tracing::warn!(
+                "subscription {} not read: its endpoint has no credentials now",
+                rule.name
+            );
+            continue;
+        };
+        let items = match feed(core, &url, &rule.name).await {
             Ok(items) => items,
             Err(e) => {
                 tracing::warn!("subscription {} not read: {e}", rule.name);

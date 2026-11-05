@@ -1256,6 +1256,85 @@ pub struct Runnable {
     pub shown_url: String,
     pub host: String,
     pub per_minute: Option<u32>,
+    /// Each secret's placeholder (`{token}`) and its value as it sits in the filled address.
+    pub secrets: Vec<(String, String)>,
+}
+
+impl Runnable {
+    /// An address made from this endpoint with each secret back as its placeholder, for
+    /// keeping on disk (#149).
+    pub fn template_of(&self, url: &str) -> String {
+        // Each value as `filled_url` encodes it, and as a feed rebuilt with `urlencode` does,
+        // a space as `+`.
+        let mut secrets: Vec<(&str, String)> = self
+            .secrets
+            .iter()
+            .filter(|(_, v)| !v.is_empty())
+            .flat_map(|(p, v)| [(p.as_str(), v.clone()), (p.as_str(), v.replace("%20", "+"))])
+            .collect();
+        // The longest first, so a value inside another is not cut out of it.
+        secrets.sort_by_key(|(_, v)| std::cmp::Reverse(v.len()));
+        let mut url = url.to_string();
+        for (placeholder, value) in secrets {
+            url = replace_whole(&url, &value, placeholder);
+        }
+        url
+    }
+
+    /// `template_of` undone: each placeholder filled with the stored secret.
+    pub fn fill(&self, template: &str) -> String {
+        let mut url = template.to_string();
+        for (placeholder, value) in &self.secrets {
+            url = url.replace(placeholder.as_str(), value);
+        }
+        url
+    }
+}
+
+/// `url` with every `value` that stands as a whole part of the address (a query value, a
+/// path segment, a login) replaced by `with`; a value that is only part of something else,
+/// a search word say, stays.
+fn replace_whole(url: &str, value: &str, with: &str) -> String {
+    let opens = |c: char| matches!(c, '=' | '/' | ':' | '@');
+    let closes = |c: char| matches!(c, '&' | '#' | '/' | '@' | ':' | '?' | ';');
+    let mut out = String::with_capacity(url.len());
+    let mut rest = url;
+    while let Some(at) = rest.find(value) {
+        let before = rest[..at].chars().last().or_else(|| out.chars().last());
+        let after = rest[at + value.len()..].chars().next();
+        out.push_str(&rest[..at]);
+        if before.is_some_and(opens) && after.is_none_or(closes) {
+            out.push_str(with);
+        } else {
+            out.push_str(value);
+        }
+        rest = &rest[at + value.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `url`, made from the installed endpoint `endpoint`, as a subscription keeps it: its
+/// secrets back as placeholders. An address from anywhere else stays as it is.
+pub fn as_template(core: &Core, endpoint: &str, url: &str) -> String {
+    match runnable(core).iter().find(|r| r.endpoint.name == endpoint) {
+        Some(r) => r.template_of(url),
+        None => url.to_string(),
+    }
+}
+
+/// A kept address ready to read: the placeholders `as_template` put in filled from the secret
+/// store. None when a placeholder is left that the endpoint can no longer fill (it was
+/// removed, or its credentials were), so the address never goes out half filled.
+pub fn filled_feed(core: &Core, endpoint: &str, url: &str) -> Option<String> {
+    if !url.contains('{') {
+        return Some(url.to_string());
+    }
+    let filled = runnable(core)
+        .iter()
+        .find(|r| r.endpoint.name == endpoint)?
+        .fill(url);
+    (!filled.contains('{')).then_some(filled)
 }
 
 /// The enabled installed endpoints, in order, with every credential they need. One whose
@@ -1274,14 +1353,23 @@ pub fn runnable(core: &Core) -> Vec<Runnable> {
         if out.iter().any(|r| r.endpoint.name == row.def.id) {
             continue;
         }
-        let filled = row.def.filled_url(|key| {
+        let values = row.def.filled_values(|key| {
             secrets
                 .get(&secret_key(&row.install_id, key), None)
                 .ok()
                 .flatten()
                 .map(|(v, _)| v)
         });
-        let Some(url) = filled else { continue };
+        let Some(values) = values else { continue };
+        let mut url = row.def.url.clone();
+        for (field, filled) in &values {
+            url = url.replace(&format!("{{{}}}", field.key), filled);
+        }
+        let kept = values
+            .iter()
+            .filter(|(field, _)| field.secret)
+            .map(|(field, filled)| (format!("{{{}}}", field.key), filled.clone()))
+            .collect();
         let mut endpoint = crate::releases::Endpoint::new(&row.def.id, &row.def.kind, &url);
         if let Some(c) = &row.def.category {
             endpoint.category = c.clone();
@@ -1296,6 +1384,7 @@ pub fn runnable(core: &Core) -> Vec<Runnable> {
             // The filled address's host: a torznab `{host}` is the person's own server.
             host: index::host_of(&url),
             per_minute: row.def.rate.map(|r| r.per_minute),
+            secrets: kept,
         });
     }
     out
@@ -1407,6 +1496,58 @@ mod tests {
         assert_eq!(
             core.store.read(read_installed).unwrap().remove(0).def,
             row.def
+        );
+    }
+
+    #[test]
+    fn a_stored_feed_keeps_the_placeholder_and_is_filled_when_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = CorePaths::under(dir.path());
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            FakeHttp::new(),
+            Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        custom(&core, "mine", "https://a.example/rss?q={query}&token=t%201");
+        let feed = "https://a.example/rss?q=Show+1080p&token=t%201";
+
+        // What a subscription keeps on disk: the placeholder, never the token (#149).
+        let kept = as_template(&core, "mine", feed);
+        assert_eq!(kept, "https://a.example/rss?q=Show+1080p&token={token}");
+        // Read again with the credential from the secret store.
+        assert_eq!(filled_feed(&core, "mine", &kept).as_deref(), Some(feed));
+
+        // A feed with nothing to fill is read as it is, whichever endpoint it came from.
+        let plain = "https://b.example/rss?q=Show";
+        assert_eq!(as_template(&core, "gone", plain), plain);
+        assert_eq!(filled_feed(&core, "gone", plain).as_deref(), Some(plain));
+        // A placeholder nobody can fill any more is not sent out as it is.
+        assert_eq!(filled_feed(&core, "gone", &kept), None);
+
+        // A feed rebuilt with `urlencode` writes the space as `+`: the token still comes out.
+        let rebuilt = "https://a.example/show/feed/?token=t+1";
+        assert_eq!(
+            as_template(&core, "mine", rebuilt),
+            "https://a.example/show/feed/?token={token}"
+        );
+        core.shutdown();
+    }
+
+    #[test]
+    fn only_a_whole_part_of_the_address_becomes_the_placeholder() {
+        // A short key that also sits inside the search stays there.
+        assert_eq!(
+            replace_whole("https://a.example/rss?q=Show+1080p&key=1", "1", "{key}"),
+            "https://a.example/rss?q=Show+1080p&key={key}"
+        );
+        assert_eq!(
+            replace_whole("https://a.example/rss/abc/feed?q=abcd", "abc", "{key}"),
+            "https://a.example/rss/{key}/feed?q=abcd"
+        );
+        assert_eq!(
+            replace_whole("https://me:pw@a.example/rss", "pw", "{login_password}"),
+            "https://me:{login_password}@a.example/rss"
         );
     }
 
