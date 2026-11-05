@@ -285,20 +285,42 @@ impl AnirssClient {
         })
     }
 
+    /// Subscribes under anirss's root plus `name`, or straight into `save_path` when given:
+    /// the folder of a show already in the library. An anirss that lists
+    /// `subscription_save_path` writes the rule there; an older one ignores the field and
+    /// answers with its own folder, which the caller then moves the rule from.
     pub async fn subscribe(
         &self,
         query: &str,
         endpoint: &str,
         items: &[Release],
         name: Option<&str>,
+        save_path: Option<&str>,
     ) -> Result<Subscribed, CoreError> {
         let mut body = json!({ "query": query, "endpoint": endpoint, "items": items });
         if let Some(n) = name.map(str::trim).filter(|n| !n.is_empty()) {
             body["name"] = Value::String(n.to_string());
         }
-        let v = self
-            .post("/subscriptions", body, Some(STEP_TIMEOUT))
-            .await?;
+        let v = match save_path {
+            Some(p) => {
+                let mut with = body.clone();
+                with["save_path"] = Value::String(p.to_string());
+                match self.post("/subscriptions", with, Some(STEP_TIMEOUT)).await {
+                    // A folder anirss refuses is no reason to lose the subscription: it is
+                    // made under anirss's root, and the caller moves the rule as it would
+                    // for an anirss that takes no save path.
+                    Err(CoreError::Service { code, .. }) if code == "validation_error" => {
+                        self.post("/subscriptions", body, Some(STEP_TIMEOUT))
+                            .await?
+                    }
+                    answer => answer?,
+                }
+            }
+            None => {
+                self.post("/subscriptions", body, Some(STEP_TIMEOUT))
+                    .await?
+            }
+        };
         Ok(Subscribed {
             name: v["name"].as_str().unwrap_or("").to_string(),
             feed_url: v["feed_url"].as_str().unwrap_or("").to_string(),
@@ -986,6 +1008,37 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    /// A folder anirss refuses does not cost the subscription: it is asked again without
+    /// one and made under anirss's root, for the caller to move (#465).
+    #[tokio::test]
+    async fn a_refused_save_path_subscribes_without_it() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_json(
+            400,
+            json!({"error": {"type": "validation_error", "message": "invalid save_path"}}),
+        );
+        http.push_json(
+            201,
+            json!({"name": "Show", "feed_url": "https://f.example/rss", "save_path": "/anirss/Show"}),
+        );
+        let made = client(&http)
+            .subscribe("Show", "feed", &[], Some("Show"), Some("/lib/Show "))
+            .await
+            .unwrap();
+        assert_eq!(made.save_path, "/anirss/Show");
+        let sent: Vec<Value> = http
+            .requests()
+            .into_iter()
+            .map(|r| match r.body {
+                Some(Body::Json(v)) => v,
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[0]["save_path"], json!("/lib/Show "));
+        assert!(sent[1].get("save_path").is_none(), "{}", sent[1]);
     }
 
     #[tokio::test]

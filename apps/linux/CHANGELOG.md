@@ -15,6 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Settings shows whether Discord is connected, under Playback
 - Set a show's schedule under Fixes: pick episodes and a date, or paste a list
 - Fixes is three items: Episodes and dates, Files and Match
 - Refresh a show's info from its Match panel, and rescan its folder from Files
@@ -142,6 +143,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Seeders show for releases from a tracker written with backslashes
 - Discord shows a series whose title is a single letter
 - The activity log keeps no feed key after a subscription repair
 - Sources installed from a repo show up in search on every desktop install

@@ -945,9 +945,9 @@ impl Find {
     }
 
     fn ask_notifications(&mut self) {
+        // Noted only once the ask went out, so one that failed is tried on the next download.
         if !self.asked_notifications {
-            self.asked_notifications = true;
-            crate::android::ask_notifications();
+            self.asked_notifications = crate::android::ask_notifications();
         }
     }
 
