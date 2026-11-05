@@ -1002,6 +1002,8 @@ Item {
 
     // ---- The show inside the page
     function openRule(r) {
+        page.feed = null
+        page.feedAfterRules = false
         page.detail = { key: page.ruleKey(r), rule: r.name, folder: page.folderOf(r.save_path), seriesId: r.show ? r.show.series_id : -1, title: page.titleOf(r) }
         page.ruleView = null
         Door.readRule(r.name)
@@ -1009,11 +1011,13 @@ Item {
         scroll.contentY = 0
     }
     function openGroup(g) {
+        page.feed = null
+        page.feedAfterRules = false
         page.detail = { key: g.key, rule: g.rule ? g.rule.name : "", folder: g.folder, seriesId: g.show ? g.show.series_id : -1, title: g.title }
         page.readFeed()
         scroll.contentY = 0
     }
-    function closeDetail() { page.detail = null; page.feed = null; page.ruleView = null; page.watchUntil = 0 }
+    function closeDetail() { page.detail = null; page.feed = null; page.feedAfterRules = false; page.ruleView = null; page.watchUntil = 0 }
     // ---- A fresh subscription: the show opens on it, and for a minute and a half the page
     // reads the torrents every two seconds and the rule every four, so what qBittorrent
     // takes from the feed shows up as it happens
@@ -1033,6 +1037,8 @@ Item {
     property real nowTick: Date.now()
     Timer { interval: 2000; repeat: true; running: page.watchUntil > Date.now() || page.watching; onTriggered: { page.nowTick = Date.now(); if (page.watching && page.detail && page.detail.rule) Door.readRule(page.detail.rule) } }
     function watchSubscription(result) {
+        page.feed = null
+        page.feedAfterRules = false
         page.detail = { key: page.searchShow ? "s" + page.searchShow.series_id : "p" + page.folderOf(result.save_path), rule: result.name,
                         folder: page.folderOf(result.save_path), seriesId: page.searchShow ? page.searchShow.series_id : -1,
                         title: page.searchShow ? page.searchShow.title : result.name }
@@ -1064,18 +1070,27 @@ Item {
     }
     // Every read gets its own tag, and the answer comes back under it: the event never
     // names the feed, whose address can hold a login and a key, so the tag is how a late
-    // answer for a feed since closed or since replaced is told apart.
+    // answer for a feed since closed or since replaced is told apart. The page is made
+    // anew on every visit, so the tag starts from the time it was made, not from 1.
+    readonly property string feedEpoch: String(Date.now())
     property int feedAsks: 0
     function askFeed(url, entries) {
         page.feedAsks += 1
-        var tag = String(page.feedAsks)
+        var tag = page.feedEpoch + "." + page.feedAsks
         page.feed = { url: url, tag: tag, entries: entries, loading: true, error: "" }
         var res = Door.readFeed(url, tag)
         if (res.error) page.feed = { url: url, tag: tag, entries: [], loading: false, error: page.errorWords(res.error) }
     }
     // A rule whose feed changed under the open show, a repair's shorter search say, is
-    // read again from the rule the page holds.
-    onDetailRuleChanged: if (page.feed && page.detailRule && page.detailRule.feed_url && page.detailRule.feed_url !== page.feed.url) page.readFeed()
+    // read again from the rule the page holds, and so is one a repair just settled, once
+    // the rule list read after it arrives.
+    property bool feedAfterRules: false
+    onDetailRuleChanged: {
+        if (!page.feed || !page.detailRule || !page.detailRule.feed_url) return
+        if (!page.feedAfterRules && page.detailRule.feed_url === page.feed.url) return
+        page.feedAfterRules = false
+        page.readFeed()
+    }
     function downloadEntry(e) {
         var name = page.detailRule ? page.detailRule.name : Fmt.baseName(page.detail.folder || "")
         page.act(Door.downloadReleases([{ title: e.title, link: e.link, seeders: e.seeders, leechers: e.leechers, downloads: e.downloads, size: e.size, page: e.page }], name))
@@ -1409,15 +1424,17 @@ Item {
             page.repairJob = -1
             page.repairLabel = ""
             frame.toast("Repaired " + name + ": the feed finds " + Fmt.plural(found, "release", "releases") + (mustContain ? " and the rule keeps \u201c" + mustContain + "\u201d" : ""), 6)
-            page.loadRules()
             if (page.detail !== null && page.detail.rule === name) {
-                page.readFeed()
+                // The feed is read once the rule list after the repair arrives, from the rule.
+                page.feedAfterRules = true
+                if (page.feed) page.feed = { url: page.feed.url, tag: "", entries: [], loading: true, error: "" }
                 Door.readRule(name)
                 page.subscribedAt = Date.now()
                 page.watchUntil = Date.now() + 90000
                 page.nowTick = Date.now()
                 page.pollTorrents()
             }
+            page.loadRules()
         }
         function onRuleRead(rule) {
             if (page.detail === null || page.detail.rule !== rule.name) return
