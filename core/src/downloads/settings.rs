@@ -3,7 +3,11 @@
 //! own `config.toml` where it has one, so a machine that already runs
 //! anirss points at the same qBittorrent without retyping anything.
 
+use std::collections::HashMap;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
 
@@ -287,43 +291,101 @@ fn is_this_machine(host: &str) -> bool {
     names_this_machine(
         host,
         &crate::host::server::hostname(),
-        &crate::host::addr::local_addresses(),
-        resolve,
+        crate::host::addr::local_addresses,
+        |name| remembered(&LOOKUPS, name, Instant::now(), bounded_lookup),
     )
 }
 
-/// The addresses a name resolves to, none when it does not.
-fn resolve(name: &str) -> Vec<std::net::IpAddr> {
-    use std::net::ToSocketAddrs;
-    (name, 0)
-        .to_socket_addrs()
-        .map(|all| all.map(|a| a.ip()).collect())
-        .unwrap_or_default()
+/// How long a looked-up answer stands before the name is looked up again. `files_here`
+/// runs on every Downloads poll, and the answer only changes with the settings or the
+/// network.
+const LOOKUP_FOR: Duration = Duration::from_secs(60);
+/// The longest a lookup may hold up its caller, the shell's own thread on the Download
+/// path.
+const LOOKUP_LIMIT: Duration = Duration::from_secs(2);
+
+type Lookups = Mutex<HashMap<String, (Instant, Vec<IpAddr>)>>;
+static LOOKUPS: LazyLock<Lookups> = LazyLock::new(Lookups::default);
+
+/// The addresses `name` resolves to, looked up at most once a `LOOKUP_FOR`. A lookup that
+/// fails keeps the last answer, so one DNS hiccup never moves where the files are; None
+/// when no lookup has answered yet.
+fn remembered(
+    cache: &Lookups,
+    name: &str,
+    now: Instant,
+    lookup: impl FnOnce(&str) -> Option<Vec<IpAddr>>,
+) -> Option<Vec<IpAddr>> {
+    let last = cache.lock().ok()?.get(name).cloned();
+    if let Some((at, addrs)) = &last
+        && now.duration_since(*at) < LOOKUP_FOR
+    {
+        return Some(addrs.clone());
+    }
+    match lookup(name) {
+        Some(addrs) => {
+            if let Ok(mut cache) = cache.lock() {
+                cache.insert(name.to_string(), (now, addrs.clone()));
+            }
+            Some(addrs)
+        }
+        None => last.map(|(_, addrs)| addrs),
+    }
 }
 
-/// Whether `host` is this machine, named `hostname` and holding `locals`.
-/// An address counts when it is one of `locals`, and a name when it is the
+/// The system's lookup of `name`, given `LOOKUP_LIMIT` at most. None when it fails, finds
+/// nothing or runs out of time; a lookup that runs out finishes on its own thread.
+fn bounded_lookup(name: &str) -> Option<Vec<IpAddr>> {
+    use std::net::ToSocketAddrs;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let owned = name.to_string();
+    std::thread::Builder::new()
+        .name("qbt-lookup".into())
+        .spawn(move || {
+            let found = (owned.as_str(), 0)
+                .to_socket_addrs()
+                .map(|all| all.map(|a| a.ip()).collect::<Vec<_>>());
+            let _ = tx.send(found);
+        })
+        .ok()?;
+    match rx.recv_timeout(LOOKUP_LIMIT) {
+        Ok(Ok(addrs)) if !addrs.is_empty() => Some(addrs),
+        _ => None,
+    }
+}
+
+/// Whether `host` is this machine, named `hostname` and holding `locals`. An address
+/// counts when it is loopback, unspecified or one of `locals`, and a name when it is the
 /// bare hostname. A longer name that only starts with it, a tailnet's
-/// `banditbox.tail1234.ts.net` or a lookalike `banditbox.example.net`,
-/// counts only when it resolves here, since the core trashes files at the
-/// paths that client reports (#446). Only such a name is looked up.
+/// `banditbox.tail1234.ts.net` or a lookalike `banditbox.example.net`, counts only when it
+/// resolves here, since the core trashes files at the paths that client reports (#446).
+/// Only such a name is looked up, and `locals` is listed only when an address needs it.
 fn names_this_machine(
     host: &str,
     hostname: &str,
-    locals: &[std::net::IpAddr],
-    resolve: impl Fn(&str) -> Vec<std::net::IpAddr>,
+    locals: impl Fn() -> Vec<IpAddr>,
+    resolve: impl Fn(&str) -> Option<Vec<IpAddr>>,
 ) -> bool {
-    let here = |ip: &std::net::IpAddr| ip.is_loopback() || locals.contains(ip);
+    let here = |ips: &[IpAddr]| {
+        let locals = locals();
+        ips.iter().any(|ip| {
+            let ip = ip.to_canonical();
+            ip.is_loopback() || ip.is_unspecified() || locals.contains(&ip)
+        })
+    };
     let host = host.trim_end_matches('.').to_ascii_lowercase();
-    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return here(&ip);
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return here(&[ip]);
     }
     let name = hostname.trim_end_matches('.').to_ascii_lowercase();
     let first = |n: &str| n.split('.').next().unwrap_or_default().to_string();
     if name.is_empty() || host.is_empty() || first(&host) != first(&name) {
         return false;
     }
-    host == name || !host.contains('.') || resolve(&host).iter().any(here)
+    if host == name || !host.contains('.') {
+        return true;
+    }
+    resolve(&host).is_some_and(|ips| here(&ips))
 }
 
 /// The host part of a URL, without port or IPv6 brackets.
@@ -458,38 +520,76 @@ mod tests {
 
     #[test]
     fn only_a_name_that_resolves_here_is_this_machine() {
-        let locals: Vec<std::net::IpAddr> = vec![
-            "127.0.0.1".parse().unwrap(),
-            "192.168.1.20".parse().unwrap(),
-            "100.65.105.9".parse().unwrap(),
-        ];
-        let dns = |name: &str| -> Vec<std::net::IpAddr> {
+        let locals = || -> Vec<IpAddr> {
+            vec![
+                "192.168.1.20".parse().unwrap(),
+                "100.65.105.9".parse().unwrap(),
+            ]
+        };
+        let asked = std::cell::RefCell::new(Vec::new());
+        let dns = |name: &str| -> Option<Vec<IpAddr>> {
+            asked.borrow_mut().push(name.to_string());
             match name {
-                "banditbox.tail1234.ts.net" => vec!["100.65.105.9".parse().unwrap()],
-                "banditbox.example.net" => vec!["203.0.113.7".parse().unwrap()],
-                _ => Vec::new(),
+                "banditbox.tail1234.ts.net" => Some(vec!["100.65.105.9".parse().unwrap()]),
+                "banditbox.example.net" => Some(vec!["203.0.113.7".parse().unwrap()]),
+                _ => None,
             }
         };
-        let here = |host: &str| names_this_machine(host, "banditbox", &locals, dns);
+        let here = |host: &str| names_this_machine(host, "banditbox", locals, dns);
         assert!(here("banditbox"));
-        assert!(here("BanditBox"));
+        assert!(here("BanditBox."));
         assert!(here("banditbox.tail1234.ts.net"));
+        assert!(here("BANDITBOX.TAIL1234.TS.NET."));
         assert!(here("192.168.1.20"));
+        assert!(here("127.0.0.1") && here("::1") && here("::ffff:127.0.0.1") && here("0.0.0.0"));
         // A lookalike whose first label is this machine's name is somebody
         // else's box, and so is a name that resolves nowhere (#446).
         assert!(!here("banditbox.example.net"));
         assert!(!here("banditbox.nowhere.invalid"));
-        assert!(!here("seedbox"));
+        assert!(!here("seedbox.example.net"));
         assert!(!here("203.0.113.7"));
-        // No hostname, no match.
-        assert!(!names_this_machine("banditbox", "", &locals, dns));
-        // A machine whose own name is dotted still knows itself.
+        // Only a name that starts like this machine's is looked up.
+        assert!(
+            asked.borrow().iter().all(|n| n.starts_with("banditbox.")),
+            "{:?}",
+            asked.borrow()
+        );
+        // No hostname, no match; a dotted hostname still knows its bare name.
+        assert!(!names_this_machine("banditbox", "", locals, dns));
+        assert!(names_this_machine(
+            "banditbox",
+            "banditbox.local",
+            locals,
+            dns
+        ));
         assert!(names_this_machine(
             "banditbox.local",
             "banditbox.local",
-            &locals,
+            locals,
             dns
         ));
+    }
+
+    #[test]
+    fn a_failed_lookup_keeps_the_last_answer() {
+        let cache = Lookups::default();
+        let at = Instant::now();
+        let tailnet = vec!["100.65.105.9".parse::<IpAddr>().unwrap()];
+        let found = |_: &str| Some(vec!["100.65.105.9".parse().unwrap()]);
+        let fails = |_: &str| None;
+        let never = |_: &str| -> Option<Vec<IpAddr>> { panic!("looked up within LOOKUP_FOR") };
+        let name = "banditbox.tail1234.ts.net";
+        assert_eq!(remembered(&cache, "other.example", at, fails), None);
+        assert_eq!(remembered(&cache, name, at, found), Some(tailnet.clone()));
+        assert_eq!(
+            remembered(&cache, name, at + LOOKUP_FOR / 2, never),
+            Some(tailnet.clone())
+        );
+        // Past LOOKUP_FOR it asks again, and a lookup that fails keeps what was known.
+        assert_eq!(
+            remembered(&cache, name, at + LOOKUP_FOR * 2, fails),
+            Some(tailnet)
+        );
     }
 
     fn client(id: &str, name: &str, url: &str) -> SavedTorrentClient {
