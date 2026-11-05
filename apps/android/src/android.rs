@@ -188,30 +188,11 @@ pub fn unmetered() -> Option<bool> {
 }
 
 /// Asks once for the notification permission Android 13 and later want before a service
-/// may show its notification.
+/// may show its notification. Only an Activity has `requestPermissions`, and `with_env`'s
+/// context is the Application, so the ask goes through `TorrentService.askPermission`.
 pub fn ask_notifications() {
     #[cfg(target_os = "android")]
-    {
-        let r = with_env(|env, activity| {
-            use jni::objects::JValue;
-            let sdk = env.get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?.i()?;
-            if sdk < 33 {
-                return Ok(());
-            }
-            let permission = env.new_string("android.permission.POST_NOTIFICATIONS")?;
-            let granted =
-                env.call_method(activity, "checkSelfPermission", "(Ljava/lang/String;)I", &[JValue::Object(&permission)])?.i()?;
-            if granted == 0 {
-                return Ok(());
-            }
-            let list = env.new_object_array(1, "java/lang/String", &permission)?;
-            env.call_method(activity, "requestPermissions", "([Ljava/lang/String;I)V", &[JValue::Object(&list), JValue::Int(1)])?;
-            Ok(())
-        });
-        if let Err(e) = r {
-            crate::local::log(&format!("could not ask for notifications: {e}"));
-        }
-    }
+    java_call("TorrentService", "askPermission", "(Landroid/app/Activity;)V", None);
 }
 
 /// Puts `text` on the clipboard, so a connection check can be pasted into a message.
