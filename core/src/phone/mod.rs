@@ -288,6 +288,32 @@ fn rules_store(core: &Core) -> crate::releases::rules::RuleStore {
     )
 }
 
+/// Takes the secrets out of the subscriptions kept before #149, once, at launch (#463).
+/// `lifted` says the launch's lift of hand-added sources' secrets went through.
+#[cfg(feature = "phone")]
+pub fn rekeep_rules(core: &Core, lifted: bool) {
+    match crate::repos::rekeep_old_rules(core, &rules_store(core), lifted) {
+        Ok(0) => {}
+        Ok(n) => {
+            tracing::info!(
+                "{n} subscriptions kept before #149 now keep their key as a placeholder"
+            );
+            core.bus.info(
+                Stage::Downloads,
+                "Shows followed earlier no longer keep their source's key in the app's files",
+                EventBody::Notice,
+            );
+        }
+        Err(e) => {
+            core.bus.warn(
+                Stage::Downloads,
+                format!("could not take the source keys out of the shows followed earlier: {e}"),
+                EventBody::Notice,
+            );
+        }
+    }
+}
+
 #[cfg(feature = "phone")]
 /// The library folder, from the core's paths: the app keeps the core under `files/core`
 /// and the library at `files/Anime`.

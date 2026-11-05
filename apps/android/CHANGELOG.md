@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
+- Shows followed earlier no longer keep their source's key in the app's files
 - A source with no public address no longer stops DNS-blocked sources loading
 - A busy sign-in port says to try again, not that another AniBeam is open
 - A show's synopsis reads as paragraphs instead of showing <br> tags
