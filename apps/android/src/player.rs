@@ -693,6 +693,25 @@ pub fn close_page(reason: CloseReason) {
     });
 }
 
+/// Android is ending the activity with an episode open: the page closes the way Back closes
+/// it, so the closing tick's resume point is kept, the audio focus goes back, and the screen
+/// is handed back while the activity can still take it, since a relaunch keeps what the old
+/// instance asked of it. A cast plays on: the TV needs neither this activity nor its remote.
+pub fn app_ending() {
+    let mut open = false;
+    with_player(|p| {
+        open = true;
+        crate::local::log(&format!(
+            "player: the app is ending, closing session {} at {:.1} s",
+            p.session.session, p.rules.position
+        ));
+        p.cast = None;
+    });
+    if open {
+        close_page(CloseReason::Stopped);
+    }
+}
+
 /// Next or previous: the same neighbours, and the same rule, as the desktop's buttons.
 fn neighbour(forward: bool) {
     let mut target = None;
