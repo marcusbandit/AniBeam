@@ -393,6 +393,11 @@ fn tracker_shown(parts: &UrlParts) -> String {
     )
 }
 
+/// A torrent link as a log line names it, the same way: a passkey can sit in its path too.
+fn link_shown(url: &str) -> String {
+    split_url(url).map_or_else(|()| "a malformed link".to_string(), |p| tracker_shown(&p))
+}
+
 /// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching).
 async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMap<Hash, Stats> {
     let Ok(mut parts) = split_url(announce) else {
@@ -607,7 +612,7 @@ impl Backend for Net<'_> {
         timeout: Duration,
     ) -> BoxFuture<'a, Option<Vec<u8>>> {
         Box::pin(async move {
-            let shown = url.split('?').next().unwrap_or("");
+            let shown = link_shown(url);
             let Ok(encoded) = encode_http_link(url) else {
                 tracing::warn!("torrent download failed ({shown}): malformed URL");
                 return None;
@@ -1515,6 +1520,18 @@ mod tests {
                 .any(|(k, v)| k == "User-Agent" && v == "anirss/1.0")
         );
         assert_eq!(req.timeout, Some(TORRENT_TIMEOUT));
+    }
+
+    #[test]
+    fn a_torrent_link_is_logged_by_scheme_and_host_only() {
+        // A passkey in the path, the login or the query never reaches the log (#397).
+        for url in [
+            "https://t.example/dl/0123abcd/file.torrent",
+            "https://user:0123abcd@t.example:8443/dl/0123abcd.torrent?passkey=0123abcd",
+        ] {
+            assert_eq!(link_shown(url), "https://t.example");
+        }
+        assert_eq!(link_shown("http://[t.example/0123abcd"), "a malformed link");
     }
 
     #[tokio::test]
