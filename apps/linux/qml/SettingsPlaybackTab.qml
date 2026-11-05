@@ -23,7 +23,10 @@ SettingsTab {
         var r = Door.setPreferences(p)
         if (r.error) frame.toast(r.error.message)
     }
-    Component.onCompleted: { var presence = Door.call("GetPresence", {}); if (!presence.error) discordAvailable = presence.reply.available }
+    // Whether Discord is connected right now: read once, then kept current by the core's event
+    property bool discordConnected: false
+    Component.onCompleted: { var presence = Door.call("GetPresence", {}); if (!presence.error) { discordAvailable = presence.reply.available; discordConnected = presence.reply.connected } }
+    Connections { target: Door; function onPresenceChanged(connected) { tab.discordConnected = connected } }
 
     Panel {
         title: "Skipping"
@@ -50,6 +53,7 @@ SettingsTab {
         title: "Discord"
         SettingRow { label: "Show what you watch on Discord"
             helper: tab.discordAvailable ? "The series, episode and poster appear on your Discord profile while you play. Nothing is sent while this is off or Discord is closed." : "This build has no Discord application."
+            status: !tab.discordAvailable || !Door.preferences.discord_presence ? "" : tab.discordConnected ? "Connected to Discord" : "Not connected: Discord is closed, or nothing has played yet"
             Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } }
     }
     Panel {

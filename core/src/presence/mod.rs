@@ -774,11 +774,21 @@ impl Worker {
     }
 
     fn disconnect(&mut self) {
-        if self.is_connected() {
+        let was = self.is_connected();
+        if was {
             let _ = self.transport.send(None);
         }
         self.transport.close();
         self.set_connected(false);
+        // The person switched it off, so the activity log has no line for it;
+        // Settings still has to hear the connection went.
+        if was {
+            self.bus.debug(
+                Stage::Playback,
+                "Discord presence let go",
+                EventBody::PresenceChanged { connected: false },
+            );
+        }
         self.want = None;
         self.dirty = false;
         self.last_attempt = None;
@@ -801,7 +811,7 @@ impl Worker {
                     self.bus.info(
                         Stage::Playback,
                         "Discord is showing what plays",
-                        EventBody::Notice,
+                        EventBody::PresenceChanged { connected: true },
                     );
                 }
                 Err(e) => {
@@ -840,7 +850,7 @@ impl Worker {
                 self.bus.info(
                     Stage::Playback,
                     "Discord stopped answering",
-                    EventBody::Notice,
+                    EventBody::PresenceChanged { connected: false },
                 );
             }
         }

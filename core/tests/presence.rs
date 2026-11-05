@@ -487,3 +487,57 @@ fn get_presence_says_whether_this_build_has_an_application() {
         (presence::bundled_client_id().is_some(), false)
     );
 }
+
+fn presence_events(c: &anibeam_core::events::Collector) -> Vec<bool> {
+    c.events()
+        .into_iter()
+        .filter_map(|e| match e.body {
+            EventBody::PresenceChanged { connected } => Some(connected),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_connection_coming_and_going_is_an_event() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    switch(&core, true);
+    core.presence_flush();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::PresenceChanged { connected: true }),
+        Duration::from_secs(5),
+    );
+    // Switching off lets the connection go, and says so.
+    switch(&core, false);
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::PresenceChanged { connected: false }),
+        Duration::from_secs(5),
+    );
+    assert_eq!(presence_events(&c), vec![true, false]);
+    assert_eq!(presence_reply(&core), (true, false));
+}
+
+#[test]
+fn a_discord_that_never_answers_sends_no_change() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        fail: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    switch(&core, false);
+    core.presence_flush();
+    assert!(presence_events(&c).is_empty(), "{:?}", presence_events(&c));
+}
