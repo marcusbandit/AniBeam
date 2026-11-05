@@ -34,6 +34,12 @@ pub const PAUSE_CLEAR: Duration = Duration::from_secs(5 * 60);
 pub const RETRY: Duration = Duration::from_secs(30);
 /// Discord's limit on every text field of an activity, in characters.
 pub const FIELD_MAX: usize = 128;
+/// The fewest characters Discord takes in a text field: it refuses a
+/// shorter `details`, `state` or `large_text`, and the whole activity with it.
+pub const FIELD_MIN: usize = 2;
+/// What a field too short for Discord is padded with: a zero width space,
+/// which counts as a character and shows as nothing.
+const FIELD_PAD: char = '\u{200B}';
 /// The art uploaded to the Discord application, shown when there is no
 /// poster or Discord will not take a poster's URL.
 pub const FALLBACK_ART: &str = "anibeam";
@@ -88,10 +94,10 @@ impl Activity {
             })
         };
         Activity {
-            details: truncate(series_title),
-            state: state.map(|s| truncate(&s)),
+            details: field(series_title),
+            state: state.map(|s| field(&s)),
             poster: poster.filter(|p| p.starts_with("https://") || p.starts_with("http://")),
-            large_text: truncate(series_title),
+            large_text: field(series_title),
             start: None,
         }
     }
@@ -117,9 +123,14 @@ impl Activity {
     }
 }
 
-/// A field cut to Discord's limit, with an ellipsis where it was cut.
-fn truncate(s: &str) -> String {
-    crate::words::cut(s, FIELD_MAX)
+/// A field cut to Discord's limit, with an ellipsis where it was cut, and
+/// padded to its minimum, so a one-letter title such as "K" still shows.
+fn field(s: &str) -> String {
+    let mut field = crate::words::cut(s, FIELD_MAX);
+    for _ in field.chars().count()..FIELD_MIN {
+        field.push(FIELD_PAD);
+    }
+    field
 }
 
 /// A lock's guard back from a condvar wait, poisoned or not, as `recover`.
@@ -1200,6 +1211,20 @@ mod tests {
         assert_eq!(n.details.chars().count(), FIELD_MAX);
         // Short fields are left alone.
         assert_eq!(bebop().details, "Cowboy Bebop");
+    }
+
+    #[test]
+    fn one_character_fields_are_padded_to_discords_minimum() {
+        let a = Activity::describe("K", "E", None, false, false, None);
+        assert_eq!(a.details, format!("K{FIELD_PAD}"));
+        assert_eq!(a.large_text, format!("K{FIELD_PAD}"));
+        assert_eq!(a.state.as_deref(), Some(format!("E{FIELD_PAD}").as_str()));
+        let empty = Activity::describe("", "E1", None, false, false, None);
+        assert_eq!(empty.details.chars().count(), FIELD_MIN);
+        // Two characters are already enough.
+        assert_eq!(empty.state.as_deref(), Some("E1"));
+        let two = Activity::describe("K2", "E1", None, false, false, None);
+        assert_eq!(two.details, "K2");
     }
 
     #[test]
