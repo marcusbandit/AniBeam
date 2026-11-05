@@ -1,8 +1,8 @@
 //! A subscription's feed, read by the core itself so the page can show
 //! what it holds without sending the person to the feed's own page. Two
-//! shapes reach here: nyaa's RSS, with its `nyaa:` fields beside each
-//! item, and torznab (Jackett, Prowlarr), with `torznab:attr` name/value
-//! pairs. Anything else is plain RSS 2.0 and gives what it gives.
+//! shapes reach here: RSS with namespaced fields such as `x:seeders` beside
+//! each item, and torznab, with `torznab:attr` name/value pairs. Anything
+//! else is plain RSS 2.0 and gives what it gives.
 
 use std::time::Duration;
 
@@ -62,8 +62,8 @@ pub fn parse(text: &str) -> Result<Vec<FeedEntry>, String> {
 }
 
 fn entry(item: roxmltree::Node) -> FeedEntry {
-    // The child elements by local name, namespace aside: nyaa's
-    // `nyaa:seeders` and a plain `seeders` read the same.
+    // The child elements by local name, namespace aside: a namespaced
+    // `x:seeders` and a plain `seeders` read the same.
     let child = |name: &str| -> Option<String> {
         item.children()
             .find(|c| c.is_element() && c.tag_name().name() == name)
@@ -99,7 +99,7 @@ fn entry(item: roxmltree::Node) -> FeedEntry {
                 .map(str::to_string)
         })
         .unwrap_or_default();
-    // The release's page: nyaa's guid is its view page; torznab names it
+    // The release's page: a guid that is a permalink is its view page; torznab names it
     // in comments, or in a guid that is a URL.
     let page = [guid, comments]
         .into_iter()
@@ -149,7 +149,7 @@ fn entry(item: roxmltree::Node) -> FeedEntry {
     }
 }
 
-/// RFC 2822, as RSS writes it; nyaa writes `-0000` for UTC, which the
+/// RFC 2822, as RSS writes it; some feeds write `-0000` for UTC, which the
 /// parser takes.
 fn date(text: &str) -> Option<i64> {
     time::OffsetDateTime::parse(text, &time::format_description::well_known::Rfc2822)
@@ -187,31 +187,31 @@ mod tests {
     use super::*;
     use crate::net::FakeHttp;
 
-    const NYAA: &str = r#"<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:nyaa="https://nyaa.si/xmlns/nyaa" version="2.0">
-<channel><title>Nyaa</title>
+    const NAMESPACED: &str = r#"<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:x="https://t.example/xmlns/feed" version="2.0">
+<channel><title>A feed</title>
 <item>
   <title>[ToonsHub] Show S01E12 1080p WEB-DL</title>
-  <link>https://nyaa.si/download/2164565.torrent</link>
-  <guid isPermaLink="true">https://nyaa.si/view/2164565</guid>
+  <link>https://t.example/download/2164565.torrent</link>
+  <guid isPermaLink="true">https://t.example/view/2164565</guid>
   <pubDate>Mon, 21 Sep 2026 14:34:40 -0000</pubDate>
-  <nyaa:seeders>37</nyaa:seeders>
-  <nyaa:leechers>0</nyaa:leechers>
-  <nyaa:downloads>648</nyaa:downloads>
-  <nyaa:infoHash>3AF8C29C1F96F548C7B5134A39730C2A138D4B02</nyaa:infoHash>
-  <nyaa:size>1.4 GiB</nyaa:size>
+  <x:seeders>37</x:seeders>
+  <x:leechers>0</x:leechers>
+  <x:downloads>648</x:downloads>
+  <x:infoHash>3AF8C29C1F96F548C7B5134A39730C2A138D4B02</x:infoHash>
+  <x:size>1.4 GiB</x:size>
 </item>
-<item><title>Second</title><link>https://nyaa.si/download/2.torrent</link></item>
+<item><title>Second</title><link>https://t.example/download/2.torrent</link></item>
 </channel></rss>"#;
 
     const TORZNAB: &str = r#"<rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
 <channel><item>
   <title>Avatar Seven Havens S01E03 1080p</title>
-  <guid>https://1337x.to/torrent/1/avatar/</guid>
-  <link>http://127.0.0.1:9117/dl/1337x/?jackett_apikey=k&amp;path=x</link>
-  <comments>https://1337x.to/torrent/1/avatar/</comments>
+  <guid>https://t.example/torrent/1/avatar/</guid>
+  <link>http://127.0.0.1:9117/dl/indexer/?apikey=k&amp;path=x</link>
+  <comments>https://t.example/torrent/1/avatar/</comments>
   <pubDate>Sat, 03 Oct 2026 10:00:00 +0000</pubDate>
   <size>1610612736</size>
-  <enclosure url="http://127.0.0.1:9117/dl/1337x/?x" length="1610612736" type="application/x-bittorrent"/>
+  <enclosure url="http://127.0.0.1:9117/dl/indexer/?x" length="1610612736" type="application/x-bittorrent"/>
   <torznab:attr name="seeders" value="120"/>
   <torznab:attr name="peers" value="150"/>
   <torznab:attr name="grabs" value="900"/>
@@ -219,13 +219,13 @@ mod tests {
 </item></channel></rss>"#;
 
     #[test]
-    fn nyaa_reads_its_own_fields() {
-        let e = parse(NYAA).unwrap();
+    fn a_namespaced_feed_reads_its_own_fields() {
+        let e = parse(NAMESPACED).unwrap();
         assert_eq!(e.len(), 2);
         let a = &e[0];
         assert_eq!(a.title, "[ToonsHub] Show S01E12 1080p WEB-DL");
-        assert_eq!(a.link, "https://nyaa.si/download/2164565.torrent");
-        assert_eq!(a.page, "https://nyaa.si/view/2164565");
+        assert_eq!(a.link, "https://t.example/download/2164565.torrent");
+        assert_eq!(a.page, "https://t.example/view/2164565");
         assert_eq!(a.published, Some(1_790_001_280));
         assert_eq!(a.size, "1.4 GiB");
         assert_eq!(a.size_bytes, None);
@@ -246,7 +246,7 @@ mod tests {
     fn torznab_reads_its_attributes() {
         let e = parse(TORZNAB).unwrap();
         let a = &e[0];
-        assert_eq!(a.page, "https://1337x.to/torrent/1/avatar/");
+        assert_eq!(a.page, "https://t.example/torrent/1/avatar/");
         assert_eq!(a.size_bytes, Some(1_610_612_736));
         assert_eq!(a.size, "1.5 GiB");
         assert_eq!(a.seeders, Some(120));
@@ -272,20 +272,20 @@ mod tests {
     #[tokio::test]
     async fn read_names_the_host_when_the_feed_refuses() {
         let http = FakeHttp::new();
-        http.push_for("nyaa.si", 503, "down");
-        let err = read(http.as_ref(), "https://nyaa.si/?page=rss&q=x")
+        http.push_for("t.example", 503, "down");
+        let err = read(http.as_ref(), "https://t.example/?page=rss&q=x")
             .await
             .unwrap_err();
         match err {
             CoreError::Service { service, code, .. } => {
-                assert_eq!(service, "nyaa.si");
+                assert_eq!(service, "t.example");
                 assert_eq!(code, "http_503");
             }
             other => panic!("{other:?}"),
         }
-        http.push_for("nyaa.si", 200, NYAA);
+        http.push_for("t.example", 200, NAMESPACED);
         assert_eq!(
-            read(http.as_ref(), "https://nyaa.si/?page=rss&q=x")
+            read(http.as_ref(), "https://t.example/?page=rss&q=x")
                 .await
                 .unwrap()
                 .len(),

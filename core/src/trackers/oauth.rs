@@ -360,11 +360,26 @@ async fn exchange(
 fn bind(port: u16) -> Result<TcpListener, CoreError> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", port)).map_err(|e| {
         tracing::debug!("the loopback listener could not bind {port}: {e}");
-        // In practice this is always the port being taken, and by the time
-        // a user sees it the useful half is what to do about it.
-        CoreError::Io {
-            path: None,
-            message: format!("port {port} is in use, another AniBeam is mid-connect"),
+        let service = "Signing in could not start".to_string();
+        if e.kind() != std::io::ErrorKind::AddrInUse {
+            return CoreError::Service {
+                service,
+                code: "listen_failed".to_string(),
+                message: format!("port {port} on this computer could not be opened: {e}"),
+            };
+        }
+        // The port sits in the range the system hands out for any program's
+        // connections, so a passing one can hold it for a moment, and a
+        // program listening there holds it until it stops (#456). The
+        // registered redirect pins the port, so waiting or closing the other
+        // program is the remedy. Not `Io`, which would call it a file error.
+        CoreError::Service {
+            service,
+            code: "port_busy".to_string(),
+            message: format!(
+                "port {port} on this computer is in use by another program. Wait a moment \
+                 and try again, or close the program using it if it stays busy."
+            ),
         }
     })?;
     listener.set_nonblocking(true).map_err(io_error)?;
@@ -754,6 +769,25 @@ fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Any program's loopback connection can sit on the sign-in port, so a
+    /// busy port says what to do and never sends anyone looking for a
+    /// second AniBeam.
+    #[tokio::test]
+    async fn a_busy_port_says_so_and_asks_for_another_try() {
+        let holder = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = holder.local_addr().unwrap().port();
+        let err = bind(port).expect_err("a held port must fail the bind");
+        assert!(matches!(&err, CoreError::Service { code, .. } if code == "port_busy"));
+        // What the person reads, prefix and all.
+        let shown = err.to_string();
+        assert!(!shown.contains("AniBeam"), "{shown}");
+        assert!(!shown.contains("file"), "{shown}");
+        assert!(shown.starts_with("Signing in could not start: "), "{shown}");
+        assert!(shown.contains(&format!("port {port}")), "{shown}");
+        assert!(shown.contains("in use by another program"), "{shown}");
+        assert!(shown.contains("try again"), "{shown}");
+    }
 
     #[test]
     fn the_anilist_url_carries_two_parameters_and_no_more() {
