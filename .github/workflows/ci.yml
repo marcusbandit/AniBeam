@@ -48,9 +48,11 @@ jobs:
       - run: cargo fmt --all --check
 
   # A patch note this pull request adds has to sit under the newest heading (#480). The
-  # checkout is the merge commit, so its first parent is the base the PR merges into.
+  # checkout is the merge commit, so its first parent is the base the PR merges into. A PR
+  # that went green before main moved to a new heading can still squash its line under the
+  # old one, so main runs it too, against the commit before: then main goes red instead.
   changelog:
-    if: github.event_name == 'pull_request'
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
