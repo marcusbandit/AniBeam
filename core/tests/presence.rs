@@ -16,6 +16,8 @@ enum Sent {
     Set(Activity),
     Clear,
     Close,
+    /// An activity Discord refused, under `reject_all`.
+    Refused(Activity),
 }
 
 /// Records what the worker asks of it. `fail` makes every connect fail,
@@ -26,6 +28,7 @@ struct Fake {
     log: Arc<(Mutex<Vec<Sent>>, Condvar)>,
     fail: bool,
     reject_posters: bool,
+    reject_all: bool,
     gate: Option<Gate>,
 }
 
@@ -86,6 +89,10 @@ impl Transport for Fake {
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError> {
         if let Some(gate) = &self.gate {
             gate.pass();
+        }
+        if let (true, Some(a)) = (self.reject_all, activity) {
+            self.push(Sent::Refused(a.clone()));
+            return Err(SendError::Rejected("details".to_string()));
         }
         if self.reject_posters && activity.is_some_and(|a| a.poster.is_some()) {
             return Err(SendError::Rejected("large_image".to_string()));
@@ -486,4 +493,31 @@ fn get_presence_says_whether_this_build_has_an_application() {
         presence_reply(&core),
         (presence::bundled_client_id().is_some(), false)
     );
+}
+
+#[test]
+fn a_refusal_that_is_not_the_posters_keeps_posters_for_the_next_activity() {
+    let (_dir, core, _c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        reject_all: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    tick(&core, s, 2.0, true);
+    core.presence_flush();
+    let posters: Vec<bool> = fake
+        .sent()
+        .iter()
+        .filter_map(|x| match x {
+            Sent::Refused(a) => Some(a.poster.is_some()),
+            _ => None,
+        })
+        .collect();
+    // Each activity is tried with its poster, then without.
+    assert_eq!(posters, vec![true, false, true, false]);
 }

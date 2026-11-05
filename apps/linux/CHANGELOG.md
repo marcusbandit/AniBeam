@@ -143,6 +143,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - An episode titled with a word like Special or Trailer stays an episode
+- Discord shows a series whose title is a single letter
 - The activity log keeps no feed key after a subscription repair
 - Sources installed from a repo show up in search on every desktop install
 - Seeking in an episode converted for the phone works on Nvidia graphics
