@@ -10,7 +10,6 @@ use regex::Regex;
 use roxmltree::Node;
 
 use crate::contract::{CoreError, Release};
-use crate::downloads::feed::host_of;
 use crate::net::{Http, HttpRequest, Method};
 
 /// anirss `fetch_rss` default: a blackholed endpoint must fail fast so the fallback probe
@@ -370,7 +369,7 @@ pub async fn fetch_rss(
     source_name: &str,
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
-    tracing::debug!("GET {}", host_of(url));
+    tracing::debug!("GET {}", crate::net::url_shown(url));
     let response = http
         .send(HttpRequest {
             method: Method::Get,
