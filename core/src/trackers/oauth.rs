@@ -129,6 +129,9 @@ async fn run(
     // First, before anything is generated or announced: a port that is
     // already taken means there is nothing to announce.
     let listener = bind_with_retry(port).await?;
+    // The port the listener really has: the same one, or the one the system
+    // picked when a test asked for port 0.
+    let port = listener.local_addr().map_err(io_error)?.port();
     let state = random_token(STATE_BYTES);
     let verifier = random_token(VERIFIER_BYTES);
     let redirect_url = format!("http://127.0.0.1:{port}{CALLBACK_PATH}");
