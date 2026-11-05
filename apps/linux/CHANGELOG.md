@@ -143,6 +143,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - A show's synopsis shows symbols like & instead of their codes, in paragraphs
+- Seeders show for releases from a tracker written with backslashes
 - Discord shows a series whose title is a single letter
 - The activity log keeps no feed key after a subscription repair
 - Sources installed from a repo show up in search on every desktop install
@@ -184,6 +185,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint at an IPv6 address shows its full host
 - An episode folder beside Specials or a sample joins its show
 - Auto-match tells a second OVA run apart from the first, and finds a first film
+- Restoring a backup applies your file fixes right away
 - An extra marked with a v2, like SP01v2, no longer reads as an episode
 - A feed error names only the feed's host, never a login in its address
 - A qBittorrent at a name like this computer's no longer counts as this computer

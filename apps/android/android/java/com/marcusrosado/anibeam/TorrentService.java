@@ -1,10 +1,12 @@
 package com.marcusrosado.anibeam;
 
+import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
@@ -37,6 +39,25 @@ public class TorrentService extends Service {
             startForeground(1, n);
         }
         return START_NOT_STICKY;
+    }
+
+    /**
+     * Asks for the notification permission Android 13 and later want before this service
+     * may show its notification: true when the ask went out or was not needed. Only an
+     * Activity can ask, and from its UI thread; the native side calls this from its own.
+     */
+    public static boolean askPermission(final Activity activity) {
+        if (Build.VERSION.SDK_INT < 33) return true;
+        // Manifest.permission.POST_NOTIFICATIONS, spelled out for the --release 8 build.
+        final String permission = "android.permission.POST_NOTIFICATIONS";
+        if (activity.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) return true;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.requestPermissions(new String[] {permission}, 1);
+            }
+        });
+        return true;
     }
 
     /**
