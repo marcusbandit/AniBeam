@@ -176,12 +176,41 @@ static EPISODE_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
 static EPISODE_WORD: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(?:Episode|Ep)$").unwrap());
 
+/// A zero-padded episode number standing alone, `07` or `012`, a revision allowed. A
+/// series title's own number is rarely padded (`Mob Psycho 100`, `Season 3`, a codec's
+/// `264`), and `00` is no episode (`Gundam 00`).
+static PADDED_NUMBER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(0[0-9]{1,2})(?:v[0-9]+)?$").unwrap());
+static SEASON_WORD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(?:season|part|cour|vol|volume)$").unwrap());
+
+/// Where a name with no dash before its number has its episode reading: the first
+/// zero-padded number after the first word and before any dash (`Show 07 Title`,
+/// `Show.07.Special.Delivery`), not right after a season word, and with no marker before
+/// it, so a marker in the series title keeps its own reading (`Show Trailer Collection
+/// 02`) (#497). Its number, for `extract_episode`.
+fn number_reading(tokens: &[&str]) -> Option<(usize, u32)> {
+    let before_dash = tokens
+        .iter()
+        .position(|t| *t == "-")
+        .unwrap_or(tokens.len());
+    let marker = |t: &str| {
+        EXTRA_PATTERNS.iter().any(|(_, re, _)| re.is_match(t))
+            || OTHER_TOKENS.contains(&t.to_lowercase().as_str())
+    };
+    (1..before_dash).find_map(|at| {
+        let n: u32 = PADDED_NUMBER.captures(tokens[at])?[1].parse().ok()?;
+        (n > 0 && !SEASON_WORD.is_match(tokens[at - 1]) && !tokens[..at].iter().any(|t| marker(t)))
+            .then_some((at, n))
+    })
+}
+
 /// Where the series title ends among the tokens, and where the episode reading starts,
 /// when one does. The title ends at the first lone dash, else at the reading, else at
 /// the end. The reading is the first lone dash with an episode number or code right
 /// after it, which skips the dashes of a series title (`Sword Art Online - Alicization -
-/// 05`); else the first episode token, or a bare number after the first word and before
-/// any dash (`Show 07 Title`) (#497).
+/// 05`); else the first episode token or [`number_reading`], whichever comes first
+/// (#497).
 fn title_end(tokens: &[&str]) -> (usize, Option<usize>) {
     let starts_episode = |at: usize| {
         let Some(token) = tokens.get(at) else {
@@ -193,16 +222,14 @@ fn title_end(tokens: &[&str]) -> (usize, Option<usize>) {
     };
     let dashes = || (0..tokens.len()).filter(|&at| tokens[at] == "-");
     let first_dash = dashes().next();
-    let before_dash = first_dash.unwrap_or(tokens.len());
     let reading = dashes()
         .find(|&dash| {
             tokens.get(dash + 1).is_some_and(|n| BARE_INDEX.is_match(n)) || starts_episode(dash + 1)
         })
         .or_else(|| {
-            (0..tokens.len()).find(|&at| {
-                starts_episode(at)
-                    || (at > 0 && at < before_dash && BARE_INDEX.is_match(tokens[at]))
-            })
+            let token = (0..tokens.len()).find(|&at| starts_episode(at));
+            let number = number_reading(tokens).map(|(at, _)| at);
+            token.into_iter().chain(number).min()
         });
     (first_dash.or(reading).unwrap_or(tokens.len()), reading)
 }
@@ -227,8 +254,8 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     let (title_end, reading) = title_end(&tokens);
     // A bare preview or special marker inside the series title, with another title word
     // after it, may be a word of the title (Trailer Park Boys, Special A). It loses to an
-    // episode reading after the title and to any later marker, and is the reading only
-    // when neither comes (#443). One after the episode reading, with another word after
+    // episode reading anywhere in the name and to any later marker, and is the reading
+    // only when neither comes (#443). One after the episode reading, with another word after
     // it, is a word of the episode's title (`S01E05 - Special Delivery`) and is no
     // reading at all (#466).
     let mut title_word = None;
@@ -303,6 +330,14 @@ fn extract_episode(file_name: &str) -> (Option<u32>, f64) {
     }
     if let Some(m) = DASH_DECIMAL.captures(&base) {
         return finalize(None, m[1].parse().unwrap_or(1.0));
+    }
+    // A dotted name has no spaces for the patterns above, so its padded number is read
+    // from the tokens, the way `title_end` read it, before the last number in the name
+    // (a codec's `264`) can stand in.
+    let normalised = normalise_for_tokens(file_name);
+    let tokens: Vec<&str> = normalised.split_whitespace().collect();
+    if let Some((_, n)) = number_reading(&tokens) {
+        return finalize(None, n as f64);
     }
     let unrevised = REVISION.replace_all(&base, "$1");
     let survivors: Vec<u64> = ANY_NUMBER
@@ -873,9 +908,36 @@ mod tests {
         assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
         let c = ep("Show - Alicization - 05 - Special.mkv");
         assert_eq!(c.extra, Some(ExtraKind::Sp));
-        // A series title that is a marker word, numbered with no dash, is its episodes.
-        let c = ep("Trailer Park Boys 03.mkv");
-        assert_eq!((c.extra, c.number), (None, 3.0));
+        // A number that is the series title's, a season's or a codec's is no reading,
+        // and a marker before the number keeps the file its extra, as before.
+        for (name, kind) in [
+            ("Mobile Suit Gundam 00 Special Edition I.mkv", ExtraKind::Sp),
+            (
+                "Mobile Suit Gundam 00 - Special Edition I.mkv",
+                ExtraKind::Sp,
+            ),
+            ("Mob Psycho 100 - Special Reigen.mkv", ExtraKind::Sp),
+            (
+                "Attack on Titan Season 3 Special Lost Girls.mkv",
+                ExtraKind::Sp,
+            ),
+            (
+                "Attack on Titan Season 03 Special Lost Girls.mkv",
+                ExtraKind::Sp,
+            ),
+            (
+                "Show.Special.Holiday.1080p.WEB.DDP5.1.H.264-GRP.mkv",
+                ExtraKind::Sp,
+            ),
+            ("Show Trailer Collection 02.mkv", ExtraKind::Pv),
+            ("Show.Trailer.Collection.02.mkv", ExtraKind::Pv),
+            ("Show Special Edition 01.mkv", ExtraKind::Sp),
+        ] {
+            assert_eq!(ep(name).extra, Some(kind), "{name}");
+        }
+        // A dotted name reads its padded number, not a codec's at the end.
+        let c = ep("Show.07.Special.Delivery.1080p.WEB.DDP5.1.H.264-GRP.mkv");
+        assert_eq!((c.extra, c.number), (None, 7.0));
     }
 
     #[test]
