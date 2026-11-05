@@ -63,7 +63,8 @@ impl Focus {
                 if paused { Act::Nothing } else { Act::Pause }
             }
             Change::Gain => {
-                self.held = true;
+                // Only a request held through a passing loss gets this back; `held` is
+                // already true then. A late one after the focus was given back says nothing.
                 let resume = std::mem::take(&mut self.paused_by_loss) && paused;
                 if resume { Act::Resume } else { Act::Nothing }
             }
@@ -77,7 +78,8 @@ impl Focus {
         !self.held
     }
 
-    /// The user paused, so the gain back must not play the episode again.
+    /// The episode paused for a reason other than a loss (the person, a cast), so the gain
+    /// back must not play it again.
     pub fn user_paused(&mut self) {
         self.paused_by_loss = false;
     }
@@ -132,6 +134,13 @@ mod tests {
         assert_eq!(f.changed(Change::Loss, false), Act::Pause);
         assert!(!f.held);
         assert!(f.playing(), "asks again");
+    }
+
+    #[test]
+    fn a_late_gain_after_the_focus_was_given_back_does_not_claim_it() {
+        let mut f = Focus::default();
+        assert_eq!(f.changed(Change::Gain, true), Act::Nothing);
+        assert!(f.playing(), "the next play still asks");
     }
 
     #[test]
