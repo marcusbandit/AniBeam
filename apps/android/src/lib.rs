@@ -14,6 +14,7 @@ mod airing;
 mod android;
 mod app;
 mod find;
+mod focus;
 mod local;
 mod mpv;
 mod notes;

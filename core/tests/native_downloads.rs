@@ -190,7 +190,8 @@ fn subscribe_writes_the_rule_and_feed_through_qbittorrent() {
         subscribed(&done),
         &Subscribed {
             name: "Show".to_string(),
-            feed_url: feed_url.to_string(),
+            // The event names no feed (#478); the requests below show the rule reads it.
+            feed_url: String::new(),
             save_path: "/srv/TV/Show".to_string(),
             must_contain: String::new(),
             must_not_contain: "HEVC".to_string(),
@@ -429,7 +430,8 @@ fn a_locally_narrowed_subscription_still_narrows_on_native() {
     );
     let done = common::wait_job(&r.c, job);
     let result = subscribed(&done);
-    assert_eq!(result.feed_url, wide);
+    // The event names no feed (#478); the rule's `affectedFeeds` below is `wide`.
+    assert_eq!(result.feed_url, "");
     assert_eq!(result.must_contain, "1080p");
 
     let rss: Vec<(String, HttpRequest)> = qbt_calls(&r.http)
