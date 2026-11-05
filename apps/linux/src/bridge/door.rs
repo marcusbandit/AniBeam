@@ -325,10 +325,10 @@ pub mod qobject {
         /// Replies `Ok`; the list arrives as `torrentsRead`, or `downloadsUnavailable`.
         #[qinvokable]
         fn list_torrents(self: &Door) -> QJsonObject;
-        /// Replies `Ok`; the entries arrive as `feedRead`, or `downloadsUnavailable` with
-        /// `what` "feed".
+        /// Replies `Ok`; the entries arrive as `feedRead` under `tag`, or
+        /// `downloadsUnavailable` with `what` "feed".
         #[qinvokable]
-        fn read_feed(self: &Door, url: &QString) -> QJsonObject;
+        fn read_feed(self: &Door, url: &QString, tag: &QString) -> QJsonObject;
         /// Replies `Ok`; the rule arrives as `ruleRead`, or `downloadsUnavailable` with
         /// `what` "rule".
         #[qinvokable]
@@ -527,7 +527,7 @@ pub mod qobject {
             shows: QJsonArray,
         );
         #[qsignal]
-        fn feed_read(self: Pin<&mut Door>, url: QString, entries: QJsonArray);
+        fn feed_read(self: Pin<&mut Door>, tag: QString, entries: QJsonArray);
         #[qsignal]
         fn release_inspected(self: Pin<&mut Door>, link: QString, episodes: QJsonArray, files: f64);
         #[qsignal]
@@ -537,7 +537,6 @@ pub mod qobject {
             self: Pin<&mut Door>,
             job: f64,
             name: QString,
-            feed_url: QString,
             must_contain: QString,
             found: f64,
         );
@@ -1414,7 +1413,7 @@ impl qobject::Door {
                 self.as_mut()
                     .torrents_read(arr("torrents"), obj("transfer"), arr("shows"))
             }
-            EventBody::FeedRead { .. } => self.as_mut().feed_read(s("url"), arr("entries")),
+            EventBody::FeedRead { .. } => self.as_mut().feed_read(s("tag"), arr("entries")),
             EventBody::ReleaseInspected { files, .. } => {
                 self.as_mut()
                     .release_inspected(s("link"), arr("episodes"), *files as f64)
@@ -1423,7 +1422,6 @@ impl qobject::Door {
             EventBody::SubscriptionRepaired { .. } => self.as_mut().subscription_repaired(
                 job_id,
                 s("name"),
-                s("feed_url"),
                 s("must_contain"),
                 n("found"),
             ),
@@ -2041,9 +2039,10 @@ impl qobject::Door {
             name: name.to_string(),
         }))
     }
-    pub fn read_feed(&self, url: &QString) -> QJsonObject {
+    pub fn read_feed(&self, url: &QString, tag: &QString) -> QJsonObject {
         self.dispatch(Ok(Call::ReadFeed {
             url: url.to_string(),
+            tag: tag.to_string(),
         }))
     }
     pub fn plan_remove_subscription(

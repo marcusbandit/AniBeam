@@ -342,11 +342,15 @@ pub enum Call {
     ListTorrents,
     /// Reads a subscription's feed itself (the RSS its subscription
     /// registered), so the page can show what it holds. Replies `Ok` at
-    /// once; the entries arrive as `FeedRead`, a failure as
-    /// `DownloadsUnavailable` with `what` set to `feed`. Not a job: opening
-    /// a show reads it.
+    /// once; the entries arrive as `FeedRead` under the caller's `tag`, a
+    /// failure as `DownloadsUnavailable` with `what` set to `feed`. Not a
+    /// job: opening a show reads it.
     ReadFeed {
         url: String,
+        /// Echoed in `FeedRead`, so a late answer for a feed since closed can
+        /// be told apart without the event naming the feed.
+        #[serde(default)]
+        tag: String,
     },
     /// Mends a subscription whose feed finds nothing because it asks a
     /// generic RSS endpoint for more words than the endpoint can match:
