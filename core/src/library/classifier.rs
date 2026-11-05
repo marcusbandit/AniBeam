@@ -335,6 +335,69 @@ static NOT_A_TITLE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+static RELEASE_LEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[([^\]]+)\]").unwrap());
+static RELEASE_TAIL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"-([A-Za-z0-9]+)$").unwrap());
+static RELEASE_TAIL_TAG: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i-u)^(?:DL|Rip|x26[45]|HEVC|AVC|AV1|\d{3,4}p|AAC|FLAC|DDP?\d?)$").unwrap()
+});
+static RELEASE_REVISION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i-u)(?:\b|\d)v(\d)\b").unwrap());
+static RELEASE_RESOLUTION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i-u)\b(?:2160|1080|720|480)p\b").unwrap());
+static RELEASE_SOURCE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i-u)\b(?:WEB-?DL|WEBRip|BluRay|BDRip|BD|DVD)\b").unwrap());
+static RELEASE_CODEC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i-u)\b(?:x265|x264|HEVC|AVC|H\.?26[45]|AV1)\b").unwrap());
+
+/// A path's last part, split on either separator, as the shells show it.
+pub fn base_name(path: &str) -> &str {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed)
+}
+
+/// One release told from another by its file name: the group and what it is,
+/// `TBK, 1080p WEB-DL H264` or `ELiTE, 1080p x265`, else the name itself
+/// (without its extension). The text is taken as written, so a release that
+/// carries none of the tags still reads as its name.
+pub fn release_label(path: &str) -> String {
+    let base = base_name(path);
+    let name = match base.rfind('.') {
+        Some(i)
+            if (3..=5).contains(&(base.len() - i))
+                && base[i + 1..].chars().all(|c| c.is_ascii_alphanumeric()) =>
+        {
+            &base[..i]
+        }
+        _ => base,
+    };
+    let lead = RELEASE_LEAD.captures(name).map(|c| c[1].to_string());
+    // A trailing "-DL" or "-x265" is a tag, not a group
+    let tail = RELEASE_TAIL
+        .captures(name)
+        .map(|c| c[1].to_string())
+        .filter(|t| !RELEASE_TAIL_TAG.is_match(t));
+    let group = lead.or(tail).unwrap_or_default();
+    let mut tags: Vec<String> = Vec::new();
+    if let Some(c) = RELEASE_REVISION.captures(name) {
+        tags.push(format!("v{}", &c[1]));
+    }
+    if let Some(m) = RELEASE_RESOLUTION.find(name) {
+        tags.push(m.as_str().to_lowercase());
+    }
+    for re in [&*RELEASE_SOURCE, &*RELEASE_CODEC] {
+        if let Some(m) = re.find(name) {
+            tags.push(m.as_str().to_string());
+        }
+    }
+    let what = tags.join(" ");
+    match (group.is_empty(), what.is_empty()) {
+        (false, false) => format!("{group}, {what}"),
+        (false, true) => group,
+        (true, false) => what,
+        (true, true) => name.to_string(),
+    }
+}
+
 /// The episode title a release name carries after its episode token, or
 /// None. `Show.S03E04.A.Trial.of.Errors.1080p.WEB-DL.mkv` is "A Trial of
 /// Errors"; `[Group] Show - 01 [1080p].mkv` carries none.
@@ -705,5 +768,25 @@ mod tests {
             Some("Justice")
         );
         assert_eq!(t("Death Note - 01x36 - 1.28.mkv").as_deref(), Some("1.28"));
+    }
+
+    #[test]
+    fn release_labels() {
+        assert_eq!(
+            release_label("/x/Helluva.Boss.S03E04.1080p.AMZN.WEB-DL.ENG.ITA.DDP5.1.H264-TBK.mkv"),
+            "TBK, 1080p WEB-DL H264"
+        );
+        assert_eq!(
+            release_label("Avatar.Seven.Havens.S01E01.1080p.x265-ELiTE.mkv"),
+            "ELiTE, 1080p x265"
+        );
+        assert_eq!(
+            release_label("[Erai-raws] Show - 17v2 [1080p CR WEB-DL AVC AAC].mkv"),
+            "Erai-raws, v2 1080p WEB-DL AVC"
+        );
+        assert_eq!(release_label("Show.S01E01.1080p-x265.mkv"), "1080p x265");
+        assert_eq!(release_label("plain name.mkv"), "plain name");
+        // ASCII word boundaries, as in the old QML rule: CJK letters are not word characters
+        assert_eq!(release_label("番組第01話1080p.mkv"), "1080p");
     }
 }

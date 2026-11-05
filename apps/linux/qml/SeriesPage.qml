@@ -311,14 +311,19 @@ Item {
         })
     }
     // Two files of one episode (two releases of it) are one row: the row plays the one the
-    // core put next up, else the one with a resume point, else the first, and carries every
-    // file as `versions` so the row can offer the others (#324). While picking files to
-    // delete, every file stands on its own row so each can be picked.
+    // core put next up, else the one with a resume point, else the first. Which files are one
+    // episode is the core's call, each carrying the same `versions`, so the row can offer the
+    // others (#324, #336). While picking files to delete, every file stands on its own row so
+    // each can be picked.
+    function versionKey(e) {
+        var v = e.versions || []
+        return v.length > 1 ? "v" + v[0].file : "f" + e.file
+    }
     // How many files are second copies of an episode
     readonly property int extraVersions: {
         var keys = {}, n = 0
         for (var i = 0; i < episodes.length; i++) {
-            var k = (episodes[i].season || 1) + ":" + episodes[i].number
+            var k = versionKey(episodes[i])
             if (keys[k]) n++
             keys[k] = true
         }
@@ -328,7 +333,7 @@ Item {
         if (page.deleting) return list
         var by = {}, order = []
         for (var i = 0; i < list.length; i++) {
-            var k = (list[i].season || 1) + ":" + list[i].number
+            var k = versionKey(list[i])
             if (!by[k]) { by[k] = []; order.push(k) }
             by[k].push(list[i])
         }
@@ -339,37 +344,9 @@ Item {
             var whole = all.filter(function(e) { return !page.isDownloading(e) })
             var lead = all.find(function(e) { return e.next_up }) || whole.find(function(e) { return !!e.resume }) || whole[0] || all[0]
             var row = Object.assign({}, lead)
-            row.versions = all
             row.watched = all.some(function(e) { return e.watched })
             return row
         })
-    }
-    // A row's versions for its menu, each named; two that still read alike get their
-    // file names instead, which always differ
-    function versionsOf(row) {
-        var list = (row.versions || []).map(function(v) { return { file: v.file, label: page.versionLabel(v.path), path: v.path } })
-        var seen = {}
-        list.forEach(function(v) { seen[v.label] = (seen[v.label] || 0) + 1 })
-        return list.map(function(v) {
-            var name = Fmt.baseName(String(v.path))
-            return { file: v.file, label: seen[v.label] > 1 ? name : v.label }
-        })
-    }
-    // One release told from another by its file name: the group and what it is,
-    // "TBK, 1080p WEB-DL H264", "ELiTE, 1080p x265", else the name itself
-    function versionLabel(path) {
-        var name = Fmt.baseName(path || "").replace(/\.[A-Za-z0-9]{2,4}$/, "")
-        var lead = name.match(/^\[([^\]]+)\]/), tail = name.match(/-([A-Za-z0-9]+)$/)
-        // A trailing "-DL" or "-x265" is a tag, not a group
-        if (tail && /^(DL|Rip|x26[45]|HEVC|AVC|AV1|\d{3,4}p|AAC|FLAC|DDP?\d?)$/i.test(tail[1])) tail = null
-        var group = lead ? lead[1] : tail ? tail[1] : ""
-        var tags = []
-        var rev = name.match(/(?:\b|\d)v(\d)\b/i); if (rev) tags.push("v" + rev[1])
-        var res = name.match(/\b(2160|1080|720|480)p\b/i); if (res) tags.push(res[0].toLowerCase())
-        var src = name.match(/\b(WEB-?DL|WEBRip|BluRay|BDRip|BD|DVD)\b/i); if (src) tags.push(src[0])
-        var codec = name.match(/\b(x265|x264|HEVC|AVC|H\.?26[45]|AV1)\b/i); if (codec) tags.push(codec[0])
-        var what = tags.join(" ")
-        return group && what ? group + ", " + what : group || what || name
     }
     readonly property var nextEpisode: {
         if (!detail || !detail.next_up) return null
@@ -1042,7 +1019,7 @@ Item {
                                 hasTracker: page.hasTracker
                                 title: page.episodeName(modelData)
                                 watched: page.watchedWithOptimism(modelData)
-                                versions: page.versionsOf(modelData)
+                                versions: page.deleting ? [] : (modelData.versions || [])
                                 onPlay: page.openFile(modelData.file)
                                 onPlayVersion: function(file) { page.openFile(file) }
                                 onMarker: page.marker(modelData)
