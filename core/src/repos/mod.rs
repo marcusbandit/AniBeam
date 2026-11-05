@@ -336,6 +336,9 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
         .collect();
     let secrets = core.secrets();
     let synced = read_synced(core);
+    // One engine and one anirss view for the whole catalog, not a read per row.
+    let engine = crate::downloads::backend::engine(core)?;
+    let view = crate::downloads::anirss_view(core);
     let installed = installed
         .iter()
         .map(|i| {
@@ -366,7 +369,7 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
                 custom: i.repo_url == CUSTOM,
                 address: (i.repo_url == CUSTOM).then(|| i.def.url.clone()),
                 offered: next.is_some() || i.repo_url == CUSTOM,
-                desktop_note: desktop_note(core, &i.def, &synced),
+                desktop_note: note_for(engine, view.as_ref(), &i.def, &synced),
                 update: update.map(|d| d.version),
                 update_asks: update.is_some_and(|d| !i.def.keeps_credentials(d)),
                 update_host: update
@@ -1142,9 +1145,22 @@ pub(crate) fn anirss_takes_endpoints(version: &str) -> bool {
 /// Why the desktop does not search an installed endpoint, when it does not: anirss has its own
 /// of that name from its config, cannot search the kind, or is too old to take endpoints.
 /// None on the phone, and before the desktop has read its anirss.
-fn desktop_note(core: &Core, def: &Definition, synced: &Synced) -> Option<String> {
-    let (version, theirs) = crate::downloads::anirss_view(core)?;
-    if !anirss_takes_endpoints(&version) {
+///
+/// Only the anirss engine has these limits. AniBeam's own engine searches every installed
+/// endpoint itself (`Native::for_core`), whatever anirss's version, kinds or hand-written
+/// endpoints, so there is nothing to note then. The Downloads page still lists its endpoints
+/// from anirss; that is its own item in #297.
+fn note_for(
+    engine: DownloadsEngine,
+    view: Option<&(String, Vec<String>)>,
+    def: &Definition,
+    synced: &Synced,
+) -> Option<String> {
+    if engine == DownloadsEngine::Native {
+        return None;
+    }
+    let (version, theirs) = view?;
+    if !anirss_takes_endpoints(version) {
         return Some(format!(
             "anirss {version} cannot take endpoints from AniBeam; anirss 0.6 or later can, so update it for the desktop to search this"
         ));
@@ -1353,6 +1369,32 @@ mod tests {
     use crate::net::FakeHttp;
     use crate::trackers::Secrets;
     use crate::{CorePaths, core::Core};
+
+    #[test]
+    fn the_native_engine_leaves_no_endpoint_out() {
+        let def: Definition = serde_json::from_value(
+            serde_json::json!({"id": "tosho", "name": "tosho", "version": 1,
+                "kind": "tosho", "url": "https://t.example/json?q={query}"}),
+        )
+        .unwrap();
+        let synced = Synced::new();
+        let current = ("0.6.0".to_string(), Vec::new());
+        let old = ("0.5.0".to_string(), Vec::new());
+        let by_hand = ("0.6.0".to_string(), vec!["tosho".to_string()]);
+        assert!(
+            note_for(DownloadsEngine::Anirss, Some(&current), &def, &synced)
+                .is_some_and(|n| n.contains("cannot search the tosho kind"))
+        );
+        assert!(note_for(DownloadsEngine::Anirss, Some(&old), &def, &synced).is_some());
+        // The native engine searches the installed endpoint itself, so none of the three
+        // anirss limits applies to it.
+        for view in [&current, &old, &by_hand] {
+            assert_eq!(
+                note_for(DownloadsEngine::Native, Some(view), &def, &synced),
+                None
+            );
+        }
+    }
 
     fn custom(core: &Core, name: &str, url: &str) {
         add_custom(core, name.into(), url.into(), Vec::new()).unwrap();
