@@ -1038,7 +1038,7 @@ Item {
                     visible: !!page.detail && page.detail.extras.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: "Openings, endings and more"; count: page.detail ? page.detail.extras.length : 0; action: DeleteButton { where: "extras" } }
+                    Heading { text: "Openings, endings and more"; count: page.detail ? page.grouped(page.detail.extras).length : 0; action: DeleteButton { where: "extras" } }
                     DeleteBar { where: "extras" }
                     Repeater {
                         model: [["Op", "Openings"], ["Ed", "Endings"], ["Pv", "Previews and trailers"], ["Sp", "Specials"], ["Other", "Other"]]
