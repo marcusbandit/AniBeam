@@ -49,7 +49,7 @@ pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreErro
     })
 }
 
-/// The host a URL names, for an error line: `nyaa.si`, `127.0.0.1:9117`.
+/// The host a URL names, for an error line: `t.example`, `127.0.0.1:9117`.
 pub fn host_of(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
     rest.split(['/', '?', '#'])
