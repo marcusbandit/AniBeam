@@ -142,6 +142,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Seeders show for releases from a tracker written with backslashes
 - Discord shows a series whose title is a single letter
 - The activity log keeps no feed key after a subscription repair
 - Sources installed from a repo show up in search on every desktop install

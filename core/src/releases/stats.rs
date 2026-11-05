@@ -383,28 +383,40 @@ fn parse_http_scrape(body: &[u8]) -> Result<HashMap<Hash, Stats>, BadBencode> {
     Ok(out)
 }
 
-/// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching).
+/// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching). The announce is
+/// read with the HTTP client's own parser, so one written with backslashes for slashes is
+/// scraped at the path the client would announce to (#471).
 async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMap<Hash, Stats> {
-    let Ok(mut parts) = split_url(announce) else {
+    let Ok(mut url) = reqwest::Url::parse(announce) else {
         return HashMap::new();
     };
-    let path = if parts.path.is_empty() {
-        "/announce".to_string()
-    } else {
-        parts.path.clone()
-    };
-    if !matches!(parts.scheme.as_str(), "http" | "https") || !path.ends_with("/announce") {
+    if !matches!(url.scheme(), "http" | "https") {
         return HashMap::new();
     }
-    parts.path = format!("{}scrape", &path[..path.len() - "announce".len()]);
+    // A tracker named by its host alone announces at `/announce`, as anirss reads it; one
+    // whose path is a bare `/` names no announce and is left alone.
+    let bare = url.path() == "/"
+        && !announce
+            .split(['?', '#'])
+            .next()
+            .unwrap_or("")
+            .ends_with(['/', '\\']);
+    let path = if bare {
+        "/announce".to_string()
+    } else {
+        url.path().to_string()
+    };
+    if !path.ends_with("/announce") {
+        return HashMap::new();
+    }
+    url.set_path(&format!("{}scrape", &path[..path.len() - "announce".len()]));
     // The announce's own query (a passkey, say) stays and the hashes join it with `&`.
-    let mut prefix = std::mem::take(&mut parts.query)
-        .trim_end_matches('&')
-        .to_string();
+    let mut prefix = url.query().unwrap_or("").trim_end_matches('&').to_string();
     if !prefix.is_empty() {
         prefix.push('&');
     }
-    parts.fragment.clear();
+    url.set_query(None);
+    url.set_fragment(None);
     // Named as the HTTP client reads the announce, never by its passkey (#451).
     let shown = crate::net::url_shown(announce);
     let mut out = HashMap::new();
@@ -414,10 +426,9 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
             .map(|h| format!("info_hash={}", quote(h, "/")))
             .collect::<Vec<_>>()
             .join("&");
-        parts.query = format!("{prefix}{qs}");
         let request = HttpRequest {
             method: Method::Get,
-            url: parts.geturl(),
+            url: format!("{url}?{prefix}{qs}"),
             headers: vec![("User-Agent".to_string(), USER_AGENT.to_string())],
             body: None,
             timeout: Some(HTTP_SCRAPE_TIMEOUT),
@@ -1324,6 +1335,30 @@ mod tests {
         }
     }
 
+    /// The HTTP client reads a backslash in an http(s) URL as a slash, so the scrape is
+    /// built the way it reads the announce: `\0123abcd\announce` is the path
+    /// `/0123abcd/announce`, scraped at `/0123abcd/scrape` (#471).
+    #[tokio::test]
+    async fn a_backslash_announce_is_scraped_at_the_path_the_client_reads() {
+        let h = [1u8; 20];
+        let http = FakeHttp::new();
+        http.push(200, scrape_body(&h, 5, 1, 9));
+        let out = http_scrape(
+            http.as_ref(),
+            "https://t.example\\0123abcd\\announce?passkey=abc",
+            &[h],
+        )
+        .await;
+        let req = &http.requests()[0];
+        assert!(
+            req.url
+                .starts_with("https://t.example/0123abcd/scrape?passkey=abc&info_hash="),
+            "{}",
+            req.url
+        );
+        assert_eq!(out[&h], (5, 1, 9));
+    }
+
     #[tokio::test]
     async fn http_scrape_batches_fifty_hashes_a_request() {
         let hashes: Vec<Hash> = (0..120u8).map(|i| [i; 20]).collect();
@@ -1365,11 +1400,14 @@ mod tests {
             .await
             .is_empty()
         );
-        assert!(
-            http_scrape(http.as_ref(), "http://tracker.example/other", &[[1u8; 20]])
-                .await
-                .is_empty()
-        );
+        for odd in ["http://tracker.example/other", "http://tracker.example/"] {
+            assert!(
+                http_scrape(http.as_ref(), odd, &[[1u8; 20]])
+                    .await
+                    .is_empty(),
+                "{odd}"
+            );
+        }
         assert!(http.requests().is_empty());
     }
 
