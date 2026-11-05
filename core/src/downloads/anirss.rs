@@ -61,6 +61,12 @@ pub const MIN_VERSION: &str = "0.6.0";
 /// pointed anywhere and needs no such thing.
 pub const SIDECAR_FEATURE: &str = "qbt_env_session";
 
+/// The feature an anirss lists when it takes endpoints from AniBeam (`POST` and `DELETE
+/// /endpoints`), 0.6.0 and newer. Whether the desktop syncs its installed endpoints into
+/// anirss follows this, never the version string, which a checkout or a fork can set to
+/// anything (#476).
+pub const ENDPOINT_WRITES: &str = "endpoint_writes";
+
 /// What `GET /health` says: the version, and the features this anirss lists
 /// (none from one older than 0.5.0, which has no list).
 #[derive(Clone, Debug, PartialEq)]

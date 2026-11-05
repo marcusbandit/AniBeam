@@ -69,6 +69,8 @@ pub struct Downloads {
 struct State {
     sidecar: Option<Sidecar>,
     anirss: AnirssStatus,
+    /// The features the running anirss lists in `/health`, read with its version.
+    anirss_features: Vec<String>,
     torrent: TorrentClientStatus,
     endpoints: Vec<SearchEndpoint>,
     /// The torrent client with its session, built from the settings on
@@ -292,6 +294,7 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
                 if current {
                     st.anirss.state = AnirssState::Ready;
                     st.anirss.version = health.version;
+                    st.anirss_features = health.features;
                     st.anirss.url = sidecar.server();
                     st.anirss.message.clear();
                     st.sidecar = Some(sidecar);
@@ -650,15 +653,25 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
     })
 }
 
-/// The anirss this core last read: its version and the names of its endpoints. None until
-/// one has been read, and always on the phone, which has none.
-pub(crate) fn anirss_view(core: &Core) -> Option<(String, Vec<String>)> {
+/// The anirss this core last read: its version, whether it lists
+/// [`anirss::ENDPOINT_WRITES`], and the names of its endpoints.
+pub(crate) struct AnirssView {
+    pub version: String,
+    pub endpoint_writes: bool,
+    pub endpoints: Vec<String>,
+}
+
+/// The [`AnirssView`] of the anirss last read. None until one has been read, and always
+/// on the phone, which has none.
+pub(crate) fn anirss_view(core: &Core) -> Option<AnirssView> {
     let st = core.downloads.state();
-    (st.anirss.state == AnirssState::Ready).then(|| {
-        (
-            st.anirss.version.clone(),
-            st.endpoints.iter().map(|e| e.name.clone()).collect(),
-        )
+    (st.anirss.state == AnirssState::Ready).then(|| AnirssView {
+        version: st.anirss.version.clone(),
+        endpoint_writes: st
+            .anirss_features
+            .iter()
+            .any(|f| f == anirss::ENDPOINT_WRITES),
+        endpoints: st.endpoints.iter().map(|e| e.name.clone()).collect(),
     })
 }
 
@@ -699,10 +712,10 @@ pub(crate) fn repo_endpoints_changed(core: &Core) {
 async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), CoreError> {
     // No feature is asked of a server the user runs: AniBeam never points it
     // at a client, so it reads its own config and keeps its own logins.
-    let version = client.health().await?.version;
+    let health = client.health().await?;
     let mut endpoints = client.endpoints().await?;
     if syncs_endpoints(core).await
-        && crate::repos::sync_anirss(core, client, &version, &endpoints).await
+        && crate::repos::sync_anirss(core, client, &health, &endpoints).await
     {
         endpoints = client.endpoints().await?;
     }
@@ -715,7 +728,8 @@ async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), Core
     let view = client.qbt_status().await?;
     let mut st = core.downloads.state();
     st.anirss.state = AnirssState::Ready;
-    st.anirss.version = version;
+    st.anirss.version = health.version;
+    st.anirss_features = health.features;
     st.anirss.url = client.server();
     st.anirss.message.clear();
     st.anirss.qbt_url = view.url;
@@ -3010,6 +3024,7 @@ fn restart(core: &Core, settings: DownloadSettings) -> Result<(), CoreError> {
         sc.stop();
     }
     st.anirss = AnirssStatus::default();
+    st.anirss_features.clear();
     st.torrent = TorrentClientStatus::default();
     st.endpoints.clear();
     st.qbt = None;

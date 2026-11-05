@@ -1121,9 +1121,6 @@ fn lift_one(
 /// (`spec_of`).
 const ANIRSS_KINDS: [&str; 3] = ["nyaa", "rss", "torznab"];
 
-/// The first anirss with the endpoint API (`POST` and `DELETE /endpoints`).
-const ANIRSS_ENDPOINT_API: (u64, u64, u64) = (0, 6, 0);
-
 /// What AniBeam last wrote into anirss: endpoint name to a hash of the spec it sent. anirss
 /// lists its endpoints with their secrets masked, so a listed address can never be compared
 /// with the one AniBeam holds; the hash says whether anything changed since.
@@ -1137,11 +1134,6 @@ fn read_synced(core: &Core) -> Synced {
         .unwrap_or_default()
 }
 
-/// Whether this anirss can take endpoint writes.
-pub(crate) fn anirss_takes_endpoints(version: &str) -> bool {
-    index::semver_of(version).is_some_and(|v| v >= ANIRSS_ENDPOINT_API)
-}
-
 /// Why the desktop does not search an installed endpoint, when it does not: anirss has its own
 /// of that name from its config, cannot search the kind, or is too old to take endpoints.
 /// None on the phone, and before the desktop has read its anirss.
@@ -1152,17 +1144,18 @@ pub(crate) fn anirss_takes_endpoints(version: &str) -> bool {
 /// from anirss; that is its own item in #297.
 fn note_for(
     engine: DownloadsEngine,
-    view: Option<&(String, Vec<String>)>,
+    view: Option<&crate::downloads::AnirssView>,
     def: &Definition,
     synced: &Synced,
 ) -> Option<String> {
     if engine == DownloadsEngine::Native {
         return None;
     }
-    let (version, theirs) = view?;
-    if !anirss_takes_endpoints(version) {
+    let view = view?;
+    if !view.endpoint_writes {
         return Some(format!(
-            "anirss {version} cannot take endpoints from AniBeam; anirss 0.6 or later can, so update it for the desktop to search this"
+            "anirss {} cannot take endpoints from AniBeam, so update it for the desktop to search this",
+            view.version
         ));
     }
     if !ANIRSS_KINDS.contains(&def.kind.as_str()) {
@@ -1171,7 +1164,7 @@ fn note_for(
             def.kind
         ));
     }
-    (theirs.contains(&def.id) && !synced.contains_key(&def.id)).then(|| {
+    (view.endpoints.contains(&def.id) && !synced.contains_key(&def.id)).then(|| {
         format!(
             "anirss has its own {}, written by hand; the desktop searches that one",
             def.id
@@ -1203,16 +1196,18 @@ fn hash_of(spec: &serde_json::Value) -> String {
 /// wrote are ever changed or removed; one anirss already had from its config stays as it was.
 /// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
 /// a hand-written one does today; the secret store stays the record AniBeam reads. A kind
-/// anirss cannot search (`tosho`) stays out, and an anirss older than 0.6 is left alone.
+/// anirss cannot search (`tosho`) stays out, and an anirss whose `/health` does not list
+/// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES) is left alone, whatever
+/// its version says.
 /// `have` is anirss's list as just read; true when anirss was changed and its list needs
 /// reading again.
 pub(crate) async fn sync_anirss(
     core: &Core,
     client: &crate::downloads::anirss::AnirssClient,
-    version: &str,
+    health: &crate::downloads::anirss::Health,
     have: &[SearchEndpoint],
 ) -> bool {
-    if !anirss_takes_endpoints(version) {
+    if !health.has(crate::downloads::anirss::ENDPOINT_WRITES) {
         return false;
     }
     let want: Vec<Runnable> = runnable(core)
@@ -1539,7 +1534,8 @@ pub fn endpoint_http(core: &Core) -> Paced {
 mod tests {
     use super::*;
 
-    use crate::downloads::anirss::AnirssClient;
+    use crate::downloads::AnirssView;
+    use crate::downloads::anirss::{AnirssClient, Health};
     use crate::net::FakeHttp;
     use crate::trackers::Secrets;
     use crate::{CorePaths, core::Core};
@@ -1552,9 +1548,9 @@ mod tests {
         )
         .unwrap();
         let synced = Synced::new();
-        let current = ("0.6.0".to_string(), Vec::new());
-        let old = ("0.5.0".to_string(), Vec::new());
-        let by_hand = ("0.6.0".to_string(), vec!["tosho".to_string()]);
+        let current = view("0.6.0", true, &[]);
+        let old = view("0.5.0", false, &[]);
+        let by_hand = view("0.6.0", true, &["tosho"]);
         assert!(
             note_for(DownloadsEngine::Anirss, Some(&current), &def, &synced)
                 .is_some_and(|n| n.contains("cannot search the tosho kind"))
@@ -1568,6 +1564,59 @@ mod tests {
                 None
             );
         }
+    }
+
+    fn view(version: &str, endpoint_writes: bool, endpoints: &[&str]) -> AnirssView {
+        AnirssView {
+            version: version.to_string(),
+            endpoint_writes,
+            endpoints: endpoints.iter().map(|e| e.to_string()).collect(),
+        }
+    }
+
+    fn health(version: &str, features: &[&str]) -> Health {
+        Health {
+            version: version.to_string(),
+            features: features.iter().map(|f| f.to_string()).collect(),
+        }
+    }
+
+    /// Whether anirss takes endpoints is what it lists, not its version: a checkout that
+    /// reports `dev`, or a version no parser reads, gets them when it lists
+    /// `endpoint_writes`, and a 0.6 that does not list it gets none (#476).
+    #[test]
+    fn the_endpoint_note_follows_the_feature_anirss_lists() {
+        let def: Definition = serde_json::from_value(
+            serde_json::json!({"id": "mine", "name": "mine", "version": 1,
+                "kind": "rss", "url": "https://a.example/rss?q={query}"}),
+        )
+        .unwrap();
+        let synced = Synced::new();
+        for version in ["dev", "0.7.0+local", ""] {
+            assert_eq!(
+                note_for(
+                    DownloadsEngine::Anirss,
+                    Some(&view(version, true, &[])),
+                    &def,
+                    &synced
+                ),
+                None,
+                "{version}"
+            );
+        }
+        let note = note_for(
+            DownloadsEngine::Anirss,
+            Some(&view("0.6.0", false, &[])),
+            &def,
+            &synced,
+        )
+        .unwrap();
+        // It names the anirss running, and no threshold of its own.
+        assert!(
+            note.starts_with("anirss 0.6.0 cannot take endpoints"),
+            "{note}"
+        );
+        assert!(!note.contains("or later"), "{note}");
     }
 
     fn custom(core: &Core, name: &str, url: &str) {
@@ -1791,19 +1840,23 @@ mod tests {
             on_demand: None,
             running: None,
         };
-        // anirss 0.5 has no endpoint API: nothing is sent.
+        // An anirss that does not list endpoint writes has no endpoint API, whatever its
+        // version says: nothing is sent.
         let have = vec![theirs("1337x", "http://elsewhere/")];
+        let without = health("0.6.0", &["qbt_env_session"]);
         assert!(
             !core
                 .handle
-                .block_on(sync_anirss(&core, &anirss, "0.5.0", &have))
+                .block_on(sync_anirss(&core, &anirss, &without, &have))
         );
         assert!(http.requests().is_empty());
 
+        // One that lists it takes them, even with a version no parser reads.
+        let writes = health("dev", &["qbt_env_session", "endpoint_writes"]);
         http.push_json(201, serde_json::json!({}));
         assert!(
             core.handle
-                .block_on(sync_anirss(&core, &anirss, "0.6.0", &have))
+                .block_on(sync_anirss(&core, &anirss, &writes, &have))
         );
         let sent = http.requests();
         assert_eq!(sent.len(), 1);
@@ -1822,7 +1875,7 @@ mod tests {
         assert!(
             !core
                 .handle
-                .block_on(sync_anirss(&core, &anirss, "0.6.0", &have))
+                .block_on(sync_anirss(&core, &anirss, &writes, &have))
         );
         assert_eq!(http.requests().len(), 1);
 
@@ -1850,7 +1903,7 @@ mod tests {
         ];
         assert!(
             core.handle
-                .block_on(sync_anirss(&core, &anirss, "0.6.0", &have))
+                .block_on(sync_anirss(&core, &anirss, &writes, &have))
         );
         let sent = http.requests();
         assert_eq!(sent.len(), 2);
@@ -1861,7 +1914,7 @@ mod tests {
         assert!(
             !core
                 .handle
-                .block_on(sync_anirss(&core, &anirss, "0.6.0", &have))
+                .block_on(sync_anirss(&core, &anirss, &writes, &have))
         );
         assert_eq!(http.requests().len(), 2);
         core.shutdown();
