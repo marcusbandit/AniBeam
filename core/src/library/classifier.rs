@@ -199,7 +199,9 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     // A bare preview or special marker inside the series title, with another title word
     // after it, may be a word of the title (Trailer Park Boys, Special A). It loses to an
     // episode reading after the title and to any later marker, and is the reading only
-    // when neither comes (#443).
+    // when neither comes (#443). One after the episode reading, with another word after
+    // it, is a word of the episode's title (`S01E05 - Special Delivery`) and is no
+    // reading at all (#466).
     let mut title_word = None;
     for (at, token) in tokens.iter().enumerate() {
         for (kind, re, word) in EXTRA_PATTERNS.iter() {
@@ -215,7 +217,11 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
                     variant: m.get(2).map(|g| g.as_str().to_lowercase()),
                     raw_label: token.to_string(),
                 };
-                let in_title = *word && hit.index.is_none() && at + 1 < title_end;
+                let bare = *word && hit.index.is_none();
+                if bare && episode_after && at > title_end && at + 1 < tokens.len() {
+                    break;
+                }
+                let in_title = bare && at + 1 < title_end;
                 if !in_title {
                     return Some(hit);
                 }
@@ -716,6 +722,37 @@ mod tests {
         }
         // A marker with no title word after it is no title word.
         assert_eq!(ep("Show Special Episode 3.mkv").extra, Some(ExtraKind::Sp));
+    }
+
+    #[test]
+    fn a_bare_marker_in_the_episode_title_after_the_number_is_a_title_word() {
+        // After the episode reading, a bare marker with a title word after it is a word
+        // of the episode's title (#466).
+        for (name, season, number) in [
+            ("Show - S01E05 - Special Delivery.mkv", Some(1), 5.0),
+            ("Show - 07 - Trailer Trouble.mkv", None, 7.0),
+            ("[Group] Show - 12 - Special Ending [1080p].mkv", None, 12.0),
+            ("Show.S02E03.Special.Delivery.mkv", Some(2), 3.0),
+            ("Show Episode 4 Teaser Night.mkv", None, 4.0),
+        ] {
+            let c = ep(name);
+            assert_eq!(
+                (c.extra, c.season, c.number),
+                (None, season, number),
+                "{name}"
+            );
+        }
+        // One with nothing after it stays the file's reading: the name says the episode
+        // is a special, not what it is called.
+        let c = ep("Show - 01 - Special.mkv");
+        assert_eq!(c.extra, Some(ExtraKind::Sp));
+        // A marker with its own number or glued to one is still the extra.
+        let c = ep("Show - 07 - Special 2 Night.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
+        let c = ep("Show - 07 - SP01 Delivery.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(1)));
+        let c = ep("Show - 07 - NCOP1 Clean.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Op), Some(1)));
     }
 
     #[test]
