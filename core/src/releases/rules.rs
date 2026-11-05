@@ -14,7 +14,12 @@ use crate::contract::*;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rule {
     pub name: String,
+    /// The feed as kept on disk: an installed endpoint's secrets stay placeholders, filled
+    /// from the secret store each time the feed is read (`repos::filled_feed`).
     pub feed_url: String,
+    /// The endpoint the feed came from, whose credentials fill it.
+    #[serde(default)]
+    pub endpoint: String,
     #[serde(default)]
     pub must_contain: String,
     /// `|`-joined, as qBittorrent's.
@@ -62,28 +67,38 @@ impl RuleStore {
 
     /// Adds or replaces a rule. The same show from another endpoint gets ` @endpoint`
     /// after its name, as anirss does, so neither overwrites the other; the same feed again
-    /// keeps the name and what it has taken.
+    /// keeps the name and what it has taken. Two rules read the same feed when they read the
+    /// same address once filled: `filled` is this one's, and `fill` fills a kept rule's. So a
+    /// rule kept before #149, its secret in its address, is the same feed as this one and is
+    /// replaced by it.
     pub fn subscribe(
         &self,
         name: &str,
         spec: &SubscriptionSpec,
+        filled: &str,
+        fill: impl Fn(&Rule) -> Option<String>,
         save_base: &Path,
     ) -> Result<(Rule, Subscribed), CoreError> {
         let mut rules = self.load();
         let mut name = name.trim().to_string();
+        let same = |r: &Rule| {
+            (r.feed_url == spec.feed_url && r.endpoint == spec.endpoint_name)
+                || fill(r).as_deref() == Some(filled)
+        };
         if let Some(existing) = rules.iter().find(|r| r.name == name)
-            && existing.feed_url != spec.feed_url
+            && !same(existing)
             && !spec.endpoint_name.is_empty()
         {
             name = format!("{name} @{}", spec.endpoint_name);
         }
         let taken = rules
             .iter()
-            .find(|r| r.name == name && r.feed_url == spec.feed_url)
+            .find(|r| r.name == name && same(r))
             .map(|r| r.taken.clone());
         let rule = Rule {
             name: name.clone(),
             feed_url: spec.feed_url.clone(),
+            endpoint: spec.endpoint_name.clone(),
             must_contain: spec.must_contain.clone(),
             must_not_contain: spec.must_not_contain.clone(),
             save_path: save_base.join(&name).to_string_lossy().into_owned(),
@@ -219,6 +234,7 @@ mod tests {
         Rule {
             name: "Frieren".into(),
             feed_url: "https://nyaa.si/?page=rss&q=Frieren+1080p".into(),
+            endpoint: String::new(),
             must_contain: must.into(),
             must_not_contain: not.into(),
             save_path: "/x/Frieren".into(),
@@ -268,6 +284,11 @@ mod tests {
         assert!(due(&r, &items).is_empty());
     }
 
+    /// A rule's feed filled as it is, for rules that hold no placeholder.
+    fn as_is(r: &Rule) -> Option<String> {
+        Some(r.feed_url.clone())
+    }
+
     #[test]
     fn the_same_show_from_another_endpoint_keeps_both_rules() {
         let dir = std::env::temp_dir().join(format!("anibeam-rules-{}", std::process::id()));
@@ -279,10 +300,22 @@ mod tests {
             endpoint_name: ep.into(),
         };
         store
-            .subscribe("Frieren", &spec("https://nyaa.si/?q=f", "nyaa"), &dir)
+            .subscribe(
+                "Frieren",
+                &spec("https://nyaa.si/?q=f", "nyaa"),
+                "",
+                as_is,
+                &dir,
+            )
             .unwrap();
         let (_, second) = store
-            .subscribe("Frieren", &spec("https://erai/?s=f", "erai"), &dir)
+            .subscribe(
+                "Frieren",
+                &spec("https://erai/?s=f", "erai"),
+                "",
+                as_is,
+                &dir,
+            )
             .unwrap();
         assert_eq!(second.name, "Frieren @erai");
         assert_eq!(store.load().len(), 2);
@@ -291,5 +324,59 @@ mod tests {
             "Frieren 1080p"
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_rule_kept_with_its_secret_is_replaced_by_the_same_feed_without_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RuleStore::new(dir.path().join("rules.json"));
+        let spec = |url: &str| SubscriptionSpec {
+            feed_url: url.into(),
+            must_contain: String::new(),
+            must_not_contain: String::new(),
+            endpoint_name: "keyed".into(),
+        };
+        let filled = "https://feed.example/rss?q=Show&token=s3cret";
+        let kept = "https://feed.example/rss?q=Show&token={token}";
+        // Each endpoint's own token.
+        let fill = |r: &Rule| {
+            let token = if r.endpoint == "other" {
+                "0ther"
+            } else {
+                "s3cret"
+            };
+            Some(r.feed_url.replace("{token}", token))
+        };
+        // As a rule was kept before #149: the token in the address, no endpoint.
+        store
+            .subscribe("Show", &spec(filled), filled, fill, dir.path())
+            .unwrap();
+        let mut rules = store.load();
+        rules[0].endpoint = String::new();
+        store.save(&rules).unwrap();
+        store.mark_taken("Show", &["a".to_string()]).unwrap();
+
+        let (_, again) = store
+            .subscribe("Show", &spec(kept), filled, fill, dir.path())
+            .unwrap();
+        assert_eq!(again.name, "Show");
+        let rules = store.load();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].feed_url, kept);
+        assert_eq!(rules[0].endpoint, "keyed");
+        assert!(rules[0].taken.contains("a"));
+
+        // Another endpoint whose kept feed reads the same but fills another token is
+        // another feed, and another rule.
+        let other = SubscriptionSpec {
+            endpoint_name: "other".into(),
+            ..spec(kept)
+        };
+        let other_filled = "https://feed.example/rss?q=Show&token=0ther";
+        let (_, second) = store
+            .subscribe("Show", &other, other_filled, fill, dir.path())
+            .unwrap();
+        assert_eq!(second.name, "Show @other");
+        assert_eq!(store.load().len(), 2);
     }
 }

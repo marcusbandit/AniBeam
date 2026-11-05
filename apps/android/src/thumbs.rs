@@ -226,7 +226,7 @@ mod imp {
         let (w, hgt, stride) = (w as usize, hgt as usize, stride as usize);
         let mut rgba = Vec::with_capacity(w * hgt * 4);
         for row in bytes.chunks(stride).take(hgt) {
-            for px in row[..w * 4].chunks_exact(4) {
+            for px in row[..w * 4].as_chunks::<4>().0 {
                 rgba.extend_from_slice(&[px[2], px[1], px[0], 255]);
             }
         }
