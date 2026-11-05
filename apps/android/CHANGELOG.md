@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
+- A source with no public address no longer stops DNS-blocked sources loading
 - A show's synopsis reads as paragraphs instead of showing <br> tags
 - Episode codes like S03E01 fit their column instead of running into the title
 - A show titled with a word like Trailer or Special no longer reads as extras
