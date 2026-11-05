@@ -205,27 +205,6 @@ pub(crate) struct UrlParts {
 }
 
 impl UrlParts {
-    /// `urlunsplit` (`geturl`).
-    pub fn geturl(&self) -> String {
-        let mut url = self.path.clone();
-        if !self.netloc.is_empty() {
-            if !url.is_empty() && !url.starts_with('/') {
-                url.insert(0, '/');
-            }
-            url = format!("//{}{url}", self.netloc);
-        }
-        if !self.scheme.is_empty() {
-            url = format!("{}:{url}", self.scheme);
-        }
-        if !self.query.is_empty() {
-            url = format!("{url}?{}", self.query);
-        }
-        if !self.fragment.is_empty() {
-            url = format!("{url}#{}", self.fragment);
-        }
-        url
-    }
-
     /// `parts.hostname`: lower case, userinfo and brackets gone.
     pub fn hostname(&self) -> Option<String> {
         let host = self
@@ -802,7 +781,6 @@ pub(crate) mod tests {
         );
         assert_eq!(p.hostname().as_deref(), Some("host.example"));
         assert_eq!(p.port(), Some(8080));
-        assert_eq!(p.geturl(), "http://user@Host.example:8080/a b?x=1#frag");
         assert!(split_url("http://[::1/x").is_err());
         let v6 = split_url("udp://[2001:db8::1]:1337/announce").unwrap();
         assert_eq!(v6.hostname().as_deref(), Some("2001:db8::1"));
