@@ -1011,7 +1011,7 @@ impl Core {
             }),
             Call::ListSubscriptionRules => downloads::list_rules(self),
             Call::ListTorrents => downloads::list_torrents(self),
-            Call::ReadFeed { url } => downloads::read_feed(self, url),
+            Call::ReadFeed { url, tag } => downloads::read_feed(self, url, tag),
             Call::ReadRule { name } => downloads::read_rule(self, name),
             Call::RepairSubscription { name } => Ok(Reply::Started {
                 job: downloads::repair_subscription(self, name)?,
