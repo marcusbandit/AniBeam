@@ -29,42 +29,45 @@ static TRAILING_DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*[-_]\s*
 /// The extras token patterns, tried in this order, each anchored at both ends
 /// so "Operations" and "Edge" never fire. A variant letter only follows a
 /// number, so "Spy" is no `SP` plus a "y" (#426); a plural is spelled out.
-static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex)>> = LazyLock::new(|| {
+/// Each pattern says whether its marker is also a plain word a series title can hold, a
+/// preview or a special with no number (Trailer Park Boys, Special A); see `find_extra_token`.
+static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex, bool)>> = LazyLock::new(|| {
     vec![
         (
             ExtraKind::Op,
             Regex::new(r"(?i)^(?:NCOP|OP)([0-9]+)([a-z])?$").unwrap(),
+            false,
         ),
         (
             ExtraKind::Ed,
             Regex::new(r"(?i)^(?:NCED|ED)([0-9]+)([a-z])?$").unwrap(),
+            false,
         ),
         (
             ExtraKind::Pv,
             Regex::new(r"(?i)^(?:PVs?|Trailers?|Teasers?)(?:([0-9]+)([a-z])?)?$").unwrap(),
+            true,
         ),
         (
             ExtraKind::Sp,
             Regex::new(r"(?i)^(?:SPs?|Specials?)(?:([0-9]+)([a-z])?)?$").unwrap(),
+            true,
         ),
         // An OVA is a special. A number glued on is its index; one apart
         // (`OVA 2`) is read by `index_apart`, as with `SP 2`.
         (
             ExtraKind::Sp,
             Regex::new(r"(?i)^(?:OVA|OAD|OAV)([0-9]+)?$").unwrap(),
+            false,
         ),
         // A season's extra in an `SxxEyy` slot: `S05EEX`, `S01ESP2`.
         (
             ExtraKind::Sp,
             Regex::new(r"(?i)^S[0-9]+E(?:EX|SP)([0-9]+)?$").unwrap(),
+            false,
         ),
     ]
 });
-/// The markers a series title can hold as a plain word: a preview or a
-/// special with no number. An OVA stays out, since `OVA Episode 2` is the
-/// OVA and not episode 2.
-static TITLE_WORD_MARKER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^(?:PVs?|Trailers?|Teasers?|SPs?|Specials?)$").unwrap());
 const OTHER_TOKENS: [&str; 5] = ["menu", "cm", "bonus", "extra", "extras"];
 
 static SEASON_EPISODE: LazyLock<Regex> =
@@ -157,27 +160,49 @@ fn index_apart(rest: &[&str]) -> Option<u32> {
         .ok()
 }
 
-/// Whether an episode reading follows a marker: the strict patterns only,
-/// `- 01`, `S02E03`, `Episode 12`, so a volume or a stray number after the
-/// marker never counts as one.
-fn episode_follows(rest: &[&str]) -> bool {
-    let rest = format!(" {}", rest.join(" "));
-    SEASON_EPISODE.is_match(&rest)
-        || EPISODE_PATTERNS[..4].iter().any(|re| re.is_match(&rest))
-        || SEASON_X_EPISODE.is_match(&rest)
-        || DASH_DECIMAL.is_match(&rest)
+/// A token that starts an episode reading: `S02E03`, `E07`, `01x36`, or `Episode` or `Ep`
+/// with its number in the next token. A dash is not one; `title_end` reads it apart.
+static EPISODE_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(?:S[0-9]+E[0-9]+(?:v[0-9]+)?|E[0-9]{2,}|[0-9]{1,2}x[0-9]{1,3})$").unwrap()
+});
+static EPISODE_WORD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(?:Episode|Ep)$").unwrap());
+
+/// Where the series title ends among the tokens, and whether an episode reading starts
+/// there: at the first lone dash, which reads as one when an episode number or code comes
+/// right after it, else at the first episode token.
+fn title_end(tokens: &[&str]) -> (usize, bool) {
+    let starts_episode = |at: usize| {
+        let Some(token) = tokens.get(at) else {
+            return false;
+        };
+        EPISODE_TOKEN.is_match(token)
+            || (EPISODE_WORD.is_match(token)
+                && tokens.get(at + 1).is_some_and(|n| BARE_INDEX.is_match(n)))
+    };
+    if let Some(dash) = tokens.iter().position(|t| *t == "-") {
+        let next = dash + 1;
+        let episode =
+            tokens.get(next).is_some_and(|n| BARE_INDEX.is_match(n)) || starts_episode(next);
+        return (dash, episode);
+    }
+    match (0..tokens.len()).find(|&at| starts_episode(at)) {
+        Some(at) => (at, true),
+        None => (tokens.len(), false),
+    }
 }
 
 fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     let normalised = normalise_for_tokens(file_name);
     let tokens: Vec<&str> = normalised.split_whitespace().collect();
-    // A bare `Trailer` or `Special` with no number of its own may be a word
-    // of the series title (Trailer Park Boys, Special A). It loses to an
-    // episode number after it and to a later marker, and is the reading
-    // only when neither comes (#443).
-    let mut bare = None;
+    let (title_end, episode_after) = title_end(&tokens);
+    // A bare preview or special marker inside the series title, with another title word
+    // after it, may be a word of the title (Trailer Park Boys, Special A). It loses to an
+    // episode reading after the title and to any later marker, and is the reading only
+    // when neither comes (#443).
+    let mut title_word = None;
     for (at, token) in tokens.iter().enumerate() {
-        for (kind, re) in EXTRA_PATTERNS.iter() {
+        for (kind, re, word) in EXTRA_PATTERNS.iter() {
             if let Some(m) = re.captures(token) {
                 let glued = m.get(1).and_then(|g| g.as_str().parse().ok());
                 let apart = || match kind {
@@ -190,13 +215,12 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
                     variant: m.get(2).map(|g| g.as_str().to_lowercase()),
                     raw_label: token.to_string(),
                 };
-                if hit.index.is_none() && TITLE_WORD_MARKER.is_match(token) {
-                    if bare.is_none() && !episode_follows(&tokens[at + 1..]) {
-                        bare = Some(hit);
-                    }
-                    break;
+                let in_title = *word && hit.index.is_none() && at + 1 < title_end;
+                if !in_title {
+                    return Some(hit);
                 }
-                return Some(hit);
+                title_word.get_or_insert(hit);
+                break;
             }
         }
         if OTHER_TOKENS.contains(&token.to_lowercase().as_str()) {
@@ -208,7 +232,7 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
             });
         }
     }
-    bare
+    title_word.filter(|_| !episode_after)
 }
 
 fn finalize(season: Option<u32>, episode: f64) -> (Option<u32>, f64) {
@@ -673,6 +697,25 @@ mod tests {
         // A marker with its own index keeps it, as before.
         assert_eq!(ep("Show Special - 04.mkv").extra_index, Some(4));
         assert_eq!(ep("Show - Trailer 2.mkv").extra_index, Some(2));
+        // A later bare marker beats the title's own.
+        let c = ep("Trailer Park Boys - Special.mkv");
+        assert_eq!(c.extra, Some(ExtraKind::Sp));
+        let c = ep("Special A - Trailer.mkv");
+        assert_eq!(c.extra, Some(ExtraKind::Pv));
+        // A marker after the title's dash is the file's, whatever follows it:
+        // a year, another word and a number, or an episode word.
+        for (name, kind) in [
+            ("Show - Special - 2019.mkv", ExtraKind::Sp),
+            ("Show - Trailer - 2024.mkv", ExtraKind::Pv),
+            ("Show - Trailer Collection - 02.mkv", ExtraKind::Pv),
+            ("Show - Special Ending - 01.mkv", ExtraKind::Sp),
+            ("[Group] Show - SP Ep 01.mkv", ExtraKind::Sp),
+            ("Show - Special - Step 1.mkv", ExtraKind::Sp),
+        ] {
+            assert_eq!(ep(name).extra, Some(kind), "{name}");
+        }
+        // A marker with no title word after it is no title word.
+        assert_eq!(ep("Show Special Episode 3.mkv").extra, Some(ExtraKind::Sp));
     }
 
     #[test]
