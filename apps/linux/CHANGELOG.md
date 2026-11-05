@@ -143,6 +143,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - Seeders show for releases from a tracker written with backslashes
+- The activity log keeps no feed key after a subscription repair
 - Sources installed from a repo show up in search on every desktop install
 - Seeking in an episode converted for the phone works on Nvidia graphics
 - A busy sign-in port says to try again, not that another AniBeam is open
