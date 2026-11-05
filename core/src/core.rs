@@ -663,6 +663,9 @@ impl Core {
                     EventBody::Notice,
                 );
             }
+            // After the lift: a subscription's secret is found among the stored ones.
+            #[cfg(feature = "phone")]
+            crate::phone::rekeep_rules(&lifting);
         });
         launch::start(&core)
     }

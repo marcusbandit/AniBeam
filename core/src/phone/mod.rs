@@ -288,6 +288,33 @@ fn rules_store(core: &Core) -> crate::releases::rules::RuleStore {
     )
 }
 
+/// Takes the secrets out of the subscriptions kept before #149, once, at launch (#463).
+/// Under the poll lock, so a round marking an episode taken cannot write over the rewrite.
+#[cfg(feature = "phone")]
+pub fn rekeep_rules(core: &Core) {
+    let _one = core.phone.poll_lock.blocking_lock();
+    match crate::repos::rekeep_old_rules(core, &rules_store(core)) {
+        Ok(0) => {}
+        Ok(n) => {
+            tracing::info!(
+                "{n} subscriptions kept before #149 now keep their key as a placeholder"
+            );
+            core.bus.info(
+                Stage::Downloads,
+                "Subscriptions saved earlier keep their source's key in the secret store now",
+                EventBody::Notice,
+            );
+        }
+        Err(e) => {
+            core.bus.warn(
+                Stage::Downloads,
+                format!("could not move a subscription's source key to the secret store: {e}"),
+                EventBody::Notice,
+            );
+        }
+    }
+}
+
 #[cfg(feature = "phone")]
 /// The library folder, from the core's paths: the app keeps the core under `files/core`
 /// and the library at `files/Anime`.
