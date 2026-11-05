@@ -29,34 +29,37 @@ static TRAILING_DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*[-_]\s*
 /// The extras token patterns, tried in this order, each anchored at both ends
 /// so "Operations" and "Edge" never fire. A variant letter only follows a
 /// number, so "Spy" is no `SP` plus a "y" (#426); a plural is spelled out.
+/// A release revision may follow the number, as for an episode: `SP01v2`,
+/// `NCOP1v2` (#442).
 static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex)>> = LazyLock::new(|| {
     vec![
         (
             ExtraKind::Op,
-            Regex::new(r"(?i)^(?:NCOP|OP)([0-9]+)([a-z])?$").unwrap(),
+            Regex::new(r"(?i)^(?:NCOP|OP)([0-9]+)([a-z])?(?:v[0-9]+)?$").unwrap(),
         ),
         (
             ExtraKind::Ed,
-            Regex::new(r"(?i)^(?:NCED|ED)([0-9]+)([a-z])?$").unwrap(),
+            Regex::new(r"(?i)^(?:NCED|ED)([0-9]+)([a-z])?(?:v[0-9]+)?$").unwrap(),
         ),
         (
             ExtraKind::Pv,
-            Regex::new(r"(?i)^(?:PVs?|Trailers?|Teasers?)(?:([0-9]+)([a-z])?)?$").unwrap(),
+            Regex::new(r"(?i)^(?:PVs?|Trailers?|Teasers?)(?:([0-9]+)([a-z])?(?:v[0-9]+)?)?$")
+                .unwrap(),
         ),
         (
             ExtraKind::Sp,
-            Regex::new(r"(?i)^(?:SPs?|Specials?)(?:([0-9]+)([a-z])?)?$").unwrap(),
+            Regex::new(r"(?i)^(?:SPs?|Specials?)(?:([0-9]+)([a-z])?(?:v[0-9]+)?)?$").unwrap(),
         ),
         // An OVA is a special. A number glued on is its index; one apart
         // (`OVA 2`) is read by `index_apart`, as with `SP 2`.
         (
             ExtraKind::Sp,
-            Regex::new(r"(?i)^(?:OVA|OAD|OAV)([0-9]+)?$").unwrap(),
+            Regex::new(r"(?i)^(?:OVA|OAD|OAV)(?:([0-9]+)(?:v[0-9]+)?)?$").unwrap(),
         ),
         // A season's extra in an `SxxEyy` slot: `S05EEX`, `S01ESP2`.
         (
             ExtraKind::Sp,
-            Regex::new(r"(?i)^S[0-9]+E(?:EX|SP)([0-9]+)?$").unwrap(),
+            Regex::new(r"(?i)^S[0-9]+E(?:EX|SP)(?:([0-9]+)(?:v[0-9]+)?)?$").unwrap(),
         ),
     ]
 });
@@ -616,6 +619,33 @@ mod tests {
         assert_eq!(
             (c.extra, c.extra_index, c.extra_variant.as_deref()),
             (Some(ExtraKind::Pv), Some(1), Some("a"))
+        );
+    }
+
+    #[test]
+    fn a_revision_after_an_extras_index_is_that_extra() {
+        // `v2` after the number is the release's revision, as it is for an
+        // episode, so the file is still the extra and not episode 1 (#442).
+        for (name, kind, index) in [
+            ("[Group] Show - SP01v2.mkv", ExtraKind::Sp, 1),
+            ("[Group] Show - NCOP1v2.mkv", ExtraKind::Op, 1),
+            ("[Group] Show - NCED2v3 [1080p].mkv", ExtraKind::Ed, 2),
+            ("[Group] Show - PV1v2.mkv", ExtraKind::Pv, 1),
+            ("[Group] Show - OVA3v2.mkv", ExtraKind::Sp, 3),
+            ("[Group] Show - S01ESP2v2.mkv", ExtraKind::Sp, 2),
+        ] {
+            let c = ep(name);
+            assert_eq!(
+                (c.extra, c.extra_index, c.extra_variant),
+                (Some(kind), Some(index), None),
+                "{name}"
+            );
+        }
+        // A variant letter and a revision together keep both readings.
+        let c = ep("Show OP1av2.mkv");
+        assert_eq!(
+            (c.extra, c.extra_index, c.extra_variant.as_deref()),
+            (Some(ExtraKind::Op), Some(1), Some("a"))
         );
     }
 
