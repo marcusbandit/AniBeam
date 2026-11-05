@@ -362,6 +362,12 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         "{}",
         status.anirss.message
     );
+    // What it said stays after, for an old one that failed for another reason.
+    assert!(
+        status.anirss.message.contains("It said: "),
+        "{}",
+        status.anirss.message
+    );
 
     // One that serves but does not list the feature AniBeam relies on is
     // stopped and reported, not used: it would carry one client's login to

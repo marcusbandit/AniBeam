@@ -1072,6 +1072,42 @@ mod tests {
                  pin a release that has it, with its sha256"
             );
         }
+        // The three bundles ship one release, and each smoke check expects that one.
+        let bundled: Vec<String> = pins[..3]
+            .iter()
+            .map(|(file, prefix)| {
+                let text = std::fs::read_to_string(packaging.join(file)).unwrap();
+                text.split(prefix)
+                    .nth(1)
+                    .unwrap()
+                    .lines()
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert!(
+            bundled.iter().all(|v| v == &bundled[0]),
+            "the bundles pin different anirss releases: {bundled:?}"
+        );
+        let version = &bundled[0];
+        let expected = format!("\"expect\": \"{version}\"");
+        for smoke in ["linux/smoke.sh", "macos/smoke.sh", "windows/smoke.sh"] {
+            let text = std::fs::read_to_string(packaging.join(smoke)).unwrap();
+            let line = text
+                .lines()
+                .find(|l| l.contains("anirss.version"))
+                .unwrap_or_else(|| panic!("{smoke} checks no anirss version"));
+            assert!(
+                line.contains(&expected),
+                "{smoke} expects another anirss than the {version} bundled: {line}"
+            );
+        }
+        let linux = std::fs::read_to_string(packaging.join("linux/smoke.sh")).unwrap();
+        assert!(
+            linux.contains(&format!("= \"anirss {version}\" ]")),
+            "linux/smoke.sh checks another anirss --version than the {version} bundled"
+        );
     }
 
     #[test]

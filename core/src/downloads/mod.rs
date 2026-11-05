@@ -311,12 +311,16 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
         }
         Err(message) => {
             // An anirss from before the server mode exits on `--serve`
-            // with a usage line that says nothing about versions.
+            // with a usage line that says nothing about versions, so an old
+            // one leads with that. What it said stays after: one that can
+            // serve, but is older than MIN_VERSION, failed for its own reason.
             let message = match anirss::installed_version(&command)
                 .await
                 .and_then(|text| anirss::too_old(&text))
             {
-                Some(version) => anirss::too_old_message(&version),
+                Some(version) => {
+                    format!("{} It said: {message}", anirss::too_old_message(&version))
+                }
                 None => message,
             };
             set_anirss_failure(core, AnirssState::Failed, &message);
