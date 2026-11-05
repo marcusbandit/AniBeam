@@ -120,6 +120,15 @@ scripts/build.sh cargo test -p anibeam-companion   # any cargo command, same lim
 `build.sh` runs inside a systemd scope capped at 6 GB with swap forbidden
 (`ANIBEAM_BUILD_MEM` changes the cap), and refuses to start with less than 7 GB free.
 
+This directory is its own Cargo workspace, so the root's checks skip it. Before a PR, run
+these here; `.github/workflows/android.yml` runs the same:
+
+```sh
+cargo fmt --all --check
+scripts/build.sh cargo test --workspace
+scripts/build.sh cargo clippy --workspace --all-targets -- -D warnings
+```
+
 The version lives in `android/AndroidManifest.xml` (`versionCode` and `versionName`).
 Bump both for every build that leaves the machine, and give the new version its heading in
 `CHANGELOG.md`, which the app shows as What's new; `build.sh` stops if `versionName`, the

@@ -40,6 +40,22 @@ env:
   ANIBEAM_BUILD_SCOPED: '1'
 
 jobs:
+  # rustfmt alone, so a formatting slip fails in seconds without waiting on the build (#510).
+  # The phone workspace is not a member of the root one, so ci.yml's fmt job never sees it.
+  fmt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: rustup toolchain install 1.98 --profile minimal --component rustfmt && rustup default 1.98
+
+      - run: cargo fmt --all --check
+
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 60

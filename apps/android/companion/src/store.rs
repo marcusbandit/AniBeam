@@ -45,7 +45,9 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { address: DEFAULT_ADDRESS.to_string() }
+        Settings {
+            address: DEFAULT_ADDRESS.to_string(),
+        }
     }
 }
 
@@ -138,7 +140,9 @@ impl Store {
 
     /// Deletes the posters of series that are no longer in the library.
     pub fn prune_posters(&self, keep: &HashSet<u64>) {
-        let Ok(entries) = fs::read_dir(self.dir.join("posters")) else { return };
+        let Ok(entries) = fs::read_dir(self.dir.join("posters")) else {
+            return;
+        };
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
@@ -184,7 +188,9 @@ mod tests {
     #[test]
     fn the_cache_and_settings_round_trip() {
         let store = Store::open(scratch("roundtrip")).unwrap();
-        let snapshot: Snapshot = serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json")).unwrap();
+        let snapshot: Snapshot =
+            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json"))
+                .unwrap();
         let cache = Cache {
             address: "10.0.2.2:8790".into(),
             host: "banditbox".into(),
@@ -194,7 +200,11 @@ mod tests {
         };
         store.save_cache(&cache).unwrap();
         assert_eq!(store.cache().unwrap(), cache);
-        store.save_settings(&Settings { address: "10.0.2.2:8790".into() }).unwrap();
+        store
+            .save_settings(&Settings {
+                address: "10.0.2.2:8790".into(),
+            })
+            .unwrap();
         assert_eq!(store.settings().address, "10.0.2.2:8790");
     }
 
