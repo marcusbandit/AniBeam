@@ -1,0 +1,86 @@
+name: Android
+
+# The phone app's own checks. apps/android is its own Cargo workspace, so ci.yml never builds
+# it, and its tests and clippy drifted on main unnoticed (#449). A pull request that touches the
+# phone or what it builds on (the core, host-api, the root manifest it inherits from) runs the
+# whole phone workspace's tests and clippy on the host, which needs no NDK, then clippy for the
+# emulator's target, which does. The runner image ships the Android SDK and NDK.
+# scripts/build.sh sets the NDK's linkers and C compilers; ANIBEAM_BUILD_SCOPED skips its
+# systemd memory cap, which a runner has no user session for. Runs on main too, so rust-cache
+# keeps a cache every pull request can restore.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/android/**'
+      - 'core/**'
+      - 'host-api/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'apps/android/**'
+      - 'core/**'
+      - 'host-api/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  ANIBEAM_BUILD_SCOPED: '1'
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+
+      # Slint's host build links fontconfig; the Android build carries its own fonts.
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libfontconfig1-dev
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 1.98 --profile minimal --component clippy
+          rustup default 1.98
+          rustup target add x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/android
+
+      - name: Test
+        run: scripts/build.sh cargo test --locked --workspace
+
+      # Every crate and every test module, on a target where every lint works.
+      - name: Clippy (host)
+        run: scripts/build.sh cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      # vendor/ is about 60 MB of pinned mpv-android libraries; the script refetches only
+      # when its pinned tag changes.
+      - uses: actions/cache@v4
+        with:
+          path: apps/android/vendor/mpv
+          key: mpv-${{ hashFiles('apps/android/scripts/fetch-mpv.sh') }}
+
+      - name: libmpv
+        run: scripts/fetch-mpv.sh
+
+      - name: Clippy (Android)
+        run: |
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" JAVA_HOME="$JAVA_HOME_17_X64"
+          scripts/build.sh cargo clippy --locked --release --lib --target x86_64-linux-android -- -D warnings

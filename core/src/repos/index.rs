@@ -208,8 +208,31 @@ impl Definition {
     /// the search to fill. None when a value is missing, or when the value for `{host}` is not
     /// a bare host.
     pub fn filled_url(&self, value: impl Fn(&str) -> Option<String>) -> Option<String> {
-        let own_host = self.host_is_placeholder();
+        Some(self.fill_with(&self.filled_values(value)?, |_| true))
+    }
+
+    /// The address with the `values` of the fields `which` takes filled in, the rest left as
+    /// placeholders.
+    pub fn fill_with(
+        &self,
+        values: &[(&AuthField, String)],
+        which: impl Fn(&AuthField) -> bool,
+    ) -> String {
         let mut url = self.url.clone();
+        for (field, filled) in values.iter().filter(|(f, _)| which(f)) {
+            url = url.replace(&format!("{{{}}}", field.key), filled);
+        }
+        url
+    }
+
+    /// Each `auth` field with its value as it goes into the address, percent-encoded. None
+    /// under the same terms as `filled_url`.
+    pub fn filled_values(
+        &self,
+        value: impl Fn(&str) -> Option<String>,
+    ) -> Option<Vec<(&AuthField, String)>> {
+        let own_host = self.host_is_placeholder();
+        let mut out = Vec::new();
         for field in &self.auth {
             let v = value(&field.key)?;
             let filled = if own_host && field.key == HOST_KEY {
@@ -220,9 +243,9 @@ impl Definition {
             } else {
                 crate::releases::endpoints::quote(v.as_bytes(), "")
             };
-            url = url.replace(&format!("{{{}}}", field.key), &filled);
+            out.push((field, filled));
         }
-        Some(url)
+        Some(out)
     }
 }
 

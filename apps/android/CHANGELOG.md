@@ -16,10 +16,13 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - A show's synopsis reads as paragraphs instead of showing <br> tags
 - Episode codes like S03E01 fit their column instead of running into the title
 - A feed error names only the feed's host, never a login in its address
+- A show titled with a word like Trailer or Special no longer reads as extras
 
 ## 2.4.2 · 2026-11-02
 
 ### Fixed
+- Sources on your home network answer sooner
+- Search skips a saved source whose address cannot take a search
 - The app opens from its home screen icon instead of closing at once
 - Spy x Family episodes no longer show up as specials
 
