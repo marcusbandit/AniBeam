@@ -1641,7 +1641,11 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         let _ = commands.send(Command::Sync);
     });
 
-    window.run()?;
+    let ran = window.run();
+    // The loop ends when Android destroys the activity. An episode still open closes its
+    // session first, so the mark or resume point its closing tick makes is not lost.
+    crate::player::app_ending();
     APP.with(|cell| cell.borrow_mut().take());
+    ran?;
     Ok(())
 }
