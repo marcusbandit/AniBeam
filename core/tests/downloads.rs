@@ -358,7 +358,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status
             .anirss
             .message
-            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.5.0"),
+            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.6.0"),
         "{}",
         status.anirss.message
     );

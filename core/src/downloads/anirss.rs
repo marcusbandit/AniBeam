@@ -45,11 +45,12 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 /// The first anirss release with everything this client needs: 0.4.0 brought
 /// `--serve` (0.3.4 and older exit on the flag), 0.4.1 the qBittorrent address
 /// from the environment, 0.4.2 a client that needs no login, which AniBeam's
-/// own qBittorrent is, and 0.5.0 [`SIDECAR_FEATURE`]. It names the release to
-/// install in the hints and the one the bundles pin
+/// own qBittorrent is, 0.5.0 [`SIDECAR_FEATURE`], and 0.6.0 the endpoints AniBeam
+/// puts in through `POST` and `DELETE /endpoints` (`repos::sync_anirss`). It names
+/// the release to install in the hints and the one the bundles pin
 /// (`the_bundled_anirss_is_new_enough`). Whether a running sidecar will do is
 /// decided by the features it lists, not by this.
-pub const MIN_VERSION: &str = "0.5.0";
+pub const MIN_VERSION: &str = "0.6.0";
 
 /// The feature a sidecar has to list in `/health`: an address only the
 /// environment names keeps its own session and saved password. AniBeam points
@@ -928,7 +929,8 @@ mod tests {
         assert_eq!(too_old("0.2").as_deref(), Some("0.2"));
         assert_eq!(too_old("anirss 0.4.1").as_deref(), Some("0.4.1"));
         assert_eq!(too_old("0.4.2").as_deref(), Some("0.4.2"));
-        assert_eq!(too_old("anirss 0.5.0"), None);
+        assert_eq!(too_old("anirss 0.5.0").as_deref(), Some("0.5.0"));
+        assert_eq!(too_old("anirss 0.6.0"), None);
         assert_eq!(too_old("anirss 0.10.1"), None);
         assert_eq!(too_old("anirss 1.0.0rc1"), None);
         assert_eq!(too_old("anirss dev"), None);
@@ -1053,6 +1055,7 @@ mod tests {
         let pins = [
             ("macos/anirss.sh", "ANIRSS_VERSION="),
             ("linux/appimage.sh", "ANIRSS_VERSION="),
+            ("windows/anirss.sh", "ANIRSS_VERSION="),
             ("aur/anibeam/PKGBUILD", "'anirss>="),
         ];
         for (file, prefix) in pins {

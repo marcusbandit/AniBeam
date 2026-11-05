@@ -29,7 +29,7 @@ ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
   target/release/anibeam --root /tmp/anibeam-dev
 ```
 
-A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.5.0 or newer,
+A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.6.0 or newer,
 `yay -S anirss qbittorrent-nox` on Arch).
 
 It also has no AniList or MyAnimeList app registration of its own, so the Trackers tab asks
