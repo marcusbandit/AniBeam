@@ -13,10 +13,12 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
+- A source with no public address no longer stops DNS-blocked sources loading
 - A busy sign-in port says to try again, not that another AniBeam is open
 - A show's synopsis reads as paragraphs instead of showing <br> tags
 - Episode codes like S03E01 fit their column instead of running into the title
 - An extra marked with a v2, like SP01v2, no longer reads as an episode
+- A failed torrent download names only the site, never a login in its link
 - A show titled with a word like Trailer or Special no longer reads as extras
 - Sources on your home network answer sooner
 - Search skips a saved source whose address cannot take a search

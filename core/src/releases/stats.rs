@@ -26,7 +26,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::net::UdpSocket;
 
-use super::endpoints::{UrlParts, quote, split_url, unquote_plus};
+use super::endpoints::{quote, split_url, unquote_plus};
 use crate::contract::Release;
 use crate::downloads::replace::magnet_hash;
 use crate::net::{BoxFuture, Http, HttpRequest, Method};
@@ -383,26 +383,6 @@ fn parse_http_scrape(body: &[u8]) -> Result<HashMap<Hash, Stats>, BadBencode> {
     Ok(out)
 }
 
-/// A tracker as a log line names it: scheme and host only, since a passkey can sit in the
-/// userinfo, the path or the query.
-fn tracker_shown(parts: &UrlParts) -> String {
-    format!(
-        "{}://{}",
-        parts.scheme,
-        parts.hostname().unwrap_or_default()
-    )
-}
-
-/// A torrent link as a log line names it: scheme and host only, as for a tracker, since a
-/// passkey can sit in its path too. Read with the HTTP client's own parser, so a link it
-/// fetches with backslashes for slashes cannot pass its path off as the host.
-fn link_shown(url: &str) -> String {
-    reqwest::Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(|h| format!("{}://{h}", u.scheme())))
-        .unwrap_or_else(|| "a malformed link".to_string())
-}
-
 /// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching).
 async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMap<Hash, Stats> {
     let Ok(mut parts) = split_url(announce) else {
@@ -425,7 +405,8 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
         prefix.push('&');
     }
     parts.fragment.clear();
-    let shown = tracker_shown(&parts);
+    // Named as the HTTP client reads the announce, never by its passkey (#451).
+    let shown = crate::net::url_shown(announce);
     let mut out = HashMap::new();
     for batch in hashes.chunks(MAX_HTTP_BATCH) {
         let qs = batch
@@ -476,7 +457,7 @@ async fn udp_scrape(announce: &str, hashes: &[Hash]) -> HashMap<Hash, Stats> {
     match udp_exchange(&host, port, hashes).await {
         Ok(out) => out,
         Err(e) => {
-            tracing::warn!("udp scrape {host}:{port}: {e}");
+            tracing::warn!("udp scrape {}: {e}", crate::net::url_shown(announce));
             HashMap::new()
         }
     }
@@ -617,7 +598,7 @@ impl Backend for Net<'_> {
         timeout: Duration,
     ) -> BoxFuture<'a, Option<Vec<u8>>> {
         Box::pin(async move {
-            let shown = link_shown(url);
+            let shown = crate::net::url_shown(url);
             let Ok(encoded) = encode_http_link(url) else {
                 tracing::warn!("torrent download failed ({shown}): malformed URL");
                 return None;
@@ -1343,17 +1324,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_tracker_is_logged_by_scheme_and_host_only() {
-        for url in [
-            "https://t.example/0123abcd/announce",
-            "https://user:0123abcd@t.example:8443/announce?passkey=0123abcd",
-        ] {
-            let shown = tracker_shown(&split_url(url).unwrap());
-            assert_eq!(shown, "https://t.example");
-        }
-    }
-
     #[tokio::test]
     async fn http_scrape_batches_fifty_hashes_a_request() {
         let hashes: Vec<Hash> = (0..120u8).map(|i| [i; 20]).collect();
@@ -1525,33 +1495,6 @@ mod tests {
                 .any(|(k, v)| k == "User-Agent" && v == "anirss/1.0")
         );
         assert_eq!(req.timeout, Some(TORRENT_TIMEOUT));
-    }
-
-    #[test]
-    fn a_torrent_link_is_logged_by_scheme_and_host_only() {
-        // A passkey in the path, the login or the query never reaches the log (#397).
-        for url in [
-            "https://t.example/dl/0123abcd/file.torrent",
-            "https://user:0123abcd@t.example:8443/dl/0123abcd.torrent?passkey=0123abcd",
-        ] {
-            assert_eq!(link_shown(url), "https://t.example");
-        }
-        // The client reads a backslash as a slash, and so does the log line.
-        assert_eq!(
-            link_shown("https://t.example\\dl\\0123abcd\\file.torrent"),
-            "https://t.example"
-        );
-        assert_eq!(
-            link_shown("http://[2001:db8::1]:8080/0123abcd.torrent"),
-            "http://[2001:db8::1]"
-        );
-        for bad in [
-            "http://[t.example/0123abcd",
-            "/dl/0123abcd.torrent",
-            "0123abcd",
-        ] {
-            assert_eq!(link_shown(bad), "a malformed link", "{bad}");
-        }
     }
 
     #[tokio::test]

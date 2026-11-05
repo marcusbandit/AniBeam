@@ -157,7 +157,10 @@ Not:
       released it, caused by a stale position in the player (#160).
 
 `cargo test -p anibeam-core --test changelog` checks both files, and CI runs it on every
-pull request. The phone's `build.sh` refuses an APK whose newest heading is not its
+pull request. CI also runs `.github/changelog-newest.sh` against the PR's base, which fails
+a line the PR adds under any heading but the newest; a merge of main into an old branch is
+the usual way one lands there. Run it by hand with `.github/changelog-newest.sh origin/main`.
+The phone's `build.sh` refuses an APK whose newest heading is not its
 `versionName`.
 
 ## Sources
