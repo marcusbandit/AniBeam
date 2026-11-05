@@ -32,6 +32,8 @@ pub mod readings;
 pub mod reads;
 pub mod report;
 pub mod scan;
+pub mod schedule;
+pub mod schedule_text;
 pub mod sidecar;
 pub mod snapshot;
 pub mod sort;

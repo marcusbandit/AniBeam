@@ -33,7 +33,7 @@ SettingsTab {
         var s = lastScan.scan
         var what = s.added + s.changed + s.removed === 0 ? "nothing changed"
                  : [s.added ? s.added + " added" : "", s.changed ? s.changed + " changed" : "", s.removed ? s.removed + " removed" : ""].filter(Boolean).join(", ")
-        var where = s.source !== null && s.source !== undefined && sourcePath(s.source) !== "" ? sourcePath(s.source).split(/[\\/]/).pop() + ": " : ""
+        var where = s.source !== null && s.source !== undefined && sourcePath(s.source) !== "" ? Fmt.baseName(sourcePath(s.source)) + ": " : ""
         return where + what.charAt(0).toUpperCase() + what.slice(1)
     }
     // Airing now's not interested marks (#202), newest first, each with a way back

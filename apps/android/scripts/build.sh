@@ -118,8 +118,14 @@ apk=build/AniBeam-debug.apk
   --ks-key-alias androiddebugkey --out "$apk" "$stage/aligned.apk"
 rm -f "$apk.idsig"
 echo "build.sh: $apk (versionCode $version_code, versionName $version_name, ${abis[*]})"
+[[ " ${abis[*]} " == *" arm64-v8a "* ]] || echo "build.sh: emulator only, a phone cannot run this APK; use --dist for one"
 
 if (( dist )); then
+  # A phone runs arm64 only. An APK without it installs and then dies on launch.
+  if ! unzip -l "$apk" "lib/arm64-v8a/libanibeam.so" >/dev/null 2>&1; then
+    echo "build.sh: $apk has no arm64-v8a code; refusing to put it in dist/" >&2
+    exit 1
+  fi
   mkdir -p dist
   cp "$apk" "dist/AniBeam-$version_name.apk"
   echo "build.sh: dist/AniBeam-$version_name.apk"

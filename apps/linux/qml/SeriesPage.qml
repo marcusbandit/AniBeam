@@ -58,15 +58,55 @@ Item {
         if (r && r.error) frame.toast(frame.errorText(r.error))
         else frame.toast(n === null ? "Episode count cleared" : "Set to " + n + " episodes")
     }
+    // Schedule notes (#418): what the user told the schedule, for the card's season
+    readonly property var scheduleNotes: detail && detail.schedule_notes ? detail.schedule_notes : []
+    function openSchedule() {
+        // The cells run over the card's season: what is out is faint, a few spare cells after
+        var season = card.count_season === undefined ? null : card.count_season
+        var rows = page.episodeRows.filter(function(r) { return season === null || (r.season || 1) === season })
+        var top = 0, out = []
+        rows.forEach(function(r) {
+            top = Math.max(top, Math.floor(r.number))
+            if (!r.upcoming) out.push(Math.floor(r.number))
+        })
+        var upTo = Math.max(card.total_episodes || 0, top + 8, 16)
+        // What the record already says: each episode's air date, from the files, the aired
+        // ones with no file, and the ones still to come
+        var known = {}
+        var noted = function(n) {
+            return page.scheduleNotes.some(function(x) { return n >= x.first && n <= x.last })
+        }
+        var mark = function(n, at, guess) {
+            // A date from the user's own notes is not the record's
+            if (at === null || at === undefined || noted(Math.floor(n))) return
+            known[Math.floor(n)] = { at: at, guess: !!guess }
+        }
+        ;(page.detail ? page.detail.episodes : []).forEach(function(e) { if (season === null || (e.season || 1) === season) mark(e.number, e.air_date, false) })
+        ;(page.detail && page.detail.absent ? page.detail.absent : []).forEach(function(e) { if (season === null || (e.season || 1) === season) mark(e.number, e.air_date, false) })
+        ;(page.detail && page.detail.upcoming ? page.detail.upcoming : []).forEach(function(e) { if (season === null || (e.season || 1) === season) mark(e.number, e.at, e.predicted) })
+        var endAt = card.episodes_set === undefined || card.episodes_set === null ? 0 : card.episodes_set
+        scheduleSheet.openFor(page.props.id, page.title, season, page.scheduleNotes, Math.max(upTo, endAt + 2), out, endAt, known, page.siteName)
+    }
+    // The notes without a date, in words: "Episodes 8 to 15 TBC in 2027"
+    readonly property string heldLine: {
+        var held = scheduleNotes.filter(function(n) { return n.at === null || n.at === undefined })
+        if (!held.length) return ""
+        var n = held[0]
+        var eps = n.first === n.last ? "Episode " + n.first : "Episodes " + n.first + " to " + n.last
+        var due = n.year === null || n.year === undefined ? " not dated yet"
+            : " due in " + (n.month ? Qt.formatDate(new Date(n.year, n.month - 1, 1), "MMMM yyyy") : n.year)
+        return eps + due
+    }
     // Fixes (#283): every way to correct what the page shows, in one menu
+    // Three questions (#432): how many episodes and when, what each file is, which show this is
     function fixItems() {
         var items = []
-        if (page.filesHere > 0)
-            items.push({ text: "Fix files", icon: "pencil", action: function() { page.openFix(page.detail ? page.detail.suggested_fix : null, false) } })
-        if (countRow.offered)
-            items.push({ text: countRow.set === null ? "Set episode count" : "Change episode count", icon: "list-video", action: countRow.edit })
-        items.push({ text: page.matched ? "Change match" : "Find a match", icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
-        items.push({ text: "Rescan", icon: "refresh-cw", action: page.rescan })
+        if (!page.isMovie)
+            items.push({ text: "Episodes and dates", icon: "calendar-clock", action: page.openSchedule })
+        items.push(page.filesHere > 0
+            ? { text: "Files", icon: "folder", action: function() { page.openFix(page.detail ? page.detail.suggested_fix : null, false) } }
+            : { text: "Rescan folder", icon: "refresh-cw", action: page.rescan })
+        items.push({ text: page.matched ? "Match" : "Find a match", icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
         return items
     }
     function contextItems() {
@@ -128,12 +168,11 @@ Item {
     // The quick fix (#170): every file on the page as the sheet lists them, by name
     function fixRows() {
         if (!detail) return []
-        function name(path) { return String(path || "").split(/[\\/]/).pop() }
         function season(e) { return e.season === undefined ? null : e.season }
         var rows = detail.episodes.concat(detail.unmatched_files).map(function(e) {
-            return { file: e.file, name: name(e.path), reading: { Episode: { number: e.number, season: season(e) } }, fixed: !!e.fixed }
+            return { file: e.file, name: Fmt.baseName(e.path || ""), reading: { Episode: { number: e.number, season: season(e) } }, fixed: !!e.fixed }
         }).concat(detail.extras.map(function(x) {
-            return { file: x.file, name: name(x.path), reading: { Extra: { kind: x.kind, index: x.index === undefined ? null : x.index } }, fixed: !!x.fixed }
+            return { file: x.file, name: Fmt.baseName(x.path || ""), reading: { Extra: { kind: x.kind, index: x.index === undefined ? null : x.index } }, fixed: !!x.fixed }
         }))
         // Natural order: OVA 2 before OVA 10
         function chunks(s) { return String(s).toLowerCase().match(/\d+|\D+/g) || [] }
@@ -312,15 +351,14 @@ Item {
         var seen = {}
         list.forEach(function(v) { seen[v.label] = (seen[v.label] || 0) + 1 })
         return list.map(function(v) {
-            var name = String(v.path).slice(Math.max(String(v.path).lastIndexOf("/"), String(v.path).lastIndexOf("\\")) + 1)
+            var name = Fmt.baseName(String(v.path))
             return { file: v.file, label: seen[v.label] > 1 ? name : v.label }
         })
     }
     // One release told from another by its file name: the group and what it is,
     // "TBK, 1080p WEB-DL H264", "ELiTE, 1080p x265", else the name itself
     function versionLabel(path) {
-        var name = String(path || "").replace(/[\\/]+$/, "")
-        name = name.slice(Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\")) + 1).replace(/\.[A-Za-z0-9]{2,4}$/, "")
+        var name = Fmt.baseName(path || "").replace(/\.[A-Za-z0-9]{2,4}$/, "")
         var lead = name.match(/^\[([^\]]+)\]/), tail = name.match(/-([A-Za-z0-9]+)$/)
         // A trailing "-DL" or "-x265" is a tag, not a group
         if (tail && /^(DL|Rip|x26[45]|HEVC|AVC|AV1|\d{3,4}p|AAC|FLAC|DDP?\d?)$/i.test(tail[1])) tail = null
@@ -384,11 +422,11 @@ Item {
 
     // ---- The facts, one ledger line: format, year, studio, a film's runtime, episodes and how
     // long each runs, on disk, status. A film is a loose file or a MOVIE record in its own
-    // folder, the same test as the core's `is_film`. The average score, the IMDb score and the
+    // folder, the core's `film` flag. The average score, the IMDb score and the
     // list status sit in the quiet row, beside your own score.
     readonly property string factsLine: {
         if (!detail) return ""
-        var film = isMovie || card.format === "MOVIE"
+        var film = !!card.film
         var f = [formatLabel(card.format)]
         if (detail.year) f.push(String(detail.year))
         if (detail.studio) f.push(detail.studio)
@@ -451,6 +489,9 @@ Item {
         id: fact
         property string icon: ""
         property string text: ""
+        // A pill that opens a menu: a chevron after the text, and the pointer says so
+        property bool menu: false
+        signal clicked()
         implicitWidth: factContent.implicitWidth + theme.space(3) * 2
         implicitHeight: theme.space(6)
         radius: height / 2
@@ -464,6 +505,16 @@ Item {
             spacing: theme.space(1.5)
             Icon { anchors.verticalCenter: parent.verticalCenter; glyph: fact.icon; color: Qt.rgba(1, 1, 1, 0.82); size: theme.space(3.5) }
             Label { anchors.verticalCenter: parent.verticalCenter; text: fact.text; role: "ui"; font.pointSize: theme.typeSmall; color: Qt.rgba(1, 1, 1, 0.82) }
+            Icon { visible: fact.menu; anchors.verticalCenter: parent.verticalCenter; glyph: "chevron-down"; color: Qt.rgba(1, 1, 1, 0.82); size: theme.space(3) }
+        }
+        // The menu pill's own name, for drive scripts to click
+        property string pressName: ""
+        MouseArea {
+            objectName: fact.pressName
+            anchors.fill: parent
+            visible: fact.menu
+            cursorShape: Qt.PointingHandCursor
+            onClicked: fact.clicked()
         }
     }
     component Caption: Label {
@@ -765,94 +816,36 @@ Item {
                         color: page.downloadInk
                     }
                 }
-                // The episode count set by hand (#239): Fixes offers it while the record names no
-                // count or a guess is out, so a predicted episode past the real end can be stopped.
-                // A TVmaze show's count is its current season's (#283). The row shows while it is
-                // being typed or a count is set, and a count the schedule or a file went past says
-                // it gave way.
+                // What the user told the season, on one line (#432): the episode count set by hand
+                // (#239, a TVmaze show's is its current season's, #283) and a break in the
+                // schedule (#418), with Change opening Episodes and dates where both are set
                 Row {
                     id: countRow
                     objectName: "episode-count"
-                    property bool editing: false
                     readonly property var set: card.episodes_set === undefined ? null : card.episodes_set
                     readonly property bool gaveWay: set !== null && card.episodes_set_applied !== true
                     // A TVmaze count is one season's, so the row names it
                     readonly property string seasonWord: card.count_season ? "Season " + card.count_season : ""
-                    // A set count is always offered, so it can be cleared once the show is over
-                    readonly property bool offered: !page.isMovie && (set !== null || (card.status === "Releasing"
-                             && (card.total_is_estimate || !card.total_episodes || (!!card.next_airing && card.next_airing.predicted))))
-                    visible: editing || set !== null
+                    readonly property string countText: set === null || gaveWay ? ""
+                        : (seasonWord ? seasonWord + " ends" : "Ends") + " at episode " + set
+                    visible: set !== null || page.heldLine !== ""
                     spacing: theme.space(2)
-                    function edit() { editing = true; countField.text = set === null ? "" : String(set); Qt.callLater(countField.focusInput) }
-                    function save(text) {
-                        var t = String(text).trim()
-                        var n = /^\d{1,4}$/.test(t) ? parseInt(t, 10) : 0
-                        if (!(n > 0)) { frame.toast("Type the number of episodes, such as 13"); return }
-                        countRow.editing = false
-                        page.setEpisodeCount(n)
-                    }
                     Label {
-                        visible: !countRow.editing && countRow.set !== null
+                        objectName: "schedule-held"
                         anchors.verticalCenter: parent.verticalCenter
-                        text: countRow.set === null ? "" : countRow.gaveWay
+                        text: countRow.gaveWay && !page.heldLine
                               ? "You set " + countRow.set + " episodes; that no longer applies"
-                              : (countRow.seasonWord ? countRow.seasonWord + " ends" : "Ends") + " at episode " + countRow.set + ", set by you"
+                              : [countRow.countText, page.heldLine].filter(Boolean).join(" · ") + ", set by you"
                         role: "ledger"
                         color: page.inkDim
                     }
                     Button {
-                        visible: !countRow.editing
                         objectName: "episode-count-set"
                         small: true; flat: true
                         tint: page.inkAccent
-                        icon: "pencil"
+                        icon: "calendar-clock"
                         text: "Change"
-                        onClicked: countRow.edit()
-                    }
-                    Button {
-                        visible: !countRow.editing && countRow.set !== null
-                        small: true; flat: true
-                        text: "Clear"
-                        onClicked: page.setEpisodeCount(null)
-                    }
-                    Label {
-                        visible: countRow.editing && countRow.seasonWord !== ""
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: countRow.seasonWord + " episodes"
-                        role: "ledger"
-                        color: page.inkDim
-                    }
-                    Field {
-                        id: countField
-                        objectName: "episode-count-field"
-                        visible: countRow.editing
-                        width: theme.space(22)
-                        mono: true
-                        placeholder: "13"
-                        Keys.onEscapePressed: countRow.editing = false
-                        Keys.onReturnPressed: countRow.save(countField.text)
-                        Keys.onEnterPressed: countRow.save(countField.text)
-                    }
-                    Button {
-                        visible: countRow.editing
-                        objectName: "episode-count-save"
-                        small: true; primary: true
-                        tint: page.inkAccent
-                        text: "Save"
-                        onClicked: countRow.save(countField.text)
-                    }
-                    Button {
-                        visible: countRow.editing
-                        small: true; flat: true
-                        text: "Cancel"
-                        onClicked: countRow.editing = false
-                    }
-                    Label {
-                        visible: countRow.editing
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Nothing past it is predicted. A real episode past it wins."
-                        role: "ledger"
-                        color: page.inkDim
+                        onClicked: page.openSchedule()
                     }
                 }
                 Item { width: 1; height: theme.space(1.5) }
@@ -927,7 +920,19 @@ Item {
                         text: page.hasImdb ? "IMDb " + Fmt.score(card.imdb_score) : ""
                         Tooltip { text: page.hasImdb && card.imdb_votes ? Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) + " votes" : "" }
                     }
-                    Fact { objectName: "fact-list"; visible: !!card.list_status; icon: page.listIcon(card.list_status); text: card.list_status ? page.listStatus(card.list_status) : "" }
+                    // The list status, and with a tracker connected the menu that changes it
+                    Fact {
+                        id: statusFact
+                        objectName: "fact-list"
+                        readonly property bool settable: frame.canSetListStatus(card)
+                        visible: !!card.list_status || settable
+                        menu: settable
+                        icon: page.listIcon(card.list_status)
+                        text: card.list_status ? page.listStatus(card.list_status) : "Add to a list"
+                        pressName: "series-status"
+                        onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
+                        Tooltip { text: statusFact.settable ? "Change the list on every connected tracker" : "" }
+                    }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
                     Button {
                         objectName: "series-hide"
@@ -1113,7 +1118,7 @@ Item {
                                 required property var modelData
                                 episode: modelData; extra: true
                                 title: Fmt.episodeName(modelData.title || "", modelData.number)
-                                detailText: modelData.path.split(/[\\/]/).pop()
+                                detailText: Fmt.baseName(modelData.path)
                                 onPlay: page.openFile(modelData.file)
                                 picking: page.deleting
                                 picked: page.deletePicked.indexOf(modelData.file) >= 0
@@ -1349,6 +1354,21 @@ Item {
         visible: fixSheet.visible
         dismissOnPress: true
         onDismissed: fixSheet.close()
+    }
+
+    // The schedule notes, from Fixes or the held line (#418)
+    ScheduleSheet {
+        id: scheduleSheet
+        parent: frame.overlay
+        anchors.centerIn: parent
+    }
+    Blocker {
+        parent: frame.overlay
+        anchors.fill: parent
+        z: -1
+        visible: scheduleSheet.visible
+        dismissOnPress: true
+        onDismissed: scheduleSheet.close()
     }
 
     // The match, from Find a match or Fixes: the same popover Metadata opens, over the overlay
