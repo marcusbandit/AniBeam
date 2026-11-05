@@ -105,8 +105,18 @@ impl Native {
                 .endpoints
                 .iter()
                 .find(|e| e.name == name)
-                .ok_or_else(|| CoreError::invalid("endpoint", gone(name))),
+                .ok_or_else(|| CoreError::invalid("endpoint", format!("no source named {name}"))),
         }
+    }
+
+    /// The endpoint a step after a search names: the analysis, a refine, a preview. The
+    /// list is read again on every call, so one removed, switched off or left without its
+    /// key since the search is not in it, even when it was the only one.
+    fn step_endpoint(&self, name: &str) -> Result<&Endpoint, CoreError> {
+        self.endpoints
+            .iter()
+            .find(|e| e.name == name)
+            .ok_or_else(|| CoreError::invalid("endpoint", gone(name)))
     }
 
     /// The endpoints as the downloads page lists them, keys masked.
@@ -229,7 +239,7 @@ impl Native {
         items: &[Release],
         auto_resolution: bool,
     ) -> Result<Analysis, CoreError> {
-        let ep = self.endpoint(Some(endpoint))?;
+        let ep = self.step_endpoint(endpoint)?;
         let auto = if auto_resolution {
             refinement::auto_resolution(query.trim(), items)
         } else {
@@ -261,7 +271,7 @@ impl Native {
         items: &[Release],
         op: &RefineOp,
     ) -> Result<Refinement, CoreError> {
-        let ep = self.endpoint(Some(endpoint))?.clone();
+        let ep = self.step_endpoint(endpoint)?.clone();
         let http = self.http.clone();
         let all_uploads = endpoints::found_unfiltered(items);
         // Typed as the callback so the closure is generic over the borrows it is given.
@@ -298,7 +308,7 @@ impl Native {
         endpoint: &str,
         items: &[Release],
     ) -> Result<SubscriptionSpec, CoreError> {
-        let ep = self.endpoint(Some(endpoint))?;
+        let ep = self.step_endpoint(endpoint)?;
         Ok(endpoints::build_subscription(self.http.as_ref(), ep, query, items).await)
     }
 
@@ -308,10 +318,9 @@ impl Native {
     }
 }
 
-/// What a step names when its endpoint is not installed any more. The list is read again
-/// on every call, so one removed between a search and its refine or subscribe lands here.
+/// Why a step after a search cannot go on: its endpoint left the list since.
 fn gone(name: &str) -> String {
-    format!("{name} is not installed any more: search again to pick a source that is")
+    format!("{name} is not available any more: removed, switched off or missing its key")
 }
 
 /// Query parameters that hold a secret, with the label a person reads for each. A source
@@ -391,7 +400,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_step_on_an_endpoint_removed_since_the_search_says_to_search_again() {
+    async fn a_step_on_an_endpoint_gone_since_the_search_says_so() {
         let native = Native::new(
             FakeHttp::new(),
             vec![Endpoint::new("feed", "rss", "https://a/?q={query}")],
@@ -401,11 +410,25 @@ mod tests {
             .await
             .unwrap_err();
         let preview = native.preview("show", "gone", &[]).await.unwrap_err();
-        for err in [refine, preview] {
+        let analyze = native.analyze("show", "gone", &[], false).unwrap_err();
+        // The only endpoint removed: still named, not "no endpoints yet".
+        let alone = Native::new(FakeHttp::new(), Vec::new())
+            .preview("show", "gone", &[])
+            .await
+            .unwrap_err();
+        for err in [refine, preview, analyze, alone] {
             let text = err.to_string();
-            assert!(text.contains("gone"), "{text}");
-            assert!(text.contains("search again"), "{text}");
+            assert!(text.contains("gone is not available any more"), "{text}");
         }
+        // A search naming one it never had keeps its own answer.
+        let search = native
+            .search("show", Some("gone"), false)
+            .await
+            .unwrap_err();
+        assert!(
+            search.to_string().contains("no source named gone"),
+            "{search}"
+        );
     }
 
     #[tokio::test]
