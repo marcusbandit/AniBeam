@@ -171,6 +171,14 @@ Corner {
                 role: "ui"; color: theme.textDim
                 anchors.verticalCenter: parent.verticalCenter
             }
+            // Match is one place for the record (#432): fetch its info again from here
+            Button {
+                objectName: "match-refresh"
+                small: true
+                icon: "refresh-cw"
+                text: "Refresh info"
+                onClicked: { var r = Door.refreshSeries(root.seriesId); frame.toast(r.error ? r.error.message : "Refreshing " + root.seriesTitle) }
+            }
             // Two steps: it drops the tracker link and a hand-set episode count, and the
             // series is then left alone by the automatic match
             Button {

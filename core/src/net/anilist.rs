@@ -349,6 +349,7 @@ pub const SEASON_PAGE_QUERY: &str = r"query ($page: Int, $status: MediaStatus, $
           averageScore
           title { romaji english native }
           coverImage { large }
+          bannerImage
           nextAiringEpisode { episode airingAt }
         }
       }
