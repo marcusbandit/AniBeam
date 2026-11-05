@@ -148,6 +148,7 @@ FocusScope {
         ["library", "Matching", "metadata provider anilist tvmaze order match"],
         ["library", "Show hidden shows", "hidden reveal"],
         ["library", "Hidden from Airing now", "not interested airing show again"],
+        ["library", "Airing times in a calendar", "calendar ics ical airing schedule subscribe"],
         ["accounts", "Trackers", "anilist myanimelist mal sign in connect login account disconnect"],
         ["accounts", "Main tracker", "progress cards primary", "Trackers"],
         ["accounts", "Sync now", "refresh progress lists tracker", "Trackers"],
