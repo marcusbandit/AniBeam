@@ -638,13 +638,13 @@ fn torrent(v: &Value) -> Torrent {
 
 /// `http://t.example:7777/announce` to `t.example`.
 fn tracker_host(url: &str) -> String {
-    let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
-    let host = rest.split(['/', '?']).next().unwrap_or("");
-    let host = host.rsplit('@').next().unwrap_or(host);
-    match host.strip_prefix('[') {
-        Some(v6) => v6.split(']').next().unwrap_or("").to_string(),
-        None => host.split(':').next().unwrap_or("").to_string(),
-    }
+    // Read with the HTTP client's own parser, which takes a backslash in an http(s) URL
+    // for a slash, so `https://t.example\0123abcd\announce` is `t.example` and never its
+    // path and passkey (#493). A tracker naming no host has none.
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.trim_matches(['[', ']']).to_string()))
+        .unwrap_or_default()
 }
 
 /// A blank torrent for other modules' tests.
@@ -866,6 +866,20 @@ mod tests {
         assert_eq!(t.tracker, "t.example");
         assert_eq!(tracker_host("udp://[::1]:80/announce"), "::1");
         assert_eq!(tracker_host(""), "");
+    }
+
+    /// The HTTP client reads a backslash in an http(s) URL as a slash, so the tracker is
+    /// the host it would announce to, never its path and passkey (#493).
+    #[test]
+    fn a_tracker_written_with_backslashes_is_its_host() {
+        assert_eq!(
+            tracker_host("https://t.example\\0123abcd\\announce"),
+            "t.example"
+        );
+        assert_eq!(
+            tracker_host("http://user:pw@T.example:7777\\announce?passkey=x"),
+            "t.example"
+        );
         assert!(!torrent(&Value::Null).seq_dl);
     }
 

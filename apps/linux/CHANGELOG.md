@@ -142,6 +142,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- A torrent link written with backslashes downloads instead of being refused
+- A tracker written with backslashes shows its host, not its passkey
 - Discord shows a series whose title is a single letter
 - The activity log keeps no feed key after a subscription repair
 - Sources installed from a repo show up in search on every desktop install

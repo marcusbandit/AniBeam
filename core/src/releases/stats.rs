@@ -566,13 +566,34 @@ const QUERY_SAFE: &str = "/%:@!$&'()*+,;=?";
 ///
 /// Feed links carry raw spaces and brackets (t.erai-raws.info does). The host is left alone
 /// so an IPv6 literal keeps its brackets. Errors on a malformed host, for example an
-/// unclosed `[`.
+/// unclosed `[`. The link is split where the HTTP client splits it, a backslash read
+/// as a slash before the query (#493).
 pub fn encode_http_link(link: &str) -> Result<String, BadBencode> {
-    let mut parts = split_url(link).map_err(|_| BadBencode)?;
+    // The client parses the link itself, so one it would not fetch, or that names no
+    // host, is malformed here too.
+    if !reqwest::Url::parse(link).is_ok_and(|u| u.host_str().is_some()) {
+        return Err(BadBencode);
+    }
+    let mut parts = split_url(&client_slashes(link)).map_err(|_| BadBencode)?;
     parts.path = quote(parts.path.as_bytes(), PATH_SAFE);
     parts.query = quote(parts.query.as_bytes(), QUERY_SAFE);
     parts.fragment = quote(parts.fragment.as_bytes(), QUERY_SAFE);
     Ok(parts.geturl())
+}
+
+/// `link` with every backslash before its query or fragment written as the slash the
+/// HTTP client reads it as in an http(s) URL, so the host ends where the client ends it
+/// and the path is the path it fetches (#493). Any other scheme is left as written.
+fn client_slashes(link: &str) -> std::borrow::Cow<'_, str> {
+    let special = link
+        .trim_start()
+        .split_once(':')
+        .is_some_and(|(s, _)| s.eq_ignore_ascii_case("http") || s.eq_ignore_ascii_case("https"));
+    let end = link.find(['?', '#']).unwrap_or(link.len());
+    if !special || !link[..end].contains('\\') {
+        return link.into();
+    }
+    format!("{}{}", link[..end].replace('\\', "/"), &link[end..]).into()
 }
 
 /// Where the network is reached, so tests can stand in for it as anirss's do.
@@ -1471,6 +1492,24 @@ mod tests {
             "http://[::1]:80/a%20b"
         );
         assert!(encode_http_link("http://[::1/x").is_err());
+    }
+
+    /// The HTTP client reads a backslash in an http(s) URL as a slash, so a link written
+    /// that way is encoded with the host the client reads, and its path stays the path
+    /// rather than tripping the bracket check in a host it never was (#493).
+    #[test]
+    fn a_backslash_link_is_encoded_with_the_host_the_client_reads() {
+        assert_eq!(
+            encode_http_link("https://t.example\\dl\\Show [1080p.torrent?k=1").unwrap(),
+            "https://t.example/dl/Show%20%5B1080p.torrent?k=1"
+        );
+        // A backslash in the query is no slash, and stays encoded as before.
+        assert_eq!(
+            encode_http_link("https://t.example/dl?q=a\\b").unwrap(),
+            "https://t.example/dl?q=a%5Cb"
+        );
+        // A link naming no host the client could reach is malformed.
+        assert!(encode_http_link("https://").is_err());
     }
 
     #[tokio::test]
