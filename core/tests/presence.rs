@@ -94,6 +94,7 @@ impl Transport for Fake {
         }
         if self.gone.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(SendError::Gone("Discord quit".to_string()));
+        }
         if let (true, Some(a)) = (self.reject_all, activity) {
             self.push(Sent::Refused(a.clone()));
             return Err(SendError::Rejected("details".to_string()));
