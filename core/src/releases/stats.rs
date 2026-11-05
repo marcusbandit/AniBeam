@@ -383,9 +383,9 @@ fn parse_http_scrape(body: &[u8]) -> Result<HashMap<Hash, Stats>, BadBencode> {
     Ok(out)
 }
 
-/// A torrent link as a log line names it: scheme and host only, since a passkey can sit
-/// in its userinfo, its path or its query. Read with the HTTP client's own parser, so a
-/// link it fetches with backslashes for slashes cannot pass its path off as the host.
+/// A torrent link as a log line names it: scheme and host only, as for a tracker, since a
+/// passkey can sit in its path too. Read with the HTTP client's own parser, so a link it
+/// fetches with backslashes for slashes cannot pass its path off as the host.
 fn link_shown(url: &str) -> String {
     reqwest::Url::parse(url)
         .ok()
@@ -403,9 +403,18 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
     if !matches!(url.scheme(), "http" | "https") {
         return HashMap::new();
     }
-    let path = match url.path() {
-        "" | "/" => "/announce".to_string(),
-        p => p.to_string(),
+    // A tracker named by its host alone announces at `/announce`, as anirss reads it; one
+    // whose path is a bare `/` names no announce and is left alone.
+    let bare = url.path() == "/"
+        && !announce
+            .split(['?', '#'])
+            .next()
+            .unwrap_or("")
+            .ends_with(['/', '\\']);
+    let path = if bare {
+        "/announce".to_string()
+    } else {
+        url.path().to_string()
     };
     if !path.ends_with("/announce") {
         return HashMap::new();
@@ -418,7 +427,8 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
     }
     url.set_query(None);
     url.set_fragment(None);
-    let shown = link_shown(announce);
+    // Scheme and host only, as `link_shown` names a link: a passkey can sit anywhere else.
+    let shown = format!("{}://{}", url.scheme(), url.host_str().unwrap_or_default());
     let mut out = HashMap::new();
     for batch in hashes.chunks(MAX_HTTP_BATCH) {
         let qs = batch
@@ -1400,11 +1410,14 @@ mod tests {
             .await
             .is_empty()
         );
-        assert!(
-            http_scrape(http.as_ref(), "http://tracker.example/other", &[[1u8; 20]])
-                .await
-                .is_empty()
-        );
+        for odd in ["http://tracker.example/other", "http://tracker.example/"] {
+            assert!(
+                http_scrape(http.as_ref(), odd, &[[1u8; 20]])
+                    .await
+                    .is_empty(),
+                "{odd}"
+            );
+        }
         assert!(http.requests().is_empty());
     }
 
