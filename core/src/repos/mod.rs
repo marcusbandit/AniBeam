@@ -1295,13 +1295,7 @@ impl Runnable {
     /// feed built from `template`, which never held a secret.
     pub fn kept(&self, spec: &SubscriptionSpec, query: &str) -> SubscriptionSpec {
         let masked = self.template_of(&spec.feed_url);
-        let traced = self.secrets.iter().any(|s| {
-            s.raw.chars().count() < SHORTEST_FOUND
-                || [s.raw.as_str(), &s.encoded, &s.encoded.replace("%20", "+")]
-                    .iter()
-                    .any(|v| !v.is_empty() && masked.contains(v))
-        });
-        if !traced {
+        if !self.traced(&masked) {
             return SubscriptionSpec {
                 feed_url: masked,
                 ..spec.clone()
@@ -1317,6 +1311,29 @@ impl Runnable {
             must_not_contain: excluded.join("|"),
             endpoint_name: spec.endpoint_name.clone(),
         }
+    }
+
+    /// A feed a rule kept before #149 with this endpoint's secrets in its address, as it
+    /// is kept now: the same swap and trace check as [`Runnable::kept`]. None when the feed
+    /// is on another host, holds none of these secrets, or could still hold one after the
+    /// swap; such a rule is left as it is.
+    pub fn rekept_feed(&self, feed: &str) -> Option<String> {
+        if self.secrets.is_empty() || index::host_of(feed) != self.host {
+            return None;
+        }
+        let masked = self.template_of(feed);
+        (masked != feed && !self.traced(&masked)).then_some(masked)
+    }
+
+    /// Whether a secret could still be in `masked`: one too short to find for sure, or any
+    /// trace of one after the swap.
+    fn traced(&self, masked: &str) -> bool {
+        self.secrets.iter().any(|s| {
+            s.raw.chars().count() < SHORTEST_FOUND
+                || [s.raw.as_str(), &s.encoded, &s.encoded.replace("%20", "+")]
+                    .iter()
+                    .any(|v| !v.is_empty() && masked.contains(v))
+        })
     }
 
     /// `url` with each secret that stands as a whole part of it back as its placeholder.
@@ -1386,6 +1403,67 @@ pub fn kept_spec(core: &Core, spec: &SubscriptionSpec, query: &str) -> Subscript
         Some(r) => r.kept(spec, query),
         None => spec.clone(),
     }
+}
+
+/// Rewrites the subscriptions kept before #149, the secrets of an installed endpoint in
+/// their feed, to the placeholder form, once per install (#463). A rule is matched to the
+/// endpoint whose secrets its feed holds ([`Runnable::rekept_feed`]), the one whose template
+/// it fits best when two would do, and keeps its name and what it has taken. One that
+/// matches no endpoint (a pasted feed, a rotated key, a removed endpoint) stays as it is.
+/// `store` is changed in one atomic write ([`RuleStore::edit`](crate::releases::rules::RuleStore::edit)).
+///
+/// The run is marked done only when it could see every secret: `lifted` says this launch's
+/// lift of hand-added sources' secrets went through, and every installed endpoint has to
+/// have its credentials. Otherwise it runs again on the next launch, which rewrites only
+/// what this one could not. How many rules were rewritten.
+pub fn rekeep_old_rules(
+    core: &Core,
+    store: &crate::releases::rules::RuleStore,
+    lifted: bool,
+) -> Result<usize, CoreError> {
+    use crate::store::settings::{self, PHONE_RULES_REKEPT};
+    if core
+        .store
+        .read(|c| settings::get::<bool>(c, PHONE_RULES_REKEPT))?
+        .unwrap_or(false)
+    {
+        return Ok(0);
+    }
+    let installed = core.store.read(read_installed)?;
+    let fillers = fillers(core);
+    let mut ids: Vec<&str> = installed
+        .iter()
+        .filter(|r| crate::releases::endpoints::VALID_KINDS.contains(&r.def.kind.as_str()))
+        .map(|r| r.def.id.as_str())
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let complete = lifted && ids.len() == fillers.len();
+    let rewritten = store.edit(|rules| {
+        let mut n = 0;
+        for rule in rules.iter_mut().filter(|r| r.endpoint.is_empty()) {
+            let best = fillers
+                .iter()
+                .filter_map(|f| f.rekept_feed(&rule.feed_url).map(|kept| (f, kept)))
+                .max_by_key(|(f, kept)| shared_start(kept, &f.template));
+            if let Some((f, kept)) = best {
+                rule.feed_url = kept;
+                rule.endpoint = f.endpoint.name.clone();
+                n += 1;
+            }
+        }
+        (n, n > 0)
+    })?;
+    if complete {
+        core.store
+            .write(|c| settings::set(c, PHONE_RULES_REKEPT, &true))?;
+    }
+    Ok(rewritten)
+}
+
+/// How many characters `a` and `b` start with in common.
+fn shared_start(a: &str, b: &str) -> usize {
+    a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
 }
 
 /// Whether `url` holds a placeholder: `{` then letters, digits, `.`, `_` or `-`, then `}`.
@@ -1731,6 +1809,151 @@ mod tests {
         }
         // A placeholder nobody can fill any more is not sent out as it is.
         assert_eq!(filled_feed(&fillers, "gone", &kept), None);
+        core.shutdown();
+    }
+
+    /// A phone subscription as it was kept before #149: the filled feed, no endpoint.
+    fn old_rule(name: &str, feed: &str) -> crate::releases::rules::Rule {
+        crate::releases::rules::Rule {
+            name: name.into(),
+            feed_url: feed.into(),
+            endpoint: String::new(),
+            must_contain: String::new(),
+            must_not_contain: String::new(),
+            save_path: format!("/x/{name}"),
+            enabled: true,
+            taken: [format!("{name}-ep1")].into(),
+        }
+    }
+
+    fn core_with_keyed_endpoint(dir: &std::path::Path) -> Arc<Core> {
+        let paths = CorePaths::under(dir);
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            FakeHttp::new(),
+            Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        custom(
+            &core,
+            "mine",
+            "https://a.example/rss?q={query}&token=longsecret1",
+        );
+        core
+    }
+
+    #[test]
+    fn old_phone_rules_lose_their_secret_once_and_unmatched_ones_stay() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = core_with_keyed_endpoint(dir.path());
+        let store = crate::releases::rules::RuleStore::new(dir.path().join("phone-rules.json"));
+        let filled = "https://a.example/rss?q=Show+1080p&token=longsecret1";
+        let pasted = "https://b.example/rss?q=Other&key=pastedsecret";
+        let rotated = "https://a.example/rss?q=Old&token=oldsecret99";
+        store
+            .save(&[
+                old_rule("Show", filled),
+                old_rule("Pasted", pasted),
+                old_rule("Rotated", rotated),
+            ])
+            .unwrap();
+
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        let rules = store.load();
+        assert_eq!(rules.len(), 3);
+        let show = &rules[0];
+        assert_eq!(
+            show.feed_url,
+            "https://a.example/rss?q=Show+1080p&token={token}"
+        );
+        assert_eq!(show.endpoint, "mine");
+        assert_eq!(show.taken, old_rule("Show", filled).taken);
+        // Filled from the secret store, it is the feed it was.
+        assert_eq!(
+            filled_feed(&fillers(&core), &show.endpoint, &show.feed_url).as_deref(),
+            Some(filled)
+        );
+        // A pasted feed and one whose token was changed since match no endpoint: as they were.
+        assert_eq!(rules[1], old_rule("Pasted", pasted));
+        assert_eq!(rules[2], old_rule("Rotated", rotated));
+
+        // The next launch does nothing, even with an old rule in the file again.
+        let mut again = rules.clone();
+        again.push(old_rule("Later", filled));
+        store.save(&again).unwrap();
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 0);
+        assert_eq!(store.load(), again);
+        core.shutdown();
+    }
+
+    #[test]
+    fn a_launch_that_could_not_see_every_secret_runs_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = core_with_keyed_endpoint(dir.path());
+        let store = crate::releases::rules::RuleStore::new(dir.path().join("phone-rules.json"));
+        let filled = "https://a.example/rss?q=Show&token=longsecret1";
+        store.save(&[old_rule("Show", filled)]).unwrap();
+        // The lift failed this launch: what could be rewritten is, and the next launch
+        // looks again.
+        assert_eq!(rekeep_old_rules(&core, &store, false).unwrap(), 1);
+        store
+            .save(&[store.load().remove(0), old_rule("Later", filled)])
+            .unwrap();
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        assert!(store.load().iter().all(|r| r.endpoint == "mine"));
+        core.shutdown();
+    }
+
+    #[test]
+    fn an_old_rule_goes_to_the_endpoint_its_feed_fits_best() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = core_with_keyed_endpoint(dir.path());
+        // Two endpoints on one server with one key, told apart by their path.
+        custom(
+            &core,
+            "first",
+            "https://own.example/1/api?t=search&q={query}&apikey=sharedkey1",
+        );
+        custom(
+            &core,
+            "second",
+            "https://own.example/2/api?t=search&q={query}&apikey=sharedkey1",
+        );
+        let store = crate::releases::rules::RuleStore::new(dir.path().join("phone-rules.json"));
+        store
+            .save(&[old_rule(
+                "Show",
+                "https://own.example/2/api?t=search&q=Show&apikey=sharedkey1",
+            )])
+            .unwrap();
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        let rule = store.load().remove(0);
+        assert_eq!(rule.endpoint, "second");
+        assert_eq!(
+            rule.feed_url,
+            "https://own.example/2/api?t=search&q=Show&apikey={apikey}"
+        );
+        core.shutdown();
+    }
+
+    #[test]
+    fn a_rewrite_that_cannot_be_written_leaves_the_file_and_runs_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = core_with_keyed_endpoint(dir.path());
+        let path = dir.path().join("phone-rules.json");
+        let store = crate::releases::rules::RuleStore::new(path.clone());
+        let filled = "https://a.example/rss?q=Show&token=longsecret1";
+        store.save(&[old_rule("Show", filled)]).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        // The new file is written beside the old one first; make that impossible.
+        std::fs::create_dir(path.with_extension("json.tmp")).unwrap();
+
+        assert!(rekeep_old_rules(&core, &store, true).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+
+        std::fs::remove_dir(path.with_extension("json.tmp")).unwrap();
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        assert_eq!(store.load()[0].endpoint, "mine");
         core.shutdown();
     }
 
