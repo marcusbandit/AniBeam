@@ -46,45 +46,39 @@ pub fn sources(core: &Core) -> Vec<PhoneSource> {
 }
 
 pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
-    // A row saved before the {query} rule covered tosho (#248) stays as it is, so the phone
-    // can still remove the other sources around it.
+    // A row saved before a rule covered it (#248, #260) stays as it is, so the phone can
+    // still remove the other sources around it; search leaves it out (`searched`).
     let saved = self::sources(core);
-    for s in &sources {
-        if s.name.trim().is_empty() {
-            return Err(CoreError::invalid("sources", "a source needs a name"));
+    let mut checked: Vec<(PhoneSource, bool)> = Vec::with_capacity(sources.len());
+    for s in sources {
+        // Switching a saved row on or off is not a change to what it searches.
+        if saved
+            .iter()
+            .any(|o| o.name == s.name && o.kind == s.kind && o.url == s.url)
+        {
+            checked.push((s, false));
+            continue;
         }
-        if !(s.url.starts_with("http://") || s.url.starts_with("https://")) {
-            return Err(CoreError::invalid(
-                "sources",
-                format!(
-                    "{}: the address must start with http:// or https://",
-                    s.name
-                ),
-            ));
-        }
-        if s.kind == "json" {
-            return Err(CoreError::invalid(
-                "sources",
-                format!(
-                    "{}: {}",
-                    s.name,
-                    crate::releases::endpoints::JSON_NEEDS_REPO
-                ),
-            ));
-        }
-        if crate::releases::endpoints::needs_query(&s.kind)
-            && !s.url.contains("{query}")
-            && !saved.contains(s)
+        let s = trimmed(&s);
+        crate::releases::endpoints::validate(&s.name, &s.kind, &s.url)?;
+        checked.push((s, true));
+    }
+    // Search tells sources apart by name, so a new one takes a name of its own.
+    for (s, new) in &checked {
+        if *new
+            && checked
+                .iter()
+                .filter(|(o, _)| o.name.trim() == s.name)
+                .count()
+                > 1
         {
             return Err(CoreError::invalid(
-                "sources",
-                format!(
-                    "{}: the address needs {{query}} where the search goes",
-                    s.name
-                ),
+                "endpoint name",
+                format!("{:?}: another source has that name", s.name),
             ));
         }
     }
+    let sources: Vec<PhoneSource> = checked.into_iter().map(|(s, _)| s).collect();
     let path = sources_path(core);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| CoreError::internal(e.to_string()))?;
@@ -100,20 +94,36 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
 /// so installing nyaa from a repo replaces an old saved one rather than searching it twice.
 fn searched(core: &Core) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
     let mut installed = crate::repos::runnable(core);
-    let mut out = Vec::new();
-    for s in sources(core).into_iter().filter(|s| s.enabled) {
+    let mut out: Vec<(PhoneSource, crate::releases::Endpoint)> = Vec::new();
+    // Trimmed, so the name the search page shows is the endpoint's name.
+    for s in sources(core).iter().filter(|s| s.enabled).map(trimmed) {
+        if out.iter().any(|(o, _)| o.name == s.name) {
+            continue;
+        }
         if let Some(at) = installed.iter().position(|r| r.endpoint.name == s.name) {
             let r = installed.remove(at);
             out.push((installed_source(&r), r.endpoint));
-        } else {
+        } else if crate::releases::endpoints::check_shape(&s.name, &s.kind, &s.url).is_ok() {
             let endpoint = crate::releases::Endpoint::new(&s.name, &s.kind, &s.url);
             out.push((s, endpoint));
         }
+        // A source saved before the checks that would now refuse it searches one fixed
+        // page or adds a second query: it is left out.
     }
     for r in installed {
         out.push((installed_source(&r), r.endpoint));
     }
     out
+}
+
+/// `s` with the spaces around its name, kind and address taken off.
+fn trimmed(s: &PhoneSource) -> PhoneSource {
+    PhoneSource {
+        name: s.name.trim().to_string(),
+        kind: s.kind.trim().to_string(),
+        url: s.url.trim().to_string(),
+        enabled: s.enabled,
+    }
 }
 
 fn installed_source(r: &crate::repos::Runnable) -> PhoneSource {
