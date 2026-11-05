@@ -29,10 +29,12 @@ permissions:
   pull-requests: read
   contents: read
 
-# One run at a time for the whole repo: a branch push, a PR and a delete on the same issue
-# would otherwise race and leave the wrong label. The volume is a handful of runs a day.
+# One run at a time per branch: a branch push, its PR and the branch's deletion queue behind
+# each other instead of racing. Not one group for the whole repo, because GitHub keeps only one
+# pending run per group and cancels the older one, so a burst of three events would drop one.
+# Issue events get a group per issue.
 concurrency:
-  group: issue-state
+  group: issue-state-${{ github.event.pull_request.head.ref || github.event.ref || format('issue-{0}', github.event.issue.number) }}
   cancel-in-progress: false
 
 jobs:
