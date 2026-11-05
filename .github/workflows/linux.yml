@@ -120,7 +120,7 @@ jobs:
 
       - name: Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal
+          rustup toolchain install stable --profile minimal --component clippy
           rustc --version
 
       - uses: Swatinem/rust-cache@v2
@@ -146,6 +146,17 @@ jobs:
 
       - name: Test the core and the shell
         run: LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam-core -p anibeam
+
+      # ci.yml lints the core and the CLI on an ubuntu runner with no Qt, so the shell crate is
+      # linted here, where Qt, MpvQt and libmpv are already set up (#86). It runs after the
+      # tests so it reuses the dependencies' debug build scripts, cxx-qt-lib's C++ among
+      # them. It runs only in a pull request's own run of this workflow, which has no version
+      # input, so a lint never holds back a nightly, a release or a `test build`. This is the
+      # build's stable toolchain, not ci.yml's pinned one, so a new Rust release can bring a
+      # new lint here first.
+      - name: Clippy for the shell
+        if: github.event_name == 'pull_request' && inputs.version == ''
+        run: cargo clippy --locked -p anibeam --all-targets -- -D warnings
 
       - name: AppImage
         run: apps/linux/packaging/linux/appimage.sh dist
