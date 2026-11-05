@@ -4,6 +4,10 @@
 //! and calls it; Java only holds the download service's notification and turns the screen
 //! for the player.
 
+// Clippy asks for `const` on thread_local initialisers that already have it on targets
+// without `#[thread_local]`, Android among them (rust-lang/rust-clippy#17566).
+#![cfg_attr(target_os = "android", allow(clippy::missing_const_for_thread_local))]
+
 slint::include_modules!();
 
 mod airing;

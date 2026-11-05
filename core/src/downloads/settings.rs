@@ -249,31 +249,25 @@ pub fn same_address(a: &str, b: &str) -> bool {
 }
 
 fn address_key(url: &str) -> String {
-    let url = url.trim().trim_end_matches('/');
-    let (scheme, rest) = url.split_once("://").unwrap_or(("http", url));
-    let scheme = scheme.to_ascii_lowercase();
-    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
-    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-    let (host, port) = match host_port.strip_prefix('[') {
-        Some(v6) => match v6.split_once(']') {
-            Some((h, p)) => (h.to_string(), p.strip_prefix(':').unwrap_or("").to_string()),
-            None => (v6.to_string(), String::new()),
-        },
-        None => match host_port.rsplit_once(':') {
-            Some((h, p)) => (h.to_string(), p.to_string()),
-            None => (host_port.to_string(), String::new()),
-        },
+    let url = url.trim();
+    let with_scheme;
+    let url = if url.contains("://") {
+        url
+    } else {
+        with_scheme = format!("http://{url}");
+        &with_scheme
     };
-    let host = match host.to_ascii_lowercase().as_str() {
+    let Some(u) = parsed(url) else {
+        return url.trim_end_matches('/').to_string();
+    };
+    let host = match bare_host(&u).as_str() {
         "localhost" | "::1" => "127.0.0.1".to_string(),
         h => h.to_string(),
     };
-    let port = if port.is_empty() {
-        if scheme == "https" { "443" } else { "80" }.to_string()
-    } else {
-        port
-    };
-    format!("{scheme}://{host}:{port}{path}")
+    let port = u.port_or_known_default().unwrap_or(0);
+    let path = u.path().trim_end_matches('/');
+    let query = u.query().map_or(String::new(), |q| format!("?{q}"));
+    format!("{}://{host}:{port}{path}{query}", u.scheme())
 }
 
 /// Whether the client in use keeps its downloads on this machine's disk, so
@@ -388,16 +382,27 @@ fn names_this_machine(
     resolve(&host).is_some_and(|ips| here(&ips))
 }
 
-/// The host part of a URL, without port or IPv6 brackets.
+/// An address as the HTTP client reads it, so every check here agrees with
+/// the machine the client really talks to: a backslash ends the host, case
+/// and short forms like `127.1` are settled the same way (#401).
+fn parsed(url: &str) -> Option<reqwest::Url> {
+    reqwest::Url::parse(url.trim())
+        .ok()
+        .filter(|u| u.host_str().is_some_and(|h| !h.is_empty()))
+}
+
+/// A parsed address's host, without IPv6 brackets.
+fn bare_host(u: &reqwest::Url) -> String {
+    let host = u.host_str().unwrap_or_default();
+    host.strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host)
+        .to_string()
+}
+
+/// The host part of a URL, lower case, without port or IPv6 brackets.
 fn host_of(url: &str) -> String {
-    let host = name_for(url);
-    match host.strip_prefix('[') {
-        Some(v6) => v6.split(']').next().unwrap_or(v6).to_string(),
-        None => host
-            .rsplit_once(':')
-            .map_or(host.as_str(), |(h, _)| h)
-            .to_string(),
-    }
+    parsed(url).map_or(String::new(), |u| bare_host(&u))
 }
 
 /// Whether AniBeam's own may listen at the address in use: it has to be on
@@ -411,15 +416,16 @@ pub fn fits_managed(s: &DownloadSettings) -> bool {
             .any(|c| same_address(&c.url, &s.torrent_url))
 }
 
-/// A name for a client that has none: its host and port.
+/// A name for a client that has none: its host, and its port when it is not
+/// the scheme's own.
 pub fn name_for(url: &str) -> String {
-    let rest = url.split_once("://").map_or(url, |(_, r)| r);
-    let host = rest.split(['/', '?', '#']).next().unwrap_or(rest);
-    let host = host.rsplit_once('@').map_or(host, |(_, h)| h);
-    if host.is_empty() {
-        "qBittorrent".to_string()
-    } else {
-        host.to_string()
+    let Some(u) = parsed(url) else {
+        return "qBittorrent".to_string();
+    };
+    let host = u.host_str().unwrap_or_default();
+    match u.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_string(),
     }
 }
 
@@ -754,6 +760,33 @@ mod tests {
         assert!(is_loopback("http://[::1]:8080"));
         assert!(!is_loopback("http://192.0.2.10:8080"));
         assert!(!is_loopback("http://localhost.example:8080"));
+    }
+
+    #[test]
+    fn a_backslash_ends_the_host_as_the_http_client_reads_it() {
+        // The client talks to 192.0.2.1 here, so nothing may read it as this
+        // machine or as the anirss config's address (#401).
+        let url = "http://192.0.2.1\\@127.0.0.1:8080";
+        assert_eq!(name_for(url), "192.0.2.1");
+        assert!(!is_loopback(url));
+        assert!(!same_address(url, "http://127.0.0.1:8080"));
+        let mut s = defaults();
+        s.torrent_mode = TorrentMode::Existing;
+        s.torrent_url = url.to_string();
+        assert!(!files_here(&s));
+        assert!(!fits_managed(&s));
+        // A login before the host still comes off.
+        assert_eq!(name_for("http://me:pw@box:8080/qbt"), "box:8080");
+        assert!(same_address("http://me:pw@box:8080", "http://box:8080/"));
+        // Case, short forms and a trailing backslash read as the client reads them.
+        assert!(is_loopback("http://LOCALHOST:8080"));
+        assert!(is_loopback("http://127.1:8080"));
+        assert!(same_address(
+            "http://127.0.0.1:8080\\",
+            "http://127.0.0.1:8080"
+        ));
+        assert_eq!(name_for("http://[::1]:8080/"), "[::1]:8080");
+        assert_eq!(name_for("not an address"), "qBittorrent");
     }
 
     #[test]

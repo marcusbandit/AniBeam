@@ -13,7 +13,9 @@
 //! ended and its directory removed.
 //!
 //! The encoder is the first that works of NVENC, VAAPI and libx264, tried
-//! once per launch on a tiny test picture.
+//! once per launch on a tiny test clip. Working means more than running: its
+//! forced keyframes have to come out as places a piece can start, or a seek
+//! asks for a piece that never gets written.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -118,6 +120,10 @@ impl Encoder {
                         "23",
                         "-b:v",
                         "0",
+                        // A forced keyframe has to be an IDR frame, or NVENC
+                        // does not flag it and no piece starts there.
+                        "-forced-idr",
+                        "1",
                     ],
                 );
                 push(
@@ -180,8 +186,21 @@ async fn encoder() -> Option<Encoder> {
         .await
 }
 
+/// Whether `enc` runs here and cuts a piece at every keyframe it is told to
+/// force. A short clip with a keyframe forced every second goes through the
+/// same HLS muxer the conversions use, and has to come out as more than one
+/// piece. NVENC without `-forced-idr` runs fine and fails this (#370).
 async fn works(enc: Encoder) -> bool {
-    let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin"]
+    static PROBES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = PROBES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "anibeam-encoder-{}-{n}-{enc:?}",
+        std::process::id()
+    ));
+    if std::fs::create_dir_all(&dir).is_err() {
+        return false;
+    }
+    let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
         .iter()
         .map(|s| s.to_string())
         .collect();
@@ -189,13 +208,29 @@ async fn works(enc: Encoder) -> bool {
         args.extend(["-vaapi_device".into(), VAAPI_DEVICE.into()]);
     }
     args.extend(
-        ["-f", "lavfi", "-i", "color=black:s=256x144:d=0.2"]
+        ["-f", "lavfi", "-i", "color=black:s=256x144:r=10:d=2.5"]
             .iter()
             .map(|s| s.to_string()),
     );
     args.extend(["-vf".into(), format!("null{}", enc.upload())]);
     enc.args(144, &mut args);
-    args.extend(["-f".into(), "null".into(), "-".into()]);
+    args.extend(
+        [
+            "-force_key_frames",
+            "expr:gte(t,n_forced*1)",
+            "-f",
+            "hls",
+            "-hls_time",
+            "1",
+            "-hls_list_size",
+            "0",
+        ]
+        .iter()
+        .map(|s| s.to_string()),
+    );
+    args.push("-hls_segment_filename".into());
+    args.push(dir.join("p%d.ts").to_string_lossy().into_owned());
+    args.push(dir.join("probe.m3u8").to_string_lossy().into_owned());
     let run = command("ffmpeg")
         .args(&args)
         .stdin(Stdio::null())
@@ -203,10 +238,21 @@ async fn works(enc: Encoder) -> bool {
         .stderr(Stdio::null())
         .kill_on_drop(true)
         .status();
-    matches!(
+    let ran = matches!(
         tokio::time::timeout(Duration::from_secs(10), run).await,
         Ok(Ok(s)) if s.success()
-    )
+    );
+    let pieces = std::fs::read_dir(&dir).map_or(0, |entries| {
+        entries
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".ts"))
+            .count()
+    });
+    let _ = std::fs::remove_dir_all(&dir);
+    if ran && pieces < 2 {
+        tracing::info!("conversions skip {enc:?}: it cut no piece at a forced keyframe");
+    }
+    ran && pieces >= 2
 }
 
 /// Whether this machine can convert at all.
@@ -839,5 +885,50 @@ mod tests {
         assert!(joined.contains("expr:gte(t,n_forced*6)"));
         assert!(joined.contains("-output_ts_offset 60.000"));
         assert!(joined.contains("-start_number 10"));
+    }
+
+    #[test]
+    fn nvenc_makes_every_forced_keyframe_one_a_piece_can_start_at() {
+        // Without it NVENC writes a forced keyframe as a plain I frame that
+        // is not flagged as a keyframe, the HLS muxer cuts only at NVENC's own
+        // keyframes, every 250 frames, and 30 s gives three pieces instead of
+        // five: no seg4.ts (#370).
+        let mut args = Vec::new();
+        Encoder::Nvenc.args(360, &mut args);
+        assert!(args.join(" ").contains("-forced-idr 1"), "{args:?}");
+    }
+
+    /// Whether `enc` runs at all here, the way the probe used to ask.
+    fn runs(enc: Encoder) -> bool {
+        let mut args: Vec<String> = vec!["-hide_banner".into(), "-loglevel".into(), "error".into()];
+        if enc == Encoder::Vaapi {
+            args.extend(["-vaapi_device".into(), VAAPI_DEVICE.into()]);
+        }
+        args.extend(["-f", "lavfi", "-i", "color=black:s=256x144:d=0.2"].map(String::from));
+        args.extend(["-vf".into(), format!("null{}", enc.upload())]);
+        enc.args(144, &mut args);
+        args.extend(["-f", "null", "-"].map(String::from));
+        std::process::Command::new("ffmpeg")
+            .args(&args)
+            .stdin(Stdio::null())
+            .output()
+            .is_ok_and(|o| o.status.success())
+    }
+
+    #[tokio::test]
+    async fn every_encoder_that_runs_here_cuts_a_piece_at_each_forced_keyframe() {
+        // On a box with ffmpeg: libx264 always does, and a GPU encoder this
+        // machine has must too, or the probe has to pass it over. NVENC ran
+        // but cut nothing before #370.
+        if !runs(Encoder::X264) {
+            eprintln!("skipped: no ffmpeg with libx264 here");
+            return;
+        }
+        assert!(works(Encoder::X264).await);
+        for enc in [Encoder::Nvenc, Encoder::Vaapi] {
+            if runs(enc) {
+                assert!(works(enc).await, "{enc:?} runs but cuts no pieces");
+            }
+        }
     }
 }

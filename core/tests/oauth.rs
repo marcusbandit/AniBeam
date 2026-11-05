@@ -21,7 +21,11 @@ fn http_get(port: u16, path: &str) -> String {
     out
 }
 
-fn ready_url(c: &anibeam_core::events::Collector, job: u64) -> String {
+/// The authorize url a flow announced, and the port its listener got. Every
+/// test asks for port 0, so the system hands out a free one: a fixed port in
+/// the ephemeral range can be held, now and then, by the client end of some
+/// other loopback connection, and the bind then fails (#410).
+fn ready_url(c: &anibeam_core::events::Collector, job: u64) -> (String, u16) {
     let ready = common::wait_for(
         c,
         |e| {
@@ -31,9 +35,23 @@ fn ready_url(c: &anibeam_core::events::Collector, job: u64) -> String {
         Duration::from_secs(5),
     );
     match ready.body {
-        EventBody::AuthUrlReady { open_url, .. } => open_url,
+        EventBody::AuthUrlReady {
+            open_url,
+            redirect_url,
+            ..
+        } => (open_url, port_of(&redirect_url)),
         other => panic!("{other:?}"),
     }
+}
+
+/// The port of a loopback redirect url.
+fn port_of(redirect_url: &str) -> u16 {
+    redirect_url
+        .strip_prefix("http://127.0.0.1:")
+        .and_then(|rest| rest.split('/').next())
+        .and_then(|p| p.parse().ok())
+        .filter(|&p| p != 0)
+        .unwrap_or_else(|| panic!("no port in {redirect_url}"))
 }
 
 fn started(reply: Reply) -> u64 {
@@ -59,7 +77,7 @@ fn param(url: &str, name: &str) -> String {
 fn anilist_implicit_grant_through_the_forwarder_connects() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    core.set_oauth_port(53690);
+    core.set_oauth_port(0);
     core.call(Call::SetTrackerCredentials {
         tracker: Tracker::Anilist,
         client_id: "123".into(),
@@ -84,28 +102,11 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
         })
         .unwrap(),
     );
-    let ready = common::wait_for(
-        &c,
-        |e| {
-            matches!(e.body, EventBody::AuthUrlReady { .. })
-                && e.job.as_ref().is_some_and(|j| j.id == job)
-        },
-        Duration::from_secs(5),
+    let (open_url, port) = ready_url(&c, job);
+    assert_eq!(
+        open_url,
+        "https://anilist.co/api/v2/oauth/authorize?client_id=123&response_type=token"
     );
-    match ready.body {
-        EventBody::AuthUrlReady {
-            open_url,
-            redirect_url,
-            ..
-        } => {
-            assert_eq!(
-                open_url,
-                "https://anilist.co/api/v2/oauth/authorize?client_id=123&response_type=token"
-            );
-            assert_eq!(redirect_url, "http://127.0.0.1:53690/callback");
-        }
-        other => panic!("{other:?}"),
-    }
 
     // The authorize url never reaches the events table: MAL's carries the
     // PKCE verifier, and secrets never enter the database. What the log
@@ -129,13 +130,13 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
         other => panic!("{other:?}"),
     }
 
-    assert!(http_get(53690, "/nope").starts_with("HTTP/1.1 404"));
+    assert!(http_get(port, "/nope").starts_with("HTTP/1.1 404"));
     // The token is in the fragment, which the listener never sees, so the
     // first hit is answered with the page that re-issues it as a query.
-    let first = http_get(53690, "/callback");
+    let first = http_get(port, "/callback");
     assert!(first.contains("window.location.hash"), "{first}");
     let second = http_get(
-        53690,
+        port,
         "/callback?access_token=tok&expires_in=3600&token_type=Bearer",
     );
     assert!(second.contains("AniList is connected to"), "{second}");
@@ -202,7 +203,7 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
 fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    core.set_oauth_port(53691);
+    core.set_oauth_port(0);
     core.call(Call::SetTrackerCredentials {
         tracker: Tracker::Mal,
         client_id: "mid".into(),
@@ -234,11 +235,11 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         })
         .unwrap(),
     );
-    let open_url = ready_url(&c, job);
+    let (open_url, port) = ready_url(&c, job);
     assert!(
-        open_url.starts_with(
-            "https://myanimelist.net/v1/oauth2/authorize?response_type=code&client_id=mid&redirect_uri=http%3A%2F%2F127.0.0.1%3A53691%2Fcallback&state="
-        ),
+        open_url.starts_with(&format!(
+            "https://myanimelist.net/v1/oauth2/authorize?response_type=code&client_id=mid&redirect_uri=http%3A%2F%2F127.0.0.1%3A{port}%2Fcallback&state="
+        )),
         "{open_url}"
     );
     assert!(
@@ -247,7 +248,7 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
     );
 
     // A state that is not the one sent is a CSRF attempt, not a callback.
-    let bad = http_get(53691, "/callback?code=abc&state=wrong");
+    let bad = http_get(port, "/callback?code=abc&state=wrong");
     assert!(bad.contains("state mismatch"), "{bad}");
     let failed = common::wait_job(&c, job);
     assert!(
@@ -261,10 +262,10 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         })
         .unwrap(),
     );
-    let open_url = ready_url(&c, job);
+    let (open_url, port) = ready_url(&c, job);
     let state = param(&open_url, "state");
     let verifier = param(&open_url, "code_challenge");
-    let ok = http_get(53691, &format!("/callback?code=abc&state={state}"));
+    let ok = http_get(port, &format!("/callback?code=abc&state={state}"));
     assert!(ok.contains("MyAnimeList is connected to"), "{ok}");
     let done = common::wait_job(&c, job);
     assert!(
@@ -295,7 +296,7 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
             assert!(
                 f.contains(&(
                     "redirect_uri".into(),
-                    "http://127.0.0.1:53691/callback".into()
+                    format!("http://127.0.0.1:{port}/callback")
                 )),
                 "{f:?}"
             );
@@ -349,7 +350,7 @@ fn mal_without_a_secret_signs_in_as_a_public_client() {
     }
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    core.set_oauth_port(53693);
+    core.set_oauth_port(0);
     core.call(Call::SetTrackerCredentials {
         tracker: Tracker::Mal,
         client_id: "mid".into(),
@@ -379,10 +380,10 @@ fn mal_without_a_secret_signs_in_as_a_public_client() {
         })
         .unwrap(),
     );
-    let open_url = ready_url(&c, job);
+    let (open_url, port) = ready_url(&c, job);
     let state = param(&open_url, "state");
     let verifier = param(&open_url, "code_challenge");
-    let ok = http_get(53693, &format!("/callback?code=abc&state={state}"));
+    let ok = http_get(port, &format!("/callback?code=abc&state={state}"));
     assert!(ok.contains("MyAnimeList is connected to"), "{ok}");
     let done = common::wait_job(&c, job);
     assert!(
@@ -428,7 +429,7 @@ fn mal_invalid_client_without_a_secret_asks_for_the_secret() {
     }
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    core.set_oauth_port(53694);
+    core.set_oauth_port(0);
     core.call(Call::SetTrackerCredentials {
         tracker: Tracker::Mal,
         client_id: "mid".into(),
@@ -448,11 +449,11 @@ fn mal_invalid_client_without_a_secret_asks_for_the_secret() {
         })
         .unwrap(),
     );
-    let open_url = ready_url(&c, job);
+    let (open_url, port) = ready_url(&c, job);
     let state = param(&open_url, "state");
     // The tab is answered once the exchange has an outcome, so it says what
     // the app will say rather than "connected".
-    let page = http_get(53694, &format!("/callback?code=abc&state={state}"));
+    let page = http_get(port, &format!("/callback?code=abc&state={state}"));
     assert!(page.starts_with("HTTP/1.1 400"), "{page}");
     assert!(page.contains("client secret"), "{page}");
     assert!(page.contains("try again"), "{page}");
@@ -481,7 +482,7 @@ fn mal_invalid_client_without_a_secret_asks_for_the_secret() {
 fn an_anilist_token_that_fails_validation_gets_the_error_page() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    core.set_oauth_port(53696);
+    core.set_oauth_port(0);
     core.call(Call::SetTrackerCredentials {
         tracker: Tracker::Anilist,
         client_id: "123".into(),
@@ -498,8 +499,8 @@ fn an_anilist_token_that_fails_validation_gets_the_error_page() {
         })
         .unwrap(),
     );
-    ready_url(&c, job);
-    let page = http_get(53696, "/callback?access_token=bogus&expires_in=60");
+    let (_, port) = ready_url(&c, job);
+    let page = http_get(port, "/callback?access_token=bogus&expires_in=60");
     assert!(page.starts_with("HTTP/1.1 400"), "{page}");
     assert!(!page.contains("is connected to"), "{page}");
     assert!(page.contains("try again"), "{page}");
@@ -521,7 +522,7 @@ fn an_anilist_token_that_fails_validation_gets_the_error_page() {
 fn a_slow_sign_in_lets_the_tab_go_and_still_finishes() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    core.set_oauth_port(53697);
+    core.set_oauth_port(0);
     core.set_sign_in_hold(Duration::from_millis(200));
     core.call(Call::SetTrackerCredentials {
         tracker: Tracker::Anilist,
@@ -545,8 +546,8 @@ fn a_slow_sign_in_lets_the_tab_go_and_still_finishes() {
         })
         .unwrap(),
     );
-    ready_url(&c, job);
-    let page = http_get(53697, "/callback?access_token=tok&expires_in=3600");
+    let (_, port) = ready_url(&c, job);
+    let page = http_get(port, "/callback?access_token=tok&expires_in=3600");
     assert!(page.starts_with("HTTP/1.1 200"), "{page}");
     assert!(page.contains("Still finishing"), "{page}");
     assert!(!page.contains("is connected to"), "{page}");
@@ -563,7 +564,7 @@ fn a_slow_sign_in_lets_the_tab_go_and_still_finishes() {
 fn a_sign_in_cancelled_while_held_tells_the_tab() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    core.set_oauth_port(53698);
+    core.set_oauth_port(0);
     core.call(Call::SetTrackerCredentials {
         tracker: Tracker::Anilist,
         client_id: "123".into(),
@@ -578,9 +579,9 @@ fn a_sign_in_cancelled_while_held_tells_the_tab() {
         })
         .unwrap(),
     );
-    ready_url(&c, job);
+    let (_, port) = ready_url(&c, job);
     let browser =
-        std::thread::spawn(|| http_get(53698, "/callback?access_token=tok&expires_in=3600"));
+        std::thread::spawn(move || http_get(port, "/callback?access_token=tok&expires_in=3600"));
     // The rate-limited validation is the only request, and nothing emits an
     // event when it is made, so this watches the fake's own log.
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -604,7 +605,7 @@ fn a_sign_in_cancelled_while_held_tells_the_tab() {
 fn mal_invalid_client_with_a_secret_is_passed_on() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    core.set_oauth_port(53695);
+    core.set_oauth_port(0);
     core.call(Call::SetTrackerCredentials {
         tracker: Tracker::Mal,
         client_id: "mid".into(),
@@ -622,9 +623,9 @@ fn mal_invalid_client_with_a_secret_is_passed_on() {
         })
         .unwrap(),
     );
-    let open_url = ready_url(&c, job);
+    let (open_url, port) = ready_url(&c, job);
     let state = param(&open_url, "state");
-    http_get(53695, &format!("/callback?code=abc&state={state}"));
+    http_get(port, &format!("/callback?code=abc&state={state}"));
     match common::wait_job(&c, job).body {
         EventBody::JobFailed {
             error: CoreError::Provider { ref message, .. },
@@ -703,7 +704,9 @@ fn an_absent_secret_keeps_and_an_empty_one_removes() {
 fn a_connect_waits_for_a_port_that_is_still_held() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    let port = 53692;
+    // A port the system picked, held here before the connect binds it.
+    let held = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = held.local_addr().unwrap().port();
     core.set_oauth_port(port);
     core.call(Call::SetTrackerCredentials {
         tracker: Tracker::Anilist,
@@ -712,7 +715,6 @@ fn a_connect_waits_for_a_port_that_is_still_held() {
     })
     .unwrap();
 
-    let held = std::net::TcpListener::bind(("127.0.0.1", port)).unwrap();
     let job = started(
         core.call(Call::ConnectTracker {
             tracker: Tracker::Anilist,
