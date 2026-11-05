@@ -105,7 +105,7 @@ impl Native {
                 .endpoints
                 .iter()
                 .find(|e| e.name == name)
-                .ok_or_else(|| CoreError::invalid("endpoint", format!("no source named {name}"))),
+                .ok_or_else(|| CoreError::invalid("endpoint", gone(name))),
         }
     }
 
@@ -308,6 +308,12 @@ impl Native {
     }
 }
 
+/// What a step names when its endpoint is not installed any more. The list is read again
+/// on every call, so one removed between a search and its refine or subscribe lands here.
+fn gone(name: &str) -> String {
+    format!("{name} is not installed any more: search again to pick a source that is")
+}
+
 /// Query parameters that hold a secret, with the label a person reads for each. A source
 /// added by hand has these lifted out of its address, a listed address has them masked, and
 /// the tailnet snapshot leaves them out. Names match case-insensitively.
@@ -381,6 +387,24 @@ mod tests {
         match err {
             CoreError::Service { service, code, .. } => (service, code),
             other => panic!("{other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_step_on_an_endpoint_removed_since_the_search_says_to_search_again() {
+        let native = Native::new(
+            FakeHttp::new(),
+            vec![Endpoint::new("feed", "rss", "https://a/?q={query}")],
+        );
+        let refine = native
+            .apply("show", "gone", &[], &RefineOp::BestFit)
+            .await
+            .unwrap_err();
+        let preview = native.preview("show", "gone", &[]).await.unwrap_err();
+        for err in [refine, preview] {
+            let text = err.to_string();
+            assert!(text.contains("gone"), "{text}");
+            assert!(text.contains("search again"), "{text}");
         }
     }
 
