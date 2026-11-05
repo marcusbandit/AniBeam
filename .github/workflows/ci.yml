@@ -47,6 +47,19 @@ jobs:
 
       - run: cargo fmt --all --check
 
+  # A patch note this pull request adds has to sit under the newest heading (#480). The
+  # checkout is the merge commit, so its first parent is the base the PR merges into.
+  changelog:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - run: .github/changelog-newest.sh HEAD^1
+
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
