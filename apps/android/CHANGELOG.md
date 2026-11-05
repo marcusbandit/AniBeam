@@ -13,12 +13,14 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
+- A show's synopsis reads as paragraphs instead of showing <br> tags
 - Episode codes like S03E01 fit their column instead of running into the title
 
 ## 2.4.2 · 2026-11-02
 
 ### Fixed
 - The app opens from its home screen icon instead of closing at once
+- Spy x Family episodes no longer show up as specials
 
 ## 2.4.1 · 2026-11-02
 

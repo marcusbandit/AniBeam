@@ -27,7 +27,8 @@ static SEPARATORS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[_.]+").unwra
 static TRAILING_DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*[-_]\s*$").unwrap());
 
 /// The extras token patterns, tried in this order, each anchored at both ends
-/// so "Operations" and "Edge" never fire.
+/// so "Operations" and "Edge" never fire. A variant letter only follows a
+/// number, so "Spy" is no `SP` plus a "y" (#426); a plural is spelled out.
 static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex)>> = LazyLock::new(|| {
     vec![
         (
@@ -40,11 +41,11 @@ static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex)>> = LazyLock::new(|| {
         ),
         (
             ExtraKind::Pv,
-            Regex::new(r"(?i)^(?:PV|Trailer|Teaser)([0-9]+)?([a-z])?$").unwrap(),
+            Regex::new(r"(?i)^(?:PVs?|Trailers?|Teasers?)(?:([0-9]+)([a-z])?)?$").unwrap(),
         ),
         (
             ExtraKind::Sp,
-            Regex::new(r"(?i)^(?:SP|Special|Specials)([0-9]+)?([a-z])?$").unwrap(),
+            Regex::new(r"(?i)^(?:SPs?|Specials?)(?:([0-9]+)([a-z])?)?$").unwrap(),
         ),
         // An OVA is a special. A number glued on is its index; one apart
         // (`OVA 2`) is read by `index_apart`, as with `SP 2`.
@@ -581,6 +582,41 @@ mod tests {
         assert_eq!((c.extra, c.number), (None, 3.0));
         let c = ep("Monogatari Series - S05E05.mkv");
         assert_eq!((c.extra, c.number, c.season), (None, 5.0, Some(5)));
+    }
+
+    #[test]
+    fn a_title_word_that_starts_like_a_marker_is_not_one() {
+        // A variant letter only follows a number, so "Spy" is no `SP` plus
+        // a "y" (#426).
+        let c = ep("Spy x Family - 01.mkv");
+        assert_eq!((c.extra, c.number, c.season), (None, 1.0, None));
+        let c = ep("[SubsPlease] Spy x Family Season 2 - 05 (1080p).mkv");
+        assert_eq!((c.extra, c.number), (None, 5.0));
+        let c = ep("Spa Show - 02.mkv");
+        assert_eq!((c.extra, c.number), (None, 2.0));
+        // A plural is still the marker, with no variant.
+        for (name, kind) in [
+            ("Show Specials.mkv", ExtraKind::Sp),
+            ("Show SPs.mkv", ExtraKind::Sp),
+            ("Show PVs.mkv", ExtraKind::Pv),
+            ("Show Trailers.mkv", ExtraKind::Pv),
+            ("Show - Teasers 01.mkv", ExtraKind::Pv),
+        ] {
+            let c = ep(name);
+            assert_eq!((c.extra, c.extra_variant), (Some(kind), None), "{name}");
+        }
+        assert_eq!(ep("Show - Teasers 01.mkv").extra_index, Some(1));
+        // A variant glued on after a number still reads.
+        let c = ep("Show SP2b.mkv");
+        assert_eq!(
+            (c.extra, c.extra_index, c.extra_variant.as_deref()),
+            (Some(ExtraKind::Sp), Some(2), Some("b"))
+        );
+        let c = ep("Show PV1a.mkv");
+        assert_eq!(
+            (c.extra, c.extra_index, c.extra_variant.as_deref()),
+            (Some(ExtraKind::Pv), Some(1), Some("a"))
+        );
     }
 
     #[test]
