@@ -428,20 +428,6 @@ fn synopsis_text(provider: Option<Provider>, raw: &str) -> String {
     }
 }
 
-/// The longest episode code in a list, which the page measures to size the code column for
-/// every row alike: `S03E01` needs more room than `E01`.
-pub fn widest_code(lines: &[EpisodeLine]) -> slint::SharedString {
-    lines
-        .iter()
-        .map(|l| &l.code)
-        .fold(None, |widest: Option<&slint::SharedString>, c| match widest {
-            Some(w) if w.chars().count() >= c.chars().count() => Some(w),
-            _ => Some(c),
-        })
-        .cloned()
-        .unwrap_or_default()
-}
-
 /// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
 fn clock(secs: f64) -> String {
     let t = secs.max(0.0) as u64;
@@ -470,17 +456,5 @@ mod tests {
     fn a_tvmaze_synopsis_is_already_plain_and_stays_as_stored() {
         let stored = "A show called <Infinite Dendrogram> & more.";
         assert_eq!(synopsis_text(Some(Provider::Tvmaze), stored), stored);
-    }
-
-    fn line(code: &str) -> EpisodeLine {
-        EpisodeLine { code: code.into(), ..Default::default() }
-    }
-
-    #[test]
-    fn the_code_column_is_sized_for_the_longest_code() {
-        let lines = [line("E01"), line("S03E01"), line("S03E12"), line("SP1")];
-        assert_eq!(widest_code(&lines), "S03E01");
-        assert_eq!(widest_code(&[line("E01"), line("E100")]), "E100");
-        assert_eq!(widest_code(&[]), "");
     }
 }

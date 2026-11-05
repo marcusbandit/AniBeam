@@ -110,6 +110,18 @@ pub fn episode_code(season: Option<u32>, episode: u32) -> String {
     }
 }
 
+/// Every distinct episode code of a list, one per line, for the series page to measure: a
+/// text's width is its widest line, so the code column fits whichever code draws widest.
+pub fn code_column<'a>(codes: impl IntoIterator<Item = &'a str>) -> String {
+    let mut seen: Vec<&str> = Vec::new();
+    for c in codes {
+        if !seen.contains(&c) {
+            seen.push(c);
+        }
+    }
+    seen.join("\n")
+}
+
 /// "SN" for "Sousou no Frieren": what a tile without a poster shows.
 pub fn initials(title: &str) -> String {
     title
@@ -235,5 +247,14 @@ mod tests {
         assert_eq!(torrent_facts(0.5, 1_400_000_000, 3_400_000, Some(240)), "700 MB of 1.4 GB, 3.4 MB/s, 4m 00s left");
         assert_eq!(torrent_facts(1.0, 1_446_000_000, 0, None), "1.4 GB");
         assert_eq!(torrent_facts(0.1, 1_000_000_000, 0, Some(8_640_000)), "100 MB of 1.0 GB");
+    }
+
+    #[test]
+    fn the_code_column_measures_every_distinct_code() {
+        // Width, not length, decides the column: "EP 1.5" is as long as "S03E01" but narrower
+        // in B612, so both go in, one per line, and the page measures the widest line.
+        let codes = ["EP 1.5", "S03E01", "S03E02", "S03E01", "E100"];
+        assert_eq!(code_column(codes), "EP 1.5\nS03E01\nS03E02\nE100");
+        assert_eq!(code_column(std::iter::empty::<&str>()), "");
     }
 }
