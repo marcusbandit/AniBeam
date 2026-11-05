@@ -652,16 +652,7 @@ pub fn close_page(reason: CloseReason) {
     let player = PLAYER.with(|p| p.borrow_mut().take());
     if let Some(mut p) = player {
         p.close(reason);
-        // Letting go of MediaCodec and AudioTrack can take a while, so mpv goes on a thread
-        // of its own; the renderer first, since its render context belongs to the core.
-        let (video, mpv) = (p.video.take(), p.mpv.clone());
-        drop(p);
-        let _ = std::thread::Builder::new().name("mpv-close".into()).spawn(move || {
-            // Off the phone Video is a stub with nothing to let go of.
-            #[cfg_attr(not(target_os = "android"), allow(clippy::drop_non_drop))]
-            drop(video);
-            drop(mpv);
-        });
+        let_go(p);
     }
     if !switching {
         crate::android::player_awake(false);
@@ -683,6 +674,33 @@ pub fn close_page(reason: CloseReason) {
                 d.set_frame(Default::default());
             });
         }
+    });
+}
+
+/// Android is ending the activity with an episode open: the session closes the way Back
+/// closes it, so the closing tick's mark and resume point are kept. The screen calls are
+/// left out, since the activity they would reach is going.
+pub fn app_ending() {
+    OPENING.with(|o| o.set(o.get() + 1));
+    let Some(mut p) = PLAYER.with(|p| p.borrow_mut().take()) else { return };
+    crate::local::log(&format!(
+        "player: the app is ending, closing session {} at {:.1} s",
+        p.session.session, p.rules.position
+    ));
+    p.close(CloseReason::Stopped);
+    let_go(p);
+}
+
+/// Lets go of a closed page's mpv. MediaCodec and AudioTrack can take a while, so mpv goes
+/// on a thread of its own; the renderer first, since its render context belongs to the core.
+fn let_go(mut p: Player) {
+    let (video, mpv) = (p.video.take(), p.mpv.clone());
+    drop(p);
+    let _ = std::thread::Builder::new().name("mpv-close".into()).spawn(move || {
+        // Off the phone Video is a stub with nothing to let go of.
+        #[cfg_attr(not(target_os = "android"), allow(clippy::drop_non_drop))]
+        drop(video);
+        drop(mpv);
     });
 }
 
