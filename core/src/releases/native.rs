@@ -398,12 +398,14 @@ mod tests {
             vec![
                 Endpoint::new("feed", "rss", "https://a/?q={query}"),
                 Endpoint::new("indexer", "torznab", "https://b/?q={query}"),
+                Endpoint::new("search", "nyaa", "https://e/"),
                 Endpoint::new("api", "json", "https://c/?q={query}"),
                 Endpoint::new("anime", "tosho", "https://d/?q={query}"),
             ],
         );
         assert!(native.feed_is_rss("feed"));
         assert!(native.feed_is_rss("indexer"));
+        assert!(native.feed_is_rss("search"));
         assert!(!native.feed_is_rss("api"));
         assert!(!native.feed_is_rss("anime"));
         // One the core no longer has: nothing to read.

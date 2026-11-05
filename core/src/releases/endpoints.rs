@@ -32,9 +32,10 @@ pub fn needs_query(kind: &str) -> bool {
 }
 
 /// Whether what an endpoint of `kind` answers at its search address is an RSS feed, which
-/// `downloads::feed::read` and a qBittorrent RSS rule can read. json and tosho answer JSON.
+/// `downloads::feed::read` can read. json and tosho answer JSON; every other kind is read
+/// as RSS, the way `fetch_exact` falls through to RSS for a kind it has no branch for.
 pub fn answers_rss(kind: &str) -> bool {
-    matches!(kind, "nyaa" | "rss" | "torznab")
+    !matches!(kind, "json" | "tosho")
 }
 
 /// Why a json source cannot be added by hand: its field map only comes from a definition.
