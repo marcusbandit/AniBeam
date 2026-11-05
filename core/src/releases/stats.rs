@@ -26,7 +26,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::net::UdpSocket;
 
-use super::endpoints::{UrlParts, quote, split_url, unquote_plus};
+use super::endpoints::{quote, split_url, unquote_plus};
 use crate::contract::Release;
 use crate::downloads::replace::magnet_hash;
 use crate::net::{BoxFuture, Http, HttpRequest, Method};
@@ -383,19 +383,9 @@ fn parse_http_scrape(body: &[u8]) -> Result<HashMap<Hash, Stats>, BadBencode> {
     Ok(out)
 }
 
-/// A tracker as a log line names it: scheme and host only, since a passkey can sit in the
-/// userinfo, the path or the query.
-fn tracker_shown(parts: &UrlParts) -> String {
-    format!(
-        "{}://{}",
-        parts.scheme,
-        parts.hostname().unwrap_or_default()
-    )
-}
-
-/// A torrent link as a log line names it: scheme and host only, as for a tracker, since a
-/// passkey can sit in its path too. Read with the HTTP client's own parser, so a link it
-/// fetches with backslashes for slashes cannot pass its path off as the host.
+/// A torrent link as a log line names it: scheme and host only, since a passkey can sit
+/// in its userinfo, its path or its query. Read with the HTTP client's own parser, so a
+/// link it fetches with backslashes for slashes cannot pass its path off as the host.
 fn link_shown(url: &str) -> String {
     reqwest::Url::parse(url)
         .ok()
@@ -403,29 +393,32 @@ fn link_shown(url: &str) -> String {
         .unwrap_or_else(|| "a malformed link".to_string())
 }
 
-/// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching).
+/// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching). The announce is
+/// read with the HTTP client's own parser, so one written with backslashes for slashes is
+/// scraped at the path the client would announce to (#471).
 async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMap<Hash, Stats> {
-    let Ok(mut parts) = split_url(announce) else {
+    let Ok(mut url) = reqwest::Url::parse(announce) else {
         return HashMap::new();
     };
-    let path = if parts.path.is_empty() {
-        "/announce".to_string()
-    } else {
-        parts.path.clone()
-    };
-    if !matches!(parts.scheme.as_str(), "http" | "https") || !path.ends_with("/announce") {
+    if !matches!(url.scheme(), "http" | "https") {
         return HashMap::new();
     }
-    parts.path = format!("{}scrape", &path[..path.len() - "announce".len()]);
+    let path = match url.path() {
+        "" | "/" => "/announce".to_string(),
+        p => p.to_string(),
+    };
+    if !path.ends_with("/announce") {
+        return HashMap::new();
+    }
+    url.set_path(&format!("{}scrape", &path[..path.len() - "announce".len()]));
     // The announce's own query (a passkey, say) stays and the hashes join it with `&`.
-    let mut prefix = std::mem::take(&mut parts.query)
-        .trim_end_matches('&')
-        .to_string();
+    let mut prefix = url.query().unwrap_or("").trim_end_matches('&').to_string();
     if !prefix.is_empty() {
         prefix.push('&');
     }
-    parts.fragment.clear();
-    let shown = tracker_shown(&parts);
+    url.set_query(None);
+    url.set_fragment(None);
+    let shown = link_shown(announce);
     let mut out = HashMap::new();
     for batch in hashes.chunks(MAX_HTTP_BATCH) {
         let qs = batch
@@ -433,10 +426,9 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
             .map(|h| format!("info_hash={}", quote(h, "/")))
             .collect::<Vec<_>>()
             .join("&");
-        parts.query = format!("{prefix}{qs}");
         let request = HttpRequest {
             method: Method::Get,
-            url: parts.geturl(),
+            url: format!("{url}?{prefix}{qs}"),
             headers: vec![("User-Agent".to_string(), USER_AGENT.to_string())],
             body: None,
             timeout: Some(HTTP_SCRAPE_TIMEOUT),
@@ -1343,15 +1335,28 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_tracker_is_logged_by_scheme_and_host_only() {
-        for url in [
-            "https://t.example/0123abcd/announce",
-            "https://user:0123abcd@t.example:8443/announce?passkey=0123abcd",
-        ] {
-            let shown = tracker_shown(&split_url(url).unwrap());
-            assert_eq!(shown, "https://t.example");
-        }
+    /// The HTTP client reads a backslash in an http(s) URL as a slash, so the scrape is
+    /// built the way it reads the announce: `\0123abcd\announce` is the path
+    /// `/0123abcd/announce`, scraped at `/0123abcd/scrape` (#471).
+    #[tokio::test]
+    async fn a_backslash_announce_is_scraped_at_the_path_the_client_reads() {
+        let h = [1u8; 20];
+        let http = FakeHttp::new();
+        http.push(200, scrape_body(&h, 5, 1, 9));
+        let out = http_scrape(
+            http.as_ref(),
+            "https://t.example\\0123abcd\\announce?passkey=abc",
+            &[h],
+        )
+        .await;
+        let req = &http.requests()[0];
+        assert!(
+            req.url
+                .starts_with("https://t.example/0123abcd/scrape?passkey=abc&info_hash="),
+            "{}",
+            req.url
+        );
+        assert_eq!(out[&h], (5, 1, 9));
     }
 
     #[tokio::test]
