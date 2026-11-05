@@ -130,20 +130,30 @@ after an update, so it is written for the person using the app, the way Mojang w
 Minecraft's patch notes: a version, a few sections, one short line per change.
 
 - A change someone can notice gets one line, in the same PR. One that reaches both apps
-  gets a line in both files. Tests, CI, refactors and docs get none.
-- The line goes under the newest heading, in New, Changed, Fixed or Removed. Use only the
-  sections you need, in that order.
+  gets a line for each. Tests, CI, refactors and docs get none.
+- The line goes in a change file of its own, never into `CHANGELOG.md`: a PR on
+  `fix/160-seek-jump` adds `apps/linux/changes/160-seek-jump.md`, and
+  `apps/android/changes/160-seek-jump.md` for the phone. It holds the line under New,
+  Changed, Fixed or Removed, as a version does, with no heading. Use only the sections you
+  need, in that order. Every PR writing into the same spot of `CHANGELOG.md` made each merge
+  conflict with every other open PR (#504); separate files never do.
+- The apps build the change files in and show them under the newest heading, so a nightly's
+  What's new has them. When a version ships, `.github/changelog-fold.sh` folds them into
+  `CHANGELOG.md` under its heading and deletes them: the Release workflow does it for the
+  desktop, and the PR that bumps the phone's version runs `.github/changelog-fold.sh
+  apps/android` before it adds the new heading.
 - Say what the person sees. No why, no how, no issue numbers, no file names, no full stop.
   80 characters at most; most lines fit in 50.
 - The newest heading is the app's version, with the day: `## 2.1.1 · 2026-10-25`. Bumping
   the version adds a heading, and a heading for a new version bumps the version in the
-  same PR. Never add a line under a version that has shipped.
+  same PR. A line already in `CHANGELOG.md` can be fixed in place; a new one never goes
+  there.
 - A version can have a title to remember it by, between the number and the day:
   `## 2.5.0 · Quality of life · 2026-11-02`, 40 characters at most. Most versions have
   none. What's new and the update notice show it, and the release goes out named
   "AniBeam 2.5.0 · Quality of life"; a nightly of that version carries it too.
 
-Good:
+Good, as `apps/linux/changes/160-seek-jump.md`:
 
     ### New
     - Delete episodes from a series page
@@ -156,10 +166,12 @@ Not:
     - Fixed a bug where the seek bar would sometimes jump back after the user
       released it, caused by a stale position in the player (#160).
 
-`cargo test -p anibeam-core --test changelog` checks both files, and CI runs it on every
-pull request. CI also runs `.github/changelog-newest.sh` against the PR's base, which fails
-a line the PR adds under any heading but the newest; a merge of main into an old branch is
-the usual way one lands there. Run it by hand with `.github/changelog-newest.sh origin/main`.
+`cargo test -p anibeam-core --test changelog` checks both files and every change file, and
+that the fold writes them the way the apps show them; CI runs it on every pull request. CI
+also runs `.github/changelog-newest.sh` against the PR's base, which fails a line the PR
+writes into `CHANGELOG.md` under any heading but the newest, unless it was folded in from a
+change file the same PR deletes. Run it by hand with `.github/changelog-newest.sh
+origin/main`.
 The phone's `build.sh` refuses an APK whose newest heading is not its
 `versionName`.
 
@@ -196,7 +208,7 @@ kind, open an issue about the kind and leave the source out.
 
 - The test, clippy and fmt commands in `docs/build-from-source.md` under Working on it pass.
 - A visible change has a capture in the PR body, taken against a sandbox root.
-- A change someone can notice has its line in the app's `CHANGELOG.md`.
+- A change someone can notice has its line in a change file under the app's `changes/`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
 - Nothing in the diff names a download site. See Sources.
 
@@ -224,15 +236,16 @@ between two releases carries it as its base.
 - **Stable.** When the newest nightly has been run for a while and is good, run the Release
   workflow on main from the Actions tab. It promotes that nightly's commit, so what ships is
   a build people have already used: nightly `2.5.0-nightly.20261102.40` ships as `v2.5.0`.
-  It builds every platform, publishes the release once every file is on it, and moves main
-  to `2.6.0` with a new `CHANGELOG.md` heading. Then update the AUR package and the brew
+  It builds every platform, publishes the release once every file is on it, folds the
+  change files that shipped into `CHANGELOG.md` under `2.5.0`, and moves main to `2.6.0`
+  with a new heading. Then update the AUR package and the brew
   cask: `apps/linux/packaging/aur/publish.sh 2.5.0` and
   `apps/linux/packaging/brew/bump.sh 2.5.0`.
 - **Hotfix.** A shipped version that needs a fix gets a branch from its tag, only then:
   `git push origin v2.5.0^{commit}:refs/heads/release/2.5`. The fix lands on main first
   through the usual PR, then is cherry-picked onto the branch with `git cherry-pick -x` in
-  a PR against `release/2.5`, with its patch note under a new `2.5.1` heading and the
-  version bumped to match. Tag it to ship: `git tag v2.5.1 origin/release/2.5 && git push
+  a PR against `release/2.5`, with a new `2.5.1` heading and the version bumped to match;
+  the change file the cherry-pick brings shows under it. Tag it to ship: `git tag v2.5.1 origin/release/2.5 && git push
   origin v2.5.1`. The Release workflow refuses a tag that is not on its own branch. The
   branch is never merged back, since everything on it came from main.
 

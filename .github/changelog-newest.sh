@@ -8,15 +8,25 @@
 #   .github/changelog-newest.sh origin/main
 #
 # A line changed in place, a typo fixed in a shipped note, is an edit, not a new line, and
-# passes: within one hunk, as many added lines as were removed count as edits.
+# passes: within one hunk, as many added lines as were removed count as edits. So does a
+# line folded in from a change file the same diff removes (.github/changelog-fold.sh): the
+# phone's version bump folds the notes under the version that shipped, then adds its own.
+#
+# A pull request writes its notes in <app>/changes/, which always ship under the newest
+# version, so this only ever catches a line written straight into CHANGELOG.md.
 set -euo pipefail
 base="${1:-origin/main}"
 root="$(git rev-parse --show-toplevel)"
 status=0
 for file in apps/linux/CHANGELOG.md apps/android/CHANGELOG.md; do
   git -C "$root" cat-file -e "HEAD:$file" 2>/dev/null || continue
-  git -C "$root" diff -U0 --no-color "$base...HEAD" -- "$file" | awk -v file="$file" '
+  # The lines of the change files this diff removes, which may land in the file as they are.
+  moved="$(git -C "$root" diff -U0 --no-color "$base...HEAD" -- "${file%CHANGELOG.md}changes" |
+    awk '/^---/ { next } /^-- / { s = substr($0, 3); sub(/^ +/, "", s); sub(/[ \t\r]+$/, "", s); print s }')"
+  git -C "$root" diff -U0 --no-color "$base...HEAD" -- "$file" | MOVED="$moved" awk -v file="$file" '
     BEGIN {
+      count_moved = split(ENVIRON["MOVED"], m, "\n")
+      for (i = 1; i <= count_moved; i++) if (m[i] != "") folded[m[i]]++
       cmd = "git -C \"'"$root"'\" show \"HEAD:" file "\""
       while ((cmd | getline l) > 0) {
         text[++count] = l
@@ -33,7 +43,9 @@ for file in apps/linux/CHANGELOG.md apps/android/CHANGELOG.md; do
     }
     !hunk || /^-/ || /^\\/ { next }
     /^\+/ {
+      item = $0; sub(/^\+- */, "", item); sub(/[ \t\r]+$/, "", item)
       if (edits > 0) edits--
+      else if ($0 ~ /^\+- / && folded[item] > 0) folded[item]--
       else if (line >= from && $0 !~ /^\+[[:space:]]*$/) {
         for (i = line; i > 0; i--) if (text[i] ~ /^## /) break
         note = substr($0, 2); gsub(/%/, "%25", note); gsub(/\r/, "%0D", note)

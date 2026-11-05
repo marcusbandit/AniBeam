@@ -1,6 +1,6 @@
-//! What's new: the phone's CHANGELOG.md, built into the APK, read through the core's rules
-//! and laid out as the rows the page draws. build.sh refuses an APK whose newest notes are
-//! not its own version.
+//! What's new: the phone's CHANGELOG.md and the notes in changes/ that have not shipped,
+//! built into the APK, read through the core's rules and laid out as the rows the page
+//! draws. build.sh refuses an APK whose newest notes are not its own version.
 
 use anibeam_core::changelog::{self, Seen, WhatsNew};
 
@@ -8,12 +8,15 @@ use crate::NoteLine;
 
 const NOTES: &str = include_str!("../CHANGELOG.md");
 
+/// The notes in changes/ that have not shipped yet, which show under the newest heading.
+const CHANGES: &[&str] = include!(concat!(env!("OUT_DIR"), "/changes.rs"));
+
 /// This build's version, the one its notes are for.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// What's new for this build, given what the phone has read.
 pub fn view(seen: &Seen, used_before: bool) -> WhatsNew {
-    changelog::whats_new(&changelog::parse(NOTES), VERSION, seen, used_before)
+    changelog::whats_new(&changelog::parse_with(NOTES, CHANGES), VERSION, seen, used_before)
 }
 
 /// The page's rows, top to bottom: each version, its sections and their changes, and the

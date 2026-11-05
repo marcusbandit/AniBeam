@@ -122,7 +122,8 @@ scripts/build.sh cargo test -p anibeam-companion   # any cargo command, same lim
 
 The version lives in `android/AndroidManifest.xml` (`versionCode` and `versionName`).
 Bump both for every build that leaves the machine, and give the new version its heading in
-`CHANGELOG.md`, which the app shows as What's new; `build.sh` stops if `versionName`, the
+`CHANGELOG.md`, which the app shows as What's new. Run `.github/changelog-fold.sh
+apps/android` first, so the notes in `changes/` land under the version that shipped; `build.sh` stops if `versionName`, the
 `version` in `Cargo.toml` and the newest heading in `CHANGELOG.md` disagree.
 
 ## The emulator loop

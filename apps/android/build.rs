@@ -1,4 +1,5 @@
 fn main() {
+    changes();
     // The manifest owns the version; the app shows the build number from it in Settings.
     let manifest = std::fs::read_to_string("android/AndroidManifest.xml").expect("android/AndroidManifest.xml");
     let code = manifest
@@ -27,4 +28,24 @@ fn main() {
         println!("cargo:rerun-if-changed={}", dir.join(".tag").display());
     }
     slint_build::compile("ui/app.slint").unwrap();
+}
+
+/// The patch notes waiting in changes/ for the next version, built in beside CHANGELOG.md:
+/// What's new shows them under the newest heading until the release folds them into the
+/// file (#504). A slice of `include_str!`s in name order, in OUT_DIR/changes.rs.
+fn changes() {
+    println!("cargo:rerun-if-changed=changes");
+    let dir = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("changes");
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.extension().is_some_and(|x| x == "md") && p.file_name().is_some_and(|n| n != "README.md"))
+                .collect()
+        })
+        .unwrap_or_default();
+    files.sort();
+    let list: String = files.iter().map(|p| format!("include_str!({:?}),", p.display().to_string())).collect();
+    let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("changes.rs");
+    std::fs::write(out, format!("&[{list}]")).unwrap();
 }
