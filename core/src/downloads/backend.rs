@@ -146,20 +146,22 @@ impl DownloadsBackend {
     }
 
     /// Subscribes to (query, items): a feed and a rule saving into the
-    /// show's folder.
+    /// show's folder. `save_path` is a library show's own folder; anirss
+    /// takes none, so the caller moves its rule there after.
     pub async fn subscribe(
         &self,
         query: &str,
         endpoint: &str,
         items: &[Release],
         name: Option<&str>,
+        save_path: Option<&str>,
     ) -> Result<Subscribed, CoreError> {
         match self {
             DownloadsBackend::Anirss(client) => {
                 client.subscribe(query, endpoint, items, name).await
             }
             DownloadsBackend::Native(native, core) => {
-                on_qbt::subscribe(core, native, query, endpoint, items, name).await
+                on_qbt::subscribe(core, native, query, endpoint, items, name, save_path).await
             }
         }
     }
