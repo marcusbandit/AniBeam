@@ -48,6 +48,8 @@ type Cache = HashMap<String, (Vec<IpAddr>, Instant)>;
 #[derive(Clone)]
 pub struct Doh {
     client: reqwest::Client,
+    /// `RESOLVERS`, or a test's own.
+    resolvers: Arc<Vec<String>>,
     cache: Arc<Mutex<Cache>>,
     /// Until when no resolver is asked: set when none answered, so a network that drops
     /// them costs one wait, not one per host.
@@ -57,8 +59,13 @@ pub struct Doh {
 impl Doh {
     /// `client` asks the resolvers; it must not use this resolver itself.
     pub fn new(client: reqwest::Client) -> Doh {
+        Doh::with_resolvers(client, RESOLVERS.iter().map(|r| r.to_string()).collect())
+    }
+
+    fn with_resolvers(client: reqwest::Client, resolvers: Vec<String>) -> Doh {
         Doh {
             client,
+            resolvers: Arc::new(resolvers),
             cache: Arc::new(Mutex::new(HashMap::new())),
             down_until: Arc::new(Mutex::new(None)),
         }
@@ -99,7 +106,7 @@ impl Doh {
             return None;
         }
         let mut answered = false;
-        for resolver in RESOLVERS {
+        for resolver in self.resolvers.iter().map(String::as_str) {
             let (v4, v6) = tokio::join!(
                 self.ask(resolver, name, "A"),
                 self.ask(resolver, name, "AAAA")
@@ -161,9 +168,16 @@ impl Resolve for Doh {
         let doh = self.clone();
         let host = name.as_str().to_string();
         Box::pin(async move {
-            let ips = match doh.lookup(&host).await {
+            // A home-network name never goes to a public resolver: it has no answer for it,
+            // and the name would leave the network (#251).
+            let found = if is_home_name(&host) {
+                None
+            } else {
+                doh.lookup(&host).await
+            };
+            let ips = match found {
                 Some(ips) => ips,
-                // No resolver answered: the system's DNS, as before.
+                // A home name, or no resolver answered: the system's DNS, as before.
                 None => tokio::net::lookup_host((host.as_str(), 0))
                     .await?
                     .map(|a| a.ip())
@@ -197,6 +211,36 @@ mod tests {
         ] {
             assert!(is_home_name(name), "{name} should be a home name");
         }
+    }
+
+    /// A resolver that takes connections and never answers, counting them.
+    async fn silent_resolver() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/dns-query", listener.local_addr().unwrap());
+        let asked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = asked.clone();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                drop(socket);
+            }
+        });
+        (url, asked)
+    }
+
+    #[tokio::test]
+    async fn the_client_resolves_a_home_name_without_the_public_resolvers() {
+        let (url, asked) = silent_resolver().await;
+        let doh = Doh::with_resolvers(reqwest::Client::new(), vec![url]);
+
+        let name: Name = "localhost".parse().unwrap();
+        let addrs: Vec<SocketAddr> = doh.resolve(name).await.unwrap().collect();
+        assert!(addrs.iter().all(|a| a.ip().is_loopback()), "{addrs:?}");
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        // A public name does go to them.
+        assert!(doh.lookup("public.example.com").await.is_none());
+        assert!(asked.load(std::sync::atomic::Ordering::SeqCst) > 0);
     }
 
     #[test]
