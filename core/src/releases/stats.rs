@@ -383,9 +383,10 @@ fn parse_http_scrape(body: &[u8]) -> Result<HashMap<Hash, Stats>, BadBencode> {
     Ok(out)
 }
 
-/// The scrape path for an announce path, by BEP 48: the last segment has to start with
-/// `announce`, which becomes `scrape`, so `/announce` is `/scrape` and `/x/announce.php`
-/// is `/x/scrape.php` (#494). None when the last segment does not start with it.
+/// The scrape path for an announce path, by BEP 48: the text after the last `/` has to
+/// start with `announce`, which becomes `scrape`, so `/announce` is `/scrape` and
+/// `/x/announce.php` is `/x/scrape.php` (#494). Matched as written, as BEP 48 and
+/// libtorrent do. None when the last segment does not start with it.
 fn scrape_path(path: &str) -> Option<String> {
     let (dir, last) = path.rsplit_once('/')?;
     let rest = last.strip_prefix("announce")?;
@@ -410,12 +411,12 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
             .next()
             .unwrap_or("")
             .ends_with(['/', '\\']);
-    let path = if bare {
-        "/announce".to_string()
+    let scrape = if bare {
+        Some("/scrape".to_string())
     } else {
-        url.path().to_string()
+        scrape_path(url.path())
     };
-    let Some(scrape) = scrape_path(&path) else {
+    let Some(scrape) = scrape else {
         return HashMap::new();
     };
     url.set_path(&scrape);
@@ -448,9 +449,11 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
                 tracing::warn!("scrape {shown}: HTTP {}", r.status);
                 continue;
             }
+            // A tracker that did not answer at all, a scrape page that hangs say, will not
+            // answer the next batch either, so it costs one timeout, not one a batch.
             Err(e) => {
                 tracing::warn!("scrape {shown}: {}", e.message);
-                continue;
+                break;
             }
         };
         match parse_http_scrape(&body) {
@@ -1420,23 +1423,32 @@ mod tests {
         assert_eq!(out[&h], (5, 1, 9));
     }
 
-    /// `announce` has to start the last segment: one earlier in the path, or later in
-    /// the segment, is no announce to convert.
-    #[tokio::test]
-    async fn an_announce_not_starting_the_last_segment_is_not_scraped() {
-        let http = FakeHttp::new();
-        for odd in [
-            "http://tracker.example/announce/x",
-            "http://tracker.example/my-announce",
+    /// BEP 48's conversion, on the path alone: `announce` has to start the last segment.
+    #[test]
+    fn scrape_path_swaps_announce_at_the_start_of_the_last_segment() {
+        for (announce, scrape) in [
+            ("/announce", Some("/scrape")),
+            ("/x/announce.php", Some("/x/scrape.php")),
+            ("/pk/announce", Some("/pk/scrape")),
+            ("/announce/x", None),
+            ("/my-announce", None),
+            ("/other", None),
+            ("", None),
         ] {
-            assert!(
-                http_scrape(http.as_ref(), odd, &[[1u8; 20]])
-                    .await
-                    .is_empty(),
-                "{odd}"
-            );
+            assert_eq!(scrape_path(announce).as_deref(), scrape, "{announce}");
         }
-        assert!(http.requests().is_empty());
+    }
+
+    /// A tracker that does not answer at all is asked once, not once a batch.
+    #[tokio::test]
+    async fn a_tracker_that_does_not_answer_is_not_asked_for_the_next_batch() {
+        let hashes: Vec<Hash> = (0..60u8).map(|i| [i; 20]).collect();
+        let http = FakeHttp::new();
+        http.fail_next("timed out");
+        http.push(200, scrape_body(&hashes[55], 4, 3, 2));
+        let out = http_scrape(http.as_ref(), "http://t.example/announce.php", &hashes).await;
+        assert!(out.is_empty());
+        assert_eq!(http.requests().len(), 1);
     }
 
     #[tokio::test]
@@ -1451,7 +1463,12 @@ mod tests {
             .await
             .is_empty()
         );
-        for odd in ["http://tracker.example/other", "http://tracker.example/"] {
+        for odd in [
+            "http://tracker.example/other",
+            "http://tracker.example/",
+            "http://tracker.example/announce/x",
+            "http://tracker.example/my-announce",
+        ] {
             assert!(
                 http_scrape(http.as_ref(), odd, &[[1u8; 20]])
                     .await
