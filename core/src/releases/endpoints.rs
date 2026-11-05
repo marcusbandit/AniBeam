@@ -50,7 +50,7 @@ fn seconds(s: f64) -> Duration {
 
 /// Endpoint checks from anirss `load_endpoints`, minus the parts that need the whole list
 /// (duplicate names) or the on-demand fields. Values are judged after trimming, like
-/// anirss does before it builds the `Endpoint`.
+/// anirss does before it builds the `Endpoint`. A phone source gets the same (#260).
 pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     let (name, kind, url) = (name.trim(), kind.trim(), url.trim());
     if name.is_empty() {
@@ -65,6 +65,15 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
             format!("{name:?}: use only letters, digits, '.', '_', '-'"),
         ));
     }
+    check_shape(name, kind, url)
+}
+
+/// The part of `validate` a source saved earlier is held to before it is searched: a known
+/// kind other than json (its field map only comes from a repo), an address, and `{query}`
+/// exactly where the kind wants it. A kind that builds its
+/// own search takes none, or the search would go in twice.
+pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
+    let (name, kind, url) = (name.trim(), kind.trim(), url.trim());
     if kind == "json" {
         return Err(CoreError::invalid(
             "endpoint kind",
@@ -95,6 +104,12 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
         return Err(CoreError::invalid(
             "endpoint url",
             format!("{name:?}: {kind} url must contain a {{query}} placeholder"),
+        ));
+    }
+    if !needs_query(kind) && url.contains("{query}") {
+        return Err(CoreError::invalid(
+            "endpoint url",
+            format!("{name:?}: a {kind} url adds the search itself, so it takes no {{query}}"),
         ));
     }
     Ok(())
@@ -708,13 +723,15 @@ pub(crate) mod tests {
     #[test]
     fn validate_rejects_bad_endpoints() {
         for (name, kind, url) in [
-            ("", "nyaa", "https://x/"),          // no name
-            ("a", "html", "https://x/"),         // bad kind
-            ("a", "rss", "https://x/rss"),       // no {query}
-            ("a", "torznab", "http://x/api"),    // no {query}
-            ("a", "tosho", "https://x/json"),    // no {query}
-            ("a", "nyaa", ""),                   // no url
-            ("bad name)", "nyaa", "https://x/"), // bad name characters
+            ("", "nyaa", "https://x/"),             // no name
+            ("a", "html", "https://x/"),            // bad kind
+            ("a", "rss", "https://x/rss"),          // no {query}
+            ("a", "torznab", "http://x/api"),       // no {query}
+            ("a", "tosho", "https://x/json"),       // no {query}
+            ("a", "nyaa", ""),                      // no url
+            ("bad name)", "nyaa", "https://x/"),    // bad name characters
+            ("a", "nyaa", "https://x/?q={query}"),  // nyaa adds its own query
+            ("a", "Tosho", "https://x/?q={query}"), // kinds are lower case
         ] {
             let err = validate(name, kind, url).unwrap_err();
             assert!(

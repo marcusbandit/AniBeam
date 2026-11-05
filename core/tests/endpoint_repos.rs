@@ -238,6 +238,92 @@ fn a_phone_source_that_searches_by_address_needs_the_query() {
 }
 
 #[test]
+fn a_phone_source_gets_the_checks_an_endpoint_gets() {
+    let (_dir, core, _) = common::open_core();
+    let source = |kind: &str, url: &str| anibeam_core::PhoneSource {
+        name: "feed".into(),
+        kind: kind.into(),
+        url: url.into(),
+        enabled: true,
+    };
+    let refused = |s: anibeam_core::PhoneSource| {
+        core.call(Call::SetPhoneSources { sources: vec![s] })
+            .unwrap_err()
+    };
+    // A kind the core does not know, or not as written.
+    for kind in ["html", "Tosho"] {
+        let err = refused(source(kind, "https://feed.example/json?q={query}"));
+        assert!(
+            matches!(&err, CoreError::Invalid { message, .. } if message.contains("kind")),
+            "{kind}: {err:?}"
+        );
+    }
+    // nyaa adds the search itself: a {query} in its address would be a second one.
+    let err = refused(source("nyaa", "https://feed.example/?q={query}"));
+    assert!(
+        matches!(&err, CoreError::Invalid { message, .. } if message.contains("{query}")),
+        "{err:?}"
+    );
+    // The name follows the endpoint rule too.
+    let mut spaced = source("rss", "https://feed.example/rss?q={query}");
+    spaced.name = "my feed)".into();
+    assert!(matches!(refused(spaced), CoreError::Invalid { .. }));
+
+    // Spaces around the kind are trimmed off, and it is saved as the kind it is.
+    let Reply::PhoneSources { sources } = core
+        .call(Call::SetPhoneSources {
+            sources: vec![source(" tosho ", " https://feed.example/json?q={query} ")],
+        })
+        .unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(sources[0].kind, "tosho");
+    assert_eq!(sources[0].url, "https://feed.example/json?q={query}");
+}
+
+#[test]
+fn a_source_saved_before_the_checks_is_kept_but_not_searched() {
+    let (dir, core, _) = common::open_core();
+    let source = |name: &str, kind: &str, url: &str| anibeam_core::PhoneSource {
+        name: name.into(),
+        kind: kind.into(),
+        url: url.into(),
+        enabled: true,
+    };
+    let saved = [
+        source("fixed", "tosho", "https://feed.example/json"),
+        source("unknown", "html", "https://feed.example/?q={query}"),
+        source("twice", "nyaa", "https://feed.example/?q={query}"),
+        source("mapless", "json", "https://feed.example/api?q={query}"),
+        source("good", "rss", "https://feed.example/rss?q={query}"),
+    ];
+    let config = anibeam_core::CorePaths::under(dir.path()).config_dir;
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        std::path::Path::new(&config).join("phone-sources.json"),
+        serde_json::to_vec(&saved).unwrap(),
+    )
+    .unwrap();
+    // Still listed, so each can be removed.
+    let Reply::PhoneSources { sources } = core.call(Call::PhoneSources).unwrap() else {
+        panic!()
+    };
+    assert_eq!(sources.len(), 5);
+    // Only the one that searches the way its kind should is tried.
+    let Reply::PhoneSources { sources } = core.call(Call::PhoneSearchSources).unwrap() else {
+        panic!()
+    };
+    let names: Vec<&str> = sources.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["good"]);
+    // One can still be switched off.
+    let mut off = saved[0].clone();
+    off.enabled = false;
+    core.call(Call::SetPhoneSources { sources: vec![off] })
+        .unwrap();
+}
+
+#[test]
 fn a_tosho_source_saved_without_the_query_does_not_block_removing_others() {
     let (dir, core, _) = common::open_core();
     let source = |name: &str, kind: &str, url: &str| anibeam_core::PhoneSource {

@@ -43,11 +43,26 @@ pub fn sources(core: &Core) -> Vec<PhoneSource> {
 }
 
 pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
-    // A row saved before the {query} rule covered tosho (#248) stays as it is, so the phone
-    // can still remove the other sources around it.
+    // A row saved before a rule covered it (#248, #260) stays as it is, so the phone can
+    // still remove the other sources around it; search leaves it out (`searched`).
     let saved = self::sources(core);
-    for s in &sources {
-        if s.name.trim().is_empty() {
+    let mut checked = Vec::with_capacity(sources.len());
+    for s in sources {
+        // Switching a saved row on or off is not a change to what it searches.
+        if saved
+            .iter()
+            .any(|o| o.name == s.name && o.kind == s.kind && o.url == s.url)
+        {
+            checked.push(s);
+            continue;
+        }
+        let s = PhoneSource {
+            name: s.name.trim().to_string(),
+            kind: s.kind.trim().to_string(),
+            url: s.url.trim().to_string(),
+            enabled: s.enabled,
+        };
+        if s.name.is_empty() {
             return Err(CoreError::invalid("sources", "a source needs a name"));
         }
         if !(s.url.starts_with("http://") || s.url.starts_with("https://")) {
@@ -59,29 +74,10 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
                 ),
             ));
         }
-        if s.kind == "json" {
-            return Err(CoreError::invalid(
-                "sources",
-                format!(
-                    "{}: {}",
-                    s.name,
-                    crate::releases::endpoints::JSON_NEEDS_REPO
-                ),
-            ));
-        }
-        if crate::releases::endpoints::needs_query(&s.kind)
-            && !s.url.contains("{query}")
-            && !saved.contains(s)
-        {
-            return Err(CoreError::invalid(
-                "sources",
-                format!(
-                    "{}: the address needs {{query}} where the search goes",
-                    s.name
-                ),
-            ));
-        }
+        crate::releases::endpoints::validate(&s.name, &s.kind, &s.url)?;
+        checked.push(s);
     }
+    let sources = checked;
     let path = sources_path(core);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| CoreError::internal(e.to_string()))?;
@@ -102,10 +98,13 @@ fn searched(core: &Core) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
         if let Some(at) = installed.iter().position(|r| r.endpoint.name == s.name) {
             let r = installed.remove(at);
             out.push((installed_source(&r), r.endpoint));
-        } else {
-            let endpoint = crate::releases::Endpoint::new(&s.name, &s.kind, &s.url);
+        } else if crate::releases::endpoints::check_shape(&s.name, &s.kind, &s.url).is_ok() {
+            let endpoint =
+                crate::releases::Endpoint::new(s.name.trim(), s.kind.trim(), s.url.trim());
             out.push((s, endpoint));
         }
+        // A source saved before the checks that would now refuse it searches one fixed
+        // page or adds a second query: it is left out.
     }
     for r in installed {
         out.push((installed_source(&r), r.endpoint));
