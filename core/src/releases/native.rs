@@ -119,6 +119,13 @@ impl Native {
             .ok_or_else(|| CoreError::invalid("endpoint", gone(name)))
     }
 
+    /// Whether `endpoint`'s feed is RSS, so reading it again after a search can date the
+    /// releases. False for a JSON answer and for an endpoint the core no longer has.
+    pub fn feed_is_rss(&self, endpoint: &str) -> bool {
+        self.endpoint(Some(endpoint))
+            .is_ok_and(|e| endpoints::answers_rss(&e.kind))
+    }
+
     /// The endpoints as the downloads page lists them, keys masked.
     pub fn list(&self) -> Vec<SearchEndpoint> {
         self.endpoints
@@ -397,6 +404,27 @@ mod tests {
             CoreError::Service { service, code, .. } => (service, code),
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn only_an_endpoint_whose_feed_is_rss_is_read_again_for_dates() {
+        let native = Native::new(
+            FakeHttp::new(),
+            vec![
+                Endpoint::new("feed", "rss", "https://a/?q={query}"),
+                Endpoint::new("indexer", "torznab", "https://b/?q={query}"),
+                Endpoint::new("search", "nyaa", "https://e/"),
+                Endpoint::new("api", "json", "https://c/?q={query}"),
+                Endpoint::new("anime", "tosho", "https://d/?q={query}"),
+            ],
+        );
+        assert!(native.feed_is_rss("feed"));
+        assert!(native.feed_is_rss("indexer"));
+        assert!(native.feed_is_rss("search"));
+        assert!(!native.feed_is_rss("api"));
+        assert!(!native.feed_is_rss("anime"));
+        // One the core no longer has: nothing to read.
+        assert!(!native.feed_is_rss("gone"));
     }
 
     #[tokio::test]

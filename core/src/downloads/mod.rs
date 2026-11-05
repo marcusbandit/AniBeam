@@ -1219,8 +1219,9 @@ pub(crate) fn annotate(
 /// this query reads), and the read is cheap: a plain RSS endpoint answers
 /// at once and Jackett serves a repeat query from its cache. anirss's search
 /// counts as a request to the feed's host, so the read waits its pace after
-/// it rather than going back to back. Not a job; a failure is a debug line
-/// and the page shows no dates.
+/// it rather than going back to back. On the native engine an endpoint
+/// whose search answers JSON is not read again: there is no feed to parse.
+/// Not a job; a failure is a debug line and the page shows no dates.
 fn enrich(
     core: &Arc<Core>,
     backend: DownloadsBackend,
@@ -1228,6 +1229,13 @@ fn enrich(
     endpoint: &str,
     items: &[Release],
 ) {
+    // An endpoint whose kind answers JSON there (`endpoints::answers_rss`) could never be
+    // parsed by this read, so the native engine skips it rather than spend a request.
+    if let DownloadsBackend::Native(native, _) = &backend
+        && !native.feed_is_rss(endpoint)
+    {
+        return;
+    }
     let owner = core.clone();
     let (query, endpoint, items) = (query.to_string(), endpoint.to_string(), items.to_vec());
     // The native engine's search booked its host through the paced client already.
@@ -1365,8 +1373,10 @@ pub fn subscribe(
             let mut result = backend
                 .subscribe(&query, &endpoint, &items, name.as_deref(), home.as_deref())
                 .await?;
-            // The rule exists by now: a failed move leaves it saving where anirss put it, and
-            // the job says so rather than failing over a subscription that was made.
+            // A current anirss wrote the rule into `home` already, and the move is a no-op. An
+            // older one ignored it: the rule exists by now, a failed move leaves it saving
+            // where anirss put it, and the job says so rather than failing over a
+            // subscription that was made.
             let mut unmoved = String::new();
             if let Some(home) = home.as_deref()
                 && let Err(e) = rehome_rule(&owner, &mut result, home).await
@@ -1417,8 +1427,9 @@ fn describe_terms(terms: &rewire::LocalTerms) -> String {
 }
 
 /// Saves the new rule's episodes into `home`, the library show's folder,
-/// when the rule was written to save elsewhere: anirss takes no save path
-/// for a subscription and puts it under its own root plus the name (#267).
+/// when the rule was written to save elsewhere: an anirss older than the
+/// `subscription_save_path` feature takes no save path for a subscription
+/// and puts it under its own root plus the name (#267, #465).
 async fn rehome_rule(
     core: &Arc<Core>,
     result: &mut Subscribed,
