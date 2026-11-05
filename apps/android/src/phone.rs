@@ -15,7 +15,9 @@ use crate::{CalDay, CalItem, EpisodeLine, Hero, SeriesHead, Tile};
 const SHELF: usize = 12;
 
 pub fn secs(t: SystemTime) -> i64 {
-    t.duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+    t.duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// The core's cube letters (`library::cards::cubes`) as Theme.cube's codes.
@@ -37,7 +39,9 @@ fn cube_code(c: char) -> i32 {
 
 /// "6 Oct", with the year when it is not this one: "6 Oct 2023".
 fn date(at: i64, now: i64) -> String {
-    let year = |t: i64| chrono::DateTime::from_timestamp(t, 0).map(|d| d.with_timezone(&chrono::Local).year());
+    let year = |t: i64| {
+        chrono::DateTime::from_timestamp(t, 0).map(|d| d.with_timezone(&chrono::Local).year())
+    };
     if year(at) == year(now) {
         format::day_month(at)
     } else {
@@ -67,7 +71,9 @@ fn tile(card: &SeriesCard, art: &Art) -> Tile {
 }
 
 fn next_code(card: &SeriesCard) -> Option<String> {
-    card.next_airing.as_ref().map(|a| format::episode_code(a.season, a.episode))
+    card.next_airing
+        .as_ref()
+        .map(|a| format::episode_code(a.season, a.episode))
 }
 
 fn on_phone(card: &SeriesCard) -> String {
@@ -94,8 +100,15 @@ fn library_tile(card: &SeriesCard, art: &Art, now: i64) -> Tile {
     t
 }
 
-pub fn library<'a>(cards: impl IntoIterator<Item = &'a SeriesCard>, art: &Art, now: i64) -> Vec<Tile> {
-    cards.into_iter().map(|c| library_tile(c, art, now)).collect()
+pub fn library<'a>(
+    cards: impl IntoIterator<Item = &'a SeriesCard>,
+    art: &Art,
+    now: i64,
+) -> Vec<Tile> {
+    cards
+        .into_iter()
+        .map(|c| library_tile(c, art, now))
+        .collect()
 }
 
 /// Home, in one read of the cards: the hero, the recently watched and recently downloaded
@@ -124,11 +137,21 @@ pub fn home(cards: &[SeriesCard], art: &Art, now: i64) -> HomeView {
         .filter(|(_, at)| *at > now)
         .collect();
 
-    let hero = upcoming.iter().min_by_key(|(_, at)| *at).map(|(c, at)| hero(c, *at, art, now)).unwrap_or_default();
-    let hero_at = upcoming.iter().min_by_key(|(_, at)| *at).map(|(c, at)| (c.id, *at));
+    let hero = upcoming
+        .iter()
+        .min_by_key(|(_, at)| *at)
+        .map(|(c, at)| hero(c, *at, art, now))
+        .unwrap_or_default();
+    let hero_at = upcoming
+        .iter()
+        .min_by_key(|(_, at)| *at)
+        .map(|(c, at)| (c.id, *at));
     let (calendar, coming) = calendar(cards, art, now, hero_at);
 
-    let mut watched: Vec<&SeriesCard> = cards.iter().filter(|c| c.last_viewed_at.is_some()).collect();
+    let mut watched: Vec<&SeriesCard> = cards
+        .iter()
+        .filter(|c| c.last_viewed_at.is_some())
+        .collect();
     watched.sort_by_key(|c| std::cmp::Reverse(c.last_viewed_at.map(secs)));
     let watched = watched
         .into_iter()
@@ -138,19 +161,28 @@ pub fn home(cards: &[SeriesCard], art: &Art, now: i64) -> HomeView {
             if let Some(code) = &c.code {
                 t.badge = code.clone().into();
             }
-            t.ledger = c.last_viewed_at.map(|at| format::ago(now - secs(at))).unwrap_or_default().into();
+            t.ledger = c
+                .last_viewed_at
+                .map(|at| format::ago(now - secs(at)))
+                .unwrap_or_default()
+                .into();
             t
         })
         .collect();
 
-    let mut downloaded: Vec<&SeriesCard> = cards.iter().filter(|c| c.downloaded_at.is_some()).collect();
+    let mut downloaded: Vec<&SeriesCard> =
+        cards.iter().filter(|c| c.downloaded_at.is_some()).collect();
     downloaded.sort_by_key(|c| std::cmp::Reverse(c.downloaded_at.map(secs)));
     let downloaded = downloaded
         .into_iter()
         .take(SHELF)
         .map(|c| {
             let mut t = tile(c, art);
-            t.ledger = c.downloaded_at.map(|at| format::ago(now - secs(at))).unwrap_or_default().into();
+            t.ledger = c
+                .downloaded_at
+                .map(|at| format::ago(now - secs(at)))
+                .unwrap_or_default()
+                .into();
             if let Some(d) = c.downloading.first() {
                 t.flag = format!("{}%", (d.progress * 100.0).round() as i64).into();
             }
@@ -158,7 +190,13 @@ pub fn home(cards: &[SeriesCard], art: &Art, now: i64) -> HomeView {
         })
         .collect();
 
-    HomeView { hero, watched, downloaded, calendar, coming }
+    HomeView {
+        hero,
+        watched,
+        downloaded,
+        calendar,
+        coming,
+    }
 }
 
 /// "Episode 5", or "Episodes 5 to 7" for a drop of several at once.
@@ -175,10 +213,17 @@ fn episodes(drop: &WeekDrop) -> String {
 
 /// Every day from two back to a week ahead with what airs on it, in air order, and the
 /// next few still to air across all of them.
-fn calendar(cards: &[SeriesCard], art: &Art, now: i64, hero: Option<(u64, i64)>) -> (Vec<(CalDay, Vec<CalItem>)>, Vec<CalItem>) {
+fn calendar(
+    cards: &[SeriesCard],
+    art: &Art,
+    now: i64,
+    hero: Option<(u64, i64)>,
+) -> (Vec<(CalDay, Vec<CalItem>)>, Vec<CalItem>) {
     let today = calendar::today(now);
-    let mut drops: Vec<(&SeriesCard, &WeekDrop, i64)> =
-        cards.iter().flat_map(|c| c.week_airings.iter().map(move |d| (c, d, secs(d.at)))).collect();
+    let mut drops: Vec<(&SeriesCard, &WeekDrop, i64)> = cards
+        .iter()
+        .flat_map(|c| c.week_airings.iter().map(move |d| (c, d, secs(d.at))))
+        .collect();
     drops.sort_by_key(|(c, _, at)| (*at, c.id));
     let next_at = drops.iter().map(|(_, _, at)| *at).find(|at| *at > now);
 
@@ -204,7 +249,12 @@ fn calendar(cards: &[SeriesCard], art: &Art, now: i64, hero: Option<(u64, i64)>)
             initials: format::initials(title(c)).into(),
             time: format::clock(at).into(),
             // Home's list spans days, so its rows say which.
-            episode: if with_day { format!("{}, {}", episodes(d), day_word(calendar::today(at), today)) } else { episodes(d) }.into(),
+            episode: if with_day {
+                format!("{}, {}", episodes(d), day_word(calendar::today(at), today))
+            } else {
+                episodes(d)
+            }
+            .into(),
             when: when.into(),
             state,
             soonest: Some(at) == next_at,
@@ -212,10 +262,18 @@ fn calendar(cards: &[SeriesCard], art: &Art, now: i64, hero: Option<(u64, i64)>)
         }
     };
 
-    let timed: Vec<(i64, CalItem)> = drops.iter().map(|(c, d, at)| (*at, item(c, d, *at, false))).collect();
+    let timed: Vec<(i64, CalItem)> = drops
+        .iter()
+        .map(|(c, d, at)| (*at, item(c, d, *at, false)))
+        .collect();
     let days = days_of(timed, now);
     // Home's hero is the next to air; the list leaves it out rather than say it twice.
-    let coming = drops.iter().filter(|(c, _, at)| *at > now && Some((c.id, *at)) != hero).take(COMING).map(|(c, d, at)| item(c, d, *at, true)).collect();
+    let coming = drops
+        .iter()
+        .filter(|(c, _, at)| *at > now && Some((c.id, *at)) != hero)
+        .take(COMING)
+        .map(|(c, d, at)| item(c, d, *at, true))
+        .collect();
     (days, coming)
 }
 
@@ -227,9 +285,15 @@ pub fn days_of(timed: Vec<(i64, CalItem)>, now: i64) -> Vec<(CalDay, Vec<CalItem
     let mut days: Vec<(CalDay, Vec<CalItem>)> = (0..CAL_DAYS)
         .map(|i| {
             let date = first + Days::new(i as u64);
-            let (start, end) = (calendar::midnight(date), calendar::midnight(date + Days::new(1)));
-            let items: Vec<CalItem> =
-                timed.iter().filter(|(at, _)| *at >= start && *at < end).map(|(_, item)| item.clone()).collect();
+            let (start, end) = (
+                calendar::midnight(date),
+                calendar::midnight(date + Days::new(1)),
+            );
+            let items: Vec<CalItem> = timed
+                .iter()
+                .filter(|(at, _)| *at >= start && *at < end)
+                .map(|(_, item)| item.clone())
+                .collect();
             let day = CalDay {
                 weekday: date.format("%a").to_string().into(),
                 date: date.day().to_string().into(),
@@ -273,7 +337,12 @@ fn hero(card: &SeriesCard, at: i64, art: &Art, now: i64) -> Hero {
         poster,
         has_poster,
         initials: format::initials(title(card)).into(),
-        episode: format!("{}  {}", next_code(card).unwrap_or_default(), format::when(at, now)).into(),
+        episode: format!(
+            "{}  {}",
+            next_code(card).unwrap_or_default(),
+            format::when(at, now)
+        )
+        .into(),
         countdown: format::countdown(at - now).into(),
         band: posters::band(tone),
         ink: posters::ink(tone),
@@ -288,12 +357,16 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
     let tone = art.tone(card.id);
     let movie = card.kind == SeriesKind::Movie;
 
-    let alt = [&card.titles.english, &card.titles.romaji, &card.titles.native]
-        .into_iter()
-        .flatten()
-        .find(|t| t.as_str() != card.title)
-        .cloned()
-        .unwrap_or_default();
+    let alt = [
+        &card.titles.english,
+        &card.titles.romaji,
+        &card.titles.native,
+    ]
+    .into_iter()
+    .flatten()
+    .find(|t| t.as_str() != card.title)
+    .cloned()
+    .unwrap_or_default();
     let mut facts: Vec<String> = Vec::new();
     if let Some(f) = &card.format {
         facts.push(f.clone());
@@ -302,24 +375,45 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         facts.push(s.clone());
     }
     if let Some(total) = card.total_episodes {
-        facts.push(format!("{total}{} episodes", if card.total_is_estimate { "?" } else { "" }));
+        facts.push(format!(
+            "{total}{} episodes",
+            if card.total_is_estimate { "?" } else { "" }
+        ));
     }
     let next = card
         .next_airing
         .as_ref()
         .filter(|a| secs(a.at) > now)
-        .map(|a| format!("Episode {} airs in {}", a.episode, format::countdown_full(secs(a.at) - now)))
+        .map(|a| {
+            format!(
+                "Episode {} airs in {}",
+                a.episode,
+                format::countdown_full(secs(a.at) - now)
+            )
+        })
         .unwrap_or_default();
     let watched = detail.progress.watched.unwrap_or(0);
     let progress_text = match (movie, detail.progress.total) {
-        (true, _) => if watched > 0 { "Watched" } else { "Not watched yet" }.to_string(),
+        (true, _) => if watched > 0 {
+            "Watched"
+        } else {
+            "Not watched yet"
+        }
+        .to_string(),
         (false, Some(total)) if total > 0 => {
-            format!("{} of {total} watched, {} on this phone", watched.min(total), detail.progress.on_disk)
+            format!(
+                "{} of {total} watched, {} on this phone",
+                watched.min(total),
+                detail.progress.on_disk
+            )
         }
         _ => format!("{} on this phone", detail.progress.on_disk),
     };
     // Play opens the next one up, the desktop hero's rule, when it is whole on the phone.
-    let play = detail.episodes.iter().find(|e| e.next_up && e.downloading.is_none());
+    let play = detail
+        .episodes
+        .iter()
+        .find(|e| e.next_up && e.downloading.is_none());
     let head = SeriesHead {
         id: id(card.id),
         title: card.title.clone().into(),
@@ -338,8 +432,16 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         play_remote: false,
         play_label: play
             .map(|e| {
-                let what = if movie { "the film".to_string() } else { format!("episode {}", e.number) };
-                if e.resume.is_some() { format!("Resume {what}") } else { format!("Play {what}") }
+                let what = if movie {
+                    "the film".to_string()
+                } else {
+                    format!("episode {}", e.number)
+                };
+                if e.resume.is_some() {
+                    format!("Resume {what}")
+                } else {
+                    format!("Play {what}")
+                }
             })
             .unwrap_or_default()
             .into(),
@@ -357,17 +459,31 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         } else {
             String::new()
         };
-        let title = e.title.clone().unwrap_or_else(|| if movie { card.title.clone() } else { format!("Episode {}", e.number) });
+        let title = e.title.clone().unwrap_or_else(|| {
+            if movie {
+                card.title.clone()
+            } else {
+                format!("Episode {}", e.number)
+            }
+        });
         lines.push((
             (e.season.unwrap_or(1), e.number),
             EpisodeLine {
                 code: e.code.clone().into(),
                 title: title.into(),
-                date: e.air_date.map(|t| date(secs(t), now)).unwrap_or_default().into(),
+                date: e
+                    .air_date
+                    .map(|t| date(secs(t), now))
+                    .unwrap_or_default()
+                    .into(),
                 note: note.into(),
                 cube: e.cube.chars().next().map(cube_code).unwrap_or(2),
                 // A file a torrent is still writing is on disk but not playable.
-                file: if e.downloading.is_none() { e.file as i32 } else { 0 },
+                file: if e.downloading.is_none() {
+                    e.file as i32
+                } else {
+                    0
+                },
                 picked: false,
                 remote: false,
             },
@@ -378,10 +494,23 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
             (a.season.unwrap_or(1), f64::from(a.number)),
             EpisodeLine {
                 code: a.code.clone().into(),
-                title: a.title.clone().unwrap_or_else(|| format!("Episode {}", a.number)).into(),
-                date: a.air_date.map(|t| date(secs(t), now)).unwrap_or_default().into(),
+                title: a
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| format!("Episode {}", a.number))
+                    .into(),
+                date: a
+                    .air_date
+                    .map(|t| date(secs(t), now))
+                    .unwrap_or_default()
+                    .into(),
                 // Watched somewhere else: tracked, but no file on this phone.
-                note: if matches!(a.cube.as_str(), "w" | "l") { "Not on this phone" } else { "Missing" }.into(),
+                note: if matches!(a.cube.as_str(), "w" | "l") {
+                    "Not on this phone"
+                } else {
+                    "Missing"
+                }
+                .into(),
                 cube: a.cube.chars().next().map(cube_code).unwrap_or(3),
                 file: 0,
                 picked: false,
@@ -402,7 +531,11 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
             (u.season.unwrap_or(1), f64::from(u.number)),
             EpisodeLine {
                 code: u.code.clone().into(),
-                title: u.title.clone().unwrap_or_else(|| format!("Episode {}", u.number)).into(),
+                title: u
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| format!("Episode {}", u.number))
+                    .into(),
                 date: date.into(),
                 note: Default::default(),
                 cube: 5,
@@ -420,7 +553,11 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
 fn clock(secs: f64) -> String {
     let t = secs.max(0.0) as u64;
     let (h, m, s) = (t / 3600, t % 3600 / 60, t % 60);
-    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }
 
 #[cfg(test)]
