@@ -32,11 +32,12 @@ use crate::sync::recover;
 pub const PAUSE_CLEAR: Duration = Duration::from_secs(5 * 60);
 /// The least time between two attempts to reach Discord.
 pub const RETRY: Duration = Duration::from_secs(30);
-/// Discord's limit on every text field of an activity, in characters.
+/// Discord's limit on every text field of an activity, in UTF-16 code
+/// units, which is how its JavaScript counts: an emoji takes two.
 pub const FIELD_MAX: usize = 128;
 /// The fewest characters Discord takes in a text field: it refuses a
 /// shorter `details`, `state` or `large_text`, and the whole activity with it.
-pub const FIELD_MIN: usize = 2;
+const FIELD_MIN: usize = 2;
 /// What a field too short for Discord is padded with: a zero width space,
 /// which counts as a character and shows as nothing.
 const FIELD_PAD: char = '\u{200B}';
@@ -123,14 +124,29 @@ impl Activity {
     }
 }
 
-/// A field cut to Discord's limit, with an ellipsis where it was cut, and
-/// padded to its minimum, so a one-letter title such as "K" still shows.
+/// A field as Discord takes it: trimmed, cut to its limit with "..." where
+/// it was cut, and padded to its minimum, so a one-letter title such as "K"
+/// still shows. Both ends are counted in UTF-16 code units, as Discord
+/// counts them, so this is not `words::cut`, which counts characters.
 fn field(s: &str) -> String {
-    let mut field = crate::words::cut(s, FIELD_MAX);
-    for _ in field.chars().count()..FIELD_MIN {
-        field.push(FIELD_PAD);
-    }
-    field
+    let s = s.trim();
+    let mut out = if s.encode_utf16().count() <= FIELD_MAX {
+        s.to_string()
+    } else {
+        let mut kept = String::new();
+        let mut units = 0;
+        for c in s.chars() {
+            if units + c.len_utf16() > FIELD_MAX - 3 {
+                break;
+            }
+            units += c.len_utf16();
+            kept.push(c);
+        }
+        format!("{}...", kept.trim_end())
+    };
+    let short = FIELD_MIN.saturating_sub(out.encode_utf16().count());
+    out.extend(std::iter::repeat_n(FIELD_PAD, short));
+    out
 }
 
 /// A lock's guard back from a condvar wait, poisoned or not, as `recover`.
@@ -837,11 +853,18 @@ impl Worker {
             self.posters = false;
             a.poster = None;
             result = self.transport.send(Some(a));
+            // Refused without the poster as well: the poster was not the
+            // reason, so the next series tries its own again.
+            if matches!(result, Err(SendError::Rejected(_))) {
+                self.posters = true;
+            }
         }
         match result {
             Ok(()) => self.dirty = false,
             Err(SendError::Rejected(e)) => {
-                tracing::debug!("discord refused the activity: {e}");
+                // Not debug: a refusal leaves the profile empty, and this
+                // line is the only trace of why.
+                tracing::warn!("discord refused the activity: {e}");
                 self.dirty = false;
             }
             Err(SendError::Gone(e)) => {
@@ -1220,11 +1243,27 @@ mod tests {
         assert_eq!(a.large_text, format!("K{FIELD_PAD}"));
         assert_eq!(a.state.as_deref(), Some(format!("E{FIELD_PAD}").as_str()));
         let empty = Activity::describe("", "E1", None, false, false, None);
-        assert_eq!(empty.details.chars().count(), FIELD_MIN);
+        let pad = FIELD_PAD.to_string().repeat(FIELD_MIN);
+        let v = empty.to_json();
+        assert_eq!(v["details"], pad.as_str());
+        assert_eq!(v["assets"]["large_text"], pad.as_str());
         // Two characters are already enough.
-        assert_eq!(empty.state.as_deref(), Some("E1"));
+        assert_eq!(v["state"], "E1");
         let two = Activity::describe("K2", "E1", None, false, false, None);
         assert_eq!(two.details, "K2");
+        // Space around a title is not a character Discord counts.
+        let spaced = Activity::describe(" K ", "E1", None, false, false, None);
+        assert_eq!(spaced.details, format!("K{FIELD_PAD}"));
+    }
+
+    #[test]
+    fn the_limit_counts_utf16_units_as_discord_does() {
+        let emoji = "\u{1F600}".repeat(100);
+        let a = Activity::describe(&emoji, "EP 1", None, false, false, None);
+        assert!(a.details.encode_utf16().count() <= FIELD_MAX, "{}", a.details);
+        assert!(a.details.ends_with("..."));
+        // An emoji is never split in half.
+        assert!(a.details.trim_end_matches("...").chars().all(|c| c == '\u{1F600}'));
     }
 
     #[test]
