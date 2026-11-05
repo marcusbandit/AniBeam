@@ -32,6 +32,11 @@ use crate::sync::recover;
 pub const PAUSE_CLEAR: Duration = Duration::from_secs(5 * 60);
 /// The least time between two attempts to reach Discord.
 pub const RETRY: Duration = Duration::from_secs(30);
+/// How long a connection may go with nothing sent before the worker looks
+/// at it: what plays is sent again, which finds a Discord that has quit, and
+/// a connection with nothing to show is let go. Discord never says it left,
+/// so without this Settings would go on saying it is connected.
+pub const CHECK: Duration = Duration::from_secs(30);
 /// Discord's limit on every text field of an activity, in UTF-16 code
 /// units, which is how its JavaScript counts: an emoji takes two.
 pub const FIELD_MAX: usize = 128;
@@ -401,6 +406,7 @@ pub struct Presence {
     enabled: AtomicBool,
     connected: Arc<AtomicBool>,
     pause_clear_ms: AtomicU64,
+    check_ms: Arc<AtomicU64>,
     inner: Mutex<Inner>,
     bus: Arc<EventBus>,
 }
@@ -466,6 +472,7 @@ impl Presence {
             enabled: AtomicBool::new(false),
             connected: Arc::new(AtomicBool::new(false)),
             pause_clear_ms: AtomicU64::new(PAUSE_CLEAR.as_millis() as u64),
+            check_ms: Arc::new(AtomicU64::new(CHECK.as_millis() as u64)),
             inner: Mutex::new(Inner::default()),
             bus,
         }
@@ -490,6 +497,12 @@ impl Presence {
     /// For a test: clear a pause after `wait` rather than `PAUSE_CLEAR`.
     pub fn set_pause_clear(&self, wait: Duration) {
         self.pause_clear_ms
+            .store(wait.as_millis() as u64, Ordering::Relaxed);
+    }
+
+    /// For a test: look at a quiet connection after `wait` rather than `CHECK`.
+    pub fn set_check(&self, wait: Duration) {
+        self.check_ms
             .store(wait.as_millis() as u64, Ordering::Relaxed);
     }
 
@@ -586,7 +599,13 @@ pub(crate) fn set_enabled(core: &Core, on: bool) {
             .take()
             .unwrap_or_else(|| Box::new(discord::Discord::default()));
         let client_id = bundled_client_id().unwrap_or_default().to_string();
-        inner.worker = spawn(transport, client_id, p.connected.clone(), p.bus.clone());
+        inner.worker = spawn(
+            transport,
+            client_id,
+            p.connected.clone(),
+            p.check_ms.clone(),
+            p.bus.clone(),
+        );
     }
     let actions = decide(&mut inner.state, input, crate::time::now_secs() as u64);
     run(core, &inner, actions);
@@ -676,6 +695,7 @@ fn spawn(
     transport: Box<dyn Transport>,
     client_id: String,
     connected: Arc<AtomicBool>,
+    check_ms: Arc<AtomicU64>,
     bus: Arc<EventBus>,
 ) -> Option<Arc<Mailbox>> {
     let mailbox = Arc::new(Mailbox::default());
@@ -683,10 +703,12 @@ fn spawn(
         transport,
         client_id,
         connected,
+        check_ms,
         bus,
         want: None,
         dirty: false,
         last_attempt: None,
+        last_sent: None,
         posters: true,
     };
     let theirs = mailbox.clone();
@@ -708,12 +730,15 @@ struct Worker {
     transport: Box<dyn Transport>,
     client_id: String,
     connected: Arc<AtomicBool>,
+    check_ms: Arc<AtomicU64>,
     bus: Arc<EventBus>,
     /// What Discord should show.
     want: Option<Activity>,
     /// `want` has not reached Discord yet.
     dirty: bool,
     last_attempt: Option<Instant>,
+    /// When the connection last carried anything, for `CHECK`.
+    last_sent: Option<Instant>,
     /// Whether this connection takes a poster's URL as the image.
     posters: bool,
 }
@@ -729,6 +754,8 @@ enum Step {
     },
     /// Time to try reaching Discord again.
     Retry,
+    /// The connection has been quiet for `CHECK`.
+    Check,
     Quit,
 }
 
@@ -744,7 +771,7 @@ impl Worker {
                 } => {
                     seen = version;
                     if disconnect {
-                        self.disconnect();
+                        self.disconnect("Discord presence switched off");
                     }
                     // Nothing shows on a connection that is not there.
                     self.dirty = want.is_some() || self.is_connected();
@@ -754,8 +781,17 @@ impl Worker {
                     mailbox.handled.notify_all();
                 }
                 Step::Retry => self.deliver(),
+                Step::Check => {
+                    if self.want.is_some() {
+                        // Sent again: a Discord that left answers Gone.
+                        self.dirty = true;
+                        self.deliver();
+                    } else {
+                        self.disconnect("Discord presence let go of an idle connection");
+                    }
+                }
                 Step::Quit => {
-                    self.disconnect();
+                    self.disconnect("Discord presence closed");
                     recover(&mailbox.desired).stopped = true;
                     mailbox.handled.notify_all();
                     return;
@@ -764,8 +800,9 @@ impl Worker {
         }
     }
 
-    /// Waits for the desired state to move past `seen`, or, while there is
-    /// something to show and no Discord to show it, for the next retry.
+    /// Waits for the desired state to move past `seen`; while there is
+    /// something to show and no Discord to show it, for the next retry; and
+    /// while connected with nothing new to send, for the next `CHECK`.
     fn next(&self, mailbox: &Mailbox, seen: u64) -> Step {
         let mut d = recover(&mailbox.desired);
         loop {
@@ -786,6 +823,14 @@ impl Worker {
                     return Step::Retry;
                 }
                 unpoison(mailbox.changed.wait_timeout(d, wait)).0
+            } else if self.is_connected() && !self.dirty {
+                let check = Duration::from_millis(self.check_ms.load(Ordering::Relaxed));
+                let since = self.last_sent.map_or(check, |t| t.elapsed());
+                let wait = check.saturating_sub(since);
+                if wait.is_zero() {
+                    return Step::Check;
+                }
+                unpoison(mailbox.changed.wait_timeout(d, wait)).0
             } else {
                 unpoison(mailbox.changed.wait(d))
             };
@@ -796,16 +841,29 @@ impl Worker {
         self.connected.load(Ordering::Relaxed)
     }
 
-    fn set_connected(&self, on: bool) {
-        self.connected.store(on, Ordering::Relaxed);
+    /// Records the connection, and tells the shells when it really changed:
+    /// `message` at `level` for the log, `PresenceChanged` for Settings.
+    fn set_connected(&self, on: bool, level: Level, message: &str) {
+        if self.connected.swap(on, Ordering::Relaxed) != on {
+            self.bus.emit(
+                level,
+                Stage::Playback,
+                message,
+                None,
+                EventBody::PresenceChanged { connected: on },
+            );
+        }
     }
 
-    fn disconnect(&mut self) {
+    /// Clears what Discord shows and lets the connection go: switched off,
+    /// idle past `CHECK`, or shutting down. None of those is news for the
+    /// activity log, so `why` goes to the developer log alone.
+    fn disconnect(&mut self, why: &str) {
         if self.is_connected() {
             let _ = self.transport.send(None);
         }
         self.transport.close();
-        self.set_connected(false);
+        self.set_connected(false, Level::Debug, why);
         self.want = None;
         self.dirty = false;
         self.last_attempt = None;
@@ -823,13 +881,8 @@ impl Worker {
             self.last_attempt = Some(Instant::now());
             match self.transport.connect(&self.client_id) {
                 Ok(()) => {
-                    self.set_connected(true);
+                    self.set_connected(true, Level::Info, "Discord is showing what plays");
                     self.posters = true;
-                    self.bus.info(
-                        Stage::Playback,
-                        "Discord is showing what plays",
-                        EventBody::Notice,
-                    );
                 }
                 Err(e) => {
                     tracing::debug!("discord presence could not connect: {e:?}");
@@ -843,6 +896,7 @@ impl Worker {
         {
             a.poster = None;
         }
+        self.last_sent = Some(Instant::now());
         let mut result = self.transport.send(activity.as_ref());
         // Discord may not take a URL as the image: once without it, and
         // never again on this connection.
@@ -870,12 +924,7 @@ impl Worker {
             Err(SendError::Gone(e)) => {
                 tracing::debug!("discord presence lost the connection: {e}");
                 self.transport.close();
-                self.set_connected(false);
-                self.bus.info(
-                    Stage::Playback,
-                    "Discord stopped answering",
-                    EventBody::Notice,
-                );
+                self.set_connected(false, Level::Info, "Discord stopped answering");
             }
         }
     }
