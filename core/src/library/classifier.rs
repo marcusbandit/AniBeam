@@ -176,10 +176,13 @@ static EPISODE_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
 static EPISODE_WORD: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(?:Episode|Ep)$").unwrap());
 
-/// Where the series title ends among the tokens, and whether an episode reading starts
-/// there: at the first lone dash, which reads as one when an episode number or code comes
-/// right after it, else at the first episode token.
-fn title_end(tokens: &[&str]) -> (usize, bool) {
+/// Where the series title ends among the tokens, and where the episode reading starts,
+/// when one does. The title ends at the first lone dash, else at the reading, else at
+/// the end. The reading is the first lone dash with an episode number or code right
+/// after it, which skips the dashes of a series title (`Sword Art Online - Alicization -
+/// 05`); else the first episode token, or a bare number after the first word and before
+/// any dash (`Show 07 Title`) (#497).
+fn title_end(tokens: &[&str]) -> (usize, Option<usize>) {
     let starts_episode = |at: usize| {
         let Some(token) = tokens.get(at) else {
             return false;
@@ -188,16 +191,20 @@ fn title_end(tokens: &[&str]) -> (usize, bool) {
             || (EPISODE_WORD.is_match(token)
                 && tokens.get(at + 1).is_some_and(|n| BARE_INDEX.is_match(n)))
     };
-    if let Some(dash) = tokens.iter().position(|t| *t == "-") {
-        let next = dash + 1;
-        let episode =
-            tokens.get(next).is_some_and(|n| BARE_INDEX.is_match(n)) || starts_episode(next);
-        return (dash, episode);
-    }
-    match (0..tokens.len()).find(|&at| starts_episode(at)) {
-        Some(at) => (at, true),
-        None => (tokens.len(), false),
-    }
+    let dashes = || (0..tokens.len()).filter(|&at| tokens[at] == "-");
+    let first_dash = dashes().next();
+    let before_dash = first_dash.unwrap_or(tokens.len());
+    let reading = dashes()
+        .find(|&dash| {
+            tokens.get(dash + 1).is_some_and(|n| BARE_INDEX.is_match(n)) || starts_episode(dash + 1)
+        })
+        .or_else(|| {
+            (0..tokens.len()).find(|&at| {
+                starts_episode(at)
+                    || (at > 0 && at < before_dash && BARE_INDEX.is_match(tokens[at]))
+            })
+        });
+    (first_dash.or(reading).unwrap_or(tokens.len()), reading)
 }
 
 /// Whether the token at `at` is a word of an episode's title: one with a letter in it
@@ -217,7 +224,7 @@ fn title_word_at(tokens: &[&str], at: usize) -> bool {
 fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     let normalised = normalise_for_tokens(file_name);
     let tokens: Vec<&str> = normalised.split_whitespace().collect();
-    let (title_end, episode_after) = title_end(&tokens);
+    let (title_end, reading) = title_end(&tokens);
     // A bare preview or special marker inside the series title, with another title word
     // after it, may be a word of the title (Trailer Park Boys, Special A). It loses to an
     // episode reading after the title and to any later marker, and is the reading only
@@ -245,7 +252,7 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
                     raw_label: token.to_string(),
                 };
                 let bare = *word && hit.index.is_none();
-                if bare && episode_after && at > title_end && title_word_at(&tokens, at + 1) {
+                if bare && reading.is_some_and(|r| at > r) && title_word_at(&tokens, at + 1) {
                     break;
                 }
                 let in_title = bare && at + 1 < title_end;
@@ -265,7 +272,7 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
             });
         }
     }
-    title_word.filter(|_| !episode_after)
+    title_word.filter(|_| reading.is_none())
 }
 
 fn finalize(season: Option<u32>, episode: f64) -> (Option<u32>, f64) {
@@ -839,6 +846,36 @@ mod tests {
         ] {
             assert_eq!(ep(name).extra, Some(kind), "{name}");
         }
+    }
+
+    #[test]
+    fn a_bare_marker_in_the_episode_title_reads_with_no_dash_or_a_dashed_series_title() {
+        // A bare number with no dash before it starts the episode reading too, and so
+        // does a dash after a series title that has dashes of its own (#497).
+        for (name, number) in [
+            ("Show 07 Trailer Trouble.mkv", 7.0),
+            ("Show.07.Special.Delivery.mkv", 7.0),
+            ("[Group] Show 07 Special Delivery [1080p].mkv", 7.0),
+            (
+                "Sword Art Online - Alicization - 05 - Special Delivery.mkv",
+                5.0,
+            ),
+            ("Show - Season 2 - 05 - Special Delivery.mkv", 5.0),
+            ("Show S01E05 - Special Delivery.mkv", 5.0),
+        ] {
+            let c = ep(name);
+            assert_eq!((c.extra, c.number), (None, number), "{name}");
+        }
+        // A number in the series title before the marker still lets the marker read, and
+        // a marker with its own number is still the extra.
+        assert_eq!(ep("Mob Psycho 100 Special.mkv").extra, Some(ExtraKind::Sp));
+        let c = ep("Show 07 Special 2 Night.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
+        let c = ep("Show - Alicization - 05 - Special.mkv");
+        assert_eq!(c.extra, Some(ExtraKind::Sp));
+        // A series title that is a marker word, numbered with no dash, is its episodes.
+        let c = ep("Trailer Park Boys 03.mkv");
+        assert_eq!((c.extra, c.number), (None, 3.0));
     }
 
     #[test]
