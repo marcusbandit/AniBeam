@@ -118,6 +118,10 @@ impl Encoder {
                         "23",
                         "-b:v",
                         "0",
+                        // A forced keyframe has to be an IDR frame, or NVENC
+                        // does not flag it and no piece starts there.
+                        "-forced-idr",
+                        "1",
                     ],
                 );
                 push(
@@ -839,5 +843,16 @@ mod tests {
         assert!(joined.contains("expr:gte(t,n_forced*6)"));
         assert!(joined.contains("-output_ts_offset 60.000"));
         assert!(joined.contains("-start_number 10"));
+    }
+
+    #[test]
+    fn nvenc_makes_every_forced_keyframe_one_a_piece_can_start_at() {
+        // Without it NVENC writes a forced keyframe as a plain I frame that
+        // is not flagged as a keyframe, the HLS muxer cuts nowhere but at
+        // its own every 250 frames, and 30 s gives three pieces instead of
+        // five: no seg4.ts (#370).
+        let mut args = Vec::new();
+        Encoder::Nvenc.args(360, &mut args);
+        assert!(args.join(" ").contains("-forced-idr 1"), "{args:?}");
     }
 }
