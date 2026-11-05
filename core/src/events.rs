@@ -168,15 +168,22 @@ impl EventBus {
     /// Fire-and-forget: queued on the writer thread with no reply, so an
     /// `emit` from inside a `write` or `tx` closure never waits on itself.
     /// A failed insert is logged and dropped; it never propagates.
+    ///
+    /// The stored copy keeps no secret, whichever event carries one (#509): a feed's
+    /// or a tracker's address can hold a login and a key, so the message, the plain
+    /// line and the body lose both (`net::scrub_secrets`). Listeners hear the event
+    /// whole, since a release's link has to reach the client as it is.
     fn persist(&self, event: &Event) {
-        let e = event.clone();
+        let mut e = event.clone();
+        e.message = crate::net::scrub_secrets(&e.message);
+        e.plain = e.plain.map(|p| crate::net::scrub_secrets(&p));
         self.store.post(move |c| {
             let (job_id, job_kind, job_phase) = match &e.job {
                 Some(j) => (Some(j.id as i64), Some(j.kind.as_str()), Some(j.phase.as_str())),
                 None => (None, None, None),
             };
             let body = match serde_json::to_string(&e.body) {
-                Ok(body) => body,
+                Ok(body) => crate::net::scrub_secrets(&body),
                 Err(err) => {
                     tracing::warn!("failed to serialise event body for seq {}: {err}", e.seq);
                     return;
@@ -394,6 +401,97 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
         (dir, EventBus::new(store).unwrap())
+    }
+
+    /// Every column of every stored row, as the database holds it.
+    fn stored_text(bus: &EventBus) -> String {
+        bus.store
+            .write(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT message, coalesce(plain, ''), body FROM events ORDER BY seq",
+                )?;
+                let rows = stmt.query_map([], |r| {
+                    Ok(format!(
+                        "{} | {} | {}",
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?
+                    ))
+                })?;
+                Ok(rows.collect::<Result<Vec<_>, _>>()?.join("\n"))
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn no_stored_event_keeps_a_feeds_login_or_key() {
+        // One feed with a login and a key, and a tracker with a passkey inside a
+        // magnet, through every Info event that can carry an address (#509).
+        const FEED: &str = "https://alice:hunter2@feed.example/rss?q=show&apikey=SEKRIT1&page=2";
+        const MAGNET: &str = "magnet:?xt=urn:btih:abc&tr=https%3A%2F%2Fbob%3Apw9%40t.example%2Fannounce%3Fpasskey%3DSEKRIT2%26x%3D1";
+        let (_d, bus) = bus();
+        let spec = SubscriptionSpec {
+            feed_url: FEED.into(),
+            must_contain: String::new(),
+            must_not_contain: String::new(),
+            endpoint_name: "feed".into(),
+        };
+        let subscribed = Subscribed {
+            name: "Show".into(),
+            feed_url: FEED.into(),
+            save_path: "/lib/Show".into(),
+            must_contain: String::new(),
+            must_not_contain: String::new(),
+            tags: vec![],
+        };
+        let rule: SubscriptionRule = serde_json::from_value(serde_json::json!({
+            "name": "Show", "feed_url": FEED, "save_path": "/lib/Show",
+        }))
+        .unwrap();
+        let view: RuleView = serde_json::from_value(serde_json::json!({
+            "name": "Show", "enabled": true, "must_contain": "", "must_not_contain": "",
+            "save_path": "/lib/Show", "feeds": [FEED], "last_match": "", "matching": [],
+        }))
+        .unwrap();
+        let bodies = vec![
+            EventBody::SubscriptionPreviewed { spec },
+            EventBody::Subscribed { result: subscribed },
+            EventBody::SubscriptionsRead { rules: vec![rule] },
+            EventBody::RuleRead { rule: view },
+            EventBody::ReleaseInspected {
+                link: MAGNET.into(),
+                episodes: vec![],
+                files: 0,
+            },
+            EventBody::DownloadsUnavailable {
+                what: "feed".into(),
+                error: CoreError::internal(format!("could not read {FEED}")),
+            },
+        ];
+        for body in bodies {
+            bus.say(
+                Level::Info,
+                Stage::Downloads,
+                format!("Read {FEED} and {MAGNET}"),
+                format!("read {FEED} via {MAGNET}"),
+                body,
+            );
+        }
+        let stored = stored_text(&bus);
+        for secret in ["alice", "hunter2", "SEKRIT1", "bob", "pw9", "SEKRIT2"] {
+            assert!(!stored.contains(secret), "{secret} is stored:\n{stored}");
+        }
+        // The rest of the address stays, so the line still says which feed it was.
+        assert!(
+            stored.contains("https://feed.example/rss?q=show&apikey=...&page=2"),
+            "{stored}"
+        );
+        assert!(
+            stored.contains("https%3A%2F%2Ft.example%2Fannounce%3Fpasskey%3D...%26x%3D1"),
+            "{stored}"
+        );
+        // The stored bodies still read back, and the listeners' copy was whole.
+        assert_eq!(bus.recent(100).unwrap().len(), 6);
     }
 
     #[test]

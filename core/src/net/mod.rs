@@ -429,6 +429,80 @@ fn host_and_port(u: &reqwest::Url) -> String {
 
 const MALFORMED: &str = "a malformed link";
 
+/// The secret query parameters [`scrub_secrets`] empties, as one alternation.
+fn secret_names() -> String {
+    crate::releases::native::SECRET_PARAMS
+        .iter()
+        .map(|(name, _)| regex::escape(name))
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+/// `user:password@` right after `scheme://`.
+static LOGIN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"(?i)([a-z][a-z0-9+.\-]*://)[^/?#\s"'<>@]*@"#).unwrap()
+});
+
+/// A secret parameter's value, written plain: `?apikey=abc`, `&passkey=abc`.
+static SECRET: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(&format!(
+        r#"(?i)([?&](?:{})=)[^&#\s"'<>\\]*"#,
+        secret_names()
+    ))
+    .unwrap()
+});
+
+/// The same inside another address, percent-encoded: a magnet's tracker,
+/// `&tr=https%3A%2F%2Ft.example%2Fannounce%3Fpasskey%3Dabc`. The value runs to
+/// the next encoded `&`.
+static SECRET_ENCODED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(&format!(
+        r#"(?i)((?:%3F|%26)(?:{})%3D)(?:[^%&#\s"'<>\\]|%(?:[013-9a-f][0-9a-f]|2[0-57-9a-f]))*"#,
+        secret_names()
+    ))
+    .unwrap()
+});
+
+/// Text as the stored events keep it (#509): every address in it loses its login
+/// (`user:password@`) and the value of every secret query parameter (the names in
+/// [`SECRET_PARAMS`](crate::releases::native::SECRET_PARAMS), `apikey=` and
+/// `passkey=` among them), written plain or percent-encoded inside another address.
+/// The rest of the address stays, so a line still says which feed or tracker it was.
+/// Safe on JSON text: it never removes a quote or splits an escape.
+pub fn scrub_secrets(text: &str) -> String {
+    let text = LOGIN.replace_all(text, "$1");
+    let text = SECRET.replace_all(&text, "$1...");
+    let text = SECRET_ENCODED.replace_all(&text, "$1...");
+    scrub_encoded_logins(&text)
+}
+
+/// [`scrub_secrets`]'s login rule for an address percent-encoded inside another:
+/// `https%3A%2F%2Fuser%3Apass%40t.example` keeps `https%3A%2F%2Ft.example`.
+fn scrub_encoded_logins(text: &str) -> String {
+    const START: &str = "%3a%2f%2f";
+    let lower = text.to_ascii_lowercase();
+    let mut out = String::with_capacity(text.len());
+    let mut from = 0;
+    while let Some(found) = lower[from..].find(START) {
+        let start = from + found + START.len();
+        out.push_str(&text[from..start]);
+        let rest = &lower[start..];
+        // The encoded authority ends at a slash, a query or a fragment, encoded or not.
+        let end = ["%2f", "%3f", "%23", "/", "?", "#", "&", "\"", "'", " "]
+            .iter()
+            .filter_map(|stop| rest.find(stop))
+            .chain(rest.find(char::is_whitespace))
+            .min()
+            .unwrap_or(rest.len());
+        match rest[..end].rfind("%40") {
+            Some(at) => from = start + at + 3,
+            None => from = start,
+        }
+    }
+    out.push_str(&text[from..]);
+    out
+}
+
 /// A transport error as a person reads it: the host, what went wrong and
 /// why, never the request URL. reqwest's own text carries the whole URL, and
 /// a Torznab feed URL holds the indexer's API key in its query, so that text
@@ -828,5 +902,55 @@ mod tests {
         assert_eq!(r.header("x-nothing"), None);
         http.fail_next("connection refused");
         assert!(http.send(get("https://x/")).await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod scrub_tests {
+    use super::scrub_secrets;
+
+    #[test]
+    fn an_address_keeps_everything_but_its_login_and_keys() {
+        assert_eq!(
+            scrub_secrets("see https://u:p@h.example:8080/a?apikey=k&q=x#f"),
+            "see https://h.example:8080/a?apikey=...&q=x#f"
+        );
+        assert_eq!(
+            scrub_secrets("http://t.example/announce?PassKey=abc"),
+            "http://t.example/announce?PassKey=..."
+        );
+        assert_eq!(
+            scrub_secrets("no address, a@b.example"),
+            "no address, a@b.example"
+        );
+        // A key-like word that is not a parameter stays.
+        assert_eq!(scrub_secrets("https://h/monkey=1"), "https://h/monkey=1");
+        assert_eq!(scrub_secrets("https://h/?monkey=1"), "https://h/?monkey=1");
+    }
+
+    #[test]
+    fn json_text_stays_json() {
+        let body =
+            serde_json::json!({"a": "https://u:\"p@h/?apikey=\"x\"&b=1", "b": ["https://h/\\@x"]});
+        let text = serde_json::to_string(&body).unwrap();
+        let scrubbed = scrub_secrets(&text);
+        let back: serde_json::Value = serde_json::from_str(&scrubbed).unwrap();
+        assert!(!scrubbed.contains("apikey=\\\"x"), "{scrubbed}");
+        assert!(back.is_object());
+    }
+
+    #[test]
+    fn an_encoded_address_inside_another_loses_its_login_and_keys() {
+        assert_eq!(
+            scrub_secrets(
+                "magnet:?xt=1&tr=udp%3A%2F%2Fme%3Asecret%40t.example%3A80%2Fa%3Fpasskey%3Dzz%26b%3D2&dn=x"
+            ),
+            "magnet:?xt=1&tr=udp%3A%2F%2Ft.example%3A80%2Fa%3Fpasskey%3D...%26b%3D2&dn=x"
+        );
+        // An encoded @ after the host is no login.
+        assert_eq!(
+            scrub_secrets("x=https%3A%2F%2Fh.example%2Fa%40b"),
+            "x=https%3A%2F%2Fh.example%2Fa%40b"
+        );
     }
 }
