@@ -84,6 +84,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Tooltips show on keyboard focus too
 - Press ? anywhere for the list of keys
 - Exports carry an episode count you set by hand
+- Exports carry quick fixes, and an import applies them
 - The player's controls set subtitle and audio delay; a and A shift the audio
 - Discord shows what you are watching, a switch in Settings, Playback
 - An endpoint repo can search your own Prowlarr or Jackett over torznab
@@ -142,6 +143,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - A qBittorrent address with a backslash is no longer read as this computer
+- Spy x Family episodes no longer show up as specials
 - JSON sources show sizes written with units, and links in capitals
 - A trusted-only source shows every upload when nothing trusted matches
 - A source added by hand earlier moves its key out of the address at launch

@@ -10,10 +10,16 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.4.3 · 2026-11-05
+
+### Fixed
+- A show's synopsis reads as paragraphs instead of showing <br> tags
+
 ## 2.4.2 · 2026-11-02
 
 ### Fixed
 - The app opens from its home screen icon instead of closing at once
+- Spy x Family episodes no longer show up as specials
 
 ## 2.4.1 · 2026-11-02
 

@@ -34,8 +34,6 @@ SettingsTab {
     function tone(v) { return v < 100 ? theme.green : v < 300 ? theme.yellow : theme.red }
     // A table column: `parts` of the 100 the table's width is cut into
     function col(parts) { return Math.floor((tab.blockWidth - theme.space(2)) * parts / 100) }
-    function copy(text) { clip.text = text; clip.selectAll(); clip.copy(); frame.toast("Copied") }
-    TextEdit { id: clip; visible: false }
 
     // Events per kind over the last minute: where the traffic to QML comes from
     readonly property var eventRates: {
@@ -108,7 +106,7 @@ SettingsTab {
             Row {
                 spacing: theme.space(2)
                 Button { objectName: "dev-tour"; text: tab.rec.tourState ? "Timing, " + tab.rec.tourState.at + " of " + tab.rec.tourState.steps.length : "Time every page"; icon: "gauge"; primary: true; enabled: !tab.rec.tourState; onClicked: tab.rec.tour(3) }
-                Button { text: "Copy report"; icon: "copy"; enabled: tab.rec.loads.length > 0; onClicked: tab.copy(tab.rec.report()) }
+                Button { text: "Copy report"; icon: "copy"; enabled: tab.rec.loads.length > 0; onClicked: frame.copyText(tab.rec.report()) }
                 Button { text: "Clear"; icon: "trash-2"; flat: true; enabled: tab.rec.loads.length > 0; onClicked: { tab.rec.loads = []; tab.picked = null } }
             }
             Column {
@@ -202,7 +200,7 @@ SettingsTab {
                     }
                 }
             }
-            Button { text: "Copy this load"; icon: "copy"; small: true; onClicked: tab.copy(tab.rec.describe(l)) }
+            Button { text: "Copy this load"; icon: "copy"; small: true; onClicked: frame.copyText(tab.rec.describe(l)) }
         }
     }
     Component {
@@ -280,7 +278,7 @@ SettingsTab {
                 QC.ScrollBar.vertical: ThinScrollBar {}
             }
             Button { text: "Copy events"; icon: "copy"; small: true
-                onClicked: tab.copy(tab.shownEvents.map(function(e) { return (e.at / 1000).toFixed(3) + " " + e.level + " " + e.stage + " " + e.kind + " " + e.bytes + "B " + e.message }).join("\n")) }
+                onClicked: frame.copyText(tab.shownEvents.map(function(e) { return (e.at / 1000).toFixed(3) + " " + e.level + " " + e.stage + " " + e.kind + " " + e.bytes + "B " + e.message }).join("\n")) }
         }
     }
 }
