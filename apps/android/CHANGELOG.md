@@ -14,6 +14,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - An episode titled with a word like Special or Trailer stays an episode
+- A refine or subscribe on a source you just removed says it is gone
 - Seeders show for releases from a tracker written with backslashes
 - Shows followed earlier no longer keep their source's key in the app's files
 - A source with no public address no longer stops DNS-blocked sources loading
