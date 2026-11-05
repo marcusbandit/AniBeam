@@ -101,6 +101,10 @@ thread_local! {
     static FIND: RefCell<Option<Find>> = const { RefCell::new(None) };
 }
 
+/// The active source's releases for the show, their facts, how many were dropped, the
+/// query that found them and the source's name.
+type Current = (Vec<Release>, Vec<ReleaseFacts>, usize, String, String);
+
 fn with(f: impl FnOnce(&mut Find)) {
     FIND.with(|cell| {
         if let Some(find) = cell.borrow_mut().as_mut() {
@@ -719,7 +723,7 @@ impl Find {
     }
 
     /// The active source's releases that name the show, and the grid of them.
-    fn current(&self) -> Option<(Vec<Release>, Vec<ReleaseFacts>, usize, String, String)> {
+    fn current(&self) -> Option<Current> {
         let state = self.show.as_ref()?;
         let i = state.active?;
         let Answer::Done(search) = &state.sources[i].1 else { return None };
@@ -937,7 +941,7 @@ impl Find {
 
     fn limit(&self) -> Option<u64> {
         let p = prefs::load(&self.data_dir);
-        p.limit_on.then(|| (p.limit_gb * 1e9) as u64)
+        p.limit_on.then_some((p.limit_gb * 1e9) as u64)
     }
 
     fn ask_notifications(&mut self) {
@@ -970,7 +974,7 @@ impl Find {
             name: Some(name.clone()),
         });
         let count = plan.episodes.len();
-        let download = (!plan.items.is_empty()).then(|| Call::PhoneDownload { items: plan.items, name: Some(name), limit_bytes: limit });
+        let download = (!plan.items.is_empty()).then_some(Call::PhoneDownload { items: plan.items, name: Some(name), limit_bytes: limit });
         let Some(core) = crate::local::core() else { return };
         let _ = std::thread::Builder::new().name("get".into()).spawn(move || {
             let mut line = Vec::new();
