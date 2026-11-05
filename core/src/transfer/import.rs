@@ -13,7 +13,7 @@
 //! rolling a whole library back over one bad entry.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
@@ -24,6 +24,7 @@ use crate::images;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::library::classifier;
+use crate::library::fixes;
 use crate::library::scan;
 use crate::metadata::fetch;
 use crate::metadata::record;
@@ -342,7 +343,9 @@ async fn import_series(
 /// The series' quick fixes, by the file's path in this library. The file
 /// wins, `was` included, which a fix made by hand would keep from the
 /// first time. A row already saying the same is left alone, so a second
-/// import of the same file changes nothing. Answers whether any row did.
+/// import of the same file changes nothing. A reading `FixFiles` would
+/// refuse is skipped, and a `was` it would refuse falls back to the
+/// reading. Answers whether any row did.
 fn apply_fixes(
     tx: &Transaction,
     series_path: &str,
@@ -354,8 +357,11 @@ fn apply_fixes(
         let Some(path) = fix_path(series_path, &fix.path) else {
             continue;
         };
+        if fixes::check(&fix.reading).is_err() {
+            continue;
+        }
         let reading = serde_json::to_string(&fix.reading)?;
-        let was = match &fix.was {
+        let was = match fix.was.as_ref().filter(|w| fixes::check(w).is_ok()) {
             Some(was) => serde_json::to_string(was)?,
             None => reading.clone(),
         };
@@ -372,14 +378,17 @@ fn apply_fixes(
 
 /// A fix's path below the series folder joined onto this library's series
 /// path; the empty path is the series' own file. A path that climbs out of
-/// the series is no file of it.
+/// the series is no file of it, and so is one with a root or a drive, which
+/// Windows reads in `\` as well as `/`.
 fn fix_path(series_path: &str, rel: &str) -> Option<String> {
+    let rel = Path::new(rel);
     let mut path = PathBuf::from(series_path);
-    for part in rel.split('/').filter(|p| !p.is_empty() && *p != ".") {
-        if part == ".." {
-            return None;
+    for part in rel.components() {
+        match part {
+            Component::Normal(part) => path.push(part),
+            Component::CurDir => {}
+            _ => return None,
         }
-        path.push(part);
     }
     Some(normalise(&path.to_string_lossy()))
 }
@@ -993,5 +1002,69 @@ mod tests {
         };
         let (id, key, ..) = resume_target(&series, &by_season).unwrap();
         assert_eq!((id, key.as_str()), (2, "S02E01"));
+    }
+
+    #[test]
+    fn a_fix_path_stays_inside_its_series() {
+        let joined = |rel: &str| fix_path("/lib/Show", rel);
+        assert_eq!(
+            joined("Season 1/Show - 01.mkv").map(PathBuf::from),
+            Some(
+                Path::new("/lib/Show")
+                    .join("Season 1")
+                    .join("Show - 01.mkv")
+            )
+        );
+        assert_eq!(
+            joined("./Show - 01.mkv").map(PathBuf::from),
+            Some(Path::new("/lib/Show").join("Show - 01.mkv"))
+        );
+        assert_eq!(joined("").as_deref(), Some("/lib/Show"));
+        assert_eq!(joined("../Other/x.mkv"), None);
+        assert_eq!(joined("Season 1/../../x.mkv"), None);
+        assert_eq!(joined("/etc/x.mkv"), None);
+    }
+
+    /// A reading `FixFiles` would refuse is no fix an import writes either,
+    /// and a `was` it would refuse falls back to the reading.
+    #[test]
+    fn an_out_of_range_fix_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let ep = |number: f64, season: Option<u32>| FileReading::Episode { number, season };
+        let fix = |path: &str, reading: FileReading, was: Option<FileReading>| format::FixEntry {
+            path: path.to_string(),
+            reading,
+            was,
+            extra: HashMap::new(),
+        };
+        let fixes = vec![
+            fix("Show - 01.mkv", ep(1e9, None), None),
+            fix("Show - 02.mkv", ep(2.0, Some(999)), None),
+            fix("Show - 03.mkv", ep(13.0, None), Some(ep(1e9, None))),
+        ];
+        let rows: Vec<(String, String, String)> = store
+            .tx(move |tx| {
+                assert!(apply_fixes(tx, "/lib/Show", &fixes, 0)?);
+                let mut stmt = tx.prepare("SELECT path, reading, was FROM file_fixes")?;
+                let rows = stmt
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert!(rows[0].0.ends_with("Show - 03.mkv"));
+        assert_eq!(rows[0].1, rows[0].2);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_fix_path_cannot_climb_or_jump_drives() {
+        let joined = |rel: &str| fix_path(r"C:\lib\Show", rel);
+        assert_eq!(joined(r"..\..\Other\x.mkv"), None);
+        assert_eq!(joined(r"D:\x.mkv"), None);
+        assert_eq!(joined(r"\x.mkv"), None);
+        assert!(joined(r"Season 1\Show - 01.mkv").is_some());
     }
 }
