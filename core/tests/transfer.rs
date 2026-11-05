@@ -117,7 +117,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
     assert_eq!(done.level, Level::Info);
     assert_eq!(
         done.message,
-        "imported: 1 sources, 3 series, 2 matches, 1 views, 1 completed, 2 resume points, 1 accounts, 1 fields ignored"
+        "imported: 1 sources, 3 series, 2 matches, 1 views, 1 completed, 2 resume points, 1 accounts, 0 fixes, 1 fields ignored"
     );
     let summary = summary_of(done);
     assert_eq!(summary.sources_added, 1);
@@ -580,7 +580,9 @@ fn a_quick_fix_round_trips_beside_its_series() {
         "{:?}",
         summary.fields_ignored
     );
-    // The import reads the fixed series again, so its file takes the fix.
+    // A fresh library holds no file yet, so nothing was applied in the
+    // import; it reads the fixed series, so its file comes in with the fix.
+    assert_eq!(summary.fixes_applied, 0);
     common::wait_for(
         &c2,
         |e| {
@@ -596,6 +598,160 @@ fn a_quick_fix_round_trips_beside_its_series() {
     );
     let stored = rows(&fresh, "SELECT reading, was FROM file_fixes");
     assert_eq!(stored.len(), 1, "{stored:?}");
+    assert_eq!(
+        serde_json::from_str::<FileReading>(&stored[0].1).unwrap(),
+        FileReading::Episode {
+            number: 1.0,
+            season: None
+        }
+    );
+}
+
+/// Completed history on Frieren under `key`, written straight to the table.
+fn complete_frieren(core: &Core, key: &str) {
+    let key = key.to_string();
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "INSERT INTO completed (series_id, episode_key, at)
+                 SELECT id, ?1, 1 FROM series WHERE path LIKE '%Sousou no Frieren'",
+                [&key],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+/// A library that already holds the fixed file takes the fix in the import
+/// itself, with no rescan behind it: the row reads the fix when the job
+/// ends, the history on the old key moves before the document's history
+/// lands on the new one, the summary counts it, and the same file twice
+/// applies nothing (#434).
+#[test]
+fn an_import_applies_its_fixes_to_files_already_there() {
+    let (dir, core, c) = common::open_core();
+    let staged = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
+    let job = started(
+        core.call(Call::Import {
+            path: staged.clone(),
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    common::wait_job(&c, job);
+    let frieren = metadata(&core)
+        .into_iter()
+        .find(|r| r.series.path.ends_with("Sousou no Frieren"))
+        .unwrap()
+        .series
+        .id;
+    let file = file_column(&core, "id", "Sousou no Frieren - 01.mkv").unwrap() as u64;
+    let thirteen = FileReading::Episode {
+        number: 13.0,
+        season: None,
+    };
+    core.call(Call::FixFiles {
+        series: frieren,
+        fixes: vec![FileFix {
+            file,
+            reading: Some(thirteen.clone()),
+        }],
+    })
+    .unwrap();
+    complete_frieren(&core, "13");
+    let out = dir.path().join("anibeam-export-library.json");
+    let out_path = out.to_string_lossy().into_owned();
+    let job = started(
+        core.call(Call::Export {
+            path: out_path.clone(),
+            private: false,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+
+    // The same files, read as episode 1, with history on that key.
+    let (_dir2, target, c2) = common::open_core();
+    let job = started(
+        target
+            .call(Call::Import {
+                path: staged.clone(),
+            })
+            .unwrap(),
+    );
+    common::wait_job(&c2, job);
+    let job = started(target.call(Call::Scan { source: None }).unwrap());
+    common::wait_job(&c2, job);
+    assert_eq!(
+        file_column(&target, "number", "Sousou no Frieren - 01.mkv"),
+        Some(1.0)
+    );
+    complete_frieren(&target, "1");
+
+    let job = started(
+        target
+            .call(Call::Import {
+                path: out_path.clone(),
+            })
+            .unwrap(),
+    );
+    let done = common::wait_job(&c2, job);
+    assert!(done.message.contains(", 1 fixes,"), "{}", done.message);
+    assert_eq!(summary_of(done).fixes_applied, 1);
+    assert_eq!(
+        file_column(&target, "number", "Sousou no Frieren - 01.mkv"),
+        Some(13.0)
+    );
+    let keys: Vec<String> = completed(&target)
+        .into_iter()
+        .filter(|(p, _)| p.ends_with("Sousou no Frieren"))
+        .map(|(_, k)| k)
+        .collect();
+    assert!(keys.contains(&"13".to_string()), "{keys:?}");
+    assert!(!keys.contains(&"1".to_string()), "{keys:?}");
+    // No rescan was started for it.
+    assert!(
+        !c2.events()
+            .iter()
+            .skip_while(|e| e.job.as_ref().is_none_or(|j| j.id != job))
+            .any(|e| e.job.as_ref().is_some_and(|j| j.kind == JobKind::Scan))
+    );
+
+    let job = started(
+        target
+            .call(Call::Import {
+                path: out_path.clone(),
+            })
+            .unwrap(),
+    );
+    assert_eq!(summary_of(common::wait_job(&c2, job)).fixes_applied, 0);
+
+    // A fix whose `was` did not come along keeps what this library's scan
+    // read as its undo, not the fix itself.
+    let bare = fs::read_to_string(&out).unwrap();
+    let mut doc: serde_json::Value = serde_json::from_str(&bare).unwrap();
+    for series in doc["series"].as_array_mut().unwrap() {
+        // `get_mut`, since indexing would add a null `fixes` to every other show.
+        let fixes = series.get_mut("fixes").and_then(|f| f.as_array_mut());
+        for fix in fixes.into_iter().flatten() {
+            fix.as_object_mut().unwrap().remove("was");
+        }
+    }
+    let wasless = write_document(dir.path(), "wasless.json", &doc.to_string());
+    let (_dir3, third, c3) = common::open_core();
+    let job = started(third.call(Call::Import { path: staged }).unwrap());
+    common::wait_job(&c3, job);
+    let job = started(third.call(Call::Scan { source: None }).unwrap());
+    common::wait_job(&c3, job);
+    let job = started(third.call(Call::Import { path: wasless }).unwrap());
+    assert_eq!(summary_of(common::wait_job(&c3, job)).fixes_applied, 1);
+    let stored = rows(&third, "SELECT reading, was FROM file_fixes");
+    assert_eq!(stored.len(), 1, "{stored:?}");
+    assert_eq!(
+        serde_json::from_str::<FileReading>(&stored[0].0).unwrap(),
+        thirteen
+    );
     assert_eq!(
         serde_json::from_str::<FileReading>(&stored[0].1).unwrap(),
         FileReading::Episode {

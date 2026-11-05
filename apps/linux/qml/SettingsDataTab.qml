@@ -36,6 +36,7 @@ SettingsTab {
                      Fmt.plural(s.resume_points_merged, "resume point", "resume points") + " merged",
                      Fmt.plural(s.accounts_imported, "tracker account", "tracker accounts") + " brought in"]
         var out = parts.join(", ") + "."
+        if (s.fixes_applied > 0) out += " " + Fmt.plural(s.fixes_applied, "file takes", "files take") + " a fix you made."
         if (s.sources_unavailable > 0) out += " " + Fmt.plural(s.sources_unavailable, "folder was", "folders were") + " not found on this computer."
         if (s.fields_ignored && s.fields_ignored.length) out += " Left out: " + s.fields_ignored.join(", ") + "."
         return out
