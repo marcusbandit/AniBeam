@@ -131,6 +131,22 @@ pub fn narrowed(def: &Value, terms: &LocalTerms, feed_url: &str) -> Value {
     out
 }
 
+/// The rule saving into `save_path`, said again in `torrentParams` when
+/// the rule has it, since qBittorrent 4.6 reads the path from there.
+pub fn rehomed(def: &Value, save_path: &str) -> Value {
+    let mut out = def.clone();
+    if let Some(map) = out.as_object_mut() {
+        map.insert("savePath".to_string(), Value::String(save_path.to_string()));
+        if let Some(params) = map.get_mut("torrentParams").and_then(Value::as_object_mut) {
+            params.insert(
+                "save_path".to_string(),
+                Value::String(save_path.to_string()),
+            );
+        }
+    }
+    out
+}
+
 /// Whether a feed still holds every picked release, judged by title as
 /// the endpoint writes it (case and spacing aside): a torznab download link
 /// can change from one search to the next, a title does not.

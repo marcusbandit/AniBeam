@@ -79,3 +79,27 @@ pub fn wait_job(c: &Collector, job: u64) -> Event {
         Duration::from_secs(30),
     )
 }
+
+/// A library show in a folder of its own: two episodes on disk, scanned,
+/// so it is series 1. Returns that folder.
+pub fn library_show(dir: &std::path::Path, core: &Core, c: &Collector) -> String {
+    let show = dir.join("lib").join("Show");
+    std::fs::create_dir_all(&show).unwrap();
+    for n in 1..=2 {
+        std::fs::write(
+            show.join(format!("[Group] Show - {n:02} (1080p).mkv")),
+            b"x",
+        )
+        .unwrap();
+    }
+    core.call(anibeam_core::Call::AddSource {
+        path: dir.join("lib").to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    wait_for(
+        c,
+        |e| matches!(e.body, anibeam_core::EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+    show.to_string_lossy().into_owned()
+}
