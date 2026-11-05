@@ -158,7 +158,9 @@ impl DownloadsBackend {
     ) -> Result<Subscribed, CoreError> {
         match self {
             DownloadsBackend::Anirss(client) => {
-                client.subscribe(query, endpoint, items, name).await
+                client
+                    .subscribe(query, endpoint, items, name, save_path)
+                    .await
             }
             DownloadsBackend::Native(native, core) => {
                 on_qbt::subscribe(core, native, query, endpoint, items, name, save_path).await

@@ -285,16 +285,24 @@ impl AnirssClient {
         })
     }
 
+    /// Subscribes under anirss's root plus `name`, or straight into `save_path` when given:
+    /// the folder of a show already in the library. An anirss that lists
+    /// `subscription_save_path` writes the rule there; an older one ignores the field and
+    /// answers with its own folder, which the caller then moves the rule from.
     pub async fn subscribe(
         &self,
         query: &str,
         endpoint: &str,
         items: &[Release],
         name: Option<&str>,
+        save_path: Option<&str>,
     ) -> Result<Subscribed, CoreError> {
         let mut body = json!({ "query": query, "endpoint": endpoint, "items": items });
         if let Some(n) = name.map(str::trim).filter(|n| !n.is_empty()) {
             body["name"] = Value::String(n.to_string());
+        }
+        if let Some(p) = save_path {
+            body["save_path"] = Value::String(p.to_string());
         }
         let v = self
             .post("/subscriptions", body, Some(STEP_TIMEOUT))

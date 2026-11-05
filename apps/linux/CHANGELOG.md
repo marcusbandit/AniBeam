@@ -142,6 +142,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Subscribing to a show you already have saves only into its own folder
 - The activity log keeps no feed key after a subscription repair
 - Sources installed from a repo show up in search on every desktop install
 - Seeking in an episode converted for the phone works on Nvidia graphics
