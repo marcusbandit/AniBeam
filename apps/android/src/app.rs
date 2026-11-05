@@ -156,6 +156,9 @@ struct App {
     polling: bool,
     held: Option<bool>,
     service: Option<String>,
+    /// The service's notification went up while Android allowed it to show. One posted
+    /// before the person allowed notifications stays hidden until it is posted again.
+    service_shown: bool,
 }
 
 thread_local! {
@@ -947,8 +950,15 @@ impl App {
                 }
             };
             if done {
+                self.service_shown = text.is_some() && crate::android::notifications_allowed();
                 self.service = text;
             }
+        } else if let Some(t) = &self.service
+            && !self.service_shown
+            && crate::android::notifications_allowed()
+        {
+            // Allowed since it went up: post it again, so it shows.
+            self.service_shown = crate::android::start_service(t);
         }
     }
 
@@ -1588,6 +1598,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         polling: false,
         held: None,
         service: None,
+        service_shown: false,
     };
     app.show_prefs();
     app.start_notes();

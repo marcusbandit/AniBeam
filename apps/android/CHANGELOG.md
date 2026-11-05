@@ -24,6 +24,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Sources on your home network answer sooner
 - Search skips a saved source whose address cannot take a search
 - Spy x Family episodes no longer show up as specials
+- The first download asks for permission to show its notification
 
 ## 2.4.2 · 2026-11-02
 
