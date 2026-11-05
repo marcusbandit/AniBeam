@@ -14,6 +14,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - A torrent link written with backslashes downloads instead of being refused
+- A refine or subscribe on a source you just removed says it is gone
 - Seeders show for releases from a tracker written with backslashes
 - Shows followed earlier no longer keep their source's key in the app's files
 - A source with no public address no longer stops DNS-blocked sources loading
