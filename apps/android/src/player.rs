@@ -657,6 +657,8 @@ pub fn close_page(reason: CloseReason) {
         let (video, mpv) = (p.video.take(), p.mpv.clone());
         drop(p);
         let _ = std::thread::Builder::new().name("mpv-close".into()).spawn(move || {
+            // Off the phone Video is a stub with nothing to let go of.
+            #[cfg_attr(not(target_os = "android"), allow(clippy::drop_non_drop))]
             drop(video);
             drop(mpv);
         });
@@ -1743,7 +1745,7 @@ mod tests {
         let mut r = rules(vec![w(SkipKind::Intro, 60.0, 150.0)], false);
         r.moved(59.8);
         assert!(r.moved(60.3).is_empty());
-        assert_eq!(r.current().map(|w| w.kind.clone()), Some(SkipKind::Intro));
+        assert_eq!(r.current().map(|w| w.kind), Some(SkipKind::Intro));
     }
 
     #[test]
@@ -1782,7 +1784,7 @@ mod tests {
             reason: Some(anibeam_core::Refusal::NotNewer),
             message: None,
         };
-        assert_eq!(outcome_line(&[ok.clone()]), "Tracked: AniList at 12");
+        assert_eq!(outcome_line(std::slice::from_ref(&ok)), "Tracked: AniList at 12");
         assert_eq!(
             outcome_line(&[ok, refused.clone()]),
             "Tracked: AniList at 12; MyAnimeList: the tracker is already past this episode"

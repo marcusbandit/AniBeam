@@ -101,7 +101,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("anibeam-prefs-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let notes = Seen { version: "2.1.0".into(), from: "2.0.8".into() };
-        let p = Prefs { onboarded: true, wifi_only: false, limit_on: true, limit_gb: 31.2, notes };
+        let p = Prefs { onboarded: true, wifi_only: false, limit_on: true, limit_gb: 31.2, notes, stream_quality: crate::stream::Quality::P720, cal_days: true };
         save(&dir, &p).unwrap();
         assert_eq!(load(&dir), p);
         let _ = std::fs::remove_dir_all(dir);
