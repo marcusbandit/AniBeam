@@ -242,6 +242,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 on_hold_auto: true,
                 on_hold_days: ON_HOLD_DAYS,
                 discord_presence: false,
+                calendar_feed: false,
             }
         ),
         other => panic!("{other:?}"),
@@ -304,6 +305,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         on_hold_auto: true,
         on_hold_days: ON_HOLD_DAYS,
         discord_presence: false,
+        calendar_feed: false,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

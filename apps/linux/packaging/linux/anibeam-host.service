@@ -1,0 +1,28 @@
+# AniBeam's host service: the library, downloads and the tailnet API for your other
+# devices, with no window. The desktop app takes the library over while it is open and
+# hands it back when it closes.
+#
+#   systemctl --user enable --now anibeam-host
+#
+# A build outside /usr/bin points ExecStart at its own binary with a drop-in:
+#   systemctl --user edit anibeam-host
+#   [Service]
+#   ExecStart=
+#   ExecStart=/path/to/anibeam serve
+
+[Unit]
+Description=AniBeam host service for other devices
+# A core that will not open fails the same way every time: five tries, then stop.
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/anibeam serve
+Restart=on-failure
+RestartSec=10
+# 3 is "another anibeam serve is running", which a restart cannot change.
+RestartPreventExitStatus=3
+
+[Install]
+WantedBy=default.target

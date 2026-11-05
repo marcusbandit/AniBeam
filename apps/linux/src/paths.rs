@@ -202,6 +202,10 @@ impl ShellPaths {
     pub fn lock_path(&self) -> PathBuf {
         self.runtime_dir.join("anibeam.lock")
     }
+    /// Where `anibeam serve` answers the window that wants the library back.
+    pub fn service_socket(&self) -> PathBuf {
+        self.runtime_dir.join("anibeam-host.sock")
+    }
     /// Where the subtitle preview writes its generated sample.srt: the same directory the
     /// core's own image cache lives under.
     pub fn cache_dir(&self) -> PathBuf {
@@ -239,6 +243,10 @@ mod tests {
         assert_eq!(
             p.lock_path(),
             PathBuf::from("/tmp/sandbox/runtime/anibeam.lock")
+        );
+        assert_eq!(
+            p.service_socket(),
+            PathBuf::from("/tmp/sandbox/runtime/anibeam-host.sock")
         );
         assert_eq!(p.bundled_mpv_conf(), share_dir().join("mpv.conf"));
         assert_eq!(p.cache_dir(), PathBuf::from("/tmp/sandbox/cache"));

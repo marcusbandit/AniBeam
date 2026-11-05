@@ -244,7 +244,8 @@ pub fn size_bytes(text: &str) -> Option<u64> {
         "T" => 1024.0_f64.powi(4),
         _ => return None,
     };
-    Some((n * scale).round() as u64)
+    let b = (n * scale).round();
+    (b.is_finite() && b < u64::MAX as f64).then_some(b as u64)
 }
 
 #[cfg(test)]

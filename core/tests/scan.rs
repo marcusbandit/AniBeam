@@ -153,14 +153,10 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
     };
     let show = cards.iter().find(|s| s.kind == SeriesKind::Show).unwrap();
     assert_eq!((show.title.as_str(), show.episodes_on_disk), ("Show A", 3));
-    assert_eq!(
-        cards
-            .iter()
-            .find(|s| s.kind == SeriesKind::Movie)
-            .unwrap()
-            .title,
-        "Film"
-    );
+    let film = cards.iter().find(|s| s.kind == SeriesKind::Movie).unwrap();
+    assert_eq!(film.title, "Film");
+    // The shells read the card's film flag instead of repeating `is_film` (#186)
+    assert!(film.film && !show.film);
 
     // A fourth file lands, one is deleted: a rescan is "changed", not "added".
     touch(&lib.join("Show A").join("Show A - 04.mkv"));

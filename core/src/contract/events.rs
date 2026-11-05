@@ -116,6 +116,12 @@ pub enum EventBody {
         score: Option<f64>,
         outcomes: Vec<TrackerOutcome>,
     },
+    /// A status from the menu, with what each tracker made of it.
+    ListStatusSet {
+        series: u64,
+        status: ListStatus,
+        outcomes: Vec<TrackerOutcome>,
+    },
     ProgressRefreshed {
         tracker: Tracker,
     },

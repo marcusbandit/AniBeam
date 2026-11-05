@@ -20,6 +20,9 @@
 // due, so that episode moves into Out now on time, and a half-minute clock keeps "2h ago"
 // honest, the way Watching keeps its countdowns.
 import QtQuick
+import QtQuick.Shapes
+import QtQuick.Window
+import QtCore
 import com.marcusrosado.AniBeam
 
 Item {
@@ -34,12 +37,22 @@ Item {
         return false
     }
 
-    // "Now" or "Next", as the core spells SeasonPick; kept in the page's props, so the rail
-    // brings the page back on the season and filter it was left on
+    // "Now", "Next", or a season and its year ("Spring 2019"), as the bridge spells SeasonPick;
+    // kept in the page's props, so the rail brings the page back on the season and filter it
+    // was left on
     property string season: props.season || "Now"
     // 0 everything, 1 on my lists, 2 in my library
     property int filter: props.filter || 0
-    function keepView() { frame.nav.current.props = { season: page.season, filter: page.filter } }
+    // What to leave out, on top of the filter: the shows on the user's lists, the library's
+    property bool hideListed: !!props.hideListed
+    property bool hideOwned: !!props.hideOwned
+    // The cards' order: AniList's popularity as it came, or one of these
+    property string sort: props.sort || "popular"
+    readonly property var sorts: [["popular", "Most popular"], ["score", "Highest score"],
+                                  ["soonest", "Next episode soonest"], ["episodes", "Most episodes"], ["title", "Title"]]
+    function keepView() {
+        frame.nav.current.props = { season: page.season, filter: page.filter, hideListed: page.hideListed, hideOwned: page.hideOwned, sort: page.sort }
+    }
     property var listed: null
     property bool refreshing: false
     // The season read this page waits on: events of the other season's read are not its own
@@ -114,38 +127,92 @@ Item {
         }
     }
 
+    // The season control's second cell: the season showing when one was picked, else the next
+    readonly property string seasonLabel: page.season === "Now" || page.season === "Next" ? page.nextLabel : page.season
+    function kept(s) {
+        if (page.hideListed && !!s.list_status) return false
+        if (page.hideOwned && page.owned(s)) return false
+        return true
+    }
+    readonly property bool narrowed: page.filter !== 0 || page.hideListed || page.hideOwned
+    // What the filter alone holds, before the hides: tells the empty state which one emptied it
+    readonly property int filterCount: page.filter === 1 ? listedRaw : page.filter === 2 ? ownedRaw : (listed ? listed.shows.length : 0)
+    readonly property int listedRaw: listed ? listed.shows.filter(function(s) { return !!s.list_status }).length : 0
+    readonly property int ownedRaw: listed ? listed.shows.filter(function(s) { return page.owned(s) }).length : 0
+    readonly property bool hidesEmptied: page.filterCount > 0
     readonly property var shows: {
         if (!listed) return []
         var f = page.filter
-        return listed.shows.filter(function(s) {
-            if (f === 1) return !!s.list_status
-            if (f === 2) return page.owned(s)
-            return true
+        var out = listed.shows.filter(function(s) {
+            if (f === 1 && !s.list_status) return false
+            if (f === 2 && !page.owned(s)) return false
+            return page.kept(s)
         })
+        if (page.sort === "popular") return out
+        // A show missing the value sorts after every show that has it; ties keep popularity
+        var key = page.sort === "score" ? function(s) { return s.average_score === null || s.average_score === undefined ? null : -s.average_score }
+                : page.sort === "soonest" ? function(s) { return s.next_airing ? s.next_airing.at : null }
+                : page.sort === "episodes" ? function(s) { return s.episodes ? -s.episodes : null }
+                : function(s) { return String(s.title).toLocaleLowerCase() }
+        var rows = out.map(function(s, i) { return { s: s, k: key(s), i: i } })
+        rows.sort(function(a, b) {
+            if (a.k === null || b.k === null) return a.k === b.k ? a.i - b.i : a.k === null ? 1 : -1
+            if (a.k < b.k) return -1
+            if (a.k > b.k) return 1
+            return a.i - b.i
+        })
+        return rows.map(function(r) { return r.s })
     }
     // The strip follows the narrowing too: On my lists means the episodes of those shows
     readonly property var aired: {
         if (page.season !== "Now" || !listed) return []
-        if (page.filter === 0) return listed.aired
-        var keep = {}
-        for (var i = 0; i < page.shows.length; i++) keep[page.shows[i].anilist_id] = true
-        return listed.aired.filter(function(a) { return keep[a.anilist_id] === true })
+        if (!page.narrowed) return listed.aired
+        // A filter keeps only its shows' episodes; a hide drops only the episodes of the shows
+        // it hides, so a show that just finished, and is no longer listed, stays
+        if (page.filter !== 0) {
+            var keep = {}
+            for (var i = 0; i < page.shows.length; i++) keep[page.shows[i].anilist_id] = true
+            return listed.aired.filter(function(a) { return keep[a.anilist_id] === true })
+        }
+        var drop = {}
+        for (var j = 0; j < listed.shows.length; j++) if (!page.kept(listed.shows[j])) drop[listed.shows[j].anilist_id] = true
+        return listed.aired.filter(function(a) { return drop[a.anilist_id] !== true })
     }
-    readonly property var outShown: page.allOut ? page.aired : page.aired.slice(0, 12)
+    // Out now's grid, small cards or list rows by Settings, Appearance, until All opens the rest
+    readonly property real outGap: outList ? theme.space(2) : theme.space(3)
+    // Cards come columns by rows, from Settings, Appearance; a window too narrow for the
+    // columns at a readable width gets fewer
+    Settings { id: kept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
+    readonly property var outLayout: {
+        var m = /^(\d)x(\d)$/.exec(kept.outLayout)
+        return m ? [parseInt(m[1]), parseInt(m[2])] : [4, 2]
+    }
+    // Cards unless Settings picks the list: rows of a small poster, title, episode and age,
+    // as many columns as fit at a readable title width, three rows deep
+    readonly property bool outList: kept.outStyle === "list"
+    readonly property int outRows: outList ? 3 : outLayout[1]
+    readonly property int outCols: outList
+        ? Math.max(1, Math.floor((scroll.innerWidth + outGap) / (theme.space(84) + outGap)))
+        : Math.max(1, Math.min(outLayout[0], Math.floor((scroll.innerWidth + outGap) / (theme.space(45) + outGap))))
+    readonly property real outCellWidth: Math.floor((scroll.innerWidth - outGap * (outCols - 1)) / outCols)
+    // Tall enough for two lines of words, and close to a banner's wide shape as the tile narrows
+    readonly property real outCellHeight: outList ? theme.space(17) : Math.max(theme.space(20), Math.round(outCellWidth / 3.4))
+    readonly property int outFirst: outCols * outRows
+    readonly property var outShown: page.allOut ? page.aired : page.aired.slice(0, page.outFirst)
     readonly property int outToday: {
         var n = 0
         for (var i = 0; i < aired.length; i++) if (nowMs / 1000 - aired[i].at < 86400) n++
         return n
     }
-    // How many each filter holds, for its pill
-    readonly property int listedCount: listed ? listed.shows.filter(function(s) { return !!s.list_status }).length : 0
-    readonly property int ownedCount: listed ? listed.shows.filter(function(s) { return page.owned(s) }).length : 0
-    // The line counts what the filter shows, not everything on air
+    // How many each filter holds with the hides applied, for its pill
+    readonly property int allCount: listed ? listed.shows.filter(function(s) { return page.kept(s) }).length : 0
+    readonly property int listedCount: listed ? listed.shows.filter(function(s) { return !!s.list_status && page.kept(s) }).length : 0
+    readonly property int ownedCount: listed ? listed.shows.filter(function(s) { return page.owned(s) && page.kept(s) }).length : 0
+    // The line says what the pills do not: how many came out today (the show count is on the
+    // filter pill already)
     readonly property string summary: {
-        if (!listed || page.shows.length === 0) return ""
-        var line = Fmt.plural(page.shows.length, "show", "shows") + (page.season === "Now" ? " on air" : "")
-        if (page.season === "Now" && outToday > 0) line += ", " + Fmt.plural(outToday, "episode", "episodes") + " out today"
-        return line
+        if (!listed || page.shows.length === 0 || page.season !== "Now" || outToday === 0) return ""
+        return Fmt.plural(outToday, "episode", "episodes") + " out today"
     }
     function showOf(id) {
         if (!listed) return null
@@ -171,6 +238,8 @@ Item {
         if (r.reply && r.reply.job !== undefined) { page.refreshing = true; page.refreshJob = r.reply.job }
     }
     function pickSeason(s) {
+        // The next season by name is the next season
+        if (s === page.nextLabel) s = "Next"
         if (s === page.season) return
         page.season = s
         page.keepView()
@@ -305,7 +374,7 @@ Item {
                 id: titleLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: page.season === "Now" ? "Airing now" : (page.listed ? page.listed.label : page.nextLabel)
+                text: page.season === "Now" ? "Airing now" : page.seasonLabel
                 role: "display"
                 font.pointSize: theme.typePage
             }
@@ -313,13 +382,27 @@ Item {
                 objectName: "airing-summary"
                 anchors.left: titleLabel.right
                 anchors.leftMargin: theme.space(3)
-                anchors.right: refreshBtn.left
+                anchors.right: notInterested.left
                 anchors.rightMargin: theme.space(4)
                 anchors.baseline: titleLabel.baseline
                 text: page.summary
                 role: "ui"
                 color: theme.textDim
                 elide: Text.ElideRight
+            }
+            Button {
+                id: notInterested
+                objectName: "airing-not-interested"
+                visible: !!page.listed && page.listed.not_interested > 0
+                width: visible ? implicitWidth : 0
+                anchors.right: refreshBtn.left
+                anchors.rightMargin: visible ? theme.space(2) : 0
+                anchors.verticalCenter: parent.verticalCenter
+                flat: true
+                icon: "eye-off"
+                text: page.listed ? page.listed.not_interested + " not interested" : ""
+                onClicked: frame.go("settings", { tab: "library", focus: "not-interested" }, "Settings")
+                Tooltip { text: "Shows you marked not interested, in Settings" }
             }
             Button {
                 id: refreshBtn
@@ -334,7 +417,7 @@ Item {
             }
         }
 
-        // ---- The two choices, and the way to the shows put aside
+        // ---- The season, the filter, and what to leave out
         Item {
             width: parent.width
             height: theme.controlHeight + theme.space(2)
@@ -343,105 +426,264 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(3)
                 Seg {
+                    id: seasonSeg
                     objectName: "airing-season"
-                    options: [{ text: "Airing now", icon: "radio", name: "now" }, { text: page.nextLabel, icon: "calendar-clock", name: "next" }]
+                    // The third cell opens every season; it is never the one showing
+                    options: [{ text: "Airing now", icon: "radio", name: "now" },
+                              { text: page.seasonLabel, icon: "calendar-clock", name: "next" },
+                              { icon: "chevron-down", name: "seasons" }]
                     index: page.season === "Now" ? 0 : 1
-                    onPicked: function(i) { page.pickSeason(i === 0 ? "Now" : "Next") }
+                    onPicked: function(i) {
+                        if (i === 0) page.pickSeason("Now")
+                        else if (i === 1) { if (page.season === "Now") page.pickSeason("Next") }
+                        else picker.open()
+                    }
+                    SeasonPicker {
+                        id: picker
+                        anchors.fill: parent
+                        current: page.season === "Now" ? "" : page.seasonLabel
+                        nowMs: page.nowMs
+                        onPicked: function(name, year) { page.pickSeason(name + " " + year) }
+                    }
                 }
                 Seg {
                     objectName: "airing-filter"
-                    options: [{ text: "Everything", name: "all", count: page.listed ? page.listed.shows.length : undefined },
+                    options: [{ text: "Everything", name: "all", count: page.listed ? page.allCount : undefined },
                               { text: "On my lists", name: "lists", count: page.listed ? page.listedCount : undefined },
                               { text: "In my library", name: "library", count: page.listed ? page.ownedCount : undefined }]
                     index: page.filter
-                    onPicked: function(i) { page.filter = i; page.keepView(); page.clearPicks() }
+                    onPicked: function(i) {
+                        page.filter = i
+                        // A filter to the very shows a hide leaves out takes that hide off
+                        if (i === 1) page.hideListed = false
+                        if (i === 2) page.hideOwned = false
+                        page.keepView()
+                        page.clearPicks()
+                    }
                 }
             }
-            Button {
-                objectName: "airing-not-interested"
-                visible: !!page.listed && page.listed.not_interested > 0
+            Row {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                flat: true
-                small: true
-                icon: "eye-off"
-                text: page.listed ? page.listed.not_interested + " not interested" : ""
-                onClicked: frame.go("settings", { tab: "library", focus: "not-interested" }, "Settings")
-                Tooltip { text: "Shows you marked not interested, in Settings" }
+                spacing: theme.space(2)
+                Dropdown {
+                    objectName: "airing-sort"
+                    prefix: "Sort"
+                    minWidth: theme.space(44)
+                    options: page.sorts.map(function(s) { return s[1] })
+                    index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
+                    onPicked: function(i) { page.sort = page.sorts[i][0]; page.keepView(); scroll.contentY = 0 }
+                }
+                ToggleChip {
+                    objectName: "airing-hide-lists"
+                    text: "Hide my lists"
+                    icon: "eye-off"
+                    checked: page.hideListed
+                    // On my lists with them hidden would be nothing at all
+                    interactive: page.filter !== 1
+                    onToggled: function(on) { page.hideListed = on; page.keepView(); page.clearPicks() }
+                    Tooltip { text: "Leave out the shows on your AniList or MAL lists" }
+                }
+                ToggleChip {
+                    objectName: "airing-hide-library"
+                    text: "Hide my library"
+                    icon: "eye-off"
+                    checked: page.hideOwned
+                    interactive: page.filter !== 2
+                    onToggled: function(on) { page.hideOwned = on; page.keepView(); page.clearPicks() }
+                    Tooltip { text: "Leave out the shows you have episodes of" }
+                }
             }
         }
 
-        // ---- Out now: the episodes of the last two days, newest first
+        // ---- Out now: the episodes of the last two days, newest first, as an even grid of
+        // rows (thumb, title, episode and age), three rows deep until All opens the rest
         Column {
             objectName: "airing-out-now"
             visible: page.aired.length > 0
             width: parent.width
             spacing: theme.space(3)
             topPadding: theme.space(2)
-            bottomPadding: theme.space(4)
-            Row {
-                spacing: theme.space(3)
-                Label {
-                    id: outTitle
-                    text: "Out now"
-                    role: "display"
-                    font.pointSize: theme.typeHeading
-                    font.variableAxes: ({ "wdth": 70, "wght": 420 })
-                    color: theme.accent
+            bottomPadding: theme.space(6)
+            Item {
+                width: parent.width
+                height: outTitle.implicitHeight
+                Row {
+                    spacing: theme.space(3)
+                    Label {
+                        id: outTitle
+                        text: "Out now"
+                        role: "display"
+                        font.pointSize: theme.typeHeading
+                        font.variableAxes: ({ "wdth": 70, "wght": 420 })
+                        color: theme.accent
+                    }
+                    Label {
+                        anchors.baseline: outTitle.baseline
+                        text: Fmt.plural(page.aired.length, "episode", "episodes") + " in the last two days"
+                        role: "ui"
+                        color: theme.textDim
+                    }
                 }
-                Label { anchors.baseline: outTitle.baseline; text: page.aired.length; role: "ledger"; color: theme.textFaint }
-                Label { anchors.baseline: outTitle.baseline; text: "The last two days"; role: "ui"; color: theme.textDim }
+                Button {
+                    objectName: "airing-out-all"
+                    visible: page.aired.length > page.outFirst
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    small: true
+                    flat: true
+                    icon: page.allOut ? "chevron-up" : "chevron-down"
+                    text: page.allOut ? "Fewer" : "All " + page.aired.length
+                    onClicked: page.allOut = !page.allOut
+                }
             }
             Flow {
                 width: parent.width
-                spacing: theme.space(2)
+                spacing: page.outGap
                 Repeater {
                     model: page.outShown
-                    Rectangle {
+                    // One episode, as a small card or a list row
+                    Item {
                         id: pill
                         required property var modelData
                         readonly property var show: page.showOf(modelData.anilist_id)
+                        readonly property bool today: page.nowMs / 1000 - modelData.at < 86400
                         objectName: "airing-out-" + modelData.anilist_id + "-" + modelData.episode
-                        width: pillRow.implicitWidth + theme.space(5)
-                        height: theme.controlHeight
-                        radius: theme.radiusTile
-                        color: pm.containsMouse ? theme.raised : theme.tile
-                        border.color: pill.activeFocus ? theme.focusRing : theme.line
-                        border.width: 1
+                        width: page.outCellWidth
+                        height: page.outCellHeight
                         activeFocusOnTab: true
+                        scale: theme.reducedMotion || page.outList ? 1 : (pm.pressed ? 0.985 : 1)
                         function open() {
                             if (pill.show) page.openActions(pill.show, pill)
                             else frame.openLink("https://anilist.co/anime/" + pill.modelData.anilist_id)
                         }
                         Keys.onReturnPressed: pill.open()
-                        Row {
-                            id: pillRow
-                            anchors.centerIn: parent
-                            spacing: theme.space(2)
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: theme.space(2); height: width; radius: width / 2
-                                color: page.nowMs / 1000 - pill.modelData.at < 86400 ? theme.accent : theme.textFaint
+                        // One look per pill, built only for the style Settings picked
+                        Loader {
+                            anchors.fill: parent
+                            sourceComponent: page.outList ? outRow : outCard
+                        }
+                        // The card: the banner across the whole tile, rounded like the cards
+                        // below, darkened toward the foot so the words read
+                        Component {
+                            id: outCard
+                            Item {
+                                Image {
+                                    id: outPoster
+                                    visible: false
+                                    width: pill.width; height: pill.height
+                                    // AniList's wide banner, made for this shape; the tall cover only
+                                    // when a show has none
+                                    source: !pill.show ? "" : pill.show.banner ? Fmt.fileUrl(pill.show.banner)
+                                          : pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
+                                    // Decoded at the tile's width, its height following the image's own shape
+                                    sourceSize.width: Math.ceil(pill.width * (Screen.devicePixelRatio || 1))
+                                    fillMode: Image.PreserveAspectCrop
+                                    smooth: true
+                                    asynchronous: true
+                                    cache: true
+                                }
+                                Corner {
+                                    anchors.fill: parent
+                                    radius: theme.radiusTile
+                                    smoothing: theme.cornerSmoothing
+                                    color: theme.tileSunken
+                                    fillItem: outPoster.status === Image.Ready ? outPoster : null
+                                }
+                                // The shade: light at the top, near black under the words
+                                Corner {
+                                    anchors.fill: parent
+                                    radius: theme.radiusTile
+                                    smoothing: theme.cornerSmoothing
+                                    // No outline: on a light banner it read as a gap round the tile.
+                                    // Only keyboard focus draws a ring; hover lifts the shade instead
+                                    borderColor: pill.activeFocus ? theme.focusRing : "transparent"
+                                    borderWidth: pill.activeFocus ? 2 : 0
+                                    fillGradient: LinearGradient {
+                                        x1: 0; y1: 0; x2: 0; y2: pill.height
+                                        GradientStop { position: 0; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.05 : 0.2) }
+                                        GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, pm.containsMouse ? 0.35 : 0.5) }
+                                        GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.88) }
+                                    }
+                                }
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.margins: theme.space(3)
+                                    spacing: theme.space(0.5)
+                                    Label {
+                                        width: parent.width
+                                        text: pill.modelData.title
+                                        role: "ui"
+                                        color: "white"
+                                        elide: Text.ElideRight
+                                    }
+                                    Row {
+                                        spacing: theme.space(2)
+                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
+                                        Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : Qt.rgba(1, 1, 1, 0.55) }
+                                    }
+                                }
                             }
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: Math.min(implicitWidth, theme.space(70))
-                                text: pill.modelData.title
-                                role: "ui"
-                                elide: Text.ElideRight
+                        }
+                        // The list row: a small poster, then the title, episode and age
+                        Component {
+                            id: outRow
+                            Item {
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: theme.radiusSm
+                                    color: pm.containsMouse ? theme.raised : "transparent"
+                                    border.color: pill.activeFocus ? theme.focusRing : "transparent"
+                                    border.width: 1
+                                }
+                                Corner {
+                                    id: thumb
+                                    x: theme.space(1.5)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: parent.height - theme.space(3)
+                                    width: Math.round(height / 1.5)
+                                    radius: theme.radiusSm; smoothing: 0
+                                    color: theme.tileSunken
+                                    borderColor: theme.line; borderWidth: 1
+                                    Image {
+                                        id: thumbImage
+                                        visible: false
+                                        width: thumb.width; height: thumb.height
+                                        source: pill.show && pill.show.poster ? Fmt.fileUrl(pill.show.poster) : ""
+                                        sourceSize: theme.posterDecodeSize
+                                        fillMode: Image.PreserveAspectCrop
+                                        smooth: true
+                                        asynchronous: true
+                                        cache: true
+                                    }
+                                    fillItem: thumbImage.status === Image.Ready ? thumbImage : null
+                                }
+                                Column {
+                                    anchors.left: thumb.right
+                                    anchors.leftMargin: theme.space(3)
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: theme.space(2)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: theme.space(1)
+                                    Label {
+                                        width: parent.width
+                                        text: pill.modelData.title
+                                        role: "ui"
+                                        elide: Text.ElideRight
+                                    }
+                                    Row {
+                                        spacing: theme.space(2)
+                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
+                                        Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : theme.textFaint }
+                                    }
+                                }
                             }
-                            Label { anchors.verticalCenter: parent.verticalCenter; text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
-                            Label { anchors.verticalCenter: parent.verticalCenter; text: page.ago(pill.modelData.at); role: "ledger"; color: theme.textFaint }
                         }
                         MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.open() }
                     }
-                }
-                Button {
-                    visible: page.aired.length > 12
-                    small: true
-                    flat: true
-                    text: page.allOut ? "Fewer" : "All " + page.aired.length
-                    onClicked: page.allOut = !page.allOut
                 }
             }
         }
@@ -498,11 +740,18 @@ Item {
                 Button { visible: !page.refreshing; text: "Refresh"; icon: "refresh-cw"; onClicked: page.refresh(true) }
             }
             EmptyState {
-                visible: !page.loadFailed && !!page.listed && page.listed.shows.length > 0 && page.filter > 0
-                icon: page.filter === 1 ? "bookmark" : "layers"
-                title: page.filter === 1 ? "Nothing on air is on your lists" : "Nothing on air is in your library"
-                body: page.filter === 1 ? "Plan to watch on a card puts it on your list." : "Get episodes on a card downloads it into your library."
-                Button { text: "Show everything"; onClicked: page.filter = 0 }
+                visible: !page.loadFailed && !!page.listed && page.listed.shows.length > 0 && page.narrowed
+                icon: page.hidesEmptied ? "eye-off" : page.filter === 1 ? "bookmark" : "layers"
+                title: page.hidesEmptied ? "Your hides leave nothing here"
+                     : page.filter === 1 ? "Nothing here is on your lists"
+                     : "Nothing here is in your library"
+                body: page.hidesEmptied ? "Every show here is on your lists or in your library, and you hid those."
+                    : page.filter === 1 ? "Plan to watch on a card puts it on your list."
+                    : "Get episodes on a card downloads it into your library."
+                Button {
+                    text: "Show everything"
+                    onClicked: { page.filter = 0; page.hideListed = false; page.hideOwned = false; page.keepView() }
+                }
             }
         }
     }

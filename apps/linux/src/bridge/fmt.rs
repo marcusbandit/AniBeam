@@ -58,6 +58,9 @@ pub mod qobject {
         /// comes back as given.
         #[qinvokable]
         fn local_path(self: &Fmt, url: &QString) -> QString;
+        /// The last part of a path, split on either separator, trailing separators ignored.
+        #[qinvokable]
+        fn base_name(self: &Fmt, path: &QString) -> QString;
         /// A folder's name as a title to search for: release-group brackets, a trailing
         /// episode range and a trailing END gone.
         #[qinvokable]
@@ -130,6 +133,9 @@ impl qobject::Fmt {
     pub fn local_path(&self, url: &QString) -> QString {
         QString::from(&local_path(&url.to_string(), cfg!(windows)))
     }
+    pub fn base_name(&self, path: &QString) -> QString {
+        QString::from(base_name(&path.to_string()))
+    }
 
     pub fn folder_title(&self, name: &QString) -> QString {
         QString::from(&anibeam_core::library::walk::clean_folder_title(
@@ -195,6 +201,13 @@ fn local_path(url: &str, windows: bool) -> String {
     path
 }
 
+/// The last part of a path. Both separators count on every platform, since a library can
+/// hold paths written on either.
+fn base_name(path: &str) -> &str {
+    let path = path.trim_end_matches(['/', '\\']);
+    path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
+
 /// The poster tone of a path or file:// URL as "#rrggbb", "" when there is none.
 fn tone(path: &str) -> String {
     let path = local_path(path, cfg!(windows));
@@ -215,7 +228,18 @@ fn hex(c: &QColor) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{file_url, local_path, tone};
+    use super::{base_name, file_url, local_path, tone};
+
+    #[test]
+    fn base_name_takes_either_separator() {
+        assert_eq!(base_name(""), "");
+        assert_eq!(base_name("a.mkv"), "a.mkv");
+        assert_eq!(base_name("/lib/Show/a.mkv"), "a.mkv");
+        assert_eq!(base_name("C:\\lib\\Show\\a.mkv"), "a.mkv");
+        assert_eq!(base_name("C:\\lib/Show\\"), "Show");
+        assert_eq!(base_name("/lib/Show//"), "Show");
+        assert_eq!(base_name("/"), "");
+    }
 
     #[test]
     fn file_url_by_platform() {

@@ -868,6 +868,8 @@ async fn import_preferences(
                 on_hold_days: current.on_hold_days,
                 // Telling Discord what plays is this machine's business too.
                 discord_presence: current.discord_presence,
+                // So is a calendar file on this machine's disk.
+                calendar_feed: current.calendar_feed,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {
