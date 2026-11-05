@@ -986,7 +986,8 @@ fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
     );
     assert_eq!(
         core.call(Call::ReadFeed {
-            url: url.to_string()
+            url: url.to_string(),
+            tag: "7".to_string(),
         })
         .unwrap(),
         Reply::Ok
@@ -996,10 +997,10 @@ fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
         |e| matches!(&e.body, EventBody::FeedRead { .. }),
         Duration::from_secs(10),
     );
-    let EventBody::FeedRead { url: read, entries } = &event.body else {
+    let EventBody::FeedRead { tag, entries } = &event.body else {
         panic!("{:?}", event.body)
     };
-    assert_eq!(read, url);
+    assert_eq!(tag, "7");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].seeders, Some(9));
     assert_eq!(
@@ -1011,6 +1012,7 @@ fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
     http.push_for("nyaa.si", 502, "bad gateway");
     core.call(Call::ReadFeed {
         url: url.to_string(),
+        tag: String::new(),
     })
     .unwrap();
     let event = common::wait_for(
@@ -1029,10 +1031,77 @@ fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
 
     assert!(matches!(
         core.call(Call::ReadFeed {
-            url: "file:///etc/passwd".to_string()
+            url: "file:///etc/passwd".to_string(),
+            tag: String::new(),
         }),
         Err(CoreError::Invalid { .. })
     ));
+}
+
+/// A feed's address can hold a login and an API key, and every event goes to every
+/// shell listening and, from Info up, into the stored log. So no event body names the
+/// feed: the shell already holds the address in the subscription it opened (#472).
+#[test]
+fn reading_or_repairing_a_feed_puts_no_login_or_key_in_an_event() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    let feed =
+        "https://user:hunter2@t.example/rss?apikey=K0123abcd&t=search&q=Helluva+Boss+S03+TBK";
+    let found = r#"<rss><channel>
+        <item><title>Helluva.Boss.S03E01.1080p.WEB-DL-TBK</title><link>http://j/dl/1</link></item>
+      </channel></rss>"#;
+    let empty = r#"<rss><channel><title>t</title></channel></rss>"#;
+
+    http.push_for("t.example", 200, found);
+    core.call(Call::ReadFeed {
+        url: feed.to_string(),
+        tag: "1".to_string(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::FeedRead { .. }),
+        Duration::from_secs(10),
+    );
+
+    http.push_for(
+        "rss/rules",
+        200,
+        json!({"Helluva Boss": {"enabled": true, "mustContain": "", "mustNotContain": "", "affectedFeeds": [feed]}}).to_string(),
+    );
+    http.push_for("q=Helluva+Boss+S03+TBK", 200, empty);
+    http.push_for("q=Helluva%20Boss%20S03", 200, found);
+    http.push_for("rss/setRule", 200, "");
+    http.push_for(
+        "rss/items",
+        200,
+        json!({"Helluva Boss": {"uid": "u", "url": feed}}).to_string(),
+    );
+    http.push_for("rss/removeItem", 200, "");
+    http.push_for("rss/addFeed", 200, "");
+    let job = started(
+        &core,
+        Call::RepairSubscription {
+            name: "Helluva Boss".to_string(),
+        },
+    );
+    let event = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            &event.body,
+            EventBody::SubscriptionRepaired { found: 1, .. }
+        ),
+        "{:?}",
+        event.body
+    );
+
+    for e in c.events() {
+        let text = serde_json::to_string(&e.body).unwrap();
+        assert!(!text.contains("hunter2"), "a login in {text}");
+        assert!(!text.contains("K0123abcd"), "an API key in {text}");
+    }
 }
 
 /// Remote mode with a token, so the core reaches anirss through `FakeHttp`
@@ -1564,7 +1633,6 @@ fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
     );
     let event = common::wait_job(&c, job);
     let EventBody::SubscriptionRepaired {
-        feed_url,
         must_contain,
         found,
         ..
@@ -1572,12 +1640,19 @@ fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
     else {
         panic!("{:?}", event.body)
     };
-    assert_eq!(
-        feed_url,
-        "http://127.0.0.1:9117/x?apikey=K&t=search&q=Helluva.Boss.%20S03"
-    );
     assert_eq!(must_contain, "TBK");
     assert_eq!(*found, 2);
+    let added = http
+        .requests()
+        .into_iter()
+        .find(|r| r.url.contains("rss/addFeed"))
+        .unwrap();
+    assert!(
+        form_of(&added)
+            .starts_with("url=http://127.0.0.1:9117/x?apikey=K&t=search&q=Helluva.Boss.%20S03&"),
+        "{}",
+        form_of(&added)
+    );
     let rss: Vec<String> = http
         .requests()
         .into_iter()
