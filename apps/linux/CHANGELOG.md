@@ -142,6 +142,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Spy x Family episodes no longer show up as specials
 - JSON sources show sizes written with units, and links in capitals
 - A trusted-only source shows every upload when nothing trusted matches
 - A source added by hand earlier moves its key out of the address at launch

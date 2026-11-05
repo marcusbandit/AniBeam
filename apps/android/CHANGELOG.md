@@ -14,6 +14,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - The app opens from its home screen icon instead of closing at once
+- Spy x Family episodes no longer show up as specials
 
 ## 2.4.1 · 2026-11-02
 
