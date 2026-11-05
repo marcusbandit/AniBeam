@@ -311,14 +311,19 @@ Item {
         })
     }
     // Two files of one episode (two releases of it) are one row: the row plays the one the
-    // core put next up, else the one with a resume point, else the first, and carries every
-    // file as the core's `versions` so the row can offer the others (#324, #336). While picking files to
-    // delete, every file stands on its own row so each can be picked.
+    // core put next up, else the one with a resume point, else the first. Which files are one
+    // episode is the core's call, each carrying the same `versions`, so the row can offer the
+    // others (#324, #336). While picking files to delete, every file stands on its own row so
+    // each can be picked.
+    function versionKey(e) {
+        var v = e.versions || []
+        return v.length > 1 ? "v" + v[0].file : "f" + e.file
+    }
     // How many files are second copies of an episode
     readonly property int extraVersions: {
         var keys = {}, n = 0
         for (var i = 0; i < episodes.length; i++) {
-            var k = (episodes[i].season || 1) + ":" + episodes[i].number
+            var k = versionKey(episodes[i])
             if (keys[k]) n++
             keys[k] = true
         }
@@ -328,7 +333,7 @@ Item {
         if (page.deleting) return list
         var by = {}, order = []
         for (var i = 0; i < list.length; i++) {
-            var k = (list[i].season || 1) + ":" + list[i].number
+            var k = versionKey(list[i])
             if (!by[k]) { by[k] = []; order.push(k) }
             by[k].push(list[i])
         }
@@ -1014,7 +1019,7 @@ Item {
                                 hasTracker: page.hasTracker
                                 title: page.episodeName(modelData)
                                 watched: page.watchedWithOptimism(modelData)
-                                versions: modelData.versions || []
+                                versions: page.deleting ? [] : (modelData.versions || [])
                                 onPlay: page.openFile(modelData.file)
                                 onPlayVersion: function(file) { page.openFile(file) }
                                 onMarker: page.marker(modelData)

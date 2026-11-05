@@ -338,24 +338,29 @@ static NOT_A_TITLE: LazyLock<Regex> = LazyLock::new(|| {
 static RELEASE_LEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[([^\]]+)\]").unwrap());
 static RELEASE_TAIL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"-([A-Za-z0-9]+)$").unwrap());
 static RELEASE_TAIL_TAG: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^(?:DL|Rip|x26[45]|HEVC|AVC|AV1|\d{3,4}p|AAC|FLAC|DDP?\d?)$").unwrap()
+    Regex::new(r"(?i-u)^(?:DL|Rip|x26[45]|HEVC|AVC|AV1|\d{3,4}p|AAC|FLAC|DDP?\d?)$").unwrap()
 });
 static RELEASE_REVISION: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)(?:\b|\d)v(\d)\b").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i-u)(?:\b|\d)v(\d)\b").unwrap());
 static RELEASE_RESOLUTION: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b(?:2160|1080|720|480)p\b").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i-u)\b(?:2160|1080|720|480)p\b").unwrap());
 static RELEASE_SOURCE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b(?:WEB-?DL|WEBRip|BluRay|BDRip|BD|DVD)\b").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i-u)\b(?:WEB-?DL|WEBRip|BluRay|BDRip|BD|DVD)\b").unwrap());
 static RELEASE_CODEC: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b(?:x265|x264|HEVC|AVC|H\.?26[45]|AV1)\b").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i-u)\b(?:x265|x264|HEVC|AVC|H\.?26[45]|AV1)\b").unwrap());
+
+/// A path's last part, split on either separator, as the shells show it.
+pub fn base_name(path: &str) -> &str {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed)
+}
 
 /// One release told from another by its file name: the group and what it is,
 /// `TBK, 1080p WEB-DL H264` or `ELiTE, 1080p x265`, else the name itself
 /// (without its extension). The text is taken as written, so a release that
 /// carries none of the tags still reads as its name.
 pub fn release_label(path: &str) -> String {
-    let trimmed = path.trim_end_matches(['/', '\\']);
-    let base = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed);
+    let base = base_name(path);
     let name = match base.rfind('.') {
         Some(i)
             if (3..=5).contains(&(base.len() - i))
@@ -781,5 +786,7 @@ mod tests {
         );
         assert_eq!(release_label("Show.S01E01.1080p-x265.mkv"), "1080p x265");
         assert_eq!(release_label("plain name.mkv"), "plain name");
+        // ASCII word boundaries, as in the old QML rule: CJK letters are not word characters
+        assert_eq!(release_label("番組第01話1080p.mkv"), "1080p");
     }
 }

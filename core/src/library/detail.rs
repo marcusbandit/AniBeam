@@ -98,10 +98,7 @@ impl Snapshot {
                 }
                 .to_string(),
                 fixed: f.fixed,
-                versions: versions
-                    .get(&(f.season.unwrap_or(1), f.number.to_bits()))
-                    .cloned()
-                    .unwrap_or_default(),
+                versions: versions.get(&version_key(f)).cloned().unwrap_or_default(),
             }
         };
 
@@ -400,15 +397,13 @@ impl Snapshot {
 }
 
 /// The versions of every episode that is on disk more than once, keyed by
-/// season (1 when unset) and the number's bits. Files read as an episode of
-/// the same season and number are two releases of it; the web shell's old
-/// rule, moved here so every shell lists one row per episode.
+/// `season_of` and the number's bits. Files read as an episode of the same
+/// season and number are two releases of it; the web shell's old rule, moved
+/// here so every shell lists one row per episode. Takes the episodes on disk.
 fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersion>> {
     let mut by: HashMap<(u32, u64), Vec<&FileRow>> = HashMap::new();
-    for f in files.iter().copied().filter(|f| f.is_episode) {
-        by.entry((f.season.unwrap_or(1), f.number.to_bits()))
-            .or_default()
-            .push(f);
+    for f in files.iter().copied() {
+        by.entry(version_key(f)).or_default().push(f);
     }
     by.into_iter()
         .filter(|(_, group)| group.len() > 1)
@@ -417,25 +412,36 @@ fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersio
                 .iter()
                 .map(|f| classifier::release_label(&f.path))
                 .collect();
+            let names: Vec<&str> = group
+                .iter()
+                .map(|f| classifier::base_name(&f.path))
+                .collect();
+            let alike = |list: &[&str], x: &str| list.iter().filter(|l| **l == x).count() > 1;
+            let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
             let versions = group
                 .iter()
-                .zip(&labels)
-                .map(|(f, label)| EpisodeVersion {
+                .enumerate()
+                .map(|(i, f)| EpisodeVersion {
                     file: f.id,
-                    // Two that still read alike get their file names, which
-                    // always differ
-                    label: if labels.iter().filter(|l| *l == label).count() > 1 {
-                        Path::new(&f.path)
-                            .file_name()
-                            .map_or_else(|| f.path.clone(), |n| n.to_string_lossy().into_owned())
+                    // Two that still read alike get their file names, and two
+                    // of one name in different folders their whole paths
+                    label: if !alike(&label_refs, &labels[i]) {
+                        labels[i].clone()
+                    } else if !alike(&names, names[i]) {
+                        names[i].to_string()
                     } else {
-                        label.clone()
+                        f.path.clone()
                     },
                 })
                 .collect();
             (key, versions)
         })
         .collect()
+}
+
+/// Which episode a file is, for `episode_versions`.
+fn version_key(f: &FileRow) -> (u32, u64) {
+    (season_of(f), f.number.to_bits())
 }
 
 /// A misreading of a series' files the page can see on its own (#170), and
@@ -848,5 +854,24 @@ mod tests {
         let list = &v[&(1, 1.0f64.to_bits())];
         assert_eq!(list[0].label, "[G] Show - 01 [1080p].mkv");
         assert_eq!(list[1].label, "[G] Show - 01 [1080p] copy.mkv");
+    }
+
+    #[test]
+    fn versions_of_one_name_fall_back_to_paths() {
+        // `file` puts each under /lib/Show/; one sits behind a backslash
+        let a = file(1, "S1/Show - 01.mkv", Some(1.0), None);
+        let b = file(2, "b\\Show - 01.mkv", Some(1.0), None);
+        let c = file(3, "extra/Show - 01.mkv", Some(1.0), None);
+        let v = episode_versions(&[&a, &b, &c]);
+        let list = &v[&(1, 1.0f64.to_bits())];
+        let labels: Vec<&str> = list.iter().map(|x| x.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "/lib/Show/S1/Show - 01.mkv",
+                "/lib/Show/b\\Show - 01.mkv",
+                "/lib/Show/extra/Show - 01.mkv"
+            ]
+        );
     }
 }
