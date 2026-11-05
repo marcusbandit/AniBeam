@@ -383,6 +383,15 @@ fn parse_http_scrape(body: &[u8]) -> Result<HashMap<Hash, Stats>, BadBencode> {
     Ok(out)
 }
 
+/// The scrape path for an announce path, by BEP 48: the last segment has to start with
+/// `announce`, which becomes `scrape`, so `/announce` is `/scrape` and `/x/announce.php`
+/// is `/x/scrape.php` (#494). None when the last segment does not start with it.
+fn scrape_path(path: &str) -> Option<String> {
+    let (dir, last) = path.rsplit_once('/')?;
+    let rest = last.strip_prefix("announce")?;
+    Some(format!("{dir}/scrape{rest}"))
+}
+
 /// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching). The announce is
 /// read with the HTTP client's own parser, so one written with backslashes for slashes is
 /// scraped at the path the client would announce to (#471).
@@ -406,10 +415,10 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
     } else {
         url.path().to_string()
     };
-    if !path.ends_with("/announce") {
+    let Some(scrape) = scrape_path(&path) else {
         return HashMap::new();
-    }
-    url.set_path(&format!("{}scrape", &path[..path.len() - "announce".len()]));
+    };
+    url.set_path(&scrape);
     // The announce's own query (a passkey, say) stays and the hashes join it with `&`.
     let mut prefix = url.query().unwrap_or("").trim_end_matches('&').to_string();
     if !prefix.is_empty() {
@@ -1386,6 +1395,48 @@ mod tests {
         let out = http_scrape(http.as_ref(), "http://t.example/announce", &hashes).await;
         assert_eq!(out.len(), 1);
         assert_eq!(out[&hashes[55]], (4, 3, 2));
+    }
+
+    /// BEP 48 only asks that the last path segment start with `announce`: a tracker
+    /// announcing at `announce.php` is scraped at `scrape.php`, its query kept (#494).
+    #[tokio::test]
+    async fn an_announce_php_tracker_is_scraped_at_scrape_php() {
+        let h = [1u8; 20];
+        let http = FakeHttp::new();
+        http.push(200, scrape_body(&h, 5, 1, 9));
+        let out = http_scrape(
+            http.as_ref(),
+            "https://t.example/x/announce.php?passkey=abc",
+            &[h],
+        )
+        .await;
+        let req = &http.requests()[0];
+        assert!(
+            req.url
+                .starts_with("https://t.example/x/scrape.php?passkey=abc&info_hash="),
+            "{}",
+            req.url
+        );
+        assert_eq!(out[&h], (5, 1, 9));
+    }
+
+    /// `announce` has to start the last segment: one earlier in the path, or later in
+    /// the segment, is no announce to convert.
+    #[tokio::test]
+    async fn an_announce_not_starting_the_last_segment_is_not_scraped() {
+        let http = FakeHttp::new();
+        for odd in [
+            "http://tracker.example/announce/x",
+            "http://tracker.example/my-announce",
+        ] {
+            assert!(
+                http_scrape(http.as_ref(), odd, &[[1u8; 20]])
+                    .await
+                    .is_empty(),
+                "{odd}"
+            );
+        }
+        assert!(http.requests().is_empty());
     }
 
     #[tokio::test]
