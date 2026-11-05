@@ -171,7 +171,9 @@ impl Snapshot {
         );
 
         let mut extras: Vec<&FileRow> = files.iter().filter(|f| !f.is_episode).collect();
-        let extra_versions = versions_by(&extras, |f| f.episode_key.clone());
+        // Two releases of one extra share a key and a folder; the same name in another
+        // folder (Season 2/NCOP.mkv) is another extra.
+        let extra_versions = versions_by(&extras, extra_version_key);
         extras.sort_by(|a, b| {
             extra_order(a.extra_kind)
                 .cmp(&extra_order(b.extra_kind))
@@ -222,7 +224,7 @@ impl Snapshot {
                         index: f.extra_index,
                         fixed: f.fixed,
                         versions: extra_versions
-                            .get(&f.episode_key)
+                            .get(&extra_version_key(f))
                             .cloned()
                             .unwrap_or_default(),
                     }
@@ -407,6 +409,12 @@ impl Snapshot {
 /// here so every shell lists one row per episode. Takes the episodes on disk.
 fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersion>> {
     versions_by(files, version_key)
+}
+
+/// Which extra a file is, for its versions: its history key in its folder.
+fn extra_version_key(f: &FileRow) -> (String, String) {
+    let folder = f.path.rsplit_once(['/', '\\']).map_or("", |(dir, _)| dir);
+    (f.episode_key.clone(), folder.to_string())
 }
 
 /// The versions of every file that shares its `key` with another, each group
@@ -671,9 +679,15 @@ mod tests {
         let c = file(3, "[A] Show - SP02.mkv", None, Some(Some(2)));
         a.episode_key = "[A] Show - SP01.mkv".into();
         b.episode_key = "[A] Show - SP01.mkv".into();
-        let v = versions_by(&[&a, &b, &c], |f| f.episode_key.clone());
-        assert_eq!(v.len(), 1);
-        let files: Vec<u64> = v["[A] Show - SP01.mkv"].iter().map(|x| x.file).collect();
+        let mut d = file(4, "Season 2/[A] Show - SP01.mkv", None, Some(Some(1)));
+        d.episode_key = "[A] Show - SP01.mkv".into();
+        let v = versions_by(&[&a, &b, &c, &d], extra_version_key);
+        assert_eq!(
+            v.len(),
+            1,
+            "the same name in another folder is another extra"
+        );
+        let files: Vec<u64> = v[&extra_version_key(&a)].iter().map(|x| x.file).collect();
         assert_eq!(files, [1, 2]);
     }
 
