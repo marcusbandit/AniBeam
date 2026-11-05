@@ -118,7 +118,7 @@ Item {
     property bool copied: false
     Timer { id: copiedTimer; interval: 2000; onTriggered: root.copied = false }
     function copyAll() {
-        frame.copyText(rows.map(lineOf).join("\n"), "")
+        frame.copyQuiet(rows.map(lineOf).join("\n"))
         copied = true
         copiedTimer.restart()
     }

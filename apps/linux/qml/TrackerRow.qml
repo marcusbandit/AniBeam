@@ -13,6 +13,8 @@ Item {
     id: root
     objectName: tracker !== "" ? "tracker-" + tracker : ""
     property string tracker: ""
+    // Panel draws a hairline under the row, except the group's last
+    readonly property bool hairline: true
     property var account: ({})
     property bool confirming: false
     property bool addingSecret: false
@@ -195,6 +197,4 @@ Item {
             Button { text: "Cancel"; flat: true; onClicked: root.addingSecret = false }
         }
     }
-    // Closes the row inside a settings group, except the group's last
-    Rectangle { visible: !root.parent || !root.parent.ruleAfter || root.parent.ruleAfter(root); anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
 }

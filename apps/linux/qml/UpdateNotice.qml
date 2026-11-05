@@ -134,7 +134,7 @@ Frost {
         Qt.quit()
     }
     function copyCommand() {
-        frame.copyText(root.command, "")
+        frame.copyQuiet(root.command)
         root.copied = true
     }
 

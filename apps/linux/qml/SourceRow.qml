@@ -11,6 +11,8 @@ import com.marcusrosado.AniBeam
 Item {
     id: root
     property var source: ({})
+    // Panel draws a hairline under the row, except the group's last
+    readonly property bool hairline: true
     property bool confirming: false
     signal open()
     signal rescan()
@@ -88,6 +90,4 @@ Item {
             onKept: root.confirming = false
         }
     }
-    // Closes the row inside a settings group, except the group's last
-    Rectangle { visible: !root.parent || !root.parent.ruleAfter || root.parent.ruleAfter(root); anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
 }

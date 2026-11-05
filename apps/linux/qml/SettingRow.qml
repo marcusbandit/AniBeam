@@ -5,8 +5,8 @@
 // never crushed into a ribbon. Never shorter than theme.space(12). Sized through
 // implicitHeight so it sits in a Column and a ColumnLayout alike; the two blocks are
 // placed by x and y rather than anchors, so the switch between the two arrangements is
-// one binding each and never leaves a stale anchor behind. A hairline closes the row at
-// its foot (`hairline`), so a group reads as a list; the group's last row leaves it off,
+// one binding each and never leaves a stale anchor behind. Panel draws a hairline at
+// the row's foot (`hairline`), so a group reads as a list; the group's last row has none,
 // since the pane's own edge closes it. Search finds a row by its label and `pulse` lights
 // it in the accent for a moment, so the eye lands on the row it asked for.
 import QtQuick
@@ -98,5 +98,4 @@ Item {
         width: childrenRect.width
         height: childrenRect.height
     }
-    Rectangle { visible: root.hairline && (!root.parent || !root.parent.ruleAfter || root.parent.ruleAfter(root)); anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
 }

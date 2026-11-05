@@ -299,7 +299,7 @@ Item {
                             clickable: true
                             icon: urlCopied.running ? "check" : "copy"
                             maxLabelWidth: parent.width - theme.space(30)
-                            onClicked: { frame.copyText(frame.redirectUrl, ""); urlCopied.restart() }
+                            onClicked: { frame.copyQuiet(frame.redirectUrl); urlCopied.restart() }
                             Tooltip { text: "Copy the redirect URL" }
                         }
                         Timer { id: urlCopied; interval: 1200 }

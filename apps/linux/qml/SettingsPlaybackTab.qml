@@ -11,6 +11,8 @@ SettingsTab {
     lead: "What the player does on its own, so you only reach for it when you want to."
     readonly property var defaults: frame.subtitleDefaults
     function edit(f) { frame.editSubtitleDefaults(f) }
+    // An edit still waiting on the debounce is written as the tab closes
+    Component.onDestruction: if (frame) frame.flushSubtitleDefaults()
     function codes(t) { return t.split(",").map(function(s) { return s.trim() }).filter(function(s) { return s }) }
     readonly property var skip: Door.settings.auto_skip || ({})
     // Discord rich presence: a build with no Discord application has nothing to switch on

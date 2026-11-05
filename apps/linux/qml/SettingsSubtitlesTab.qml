@@ -22,6 +22,8 @@ SettingsTab {
     property var bad: ({})
     function flag(key, ok) { var b = Object.assign({}, bad); if (ok) delete b[key]; else b[key] = true; bad = b; return ok }
     function edit(f) { frame.editSubtitleDefaults(f) }
+    // An edit still waiting on the debounce is written as the tab closes
+    Component.onDestruction: if (frame) frame.flushSubtitleDefaults()
     function isHex(s) { return /^#[0-9a-fA-F]{6}$/.test(s) }
     function hexOf(c) { function h(n) { return ("0" + n.toString(16)).slice(-2) } return "#" + h(c.r) + h(c.g) + h(c.b) }
     function colourOf(hex) { return { r: parseInt(hex.substr(1, 2), 16), g: parseInt(hex.substr(3, 2), 16), b: parseInt(hex.substr(5, 2), 16), a: 255 } }
