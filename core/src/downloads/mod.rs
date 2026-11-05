@@ -1349,16 +1349,21 @@ pub fn subscribe(
     items: Vec<Release>,
     name: Option<String>,
     wire_query: Option<String>,
+    series: Option<u64>,
 ) -> Result<u64, CoreError> {
     let owner = core.owner()?;
+    let home = show_folder(&owner, series)?;
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::Subscribe, move |ctx| async move {
             let backend = DownloadsBackend::open(&owner).await?;
             let mut result = backend
-                .subscribe(&query, &endpoint, &items, name.as_deref())
+                .subscribe(&query, &endpoint, &items, name.as_deref(), home.as_deref())
                 .await?;
+            if let Some(home) = home.as_deref() {
+                rehome_rule(&owner, &mut result, home).await?;
+            }
             let terms = match wire_query.as_deref() {
                 Some(wire) if backend.narrows_locally(&owner, &endpoint) => {
                     rewire::local_terms(&query, wire)
@@ -1399,6 +1404,33 @@ fn describe_terms(terms: &rewire::LocalTerms) -> String {
         parts.push(format!("none with \"{}\"", terms.not.join("\", \"")));
     }
     parts.join(" and ")
+}
+
+/// Saves the new rule's episodes into `home`, the library show's folder,
+/// when the rule was written to save elsewhere: anirss takes no save path
+/// for a subscription and puts it under its own root plus the name (#267).
+async fn rehome_rule(
+    core: &Arc<Core>,
+    result: &mut Subscribed,
+    home: &str,
+) -> Result<(), CoreError> {
+    let trim = |p: &str| p.trim_end_matches(['/', '\\']).to_string();
+    if trim(&result.save_path) == trim(home) {
+        return Ok(());
+    }
+    let qbt = qbt_client(core).await?;
+    let rules = qbt.rules().await?;
+    let Some(def) = rules.get(&result.name) else {
+        return Err(service(
+            "anirss",
+            "rule_missing",
+            format!("qBittorrent holds no rule named {}", result.name),
+        ));
+    };
+    qbt.set_rule(&result.name, &rewire::rehomed(def, home))
+        .await?;
+    result.save_path = home.to_string();
+    Ok(())
 }
 
 /// Points anirss's new rule at the feed the search read, narrowed by the

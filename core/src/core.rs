@@ -992,8 +992,9 @@ impl Core {
                 items,
                 name,
                 wire_query,
+                series,
             } => Ok(Reply::Started {
-                job: downloads::subscribe(self, query, endpoint, items, name, wire_query)?,
+                job: downloads::subscribe(self, query, endpoint, items, name, wire_query, series)?,
             }),
             Call::DownloadReleases { items, name } => Ok(Reply::Started {
                 job: downloads::download(self, items, name)?,

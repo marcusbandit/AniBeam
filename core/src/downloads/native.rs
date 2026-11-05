@@ -47,8 +47,9 @@ fn not_found(message: String) -> CoreError {
 // Subscribing ------------------------------------------------------------------
 
 /// A feed and an auto-download rule saving into `save_base/<name>`
-/// (anirss `subscribe`). The name defaults to the show's, from the first
-/// release; the same show from another endpoint gains ` @endpoint`.
+/// (anirss `subscribe`), or into `save_path` when given: the folder of a
+/// show already in the library. The name defaults to the show's, from the
+/// first release; the same show from another endpoint gains ` @endpoint`.
 pub(super) async fn subscribe(
     core: &Arc<Core>,
     native: &Native,
@@ -56,6 +57,7 @@ pub(super) async fn subscribe(
     endpoint: &str,
     items: &[Release],
     name: Option<&str>,
+    save_path: Option<&str>,
 ) -> Result<Subscribed, CoreError> {
     let query = query.trim();
     if query.is_empty() {
@@ -71,7 +73,9 @@ pub(super) async fn subscribe(
     // Naming is check-then-act: one subscription at a time
     let _one = core.downloads.rules.lock().await;
     let name = unique_name(&qbt, &name, &spec).await?;
-    let save_path = paths::join(&saving.save_base, &name);
+    let save_path = save_path
+        .map(str::to_string)
+        .unwrap_or_else(|| paths::join(&saving.save_base, &name));
     let tags = qbt::clean_tags(&saving.tags);
     if !qbt.add_feed(&spec.feed_url, &name).await?
         && !qbt

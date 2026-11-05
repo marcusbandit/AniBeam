@@ -144,6 +144,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ### Fixed
 - A qBittorrent address with a backslash is no longer read as this computer
 - Spy x Family episodes no longer show up as specials
+- A subscription from a show's page saves new episodes into that show's folder
 - JSON sources show sizes written with units, and links in capitals
 - A trusted-only source shows every upload when nothing trusted matches
 - A source added by hand earlier moves its key out of the address at launch

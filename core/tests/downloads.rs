@@ -13,6 +13,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use anibeam_core::events::Collector;
 use anibeam_core::net::FakeHttp;
 use anibeam_core::*;
 use serde_json::{Value, json};
@@ -1231,6 +1232,109 @@ fn remove_show_refuses_a_library_root_and_removes_nothing() {
     ));
 }
 
+/// A library show in a folder of its own: two episodes on disk, scanned,
+/// so it is series 1. Returns that folder.
+fn library_show(dir: &Path, core: &Core, c: &Collector) -> String {
+    let show = dir.join("lib").join("Show");
+    std::fs::create_dir_all(&show).unwrap();
+    for n in 1..=2 {
+        std::fs::write(
+            show.join(format!("[Group] Show - {n:02} (1080p).mkv")),
+            b"x",
+        )
+        .unwrap();
+    }
+    core.call(Call::AddSource {
+        path: dir.join("lib").to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+    show.to_string_lossy().into_owned()
+}
+
+/// anirss takes no save path for a subscription and writes the rule under
+/// its own root; one made for a library show is moved to that show's
+/// folder in qBittorrent, so its episodes join the show (#267).
+#[test]
+fn a_subscription_for_a_library_show_saves_into_its_folder_through_anirss() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    let home = library_show(dir.path(), &core, &c);
+    http.push_for(
+        "/health",
+        200,
+        json!({"ok": true, "version": "0.6.0"}).to_string(),
+    );
+    http.push_for(
+        "/endpoints",
+        200,
+        json!({"endpoints": [{"name": "feed", "kind": "rss", "url": "https://feed.example/rss?q={query}"}]}).to_string(),
+    );
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:9090", "reachable": true, "authenticated": true})
+            .to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    common::wait_job(&c, job);
+
+    let feed = "https://feed.example/rss?q=Show";
+    http.push_for(
+        "api/v1/subscriptions",
+        201,
+        json!({"name": "Show", "feed_url": feed, "save_path": "/media/Anime/Show",
+               "must_contain": "", "must_not_contain": "", "tags": ["TV"]})
+        .to_string(),
+    );
+    http.push_for(
+        "rss/rules",
+        200,
+        json!({"Show": {"enabled": true, "affectedFeeds": [feed], "savePath": "/media/Anime/Show",
+                        "torrentParams": {"save_path": "/media/Anime/Show", "tags": ["TV"]}}})
+        .to_string(),
+    );
+    http.push_for("rss/setRule", 200, "");
+
+    let job = started(
+        &core,
+        Call::Subscribe {
+            query: "Show".to_string(),
+            endpoint: "feed".to_string(),
+            items: vec![release(1, json!(5))],
+            name: Some("Show".to_string()),
+            wire_query: None,
+            series: Some(1),
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::Subscribed { result } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(result.save_path, home);
+
+    let set = http
+        .requests()
+        .into_iter()
+        .find(|r| r.url.ends_with("rss/setRule"))
+        .expect("the rule is written again");
+    let def: Value = form_of(&set)
+        .split_once("ruleDef=")
+        .map(|(_, d)| serde_json::from_str(d).unwrap())
+        .unwrap();
+    assert_eq!(def["savePath"], json!(home));
+    assert_eq!(def["torrentParams"]["save_path"], json!(home));
+    assert_eq!(def["torrentParams"]["tags"], json!(["TV"]));
+    assert_eq!(def["affectedFeeds"], json!([feed]));
+}
+
 /// A subscription narrowed on anirss's side (1337x through Jackett): the
 /// rule anirss made reads a feed that searches for every word and finds
 /// nothing, so the core points it at the feed the search read and keeps
@@ -1300,6 +1404,7 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
             items: vec![release(1, json!(5))],
             name: Some("Helluva Boss".to_string()),
             wire_query: Some("Helluva Boss S03".to_string()),
+            series: None,
         },
     );
     let event = common::wait_job(&c, job);
@@ -1422,6 +1527,7 @@ fn a_locally_narrowed_subscription_probes_the_words_the_endpoint_answers() {
             items: picked,
             name: Some("Helluva Boss".to_string()),
             wire_query: Some("Helluva Boss S03".to_string()),
+            series: None,
         },
     );
     let event = common::wait_job(&c, job);

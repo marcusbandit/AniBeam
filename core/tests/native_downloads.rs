@@ -162,6 +162,7 @@ fn subscribe(r: &Rig, query: &str, items: Vec<Release>, name: Option<&str>) -> E
             items,
             name: name.map(str::to_string),
             wire_query: None,
+            series: None,
         },
     );
     common::wait_job(&r.c, job)
@@ -225,6 +226,57 @@ fn subscribe_writes_the_rule_and_feed_through_qbittorrent() {
     let feed_at = order.iter().position(|p| p == "rss/addFeed").unwrap();
     let rule_at = order.iter().position(|p| p == "rss/setRule").unwrap();
     assert!(feed_at < rule_at, "{order:?}");
+    no_anirss(&r.http);
+}
+
+/// A subscription made from a library show's page saves into that show's
+/// folder, wherever its source is, not into a second one under the save
+/// base (#267).
+#[test]
+fn a_subscription_for_a_library_show_saves_into_its_folder() {
+    let r = rig();
+    let show = r.dir.path().join("lib").join("Show");
+    std::fs::create_dir_all(&show).unwrap();
+    for n in 1..=2 {
+        std::fs::write(
+            show.join(format!("[Group] Show - {n:02} (1080p).mkv")),
+            b"x",
+        )
+        .unwrap();
+    }
+    r.core
+        .call(Call::AddSource {
+            path: r.dir.path().join("lib").to_string_lossy().into_owned(),
+        })
+        .unwrap();
+    common::wait_for(
+        &r.c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+    let home = show.to_string_lossy().into_owned();
+    r.http.push_for("rss/rules", 200, "{}");
+    r.http.push_for("rss/addFeed", 200, "");
+    r.http.push_for("rss/setRule", 200, "");
+
+    let job = started(
+        &r.core,
+        Call::Subscribe {
+            query: "Show".to_string(),
+            endpoint: "feed".to_string(),
+            items: vec![episode(1)],
+            name: None,
+            wire_query: None,
+            series: Some(1),
+        },
+    );
+    let done = common::wait_job(&r.c, job);
+    assert_eq!(subscribed(&done).save_path, home);
+    let calls = qbt_calls(&r.http);
+    let def: Value =
+        serde_json::from_str(&field(called(&calls, "rss/setRule"), "ruleDef").unwrap()).unwrap();
+    assert_eq!(def["savePath"], json!(home));
+    assert_eq!(def["torrentParams"]["save_path"], json!(home));
     no_anirss(&r.http);
 }
 
@@ -371,6 +423,7 @@ fn a_locally_narrowed_subscription_still_narrows_on_native() {
             items: vec![episode(1)],
             name: None,
             wire_query: Some("Show".to_string()),
+            series: None,
         },
     );
     let done = common::wait_job(&r.c, job);
