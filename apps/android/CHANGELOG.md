@@ -13,17 +13,18 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
+- A busy sign-in port says to try again, not that another AniBeam is open
 - A show's synopsis reads as paragraphs instead of showing <br> tags
 - Episode codes like S03E01 fit their column instead of running into the title
 - A show titled with a word like Trailer or Special no longer reads as extras
+- Sources on your home network answer sooner
+- Search skips a saved source whose address cannot take a search
+- Spy x Family episodes no longer show up as specials
 
 ## 2.4.2 · 2026-11-02
 
 ### Fixed
-- Sources on your home network answer sooner
-- Search skips a saved source whose address cannot take a search
 - The app opens from its home screen icon instead of closing at once
-- Spy x Family episodes no longer show up as specials
 
 ## 2.4.1 · 2026-11-02
 
