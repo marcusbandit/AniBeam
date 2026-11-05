@@ -6,9 +6,11 @@ name: Issue state
 #   branch <type>/<n>-<slug> pushed       -> #n gets "in progress"
 #   PR opened as a draft, or made a draft -> its closing issues get "in progress"
 #   PR opened or marked ready             -> its closing issues get "in review"
-#   PR closed without merging             -> its closing issues go back to "in progress"
+#   PR body no longer closes #n           -> #n loses both, unless another open PR closes it
+#   PR closed without merging             -> back to "in progress" while its branch exists
+#   PR merged                             -> its closing issues lose both labels
 #   PR merged with "Part of #n"           -> #n gets a comment naming the PR, and stays open
-#   branch deleted                        -> #n loses "in progress" unless a PR still has it
+#   branch deleted                        -> #n loses "in progress" unless an open PR closes it
 #   issue closed                          -> both labels come off
 #
 # The board's Status follows these labels through the daily issue sweep on banditbox, since
@@ -27,14 +29,16 @@ permissions:
   pull-requests: read
   contents: read
 
+# One run at a time for the whole repo: a branch push, a PR and a delete on the same issue
+# would otherwise race and leave the wrong label. The volume is a handful of runs a day.
 concurrency:
-  group: issue-state-${{ github.event.pull_request.number || github.event.issue.number || github.event.ref }}
+  group: issue-state
   cancel-in-progress: false
 
 jobs:
   state:
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -43,8 +47,12 @@ jobs:
       REF: ${{ github.event.ref }}
       REF_TYPE: ${{ github.event.ref_type }}
       PR: ${{ github.event.pull_request.number }}
+      PR_STATE: ${{ github.event.pull_request.state }}
+      HEAD: ${{ github.event.pull_request.head.ref }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
       DRAFT: ${{ github.event.pull_request.draft }}
       MERGED: ${{ github.event.pull_request.merged }}
+      OLD_BODY: ${{ github.event.changes.body.from }}
       ISSUE: ${{ github.event.issue.number }}
     steps:
       - run: |
@@ -55,62 +63,84 @@ jobs:
             local n="$1" add="$2"; shift 2
             open_issue "$n" || return 0
             args=()
-            [ -n "$add" ] && args+=(--add-label "$add")
+            if [ -n "$add" ]; then args+=(--add-label "$add"); fi
             for r in "$@"; do args+=(--remove-label "$r"); done
             gh issue edit "$n" "${args[@]}" > /dev/null
             echo "#$n: +${add:-none} -$*"
           }
           branch_issue() { sed -nE 's#^[a-z]+/([0-9]+)-.*#\1#p' <<<"$1"; }
-          closing() { # GitHub fills the link list a moment after the PR opens, so look a few times
-            for wait in 0 5 10; do
-              sleep "$wait"
+          closing() { # the PR's closing issues; GitHub fills the list a moment after a PR opens
+            local tries=1 list=""
+            case "$ACTION" in opened|reopened|edited) tries=3 ;; esac
+            for i in $(seq "$tries"); do
               list="$(gh pr view "$PR" --json closingIssuesReferences --jq '.closingIssuesReferences[].number')"
-              [ -n "$list" ] && break
+              if [ -n "$list" ] || [ "$i" = "$tries" ]; then break; fi
+              sleep 5
             done
             echo "$list"
+          }
+          closed_by_open_pr() { # is #n closed by any open PR other than this one?
+            gh pr list --state open --limit 100 --json number,closingIssuesReferences \
+              --jq ".[] | select(.number != ${PR:-0}) | .closingIssuesReferences[].number" | grep -qx "$1"
+          }
+          keywords() { # issue numbers a body closes with a keyword, in the forms GitHub reads
+            grep -oiE "\b(close[sd]?|fix(e[sd])?|resolve[sd]?):? +(https://github\.com/$GH_REPO/issues/|$GH_REPO#|#)[0-9]+" \
+              | grep -oE '[0-9]+$' | sort -u || true
           }
 
           case "$EVENT" in
             create)
-              [ "$REF_TYPE" = branch ] || exit 0
+              if [ "$REF_TYPE" != branch ]; then exit 0; fi
               n="$(branch_issue "$REF")"
-              [ -n "$n" ] && set_state "$n" "in progress"
+              if [ -n "$n" ]; then set_state "$n" "in progress"; fi
               ;;
             delete)
-              [ "$REF_TYPE" = branch ] || exit 0
+              if [ "$REF_TYPE" != branch ]; then exit 0; fi
               n="$(branch_issue "$REF")"
-              [ -n "$n" ] || exit 0
-              # An open PR on another branch may still carry the issue.
-              if gh pr list --state open --search "$n in:body" --json body --jq '.[].body' \
-                  | grep -qiE "\b(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#$n\b"; then
-                exit 0
-              fi
+              if [ -z "$n" ] || closed_by_open_pr "$n"; then exit 0; fi
               set_state "$n" "" "in progress"
               ;;
             pull_request_target)
               case "$ACTION" in
                 opened|reopened|ready_for_review|edited|converted_to_draft)
+                  if [ "$PR_STATE" != open ]; then exit 0; fi
                   if [ "$DRAFT" = true ]; then add="in progress" drop="in review"
                   else add="in review" drop="in progress"; fi
-                  for n in $(closing); do set_state "$n" "$add" "$drop"; done
+                  now="$(closing)"
+                  for n in $now; do set_state "$n" "$add" "$drop"; done
+                  if [ "$ACTION" = edited ] && [ -n "$OLD_BODY" ]; then
+                    for n in $(keywords <<<"$OLD_BODY"); do
+                      if grep -qx "$n" <<<"$now" || closed_by_open_pr "$n"; then continue; fi
+                      set_state "$n" "" "in progress" "in review"
+                    done
+                  fi
                   ;;
                 closed)
+                  now="$(closing)"
                   if [ "$MERGED" = true ]; then
+                    for n in $now; do set_state "$n" "" "in progress" "in review"; done
                     body="$(gh pr view "$PR" --json body --jq .body)"
-                    for n in $(grep -oiE '\bpart of #[0-9]+' <<<"$body" | grep -oE '[0-9]+$' | sort -u); do
-                      open_issue "$n" || continue
+                    for n in $(grep -oiE '\bpart of #[0-9]+' <<<"$body" | grep -oE '[0-9]+$' | sort -u || true); do
+                      if ! open_issue "$n"; then continue; fi
                       gh issue comment "$n" --body "#$PR landed part of this on main. What is left stays open here."
-                      set_state "$n" "" "in review"
                     done
                   else
-                    for n in $(closing); do set_state "$n" "in progress" "in review"; done
+                    branch_alive=false
+                    if [ "$HEAD_REPO" = "$GH_REPO" ] && gh api "repos/$GH_REPO/branches/$HEAD" > /dev/null 2>&1; then
+                      branch_alive=true
+                    fi
+                    for n in $now; do
+                      if closed_by_open_pr "$n"; then continue; fi
+                      if [ "$branch_alive" = true ]; then set_state "$n" "in progress" "in review"
+                      else set_state "$n" "" "in progress" "in review"; fi
+                    done
                   fi
                   ;;
               esac
               ;;
             issues)
               labels="$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')"
-              grep -qxE 'in progress|in review' <<<"$labels" || exit 0
+              if ! grep -qxE 'in progress|in review' <<<"$labels"; then exit 0; fi
               gh issue edit "$ISSUE" --remove-label "in progress" --remove-label "in review" > /dev/null
               echo "#$ISSUE closed: state labels removed"
               ;;

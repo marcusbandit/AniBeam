@@ -42,8 +42,8 @@ without opening the board. `.github/workflows/issue-state.yml` sets them; nobody
 
 | Label | Goes on when | Comes off when |
 | --- | --- | --- |
-| `in progress` | a branch `<type>/<n>-<slug>` is pushed, or a draft PR closing #n opens | the PR is marked ready, the branch is deleted, or the issue closes |
-| `in review` | a ready PR that closes #n opens | the PR closes; unmerged, the issue goes back to `in progress` |
+| `in progress` | a branch `<type>/<n>-<slug>` is pushed, or a draft PR closing #n opens | the PR is marked ready or merged, the branch is deleted with no open PR left on #n, or the issue closes |
+| `in review` | a ready PR that closes #n opens | the PR merges, its body stops closing #n, or it closes unmerged, when #n goes back to `in progress` while the branch still exists |
 
 A merged PR that says `Part of #n` leaves a comment on #n naming itself, and #n stays open. The
 board's Status mirrors the labels through the daily sweep below.
