@@ -171,6 +171,7 @@ impl Snapshot {
         );
 
         let mut extras: Vec<&FileRow> = files.iter().filter(|f| !f.is_episode).collect();
+        let extra_versions = versions_by(&extras, |f| f.episode_key.clone());
         extras.sort_by(|a, b| {
             extra_order(a.extra_kind)
                 .cmp(&extra_order(b.extra_kind))
@@ -220,6 +221,10 @@ impl Snapshot {
                         resume: self.resume_of(id, &f.episode_key),
                         index: f.extra_index,
                         fixed: f.fixed,
+                        versions: extra_versions
+                            .get(&f.episode_key)
+                            .cloned()
+                            .unwrap_or_default(),
                     }
                 })
                 .collect(),
@@ -401,9 +406,19 @@ impl Snapshot {
 /// season and number are two releases of it; the web shell's old rule, moved
 /// here so every shell lists one row per episode. Takes the episodes on disk.
 fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersion>> {
-    let mut by: HashMap<(u32, u64), Vec<&FileRow>> = HashMap::new();
+    versions_by(files, version_key)
+}
+
+/// The versions of every file that shares its `key` with another, each group
+/// named by release as `episode_versions` names an episode's. Extras group by
+/// their history key, so two revisions of one extra are its two releases.
+fn versions_by<K: std::hash::Hash + Eq>(
+    files: &[&FileRow],
+    key: impl Fn(&FileRow) -> K,
+) -> HashMap<K, Vec<EpisodeVersion>> {
+    let mut by: HashMap<K, Vec<&FileRow>> = HashMap::new();
     for f in files.iter().copied() {
-        by.entry(version_key(f)).or_default().push(f);
+        by.entry(key(f)).or_default().push(f);
     }
     by.into_iter()
         .filter(|(_, group)| group.len() > 1)
@@ -645,6 +660,21 @@ mod tests {
             fixed: false,
             size: 0,
         }
+    }
+
+    #[test]
+    fn two_revisions_of_one_extra_are_its_versions() {
+        // SP01 and SP01v2 share the key the scan gives them (#468); a lone
+        // SP02 has no versions.
+        let mut a = file(1, "[A] Show - SP01.mkv", None, Some(Some(1)));
+        let mut b = file(2, "[A] Show - SP01v2.mkv", None, Some(Some(1)));
+        let c = file(3, "[A] Show - SP02.mkv", None, Some(Some(2)));
+        a.episode_key = "[A] Show - SP01.mkv".into();
+        b.episode_key = "[A] Show - SP01.mkv".into();
+        let v = versions_by(&[&a, &b, &c], |f| f.episode_key.clone());
+        assert_eq!(v.len(), 1);
+        let files: Vec<u64> = v["[A] Show - SP01.mkv"].iter().map(|x| x.file).collect();
+        assert_eq!(files, [1, 2]);
     }
 
     fn numbers(fix: &SuggestedFix) -> Vec<(u64, f64)> {

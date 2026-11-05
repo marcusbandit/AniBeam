@@ -365,6 +365,10 @@ pub struct Extra {
     /// As `Episode::fixed`.
     #[serde(default)]
     pub fixed: bool,
+    /// As `Episode::versions`: every file of this extra when there is more than one,
+    /// two releases of it (`SP01` and `SP01v2`, #468); empty for a lone file.
+    #[serde(default)]
+    pub versions: Vec<EpisodeVersion>,
 }
 
 /// What a file is, as the user says it (#170): an episode with its number and
