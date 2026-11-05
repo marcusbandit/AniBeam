@@ -2647,7 +2647,7 @@ pub fn inspect_release(core: &Core, link: String) -> Result<Reply, CoreError> {
 /// itself rather than through anirss, which has no route for it; the URL
 /// is the one anirss registered, API key and all, and never leaves this
 /// machine but to its own host.
-pub fn read_feed(core: &Core, url: String) -> Result<Reply, CoreError> {
+pub fn read_feed(core: &Core, url: String, tag: String) -> Result<Reply, CoreError> {
     let url = url.trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err(CoreError::invalid("url", "a feed is an http(s) URL"));
@@ -2660,9 +2660,9 @@ pub fn read_feed(core: &Core, url: String) -> Result<Reply, CoreError> {
                 format!(
                     "{} read from {}",
                     plural(entries.len() as u64, "feed entry", "feed entries"),
-                    feed::host_of(&url)
+                    crate::net::host_shown(&url)
                 ),
-                EventBody::FeedRead { url, entries },
+                EventBody::FeedRead { tag, entries },
             ),
             Err(error) => owner.bus.debug(
                 Stage::Downloads,
@@ -2697,7 +2697,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                 service(qbt::SERVICE, "rule_missing", format!("no rule named {name}"))
             })?;
             let url = def["affectedFeeds"][0].as_str().unwrap_or("").to_string();
-            let host = feed::host_of(&url);
+            let host = crate::net::host_shown(&url);
             let (key, value) = rewire::search_param(&url).ok_or_else(|| {
                 service(&host, "no_search", "the feed carries no search to shorten".to_string())
             })?;
@@ -2713,7 +2713,6 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                     ),
                     body: EventBody::SubscriptionRepaired {
                         name,
-                        feed_url: url,
                         must_contain: def["mustContain"].as_str().unwrap_or("").to_string(),
                         found: now.len() as u64,
                     },
@@ -2743,7 +2742,6 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                     ),
                     body: EventBody::SubscriptionRepaired {
                         name,
-                        feed_url: next,
                         must_contain: must,
                         found: entries.len() as u64,
                     },
