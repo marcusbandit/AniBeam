@@ -27,6 +27,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Spy x Family episodes no longer show up as specials
 - A phone call or another app's sound pauses the episode; a call's end resumes it
 - An episode open when Android closes the app resumes where you left it
+- Changing a phone setting mid-episode no longer leaves the app stuck sideways
 - The first download asks for permission to show its notification
 
 ## 2.4.2 · 2026-11-02
