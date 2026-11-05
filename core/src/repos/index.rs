@@ -208,11 +208,21 @@ impl Definition {
     /// the search to fill. None when a value is missing, or when the value for `{host}` is not
     /// a bare host.
     pub fn filled_url(&self, value: impl Fn(&str) -> Option<String>) -> Option<String> {
+        Some(self.fill_with(&self.filled_values(value)?, |_| true))
+    }
+
+    /// The address with the `values` of the fields `which` takes filled in, the rest left as
+    /// placeholders.
+    pub fn fill_with(
+        &self,
+        values: &[(&AuthField, String)],
+        which: impl Fn(&AuthField) -> bool,
+    ) -> String {
         let mut url = self.url.clone();
-        for (field, filled) in self.filled_values(value)? {
-            url = url.replace(&format!("{{{}}}", field.key), &filled);
+        for (field, filled) in values.iter().filter(|(f, _)| which(f)) {
+            url = url.replace(&format!("{{{}}}", field.key), filled);
         }
-        Some(url)
+        url
     }
 
     /// Each `auth` field with its value as it goes into the address, percent-encoded. None

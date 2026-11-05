@@ -67,21 +67,23 @@ impl RuleStore {
 
     /// Adds or replaces a rule. The same show from another endpoint gets ` @endpoint`
     /// after its name, as anirss does, so neither overwrites the other; the same feed again
-    /// keeps the name and what it has taken. `filled` is the feed as it is read: a rule kept
-    /// before #149 holds that, secrets and all, and is the same feed, replaced by this one.
+    /// keeps the name and what it has taken. Two rules read the same feed when they read the
+    /// same address once filled: `filled` is this one's, and `fill` fills a kept rule's. So a
+    /// rule kept before #149, its secret in its address, is the same feed as this one and is
+    /// replaced by it.
     pub fn subscribe(
         &self,
         name: &str,
         spec: &SubscriptionSpec,
         filled: &str,
+        fill: impl Fn(&Rule) -> Option<String>,
         save_base: &Path,
     ) -> Result<(Rule, Subscribed), CoreError> {
         let mut rules = self.load();
         let mut name = name.trim().to_string();
-        // A rule kept before #149 names no endpoint.
         let same = |r: &Rule| {
-            (r.endpoint == spec.endpoint_name || r.endpoint.is_empty())
-                && (r.feed_url == spec.feed_url || r.feed_url == filled)
+            (r.feed_url == spec.feed_url && r.endpoint == spec.endpoint_name)
+                || fill(r).as_deref() == Some(filled)
         };
         if let Some(existing) = rules.iter().find(|r| r.name == name)
             && !same(existing)
@@ -282,6 +284,11 @@ mod tests {
         assert!(due(&r, &items).is_empty());
     }
 
+    /// A rule's feed filled as it is, for rules that hold no placeholder.
+    fn as_is(r: &Rule) -> Option<String> {
+        Some(r.feed_url.clone())
+    }
+
     #[test]
     fn the_same_show_from_another_endpoint_keeps_both_rules() {
         let dir = std::env::temp_dir().join(format!("anibeam-rules-{}", std::process::id()));
@@ -293,10 +300,22 @@ mod tests {
             endpoint_name: ep.into(),
         };
         store
-            .subscribe("Frieren", &spec("https://nyaa.si/?q=f", "nyaa"), "", &dir)
+            .subscribe(
+                "Frieren",
+                &spec("https://nyaa.si/?q=f", "nyaa"),
+                "",
+                as_is,
+                &dir,
+            )
             .unwrap();
         let (_, second) = store
-            .subscribe("Frieren", &spec("https://erai/?s=f", "erai"), "", &dir)
+            .subscribe(
+                "Frieren",
+                &spec("https://erai/?s=f", "erai"),
+                "",
+                as_is,
+                &dir,
+            )
             .unwrap();
         assert_eq!(second.name, "Frieren @erai");
         assert_eq!(store.load().len(), 2);
@@ -318,15 +337,27 @@ mod tests {
             endpoint_name: "keyed".into(),
         };
         let filled = "https://feed.example/rss?q=Show&token=s3cret";
-        // As a rule was kept before #149: the token in the address.
+        let kept = "https://feed.example/rss?q=Show&token={token}";
+        // Each endpoint's own token.
+        let fill = |r: &Rule| {
+            let token = if r.endpoint == "other" {
+                "0ther"
+            } else {
+                "s3cret"
+            };
+            Some(r.feed_url.replace("{token}", token))
+        };
+        // As a rule was kept before #149: the token in the address, no endpoint.
         store
-            .subscribe("Show", &spec(filled), filled, dir.path())
+            .subscribe("Show", &spec(filled), filled, fill, dir.path())
             .unwrap();
+        let mut rules = store.load();
+        rules[0].endpoint = String::new();
+        store.save(&rules).unwrap();
         store.mark_taken("Show", &["a".to_string()]).unwrap();
 
-        let kept = "https://feed.example/rss?q=Show&token={token}";
         let (_, again) = store
-            .subscribe("Show", &spec(kept), filled, dir.path())
+            .subscribe("Show", &spec(kept), filled, fill, dir.path())
             .unwrap();
         assert_eq!(again.name, "Show");
         let rules = store.load();
@@ -335,12 +366,16 @@ mod tests {
         assert_eq!(rules[0].endpoint, "keyed");
         assert!(rules[0].taken.contains("a"));
 
-        // Another endpoint whose kept feed reads the same is still another rule.
+        // Another endpoint whose kept feed reads the same but fills another token is
+        // another feed, and another rule.
         let other = SubscriptionSpec {
             endpoint_name: "other".into(),
             ..spec(kept)
         };
-        let (_, second) = store.subscribe("Show", &other, "", dir.path()).unwrap();
+        let other_filled = "https://feed.example/rss?q=Show&token=0ther";
+        let (_, second) = store
+            .subscribe("Show", &other, other_filled, fill, dir.path())
+            .unwrap();
         assert_eq!(second.name, "Show @other");
         assert_eq!(store.load().len(), 2);
     }
