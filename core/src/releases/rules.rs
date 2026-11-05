@@ -5,6 +5,7 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +36,14 @@ pub struct Rule {
 
 fn yes() -> bool {
     true
+}
+
+/// Held while a rule store reads, changes and writes its file, so two changes at once (a
+/// subscribe, a poll marking an episode taken, the launch rewrite) cannot lose either.
+static EDITING: Mutex<()> = Mutex::new(());
+
+fn editing() -> MutexGuard<'static, ()> {
+    EDITING.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// The rules on disk, in one JSON file.
@@ -79,6 +88,7 @@ impl RuleStore {
         fill: impl Fn(&Rule) -> Option<String>,
         save_base: &Path,
     ) -> Result<(Rule, Subscribed), CoreError> {
+        let _one = editing();
         let mut rules = self.load();
         let mut name = name.trim().to_string();
         let same = |r: &Rule| {
@@ -121,6 +131,7 @@ impl RuleStore {
 
     /// Takes the named rules out; returns what went.
     pub fn remove(&self, names: &[String]) -> Result<Vec<Rule>, CoreError> {
+        let _one = editing();
         let mut rules = self.load();
         let gone: Vec<Rule> = rules
             .iter()
@@ -134,11 +145,27 @@ impl RuleStore {
 
     /// Notes links as taken by `rule`.
     pub fn mark_taken(&self, rule: &str, links: &[String]) -> Result<(), CoreError> {
+        let _one = editing();
         let mut rules = self.load();
         if let Some(r) = rules.iter_mut().find(|r| r.name == rule) {
             r.taken.extend(links.iter().cloned());
         }
         self.save(&rules)
+    }
+
+    /// Reads the rules, lets `change` change them, and writes them back when it says it
+    /// did, as one step no other change of this file can come between.
+    pub fn edit<T>(
+        &self,
+        change: impl FnOnce(&mut Vec<Rule>) -> (T, bool),
+    ) -> Result<T, CoreError> {
+        let _one = editing();
+        let mut rules = self.load();
+        let (out, changed) = change(&mut rules);
+        if changed {
+            self.save(&rules)?;
+        }
+        Ok(out)
     }
 }
 
