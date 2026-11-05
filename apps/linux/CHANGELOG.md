@@ -143,6 +143,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - Seeking in an episode converted for the phone works on Nvidia graphics
+- A busy sign-in port says to try again, not that another AniBeam is open
 - A qBittorrent address with a backslash is no longer read as this computer
 - Spy x Family episodes no longer show up as specials
 - JSON sources show sizes written with units, and links in capitals

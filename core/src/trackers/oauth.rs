@@ -360,11 +360,16 @@ async fn exchange(
 fn bind(port: u16) -> Result<TcpListener, CoreError> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", port)).map_err(|e| {
         tracing::debug!("the loopback listener could not bind {port}: {e}");
-        // In practice this is always the port being taken, and by the time
-        // a user sees it the useful half is what to do about it.
+        // In practice this is always the port being taken. The port sits in
+        // the range the system hands out for any program's connections, so
+        // whatever holds it is usually gone a moment later (#456); the
+        // registered redirect pins the port, so trying again is the remedy.
         CoreError::Io {
             path: None,
-            message: format!("port {port} is in use, another AniBeam is mid-connect"),
+            message: format!(
+                "Signing in could not start: port {port} on this computer is busy with \
+                 another program. Wait a moment and try again."
+            ),
         }
     })?;
     listener.set_nonblocking(true).map_err(io_error)?;
@@ -754,6 +759,22 @@ fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Any program's loopback connection can sit on the sign-in port, so a
+    /// busy port says what to do and never sends anyone looking for a
+    /// second AniBeam.
+    #[tokio::test]
+    async fn a_busy_port_says_so_and_asks_for_another_try() {
+        let holder = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = holder.local_addr().unwrap().port();
+        let Err(CoreError::Io { message, .. }) = bind(port) else {
+            panic!("a held port must fail the bind");
+        };
+        assert!(!message.contains("AniBeam"), "{message}");
+        assert!(message.contains(&format!("port {port}")), "{message}");
+        assert!(message.contains("busy"), "{message}");
+        assert!(message.contains("try again"), "{message}");
+    }
 
     #[test]
     fn the_anilist_url_carries_two_parameters_and_no_more() {
