@@ -1410,13 +1410,19 @@ pub fn kept_spec(core: &Core, spec: &SubscriptionSpec, query: &str) -> Subscript
 
 /// Rewrites the subscriptions kept before #149, the secrets of an installed endpoint in
 /// their feed, to the placeholder form, once per install (#463). A rule is matched to the
-/// endpoint whose secrets its feed holds ([`Runnable::rekept_feed`]) and keeps its name and
-/// what it has taken. One that matches no endpoint (a pasted feed, a rotated key, a removed
-/// endpoint) stays as it is. `store` is written in one atomic step, and the run is marked
-/// done only once that write is made. How many rules were rewritten.
+/// endpoint whose secrets its feed holds ([`Runnable::rekept_feed`]), the one whose template
+/// it fits best when two would do, and keeps its name and what it has taken. One that
+/// matches no endpoint (a pasted feed, a rotated key, a removed endpoint) stays as it is.
+/// `store` is changed in one atomic write ([`RuleStore::edit`](crate::releases::rules::RuleStore::edit)).
+///
+/// The run is marked done only when it could see every secret: `lifted` says this launch's
+/// lift of hand-added sources' secrets went through, and every installed endpoint has to
+/// have its credentials. Otherwise it runs again on the next launch, which rewrites only
+/// what this one could not. How many rules were rewritten.
 pub fn rekeep_old_rules(
     core: &Core,
     store: &crate::releases::rules::RuleStore,
+    lifted: bool,
 ) -> Result<usize, CoreError> {
     use crate::store::settings::{self, PHONE_RULES_REKEPT};
     if core
@@ -1426,25 +1432,41 @@ pub fn rekeep_old_rules(
     {
         return Ok(0);
     }
+    let installed = core.store.read(read_installed)?;
     let fillers = fillers(core);
-    let mut rules = store.load();
-    let mut rewritten = 0;
-    for rule in rules.iter_mut().filter(|r| r.endpoint.is_empty()) {
-        if let Some((name, feed)) = fillers
-            .iter()
-            .find_map(|f| f.rekept_feed(&rule.feed_url).map(|k| (&f.endpoint.name, k)))
-        {
-            rule.feed_url = feed;
-            rule.endpoint = name.clone();
-            rewritten += 1;
+    let mut ids: Vec<&str> = installed
+        .iter()
+        .filter(|r| crate::releases::endpoints::VALID_KINDS.contains(&r.def.kind.as_str()))
+        .map(|r| r.def.id.as_str())
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let complete = lifted && ids.len() == fillers.len();
+    let rewritten = store.edit(|rules| {
+        let mut n = 0;
+        for rule in rules.iter_mut().filter(|r| r.endpoint.is_empty()) {
+            let best = fillers
+                .iter()
+                .filter_map(|f| f.rekept_feed(&rule.feed_url).map(|kept| (f, kept)))
+                .max_by_key(|(f, kept)| shared_start(kept, &f.template));
+            if let Some((f, kept)) = best {
+                rule.feed_url = kept;
+                rule.endpoint = f.endpoint.name.clone();
+                n += 1;
+            }
         }
+        (n, n > 0)
+    })?;
+    if complete {
+        core.store
+            .write(|c| settings::set(c, PHONE_RULES_REKEPT, &true))?;
     }
-    if rewritten > 0 {
-        store.save(&rules)?;
-    }
-    core.store
-        .write(|c| settings::set(c, PHONE_RULES_REKEPT, &true))?;
     Ok(rewritten)
+}
+
+/// How many characters `a` and `b` start with in common.
+fn shared_start(a: &str, b: &str) -> usize {
+    a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
 }
 
 /// Whether `url` holds a placeholder: `{` then letters, digits, `.`, `_` or `-`, then `}`.
@@ -1785,7 +1807,7 @@ mod tests {
             ])
             .unwrap();
 
-        assert_eq!(rekeep_old_rules(&core, &store).unwrap(), 1);
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
         let rules = store.load();
         assert_eq!(rules.len(), 3);
         let show = &rules[0];
@@ -1808,8 +1830,58 @@ mod tests {
         let mut again = rules.clone();
         again.push(old_rule("Later", filled));
         store.save(&again).unwrap();
-        assert_eq!(rekeep_old_rules(&core, &store).unwrap(), 0);
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 0);
         assert_eq!(store.load(), again);
+        core.shutdown();
+    }
+
+    #[test]
+    fn a_launch_that_could_not_see_every_secret_runs_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = core_with_keyed_endpoint(dir.path());
+        let store = crate::releases::rules::RuleStore::new(dir.path().join("phone-rules.json"));
+        let filled = "https://a.example/rss?q=Show&token=longsecret1";
+        store.save(&[old_rule("Show", filled)]).unwrap();
+        // The lift failed this launch: what could be rewritten is, and the next launch
+        // looks again.
+        assert_eq!(rekeep_old_rules(&core, &store, false).unwrap(), 1);
+        store
+            .save(&[store.load().remove(0), old_rule("Later", filled)])
+            .unwrap();
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        assert!(store.load().iter().all(|r| r.endpoint == "mine"));
+        core.shutdown();
+    }
+
+    #[test]
+    fn an_old_rule_goes_to_the_endpoint_its_feed_fits_best() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = core_with_keyed_endpoint(dir.path());
+        // Two endpoints on one server with one key, told apart by their path.
+        custom(
+            &core,
+            "first",
+            "https://own.example/1/api?t=search&q={query}&apikey=sharedkey1",
+        );
+        custom(
+            &core,
+            "second",
+            "https://own.example/2/api?t=search&q={query}&apikey=sharedkey1",
+        );
+        let store = crate::releases::rules::RuleStore::new(dir.path().join("phone-rules.json"));
+        store
+            .save(&[old_rule(
+                "Show",
+                "https://own.example/2/api?t=search&q=Show&apikey=sharedkey1",
+            )])
+            .unwrap();
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
+        let rule = store.load().remove(0);
+        assert_eq!(rule.endpoint, "second");
+        assert_eq!(
+            rule.feed_url,
+            "https://own.example/2/api?t=search&q=Show&apikey={apikey}"
+        );
         core.shutdown();
     }
 
@@ -1825,11 +1897,11 @@ mod tests {
         // The new file is written beside the old one first; make that impossible.
         std::fs::create_dir(path.with_extension("json.tmp")).unwrap();
 
-        assert!(rekeep_old_rules(&core, &store).is_err());
+        assert!(rekeep_old_rules(&core, &store, true).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), before);
 
         std::fs::remove_dir(path.with_extension("json.tmp")).unwrap();
-        assert_eq!(rekeep_old_rules(&core, &store).unwrap(), 1);
+        assert_eq!(rekeep_old_rules(&core, &store, true).unwrap(), 1);
         assert_eq!(store.load()[0].endpoint, "mine");
         core.shutdown();
     }

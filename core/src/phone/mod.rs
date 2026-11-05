@@ -289,11 +289,10 @@ fn rules_store(core: &Core) -> crate::releases::rules::RuleStore {
 }
 
 /// Takes the secrets out of the subscriptions kept before #149, once, at launch (#463).
-/// Under the poll lock, so a round marking an episode taken cannot write over the rewrite.
+/// `lifted` says the launch's lift of hand-added sources' secrets went through.
 #[cfg(feature = "phone")]
-pub fn rekeep_rules(core: &Core) {
-    let _one = core.phone.poll_lock.blocking_lock();
-    match crate::repos::rekeep_old_rules(core, &rules_store(core)) {
+pub fn rekeep_rules(core: &Core, lifted: bool) {
+    match crate::repos::rekeep_old_rules(core, &rules_store(core), lifted) {
         Ok(0) => {}
         Ok(n) => {
             tracing::info!(
@@ -301,14 +300,14 @@ pub fn rekeep_rules(core: &Core) {
             );
             core.bus.info(
                 Stage::Downloads,
-                "Subscriptions saved earlier keep their source's key in the secret store now",
+                "Shows followed earlier no longer keep their source's key in the app's files",
                 EventBody::Notice,
             );
         }
         Err(e) => {
             core.bus.warn(
                 Stage::Downloads,
-                format!("could not move a subscription's source key to the secret store: {e}"),
+                format!("could not take the source keys out of the shows followed earlier: {e}"),
                 EventBody::Notice,
             );
         }

@@ -656,7 +656,10 @@ impl Core {
         // Off this thread: storing a secret can be a keyring round trip.
         let lifting = core.clone();
         self.handle.spawn_blocking(move || {
-            if let Err(e) = crate::repos::lift_stored_secrets(&lifting) {
+            let lift = crate::repos::lift_stored_secrets(&lifting);
+            #[cfg(feature = "phone")]
+            let lifted = lift.is_ok();
+            if let Err(e) = lift {
                 lifting.bus.warn(
                     Stage::Downloads,
                     format!("could not move a source's secret to the secret store: {e}"),
@@ -665,7 +668,7 @@ impl Core {
             }
             // After the lift: a subscription's secret is found among the stored ones.
             #[cfg(feature = "phone")]
-            crate::phone::rekeep_rules(&lifting);
+            crate::phone::rekeep_rules(&lifting, lifted);
         });
         launch::start(&core)
     }
