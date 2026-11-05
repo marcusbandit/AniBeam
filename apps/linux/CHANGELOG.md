@@ -142,6 +142,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Seeders show for releases from a tracker written with backslashes
 - Sources installed from a repo show up in search on every desktop install
 - Seeking in an episode converted for the phone works on Nvidia graphics
 - A busy sign-in port says to try again, not that another AniBeam is open

@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
+- Seeders show for releases from a tracker written with backslashes
 - A busy sign-in port says to try again, not that another AniBeam is open
 - A show's synopsis reads as paragraphs instead of showing <br> tags
 - Episode codes like S03E01 fit their column instead of running into the title
