@@ -4,19 +4,10 @@ name: Windows
 # zip, each carrying Qt, libmpv, MpvQt, qbittorrent-nox and anirss on its own Python. Runs
 # the core and shell tests there, then smoke-tests the bundled app, the two helpers and the
 # Downloads page starting them on a fresh install. nightly.yml, release.yml and pr-build.yml
-# call it and put the installer and the zip on their release. A pull request that touches the
-# core, the Qt shell or the workspace runs it too. Run it from the Actions tab (Run
-# workflow) for a build without a release.
+# call it and put the installer and the zip on their release. A pull request runs it only
+# through the `test build` label (#529); nightly catches what slips past. Run it from the
+# Actions tab (Run workflow) for a build without a release.
 on:
-  pull_request:
-    paths:
-      - 'core/**'
-      - 'host-api/**'
-      - 'apps/linux/**'
-      - 'apps/cli/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/windows.yml'
   workflow_dispatch:
   workflow_call:
     # nightly.yml, release.yml and pr-build.yml say which commit to build and what version it
@@ -29,9 +20,8 @@ on:
         type: string
         default: ''
 
-# A new push to a PR cancels that PR's older run of this build, so a burst of pushes keeps
-# one build per PR instead of queueing behind the runners. Nightly and release runs have no
-# PR number, so each gets its own group and none cancels another (#529).
+# A new push to a PR cancels that PR's older run of this build. Nightly and release runs
+# have no PR number, so each gets its own group and none cancels another (#529).
 concurrency:
   group: ${{ github.workflow }}-windows-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true

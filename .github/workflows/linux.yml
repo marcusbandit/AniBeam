@@ -32,9 +32,8 @@ on:
         type: string
         default: ''
 
-# A new push to a PR cancels that PR's older run of this build, so a burst of pushes keeps
-# one build per PR instead of queueing behind the runners. Nightly and release runs have no
-# PR number, so each gets its own group and none cancels another (#529).
+# A new push to a PR cancels that PR's older run of this build. Nightly and release runs
+# have no PR number, so each gets its own group and none cancels another (#529).
 concurrency:
   group: ${{ github.workflow }}-linux-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
