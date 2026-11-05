@@ -630,4 +630,16 @@ mod tests {
             "Tom's \"show\""
         );
     }
+
+    /// AniList's descriptions are the same kind of HTML, and the phone shows them through
+    /// this: `<br>` pairs between paragraphs, raw newlines beside them, `<i>` for the source.
+    #[test]
+    fn an_anilist_description_reads_as_paragraphs() {
+        assert_eq!(
+            plain_summary(
+                "Maomao is back.<br><br>\nThe <i>rear palace</i> &amp; its secrets.<br>\n<br>\n(Source: Crunchyroll)"
+            ),
+            "Maomao is back.\n\nThe rear palace & its secrets.\n\n(Source: Crunchyroll)"
+        );
+    }
 }

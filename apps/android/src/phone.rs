@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anibeam_companion::calendar;
 use anibeam_companion::format;
+use anibeam_core::net::tvmaze::plain_summary;
 use anibeam_core::{SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
 use chrono::{Datelike, Days, NaiveDate};
 
@@ -333,7 +334,8 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         next: next.into(),
         progress_text: progress_text.into(),
         cubes: std::rc::Rc::new(slint::VecModel::from(cube_codes(&card.cubes))).into(),
-        synopsis: detail.synopsis.clone().into(),
+        // AniList's description is HTML: `<br>` pairs between paragraphs, `<i>` for the source.
+        synopsis: plain_summary(&detail.synopsis).into(),
         play_file: play.map(|e| e.file as i32).unwrap_or(0),
         play_remote: false,
         play_label: play
