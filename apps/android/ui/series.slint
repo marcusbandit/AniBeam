@@ -37,9 +37,16 @@ component EpisodeItem inherits Rectangle {
         border-width: root.data.picked ? 0 : 1.5px;
         border-color: Theme.line-strong;
     }
+    // Measures the list's longest code, so every row's column is as wide and the titles line up.
+    code-probe := Text {
+        visible: false;
+        text: AppData.episode-code-sample;
+        font-size: Theme.small;
+        font-family: Theme.figure;
+    }
     code := Text {
         x: Theme.unit * 8;
-        width: Theme.unit * 10;
+        width: Math.max(Theme.unit * 10, code-probe.preferred-width + Theme.unit * 2);
         height: parent.height;
         text: root.data.code;
         color: root.later ? Theme.faint : Theme.dim;

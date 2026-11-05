@@ -10,6 +10,11 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.4.3 · 2026-11-05
+
+### Fixed
+- Episode codes like S03E01 fit their column instead of running into the title
+
 ## 2.4.2 · 2026-11-02
 
 ### Fixed

@@ -326,6 +326,8 @@ export global AppData {
     in property <bool> series-remote;
     in property <SeriesHead> series;
     in property <[EpisodeLine]> episodes;
+    // The longest code among the episodes, "S03E01": every row's code column fits it.
+    in property <string> episode-code-sample;
 
     callback open-series(int);
     // A series from the other device's library, played from there.

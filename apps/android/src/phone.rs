@@ -416,6 +416,20 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
     (head, lines.into_iter().map(|(_, l)| l).collect())
 }
 
+/// The longest episode code in a list, which the page measures to size the code column for
+/// every row alike: `S03E01` needs more room than `E01`.
+pub fn widest_code(lines: &[EpisodeLine]) -> slint::SharedString {
+    lines
+        .iter()
+        .map(|l| &l.code)
+        .fold(None, |widest: Option<&slint::SharedString>, c| match widest {
+            Some(w) if w.chars().count() >= c.chars().count() => Some(w),
+            _ => Some(c),
+        })
+        .cloned()
+        .unwrap_or_default()
+}
+
 /// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
 fn clock(secs: f64) -> String {
     let t = secs.max(0.0) as u64;
@@ -430,5 +444,17 @@ mod tests {
     #[test]
     fn every_core_cube_letter_has_a_colour_code() {
         assert_eq!(cube_codes("wldmgft"), vec![0, 1, 2, 3, 4, 5, 6]);
+    }
+
+    fn line(code: &str) -> EpisodeLine {
+        EpisodeLine { code: code.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn the_code_column_is_sized_for_the_longest_code() {
+        let lines = [line("E01"), line("S03E01"), line("S03E12"), line("SP1")];
+        assert_eq!(widest_code(&lines), "S03E01");
+        assert_eq!(widest_code(&[line("E01"), line("E100")]), "E100");
+        assert_eq!(widest_code(&[]), "");
     }
 }

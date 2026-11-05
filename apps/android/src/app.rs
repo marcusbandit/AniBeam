@@ -437,6 +437,7 @@ impl App {
                 }
                 data.set_deleting(self.deleting);
                 data.set_delete_count(self.picked.len() as i32);
+                data.set_episode_code_sample(crate::phone::widest_code(&lines));
                 update(&self.episodes, lines);
                 data.set_series_open(true);
             }
