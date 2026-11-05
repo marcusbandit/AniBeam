@@ -1,6 +1,6 @@
 # Backlog review
 
-Once a week an agent walks the board's Backlog against `main` and refills Up next. Issues land in
+Once a week, Mondays at 09:00 from the "AniBeam backlog review" T3 schedule on banditbox, an agent walks the board's Backlog against `main` and refills Up next. Issues land in
 Backlog faster than they leave it, and finished work often stays open because a PR landed a piece
 of a tracker without ticking its box. The review is how nothing gets forgotten.
 
