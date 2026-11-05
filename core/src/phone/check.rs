@@ -145,8 +145,8 @@ async fn host(
         out.push(line(doh_line, true, "skipped, home-network name".into(), 0));
     } else {
         let start = Instant::now();
-        match doh.lookup(name).await {
-            Some(found) => {
+        match doh.find(name).await {
+            crate::net::doh::Found::Addresses(found) => {
                 let shown = found
                     .iter()
                     .map(ToString::to_string)
@@ -159,7 +159,15 @@ async fn host(
                     }
                 }
             }
-            None => out.push(line(
+            // The resolvers answered: the name has no public address, and this network's
+            // DNS is the one to ask.
+            crate::net::doh::Found::NoRecord => out.push(line(
+                doh_line,
+                true,
+                "no public address, left to this network's DNS".into(),
+                ms(start),
+            )),
+            crate::net::doh::Found::NoAnswer => out.push(line(
                 doh_line,
                 false,
                 "no resolver answered".into(),
