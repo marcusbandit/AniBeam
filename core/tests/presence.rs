@@ -28,6 +28,8 @@ struct Fake {
     log: Arc<(Mutex<Vec<Sent>>, Condvar)>,
     fail: bool,
     reject_posters: bool,
+    /// Set by a test: Discord has quit, so every send finds it gone.
+    gone: Arc<std::sync::atomic::AtomicBool>,
     reject_all: bool,
     gate: Option<Gate>,
 }
@@ -89,6 +91,9 @@ impl Transport for Fake {
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError> {
         if let Some(gate) = &self.gate {
             gate.pass();
+        }
+        if self.gone.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(SendError::Gone("Discord quit".to_string()));
         }
         if let (true, Some(a)) = (self.reject_all, activity) {
             self.push(Sent::Refused(a.clone()));
@@ -493,6 +498,104 @@ fn get_presence_says_whether_this_build_has_an_application() {
         presence_reply(&core),
         (presence::bundled_client_id().is_some(), false)
     );
+}
+
+fn presence_events(c: &anibeam_core::events::Collector) -> Vec<bool> {
+    c.events()
+        .into_iter()
+        .filter_map(|e| match e.body {
+            EventBody::PresenceChanged { connected } => Some(connected),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_connection_coming_and_going_is_an_event() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    switch(&core, true);
+    core.presence_flush();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::PresenceChanged { connected: true }),
+        Duration::from_secs(5),
+    );
+    // Switching off lets the connection go, and says so.
+    switch(&core, false);
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::PresenceChanged { connected: false }),
+        Duration::from_secs(5),
+    );
+    assert_eq!(presence_events(&c), vec![true, false]);
+    assert_eq!(presence_reply(&core), (true, false));
+}
+
+#[test]
+fn a_discord_that_never_answers_sends_no_change() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        fail: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    switch(&core, false);
+    core.presence_flush();
+    assert!(presence_events(&c).is_empty(), "{:?}", presence_events(&c));
+}
+
+fn wait_presence(c: &anibeam_core::events::Collector, connected: bool) {
+    common::wait_for(
+        c,
+        |e| matches!(e.body, EventBody::PresenceChanged { connected: x } if x == connected),
+        Duration::from_secs(5),
+    );
+}
+
+#[test]
+fn a_discord_that_quits_mid_episode_is_noticed_without_a_new_tick() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    core.set_presence_check(Duration::from_millis(30));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    wait_presence(&c, true);
+    // Discord quits while the episode plays on steadily: nothing new to send,
+    // but the check sends it again and finds Discord gone.
+    fake.gone.store(true, std::sync::atomic::Ordering::SeqCst);
+    wait_presence(&c, false);
+    assert_eq!(presence_events(&c), vec![true, false]);
+    assert_eq!(presence_reply(&core), (true, false));
+}
+
+#[test]
+fn a_connection_with_nothing_to_show_is_let_go() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    core.set_presence_check(Duration::from_millis(30));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    wait_presence(&c, true);
+    close(&core, s);
+    wait_presence(&c, false);
+    fake.wait(|sent| sent.contains(&Sent::Close));
+    assert_eq!(presence_reply(&core), (true, false));
 }
 
 #[test]

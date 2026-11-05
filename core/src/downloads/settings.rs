@@ -10,6 +10,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
+use serde::Deserialize;
 
 use crate::contract::*;
 use crate::store::settings;
@@ -92,8 +93,33 @@ fn adopt_client(s: &mut DownloadSettings) {
     }
 }
 
+/// Writes the settings over what is stored, so a key a newer build added survives a save
+/// here. An engine this build does not know reads as anirss (a newer build wrote it), so a
+/// save that still says anirss keeps the stored value rather than undo the newer build's
+/// choice; picking the native engine replaces it. This build cannot tell an anirss read that
+/// way from one picked on purpose, and in this build both mean anirss.
 pub fn save(conn: &Connection, s: &DownloadSettings) -> Result<(), CoreError> {
-    settings::set(conn, KEY, s)
+    let serde_json::Value::Object(fields) = serde_json::to_value(s)? else {
+        return Err(CoreError::internal(
+            "the downloads settings are not an object",
+        ));
+    };
+    let mut blob = match settings::get::<serde_json::Value>(conn, KEY) {
+        Ok(Some(serde_json::Value::Object(stored))) => stored,
+        Ok(_) => serde_json::Map::new(),
+        Err(e) if e.is_decode_failure() => serde_json::Map::new(),
+        Err(e) => return Err(e),
+    };
+    let unknown = blob
+        .get("engine")
+        .is_some_and(|e| !e.is_null() && DownloadsEngine::deserialize(e).is_err());
+    let keep = unknown && s.engine == DownloadsEngine::default();
+    for (k, v) in fields {
+        if !(keep && k == "engine") {
+            blob.insert(k, v);
+        }
+    }
+    settings::set(conn, KEY, &blob)
 }
 
 /// Trims every field and refuses what cannot work: an empty command, a
@@ -507,6 +533,81 @@ pub fn anirss_saved_password() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::franchise::testing::conn as store;
+
+    fn stored_engine(c: &Connection) -> serde_json::Value {
+        settings::get::<serde_json::Value>(c, KEY).unwrap().unwrap()["engine"].clone()
+    }
+
+    #[test]
+    fn a_save_keeps_an_engine_this_build_does_not_know() {
+        let c = store();
+        let mut blob = serde_json::to_value(defaults()).unwrap();
+        blob["engine"] = serde_json::json!("Telepathy");
+        settings::set(&c, KEY, &blob).unwrap();
+        // Read as anirss here, and saved back with something else changed.
+        let mut s = load_stored(&c).unwrap();
+        assert_eq!(s.engine, DownloadsEngine::Anirss);
+        s.prune_finished_feeds = false;
+        save(&c, &s).unwrap();
+        assert_eq!(stored_engine(&c), serde_json::json!("Telepathy"));
+        assert!(!load_stored(&c).unwrap().prune_finished_feeds);
+        // Picking an engine this build knows replaces it.
+        s.engine = DownloadsEngine::Native;
+        save(&c, &s).unwrap();
+        assert_eq!(stored_engine(&c), serde_json::json!("Native"));
+    }
+
+    #[test]
+    fn a_save_keeps_keys_a_newer_build_added() {
+        let c = store();
+        let mut blob = serde_json::to_value(defaults()).unwrap();
+        blob["from_the_future"] = serde_json::json!({"on": true});
+        settings::set(&c, KEY, &blob).unwrap();
+        save(&c, &load_stored(&c).unwrap()).unwrap();
+        let stored = settings::get::<serde_json::Value>(&c, KEY)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored["from_the_future"], serde_json::json!({"on": true}));
+    }
+
+    #[test]
+    fn a_missing_null_or_shaped_engine_is_not_kept_as_unknown() {
+        for engine in [
+            None,
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!({"Native": {}})),
+        ] {
+            let c = store();
+            let mut blob = serde_json::to_value(defaults()).unwrap();
+            match engine.clone() {
+                Some(e) => blob["engine"] = e,
+                None => {
+                    blob.as_object_mut().unwrap().remove("engine");
+                }
+            }
+            settings::set(&c, KEY, &blob).unwrap();
+            save(&c, &load_stored(&c).unwrap()).unwrap();
+            let kept = stored_engine(&c);
+            match engine {
+                // A shape this build cannot read is unknown too, and kept.
+                Some(e) if e.is_object() => assert_eq!(kept, e),
+                _ => assert_eq!(kept, serde_json::json!("Anirss")),
+            }
+        }
+    }
+
+    #[test]
+    fn a_save_over_a_known_engine_writes_the_one_given() {
+        let c = store();
+        let mut s = defaults();
+        s.engine = DownloadsEngine::Native;
+        save(&c, &s).unwrap();
+        s.engine = DownloadsEngine::Anirss;
+        save(&c, &s).unwrap();
+        assert_eq!(stored_engine(&c), serde_json::json!("Anirss"));
+    }
 
     #[test]
     fn reads_qbittorrent_off_an_anirss_config() {
