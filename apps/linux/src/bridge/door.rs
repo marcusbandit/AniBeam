@@ -303,6 +303,7 @@ pub mod qobject {
             items: &QJsonArray,
             name: &QString,
             wire_query: &QString,
+            series: f64,
         ) -> QJsonObject;
         #[qinvokable]
         fn download_releases(self: &Door, items: &QJsonArray, name: &QString) -> QJsonObject;
@@ -1986,6 +1987,7 @@ impl qobject::Door {
         items: &QJsonArray,
         name: &QString,
         wire_query: &QString,
+        series: f64,
     ) -> QJsonObject {
         self.dispatch(releases(items).map(|items| Call::Subscribe {
             query: query.to_string(),
@@ -1993,6 +1995,7 @@ impl qobject::Door {
             items,
             name: non_empty(name),
             wire_query: non_empty(wire_query),
+            series: opt_id(series),
         }))
     }
     pub fn download_releases(&self, items: &QJsonArray, name: &QString) -> QJsonObject {

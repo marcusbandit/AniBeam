@@ -460,7 +460,8 @@ Item {
     }
     function follow(plan) {
         page.pendingFollow = null
-        var r = Door.subscribe(plan.followQuery, plan.endpoint, plan.followItems, plan.name, plan.query !== plan.followQuery ? plan.query : "")
+        var series = plan.options && plan.options.series != null ? plan.options.series : -1
+        var r = Door.subscribe(plan.followQuery, plan.endpoint, plan.followItems, plan.name, plan.query !== plan.followQuery ? plan.query : "", series)
         if (r.error) { page.getActing = false; page.getError = page.errorWords(r.error); return }
         page.followJob = r.reply.job
         page.getActing = true
@@ -847,7 +848,7 @@ Item {
     function subscribe() {
         if (!page.state) return
         var wire = page.state.wireQuery && page.state.wireQuery !== page.state.query ? page.state.wireQuery : ""
-        act(Door.subscribe(page.state.query, page.state.endpoint, page.state.items, page.nameText, wire))
+        act(Door.subscribe(page.state.query, page.state.endpoint, page.state.items, page.nameText, wire, -1))
     }
     function download(items) { if (items.length) act(Door.downloadReleases(items, page.nameText)) }
     function movie() {
