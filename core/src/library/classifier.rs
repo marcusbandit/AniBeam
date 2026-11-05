@@ -192,6 +192,20 @@ fn title_end(tokens: &[&str]) -> (usize, bool) {
     }
 }
 
+/// Whether the token at `at` is a word of an episode's title: one with a letter in it
+/// that is no dash, release tag, number, end word or marker of its own. `Special
+/// Delivery` is a title; `Special 1080p`, `Special - Recap` and `Special Trailer` are not.
+fn title_word_at(tokens: &[&str], at: usize) -> bool {
+    let Some(token) = tokens.get(at) else {
+        return false;
+    };
+    token.chars().any(char::is_alphabetic)
+        && !RELEASE_TOKEN.is_match(token)
+        && !NOT_A_TITLE.is_match(token)
+        && !EXTRA_PATTERNS.iter().any(|(_, re, _)| re.is_match(token))
+        && !OTHER_TOKENS.contains(&token.to_lowercase().as_str())
+}
+
 fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     let normalised = normalise_for_tokens(file_name);
     let tokens: Vec<&str> = normalised.split_whitespace().collect();
@@ -218,7 +232,7 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
                     raw_label: token.to_string(),
                 };
                 let bare = *word && hit.index.is_none();
-                if bare && episode_after && at > title_end && at + 1 < tokens.len() {
+                if bare && episode_after && at > title_end && title_word_at(&tokens, at + 1) {
                     break;
                 }
                 let in_title = bare && at + 1 < title_end;
@@ -753,6 +767,18 @@ mod tests {
         assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(1)));
         let c = ep("Show - 07 - NCOP1 Clean.mkv");
         assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Op), Some(1)));
+        // What follows has to be a title word: a release tag, a dash, an end word or
+        // another marker is not one, and the file stays the extra it names.
+        for (name, kind) in [
+            ("Show - 01 - Special 1080p.mkv", ExtraKind::Sp),
+            ("Show.S01E00.Special.1080p.WEB-DL.mkv", ExtraKind::Sp),
+            ("Show - 13 - Special - Recap.mkv", ExtraKind::Sp),
+            ("Show - 07 - Special Trailer.mkv", ExtraKind::Sp),
+            ("Show - 07 - Special Bonus.mkv", ExtraKind::Sp),
+            ("Show - 07 - Trailer END.mkv", ExtraKind::Pv),
+        ] {
+            assert_eq!(ep(name).extra, Some(kind), "{name}");
+        }
     }
 
     #[test]
