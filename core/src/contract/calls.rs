@@ -296,7 +296,9 @@ pub enum Call {
     /// item. `wire_query` is the query the endpoint itself was last asked,
     /// when the page narrowed past it on the engine's side: the
     /// subscription then reads that query's feed and keeps the narrowing
-    /// words in its rule. Ends in `Subscribed`.
+    /// words in its rule. `series` is the library show it is for: the
+    /// rule then saves into that show's folder instead of a new one under
+    /// the save base. Ends in `Subscribed`.
     Subscribe {
         query: String,
         endpoint: String,
@@ -304,6 +306,8 @@ pub enum Call {
         name: Option<String>,
         #[serde(default)]
         wire_query: Option<String>,
+        #[serde(default)]
+        series: Option<u64>,
     },
     /// Hands these releases to qBittorrent now, under `<save_base>/<name>`,
     /// through anirss or, on the native engine, through qBittorrent's Web
