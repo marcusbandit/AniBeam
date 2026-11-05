@@ -60,6 +60,11 @@ static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex)>> = LazyLock::new(|| {
         ),
     ]
 });
+/// The markers a series title can hold as a plain word: a preview or a
+/// special with no number. An OVA stays out, since `OVA Episode 2` is the
+/// OVA and not episode 2.
+static TITLE_WORD_MARKER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(?:PVs?|Trailers?|Teasers?|SPs?|Specials?)$").unwrap());
 const OTHER_TOKENS: [&str; 5] = ["menu", "cm", "bonus", "extra", "extras"];
 
 static SEASON_EPISODE: LazyLock<Regex> =
@@ -152,9 +157,25 @@ fn index_apart(rest: &[&str]) -> Option<u32> {
         .ok()
 }
 
+/// Whether an episode reading follows a marker: the strict patterns only,
+/// `- 01`, `S02E03`, `Episode 12`, so a volume or a stray number after the
+/// marker never counts as one.
+fn episode_follows(rest: &[&str]) -> bool {
+    let rest = format!(" {}", rest.join(" "));
+    SEASON_EPISODE.is_match(&rest)
+        || EPISODE_PATTERNS[..4].iter().any(|re| re.is_match(&rest))
+        || SEASON_X_EPISODE.is_match(&rest)
+        || DASH_DECIMAL.is_match(&rest)
+}
+
 fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     let normalised = normalise_for_tokens(file_name);
     let tokens: Vec<&str> = normalised.split_whitespace().collect();
+    // A bare `Trailer` or `Special` with no number of its own may be a word
+    // of the series title (Trailer Park Boys, Special A). It loses to an
+    // episode number after it and to a later marker, and is the reading
+    // only when neither comes (#443).
+    let mut bare = None;
     for (at, token) in tokens.iter().enumerate() {
         for (kind, re) in EXTRA_PATTERNS.iter() {
             if let Some(m) = re.captures(token) {
@@ -163,12 +184,19 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
                     ExtraKind::Sp | ExtraKind::Pv => index_apart(&tokens[at + 1..]),
                     _ => None,
                 };
-                return Some(ExtraHit {
+                let hit = ExtraHit {
                     kind: *kind,
                     index: glued.or_else(apart),
                     variant: m.get(2).map(|g| g.as_str().to_lowercase()),
                     raw_label: token.to_string(),
-                });
+                };
+                if hit.index.is_none() && TITLE_WORD_MARKER.is_match(token) {
+                    if bare.is_none() && !episode_follows(&tokens[at + 1..]) {
+                        bare = Some(hit);
+                    }
+                    break;
+                }
+                return Some(hit);
             }
         }
         if OTHER_TOKENS.contains(&token.to_lowercase().as_str()) {
@@ -180,7 +208,7 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
             });
         }
     }
-    None
+    bare
 }
 
 fn finalize(season: Option<u32>, episode: f64) -> (Option<u32>, f64) {
@@ -617,6 +645,34 @@ mod tests {
             (c.extra, c.extra_index, c.extra_variant.as_deref()),
             (Some(ExtraKind::Pv), Some(1), Some("a"))
         );
+    }
+
+    #[test]
+    fn a_title_word_that_is_a_bare_marker_does_not_beat_the_episode() {
+        // The title's own word is the marker, with no number of its own,
+        // and an episode number follows it (#443).
+        for (name, number) in [
+            ("Trailer Park Boys - 01.mkv", 1.0),
+            ("[Group] Special A - 07 [1080p].mkv", 7.0),
+            ("Trailer.Park.Boys.S02E03.mkv", 3.0),
+            ("Special A Episode 12.mkv", 12.0),
+        ] {
+            let c = ep(name);
+            assert_eq!((c.extra, c.number), (None, number), "{name}");
+        }
+        // A marker later in the name still makes the file that extra.
+        let c = ep("Special A - SP01.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(1)));
+        let c = ep("Trailer Park Boys - NCOP2.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Op), Some(2)));
+        // With no episode after it, the bare marker is the file's reading.
+        let c = ep("Trailer Park Boys - Trailer.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Pv), None));
+        let c = ep("Show - Special.mkv");
+        assert_eq!((c.extra, c.number), (Some(ExtraKind::Sp), 0.0));
+        // A marker with its own index keeps it, as before.
+        assert_eq!(ep("Show Special - 04.mkv").extra_index, Some(4));
+        assert_eq!(ep("Show - Trailer 2.mkv").extra_index, Some(2));
     }
 
     #[test]
