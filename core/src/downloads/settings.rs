@@ -92,8 +92,25 @@ fn adopt_client(s: &mut DownloadSettings) {
     }
 }
 
+/// Writes the settings. An engine this build does not know reads as anirss (a newer build
+/// wrote it), so a save that still says anirss keeps the stored value rather than undo the
+/// newer build's choice; picking the native engine replaces it.
 pub fn save(conn: &Connection, s: &DownloadSettings) -> Result<(), CoreError> {
-    settings::set(conn, KEY, s)
+    let mut blob = serde_json::to_value(s)?;
+    if s.engine == DownloadsEngine::default()
+        && let Some(kept) = unknown_engine(conn)
+    {
+        blob["engine"] = kept;
+    }
+    settings::set(conn, KEY, &blob)
+}
+
+/// The stored engine, when it is one this build does not know.
+fn unknown_engine(conn: &Connection) -> Option<serde_json::Value> {
+    let stored = settings::get::<serde_json::Value>(conn, KEY).ok()??;
+    let engine = stored.get("engine")?;
+    (!engine.is_null() && serde_json::from_value::<DownloadsEngine>(engine.clone()).is_err())
+        .then(|| engine.clone())
 }
 
 /// Trims every field and refuses what cannot work: an empty command, a
@@ -507,6 +524,46 @@ pub fn anirss_saved_password() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn store() -> Connection {
+        let mut c = Connection::open_in_memory().unwrap();
+        crate::store::migrations::apply(&mut c).unwrap();
+        c
+    }
+
+    fn stored_engine(c: &Connection) -> serde_json::Value {
+        settings::get::<serde_json::Value>(c, KEY).unwrap().unwrap()["engine"].clone()
+    }
+
+    #[test]
+    fn a_save_keeps_an_engine_this_build_does_not_know() {
+        let c = store();
+        let mut blob = serde_json::to_value(defaults()).unwrap();
+        blob["engine"] = serde_json::json!("Telepathy");
+        settings::set(&c, KEY, &blob).unwrap();
+        // Read as anirss here, and saved back with something else changed.
+        let mut s = load_stored(&c).unwrap();
+        assert_eq!(s.engine, DownloadsEngine::Anirss);
+        s.prune_finished_feeds = false;
+        save(&c, &s).unwrap();
+        assert_eq!(stored_engine(&c), serde_json::json!("Telepathy"));
+        assert!(!load_stored(&c).unwrap().prune_finished_feeds);
+        // Picking an engine this build knows replaces it.
+        s.engine = DownloadsEngine::Native;
+        save(&c, &s).unwrap();
+        assert_eq!(stored_engine(&c), serde_json::json!("Native"));
+    }
+
+    #[test]
+    fn a_save_over_a_known_engine_writes_the_one_given() {
+        let c = store();
+        let mut s = defaults();
+        s.engine = DownloadsEngine::Native;
+        save(&c, &s).unwrap();
+        s.engine = DownloadsEngine::Anirss;
+        save(&c, &s).unwrap();
+        assert_eq!(stored_engine(&c), serde_json::json!("Anirss"));
+    }
 
     #[test]
     fn reads_qbittorrent_off_an_anirss_config() {
