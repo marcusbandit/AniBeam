@@ -99,65 +99,6 @@ jobs:
       ref: ${{ needs.gate.outputs.sha }}
       version: ${{ needs.gate.outputs.version }}
 
-  # Pull requests build only Linux, so nightly is the first build of macOS and Windows for
-  # what merged since the last one (#529). When a platform fails, this opens one issue (or
-  # comments on the open one) naming the PRs merged since the last good nightly and how to
-  # rebuild any one commit, so the CI watcher's thread can bisect and open a revert PR.
-  blame:
-    needs: [gate, macos, linux, windows]
-    if: failure() && needs.gate.outputs.build == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-      actions: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.gate.outputs.sha }}
-          fetch-depth: 0
-
-      - name: Name the suspects
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ needs.gate.outputs.sha }}
-          PREVIOUS: ${{ needs.gate.outputs.previous }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          failed="$(gh run view "$GITHUB_RUN_ID" --json jobs \
-            --jq '[.jobs[] | select(.conclusion == "failure") | .name | split(" / ")[0]] | unique | join(", ")')"
-          if [ -n "$PREVIOUS" ]; then
-            git fetch -q origin "refs/tags/$PREVIOUS:refs/tags/$PREVIOUS"
-            range="$PREVIOUS..$SHA"
-          else
-            range="$SHA~10..$SHA"
-          fi
-          {
-            echo "Nightly at \`${SHA::7}\` failed on: **${failed:-unknown}**. Run: $RUN_URL"
-            echo
-            echo "Merged since ${PREVIOUS:-the last ten commits}, oldest first. Pull requests build only Linux, so one of these broke it:"
-            echo
-            git log --first-parent --reverse --format='%H %s' "$range" | while read -r sha subject; do
-              pr="$(grep -oE '\(#[0-9]+\)$' <<<"$subject" | tr -d '()' || true)"
-              echo "- [ ] ${pr:-no PR} \`${sha::7}\` $subject"
-            done
-            echo
-            echo "Rebuild one commit on the failing platform, halving the list each time:"
-            echo
-            echo '```'
-            echo "gh workflow run macos.yml --ref main -f ref=<sha>    # or windows.yml, linux.yml"
-            echo '```'
-            echo
-            echo "The first commit that fails is the culprit: open a revert PR for it and reopen its issue."
-          } > body.md
-          title="Nightly fails on main: find the PR that broke it"
-          open="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
-          if [ -n "$open" ]; then
-            gh issue comment "$open" --body-file body.md
-          else
-            gh issue create --title "$title" --label bug --body-file body.md
-          fi
-
   publish:
     needs: [gate, macos, linux, windows]
     runs-on: ubuntu-latest
