@@ -5,7 +5,7 @@
 #                build for Apple silicon, minus what anirss never imports (Tk, IDLE, pip, the
 #                man pages and headers). It is its own island: bin/python3.13 finds
 #                libpython through @rpath, and fix-dylibs.py leaves those references alone.
-#   app/         anirss v0.5.0: the anirss launcher and anirss_lib, the whole program.
+#   app/         anirss at ANIRSS_VERSION: the anirss launcher and anirss_lib, the whole program.
 #   bin/anirss   a two-line shell launcher, so the app has one path to start it by.
 # Every Mach-O in the tree is ad-hoc signed here. Apple silicon kills unsigned code, and
 # codesign --strict refuses unsigned code in Resources, so bundle.sh's deep sign of the app is
@@ -17,8 +17,8 @@ set -euo pipefail
 PBS_RELEASE=20261013
 PBS_PYTHON=3.13.16
 PBS_SHA256=16a5332fb0dcb77f163fc8f8cbccd95be1644cc53e68e5d2a79f50afd6680a0e
-ANIRSS_VERSION=0.5.0
-ANIRSS_SHA256=9b786cea875ae30077b77f6da86ca4a36e84b537f8a70a85100712d62abf8143
+ANIRSS_VERSION=0.6.1
+ANIRSS_SHA256=ee700625e89e8002c6a39b89c3faabee1ac3004d7e9313232ff2913701b7d22a
 
 app="$(cd "$1" && pwd)"
 dest="$app/Contents/Resources/anirss"

@@ -142,10 +142,12 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- Sources installed from a repo show up in search on every desktop install
 - Seeking in an episode converted for the phone works on Nvidia graphics
 - A busy sign-in port says to try again, not that another AniBeam is open
 - A qBittorrent address with a backslash is no longer read as this computer
 - Spy x Family episodes no longer show up as specials
+- A subscription from a show's page saves new episodes into that show's folder
 - JSON sources show sizes written with units, and links in capitals
 - A trusted-only source shows every upload when nothing trusted matches
 - A source added by hand earlier moves its key out of the address at launch
@@ -179,6 +181,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint at an IPv6 address shows its full host
 - An episode folder beside Specials or a sample joins its show
 - Auto-match tells a second OVA run apart from the first, and finds a first film
+- A qBittorrent at a name like this computer's no longer counts as this computer
 - A show titled with a word like Trailer or Special no longer reads as extras
 
 ## 2.3.0 · 2026-10-27

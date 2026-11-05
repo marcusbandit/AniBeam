@@ -162,6 +162,7 @@ fn subscribe(r: &Rig, query: &str, items: Vec<Release>, name: Option<&str>) -> E
             items,
             name: name.map(str::to_string),
             wire_query: None,
+            series: None,
         },
     );
     common::wait_job(&r.c, job)
@@ -226,6 +227,58 @@ fn subscribe_writes_the_rule_and_feed_through_qbittorrent() {
     let rule_at = order.iter().position(|p| p == "rss/setRule").unwrap();
     assert!(feed_at < rule_at, "{order:?}");
     no_anirss(&r.http);
+}
+
+/// A subscription made from a library show's page saves into that show's
+/// folder, wherever its source is, not into a second one under the save
+/// base (#267).
+#[test]
+fn a_subscription_for_a_library_show_saves_into_its_folder() {
+    let r = rig();
+    let home = common::library_show(r.dir.path(), &r.core, &r.c);
+    r.http.push_for("rss/rules", 200, "{}");
+    r.http.push_for("rss/addFeed", 200, "");
+    r.http.push_for("rss/setRule", 200, "");
+
+    let job = started(
+        &r.core,
+        Call::Subscribe {
+            query: "Show".to_string(),
+            endpoint: "feed".to_string(),
+            items: vec![episode(1)],
+            name: None,
+            wire_query: None,
+            series: Some(1),
+        },
+    );
+    let done = common::wait_job(&r.c, job);
+    assert_eq!(subscribed(&done).save_path, home);
+    let calls = qbt_calls(&r.http);
+    let def: Value =
+        serde_json::from_str(&field(called(&calls, "rss/setRule"), "ruleDef").unwrap()).unwrap();
+    assert_eq!(def["savePath"], json!(home));
+    assert_eq!(def["torrentParams"]["save_path"], json!(home));
+    no_anirss(&r.http);
+}
+
+/// A rule that saves into a library show's folder never takes its files
+/// along when it goes: the folder holds episodes it did not download.
+#[test]
+fn removing_a_subscription_with_files_leaves_a_library_show_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = dir.path().join("lib").to_string_lossy().into_owned();
+    let r = rig_at(QBT, &base);
+    // The show sits inside the save base, where the old checks let its folder go.
+    let home = common::library_show(dir.path(), &r.core, &r.c);
+    queue_one_rule(&r.http, &home);
+    let done = remove_call(&r, false, true, true);
+    assert!(
+        matches!(failed(&done), CoreError::Invalid { field, message }
+            if field == "files" && message.contains("library folder")),
+        "{done:?}"
+    );
+    assert!(writes(&r.http).is_empty());
+    assert!(std::path::Path::new(&home).is_dir());
 }
 
 #[test]
@@ -371,6 +424,7 @@ fn a_locally_narrowed_subscription_still_narrows_on_native() {
             items: vec![episode(1)],
             name: None,
             wire_query: Some("Show".to_string()),
+            series: None,
         },
     );
     let done = common::wait_job(&r.c, job);
