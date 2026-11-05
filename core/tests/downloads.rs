@@ -1104,6 +1104,68 @@ fn reading_or_repairing_a_feed_puts_no_login_or_key_in_an_event() {
     }
 }
 
+/// A new subscription's feed can hold a login and an API key too, and `Subscribed` is an
+/// Info event, so it goes into the stored log: it names the rule and where it saves, and
+/// the shell reads the feed from the rule list (#478).
+#[test]
+fn subscribing_puts_no_login_or_key_in_an_event() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    http.push_for(
+        "/health",
+        200,
+        json!({"ok": true, "version": "0.6.0"}).to_string(),
+    );
+    http.push_for(
+        "/endpoints",
+        200,
+        json!({"endpoints": [{"name": "feed", "kind": "rss", "url": "https://t.example/rss?q={query}"}]}).to_string(),
+    );
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:9090", "reachable": true, "authenticated": true})
+            .to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    common::wait_job(&c, job);
+
+    let feed = "https://user:hunter2@t.example/rss?apikey=K0123abcd&q=Show";
+    http.push_for(
+        "api/v1/subscriptions",
+        201,
+        json!({"name": "Show", "feed_url": feed, "save_path": "/media/Anime/Show",
+               "must_contain": "", "must_not_contain": "", "tags": ["TV"]})
+        .to_string(),
+    );
+    let job = started(
+        &core,
+        Call::Subscribe {
+            query: "Show".to_string(),
+            endpoint: "feed".to_string(),
+            items: vec![release(1, json!(5))],
+            name: Some("Show".to_string()),
+            wire_query: None,
+            series: None,
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::Subscribed { result } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(result.name, "Show");
+    assert_eq!(result.save_path, "/media/Anime/Show");
+
+    for e in c.events() {
+        let text = format!("{} {}", e.message, serde_json::to_string(&e.body).unwrap());
+        assert!(!text.contains("hunter2"), "a login in {text}");
+        assert!(!text.contains("K0123abcd"), "an API key in {text}");
+    }
+}
+
 /// Remote mode with a token, so the core reaches anirss through `FakeHttp`
 /// with no sidecar to start.
 fn remote() -> DownloadSettings {
@@ -1461,7 +1523,8 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
     let EventBody::Subscribed { result } = &event.body else {
         panic!("{:?}", event.body)
     };
-    assert_eq!(result.feed_url, wide);
+    // The event names no feed (#478); the rule reads `wide`, as the requests below show.
+    assert_eq!(result.feed_url, "");
     assert_eq!(result.must_contain, "1080p WEB-DL");
 
     let rss: Vec<_> = http
@@ -1584,7 +1647,8 @@ fn a_locally_narrowed_subscription_probes_the_words_the_endpoint_answers() {
     let EventBody::Subscribed { result } = &event.body else {
         panic!("{:?}", event.body)
     };
-    assert_eq!(result.feed_url, tight);
+    // The event names no feed (#478); the rule reads `tight`, as the requests below show.
+    assert_eq!(result.feed_url, "");
     assert_eq!(result.must_contain, "TBK 1080p");
     let added = http
         .requests()

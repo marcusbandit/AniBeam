@@ -186,6 +186,9 @@ pub enum EventBody {
     SubscriptionPreviewed {
         spec: SubscriptionSpec,
     },
+    /// A subscription made. Its `feed_url` is always empty: the event is stored, and
+    /// a feed's address can hold a login and a key, so the feed is read from the rule
+    /// list instead (#478).
     Subscribed {
         result: Subscribed,
     },

@@ -1396,6 +1396,9 @@ pub fn subscribe(
                     describe_terms(&terms)
                 )
             };
+            // An Info event goes into the stored log, and a feed's address can hold a login
+            // and a key: the event names the rule, and the shell reads the feed from it (#478).
+            result.feed_url.clear();
             Ok(Finished {
                 plain: Some(format!("Subscribed to {}.", result.name)),
                 level: Level::Info,

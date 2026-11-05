@@ -1038,8 +1038,10 @@ Item {
     property real nowTick: Date.now()
     Timer { interval: 2000; repeat: true; running: page.watchUntil > Date.now() || page.watching; onTriggered: { page.nowTick = Date.now(); if (page.watching && page.detail && page.detail.rule) Door.readRule(page.detail.rule) } }
     function watchSubscription(result) {
-        page.feed = null
-        page.feedAfterRules = false
+        // The event names no feed, whose address can hold a login and a key: the feed is
+        // read from the new rule once the rule list read below arrives.
+        page.feed = { url: "", tag: "", entries: [], loading: true, error: "" }
+        page.feedAfterRules = true
         page.detail = { key: page.searchShow ? "s" + page.searchShow.series_id : "p" + page.folderOf(result.save_path), rule: result.name,
                         folder: page.folderOf(result.save_path), seriesId: page.searchShow ? page.searchShow.series_id : -1,
                         title: page.searchShow ? page.searchShow.title : result.name }
@@ -1047,7 +1049,6 @@ Item {
         page.subscribedAt = Date.now()
         page.watchUntil = Date.now() + 90000
         page.nowTick = Date.now()
-        page.askFeed(result.feed_url, [])
         Door.readRule(result.name)
         page.loadRules()
         page.pollTorrents()
