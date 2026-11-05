@@ -102,30 +102,11 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
         })
         .unwrap(),
     );
-    let ready = common::wait_for(
-        &c,
-        |e| {
-            matches!(e.body, EventBody::AuthUrlReady { .. })
-                && e.job.as_ref().is_some_and(|j| j.id == job)
-        },
-        Duration::from_secs(5),
+    let (open_url, port) = ready_url(&c, job);
+    assert_eq!(
+        open_url,
+        "https://anilist.co/api/v2/oauth/authorize?client_id=123&response_type=token"
     );
-    let port = match ready.body {
-        EventBody::AuthUrlReady {
-            open_url,
-            redirect_url,
-            ..
-        } => {
-            assert_eq!(
-                open_url,
-                "https://anilist.co/api/v2/oauth/authorize?client_id=123&response_type=token"
-            );
-            let port = port_of(&redirect_url);
-            assert_eq!(redirect_url, format!("http://127.0.0.1:{port}/callback"));
-            port
-        }
-        other => panic!("{other:?}"),
-    };
 
     // The authorize url never reaches the events table: MAL's carries the
     // PKCE verifier, and secrets never enter the database. What the log
