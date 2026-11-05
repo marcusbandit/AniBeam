@@ -21,6 +21,12 @@ on:
       - 'rust-toolchain*'
       - '.github/workflows/linux.yml'
   workflow_dispatch:
+    # A commit to build, so a failed nightly can be bisected one merge at a time (#529).
+    inputs:
+      ref:
+        description: Commit, branch or tag to build (empty builds the branch picked above)
+        type: string
+        default: ''
   workflow_call:
     # nightly.yml, release.yml and pr-build.yml say which commit to build and what version it
     # ships as; a pull request's own run builds its head and describes itself from git.
