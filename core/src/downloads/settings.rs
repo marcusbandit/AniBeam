@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 
 use crate::contract::*;
+use crate::repos::index::AUTHORITY_END;
 use crate::store::settings;
 use crate::trackers::Secrets;
 
@@ -248,7 +249,7 @@ fn address_key(url: &str) -> String {
     let url = url.trim().trim_end_matches('/');
     let (scheme, rest) = url.split_once("://").unwrap_or(("http", url));
     let scheme = scheme.to_ascii_lowercase();
-    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let (authority, path) = rest.split_at(rest.find(AUTHORITY_END).unwrap_or(rest.len()));
     let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
     let (host, port) = match host_port.strip_prefix('[') {
         Some(v6) => match v6.split_once(']') {
@@ -316,10 +317,12 @@ pub fn fits_managed(s: &DownloadSettings) -> bool {
             .any(|c| same_address(&c.url, &s.torrent_url))
 }
 
-/// A name for a client that has none: its host and port.
+/// A name for a client that has none: its host and port. The host ends where
+/// the HTTP client ends it, a backslash included, so the name, the loopback
+/// check and the client always agree on which machine it is (#401).
 pub fn name_for(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
-    let host = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = rest.split(AUTHORITY_END).next().unwrap_or(rest);
     let host = host.rsplit_once('@').map_or(host, |(_, h)| h);
     if host.is_empty() {
         "qBittorrent".to_string()
@@ -585,6 +588,24 @@ mod tests {
         assert!(is_loopback("http://[::1]:8080"));
         assert!(!is_loopback("http://192.0.2.10:8080"));
         assert!(!is_loopback("http://localhost.example:8080"));
+    }
+
+    #[test]
+    fn a_backslash_ends_the_host_as_the_http_client_reads_it() {
+        // The client talks to evil.com here, so nothing may read it as this
+        // machine or as the anirss config's address (#401).
+        let url = "http://evil.com\\@127.0.0.1:8080";
+        assert_eq!(name_for(url), "evil.com");
+        assert!(!is_loopback(url));
+        assert!(!same_address(url, "http://127.0.0.1:8080"));
+        let mut s = defaults();
+        s.torrent_mode = TorrentMode::Existing;
+        s.torrent_url = url.to_string();
+        assert!(!files_here(&s));
+        assert!(!fits_managed(&s));
+        // A login before the host still comes off.
+        assert_eq!(name_for("http://me:pw@box:8080/qbt"), "box:8080");
+        assert!(same_address("http://me:pw@box:8080", "http://box:8080/"));
     }
 
     #[test]

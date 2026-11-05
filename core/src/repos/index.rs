@@ -242,7 +242,7 @@ pub fn bare_host(value: &str) -> bool {
 }
 
 /// Where an address's authority ends. A backslash ends it too, as the HTTP client reads it.
-const AUTHORITY_END: [char; 4] = ['/', '?', '#', '\\'];
+pub(crate) const AUTHORITY_END: [char; 4] = ['/', '?', '#', '\\'];
 
 /// A login in front of an address's host: the address up to and with its `://`, the login,
 /// and the address from the host on. None when there is no login.
