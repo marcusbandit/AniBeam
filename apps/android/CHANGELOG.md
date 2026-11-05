@@ -25,6 +25,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Sources on your home network answer sooner
 - Search skips a saved source whose address cannot take a search
 - Spy x Family episodes no longer show up as specials
+- A phone call or another app's sound pauses the episode; a call's end resumes it
 - An episode open when Android closes the app resumes where you left it
 - The first download asks for permission to show its notification
 
