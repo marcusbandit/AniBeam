@@ -33,7 +33,9 @@ impl Art {
 }
 
 fn id(series_id: Option<u64>) -> i32 {
-    series_id.and_then(|id| i32::try_from(id).ok()).unwrap_or(-1)
+    series_id
+        .and_then(|id| i32::try_from(id).ok())
+        .unwrap_or(-1)
 }
 
 fn tile(art: &Art, series_id: Option<u64>, title: &str) -> Tile {
@@ -59,7 +61,11 @@ fn library_tile(t: &LibraryTile, art: &Art, now: i64) -> Tile {
         out.ledger = format::countdown(next.at - now).into();
         out.ledger_tone = 1;
     } else if t.movie {
-        out.ledger = if t.watched > 0 { "Watched".into() } else { "Movie".into() };
+        out.ledger = if t.watched > 0 {
+            "Watched".into()
+        } else {
+            "Movie".into()
+        };
     } else if let Some(total) = t.total.filter(|n| *n > 0) {
         out.ledger = format!("{} of {total} watched", t.watched.min(total)).into();
     } else if t.on_disk > 0 {
@@ -69,18 +75,36 @@ fn library_tile(t: &LibraryTile, art: &Art, now: i64) -> Tile {
 }
 
 /// The device's library as one grid, airing first, then by title, narrowed by `query`.
-pub fn library(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, now: i64, query: &str) -> Vec<Tile> {
-    let Some(cache) = cache else { return Vec::new() };
+pub fn library(
+    cache: Option<&Cache>,
+    anilist: &AniListCache,
+    art: &Art,
+    now: i64,
+    query: &str,
+) -> Vec<Tile> {
+    let Some(cache) = cache else {
+        return Vec::new();
+    };
     let query = query.trim().to_lowercase();
     let (airing, rest): (Vec<_>, Vec<_>) = library::tiles(cache, anilist, now)
         .into_iter()
         .filter(|t| query.is_empty() || t.title.to_lowercase().contains(&query))
         .partition(|t| t.airing);
-    airing.iter().chain(rest.iter()).map(|t| library_tile(t, art, now)).collect()
+    airing
+        .iter()
+        .chain(rest.iter())
+        .map(|t| library_tile(t, art, now))
+        .collect()
 }
 
 /// One series page: the band and the episode rows.
-pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_id: u64, now: i64) -> Option<(SeriesHead, Vec<EpisodeLine>)> {
+pub fn series(
+    cache: Option<&Cache>,
+    anilist: &AniListCache,
+    art: &Art,
+    series_id: u64,
+    now: i64,
+) -> Option<(SeriesHead, Vec<EpisodeLine>)> {
     let cache = cache?;
     let page = library::detail(cache, anilist, series_id, now)?;
     let (poster, has_poster) = art.poster(Some(series_id));
@@ -139,7 +163,10 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
         ..Default::default()
     };
     // Play opens the first episode not watched yet, or the first of all when every one is.
-    let next = page.episodes.iter().find(|e| !e.watched && e.file.is_some());
+    let next = page
+        .episodes
+        .iter()
+        .find(|e| !e.watched && e.file.is_some());
     let up = next.or_else(|| page.episodes.iter().find(|e| e.file.is_some()));
     let head = match up.and_then(|e| Some((e, i32::try_from(e.file?).ok()?))) {
         Some((e, file)) => SeriesHead {
@@ -162,14 +189,23 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
         .iter()
         .map(|e| {
             let title = e.title.clone().unwrap_or_else(|| {
-                if movie { page.title.clone() } else { format!("Episode {}", e.number) }
+                if movie {
+                    page.title.clone()
+                } else {
+                    format!("Episode {}", e.number)
+                }
             });
             let line = EpisodeLine {
                 code: e.code.clone().into(),
                 title: title.into(),
                 date: e.aired_at.map(format::day_month).unwrap_or_default().into(),
                 // A host too old to stream lists no files; the row says what to do.
-                note: if e.file.is_none() { "Update AniBeam on that computer to play this here" } else { "" }.into(),
+                note: if e.file.is_none() {
+                    "Update AniBeam on that computer to play this here"
+                } else {
+                    ""
+                }
+                .into(),
                 cube: if e.watched { 0 } else { 2 },
                 // Streamed from the other device, from a host that can.
                 file: e.file.and_then(|f| i32::try_from(f).ok()).unwrap_or(0),
@@ -199,7 +235,12 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
         lines.push(EpisodeLine {
             code: code(a).into(),
             title: format!("Episode {}", a.episode).into(),
-            date: if soon { format::countdown(a.at - now) } else { format::day_month(a.at) }.into(),
+            date: if soon {
+                format::countdown(a.at - now)
+            } else {
+                format::day_month(a.at)
+            }
+            .into(),
             note: Default::default(),
             cube: 5,
             file: 0,
@@ -212,12 +253,21 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
 
 /// The computer's calendar over the same days as this phone's, from its cached snapshot:
 /// what it has on disk, what aired and it lacks, and what is still to air.
-pub fn calendar(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, now: i64) -> Vec<(CalDay, Vec<CalItem>)> {
+pub fn calendar(
+    cache: Option<&Cache>,
+    anilist: &AniListCache,
+    art: &Art,
+    now: i64,
+) -> Vec<(CalDay, Vec<CalItem>)> {
     use anibeam_companion::calendar::{self, State};
-    let Some(cache) = cache else { return crate::phone::days_of(Vec::new(), now) };
+    let Some(cache) = cache else {
+        return crate::phone::days_of(Vec::new(), now);
+    };
     let today = calendar::today(now);
     let from = calendar::midnight(today - chrono::Days::new(crate::phone::CAL_BACK as u64));
-    let to = calendar::midnight(today + chrono::Days::new((crate::phone::CAL_DAYS - crate::phone::CAL_BACK) as u64));
+    let to = calendar::midnight(
+        today + chrono::Days::new((crate::phone::CAL_DAYS - crate::phone::CAL_BACK) as u64),
+    );
     let entries = calendar::entries(cache, anilist, from, to, now);
     let next_at = entries.iter().map(|e| e.at).find(|at| *at > now);
     let timed = entries

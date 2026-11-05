@@ -22,7 +22,10 @@ pub struct Syncer {
 
 impl Syncer {
     pub fn new(store: Store) -> Self {
-        Syncer { agent: crate::client::agent(), store }
+        Syncer {
+            agent: crate::client::agent(),
+            store,
+        }
     }
 
     pub fn store(&self) -> &Store {
@@ -60,7 +63,12 @@ impl Syncer {
     /// Fetches every poster whose tag differs from the one on disk, calling `fetched` with
     /// each series id as its image lands, and deletes posters of series that are gone.
     /// A poster that fails is left for the next sync.
-    pub fn fetch_posters(&self, address: &HostAddress, cache: &Cache, mut fetched: impl FnMut(u64)) {
+    pub fn fetch_posters(
+        &self,
+        address: &HostAddress,
+        cache: &Cache,
+        mut fetched: impl FnMut(u64),
+    ) {
         let client = self.client(address);
         let mut keep = HashSet::new();
         for series in &cache.snapshot.series {

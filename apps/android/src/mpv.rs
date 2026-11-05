@@ -24,7 +24,9 @@ pub enum Value {
 pub enum MpvEvent {
     FileLoaded,
     /// The file ended or failed to open; `error` carries mpv's word when it failed.
-    EndFile { error: Option<String> },
+    EndFile {
+        error: Option<String>,
+    },
     Property(&'static str, Value),
 }
 
@@ -64,10 +66,10 @@ pub const BOOT_OPTIONS: [(&str, &str); 7] = [
     ("terminal", "no"),
 ];
 
-#[cfg(target_os = "android")]
-pub use imp::Mpv;
 #[cfg(not(target_os = "android"))]
 pub use host::Mpv;
+#[cfg(target_os = "android")]
+pub use imp::Mpv;
 
 pub type Listener = Box<dyn Fn(MpvEvent) + Send + 'static>;
 
@@ -119,7 +121,8 @@ pub(crate) mod ffi {
     }
     #[repr(C)]
     pub struct mpv_opengl_init_params {
-        pub get_proc_address: Option<unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void>,
+        pub get_proc_address:
+            Option<unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void>,
         pub get_proc_address_ctx: *mut c_void,
     }
     #[repr(C)]
@@ -157,8 +160,16 @@ pub(crate) mod ffi {
         pub fn mpv_create() -> *mut mpv_handle;
         pub fn mpv_initialize(ctx: *mut mpv_handle) -> c_int;
         pub fn mpv_terminate_destroy(ctx: *mut mpv_handle);
-        pub fn mpv_set_option_string(ctx: *mut mpv_handle, name: *const c_char, data: *const c_char) -> c_int;
-        pub fn mpv_set_property_string(ctx: *mut mpv_handle, name: *const c_char, data: *const c_char) -> c_int;
+        pub fn mpv_set_option_string(
+            ctx: *mut mpv_handle,
+            name: *const c_char,
+            data: *const c_char,
+        ) -> c_int;
+        pub fn mpv_set_property_string(
+            ctx: *mut mpv_handle,
+            name: *const c_char,
+            data: *const c_char,
+        ) -> c_int;
         pub fn mpv_set_property_async(
             ctx: *mut mpv_handle,
             reply_userdata: u64,
@@ -169,8 +180,17 @@ pub(crate) mod ffi {
         pub fn mpv_get_property_string(ctx: *mut mpv_handle, name: *const c_char) -> *mut c_char;
         pub fn mpv_free(data: *mut c_void);
         pub fn mpv_command(ctx: *mut mpv_handle, args: *mut *const c_char) -> c_int;
-        pub fn mpv_command_async(ctx: *mut mpv_handle, reply_userdata: u64, args: *mut *const c_char) -> c_int;
-        pub fn mpv_observe_property(ctx: *mut mpv_handle, reply_userdata: u64, name: *const c_char, format: c_int) -> c_int;
+        pub fn mpv_command_async(
+            ctx: *mut mpv_handle,
+            reply_userdata: u64,
+            args: *mut *const c_char,
+        ) -> c_int;
+        pub fn mpv_observe_property(
+            ctx: *mut mpv_handle,
+            reply_userdata: u64,
+            name: *const c_char,
+            format: c_int,
+        ) -> c_int;
         pub fn mpv_wait_event(ctx: *mut mpv_handle, timeout: f64) -> *mut mpv_event;
         pub fn mpv_wakeup(ctx: *mut mpv_handle);
         pub fn mpv_request_log_messages(ctx: *mut mpv_handle, min_level: *const c_char) -> c_int;
@@ -187,7 +207,10 @@ pub(crate) mod ffi {
             callback_ctx: *mut c_void,
         );
         pub fn mpv_render_context_update(ctx: *mut mpv_render_context) -> u64;
-        pub fn mpv_render_context_render(ctx: *mut mpv_render_context, params: *mut mpv_render_param) -> c_int;
+        pub fn mpv_render_context_render(
+            ctx: *mut mpv_render_context,
+            params: *mut mpv_render_param,
+        ) -> c_int;
         pub fn mpv_render_context_report_swap(ctx: *mut mpv_render_context);
         pub fn mpv_render_context_free(ctx: *mut mpv_render_context);
 
@@ -229,7 +252,9 @@ mod imp {
     }
 
     fn error(code: i32) -> String {
-        unsafe { CStr::from_ptr(mpv_error_string(code)) }.to_string_lossy().into_owned()
+        unsafe { CStr::from_ptr(mpv_error_string(code)) }
+            .to_string_lossy()
+            .into_owned()
     }
 
     impl Mpv {
@@ -265,7 +290,10 @@ mod imp {
                 let name = c(name);
                 unsafe { mpv_observe_property(handle, i as u64, name.as_ptr(), format) };
             }
-            let mpv = Arc::new(Mpv { handle, events: std::sync::Mutex::new(None) });
+            let mpv = Arc::new(Mpv {
+                handle,
+                events: std::sync::Mutex::new(None),
+            });
             let raw = handle as usize;
             let thread = std::thread::Builder::new()
                 .name("mpv-events".into())
@@ -281,7 +309,13 @@ mod imp {
             let (k, v) = (c(name), c(value));
             let mut p = v.as_ptr();
             let code = unsafe {
-                mpv_set_property_async(self.handle, 0, k.as_ptr(), FORMAT_STRING, (&mut p as *mut *const c_char).cast())
+                mpv_set_property_async(
+                    self.handle,
+                    0,
+                    k.as_ptr(),
+                    FORMAT_STRING,
+                    (&mut p as *mut *const c_char).cast(),
+                )
             };
             if code < 0 {
                 crate::local::log(&format!("mpv: {name}={value}: {}", error(code)));
@@ -340,11 +374,15 @@ mod imp {
                 EVENT_FILE_LOADED => listener(MpvEvent::FileLoaded),
                 // The async sets and commands answer here; only a refusal is worth a line.
                 EVENT_SET_PROPERTY_REPLY | EVENT_COMMAND_REPLY if e.error < 0 => {
-                    crate::local::log(&format!("mpv: an async request failed: {}", super::imp::error(e.error)));
+                    crate::local::log(&format!(
+                        "mpv: an async request failed: {}",
+                        super::imp::error(e.error)
+                    ));
                 }
                 EVENT_LOG_MESSAGE => {
                     let m = unsafe { &*(e.data as *const mpv_event_log_message) };
-                    let (prefix, text) = unsafe { (CStr::from_ptr(m.prefix), CStr::from_ptr(m.text)) };
+                    let (prefix, text) =
+                        unsafe { (CStr::from_ptr(m.prefix), CStr::from_ptr(m.text)) };
                     crate::local::log(&format!(
                         "mpv[{}] {}",
                         prefix.to_string_lossy(),
@@ -353,19 +391,24 @@ mod imp {
                 }
                 EVENT_END_FILE => {
                     let end = unsafe { &*(e.data as *const mpv_event_end_file) };
-                    let error = (end.reason == END_FILE_REASON_ERROR).then(|| super::imp::error(end.error));
+                    let error =
+                        (end.reason == END_FILE_REASON_ERROR).then(|| super::imp::error(end.error));
                     listener(MpvEvent::EndFile { error });
                 }
                 EVENT_PROPERTY_CHANGE => {
                     let p = unsafe { &*(e.data as *const mpv_event_property) };
-                    let Some((name, _)) = OBSERVED.get(e.reply_userdata as usize) else { continue };
+                    let Some((name, _)) = OBSERVED.get(e.reply_userdata as usize) else {
+                        continue;
+                    };
                     let value = unsafe {
                         match p.format {
                             FORMAT_FLAG => Value::Flag(*(p.data as *const i32) != 0),
                             FORMAT_DOUBLE => Value::Double(*(p.data as *const f64)),
-                            FORMAT_STRING => {
-                                Value::Text(CStr::from_ptr(*(p.data as *const *const c_char)).to_string_lossy().into_owned())
-                            }
+                            FORMAT_STRING => Value::Text(
+                                CStr::from_ptr(*(p.data as *const *const c_char))
+                                    .to_string_lossy()
+                                    .into_owned(),
+                            ),
                             _ => Value::None,
                         }
                     };
