@@ -4,8 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anibeam_companion::calendar;
 use anibeam_companion::format;
-use anibeam_core::net::tvmaze::plain_summary;
-use anibeam_core::{Provider, SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
+use anibeam_core::{SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
 use chrono::{Datelike, Days, NaiveDate};
 
 use crate::posters;
@@ -334,7 +333,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         next: next.into(),
         progress_text: progress_text.into(),
         cubes: std::rc::Rc::new(slint::VecModel::from(cube_codes(&card.cubes))).into(),
-        synopsis: synopsis_text(detail.card.match_info.as_ref().map(|m| m.provider), &detail.synopsis).into(),
+        synopsis: detail.synopsis.clone().into(),
         play_file: play.map(|e| e.file as i32).unwrap_or(0),
         play_remote: false,
         play_label: play
@@ -417,17 +416,6 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
     (head, lines.into_iter().map(|(_, l)| l).collect())
 }
 
-/// The synopsis as the page shows it, plain text in paragraphs. AniList's description is
-/// HTML: `<br>` pairs between paragraphs, `<i>` for the source. TVmaze's summary was made
-/// plain when it was stored, so it stays as it is: a second pass would read a decoded
-/// `<Title>` as a tag and drop it.
-fn synopsis_text(provider: Option<Provider>, raw: &str) -> String {
-    match provider {
-        Some(Provider::Tvmaze) => raw.to_string(),
-        _ => plain_summary(raw),
-    }
-}
-
 /// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
 fn clock(secs: f64) -> String {
     let t = secs.max(0.0) as u64;
@@ -442,19 +430,5 @@ mod tests {
     #[test]
     fn every_core_cube_letter_has_a_colour_code() {
         assert_eq!(cube_codes("wldmgft"), vec![0, 1, 2, 3, 4, 5, 6]);
-    }
-
-    #[test]
-    fn an_anilist_synopsis_loses_its_tags() {
-        assert_eq!(
-            synopsis_text(Some(Provider::Anilist), "One.<br><br>\nTwo &amp; <i>three</i>."),
-            "One.\n\nTwo & three."
-        );
-    }
-
-    #[test]
-    fn a_tvmaze_synopsis_is_already_plain_and_stays_as_stored() {
-        let stored = "A show called <Infinite Dendrogram> & more.";
-        assert_eq!(synopsis_text(Some(Provider::Tvmaze), stored), stored);
     }
 }
