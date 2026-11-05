@@ -100,6 +100,12 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
             format!("{name:?}: missing `url`"),
         ));
     }
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(CoreError::invalid(
+            "endpoint url",
+            format!("{name:?}: the address must start with http:// or https://"),
+        ));
+    }
     if needs_query(kind) && !url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
@@ -732,6 +738,7 @@ pub(crate) mod tests {
             ("bad name)", "nyaa", "https://x/"),    // bad name characters
             ("a", "nyaa", "https://x/?q={query}"),  // nyaa adds its own query
             ("a", "Tosho", "https://x/?q={query}"), // kinds are lower case
+            ("a", "rss", "x/rss?q={query}"),        // no scheme
         ] {
             let err = validate(name, kind, url).unwrap_err();
             assert!(

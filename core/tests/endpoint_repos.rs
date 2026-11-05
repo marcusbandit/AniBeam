@@ -316,11 +316,56 @@ fn a_source_saved_before_the_checks_is_kept_but_not_searched() {
     };
     let names: Vec<&str> = sources.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(names, ["good"]);
-    // One can still be switched off.
-    let mut off = saved[0].clone();
-    off.enabled = false;
-    core.call(Call::SetPhoneSources { sources: vec![off] })
-        .unwrap();
+    // One can still be switched off, the rest kept as they are.
+    let mut kept = saved.to_vec();
+    kept[0].enabled = false;
+    core.call(Call::SetPhoneSources {
+        sources: kept.clone(),
+    })
+    .unwrap();
+    let Reply::PhoneSources { sources } = core.call(Call::PhoneSources).unwrap() else {
+        panic!()
+    };
+    assert_eq!(sources, kept);
+}
+
+#[test]
+fn search_lists_a_saved_source_under_its_trimmed_name_and_once() {
+    let (dir, core, _) = common::open_core();
+    let source = |name: &str| anibeam_core::PhoneSource {
+        name: name.into(),
+        kind: "rss".into(),
+        url: "https://feed.example/rss?q={query}".into(),
+        enabled: true,
+    };
+    // Saved before the checks: spaces around the name, and the name twice.
+    let config = anibeam_core::CorePaths::under(dir.path()).config_dir;
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        std::path::Path::new(&config).join("phone-sources.json"),
+        serde_json::to_vec(&[source(" feed "), source("feed")]).unwrap(),
+    )
+    .unwrap();
+    let Reply::PhoneSources { sources } = core.call(Call::PhoneSearchSources).unwrap() else {
+        panic!()
+    };
+    let names: Vec<&str> = sources.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["feed"]);
+
+    // A new source cannot take a name another one has.
+    let err = core
+        .call(Call::SetPhoneSources {
+            sources: vec![source(" feed "), source("other"), {
+                let mut s = source("other");
+                s.url = "https://other.example/rss?q={query}".into();
+                s
+            }],
+        })
+        .unwrap_err();
+    assert!(
+        matches!(&err, CoreError::Invalid { message, .. } if message.contains("another source")),
+        "{err:?}"
+    );
 }
 
 #[test]
