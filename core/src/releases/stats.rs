@@ -566,34 +566,21 @@ const QUERY_SAFE: &str = "/%:@!$&'()*+,;=?";
 ///
 /// Feed links carry raw spaces and brackets (t.erai-raws.info does). The host is left alone
 /// so an IPv6 literal keeps its brackets. Errors on a malformed host, for example an
-/// unclosed `[`. The link is split where the HTTP client splits it, a backslash read
-/// as a slash before the query (#493).
+/// unclosed `[`. The link is read by the HTTP client's own parser (#493).
 pub fn encode_http_link(link: &str) -> Result<String, BadBencode> {
-    // The client parses the link itself, so one it would not fetch, or that names no
-    // host, is malformed here too.
-    if !reqwest::Url::parse(link).is_ok_and(|u| u.host_str().is_some()) {
-        return Err(BadBencode);
+    // Parsed by the HTTP client's own parser, so the host, path and query are the ones it
+    // fetches: a backslash, a tab or a control character reads as it does (#493). One
+    // it would not fetch, or that names no host, is malformed here too.
+    let mut url = crate::net::parsed(link).ok_or(BadBencode)?;
+    let path = quote(url.path().as_bytes(), PATH_SAFE);
+    url.set_path(&path);
+    if let Some(query) = url.query().map(|q| quote(q.as_bytes(), QUERY_SAFE)) {
+        url.set_query(Some(&query));
     }
-    let mut parts = split_url(&client_slashes(link)).map_err(|_| BadBencode)?;
-    parts.path = quote(parts.path.as_bytes(), PATH_SAFE);
-    parts.query = quote(parts.query.as_bytes(), QUERY_SAFE);
-    parts.fragment = quote(parts.fragment.as_bytes(), QUERY_SAFE);
-    Ok(parts.geturl())
-}
-
-/// `link` with every backslash before its query or fragment written as the slash the
-/// HTTP client reads it as in an http(s) URL, so the host ends where the client ends it
-/// and the path is the path it fetches (#493). Any other scheme is left as written.
-fn client_slashes(link: &str) -> std::borrow::Cow<'_, str> {
-    let special = link
-        .trim_start()
-        .split_once(':')
-        .is_some_and(|(s, _)| s.eq_ignore_ascii_case("http") || s.eq_ignore_ascii_case("https"));
-    let end = link.find(['?', '#']).unwrap_or(link.len());
-    if !special || !link[..end].contains('\\') {
-        return link.into();
+    if let Some(fragment) = url.fragment().map(|f| quote(f.as_bytes(), QUERY_SAFE)) {
+        url.set_fragment(Some(&fragment));
     }
-    format!("{}{}", link[..end].replace('\\', "/"), &link[end..]).into()
+    Ok(url.to_string())
 }
 
 /// Where the network is reached, so tests can stand in for it as anirss's do.
@@ -1488,8 +1475,8 @@ mod tests {
         );
         // Already-encoded input passes through, and an IPv6 host keeps its brackets.
         assert_eq!(
-            encode_http_link("http://[::1]:80/a%20b").unwrap(),
-            "http://[::1]:80/a%20b"
+            encode_http_link("http://[::1]:8080/a%20b").unwrap(),
+            "http://[::1]:8080/a%20b"
         );
         assert!(encode_http_link("http://[::1/x").is_err());
     }
@@ -1507,6 +1494,12 @@ mod tests {
         assert_eq!(
             encode_http_link("https://t.example/dl?q=a\\b").unwrap(),
             "https://t.example/dl?q=a%5Cb"
+        );
+        // A control character before the scheme reads as the client reads it, so the
+        // path never lands in the host either.
+        assert_eq!(
+            encode_http_link("\u{1}https://t.example\\dl\\x [y").unwrap(),
+            "https://t.example/dl/x%20%5By"
         );
         // A link naming no host the client could reach is malformed.
         assert!(encode_http_link("https://").is_err());

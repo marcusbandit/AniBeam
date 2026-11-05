@@ -638,13 +638,25 @@ fn torrent(v: &Value) -> Torrent {
 
 /// `http://t.example:7777/announce` to `t.example`.
 fn tracker_host(url: &str) -> String {
-    // Read with the HTTP client's own parser, which takes a backslash in an http(s) URL
-    // for a slash, so `https://t.example\0123abcd\announce` is `t.example` and never its
-    // path and passkey (#493). A tracker naming no host has none.
-    reqwest::Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(|h| h.trim_matches(['[', ']']).to_string()))
-        .unwrap_or_default()
+    let url = url.trim();
+    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
+    // The HTTP client ends an http(s) host at a backslash too, as at a slash, so
+    // `https://t.example\0123abcd\announce` is `t.example`, never its path and passkey
+    // (#493). The host is kept as written, so a udp or non-ASCII one stays readable, and
+    // lowercased, so one tracker shows under one name whatever its scheme.
+    let ends: &[char] =
+        if scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https") {
+            &['/', '\\', '?', '#']
+        } else {
+            &['/', '?', '#']
+        };
+    let host = rest.split(ends).next().unwrap_or("");
+    let host = host.rsplit('@').next().unwrap_or(host);
+    let host = match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    host.to_ascii_lowercase()
 }
 
 /// A blank torrent for other modules' tests.
@@ -866,6 +878,7 @@ mod tests {
         assert_eq!(t.tracker, "t.example");
         assert_eq!(tracker_host("udp://[::1]:80/announce"), "::1");
         assert_eq!(tracker_host(""), "");
+        assert!(!torrent(&Value::Null).seq_dl);
     }
 
     /// The HTTP client reads a backslash in an http(s) URL as a slash, so the tracker is
@@ -880,7 +893,10 @@ mod tests {
             tracker_host("http://user:pw@T.example:7777\\announce?passkey=x"),
             "t.example"
         );
-        assert!(!torrent(&Value::Null).seq_dl);
+        // A udp tracker reads backslashes as written, and keeps a readable host; one
+        // tracker is one name whatever its scheme.
+        assert_eq!(tracker_host("udp://трекер.рф:80/announce"), "трекер.рф");
+        assert_eq!(tracker_host("udp://T.Example:80/announce"), "t.example");
     }
 
     #[tokio::test]
