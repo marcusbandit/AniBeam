@@ -290,6 +290,7 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
             Err(service(anirss::SERVICE, "failed", message))
         }
         Ok(health) => {
+            let sync = endpoint_sync(core);
             let kept = {
                 let mut st = core.downloads.state();
                 let current = st.generation == generation;
@@ -297,6 +298,7 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
                     st.anirss.state = AnirssState::Ready;
                     st.anirss.version = health.version;
                     st.anirss_features = health.features;
+                    st.endpoint_sync = sync;
                     st.anirss.url = sidecar.server();
                     st.anirss.message.clear();
                     st.sidecar = Some(sidecar);
@@ -676,7 +678,8 @@ pub(crate) enum EndpointSync {
     Syncs,
     /// A server the person runs themselves (Remote mode), which keeps its own config.
     Theirs,
-    /// A sandbox root or a drive, which never writes into the owner's real anirss.
+    /// A sandbox root or a drive, which never writes into the owner's real anirss, or a
+    /// run whose settings could not be read, which writes nothing it cannot be sure of.
     Sandbox,
 }
 
@@ -695,21 +698,18 @@ pub(crate) fn anirss_view(core: &Core) -> Option<AnirssView> {
 /// Whether the endpoints installed from repos go into this anirss: AniBeam's own sidecar,
 /// in a run that may change the owner's setup. A server the person runs themselves keeps
 /// its own config, and a sandbox root or a drive never writes into the real one.
-async fn endpoint_sync(core: &Arc<Core>) -> EndpointSync {
-    if load_settings(core)
-        .await
-        .is_ok_and(|s| s.anirss_mode == AnirssMode::Remote)
-    {
-        EndpointSync::Theirs
-    } else if !core.downloads.unattended_allowed() {
-        EndpointSync::Sandbox
-    } else {
-        EndpointSync::Syncs
+/// The mode is all it needs, so the stored settings are read without the secret store,
+/// and settings that cannot be read sync nothing.
+fn endpoint_sync(core: &Core) -> EndpointSync {
+    match core.store.read(settings::load_stored) {
+        Ok(s) if s.anirss_mode == AnirssMode::Remote => EndpointSync::Theirs,
+        Ok(_) if core.downloads.unattended_allowed() => EndpointSync::Syncs,
+        _ => EndpointSync::Sandbox,
     }
 }
 
-async fn syncs_endpoints(core: &Arc<Core>) -> bool {
-    endpoint_sync(core).await == EndpointSync::Syncs
+fn syncs_endpoints(core: &Core) -> bool {
+    endpoint_sync(core) == EndpointSync::Syncs
 }
 
 /// What is installed from repos changed (#143): a running anirss gets it, and the page
@@ -717,7 +717,7 @@ async fn syncs_endpoints(core: &Arc<Core>) -> bool {
 pub(crate) fn repo_endpoints_changed(core: &Core) {
     let Ok(owner) = core.owner() else { return };
     core.handle.spawn(async move {
-        if !syncs_endpoints(&owner).await {
+        if !syncs_endpoints(&owner) {
             return;
         }
         let Ok(Some(client)) = running_client(&owner).await else {
@@ -741,7 +741,7 @@ async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), Core
     // at a client, so it reads its own config and keeps its own logins.
     let health = client.health().await?;
     let mut endpoints = client.endpoints().await?;
-    let sync = endpoint_sync(core).await;
+    let sync = endpoint_sync(core);
     if sync == EndpointSync::Syncs
         && crate::repos::sync_anirss(core, client, &health, &endpoints).await
     {
@@ -3171,54 +3171,65 @@ mod tests {
     }
 
     /// A server the person runs (Remote mode) is read as one the desktop never syncs
-    /// endpoints into, so the endpoint note can say so (#499).
+    /// endpoints into, and gets none, where AniBeam's own anirss gets the same endpoint
+    /// written (#499).
     #[test]
     fn a_remote_anirss_reads_as_one_the_desktop_never_syncs_into() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = crate::CorePaths::under(dir.path());
-        let http = crate::net::FakeHttp::new();
-        let core = Core::open_with_http_and_secrets(
-            paths.clone(),
-            http.clone(),
-            crate::trackers::Secrets::file_only(paths.secrets_path()),
-        )
-        .unwrap();
-        let remote = DownloadSettings {
-            anirss_mode: AnirssMode::Remote,
-            anirss_url: "http://anirss.test".to_string(),
-            ..settings::defaults()
-        };
-        core.store
-            .write(move |c| settings::save(c, &remote))
+        let read = |mode: AnirssMode| {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = crate::CorePaths::under(dir.path());
+            let http = crate::net::FakeHttp::new();
+            let core = Core::open_with_http_and_secrets(
+                paths.clone(),
+                http.clone(),
+                crate::trackers::Secrets::file_only(paths.secrets_path()),
+            )
             .unwrap();
-        let client = AnirssClient::new("http://anirss.test", "tok", http.clone());
-        http.push_for(
-            "/health",
-            200,
-            serde_json::json!({"ok": true, "version": "0.7.0", "features": ["endpoint_writes"]})
-                .to_string(),
-        );
-        http.push_for(
-            "/endpoints",
-            200,
-            serde_json::json!({"endpoints": []}).to_string(),
-        );
-        http.push_for(
-            "/qbt/status",
-            200,
-            serde_json::json!({"url": "http://127.0.0.1:2"}).to_string(),
-        );
-        core.handle.block_on(read_anirss(&core, &client)).unwrap();
-        assert_eq!(anirss_view(&core).unwrap().sync, EndpointSync::Theirs);
-        // Nothing was written into it.
-        assert!(
-            !http
+            let saved = DownloadSettings {
+                anirss_mode: mode,
+                anirss_url: "http://anirss.test".to_string(),
+                ..settings::defaults()
+            };
+            core.store
+                .write(move |c| settings::save(c, &saved))
+                .unwrap();
+            crate::repos::add_custom(
+                &core,
+                "mine".into(),
+                "https://a.example/rss?q={query}".into(),
+                Vec::new(),
+            )
+            .unwrap();
+            let client = AnirssClient::new("http://anirss.test", "tok", http.clone());
+            http.push_for(
+                "/health",
+                200,
+                serde_json::json!({"ok": true, "version": "0.7.0", "features": ["endpoint_writes"]}).to_string(),
+            );
+            for _ in 0..3 {
+                http.push_for(
+                    "/endpoints",
+                    200,
+                    serde_json::json!({"endpoints": []}).to_string(),
+                );
+            }
+            http.push_for(
+                "/qbt/status",
+                200,
+                serde_json::json!({"url": "http://127.0.0.1:2"}).to_string(),
+            );
+            core.handle.block_on(read_anirss(&core, &client)).unwrap();
+            let sync = anirss_view(&core).unwrap().sync;
+            let wrote = http
                 .requests()
                 .iter()
-                .any(|r| !matches!(r.method, Method::Get)),
-            "a write went to the person's anirss"
-        );
-        core.shutdown();
+                .any(|r| r.url.contains("/endpoints") && !matches!(r.method, Method::Get));
+            core.shutdown();
+            (sync, wrote)
+        };
+        assert_eq!(read(AnirssMode::Remote), (EndpointSync::Theirs, false));
+        // The same endpoint is written into AniBeam's own, so the check above can fail.
+        assert_eq!(read(AnirssMode::Sidecar), (EndpointSync::Syncs, true));
     }
 
     #[test]

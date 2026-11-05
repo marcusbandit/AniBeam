@@ -19,6 +19,7 @@ use rusqlite::params;
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::downloads::EndpointSync;
 use crate::net::{HttpRequest, Method};
 use index::{Definition, Index, RepoFault};
 
@@ -1154,51 +1155,41 @@ fn note_for(
         return None;
     }
     let view = view?;
-    let kind_note = || {
-        format!(
+    if !ANIRSS_KINDS.contains(&def.kind.as_str()) {
+        return Some(format!(
             "anirss cannot search the {} kind, so the desktop leaves it out; the phone searches it",
             def.kind
-        )
-    };
-    // An anirss the desktop never writes into searches only what it lists: updating it
-    // would not help (#499).
-    if view.sync != crate::downloads::EndpointSync::Syncs {
-        if !ANIRSS_KINDS.contains(&def.kind.as_str()) {
-            return Some(kind_note());
-        }
-        let listed = view.endpoints.contains(&def.id);
-        return match view.sync {
-            crate::downloads::EndpointSync::Theirs if listed => Some(format!(
-                "anirss has its own {}; the desktop searches that one",
-                def.id
-            )),
-            crate::downloads::EndpointSync::Theirs => Some(format!(
-                "This anirss is one you run, and the desktop never changes its config: add {} to that anirss's own config for the desktop to search it",
-                def.id
-            )),
-            _ if listed => None,
-            _ => Some(format!(
-                "This run never writes into anirss's config, so the desktop does not search {} here",
-                def.id
-            )),
-        };
-    }
-    if !view.endpoint_writes {
-        return Some(format!(
-            "anirss {} cannot take endpoints from AniBeam; update it to {} or newer for the desktop to search this",
-            view.version,
-            crate::downloads::anirss::MIN_VERSION
         ));
     }
-    if !ANIRSS_KINDS.contains(&def.kind.as_str()) {
-        return Some(kind_note());
-    }
-    (view.endpoints.contains(&def.id) && !synced.contains_key(&def.id)).then(|| {
+    let listed = view.endpoints.contains(&def.id);
+    let by_hand = || {
         format!(
             "anirss has its own {}, written by hand; the desktop searches that one",
             def.id
         )
-    })
+    };
+    match view.sync {
+        // A server the person runs keeps its own config, and searches what it lists: once
+        // they have added the endpoint there, there is nothing to note (#499).
+        EndpointSync::Theirs => (!listed).then(|| {
+            format!(
+                "This anirss is one you run, and the desktop never changes its config: add {} to that anirss's own config for the desktop to search it",
+                def.id
+            )
+        }),
+        // A sandbox run reads the owner's anirss as it is, notes and all, and adds nothing.
+        EndpointSync::Sandbox if listed => (!synced.contains_key(&def.id)).then(by_hand),
+        EndpointSync::Sandbox => Some(format!(
+            "This run never writes into anirss's config, so the desktop does not search {} here",
+            def.id
+        )),
+        EndpointSync::Syncs if !view.endpoint_writes => Some(format!(
+            "anirss {} cannot take endpoints from AniBeam; update it to {} or newer for the desktop to search this",
+            view.version,
+            crate::downloads::anirss::MIN_VERSION
+        )),
+        EndpointSync::Syncs => (listed && !synced.contains_key(&def.id)).then(by_hand),
+    }
 }
 
 fn spec_of(e: &crate::releases::Endpoint) -> serde_json::Value {
@@ -1641,8 +1632,8 @@ pub fn endpoint_http(core: &Core) -> Paced {
 mod tests {
     use super::*;
 
+    use crate::downloads::AnirssView;
     use crate::downloads::anirss::{AnirssClient, Health};
-    use crate::downloads::{AnirssView, EndpointSync};
     use crate::net::FakeHttp;
     use crate::trackers::Secrets;
     use crate::{CorePaths, core::Core};
@@ -1704,13 +1695,21 @@ mod tests {
             assert!(n.contains("add mine to that anirss's own config"), "{n}");
             assert!(!n.contains("update"), "{n}");
         }
-        // One it already has is searched there.
-        let n = note(at(EndpointSync::Theirs, true, &["mine"])).unwrap();
-        assert!(n.contains("its own mine"), "{n}");
-        // A sandbox run leaves the owner's anirss alone: searched only if it is there.
+        // Once the person has added it there, it is searched and the note goes.
+        assert_eq!(note(at(EndpointSync::Theirs, false, &["mine"])), None);
+        // A sandbox run leaves the owner's anirss alone: searched only if it is there, and
+        // one there by hand says so, as the owner's own run does.
         let n = note(at(EndpointSync::Sandbox, true, &[])).unwrap();
         assert!(n.contains("never writes into anirss's config"), "{n}");
-        assert_eq!(note(at(EndpointSync::Sandbox, true, &["mine"])), None);
+        let n = note(at(EndpointSync::Sandbox, true, &["mine"])).unwrap();
+        assert!(n.contains("written by hand"), "{n}");
+        let mut ours = Synced::new();
+        ours.insert("mine".to_string(), String::new());
+        let v = at(EndpointSync::Sandbox, true, &["mine"]);
+        assert_eq!(
+            note_for(DownloadsEngine::Anirss, Some(&v), &def, &ours),
+            None
+        );
         // A kind anirss cannot search says so first, wherever anirss runs.
         let tosho: Definition =
             serde_json::from_value(serde_json::json!({"id": "t", "name": "t", "version": 1,
