@@ -19,7 +19,7 @@ fn view(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let ctx = ndk_context::android_context();
     let vm = unsafe { JavaVM::from_raw(ctx.vm().cast())? };
     let mut env = vm.attach_current_thread()?;
-    let activity = unsafe { JObject::from_raw(ctx.context().cast()) };
+    let app = unsafe { JObject::from_raw(ctx.context().cast()) };
     let text = env.new_string(url)?;
     let uri = env
         .call_static_method("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", &[JValue::Object(&text)])?
@@ -30,9 +30,9 @@ fn view(url: &str) -> Result<(), Box<dyn std::error::Error>> {
         "(Ljava/lang/String;Landroid/net/Uri;)V",
         &[JValue::Object(&action), JValue::Object(&uri)],
     )?;
-    // FLAG_ACTIVITY_NEW_TASK: the call may come from a thread with no activity of its own.
+    // FLAG_ACTIVITY_NEW_TASK: the call may come from a thread with no activity of its own, and the context is the Application.
     env.call_method(&intent, "addFlags", "(I)Landroid/content/Intent;", &[JValue::Int(0x1000_0000)])?;
-    env.call_method(&activity, "startActivity", "(Landroid/content/Intent;)V", &[JValue::Object(&intent)])?;
+    env.call_method(&app, "startActivity", "(Landroid/content/Intent;)V", &[JValue::Object(&intent)])?;
     Ok(())
 }
 
@@ -67,8 +67,8 @@ fn with_env<R>(
     let ctx = ndk_context::android_context();
     let vm = unsafe { JavaVM::from_raw(ctx.vm().cast())? };
     let mut env = vm.attach_current_thread()?;
-    let activity = unsafe { JObject::from_raw(ctx.context().cast()) };
-    let out = f(&mut env, &activity);
+    let app = unsafe { JObject::from_raw(ctx.context().cast()) };
+    let out = f(&mut env, &app);
     // A Java exception left pending would fail the next call on this thread, and means the
     // call did not do what it was asked.
     if env.exception_check().unwrap_or(false) {
@@ -103,7 +103,7 @@ fn service_intent<'a>(
 pub fn start_service(text: &str) -> bool {
     #[cfg(target_os = "android")]
     {
-        let r = with_env(|env, activity| {
+        let r = with_env(|env, app| {
             use jni::objects::JValue;
             let intent = service_intent(env)?;
             let key = env.new_string("text")?;
@@ -115,7 +115,7 @@ pub fn start_service(text: &str) -> bool {
                 &[JValue::Object(&key), JValue::Object(&value)],
             )?;
             env.call_method(
-                activity,
+                app,
                 "startForegroundService",
                 "(Landroid/content/Intent;)Landroid/content/ComponentName;",
                 &[JValue::Object(&intent)],
@@ -139,10 +139,10 @@ pub fn start_service(text: &str) -> bool {
 pub fn stop_service() {
     #[cfg(target_os = "android")]
     {
-        let r = with_env(|env, activity| {
+        let r = with_env(|env, app| {
             use jni::objects::JValue;
             let intent = service_intent(env)?;
-            env.call_method(activity, "stopService", "(Landroid/content/Intent;)Z", &[JValue::Object(&intent)])?;
+            env.call_method(app, "stopService", "(Landroid/content/Intent;)Z", &[JValue::Object(&intent)])?;
             Ok(())
         });
         if let Err(e) = r {
@@ -156,11 +156,11 @@ pub fn stop_service() {
 pub fn unmetered() -> Option<bool> {
     #[cfg(target_os = "android")]
     {
-        with_env(|env, activity| {
+        with_env(|env, app| {
             use jni::objects::JValue;
             let name = env.new_string("connectivity")?;
             let cm = env
-                .call_method(activity, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", &[JValue::Object(&name)])?
+                .call_method(app, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", &[JValue::Object(&name)])?
                 .l()?;
             let network = env.call_method(&cm, "getActiveNetwork", "()Landroid/net/Network;", &[])?.l()?;
             if network.is_null() {
@@ -187,42 +187,51 @@ pub fn unmetered() -> Option<bool> {
     Some(true)
 }
 
-/// Asks once for the notification permission Android 13 and later want before a service
-/// may show its notification.
-pub fn ask_notifications() {
+/// Asks for the notification permission Android 13 and later want before a service may
+/// show its notification: whether the ask went out, or was not needed. Only an Activity has
+/// `requestPermissions`, and `with_env`'s context is the Application, so the ask goes
+/// through `TorrentService.askPermission`.
+pub fn ask_notifications() -> bool {
     #[cfg(target_os = "android")]
     {
-        let r = with_env(|env, activity| {
+        matches!(
+            java_call("TorrentService", "askPermission", "(Landroid/app/Activity;)Z", None),
+            Some(jni::objects::JValueOwned::Bool(1))
+        )
+    }
+    #[cfg(not(target_os = "android"))]
+    true
+}
+
+/// Whether the app may show notifications: Android 13 and later ask the person first.
+pub fn notifications_allowed() -> bool {
+    #[cfg(target_os = "android")]
+    {
+        let r = with_env(|env, app| {
             use jni::objects::JValue;
             let sdk = env.get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?.i()?;
             if sdk < 33 {
-                return Ok(());
+                return Ok(true);
             }
             let permission = env.new_string("android.permission.POST_NOTIFICATIONS")?;
-            let granted =
-                env.call_method(activity, "checkSelfPermission", "(Ljava/lang/String;)I", &[JValue::Object(&permission)])?.i()?;
-            if granted == 0 {
-                return Ok(());
-            }
-            let list = env.new_object_array(1, "java/lang/String", &permission)?;
-            env.call_method(activity, "requestPermissions", "([Ljava/lang/String;I)V", &[JValue::Object(&list), JValue::Int(1)])?;
-            Ok(())
+            let granted = env.call_method(app, "checkSelfPermission", "(Ljava/lang/String;)I", &[JValue::Object(&permission)])?.i()?;
+            Ok(granted == 0)
         });
-        if let Err(e) = r {
-            crate::local::log(&format!("could not ask for notifications: {e}"));
-        }
+        r.unwrap_or(true)
     }
+    #[cfg(not(target_os = "android"))]
+    true
 }
 
 /// Puts `text` on the clipboard, so a connection check can be pasted into a message.
 pub fn copy_text(label: &str, text: &str) -> bool {
     #[cfg(target_os = "android")]
     {
-        let r = with_env(|env, activity| {
+        let r = with_env(|env, app| {
             use jni::objects::JValue;
             let name = env.new_string("clipboard")?;
             let manager = env
-                .call_method(activity, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", &[JValue::Object(&name)])?
+                .call_method(app, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", &[JValue::Object(&name)])?
                 .l()?;
             let label = env.new_string(label)?;
             let text = env.new_string(text)?;
@@ -275,7 +284,7 @@ fn java_call(class: &str, method: &str, sig: &str, arg: Option<jni::objects::JVa
     if raw == 0 {
         return None;
     }
-    // `with_env`'s context is the Application, and Screen needs the Activity.
+    // `with_env`'s context is the Application, and these classes need the Activity.
     let r = with_env(|env, _app| {
         use jni::objects::{JClass, JObject, JValue, JValueOwned};
         // The thread stays attached for the life of the app, so the local references made
@@ -295,6 +304,7 @@ fn java_call(class: &str, method: &str, sig: &str, arg: Option<jni::objects::JVa
             Ok(match out {
                 JValueOwned::Float(f) => Some(JValueOwned::Float(f)),
                 JValueOwned::Int(i) => Some(JValueOwned::Int(i)),
+                JValueOwned::Bool(b) => Some(JValueOwned::Bool(b)),
                 JValueOwned::Long(l) => Some(JValueOwned::Long(l)),
                 _ => None,
             })
