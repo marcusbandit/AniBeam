@@ -922,6 +922,8 @@ pub struct ImportSummary {
     pub completed_merged: u64,
     pub resume_points_merged: u64,
     pub accounts_imported: u64,
+    /// Files whose row an imported quick fix rewrote.
+    pub fixes_applied: u64,
     pub fields_ignored: Vec<String>,
 }
 

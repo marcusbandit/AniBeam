@@ -14,36 +14,87 @@ use crate::library::{cards, history, readings};
 use crate::time;
 
 /// One file row as a fix needs it.
-struct Row {
-    series: u64,
+pub(crate) struct Row {
+    id: u64,
+    pub(crate) series: u64,
     path: String,
-    reading: FileReading,
+    pub(crate) reading: FileReading,
     key: String,
+}
+
+const ROW: &str = "SELECT id, series_id, path, kind, number, season, extra_kind, extra_index, episode_key FROM files";
+
+fn read_row(r: &rusqlite::Row) -> rusqlite::Result<Row> {
+    let kind: String = r.get(3)?;
+    let extra_kind: Option<String> = r.get(6)?;
+    Ok(Row {
+        id: r.get::<_, i64>(0)? as u64,
+        series: r.get::<_, i64>(1)? as u64,
+        path: r.get(2)?,
+        reading: readings::of_row(
+            &kind,
+            r.get(4)?,
+            r.get::<_, Option<i64>>(5)?.map(|v| v as u32),
+            extra_kind.as_deref(),
+            r.get::<_, Option<i64>>(7)?.map(|v| v as u32),
+        ),
+        key: r.get(8)?,
+    })
 }
 
 fn row(tx: &Transaction, file: u64) -> Result<Option<Row>, CoreError> {
     Ok(tx
         .query_row(
-            "SELECT series_id, path, kind, number, season, extra_kind, extra_index, episode_key FROM files WHERE id = ?1",
+            &format!("{ROW} WHERE id = ?1"),
             params![file as i64],
-            |r| {
-                let kind: String = r.get(2)?;
-                let extra_kind: Option<String> = r.get(5)?;
-                Ok(Row {
-                    series: r.get::<_, i64>(0)? as u64,
-                    path: r.get(1)?,
-                    reading: readings::of_row(
-                        &kind,
-                        r.get(3)?,
-                        r.get::<_, Option<i64>>(4)?.map(|v| v as u32),
-                        extra_kind.as_deref(),
-                        r.get::<_, Option<i64>>(6)?.map(|v| v as u32),
-                    ),
-                    key: r.get(7)?,
-                })
-            },
+            read_row,
         )
         .optional()?)
+}
+
+/// The file row at `path`, whichever series holds it; a path is one file.
+pub(crate) fn row_at(tx: &Transaction, path: &str) -> Result<Option<Row>, CoreError> {
+    Ok(tx
+        .query_row(&format!("{ROW} WHERE path = ?1"), params![path], read_row)
+        .optional()?)
+}
+
+/// The `was` stored with the fix at `path`: None when the path has no fix, Some(None)
+/// when its `was` does not read as a reading this build can hold.
+pub(crate) fn stored_was(
+    tx: &Transaction,
+    path: &str,
+) -> Result<Option<Option<FileReading>>, CoreError> {
+    let was: Option<String> = tx
+        .query_row(
+            "SELECT was FROM file_fixes WHERE path = ?1",
+            params![path],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(was.map(|w| {
+        serde_json::from_str::<FileReading>(&w)
+            .ok()
+            .filter(|w| check(w).is_ok())
+    }))
+}
+
+/// Writes `target` onto `row` when it reads otherwise, and answers the move its history
+/// has to make, for `history::follow` once every row carries its new key.
+pub(crate) fn retarget(
+    tx: &Transaction,
+    row: &Row,
+    target: &FileReading,
+) -> Result<Option<history::Move>, CoreError> {
+    if *target == row.reading {
+        return Ok(None);
+    }
+    let key = rewrite(tx, row.id, &row.path, target)?;
+    Ok(Some(history::Move {
+        file: row.id,
+        from: row.key.clone(),
+        to: key,
+    }))
 }
 
 /// A reading the library can hold: a real episode number, a season and an
@@ -136,28 +187,17 @@ pub(crate) fn write_fixes(
                 reading.clone()
             }
             None => {
-                let was: Option<String> = tx
-                    .query_row(
-                        "SELECT was FROM file_fixes WHERE path = ?1",
-                        params![row.path],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
+                let was = stored_was(tx, &row.path)?;
                 tx.execute("DELETE FROM file_fixes WHERE path = ?1", params![row.path])?;
-                match was.and_then(|w| serde_json::from_str::<FileReading>(&w).ok()) {
+                match was.flatten() {
                     Some(was) => was,
                     // Never fixed: nothing to undo.
                     None => continue,
                 }
             }
         };
-        if target != row.reading {
-            let key = rewrite(tx, fix.file, &row.path, &target)?;
-            moves.push(history::Move {
-                file: fix.file,
-                from: row.key,
-                to: key,
-            });
+        if let Some(m) = retarget(tx, &row, &target)? {
+            moves.push(m);
         }
     }
     // Once every row carries its new key, so a renumbered run moves as one.
