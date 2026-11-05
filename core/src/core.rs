@@ -357,6 +357,13 @@ impl Core {
         self.presence.set_pause_clear(wait);
     }
 
+    /// Looks at a quiet Discord connection after `wait` instead of
+    /// `presence::CHECK`. Not part of the contract.
+    #[doc(hidden)]
+    pub fn set_presence_check(&self, wait: std::time::Duration) {
+        self.presence.set_check(wait);
+    }
+
     /// Feeds Discord presence one tick of `session` directly, as a tick
     /// that lost the race with its session's close would arrive. Not part
     /// of the contract.

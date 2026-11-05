@@ -110,11 +110,13 @@ impl EventBus {
         // emptied the shell's read cache and the kept snapshot every few seconds while a
         // download ran, so no page ever found its library read cached (#289).
         // Nor is a job starting: what it goes on to change is announced by its own events.
+        // Nor Discord coming and going: no read the shell caches depends on it.
         if !matches!(
             event.body,
             EventBody::JobProgress { .. }
                 | EventBody::JobStarted { .. }
                 | EventBody::TorrentsRead { .. }
+                | EventBody::PresenceChanged { .. }
         ) {
             self.generation.fetch_add(1, Ordering::SeqCst);
         }
