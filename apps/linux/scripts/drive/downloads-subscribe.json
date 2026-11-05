@@ -10,7 +10,7 @@
   "timeout": 20000
  },
  {
-  "eval": "var p = frame.item.pageItem, r = frame.item.downloadsRules.filter(function(x) { return x.name.indexOf('Helluva') === 0 })[0]; p.watchSubscription({ name: r.name, feed_url: r.feed_url, save_path: r.save_path }); p.detail !== null && p.watching",
+  "eval": "var p = frame.item.pageItem, r = frame.item.downloadsRules.filter(function(x) { return x.name.indexOf('Helluva') === 0 })[0]; p.watchSubscription({ name: r.name, feed_url: '', save_path: r.save_path }); p.detail !== null && p.watching",
   "expect": true
  },
  {
