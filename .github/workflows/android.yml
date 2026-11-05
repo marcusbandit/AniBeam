@@ -42,6 +42,8 @@ env:
 jobs:
   # rustfmt alone, so a formatting slip fails in seconds without waiting on the build (#510).
   # The phone workspace is not a member of the root one, so ci.yml's fmt job never sees it.
+  # Its two packages by name: --all would follow the path dependencies into core/ and the
+  # rest of the root workspace, which ci.yml already checks.
   fmt:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -54,7 +56,7 @@ jobs:
       - name: Rust toolchain
         run: rustup toolchain install 1.98 --profile minimal --component rustfmt && rustup default 1.98
 
-      - run: cargo fmt --all --check
+      - run: cargo fmt --check -p anibeam-android -p anibeam-companion
 
   check:
     runs-on: ubuntu-24.04

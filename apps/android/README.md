@@ -121,10 +121,11 @@ scripts/build.sh cargo test -p anibeam-companion   # any cargo command, same lim
 (`ANIBEAM_BUILD_MEM` changes the cap), and refuses to start with less than 7 GB free.
 
 This directory is its own Cargo workspace, so the root's checks skip it. Before a PR, run
-these here; `.github/workflows/android.yml` runs the same:
+these here. `.github/workflows/android.yml` runs them too, and clippy once more for the
+emulator's target, which catches code only the phone compiles:
 
 ```sh
-cargo fmt --all --check
+cargo fmt --check -p anibeam-android -p anibeam-companion
 scripts/build.sh cargo test --workspace
 scripts/build.sh cargo clippy --workspace --all-targets -- -D warnings
 ```
