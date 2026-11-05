@@ -1260,10 +1260,19 @@ mod tests {
     fn the_limit_counts_utf16_units_as_discord_does() {
         let emoji = "\u{1F600}".repeat(100);
         let a = Activity::describe(&emoji, "EP 1", None, false, false, None);
-        assert!(a.details.encode_utf16().count() <= FIELD_MAX, "{}", a.details);
+        assert!(
+            a.details.encode_utf16().count() <= FIELD_MAX,
+            "{}",
+            a.details
+        );
         assert!(a.details.ends_with("..."));
         // An emoji is never split in half.
-        assert!(a.details.trim_end_matches("...").chars().all(|c| c == '\u{1F600}'));
+        assert!(
+            a.details
+                .trim_end_matches("...")
+                .chars()
+                .all(|c| c == '\u{1F600}')
+        );
     }
 
     #[test]
