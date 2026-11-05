@@ -16,6 +16,9 @@ on:
       - 'apps/cli/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'clippy.toml'
+      - '.cargo/**'
+      - 'rust-toolchain*'
       - '.github/workflows/linux.yml'
   workflow_dispatch:
   workflow_call:
@@ -118,9 +121,13 @@ jobs:
           path: ~/anibeam-deps
           key: ${{ steps.depkey.outputs.key }}
 
+      # Pinned, as in ci.yml and android.yml, so a new Rust release cannot turn the shell's
+      # clippy red on code nobody touched, and the build, the tests and clippy share one
+      # toolchain and one cache. Bump it on purpose, in all three.
       - name: Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal
+          rustup toolchain install 1.98 --profile minimal --component clippy
+          rustup default 1.98
           rustc --version
 
       - uses: Swatinem/rust-cache@v2
@@ -228,3 +235,13 @@ jobs:
             dist/linuxdeploy.log
             dist/appimage-plugin.log
           if-no-files-found: ignore
+
+      # ci.yml lints the core and the CLI on an ubuntu runner with no Qt, so the shell crate is
+      # linted here, where Qt, MpvQt and libmpv are already set up (#86). It runs last, so a
+      # lint never stops the AppImage and its smoke tests, and only in a pull request's own
+      # run of this workflow, which has no version input, so it never holds back a nightly,
+      # a release or a `test build`. The tests' debug build is reused for the dependencies;
+      # the shell's own build script runs again under clippy-driver.
+      - name: Clippy for the shell
+        if: github.event_name == 'pull_request' && inputs.version == ''
+        run: cargo clippy --locked -p anibeam --all-targets -- -D warnings

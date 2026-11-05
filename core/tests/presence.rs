@@ -16,6 +16,8 @@ enum Sent {
     Set(Activity),
     Clear,
     Close,
+    /// An activity Discord refused, under `reject_all`.
+    Refused(Activity),
 }
 
 /// Records what the worker asks of it. `fail` makes every connect fail,
@@ -28,6 +30,7 @@ struct Fake {
     reject_posters: bool,
     /// Set by a test: Discord has quit, so every send finds it gone.
     gone: Arc<std::sync::atomic::AtomicBool>,
+    reject_all: bool,
     gate: Option<Gate>,
 }
 
@@ -91,6 +94,9 @@ impl Transport for Fake {
         }
         if self.gone.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(SendError::Gone("Discord quit".to_string()));
+        if let (true, Some(a)) = (self.reject_all, activity) {
+            self.push(Sent::Refused(a.clone()));
+            return Err(SendError::Rejected("details".to_string()));
         }
         if self.reject_posters && activity.is_some_and(|a| a.poster.is_some()) {
             return Err(SendError::Rejected("large_image".to_string()));
@@ -589,4 +595,31 @@ fn a_connection_with_nothing_to_show_is_let_go() {
     wait_presence(&c, false);
     fake.wait(|sent| sent.contains(&Sent::Close));
     assert_eq!(presence_reply(&core), (true, false));
+}
+
+#[test]
+fn a_refusal_that_is_not_the_posters_keeps_posters_for_the_next_activity() {
+    let (_dir, core, _c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        reject_all: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    tick(&core, s, 2.0, true);
+    core.presence_flush();
+    let posters: Vec<bool> = fake
+        .sent()
+        .iter()
+        .filter_map(|x| match x {
+            Sent::Refused(a) => Some(a.poster.is_some()),
+            _ => None,
+        })
+        .collect();
+    // Each activity is tried with its poster, then without.
+    assert_eq!(posters, vec![true, false, true, false]);
 }

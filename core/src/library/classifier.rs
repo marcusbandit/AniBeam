@@ -29,6 +29,8 @@ static TRAILING_DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*[-_]\s*
 /// The extras token patterns, tried in this order, each anchored at both ends
 /// so "Operations" and "Edge" never fire. A variant letter only follows a
 /// number, so "Spy" is no `SP` plus a "y" (#426); a plural is spelled out.
+/// A release revision at the end of a token is cut off before these run, as
+/// for an episode, so `SP01v2`, `NCOP1v2` and `SPv2` read as their extra (#442).
 /// Each pattern says whether its marker is also a plain word a series title can hold, a
 /// preview or a special with no number (Trailer Park Boys, Special A); see `find_extra_token`.
 static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex, bool)>> = LazyLock::new(|| {
@@ -160,6 +162,12 @@ fn index_apart(rest: &[&str]) -> Option<u32> {
         .ok()
 }
 
+/// A release revision ending a token, `v2` in `SP01v2`, `OP1av2` or `S05EEXv2`.
+/// A bare `v` stays, since `OP1v` is opening 1, variant v. Only tried when the
+/// token as written is no extra.
+static TOKEN_REVISION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(.+?)v[0-9]+$").unwrap());
+
 /// A token that starts an episode reading: `S02E03`, `E07`, `01x36`, or `Episode` or `Ep`
 /// with its number in the next token. A dash is not one; `title_end` reads it apart.
 static EPISODE_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
@@ -202,8 +210,13 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     // when neither comes (#443).
     let mut title_word = None;
     for (at, token) in tokens.iter().enumerate() {
+        // The token as written first, so `PV01` is never `P` plus a `V01`.
+        let stem = TOKEN_REVISION
+            .captures(token)
+            .and_then(|m| m.get(1))
+            .map(|m| m.as_str());
         for (kind, re, word) in EXTRA_PATTERNS.iter() {
-            if let Some(m) = re.captures(token) {
+            if let Some(m) = re.captures(token).or_else(|| re.captures(stem?)) {
                 let glued = m.get(1).and_then(|g| g.as_str().parse().ok());
                 let apart = || match kind {
                     ExtraKind::Sp | ExtraKind::Pv => index_apart(&tokens[at + 1..]),
@@ -669,6 +682,53 @@ mod tests {
             (c.extra, c.extra_index, c.extra_variant.as_deref()),
             (Some(ExtraKind::Pv), Some(1), Some("a"))
         );
+    }
+
+    #[test]
+    fn a_revision_after_an_extras_index_is_that_extra() {
+        // `v2` after the number is the release's revision, as it is for an
+        // episode, so the file is still the extra and not episode 1 (#442).
+        for (name, kind, index) in [
+            ("[Group] Show - SP01v2.mkv", ExtraKind::Sp, 1),
+            ("[Group] Show - NCOP1v2.mkv", ExtraKind::Op, 1),
+            ("[Group] Show - NCED2v3 [1080p].mkv", ExtraKind::Ed, 2),
+            ("[Group] Show - PV1v2.mkv", ExtraKind::Pv, 1),
+            ("[Group] Show - OVA3v2.mkv", ExtraKind::Sp, 3),
+            ("[Group] Show - S01ESP2v2.mkv", ExtraKind::Sp, 2),
+        ] {
+            let c = ep(name);
+            assert_eq!(
+                (c.extra, c.extra_index, c.extra_variant),
+                (Some(kind), Some(index), None),
+                "{name}"
+            );
+        }
+        // An extra with no number of its own takes a revision too.
+        for (name, kind) in [
+            ("[Group] Show - SPv2.mkv", ExtraKind::Sp),
+            ("[Group] Show - PVv2.mkv", ExtraKind::Pv),
+            ("[Group] Show - OVAv2.mkv", ExtraKind::Sp),
+            ("[Group] Show - S05EEXv2.mkv", ExtraKind::Sp),
+        ] {
+            let c = ep(name);
+            assert_eq!((c.extra, c.extra_index), (Some(kind), None), "{name}");
+        }
+        // A variant letter and a revision together keep both readings, in
+        // either case, and a bare `v` is still a variant.
+        for (name, variant) in [
+            ("Show OP1av2.mkv", Some("a")),
+            ("Show OP1V2.mkv", None),
+            ("Show OP1v.mkv", Some("v")),
+        ] {
+            let c = ep(name);
+            assert_eq!(
+                (c.extra, c.extra_index, c.extra_variant.as_deref()),
+                (Some(ExtraKind::Op), Some(1), variant),
+                "{name}"
+            );
+        }
+        // The label is still the token as written.
+        assert_eq!(ep("Show - SP01v2.mkv").raw_label.as_deref(), Some("SP01v2"));
     }
 
     #[test]

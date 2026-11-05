@@ -218,18 +218,19 @@ pub enum EventBody {
     RuleRead {
         rule: RuleView,
     },
-    /// A subscription mended: the feed it reads now, what the rule keeps,
-    /// and how many releases the new feed held when read.
+    /// A subscription mended: what the rule keeps, and how many releases
+    /// its feed held when read. The feed itself is in the rule, never here:
+    /// its address can hold a login and a key (#472).
     SubscriptionRepaired {
         name: String,
-        feed_url: String,
         must_contain: String,
         found: u64,
     },
-    /// A subscription's feed, read for the page: `url` is the one asked
-    /// for, so a late answer for a feed since closed can be told apart.
+    /// A subscription's feed, read for the page, under the `tag` the
+    /// `ReadFeed` call passed. It never names the feed, whose address can
+    /// hold a login and a key (#472).
     FeedRead {
-        url: String,
+        tag: String,
         entries: Vec<FeedEntry>,
     },
     /// A release's torrent file, read for its contents: the whole episode
