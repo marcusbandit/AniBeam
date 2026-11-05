@@ -1228,6 +1228,13 @@ fn enrich(
     endpoint: &str,
     items: &[Release],
 ) {
+    // A json or tosho endpoint answers JSON at that address, so the read could never
+    // parse: the native engine skips it rather than spend a request on the host.
+    if let DownloadsBackend::Native(native, _) = &backend
+        && !native.feed_is_rss(endpoint)
+    {
+        return;
+    }
     let owner = core.clone();
     let (query, endpoint, items) = (query.to_string(), endpoint.to_string(), items.to_vec());
     // The native engine's search booked its host through the paced client already.

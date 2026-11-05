@@ -31,6 +31,12 @@ pub fn needs_query(kind: &str) -> bool {
     matches!(kind, "json" | "rss" | "tosho" | "torznab")
 }
 
+/// Whether what an endpoint of `kind` answers at its search address is an RSS feed, which
+/// `downloads::feed::read` and a qBittorrent RSS rule can read. json and tosho answer JSON.
+pub fn answers_rss(kind: &str) -> bool {
+    matches!(kind, "nyaa" | "rss" | "torznab")
+}
+
 /// Why a json source cannot be added by hand: its field map only comes from a definition.
 pub const JSON_NEEDS_REPO: &str =
     "a JSON search source comes from an endpoint repo whose definition maps its fields";
