@@ -326,6 +326,9 @@ export global AppData {
     in property <bool> series-remote;
     in property <SeriesHead> series;
     in property <[EpisodeLine]> episodes;
+    // Every distinct code among the episodes, one per line: the page measures the widest
+    // and sizes every row's code column to it.
+    in property <string> episode-codes;
 
     callback open-series(int);
     // A series from the other device's library, played from there.

@@ -3,10 +3,18 @@ import { AppData, EpisodeLine, Nav } from "data.slint";
 import { FindData } from "find.slint";
 import { Button, ClampedText, Cubes, PageTitle, Poster, SectionHead } from "widgets.slint";
 
+// An episode code's type, shared by the rows and the probe that sizes their column.
+component CodeText inherits Text {
+    font-size: Theme.small;
+    font-family: Theme.figure;
+}
+
 // One episode, the desktop's row: its cube, the code, the title and a state word, and when
 // it aired or airs at the right. The next one up sits on a lit row.
 component EpisodeItem inherits Rectangle {
     in property <EpisodeLine> data;
+    // The code column, the same on every row so the titles line up.
+    in property <length> code-width: Theme.unit * 10;
     // Episodes still to air are quieter.
     property <bool> later: root.data.cube == 5;
     property <bool> next: root.data.note == "Next up";
@@ -37,14 +45,12 @@ component EpisodeItem inherits Rectangle {
         border-width: root.data.picked ? 0 : 1.5px;
         border-color: Theme.line-strong;
     }
-    code := Text {
+    code := CodeText {
         x: Theme.unit * 8;
-        width: Theme.unit * 10;
+        width: root.code-width;
         height: parent.height;
         text: root.data.code;
         color: root.later ? Theme.faint : Theme.dim;
-        font-size: Theme.small;
-        font-family: Theme.figure;
         vertical-alignment: center;
     }
     texts := VerticalLayout {
@@ -206,6 +212,12 @@ export component SeriesPage inherits Rectangle {
 
     // Swallow touches so nothing under the page reacts.
     TouchArea { }
+    // Measures every episode code, one per line, outside the layout: its width is the widest
+    // code's, which sizes the rows' code column.
+    code-probe := CodeText {
+        visible: false;
+        text: AppData.episode-codes;
+    }
     // Only ever as wide as the pane: the page scrolls up and down, never sideways.
     Flickable {
         content-width: self.width;
@@ -282,7 +294,10 @@ export component SeriesPage inherits Rectangle {
             if AppData.deleting: DeleteBar { }
             VerticalLayout {
                 spacing: Theme.unit;
-                for line in AppData.episodes: EpisodeItem { data: line; }
+                for line in AppData.episodes: EpisodeItem {
+                    data: line;
+                    code-width: Math.max(Theme.unit * 10, code-probe.preferred-width + Theme.unit * 2);
+                }
             }
             if AppData.episodes.length == 0: Text {
                 text: "No episodes on this phone and none scheduled.";

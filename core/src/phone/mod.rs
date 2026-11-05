@@ -27,6 +27,9 @@ pub struct Phone {
     /// Held by one poll round at a time.
     #[cfg(feature = "phone")]
     poll_lock: tokio::sync::Mutex<()>,
+    /// The subscriptions already said to have stopped, so the log says it once.
+    #[cfg(feature = "phone")]
+    stopped: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
 fn sources_path(core: &Core) -> PathBuf {
@@ -453,13 +456,21 @@ pub fn subscribe(
         .block_on(native.preview(&query, &endpoint, &items))?;
     let name = name_for(name.as_deref(), &items, &query)?;
     let store = rules_store(core);
-    let (_, subscribed) = store.subscribe(&name, &spec, &library_dir(core))?;
+    // The rules file keeps the endpoint's secrets as placeholders, never the values (#149).
+    let kept = crate::repos::kept_spec(core, &spec, &query);
+    let fillers = crate::repos::fillers(core);
+    let fill = |feed: &str, endpoint: &str| crate::repos::filled_feed(&fillers, endpoint, feed);
+    let filled = fill(&kept.feed_url, &kept.endpoint_name).unwrap_or_else(|| spec.feed_url.clone());
+    let (_, subscribed) = store.subscribe(
+        &name,
+        &kept,
+        &filled,
+        |r| fill(&r.feed_url, &r.endpoint),
+        &library_dir(core),
+    )?;
     // What the feed holds now for episodes the library already has is taken, so the first
     // round does not download them again (qBittorrent's previously matched episodes).
-    if let Ok(now) = core
-        .handle
-        .block_on(feed(core, &spec.feed_url, &subscribed.name))
-    {
+    if let Ok(now) = core.handle.block_on(feed(core, &filled, &subscribed.name)) {
         let (facts, _) = crate::downloads::annotate(core, &query, &now);
         let had: Vec<String> = now
             .iter()
@@ -565,8 +576,26 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
     // One round at a time: a subscribe's round and the timer's would add the same releases.
     let _one = core.phone.poll_lock.lock().await;
     let store = rules_store(core);
+    let fillers = crate::repos::fillers(core);
     for rule in store.load().into_iter().filter(|r| r.enabled) {
-        let items = match feed(core, &rule.feed_url, &rule.name).await {
+        let Some(url) = crate::repos::filled_feed(&fillers, &rule.endpoint, &rule.feed_url) else {
+            // Its endpoint was removed, or its credentials were: said once, not every round.
+            if core.phone.stopped.lock().unwrap().insert(rule.name.clone()) {
+                core.bus.say(
+                    Level::Warn,
+                    Stage::Downloads,
+                    format!(
+                        "{} is not checked for new episodes: its source is gone or needs its key again.",
+                        rule.name
+                    ),
+                    format!("Subscription {} stopped: no credentials for {}", rule.name, rule.endpoint),
+                    EventBody::Notice,
+                );
+            }
+            continue;
+        };
+        core.phone.stopped.lock().unwrap().remove(&rule.name);
+        let items = match feed(core, &url, &rule.name).await {
             Ok(items) => items,
             Err(e) => {
                 tracing::warn!("subscription {} not read: {e}", rule.name);
