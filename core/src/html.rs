@@ -3,8 +3,10 @@
 //! paragraphs before any shell sees it, so no shell strips tags or decodes entities on its
 //! own (#450).
 
-/// HTML as plain text: tags gone, entities decoded, and one paragraph per
-/// `<p>` or `<br>`, paragraphs apart by a blank line.
+/// HTML as plain text: tags gone, entities decoded, and the breaks a page would draw. One
+/// `<br>`, `<li>`, `<div>` or `<tr>` ends a line; `<p>`, a heading, a list, a quote or two
+/// breaks in a row end a paragraph, and paragraphs stand apart by a blank line. A newline
+/// written in the source is a space, as HTML reads it.
 ///
 /// Only a `<` followed by a letter, a `/` or a `!` opens a tag, so "a < b"
 /// and "1 <2" are text. Entities are decoded in the same single pass, so
@@ -14,7 +16,7 @@ pub fn plain_text(html: &str) -> String {
     let mut text = String::with_capacity(html.len());
     let mut rest = html;
     while let Some(at) = rest.find(['<', '&']) {
-        text.push_str(&rest[..at]);
+        push_text(&mut text, &rest[..at]);
         rest = &rest[at..];
         if rest.starts_with('<') {
             let opens_tag = rest[1..]
@@ -29,8 +31,15 @@ pub fn plain_text(html: &str) -> String {
                         .next()
                         .unwrap_or_default()
                         .to_ascii_lowercase();
-                    if name == "p" || name == "br" {
-                        text.push('\n');
+                    // A line-level block breaks where it opens, so its close and the
+                    // next one's open make one break, not a paragraph.
+                    let closing = rest[1..].starts_with('/');
+                    match name.as_str() {
+                        "br" => text.push('\n'),
+                        "li" | "div" | "tr" if !closing => text.push('\n'),
+                        "p" | "ul" | "ol" | "blockquote" | "h1" | "h2" | "h3" | "h4" | "h5"
+                        | "h6" => text.push_str("\n\n"),
+                        _ => {}
                     }
                     rest = &rest[close + 1..];
                 }
@@ -52,12 +61,32 @@ pub fn plain_text(html: &str) -> String {
             }
         }
     }
-    text.push_str(rest);
-    text.lines()
-        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
-        .filter(|l| !l.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n")
+    push_text(&mut text, rest);
+    // A line with nothing on it is where a paragraph ends; runs of them are one.
+    let mut out = String::with_capacity(text.len());
+    let mut gap = "";
+    for line in text.split('\n') {
+        let line = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        if line.is_empty() {
+            if !out.is_empty() {
+                gap = "\n\n";
+            }
+            continue;
+        }
+        out.push_str(gap);
+        out.push_str(&line);
+        gap = "\n";
+    }
+    out
+}
+
+/// Source text between tags: a newline in it is whitespace, never a break.
+fn push_text(text: &mut String, source: &str) {
+    text.extend(
+        source
+            .chars()
+            .map(|c| if c == '\n' || c == '\r' { ' ' } else { c }),
+    );
 }
 
 /// The entity `s` starts with, as its character and the bytes it spans:
@@ -81,12 +110,15 @@ fn decode_entity(s: &str) -> Option<(char, usize)> {
         };
         char::from_u32(value).filter(|c| *c != '\0')?
     } else {
-        named_entity(body)?
+        entity(body)?
     };
     Some((c, end + 1))
 }
 
-fn named_entity(name: &str) -> Option<char> {
+/// The character a named entity stands for, its name without `&` and `;`: the names
+/// TVmaze's summaries, AniList's descriptions and feed fields use. `nbsp` is a plain
+/// space, since the text is for reading.
+pub(crate) fn entity(name: &str) -> Option<char> {
     Some(match name {
         "amp" => '&',
         "lt" => '<',
@@ -112,6 +144,9 @@ fn named_entity(name: &str) -> Option<char> {
         "reg" => '\u{ae}',
         "trade" => '\u{2122}',
         "times" => '\u{d7}',
+        "plusmn" => '\u{b1}',
+        "euro" => '\u{20ac}',
+        "hearts" => '\u{2665}',
         "eacute" => 'é',
         "Eacute" => 'É',
         "egrave" => 'è',
@@ -161,11 +196,32 @@ mod tests {
     fn html_loses_its_tags_and_keeps_its_paragraphs() {
         assert_eq!(
             plain_text("<p>One <b>bold</b> &amp; plain.</p><p>Two<br/>Three</p>"),
-            "One bold & plain.\n\nTwo\n\nThree"
+            "One bold & plain.\n\nTwo\nThree"
         );
         assert_eq!(plain_text(""), "");
         assert_eq!(plain_text("a < b"), "a < b");
         assert_eq!(plain_text("Tom&#39;s &quot;show&quot;"), "Tom's \"show\"");
+    }
+
+    /// One break ends a line and two end a paragraph; a block tag breaks too, so the
+    /// words on either side never run together.
+    #[test]
+    fn breaks_and_block_tags_keep_lines_and_paragraphs_apart() {
+        assert_eq!(
+            plain_text("Season 1: spring<br>Season 2: fall<br><br>Next."),
+            "Season 1: spring\nSeason 2: fall\n\nNext."
+        );
+        assert_eq!(
+            plain_text("<ul><li>One</li><li>Two</li></ul>After"),
+            "One\nTwo\n\nAfter"
+        );
+        assert_eq!(plain_text("<div>A</div><div>B</div>"), "A\nB");
+        // A newline in the source is a space, as HTML reads it.
+        assert_eq!(plain_text("one\ntwo<br>\n<br>\nthree"), "one two\n\nthree");
+        assert_eq!(
+            plain_text("Price &euro;5 &plusmn;1"),
+            "Price \u{20ac}5 \u{b1}1"
+        );
     }
 
     /// AniList's descriptions: `<br>` pairs between paragraphs, `<i>` around the source,
