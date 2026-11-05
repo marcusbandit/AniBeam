@@ -15,7 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ### Fixed
 - A show's synopsis reads as paragraphs instead of showing <br> tags
 - Episode codes like S03E01 fit their column instead of running into the title
-- A feed error names only the feed's host, never a login in its address
+- A failed torrent download names only the site, never a login in its link
 
 ## 2.4.2 · 2026-11-02
 

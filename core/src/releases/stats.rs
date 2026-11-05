@@ -457,7 +457,7 @@ async fn udp_scrape(announce: &str, hashes: &[Hash]) -> HashMap<Hash, Stats> {
     match udp_exchange(&host, port, hashes).await {
         Ok(out) => out,
         Err(e) => {
-            tracing::warn!("udp scrape {host}:{port}: {e}");
+            tracing::warn!("udp scrape {}: {e}", crate::net::url_shown(announce));
             HashMap::new()
         }
     }
@@ -1324,18 +1324,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_tracker_is_logged_by_scheme_and_host_only() {
-        for url in [
-            "https://t.example/0123abcd/announce",
-            "https://user:0123abcd@t.example:8443/announce?passkey=0123abcd",
-            // split_url ends the host at `/` only, so this passkey was the host (#451).
-            "https://t.example\\0123abcd/announce",
-        ] {
-            assert_eq!(crate::net::url_shown(url), "https://t.example", "{url}");
-        }
-    }
-
     #[tokio::test]
     async fn http_scrape_batches_fifty_hashes_a_request() {
         let hashes: Vec<Hash> = (0..120u8).map(|i| [i; 20]).collect();
@@ -1507,33 +1495,6 @@ mod tests {
                 .any(|(k, v)| k == "User-Agent" && v == "anirss/1.0")
         );
         assert_eq!(req.timeout, Some(TORRENT_TIMEOUT));
-    }
-
-    #[test]
-    fn a_torrent_link_is_logged_by_scheme_and_host_only() {
-        // A passkey in the path, the login or the query never reaches the log (#397).
-        for url in [
-            "https://t.example/dl/0123abcd/file.torrent",
-            "https://user:0123abcd@t.example:8443/dl/0123abcd.torrent?passkey=0123abcd",
-        ] {
-            assert_eq!(crate::net::url_shown(url), "https://t.example");
-        }
-        // The client reads a backslash as a slash, and so does the log line.
-        assert_eq!(
-            crate::net::url_shown("https://t.example\\dl\\0123abcd\\file.torrent"),
-            "https://t.example"
-        );
-        assert_eq!(
-            crate::net::url_shown("http://[2001:db8::1]:8080/0123abcd.torrent"),
-            "http://[2001:db8::1]"
-        );
-        for bad in [
-            "http://[t.example/0123abcd",
-            "/dl/0123abcd.torrent",
-            "0123abcd",
-        ] {
-            assert_eq!(crate::net::url_shown(bad), "a malformed link", "{bad}");
-        }
     }
 
     #[tokio::test]

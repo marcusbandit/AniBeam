@@ -395,30 +395,36 @@ pub fn resolver_client() -> Result<reqwest::Client, CoreError> {
         .map_err(|e| CoreError::internal(format!("dns client: {e}")))
 }
 
-/// A URL as a log or error line names it: scheme and host only, since a login, a passkey
-/// or an API key can sit in the userinfo, the path or the query. Read with the HTTP client's
-/// own parser, so a link it fetches with backslashes for slashes cannot pass its path off
-/// as the host. A URL with no host is `a malformed link`.
+/// A URL as a log or error line names it: scheme, host and a port the URL names, since a
+/// login, a passkey or an API key can sit in the userinfo, the path or the query. Read
+/// with the HTTP client's own parser, so a link it fetches with backslashes for slashes
+/// cannot pass its path off as the host. A URL with no host is `a malformed link`.
 pub fn url_shown(url: &str) -> String {
-    reqwest::Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(|h| format!("{}://{h}", u.scheme())))
-        .unwrap_or_else(|| MALFORMED.to_string())
+    parsed(url).map_or_else(
+        || MALFORMED.to_string(),
+        |u| format!("{}://{}", u.scheme(), host_and_port(&u)),
+    )
 }
 
-/// The host alone, with a port when the URL names one, for an error's service name:
+/// The host alone, with a port the URL names, for an error's service name:
 /// `t.example`, `127.0.0.1:9117`. Read the way [`url_shown`] reads it.
 pub fn host_shown(url: &str) -> String {
+    parsed(url).map_or_else(|| MALFORMED.to_string(), |u| host_and_port(&u))
+}
+
+/// `url` as the HTTP client reads it, when it names a host.
+fn parsed(url: &str) -> Option<reqwest::Url> {
     reqwest::Url::parse(url)
         .ok()
-        .and_then(|u| {
-            let host = u.host_str()?.to_string();
-            Some(match u.port() {
-                Some(port) => format!("{host}:{port}"),
-                None => host,
-            })
-        })
-        .unwrap_or_else(|| MALFORMED.to_string())
+        .filter(|u| u.host_str().is_some())
+}
+
+fn host_and_port(u: &reqwest::Url) -> String {
+    let host = u.host_str().unwrap_or_default();
+    match u.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_string(),
+    }
 }
 
 const MALFORMED: &str = "a malformed link";
@@ -655,34 +661,68 @@ mod tests {
 
     #[test]
     fn a_url_is_shown_by_scheme_and_host_only() {
-        // A login, a passkey in the path and an API key in the query stay out (#451).
-        for url in [
-            "https://user:0123abcd@t.example/rss",
-            "https://t.example:8443/0123abcd/announce?passkey=0123abcd",
+        // A login, a passkey in the path or the query and an API key stay out (#451).
+        for (url, shown, host) in [
+            (
+                "https://user:0123abcd@t.example/rss",
+                "https://t.example",
+                "t.example",
+            ),
+            (
+                "https://t.example:8443/0123abcd/announce?passkey=0123abcd",
+                "https://t.example:8443",
+                "t.example:8443",
+            ),
+            (
+                "https://t.example/dl/0123abcd/file.torrent",
+                "https://t.example",
+                "t.example",
+            ),
+            (
+                "https://user:0123abcd@t.example:8443/dl/0123abcd.torrent?passkey=0123abcd",
+                "https://t.example:8443",
+                "t.example:8443",
+            ),
             // The client reads a backslash as a slash, and so does the log line.
-            "https://t.example\\0123abcd\\announce",
+            (
+                "https://t.example\\0123abcd\\announce",
+                "https://t.example",
+                "t.example",
+            ),
+            (
+                "https://t.example\\dl\\0123abcd\\file.torrent",
+                "https://t.example",
+                "t.example",
+            ),
+            (
+                "http://127.0.0.1:9117/api?apikey=0123abcd",
+                "http://127.0.0.1:9117",
+                "127.0.0.1:9117",
+            ),
+            (
+                "http://[2001:db8::1]:8080/x",
+                "http://[2001:db8::1]:8080",
+                "[2001:db8::1]:8080",
+            ),
+            // A default port is no port.
+            (
+                "https://t.example:443/rss",
+                "https://t.example",
+                "t.example",
+            ),
+            (
+                "udp://t.example:1337/announce",
+                "udp://t.example:1337",
+                "t.example:1337",
+            ),
         ] {
-            assert_eq!(url_shown(url), "https://t.example", "{url}");
-            assert!(host_shown(url).starts_with("t.example"), "{url}");
-            assert!(!host_shown(url).contains("0123abcd"), "{url}");
+            assert_eq!(url_shown(url), shown, "{url}");
+            assert_eq!(host_shown(url), host, "{url}");
         }
-        assert_eq!(
-            host_shown("https://user:0123abcd@t.example/rss"),
-            "t.example"
-        );
-        assert_eq!(
-            host_shown("http://127.0.0.1:9117/api?apikey=0123abcd"),
-            "127.0.0.1:9117"
-        );
-        assert_eq!(
-            url_shown("http://[2001:db8::1]:8080/x"),
-            "http://[2001:db8::1]"
-        );
-        assert_eq!(
-            host_shown("http://[2001:db8::1]:8080/x"),
-            "[2001:db8::1]:8080"
-        );
+        // A UDP announce is not a special scheme, so a backslash is no separator and the
+        // host does not parse; it reads as malformed rather than naming its path.
         for bad in [
+            "udp://t.example\\0123abcd:1337/announce",
             "http://[t.example/0123abcd",
             "/rss/0123abcd",
             "0123abcd",
