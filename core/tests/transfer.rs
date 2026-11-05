@@ -2,6 +2,7 @@ mod common;
 
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 use anibeam_core::transfer::format;
 use anibeam_core::*;
@@ -579,11 +580,18 @@ fn a_quick_fix_round_trips_beside_its_series() {
         "{:?}",
         summary.fields_ignored
     );
-    // A fresh library holds no files yet, so nothing was applied; the scan
-    // that attaches them reads the stored fix.
+    // A fresh library holds no file yet, so nothing was applied in the
+    // import; it reads the fixed series, so its file comes in with the fix.
     assert_eq!(summary.fixes_applied, 0);
-    let job = started(fresh.call(Call::Scan { source: None }).unwrap());
-    common::wait_job(&c2, job);
+    common::wait_for(
+        &c2,
+        |e| {
+            e.job
+                .as_ref()
+                .is_some_and(|j| j.kind == JobKind::Scan && j.phase == JobPhase::Finished)
+        },
+        Duration::from_secs(30),
+    );
     assert_eq!(
         file_column(&fresh, "number", "Sousou no Frieren - 01.mkv"),
         Some(13.0)

@@ -98,7 +98,7 @@ async fn run(
     let sources = import_sources(&core, sources, now, &mut summary).await?;
 
     ctx.progress(1, Some(SECTIONS), "series");
-    let touched = import_series(&core, series, now, &mut summary).await?;
+    let (touched, unscanned) = import_series(&core, series, now, &mut summary).await?;
 
     ctx.progress(2, Some(SECTIONS), "history");
     if let Some(history) = history {
@@ -127,7 +127,8 @@ async fn run(
 
     // What changed, in the order a shell wants to redraw it. The scan the
     // launch runs is what attaches files to the series this created; the
-    // import itself starts none.
+    // import itself starts one only for a series with a fixed file the
+    // library does not hold yet, so that file comes in with its fix.
     for id in sources {
         let state = core.clone();
         if let Some(source) = core
@@ -164,6 +165,9 @@ async fn run(
             "preferences changed",
             EventBody::PreferencesChanged { preferences },
         );
+    }
+    for series in unscanned {
+        let _ = scan::rescan_series(&core, series);
     }
     images::sweep_after(&core, "an import").await;
 
@@ -260,21 +264,22 @@ async fn import_sources(
 /// the path appears. Its quick fixes are stored and written onto the files
 /// the library already holds, in the same transaction, so the history
 /// section after it finds every file on its new key. Answers the series
-/// touched.
+/// touched, and the ones with a fixed file the library does not hold yet.
 async fn import_series(
     core: &Arc<Core>,
     entries: Vec<SeriesEntry>,
     now: i64,
     summary: &mut ImportSummary,
-) -> Result<Vec<u64>, CoreError> {
-    let (touched, applied, created, matched, ignored) = core
+) -> Result<(Vec<u64>, Vec<u64>), CoreError> {
+    let (touched, unscanned, applied, created, matched, ignored) = core
         .store
         .tx_async(move |tx| {
             // Every source, not only the file's: a series may well belong
             // to one this library already had.
             let sources = all_sources(tx)?;
             let (mut touched, mut created, mut matched, mut ignored) = (Vec::new(), 0u64, 0u64, Vec::new());
-            let mut moves = Vec::new();
+            let mut moves = Moves::default();
+            let mut unscanned = Vec::new();
             for (n, entry) in entries.iter().enumerate() {
                 let path = normalise(&entry.path);
                 let kind = if entry.kind == "movie" { SeriesKind::Movie } else { SeriesKind::Show };
@@ -326,30 +331,28 @@ async fn import_series(
                         params![id as i64, n as i64, entry.episodes_set_season.map(|s| s as i64)],
                     )?;
                 }
-                apply_fixes(tx, &path, kind, &entry.fixes, now, &mut moves)?;
+                if apply_fixes(tx, &path, kind, &entry.fixes, now, &mut moves)? {
+                    unscanned.push(id);
+                }
                 touched.push(id);
             }
             // A fixed file may sit in a series nested in this one, so each
             // series' moves follow together, once every row is rewritten.
-            let applied = moves.len() as u64;
-            let mut by_series: HashMap<u64, Vec<history::Move>> = HashMap::new();
-            for (series, m) in moves {
-                by_series.entry(series).or_default().push(m);
-            }
-            for (series, moves) in &by_series {
+            let applied = moves.files();
+            for (series, moves) in &moves.by_series() {
                 history::follow(tx, *series, moves)?;
                 if !touched.contains(series) {
                     touched.push(*series);
                 }
             }
-            Ok((touched, applied, created, matched, ignored))
+            Ok((touched, unscanned, applied, created, matched, ignored))
         })
         .await?;
     summary.series_created = created;
     summary.matches_applied = matched;
     summary.fixes_applied = applied;
     summary.fields_ignored.extend(ignored);
-    Ok(touched)
+    Ok((touched, unscanned))
 }
 
 /// The series' quick fixes, by the file's path in this library. The file
@@ -358,18 +361,20 @@ async fn import_series(
 /// import of the same file changes nothing. A reading `FixFiles` would
 /// refuse is skipped. A `was` the file lacks, or one it would refuse, is
 /// the one this library already stored for the file, else what its scan
-/// read, so an undo still has something to put back. Every file row at a
-/// fixed path that reads otherwise is rewritten, whether or not the stored
-/// fix changed, so an import that failed after this section and runs again
-/// still applies it; each rewrite lands in `moves`.
+/// read, so an undo still has something to put back. The file row at a
+/// fixed path is rewritten whenever it reads otherwise, whether or not the
+/// stored fix changed, so an import that failed after this section and
+/// runs again still applies it. Answers whether a fixed file is not in the
+/// library yet, which only a scan of the series can attach.
 fn apply_fixes(
     tx: &Transaction,
     series_path: &str,
     kind: SeriesKind,
     fixes: &[format::FixEntry],
     now: i64,
-    moves: &mut Vec<(u64, history::Move)>,
-) -> Result<(), CoreError> {
+    moves: &mut Moves,
+) -> Result<bool, CoreError> {
+    let mut missing = false;
     for fix in fixes {
         let Some(path) = fix_path(series_path, &fix.path, kind) else {
             continue;
@@ -377,39 +382,64 @@ fn apply_fixes(
         if fixes::check(&fix.reading).is_err() {
             continue;
         }
-        let reading = serde_json::to_string(&fix.reading)?;
+        let row = fixes::row_at(tx, &path)?;
         let was = match fix.was.as_ref().filter(|w| fixes::check(w).is_ok()) {
-            Some(was) => serde_json::to_string(was)?,
-            None => match stored_was(tx, &path)? {
-                Some(was) => was,
-                None => match fixes::read_at(tx, &path)? {
-                    Some(read) => serde_json::to_string(&read)?,
-                    None => reading.clone(),
-                },
+            Some(was) => was.clone(),
+            None => match fixes::stored_was(tx, &path)? {
+                Some(Some(was)) => was,
+                // A fix is stored but its `was` is lost; the row reads that
+                // fix, so it is no `was` either.
+                Some(None) => fix.reading.clone(),
+                None => row
+                    .as_ref()
+                    .map_or_else(|| fix.reading.clone(), |r| r.reading.clone()),
             },
         };
         tx.execute(
             "INSERT INTO file_fixes (path, reading, was, fixed_at) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(path) DO UPDATE SET reading = excluded.reading, was = excluded.was, fixed_at = excluded.fixed_at
              WHERE file_fixes.reading IS NOT excluded.reading OR file_fixes.was IS NOT excluded.was",
-            params![path, reading, was, now],
+            params![path, serde_json::to_string(&fix.reading)?, serde_json::to_string(&was)?, now],
         )?;
-        moves.extend(fixes::rewrite_path(tx, &path, &fix.reading)?);
+        match row {
+            Some(row) => {
+                if let Some(m) = fixes::retarget(tx, &row, &fix.reading)? {
+                    moves.add(row.series, m);
+                }
+            }
+            None => missing = true,
+        }
     }
-    Ok(())
+    Ok(missing)
 }
 
-/// The `was` this library already holds for a fixed path, when it reads.
-fn stored_was(tx: &Transaction, path: &str) -> Result<Option<String>, CoreError> {
-    let was: Option<String> = tx
-        .query_row(
-            "SELECT was FROM file_fixes WHERE path = ?1",
-            params![path],
-            |r| r.get(0),
-        )
-        .optional()?;
-    Ok(was
-        .filter(|w| serde_json::from_str::<FileReading>(w).is_ok_and(|w| fixes::check(&w).is_ok())))
+/// The history moves an import's fixes make, one per file: a file two
+/// entries both fix (a nested series' document beside its parent's) moves
+/// once, from the key it had to the key it ends on.
+#[derive(Default)]
+struct Moves(Vec<(u64, history::Move)>);
+
+impl Moves {
+    fn add(&mut self, series: u64, m: history::Move) {
+        match self.0.iter_mut().find(|(_, had)| had.file == m.file) {
+            Some((_, had)) => had.to = m.to,
+            None => self.0.push((series, m)),
+        }
+    }
+
+    /// How many files took a fix.
+    fn files(&self) -> u64 {
+        self.0.len() as u64
+    }
+
+    /// The moves that still change a key, by series.
+    fn by_series(self) -> HashMap<u64, Vec<history::Move>> {
+        let mut out: HashMap<u64, Vec<history::Move>> = HashMap::new();
+        for (series, m) in self.0.into_iter().filter(|(_, m)| m.from != m.to) {
+            out.entry(series).or_default().push(m);
+        }
+        out
+    }
 }
 
 /// A fix's path below the series folder joined onto this library's series
@@ -1050,6 +1080,31 @@ mod tests {
         assert_eq!((id, key.as_str()), (2, "S02E01"));
     }
 
+    /// A file two entries both fix moves once, from the key it had to the
+    /// one it ends on, and counts once; a move back to its own key is none.
+    #[test]
+    fn a_file_fixed_twice_moves_once() {
+        let mv = |file: u64, from: &str, to: &str| history::Move {
+            file,
+            from: from.to_string(),
+            to: to.to_string(),
+        };
+        let mut moves = Moves::default();
+        moves.add(1, mv(7, "1", "13"));
+        moves.add(2, mv(7, "13", "14"));
+        moves.add(1, mv(8, "2", "3"));
+        moves.add(1, mv(9, "5", "6"));
+        moves.add(1, mv(9, "6", "5"));
+        assert_eq!(moves.files(), 3);
+        let by = moves.by_series();
+        let keys: Vec<(u64, &str, &str)> = by[&1]
+            .iter()
+            .map(|m| (m.file, m.from.as_str(), m.to.as_str()))
+            .collect();
+        assert_eq!(keys, vec![(7, "1", "14"), (8, "2", "3")]);
+        assert!(!by.contains_key(&2));
+    }
+
     #[test]
     fn a_fix_path_stays_inside_its_series() {
         let joined = |rel: &str| fix_path("/lib/Show", rel, SeriesKind::Show);
@@ -1103,7 +1158,7 @@ mod tests {
                     SeriesKind::Show,
                     &fixes,
                     0,
-                    &mut Vec::new(),
+                    &mut Moves::default(),
                 )?;
                 let mut stmt = tx.prepare("SELECT path, reading, was FROM file_fixes")?;
                 let rows = stmt

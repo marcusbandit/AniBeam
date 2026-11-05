@@ -176,7 +176,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint at an IPv6 address shows its full host
 - An episode folder beside Specials or a sample joins its show
 - Auto-match tells a second OVA run apart from the first, and finds a first film
-- A restored backup applies your file fixes at once and says how many
+- Restoring a backup applies your file fixes right away
 
 ## 2.3.0 · 2026-10-27
 
