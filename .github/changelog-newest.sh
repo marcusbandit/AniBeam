@@ -9,8 +9,8 @@
 #
 # A line changed in place, a typo fixed in a shipped note, is an edit, not a new line, and
 # passes: within one hunk, as many added lines as were removed count as edits. So does a
-# line folded in from a change file the same diff removes (.github/changelog-fold.sh): the
-# phone's version bump folds the notes under the version that shipped, then adds its own.
+# line folded in from a change file the same diff deletes (.github/changelog-fold.sh): a
+# hotfix branch folds the shipped version's change files under it, then adds its own heading.
 #
 # A pull request writes its notes in <app>/changes/, which always ship under the newest
 # version, so this only ever catches a line written straight into CHANGELOG.md.
@@ -20,8 +20,8 @@ root="$(git rev-parse --show-toplevel)"
 status=0
 for file in apps/linux/CHANGELOG.md apps/android/CHANGELOG.md; do
   git -C "$root" cat-file -e "HEAD:$file" 2>/dev/null || continue
-  # The lines of the change files this diff removes, which may land in the file as they are.
-  moved="$(git -C "$root" diff -U0 --no-color "$base...HEAD" -- "${file%CHANGELOG.md}changes" |
+  # The lines of the change files this diff deletes, which may land in the file as they are.
+  moved="$(git -C "$root" diff -U0 --no-color --diff-filter=D "$base...HEAD" -- "${file%CHANGELOG.md}changes" |
     awk '/^---/ { next } /^-- / { s = substr($0, 3); sub(/^ +/, "", s); sub(/[ \t\r]+$/, "", s); print s }')"
   git -C "$root" diff -U0 --no-color "$base...HEAD" -- "$file" | MOVED="$moved" awk -v file="$file" '
     BEGIN {

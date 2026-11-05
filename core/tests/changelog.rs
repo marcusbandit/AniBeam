@@ -22,14 +22,7 @@ fn changes(app: &str) -> Vec<(String, String)> {
         .join("..")
         .join(app)
         .join("changes");
-    let mut files: Vec<_> = std::fs::read_dir(&dir)
-        .map(|d| d.filter_map(|e| e.ok().map(|e| e.path())).collect())
-        .unwrap_or_else(|_| Vec::new());
-    files.retain(|p| {
-        p.extension().is_some_and(|x| x == "md") && p.file_name().is_some_and(|n| n != "README.md")
-    });
-    files.sort();
-    files
+    changelog::change_files(&dir)
         .into_iter()
         .map(|p| {
             let name = format!("{app}/changes/{}", p.file_name().unwrap().to_string_lossy());
@@ -74,7 +67,11 @@ fn folds_as_read(app: &str, version: &str, extra: &[(String, String)]) {
         String::from_utf8_lossy(&out.stderr)
     );
     let folded = std::fs::read_to_string(dir.path().join("CHANGELOG.md")).unwrap();
-    let texts: Vec<&str> = extra.iter().map(|(_, t)| t.as_str()).collect();
+    let texts: Vec<&str> = extra
+        .iter()
+        .filter(|(name, _)| !name.rsplit('/').next().unwrap().starts_with('.'))
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert_eq!(
         changelog::parse(&folded),
         changelog::parse_with(&notes, &texts),
@@ -86,12 +83,97 @@ fn folds_as_read(app: &str, version: &str, extra: &[(String, String)]) {
         "{app} folded:\n  {}",
         problems.join("\n  ")
     );
-    let left: Vec<_> = std::fs::read_dir(dir.path().join("changes"))
-        .unwrap()
-        .collect();
     assert!(
-        left.is_empty(),
+        changelog::change_files(&dir.path().join("changes")).is_empty(),
         "changelog-fold.sh left change files behind"
+    );
+}
+/// `git` in `dir`, which has to work.
+#[cfg(unix)]
+fn git(dir: &Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .output()
+        .expect("git runs");
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// The Release workflow folds what the promoted nightly had, as it had it: a change file
+/// merged since stays, and so does a line added since to one that shipped.
+#[cfg(unix)]
+#[test]
+fn the_release_folds_only_what_the_shipped_commit_had() {
+    let repo = tempfile::tempdir().unwrap();
+    let app = repo.path().join("app");
+    std::fs::create_dir_all(app.join("changes")).unwrap();
+    std::fs::write(
+        app.join("CHANGELOG.md"),
+        "# Notes\n\n## 2.5.0 · 2026-11-02\n\n## 2.4.0 · 2026-10-30\n\n### New\n- Old\n",
+    )
+    .unwrap();
+    std::fs::write(app.join("changes/1-a.md"), "### New\n- Shipped\n").unwrap();
+    git(repo.path(), &["init", "-q"]);
+    git(repo.path(), &["add", "-A"]);
+    git(repo.path(), &["commit", "-qm", "nightly"]);
+    let shipped = git(repo.path(), &["rev-parse", "HEAD"]);
+    std::fs::write(
+        app.join("changes/1-a.md"),
+        "### New\n- Shipped\n\n### Fixed\n- Later fix\n",
+    )
+    .unwrap();
+    std::fs::write(app.join("changes/2-b.md"), "### Fixed\n- Later\n").unwrap();
+    git(repo.path(), &["add", "-A"]);
+    git(repo.path(), &["commit", "-qm", "after"]);
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/changelog-fold.sh");
+    let out = std::process::Command::new("bash")
+        .arg(&script)
+        .arg(&app)
+        .arg(&shipped)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let notes = changelog::parse(&std::fs::read_to_string(app.join("CHANGELOG.md")).unwrap());
+    assert_eq!(notes[0].version, "2.5.0");
+    assert_eq!(notes[0].sections.len(), 1);
+    assert_eq!(notes[0].sections[0].lines, ["Shipped"]);
+    assert_eq!(
+        std::fs::read_to_string(app.join("changes/1-a.md")).unwrap(),
+        "### Fixed\n- Later fix\n"
+    );
+    assert!(app.join("changes/2-b.md").exists());
+    // A change file that shipped whole is gone from the index too, so the release commit
+    // takes its deletion; one with lines left stays tracked.
+    std::fs::write(app.join("changes/1-a.md"), "### New\n- Shipped\n").unwrap();
+    git(repo.path(), &["commit", "-qam", "drop the later fix"]);
+    let out = std::process::Command::new("bash")
+        .arg(&script)
+        .arg(&app)
+        .arg(git(repo.path(), &["rev-parse", "HEAD"]))
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(
+        git(repo.path(), &["diff", "--cached", "--name-status"]),
+        "D\tapp/changes/1-a.md\nD\tapp/changes/2-b.md"
     );
 }
 
@@ -106,6 +188,11 @@ fn the_release_folds_change_files_under_the_newest_version_as_the_apps_read_them
         (
             "apps/linux/changes/2-b.md".to_string(),
             "<!-- a note to the reviewer -->\n### Changed\n- A changed thing\n\n### Fixed\n- A fixed thing  \n".to_string(),
+        ),
+        // A hidden file is no change file, for the fold as for the apps.
+        (
+            "apps/linux/changes/.3-c.md".to_string(),
+            "### New\n- Never shown\n".to_string(),
         ),
     ];
     for app in ["apps/linux", "apps/android"] {

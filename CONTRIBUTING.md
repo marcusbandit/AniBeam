@@ -140,8 +140,9 @@ Minecraft's patch notes: a version, a few sections, one short line per change.
 - The apps build the change files in and show them under the newest heading, so a nightly's
   What's new has them. When a version ships, `.github/changelog-fold.sh` folds them into
   `CHANGELOG.md` under its heading and deletes them: the Release workflow does it for the
-  desktop, and the PR that bumps the phone's version runs `.github/changelog-fold.sh
-  apps/android` before it adds the new heading.
+  desktop. The PR that bumps the phone's version, made for the build about to leave the
+  machine, adds the new heading first and then runs `.github/changelog-fold.sh
+  apps/android`, so what changed since the last APK lands under the version that ships it.
 - Say what the person sees. No why, no how, no issue numbers, no file names, no full stop.
   80 characters at most; most lines fit in 50.
 - The newest heading is the app's version, with the day: `## 2.1.1 · 2026-10-25`. Bumping
@@ -244,8 +245,10 @@ between two releases carries it as its base.
 - **Hotfix.** A shipped version that needs a fix gets a branch from its tag, only then:
   `git push origin v2.5.0^{commit}:refs/heads/release/2.5`. The fix lands on main first
   through the usual PR, then is cherry-picked onto the branch with `git cherry-pick -x` in
-  a PR against `release/2.5`, with a new `2.5.1` heading and the version bumped to match;
-  the change file the cherry-pick brings shows under it. Tag it to ship: `git tag v2.5.1 origin/release/2.5 && git push
+  a PR against `release/2.5`. The branch still holds 2.5.0's change files, since the fold
+  happened on main, so that PR first runs `.github/changelog-fold.sh apps/linux` to put them
+  under `2.5.0`, then adds a `2.5.1` heading with the version bumped to match. The change
+  file the cherry-pick brings shows under it. Tag it to ship: `git tag v2.5.1 origin/release/2.5 && git push
   origin v2.5.1`. The Release workflow refuses a tag that is not on its own branch. The
   branch is never merged back, since everything on it came from main.
 

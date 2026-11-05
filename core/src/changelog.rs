@@ -24,6 +24,10 @@
 
 use serde::{Deserialize, Serialize};
 
+#[path = "changelog_files.rs"]
+mod files;
+pub use files::change_files;
+
 /// The section names a version may use, in the order a version lists them.
 pub const KINDS: [&str; 4] = ["New", "Changed", "Fixed", "Removed"];
 
@@ -98,11 +102,6 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
     let mut kinds: Vec<String> = Vec::new();
     let mut open: Option<(usize, usize)> = None;
     let mut first = true;
-    let close = |problems: &mut Vec<String>, open: Option<(usize, usize)>| {
-        if let Some((at, 0)) = open {
-            problems.push(format!("line {at}: a section with no lines under it"));
-        }
-    };
     let mut heading_at = 0;
     // The newest version may have no sections yet: main moves to it the moment the last
     // one ships, before anything is written under it.
@@ -246,11 +245,6 @@ pub fn lint_change(text: &str) -> Vec<String> {
     let mut kinds: Vec<String> = Vec::new();
     let mut open: Option<(usize, usize)> = None;
     let mut lines = 0;
-    let close = |problems: &mut Vec<String>, open: Option<(usize, usize)>| {
-        if let Some((at, 0)) = open {
-            problems.push(format!("line {at}: a section with no lines under it"));
-        }
-    };
     for (n, line) in read(text) {
         match line {
             Line::Title | Line::Heading { .. } => problems.push(format!(
@@ -279,6 +273,14 @@ pub fn lint_change(text: &str) -> Vec<String> {
         problems.push("no lines; a change file holds at least one".to_string());
     }
     problems
+}
+
+/// The section that just ended, opened at its line with its count of lines, when it
+/// had none.
+fn close(problems: &mut Vec<String>, open: Option<(usize, usize)>) {
+    if let Some((at, 0)) = open {
+        problems.push(format!("line {at}: a section with no lines under it"));
+    }
 }
 
 fn dashes(text: &str) -> Vec<String> {
