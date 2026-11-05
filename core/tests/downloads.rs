@@ -13,7 +13,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use anibeam_core::events::Collector;
 use anibeam_core::net::FakeHttp;
 use anibeam_core::*;
 use serde_json::{Value, json};
@@ -1232,30 +1231,6 @@ fn remove_show_refuses_a_library_root_and_removes_nothing() {
     ));
 }
 
-/// A library show in a folder of its own: two episodes on disk, scanned,
-/// so it is series 1. Returns that folder.
-fn library_show(dir: &Path, core: &Core, c: &Collector) -> String {
-    let show = dir.join("lib").join("Show");
-    std::fs::create_dir_all(&show).unwrap();
-    for n in 1..=2 {
-        std::fs::write(
-            show.join(format!("[Group] Show - {n:02} (1080p).mkv")),
-            b"x",
-        )
-        .unwrap();
-    }
-    core.call(Call::AddSource {
-        path: dir.join("lib").to_string_lossy().into_owned(),
-    })
-    .unwrap();
-    common::wait_for(
-        c,
-        |e| matches!(e.body, EventBody::ScanFinished { .. }),
-        Duration::from_secs(10),
-    );
-    show.to_string_lossy().into_owned()
-}
-
 /// anirss takes no save path for a subscription and writes the rule under
 /// its own root; one made for a library show is moved to that show's
 /// folder in qBittorrent, so its episodes join the show (#267).
@@ -1265,7 +1240,7 @@ fn a_subscription_for_a_library_show_saves_into_its_folder_through_anirss() {
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
     save(&core, remote(), Some("tok"), Some("pw"));
-    let home = library_show(dir.path(), &core, &c);
+    let home = common::library_show(dir.path(), &core, &c);
     http.push_for(
         "/health",
         200,

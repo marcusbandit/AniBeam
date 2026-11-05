@@ -235,26 +235,7 @@ fn subscribe_writes_the_rule_and_feed_through_qbittorrent() {
 #[test]
 fn a_subscription_for_a_library_show_saves_into_its_folder() {
     let r = rig();
-    let show = r.dir.path().join("lib").join("Show");
-    std::fs::create_dir_all(&show).unwrap();
-    for n in 1..=2 {
-        std::fs::write(
-            show.join(format!("[Group] Show - {n:02} (1080p).mkv")),
-            b"x",
-        )
-        .unwrap();
-    }
-    r.core
-        .call(Call::AddSource {
-            path: r.dir.path().join("lib").to_string_lossy().into_owned(),
-        })
-        .unwrap();
-    common::wait_for(
-        &r.c,
-        |e| matches!(e.body, EventBody::ScanFinished { .. }),
-        Duration::from_secs(10),
-    );
-    let home = show.to_string_lossy().into_owned();
+    let home = common::library_show(r.dir.path(), &r.core, &r.c);
     r.http.push_for("rss/rules", 200, "{}");
     r.http.push_for("rss/addFeed", 200, "");
     r.http.push_for("rss/setRule", 200, "");
@@ -278,6 +259,26 @@ fn a_subscription_for_a_library_show_saves_into_its_folder() {
     assert_eq!(def["savePath"], json!(home));
     assert_eq!(def["torrentParams"]["save_path"], json!(home));
     no_anirss(&r.http);
+}
+
+/// A rule that saves into a library show's folder never takes its files
+/// along when it goes: the folder holds episodes it did not download.
+#[test]
+fn removing_a_subscription_with_files_leaves_a_library_show_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = dir.path().join("lib").to_string_lossy().into_owned();
+    let r = rig_at(QBT, &base);
+    // The show sits inside the save base, where the old checks let its folder go.
+    let home = common::library_show(dir.path(), &r.core, &r.c);
+    queue_one_rule(&r.http, &home);
+    let done = remove_call(&r, false, true, true);
+    assert!(
+        matches!(failed(&done), CoreError::Invalid { field, message }
+            if field == "files" && message.contains("library folder")),
+        "{done:?}"
+    );
+    assert!(writes(&r.http).is_empty());
+    assert!(std::path::Path::new(&home).is_dir());
 }
 
 #[test]

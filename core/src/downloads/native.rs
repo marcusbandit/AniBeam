@@ -540,6 +540,9 @@ fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Resu
     if !here {
         return Ok(());
     }
+    for p in plans {
+        super::not_a_library_show(core, &p.save_path)?;
+    }
     let sources: Vec<String> = core.store.read(|c| {
         let mut stmt = c.prepare("SELECT path FROM sources")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;

@@ -1361,8 +1361,14 @@ pub fn subscribe(
             let mut result = backend
                 .subscribe(&query, &endpoint, &items, name.as_deref(), home.as_deref())
                 .await?;
-            if let Some(home) = home.as_deref() {
-                rehome_rule(&owner, &mut result, home).await?;
+            // The rule exists by now: a failed move leaves it saving where anirss put it, and
+            // the job says so rather than failing over a subscription that was made.
+            let mut unmoved = String::new();
+            if let Some(home) = home.as_deref()
+                && let Err(e) = rehome_rule(&owner, &mut result, home).await
+            {
+                tracing::warn!("subscription {} not moved to {home}: {e}", result.name);
+                unmoved = format!(" (it could not be moved to {home}: {e})");
             }
             let terms = match wire_query.as_deref() {
                 Some(wire) if backend.narrows_locally(&owner, &endpoint) => {
@@ -1372,7 +1378,7 @@ pub fn subscribe(
             };
             let message = if terms.is_empty() {
                 format!(
-                    "Subscribed to {}; new episodes save to {}",
+                    "Subscribed to {}; new episodes save to {}{unmoved}",
                     result.name, result.save_path
                 )
             } else {
@@ -1381,7 +1387,7 @@ pub fn subscribe(
                 rewire_subscription(&owner, &ctx, &mut result, &wide, &items, &terms).await?;
                 let searched = rewire::search_param(&result.feed_url).map_or(wire, |(_, v)| v);
                 format!(
-                    "Subscribed to {}; {endpoint} is searched for \"{searched}\" and the rule keeps {}",
+                    "Subscribed to {}; {endpoint} is searched for \"{searched}\" and the rule keeps {}{unmoved}",
                     result.name,
                     describe_terms(&terms)
                 )
@@ -1414,11 +1420,12 @@ async fn rehome_rule(
     result: &mut Subscribed,
     home: &str,
 ) -> Result<(), CoreError> {
-    let trim = |p: &str| p.trim_end_matches(['/', '\\']).to_string();
-    if trim(&result.save_path) == trim(home) {
+    if paths::norm(&result.save_path) == paths::norm(home) {
         return Ok(());
     }
     let qbt = qbt_client(core).await?;
+    // Read, then written back whole: one rule change at a time.
+    let _one = core.downloads.rules.lock().await;
     let rules = qbt.rules().await?;
     let Some(def) = rules.get(&result.name) else {
         return Err(service(
@@ -1783,6 +1790,18 @@ pub fn remove(core: &Core, name: String, torrents: bool, files: bool) -> Result<
         .clone()
         .start(JobKind::RemoveSubscription, move |_| async move {
             let backend = DownloadsBackend::open(&owner).await?;
+            // anirss judges the folder by its own rules: the library's are checked here first.
+            if files && matches!(backend, DownloadsBackend::Anirss(_)) {
+                let here = settings::files_here(&load_settings(&owner).await?);
+                let plans = backend
+                    .remove(std::slice::from_ref(&name), torrents, files, true)
+                    .await?;
+                if here {
+                    for p in &plans {
+                        not_a_library_show(&owner, &p.save_path)?;
+                    }
+                }
+            }
             backend
                 .remove(std::slice::from_ref(&name), torrents, files, false)
                 .await?;
@@ -1799,6 +1818,29 @@ pub fn remove(core: &Core, name: String, torrents: bool, files: bool) -> Result<
                 body: EventBody::SubscriptionRemoved { name },
             })
         }))
+}
+
+/// Refuses `folder` for a removal with files when it is a library show's own folder: a
+/// subscription made from a show's page saves there (#267), beside episodes it never
+/// downloaded, so its files go only with the show, from the show's page.
+pub(crate) fn not_a_library_show(core: &Core, folder: &str) -> Result<(), CoreError> {
+    let want = paths::real(folder);
+    let shows: Vec<(String, String)> = core.store.read(|c| {
+        let mut stmt = c.prepare(
+            "SELECT path, folder_name FROM series WHERE kind = 'show' AND missing_since IS NULL",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    })?;
+    match shows.iter().find(|(path, _)| paths::real(path) == want) {
+        Some((_, name)) => Err(CoreError::invalid(
+            "files",
+            format!(
+                "{folder} is the library folder of {name}, with episodes this subscription did not download: remove the subscription without its files, or remove {name} from its page"
+            ),
+        )),
+        None => Ok(()),
+    }
 }
 
 pub fn control(core: &Core, hashes: Vec<String>, action: TorrentAction) -> Result<u64, CoreError> {
