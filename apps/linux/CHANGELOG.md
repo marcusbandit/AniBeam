@@ -15,6 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Settings shows whether Discord is connected, under Playback
 - Set a show's schedule under Fixes: pick episodes and a date, or paste a list
 - Fixes is three items: Episodes and dates, Files and Match
 - Refresh a show's info from its Match panel, and rescan its folder from Files
