@@ -15,7 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ### Fixed
 - A show's synopsis reads as paragraphs instead of showing <br> tags
 - Episode codes like S03E01 fit their column instead of running into the title
-- An opening or special with a v2 after its number is no longer an episode
+- An extra marked with a v2, like SP01v2, no longer reads as an episode
 
 ## 2.4.2 · 2026-11-02
 
