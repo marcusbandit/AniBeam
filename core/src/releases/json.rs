@@ -49,17 +49,46 @@ fn text(v: &Value) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
-/// A size in bytes, as a number or a string of digits.
+/// A size in bytes: a number, a string of digits ("1500" or "1.5"), or one with a unit
+/// ("1.4 GiB", "700 MB"). None when unreadable, or past what a u64 holds rather than a
+/// saturated 16 EiB.
 fn bytes(v: &Value) -> Option<u64> {
+    fn whole(f: f64) -> Option<u64> {
+        (f.is_finite() && f >= 0.0 && f < u64::MAX as f64).then_some(f as u64)
+    }
     match v {
-        Value::Number(n) => n.as_u64().or_else(|| {
-            n.as_f64()
-                .filter(|f| f.is_finite() && *f >= 0.0)
-                .map(|f| f as u64)
-        }),
-        Value::String(s) => s.trim().parse().ok(),
+        Value::Number(n) => n.as_u64().or_else(|| n.as_f64().and_then(whole)),
+        Value::String(s) => {
+            let s = s.trim();
+            s.parse()
+                .ok()
+                .or_else(|| s.parse::<f64>().ok().and_then(whole))
+                .or_else(|| crate::downloads::facts::size_bytes(s))
+        }
         _ => None,
     }
+}
+
+/// A ready link as the release keeps it: an `https://` address, its scheme in any case, or a
+/// magnet that names an info-hash. Anything else is left out.
+fn ready_link(link: &str) -> Option<String> {
+    let scheme = link.get(..8).filter(|s| s.eq_ignore_ascii_case("https://"));
+    if scheme.is_some() && link.len() > 8 {
+        return Some(format!("https://{}", &link[8..]));
+    }
+    let magnet = link
+        .get(..7)
+        .is_some_and(|s| s.eq_ignore_ascii_case("magnet:"));
+    let hashed = link
+        .split(['?', '&'])
+        .filter_map(|p| p.split_once('='))
+        .any(|(k, v)| {
+            k.eq_ignore_ascii_case("xt")
+                && v.get(..9)
+                    .is_some_and(|u| u.eq_ignore_ascii_case("urn:btih:"))
+                && is_hash(&v[9..])
+        });
+    (magnet && hashed).then(|| link.to_string())
 }
 
 /// Whether `hash` is an info-hash: 40 hex digits or 32 base32 ones, in either case. Anything
@@ -118,7 +147,7 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
         Some(hash) => magnet(&hash, &title),
         None => field(&map.link)
             .and_then(text)
-            .filter(|l| l.starts_with("magnet:") || l.starts_with("https://"))?,
+            .and_then(|l| ready_link(&l))?,
     };
     Some(Release {
         link,
@@ -386,6 +415,47 @@ mod tests {
         let body = json!([{"t": "x", "h": "nope", "url": "https://files.example.org/x"}]);
         let items = parse(body.to_string().as_bytes(), &both, "s").unwrap();
         assert_eq!(items[0].link, "https://files.example.org/x");
+    }
+
+    #[test]
+    fn a_link_takes_https_in_any_case_and_a_magnet_needs_a_hash() {
+        let links = small(json!({"link": "url"}));
+        let body = json!([
+            {"t": "a", "url": "HTTPS://files.example.org/a.torrent"},
+            {"t": "b", "url": "MAGNET:?dn=x&XT=URN:BTIH:00112233445566778899AABBCCDDEEFF00112233"},
+            {"t": "c", "url": "magnet:?dn=no-hash"},
+            {"t": "d", "url": "magnet:?xt=urn:btih:nope"},
+            {"t": "e", "url": "https://"},
+        ])
+        .to_string();
+        let items = parse(body.as_bytes(), &links, "s").unwrap();
+        let got: Vec<(&str, &str)> = items
+            .iter()
+            .map(|i| (i.title.as_str(), i.link.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("a", "https://files.example.org/a.torrent"),
+                (
+                    "b",
+                    "MAGNET:?dn=x&XT=URN:BTIH:00112233445566778899AABBCCDDEEFF00112233"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_size_reads_decimals_and_units_and_never_saturates() {
+        assert_eq!(bytes(&json!("1.5")), Some(1));
+        assert_eq!(bytes(&json!(" 1500 ")), Some(1500));
+        assert_eq!(bytes(&json!("1 KiB")), Some(1024));
+        assert_eq!(bytes(&json!("1.5 GB")), Some(1_610_612_736));
+        assert_eq!(bytes(&json!(1.0e30)), None);
+        assert_eq!(bytes(&json!("1e30")), None);
+        assert_eq!(bytes(&json!("99999999999 TiB")), None);
+        assert_eq!(bytes(&json!(-1)), None);
+        assert_eq!(bytes(&json!("big")), None);
     }
 
     #[test]

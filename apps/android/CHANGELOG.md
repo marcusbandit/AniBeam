@@ -10,6 +10,16 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.4.2 · 2026-11-02
+
+### Fixed
+- The app opens from its home screen icon instead of closing at once
+
+## 2.4.1 · 2026-11-02
+
+### Fixed
+- The app starts on phones again instead of closing at once
+
 ## 2.4.0 · 2026-11-01
 
 ### New
@@ -63,6 +73,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings say search sites instead of endpoints, and plain words for the rest
 
 ### Fixed
+- A search whose picked endpoint fails says why instead of showing no results
 - Seeders and leechers show for trackers whose address carries a passkey
 - Next from a season's last episode plays the next season's first
 - A series page beside Home no longer drags sideways

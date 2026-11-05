@@ -61,6 +61,10 @@ Issues, specs and wayfinder maps live in this repo's GitHub Issues, driven with 
 
 Read `docs/agents/triage.md` before triaging an issue or changing how incoming issues get triaged.
 
+### Backlog review
+
+Read `docs/agents/backlog-review.md` before reviewing the backlog or filling the board's Up next column.
+
 ### Domain docs
 
 Single-context: one `CONTEXT.md` at the root and ADRs under `docs/adr/`. See `docs/agents/domain.md`.

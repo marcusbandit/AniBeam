@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::library::cards::aired_and_scheduled;
+use crate::library::schedule::{self, NoteRow};
 use crate::library::sidecar::sidecars_of;
 use crate::net::tvmaze;
 use crate::prefs;
@@ -149,6 +150,8 @@ pub struct Snapshot {
     /// By TVmaze show id, then by season. TVmaze numbers its episodes
     /// within a season, so a file is looked up by both.
     pub tv_seasons: HashMap<u64, BTreeMap<u32, Vec<AiringRow>>>,
+    /// Schedule notes by series id, each with its season (#418).
+    pub notes: HashMap<u64, Vec<(Option<u32>, NoteRow)>>,
     pub anilist_entries: HashMap<u64, TrackerRow>,
     pub mal_entries: HashMap<u64, TrackerRow>,
     pub views: HashMap<u64, (String, i64)>,
@@ -313,6 +316,7 @@ impl Snapshot {
             files: HashMap::new(),
             airing: HashMap::new(),
             tv_seasons: HashMap::new(),
+            notes: HashMap::new(),
             anilist_entries: HashMap::new(),
             mal_entries: HashMap::new(),
             views: HashMap::new(),
@@ -344,6 +348,9 @@ impl Snapshot {
         snap.load_files(conn, scoped_series)?;
         snap.load_airing(conn, scope.map(|_| anilist_ids.as_slice()))?;
         snap.load_tv_episodes(conn, scope.map(|_| show_ids.as_slice()))?;
+        for (series, season, note) in schedule::load(conn, scoped_series)? {
+            snap.notes.entry(series).or_default().push((season, note));
+        }
         snap.fill_tvmaze_totals();
         snap.apply_episodes_set();
         snap.load_tracker_entries(conn, scope.map(|_| media_ids.as_slice()))?;
@@ -910,6 +917,21 @@ impl Snapshot {
             .and_then(|id| self.airing.get(&id))
             .map(|list| Self::clip(row, None, list))
             .unwrap_or(&[])
+    }
+
+    /// The schedule notes of the season a card is about, in number order: a
+    /// TVmaze card's own season, the season-less notes for any other.
+    pub(crate) fn notes_of(&self, row: &SeriesRow) -> Vec<NoteRow> {
+        let season = self.card_season(row);
+        self.notes
+            .get(&row.id)
+            .map(|list| {
+                list.iter()
+                    .filter(|(s, _)| *s == season)
+                    .map(|(_, n)| *n)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// The season a TVmaze card is about: the highest one on disk, since

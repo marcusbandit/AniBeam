@@ -6,10 +6,23 @@ name: CI
 # job that builds it needs its own setup. Runs on main too, so rust-cache keeps a cache
 # every pull request can restore. The toolchain is pinned so a new Rust release cannot
 # turn clippy red on code nobody touched; bump it on purpose.
+# A change that only touches markdown or docs/ skips it (#428). The two CHANGELOG.md files
+# still run it: the apps compile them in and core/tests/changelog.rs checks them. Later
+# patterns win, so the CHANGELOG line has to stay after the markdown exclusion.
 on:
   push:
     branches: [main]
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - '**/CHANGELOG.md'
   pull_request:
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - '**/CHANGELOG.md'
   workflow_dispatch:
 
 permissions:
@@ -47,6 +60,12 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --locked -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
+
+      # Only the phone build compiles the core's phone and cast features, and no other
+      # workflow builds the phone, so without this a desktop change can break the APK and
+      # stay green (#309). The host target is enough: these features need no NDK.
+      - name: Clippy (phone features)
+        run: cargo clippy --locked -p anibeam-core --features phone,cast --all-targets -- -D warnings
 
       - name: Test
         run: cargo test --locked -p anibeam-core -p anibeam-host-api -p anibeam-cli

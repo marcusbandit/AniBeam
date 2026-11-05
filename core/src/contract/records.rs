@@ -78,6 +78,10 @@ pub struct SeriesCard {
     pub titles: Titles,
     pub poster: Option<String>,
     pub format: Option<String>,
+    /// A film, by our own kind or the provider's format (`library::cards::is_film`).
+    /// The shells read this rather than repeating the check.
+    #[serde(default)]
+    pub film: bool,
     pub status: Option<AiringStatus>,
     pub genres: Vec<String>,
     pub hidden: bool,
@@ -330,6 +334,22 @@ pub struct UpcomingEpisode {
     pub predicted: bool,
 }
 
+/// What the user told a series' schedule that its provider does not say
+/// (#418): episodes `first` to `last` land on `at`, or some time in `year`,
+/// or on no known date when both are None. The predictor never guesses an
+/// episode a note without a date covers, nor any after it until a known
+/// date; a provider's own date wins over `at`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct ScheduleNote {
+    pub first: u32,
+    pub last: u32,
+    pub at: Option<SystemTime>,
+    pub year: Option<i32>,
+    /// The month, 1 to 12, of `year`, when the day is not known.
+    #[serde(default)]
+    pub month: Option<u32>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Extra {
     pub file: u64,
@@ -409,6 +429,9 @@ pub struct SeriesDetail {
     /// The episodes still to come, in number order.
     #[serde(default)]
     pub upcoming: Vec<UpcomingEpisode>,
+    /// The schedule notes of the card's season, in number order (#418).
+    #[serde(default)]
+    pub schedule_notes: Vec<ScheduleNote>,
     pub extras: Vec<Extra>,
     pub unmatched_files: Vec<Episode>,
     pub characters: Vec<Person>,
@@ -561,6 +584,9 @@ pub struct AiringShow {
     pub english: Option<String>,
     pub native: Option<String>,
     pub poster: Option<String>,
+    /// The wide banner, a local file, when AniList has one and the show has
+    /// an episode in or near Out now: the only place that draws it.
+    pub banner: Option<String>,
     pub format: Option<String>,
     pub episodes: Option<u32>,
     /// AniList's 0 to 100, as it came.

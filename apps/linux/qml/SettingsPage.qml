@@ -159,6 +159,8 @@ FocusScope {
         ["appearance", "Accent", "colour highlight"],
         ["appearance", "Density", "compact comfortable spacing size"],
         ["appearance", "Poster size", "cards small medium large"],
+        ["appearance", "Out now on Airing", "airing out now cards list rows style banner posters"],
+        ["appearance", "Out now cards", "airing out now grid columns rows layout", "Out now on Airing"],
         ["appearance", "Reduce motion", "animation accessibility"],
         ["appearance", "App icon", "logo launcher dock taskbar window dark"],
         ["playback", "Skip intros", "opening op auto skip aniskip chapters"],

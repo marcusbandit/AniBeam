@@ -509,3 +509,76 @@ fn a_film_folder_matches_kimi_no_na_wa_and_not_the_suntory_short() {
         Some((Provider::Anilist, Some(21519), false))
     );
 }
+
+/// AniList finds nothing for "Seitokai Yakuindomo Movie 1": it names the
+/// first film without the number, so the search runs again without it.
+#[test]
+fn a_first_film_folder_is_searched_again_without_its_number() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let film = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Movie,
+        "/lib/Seitokai Yakuindomo/Movies/Seitokai Yakuindomo Movie 1.mkv",
+        "Seitokai Yakuindomo Movie 1",
+    );
+    fixtures::insert_file(
+        &core,
+        film,
+        "/lib/Seitokai Yakuindomo/Movies/Seitokai Yakuindomo Movie 1.mkv",
+        1.0,
+        None,
+        "episode",
+        1,
+    );
+
+    // The numbered search finds nothing; the bare one finds both films.
+    // Then the first film's enrichment, schedule, Jikan and poster.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [] } } }),
+    );
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [
+            media_json_as(98240, "Seitokai Yakuindomo Movie", "MOVIE", Some(90), &[]),
+            media_json_as(113692, "Seitokai Yakuindomo Movie 2", "MOVIE", Some(90), &[]),
+        ] } } }),
+    );
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Media": { "id": 98240, "idMal": 99240, "type": "ANIME", "streamingEpisodes": [], "tags": [], "studios": { "edges": [] }, "characters": { "edges": [] }, "recommendations": { "edges": [] }, "relations": { "edges": [] } } } }),
+    );
+    http.push_json(200, serde_json::json!({ "data": { "Media": { "id": 98240, "nextAiringEpisode": null, "airingSchedule": { "nodes": [] } } } }));
+    http.push_for(
+        "jikan.moe",
+        200,
+        serde_json::json!({ "data": [] }).to_string(),
+    );
+    http.push_for("img/98240-xl.jpg", 200, vec![1, 2, 3]);
+
+    let job = started(&core, Call::AutoMatch);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::AutoMatchFinished {
+                backfilled: 0,
+                matched: 1,
+                unmatched: 0
+            }
+        ),
+        "{done:?}"
+    );
+    let cards = list_cards(&core);
+    let matched = cards.iter().find(|s| s.id == film).unwrap();
+    assert_eq!(
+        matched
+            .match_info
+            .as_ref()
+            .map(|m| (m.provider, m.anilist_id, m.confirmed)),
+        Some((Provider::Anilist, Some(98240), false))
+    );
+}

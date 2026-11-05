@@ -15,6 +15,17 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Set a show's schedule under Fixes: pick episodes and a date, or paste a list
+- Fixes is three items: Episodes and dates, Files and Match
+- Refresh a show's info from its Match panel, and rescan its folder from Files
+- A season on a break stops showing a made-up next episode
+- Show Out now on Airing as a list instead of cards, in Settings under Appearance
+- Pick how many Out now episodes Airing shows, in Settings under Appearance
+- Sort Airing by score, next episode, episode count or title
+- Airing can show any season: open the arrow beside the next season
+- Hide what is on your lists or in your library from Airing
+- Run AniBeam as a service with no window, so your devices always reach it
+- Settings shows whether that service runs, under Phone app
 - Pick a dark app icon in Settings, under Appearance
 - The phone app plays this library's episodes over Tailscale
 - Shows you mark not interested on the phone are hidden here too
@@ -77,8 +88,10 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Discord shows what you are watching, a switch in Settings, Playback
 - An endpoint repo can search your own Prowlarr or Jackett over torznab
 - An endpoint repo can add a source that answers in JSON
+- Change a show's list status from its status pill or right-click menu
 
 ### Changed
+- Out now on Airing shows its episodes as small cards with their wide banners
 - Library sorts and groups from two menus, with the order said in words
 - This week shows what is out to watch, then a calendar of the days ahead
 - Two files of one episode share one row, and you pick which release plays
@@ -127,6 +140,12 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- JSON sources show sizes written with units, and links in capitals
+- A trusted-only source shows every upload when nothing trusted matches
+- A source added by hand earlier moves its key out of the address at launch
+- A search whose picked endpoint fails says why instead of showing no results
+- A web page answering at the qBittorrent address no longer counts as a login
+- A library card's right-click menu offers Open on AniList again
 - Seeders and leechers show for trackers whose address carries a passkey
 - Next from a season's last episode plays the next season's first
 - Double clicking the picture into fullscreen no longer plays at 2x
@@ -151,6 +170,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Episodes listed as "S2 Episode 3" get episode 3's title, not episode 2's
 - A password or key in a site's address is stored as a secret, not in the open
 - An imported backup keeps a watched opening or ending as last watched
+- An endpoint at an IPv6 address shows its full host
+- An episode folder beside Specials or a sample joins its show
+- Auto-match tells a second OVA run apart from the first, and finds a first film
 
 ## 2.3.0 · 2026-10-27
 

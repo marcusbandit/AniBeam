@@ -250,11 +250,7 @@ pub(super) fn their_message(text: &str) -> String {
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect();
-    let clean = clean.trim();
-    match clean.char_indices().nth(MAX) {
-        Some((cut, _)) => format!("{}...", clean[..cut].trim_end()),
-        None => clean.to_string(),
-    }
+    crate::words::cut(clean.trim(), MAX)
 }
 
 /// Jackett and Prowlarr answer a bad key or a broken indexer with a whole document of

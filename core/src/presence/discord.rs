@@ -29,6 +29,10 @@ const MAX_SKIPPED: u32 = 16;
 /// How long a read or a write on the socket may take. Discord answers in
 /// milliseconds; one that does not is treated as gone.
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long one connect may spend before it stops opening sockets. Each that accepts and stays
+/// silent costs `IO_TIMEOUT`, and the handshake already under way when the budget runs out
+/// still finishes. On Windows the pipe has no timeout, so a silent one is not bounded at all.
+const CONNECT_BUDGET: Duration = Duration::from_secs(12);
 
 /// One frame on the wire.
 pub fn encode(op: u32, payload: &Value) -> Vec<u8> {
@@ -125,23 +129,29 @@ impl<T: Read + Write + Send> Stream for T {}
 #[derive(Default)]
 pub struct Discord {
     conn: Option<Connection<Box<dyn Stream>>>,
+    /// The candidate the next connect tries first: the one that last answered, or the
+    /// one a spent budget stopped short of, so silent sockets early in the list never
+    /// hide a real Discord later in it.
+    next: usize,
 }
 
 impl Transport for Discord {
     fn connect(&mut self, client_id: &str) -> Result<(), SendError> {
         self.conn = None;
-        let mut last = SendError::Gone("no Discord socket".to_string());
-        for path in candidates() {
-            let Ok(stream) = open(&path) else { continue };
-            match Connection::handshake(stream, client_id) {
-                Ok(conn) => {
-                    self.conn = Some(conn);
-                    return Ok(());
-                }
-                Err(e) => last = e,
-            }
-        }
-        Err(last)
+        let paths = candidates();
+        let began = std::time::Instant::now();
+        let (result, next) = walk(
+            paths.len(),
+            self.next,
+            || began.elapsed() >= CONNECT_BUDGET,
+            |i| {
+                let stream = open(&paths[i]).ok()?;
+                Some(Connection::handshake(stream, client_id))
+            },
+        );
+        self.next = next;
+        self.conn = Some(result?);
+        Ok(())
     }
 
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError> {
@@ -158,6 +168,31 @@ impl Transport for Discord {
     fn close(&mut self) {
         self.conn = None;
     }
+}
+
+/// Tries `len` candidates in turn from `from`, wrapping round, until one answers or
+/// `spent` says the budget is gone. `attempt` gives None for a candidate with nothing
+/// listening. Returns the outcome and where the next walk should start.
+fn walk<T>(
+    len: usize,
+    from: usize,
+    mut spent: impl FnMut() -> bool,
+    mut attempt: impl FnMut(usize) -> Option<Result<T, SendError>>,
+) -> (Result<T, SendError>, usize) {
+    let from = if len == 0 { 0 } else { from % len };
+    let mut last = SendError::Gone("no Discord socket".to_string());
+    for step in 0..len {
+        let i = (from + step) % len;
+        if spent() {
+            return (Err(last), i);
+        }
+        match attempt(i) {
+            Some(Ok(found)) => return (Ok(found), i),
+            Some(Err(e)) => last = e,
+            None => {}
+        }
+    }
+    (Err(last), from)
 }
 
 /// Every place a Discord client may have put its socket, in the order the
@@ -218,6 +253,46 @@ fn open(path: &Path) -> io::Result<Box<dyn Stream>> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn a_spent_budget_resumes_where_it_stopped_so_a_late_discord_is_reached() {
+        // Candidates 0 to 2 accept and stay silent; Discord is at 4. The budget
+        // covers three candidates a walk.
+        let attempt = |i: usize| match i {
+            0..=2 => Some(Err::<usize, _>(SendError::Gone("silent".to_string()))),
+            4 => Some(Ok(4)),
+            _ => None,
+        };
+        let budget = |n: u32| {
+            let mut tried = 0;
+            move || {
+                tried += 1;
+                tried > n
+            }
+        };
+        let (first, next) = walk(6, 0, budget(3), attempt);
+        assert!(first.is_err());
+        assert_eq!(next, 3);
+        let (second, next) = walk(6, next, budget(3), attempt);
+        assert_eq!(second.ok(), Some(4));
+        // The next connect goes straight back to the one that answered.
+        assert_eq!(next, 4);
+        let (third, _) = walk(6, next, budget(0), attempt);
+        assert!(third.is_err());
+        assert_eq!(walk(6, 4, budget(1), attempt).0.ok(), Some(4));
+    }
+
+    #[test]
+    fn a_walk_with_nothing_listening_starts_over_from_the_same_place() {
+        let (result, next) = walk(3, 7, || false, |_| None::<Result<(), SendError>>);
+        assert!(result.is_err());
+        assert_eq!(next, 1);
+        assert!(
+            walk(0, 5, || false, |_| None::<Result<(), SendError>>)
+                .0
+                .is_err()
+        );
+    }
 
     /// Reads from canned frames, records what is written.
     struct Fake {
