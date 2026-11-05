@@ -21,6 +21,7 @@ use anibeam_core::{
 };
 use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 
+use crate::focus::{Act, Change, Focus};
 use crate::mpv::{Mpv, MpvEvent, Value};
 use crate::thumbs::{Shot, Thumbs};
 use crate::video::{Frame, Share, Video};
@@ -294,6 +295,8 @@ thread_local! {
     static DEVICES: RefCell<Vec<CastDevice>> = const { RefCell::new(Vec::new()) };
     /// Carried from one episode's page to the next's when the cast goes on.
     static PENDING_CAST: RefCell<Option<CastDevice>> = const { RefCell::new(None) };
+    /// The audio focus, held across episodes and given back when the page closes.
+    static FOCUS: RefCell<Focus> = RefCell::new(Focus::default());
 }
 
 fn with_player(f: impl FnOnce(&mut Player)) {
@@ -664,6 +667,9 @@ pub fn close_page(reason: CloseReason) {
         });
     }
     if !switching {
+        FOCUS.with(|f| *f.borrow_mut() = Focus::default());
+        crate::android::audio_focus(false);
+        crate::local::log("player: audio focus given back");
         crate::android::player_awake(false);
         crate::android::player_screen(false);
         // A swipe's brightness was for the episode; the phone's own comes back with the page,
@@ -706,6 +712,29 @@ fn neighbour(forward: bool) {
         close_page(CloseReason::Switched);
         if remote { open_remote(file) } else { open(file) }
     }
+}
+
+/// Android moved the audio focus: a call pauses the episode and its end plays it again,
+/// another app taking over for good pauses it. A cast plays on the TV, so the phone's
+/// focus leaves it alone. Called on the UI loop.
+// Only Android's focus listener calls it.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn audio_focus(code: i32) {
+    let Some(change) = Change::from_code(code) else { return };
+    crate::local::log(&format!("player: audio focus {change:?}"));
+    let mut state = None;
+    with_player(|p| state = Some(p.paused || p.cast.is_some()));
+    let act = FOCUS.with(|f| f.borrow_mut().changed(change, state.unwrap_or(true)));
+    with_player(|p| {
+        if p.cast.is_some() {
+            return;
+        }
+        match act {
+            Act::Pause => p.mpv.set("pause", "yes"),
+            Act::Resume => p.mpv.set("pause", "no"),
+            Act::Nothing => {}
+        }
+    });
 }
 
 /// The core's playback events: AniSkip's windows and the tracker's answers.
@@ -944,6 +973,10 @@ impl Player {
             })
         });
         crate::android::player_awake(true);
+        // The file starts playing unpaused, so the pause watch never sees it begin.
+        if !self.paused && self.cast.is_none() {
+            self.take_focus();
+        }
     }
 
     fn observed(&mut self, name: &str, value: Value) {
@@ -968,6 +1001,9 @@ impl Player {
                 if was != p {
                     self.send_tick();
                     crate::android::player_awake(!p && self.rules.loaded);
+                    if !p && self.cast.is_none() {
+                        self.take_focus();
+                    }
                     let mut shown = false;
                     self.d(|d| shown = d.get_chrome());
                     if !p && shown {
@@ -1066,8 +1102,23 @@ impl Player {
             self.show_chrome();
             return;
         }
+        if !self.paused {
+            FOCUS.with(|f| f.borrow_mut().user_paused());
+        }
         self.mpv.set("pause", if self.paused { "no" } else { "yes" });
         self.show_chrome();
+    }
+
+    /// The episode started playing here: the audio focus is asked for when not held, so a
+    /// call or another app's sound can pause it.
+    fn take_focus(&mut self) {
+        let ask = FOCUS.with(|f| f.borrow_mut().playing());
+        if !ask {
+            return;
+        }
+        let granted = crate::android::audio_focus(true);
+        FOCUS.with(|f| f.borrow_mut().held = granted);
+        crate::local::log(if granted { "player: audio focus taken" } else { "player: audio focus refused" });
     }
 
     /// The finger is on the bar at `t`: the bubble asks the preview core for that frame. The

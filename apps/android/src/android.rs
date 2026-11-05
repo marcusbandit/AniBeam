@@ -214,6 +214,67 @@ pub fn ask_notifications() {
     }
 }
 
+/// Asks for the player's audio focus, or gives it back: whether Android granted it. Every
+/// change after the grant reaches `crate::player::audio_focus` on the UI loop.
+pub fn audio_focus(on: bool) -> bool {
+    #[cfg(target_os = "android")]
+    {
+        if !on {
+            java_call("Focus", "give", "(Landroid/app/Activity;)V", None);
+            return false;
+        }
+        if !FOCUS_NATIVES.load(std::sync::atomic::Ordering::Acquire) && register_focus() {
+            FOCUS_NATIVES.store(true, std::sync::atomic::Ordering::Release);
+        }
+        matches!(java_call("Focus", "take", "(Landroid/app/Activity;)I", None), Some(jni::objects::JValueOwned::Int(1)))
+    }
+    #[cfg(not(target_os = "android"))]
+    on
+}
+
+#[cfg(target_os = "android")]
+static FOCUS_NATIVES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// `Focus.changed`, which Java calls on its UI thread.
+#[cfg(target_os = "android")]
+extern "system" fn focus_changed(_env: jni::JNIEnv, _class: jni::objects::JClass, change: jni::sys::jint) {
+    let _ = slint::invoke_from_event_loop(move || crate::player::audio_focus(change));
+}
+
+/// Hands `Focus.changed` its native body. NativeActivity loads this library itself, so the
+/// JVM would not find the method by its symbol name.
+#[cfg(target_os = "android")]
+fn register_focus() -> bool {
+    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
+    if raw == 0 {
+        return false;
+    }
+    let r = with_env(|env, _app| {
+        use jni::objects::{JClass, JObject, JValue};
+        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+            let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
+            let loader = env.call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
+            let name = env.new_string("com.marcusrosado.anibeam.Focus")?;
+            let class = env
+                .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&name)])?
+                .l()?;
+            let class = JClass::from(class);
+            env.register_native_methods(
+                &class,
+                &[jni::NativeMethod { name: "changed".into(), sig: "(I)V".into(), fn_ptr: focus_changed as *mut std::ffi::c_void }],
+            )?;
+            Ok(())
+        })
+    });
+    match r {
+        Ok(()) => true,
+        Err(e) => {
+            crate::local::log(&format!("audio focus: {e}"));
+            false
+        }
+    }
+}
+
 /// Puts `text` on the clipboard, so a connection check can be pasted into a message.
 pub fn copy_text(label: &str, text: &str) -> bool {
     #[cfg(target_os = "android")]
