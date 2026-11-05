@@ -97,6 +97,56 @@ fn rewrite(
     Ok(key)
 }
 
+/// A stored fix written onto every file row at `path`, whichever series
+/// holds it, so an import applies its fixes itself rather than through a
+/// rescan of the series it came with. A row already reading that way is
+/// left alone. Answers each row that changed with its series, for
+/// `history::follow` once every row of the import carries its new key.
+pub(crate) fn rewrite_path(
+    tx: &Transaction,
+    path: &str,
+    reading: &FileReading,
+) -> Result<Vec<(u64, history::Move)>, CoreError> {
+    let ids: Vec<u64> = {
+        let mut stmt = tx.prepare("SELECT id FROM files WHERE path = ?1")?;
+        stmt.query_map(params![path], |r| Ok(r.get::<_, i64>(0)? as u64))?
+            .collect::<Result<_, _>>()?
+    };
+    let mut moves = Vec::new();
+    for file in ids {
+        let Some(row) = row(tx, file)? else { continue };
+        if row.reading == *reading {
+            continue;
+        }
+        let key = rewrite(tx, file, &row.path, reading)?;
+        moves.push((
+            row.series,
+            history::Move {
+                file,
+                from: row.key,
+                to: key,
+            },
+        ));
+    }
+    Ok(moves)
+}
+
+/// What a scan read for the file at `path`, the reading an undo of a fix
+/// puts back, when the library holds the file.
+pub(crate) fn read_at(tx: &Transaction, path: &str) -> Result<Option<FileReading>, CoreError> {
+    let file: Option<i64> = tx
+        .query_row(
+            "SELECT id FROM files WHERE path = ?1 ORDER BY id LIMIT 1",
+            params![path],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(match file {
+        Some(file) => row(tx, file as u64)?.map(|r| r.reading),
+        None => None,
+    })
+}
+
 /// Applies the fixes in one transaction; nothing is written if one file is
 /// not the series' own. Returns how many files changed.
 pub(crate) fn write_fixes(

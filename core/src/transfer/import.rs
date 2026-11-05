@@ -25,6 +25,7 @@ use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::library::classifier;
 use crate::library::fixes;
+use crate::library::history;
 use crate::library::scan;
 use crate::metadata::fetch;
 use crate::metadata::record;
@@ -88,6 +89,7 @@ async fn run(
         completed_merged: 0,
         resume_points_merged: 0,
         accounts_imported: 0,
+        fixes_applied: 0,
         fields_ignored: ignored,
     };
 
@@ -96,7 +98,7 @@ async fn run(
     let sources = import_sources(&core, sources, now, &mut summary).await?;
 
     ctx.progress(1, Some(SECTIONS), "series");
-    let (touched, fixed) = import_series(&core, series, now, &mut summary).await?;
+    let touched = import_series(&core, series, now, &mut summary).await?;
 
     ctx.progress(2, Some(SECTIONS), "history");
     if let Some(history) = history {
@@ -125,7 +127,7 @@ async fn run(
 
     // What changed, in the order a shell wants to redraw it. The scan the
     // launch runs is what attaches files to the series this created; the
-    // import itself starts none, bar the rescans its quick fixes need.
+    // import itself starts none.
     for id in sources {
         let state = core.clone();
         if let Some(source) = core
@@ -163,16 +165,10 @@ async fn run(
             EventBody::PreferencesChanged { preferences },
         );
     }
-    // A series whose fixes changed is read again, so its files take them
-    // and their history follows. A source away right now reads them when
-    // it is back, as a fix made by hand would.
-    for series in fixed {
-        let _ = scan::rescan_series(&core, series);
-    }
     images::sweep_after(&core, "an import").await;
 
     let message = format!(
-        "imported: {} sources, {} series, {} matches, {} views, {} completed, {} resume points, {} accounts, {} fields ignored",
+        "imported: {} sources, {} series, {} matches, {} views, {} completed, {} resume points, {} accounts, {} fixes, {} fields ignored",
         summary.sources_added,
         summary.series_created,
         summary.matches_applied,
@@ -180,6 +176,7 @@ async fn run(
         summary.completed_merged,
         summary.resume_points_merged,
         summary.accounts_imported,
+        summary.fixes_applied,
         summary.fields_ignored.len(),
     );
     Ok(Finished {
@@ -260,21 +257,24 @@ async fn import_sources(
 
 /// A series whose path is unknown is created anyway, so its match, its
 /// flag and its history have a home; the scanner fills in the files when
-/// the path appears. Answers the series touched, and the ones whose quick
-/// fixes changed.
+/// the path appears. Its quick fixes are stored and written onto the files
+/// the library already holds, in the same transaction, so the history
+/// section after it finds every file on its new key. Answers the series
+/// touched.
 async fn import_series(
     core: &Arc<Core>,
     entries: Vec<SeriesEntry>,
     now: i64,
     summary: &mut ImportSummary,
-) -> Result<(Vec<u64>, Vec<u64>), CoreError> {
-    let (touched, fixed, created, matched, ignored) = core
+) -> Result<Vec<u64>, CoreError> {
+    let (touched, applied, created, matched, ignored) = core
         .store
         .tx_async(move |tx| {
             // Every source, not only the file's: a series may well belong
             // to one this library already had.
             let sources = all_sources(tx)?;
-            let (mut touched, mut fixed, mut created, mut matched, mut ignored) = (Vec::new(), Vec::new(), 0u64, 0u64, Vec::new());
+            let (mut touched, mut created, mut matched, mut ignored) = (Vec::new(), 0u64, 0u64, Vec::new());
+            let mut moves = Vec::new();
             for (n, entry) in entries.iter().enumerate() {
                 let path = normalise(&entry.path);
                 let kind = if entry.kind == "movie" { SeriesKind::Movie } else { SeriesKind::Show };
@@ -326,35 +326,52 @@ async fn import_series(
                         params![id as i64, n as i64, entry.episodes_set_season.map(|s| s as i64)],
                     )?;
                 }
-                if apply_fixes(tx, &path, &entry.fixes, now)? {
-                    fixed.push(id);
-                }
+                apply_fixes(tx, &path, kind, &entry.fixes, now, &mut moves)?;
                 touched.push(id);
             }
-            Ok((touched, fixed, created, matched, ignored))
+            // A fixed file may sit in a series nested in this one, so each
+            // series' moves follow together, once every row is rewritten.
+            let applied = moves.len() as u64;
+            let mut by_series: HashMap<u64, Vec<history::Move>> = HashMap::new();
+            for (series, m) in moves {
+                by_series.entry(series).or_default().push(m);
+            }
+            for (series, moves) in &by_series {
+                history::follow(tx, *series, moves)?;
+                if !touched.contains(series) {
+                    touched.push(*series);
+                }
+            }
+            Ok((touched, applied, created, matched, ignored))
         })
         .await?;
     summary.series_created = created;
     summary.matches_applied = matched;
+    summary.fixes_applied = applied;
     summary.fields_ignored.extend(ignored);
-    Ok((touched, fixed))
+    Ok(touched)
 }
 
 /// The series' quick fixes, by the file's path in this library. The file
 /// wins, `was` included, which a fix made by hand would keep from the
 /// first time. A row already saying the same is left alone, so a second
 /// import of the same file changes nothing. A reading `FixFiles` would
-/// refuse is skipped, and a `was` it would refuse falls back to the
-/// reading. Answers whether any row did.
+/// refuse is skipped. A `was` the file lacks, or one it would refuse, is
+/// the one this library already stored for the file, else what its scan
+/// read, so an undo still has something to put back. Every file row at a
+/// fixed path that reads otherwise is rewritten, whether or not the stored
+/// fix changed, so an import that failed after this section and runs again
+/// still applies it; each rewrite lands in `moves`.
 fn apply_fixes(
     tx: &Transaction,
     series_path: &str,
+    kind: SeriesKind,
     fixes: &[format::FixEntry],
     now: i64,
-) -> Result<bool, CoreError> {
-    let mut changed = false;
+    moves: &mut Vec<(u64, history::Move)>,
+) -> Result<(), CoreError> {
     for fix in fixes {
-        let Some(path) = fix_path(series_path, &fix.path) else {
+        let Some(path) = fix_path(series_path, &fix.path, kind) else {
             continue;
         };
         if fixes::check(&fix.reading).is_err() {
@@ -363,32 +380,59 @@ fn apply_fixes(
         let reading = serde_json::to_string(&fix.reading)?;
         let was = match fix.was.as_ref().filter(|w| fixes::check(w).is_ok()) {
             Some(was) => serde_json::to_string(was)?,
-            None => reading.clone(),
+            None => match stored_was(tx, &path)? {
+                Some(was) => was,
+                None => match fixes::read_at(tx, &path)? {
+                    Some(read) => serde_json::to_string(&read)?,
+                    None => reading.clone(),
+                },
+            },
         };
-        let rows = tx.execute(
+        tx.execute(
             "INSERT INTO file_fixes (path, reading, was, fixed_at) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(path) DO UPDATE SET reading = excluded.reading, was = excluded.was, fixed_at = excluded.fixed_at
              WHERE file_fixes.reading IS NOT excluded.reading OR file_fixes.was IS NOT excluded.was",
             params![path, reading, was, now],
         )?;
-        changed |= rows > 0;
+        moves.extend(fixes::rewrite_path(tx, &path, &fix.reading)?);
     }
-    Ok(changed)
+    Ok(())
+}
+
+/// The `was` this library already holds for a fixed path, when it reads.
+fn stored_was(tx: &Transaction, path: &str) -> Result<Option<String>, CoreError> {
+    let was: Option<String> = tx
+        .query_row(
+            "SELECT was FROM file_fixes WHERE path = ?1",
+            params![path],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(was
+        .filter(|w| serde_json::from_str::<FileReading>(w).is_ok_and(|w| fixes::check(&w).is_ok())))
 }
 
 /// A fix's path below the series folder joined onto this library's series
-/// path; the empty path is the series' own file. A path that climbs out of
+/// path. The empty path is a film's own file; a show's folder is no file,
+/// so no scan would ever read a fix stored on it. A path that climbs out of
 /// the series is no file of it, and so is one with a root or a drive, which
 /// Windows reads in `\` as well as `/`.
-fn fix_path(series_path: &str, rel: &str) -> Option<String> {
+fn fix_path(series_path: &str, rel: &str, kind: SeriesKind) -> Option<String> {
     let rel = Path::new(rel);
     let mut path = PathBuf::from(series_path);
+    let mut below = false;
     for part in rel.components() {
         match part {
-            Component::Normal(part) => path.push(part),
+            Component::Normal(part) => {
+                path.push(part);
+                below = true;
+            }
             Component::CurDir => {}
             _ => return None,
         }
+    }
+    if !below && kind != SeriesKind::Movie {
+        return None;
     }
     Some(normalise(&path.to_string_lossy()))
 }
@@ -1008,7 +1052,7 @@ mod tests {
 
     #[test]
     fn a_fix_path_stays_inside_its_series() {
-        let joined = |rel: &str| fix_path("/lib/Show", rel);
+        let joined = |rel: &str| fix_path("/lib/Show", rel, SeriesKind::Show);
         assert_eq!(
             joined("Season 1/Show - 01.mkv").map(PathBuf::from),
             Some(
@@ -1021,7 +1065,13 @@ mod tests {
             joined("./Show - 01.mkv").map(PathBuf::from),
             Some(Path::new("/lib/Show").join("Show - 01.mkv"))
         );
-        assert_eq!(joined("").as_deref(), Some("/lib/Show"));
+        // The empty path is a film's own file, and no file of a show (#434).
+        assert_eq!(joined(""), None);
+        assert_eq!(joined("."), None);
+        assert_eq!(
+            fix_path("/lib/Movies/Film.mkv", "", SeriesKind::Movie).as_deref(),
+            Some("/lib/Movies/Film.mkv")
+        );
         assert_eq!(joined("../Other/x.mkv"), None);
         assert_eq!(joined("Season 1/../../x.mkv"), None);
         assert_eq!(joined("/etc/x.mkv"), None);
@@ -1047,7 +1097,14 @@ mod tests {
         ];
         let rows: Vec<(String, String, String)> = store
             .tx(move |tx| {
-                assert!(apply_fixes(tx, "/lib/Show", &fixes, 0)?);
+                apply_fixes(
+                    tx,
+                    "/lib/Show",
+                    SeriesKind::Show,
+                    &fixes,
+                    0,
+                    &mut Vec::new(),
+                )?;
                 let mut stmt = tx.prepare("SELECT path, reading, was FROM file_fixes")?;
                 let rows = stmt
                     .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
@@ -1063,7 +1120,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_windows_fix_path_cannot_climb_or_jump_drives() {
-        let joined = |rel: &str| fix_path(r"C:\lib\Show", rel);
+        let joined = |rel: &str| fix_path(r"C:\lib\Show", rel, SeriesKind::Show);
         assert_eq!(joined(r"..\..\Other\x.mkv"), None);
         assert_eq!(joined(r"D:\x.mkv"), None);
         assert_eq!(joined(r"\x.mkv"), None);
