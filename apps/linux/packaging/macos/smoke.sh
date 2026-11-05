@@ -170,7 +170,7 @@ cat > "$out/downloads.json" <<'JSON'
   {"wait": 20000},
   {"shot": "downloads"},
   {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
-  {"eval": "frame.item.pageItem.anirss.version", "expect": "0.5.0"},
+  {"eval": "frame.item.pageItem.anirss.version", "expect": "0.6.1"},
   {"eval": "frame.item.pageItem.torrentOn", "expect": true},
   {"eval": "frame.item.pageItem.status.settings.torrent_mode", "expect": "Managed"}
 ]
