@@ -5,7 +5,7 @@
 // work, but the arrows go on to whoever owns them (the player's seek and volume keys).
 // `ground` is the colour the slider sits on, which the handle's ring is cut from.
 // `trackShown: false` leaves the readout alone, for a row that has run out of room;
-// `besideTrack` is the width the row takes beyond the track, for a caller sizing it.
+// `readoutWidth` is the readout's width, for a caller sizing the row.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 
@@ -22,7 +22,7 @@ Row {
     property bool takesFocus: true
     property color ground: theme.bg
     property bool trackShown: true
-    readonly property real besideTrack: readout.width + spacing
+    readonly property real readoutWidth: readout.width
     signal moved(real v)
     spacing: theme.space(3)
 

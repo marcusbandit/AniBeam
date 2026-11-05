@@ -98,6 +98,10 @@ Item {
         Label { id: stamp; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; height: theme.space(6); verticalAlignment: Text.AlignVCenter; role: "ledger" }
     }
 
+    // Whether the volume shows in the controls; a narrow window hides it (PlayerPage's
+    // setVolume then flashes the level).
+    readonly property bool volumeShown: volumeRow.visible
+
     // ---- Controls island: the time as a ledger line, the seek groove, then the buttons.
     Tile {
         id: controls
@@ -141,20 +145,21 @@ Item {
             PlayerButton { objectName: "player-play"; glyph: page.paused ? "play" : "pause"; tip: page.paused ? "Play" : "Pause"; onClicked: page.togglePause() }
             PlayerButton { objectName: "player-next"; glyph: "skip-forward"; interactive: page.hasNext; tip: interactive ? "Next episode" : "No next episode"; onClicked: page.openNext() }
             Item { width: theme.space(2); height: 1 }
-            PlayerButton { objectName: "player-mute"; glyph: Player.mute || page.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
+            PlayerButton { id: muteBtn; objectName: "player-mute"; glyph: Player.mute || page.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
             // Never on the keyboard: a click on it must leave the arrows to seek and the
             // Up and Down keys to step the volume by 5.
             // On a narrow window the track gives up width first, so the right-hand group
             // never runs into it, and goes when a usable track no longer fits. The readout
-            // stays while it fits, so the Up and Down keys still show the level they set.
+            // stays while it fits; when it goes, the page flashes the level a key sets.
             SliderRow { id: volumeRow; objectName: "player-volume"; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1
-                // What is left between this row's start and the right-hand group, with a gap
-                // on each side, and what of that the track gets after the readout.
-                readonly property real free: bottomRow.width - x - rightGroup.width - 2 * bottomRow.spacing
-                readonly property real room: free - besideTrack
+                // What is left between the mute button and the right-hand group, with a gap
+                // on each side, and what of that the track gets after the readout. Measured
+                // from the mute button, since a Row leaves a hidden child's x where it was.
+                readonly property real free: bottomRow.width - (muteBtn.x + muteBtn.width) - rightGroup.width - 3 * bottomRow.spacing
+                readonly property real room: free - readoutWidth - spacing
                 trackWidth: Math.min(theme.space(24), Math.max(0, room))
                 trackShown: room >= theme.space(10)
-                visible: free >= besideTrack - spacing
+                visible: free >= readoutWidth
                 takesFocus: false; ground: theme.raised; onMoved: function(v) { page.setVolume(v) } }
             // The slot takes its height from what it holds, not from the row: the row
             // takes its own height from its children, and parent.height here would be a loop.
