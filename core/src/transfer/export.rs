@@ -19,12 +19,14 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::Finished;
 use crate::library::{classifier, titles};
+use crate::paths::under;
 use crate::prefs;
 use crate::time;
 use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::transfer::format::{
-    self, Account, Accounts, Completed, Document, ExportedBy, History, MatchEntry, PrefsEntry,
-    ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName, TrackerName, TvmazeName, View,
+    self, Account, Accounts, Completed, Document, ExportedBy, FixEntry, History, MatchEntry,
+    PrefsEntry, ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName, TrackerName,
+    TvmazeName, View,
 };
 
 /// One series as the tables hold it, before it becomes a document entry.
@@ -51,11 +53,12 @@ struct Row {
 /// store. Synchronous, and it reads the keyring when `private` is set, so
 /// the job runs it through `spawn_blocking` rather than on a tokio worker.
 pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, CoreError> {
-    let (sources, rows, preferences) = core.store.read(|c| {
+    let (sources, rows, preferences, fixes) = core.store.read(|c| {
         Ok((
             source_paths(c)?,
             series_rows(c)?,
             prefs::load_preferences(c)?,
+            fix_rows(c)?,
         ))
     })?;
 
@@ -87,6 +90,8 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
         preferences: None,
         extra: HashMap::new(),
     };
+    // Every series path goes out in both shapes, so its fixes do too.
+    attach_fixes(&mut doc.series, &rows, fixes);
     if !private {
         return Ok(doc);
     }
@@ -232,6 +237,78 @@ fn series_rows(conn: &Connection) -> Result<Vec<Row>, CoreError> {
     Ok(rows)
 }
 
+/// One quick fix as `file_fixes` holds it: the file's full path, what it is
+/// and what it read before.
+struct Fix {
+    path: String,
+    reading: FileReading,
+    was: Option<FileReading>,
+}
+
+/// Every quick fix. A reading this build cannot parse is left out, as the
+/// scan leaves it to the name.
+fn fix_rows(conn: &Connection) -> Result<Vec<Fix>, CoreError> {
+    let mut stmt = conn.prepare("SELECT path, reading, was FROM file_fixes ORDER BY path")?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(path, reading, was)| {
+            Some(Fix {
+                path,
+                reading: serde_json::from_str(&reading).ok()?,
+                was: serde_json::from_str(&was).ok(),
+            })
+        })
+        .collect())
+}
+
+/// Hangs each fix on the series that owns its file, the longest series path
+/// above it, with the path below that series' folder. A fix under no series
+/// in the document has nowhere to go and is left out. `series` and `rows`
+/// are parallel, one entry per row.
+fn attach_fixes(series: &mut [SeriesEntry], rows: &[Row], fixes: Vec<Fix>) {
+    for fix in fixes {
+        let Some(i) = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| under(&fix.path, &r.path))
+            .max_by_key(|(_, r)| r.path.len())
+            .map(|(i, _)| i)
+        else {
+            continue;
+        };
+        series[i].fixes.push(FixEntry {
+            path: relative(&fix.path, &rows[i].path),
+            reading: fix.reading,
+            was: fix.was,
+            extra: HashMap::new(),
+        });
+    }
+}
+
+/// `path` below `root` with forward slashes, empty when they are one path:
+/// a film's fix is on the series' own file.
+fn relative(path: &str, root: &str) -> String {
+    let root = root.trim_end_matches(std::path::is_separator);
+    let rest = path.strip_prefix(root).unwrap_or(path);
+    Path::new(rest)
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
     SeriesEntry {
         kind: match row.kind {
@@ -258,6 +335,7 @@ fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
             .and_then(|json| serde_json::from_str::<TrackChoice>(json).ok()),
         episodes_set: row.episodes_set,
         episodes_set_season: row.episodes_set_season,
+        fixes: Vec::new(),
         extra: HashMap::new(),
     }
 }
@@ -533,6 +611,47 @@ mod tests {
         assert!(
             matches!(match_entry(&r), Some(MatchEntry::Tmdb { tmdb_id: 9, tmdb_kind, .. }) if tmdb_kind == "tv")
         );
+    }
+
+    /// A fix goes to the closest series above its file, with the path below
+    /// that series; a film's own file is the empty path, and a fix under no
+    /// series is left out.
+    #[test]
+    fn a_fix_hangs_on_the_series_that_owns_its_file() {
+        let rows = vec![
+            row(SeriesKind::Show, "/lib/Show"),
+            row(SeriesKind::Show, "/lib/Show/Season 2"),
+            row(SeriesKind::Movie, "/lib/Movies/Film.mkv"),
+        ];
+        let mut series: Vec<SeriesEntry> = rows
+            .iter()
+            .map(|r| entry(r, TitleLanguage::Romaji))
+            .collect();
+        let ep = |n: f64| FileReading::Episode {
+            number: n,
+            season: None,
+        };
+        let fix = |path: &str| Fix {
+            path: path.to_string(),
+            reading: ep(13.0),
+            was: Some(ep(1.0)),
+        };
+        attach_fixes(
+            &mut series,
+            &rows,
+            vec![
+                fix("/lib/Show/Extras/Show - 01.mkv"),
+                fix("/lib/Show/Season 2/Show - 02.mkv"),
+                fix("/lib/Movies/Film.mkv"),
+                fix("/lib/Other/Show - 01.mkv"),
+            ],
+        );
+        let paths =
+            |i: usize| -> Vec<&str> { series[i].fixes.iter().map(|f| f.path.as_str()).collect() };
+        assert_eq!(paths(0), vec!["Extras/Show - 01.mkv"]);
+        assert_eq!(paths(1), vec!["Show - 02.mkv"]);
+        assert_eq!(paths(2), vec![""]);
+        assert_eq!(series[0].fixes[0].was, Some(ep(1.0)));
     }
 
     #[test]

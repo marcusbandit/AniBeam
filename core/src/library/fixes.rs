@@ -48,7 +48,7 @@ fn row(tx: &Transaction, file: u64) -> Result<Option<Row>, CoreError> {
 
 /// A reading the library can hold: a real episode number, a season and an
 /// index of sane size.
-fn check(reading: &FileReading) -> Result<(), CoreError> {
+pub(crate) fn check(reading: &FileReading) -> Result<(), CoreError> {
     match *reading {
         FileReading::Episode { number, season } => {
             if !number.is_finite() || !(0.0..=10_000.0).contains(&number) {

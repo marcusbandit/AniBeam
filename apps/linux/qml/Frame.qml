@@ -734,12 +734,53 @@ FocusScope {
     }
     // Text onto the clipboard, and a word that it went
     function copyText(text, what) {
-        clipboardBuf.text = String(text || "")
-        clipboardBuf.selectAll()
-        clipboardBuf.copy()
-        frame.toast((what || "Copied") + "")
+        copyQuiet(text)
+        frame.toast(what || "Copied")
     }
-    TextEdit { id: clipboardBuf; visible: false }
+    // Text onto the clipboard with no toast, for a caller that shows its own sign
+    function copyQuiet(text) {
+        clipboardLoader.active = true
+        var buf = clipboardLoader.item
+        buf.text = String(text || "")
+        buf.selectAll()
+        buf.copy()
+    }
+    // A TextEdit only to reach the clipboard, made on the first copy: built with the frame
+    // it was 8 ms of every launch (#289)
+    Loader { id: clipboardLoader; active: false; sourceComponent: TextEdit { visible: false } }
+
+    // The subtitle defaults, one draft for the Playback and Subtitles tabs: the setting as
+    // saved, with the edits still waiting on the 250 ms debounce laid over it. A refresh
+    // while edits wait rebuilds the draft from the new setting and lays them on again, so
+    // neither side's change is lost; a save the core rejects drops them and shows the
+    // setting as it stands.
+    property var subtitleDefaults: subtitleSaved()
+    property var subtitlePending: []
+    function subtitleSaved() { return JSON.parse(JSON.stringify(Door.settings.subtitle_defaults || {})) }
+    function subtitleRebuild() {
+        var d = subtitleSaved()
+        for (var i = 0; i < subtitlePending.length; i++) subtitlePending[i](d)
+        if (JSON.stringify(d) !== JSON.stringify(subtitleDefaults)) subtitleDefaults = d
+    }
+    Connections { target: Door; function onSettingsChanged() { frame.subtitleRebuild() } }
+    Timer { id: subtitleSave; interval: 250; onTriggered: frame.flushSubtitleDefaults() }
+    function editSubtitleDefaults(f) {
+        var d = JSON.parse(JSON.stringify(subtitleDefaults))
+        f(d)
+        subtitlePending = subtitlePending.concat([f])
+        subtitleDefaults = d
+        subtitleSave.restart()
+    }
+    // Writes the waiting edits now. The settings tabs call it as they close, while Door is
+    // still up, so leaving Settings within the debounce keeps the edit.
+    function flushSubtitleDefaults() {
+        subtitleSave.stop()
+        if (!subtitlePending.length) return
+        subtitlePending = []
+        var r = Door.setSubtitleDefaults(subtitleDefaults)
+        if (r.error) { frame.toast(r.error.message); subtitleRebuild() }
+    }
+    Component.onDestruction: if (Door.ready) flushSubtitleDefaults()
     function seriesDeleteItems() {
         var c = hoverSeries, anchor = hoverSeriesItem
         if (!c || !c.path || !(c.episodes_on_disk > 0)) return []

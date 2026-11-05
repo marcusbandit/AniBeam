@@ -379,8 +379,9 @@ impl Core {
     }
 
     /// Moves the OAuth listener off the registered port, so two tests
-    /// driving a flow at once do not fight over one socket. Not part of
-    /// the contract and not exported to any shell.
+    /// driving a flow at once do not fight over one socket. 0 lets the
+    /// system pick a free port, and the redirect url names the one it got.
+    /// Not part of the contract and not exported to any shell.
     #[doc(hidden)]
     pub fn set_oauth_port(&self, port: u16) {
         self.oauth_port.store(port, Ordering::SeqCst);

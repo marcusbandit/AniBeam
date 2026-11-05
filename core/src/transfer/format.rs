@@ -11,6 +11,9 @@
 //! reads exactly as before, and the ids behind it are filled by the next
 //! refresh rather than carried in the file.
 //!
+//! `series[].fixes`, the quick fixes on a series' files, came the same way:
+//! absent when a series has none, so an older reader names it and moves on.
+//!
 //! Every struct carries a flattened `extra` map, so a field this version
 //! has never heard of survives the read and is reported by name rather
 //! than dropped in silence. The two untagged enums carry none: an untagged
@@ -21,7 +24,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::contract::{AutoSkip, CoreError, TrackChoice};
+use crate::contract::{AutoSkip, CoreError, FileReading, TrackChoice};
 
 /// The `format` field, the only value this reader takes.
 pub const FORMAT: &str = "anibeam-export";
@@ -106,6 +109,27 @@ pub struct SeriesEntry {
     pub episodes_set: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub episodes_set_season: Option<u32>,
+    /// The quick fixes on this series' files (#183), absent when there are
+    /// none. Additive, so a document without them reads as before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fixes: Vec<FixEntry>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+/// One quick fix: what the user said a file is, against how its name read.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FixEntry {
+    /// The file's path below the series folder, with forward slashes; empty
+    /// for a film, whose series is the file itself.
+    #[serde(default)]
+    pub path: String,
+    pub reading: FileReading,
+    /// The reading the first fix replaced. Absent, the import takes the
+    /// reading itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub was: Option<FileReading>,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
 }
@@ -378,6 +402,9 @@ impl Document {
         }
         for (i, s) in self.series.iter().enumerate() {
             names(&format!("series[{i}]"), &s.extra, &mut out);
+            for (j, f) in s.fixes.iter().enumerate() {
+                names(&format!("series[{i}].fixes[{j}]"), &f.extra, &mut out);
+            }
         }
         if let Some(accounts) = &self.accounts {
             names("accounts", &accounts.extra, &mut out);
@@ -423,6 +450,7 @@ mod tests {
         assert_eq!(doc.sources.len(), 1);
         assert_eq!(doc.series.len(), 3);
         assert!(doc.series.iter().all(|s| s.track_choice.is_none()));
+        assert!(doc.series.iter().all(|s| s.fixes.is_empty()));
         assert_eq!(
             doc.keys
                 .as_ref()
@@ -488,6 +516,54 @@ mod tests {
             doc.series[0].match_,
             Some(MatchEntry::Tracker { .. })
         ));
+    }
+
+    /// A series carries its quick fixes beside it, and they read back as
+    /// written; a fix without `was` still reads.
+    #[test]
+    fn a_series_carries_its_fixes_and_they_round_trip() {
+        let (mut doc, _) = parse(FIXTURE.as_bytes()).unwrap();
+        doc.series[0].fixes = vec![
+            FixEntry {
+                path: "Season 1/Show - 01.mkv".to_string(),
+                reading: FileReading::Episode {
+                    number: 13.0,
+                    season: None,
+                },
+                was: Some(FileReading::Episode {
+                    number: 1.0,
+                    season: None,
+                }),
+                extra: HashMap::new(),
+            },
+            FixEntry {
+                path: String::new(),
+                reading: FileReading::Extra {
+                    kind: crate::contract::ExtraKind::Op,
+                    index: Some(1),
+                },
+                was: None,
+                extra: HashMap::new(),
+            },
+        ];
+        let text = serde_json::to_string(&doc).unwrap();
+        let (back, ignored) = parse(text.as_bytes()).unwrap();
+        assert!(ignored.is_empty(), "{ignored:?}");
+        let fixes = &back.series[0].fixes;
+        assert_eq!(fixes.len(), 2);
+        assert_eq!(fixes[0].path, "Season 1/Show - 01.mkv");
+        assert_eq!(fixes[0].reading, doc.series[0].fixes[0].reading);
+        assert_eq!(fixes[0].was, doc.series[0].fixes[0].was);
+        assert_eq!((fixes[1].path.as_str(), fixes[1].was.as_ref()), ("", None));
+        // A series without fixes writes no field at all.
+        assert!(back.series[1].fixes.is_empty());
+        assert!(
+            !serde_json::to_value(&back.series[1])
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .contains_key("fixes")
+        );
     }
 
     #[test]
