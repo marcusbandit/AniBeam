@@ -109,6 +109,23 @@ impl Native {
         }
     }
 
+    /// The endpoint a step after a search names: the analysis, a refine, a preview. The
+    /// list is read again on every call, so one removed, switched off or left without its
+    /// key since the search is not in it, even when it was the only one.
+    fn step_endpoint(&self, name: &str) -> Result<&Endpoint, CoreError> {
+        self.endpoints
+            .iter()
+            .find(|e| e.name == name)
+            .ok_or_else(|| CoreError::invalid("endpoint", gone(name)))
+    }
+
+    /// Whether `endpoint`'s feed is RSS, so reading it again after a search can date the
+    /// releases. False for a JSON answer and for an endpoint the core no longer has.
+    pub fn feed_is_rss(&self, endpoint: &str) -> bool {
+        self.endpoint(Some(endpoint))
+            .is_ok_and(|e| endpoints::answers_rss(&e.kind))
+    }
+
     /// The endpoints as the downloads page lists them, keys masked.
     pub fn list(&self) -> Vec<SearchEndpoint> {
         self.endpoints
@@ -229,7 +246,7 @@ impl Native {
         items: &[Release],
         auto_resolution: bool,
     ) -> Result<Analysis, CoreError> {
-        let ep = self.endpoint(Some(endpoint))?;
+        let ep = self.step_endpoint(endpoint)?;
         let auto = if auto_resolution {
             refinement::auto_resolution(query.trim(), items)
         } else {
@@ -261,7 +278,7 @@ impl Native {
         items: &[Release],
         op: &RefineOp,
     ) -> Result<Refinement, CoreError> {
-        let ep = self.endpoint(Some(endpoint))?.clone();
+        let ep = self.step_endpoint(endpoint)?.clone();
         let http = self.http.clone();
         let all_uploads = endpoints::found_unfiltered(items);
         // Typed as the callback so the closure is generic over the borrows it is given.
@@ -298,7 +315,7 @@ impl Native {
         endpoint: &str,
         items: &[Release],
     ) -> Result<SubscriptionSpec, CoreError> {
-        let ep = self.endpoint(Some(endpoint))?;
+        let ep = self.step_endpoint(endpoint)?;
         Ok(endpoints::build_subscription(self.http.as_ref(), ep, query, items).await)
     }
 
@@ -306,6 +323,11 @@ impl Native {
     pub fn best_item(&self, items: &[Release]) -> Option<Release> {
         bestfit::best_item(items, &self.bestfit).cloned()
     }
+}
+
+/// Why a step after a search cannot go on: its endpoint left the list since.
+fn gone(name: &str) -> String {
+    format!("{name} is not available any more: removed, switched off or missing its key")
 }
 
 /// Query parameters that hold a secret, with the label a person reads for each. A source
@@ -382,6 +404,59 @@ mod tests {
             CoreError::Service { service, code, .. } => (service, code),
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn only_an_endpoint_whose_feed_is_rss_is_read_again_for_dates() {
+        let native = Native::new(
+            FakeHttp::new(),
+            vec![
+                Endpoint::new("feed", "rss", "https://a/?q={query}"),
+                Endpoint::new("indexer", "torznab", "https://b/?q={query}"),
+                Endpoint::new("search", "nyaa", "https://e/"),
+                Endpoint::new("api", "json", "https://c/?q={query}"),
+                Endpoint::new("anime", "tosho", "https://d/?q={query}"),
+            ],
+        );
+        assert!(native.feed_is_rss("feed"));
+        assert!(native.feed_is_rss("indexer"));
+        assert!(native.feed_is_rss("search"));
+        assert!(!native.feed_is_rss("api"));
+        assert!(!native.feed_is_rss("anime"));
+        // One the core no longer has: nothing to read.
+        assert!(!native.feed_is_rss("gone"));
+    }
+
+    #[tokio::test]
+    async fn a_step_on_an_endpoint_gone_since_the_search_says_so() {
+        let native = Native::new(
+            FakeHttp::new(),
+            vec![Endpoint::new("feed", "rss", "https://a/?q={query}")],
+        );
+        let refine = native
+            .apply("show", "gone", &[], &RefineOp::BestFit)
+            .await
+            .unwrap_err();
+        let preview = native.preview("show", "gone", &[]).await.unwrap_err();
+        let analyze = native.analyze("show", "gone", &[], false).unwrap_err();
+        // The only endpoint removed: still named, not "no endpoints yet".
+        let alone = Native::new(FakeHttp::new(), Vec::new())
+            .preview("show", "gone", &[])
+            .await
+            .unwrap_err();
+        for err in [refine, preview, analyze, alone] {
+            let text = err.to_string();
+            assert!(text.contains("gone is not available any more"), "{text}");
+        }
+        // A search naming one it never had keeps its own answer.
+        let search = native
+            .search("show", Some("gone"), false)
+            .await
+            .unwrap_err();
+        assert!(
+            search.to_string().contains("no source named gone"),
+            "{search}"
+        );
     }
 
     #[tokio::test]
