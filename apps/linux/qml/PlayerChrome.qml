@@ -141,10 +141,18 @@ Item {
             PlayerButton { objectName: "player-play"; glyph: page.paused ? "play" : "pause"; tip: page.paused ? "Play" : "Pause"; onClicked: page.togglePause() }
             PlayerButton { objectName: "player-next"; glyph: "skip-forward"; interactive: page.hasNext; tip: interactive ? "Next episode" : "No next episode"; onClicked: page.openNext() }
             Item { width: theme.space(2); height: 1 }
-            PlayerButton { objectName: "player-mute"; glyph: Player.mute || page.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
+            PlayerButton { id: muteBtn; objectName: "player-mute"; glyph: Player.mute || page.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
             // Never on the keyboard: a click on it must leave the arrows to seek and the
             // Up and Down keys to step the volume by 5.
-            SliderRow { objectName: "player-volume"; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1; trackWidth: theme.space(24)
+            // On a narrow window the slider gives up width first, so the right-hand group
+            // never runs into it, and goes when a usable track no longer fits: the mute
+            // button and the Up and Down keys still set the volume.
+            SliderRow { id: volumeRow; objectName: "player-volume"; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1
+                // What is left between the mute button and the right-hand group, less the
+                // readout, its spacing and a gap before the group.
+                readonly property real room: bottomRow.width - (muteBtn.x + muteBtn.width) - rightGroup.width - 3 * bottomRow.spacing - spacing - theme.space(9)
+                trackWidth: Math.min(theme.space(24), Math.max(0, room))
+                visible: room >= theme.space(10)
                 takesFocus: false; ground: theme.raised; onMoved: function(v) { page.setVolume(v) } }
             // The slot takes its height from what it holds, not from the row: the row
             // takes its own height from its children, and parent.height here would be a loop.
