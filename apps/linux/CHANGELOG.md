@@ -15,6 +15,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Settings shows whether Discord is connected, under Playback
 - Set a show's schedule under Fixes: pick episodes and a date, or paste a list
 - Fixes is three items: Episodes and dates, Files and Match
 - Refresh a show's info from its Match panel, and rescan its folder from Files
@@ -144,9 +145,11 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ### Fixed
 - A torrent link written with backslashes downloads instead of being refused
 - A tracker written with backslashes shows its host, not its passkey
+- Endpoints from repos reach an anirss built from source, whatever its version
 - Seeders show for releases from a tracker written with backslashes
 - Discord shows a series whose title is a single letter
 - The activity log keeps no feed key after a subscription repair
+- The activity log keeps no feed key after a new subscription
 - Sources installed from a repo show up in search on every desktop install
 - Seeking in an episode converted for the phone works on Nvidia graphics
 - A busy sign-in port says to try again, not that another AniBeam is open

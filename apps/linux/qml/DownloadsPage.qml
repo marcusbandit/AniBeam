@@ -1044,10 +1044,15 @@ Item {
                         folder: page.folderOf(result.save_path), seriesId: page.searchShow ? page.searchShow.series_id : -1,
                         title: page.searchShow ? page.searchShow.title : result.name }
         page.ruleView = null
+        // The event names no feed, whose address can hold a login and a key: the feed is
+        // read from the new rule, from whichever of the rule read and the rule list read
+        // below answers first. Set after the show opens, so a rule of the same name still
+        // in the old list is never read for it.
+        page.feed = { url: "", tag: "", entries: [], loading: true, error: "" }
+        page.feedAfterRules = true
         page.subscribedAt = Date.now()
         page.watchUntil = Date.now() + 90000
         page.nowTick = Date.now()
-        page.askFeed(result.feed_url, [])
         Door.readRule(result.name)
         page.loadRules()
         page.pollTorrents()
@@ -1440,6 +1445,12 @@ Item {
         function onRuleRead(rule) {
             if (page.detail === null || page.detail.rule !== rule.name) return
             page.ruleView = rule
+            // A fresh subscription's feed, when the rule read beats the rule list.
+            if (page.feedAfterRules && page.feed && page.feed.url === "") {
+                page.feedAfterRules = false
+                if (rule.feeds.length > 0) page.askFeed(rule.feeds[0], [])
+                else page.feed = null
+            }
         }
         function onTorrentsAdded(job, result) {
             if (job === page.getJob) {
@@ -1476,6 +1487,10 @@ Item {
             if (what === "dates") { if (page.datesState === "loading") page.datesState = "none"; return }
             if (what === "torrents") page.torrentsError = page.errorWords(error)
             else if (what === "feed" && page.feed) page.feed = { url: page.feed.url, tag: page.feed.tag, entries: page.feed.entries, loading: false, error: page.errorWords(error) }
+            // A fresh subscription whose rule could not be read has no feed to read yet. It
+            // says so, and the other read, or the watch's next rule read, still fills it.
+            else if ((what === "rule" || what === "subscriptions") && page.feedAfterRules && page.feed && page.feed.url === "")
+                page.feed = { url: "", tag: "", entries: [], loading: false, error: page.errorWords(error) }
         }
         function onShowRemoved(job, title, rule, hashes, trashed) {
             if (job !== page.runningJob) return
