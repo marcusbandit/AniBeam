@@ -1306,7 +1306,7 @@ fn remove_show_refuses_a_library_root_and_removes_nothing() {
     ));
 }
 
-/// anirss takes no save path for a subscription and writes the rule under
+/// An anirss that takes no save path for a subscription writes the rule under
 /// its own root; one made for a library show is moved to that show's
 /// folder in qBittorrent, so its episodes join the show (#267).
 #[test]
@@ -1383,6 +1383,78 @@ fn a_subscription_for_a_library_show_saves_into_its_folder_through_anirss() {
     assert_eq!(def["torrentParams"]["save_path"], json!(home));
     assert_eq!(def["torrentParams"]["tags"], json!(["TV"]));
     assert_eq!(def["affectedFeeds"], json!([feed]));
+}
+
+/// A current anirss takes the show's folder with the subscription, so its rule is written
+/// once, saving there from the start: nothing lands under anirss's own root first while
+/// the core moves the rule (#465). One that ignores the field still gets moved, above.
+#[test]
+fn a_subscription_for_a_library_show_is_written_into_its_folder_once() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    let home = common::library_show(dir.path(), &core, &c);
+    http.push_for(
+        "/health",
+        200,
+        json!({"ok": true, "version": "0.8.0", "features": ["subscription_save_path"]}).to_string(),
+    );
+    http.push_for(
+        "/endpoints",
+        200,
+        json!({"endpoints": [{"name": "feed", "kind": "rss", "url": "https://feed.example/rss?q={query}"}]}).to_string(),
+    );
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:9090", "reachable": true, "authenticated": true})
+            .to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    common::wait_job(&c, job);
+
+    let feed = "https://feed.example/rss?q=Show";
+    http.push_for(
+        "api/v1/subscriptions",
+        201,
+        json!({"name": "Show", "feed_url": feed, "save_path": home,
+               "must_contain": "", "must_not_contain": "", "tags": ["TV"]})
+        .to_string(),
+    );
+    let job = started(
+        &core,
+        Call::Subscribe {
+            query: "Show".to_string(),
+            endpoint: "feed".to_string(),
+            items: vec![release(1, json!(5))],
+            name: Some("Show".to_string()),
+            wire_query: None,
+            series: Some(1),
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::Subscribed { result } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(result.save_path, home);
+    let asked = http
+        .requests()
+        .into_iter()
+        .find(|r| r.url.ends_with("api/v1/subscriptions"))
+        .expect("anirss is asked to subscribe");
+    let Some(anibeam_core::net::Body::Json(body)) = &asked.body else {
+        panic!("{:?}", asked.body)
+    };
+    assert_eq!(body["save_path"], json!(home));
+    assert!(
+        !http
+            .requests()
+            .iter()
+            .any(|r| r.url.ends_with("rss/setRule")),
+        "the rule is written once, by anirss"
+    );
 }
 
 /// A subscription narrowed on anirss's side (1337x through Jackett): the

@@ -1365,8 +1365,10 @@ pub fn subscribe(
             let mut result = backend
                 .subscribe(&query, &endpoint, &items, name.as_deref(), home.as_deref())
                 .await?;
-            // The rule exists by now: a failed move leaves it saving where anirss put it, and
-            // the job says so rather than failing over a subscription that was made.
+            // A current anirss wrote the rule into `home` already, and the move is a no-op. An
+            // older one ignored it: the rule exists by now, a failed move leaves it saving
+            // where anirss put it, and the job says so rather than failing over a
+            // subscription that was made.
             let mut unmoved = String::new();
             if let Some(home) = home.as_deref()
                 && let Err(e) = rehome_rule(&owner, &mut result, home).await
@@ -1417,8 +1419,9 @@ fn describe_terms(terms: &rewire::LocalTerms) -> String {
 }
 
 /// Saves the new rule's episodes into `home`, the library show's folder,
-/// when the rule was written to save elsewhere: anirss takes no save path
-/// for a subscription and puts it under its own root plus the name (#267).
+/// when the rule was written to save elsewhere: an anirss older than the
+/// `subscription_save_path` feature takes no save path for a subscription
+/// and puts it under its own root plus the name (#267, #465).
 async fn rehome_rule(
     core: &Arc<Core>,
     result: &mut Subscribed,
