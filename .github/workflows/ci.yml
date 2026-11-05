@@ -2,10 +2,11 @@ name: CI
 
 # Fast checks on every pull request: formatting for the whole workspace, then clippy and
 # the tests for the core and the terminal shell. The Qt shell (apps/linux, package
-# anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so a
-# job that builds it needs its own setup. Runs on main too, so rust-cache keeps a cache
-# every pull request can restore. The toolchain is pinned so a new Rust release cannot
-# turn clippy red on code nobody touched; bump it on purpose.
+# anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so its
+# tests and clippy run in linux.yml, which sets those up for the AppImage. Runs on main
+# too, so rust-cache keeps a cache every pull request can restore. The toolchain is pinned
+# so a new Rust release cannot turn clippy red on code nobody touched; bump it on purpose,
+# here, in linux.yml and in android.yml.
 # A change that only touches markdown or docs/ skips it (#428). The two CHANGELOG.md files
 # still run it: the apps compile them in and core/tests/changelog.rs checks them. Later
 # patterns win, so the CHANGELOG line has to stay after the markdown exclusion.
