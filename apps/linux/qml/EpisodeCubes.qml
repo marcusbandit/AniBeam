@@ -247,6 +247,8 @@ Item {
         }
     }
     MouseArea {
+        Accessible.role: Accessible.StaticText
+        Accessible.name: root.list.length === 1 ? "One episode" : root.list.length + " episodes, " + root.first + " to " + (root.first + root.list.length - 1)
         y: root.gridY
         width: parent.width
         height: Math.max(0, parent.height - root.gridY)

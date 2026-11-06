@@ -28,6 +28,12 @@ Corner {
     // sets without a label beside it; the list shows the values alone
     property string prefix: ""
     signal picked(int i)
+    property string accessibleName: ""
+    Accessible.role: Accessible.ComboBox
+    Accessible.name: theme.spokenName(accessibleName, prefix, root, "")
+    Accessible.description: current
+    Accessible.focusable: interactive
+    Accessible.onPressAction: open()
 
     readonly property string current: options.length > index && index >= 0 ? String(options[index]) : ""
     readonly property bool opened: pop.opened
@@ -213,6 +219,11 @@ Corner {
                         color: index === root.index ? theme.accent : theme.text
                     }
                     MouseArea {
+                        Accessible.role: Accessible.MenuItem
+                        Accessible.name: String(modelData)
+                        Accessible.checkable: true
+                        Accessible.checked: index === root.index
+                        Accessible.onPressAction: root.pick(index)
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor

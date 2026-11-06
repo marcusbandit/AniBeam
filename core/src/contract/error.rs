@@ -33,14 +33,14 @@ fn entity_words(what: Entity) -> &'static str {
     }
 }
 
-fn tracker_name(tracker: Tracker) -> &'static str {
+pub fn tracker_name(tracker: Tracker) -> &'static str {
     match tracker {
         Tracker::Anilist => "AniList",
         Tracker::Mal => "MyAnimeList",
     }
 }
 
-fn provider_name(provider: Provider) -> &'static str {
+pub fn provider_name(provider: Provider) -> &'static str {
     match provider {
         Provider::Anilist => "AniList",
         Provider::Mal => "MyAnimeList",

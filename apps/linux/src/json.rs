@@ -69,6 +69,11 @@ pub fn error_json(e: &CoreError) -> Value {
     };
     o.insert("kind".into(), Value::String(kind));
     o.insert("message".into(), Value::String(e.to_string()));
+    // The same error in a person's words, for the toast; `message` stays as its detail
+    let p = crate::problem::plain(e);
+    o.insert("plain".into(), Value::String(p.said));
+    o.insert("next".into(), Value::String(p.next));
+    o.insert("fix".into(), Value::String(p.fix.key()));
     Value::Object(o)
 }
 
@@ -173,6 +178,19 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn an_error_carries_its_plain_words_and_its_fix() {
+        let e = CoreError::NotConnected {
+            tracker: anibeam_core::Tracker::Mal,
+        };
+        let v = error_json(&e);
+        assert_eq!(v["kind"], "NotConnected");
+        assert_eq!(v["message"], "MyAnimeList is not connected.");
+        assert_eq!(v["plain"], "MyAnimeList is not connected.");
+        assert_eq!(v["next"], "Connect it in Settings, under Accounts.");
+        assert_eq!(v["fix"], "settings:accounts");
+    }
 
     #[test]
     fn calls_come_from_a_name_and_a_json_object() {

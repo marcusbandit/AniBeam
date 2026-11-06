@@ -62,7 +62,7 @@ Item {
     // The episode count set by hand (#239); null clears it
     function setEpisodeCount(n) {
         var r = Door.call("SetEpisodeCount", { series: page.props.id, count: n })
-        if (r && r.error) frame.toast(frame.errorText(r.error))
+        if (r && r.error) frame.fail(r.error)
         else frame.toast(n === null ? "Episode count cleared" : "Set to " + n + " episodes")
     }
     // Schedule notes (#418): what the user told the schedule, for the card's season
@@ -197,10 +197,10 @@ Item {
     // From the page's Quick fix the sheet comes filled in; from Fix files the suggestion waits
     // behind Fill in, so a fix of another file never carries it along
     function openFix(suggested, fill) { fixSheet.openFor(page.props.id, page.title, page.fixRows(), suggested || null, !!fill) }
-    function rescan() { var r = Door.rescanSeries(page.props.id); frame.toast(r.error ? r.error.message : "Rescan started") }
+    function rescan() { var r = Door.rescanSeries(page.props.id); r.error ? frame.fail(r.error) : frame.toast("Rescan started") }
     function load() {
         var r = Door.getSeries(props.id)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error); return }
         detail = r.reply.detail
         optimisticProgress = -1
         optimisticFile = -1
@@ -289,7 +289,7 @@ Item {
         // The season goes along for a show with no tracker, whose marks are kept per season
         var id = props.id, season = ep.season || 1
         var r = Door.setProgress(id, target, season)
-        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.toast(r.error.message); return }
+        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.fail(r.error); return }
         // A mark that moves more than one episode says so, with the way back
         if (before >= 0 && Math.abs(target - before) > 1)
             frame.toast(target > before ? "Watched up to " + Fmt.episodeName("", target) : "Unwatched from " + Fmt.episodeName("", target + 1), 8, "Undo",
@@ -495,6 +495,9 @@ Item {
         // The menu pill's own name, for drive scripts to click
         property string pressName: ""
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.onPressAction: fact.clicked()
+            Accessible.name: theme.nameNear(parent)
             objectName: fact.pressName
             anchors.fill: parent
             visible: fact.menu
@@ -890,8 +893,8 @@ Item {
                     Button {
                         id: rateButton
                         objectName: "fact-mine"
-                        // A score is the tracker's: a series no tracker carries (a TVmaze match) has none to set
-                        visible: page.hasTracker
+                        // With no tracker behind the series the score stays on this device (#213)
+                        visible: !card.hidden
                         small: true; ghost: true
                         icon: "star"
                         text: page.hasScore ? "Your score " + Fmt.score(card.my_score) : "Rate"
@@ -916,7 +919,7 @@ Item {
                         text: card.list_status ? page.listStatus(card.list_status) : "Add to a list"
                         pressName: "series-status"
                         onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
-                        Tooltip { text: statusFact.settable ? "Change it on each list that is connected" : "" }
+                        Tooltip { text: statusFact.settable ? frame.listHome(card) : "" }
                     }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
                     // The list entry's notes, written to every connected tracker (#211); a show not
@@ -941,7 +944,7 @@ Item {
                             // The id is kept here: Undo can come after the page is gone
                             var id = props.id
                             var r = Door.setHidden(id, hide)
-                            if (r.error) { frame.toast(r.error.message); return }
+                            if (r.error) { frame.fail(r.error); return }
                             frame.toast(hide ? page.title + " is hidden here, and AniBeam stops syncing it to AniList and MyAnimeList" : page.title + " is back, and syncs again", 6, "Undo",
                                         function() { Door.setHidden(id, !hide) })
                         }
@@ -1331,6 +1334,9 @@ Item {
             }
         }
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.onPressAction: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? frame.openLink(rel.node.site_url) : frame.openLink("https://anilist.co/anime/" + rel.node.anilist_id))
+            Accessible.name: theme.nameNear(parent)
             id: relMouse
             anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
             onClicked: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? frame.openLink(rel.node.site_url) : frame.openLink("https://anilist.co/anime/" + rel.node.anilist_id))
@@ -1338,8 +1344,9 @@ Item {
     }
 
     ScorePicker { id: scorePicker; parent: frame.overlay
-        onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.toast(r.error.message) }
-        onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.toast(r.error.message) } }
+        // A score kept on this device has no job to report back, so it says so here (#213)
+        onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast("Score saved") }
+        onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast("Score cleared") } }
 
     // The quick fix (#170), over the overlay like the match
     FixSheet {

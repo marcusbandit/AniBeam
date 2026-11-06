@@ -63,13 +63,13 @@ Corner {
         q = String(q || "").trim()
         if (q.length < 2) { root.searching = false; root.results = []; root.searchJob = -1; return }
         var r = Door.searchOn(root.provider, q, 12)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error); return }
         root.searchJob = r.reply.job
         root.searching = true
     }
     function apply(target, title) {
         var r = Door.applyMatch(root.seriesId, target)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error); return }
         frame.toast(title ? "Matched to " + title : "Match applied")
         root.close("applied")
     }
@@ -78,7 +78,7 @@ Corner {
     function applyResult(r) {
         if (r.provider === "Tvmaze") {
             var out = Door.applyTvmaze(root.seriesId, r.id)
-            if (out.error) { frame.toast(out.error.message); return }
+            if (out.error) { frame.fail(out.error); return }
             frame.toast("Matched to " + r.title)
             root.close("applied")
         } else root.apply({ "Anilist": { "id": r.id, "season": null } }, r.title)
@@ -191,7 +191,7 @@ Corner {
                 small: true
                 icon: "refresh-cw"
                 text: "Refresh info"
-                onClicked: { var r = Door.refreshSeries(root.seriesId); frame.toast(r.error ? r.error.message : "Refreshing " + root.seriesTitle) }
+                onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Refreshing " + root.seriesTitle) }
             }
             // Two steps: it drops the tracker link and a hand-set episode count, and the
             // series is then left alone by the automatic match
@@ -205,7 +205,7 @@ Corner {
                     if (!armed) { armed = true; disarm.restart(); return }
                     armed = false
                     var r = Door.clearMatch(root.seriesId)
-                    if (r.error) frame.toast(r.error.message)
+                    if (r.error) frame.fail(r.error)
                     else frame.toast("Match cleared")
                     root.close()
                 }
@@ -256,7 +256,7 @@ Corner {
                 text: "Look up"
                 onClicked: {
                     var r = Door.resolveLink(linkField.text)
-                    if (r.error) { frame.toast(r.error.message); return }
+                    if (r.error) { frame.fail(r.error); return }
                     root.resolveJob = r.reply && r.reply.job !== undefined ? r.reply.job : -1
                 }
             }
@@ -305,7 +305,8 @@ Corner {
             color: resultMouse.pressed ? theme.surfacePressed : resultMouse.containsMouse || ListView.isCurrentItem ? theme.floatHover : "transparent"
             borderColor: ListView.isCurrentItem ? theme.focusRing : "transparent"; borderWidth: ListView.isCurrentItem ? 1 : 0
             // The whole row applies, not only its button
-            MouseArea { id: resultMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.applyResult(result.modelData) }
+            MouseArea { id: resultMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.applyResult(result.modelData); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                Accessible.onPressAction: root.applyResult(result.modelData) }
             Corner {
                 id: cover
                 x: theme.space(2)

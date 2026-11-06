@@ -871,9 +871,12 @@ fn percent_decode(s: &str) -> String {
 }
 
 /// The definition of a source added by hand, and the secrets lifted out of its address.
+/// `kept` is the kind of the source being edited: one that builds its own search from a bare
+/// address keeps doing so when the address stays bare.
 fn custom_definition(
     name: &str,
     url: &str,
+    kept: Option<&str>,
 ) -> Result<(Definition, Vec<(String, String)>), CoreError> {
     let name = name.trim().to_string();
     let id = id_of(&name);
@@ -886,12 +889,13 @@ fn custom_definition(
         None => url.to_string(),
     };
     let (template, auth, lifted) = lift_secrets(&url);
-    // An address with the search in it is a feed; a bare site address is nyaa's kind,
-    // which adds its own search.
+    // An address with the search in it is a feed. A kind that builds its own search from a
+    // bare address comes from a repo, whose definition names it, or was added by hand before
+    // #602 and is being edited.
     let kind = if template.contains("{query}") {
         "rss"
-    } else if index::host_of(&template).contains("nyaa") {
-        "nyaa"
+    } else if let Some(kind) = kept.filter(|k| *k == crate::releases::kinds::FILTERED_RSS) {
+        kind
     } else {
         return Err(CoreError::invalid(
             "endpoint url",
@@ -927,7 +931,7 @@ pub fn add_custom(
     url: String,
     credentials: Vec<EndpointCredential>,
 ) -> Result<Reply, CoreError> {
-    let (def, lifted) = custom_definition(&name, &url)?;
+    let (def, lifted) = custom_definition(&name, &url, None)?;
     let (id, name) = (def.id.clone(), def.name.clone());
     let installed = core.store.read(read_installed)?;
     if installed.iter().any(|i| i.def.id == id) {
@@ -985,7 +989,7 @@ pub fn edit_custom(
             "only a source added by hand can be edited",
         ));
     }
-    let (mut def, lifted) = custom_definition(&name, &url)?;
+    let (mut def, lifted) = custom_definition(&name, &url, Some(&row.def.kind))?;
     // A secret the address had as a `{key}` must stay one: a value typed in its place would
     // be kept in the open, and only some keys are lifted out of an address by their name.
     for old in &row.def.auth {
@@ -1049,6 +1053,55 @@ pub fn edit_custom(
         EventBody::Notice,
     );
     changed(core)
+}
+
+/// Installed endpoints saved before #602 can carry their kind under a site's name. This gives
+/// each its shape name in place and changes nothing else about it, and the phone's saved
+/// sources the same. A row already under a shape name is left alone, so after the first open
+/// this does nothing. Returns how many were renamed.
+pub fn rename_old_kinds(core: &Core) -> Result<usize, CoreError> {
+    // Read first: after the first open nothing is left to rename, and a write would take the
+    // store's lock on every open, a CLI's beside a running desktop's.
+    let old = core.store.read(|conn| {
+        let mut n = 0i64;
+        for (old, _) in crate::releases::kinds::RENAMED {
+            n += conn.query_row(
+                "SELECT COUNT(*) FROM installed_endpoints
+                 WHERE json_valid(definition) AND json_extract(definition, '$.kind') = ?1",
+                params![old],
+                |r| r.get::<_, i64>(0),
+            )?;
+        }
+        Ok(n)
+    })?;
+    let mut renamed = if old == 0 {
+        0
+    } else {
+        rewrite_old_kinds(core)?
+    };
+    renamed += crate::phone::rename_old_kinds(core)?;
+    if renamed > 0 {
+        core.bus.info(
+            Stage::Downloads,
+            format!("Gave {renamed} download sources the new name of their kind"),
+            EventBody::Notice,
+        );
+    }
+    Ok(renamed)
+}
+
+fn rewrite_old_kinds(core: &Core) -> Result<usize, CoreError> {
+    core.store.write(|conn| {
+        let mut n = 0;
+        for (old, now) in crate::releases::kinds::RENAMED {
+            n += conn.execute(
+                "UPDATE installed_endpoints SET definition = json_set(definition, '$.kind', ?2)
+                 WHERE json_valid(definition) AND json_extract(definition, '$.kind') = ?1",
+                params![old, now],
+            )?;
+        }
+        Ok(n)
+    })
 }
 
 /// Sources added by hand before #385 can still hold a secret in their stored address. This
@@ -1117,10 +1170,10 @@ fn lift_one(
 
 // The desktop's anirss ------------------------------------------------------------------
 
-/// The kinds anirss itself can search; every other kind is AniBeam's own.
-/// anirss reads a torznab feed through its `rss` kind, so `torznab` goes over as that
-/// (`spec_of`).
-const ANIRSS_KINDS: [&str; 3] = ["nyaa", "rss", "torznab"];
+/// The kinds anirss itself can search, under their shape names; every other kind is
+/// AniBeam's own. `spec_of` sends each under the name anirss knows it by
+/// (`kinds::anirss_kind`).
+const ANIRSS_KINDS: [&str; 3] = [crate::releases::kinds::FILTERED_RSS, "rss", "torznab"];
 
 /// What AniBeam last wrote into anirss: endpoint name to a hash of the spec it sent. anirss
 /// lists its endpoints with their secrets masked, so a listed address can never be compared
@@ -1193,10 +1246,9 @@ fn note_for(
 }
 
 fn spec_of(e: &crate::releases::Endpoint) -> serde_json::Value {
-    // anirss has no torznab kind; its rss kind reads the torznab attributes.
-    let kind = if e.kind == "torznab" { "rss" } else { &e.kind };
+    let kind = crate::releases::kinds::anirss_kind(&e.kind);
     let mut spec = serde_json::json!({"name": e.name, "kind": kind, "url": e.url});
-    if e.kind == "nyaa" {
+    if e.kind == crate::releases::kinds::FILTERED_RSS {
         spec["category"] = e.category.clone().into();
         spec["filter"] = e.filter.clone().into();
     }
@@ -1216,7 +1268,7 @@ fn hash_of(spec: &serde_json::Value) -> String {
 /// wrote are ever changed or removed; one anirss already had from its config stays as it was.
 /// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
 /// a hand-written one does today; the secret store stays the record AniBeam reads. A kind
-/// anirss cannot search (`tosho`) stays out, and an anirss whose `/health` does not list
+/// anirss cannot search (`json-feed`) stays out, and an anirss whose `/health` does not list
 /// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES) is left alone, whatever
 /// its version says.
 /// `have` is anirss's list as just read; true when anirss was changed and its list needs
@@ -1479,6 +1531,31 @@ pub fn rekeep_old_rules(
     Ok(rewritten)
 }
 
+/// The endpoint a definition runs as at `url`, its address filled in. A category or filter
+/// the definition leaves out or leaves empty is anirss's default, as anirss reads it
+/// (`raw.get("category") or "1_0"`): every anime upload, no filter (#546).
+fn endpoint_for(def: &Definition, url: &str) -> crate::releases::Endpoint {
+    let mut endpoint = crate::releases::Endpoint::new(&def.id, &def.kind, url);
+    if let Some(c) = def
+        .category
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
+        endpoint.category = c.to_string();
+    }
+    if let Some(f) = def
+        .filter
+        .as_deref()
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+    {
+        endpoint.filter = f.to_string();
+    }
+    endpoint.json = def.json.clone();
+    endpoint
+}
+
 /// How many characters `a` and `b` start with in common.
 fn shared_start(a: &str, b: &str) -> usize {
     a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
@@ -1563,14 +1640,7 @@ fn installed_runnable(core: &Core, with_off: bool) -> Vec<Runnable> {
                 raw: raw(&field.key).unwrap_or_default(),
             })
             .collect();
-        let mut endpoint = crate::releases::Endpoint::new(&row.def.id, &row.def.kind, &url);
-        if let Some(c) = &row.def.category {
-            endpoint.category = c.clone();
-        }
-        if let Some(f) = &row.def.filter {
-            endpoint.filter = f.clone();
-        }
-        endpoint.json = row.def.json.clone();
+        let endpoint = endpoint_for(&row.def, &url);
         out.push(Runnable {
             endpoint,
             shown_url: row.def.url.clone(),
@@ -1641,17 +1711,17 @@ mod tests {
     #[test]
     fn the_native_engine_leaves_no_endpoint_out() {
         let def: Definition = serde_json::from_value(
-            serde_json::json!({"id": "tosho", "name": "tosho", "version": 1,
-                "kind": "tosho", "url": "https://t.example/json?q={query}"}),
+            serde_json::json!({"id": "feed", "name": "feed", "version": 1,
+                "kind": "json-feed", "url": "https://t.example/json?q={query}"}),
         )
         .unwrap();
         let synced = Synced::new();
         let current = view("0.6.0", true, &[]);
         let old = view("0.5.0", false, &[]);
-        let by_hand = view("0.6.0", true, &["tosho"]);
+        let by_hand = view("0.6.0", true, &["feed"]);
         assert!(
             note_for(DownloadsEngine::Anirss, Some(&current), &def, &synced)
-                .is_some_and(|n| n.contains("cannot search the tosho kind"))
+                .is_some_and(|n| n.contains("cannot search the json-feed kind"))
         );
         assert!(note_for(DownloadsEngine::Anirss, Some(&old), &def, &synced).is_some());
         // The native engine searches the installed endpoint itself, so none of the three
@@ -1711,18 +1781,18 @@ mod tests {
             None
         );
         // A kind anirss cannot search says so first, wherever anirss runs.
-        let tosho: Definition =
+        let feed: Definition =
             serde_json::from_value(serde_json::json!({"id": "t", "name": "t", "version": 1,
-                "kind": "tosho", "url": "https://a.example/json?q={query}"}))
+                "kind": "json-feed", "url": "https://a.example/json?q={query}"}))
             .unwrap();
         let n = note_for(
             DownloadsEngine::Anirss,
             Some(&at(EndpointSync::Theirs, true, &[])),
-            &tosho,
+            &feed,
             &synced,
         )
         .unwrap();
-        assert!(n.contains("cannot search the tosho kind"), "{n}");
+        assert!(n.contains("cannot search the json-feed kind"), "{n}");
     }
 
     fn health(version: &str, features: &[&str]) -> Health {
@@ -1772,6 +1842,64 @@ mod tests {
 
     fn custom(core: &Core, name: &str, url: &str) {
         add_custom(core, name.into(), url.into(), Vec::new()).unwrap();
+    }
+
+    #[test]
+    fn a_bare_source_added_by_hand_before_the_rename_can_still_be_edited() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = CorePaths::under(dir.path());
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            FakeHttp::new(),
+            Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        custom(&core, "mirror", "https://tracker.example/rss?q={query}");
+        // As the rename left a bare address added by hand before #602.
+        core.store
+            .write(|conn| {
+                let def: String =
+                    conn.query_row("SELECT definition FROM installed_endpoints", [], |r| {
+                        r.get(0)
+                    })?;
+                let mut def: Definition = serde_json::from_str(&def).unwrap();
+                def.kind = crate::releases::kinds::FILTERED_RSS.into();
+                def.url = "https://tracker.example/".into();
+                conn.execute(
+                    "UPDATE installed_endpoints SET definition = ?1",
+                    params![serde_json::to_string(&def).unwrap()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let install = core
+            .store
+            .read(read_installed)
+            .unwrap()
+            .remove(0)
+            .install_id;
+        edit_custom(
+            &core,
+            install.clone(),
+            "renamed".into(),
+            "https://tracker.example/".into(),
+        )
+        .unwrap();
+        let row = core.store.read(read_installed).unwrap().remove(0);
+        assert_eq!(
+            (row.def.name.as_str(), row.def.kind.as_str()),
+            ("renamed", crate::releases::kinds::FILTERED_RSS)
+        );
+        // A new source by hand still needs its {query}.
+        assert!(
+            add_custom(
+                &core,
+                "other".into(),
+                "https://other.example/".into(),
+                vec![]
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -2225,13 +2353,67 @@ mod tests {
             spec,
             serde_json::json!({"name": "indexer", "kind": "rss", "url": url})
         );
-        // Every other kind goes over as itself.
-        let other = spec_of(&crate::releases::Endpoint::new(
+        // filtered-rss goes over under anirss's own name for it, with its category and
+        // filter; every other kind goes over as itself.
+        let filtered = spec_of(&crate::releases::Endpoint::new(
             "example",
-            "nyaa",
+            crate::releases::kinds::FILTERED_RSS,
             "https://example.org/",
         ));
-        assert_eq!(other["kind"], "nyaa");
+        assert_eq!(
+            filtered,
+            serde_json::json!({"name": "example", "kind": crate::releases::kinds::RENAMED[0].0,
+                "url": "https://example.org/", "category": "1_0", "filter": "0"})
+        );
+        let feed = spec_of(&crate::releases::Endpoint::new(
+            "feed",
+            "rss",
+            "https://example.org/?q={query}",
+        ));
+        assert_eq!(feed["kind"], "rss");
+    }
+
+    #[test]
+    fn a_definition_with_an_empty_category_or_filter_searches_as_anirss_would() {
+        let mut def = Definition {
+            id: "site".to_string(),
+            name: "site".to_string(),
+            version: 1,
+            lang: String::new(),
+            kind: crate::releases::kinds::FILTERED_RSS.to_string(),
+            url: "https://tracker.example/".to_string(),
+            auth: Vec::new(),
+            front: None,
+            rate: None,
+            nsfw: false,
+            category: None,
+            filter: None,
+            min_core: None,
+            json: None,
+        };
+        let shape = |def: &Definition| {
+            let e = endpoint_for(def, &def.url);
+            (e.category, e.filter)
+        };
+        let anirss_default = ("1_0".to_string(), "0".to_string());
+        assert_eq!(shape(&def), anirss_default, "left out");
+        def.category = Some(String::new());
+        def.filter = Some(" ".to_string());
+        assert_eq!(shape(&def), anirss_default, "left empty");
+        def.category = Some("1_2".to_string());
+        def.filter = Some("2".to_string());
+        assert_eq!(
+            shape(&def),
+            ("1_2".to_string(), "2".to_string()),
+            "trusted only"
+        );
+        def.category = Some(" 1_2".to_string());
+        def.filter = Some("2 ".to_string());
+        assert_eq!(
+            shape(&def),
+            ("1_2".to_string(), "2".to_string()),
+            "spaces around"
+        );
     }
 
     #[test]
@@ -2312,7 +2494,8 @@ mod tests {
     #[test]
     fn a_login_comes_back_filled_and_checks_as_a_custom_source() {
         let (def, lifted) =
-            custom_definition("Tracker", "https://me:p%40ss@t.example/rss?q={query}").unwrap();
+            custom_definition("Tracker", "https://me:p%40ss@t.example/rss?q={query}", None)
+                .unwrap();
         assert!(!def.url.contains("p%40ss"), "{}", def.url);
         let filled = def
             .filled_url(|k| lifted.iter().find(|(l, _)| l == k).map(|(_, v)| v.clone()))
