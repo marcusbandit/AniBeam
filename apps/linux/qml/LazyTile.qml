@@ -35,10 +35,24 @@ Item {
         build(true)
         if (loader.item) handFocus()
     }
+    // The card takes the focus; a tile that holds tiles (a section) passes it to its first
+    // stop, or its last when Shift+Tab came in from below
     function handFocus() {
         focusOnBuild = false
-        loader.item.forceActiveFocus(Qt.TabFocusReason)
-        if (flick && flick.reveal !== undefined) flick.reveal(loader.item)
+        var it = loader.item, back = root.focusReason === Qt.BacktabFocusReason
+        var target = it.activeFocusOnTab ? it : back ? lastStopIn(it) : it.nextItemInFocusChain(true)
+        if (!target || !inside(target, it)) target = it
+        target.forceActiveFocus(back ? Qt.BacktabFocusReason : Qt.TabFocusReason)
+        if (flick && flick.reveal !== undefined) flick.reveal(target)
+    }
+    function inside(item, box) { for (var p = item; p; p = p.parent) if (p === box) return true; return false }
+    function lastStopIn(box) {
+        var last = null
+        for (var cur = box.nextItemInFocusChain(true), n = 0; cur && n < 5000 && inside(cur, box); n++) {
+            last = cur
+            cur = cur.nextItemInFocusChain(true)
+        }
+        return last
     }
 
     function findFlick() {

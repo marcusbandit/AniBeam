@@ -5,7 +5,7 @@
   {"until": "driver.item.pageReady('library')"},
   {"until": "frame.item.pageItem.cardIds().length >= 120", "timeout": 60000},
   {"eval": "frame.item.pageItem.cardIds()", "as": "ids"},
-  {"eval": "'card-' + vars.ids[vars.ids.length - 1]", "as": "last"},
+  {"eval": "'tile-' + vars.ids[vars.ids.length - 1]", "as": "last"},
   {"log": "the last card has not been built when the page opens"},
   {"eval": "driver.item.findItem(vars.last) === null", "expect": true},
 
@@ -21,5 +21,5 @@
 
   {"log": "Shift+Tab goes back one card at a time"},
   {"key": "Shift+Tab"},
-  {"eval": "window.activeFocusItem.objectName === 'card-' + vars.ids[vars.ids.length - 2]", "expect": true}
+  {"eval": "window.activeFocusItem.objectName === 'tile-' + vars.ids[vars.ids.length - 2]", "expect": true}
 ]
