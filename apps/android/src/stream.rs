@@ -114,6 +114,12 @@ impl Host {
         let address = HostAddress::parse(&store.settings().address)?;
         let client = HostClient::new(client::agent(), address);
         let hello = client.hello().map_err(|e| e.to_string())?;
+        if hello.streaming_off {
+            return Err(format!(
+                "Streaming is off on {}. Turn on Stream episodes there, under Settings, Phone app.",
+                hello.host
+            ));
+        }
         if !hello.features.iter().any(|f| f == api::FEATURE_STREAM) {
             return Err(format!(
                 "{} runs AniBeam {}, which cannot stream yet. Update it there.",

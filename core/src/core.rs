@@ -839,6 +839,7 @@ impl Core {
                     prefs::save_preferences(c, &p)?;
                     Ok(before)
                 })?;
+                self.host.set_streaming(preferences.stream_over_tailscale);
                 self.host.follow(self, preferences.share_over_tailscale);
                 crate::presence::set_enabled(self, preferences.discord_presence);
                 if before.calendar_feed != preferences.calendar_feed {

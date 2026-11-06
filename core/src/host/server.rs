@@ -55,10 +55,8 @@ pub fn router(core: Weak<Core>) -> Router {
         snapshot: tokio::sync::Mutex::new(None),
         library: tokio::sync::Mutex::new(None),
     });
-    Router::new()
-        .route(wire::HELLO, get(hello))
-        .route(wire::SNAPSHOT, get(snapshot))
-        .route("/api/v1/posters/{id}", get(poster))
+    // The episodes themselves answer only while "Stream episodes" is on.
+    let streaming = Router::new()
         .route("/api/v1/files/{id}", get(stream::file))
         .route("/api/v1/files/{id}/sidecars/{index}", get(stream::sidecar))
         .route("/api/v1/files/{id}/probe", get(stream::probe))
@@ -69,6 +67,15 @@ pub fn router(core: Weak<Core>) -> Router {
         .route("/api/v1/files/{id}/hls/{height}/{name}", get(stream::hls))
         .route(wire::CALL, post(stream::call))
         .route("/api/v1/sessions/{id}/skip", get(stream::skip))
+        .layer(axum::middleware::from_fn_with_state(
+            served.clone(),
+            streaming_on,
+        ));
+    Router::new()
+        .route(wire::HELLO, get(hello))
+        .route(wire::SNAPSHOT, get(snapshot))
+        .route("/api/v1/posters/{id}", get(poster))
+        .merge(streaming)
         .fallback(not_found)
         .method_not_allowed_fallback(not_allowed)
         .layer(axum::middleware::from_fn(known_host))
@@ -89,6 +96,26 @@ async fn known_host(request: axum::extract::Request, next: axum::middleware::Nex
         next.run(request).await
     } else {
         error(StatusCode::MISDIRECTED_REQUEST, "unknown host")
+    }
+}
+
+/// The sentence a phone shows when it asks for an episode here while
+/// streaming is off.
+pub const STREAMING_OFF: &str =
+    "Streaming is off on that computer. Turn on Stream episodes there, under Settings, Phone app.";
+
+/// Refuses the episode routes while "Stream episodes" is off. The playback
+/// calls that only keep Not interested the same on both sides still pass.
+async fn streaming_on(
+    State(st): State<Arc<Served>>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let on = st.core.upgrade().is_some_and(|c| c.host.streaming());
+    if on || request.uri().path() == wire::CALL {
+        next.run(request).await
+    } else {
+        error(StatusCode::FORBIDDEN, STREAMING_OFF)
     }
 }
 
@@ -150,13 +177,15 @@ fn failed(e: &CoreError) -> Response {
 }
 
 async fn hello(State(st): State<Arc<Served>>) -> Response {
+    let streaming = st.core.upgrade().is_some_and(|c| c.host.streaming());
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
         version: crate::VERSION.to_string(),
         host: st.host.clone(),
         now: time::now_secs(),
-        features: features(),
+        features: features(streaming),
+        streaming_off: !streaming,
     };
     match serde_json::to_vec(&hello) {
         Ok(body) => json(Bytes::from(body)),
@@ -164,10 +193,13 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
     }
 }
 
-/// What this host serves past the snapshot. Streaming always; converting
-/// when ffmpeg and an encoder work here, which the first hello starts finding
-/// out rather than waits for, so hello stays quick.
-fn features() -> Vec<String> {
+/// What this host serves past the snapshot. Streaming while its switch is on;
+/// converting too when ffmpeg and an encoder work here, which the first hello
+/// starts finding out rather than waits for, so hello stays quick.
+fn features(streaming: bool) -> Vec<String> {
+    if !streaming {
+        return Vec::new();
+    }
     let mut out = vec![wire::FEATURE_STREAM.to_string()];
     if convert::known() == Some(true) {
         out.push(wire::FEATURE_CONVERT.to_string());

@@ -57,6 +57,8 @@ pub struct Host {
     /// says: the headless host service, and the desktop app while that
     /// service has stepped aside for it.
     held: AtomicBool,
+    /// Whether the episodes themselves are served, from the preference.
+    streaming: AtomicBool,
 }
 
 struct Run {
@@ -108,7 +110,17 @@ impl Host {
             run: Mutex::new(None),
             bind: Mutex::new(None),
             held: AtomicBool::new(false),
+            streaming: AtomicBool::new(true),
         }
+    }
+
+    /// Whether the host serves the episodes, as "Stream episodes" says.
+    pub fn streaming(&self) -> bool {
+        self.streaming.load(Ordering::SeqCst)
+    }
+
+    pub fn set_streaming(&self, on: bool) {
+        self.streaming.store(on, Ordering::SeqCst);
     }
 
     pub fn status(&self) -> HostStatus {
@@ -183,11 +195,10 @@ impl Host {
 /// Reads the preference and starts or stops the host to match. Called when
 /// the core starts, and when a shell holds the host or lets it go.
 pub fn sync(core: &Core) {
-    let on = core
-        .store
-        .read(prefs::load_preferences)
-        .map(|p| p.share_over_tailscale)
-        .unwrap_or(false);
+    let prefs = core.store.read(prefs::load_preferences).ok();
+    core.host
+        .set_streaming(prefs.as_ref().is_none_or(|p| p.stream_over_tailscale));
+    let on = prefs.is_some_and(|p| p.share_over_tailscale);
     core.host.follow(core, on);
 }
 
