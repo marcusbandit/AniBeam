@@ -2030,7 +2030,7 @@ Item {
                 Label { visible: page.notice !== "" && !page.searching; text: page.notice; role: "ui"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
                 ErrorLine {
                     objectName: "downloads-search-error"
-                    width: Math.min(implicitWidth, parent.width * 0.6)
+                    width: parent.width * 0.6
                     anchors.verticalCenter: parent.verticalCenter
                     text: page.searchError
                     detail: page.searchFix.detail || ""
