@@ -234,6 +234,9 @@ fn settings_url(config_dir: &std::path::Path) -> QString {
 /// version, which is this crate's.
 const NOTES: &str = include_str!("../../CHANGELOG.md");
 
+/// The notes in changes/ that have not shipped yet, which show under the newest heading.
+const CHANGES: &[&str] = include!(concat!(env!("OUT_DIR"), "/changes.rs"));
+
 impl qobject::Shell {
     pub fn whats_new(&self, seen: &QString, from: &QString) -> QJsonObject {
         use anibeam_core::changelog::{self, Seen};
@@ -251,7 +254,7 @@ impl qobject::Shell {
             seen.version = version;
         }
         let used = earlier.started;
-        let notes = changelog::parse(NOTES);
+        let notes = changelog::parse_with(NOTES, CHANGES);
         let state = serde_json::json!({
             // A version main has only just moved to has no lines yet; opening it would mark
             // it read before its notes are written.
