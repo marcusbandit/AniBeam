@@ -71,6 +71,11 @@ Corner {
             root.agentJob = 0
             root.agentError = frame.errorText(error)
         }
+        // Stopped from anywhere, not only Stop here: the panel lets go
+        function onJobCancelled(job, kind) {
+            if (job !== root.agentJob) return
+            root.agentJob = 0
+        }
     }
     // The record's real dates, without its guesses
     readonly property var recordDates: {

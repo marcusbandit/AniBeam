@@ -31,7 +31,8 @@ use crate::library::report::{self, AgentKind};
 /// How long one session may take, web searches included.
 const SESSION_TIMEOUT: Duration = Duration::from_secs(6 * 60);
 
-/// The longest answer kept; a schedule is a few dozen lines.
+/// The longest answer kept; a schedule is a few dozen lines. A longer one is
+/// cut at the last whole line under it, so no line is cut into another date.
 const ANSWER_CAP: usize = 8000;
 
 /// The agent a schedule session runs, by path, and the name the shell shows.
@@ -45,7 +46,9 @@ pub fn find() -> Option<(PathBuf, &'static str)> {
         let path = PathBuf::from(v);
         return path.is_file().then_some((path, "Claude Code"));
     }
-    report::find_agent()
+    // The installed agent alone: the quick fix's stand in speaks another
+    // protocol, so its override is not this one's.
+    report::find_installed()
         .filter(|a| a.kind == AgentKind::Claude)
         .map(|a| {
             let name = a.name();
@@ -229,10 +232,12 @@ fn brief(core: &Core, series: u64) -> Result<Brief, CoreError> {
             other_titles.push(t);
         }
     }
+    // The season the sheet edits, the card's own: only its dates go in
+    let season = card.count_season;
     let known = detail
         .upcoming
         .iter()
-        .filter(|u| !u.predicted)
+        .filter(|u| !u.predicted && (season.is_none() || u.season == season))
         .map(|u| {
             let day = ::time::OffsetDateTime::from_unix_timestamp(crate::time::to_secs(u.at))
                 .map(|t| t.date().to_string())
@@ -244,7 +249,7 @@ fn brief(core: &Core, series: u64) -> Result<Brief, CoreError> {
         title: card.title.clone(),
         other_titles,
         year: detail.year,
-        season: card.next_airing.as_ref().and_then(|a| a.season),
+        season,
         total: detail.progress.total,
         site: detail.site_url.clone(),
         known,
@@ -261,12 +266,11 @@ async fn run(
     name: &'static str,
     brief: Brief,
 ) -> Result<Finished, CoreError> {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("anibeam-schedule-{}-{nanos}", std::process::id()));
-    std::fs::create_dir_all(&dir).map_err(|e| CoreError::internal(e.to_string()))?;
+    let dir =
+        report::fresh_dir("anibeam-schedule").map_err(|e| CoreError::internal(e.to_string()))?;
+    // Whatever ends this session, an answer, a failure, a stop, or the job
+    // runner dropping it on a cancel, the agent's group and its folder go.
+    let mut guard = Cleanup { pid: None, dir };
     let mut cmd = tokio::process::Command::new(&path);
     cmd.args([
         "--input-format",
@@ -281,26 +285,20 @@ async fn run(
         "WebSearch,WebFetch",
         "--no-session-persistence",
     ])
-    .current_dir(&dir)
+    .current_dir(&guard.dir)
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::null())
     .kill_on_drop(true);
-    // Its own folder first on the PATH, so a script-installed agent finds the
-    // runtime installed beside it.
-    let mut paths = Vec::new();
-    if let Some(own) = path.parent() {
-        paths.push(own.to_path_buf());
-    }
-    paths.extend(report::search_dirs());
-    if let Ok(joined) = std::env::join_paths(paths) {
-        cmd.env("PATH", joined);
+    if let Some(p) = report::agent_path_env(&path) {
+        cmd.env("PATH", p);
     }
     #[cfg(unix)]
     cmd.process_group(0);
     let mut child = cmd
         .spawn()
         .map_err(|e| CoreError::internal(format!("{name} did not start: {e}")))?;
+    guard.pid = child.id();
     let today = ::time::OffsetDateTime::now_utc().date().to_string();
     let mut stdin = child.stdin.take();
     if let Some(input) = stdin.as_mut() {
@@ -311,7 +309,10 @@ async fn run(
             .map_err(|e| CoreError::internal(format!("{name} did not take the brief: {e}")))?;
         let _ = input.flush().await;
     }
-    let stdout = child.stdout.take().expect("piped");
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| CoreError::internal(format!("{name} gave no output")))?;
     let mut lines = BufReader::new(stdout).lines();
     let session = async {
         while let Some(line) = lines.next_line().await.ok().flatten() {
@@ -325,43 +326,35 @@ async fn run(
                             text: text.clone(),
                         },
                     ),
-                    Said::Done(done) => return done,
+                    Said::Done(Ok(text)) => return Outcome::Answer(text),
+                    Said::Done(Err(why)) => return Outcome::Failed(why),
                 }
             }
         }
-        Err(format!("{name} ended without an answer"))
+        Outcome::Failed(format!("{name} ended without an answer"))
     };
     let outcome = tokio::select! {
         done = session => done,
-        _ = tokio::time::sleep(SESSION_TIMEOUT) => Err(format!("{name} took too long")),
-        _ = ctx.cancelled() => Err("stopped".to_string()),
+        _ = tokio::time::sleep(SESSION_TIMEOUT) => Outcome::Failed(format!("{name} took too long")),
+        _ = ctx.cancelled() => Outcome::Stopped,
     };
-    // One turn is the whole session: closing stdin ends it, and the group
-    // goes with it whatever it left running.
+    // One turn is the whole session: closing stdin ends it, and the guard
+    // takes the group and the folder with it.
     drop(stdin);
-    end_group(&mut child).await;
-    let _ = std::fs::remove_dir_all(&dir);
+    drop(guard);
+    let _ = child.kill().await;
     match outcome {
-        Ok(mut answer) => {
-            if answer.len() > ANSWER_CAP {
-                let cut = (0..=ANSWER_CAP)
-                    .rev()
-                    .find(|i| answer.is_char_boundary(*i))
-                    .unwrap_or(0);
-                answer.truncate(cut);
-            }
-            Ok(Finished {
-                plain: None,
-                level: Level::Info,
-                message: format!("{name} answered a schedule for {}", brief.title),
-                body: EventBody::AgentAnswered {
-                    series,
-                    text: answer,
-                },
-            })
-        }
-        Err(why) if why == "stopped" => Err(CoreError::internal("cancelled")),
-        Err(why) => Err(CoreError::Service {
+        Outcome::Answer(answer) => Ok(Finished {
+            plain: None,
+            level: Level::Info,
+            message: format!("{name} answered a schedule for {}", brief.title),
+            body: EventBody::AgentAnswered {
+                series,
+                text: whole_lines(answer, ANSWER_CAP),
+            },
+        }),
+        Outcome::Stopped => Err(CoreError::internal("cancelled")),
+        Outcome::Failed(why) => Err(CoreError::Service {
             service: name.to_string(),
             code: "no_answer".to_string(),
             message: why,
@@ -369,27 +362,58 @@ async fn run(
     }
 }
 
+/// How a session ended.
+enum Outcome {
+    Answer(String),
+    Failed(String),
+    Stopped,
+}
+
+/// The agent's process group and folder, ended and removed when dropped.
+struct Cleanup {
+    pid: Option<u32>,
+    dir: PathBuf,
+}
+
+impl Drop for Cleanup {
+    fn drop(&mut self) {
+        if let Some(pid) = self.pid.take() {
+            report::kill_group(pid);
+        }
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// `text` kept to `cap` bytes, cut at the last whole line under it.
+fn whole_lines(text: String, cap: usize) -> String {
+    if text.len() <= cap {
+        return text;
+    }
+    let mut cut = (0..=cap)
+        .rev()
+        .find(|i| text.is_char_boundary(*i))
+        .unwrap_or(0);
+    if let Some(nl) = text[..cut].rfind('\n') {
+        cut = nl;
+    }
+    text[..cut].to_string()
+}
+
 /// The first line of something the agent said, for the developer log.
 fn first_line(text: &str) -> &str {
     text.lines().next().unwrap_or("")
 }
 
-/// Ends the agent and its process group.
-async fn end_group(child: &mut tokio::process::Child) {
-    #[cfg(unix)]
-    if let Some(pid) = child.id() {
-        let _ = std::process::Command::new("kill")
-            .args(["-KILL", "--", &format!("-{pid}")])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    let _ = child.kill().await;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_long_answer_is_cut_at_a_whole_line() {
+        let text = "Episode 1: 2026-01-01\nEpisode 40: 2027-03-14".to_string();
+        assert_eq!(whole_lines(text.clone(), 1000), text);
+        assert_eq!(whole_lines(text, 30), "Episode 1: 2026-01-01");
+    }
 
     #[test]
     fn the_stream_says_text_tools_and_the_answer() {

@@ -116,7 +116,6 @@ pub enum EventBody {
         score: Option<f64>,
         outcomes: Vec<TrackerOutcome>,
     },
-    /// A status from the menu, with what each tracker made of it.
     /// Something the schedule agent said or did on the way (#419): a line of
     /// its text, or a search or a page it read.
     AgentSaid {
@@ -128,6 +127,7 @@ pub enum EventBody {
         series: u64,
         text: String,
     },
+    /// A status from the menu, with what each tracker made of it.
     ListStatusSet {
         series: u64,
         status: ListStatus,
