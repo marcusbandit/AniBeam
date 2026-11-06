@@ -220,5 +220,9 @@ fn a_core_under_a_root_keeps_anirss_and_qbittorrent_inside_it() {
         std::env::set_var("PATH", original_path);
         std::env::remove_var("ANIBEAM_QBITTORRENT_NOX");
     }
-    assert_eq!(snapshot(own.path()), before, "the person's own home changed");
+    assert_eq!(
+        snapshot(own.path()),
+        before,
+        "the person's own home changed"
+    );
 }

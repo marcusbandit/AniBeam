@@ -809,7 +809,7 @@ pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
             return;
         }
     };
-    let here = settings::read(&core)
+    let here = settings::read(core)
         .map(|s| settings::files_here(&s))
         .unwrap_or(false);
     let mut rolls = before.clone();

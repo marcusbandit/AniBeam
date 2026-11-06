@@ -43,13 +43,13 @@ use std::time::Duration;
 
 use crate::contract::*;
 use crate::core::Core;
-use home::AnirssHome;
 use crate::jobs::{Finished, JobCtx};
 use crate::net::{Http, HttpRequest, Method};
 use crate::sync::recover;
 use crate::trackers::accounts::with_secrets;
 use anirss::{AnirssClient, Sidecar, SpawnFailure};
 use backend::DownloadsBackend;
+use home::AnirssHome;
 use qbt::QbtClient;
 
 pub struct Downloads {
@@ -155,7 +155,9 @@ impl Downloads {
 pub fn status(core: &Core) -> Result<DownloadsStatus, CoreError> {
     let secrets = core.secrets().clone();
     let home = AnirssHome::of(&core.paths);
-    let settings = core.store.read(move |c| settings::load(c, &secrets, &home))?;
+    let settings = core
+        .store
+        .read(move |c| settings::load(c, &secrets, &home))?;
     Ok(assemble(core, settings))
 }
 
@@ -180,7 +182,7 @@ fn assemble(core: &Core, settings: DownloadSettings) -> DownloadsStatus {
 }
 
 async fn load_settings(core: &Arc<Core>) -> Result<DownloadSettings, CoreError> {
-    let mut s = settings::read(&core)?;
+    let mut s = settings::read(core)?;
     let mut keys = vec![settings::ANIRSS_TOKEN.to_string()];
     keys.extend(settings::active_password_key(&s));
     keys.extend(
@@ -872,7 +874,7 @@ async fn read_anirss(core: &Arc<Core>, reached: &Reached) -> Result<Read, CoreEr
             e.on_demand = settings::anirss_ondemand(&path, &e.name).map(|o| o.timeout);
         }
     }
-    probe_endpoints(&core, &mut endpoints).await;
+    probe_endpoints(core, &mut endpoints).await;
     let view = client.qbt_status().await?;
     let mut st = core.downloads.state();
     // Asked again under the lock that writes, so no save lands between the two.
@@ -1164,8 +1166,7 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                             DownloadsBackend::with(&owner, DownloadsEngine::Anirss).await?;
                         let listed = owner.downloads.state().endpoints.clone();
                         let target = default_target(endpoint.clone(), &listed);
-                        let fallback =
-                            guard_search(&owner, &listed, target.as_deref()).await?;
+                        let fallback = guard_search(&owner, &listed, target.as_deref()).await?;
                         phase.store(PHASE_FETCHING, Ordering::Relaxed);
                         let raw = backend.search(&query, target.as_deref(), fallback).await?;
                         phase.store(PHASE_READING, Ordering::Relaxed);
@@ -3111,7 +3112,7 @@ pub fn set_settings(
         settings.torrent_url = own_address(core)?;
         settings.torrent_username = managed::USERNAME.to_string();
     }
-    let before = settings::read(&core)?;
+    let before = settings::read(core)?;
     settings::validate(&mut settings, &before.saved_clients)?;
     match anirss_token.map(str::trim) {
         Some("") => {
@@ -3172,7 +3173,7 @@ pub fn set_settings(
 /// Switches the downloads to the saved client `id`, or to AniBeam's own
 /// when there is none. The rest of the settings stay as they are.
 pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
-    let mut s = settings::read(&core)?;
+    let mut s = settings::read(core)?;
     let in_use = match id.as_deref() {
         Some(id) => s.torrent_mode == TorrentMode::Existing && s.active_client == id,
         None => s.torrent_mode == TorrentMode::Managed,
