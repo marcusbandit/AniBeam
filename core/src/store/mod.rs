@@ -732,4 +732,95 @@ mod tests {
             vec![(2, "S02E02".to_string(), 8)]
         );
     }
+
+    /// #630: history, resume points and tracker accounts gain a profile. A database at
+    /// the version before keeps every row, each now the owner's (profile 1); a write that
+    /// names no profile is the owner's; and a second person's row for the same episode
+    /// sits beside the owner's instead of replacing it.
+    #[test]
+    fn the_version_before_profiles_keeps_every_row_as_the_owners() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        {
+            let mut c = rusqlite::Connection::open(&path).unwrap();
+            migrations::MIGRATIONS
+                .to_version(&mut c, migrations::PROFILES - 1)
+                .unwrap();
+            c.execute_batch(
+                "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES (1, 1, 'show', '/tv/A', 'A', 0);
+                 INSERT INTO views (series_id, episode_key, at) VALUES (1, '2', 6);
+                 INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 5), (1, '2', 6);
+                 INSERT INTO watch_log (series_id, episode_key, at, how) VALUES (1, '1', 4, 'played'), (1, '1', 5, 'played');
+                 INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (1, '3', 10, 100, 8);
+                 INSERT INTO tracker_accounts (tracker, user_id, username, connected_at, secret_store) VALUES ('anilist', 42, 'owner', 1, 'file');
+                 INSERT INTO tracker_entries (tracker, media_id, status, progress, fetched_at, notes) VALUES ('anilist', 7, 'CURRENT', 2, 9, 'good');",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let count = |sql: &str| -> i64 {
+            let sql = sql.to_string();
+            store
+                .read(move |c| Ok(c.query_row(&sql, [], |r| r.get(0))?))
+                .unwrap()
+        };
+        for (table, rows) in [
+            ("views", 1),
+            ("completed", 2),
+            ("watch_log", 2),
+            ("resume_points", 1),
+            ("tracker_accounts", 1),
+            ("tracker_entries", 1),
+        ] {
+            assert_eq!(
+                count(&format!("SELECT count(*) FROM {table}")),
+                rows,
+                "{table}"
+            );
+            assert_eq!(
+                count(&format!(
+                    "SELECT count(*) FROM {table} WHERE profile_id = 1"
+                )),
+                rows,
+                "{table} is the owner's"
+            );
+        }
+        assert_eq!(count("SELECT count(*) FROM profiles"), 1);
+        assert_eq!(
+            count("SELECT count(*) FROM tracker_entries WHERE notes = 'good' AND progress = 2"),
+            1
+        );
+        assert_eq!(
+            count(
+                "SELECT count(*) FROM tracker_accounts WHERE username = 'owner' AND secret_store = 'file'"
+            ),
+            1
+        );
+        store
+            .write(|c| {
+                c.execute_batch(
+                    "INSERT INTO profiles (id, tailnet_user, created_at) VALUES (2, 'u2', 0);
+                     INSERT INTO completed (profile_id, series_id, episode_key, at) VALUES (2, 1, '1', 50);
+                     INSERT INTO completed (series_id, episode_key, at) VALUES (1, '3', 7);
+                     INSERT INTO tracker_accounts (profile_id, tracker, username) VALUES (2, 'anilist', 'friend');",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            count("SELECT count(*) FROM completed WHERE episode_key = '1'"),
+            2
+        );
+        assert_eq!(
+            count("SELECT profile_id FROM completed WHERE episode_key = '3'"),
+            1,
+            "a write naming no profile is the owner's"
+        );
+        assert_eq!(
+            count("SELECT at FROM completed WHERE profile_id = 1 AND episode_key = '1'"),
+            5
+        );
+        assert_eq!(count("SELECT count(*) FROM tracker_accounts"), 2);
+    }
 }

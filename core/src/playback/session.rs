@@ -720,7 +720,7 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
     core.store.write(move |c| {
         c.execute(
             "INSERT INTO views (series_id, episode_key, at) VALUES (?1, ?2, ?3)
-             ON CONFLICT(series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
+             ON CONFLICT(profile_id, series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
              WHERE excluded.at > views.at",
             params![series as i64, key, now],
         )?;
@@ -802,7 +802,7 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
         if record {
             tx.execute(
                 "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(series_id, episode_key) DO UPDATE SET at = excluded.at",
+                 ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET at = excluded.at",
                 params![series as i64, key, now],
             )?;
             crate::library::history::log_finish(
@@ -855,7 +855,7 @@ fn write_resume(core: &Core, s: &Session, position: f64) {
     core.store.post(move |c| {
         if let Err(e) = c.execute(
             "INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration, at = excluded.at",
+             ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration, at = excluded.at",
             params![series as i64, key, position, duration, now],
         ) {
             tracing::warn!("the resume point for series {series} {named} was not written: {e}");

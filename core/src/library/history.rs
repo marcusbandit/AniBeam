@@ -123,17 +123,22 @@ pub(crate) fn follow(tx: &Transaction, series: u64, moves: &[Move]) -> Result<()
     for (i, m) in moves.iter().enumerate() {
         let (series, parked, to) = (series as i64, parked(i), m.to.as_str());
         // The new key's own history, where it has some, takes the better of the two.
+        // Each profile's history merges with its own, never with another person's.
         tx.execute(
-            "UPDATE completed SET at = max(at, (SELECT at FROM completed WHERE series_id = ?1 AND episode_key = ?2))
-             WHERE series_id = ?1 AND episode_key = ?3
-               AND EXISTS (SELECT 1 FROM completed WHERE series_id = ?1 AND episode_key = ?2)",
+            "UPDATE completed AS o SET at = max(o.at, (SELECT c.at FROM completed c
+                 WHERE c.profile_id = o.profile_id AND c.series_id = ?1 AND c.episode_key = ?2))
+             WHERE o.series_id = ?1 AND o.episode_key = ?3
+               AND EXISTS (SELECT 1 FROM completed c
+                 WHERE c.profile_id = o.profile_id AND c.series_id = ?1 AND c.episode_key = ?2)",
             params![series, parked, to],
         )?;
         tx.execute(
-            "UPDATE resume_points SET (position, duration, at) =
-               (SELECT position, duration, at FROM resume_points WHERE series_id = ?1 AND episode_key = ?2)
-             WHERE series_id = ?1 AND episode_key = ?3
-               AND position < (SELECT position FROM resume_points WHERE series_id = ?1 AND episode_key = ?2)",
+            "UPDATE resume_points AS o SET (position, duration, at) =
+               (SELECT r.position, r.duration, r.at FROM resume_points r
+                 WHERE r.profile_id = o.profile_id AND r.series_id = ?1 AND r.episode_key = ?2)
+             WHERE o.series_id = ?1 AND o.episode_key = ?3
+               AND o.position < (SELECT r.position FROM resume_points r
+                 WHERE r.profile_id = o.profile_id AND r.series_id = ?1 AND r.episode_key = ?2)",
             params![series, parked, to],
         )?;
         for table in KEYED {
@@ -330,6 +335,48 @@ mod tests {
                 ("SP01v2.mkv".into(), 4),
                 ("SP01v2.mkv".into(), 5),
             ]
+        );
+    }
+
+    /// #630: a key move is the library's, so every profile's history moves, and each
+    /// merges only with its own.
+    #[test]
+    fn each_profile_merges_with_its_own_history() {
+        let (_dir, store, ids) = setup(&["63"], &["63"]);
+        store
+            .tx(|tx| {
+                tx.execute_batch(
+                    "INSERT INTO profiles (id, created_at) VALUES (2, 0);
+                     INSERT INTO completed (profile_id, series_id, episode_key, at) VALUES (2, 1, '63', 10), (2, 1, '1', 3);
+                     INSERT INTO resume_points (profile_id, series_id, episode_key, position, duration, at) VALUES
+                       (1, 1, '63', 100, 1400, 1), (2, 1, '63', 50, 1400, 1), (2, 1, '1', 70, 1400, 1);",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        set_keys(&store, &ids, &["1"]);
+        let m = moves(&ids, &["63"], &["1"]);
+        store.tx(move |tx| follow(tx, 1, &m)).unwrap();
+        let rows = |sql: &str| -> Vec<(i64, String, f64)> {
+            let sql = sql.to_string();
+            store
+                .read(move |c| {
+                    let mut stmt = c.prepare(&sql)?;
+                    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+                    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+                })
+                .unwrap()
+        };
+        assert_eq!(
+            rows(
+                "SELECT profile_id, episode_key, CAST(at AS REAL) FROM completed ORDER BY profile_id"
+            ),
+            vec![(1, "1".into(), 0.0), (2, "1".into(), 10.0)]
+        );
+        assert_eq!(
+            rows("SELECT profile_id, episode_key, position FROM resume_points ORDER BY profile_id"),
+            vec![(1, "1".into(), 100.0), (2, "1".into(), 70.0)],
+            "each keeps its own furthest point"
         );
     }
 

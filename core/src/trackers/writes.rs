@@ -375,7 +375,7 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
              SELECT DISTINCT series_id, episode_key, ?3 FROM files
              WHERE series_id = ?1 AND kind = 'episode' AND COALESCE(season, 1) = ?4
                AND number >= 1 AND number < ?2
-             ON CONFLICT(series_id, episode_key) DO NOTHING",
+             ON CONFLICT(profile_id, series_id, episode_key) DO NOTHING",
             params![series as i64, past, now, season],
         )?;
         tx.execute(

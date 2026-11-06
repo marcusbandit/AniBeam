@@ -268,7 +268,7 @@ pub fn patch_progress(
     conn.execute(
         "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
          VALUES (?1, ?2, ?3, ?4, NULL, 0, ?5, ?6)
-         ON CONFLICT(tracker, media_id) DO UPDATE SET
+         ON CONFLICT(profile_id, tracker, media_id) DO UPDATE SET
              progress = excluded.progress,
              status = COALESCE(excluded.status, tracker_entries.status),
              updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
@@ -301,7 +301,7 @@ pub fn patch_score(
     conn.execute(
         "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
          VALUES (?1, ?2, ?3, 0, ?4, 0, ?5, ?6)
-         ON CONFLICT(tracker, media_id) DO UPDATE SET
+         ON CONFLICT(profile_id, tracker, media_id) DO UPDATE SET
              score = excluded.score,
              status = COALESCE(excluded.status, tracker_entries.status),
              updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
@@ -357,7 +357,7 @@ pub fn patch_notes(
     conn.execute(
         "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at, notes)
          VALUES (?1, ?2, NULL, 0, NULL, 0, ?3, ?4, ?5)
-         ON CONFLICT(tracker, media_id) DO UPDATE SET
+         ON CONFLICT(profile_id, tracker, media_id) DO UPDATE SET
              notes = excluded.notes,
              updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
              fetched_at = excluded.fetched_at",

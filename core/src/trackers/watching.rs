@@ -434,7 +434,7 @@ async fn fetch(core: &Arc<Core>, user_id: u64, token: &str) -> Result<Vec<Row>, 
 /// zeroed by a page read.
 const ENTRY_UPSERT: &str = "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
      VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)
-     ON CONFLICT(tracker, media_id) DO UPDATE SET
+     ON CONFLICT(profile_id, tracker, media_id) DO UPDATE SET
         status = excluded.status,
         progress = excluded.progress,
         score = excluded.score,
