@@ -155,6 +155,8 @@ fn a_core_under_a_root_keeps_anirss_and_qbittorrent_inside_it() {
     let mut auto = fresh.settings.clone();
     auto.torrent_url = OWN_QBT.to_string();
     save(&core, auto);
+    // Nothing on AniBeam's own port until it starts; then it answers
+    http.fail_next("connection refused");
     for _ in 0..4 {
         http.push_for("app/version", 200, "v5.1.2");
     }
