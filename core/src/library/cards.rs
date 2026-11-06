@@ -684,6 +684,10 @@ impl Snapshot {
         let plan_total = self.season_total(row, total);
         let entry = self.tracker(row);
         let watched = entry.map(|e| e.progress);
+        let list = match entry {
+            Some(e) => (e.status, e.score),
+            None => self.local_list(row),
+        };
         let (total_episodes, total_is_estimate) = total_with_estimate(total, latest_aired, watched);
 
         let code = match row.kind {
@@ -811,8 +815,8 @@ impl Snapshot {
             community_score: media
                 .and_then(|m| m.average_score)
                 .map(|s| f64::from(s) / 10.0),
-            my_score: entry.and_then(|e| e.score),
-            list_status: entry.and_then(|e| e.status),
+            my_score: list.1,
+            list_status: list.0,
             next_airing: match next_scheduled {
                 Some(n) => Some(Airing {
                     episode: n.number,

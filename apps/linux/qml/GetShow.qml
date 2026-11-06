@@ -34,6 +34,10 @@ Item {
     // Set when a Get went through; it clears the picks and is not drawn
     property string actionLine: ""
     property string actionError: ""
+    // The core's own words behind actionError, for Details, and the button that fixes it
+    property string actionErrorDetail: ""
+    property string actionFixLabel: ""
+    property var actionRetry: null
     property real nowMs: Date.now()
     signal back()
     signal fetch(string name)
@@ -473,8 +477,10 @@ Item {
     // ---- Provider words
     function kindWords(e) {
         if (e.on_demand) return "Started when a search needs it"
-        if (e.kind === "nyaa") return "Anime torrents"
+        if (e.kind === "filtered-rss") return "RSS search"
         if (e.kind === "rss") return "RSS feed"
+        if (e.kind === "json-feed" || e.kind === "json") return "JSON search"
+        if (e.kind === "torznab") return "Indexer search"
         return e.kind
     }
     function readyWords(e) {
@@ -956,7 +962,14 @@ Item {
                     // What the last Get or Subscribe did, until the next pick
                     Label { objectName: "get-action-line"; visible: root.actionLine !== "" && root.actionError === "" && root.planList.length === 0
                         width: parent.width; text: root.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }
-                    Label { visible: root.actionError !== ""; width: parent.width; text: root.actionError; role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap }
+                    ErrorLine {
+                        objectName: "get-action-error"
+                        width: parent.width
+                        text: root.actionError
+                        detail: root.actionErrorDetail
+                        actionText: root.acting ? "" : root.actionFixLabel
+                        action: root.actionRetry
+                    }
                 }
             }
         }
@@ -1213,8 +1226,8 @@ Item {
         property string value: ""
         width: parent ? parent.width : 0
         height: Math.max(keyLabel.implicitHeight, valueLabel.implicitHeight, openBtn.visible ? openBtn.height : 0)
-        Label { id: keyLabel; width: theme.space(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
-        Label { id: valueLabel; x: theme.space(18); width: parent.width - x - (openBtn.visible ? openBtn.width + theme.space(2) : 0); text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
+        Label { id: keyLabel; width: theme.textSpace(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+        Label { id: valueLabel; x: theme.textSpace(18); width: parent.width - x - (openBtn.visible ? openBtn.width + theme.space(2) : 0); text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
         // A folder opens from its line
         property bool folder: false
         Button { id: openBtn; visible: parent.folder && parent.value !== ""; anchors.right: parent.right; anchors.verticalCenter: valueLabel.verticalCenter

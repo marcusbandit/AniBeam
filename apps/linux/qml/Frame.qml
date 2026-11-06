@@ -839,13 +839,31 @@ FocusScope {
         if (frame.canSetListStatus(c)) out = out.concat(frame.listStatusItems(c.id, c.list_status))
         return out
     }
-    // A list status is the trackers': it is offered for a series that a connected tracker
-    // carries an id for, and not for a hidden one, whose tracker sync is off. A match with only
-    // an AniList id and only MAL connected has nowhere to write, so it gets no menu.
+    // A list status is offered for every series but a hidden one, whose tracker sync is off. It
+    // goes to every connected tracker that carries an id for the series, and stays on this
+    // device when none does (#213).
+    // A series AniBeam put a name to: any provider id at all. Show info's sections and Help's
+    // count both read it, so the two never disagree.
+    function hasMatch(card) {
+        return !!card && !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
+    }
     function trackerOn(t) { return !!Door.trackers && !!Door.trackers[t] && Door.trackers[t].connected === true }
     function canSetListStatus(c) {
-        if (!c || c.hidden || !c.match_info) return false
+        return !!c && !c.hidden
+    }
+    // Whether a series' status and score reach a tracker, or stay on this device (#213): a
+    // series with no match, or with no account behind its ids, keeps them here
+    function listsOnline(c) {
+        if (!c || !c.match_info) return false
         return (frame.trackerOn("anilist") && !!c.match_info.anilist_id) || (frame.trackerOn("mal") && !!c.match_info.mal_id)
+    }
+    // Where a series' status and score go, in a line for a tooltip
+    function listHome(c) {
+        if (frame.listsOnline(c)) return "Change it on each list that is connected"
+        var m = c && c.match_info
+        if (!m || (!m.anilist_id && !m.mal_id)) return "Kept on this device: no tracker carries this show"
+        if (frame.trackerOn("anilist") || frame.trackerOn("mal")) return "Kept on this device: your tracker does not carry this show"
+        return "Kept on this device until you connect AniList or MyAnimeList"
     }
     // The five lists a status pill or a card's right-click moves a series to, the one it is on
     // already greyed out. The core writes it to every connected tracker.
@@ -864,7 +882,8 @@ FocusScope {
     function setListStatus(id, status, label) {
         var r = Door.call("SetListStatus", { series: id, status: status })
         if (r.error) { frame.fail(r.error); return false }
-        frame.toast("Moving to " + label)
+        // No job is the list kept on this device, already moved
+        frame.toast(r.reply && r.reply.job !== undefined ? "Moving to " + label : "Moved to " + label)
         return true
     }
     // Text onto the clipboard, and a word that it went
@@ -898,6 +917,33 @@ FocusScope {
         if (JSON.stringify(d) !== JSON.stringify(subtitleDefaults)) subtitleDefaults = d
     }
     Connections { target: Door; function onSettingsChanged() { frame.subtitleRebuild() } }
+
+    // ---- Episode out (#212): the core says when an episode of a show on the Watching list
+    // airs; the desktop shows it unless Settings turned it off. A click raises the window on
+    // the series, or on Get episodes when the library does not have the show.
+    Connections {
+        target: Door
+        function onEpisodeOut(ep) {
+            if (Door.preferences.episode_notifications === false) return
+            frame.episodesOut[ep.anilist_id] = ep
+            Shell.notifyEpisode(ep)
+        }
+    }
+    // The episodes said this run, by AniList id, so a click on one can hand Downloads its titles
+    property var episodesOut: ({})
+    Connections {
+        target: Shell
+        function onNotificationOpened(series, anilistId, title, token) {
+            if (frame.hostWindow) Shell.raiseWindow(frame.hostWindow, token)
+            if (series >= 0) frame.go("series", { id: series }, title)
+            else {
+                // Downloads searches by the latin titles, so each goes over as AniList has it
+                var ep = frame.episodesOut[anilistId] || {}
+                frame.go("downloads", { hit: { id: anilistId, title: title, romaji: ep.romaji || title, english: ep.english || "",
+                                               native: ep.native || "", cover_url: "", episodes: 0, format: "", year: 0 } }, "Downloads")
+            }
+        }
+    }
     Timer { id: subtitleSave; interval: 250; onTriggered: frame.flushSubtitleDefaults() }
     function editSubtitleDefaults(f) {
         var d = JSON.parse(JSON.stringify(subtitleDefaults))

@@ -17,11 +17,13 @@ fn preferences_and_settings_round_trip_with_events() {
         library_arrange: Arrange::WatchState,
         library_group_franchises: true,
         share_over_tailscale: false,
+        stream_over_tailscale: true,
         tailnet_switched_off: Vec::new(),
         on_hold_auto: false,
         on_hold_days: 90,
         discord_presence: false,
         calendar_feed: false,
+        episode_notifications: true,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {

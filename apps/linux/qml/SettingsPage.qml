@@ -29,6 +29,7 @@ FocusScope {
         { id: "downloads", name: "Downloads", icon: "download", run: 2 },
         { id: "phone", name: "Phone app", icon: "radio", run: 2 },
         { id: "storage", name: "Storage and backup", icon: "hard-drive", run: 3 },
+        { id: "help", name: "Help", icon: "circle-question-mark", run: 3 },
         { id: "about", name: "About", icon: "info", run: 3 }
     ].concat(frame.devOn ? [{ id: "developer", name: "Developer", icon: "bug", run: 3 }] : [])
     // Old tab names still open the section that took their place
@@ -125,11 +126,12 @@ FocusScope {
             var t = downloads.torrent || {}
             if (t.connected) return "qBittorrent answered"
             var a = downloads.anirss || {}
-            if (a.state === "Missing") return "anirss is not installed"
+            if (a.state === "Missing") return "Search helper not installed"
             return "Not connected yet"
         }
         if (id === "phone") return Door.preferences.share_over_tailscale ? "Shared on your tailnet" : "Not shared"
         if (id === "storage") return storage ? Fmt.bytes(storage.image_bytes || 0) + " of images cached" : "Images, export and import"
+        if (id === "help") return "Answers to what people ask most"
         if (id === "about") return frame.updatePanel.phase === "offer" && frame.updatePanel.shown ? "Version " + frame.updatePanel.version + " is out" : Shell.build
         if (id === "developer") return frame.devRecorder.last ? frame.devRecorder.last.label + " built in " + Math.round(frame.devRecorder.last.built) + " ms" : "Timing every page"
         return ""
@@ -158,6 +160,7 @@ FocusScope {
         ["appearance", "Dark theme", "colour scheme base16", "Colours from"],
         ["appearance", "Light theme", "colour scheme base16", "Colours from"],
         ["appearance", "Accent", "colour highlight"],
+        ["appearance", "Text size", "font type words bigger smaller larger zoom scale read accessibility"],
         ["appearance", "Density", "compact comfortable spacing size"],
         ["appearance", "Poster size", "cards small medium large"],
         ["appearance", "Out now on Airing", "airing out now cards list rows style banner posters"],
@@ -193,11 +196,18 @@ FocusScope {
         ["downloads", "Search sources", "endpoints feeds config anirss"],
         ["downloads", "Source lists", "repo repos endpoint signed endpoints jackett prowlarr"],
         ["phone", "Share over Tailscale", "phone android tailnet remote host"],
+        ["phone", "Stream episodes", "stream play cast episodes phone files"],
         ["phone", "Devices on your tailnet", "trust trusted switch off block device tailscale"],
         ["storage", "Back up the library", "export backup file json"],
         ["storage", "Restore from a backup", "import restore file json"],
         ["storage", "Image cache", "posters clear images disk cache"],
         ["storage", "Where AniBeam keeps its files", "database data config cache folder path"],
+        ["help", "How should my folders look?", "help folder layout naming episodes seasons movies files structure"],
+        ["help", "Why didn't my show get recognised?", "help match wrong show not found unmatched recognised"],
+        ["help", "How do I connect AniList?", "help anilist myanimelist mal sign in connect login tracker"],
+        ["help", "Why is Downloads empty?", "help downloads empty sources nothing torrent qbittorrent"],
+        ["help", "Where is my data?", "help data files backup database privacy"],
+        ["help", "Something else?", "help setup onboarding walkthrough report bug problem issue"],
         ["about", "Version", "build what's new changelog"],
         ["about", "Setup", "first run walkthrough onboarding run setup again"],
         ["about", "Updates", "stable nightly channel check"],
@@ -360,7 +370,7 @@ FocusScope {
             opacity: page.query === "" ? 1 : 0
             enabled: page.query === ""
             source: "Settings" + ({ library: "Library", accounts: "Accounts", appearance: "Appearance", playback: "Playback", subtitles: "Subtitles",
-                                     keys: "Keys", downloads: "Downloads", phone: "Phone", storage: "Data", about: "About", developer: "Developer" })[page.current] + "Tab.qml"
+                                     keys: "Keys", downloads: "Downloads", phone: "Phone", storage: "Data", help: "Help", about: "About", developer: "Developer" })[page.current] + "Tab.qml"
             onLoaded: {
                 item.contentY = frame.settingsScroll[page.current] || 0
                 if (page.pendingFocus !== "") focusLater.restart()

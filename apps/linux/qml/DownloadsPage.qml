@@ -53,6 +53,10 @@ Item {
     readonly property var torrent: status ? status.torrent : null
     readonly property bool anirssReady: !!anirss && anirss.state === "Ready"
     readonly property bool anirssStarting: !!anirss && anirss.state === "Starting"
+    // AniBeam itself searches: nothing waits on the search helper (#549)
+    readonly property bool nativeEngine: !!status && !!status.settings && status.settings.engine === "Native"
+    // Searches, subscriptions and the rules list can go ahead
+    readonly property bool searchReady: nativeEngine || anirssReady
     readonly property bool torrentOn: !!torrent && torrent.connected
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     // Whether the search's source has a feed a subscription can follow (#507)
@@ -64,7 +68,7 @@ Item {
     readonly property string clientName: status && status.settings ? (status.settings.torrent_client === "Qbittorrent" ? "qBittorrent" : String(status.settings.torrent_client)) : "qBittorrent"
     readonly property var savedClients: status && status.settings && status.settings.saved_clients ? status.settings.saved_clients : []
     // A remote anirss keeps the client its own config names, so the chip cannot switch it
-    readonly property bool remoteAnirss: !!status && !!status.settings && status.settings.anirss_mode === "Remote"
+    readonly property bool remoteAnirss: !nativeEngine && !!status && !!status.settings && status.settings.anirss_mode === "Remote"
     // The client in use by the name it was saved under, once there is more than one to
     // tell apart (the saved ones and AniBeam's own); with one, plain "qBittorrent"
     readonly property string activeClientName: {
@@ -108,11 +112,11 @@ Item {
     property real checkJob: -1
     function checkSources() {
         var r = Door.call("CheckEndpoints", {})
-        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        if (r.error) { frame.fail(r.error, page.checkSources); return }
         page.checkJob = r.reply.job
     }
 
-    // ---- Starting a source's service (Jackett, behind 1337x): ask, then the core starts it
+    // ---- Starting an on-demand source's service: ask, then the core starts it
     property real startJob: -1
     property string startName: ""
     function askStart(name) {
@@ -124,10 +128,11 @@ Item {
     }
     function startService(name) {
         var r = Door.call("StartEndpoint", { name: name })
-        if (r.error) { startSheet.error = page.errorWords(r.error); return }
+        if (r.error) { startSheet.error = page.errorWords(r.error); startSheet.detail = page.detailOf(r.error); return }
         page.startJob = r.reply.job
         page.startName = name
         startSheet.error = ""
+        startSheet.detail = ""
         startSheet.busy = true
     }
     function startDone(ok, error) {
@@ -139,8 +144,8 @@ Item {
             page.storeSource(name, true)
             startSheet.close()
             frame.toast(name + " is running and switched on")
-        } else if (startSheet.visible) startSheet.error = page.errorWords(error)
-        else frame.toast(page.errorWords(error), 6)
+        } else if (startSheet.visible) { startSheet.error = page.errorWords(error); startSheet.detail = page.detailOf(error) }
+        else frame.fail(error, function() { page.askStart(name) })
     }
 
     // ---- The library, for the lenses and the suggestions
@@ -341,6 +346,18 @@ Item {
     property bool getActing: false
     property string getLine: ""
     property string getError: ""
+    property string getErrorDetail: ""
+    // What the last Get sends again: its downloads, with its follow
+    property var getRetry: null
+    // The Get error's button: { label, act }
+    property var getFix: ({})
+    function failGet(e, retry) {
+        page.getError = e ? page.errorWords(e) : ""
+        page.getErrorDetail = e ? page.detailOf(e) : ""
+        page.getFix = e ? page.fixOf(e, retry) : ({})
+    }
+    // The follow a Get started, so a follow that fails alone is tried again alone
+    property var followPlan: null
     // The torrents that fill a show: linked to its series, or saved under a folder named
     // as it is (a show not scanned into the library yet)
     function keyOf(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "") }
@@ -405,7 +422,7 @@ Item {
         page.getResults = ({})
         page.getActive = ""
         page.getLine = ""
-        page.getError = ""
+        page.failGet(null)
         page.gridReturn = null
         page.dropSearches()
         page.state = null
@@ -426,7 +443,7 @@ Item {
     function searchGetAs(name, at) {
         var qs = page.getShow.queries || [page.getShow.query]
         var r = Door.searchReleases(qs[at], name)
-        if (r.error) { page.setResult(name, { state: "error", error: page.errorWords(r.error) }); return }
+        if (r.error) { page.setResult(name, { state: "error", error: page.errorWords(r.error), detail: page.detailOf(r.error) }); return }
         var j = Object.assign({}, page.getJobs); j[r.reply.job] = name; page.getJobs = j
         page.setResult(name, { state: "searching", label: at > 0 ? "Trying " + qs[at] : "", elapsed: 0, start: Date.now(), at: at })
     }
@@ -443,7 +460,8 @@ Item {
     // the button has turned before anything waits on the client
     function getAndFollow(plan) {
         page.getLine = ""
-        page.getError = ""
+        page.failGet(null)
+        page.getRetry = function() { page.getAndFollow(plan) }
         page.getActing = true
         sendTimer.plan = plan
         sendTimer.restart()
@@ -458,7 +476,7 @@ Item {
             page.pendingFollow = plan.follow ? plan : null
             if (plan.items.length) {
                 var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
-                if (r.error) { page.getActing = false; page.getError = page.errorWords(r.error); return }
+                if (r.error) { page.getActing = false; page.failGet(r.error, page.getRetry); return }
                 page.getJob = r.reply.job
             } else if (plan.follow) page.follow(plan)
             else page.getActing = false
@@ -466,9 +484,10 @@ Item {
     }
     function follow(plan) {
         page.pendingFollow = null
+        page.followPlan = plan
         var series = plan.options && plan.options.series != null ? plan.options.series : -1
         var r = Door.subscribe(plan.followQuery, plan.endpoint, plan.followItems, plan.name, plan.query !== plan.followQuery ? plan.query : "", series)
-        if (r.error) { page.getActing = false; page.getError = page.errorWords(r.error); return }
+        if (r.error) { page.getActing = false; page.failGet(r.error, function() { page.follow(plan) }); return }
         page.followJob = r.reply.job
         page.getActing = true
     }
@@ -509,6 +528,13 @@ Item {
     property bool searching: false
     property string notice: ""
     property string searchError: ""
+    // The search error's Details and its button: { detail, label, act }
+    property var searchFix: ({})
+    // A search error in plain words, with the button that does the fix (#538)
+    function sayOnSearch(text, detail, label, act) {
+        page.searchFix = { detail: detail || "", label: act ? label : "", act: act || null }
+        page.searchError = text
+    }
     property var selected: ({})
     property int hoveredGroup: -1
     property string nameText: ""
@@ -518,6 +544,28 @@ Item {
     property bool acting: false
     property string actionLine: ""
     property string actionError: ""
+    property string actionErrorDetail: ""
+    // What the last subscribe or download sends again
+    property var actionRetry: null
+    // The action error's button, taken when the error is shown: { label, act }
+    property var actionFix: ({})
+    function failAction(e, retry) {
+        page.actionError = e ? page.errorWords(e) : ""
+        page.actionErrorDetail = e ? page.detailOf(e) : ""
+        page.actionFix = e ? page.fixOf(e, retry) : ({})
+    }
+    // The button an error offers, read the way frame.fail reads it (#538): a settings fix
+    // opens that tab, a retry runs `retry` again, and an error with no fix offers nothing
+    function fixOf(e, retry) {
+        var fix = String(e && e.fix !== undefined ? e.fix : "retry")
+        if (fix.indexOf("settings:") === 0) {
+            var tab = fix.slice(9)
+            return { label: "Open settings", act: function() { frame.go("settings", { tab: tab }) } }
+        }
+        return fix === "retry" && retry ? { label: "Try again", act: retry } : ({})
+    }
+    // A search error from a call, with its button
+    function failSearch(e, retry) { var f = page.fixOf(e, retry); page.sayOnSearch(page.errorWords(e), page.detailOf(e), f.label, f.act) }
     readonly property var items: state && state.items ? state.items : []
     readonly property var groups: state && state.groups ? state.groups : []
     readonly property int selectedCount: { var n = 0; for (var k in selected) if (selected[k]) n++; return n }
@@ -576,6 +624,13 @@ Item {
     property var shows: ({})
     property bool torrentsRead: false
     property string torrentsError: ""
+    property string torrentsErrorDetail: ""
+    property var torrentsFix: ({})
+    function failTorrents(e) {
+        page.torrentsError = page.errorWords(e)
+        page.torrentsErrorDetail = page.detailOf(e)
+        page.torrentsFix = page.fixOf(e, page.pollTorrents)
+    }
     // What is being removed, by key: "r:" a rule name, "g:" a group key, "t:" a hash
     property var removing: ({})
     // Removals waiting their turn ({ target, choice }), and the one running
@@ -595,7 +650,7 @@ Item {
 
     function reload() {
         var r = Door.getDownloads()
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.reload); return }
         page.status = r.reply.status
     }
     // The helper the settings point at is not the one AniBeam comes with: a remote server, or
@@ -609,13 +664,13 @@ Item {
         s.anirss_mode = "Sidecar"
         s.anirss_command = "anirss"
         var r = Door.setDownloadSettings(s, {})
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.useBuiltInHelper); return }
         page.reload()
         page.connect()
     }
     function connect() {
         var r = Door.connectDownloads()
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.connect); return }
         page.connectJob = r.reply.job !== undefined ? r.reply.job : -1
         page.connecting = true
     }
@@ -637,7 +692,7 @@ Item {
     }
     function useClient(id) {
         var r = Door.useTorrentClient(id)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, function() { page.useClient(id) }); return }
         frame.forgetDownloadsRules()
         page.torrents = []
         page.repoll = true
@@ -645,13 +700,19 @@ Item {
     }
     function pollTorrents() {
         var r = Door.listTorrents()
-        if (r.error) page.torrentsError = r.error.message
+        if (r.error) page.failTorrents(r.error)
     }
+    // A call error in plain words with what to do next (#538): the bridge's own sentences,
+    // never the core's message alone; that stays one click away, under Details
     function errorWords(e) {
+        if (e && e.plain) return e.plain + (e.next ? " " + e.next : "")
         var m = String(e && e.message ? e.message : "")
-        if (e && e.kind === "Service" && e.code === "qbt_auth_required") return "anirss cannot log in to " + page.clientName + ". Save its password in Settings."
-        if (e && e.kind === "Service" && e.code === "unauthorized") return m + ". Check the address and password in Settings."
-        return m === "" ? "Something went wrong." : m
+        return m === "" ? "Something went wrong. Try again." : m
+    }
+    // The core's own message for Details, when it says more than the plain words
+    function detailOf(e) {
+        var m = String(e && e.message ? e.message : "")
+        return m !== "" && m !== page.errorWords(e) ? m : ""
     }
 
     // ---- The search
@@ -676,8 +737,14 @@ Item {
         if (q === "") { search.focusInput(); return }
         var names = only && only.length ? only : page.enabledEndpoints.map(function(e) { return e.name })
         if (!names.length) {
-            page.searchError = page.endpoints.length ? "Every source is switched off. Switch one on under the search."
-                : "There are no sources to search yet. Add a source list in Settings, under Downloads."
+            if (page.endpoints.length) {
+                var first = page.endpoints[0].name
+                page.sayOnSearch("Every source is switched off. Switch one on to search.", "", "Turn on " + first, function() {
+                    page.setSource(first, true)
+                    // A source that runs now searches at once; one to start asks first
+                    if (page.sourceOn(first)) page.runSearch()
+                })
+            } else page.sayOnSearch("There are no sources to search yet. Add a source list in Settings, under Downloads.", "", "Open settings", function() { frame.go("settings", { tab: "downloads" }) })
             return
         }
         page.closeGet()
@@ -688,13 +755,18 @@ Item {
         var jobs = {}, results = {}, failed = []
         for (var i = 0; i < names.length; i++) {
             var r = Door.searchReleases(q, names[i])
-            if (r.error) { results[names[i]] = { state: "error", error: page.errorWords(r.error) }; failed.push(r.error.message); continue }
+            if (r.error) { results[names[i]] = { state: "error", error: page.errorWords(r.error), detail: page.detailOf(r.error) }; failed.push(r.error); continue }
             jobs[r.reply.job] = names[i]
             results[names[i]] = { state: "searching" }
         }
         page.searchJobs = jobs
         page.searchResults = results
-        if (!Object.keys(jobs).length) { page.searchError = failed.join(" "); return }
+        if (!Object.keys(jobs).length) {
+            if (failed.length === 1) page.failSearch(failed[0], function() { page.runSearch(only) })
+            else page.sayOnSearch("No source could start the search. Try again in a moment.",
+                failed.map(function(e) { return String(e.message || "") }).join("\n"), "Try again", function() { page.runSearch(only) })
+            return
+        }
         page.searching = true
         page.searchStartMs = Date.now()
         page.searchElapsed = 0
@@ -748,7 +820,7 @@ Item {
         for (var i = 0; i < page.endpoints.length; i++) {
             var n = page.endpoints[i].name, r = page.searchResults[n]
             if (!r) continue
-            if (r.state === "error") errors.push(n + ": " + r.error)
+            if (r.state === "error") errors.push(n + ": " + (r.detail || r.error))
             if (r.state !== "done") continue
             if (firstDone === "") firstDone = n
             if (withItems === "" && r.search.items.length > 0) withItems = n
@@ -757,13 +829,15 @@ Item {
         if (withItems !== "" && (cur === null || (cur.items.length === 0 && page.history.length === 0 && page.adoptedFrom !== withItems))) page.adoptFrom(withItems)
         else if (cur === null && pend === 0 && firstDone !== "") page.adoptFrom(firstDone)
         if (page.searchJob < 0 && (page.state !== null || pend === 0)) page.searching = false
-        if (page.state === null && pend === 0 && errors.length) page.searchError = errors.join(". ")
+        if (page.state === null && pend === 0 && errors.length)
+            page.sayOnSearch(errors.length === 1 ? "The search on " + errors[0].split(": ")[0] + " did not work. Try again, or search another source."
+                : "None of the sources could search. Try again in a moment.", errors.join("\n"), "Try again", function() { page.runSearch() })
         page.retarget()
     }
     function refine(op) {
         if (!page.state || page.searching) return
         var r = Door.refineReleases(page.state.query, page.state.endpoint, page.state.items, op)
-        if (r.error) { page.searchError = r.error.message; return }
+        if (r.error) { page.failSearch(r.error, function() { page.refine(op) }); return }
         page.searchJob = r.reply.job
         page.searching = true
         page.searchStartMs = Date.now()
@@ -860,27 +934,33 @@ Item {
     }
     function selectedItems() { return page.items.filter(function(i) { return page.selected[i.link] === true }) }
     function act(r) {
-        if (r.error) { page.actionError = page.errorWords(r.error); return }
+        if (r.error) { page.failAction(r.error, page.actionRetry); return }
         page.actionJob = r.reply.job
         page.acting = true
         page.actionLine = ""
-        page.actionError = ""
+        page.failAction(null)
     }
     function subscribe() {
         if (!page.state) return
+        page.actionRetry = page.subscribe
         var wire = page.state.wireQuery && page.state.wireQuery !== page.state.query ? page.state.wireQuery : ""
         act(Door.subscribe(page.state.query, page.state.endpoint, page.state.items, page.nameText, wire, -1))
     }
-    function download(items) { if (items.length) act(Door.downloadReleases(items, page.nameText)) }
+    function download(items) {
+        if (!items.length) return
+        page.actionRetry = function() { page.download(items) }
+        act(Door.downloadReleases(items, page.nameText))
+    }
     function movie() {
         var one = selectedItems()
-        if (one.length !== 1) { page.actionError = "Select exactly one release to download as a movie."; return }
+        if (one.length !== 1) { page.actionRetry = null; page.failAction(null); page.actionError = "Tick one release, then press Download as a movie."; return }
+        page.actionRetry = page.movie
         act(Door.downloadMovie(one[0].link))
     }
     function previewSubscription() {
         if (!page.state) return
         var r = Door.previewSubscription(page.state.query, page.state.endpoint, page.state.items)
-        if (r.error) { page.actionError = page.errorWords(r.error); return }
+        if (r.error) { page.failAction(r.error, page.previewSubscription); return }
         page.previewJob = r.reply.job
     }
 
@@ -1053,7 +1133,7 @@ Item {
     function repairRule() {
         if (page.detail === null || !page.detail.rule) return
         var r = Door.repairSubscription(page.detail.rule)
-        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        if (r.error) { frame.fail(r.error, page.repairRule); return }
         page.repairJob = r.reply.job
         page.repairLabel = "Trying shorter searches"
     }
@@ -1110,7 +1190,7 @@ Item {
         var tag = page.feedEpoch + "." + page.feedAsks
         page.feed = { url: url, tag: tag, entries: entries, loading: true, error: "" }
         var res = Door.readFeed(url, tag)
-        if (res.error) page.feed = { url: url, tag: tag, entries: [], loading: false, error: page.errorWords(res.error) }
+        if (res.error) page.feed = { url: url, tag: tag, entries: [], loading: false, error: page.errorWords(res.error), detail: page.detailOf(res.error) }
     }
     // A rule whose feed changed under the open show, a repair's shorter search say, is
     // read again from the rule the page holds, and so is one a repair just settled, once
@@ -1145,7 +1225,7 @@ Item {
     function controlMany(hashes, action) {
         if (!hashes.length) return
         var r = Door.controlTorrents(hashes, action, false)
-        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        if (r.error) { frame.fail(r.error, function() { page.controlMany(hashes, action) }); return }
         var p = Object.assign({}, page.pending), now = Date.now()
         hashes.forEach(function(h) { p[h] = { action: action, at: now } })
         page.pending = p
@@ -1334,7 +1414,8 @@ Item {
         var t = next.target, c = next.choice
         var r = Door.removeShow(t.title, t.rule, t.hashes, c.torrents, c.files, t.series)
         if (r.error) {
-            frame.toast(page.errorWords(r.error))
+            // Nothing of it was removed; Try again asks for it once more
+            frame.fail(r.error, function() { page.queue = page.queue.concat([next]); page.mark(next.keys, true); page.startNext() })
             page.mark(next.keys, false)
             page.startNext()
             return
@@ -1355,12 +1436,14 @@ Item {
     // ---- The head's one line
     readonly property string summary: {
         if (!page.status) return "Connecting."
+        var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected. Check its address and password in Settings, under Downloads."
+        // Until the first connect has asked the client, there is nothing to say about it
+        if (page.nativeEngine) return "AniBeam searches your sources itself." + (page.connecting ? "" : " " + t)
         // Until it runs, the line is in plain words: the helper's name means nothing yet
         if (page.connecting && !page.anirssReady) return "Starting downloads."
         var a = page.anirss
         if (a.state === "Missing" || a.state === "Failed") return "Downloads is not running."
         if (a.state === "Off") return "Downloads has not started yet."
-        var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected: " + (page.torrent.message || "no answer") + "."
         return "The search helper " + a.version + " is ready. " + t
     }
 
@@ -1374,7 +1457,7 @@ Item {
             page.status = status
             page.connecting = false
             page.checkJob = -1
-            if (page.anirssReady && !frame.downloadsRulesRead) page.loadRules()
+            if (page.searchReady && !frame.downloadsRulesRead) page.loadRules()
             if (page.repoll && page.torrentOn) { page.repoll = false; page.pollTorrents() }
         }
         function onJobProgress(job, kind, done, total, label) {
@@ -1501,6 +1584,7 @@ Item {
             page.transfer = transfer
             page.torrentsRead = true
             page.torrentsError = ""
+            page.torrentsErrorDetail = ""
             page.settlePending()
         }
         function onFeedRead(tag, entries) {
@@ -1510,12 +1594,12 @@ Item {
         }
         function onDownloadsUnavailable(what, error) {
             if (what === "dates") { if (page.datesState === "loading") page.datesState = "none"; return }
-            if (what === "torrents") page.torrentsError = page.errorWords(error)
-            else if (what === "feed" && page.feed) page.feed = { url: page.feed.url, tag: page.feed.tag, entries: page.feed.entries, loading: false, error: page.errorWords(error) }
+            if (what === "torrents") page.failTorrents(error)
+            else if (what === "feed" && page.feed) page.feed = { url: page.feed.url, tag: page.feed.tag, entries: page.feed.entries, loading: false, error: page.errorWords(error), detail: page.detailOf(error) }
             // A fresh subscription whose rule could not be read has no feed to read yet. It
             // says so, and the other read, or the watch's next rule read, still fills it.
             else if ((what === "rule" || what === "subscriptions") && page.feedAfterRules && page.feed && page.feed.url === "")
-                page.feed = { url: "", tag: "", entries: [], loading: false, error: page.errorWords(error) }
+                page.feed = { url: "", tag: "", entries: [], loading: false, error: page.errorWords(error), detail: page.detailOf(error) }
         }
         function onShowRemoved(job, title, rule, hashes, trashed) {
             if (job !== page.runningJob) return
@@ -1528,31 +1612,38 @@ Item {
             if (page.getJobs[job] !== undefined) {
                 var gn = page.getJobs[job]
                 var gj = Object.assign({}, page.getJobs); delete gj[job]; page.getJobs = gj
-                page.setResult(gn, { state: "error", error: page.errorWords(error) })
+                page.setResult(gn, { state: "error", error: page.errorWords(error), detail: page.detailOf(error) })
                 return
             }
-            if (job === page.getJob || job === page.followJob) { page.getJob = -1; page.followJob = -1; page.getActing = false; page.pendingFollow = null; page.getError = page.errorWords(error); return }
-            if (job === page.checkJob) { page.checkJob = -1; frame.toast(page.errorWords(error)); return }
+            if (job === page.getJob || job === page.followJob) {
+                // A follow that failed after its downloads went through is tried again alone
+                var plan = page.followPlan, again = job === page.followJob && plan ? function() { page.follow(plan) } : page.getRetry
+                page.getJob = -1; page.followJob = -1; page.getActing = false; page.pendingFollow = null
+                page.failGet(error, again)
+                return
+            }
+            if (job === page.checkJob) { page.checkJob = -1; frame.fail(error, page.checkSources); return }
             if (page.searchJobs[job] !== undefined) {
                 var fn = page.searchJobs[job]
                 var fj = Object.assign({}, page.searchJobs); delete fj[job]; page.searchJobs = fj
-                var fr = Object.assign({}, page.searchResults); fr[fn] = { state: "error", error: page.errorWords(error) }; page.searchResults = fr
+                var fr = Object.assign({}, page.searchResults); fr[fn] = { state: "error", error: page.errorWords(error), detail: page.detailOf(error) }; page.searchResults = fr
                 page.settleSearch()
                 return
             }
             if (job === page.startJob) { page.startDone(false, error); return }
-            if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.searchError = page.errorWords(error) }
-            else if (job === page.actionJob) { page.acting = false; page.actionError = page.errorWords(error) }
-            else if (job === page.connectJob) { page.connecting = false; frame.toast(page.errorWords(error)) }
-            else if (job === page.previewJob) { page.previewJob = -1; frame.toast(page.errorWords(error)) }
-            else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.toast(page.errorWords(error), 6) }
+            if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.failSearch(error, function() { page.runSearch() }) }
+            else if (job === page.actionJob) { page.acting = false; page.failAction(error, page.actionRetry) }
+            else if (job === page.connectJob) { page.connecting = false; frame.fail(error, page.connect) }
+            else if (job === page.previewJob) { page.previewJob = -1; frame.fail(error, page.previewSubscription) }
+            else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.fail(error, page.repairRule) }
             else if (job === page.runningJob) {
-                frame.toast(page.errorWords(error))
+                // The run stops here, so nothing after it is removed; no retry on a guess
+                frame.fail(error)
                 // A failure stops the run: what is left is not removed on a guess
                 page.queue.forEach(function(q) { page.mark(q.keys, false) })
                 page.queue = []
                 page.finishRunning(false)
-            } else if (kind === "ControlTorrents") frame.toast(page.errorWords(error))
+            } else if (kind === "ControlTorrents") frame.fail(error)
         }
         function onJobCancelled(job, kind) {
             if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
@@ -1662,6 +1753,7 @@ Item {
     }
     ActivityColumn {
         id: activity
+        onReconnect: page.connect()
         visible: page.activityShown || page.activityOpen
         z: 5
         anchors.right: page.activityShown ? parent.right : activityStrip.left
@@ -1726,13 +1818,15 @@ Item {
                 Label {
                     objectName: "downloads-anirss-chip"
                     anchors.verticalCenter: parent.verticalCenter
-                    text: page.anirssReady ? "Search ready" : page.connecting ? "Search starting" : "Search off"
+                    text: page.searchReady ? "Search ready" : page.connecting ? "Search starting" : "Search off"
                     role: "ledger"; font.pointSize: theme.typeNormal
-                    color: page.anirssReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
+                    color: page.searchReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
                     font.underline: anirssChipMouse.containsMouse
                     MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
                         Accessible.onPressAction: frame.go("settings", { tab: "downloads" }) }
-                    Tooltip { text: page.anirssReady ? page.summary + " It answers at " + page.anirss.url + "." : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
+                    Tooltip { text: page.nativeEngine ? page.summary : page.anirssReady ? page.summary + " It answers at " + page.anirss.url + "." : (page.anirss && page.anirss.state === "Missing" ? "The search helper is not installed. Click for the Downloads settings, which say how to add it"
+                        : page.anirss && page.anirss.state === "Failed" ? "The search helper stopped. Reconnect starts it again; the Downloads settings say what went wrong"
+                        : "Open the Downloads settings") }
                 }
                 Label {
                     objectName: "downloads-client-chip"
@@ -1752,7 +1846,7 @@ Item {
                             var p = parent.mapToItem(frame, 0, parent.height); frame.openMenu(p.x, p.y, page.clientMenu())
                         }
                     }
-                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url.replace(/\/\/[^\/@]*@/, "//") : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + (page.remoteAnirss ? "\nA search helper you run yourself uses the client its own settings name" : "\nClick to switch clients") }
+                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url.replace(/\/\/[^\/@]*@/, "//") : (page.activeClientName + " is not connected. Reconnect, or check its address in Settings")) + (page.remoteAnirss ? "\nA search helper you run yourself uses the client its own settings name" : "\nClick to switch clients") }
                 }
                 Button {
                     text: page.connecting ? "Connecting" : "Reconnect"
@@ -1971,7 +2065,15 @@ Item {
                 Label { visible: !!page.state; text: page.state ? page.state.query : ""; role: "title"; font.pointSize: theme.typeNormal; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle; width: Math.min(implicitWidth, parent.width * 0.5) }
                 Label { visible: !!page.state; text: page.state ? Fmt.plural(page.items.length, "release", "releases") + " on " + page.state.endpoint : ""; role: "ledger"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
                 Label { visible: page.notice !== "" && !page.searching; text: page.notice; role: "ui"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
-                Label { visible: page.searchError !== ""; text: page.searchError; role: "ui"; color: theme.red; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
+            }
+            // On a line of its own: the words wrap and Details opens under them
+            ErrorLine {
+                objectName: "downloads-search-error"
+                width: parent.width
+                text: page.searchError
+                detail: page.searchFix.detail || ""
+                actionText: page.searchFix.label || ""
+                action: page.searchFix.act || null
             }
             // While it runs: what it is doing, for how long, and the ways out
             SearchProgress {
@@ -2004,11 +2106,11 @@ Item {
                         small: true
                         selected: page.adoptedFrom === modelData && page.state !== null
                         dimmed: !res || res.state === "idle" || res.state === "error"
-                        // A failed source says why on the chip, cut short; the tip has it whole, and a
+                        // A failed source says so on the chip; the tip says why in plain words, and a
                         // click asks that source again
                         clickable: !!res && (res.state === "done" || res.state === "error")
                         readonly property string why: res && res.state === "error" && res.error ? String(res.error) : ""
-                        hint: !res ? "" : res.state === "searching" ? "searching" : res.state === "error" ? (why !== "" ? "failed: " + (why.length > 36 ? why.slice(0, 35) + "\u2026" : why) : "failed") : res.state === "idle" ? "cancelled" : Fmt.plural(res.search.items.length, "release", "releases")
+                        hint: !res ? "" : res.state === "searching" ? "searching" : res.state === "error" ? "failed" : res.state === "idle" ? "cancelled" : Fmt.plural(res.search.items.length, "release", "releases")
                         onClicked: if (res.state === "error") page.runSearch([modelData]); else page.adoptFrom(modelData)
                         Tooltip { text: found.why !== "" ? found.why + "\nClick to try again" : "" }
                     }
@@ -2271,7 +2373,14 @@ Item {
                             Label { visible: !!(page.preview && page.preview.must_not_contain); width: parent.width; text: page.preview ? "Must not contain " + page.preview.must_not_contain : ""; role: "ledger"; color: theme.textDim; wrapMode: Text.Wrap }
                         }
                         Label { visible: page.actionLine !== ""; width: parent.width; text: page.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }
-                        Label { visible: page.actionError !== ""; width: parent.width; text: page.actionError; role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap }
+                        ErrorLine {
+                            objectName: "downloads-action-error"
+                            width: parent.width
+                            text: page.actionError
+                            detail: page.actionErrorDetail
+                            actionText: page.actionFix.label || ""
+                            action: page.actionFix.act || null
+                        }
                     }
                 }
             }
@@ -2282,7 +2391,7 @@ Item {
         Item {
             id: helperDown
             objectName: "downloads-helper-down"
-            visible: !!page.status && !page.anirssReady && !page.connecting && page.state === null && page.detail === null
+            visible: !!page.status && !page.searchReady && !page.connecting && page.state === null && page.detail === null
             width: parent.width
             height: visible ? theme.space(50) : 0
             readonly property bool missing: !!page.anirss && page.anirss.state === "Missing"
@@ -2337,6 +2446,9 @@ Item {
                 clientName: page.activeClientName
                 actionLine: page.getLine
                 actionError: page.getError
+                actionErrorDetail: page.getErrorDetail
+                actionFixLabel: page.getFix.label || ""
+                actionRetry: page.getFix.act || null
                 nowMs: page.nowMs
                 onBack: page.closeGet()
                 onFetch: function(name) { page.fetchGet(name) }
@@ -2519,11 +2631,19 @@ Item {
             BandHead {
                 title: "Following"
                 count: page.rules.length
-                line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds AniBeam watches, as the shows they fill." : "None yet.") : (page.anirssReady ? "Reading." : "")
+                line: page.rulesError !== "" ? "Your subscriptions could not be read." : page.rulesLoaded ? (page.rules.length ? "Feeds AniBeam watches, as the shows they fill." : "None yet.") : (page.searchReady ? "Reading." : "")
                 alarm: page.rulesError !== ""
                 view: frame.downloadsSubView
                 viewName: "downloads-sub-view"
                 onViewPicked: function(v) { frame.downloadsSubView = v }
+            }
+            ErrorLine {
+                objectName: "downloads-rules-error"
+                width: parent.width
+                text: page.rulesError !== "" ? "AniBeam could not read your subscriptions. Try again in a moment." : ""
+                detail: page.rulesError
+                actionText: "Try again"
+                action: function() { frame.readDownloadsRules() }
             }
             Repeater {
                 model: page.subSections
@@ -2608,7 +2728,10 @@ Item {
                 visible: page.rulesLoaded && page.rules.length === 0 && page.rulesError === ""
                 width: parent.width
                 height: visible ? theme.space(30) : 0
-                EmptyState { icon: "rss"; title: "No subscriptions"; body: "Search above and subscribe to keep a show coming." }
+                EmptyState {
+                    icon: "rss"; title: "No subscriptions"; body: "Search above and subscribe to keep a show coming."
+                    Button { objectName: "downloads-no-rules-search"; text: "Search"; icon: "search"; primary: true; onClicked: search.focusInput() }
+                }
             }
         }
 
@@ -2621,13 +2744,21 @@ Item {
                 title: "Downloaded"
                 count: page.downloadedCount
                 line: Fmt.bytes(page.diskBytes) + " on disk. "
-                      + (!page.torrentOn ? (page.torrent && page.torrent.message ? page.torrent.message : page.clientName + " is not connected.")
-                      : page.torrentsError !== "" ? page.torrentsError
+                      + (!page.torrentOn ? page.clientName + " is not connected."
+                      : page.torrentsError !== "" ? "The download list could not be read."
                       : page.torrentsRead ? Fmt.plural(page.torrents.length, "torrent", "torrents") + ", " + Fmt.bytes(page.downloadedSize) + " in " + page.clientName + "." : "Reading.")
                 alarm: !page.torrentOn || page.torrentsError !== ""
                 view: frame.downloadsDlView
                 viewName: "downloads-dl-view"
                 onViewPicked: function(v) { frame.downloadsDlView = v }
+            }
+            ErrorLine {
+                objectName: "downloads-torrents-error"
+                width: parent.width
+                text: page.torrentOn ? page.torrentsError : ""
+                detail: page.torrentsErrorDetail
+                actionText: page.torrentsFix.label || ""
+                action: page.torrentsFix.act || null
             }
             // How much of the disk is watched, counted by episode, and the button that clears it
             Item {
@@ -2703,8 +2834,9 @@ Item {
                 EmptyState {
                     icon: page.torrentOn ? "download" : "circle-alert"
                     title: page.torrentOn ? "Nothing downloaded" : page.clientName + " is not connected"
-                    body: page.torrentOn ? "What you download or subscribe to shows up here, a show at a time." : (page.torrent && page.torrent.message ? page.torrent.message : "Check its address and password in Settings.")
-                    Button { visible: !page.torrentOn; text: "Settings"; icon: "settings"; onClicked: frame.go("settings", { tab: "downloads" }) }
+                    body: page.torrentOn ? "What you download or subscribe to shows up here, a show at a time." : "Check it is running, then connect again. Its address and password are in Settings, under Downloads."
+                    Button { objectName: "downloads-client-reconnect"; visible: !page.torrentOn; text: "Connect again"; icon: "refresh-cw"; primary: true; busy: page.connecting; onClicked: page.connect() }
+                    Button { visible: !page.torrentOn; text: "Open settings"; icon: "settings"; flat: true; onClicked: frame.go("settings", { tab: "downloads" }) }
                 }
             }
         }

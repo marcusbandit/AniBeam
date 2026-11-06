@@ -239,11 +239,13 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 library_arrange: Arrange::Related,
                 library_group_franchises: true,
                 share_over_tailscale: false,
+                stream_over_tailscale: true,
                 tailnet_switched_off: Vec::new(),
                 on_hold_auto: true,
                 on_hold_days: ON_HOLD_DAYS,
                 discord_presence: false,
                 calendar_feed: false,
+                episode_notifications: true,
             }
         ),
         other => panic!("{other:?}"),
@@ -303,11 +305,13 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         library_arrange: Arrange::Related,
         library_group_franchises: true,
         share_over_tailscale: false,
+        stream_over_tailscale: true,
         tailnet_switched_off: Vec::new(),
         on_hold_auto: true,
         on_hold_days: ON_HOLD_DAYS,
         discord_presence: false,
         calendar_feed: false,
+        episode_notifications: true,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),
