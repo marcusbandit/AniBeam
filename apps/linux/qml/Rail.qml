@@ -22,7 +22,7 @@ Item {
     ]
     readonly property var secondary: [
         { index: 3, text: "Feed", icon: "rss" }, { index: 4, text: "Watching", icon: "eye" },
-        { index: 8, text: "Stats", icon: "chart-pie" }, { index: 5, text: "Metadata", icon: "database" }, { index: 6, text: "Downloads", icon: "download" },
+        { index: 8, text: "Stats", icon: "chart-pie" }, { index: 5, text: "Show info", icon: "database" }, { index: 6, text: "Downloads", icon: "download" },
         { index: 7, text: "Settings", icon: "settings" }
     ]
     readonly property real pad: theme.space(2)

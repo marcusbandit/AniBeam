@@ -122,6 +122,13 @@ pub enum EventBody {
         status: ListStatus,
         outcomes: Vec<TrackerOutcome>,
     },
+    /// The series' notes as written, None when cleared, with what each
+    /// tracker made of them (#211).
+    NotesSet {
+        series: u64,
+        notes: Option<String>,
+        outcomes: Vec<TrackerOutcome>,
+    },
     ProgressRefreshed {
         tracker: Tracker,
     },
@@ -166,6 +173,11 @@ pub enum EventBody {
     /// (Tailscale came up, the port was taken).
     HostChanged {
         status: HostStatus,
+    },
+    /// A fresh read of the tailnet's devices for Settings, which
+    /// `ListTailnetDevices` starts and does not wait for.
+    TailnetDevicesChanged {
+        devices: Vec<TailnetDevice>,
     },
     /// Discord rich presence connected, or let the connection go: Discord
     /// closed, stopped answering, or the switch went off.

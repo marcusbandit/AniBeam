@@ -13,6 +13,9 @@ body:
 
         No agent? Use the **Bug report** form instead.
 
+        A way AniBeam could harm the people who use it is not an issue: report it privately,
+        as [SECURITY.md](https://github.com/marcusbandit/AniBeam/blob/main/SECURITY.md) says.
+
   - type: textarea
     id: what-happened
     attributes:
