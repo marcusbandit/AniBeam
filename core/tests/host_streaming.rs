@@ -9,9 +9,13 @@ use std::time::Duration;
 
 use anibeam_core::*;
 use anibeam_host_api as wire;
+use axum::extract::connect_info::MockConnectInfo;
 
+/// Serves the router as if every request came from this machine, which the
+/// host always answers, so only the streaming switch decides.
 fn serve(rt: &tokio::runtime::Runtime, core: &Arc<Core>) -> String {
-    let app = anibeam_core::host::server::router(Arc::downgrade(core));
+    let me: std::net::SocketAddr = "127.0.0.1:40000".parse().unwrap();
+    let app = anibeam_core::host::server::router(Arc::downgrade(core)).layer(MockConnectInfo(me));
     rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let at = l.local_addr().unwrap();
