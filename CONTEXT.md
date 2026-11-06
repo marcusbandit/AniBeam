@@ -57,7 +57,7 @@ A tracker list: AniList calls it Paused, MAL calls it On Hold. With the On hold 
 _Avoid_: paused, idle, stale, backlog
 
 **Rewatch**:
-Watching a completed show again. AniList keeps a rewatch under way as the Repeating list; MAL keeps it as a flag on Watching. The rewatch count goes up one when a rewatch finishes: a mark completes a Repeating entry, or the last episode of a completed show is marked after another of its episodes was watched to the end here since the list last changed. A film watched again counts at once. Playing only the last episode again is not a rewatch.
+Watching a completed show again. AniList keeps a rewatch under way as the Repeating list; MAL keeps it as a flag on Watching. The rewatch count goes up one when a rewatch finishes: a mark completes a Repeating entry, or the last episode of a completed show is marked after its first episode was watched to the end here since the list last changed. A film counts when its list has stood still for twelve hours. Playing only the last episode again is not a rewatch, and the status menu never counts one.
 _Avoid_: repeat, rerun
 
 **List dates**:
