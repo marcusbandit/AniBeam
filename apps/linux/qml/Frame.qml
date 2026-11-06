@@ -74,10 +74,10 @@ FocusScope {
     // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
     // pushed back after the clear, in the order they were opened.
     function reclaimFrameOwned() {
-        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet })
+        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === onboarding })
         escapeStack.clear()
         keep.forEach(function(e) {
-            if (e.closer === drawer ? drawer.open : connectSheet.visible) escapeStack.push(e.kind, e.closer)
+            if (e.closer === drawer ? drawer.open : e.closer.visible) escapeStack.push(e.kind, e.closer)
         })
     }
 
@@ -435,6 +435,15 @@ FocusScope {
         }
     }
 
+    // The first run (#193): over the whole frame, the rail included, and under the overlay,
+    // so the connect sheet, toasts and tips still draw over it.
+    Onboarding {
+        id: onboarding
+        z: 550
+    }
+    function openOnboarding(step) { whatsNew.close(); onboarding.open(step) }
+    readonly property alias onboardingPanel: onboarding
+
     // The tracker connect sheet, over everything: the Watching page's empty
     // list, the library's nudge and the Trackers panel all send the user here.
     ConnectSheet {
@@ -455,7 +464,7 @@ FocusScope {
         WhatsNew { id: whatsNew }
         UpdateNotice {
             id: updateNotice
-            covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible
+            covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible || onboarding.visible
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.bottom: parent.bottom; anchors.bottomMargin: rail.footHeight + theme.space(4)
         }
@@ -519,6 +528,9 @@ FocusScope {
     function startNotes() {
         if (notesStarted) return
         notesStarted = true
+        // Before What's new, which keeps a fresh install's version as read: a fresh install
+        // gets the first run instead, an older one only has it marked done
+        onboarding.start()
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
     function openWhatsNew() { whatsNew.open() }

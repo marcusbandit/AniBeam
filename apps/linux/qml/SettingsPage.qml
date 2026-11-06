@@ -198,6 +198,7 @@ FocusScope {
         ["storage", "Image cache", "posters clear images disk cache"],
         ["storage", "Where AniBeam keeps its files", "database data config cache folder path"],
         ["about", "Version", "build what's new changelog"],
+        ["about", "Setup", "first run walkthrough onboarding run setup again"],
         ["about", "Updates", "stable nightly channel check"],
         ["about", "Developer options", "debug timing", "", "unforced"],
         ["about", "Ratings", "imdb credit"]
