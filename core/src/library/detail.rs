@@ -190,6 +190,7 @@ impl Snapshot {
             genres: media.map(|m| m.genres.clone()).unwrap_or_default(),
             tags: media.map(|m| tags_of(&m.tags)).unwrap_or_default(),
             rewatch_count: entry.map(|e| e.repeat).filter(|r| *r > 0),
+            notes: entry.and_then(|e| e.notes.clone()),
             site_url: media.and_then(|m| m.site_url.clone()),
             progress: ProgressLine {
                 watched: card.watched,

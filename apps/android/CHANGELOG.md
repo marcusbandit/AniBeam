@@ -12,6 +12,10 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ## 2.4.3 · 2026-11-05
 
+### New
+- Starting and finishing a show dates it on AniList and MyAnimeList
+- Finishing a completed show again counts a rewatch
+
 ### Fixed
 - Seeders show for releases from more trackers
 - A refine or subscribe on a source you just removed says it is gone

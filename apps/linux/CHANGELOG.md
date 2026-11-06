@@ -15,6 +15,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Starting and finishing a show dates it on AniList and MyAnimeList
+- Finishing a completed show again counts a rewatch
+- Write notes on a show's list entry from its page
 - Settings shows whether Discord is connected, under Playback
 - Set a show's schedule under Fixes: pick episodes and a date, or paste a list
 - Fixes is three items: Episodes and dates, Files and Match

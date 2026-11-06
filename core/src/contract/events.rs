@@ -122,6 +122,13 @@ pub enum EventBody {
         status: ListStatus,
         outcomes: Vec<TrackerOutcome>,
     },
+    /// The series' notes as written, None when cleared, with what each
+    /// tracker made of them (#211).
+    NotesSet {
+        series: u64,
+        notes: Option<String>,
+        outcomes: Vec<TrackerOutcome>,
+    },
     ProgressRefreshed {
         tracker: Tracker,
     },

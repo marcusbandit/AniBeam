@@ -165,9 +165,11 @@ fn a_mark_writes_to_both_trackers_and_the_card_follows() {
     );
     let vars = graphql_variables(&http, "SaveMediaListEntry");
     assert_eq!(vars.len(), 1);
+    // A finish with no date on the list dates it today (#211).
+    let (day, _) = today();
     assert_eq!(
         vars[0],
-        serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED" })
+        serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED", "completedAt": day })
     );
     let forms = mal_forms(&http);
     assert_eq!(forms.len(), 1);
@@ -195,7 +197,7 @@ fn a_mark_writes_to_both_trackers_and_the_card_follows() {
     assert!(
         c.events()
             .iter()
-            .any(|e| e.message == "anilist 11 -> 12 (mediaId 1)"),
+            .any(|e| e.message == "anilist 11 -> 12 (mediaId 1) + finished"),
         "{:#?}",
         c.events()
             .iter()
@@ -555,7 +557,9 @@ fn a_score_goes_to_both_trackers_and_completes_a_finished_list() {
 
     assert_eq!(
         graphql_variables(&http, "SaveMediaListEntry"),
-        vec![serde_json::json!({ "mediaId": 1, "scoreRaw": 87, "status": "COMPLETED" })]
+        vec![
+            serde_json::json!({ "mediaId": 1, "scoreRaw": 87, "status": "COMPLETED", "completedAt": today().0 })
+        ]
     );
     let forms = mal_forms(&http);
     assert_eq!(forms.len(), 1);
@@ -720,7 +724,9 @@ fn completed_fills_the_list_to_the_total() {
 
     assert_eq!(
         graphql_variables(&http, "SaveMediaListEntry"),
-        vec![serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED" })]
+        vec![
+            serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED", "completedAt": today().0 })
+        ]
     );
     let forms = mal_forms(&http);
     assert_eq!(forms.len(), 1);
@@ -794,4 +800,435 @@ fn an_exhausted_rate_limit_is_one_sanitised_outcome() {
     );
     // Nothing was written, so the cache says nothing either.
     assert_eq!(card(&core, series).watched, None);
+}
+
+// Dates, rewatches and notes (#211) -------------------------------------------
+
+/// Today as the trackers' dates read it: the UTC day, as AniList's fuzzy
+/// date and as MAL's string.
+fn today() -> (serde_json::Value, String) {
+    let t = ::time::OffsetDateTime::now_utc();
+    let (y, m, d) = (t.year(), u8::from(t.month()), t.day());
+    (
+        serde_json::json!({ "year": y, "month": m, "day": d }),
+        format!("{y:04}-{m:02}-{d:02}"),
+    )
+}
+
+fn form_has(form: &[(String, String)], key: &str, value: &str) -> bool {
+    form.contains(&(key.to_string(), value.to_string()))
+}
+
+fn form_keys(form: &[(String, String)]) -> Vec<String> {
+    form.iter().map(|(k, _)| k.clone()).collect()
+}
+
+/// The cached entry's own timestamp, put back by `secs`, as if the list
+/// last changed that long ago.
+fn age_entry(core: &Core, tracker: &str, media_id: u64, secs: i64) {
+    let tracker = tracker.to_string();
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE tracker_entries SET updated_at = updated_at - ?3 WHERE tracker = ?1 AND media_id = ?2",
+                rusqlite::params![tracker, media_id as i64, secs],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+/// The first episode watched starts the show on both lists, dated today,
+/// and nothing finishes yet.
+#[test]
+fn the_first_episode_sets_the_start_date_on_both_trackers() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"MediaList":{"progress":0,"status":"PLANNING","repeat":0,"startedAt":{"year":null},"completedAt":{"year":null}}}}"#,
+    );
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"SaveMediaListEntry":{"id":9,"progress":1,"status":"CURRENT"}}}"#,
+    );
+    http.push_for("myanimelist", 404, r#"{"error":"not_found"}"#);
+    http.push_for("myanimelist", 200, "{}");
+
+    let job = started(
+        core.call(Call::MarkEpisode {
+            series,
+            episode: 1.0,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+
+    let (day, mal_day) = today();
+    assert_eq!(
+        graphql_variables(&http, "SaveMediaListEntry"),
+        vec![
+            serde_json::json!({ "mediaId": 1, "progress": 1, "status": "CURRENT", "startedAt": day })
+        ]
+    );
+    let forms = mal_forms(&http);
+    assert!(
+        form_has(&forms[0], "start_date", &mal_day),
+        "{:?}",
+        forms[0]
+    );
+    assert!(
+        !form_keys(&forms[0]).contains(&"finish_date".to_string()),
+        "{:?}",
+        forms[0]
+    );
+}
+
+/// Completing a show dates the finish where the list has none, and leaves
+/// a date the list already has alone; a start date already there stays too.
+#[test]
+fn completing_sets_the_finish_date_only_where_there_is_none() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+
+    // AniList already has both dates, from a finish somewhere else.
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"MediaList":{"progress":11,"status":"CURRENT","repeat":0,"startedAt":{"year":2024},"completedAt":{"year":2024}}}}"#,
+    );
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"SaveMediaListEntry":{"id":9,"progress":12,"status":"COMPLETED"}}}"#,
+    );
+    // MAL has the start and no finish.
+    http.push_for(
+        "myanimelist",
+        200,
+        r#"{"my_list_status":{"status":"watching","num_episodes_watched":11,"is_rewatching":false,"num_times_rewatched":0,"start_date":"2026-10-01"}}"#,
+    );
+    http.push_for("myanimelist", 200, "{}");
+
+    let job = started(
+        core.call(Call::MarkEpisode {
+            series,
+            episode: 12.0,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+
+    assert_eq!(
+        graphql_variables(&http, "SaveMediaListEntry"),
+        vec![serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED" })]
+    );
+    let (_, mal_day) = today();
+    let forms = mal_forms(&http);
+    assert!(
+        form_has(&forms[0], "finish_date", &mal_day),
+        "{:?}",
+        forms[0]
+    );
+    assert!(
+        !form_keys(&forms[0]).contains(&"start_date".to_string()),
+        "{:?}",
+        forms[0]
+    );
+}
+
+/// The status menu dates what it says: Watching starts the show, Completed
+/// finishes it without inventing a start date.
+#[test]
+fn the_status_menu_dates_watching_and_completed() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    let (day, _) = today();
+
+    for (status, reply) in [
+        (ListStatus::Watching, "CURRENT"),
+        (ListStatus::Completed, "COMPLETED"),
+    ] {
+        http.push_for(
+            "anilist",
+            200,
+            r#"{"data":{"MediaList":{"progress":0,"status":"PLANNING","repeat":0,"startedAt":{"year":null},"completedAt":{"year":null}}}}"#,
+        );
+        http.push_for(
+            "anilist",
+            200,
+            format!(r#"{{"data":{{"SaveMediaListEntry":{{"id":9,"status":"{reply}"}}}}}}"#),
+        );
+        let job = started(core.call(Call::SetListStatus { series, status }).unwrap());
+        common::wait_job(&c, job);
+    }
+    let vars = graphql_variables(&http, "SaveMediaListEntry");
+    assert_eq!(
+        vars[0],
+        serde_json::json!({ "mediaId": 1, "status": "CURRENT", "startedAt": day })
+    );
+    assert_eq!(
+        vars[1],
+        serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED", "completedAt": day })
+    );
+}
+
+/// A completed show watched again from an earlier episode and finished
+/// counts a rewatch on both lists, and the series page says so.
+#[test]
+fn finishing_a_completed_show_again_counts_a_rewatch() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+    fixtures::insert_tracker_entry(&core, "anilist", 1, 12, "completed", None);
+    age_entry(&core, "anilist", 1, 30 * 86_400);
+    // Episode 1 finished here since the list last changed: a rewatch.
+    fixtures::insert_completed(&core, series, "1", anibeam_core::time::now_secs());
+
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"MediaList":{"progress":12,"status":"COMPLETED","repeat":1,"startedAt":{"year":2025},"completedAt":{"year":2025}}}}"#,
+    );
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"SaveMediaListEntry":{"id":9,"progress":12,"status":"COMPLETED"}}}"#,
+    );
+    http.push_for(
+        "myanimelist",
+        200,
+        r#"{"my_list_status":{"status":"completed","num_episodes_watched":12,"is_rewatching":false,"num_times_rewatched":0,"start_date":"2025-01-01","finish_date":"2025-02-01"}}"#,
+    );
+    http.push_for("myanimelist", 200, "{}");
+
+    let job = started(
+        core.call(Call::MarkEpisode {
+            series,
+            episode: 12.0,
+        })
+        .unwrap(),
+    );
+    let done = common::wait_job(&c, job);
+    let outcomes = match done.body {
+        EventBody::Marked { outcomes, .. } => outcomes,
+        other => panic!("{other:?}"),
+    };
+    assert!(outcomes.iter().all(|o| o.ok), "{outcomes:?}");
+    assert_eq!(
+        graphql_variables(&http, "SaveMediaListEntry"),
+        vec![
+            serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED", "repeat": 2 })
+        ]
+    );
+    let forms = mal_forms(&http);
+    assert!(
+        form_has(&forms[0], "num_times_rewatched", "1"),
+        "{:?}",
+        forms[0]
+    );
+    assert!(
+        form_has(&forms[0], "is_rewatching", "false"),
+        "{:?}",
+        forms[0]
+    );
+    assert!(!form_keys(&forms[0]).contains(&"finish_date".to_string()));
+
+    let Reply::SeriesDetail { detail } = core.call(Call::GetSeries { series }).unwrap() else {
+        panic!()
+    };
+    assert_eq!(detail.rewatch_count, Some(2));
+}
+
+/// Playing only the last episode of a completed show again is not a
+/// rewatch: the mark is refused before a request, as any covered mark is.
+#[test]
+fn the_last_episode_alone_again_is_not_a_rewatch() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::insert_file(
+        &core,
+        series,
+        "/lib/Bebop/12.mkv",
+        12.0,
+        None,
+        "episode",
+        anibeam_core::time::now_secs(),
+    );
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::insert_tracker_entry(&core, "anilist", 1, 12, "completed", None);
+    age_entry(&core, "anilist", 1, 30 * 86_400);
+    fixtures::insert_completed(&core, series, "12", anibeam_core::time::now_secs());
+
+    let err = core
+        .call(Call::MarkEpisode {
+            series,
+            episode: 12.0,
+        })
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        CoreError::Refused {
+            reason: Refusal::NotNewer
+        }
+    );
+    assert!(http.requests().is_empty());
+}
+
+/// A rewatch under way stays one: a mark keeps AniList's Repeating rather
+/// than turning it back into a first watch, and the last episode completes
+/// it with one more rewatch counted.
+#[test]
+fn a_rewatch_under_way_keeps_repeating_and_its_end_counts() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+
+    for (from, to) in [(3, 4.0), (11, 12.0)] {
+        http.push_for(
+            "anilist",
+            200,
+            format!(
+                r#"{{"data":{{"MediaList":{{"progress":{from},"status":"REPEATING","repeat":2,"startedAt":{{"year":2025}},"completedAt":{{"year":2025}}}}}}}}"#
+            ),
+        );
+        http.push_for(
+            "anilist",
+            200,
+            r#"{"data":{"SaveMediaListEntry":{"id":9}}}"#,
+        );
+        let job = started(
+            core.call(Call::MarkEpisode {
+                series,
+                episode: to,
+            })
+            .unwrap(),
+        );
+        common::wait_job(&c, job);
+    }
+    let vars = graphql_variables(&http, "SaveMediaListEntry");
+    assert_eq!(
+        vars,
+        vec![
+            serde_json::json!({ "mediaId": 1, "progress": 4, "status": "REPEATING" }),
+            serde_json::json!({ "mediaId": 1, "progress": 12, "status": "COMPLETED", "repeat": 3 }),
+        ]
+    );
+}
+
+/// Notes go to both trackers, AniList's notes and MAL's comments, the
+/// series page reads them back, and a blank clears them.
+#[test]
+fn notes_are_written_to_both_trackers_and_read_back() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+
+    for _ in 0..2 {
+        http.push_for(
+            "anilist",
+            200,
+            r#"{"data":{"MediaList":{"progress":3,"status":"CURRENT","repeat":0}}}"#,
+        );
+        http.push_for(
+            "anilist",
+            200,
+            r#"{"data":{"SaveMediaListEntry":{"id":9,"notes":"x"}}}"#,
+        );
+        http.push_for(
+            "myanimelist",
+            200,
+            r#"{"my_list_status":{"status":"watching","num_episodes_watched":3}}"#,
+        );
+        http.push_for("myanimelist", 200, "{}");
+    }
+
+    let job = started(
+        core.call(Call::SetSeriesNotes {
+            series,
+            notes: "  Watch the dub next time  ".into(),
+        })
+        .unwrap(),
+    );
+    let done = common::wait_job(&c, job);
+    match done.body {
+        EventBody::NotesSet {
+            notes, outcomes, ..
+        } => {
+            assert_eq!(notes.as_deref(), Some("Watch the dub next time"));
+            assert_eq!(outcomes.len(), 2);
+            assert!(outcomes.iter().all(|o| o.ok), "{outcomes:?}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        graphql_variables(&http, "notes: $notes"),
+        vec![serde_json::json!({ "mediaId": 1, "notes": "Watch the dub next time" })]
+    );
+    assert_eq!(
+        mal_forms(&http)[0],
+        vec![(
+            "comments".to_string(),
+            "Watch the dub next time".to_string()
+        )]
+    );
+    let detail = |core: &Core| match core.call(Call::GetSeries { series }).unwrap() {
+        Reply::SeriesDetail { detail } => detail,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        detail(&core).notes.as_deref(),
+        Some("Watch the dub next time")
+    );
+
+    let job = started(
+        core.call(Call::SetSeriesNotes {
+            series,
+            notes: "   ".into(),
+        })
+        .unwrap(),
+    );
+    let done = common::wait_job(&c, job);
+    assert!(matches!(done.body, EventBody::NotesSet { notes: None, .. }));
+    assert_eq!(
+        graphql_variables(&http, "notes: $notes")[1],
+        serde_json::json!({ "mediaId": 1, "notes": "" })
+    );
+    assert_eq!(detail(&core).notes, None);
+}
+
+/// A note past MAL's ceiling is refused before anything is sent.
+#[test]
+fn a_note_too_long_is_invalid() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    let err = core
+        .call(Call::SetSeriesNotes {
+            series,
+            notes: "n".repeat(2001),
+        })
+        .err()
+        .unwrap();
+    assert!(matches!(err, CoreError::Invalid { .. }), "{err:?}");
+    assert!(http.requests().is_empty());
 }

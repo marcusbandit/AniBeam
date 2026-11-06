@@ -932,6 +932,9 @@ impl Core {
             Call::SetListStatus { series, status } => Ok(Reply::Started {
                 job: writes::set_list_status(self, series, status)?,
             }),
+            Call::SetSeriesNotes { series, notes } => Ok(Reply::Started {
+                job: writes::set_notes(self, series, &notes)?,
+            }),
             // Nothing to check up front: an unconnected or a fresh tracker
             // is the job's own skip, not a refusal.
             Call::RefreshProgress { tracker } => {

@@ -155,6 +155,13 @@ pub enum Call {
         series: u64,
         status: ListStatus,
     },
+    /// Writes the series' notes to every connected tracker, AniList's notes
+    /// and MAL's comments; blank clears them. Started with the job, which
+    /// ends in `NotesSet` (#211).
+    SetSeriesNotes {
+        series: u64,
+        notes: String,
+    },
     RefreshProgress {
         tracker: Option<Tracker>,
     },

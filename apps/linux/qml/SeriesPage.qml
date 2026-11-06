@@ -41,6 +41,13 @@ Item {
     property bool optimisticWatched: false
     readonly property bool isMovie: card.kind === "Movie"
     readonly property bool hasTracker: !!(card.match_info && (card.match_info.anilist_id || card.match_info.mal_id))
+    // The connected trackers this series' writes reach, as a person names them
+    readonly property string trackerSites: {
+        var m = card.match_info, out = []
+        if (m && m.anilist_id && frame.trackerOn("anilist")) out.push("AniList")
+        if (m && m.mal_id && frame.trackerOn("mal")) out.push("MyAnimeList")
+        return out.join(" and ")
+    }
     readonly property bool matched: !!card.match_info
     // The site the record came from, named on the button that opens it
     readonly property string siteName: frame.providerName(card.match_info ? card.match_info.provider : "Anilist") || "AniList"
@@ -911,6 +918,17 @@ Item {
                         Tooltip { text: statusFact.settable ? "Change the list on every connected tracker" : "" }
                     }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
+                    // The list entry's notes, written to every connected tracker (#211)
+                    Button {
+                        id: notesButton
+                        objectName: "series-notes"
+                        visible: statusFact.settable
+                        small: true; ghost: true
+                        icon: "pencil"
+                        text: page.detail && page.detail.notes ? "Your notes" : "Add notes"
+                        onClicked: notesSheet.openFor(page.props.id, page.title, page.detail ? page.detail.notes : "", page.trackerSites)
+                        Tooltip { text: page.detail && page.detail.notes ? page.detail.notes : "Notes on your list entry, kept on " + page.trackerSites }
+                    }
                     Button {
                         objectName: "series-hide"
                         small: true; ghost: true
@@ -1331,6 +1349,21 @@ Item {
         visible: fixSheet.visible
         dismissOnPress: true
         onDismissed: fixSheet.close()
+    }
+
+    // The list entry's notes (#211)
+    NotesSheet {
+        id: notesSheet
+        parent: frame.overlay
+        anchors.centerIn: parent
+    }
+    Blocker {
+        parent: frame.overlay
+        anchors.fill: parent
+        z: -1
+        visible: notesSheet.visible
+        dismissOnPress: true
+        onDismissed: notesSheet.close()
     }
 
     // The schedule notes, from Fixes or the held line (#418)
