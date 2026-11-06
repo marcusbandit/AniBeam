@@ -383,7 +383,9 @@ void walkAccessible(QAccessibleInterface *a, const QRect &screen, int depth, QJs
     if (!a || !a->isValid() || depth > 80) return;
     const QAccessible::State st = a->state();
     const QRect r = a->rect();
-    if (st.invisible || st.offscreen || !r.intersects(screen)) return;
+    // Scrolled out of view still counts: a control below the fold is read all the same
+    Q_UNUSED(screen);
+    if (st.invisible) return;
     ++nodes;
     const QAccessible::Role role = a->role();
     const QString roleName = QString::fromLatin1(QMetaEnum::fromType<QAccessible::Role>().valueToKey(role));

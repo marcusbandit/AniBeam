@@ -39,6 +39,7 @@ Row {
             }
             MouseArea {
                 Accessible.role: Accessible.RadioButton
+                Accessible.onPressAction: root.picked(modelData.slot)
                 Accessible.name: "Accent " + modelData.name; Accessible.checkable: true; Accessible.checked: on
                 id: m
                 anchors.fill: parent

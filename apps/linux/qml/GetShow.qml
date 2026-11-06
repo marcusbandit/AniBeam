@@ -698,6 +698,7 @@ Item {
                                 }
                                 MouseArea {
                                     Accessible.role: Accessible.Button
+                                    Accessible.onPressAction: root.fetch(prow.modelData.name)
                                     Accessible.name: theme.nameNear(parent)
                                     id: rowMouse
                                     anchors.fill: parent
@@ -744,6 +745,7 @@ Item {
                                     Label { anchors.verticalCenter: parent.verticalCenter; text: root.readyWords(prow.modelData); role: "ui"; color: !prow.modelData.on_demand || prow.modelData.running === true ? theme.text : theme.textFaint }
                                     Switch {
                                         objectName: "provider-switch-" + prow.modelData.name
+                                        accessibleName: "Search " + prow.modelData.name
                                         anchors.verticalCenter: parent.verticalCenter
                                         checked: prow.on
                                         onToggled: function(on) { root.sourceToggled(prow.modelData.name, on) }
@@ -883,6 +885,7 @@ Item {
                         height: visible ? Math.max(replaceSwitch.height, replaceText.implicitHeight) : 0
                         Switch {
                             id: replaceSwitch
+                            accessibleName: "Replace current episodes"
                             objectName: "get-replace"
                             checked: root.replaceOn
                             onToggled: function(on) { root.replaceOn = on }
@@ -971,6 +974,7 @@ Item {
         height: Math.max(optSwitch.height, optTitle.implicitHeight)
         Switch {
             id: optSwitch
+            accessibleName: opt.title
             anchors.verticalCenter: parent.verticalCenter
             checked: opt.checked
             onToggled: function(on) { opt.toggled(on) }
@@ -982,7 +986,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, parent.width - optSwitch.width - info.width - theme.space(6))
             text: opt.title; role: "title"; font.pointSize: theme.typeNormal; elide: Text.ElideRight
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: optSwitch.toggle(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: optSwitch.toggle(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                Accessible.onPressAction: optSwitch.toggle() }
         }
         Item {
             id: info
@@ -1147,6 +1152,7 @@ Item {
                         Label { anchors.verticalCenter: parent.verticalCenter; text: "Force download order"; role: "title"; font.pointSize: theme.typeNormal }
                         Switch {
                             id: seqSwitch
+                            accessibleName: "Download in episode order"
                             objectName: "get-torrent-sequential"
                             anchors.verticalCenter: parent.verticalCenter
                             checked: card.seq
@@ -1241,6 +1247,7 @@ Item {
         MouseArea {
             Accessible.role: Accessible.Button
             Accessible.name: theme.nameNear(parent)
+            Accessible.onPressAction: gr.picked(0)
             id: whoMouse
             width: grid.whoWidth; height: parent.height
             enabled: gr.clickable

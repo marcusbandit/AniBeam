@@ -682,7 +682,8 @@ Item {
                                 }
                             }
                         }
-                        MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.open(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
+                        MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.open(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                            Accessible.onPressAction: pill.open() }
                     }
                 }
             }

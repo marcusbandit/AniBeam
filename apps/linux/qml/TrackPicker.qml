@@ -114,6 +114,7 @@ Item {
                         Text { anchors.left: parent.left; anchors.leftMargin: theme.space(2); anchors.verticalCenter: parent.verticalCenter; text: modelData.label; color: modelData.id === root.selected ? theme.accent : theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: modelData.id === root.selected ? Font.DemiBold : Font.Normal; elide: Text.ElideRight; width: parent.width - theme.space(4) }
                         MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.picked(modelData.id); root.close() }
                             Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
+                            Accessible.onPressAction: { root.picked(modelData.id); root.close() }
                     }
                 }
             }

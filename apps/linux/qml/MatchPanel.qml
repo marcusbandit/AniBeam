@@ -291,7 +291,8 @@ Corner {
             color: resultMouse.pressed ? theme.surfacePressed : resultMouse.containsMouse || ListView.isCurrentItem ? theme.floatHover : "transparent"
             borderColor: ListView.isCurrentItem ? theme.focusRing : "transparent"; borderWidth: ListView.isCurrentItem ? 1 : 0
             // The whole row applies, not only its button
-            MouseArea { id: resultMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.applyResult(result.modelData); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
+            MouseArea { id: resultMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.applyResult(result.modelData); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                Accessible.onPressAction: root.applyResult(result.modelData) }
             Corner {
                 id: cover
                 x: theme.space(2)

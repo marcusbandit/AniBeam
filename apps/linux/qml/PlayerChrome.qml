@@ -190,7 +190,8 @@ Item {
                         onRunningChanged: if (!running) countFill.width = 0 } }
                 Label { id: nextLabel; anchors.centerIn: parent; width: Math.min(implicitWidth, theme.space(90)); elide: Text.ElideRight
                     text: page.nextLine; role: "title"; font.pointSize: theme.typeNormal }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openNext(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openNext(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                    Accessible.onPressAction: page.openNext() }
             }
         }
     }

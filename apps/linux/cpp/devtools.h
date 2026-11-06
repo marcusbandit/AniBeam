@@ -38,8 +38,9 @@ QString dev_image_stats(double since);
 QString dev_scene(QObject *item, QObject *window);
 // JSON: what a screen reader gets from `window`, read through Qt's accessibility tree, the
 // one the platform bridge (AT-SPI, UI Automation) is built from. { nodes, controls,
-// unnamed: [{ role, rect }], roles: { Button: n, ... }, sample: [[role, name], ...] }. Only
-// on-screen nodes count; `controls` are the ones a person can press, pick, tick or type in.
+// unnamed: [{ role, rect }], roles: { Button: n, ... }, sample: [[role, name], ...] }. Every
+// node not hidden counts, scrolled out of view too; `controls` are the ones a person can
+// press, pick, tick or type in.
 QString dev_accessible(QObject *window);
 // Asks the window to drop what its scene graph can rebuild, runs the JS collector and hands
 // freed heap back to the system (glibc). Returns nothing; read memory before and after.

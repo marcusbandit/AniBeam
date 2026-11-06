@@ -12,8 +12,8 @@ Corner {
     Accessible.checkable: true
     Accessible.checked: checked
     Accessible.focusable: true
-    Accessible.onPressAction: toggle()
-    Accessible.onToggleAction: toggle()
+    Accessible.onPressAction: if (enabled) toggle()
+    Accessible.onToggleAction: if (enabled) toggle()
 
     readonly property real pad: theme.space(0.75)
     implicitWidth: theme.space(11)

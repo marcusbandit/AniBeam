@@ -21,7 +21,7 @@ Corner {
     signal clicked()
     property string accessibleName: ""
     Accessible.role: Accessible.Button
-    Accessible.name: accessibleName || tip || theme.glyphWords(glyph)
+    Accessible.name: theme.spokenName(accessibleName, tip, root, glyph)
     Accessible.onPressAction: if (interactive) clicked()
 
     width: theme.space(9); height: width

@@ -193,7 +193,11 @@ Item {
     // ---- What a screen reader says for a control with no words of its own
     // The label of the settings row the control sits in
     function rowLabelOf(item) {
-        for (var p = item ? item.parent : null; p; p = p.parent) if (p.settingTarget === true) return String(p.label || "")
+        for (var p = item ? item.parent : null; p; p = p.parent) {
+            if (p.settingTarget !== true) continue
+            var words = String(p.label || p.title || "")
+            if (words !== "") return words
+        }
         return ""
     }
     // The text of a Tooltip the item carries, which says what an icon-only control does
@@ -219,8 +223,12 @@ Item {
         }
         return ""
     }
-    // A click area's spoken name: the tip on the item it covers, else the words in it
-    function nameNear(item) { return tipOf(item) || textIn(item, 0) }
+    // A click area's spoken name: the words the item it covers shows (its own text, if it is
+    // a label), else the tip that says what it does
+    function nameNear(item) {
+        var own = item && typeof item.text === "string" ? item.text.trim() : ""
+        return own || textIn(item, 0) || tipOf(item)
+    }
     // A control's spoken name: its own, its words, its tip, its row, its glyph, in that order
     function spokenName(own, words, item, icon) {
         return own || words || tipOf(item) || rowLabelOf(item) || glyphWords(icon)

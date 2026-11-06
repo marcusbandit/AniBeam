@@ -56,6 +56,7 @@ Item {
     }
     MouseArea {
         Accessible.role: Accessible.Button
+        Accessible.onPressAction: frame.openLink("https://anilist.co/character/" + root.person.anilist_id)
         Accessible.name: theme.nameNear(parent)
         id: link
         anchors.fill: parent

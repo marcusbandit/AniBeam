@@ -89,7 +89,8 @@ Item {
                 radius: theme.radiusSm
                 color: isDraft ? theme.accentSoft : m.containsMouse ? theme.floatHover : "transparent"
                 Text { anchors.centerIn: parent; text: modelData; color: parent.isDraft ? theme.accent : theme.text; font.family: theme.fontUi; font.pointSize: theme.typeNormal; font.weight: parent.isDraft ? Font.DemiBold : Font.Normal }
-                MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: root.draft = Number(modelData); Accessible.role: Accessible.RadioButton; Accessible.name: theme.nameNear(parent) }
+                MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: root.draft = Number(modelData); Accessible.role: Accessible.RadioButton; Accessible.name: theme.nameNear(parent); Accessible.checkable: true; Accessible.checked: isDraft
+                    Accessible.onPressAction: root.draft = Number(modelData) }
             }
             QC.ScrollBar.vertical: ThinScrollBar {}
         }

@@ -30,7 +30,7 @@ Corner {
     signal picked(int i)
     property string accessibleName: ""
     Accessible.role: Accessible.ComboBox
-    Accessible.name: theme.spokenName(accessibleName, "", root, "") || prefix
+    Accessible.name: theme.spokenName(accessibleName, prefix, root, "")
     Accessible.description: current
     Accessible.focusable: interactive
     Accessible.onPressAction: open()

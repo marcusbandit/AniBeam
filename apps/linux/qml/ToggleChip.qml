@@ -10,6 +10,7 @@ Chip {
     Accessible.role: Accessible.CheckBox
     Accessible.checkable: true
     Accessible.checked: checked
+    Accessible.onToggleAction: flip()
     height: theme.controlHeight
     mono: false
     clickable: interactive

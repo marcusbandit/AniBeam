@@ -443,6 +443,7 @@ Corner {
                         MouseArea {
                             Accessible.role: Accessible.Button
                             Accessible.name: theme.nameNear(parent)
+                            Accessible.onPressAction: root.clickEp(cell.ep, false)
                             id: cellMouse
                             anchors.fill: parent
                             hoverEnabled: true
@@ -459,7 +460,8 @@ Corner {
                     color: moreMouse.containsMouse ? theme.raisedHover : "transparent"
                     borderColor: theme.line; borderWidth: 1; dashed: 1
                     Icon { anchors.centerIn: parent; glyph: "plus"; size: theme.space(5); color: theme.textDim }
-                    MouseArea { id: moreMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.upTo = Math.min(root.upTo + 12, 200); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
+                    MouseArea { id: moreMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.upTo = Math.min(root.upTo + 12, 200); Accessible.role: Accessible.Button; Accessible.name: "Show more episodes"
+                        Accessible.onPressAction: root.upTo = Math.min(root.upTo + 12, 200) }
                 }
             }
 

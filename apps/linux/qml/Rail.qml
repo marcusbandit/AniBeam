@@ -170,6 +170,7 @@ Item {
             objectName: "title-language"
             Accessible.role: Accessible.Button
             Accessible.name: "Title language: " + lang.names[lang.current] + ". Press for the next one"
+            Accessible.onPressAction: langMouse.clicked(null)
             readonly property var order: ["Romaji", "English", "Native"]
             readonly property var names: ({ "Romaji": "Romaji", "English": "English", "Native": "日本語" })
             readonly property string current: order.indexOf(Door.preferences.title_language) >= 0 ? Door.preferences.title_language : "Romaji"

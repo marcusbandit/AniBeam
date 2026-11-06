@@ -212,6 +212,7 @@ Corner {
                                     // A missing one opens Downloads on the series, to get it
                                     MouseArea {
                                         Accessible.role: Accessible.Button
+                                        Accessible.onPressAction: { var id = root.seriesId, t = root.title; root.close(); frame.go("downloads", { series: id }, "Downloads") }
                                         Accessible.name: theme.nameNear(parent)
                                         id: chipMouse
                                         anchors.fill: parent
