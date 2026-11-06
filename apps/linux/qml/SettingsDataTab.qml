@@ -70,7 +70,7 @@ SettingsTab {
                     visible: tab.confirmingClear
                     question: "Remove " + Fmt.plural(tab.storage.image_count, "image", "images") + "?"
                     confirmText: "Clear"
-                    onAccepted: { tab.confirmingClear = false; var r = Door.clearImages(); if (r.error) frame.toast(r.error.message) }
+                    onAccepted: { tab.confirmingClear = false; var r = Door.clearImages(); if (r.error) frame.fail(r.error) }
                     onKept: tab.confirmingClear = false
                 }
             }
@@ -95,12 +95,12 @@ SettingsTab {
         defaultSuffix: "json"
         currentFile: Fmt.fileUrl((tab.about.data_dir ? tab.dir(tab.about.data_dir) : "") + "/anibeam-export.json")
         nameFilters: ["AniBeam backup (*.json)"]
-        onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); frame.toast(r.error ? r.error.message : "Backing up") }
+        onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); r.error ? frame.fail(r.error) : frame.toast("Backing up") }
     }
     FileDialog {
         id: importDialog
         title: "Restore from a backup"
         nameFilters: ["AniBeam backup (*.json)", "All files (*)"]
-        onAccepted: { var r = Door.importLibrary(tab.path(selectedFile)); frame.toast(r.error ? r.error.message : "Restoring") }
+        onAccepted: { var r = Door.importLibrary(tab.path(selectedFile)); r.error ? frame.fail(r.error) : frame.toast("Restoring") }
     }
 }

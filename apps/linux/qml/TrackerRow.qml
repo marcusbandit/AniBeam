@@ -155,7 +155,7 @@ Item {
             text: "Remove it"; icon: "trash-2"; flat: true; small: true
             onClicked: {
                 var r = Door.call("SetTrackerCredentials", { tracker: root.tracker, client_id: root.account.client_id || "", client_secret: "" })
-                frame.toast(r.error ? frame.errorText(r.error) : "Client secret removed")
+                r.error ? frame.fail(r.error) : frame.toast("Client secret removed")
             }
         }
     }
@@ -189,7 +189,7 @@ Item {
                 enabled: secret.text.trim() !== ""
                 onClicked: {
                     var r = Door.setTrackerCredentials(root.tracker, root.account.client_id || "", secret.text.trim())
-                    if (r.error) { frame.toast(frame.errorText(r.error)); return }
+                    if (r.error) { frame.fail(r.error); return }
                     secret.text = ""
                     frame.connectTracker(root.tracker)
                 }

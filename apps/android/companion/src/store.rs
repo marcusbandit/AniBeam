@@ -36,6 +36,10 @@ pub struct Cache {
     /// The phone's clock when it arrived.
     pub synced_at: i64,
     pub snapshot: Snapshot,
+    /// The other AniBeams the host saw on the tailnet at that sync. Empty
+    /// from a host older than the list.
+    #[serde(default)]
+    pub peers: Vec<crate::api::PeerHost>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -171,6 +175,14 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_cache_saved_before_the_peer_list_still_reads() {
+        let mut old = serde_json::to_value(Cache::default()).unwrap();
+        old.as_object_mut().unwrap().remove("peers");
+        let cache: Cache = serde_json::from_value(old).unwrap();
+        assert!(cache.peers.is_empty());
+    }
+
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("anibeam-store-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -197,6 +209,11 @@ mod tests {
             host_version: "2.1.0".into(),
             synced_at: 1_792_242_100,
             snapshot,
+            peers: vec![crate::api::PeerHost {
+                name: "kangaeru".into(),
+                url: "http://100.80.3.4:8790".into(),
+                version: "2.4.0".into(),
+            }],
         };
         store.save_cache(&cache).unwrap();
         assert_eq!(store.cache().unwrap(), cache);

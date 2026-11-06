@@ -11,6 +11,9 @@ Item {
     property var item: ({})
     property real nowMs: Date.now()
     signal opened()
+    Accessible.role: Accessible.Button
+    Accessible.name: title || folderName
+    Accessible.onPressAction: opened()
 
     width: parent ? parent.width : 0
     height: theme.space(21)
