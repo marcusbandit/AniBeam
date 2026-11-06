@@ -1,6 +1,6 @@
 // The sidebar: one flat column a step up from the ground. The brand at the top, then the
 // places the app is for, Home, Library and Airing, each a glyph over its name. The rest of the app
-// (Feed, Watching, Metadata, Downloads, Settings) is a quiet stack of round glyph buttons near the
+// (Feed, Watching, Stats, Metadata, Downloads, Settings) is a quiet stack of round glyph buttons near the
 // foot, named by their tips, and the foot itself holds the title-language switch and the
 // version, which opens What's new. The active place takes the soft accent; nothing else is lit.
 import QtQuick
@@ -8,7 +8,8 @@ import com.marcusrosado.AniBeam
 
 Item {
     id: root
-    // Indexes into Nav.railPages: home, library, airing, feed, watching, metadata, downloads, settings
+    // Indexes into Nav.railPages: home, library, airing, feed, watching, metadata, downloads,
+    // settings, stats (last, so the older indexes kept their numbers)
     property int active: 0
     // Complete subscriptions waiting to be cleared: a red count on Downloads
     property int downloadsBadge: 0
@@ -21,7 +22,7 @@ Item {
     ]
     readonly property var secondary: [
         { index: 3, text: "Feed", icon: "rss" }, { index: 4, text: "Watching", icon: "eye" },
-        { index: 5, text: "Metadata", icon: "database" }, { index: 6, text: "Downloads", icon: "download" },
+        { index: 8, text: "Stats", icon: "chart-pie" }, { index: 5, text: "Metadata", icon: "database" }, { index: 6, text: "Downloads", icon: "download" },
         { index: 7, text: "Settings", icon: "settings" }
     ]
     readonly property real pad: theme.space(2)

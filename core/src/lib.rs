@@ -32,6 +32,7 @@ pub mod presence;
 pub(crate) mod process;
 pub mod releases;
 pub mod repos;
+pub mod stats;
 pub mod store;
 pub mod subscriptions;
 pub(crate) mod sync;
