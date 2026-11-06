@@ -70,7 +70,9 @@ emulator, which cannot see the LAN's multicast, write `/data/local/tmp/anibeam-c
 Downloads run in the core's own torrent engine (`librqbit`, the core's `phone` feature),
 held while the phone is off Wi-Fi unless mobile data was allowed. While anything
 downloads, a small Java service (`android/java/`) keeps a notification up so Android does
-not cut the network with the screen off. The player's screen calls, landscape and the bars
+not cut the network with the screen off; it shows what is downloading with a bar and the
+numbers Downloads shows, and a finished episode posts one of its own, on a channel that can
+be turned off apart from the first. The player's screen calls, landscape and the bars
 and keeping the display awake, are Java too, since only Android's UI thread may make them. A finished download stops: the phone does not
 seed.
 

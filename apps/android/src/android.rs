@@ -112,22 +112,31 @@ fn service_intent<'a>(
     Ok(intent)
 }
 
-/// Starts the download service, or updates its notification to `text` when it runs.
+/// Starts the download service, or updates its notification to `shown` when it runs.
 /// False when Android refused, as it does for an app in the background on Android 12 and
 /// later; the caller tries again on its next look.
-pub fn start_service(text: &str) -> bool {
+pub fn start_service(shown: &crate::notify::Ongoing) -> bool {
     #[cfg(target_os = "android")]
     {
         let r = with_env(|env, app| {
             use jni::objects::JValue;
             let intent = service_intent(env)?;
-            let key = env.new_string("text")?;
-            let value = env.new_string(text)?;
+            for (key, value) in [("title", &shown.title), ("text", &shown.text)] {
+                let key = env.new_string(key)?;
+                let value = env.new_string(value)?;
+                env.call_method(
+                    &intent,
+                    "putExtra",
+                    "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+                    &[JValue::Object(&key), JValue::Object(&value)],
+                )?;
+            }
+            let key = env.new_string("progress")?;
             env.call_method(
                 &intent,
                 "putExtra",
-                "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-                &[JValue::Object(&key), JValue::Object(&value)],
+                "(Ljava/lang/String;I)Landroid/content/Intent;",
+                &[JValue::Object(&key), JValue::Int(shown.progress)],
             )?;
             env.call_method(
                 app,
@@ -145,9 +154,44 @@ pub fn start_service(text: &str) -> bool {
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = text;
+        let _ = shown;
         true
     }
+}
+
+/// Posts "<show> episode 7 is ready" for a download that finished, under `id`, on the
+/// channel for finished episodes (`TorrentService.ready`).
+pub fn episode_ready(id: i32, title: &str, text: &str) {
+    #[cfg(target_os = "android")]
+    {
+        let r = with_env(|env, app| {
+            use jni::objects::JValue;
+            env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+                // The Application's class loader sees the app's own classes, as the
+                // activity's does.
+                let class = app_class(env, app, "TorrentService")?;
+                let title = env.new_string(title)?;
+                let text = env.new_string(text)?;
+                env.call_static_method(
+                    &class,
+                    "ready",
+                    "(Landroid/content/Context;ILjava/lang/String;Ljava/lang/String;)V",
+                    &[
+                        JValue::Object(app),
+                        JValue::Int(id),
+                        JValue::Object(&title),
+                        JValue::Object(&text),
+                    ],
+                )?;
+                Ok(())
+            })
+        });
+        if let Err(e) = r {
+            crate::local::log(&format!("could not say an episode is ready: {e}"));
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = (id, title, text);
 }
 
 /// Stops the download service once nothing is downloading.

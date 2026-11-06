@@ -166,7 +166,9 @@ struct App {
     downloads: Rc<VecModel<DownloadRow>>,
     polling: bool,
     held: Option<bool>,
-    service: Option<String>,
+    service: Option<notify::Ongoing>,
+    /// The downloads seen not yet whole, so each one that finishes is told once.
+    unfinished: Vec<String>,
     /// The service's notification went up while Android allowed it to show. One posted
     /// before the person allowed notifications stays hidden until it is posted again.
     service_shown: bool,
@@ -1177,18 +1179,43 @@ impl App {
         torrents.extend(demo_torrents());
         // The service is for torrents that are moving: one in error, stuck with no peers or
         // paused does not keep a notification up.
-        let active: Vec<&Torrent> = torrents
-            .iter()
-            .filter(|t| {
-                !is_demo(&t.hash)
-                    && t.progress < 1.0
-                    && matches!(t.state.as_str(), "downloading" | "checkingDL")
-            })
-            .collect();
-        let rows = torrents
+        let real = |t: &Torrent| !is_demo(&t.hash) || demo_notifies();
+        let rows: Vec<DownloadRow> = torrents
             .iter()
             .map(|t| download_row(t, held, self.torrent_show(t), &self.art))
             .collect();
+        let moving: Vec<notify::Moving> = torrents
+            .iter()
+            .zip(&rows)
+            .filter(|(t, _)| {
+                real(t)
+                    && t.progress < 1.0
+                    && matches!(t.state.as_str(), "downloading" | "checkingDL")
+            })
+            .map(|(t, row)| notify::Moving {
+                called: notify::called(&row.show, &row.what, &t.name),
+                facts: row.facts.to_string(),
+                progress: t.progress,
+                size: t.size,
+            })
+            .collect();
+        // A download seen unfinished that is whole now says so, once, with its own
+        // notification.
+        let now: Vec<(String, bool)> = torrents
+            .iter()
+            .filter(|t| real(t))
+            .map(|t| (t.hash.clone(), t.progress >= 1.0))
+            .collect();
+        for hash in notify::finished(&mut self.unfinished, &now) {
+            if let Some((t, row)) = torrents.iter().zip(&rows).find(|(t, _)| t.hash == hash) {
+                let called = notify::called(&row.show, &row.what, &t.name);
+                crate::android::episode_ready(
+                    notify::ready_id(&hash),
+                    &format!("{called} is ready"),
+                    "Downloaded to this phone. Tap to open AniBeam.",
+                );
+            }
+        }
         update(&self.downloads, rows);
         let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
             "Waiting for Wi-Fi. Downloads go on by themselves when the phone is on Wi-Fi."
@@ -1209,14 +1236,11 @@ impl App {
         self.data().set_finished_count(finished as i32);
         self.data()
             .set_downloading_count((torrents.len() - finished) as i32);
-        self.data().set_moving_count(active.len() as i32);
+        self.data().set_moving_count(moving.len() as i32);
 
-        // The service runs while something downloads, with how many in its notification.
-        let text = match active.len() {
-            0 => None,
-            1 => Some(format!("Downloading {}", active[0].name)),
-            n => Some(format!("Downloading {n} episodes")),
-        };
+        // The service runs while something downloads, its notification saying what and how
+        // far along, with the numbers Downloads shows.
+        let text = notify::ongoing(&moving, format::bytes);
         if text != self.service {
             let done = match &text {
                 Some(t) => crate::android::start_service(t),
@@ -1590,6 +1614,13 @@ fn demo_torrents() -> Vec<Torrent> {
 }
 
 const DEMO_MARK: &str = "demo:";
+
+/// Dev only: with this file on the device, the demo downloads drive the notification too,
+/// so it can be seen without a real download.
+fn demo_notifies() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::path::Path::new("/data/local/tmp/anibeam-demo/notify").exists())
+}
 
 /// Set on an Airing now poster's key in the art, apart from every series id.
 const AIRING_ART: u64 = 1 << 48;
@@ -2050,6 +2081,7 @@ pub fn run(
         polling: false,
         held: None,
         service: None,
+        unfinished: Vec::new(),
         service_shown: false,
     };
     app.show_prefs();
