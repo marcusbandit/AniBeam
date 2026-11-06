@@ -154,6 +154,8 @@ fn a_core_under_a_root_keeps_anirss_and_qbittorrent_inside_it() {
     // person's anirss names, and saves into the root's own home.
     let mut auto = fresh.settings.clone();
     auto.torrent_url = OWN_QBT.to_string();
+    // The sidecar is anirss's: a fresh install searches on AniBeam's own engine (#552)
+    auto.engine = DownloadsEngine::Anirss;
     save(&core, auto);
     // Nothing on AniBeam's own port until it starts; then it answers
     http.fail_next("connection refused");

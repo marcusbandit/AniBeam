@@ -551,6 +551,19 @@ pub struct TrackerState {
     pub mal: TrackerAccount,
 }
 
+/// One series on the list kept on this device, as moving it up to a
+/// tracker would change it (#580): what is kept here, and what the tracker
+/// has now, none for a show not on its list.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct MoveRow {
+    pub series: u64,
+    pub title: String,
+    pub status: Option<ListStatus>,
+    pub score: Option<f64>,
+    pub tracker_status: Option<ListStatus>,
+    pub tracker_score: Option<f64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct TrackerOutcome {
     pub tracker: Tracker,

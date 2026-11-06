@@ -267,7 +267,7 @@ pub fn set_credentials(
     core.store.tx(move |tx| {
         tx.execute(
             "INSERT INTO tracker_accounts (tracker, client_id) VALUES (?1, ?2)
-             ON CONFLICT(tracker) DO UPDATE SET client_id = excluded.client_id",
+             ON CONFLICT(profile_id, tracker) DO UPDATE SET client_id = excluded.client_id",
             params![t.as_str(), client_id],
         )?;
         // Only when a secret was actually written: the column is the one
@@ -516,7 +516,7 @@ pub(crate) async fn save_connection(
             tx.execute(
                 "INSERT INTO tracker_accounts (tracker, user_id, username, client_id, expires_at, connected_at, secret_store)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                 ON CONFLICT(tracker) DO UPDATE SET user_id = excluded.user_id, username = excluded.username,
+                 ON CONFLICT(profile_id, tracker) DO UPDATE SET user_id = excluded.user_id, username = excluded.username,
                         client_id = excluded.client_id, expires_at = excluded.expires_at,
                         connected_at = excluded.connected_at, secret_store = excluded.secret_store",
                 params![t.as_str(), user_id, username, client_id, expires_at, connected_at, store.as_str()],

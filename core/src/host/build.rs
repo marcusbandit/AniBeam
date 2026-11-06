@@ -61,14 +61,14 @@ fn tag_of(path: &str) -> Option<String> {
     Some(poster_tag(path, meta.len(), meta.modified().ok()?))
 }
 
-/// The whole library read once, on the reader connection. Blocking: the
-/// caller runs it off the async threads.
-pub fn library_part(core: &Core) -> Result<LibraryPart, CoreError> {
+/// The whole library read once, on the reader connection, with one profile's
+/// progress (#631). Blocking: the caller runs it off the async threads.
+pub fn library_part(core: &Core, profile: u64) -> Result<LibraryPart, CoreError> {
     let images_dir = core.paths.images_dir();
     let now = time::now();
     let hosted = core
         .store
-        .read(|c| Ok(Snapshot::load(c, &images_dir, now, None)?.host_series()))?;
+        .read(|c| Ok(Snapshot::load_for(c, profile, &images_dir, now, None)?.host_series()))?;
     let mut part = LibraryPart::default();
     for h in hosted {
         let mut series = h.series;
@@ -189,10 +189,11 @@ pub fn torrents(list: Vec<crate::contract::Torrent>) -> Vec<wire::Torrent> {
 pub async fn snapshot(
     core: &Arc<Core>,
     host: &str,
+    profile: u64,
 ) -> Result<(wire::Snapshot, LibraryPart), CoreError> {
     let reader = core.clone();
     let library = async move {
-        tokio::task::spawn_blocking(move || library_part(&reader))
+        tokio::task::spawn_blocking(move || library_part(&reader, profile))
             .await
             .map_err(|e| CoreError::internal(format!("library read: {e}")))?
     };

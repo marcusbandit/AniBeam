@@ -57,7 +57,7 @@ A tracker list: AniList calls it Paused, MAL calls it On Hold. With the On hold 
 _Avoid_: paused, idle, stale, backlog
 
 **Local list**:
-The list status and score kept on this device for a series no connected tracker carries: someone with no account, a show matched to a tracker whose account is not connected, a TVmaze show, an unmatched folder. The status menu and the score picker write it at once with no job; a card shows it wherever no tracker entry says otherwise, and a tracker's entry always wins. Export carries it as `series[].list`. Nothing in it leaves the device until the person confirms moving it to a tracker.
+The list status and score kept on this device for a series no connected tracker carries: someone with no account, a show matched to a tracker whose account is not connected, a TVmaze show, an unmatched folder. The status menu and the score picker write it at once with no job; a card shows it wherever no tracker entry says otherwise, and a tracker's entry always wins. Export carries it as `series[].list`. Nothing in it leaves the device until the person confirms moving it to a tracker: once a tracker connects and its list is read, a sheet shows each show it would change, this computer's side beside the tracker's, and Move sends them; Not now leaves a pointer under Settings, Accounts. The rows stay after a move, and the tracker's entry wins from then on.
 _Avoid_: offline list, guest list
 
 **Rewatch**:
@@ -83,6 +83,10 @@ _Avoid_: position, progress, bookmark
 **Completion**:
 The outcome of the end rule: the position reached the last 30 seconds, a known outro window or the end of the file, so the resume point is cleared and the episode is recorded as completed.
 _Avoid_: finished, done, watched to the end
+
+**Profile**:
+One person's own progress on a computer they share over the tailnet: their history, resume points and tracker accounts. A profile is the Tailscale user a device belongs to, so nobody signs in. The first profile is the person the computer belongs to. The library and the metadata are everyone's.
+_Avoid_: account, user, login
 
 **Watch log**:
 Every finish of an episode, each with its own time and where it came from: played here, set by hand, or imported. A completion records the latest finish for the series page and the cards, and adds one more to the log. Stats reads the log and leaves out what was set by hand. History from before the log came in as one finish per episode.
@@ -265,6 +269,10 @@ _Avoid_: match (that is the metadata match), mapping
 **Transfer**:
 A torrent as the torrent client reports it: its state, progress and speed. The one thing in the app that is polled, and only while the Downloads page is up: every two seconds while one is moving, every fifteen while none is.
 _Avoid_: download, job, task
+
+**Downloads choice**:
+What searches, follows and downloads on the desktop, under Settings, Downloads: AniBeam itself (the core's own port of anirss, which searches the core's sources and writes the torrent client's rules directly) or the search helper (anirss, run as the sidecar or reached on a server). AniBeam itself is the default (#552): fresh settings pick it, and so do settings stored before the choice existed or naming one this build does not know. Settings that name the search helper keep it. Sources written only into anirss's own config.toml are not read by AniBeam itself; they come in through an endpoint repo or by hand.
+_Avoid_: backend, mode. The code calls it the downloads engine (`DownloadsEngine`), native or anirss.
 
 **Sidecar**:
 anirss run by the core: `anirss --serve` on a port and token the core chose, started the first time something asks for it and stopped with the core. The other way in is a server somebody else runs, reached by address and token.

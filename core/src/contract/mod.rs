@@ -108,6 +108,7 @@ mod tests {
             RefreshAiringNow,
             OnHold,
             SetStatus,
+            MoveLists,
             Notes,
             Crawl,
             SkipWindows,
@@ -137,7 +138,7 @@ mod tests {
                 | Import | Subscriptions | ConnectDownloads | SearchReleases | RefineReleases
                 | Subscribe | Download | RemoveSubscription | ControlTorrents
                 | TestTorrentClient | RemoveShow | RepairSubscription | CheckEndpoints
-                | StartEndpoint | ScheduleAgent => {}
+                | StartEndpoint | ScheduleAgent | MoveLists => {}
             }
         }
         all

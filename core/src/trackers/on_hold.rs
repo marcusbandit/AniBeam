@@ -181,13 +181,14 @@ const WATCHING_SQL: &str = "SELECT t.media_id, t.progress, t.updated_at,
 const OTHER_SQL: &str = "SELECT updated_at FROM tracker_entries
      WHERE tracker = ?1 AND media_id = ?2 AND (status IS NULL OR status != 'paused')";
 
-/// The latest play here on any series matched to the media, by either id.
+/// The owner's latest play here on any series matched to the media, by either
+/// id. The lists are the owner's, so a guest's plays (#631) do not count.
 const PLAYED_SQL: &str = "SELECT MAX(at) FROM (
-        SELECT v.at FROM views v JOIN series s ON s.id = v.series_id WHERE s.anilist_id = ?1 OR s.mal_id = ?2
+        SELECT v.at FROM views v JOIN series s ON s.id = v.series_id WHERE v.profile_id = 1 AND (s.anilist_id = ?1 OR s.mal_id = ?2)
         UNION ALL
-        SELECT c.at FROM completed c JOIN series s ON s.id = c.series_id WHERE s.anilist_id = ?1 OR s.mal_id = ?2
+        SELECT c.at FROM completed c JOIN series s ON s.id = c.series_id WHERE c.profile_id = 1 AND (s.anilist_id = ?1 OR s.mal_id = ?2)
         UNION ALL
-        SELECT r.at FROM resume_points r JOIN series s ON s.id = r.series_id WHERE s.anilist_id = ?1 OR s.mal_id = ?2)";
+        SELECT r.at FROM resume_points r JOIN series s ON s.id = r.series_id WHERE r.profile_id = 1 AND (s.anilist_id = ?1 OR s.mal_id = ?2))";
 
 const SCHEDULED_SQL: &str =
     "SELECT aired_at FROM anilist_episodes WHERE anilist_id = ?1 AND number = ?2";

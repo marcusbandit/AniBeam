@@ -694,7 +694,7 @@ pub(crate) async fn merge_history(
                 let Some(key) = row.entry_key(view.last_episode, view.season, view.file.as_deref()) else { continue };
                 views += tx.execute(
                     "INSERT INTO views (series_id, episode_key, at) VALUES (?1, ?2, ?3)
-                     ON CONFLICT(series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
+                     ON CONFLICT(profile_id, series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
                      WHERE excluded.at > views.at",
                     params![row.id as i64, key, at],
                 )? as u64;
@@ -705,13 +705,14 @@ pub(crate) async fn merge_history(
                 let Some(key) = row.entry_key(entry.episode, entry.season, entry.file.as_deref()) else { continue };
                 completed += tx.execute(
                     "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)
-                     ON CONFLICT(series_id, episode_key) DO UPDATE SET at = excluded.at WHERE excluded.at > completed.at",
+                     ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET at = excluded.at WHERE excluded.at > completed.at",
                     params![row.id as i64, key, at],
                 )? as u64;
                 // The finish goes in the watch log once, however often the file comes in.
                 tx.execute(
                     "INSERT INTO watch_log (series_id, episode_key, at, how) SELECT ?1, ?2, ?3, ?4
-                     WHERE NOT EXISTS (SELECT 1 FROM watch_log WHERE series_id = ?1 AND episode_key = ?2 AND at = ?3)",
+                     WHERE NOT EXISTS (SELECT 1 FROM watch_log
+                                       WHERE profile_id = 1 AND series_id = ?1 AND episode_key = ?2 AND at = ?3)",
                     params![row.id as i64, key, at, crate::library::history::How::Imported.as_str()],
                 )?;
             }
@@ -724,7 +725,7 @@ pub(crate) async fn merge_history(
                     "INSERT INTO resume_points (series_id, episode_key, position, duration, at)
                      SELECT ?1, ?2, ?3, ?4, ?5
                      WHERE NOT EXISTS (SELECT 1 FROM completed WHERE series_id = ?1 AND episode_key = ?2 AND at >= ?5)
-                     ON CONFLICT(series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration,
+                     ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration,
                             at = excluded.at
                      WHERE excluded.at > resume_points.at",
                     params![id as i64, key, position, duration, at],
@@ -867,7 +868,7 @@ async fn import_accounts(
                 tx.execute(
                     "INSERT INTO tracker_accounts (tracker, user_id, username, client_id, expires_at, connected_at, secret_store)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                     ON CONFLICT(tracker) DO UPDATE SET user_id = excluded.user_id, username = excluded.username,
+                     ON CONFLICT(profile_id, tracker) DO UPDATE SET user_id = excluded.user_id, username = excluded.username,
                             client_id = excluded.client_id, expires_at = excluded.expires_at,
                             connected_at = coalesce(excluded.connected_at, tracker_accounts.connected_at),
                             secret_store = coalesce(excluded.secret_store, tracker_accounts.secret_store)",

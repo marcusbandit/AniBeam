@@ -53,7 +53,13 @@ pub fn load_stored(conn: &Connection, home: &AnirssHome) -> Result<DownloadSetti
         Ok(None) => fresh(home),
         Err(e) if e.is_decode_failure() => {
             tracing::warn!("reading the downloads settings as the defaults: {e}");
-            fresh(home)
+            // A stored anirss outlives a blob this build cannot read: the defaults
+            // would move the person onto the native engine without a word (#552).
+            let mut d = fresh(home);
+            if stored_engine_value(conn) == Some(DownloadsEngine::Anirss) {
+                d.engine = DownloadsEngine::Anirss;
+            }
+            d
         }
         Err(e) => return Err(e),
     };
@@ -107,10 +113,10 @@ fn adopt_client(s: &mut DownloadSettings) {
 }
 
 /// Writes the settings over what is stored, so a key a newer build added survives a save
-/// here. An engine this build does not know reads as anirss (a newer build wrote it), so a
-/// save that still says anirss keeps the stored value rather than undo the newer build's
-/// choice; picking the native engine replaces it. This build cannot tell an anirss read that
-/// way from one picked on purpose, and in this build both mean anirss.
+/// here. An engine this build does not know reads as the native engine, the default (a newer
+/// build wrote it), so a save that still says native keeps the stored value rather than undo
+/// the newer build's choice; picking anirss replaces it. This build cannot tell a native
+/// engine read that way from one picked on purpose, and in this build both mean native.
 pub fn save(conn: &Connection, s: &DownloadSettings) -> Result<(), CoreError> {
     let serde_json::Value::Object(fields) = serde_json::to_value(s)? else {
         return Err(CoreError::internal(
@@ -477,6 +483,27 @@ fn is_http(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
 
+/// The engine the stored blob names, read on its own, so a blob the rest of
+/// which this build cannot decode still says which engine it picked.
+fn stored_engine_value(conn: &Connection) -> Option<DownloadsEngine> {
+    let blob = settings::get::<serde_json::Value>(conn, KEY).ok()??;
+    serde_json::from_value(blob.get("engine")?.clone()).ok()
+}
+
+/// How many endpoints anirss's own `config.toml` names, nought when there is
+/// no file or none it can read. AniBeam itself does not read them (#552).
+pub fn anirss_config_endpoints(path: &Path) -> usize {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return 0;
+    };
+    let Ok(doc) = toml::from_str::<toml::Table>(&text) else {
+        return 0;
+    };
+    doc.get("endpoint")
+        .and_then(|e| e.as_array())
+        .map_or(0, |a| a.len())
+}
+
 /// Fresh settings: [`defaults`], with qBittorrent where the config of the
 /// anirss in `home` says it is.
 pub fn fresh(home: &AnirssHome) -> DownloadSettings {
@@ -488,7 +515,8 @@ pub fn fresh(home: &AnirssHome) -> DownloadSettings {
     s
 }
 
-/// The stock settings: a sidecar off `anirss` on PATH, and qBittorrent at
+/// The stock settings: the native engine (#552), with the search helper's own
+/// sidecar off `anirss` on PATH ready for whoever picks it, and qBittorrent at
 /// its own stock address.
 pub fn defaults() -> DownloadSettings {
     let (url, username) = ("http://localhost:8080".to_string(), "admin".to_string());
@@ -508,7 +536,7 @@ pub fn defaults() -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: RollingSettings::default(),
-        engine: DownloadsEngine::Anirss,
+        engine: DownloadsEngine::Native,
     }
 }
 
@@ -566,17 +594,17 @@ mod tests {
         let mut blob = serde_json::to_value(defaults()).unwrap();
         blob["engine"] = serde_json::json!("Telepathy");
         settings::set(&c, KEY, &blob).unwrap();
-        // Read as anirss here, and saved back with something else changed.
+        // Read as the default, native, here, and saved back with something else changed.
         let mut s = load_stored(&c, &nowhere()).unwrap();
-        assert_eq!(s.engine, DownloadsEngine::Anirss);
+        assert_eq!(s.engine, DownloadsEngine::Native);
         s.prune_finished_feeds = false;
         save(&c, &s).unwrap();
         assert_eq!(stored_engine(&c), serde_json::json!("Telepathy"));
         assert!(!load_stored(&c, &nowhere()).unwrap().prune_finished_feeds);
-        // Picking an engine this build knows replaces it.
-        s.engine = DownloadsEngine::Native;
+        // Picking another engine this build knows replaces it.
+        s.engine = DownloadsEngine::Anirss;
         save(&c, &s).unwrap();
-        assert_eq!(stored_engine(&c), serde_json::json!("Native"));
+        assert_eq!(stored_engine(&c), serde_json::json!("Anirss"));
     }
 
     #[test]
@@ -613,9 +641,42 @@ mod tests {
             match engine {
                 // A shape this build cannot read is unknown too, and kept.
                 Some(e) if e.is_object() => assert_eq!(kept, e),
-                _ => assert_eq!(kept, serde_json::json!("Anirss")),
+                _ => assert_eq!(kept, serde_json::json!("Native")),
             }
         }
+    }
+
+    /// A blob this build cannot decode still keeps a stored anirss (#552).
+    #[test]
+    fn an_unreadable_blob_keeps_its_stored_anirss() {
+        let c = store();
+        let mut blob = serde_json::to_value(defaults()).unwrap();
+        blob["engine"] = serde_json::json!("Anirss");
+        blob["torrent_mode"] = serde_json::json!("Telepathic");
+        settings::set(&c, KEY, &blob).unwrap();
+        assert_eq!(
+            load_stored(&c, &nowhere()).unwrap().engine,
+            DownloadsEngine::Anirss
+        );
+        blob["engine"] = serde_json::json!("Native");
+        settings::set(&c, KEY, &blob).unwrap();
+        assert_eq!(
+            load_stored(&c, &nowhere()).unwrap().engine,
+            DownloadsEngine::Native
+        );
+    }
+
+    #[test]
+    fn anirss_endpoints_are_counted_off_its_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("config.toml");
+        assert_eq!(anirss_config_endpoints(&p), 0);
+        std::fs::write(
+            &p,
+            "[[endpoint]]\nname = \"a\"\n\n[[endpoint]]\nname = \"b\"\n",
+        )
+        .unwrap();
+        assert_eq!(anirss_config_endpoints(&p), 2);
     }
 
     #[test]

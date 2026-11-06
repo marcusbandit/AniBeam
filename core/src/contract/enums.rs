@@ -640,6 +640,8 @@ pub enum JobKind {
     /// One series' entries to a list status, as a play does to a series on
     /// hold.
     SetStatus,
+    /// The list kept on this device, moved up to a tracker (#580).
+    MoveLists,
     /// One series' notes, to every connected tracker (#211).
     Notes,
     Crawl,
@@ -672,7 +674,7 @@ impl JobKind {
             | RefreshAiring | RefreshImdb | ClearImages | FillImages | RefreshAiringNow
             | ScheduleAgent => Stage::Metadata,
             ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
-            | OnHold | SetStatus | Notes => Stage::Trackers,
+            | OnHold | SetStatus | MoveLists | Notes => Stage::Trackers,
             Crawl => Stage::Franchise,
             SkipWindows => Stage::Playback,
             Export | Import => Stage::Store,
@@ -707,6 +709,7 @@ impl JobKind {
             RefreshAiringNow => "Checking this season",
             OnHold => "Moving idle shows to On hold",
             SetStatus => "Changing a list status",
+            MoveLists => "Moving your list to your tracker",
             Notes => "Saving your notes",
             Crawl => "Finding related shows",
             SkipWindows => "Finding the opening and ending",
@@ -739,8 +742,8 @@ impl JobKind {
             | RefreshAiringNow | OnHold | Crawl | SkipWindows | Subscriptions
             | ConnectDownloads | CheckEndpoints => true,
             Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
-            | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | Notes
-            | Export | Import | SearchReleases | RefineReleases | Subscribe | Download
+            | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | MoveLists
+            | Notes | Export | Import | SearchReleases | RefineReleases | Subscribe | Download
             | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
             | RepairSubscription | StartEndpoint | ScheduleAgent => false,
         }
@@ -791,6 +794,7 @@ impl JobKind {
             RefreshAiringNow => "RefreshAiringNow",
             OnHold => "OnHold",
             SetStatus => "SetStatus",
+            MoveLists => "MoveLists",
             Notes => "Notes",
             Crawl => "Crawl",
             SkipWindows => "SkipWindows",
@@ -836,6 +840,7 @@ impl JobKind {
             "RefreshAiringNow" => Some(RefreshAiringNow),
             "OnHold" => Some(OnHold),
             "SetStatus" => Some(SetStatus),
+            "MoveLists" => Some(MoveLists),
             "Notes" => Some(Notes),
             "Crawl" => Some(Crawl),
             "SkipWindows" => Some(SkipWindows),

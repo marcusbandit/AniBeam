@@ -232,6 +232,23 @@ impl Host {
         trust::decide(from, &off, Some(&known(self.tailnet(true))))
     }
 
+    /// Whose request it is (`trust::asker`), and this machine's own Tailscale user when
+    /// the tailnet names one. A device the last read cannot place reads the tailnet
+    /// again first: it may have just joined. This machine is the owner without a read.
+    pub fn asker(&self, from: std::net::IpAddr) -> (trust::Asker, Option<trust::TailnetUser>) {
+        let me = |t: &Option<Arc<trust::Tailnet>>| t.as_ref().and_then(|t| t.owner().cloned());
+        if from.is_loopback() {
+            return (trust::Asker::Owner, me(&self.tailnet_now()));
+        }
+        let first = self.tailnet(false);
+        let asked = trust::asker(from, first.as_deref());
+        if asked != trust::Asker::Unknown {
+            return (asked, me(&first));
+        }
+        let again = self.tailnet(true);
+        (trust::asker(from, again.as_deref()), me(&again))
+    }
+
     pub fn status(&self) -> HostStatus {
         recover(&self.status.now).clone()
     }
