@@ -87,20 +87,20 @@ SettingsTab {
                   : tab.assMode === "Force" ? "Your style below goes on every file. Signs and karaoke can break."
                   : "Styled subtitle files keep their look and take your size. Plain files take your style."
             Seg { options: ["As made", "Size only", "Mine"]; index: ["AsScripted", "ScaleOnly", "Force"].indexOf(tab.assMode); onPicked: function(i) { tab.edit(function(d) { d.ass_override = ["AsScripted", "ScaleOnly", "Force"][i] }) } } }
-        SettingRow { label: "Font"
+        SettingRow { label: "Font"; helper: tab.bad.font ? "Type a font name, such as Noto Sans." : ""
             Field { text: tab.ts ? tab.ts.font : ""; width: theme.space(40); invalid: !!tab.bad.font; onEdited: function(t) { if (tab.flag("font", t.trim() !== "")) tab.edit(function(d) { d.text_style.font = t.trim() }) } } }
         SettingRow { label: "Bold"
             Switch { checked: !!(tab.ts && tab.ts.bold); onToggled: function(on) { tab.edit(function(d) { d.text_style.bold = on }) } } }
-        SettingRow { label: "Text colour"
+        SettingRow { label: "Text colour"; helper: tab.bad.colour ? "Type a colour like #ffcc00." : ""
             Row { spacing: theme.space(2)
                 Corner { anchors.verticalCenter: parent.verticalCenter; width: theme.space(7); height: width; radius: width / 2; color: tab.ts ? tab.hexOf(tab.ts.colour) : "#ffffff"; borderColor: theme.lineStrong; borderWidth: 1 }
                 Field { text: tab.ts ? tab.hexOf(tab.ts.colour) : ""; mono: true; width: theme.space(28); invalid: !!tab.bad.colour; onEdited: function(t) { if (tab.flag("colour", tab.isHex(t))) tab.edit(function(d) { d.text_style.colour = tab.colourOf(t) }) } } } }
-        SettingRow { label: "Outline"; helper: "Its width, then its colour."
+        SettingRow { label: "Outline"; helper: tab.bad.outline ? "The width is a number, 0 or more." : tab.bad.outlineColour ? "Type the colour like #000000." : "Its width, then its colour."
             Row { spacing: theme.space(2)
                 Field { text: tab.ts ? String(tab.ts.outline_size) : ""; mono: true; width: theme.space(16); invalid: !!tab.bad.outline; onEdited: function(t) { var v = Number(t); if (tab.flag("outline", t.trim() !== "" && v >= 0)) tab.edit(function(d) { d.text_style.outline_size = v }) } }
                 Corner { anchors.verticalCenter: parent.verticalCenter; width: theme.space(7); height: width; radius: width / 2; color: tab.ts ? tab.hexOf(tab.ts.outline_colour) : "#000000"; borderColor: theme.lineStrong; borderWidth: 1 }
                 Field { text: tab.ts ? tab.hexOf(tab.ts.outline_colour) : ""; mono: true; width: theme.space(28); invalid: !!tab.bad.outlineColour; onEdited: function(t) { if (tab.flag("outlineColour", tab.isHex(t))) tab.edit(function(d) { d.text_style.outline_colour = tab.colourOf(t) }) } } } }
-        SettingRow { label: "Shadow"; helper: "How far the shadow falls, 0 for none."
+        SettingRow { label: "Shadow"; helper: tab.bad.shadow ? "A number, 0 or more. 0 means no shadow." : "How far the shadow falls, 0 for none."
             Field { text: tab.ts ? String(tab.ts.shadow_offset) : ""; mono: true; width: theme.space(16); invalid: !!tab.bad.shadow; onEdited: function(t) { var v = Number(t); if (tab.flag("shadow", t.trim() !== "" && v >= 0)) tab.edit(function(d) { d.text_style.shadow_offset = v }) } } }
         SettingRow { label: "Background box"; helper: "A dark box behind the lines. 0 leaves it out."
             SliderRow { from: 0; to: 1; stepSize: 0.05; decimals: 2; value: tab.ts ? tab.ts.box_opacity : 0; onMoved: function(v) { tab.edit(function(d) { d.text_style.box_opacity = v }) } } }

@@ -31,7 +31,7 @@ Item {
     readonly property string line: connected
         ? "Connected as " + (account.username || "?") + ", synced " + (account.last_sync ? Fmt.relative(account.last_sync, Date.now() / 1000) : "never")
         : waiting ? "Waiting for you to approve in the browser"
-        : error !== "" ? error
+        : error !== "" ? frame.connectWords(tracker)
         : "Not connected"
 
     width: parent ? parent.width : theme.space(100)
@@ -155,7 +155,7 @@ Item {
             text: "Remove it"; icon: "trash-2"; flat: true; small: true
             onClicked: {
                 var r = Door.call("SetTrackerCredentials", { tracker: root.tracker, client_id: root.account.client_id || "", client_secret: "" })
-                r.error ? frame.fail(r.error) : frame.toast("Client secret removed")
+                r.error ? frame.fail(r.error, clicked) : frame.toast("Client secret removed")
             }
         }
     }
@@ -189,7 +189,7 @@ Item {
                 enabled: secret.text.trim() !== ""
                 onClicked: {
                     var r = Door.setTrackerCredentials(root.tracker, root.account.client_id || "", secret.text.trim())
-                    if (r.error) { frame.fail(r.error); return }
+                    if (r.error) { frame.fail(r.error, clicked); return }
                     secret.text = ""
                     frame.connectTracker(root.tracker)
                 }

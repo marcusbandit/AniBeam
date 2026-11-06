@@ -39,14 +39,14 @@ Panel {
         root.busy = false
         var c = replyOf(r, "EndpointCatalog")
         if (c) { root.catalog = c.catalog; root.error = ""; return true }
-        if (r && r.error) root.error = frame.errorText(r.error)
+        if (r && r.error) root.error = frame.plainText(r.error)
         return false
     }
     // Replies to calls run off the Qt thread, by token.
     property var waiting: ({})
     function later(call, args, done) {
         var t = Door.callAsync(call, args)
-        if (t < 0) { root.busy = false; root.error = "AniBeam could not start that call."; return }
+        if (t < 0) { root.busy = false; root.error = "AniBeam could not start that. Try again in a moment."; return }
         root.waiting[t] = done
     }
     Connections {
@@ -58,16 +58,19 @@ Panel {
             done(reply)
         }
     }
-    function load() { take(Door.call("ListRepoEndpoints", {})) }
-    function refresh() { root.busy = true; later("RefreshEndpointRepos", {}, root.take) }
+    // What the error line's Try again runs: the last load, refresh or add
+    property var again: null
+    function load() { root.again = root.load; take(Door.call("ListRepoEndpoints", {})) }
+    function refresh() { root.again = root.refresh; root.busy = true; later("RefreshEndpointRepos", {}, root.take) }
     function add() {
         if (root.repoUrl.trim() === "") return
+        root.again = root.add
         root.busy = true; root.error = ""
         later("AddEndpointRepo", { url: root.repoUrl.trim() }, function(r) {
             root.busy = false
             var p = replyOf(r, "EndpointRepoPreview")
             if (p) root.preview = p.preview
-            else if (r.error) root.error = frame.errorText(r.error)
+            else if (r.error) root.error = frame.plainText(r.error)
         })
     }
     function trust() {
@@ -118,7 +121,7 @@ Panel {
         later("AddCustomEndpoint", { name: root.customName.trim(), url: root.customUrl.trim(), credentials: [] }, function(r) {
             var c = replyOf(r, "EndpointCatalog")
             if (c) { root.catalog = c.catalog; root.customName = ""; root.customUrl = "" }
-            else if (r.error) root.customError = frame.errorText(r.error)
+            else if (r.error) root.customError = frame.plainText(r.error)
         })
     }
     function installedNote(e) {
@@ -142,7 +145,7 @@ Panel {
             label: modelData.name + (modelData.nsfw ? "  (18+)" : "")
             line: modelData.fingerprint
             helper: modelData.url
-            status: modelData.error ? modelData.error : ""
+            status: modelData.error ? "This list could not be read. Refresh lists tries it again." : ""
             Button { text: "Remove"; icon: "trash-2"; flat: true; small: true; onClicked: root.take(Door.call("RemoveEndpointRepo", { url: modelData.url })) }
         }
     }
@@ -167,7 +170,13 @@ Panel {
             Button { text: "Cancel"; flat: true; onClicked: root.preview = null }
         }
     }
-    Note { visible: root.error !== ""; text: root.error; color: theme.red }
+    Row {
+        visible: root.error !== ""
+        width: parent ? parent.width : theme.space(100)
+        spacing: theme.space(2)
+        Note { width: Math.min(implicitWidth, parent.width - (retry.visible ? retry.width + theme.space(2) : 0)); text: root.error; color: theme.red; anchors.verticalCenter: parent.verticalCenter }
+        Button { id: retry; objectName: "repos-try-again"; visible: !!root.again && !root.busy; text: "Try again"; icon: "refresh-cw"; flat: true; small: true; onClicked: root.again() }
+    }
 
     // What an install asks for.
     Column {
