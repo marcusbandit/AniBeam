@@ -143,7 +143,6 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings and errors use plain words instead of anirss terms
 - The activity log speaks plain words and leaves out background chores
 - Library, Airing and Feed open two to four times faster and use less memory
-- Plain words replace jargon: Metadata is Show info, endpoints are sources
 
 ### Fixed
 - A show's synopsis shows symbols like & instead of their codes, in paragraphs
