@@ -1679,12 +1679,13 @@ pub fn paced_http(core: &Core, runnable: &[Runnable]) -> Arc<dyn crate::net::Htt
 /// Read again before every endpoint fetch, so a definition installed, updated or removed
 /// changes what is fronted from the next request on.
 fn set_fronts(core: &Core) {
-    let fronts = core
-        .store
-        .read(read_installed)
-        .unwrap_or_default()
+    // A store that cannot be read keeps the table it had, rather than unfronting every host.
+    let Ok(rows) = core.store.read(read_installed) else {
+        return;
+    };
+    let fronts = rows
         .into_iter()
-        .filter_map(|r| Some((r.def.host(), r.def.front.clone()?)))
+        .filter_map(|r| Some((r.def.host(), r.def.front.clone()?.to_ascii_lowercase())))
         .filter(|(host, _)| !host.is_empty() && !host.contains('{'))
         .collect();
     core.http.set_fronts(fronts);

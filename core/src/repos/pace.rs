@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use crate::net::{BoxFuture, Http, HttpError, HttpRequest, HttpResponse};
 
 /// The least gap between two requests to one endpoint host, whatever its definition says
-/// or when it has none: `net::front`'s gap, which keeps DDoS-Guard answering (#135). A
+/// or when it has none: `net::front`'s gap, which keeps a front's edge answering (#135). A
 /// person's own server (localhost, a home-network address) has no floor, only its rate.
 pub const FLOOR: Duration = crate::net::front::GAP;
 
@@ -77,7 +77,7 @@ impl Http for Paced {
             if !wait.is_zero() {
                 tokio::time::sleep(wait).await;
             }
-            self.inner.send(req).await
+            self.inner.send_endpoint(req).await
         })
     }
 
@@ -90,6 +90,49 @@ impl Http for Paced {
 mod tests {
     use super::*;
     use crate::net::FakeHttp;
+
+    /// Says which door a request came in by.
+    #[derive(Default)]
+    struct Doors(std::sync::Mutex<Vec<&'static str>>);
+
+    impl Http for Doors {
+        fn send(&self, _req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
+            self.0.lock().unwrap().push("send");
+            Box::pin(async {
+                Err(HttpError {
+                    message: "none".into(),
+                })
+            })
+        }
+
+        fn send_endpoint(
+            &self,
+            _req: HttpRequest,
+        ) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
+            self.0.lock().unwrap().push("endpoint");
+            Box::pin(async {
+                Err(HttpError {
+                    message: "none".into(),
+                })
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn an_endpoint_request_goes_out_as_one_so_only_it_can_be_fronted() {
+        let doors = Arc::new(Doors::default());
+        let paced = Paced::new(doors.clone(), Vec::new());
+        let _ = paced
+            .send(HttpRequest {
+                method: crate::net::Method::Get,
+                url: "http://localhost:1/x".into(),
+                headers: Vec::new(),
+                body: None,
+                timeout: None,
+            })
+            .await;
+        assert_eq!(*doors.0.lock().unwrap(), ["endpoint"]);
+    }
 
     #[test]
     fn a_paced_host_books_one_slot_after_another() {

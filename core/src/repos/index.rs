@@ -133,6 +133,22 @@ fn shape_kind<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error
     Ok(crate::releases::kinds::shape_of(&kind).to_string())
 }
 
+/// A host name as DNS writes it: lower-case labels of letters, digits and hyphens, joined by
+/// dots, at least two of them, none starting or ending with a hyphen.
+fn dns_name(name: &str) -> bool {
+    name.len() <= 253
+        && name.split('.').count() >= 2
+        && name.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
+}
+
 /// How many release groups one definition may trust.
 const MAX_TRUSTED_GROUPS: usize = 32;
 
@@ -527,10 +543,21 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if crate::releases::endpoints::needs_query(&def.kind) && !has_query {
         return Err(format!("{}: the address needs {{query}}", def.id));
     }
-    if let Some(front) = &def.front
-        && (front.is_empty() || front.contains(['/', ':', '{', '@']))
-    {
-        return Err(format!("{}: the front must be a bare host", def.id));
+    if let Some(front) = &def.front {
+        if !dns_name(front) {
+            return Err(format!(
+                "{}: the front must be a bare host name in lower case",
+                def.id
+            ));
+        }
+        // A fronted request goes to the front by name alone, so the address it stands for
+        // has no port or login of its own.
+        if authority_of(&def.url).contains([':', '@']) {
+            return Err(format!(
+                "{}: an address with a port or a login cannot be fronted",
+                def.id
+            ));
+        }
     }
     if def.rate.is_some_and(|r| r.per_minute == 0) {
         return Err(format!("{}: a rate of zero", def.id));
@@ -726,6 +753,28 @@ pub(crate) mod tests {
             .map(|d| d.kind)
             .collect();
         assert_eq!(again, ["filtered-rss", "json-feed"]);
+    }
+
+    #[test]
+    fn a_front_is_a_plain_host_name_for_a_plain_address() {
+        let mut d: Definition =
+            serde_json::from_value(def("t", "rss", "https://tracker.example/?q={query}")).unwrap();
+        d.front = Some("edge.example".into());
+        assert!(check(&d).is_ok());
+        for bad in [
+            "Edge.Example",
+            "edge.example?",
+            "edge.example#x",
+            "edge",
+            "-edge.example",
+            "edge .example",
+        ] {
+            d.front = Some(bad.into());
+            assert!(check(&d).is_err(), "{bad:?}");
+        }
+        d.front = Some("edge.example".into());
+        d.url = "https://tracker.example:8443/?q={query}".into();
+        assert!(check(&d).is_err(), "a port the front cannot carry");
     }
 
     #[test]

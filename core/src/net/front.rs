@@ -37,13 +37,14 @@ impl Fronts {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .iter()
-            .find(|(_, f)| f == front)
+            .find(|(_, f)| f.eq_ignore_ascii_case(front))
             .map(|(h, _)| h.clone())
     }
 }
 
 /// The URL to ask, with the front's name for the host, and the real host for the Host
-/// header; None for a host `table` does not front.
+/// header; None for a host `table` does not front. Only an endpoint's request is asked
+/// (`Http::send_endpoint`), never one the core makes for itself.
 pub fn fronted(url: &str, table: &[(String, String)]) -> Option<(String, String)> {
     let (scheme, rest) = url.split_once("://")?;
     if scheme != "https" {

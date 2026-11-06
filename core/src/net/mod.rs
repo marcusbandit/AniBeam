@@ -220,6 +220,13 @@ impl From<HttpError> for Fault {
 pub trait Http: Send + Sync {
     fn send(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>>;
 
+    /// A request to an endpoint, the only kind a definition's front may reroute (`front.rs`):
+    /// a host the core talks to for itself (a tracker, a metadata provider) is never fronted,
+    /// whatever a definition names. Every other client sends it as any request.
+    fn send_endpoint(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
+        self.send(req)
+    }
+
     /// The hosts to front and each one's front, from the installed endpoint definitions
     /// (`front.rs`). Only a client that fronts keeps them; the rest ignore them.
     fn set_fronts(&self, _fronts: Vec<(String, String)>) {}
@@ -270,10 +277,10 @@ pub struct ReqwestHttp {
     fronts: front::Fronts,
 }
 
-/// Fronted requests' client, cookies and pace. DDoS-Guard hands out cookies for the site
-/// asked for and treats a client that never sends them back as a bot (#135). The URL names
-/// the front, so a cookie store on the client would file them under the front's name and
-/// turn away their `Domain=.nyaa.si`; the jar is kept by the real host instead.
+/// Fronted requests' client, cookies and pace. A front's edge can hand out cookies for the
+/// site asked for and treat a client that never sends them back as a bot (#135). The URL
+/// names the front, so a cookie store on the client would file them under the front's name
+/// and turn away their `Domain=` of the site; the jar is kept by the real host instead.
 struct Front {
     client: reqwest::Client,
     #[cfg(target_os = "android")]
@@ -549,6 +556,11 @@ fn describe(e: reqwest::Error) -> String {
 
 impl Http for ReqwestHttp {
     fn send(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
+        let url = req.url.clone();
+        Box::pin(request(self.client.clone(), req, url, None))
+    }
+
+    fn send_endpoint(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
         // A host a network blocks by name goes to its server under its front's name.
         match (&self.fronted, self.fronts.fronted(&req.url)) {
             (Some(fronted), Some((url, host))) => Box::pin(fronted.send(req, url, host)),
