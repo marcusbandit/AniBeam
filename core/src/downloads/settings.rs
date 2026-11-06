@@ -959,22 +959,31 @@ pub fn anirss_ondemand(path: &Path, name: &str) -> Option<OnDemand> {
 /// anirss's `[bestfit]` over anirss's own defaults, merged the way anirss merges its config:
 /// what the person saved there (the groups they trust, the source order, the resolution and
 /// the codec-normalised size target) ranks the native engine's best fit as it ranks anirss's
-/// (#545). `None` when the file is missing or does not read. A key of the wrong shape keeps
-/// anirss's default.
+/// (#545). `None` when there is no file. One that does not read is anirss's defaults, as
+/// anirss warns about it and ranks with them. A key of the wrong shape keeps the default.
 pub fn anirss_bestfit(path: &Path) -> Option<BestfitConfig> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let doc: toml::Table = toml::from_str(&text).ok()?;
+    if !path.exists() {
+        return None;
+    }
     let mut cfg = BestfitConfig::default();
-    let Some(saved) = doc.get("bestfit").and_then(|b| b.as_table()) else {
+    let doc = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| toml::from_str::<toml::Table>(&text).ok());
+    let Some(saved) = doc
+        .as_ref()
+        .and_then(|d| d.get("bestfit"))
+        .and_then(|b| b.as_table())
+    else {
         return Some(cfg);
     };
+    // A list with anything but words in it is the wrong shape as a whole
     let words = |key: &str| -> Option<Vec<String>> {
-        let list = saved.get(key)?.as_array()?;
-        Some(
-            list.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect(),
-        )
+        saved
+            .get(key)?
+            .as_array()?
+            .iter()
+            .map(|v| v.as_str().map(str::to_string))
+            .collect()
     };
     let number = |key: &str| -> Option<f64> {
         let v = saved.get(key)?;
@@ -1050,10 +1059,14 @@ assumed_source = "WEB"
 "#;
 
     #[test]
-    fn no_config_or_one_that_does_not_read_is_nothing() {
+    fn no_config_is_nothing_and_one_that_does_not_read_is_anirss_s_defaults() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(anirss_bestfit(&dir.path().join("missing.toml")), None);
-        assert_eq!(read("[bestfit\npreferred_groups = ["), None);
+        // anirss warns about a bad config and ranks with its defaults
+        assert_eq!(
+            read("[bestfit\npreferred_groups = ["),
+            Some(BestfitConfig::default())
+        );
     }
 
     #[test]
@@ -1096,6 +1109,12 @@ assumed_source = "WEB"
         let cfg = read("[bestfit]\npreferred_groups = \"Beta\"\nassumed_source = 3\n").unwrap();
         assert!(cfg.preferred_groups.is_empty());
         assert_eq!(cfg.assumed_source, "WEB");
+        let cfg = read("[bestfit]\npreferred_groups = [\"Beta\", 1]\n").unwrap();
+        assert!(
+            cfg.preferred_groups.is_empty(),
+            "{:?}",
+            cfg.preferred_groups
+        );
     }
 
     #[test]

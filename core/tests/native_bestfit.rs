@@ -29,9 +29,11 @@ fn feed(titles: &[&str]) -> String {
     )
 }
 
-fn settings() -> DownloadSettings {
+/// AniBeam runs anirss itself (`mode` Sidecar), so its config is the one on this machine.
+/// The native engine never starts it.
+fn settings(mode: AnirssMode) -> DownloadSettings {
     DownloadSettings {
-        anirss_mode: AnirssMode::Remote,
+        anirss_mode: mode,
         anirss_command: "anirss".to_string(),
         jackett_command: String::new(),
         anirss_url: "http://anirss.test".to_string(),
@@ -84,7 +86,7 @@ fn a_search_on_the_native_engine_picks_by_the_groups_saved_in_anirss_s_config() 
     }
     let reply = core
         .call(Call::SetDownloadSettings {
-            settings: settings(),
+            settings: settings(AnirssMode::Sidecar),
             anirss_token: Some("tok".to_string()),
             torrent_password: None,
         })
@@ -100,7 +102,7 @@ fn a_search_on_the_native_engine_picks_by_the_groups_saved_in_anirss_s_config() 
         "[Alpha] Show - 01 (1080p).mkv",
         "[Beta] Show - 01 (1080p).mkv",
     ];
-    for _ in 0..3 {
+    for _ in 0..6 {
         http.push_for("feed.example", 200, feed(&titles));
     }
     let best = best_fit_of(&core, &c);
@@ -110,4 +112,19 @@ fn a_search_on_the_native_engine_picks_by_the_groups_saved_in_anirss_s_config() 
         Some("[Beta] Show - 01 (1080p).mkv")
     );
     assert!(best.query.contains("[Beta]"), "{}", best.query);
+
+    // An anirss the person runs elsewhere keeps its config there: this machine's file is not
+    // its preferences, so the core ranks as it does out of the box (neither group trusted,
+    // the first of equals).
+    core.call(Call::SetDownloadSettings {
+        settings: settings(AnirssMode::Remote),
+        anirss_token: Some("tok".to_string()),
+        torrent_password: None,
+    })
+    .unwrap();
+    let best = best_fit_of(&core, &c);
+    assert_eq!(
+        best.item.map(|i| i.title).as_deref(),
+        Some("[Alpha] Show - 01 (1080p).mkv")
+    );
 }
