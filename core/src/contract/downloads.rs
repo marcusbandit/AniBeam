@@ -145,7 +145,7 @@ pub enum RefineOp {
 
 /// What a refine step did. With `applied` false the state is unchanged and
 /// `reason` (`noop`, `zero_results`, `no_match`, `empty_term`) says why;
-/// `mode` is `refetch` (nyaa searched again) or `client` (filtered locally).
+/// `mode` is `refetch` (a filtered-rss source searched again) or `client` (filtered locally).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Refinement {
     pub applied: bool,
@@ -765,9 +765,9 @@ pub struct DownloadsStatus {
     pub endpoints: Vec<SearchEndpoint>,
 }
 
-/// A place the phone searches. `kind` is `nyaa` (the site's RSS with its
-/// `q`, `c` and `f` parameters) or `rss` (any feed whose URL holds
-/// `{query}`, erai's among them).
+/// A place the phone searches. `kind` is one of `releases::endpoints::VALID_KINDS`: most often
+/// `filtered-rss` (an RSS search the core builds with its `q`, `c` and `f` parameters) or
+/// `rss` (any feed whose URL holds `{query}`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct PhoneSource {
     pub name: String,
