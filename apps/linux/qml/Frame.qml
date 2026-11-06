@@ -302,9 +302,13 @@ FocusScope {
     // keeps the core's text, which the client secret check reads)
     property var connectProblems: ({})
     function connectWords(t) {
+        // MyAnimeList asking for the app's client secret is a refusal the core words for
+        // people, and the row's Add client secret button is its fix: those words stay
+        if (needsSecret(t)) return connectErrors[t]
         var e = connectProblems[t]
         return e ? plainText(e) : connectErrors[t] || ""
     }
+    function needsSecret(t) { return /client secret/i.test(connectErrors[t] || "") }
     function connectFailed(t, e) {
         connectErrors = withKey(connectErrors, t, errorText(e))
         connectProblems = withKey(connectProblems, t, e)
@@ -459,7 +463,11 @@ FocusScope {
             frame.connectFailed(t, error)
             // The sheet says it inline when it is up for this tracker; a toast as well would
             // be the same sentence twice.
-            if (!connectSheet.visible || connectSheet.tracker !== t) frame.fail(error, function() { frame.connectTracker(t) })
+            if (!connectSheet.visible || connectSheet.tracker !== t) {
+                // Asking again cannot help a missing secret: the row's button is the fix
+                if (frame.needsSecret(t)) frame.toast(frame.connectWords(t), 8)
+                else frame.fail(error, function() { frame.connectTracker(t) })
+            }
         }
         // A cancel nobody here asked for is a sign-in that stopped under the user. Nothing in
         // the shell starts a connect behind the frame's back today, so this is the guard for

@@ -77,14 +77,17 @@ Panel {
     }
     function trust() {
         if (!root.preview) return
+        root.again = root.trust
         root.busy = true
         var p = root.preview
         later("TrustEndpointRepo", { url: p.url, key: p.key }, function(r) {
             if (root.take(r)) { root.preview = null; root.repoUrl = "" }
         })
     }
+    function remove(url) { root.again = function() { root.remove(url) }; root.take(Door.call("RemoveEndpointRepo", { url: url })) }
     function hostLine(e) { return e.host + "  " + e.kind + (e.lang ? "  " + e.lang : "") }
     function run(call, args) {
+        root.again = function() { root.run(call, args) }
         root.busy = true
         later(call, args, function(r) { if (root.take(r)) root.asking = null })
     }
@@ -148,7 +151,7 @@ Panel {
             line: modelData.fingerprint
             helper: modelData.url
             status: modelData.error ? "This list could not be read. Refresh lists tries it again." : ""
-            Button { text: "Remove"; icon: "trash-2"; flat: true; small: true; onClicked: root.take(Door.call("RemoveEndpointRepo", { url: modelData.url })) }
+            Button { text: "Remove"; icon: "trash-2"; flat: true; small: true; onClicked: root.remove(modelData.url) }
         }
     }
     SettingRow {
