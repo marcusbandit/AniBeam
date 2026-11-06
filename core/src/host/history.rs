@@ -17,7 +17,6 @@
 
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -225,12 +224,14 @@ fn moved(file: &str, there: &str, here: &str) -> Option<String> {
     if !rest.starts_with(['/', '\\']) {
         return None;
     }
-    Some(
-        Path::new(here)
-            .join(last_segment(rest))
-            .to_string_lossy()
-            .into_owned(),
-    )
+    // Join with the separator the path here already uses, so a path here
+    // keeps one style whichever system this runs on.
+    let sep = match here.rfind(['/', '\\']) {
+        Some(i) => &here[i..=i],
+        None => std::path::MAIN_SEPARATOR_STR,
+    };
+    let base = here.trim_end_matches(['/', '\\']);
+    Some(format!("{base}{sep}{}", last_segment(rest)))
 }
 
 /// The history there, rewritten onto the paths of the series here; what
@@ -606,6 +607,23 @@ mod tests {
         assert_eq!(
             map(&[entry("series", "/b/Show", Some(20))], &unsure).len(),
             1
+        );
+    }
+
+    #[test]
+    fn a_moved_file_keeps_the_separator_of_the_path_here() {
+        assert_eq!(
+            moved("/m/Show/Show - 01.mkv", "/m/Show", "D:\\Anime\\Show").as_deref(),
+            Some("D:\\Anime\\Show\\Show - 01.mkv")
+        );
+        assert_eq!(
+            moved(
+                "C:\\Anime\\Show\\Show - 01.mkv",
+                "C:\\Anime\\Show",
+                "/home/a/Show/"
+            )
+            .as_deref(),
+            Some("/home/a/Show/Show - 01.mkv")
         );
     }
 
