@@ -87,6 +87,9 @@ pub struct Definition {
     pub version: u32,
     #[serde(default)]
     pub lang: String,
+    /// Read under its shape name: an index published, or a row stored, before #602 may
+    /// still carry a kind's old name.
+    #[serde(deserialize_with = "shape_kind")]
     pub kind: String,
     /// `{query}` plus one placeholder per `auth` key; filled at request time.
     pub url: String,
@@ -119,6 +122,11 @@ pub struct AuthField {
     pub help: String,
     #[serde(default)]
     pub help_url: Option<String>,
+}
+
+fn shape_kind<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let kind = String::deserialize(d)?;
+    Ok(crate::releases::kinds::shape_of(&kind).to_string())
 }
 
 fn yes() -> bool {
@@ -506,8 +514,8 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
         return Err(format!("{}: a placeholder in the host", def.id));
     }
     let has_query = def.url.contains("{query}");
-    if def.kind == "nyaa" && has_query {
-        return Err(format!("{}: nyaa adds the query itself", def.id));
+    if def.kind == crate::releases::kinds::FILTERED_RSS && has_query {
+        return Err(format!("{}: filtered-rss adds the query itself", def.id));
     }
     if crate::releases::endpoints::needs_query(&def.kind) && !has_query {
         return Err(format!("{}: the address needs {{query}}", def.id));
@@ -667,7 +675,7 @@ pub(crate) mod tests {
     fn a_signed_index_reads() {
         let k = signing_key(1);
         let file = sign(
-            &index(&k, vec![def("nyaa", "nyaa", "https://nyaa.si/")]),
+            &index(&k, vec![def("nyaa", "filtered-rss", "https://nyaa.si/")]),
             &k,
         );
         let idx = parse(&file, "2.1.0").unwrap();
@@ -675,6 +683,31 @@ pub(crate) mod tests {
         assert_eq!(idx.serial, 10);
         assert_eq!(idx.endpoints.len(), 1);
         assert_eq!(idx.key, key_text(&k));
+    }
+
+    #[test]
+    fn an_index_from_before_the_shape_kinds_reads_with_them() {
+        let k = signing_key(1);
+        let old: Vec<serde_json::Value> = crate::releases::kinds::RENAMED
+            .iter()
+            .map(|(old, _)| {
+                let url = if *old == crate::releases::kinds::RENAMED[0].0 {
+                    "https://tracker.example/"
+                } else {
+                    "https://feed.example/json?q={query}"
+                };
+                def(&format!("{old}-site"), old, url)
+            })
+            .collect();
+        let file = sign(&index(&k, old), &k);
+        let idx = parse(&file, "2.1.0").unwrap();
+        let kinds: Vec<&str> = idx.endpoints.iter().map(|d| d.kind.as_str()).collect();
+        assert_eq!(kinds, ["filtered-rss", "json-feed"]);
+        let again: Vec<String> = reread(&idx.payload, "2.1.0")
+            .into_iter()
+            .map(|d| d.kind)
+            .collect();
+        assert_eq!(again, ["filtered-rss", "json-feed"]);
     }
 
     #[test]
@@ -772,8 +805,8 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_tosho_or_rss_address_needs_the_query() {
-        for kind in ["tosho", "rss"] {
+    fn a_json_feed_or_rss_address_needs_the_query() {
+        for kind in ["json-feed", "rss"] {
             let mut d: Definition =
                 serde_json::from_value(def("t", kind, "https://feed.example/json")).unwrap();
             assert!(check(&d).is_err(), "{kind}");

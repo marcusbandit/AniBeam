@@ -38,11 +38,43 @@ fn sources_path(core: &Core) -> PathBuf {
 
 /// The phone ships with no source of its own (#152): endpoints come from a repo the person
 /// adds, or by hand. This list is only what someone saved here before repos existed.
+/// Each kind is read under its shape name, should the file still hold one from before #602.
 pub fn sources(core: &Core) -> Vec<PhoneSource> {
+    let mut sources = saved_sources(core);
+    for s in &mut sources {
+        s.kind = crate::releases::kinds::shape_of(s.kind.trim()).to_string();
+    }
+    sources
+}
+
+fn saved_sources(core: &Core) -> Vec<PhoneSource> {
     std::fs::read(sources_path(core))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default()
+}
+
+/// The saved sources whose kind has a name from before #602 get its shape name, in place and
+/// once (`repos::rename_old_kinds`). Returns how many.
+pub(crate) fn rename_old_kinds(core: &Core) -> Result<usize, CoreError> {
+    let mut saved = saved_sources(core);
+    let mut renamed = 0;
+    for s in &mut saved {
+        let now = crate::releases::kinds::shape_of(s.kind.trim());
+        if now != s.kind.trim() {
+            s.kind = now.to_string();
+            renamed += 1;
+        }
+    }
+    if renamed == 0 {
+        return Ok(0);
+    }
+    let path = sources_path(core);
+    let bytes =
+        serde_json::to_vec_pretty(&saved).map_err(|e| CoreError::internal(e.to_string()))?;
+    crate::atomic_file::write(&path, bytes)
+        .map_err(|e| CoreError::internal(e.source.to_string()))?;
+    Ok(renamed)
 }
 
 pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
@@ -608,7 +640,7 @@ async fn feed(core: &Core, url: &str, name: &str) -> Result<Vec<Release>, CoreEr
     let timeout = crate::releases::fetch::DEFAULT_TIMEOUT;
     let http = crate::repos::endpoint_http(core);
     if url.contains("animetosho.org/feed/json") {
-        crate::releases::tosho::fetch(&http, url, name, timeout).await
+        crate::releases::json_feed::fetch(&http, url, name, timeout).await
     } else {
         crate::releases::fetch::fetch_rss(&http, url, name, timeout).await
     }
