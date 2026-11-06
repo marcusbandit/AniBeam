@@ -4,13 +4,16 @@
 
 import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
-import { Button, ListRow, TextButton } from "widgets.slint";
+import { Button, ListRow, ProgressLine, TextButton } from "widgets.slint";
 import { Sheet } from "sheet.slint";
 
-// The notification as the phone's shade shows it while episodes download: the payoff, drawn
-// before the ask. The text is the one the download service posts.
-export component NotifyPreview inherits Rectangle {
-    in property <string> text: "Downloading 2 episodes";
+// One notification as the shade draws it, in the app's glass.
+component NotifyCard inherits Rectangle {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> text;
+    in property <float> progress;
+    in property <bool> bar;
     height: row.preferred-height;
     background: Theme.float;
     border-radius: Theme.radius + 6px;
@@ -19,7 +22,6 @@ export component NotifyPreview inherits Rectangle {
     row := HorizontalLayout {
         padding: Theme.unit * 4;
         spacing: Theme.unit * 3;
-        alignment: start;
         Rectangle {
             width: 10 * Theme.unit;
             height: self.width;
@@ -29,7 +31,7 @@ export component NotifyPreview inherits Rectangle {
             Image {
                 width: 5 * Theme.unit;
                 height: self.width;
-                source: @image-url("icons/download.svg");
+                source: root.icon;
                 colorize: Theme.accent;
             }
         }
@@ -42,12 +44,49 @@ export component NotifyPreview inherits Rectangle {
                 font-size: Theme.small;
             }
             Text {
-                text: root.text;
+                text: root.title;
                 color: Theme.text;
                 font-size: Theme.normal;
                 overflow: elide;
             }
+            Text {
+                text: root.text;
+                color: Theme.dim;
+                font-size: Theme.small;
+                overflow: elide;
+            }
+            if root.bar: VerticalLayout {
+                padding-top: Theme.unit;
+                ProgressLine {
+                    progress: root.progress;
+                    fill: Theme.accent;
+                }
+            }
         }
+    }
+}
+
+// The notifications as the phone's shade shows them: the payoff, drawn before the ask. The
+// ongoing one while an episode downloads, with its bar and the numbers Downloads shows, and
+// below it the one a finished episode posts. The words follow `notify.rs` (`ongoing`,
+// `ready_title`, `READY_TEXT`); change them there and here together.
+export component NotifyPreview inherits VerticalLayout {
+    in property <string> title: "Downloading Frieren episode 7";
+    in property <string> text: "30%, 420 MB of 1.4 GB, 3.2 MB/s, 5m left";
+    in property <float> progress: 0.3;
+    in property <string> ready: "Frieren episode 6 is ready";
+    spacing: Theme.unit * 2;
+    NotifyCard {
+        icon: @image-url("icons/download.svg");
+        title: root.title;
+        text: root.text;
+        progress: root.progress;
+        bar: true;
+    }
+    NotifyCard {
+        icon: @image-url("icons/check-check.svg");
+        title: root.ready;
+        text: "Downloaded to this phone. Tap to open AniBeam.";
     }
 }
 
@@ -77,7 +116,7 @@ export component NotifyQuestion inherits Sheet {
         wrap: word-wrap;
     }
     Text {
-        text: "While episodes download, a notification says what is downloading. They download either way; this only decides whether you see it.";
+        text: "While episodes download, a notification shows how far along they are, and another says when one is ready. They download either way; this only decides whether you see it.";
         color: Theme.dim;
         font-size: Theme.small + 1px;
         wrap: word-wrap;
