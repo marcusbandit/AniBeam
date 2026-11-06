@@ -76,31 +76,37 @@ impl Notifier {
         if self.listening {
             return Ok(c);
         }
-        let proxy = zbus::Proxy::new(&c, NAME, PATH, NAME).await?;
-        let mut clicks = proxy.receive_signal("ActionInvoked").await?;
-        let mut closed = proxy.receive_signal("NotificationClosed").await?;
-        // Spec 1.2: the token comes just before the ActionInvoked it belongs to
-        let mut tokens = proxy.receive_signal("ActivationToken").await?;
+        // One stream for all three signals, so they come in the order the bus delivered
+        // them. Spec 1.2: a token just before the ActionInvoked it belongs to, and a click
+        // is followed by the close it causes; three streams would lose that order.
+        let rule = zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .interface(NAME)?
+            .path(PATH)?
+            .build();
+        let mut signals = zbus::MessageStream::for_match_rule(rule, &c, None).await?;
         let open = self.open.clone();
         tokio::spawn(async move {
             let mut token: HashMap<u32, String> = HashMap::new();
-            loop {
-                // Biased, in the order the daemon sends them: a token comes before the
-                // click it belongs to, and a close before any late click on it
-                tokio::select! {
-                    biased;
-                    Some(msg) = tokens.next() => {
+            while let Some(msg) = signals.next().await {
+                let Ok(msg) = msg else { continue };
+                let header = msg.header();
+                let Some(member) = header.member() else {
+                    continue;
+                };
+                match member.as_str() {
+                    "ActivationToken" => {
                         if let Ok((id, t)) = msg.body().deserialize::<(u32, String)>() {
                             token.insert(id, t);
                         }
                     }
-                    Some(msg) = closed.next() => {
+                    "NotificationClosed" => {
                         if let Ok((id, _)) = msg.body().deserialize::<(u32, u32)>() {
                             open.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
                             token.remove(&id);
                         }
                     }
-                    Some(msg) = clicks.next() => {
+                    "ActionInvoked" => {
                         let Ok((id, action)) = msg.body().deserialize::<(u32, String)>() else {
                             continue;
                         };
@@ -113,7 +119,7 @@ impl Notifier {
                             on_click(target, t);
                         }
                     }
-                    else => break,
+                    _ => {}
                 }
             }
         });
@@ -293,13 +299,18 @@ mod tests {
                 vec!["default".to_string(), "Get episodes".to_string()]
             );
 
-            // The daemon hands over a token, then says the second one was clicked
+            // The daemon hands over a token, says the second one was clicked, and closes
+            // it, all at once as a real daemon does: the click still comes back
             server
                 .emit_signal(None::<()>, PATH, NAME, "ActivationToken", &(8u32, "tok-1"))
                 .await
                 .unwrap();
             server
                 .emit_signal(None::<()>, PATH, NAME, "ActionInvoked", &(8u32, "default"))
+                .await
+                .unwrap();
+            server
+                .emit_signal(None::<()>, PATH, NAME, "NotificationClosed", &(8u32, 2u32))
                 .await
                 .unwrap();
             let (clicked, token) = tokio::time::timeout(Duration::from_secs(5), rx.recv())

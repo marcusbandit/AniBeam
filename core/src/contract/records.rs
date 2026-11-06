@@ -560,7 +560,12 @@ pub struct EpisodeOut {
     pub anilist_id: u64,
     pub episode: u32,
     pub at: SystemTime,
+    /// The display title, by the title-language preference.
     pub title: String,
+    /// AniList's own titles, for Get episodes: it searches by the latin ones.
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
     pub series: Option<u64>,
 }
 

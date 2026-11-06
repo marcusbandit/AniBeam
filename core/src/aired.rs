@@ -87,6 +87,9 @@ pub(crate) fn due(conn: &Connection, from: i64, to: i64) -> Result<Vec<EpisodeOu
                 native.as_deref(),
                 &format!("AniList {anilist_id}"),
             ),
+            romaji,
+            english,
+            native,
             series: r.get::<_, Option<i64>>(6)?.map(|id| id as u64),
         })
     })?;
@@ -104,12 +107,16 @@ pub(crate) struct Aired {
     saying: Mutex<()>,
 }
 
-const SETTLE: Duration = Duration::from_secs(1);
+use crate::calendar::SETTLE;
+
+/// How far the mark may lag before a quiet re-arm moves it. Re-arms come
+/// after every finished job, so a write each time would be a transaction per
+/// settle window for nothing; a mark a few minutes old says the same.
+const MARK_STEP: i64 = 10 * 60;
 
 /// Says every followed episode out since the mark, moves the mark to now, and
-/// answers the next broadcast to wake for.
+/// answers the next broadcast to wake for. The caller holds `saying`.
 fn announce(core: &Core) -> Result<Option<i64>, CoreError> {
-    let _one = recover(&core.aired.saying);
     let now = time::now_secs();
     let (out, next) = core.store.tx(move |tx| {
         let mark = settings::get::<i64>(tx, settings::EPISODES_OUT_AT)?;
@@ -122,7 +129,12 @@ fn announce(core: &Core) -> Result<Option<i64>, CoreError> {
         } else {
             Vec::new()
         };
-        settings::set(tx, settings::EPISODES_OUT_AT, &now)?;
+        // Never backwards: a clock stepped back would say again what the
+        // mark already covers.
+        let moved = mark.map_or(now, |m| m.max(now));
+        if !out.is_empty() || mark.is_none_or(|m| moved - m >= MARK_STEP) {
+            settings::set(tx, settings::EPISODES_OUT_AT, &moved)?;
+        }
         Ok((out, next_at(tx, now)?))
     })?;
     for ep in out {
@@ -145,6 +157,9 @@ fn announce(core: &Core) -> Result<Option<i64>, CoreError> {
 /// Announces what is due, then sets the one alarm for the next broadcast,
 /// replacing any alarm set before.
 pub(crate) fn arm(core: &Arc<Core>) {
+    // Held until the alarm is set, so a second arm with an older answer for
+    // the next broadcast cannot replace a newer alarm.
+    let _one = recover(&core.aired.saying);
     let next = match announce(core) {
         Ok(next) => next,
         Err(e) => {
@@ -167,26 +182,11 @@ pub(crate) fn arm(core: &Arc<Core>) {
     }));
 }
 
-/// Whether an event can move the schedule or the list: any job that ends (a
-/// refresh, a status write), a show hidden or gone, a tracker connected.
+/// Whether an event can move the schedule or the list: the calendar's net
+/// (any job that ends, a show hidden or gone, a source removed, a tracker
+/// change), less the alarm's own announcements.
 fn may_change(event: &Event) -> bool {
-    if matches!(event.body, EventBody::EpisodeOut { .. }) {
-        return false;
-    }
-    if event
-        .job
-        .as_ref()
-        .is_some_and(|j| j.phase == JobPhase::Finished)
-    {
-        return true;
-    }
-    matches!(
-        event.body,
-        EventBody::SeriesChanged { .. }
-            | EventBody::SeriesRemoved { .. }
-            | EventBody::TrackersChanged { .. }
-            | EventBody::WatchingRefreshed { .. }
-    )
+    !matches!(event.body, EventBody::EpisodeOut { .. }) && crate::calendar::may_change(event)
 }
 
 /// Subscribes the re-arming listener and sets the first alarm. Called once
