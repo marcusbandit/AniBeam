@@ -28,7 +28,14 @@ Item {
     // "watching" or "planning", kept in the page's props so Back returns to the tab
     property string tab: props.tab === "planning" ? "planning" : "watching"
     property var planned: []
-    function pickTab(t) { page.tab = t; frame.nav.current.props = { tab: t }; page.readPlanning() }
+    property bool planningFailed: false
+    // The list was read by the last reload or refresh; a switch only shows it, from the top
+    function pickTab(t) {
+        page.tab = t
+        frame.nav.current.props = { tab: t }
+        scroll.contentY = 0
+        if (t === "planning" && page.planningFailed) page.readPlanning()
+    }
     property bool anilistConnected: false
     property bool loadFailed: false
     property real nowMs: Date.now()
@@ -147,19 +154,25 @@ Item {
     function readPlanning() {
         if (!page.anilistConnected) { page.planned = []; return }
         var r = Door.call("ListPlanning", {})
-        if (r.error) { frame.toast(frame.errorText(r.error)); return }
+        if (r.error) {
+            // Said once, on the tab that shows it; the tab then shows the failure, not old cards
+            if (!page.planningFailed && page.tab === "planning") frame.toast(frame.errorText(r.error))
+            page.planningFailed = true
+            page.planned = []
+            return
+        }
+        page.planningFailed = false
         page.planned = r.reply.list.entries || []
     }
     // Start watching (#210): Watching on every connected tracker, then the first episode
     function startWatching(e) {
-        var r = Door.call("SetListStatus", { series: e.owned, status: "Watching" })
-        if (r.error) { frame.toast(frame.errorText(r.error)); return }
-        frame.toast(e.title + " moves to Watching")
-        frame.playNext(e.owned, e.title)
+        if (frame.setListStatus(e.owned, "Watching", "Watching")) frame.playNext(e.owned, e.title)
     }
+    // Downloads searches by the latin titles, so each goes over as AniList has it
     function getEpisodes(e) {
-        frame.go("downloads", { hit: { id: e.anilist_id, title: e.title, romaji: e.title, english: "", native: "",
-                                       cover_url: "", episodes: e.total || 0, format: "", year: 0 } }, "Downloads")
+        frame.go("downloads", { hit: { id: e.anilist_id, title: e.title, romaji: e.romaji || "", english: e.english || "",
+                                       native: e.native || "", cover_url: e.poster || "", episodes: e.total || 0,
+                                       format: "", year: 0 } }, "Downloads")
     }
     function planningActions(x) {
         var e = x.raw, items = []
@@ -360,8 +373,16 @@ Item {
                 Button { text: "Try again"; icon: "refresh-cw"; onClicked: { page.reload(); page.refresh(true) } }
             }
             EmptyState {
+                objectName: "planning-failed"
+                visible: page.anilistConnected && !page.loadFailed && page.tab === "planning" && page.planningFailed
+                icon: "triangle-alert"
+                title: "The planning list did not load"
+                body: "Its cache could not be read. Try again, or it comes back on the next refresh."
+                Button { text: "Try again"; icon: "refresh-cw"; onClicked: page.readPlanning() }
+            }
+            EmptyState {
                 objectName: "planning-empty"
-                visible: page.anilistConnected && !page.loadFailed && page.tab === "planning"
+                visible: page.anilistConnected && !page.loadFailed && page.tab === "planning" && !page.planningFailed
                 icon: "bookmark"
                 title: "Nothing on your planning list"
                 body: "Plan to watch on Airing now, or Planning in a show's list menu, puts a show here."

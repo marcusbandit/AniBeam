@@ -555,7 +555,13 @@ pub struct TrackerOutcome {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct WatchingEntry {
     pub anilist_id: u64,
+    /// The display title, by the title-language preference.
     pub title: String,
+    /// AniList's own titles, for a hand-off that needs each one (Get
+    /// episodes searches by the latin titles, whatever the page shows).
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
     pub poster: Option<String>,
     pub progress: u32,
     pub total: Option<u32>,

@@ -22,7 +22,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::types::Value;
+use rusqlite::{Connection, Transaction, params, params_from_iter};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -46,8 +47,8 @@ fn fallback_title(anilist_id: u64) -> String {
 
 // The read -------------------------------------------------------------------
 
-/// The cached list. The two statuses bound into it are the whole page: a
-/// rewatch counts as watching, and everything else belongs somewhere else.
+/// The cached list over the statuses a page asks for (Watching and
+/// Repeating for the watching page, Planning for its planning tab).
 /// `images` answers the poster, `series` answers whether the library owns
 /// the media, and a series that owns it and hides it takes the entry off
 /// the page rather than turning it into an external card.
@@ -58,7 +59,7 @@ const LIST_SQL: &str = "SELECT t.media_id, t.progress, t.status, t.score, t.upda
      FROM tracker_entries t
      LEFT JOIN anilist_media m ON m.id = t.media_id
      LEFT JOIN images i ON i.url = m.cover_url
-     WHERE t.tracker = ?1 AND t.status IN (?2, ?3)
+     WHERE t.tracker = ?1 AND t.status IN ({statuses})
        AND NOT EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = t.media_id AND s.hidden = 1)";
 
 /// The next broadcast of everything on the list, in one query rather than
@@ -66,7 +67,7 @@ const LIST_SQL: &str = "SELECT t.media_id, t.progress, t.status, t.score, t.upda
 const AIRING_SQL: &str = "SELECT e.anilist_id, e.number, e.aired_at
      FROM anilist_episodes e
      WHERE e.aired_at > ?1
-       AND e.anilist_id IN (SELECT media_id FROM tracker_entries WHERE tracker = ?2 AND status IN (?3, ?4))
+       AND e.anilist_id IN (SELECT media_id FROM tracker_entries WHERE tracker = ?2 AND status IN ({statuses}))
      ORDER BY e.aired_at";
 
 /// The whole page off the database: no request, no waiting, whatever the
@@ -77,24 +78,27 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
     list_of(
         conn,
         images_dir,
-        [ListStatus::Watching, ListStatus::Repeating],
+        &[ListStatus::Watching, ListStatus::Repeating],
     )
 }
 
 /// The planning list (#210): the same read over the Planning entries.
 pub fn planning(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreError> {
-    list_of(
-        conn,
-        images_dir,
-        [ListStatus::Planning, ListStatus::Planning],
-    )
+    list_of(conn, images_dir, &[ListStatus::Planning])
 }
 
 fn list_of(
     conn: &Connection,
     images_dir: &Path,
-    statuses: [ListStatus; 2],
+    statuses: &[ListStatus],
 ) -> Result<WatchingList, CoreError> {
+    let named = |first: usize| -> String {
+        (first..first + statuses.len())
+            .map(|n| format!("?{n}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let wanted = statuses.iter().map(|s| Value::from(s.as_str().to_string()));
     let now = time::now_secs();
     // A watching card sits beside the library's own cards, so it reads the
     // same preference: two titles for the same series on one page would be
@@ -102,14 +106,16 @@ fn list_of(
     let lang = prefs::load_preferences(conn)?.title_language;
     let mut next_airing: HashMap<u64, Airing> = HashMap::new();
     {
-        let mut stmt = conn.prepare(AIRING_SQL)?;
+        let mut stmt = conn.prepare(&AIRING_SQL.replace("{statuses}", &named(3)))?;
         let rows = stmt.query_map(
-            params![
-                now,
-                Tracker::Anilist.as_str(),
-                statuses[0].as_str(),
-                statuses[1].as_str()
-            ],
+            params_from_iter(
+                [
+                    Value::from(now),
+                    Value::from(Tracker::Anilist.as_str().to_string()),
+                ]
+                .into_iter()
+                .chain(wanted.clone()),
+            ),
             |r| {
                 Ok((
                     r.get::<_, i64>(0)? as u64,
@@ -132,13 +138,11 @@ fn list_of(
         }
     }
 
-    let mut stmt = conn.prepare(LIST_SQL)?;
+    let mut stmt = conn.prepare(&LIST_SQL.replace("{statuses}", &named(2)))?;
     let rows = stmt.query_map(
-        params![
-            Tracker::Anilist.as_str(),
-            statuses[0].as_str(),
-            statuses[1].as_str()
-        ],
+        params_from_iter(
+            std::iter::once(Value::from(Tracker::Anilist.as_str().to_string())).chain(wanted),
+        ),
         |r| {
             let anilist_id = r.get::<_, i64>(0)? as u64;
             let updated_at: Option<i64> = r.get(4)?;
@@ -157,6 +161,9 @@ fn list_of(
                         native.as_deref(),
                         &fallback_title(anilist_id),
                     ),
+                    romaji,
+                    english,
+                    native,
                     poster: local_path(images_dir, poster),
                     progress: r.get::<_, i64>(1)? as u32,
                     total: r.get::<_, Option<i64>>(7)?.map(|e| e as u32),
@@ -305,20 +312,41 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
     let token = accounts::access_token(core, Tracker::Anilist)
         .await?
         .ok_or_else(|| tracker_error(NO_TOKEN))?;
+    // Anything written to the cache after this moment (a status the user
+    // just set) is newer than what the fetch can know, and is left alone.
+    let started = time::now_secs();
     let rows = fetch(core, user_id, &token).await?;
 
-    let covers: Vec<String> = rows
-        .iter()
-        .filter_map(|row| row.media.cover_url.clone())
-        .collect();
+    let covers_of = |wanted: &[ListStatus]| -> Vec<String> {
+        rows.iter()
+            .filter(|row| wanted.contains(&row.status))
+            .filter_map(|row| row.media.cover_url.clone())
+            .collect()
+    };
+    let covers = covers_of(&[ListStatus::Watching, ListStatus::Repeating]);
+    let planned = covers_of(&[ListStatus::Planning]);
     let now = time::now_secs();
-    core.store.tx_async(move |tx| write(tx, &rows, now)).await?;
-    // Every cover before the job reports, so the page's posters are local
-    // files rather than urls the shell has to go and get.
+    core.store
+        .tx_async(move |tx| write(tx, &rows, now, started))
+        .await?;
+    // Every watching cover before the job reports, so the page's posters
+    // are local files rather than urls the shell has to go and get.
     for (url, outcome) in core.images.ensure(&covers).await {
         if let Err(e) = outcome {
             tracing::debug!("the watching list's cover {url} was not fetched: {e}");
         }
+    }
+    // The planning covers after it: a long planning list must not hold the
+    // watching page on Refreshing. The planning tab reads them as they land.
+    if !planned.is_empty() {
+        let owner = core.clone();
+        tokio::spawn(async move {
+            for (url, outcome) in owner.images.ensure(&planned).await {
+                if let Err(e) = outcome {
+                    tracing::debug!("the planning list's cover {url} was not fetched: {e}");
+                }
+            }
+        });
     }
 
     let images_dir = core.paths.images_dir();
@@ -360,11 +388,10 @@ async fn fetch(core: &Arc<Core>, user_id: u64, token: &str) -> Result<Vec<Row>, 
             let Some(media_id) = media["id"].as_u64() else {
                 continue;
             };
-            // Planning is kept too, for the planning list (#210); anything
-            // else on the account is another page's entry.
-            let Some(
-                status @ (ListStatus::Watching | ListStatus::Repeating | ListStatus::Planning),
-            ) = normalize_status(Tracker::Anilist, entry["status"].as_str(), false)
+            // Every status is kept: the fetch is the whole list, so the
+            // cache it writes is the whole list too, and a show that moves
+            // from Planning to Completed is updated rather than lost (#210).
+            let Some(status) = normalize_status(Tracker::Anilist, entry["status"].as_str(), false)
             else {
                 continue;
             };
@@ -413,7 +440,8 @@ const ENTRY_UPSERT: &str = "INSERT INTO tracker_entries (tracker, media_id, stat
         score = excluded.score,
         repeat = tracker_entries.repeat,
         updated_at = excluded.updated_at,
-        fetched_at = excluded.fetched_at";
+        fetched_at = excluded.fetched_at
+     WHERE tracker_entries.fetched_at <= excluded.fetched_at";
 
 /// The next broadcast as an episode row. The list carries no titles at
 /// all, so a title already in the table is the best one there will ever
@@ -424,7 +452,12 @@ const AIRING_UPSERT: &str =
 
 /// The whole list in one transaction: a half-written page would draw
 /// entries whose media row is not there yet.
-fn write(tx: &Transaction, rows: &[Row], now: i64) -> Result<(), CoreError> {
+/// `started` is when the fetch went out, and its rows carry it: a row the
+/// cache took after it (a status write while the refresh was out, stamped
+/// with its own later time) is newer than the fetch and is neither
+/// overwritten nor removed. The stamps are whole seconds, so only a write
+/// in the very second the fetch left can still lose.
+fn write(tx: &Transaction, rows: &[Row], now: i64, started: i64) -> Result<(), CoreError> {
     for row in rows {
         tx.execute(
             ENTRY_UPSERT,
@@ -435,7 +468,9 @@ fn write(tx: &Transaction, rows: &[Row], now: i64) -> Result<(), CoreError> {
                 i64::from(row.progress),
                 row.score,
                 row.updated_at,
-                now,
+                // Stamped with the fetch's own moment, so a status write
+                // that lands while it is out reads as newer and is kept.
+                started,
             ],
         )?;
         // Before the episode row, which references it, and only ever
@@ -449,21 +484,17 @@ fn write(tx: &Transaction, rows: &[Row], now: i64) -> Result<(), CoreError> {
             )?;
         }
     }
-    // A show taken off Planning on AniList leaves the planning list now, not at the
-    // next progress sweep: the fetch is the whole list, so a planned row it no longer
-    // carries is stale.
-    let kept: Vec<i64> = rows
-        .iter()
-        .filter(|r| r.status == ListStatus::Planning)
-        .map(|r| r.media_id as i64)
-        .collect();
+    // The fetch is the whole list, so a row it no longer carries is a show
+    // taken off the list on AniList: it leaves now, not at the next
+    // progress sweep. A row written after the fetch went out stays.
+    let kept: Vec<String> = rows.iter().map(|r| r.media_id.to_string()).collect();
     tx.execute(
         &format!(
-            "DELETE FROM tracker_entries WHERE tracker = ?1 AND status = ?2 AND media_id NOT IN ({})",
+            "DELETE FROM tracker_entries WHERE tracker = ?1 AND fetched_at <= ?2 AND media_id NOT IN ({})",
             // SQLite takes an empty list, and NOT IN () is every row
-            kept.iter().map(i64::to_string).collect::<Vec<_>>().join(", ")
+            kept.join(", ")
         ),
-        params![Tracker::Anilist.as_str(), ListStatus::Planning.as_str()],
+        params![Tracker::Anilist.as_str(), started],
     )?;
     settings::set(tx, settings::WATCHING_FETCHED_AT, &now)?;
     Ok(())

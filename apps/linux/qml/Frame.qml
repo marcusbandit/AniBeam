@@ -727,10 +727,12 @@ FocusScope {
                      action: function() { frame.setListStatus(id, l.status, l.text) } }
         })
     }
+    // True when the write started, so a caller can go on (Start watching plays next)
     function setListStatus(id, status, label) {
         var r = Door.call("SetListStatus", { series: id, status: status })
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.toast(r.error.message); return false }
         frame.toast("Moving to " + label)
+        return true
     }
     // Text onto the clipboard, and a word that it went
     function copyText(text, what) {

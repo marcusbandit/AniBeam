@@ -207,3 +207,84 @@ fn a_hidden_series_keeps_its_entry_off_the_planning_list() {
     .unwrap();
     assert!(planning(&core).entries.is_empty());
 }
+
+fn status_of(core: &Core, media_id: u64) -> Option<String> {
+    core.store()
+        .read(move |c| {
+            Ok(c.query_row(
+                "SELECT status FROM tracker_entries WHERE tracker = 'anilist' AND media_id = ?1",
+                [media_id as i64],
+                |r| r.get(0),
+            )
+            .ok())
+        })
+        .unwrap()
+}
+
+fn refresh(core: &Core, c: &anibeam_core::events::Collector) {
+    let job = match core.call(Call::RefreshWatching { force: true }).unwrap() {
+        Reply::Started { job } => job,
+        other => panic!("{other:?}"),
+    };
+    common::wait_job(c, job);
+}
+
+#[test]
+fn a_planned_show_moved_to_completed_keeps_its_entry_with_the_new_status() {
+    let http = FakeHttp::new();
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "MediaListCollection": { "lists": [ { "entries": [
+            entry(2, "PLANNING", "Mushishi", 1000),
+        ] } ] } } }),
+    );
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "tok");
+    refresh(&core, &c);
+    assert_eq!(status_of(&core, 2).as_deref(), Some("planning"));
+
+    // Finished on AniList: the row says so rather than vanishing, so the
+    // series page and Airing now still see it on the list.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "MediaListCollection": { "lists": [ { "entries": [
+            entry(2, "COMPLETED", "Mushishi", 2000),
+        ] } ] } } }),
+    );
+    refresh(&core, &c);
+    assert_eq!(status_of(&core, 2).as_deref(), Some("completed"));
+    assert!(planning(&core).entries.is_empty());
+}
+
+#[test]
+fn a_status_written_while_a_refresh_is_out_is_not_undone() {
+    let http = FakeHttp::new();
+    // What AniList said when the fetch left: Mushishi still planned, and
+    // nothing at all about Planetes.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "MediaListCollection": { "lists": [ { "entries": [
+            entry(2, "PLANNING", "Mushishi", 1000),
+        ] } ] } } }),
+    );
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "tok");
+    // Two writes stamped after the fetch went out: Start watching on
+    // Mushishi, Plan to watch on Planetes.
+    core.store()
+        .write(|c| {
+            let later = anibeam_core::time::now_secs() + 60;
+            for (id, status) in [(2i64, "watching"), (3, "planning")] {
+                c.execute(
+                    "INSERT OR REPLACE INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
+                     VALUES ('anilist', ?1, ?2, 0, NULL, 0, ?3, ?3)",
+                    rusqlite::params![id, status, later],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    refresh(&core, &c);
+    assert_eq!(status_of(&core, 2).as_deref(), Some("watching"));
+    assert_eq!(status_of(&core, 3).as_deref(), Some("planning"));
+}
