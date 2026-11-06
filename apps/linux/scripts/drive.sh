@@ -23,11 +23,13 @@ if [ -n "${ANIBEAM_QML_DIR:-}" ]; then
   export QML_DISK_CACHE_PATH="${QML_DISK_CACHE_PATH:-$root/qmlcache}"
 fi
 anibeam_stage
+source "$(dirname "$0")/silent-mpv.sh"
+anibeam_silent_mpv_conf "$here/mpv.conf" "$root"
 # The RHI backend only with a DISPLAY to make its GL context against; see shoot.sh.
 rhi_env=()
 [ -n "${DISPLAY:-}" ] && rhi_env=(QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl)
 set +e
-env "${rhi_env[@]}" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$here/mpv.conf" \
+env "${rhi_env[@]}" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$ANIBEAM_SILENT_MPV_CONF" \
   "$ANIBEAM_BIN" --root "$root" --drive "$script" --out "$out" --width "${W:-1600}" --height "${H:-1000}" "$@" \
   2> "$log"
 code=$?

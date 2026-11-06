@@ -37,6 +37,9 @@ in `packaging/linux/completions/` for zsh and bash.
 Environment the shell sets for itself: QSG_RENDER_LOOP=threaded (not on a Mac, where AppKit
 forbids an OpenGL context off the main thread), QT_XCB_GL_INTEGRATION=xcb_egl.
 ANIBEAM_THEMES_DIR and ANIBEAM_MPV_CONF point a dev run at the checkout's themes/ and mpv.conf.
+`shoot.sh`, `drive.sh` and `bench.sh` point ANIBEAM_MPV_CONF at a copy with `ao=null` appended
+(`scripts/silent-mpv.sh`), so a capture that plays a video makes no sound on the machine's
+speakers (#564). Audio still decodes, so tracks, volume and mute work as in a normal run.
 
 `ANIBEAM_QML_DIR=qml` (run from `apps/linux/`, like every command here) loads the shell's QML from that directory instead of the copy compiled
 into the binary, so a QML-only edit shows up on the next run with no cargo build (a relink of the
