@@ -67,7 +67,14 @@ pub fn summarise(series: &[Value], folder: &str) -> Value {
 mod tests {
     use super::*;
 
-    fn card(id: u64, title: &str, path: &str, anilist: Option<u64>, eps: u64, watched: u64) -> Value {
+    fn card(
+        id: u64,
+        title: &str,
+        path: &str,
+        anilist: Option<u64>,
+        eps: u64,
+        watched: u64,
+    ) -> Value {
         json!({
             "id": id,
             "title": title,
@@ -122,7 +129,8 @@ mod tests {
     #[test]
     fn a_match_with_only_another_providers_id_counts() {
         let mut c = card(8, "Show", "/a/Show", None, 1, 0);
-        c["match_info"] = json!({ "anilist_id": null, "mal_id": null, "tvmaze_id": 42, "tmdb_id": null });
+        c["match_info"] =
+            json!({ "anilist_id": null, "mal_id": null, "tvmaze_id": 42, "tmdb_id": null });
         assert_eq!(summarise(&[c], "/a")["recognised"], 1);
     }
 

@@ -1525,7 +1525,10 @@ impl qobject::Door {
         if reply.get("error").is_some() {
             return to_qjson_object(&reply);
         }
-        let series = reply["reply"]["series"].as_array().cloned().unwrap_or_default();
+        let series = reply["reply"]["series"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         to_qjson_object(&crate::scan_summary::summarise(&series, &path.to_string()))
     }
     pub fn list_airing(&self, offset: f64, limit: f64) -> QJsonObject {
