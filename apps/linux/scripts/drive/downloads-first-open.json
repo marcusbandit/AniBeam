@@ -1,0 +1,75 @@
+[
+ {
+  "log": "Run against an empty ANIBEAM_ROOT with XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME and XDG_CACHE_HOME in the sandbox too, so the helper it starts keeps its own config and state there. Needs the helper (anirss) on PATH. The torrent client points at a port nothing answers on, so no real qBittorrent is touched."
+ },
+ {
+  "eval": "var d = Door.getDownloads(); var s = JSON.parse(JSON.stringify(d.reply.status.settings)); s.torrent_mode = 'Existing'; s.torrent_url = 'http://127.0.0.1:9'; s.anirss_command = 'anibeam-no-such-helper'; var r = Door.setDownloadSettings(s, {}); r.error ? JSON.stringify(r.error) : 'ok'",
+  "expect": "ok"
+ },
+ {
+  "page": "downloads"
+ },
+ {
+  "until": "driver.item.findItem('downloads-helper-down') !== null && driver.item.findItem('downloads-helper-down').visible",
+  "timeout": 30000
+ },
+ {
+  "wait": 500
+ },
+ {
+  "log": "The screen says what is wrong in plain words"
+ },
+ {
+  "eval": "var t = driver.item.findItem('downloads-helper-state'); var words = (t.title + ' ' + t.body + ' ' + frame.item.pageItem.summary).toLowerCase(); /anirss|jackett|\\bpod\\b/.test(words)",
+  "expect": false
+ },
+ {
+  "shot": "dl-1-changed"
+ },
+ {
+  "click": "downloads-helper-fix"
+ },
+ {
+  "until": "frame.item.pageItem.anirssReady === true",
+  "timeout": 60000
+ },
+ {
+  "eval": "Door.getDownloads().reply.status.settings.anirss_command",
+  "expect": "anirss"
+ },
+ {
+  "wait": 800
+ },
+ {
+  "shot": "dl-2-fixed"
+ },
+ {
+  "log": "The other two states, drawn from a status with the helper's state set (the drive cannot make the default helper fail on its own)"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; var st = JSON.parse(JSON.stringify(p.status)); st.anirss.state = 'Failed'; st.anirss.message = 'it stopped'; p.status = st; true"
+ },
+ {
+  "wait": 500
+ },
+ {
+  "eval": "var t = driver.item.findItem('downloads-helper-state'); /anirss|jackett|\\bpod\\b/i.test(t.title + ' ' + t.body + ' ' + frame.item.pageItem.summary)",
+  "expect": false
+ },
+ {
+  "shot": "dl-3-failed"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; var st = JSON.parse(JSON.stringify(p.status)); st.anirss.state = 'Missing'; p.status = st; true"
+ },
+ {
+  "wait": 500
+ },
+ {
+  "eval": "var t = driver.item.findItem('downloads-helper-state'); /anirss|jackett|\\bpod\\b/i.test(t.title + ' ' + t.body + ' ' + frame.item.pageItem.summary)",
+  "expect": false
+ },
+ {
+  "shot": "dl-4-missing"
+ }
+]
