@@ -195,10 +195,20 @@ impl Host {
 /// Reads the preference and starts or stops the host to match. Called when
 /// the core starts, and when a shell holds the host or lets it go.
 pub fn sync(core: &Core) {
-    let prefs = core.store.read(prefs::load_preferences).ok();
-    core.host
-        .set_streaming(prefs.as_ref().is_none_or(|p| p.stream_over_tailscale));
-    let on = prefs.is_some_and(|p| p.share_over_tailscale);
+    let on = match core.store.read(prefs::load_preferences) {
+        Ok(p) => {
+            core.host.set_streaming(p.stream_over_tailscale);
+            p.share_over_tailscale
+        }
+        Err(e) => {
+            // A held host serves on through this, so streaming stays as it was
+            // rather than turning back on against the person's choice.
+            tracing::warn!(
+                "host: the preferences could not be read, so streaming stays as it was: {e}"
+            );
+            false
+        }
+    };
     core.host.follow(core, on);
 }
 
@@ -412,6 +422,32 @@ fn dns_name_of(json: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preferences_that_cannot_be_read_leave_streaming_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let secrets = crate::trackers::Secrets::file_only(paths.secrets_path());
+        let core = Core::open_with_secrets(paths, secrets).unwrap();
+        let mut p = core.store.read(prefs::load_preferences).unwrap();
+        p.stream_over_tailscale = false;
+        core.call(Call::SetPreferences { preferences: p }).unwrap();
+        assert!(!core.host.streaming());
+        core.store
+            .write(|c| {
+                c.execute(
+                    "UPDATE settings SET value = 'not json' WHERE key = 'preferences'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        sync(&core);
+        assert!(
+            !core.host.streaming(),
+            "a failed read turned streaming back on"
+        );
+    }
 
     #[test]
     fn the_dns_name_comes_out_of_the_status_document() {
