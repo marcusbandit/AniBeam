@@ -12,8 +12,9 @@ the branch, every commit, the PR title and the squash commit it becomes.
    [`docs/agents/triage.md`](docs/agents/triage.md). Every issue sits on the
    [AniBeam project board](https://github.com/users/marcusbandit/projects/1),
    and its card moves as the work does. A security problem never goes in an
-   issue: [`SECURITY.md`](SECURITY.md) says where to report it privately. Before your first card, ask the owner
-   for board access and run `gh auth refresh -s project`.
+   issue: [`SECURITY.md`](SECURITY.md) says where to report it privately.
+   Before your first card, ask the owner for board access and run
+   `gh auth refresh -s project`.
 2. **Branch** off `main` as `<type>/<issue>-<slug>`.
 3. **Commit** as you go, each message `<type>(<scope>): <outcome>`.
 4. **Try it live** in a sandbox run of the branch's own build. See below.
