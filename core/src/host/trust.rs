@@ -84,7 +84,7 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
                 .collect()
         })
         .unwrap_or_default();
-    peers.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    peers.sort_by_key(|p| p.name.to_lowercase());
     Some(Tailnet { me, peers })
 }
 
