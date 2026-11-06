@@ -8,13 +8,14 @@
 //! caches among them.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use rusqlite::Connection;
 use serde_json::Value;
 
+use crate::atomic_file;
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::Finished;
@@ -147,7 +148,7 @@ pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
                 .map_err(|e| CoreError::internal(format!("export task: {e}")))??;
             let count = doc.series.len() as u64;
             let text = serde_json::to_string_pretty(&doc)?;
-            write_atomically(&path, text.into_bytes()).await?;
+            atomic_file::write_async(Path::new(&path), text).await?;
             Ok(Finished {
                 plain: Some(format!(
                     "Saved {count} {} to {}.",
@@ -159,32 +160,6 @@ pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
                 body: EventBody::ExportFinished { path },
             })
         })
-}
-
-async fn write_atomically(path: &str, bytes: Vec<u8>) -> Result<(), CoreError> {
-    let target = PathBuf::from(path);
-    if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| CoreError::io_at(parent.to_string_lossy(), e))?;
-    }
-    let tmp = tmp_sibling(&target);
-    tokio::fs::write(&tmp, bytes)
-        .await
-        .map_err(|e| CoreError::io_at(tmp.to_string_lossy(), e))?;
-    tokio::fs::rename(&tmp, &target)
-        .await
-        .map_err(|e| CoreError::io_at(target.to_string_lossy(), e))?;
-    Ok(())
-}
-
-fn tmp_sibling(target: &Path) -> PathBuf {
-    let mut name = target
-        .file_name()
-        .map(std::ffi::OsString::from)
-        .unwrap_or_else(|| std::ffi::OsString::from("anibeam-export.json"));
-    name.push(".tmp");
-    target.with_file_name(name)
 }
 
 // What the tables hold ------------------------------------------------------
@@ -652,13 +627,5 @@ mod tests {
         assert_eq!(paths(1), vec!["Show - 02.mkv"]);
         assert_eq!(paths(2), vec![""]);
         assert_eq!(series[0].fixes[0].was, Some(ep(1.0)));
-    }
-
-    #[test]
-    fn the_tmp_file_is_a_sibling_of_the_target() {
-        assert_eq!(
-            tmp_sibling(Path::new("/home/bandit/export.json")),
-            PathBuf::from("/home/bandit/export.json.tmp")
-        );
     }
 }

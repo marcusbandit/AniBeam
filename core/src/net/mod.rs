@@ -413,7 +413,7 @@ pub fn host_shown(url: &str) -> String {
 }
 
 /// `url` as the HTTP client reads it, when it names a host.
-fn parsed(url: &str) -> Option<reqwest::Url> {
+pub(crate) fn parsed(url: &str) -> Option<reqwest::Url> {
     reqwest::Url::parse(url)
         .ok()
         .filter(|u| u.host_str().is_some())

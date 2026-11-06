@@ -23,7 +23,8 @@ pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!("sql/0013_skip_chapters_reread.sql")).foreign_key_check(),
         M::up(include_str!("sql/0014_season_banners.sql")).foreign_key_check(),
         M::up(include_str!("sql/0015_schedule_notes.sql")).foreign_key_check(),
-        M::up(include_str!("sql/0016_file_origins.sql")).foreign_key_check(),
+        M::up(include_str!("sql/0016_tracker_notes.sql")).foreign_key_check(),
+        M::up(include_str!("sql/0017_file_origins.sql")).foreign_key_check(),
     ])
 });
 
