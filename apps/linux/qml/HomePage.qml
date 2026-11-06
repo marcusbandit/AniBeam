@@ -154,7 +154,8 @@ Item {
     function reload() {
         var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
         loadFailed = !!r.error && shelf.length === 0
-        if (r.error) { frame.fail(r.error, page.reload); return }
+        // A failed read is not an empty library, whatever the last read said
+        if (r.error) { if (loadFailed) libraryEmpty = false; frame.fail(r.error, page.reload); return }
         shelf = r.reply.series
         airingRows = r.reply.airing || []
         var n = r.reply.counts || {}

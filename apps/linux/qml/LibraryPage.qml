@@ -248,7 +248,8 @@ Item {
         var r = Door.libraryView({ tab: tab, query: query, sort: sort, direction: direction, reveal: Door.revealHidden,
                                    arrange: arrange, group: groupFranchises, genre: genre, now: nowMs, season: currentSeason })
         loadFailed = !!r.error
-        if (r.error) { frame.fail(r.error, page.reload); return false }
+        // A failed read is not an empty library, whatever the last read said
+        if (r.error) { libraryEmpty = false; frame.fail(r.error, page.reload); return false }
         var v = r.reply
         counts = v.counts || {}
         if (v.key !== viewKey) {

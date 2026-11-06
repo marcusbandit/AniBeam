@@ -738,7 +738,7 @@ Item {
                 // Read and still empty is a season AniList lists nothing for, not a page never read
                 readonly property bool readEmpty: !!page.listed && page.listed.fetched_at !== null && page.listed.fetched_at !== undefined
                 icon: page.refreshing ? "loader-circle" : "radio"
-                title: page.refreshing ? "Reading what is on air" : readEmpty ? "Nothing on air for " + page.listed.label : "Nothing read yet"
+                title: page.refreshing ? "Reading what is on air" : readEmpty ? (page.season === "Now" ? "Nothing on air right now" : "Nothing on air for " + page.listed.label) : "Nothing read yet"
                 body: page.refreshing ? "Every show on air, from AniList. This takes a few seconds the first time."
                     : readEmpty ? "AniList lists no shows for this season yet. Refresh reads it again, or pick another season."
                     : "Refresh reads every show on air from AniList."
