@@ -1063,7 +1063,7 @@ Item {
             return bits.length ? bits.join(", ") : "Group not in the name"
         }
         // The endpoint AniBeam picked it on, when it did; else the one whose name the release
-        // group carries (Erai-raws on erai), said to be a guess
+        // group carries (a group that runs its own source), said to be a guess
         readonly property string guess: {
             var g = String(t.group || "").toLowerCase()
             if (g === "") return ""

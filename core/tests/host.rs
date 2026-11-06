@@ -97,7 +97,7 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         "torrents/info",
         200,
         json!([{
-            "hash": "a1b2c3", "name": "[SubsPlease] Sousou no Frieren - 08", "state": "downloading",
+            "hash": "a1b2c3", "name": "[Lumen] Sousou no Frieren - 08", "state": "downloading",
             "progress": 0.25, "size": 1500000000u64, "dlspeed": 1200000, "upspeed": 0, "eta": 600,
             "num_seeds": 1, "num_leechs": 1, "ratio": 0.0,
             "save_path": "/lib/Sousou no Frieren", "content_path": "/lib/Sousou no Frieren/08.mkv",

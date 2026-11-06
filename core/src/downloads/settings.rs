@@ -696,7 +696,7 @@ mod tests {
         let p = dir.path().join("config.toml");
         std::fs::write(
             &p,
-            "[qbittorrent]\nurl = \"http://localhost:9090/\"\nusername = \"bandit\"\n\n[[endpoint]]\nname = \"nyaa\"\n",
+            "[qbittorrent]\nurl = \"http://localhost:9090/\"\nusername = \"bandit\"\n\n[[endpoint]]\nname = \"tracker\"\n",
         )
         .unwrap();
         assert_eq!(
@@ -1130,7 +1130,7 @@ mod bestfit_tests {
     /// anirss's own test config, `_BESTFIT_CFG` in test_anirss.py.
     const ANIRSS_TEST_CFG: &str = r#"
 [bestfit]
-preferred_groups = ["Erai-raws", "SubsPlease", "ASW"]
+preferred_groups = ["Kumo-Subs", "Lumen", "ASW"]
 source_order = ["WEB-DL", "WEB", "BluRay", "WEBRip", "HDTV"]
 preferred_resolution = "highest"
 target_mib_per_episode = 1000
@@ -1163,7 +1163,7 @@ assumed_source = "WEB"
         assert_eq!(
             cfg,
             BestfitConfig {
-                preferred_groups: vec!["Erai-raws".into(), "SubsPlease".into(), "ASW".into()],
+                preferred_groups: vec!["Kumo-Subs".into(), "Lumen".into(), "ASW".into()],
                 source_order: ["WEB-DL", "WEB", "BluRay", "WEBRip", "HDTV"]
                     .map(String::from)
                     .to_vec(),
@@ -1203,18 +1203,18 @@ assumed_source = "WEB"
         let text = ANIRSS_TEST_CFG.replace("\"highest\"", "\"1080\"");
         let cfg = read(&text).unwrap();
         let found = items(&[
-            "[Erai-raws] Show 2160p WEB-DL",
-            "[Erai-raws] Show 1080p WEB-DL",
+            "[Kumo-Subs] Show 2160p WEB-DL",
+            "[Kumo-Subs] Show 1080p WEB-DL",
         ]);
         assert_eq!(
             best_item(&found, &cfg).unwrap().title,
-            "[Erai-raws] Show 1080p WEB-DL"
+            "[Kumo-Subs] Show 1080p WEB-DL"
         );
         // anirss's stock "highest" takes the sharper one.
         let stock = read(ANIRSS_TEST_CFG).unwrap();
         assert_eq!(
             best_item(&found, &stock).unwrap().title,
-            "[Erai-raws] Show 2160p WEB-DL"
+            "[Kumo-Subs] Show 2160p WEB-DL"
         );
     }
 
@@ -1262,12 +1262,12 @@ mod ondemand_tests {
             &path,
             r#"
 [[endpoint]]
-name = "nyaa"
-kind = "nyaa"
-url = "https://nyaa.si/"
+name = "tracker"
+kind = "rss"
+url = "https://tracker.example/?q={query}"
 
 [[endpoint]]
-name = "1337x"
+name = "proxied"
 kind = "rss"
 url = "http://127.0.0.1:9117/x?q={query}"
 start = "podman pod start x"
@@ -1276,14 +1276,14 @@ timeout = 45
 "#,
         )
         .unwrap();
-        assert_eq!(anirss_ondemand(&path, "nyaa"), None);
+        assert_eq!(anirss_ondemand(&path, "tracker"), None);
         assert_eq!(
-            anirss_ondemand(&path, "1337x"),
+            anirss_ondemand(&path, "proxied"),
             Some(OnDemand {
                 ready: "http://127.0.0.1:9117/caps".to_string(),
                 timeout: 45
             })
         );
-        assert_eq!(anirss_ondemand(&path, "erai"), None);
+        assert_eq!(anirss_ondemand(&path, "keyed"), None);
     }
 }

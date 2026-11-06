@@ -408,7 +408,7 @@ mod tests {
     }
 
     /// The cold open is story: a Prologue before the Opening never takes
-    /// the intro's place (#328, Erai-raws' Netflix chapters)
+    /// the intro's place (#328, a release group's Netflix chapters)
     #[test]
     fn a_prologue_is_story_and_the_opening_after_it_is_the_intro() {
         let chapters = [

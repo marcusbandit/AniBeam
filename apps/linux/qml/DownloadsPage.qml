@@ -6,8 +6,8 @@
 // wide field: typing lists shows (the library's first, then AniList's), Return searches
 // release names the old way (the table, filters, Subscribe), asking every source that is
 // switched on. Under the field the sources: a chip per provider, lit when on and greyed when
-// off, a click flips it. A plain endpoint is on by default; an on-demand one (1337x, a pod
-// behind Jackett) is on only while it runs. Clicking it while it does not run asks, in a
+// off, a click flips it. A plain endpoint is on by default; an on-demand one (a site reached
+// through a pod behind Jackett) is on only while it runs. Clicking it while it does not run asks, in a
 // small sheet, whether to start Jackett; AniBeam starts it on that confirm and never before,
 // and the core refuses a search that would start it behind your back.
 //

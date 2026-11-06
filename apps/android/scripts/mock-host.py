@@ -249,7 +249,7 @@ def demo_parts(media, now):
             subs.append({
                 "name": romaji,
                 "title": romaji,
-                "feed_url": "https://nyaa.si/?page=rss&q=" + urllib.parse.quote(query) + "&c=1_2&f=0",
+                "feed_url": "https://tracker.example/?page=rss&q=" + urllib.parse.quote(query) + "&c=1_2&f=0",
                 "query": query,
                 "enabled": True,
                 "torrent_count": on_disk,
@@ -262,22 +262,22 @@ def demo_parts(media, now):
 
         if i == 0:
             torrents.append(torrent(
-                f"[SubsPlease] {romaji} - {next_ep:02d} (1080p) [DEADBEEF].mkv",
+                f"[Lumen] {romaji} - {next_ep:02d} (1080p) [DEADBEEF].mkv",
                 "downloading", 0.42, 1_400_000_000, 3_400_000, 240, now - 300, None, sid))
         elif i == 1:
             torrents.append(torrent(
-                f"[SubsPlease] {romaji} - {next_ep:02d} (1080p) [DEADBEEF].mkv",
+                f"[Lumen] {romaji} - {next_ep:02d} (1080p) [DEADBEEF].mkv",
                 "stalledDL", 0.07, 1_400_000_000, 0, None, now - 2 * HOUR, None, sid))
         elif i == 2:
             torrents.append(torrent(
-                f"[SubsPlease] {romaji} - {on_disk:02d} (1080p) [DEADBEEF].mkv",
+                f"[Lumen] {romaji} - {on_disk:02d} (1080p) [DEADBEEF].mkv",
                 "pausedUP", 1.0, 1_300_000_000, 0, None, now - DAY - 600, now - DAY, sid))
 
     name = "Kusuriya no Hitorigoto Batch"
     subs.append({
         "name": name,
         "title": name,
-        "feed_url": "https://nyaa.si/?page=rss&q=" + urllib.parse.quote(name) + "&c=1_2&f=0",
+        "feed_url": "https://tracker.example/?page=rss&q=" + urllib.parse.quote(name) + "&c=1_2&f=0",
         "query": name,
         "enabled": True,
         "torrent_count": 0,

@@ -27,7 +27,7 @@ Column {
     property bool watching: false
     property bool justSubscribed: false
     // A repair running, and the step it is on
-    // The endpoint the feed belongs to, by name ("1337x"), or empty for the page to fall back
+    // The endpoint the feed belongs to, by name ("proxied"), or empty for the page to fall back
     // on the feed's host
     property string source: ""
     property bool repairing: false

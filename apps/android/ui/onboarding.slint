@@ -2,7 +2,7 @@ import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
 import { Ask } from "more.slint";
 import { Button, Figure, ListGroup, ListRow, Slider, TextButton } from "widgets.slint";
-import { RepoData, RepoPanes } from "repos.slint";
+import { RepoPanes } from "repos.slint";
 import { NotifyPreview, NotifyRow } from "notify.slint";
 
 // The first run, one question a step: who you are on AniList and MAL, Wi-Fi or mobile data,
@@ -146,14 +146,6 @@ export component Onboarding inherits Rectangle {
 
             if AppData.step == 5: VerticalLayout {
                 spacing: Theme.unit * 4;
-                HorizontalLayout {
-                    alignment: start;
-                    TextButton {
-                        text: "Where to find repos: everythingmoe.com";
-                        ink: Theme.accent;
-                        clicked => { RepoData.open-link("https://everythingmoe.com"); }
-                    }
-                }
                 RepoPanes { }
             }
         }

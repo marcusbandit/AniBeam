@@ -425,8 +425,8 @@
   "subscriptions": [
     {
       "name": "Sousou no Frieren 2nd Season",
-      "feed_url": "https://nyaa.si/?page=rss&q=Sousou+no+Frieren+1080p+%5BSubsPlease%5D&c=1_2&f=0",
-      "query": "Sousou no Frieren 1080p [SubsPlease]",
+      "feed_url": "https://tracker.example/?page=rss&q=Sousou+no+Frieren+1080p+%5BLumen%5D&c=1_2&f=0",
+      "query": "Sousou no Frieren 1080p [Lumen]",
       "enabled": true,
       "torrent_count": 7,
       "file_count": 7,
@@ -444,7 +444,7 @@
   "torrents": [
     {
       "hash": "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0",
-      "name": "[SubsPlease] Sousou no Frieren S2 - 07 (1080p) [ABCD1234].mkv",
+      "name": "[Lumen] Sousou no Frieren S2 - 07 (1080p) [ABCD1234].mkv",
       "state": "uploading",
       "progress": 1.0,
       "size": 1446000000,

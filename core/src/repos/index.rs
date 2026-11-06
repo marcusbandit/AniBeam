@@ -110,6 +110,9 @@ pub struct Definition {
     /// `json` only: where its replies keep each field.
     #[serde(default)]
     pub json: Option<JsonMap>,
+    /// `rss` only: how its search and feed differ from a plain feed (`releases::quirks`).
+    #[serde(default, flatten)]
+    pub quirks: crate::releases::quirks::Quirks,
     /// Release groups this source's own definition trusts out of the box. Best fit prefers
     /// the groups every enabled endpoint names, the core itself trusting none.
     #[serde(default)]
@@ -562,6 +565,17 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if def.rate.is_some_and(|r| r.per_minute == 0) {
         return Err(format!("{}: a rate of zero", def.id));
     }
+    if def.quirks != crate::releases::quirks::Quirks::default() {
+        if def.kind != "rss" {
+            return Err(format!(
+                "{}: only an rss endpoint takes quality_local, one_variant or show_feed",
+                def.id
+            ));
+        }
+        def.quirks
+            .check(&def.host())
+            .map_err(|e| format!("{}: {e}", def.id))?;
+    }
     if def.trusted_groups.len() > MAX_TRUSTED_GROUPS
         || def
             .trusted_groups
@@ -720,7 +734,10 @@ pub(crate) mod tests {
     fn a_signed_index_reads() {
         let k = signing_key(1);
         let file = sign(
-            &index(&k, vec![def("nyaa", "filtered-rss", "https://nyaa.si/")]),
+            &index(
+                &k,
+                vec![def("tracker", "filtered-rss", "https://tracker.example/")],
+            ),
             &k,
         );
         let idx = parse(&file, "2.1.0").unwrap();
@@ -753,6 +770,37 @@ pub(crate) mod tests {
             .map(|d| d.kind)
             .collect();
         assert_eq!(again, ["filtered-rss", "json-feed"]);
+    }
+
+    #[test]
+    fn a_definition_turns_on_its_quirks_as_data() {
+        let mut v = def(
+            "keyed",
+            "rss",
+            "https://www.keyed.example/feed/?s={query}&token={token}",
+        );
+        v["auth"] = serde_json::json!([{"key": "token", "label": "Token"}]);
+        v["quality_local"] = true.into();
+        v["one_variant"] = "HEVC".into();
+        v["show_feed"] = serde_json::json!({
+            "pages": [r"^https://www\.keyed\.example/episodes/(?P<slug>[a-z0-9-]+?)-\d+/"],
+            "url": "https://www.keyed.example/anime-list/{slug}/feed/"
+        });
+        let d: Definition = serde_json::from_value(v.clone()).unwrap();
+        assert!(d.quirks.quality_local && d.quirks.show_feed.is_some());
+        assert!(check(&d).is_ok(), "{:?}", check(&d));
+        // Stored and read back, the quirks stay; a plain definition stores none of them.
+        let back: Definition = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
+        assert_eq!(back.quirks, d.quirks);
+        let plain: Definition =
+            serde_json::from_value(def("p", "rss", "https://p.example/?q={query}")).unwrap();
+        let stored = serde_json::to_value(&plain).unwrap();
+        assert!(stored.get("show_feed").is_none() && stored.get("quality_local").is_none());
+        // Only an rss endpoint takes them.
+        let mut other = v;
+        other["kind"] = "torznab".into();
+        let other: Definition = serde_json::from_value(other).unwrap();
+        assert!(check(&other).unwrap_err().contains("only an rss endpoint"));
     }
 
     #[test]
@@ -870,9 +918,9 @@ pub(crate) mod tests {
     #[test]
     fn auth_keys_must_sit_in_the_address_but_not_in_the_host() {
         let mut d: Definition = serde_json::from_value(def(
-            "erai",
+            "keyed",
             "rss",
-            "https://erai.example/feed?s={query}&token={token}",
+            "https://keyed.example/feed?s={query}&token={token}",
         ))
         .unwrap();
         d.auth = vec![AuthField {
@@ -883,7 +931,7 @@ pub(crate) mod tests {
             help_url: None,
         }];
         assert!(check(&d).is_ok());
-        d.url = "https://erai.example/feed?s={query}".into();
+        d.url = "https://keyed.example/feed?s={query}".into();
         assert!(check(&d).is_err());
         d.url = "https://{token}.example/feed?s={query}".into();
         assert!(check(&d).is_err());
@@ -966,9 +1014,9 @@ pub(crate) mod tests {
     #[test]
     fn filling_encodes_the_value_and_leaves_the_query() {
         let mut d: Definition = serde_json::from_value(def(
-            "erai",
+            "keyed",
             "rss",
-            "https://erai.example/feed?s={query}&token={token}",
+            "https://keyed.example/feed?s={query}&token={token}",
         ))
         .unwrap();
         d.auth = vec![AuthField {
@@ -980,7 +1028,7 @@ pub(crate) mod tests {
         }];
         assert_eq!(
             d.filled_url(|_| Some("a b&c".into())).unwrap(),
-            "https://erai.example/feed?s={query}&token=a%20b%26c"
+            "https://keyed.example/feed?s={query}&token=a%20b%26c"
         );
         assert_eq!(d.filled_url(|_| None), None);
     }

@@ -570,8 +570,8 @@ pub enum Call {
     /// Asks every on-demand endpoint's ready URL whether it is up, and
     /// nothing else: it never starts one. Ends in `DownloadsStatusChanged`.
     CheckEndpoints,
-    /// Starts the service behind the named on-demand endpoint (Jackett for
-    /// 1337x) with the saved command, waits for its ready URL to answer and
+    /// Starts the service behind the named on-demand endpoint (Jackett for a site
+    /// behind a search proxy) with the saved command, waits for its ready URL to answer and
     /// probes it again. Only the shell's confirmed click makes this call.
     /// Ends in `DownloadsStatusChanged`, or fails with a `Service` error
     /// whose code is `missing`, `failed` or `timeout`.

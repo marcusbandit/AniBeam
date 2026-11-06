@@ -33,7 +33,7 @@ Four tabs:
   refine steps and best fit. With nothing typed it shows what is downloading, what finished,
   and four lenses: Gaps, Airing, Following, Downloaded.
 - **More** holds the settings: storage and its cap (a slider up to the phone's whole
-  storage), Wi-Fi only, the sources (nyaa, and any RSS feed such as erai with your own
+  storage), Wi-Fi only, the sources (a filtered RSS search, and any RSS feed, such as one that needs a token, with your own
   address), tracker sign-in, the other device's address, and the version.
 
 **Onboarding** runs once: AniList and MAL sign-in, Wi-Fi only (on by default; turning it

@@ -25,7 +25,7 @@ pub type FetchFn<'f> = dyn for<'a> Fn(&'a Endpoint, &'a str) -> BoxFuture<'a, Re
 pub type EnrichFn<'f> = dyn Fn(Vec<Release>) -> BoxFuture<'static, Vec<Release>> + Send + Sync + 'f;
 
 use super::endpoints::FIELD_RE;
-use super::erai::metadata_hit;
+use super::quirks::metadata_hit;
 
 /// What `auto_resolution` decided.
 #[derive(Clone, Debug, PartialEq)]
@@ -117,8 +117,8 @@ fn matches_all_tokens(item: &Release, tokens: &[String]) -> bool {
     })
 }
 
-/// Custom-term match: title substring, plus erai's structured fields (the polished title
-/// drops the linktype, so "Torrent" only exists there; items without erai metadata match
+/// Custom-term match: title substring, plus the source's structured fields (the polished title
+/// drops the linktype, so "Torrent" only exists there; items without source metadata match
 /// on the title alone).
 fn custom_hit(item: &Release, term_lc: &str) -> bool {
     item.title.to_lowercase().contains(term_lc) || metadata_hit(item, term_lc)
@@ -274,7 +274,7 @@ fn insert_positional(query: &str, token: &str, selected: &[Release]) -> String {
 ///
 /// A poster (`[...]`) leads the title, so it goes to the front unless the query already
 /// starts with one. Every other token is positioned by where it occurs in the titles. The
-/// caller refetches nyaa with the rebuilt query rather than filtering locally, so
+/// caller refetches the source with the rebuilt query rather than filtering locally, so
 /// episodes beyond the first RSS page can surface.
 pub fn build_refined_query(query: &str, tokens: &[String], selected: &[Release]) -> String {
     let mut new_query = query.to_string();
@@ -290,7 +290,7 @@ pub fn build_refined_query(query: &str, tokens: &[String], selected: &[Release])
     new_query
 }
 
-/// Append a nyaa-style `-tag` to `query`. The query comes back unchanged when the term is
+/// Append a `-tag` exclusion to `query`. The query comes back unchanged when the term is
 /// empty after stripping.
 pub fn add_exclude_to_query(query: &str, term: &str) -> String {
     let term = term.trim().trim_start_matches('-').trim();
@@ -368,7 +368,7 @@ async fn refetch(
 /// Apply one refine action the way anirss's refine loop does.
 ///
 /// `Tokens` narrows to a `compute_groups` group's tokens, `Term` is a custom substring,
-/// `Exclude` drops a term, `BestFit` pins the top release's profile. nyaa endpoints
+/// `Exclude` drops a term, `BestFit` pins the top release's profile. filtered-rss endpoints
 /// refetch with the rebuilt query; rss endpoints filter `items` client-side. A failed
 /// refetch is the fetch callback's error.
 pub async fn apply(
@@ -558,14 +558,14 @@ mod tests {
             .collect()
     }
 
-    fn erai_ep() -> Endpoint {
-        Endpoint::new("erai", "rss", "https://erai.example/feed/?s={query}")
+    fn keyed_ep() -> Endpoint {
+        Endpoint::new("keyed", "rss", "https://keyed.example/feed/?s={query}")
     }
-    fn nyaa() -> Endpoint {
+    fn tracker() -> Endpoint {
         Endpoint::new(
-            "nyaa",
+            "tracker",
             crate::releases::kinds::FILTERED_RSS,
-            "https://nyaa.example/",
+            "https://tracker.example/",
         )
     }
     fn generic_rss() -> Endpoint {
@@ -655,8 +655,8 @@ mod tests {
 
     #[test]
     fn auto_resolution_appends_the_highest_and_keeps_those_items() {
-        let mut items = frieren(2, "SubsPlease", "720p");
-        items.extend(frieren(2, "SubsPlease", "1080p"));
+        let mut items = frieren(2, "Lumen", "720p");
+        items.extend(frieren(2, "Lumen", "1080p"));
         let out = auto_resolution("Frieren", &items);
         assert_eq!(out.query, "Frieren 1080p");
         assert_eq!(out.token, "1080p");
@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn auto_resolution_skips_when_a_title_lacks_one() {
-        let mut items = frieren(2, "SubsPlease", "1080p");
+        let mut items = frieren(2, "Lumen", "1080p");
         items.push(item("[Group] Frieren - 03", "l3"));
         let out = auto_resolution("Frieren", &items);
         assert_eq!(out.query, "Frieren");
@@ -676,8 +676,8 @@ mod tests {
 
     #[test]
     fn auto_resolution_leaves_a_query_with_a_resolution_alone() {
-        let mut items = frieren(1, "SubsPlease", "720p");
-        items.extend(frieren(1, "SubsPlease", "1080p"));
+        let mut items = frieren(1, "Lumen", "720p");
+        items.extend(frieren(1, "Lumen", "1080p"));
         let out = auto_resolution("Frieren 720p", &items);
         assert_eq!(out.query, "Frieren 720p");
         assert_eq!(out.items, items);
@@ -701,21 +701,21 @@ mod tests {
     #[test]
     fn groups_carry_member_indexes() {
         let items = vec![
-            item("[SubsPlease] Frieren - 01 (1080p) [A1].mkv", "l1"),
-            item("[SubsPlease] Frieren - 02 (1080p) [A2].mkv", "l2"),
-            item("[Erai-raws] Frieren - 02 [1080p][HEVC].mkv", "l3"),
-            item("[Erai-raws] Frieren - 03 [1080p][HEVC].mkv", "l4"),
+            item("[Lumen] Frieren - 01 (1080p) [A1].mkv", "l1"),
+            item("[Lumen] Frieren - 02 (1080p) [A2].mkv", "l2"),
+            item("[Kumo-Subs] Frieren - 02 [1080p][HEVC].mkv", "l3"),
+            item("[Kumo-Subs] Frieren - 03 [1080p][HEVC].mkv", "l4"),
             item("[Judas] Frieren - 04 [1080p].mkv", "l5"),
         ];
         let groups = compute_groups(&items);
         assert!(!groups.is_empty());
         let by_label: HashMap<&str, &ReleaseGroup> =
             groups.iter().map(|g| (g.label.as_str(), g)).collect();
-        assert_eq!(by_label["[SubsPlease]"].members, vec![0, 1]);
-        assert_eq!(by_label["[Erai-raws]+HEVC"].members, vec![2, 3]);
+        assert_eq!(by_label["[Lumen]"].members, vec![0, 1]);
+        assert_eq!(by_label["[Kumo-Subs]+HEVC"].members, vec![2, 3]);
         assert_eq!(
-            by_label["[Erai-raws]+HEVC"].tokens,
-            vec!["[Erai-raws]", "HEVC"]
+            by_label["[Kumo-Subs]+HEVC"].tokens,
+            vec!["[Kumo-Subs]", "HEVC"]
         );
         for g in &groups {
             let mut sorted = g.members.clone();
@@ -725,7 +725,7 @@ mod tests {
             assert!(g.members.iter().all(|&i| (i as usize) < items.len()));
             assert!(1 < g.member_count && (g.member_count as usize) < items.len());
         }
-        assert!(by_label["[SubsPlease]"].has_poster);
+        assert!(by_label["[Lumen]"].has_poster);
     }
 
     #[test]
@@ -779,7 +779,7 @@ mod tests {
 
     #[test]
     fn group_members_helper() {
-        let items = frieren(3, "SubsPlease", "1080p");
+        let items = frieren(3, "Lumen", "1080p");
         for g in compute_groups(&items) {
             let mut sorted = group_members(&items, &g);
             let again = sorted.clone();
@@ -797,7 +797,7 @@ mod tests {
     }
 
     #[test]
-    fn groups_use_erai_metadata_for_membership() {
+    fn groups_use_extension_fields_for_membership() {
         let mut items = vec![
             item("Show - 01 [1080p]", "l1"),
             item("Show - 02 [1080p]", "l2"),
@@ -891,28 +891,42 @@ mod tests {
         assert_eq!(add_term_to_query("Show", "   "), "Show");
     }
 
-    // apply: nyaa
+    // apply: filtered-rss
 
     #[tokio::test]
-    async fn nyaa_tokens_refetches_with_the_rebuilt_query() {
+    async fn tracker_tokens_refetches_with_the_rebuilt_query() {
         let items = tui_items();
         let (calls, fetch) = fetcher(Ok(items[..2].to_vec()));
-        let out = run(&nyaa(), "Show 1080p", &items, tokens_op(&["Hevc"]), &fetch).await;
+        let out = run(
+            &tracker(),
+            "Show 1080p",
+            &items,
+            tokens_op(&["Hevc"]),
+            &fetch,
+        )
+        .await;
         assert!(out.applied && out.mode == "refetch" && out.reason.is_none());
         assert_eq!(out.query, "Show 1080p Hevc");
         assert_eq!(out.items, items[..2].to_vec());
         assert_eq!((out.previous_count, out.delta()), (3, -1));
         assert_eq!(
             *calls.lock().unwrap(),
-            vec![("nyaa".to_string(), "Show 1080p Hevc".to_string())]
+            vec![("tracker".to_string(), "Show 1080p Hevc".to_string())]
         );
     }
 
     #[tokio::test]
-    async fn nyaa_zero_results_keeps_the_inputs() {
+    async fn tracker_zero_results_keeps_the_inputs() {
         let items = tui_items();
         let (_, fetch) = fetcher(Ok(Vec::new()));
-        let out = run(&nyaa(), "Show 1080p", &items, tokens_op(&["Hevc"]), &fetch).await;
+        let out = run(
+            &tracker(),
+            "Show 1080p",
+            &items,
+            tokens_op(&["Hevc"]),
+            &fetch,
+        )
+        .await;
         assert!(!out.applied);
         assert_eq!(out.reason.as_deref(), Some("zero_results"));
         assert_eq!(
@@ -923,11 +937,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nyaa_zero_results_for_each_op() {
+    async fn tracker_zero_results_for_each_op() {
         let items = tui_items();
         for op in [tokens_op(&["Hevc"]), term_op("Hevc"), exclude_op("Avc")] {
             let (_, fetch) = fetcher(Ok(Vec::new()));
-            let out = run(&nyaa(), "Show 1080p", &items, op, &fetch).await;
+            let out = run(&tracker(), "Show 1080p", &items, op, &fetch).await;
             assert_eq!(
                 (out.applied, out.reason.as_deref()),
                 (false, Some("zero_results"))
@@ -938,11 +952,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nyaa_refetch_error_propagates() {
+    async fn tracker_refetch_error_propagates() {
         let items = tui_items();
         let (_, fetch) = fetcher(Err(CoreError::internal("down")));
         let err = apply(
-            &nyaa(),
+            &tracker(),
             "Show 1080p",
             &items,
             &term_op("Hevc"),
@@ -956,15 +970,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nyaa_term_and_exclude_queries() {
+    async fn tracker_term_and_exclude_queries() {
         let mut items = tui_items();
         items.push(item("Show - 04 two words", "l4"));
         let (calls, fetch) = fetcher(Ok(items[..1].to_vec()));
-        let out = run(&nyaa(), "Show", &items, term_op("  two words "), &fetch).await;
+        let out = run(&tracker(), "Show", &items, term_op("  two words "), &fetch).await;
         assert_eq!(out.query, "Show \"two words\"");
-        let out = run(&nyaa(), "Show", &items, exclude_op("-Hevc"), &fetch).await;
+        let out = run(&tracker(), "Show", &items, exclude_op("-Hevc"), &fetch).await;
         assert_eq!(out.query, "Show -Hevc");
-        let out = run(&nyaa(), "Show", &items, exclude_op("a b"), &fetch).await;
+        let out = run(&tracker(), "Show", &items, exclude_op("a b"), &fetch).await;
         assert_eq!(out.query, "Show -\"a b\"");
         let queries: Vec<String> = calls.lock().unwrap().iter().map(|c| c.1.clone()).collect();
         assert_eq!(
@@ -974,7 +988,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nyaa_enrich_only_applies_to_refetched_items() {
+    async fn tracker_enrich_only_applies_to_refetched_items() {
         let items = tui_items();
         let marked: Arc<Mutex<Vec<usize>>> = Arc::default();
         let log = marked.clone();
@@ -993,7 +1007,7 @@ mod tests {
         let cfg = BestfitConfig::default();
         let (_, fetch) = fetcher(Ok(items[..2].to_vec()));
         let out = apply(
-            &nyaa(),
+            &tracker(),
             "Show",
             &items,
             &term_op("Hevc"),
@@ -1011,7 +1025,7 @@ mod tests {
         marked.lock().unwrap().clear();
         let (_, fetch) = fetcher(Ok(Vec::new()));
         apply(
-            &nyaa(),
+            &tracker(),
             "Show",
             &items,
             &term_op("Hevc"),
@@ -1028,9 +1042,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nyaa_term_with_no_match_never_refetches() {
+    async fn tracker_term_with_no_match_never_refetches() {
         let items = tui_items();
-        let out = run(&nyaa(), "Show", &items, term_op("zzz"), &never()).await;
+        let out = run(&tracker(), "Show", &items, term_op("zzz"), &never()).await;
         assert_eq!(
             (out.applied, out.reason.as_deref()),
             (false, Some("no_match"))
@@ -1038,40 +1052,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nyaa_best_fit_refetches_with_the_best_query() {
+    async fn tracker_best_fit_refetches_with_the_best_query() {
         let items = vec![
-            item("[Erai-raws] Show - 01 [1080p][HEVC]", "l1"),
+            item("[Kumo-Subs] Show - 01 [1080p][HEVC]", "l1"),
             item("[Other] Show - 03 [720p]", "l3"),
         ];
         let want = best_fit_info("Show", &items, &BestfitConfig::default()).query;
         let (calls, fetch) = fetcher(Ok(items[..1].to_vec()));
-        let out = run(&nyaa(), "Show", &items, RefineOp::BestFit, &fetch).await;
+        let out = run(&tracker(), "Show", &items, RefineOp::BestFit, &fetch).await;
         assert!(out.applied);
         assert_eq!(out.query, want);
-        assert_eq!(*calls.lock().unwrap(), vec![("nyaa".to_string(), want)]);
+        assert_eq!(*calls.lock().unwrap(), vec![("tracker".to_string(), want)]);
     }
 
     #[tokio::test]
     async fn best_fit_is_a_noop_when_the_query_is_already_pinned() {
         let items = vec![
-            item("[Erai-raws] Show - 01 [1080p][HEVC]", "l1"),
+            item("[Kumo-Subs] Show - 01 [1080p][HEVC]", "l1"),
             item("[Other] Show - 03 [720p]", "l3"),
         ];
         let pinned = best_fit_info("Show", &items, &BestfitConfig::default()).query;
-        let out = run(&nyaa(), &pinned, &items, RefineOp::BestFit, &never()).await;
+        let out = run(&tracker(), &pinned, &items, RefineOp::BestFit, &never()).await;
         assert_eq!((out.applied, out.reason.as_deref()), (false, Some("noop")));
     }
 
     #[tokio::test]
     async fn best_fit_on_empty_items_is_a_noop() {
-        let out = run(&nyaa(), "Show", &[], RefineOp::BestFit, &never()).await;
+        let out = run(&tracker(), "Show", &[], RefineOp::BestFit, &never()).await;
         assert_eq!((out.applied, out.reason.as_deref()), (false, Some("noop")));
     }
 
     #[tokio::test]
     async fn empty_terms_are_refused_on_both_kinds() {
         let items = tui_items();
-        for ep in [nyaa(), generic_rss()] {
+        for ep in [tracker(), generic_rss()] {
             for op in [
                 term_op(""),
                 term_op("   "),
@@ -1094,9 +1108,9 @@ mod tests {
     async fn exclude_strips_whitespace_before_the_dash() {
         let items = tui_items();
         let (_, fetch) = fetcher(Ok(items[..1].to_vec()));
-        let out = run(&nyaa(), "Show", &items, exclude_op(" -Hevc"), &fetch).await;
+        let out = run(&tracker(), "Show", &items, exclude_op(" -Hevc"), &fetch).await;
         assert_eq!(out.query, "Show -Hevc");
-        let out = run(&nyaa(), "Show", &items, exclude_op(" - "), &fetch).await;
+        let out = run(&tracker(), "Show", &items, exclude_op(" - "), &fetch).await;
         assert_eq!(out.reason.as_deref(), Some("empty_term"));
     }
 
@@ -1168,7 +1182,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rss_tokens_match_erai_metadata() {
+    async fn rss_tokens_match_extension_fields() {
         let mut items = vec![
             item("Show - 01 [1080p]", "l1"),
             item("Show - 02 [1080p]", "l2"),
@@ -1178,7 +1192,7 @@ mod tests {
         items[1].linktype = "Torrent".into();
         items[2].linktype = "Magnet".into();
         let out = run(
-            &erai_ep(),
+            &keyed_ep(),
             "Show 1080p",
             &items,
             tokens_op(&["Torrent"]),
@@ -1223,13 +1237,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rss_term_matches_erai_metadata() {
+    async fn rss_term_matches_extension_fields() {
         let mut items = vec![
             item("Show - 01 [1080p]", "l1"),
             item("Show - 02 [1080p]", "l2"),
         ];
         items[0].linktype = "Torrent".into();
-        let out = run(&erai_ep(), "Show", &items, term_op("torrent"), &never()).await;
+        let out = run(&keyed_ep(), "Show", &items, term_op("torrent"), &never()).await;
         assert_eq!(links(&out.items), vec!["l1"]);
     }
 
@@ -1263,8 +1277,8 @@ mod tests {
     #[tokio::test]
     async fn rss_best_fit_filters_to_the_profile_and_then_noops() {
         let items = vec![
-            item("[Erai-raws] Show - 01 [1080p][HEVC]", "l1"),
-            item("[Erai-raws] Show - 02 [1080p][HEVC]", "l2"),
+            item("[Kumo-Subs] Show - 01 [1080p][HEVC]", "l1"),
+            item("[Kumo-Subs] Show - 02 [1080p][HEVC]", "l2"),
             item("[Other] Show - 03 [720p]", "l3"),
         ];
         let out = run(&generic_rss(), "Show", &items, RefineOp::BestFit, &never()).await;
@@ -1290,7 +1304,7 @@ mod tests {
     async fn rss_best_fit_without_a_poster_keeps_a_nonempty_subset() {
         let items = tui_items();
         let out = run(
-            &erai_ep(),
+            &keyed_ep(),
             "Show 1080p",
             &items,
             RefineOp::BestFit,
@@ -1305,7 +1319,7 @@ mod tests {
     async fn rss_exclude_matches_the_refine_loop() {
         let items = tui_items();
         let out = run(
-            &erai_ep(),
+            &keyed_ep(),
             "Show 1080p",
             &items,
             exclude_op("Hevc"),
@@ -1316,10 +1330,10 @@ mod tests {
     }
 
     #[test]
-    fn client_side_is_anything_but_nyaa() {
+    fn client_side_is_anything_but_filtered_rss() {
         assert!(is_client_side(&generic_rss()));
-        assert!(is_client_side(&erai_ep()));
-        assert!(!is_client_side(&nyaa()));
+        assert!(is_client_side(&keyed_ep()));
+        assert!(!is_client_side(&tracker()));
     }
 
     // best fit info
@@ -1327,15 +1341,15 @@ mod tests {
     #[test]
     fn best_fit_info_describes_the_step() {
         let items = vec![
-            item("[Erai-raws] Frieren - 02 [1080p][HEVC].mkv", "l1"),
-            item("[SubsPlease] Frieren - 01 (720p) [AB].mkv", "l2"),
+            item("[Kumo-Subs] Frieren - 02 [1080p][HEVC].mkv", "l1"),
+            item("[Lumen] Frieren - 01 (720p) [AB].mkv", "l2"),
         ];
         let cfg = BestfitConfig::default();
         let best = best_fit_info("Frieren", &items, &cfg);
         assert!(best.available);
         assert!(items.contains(best.item.as_ref().unwrap()));
         assert!(!best.query.is_empty() && best.query != "Frieren");
-        assert!(best.profile.contains(&"[Erai-raws]".to_string()));
+        assert!(best.profile.contains(&"[Kumo-Subs]".to_string()));
         // When the query already is the best-fit query there is nothing to do.
         let again = best_fit_info(&best.query, &items, &cfg);
         assert!(!again.available);

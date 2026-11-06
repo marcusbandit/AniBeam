@@ -121,7 +121,7 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
 
 /// What a search tries, in order: the enabled feeds saved before repos, then the installed
 /// endpoints. An installed endpoint whose id is a saved feed's name takes that feed's place,
-/// so installing nyaa from a repo replaces an old saved one rather than searching it twice.
+/// so installing an endpoint from a repo replaces an old saved one rather than searching it twice.
 fn searched(core: &Core) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
     let mut installed = crate::repos::runnable(core);
     let mut out: Vec<(PhoneSource, crate::releases::Endpoint)> = Vec::new();
@@ -555,7 +555,14 @@ pub fn subscribe(
     )?;
     // What the feed holds now for episodes the library already has is taken, so the first
     // round does not download them again (qBittorrent's previously matched episodes).
-    if let Ok(now) = core.handle.block_on(feed(core, &filled, &subscribed.name)) {
+    let from = feed_sources(core, &fillers);
+    if let Ok(now) = core.handle.block_on(feed(
+        core,
+        &filled,
+        &subscribed.name,
+        &kept.endpoint_name,
+        &from,
+    )) {
         let (facts, _) = crate::downloads::annotate(core, &query, &now);
         let had: Vec<String> = now
             .iter()
@@ -634,16 +641,48 @@ pub fn unsubscribe(core: &Core, names: Vec<String>, files: bool) -> Result<Reply
     Ok(Reply::Ok)
 }
 
-/// A subscription's feed: AnimeTosho's JSON search, or RSS.
+/// A subscription's feed, read the way its source's kind answers: a json-feed source's
+/// JSON, else RSS. The source is `endpoint` when the rule names one still installed, else
+/// the one whose address the feed is.
 #[cfg(feature = "phone")]
-async fn feed(core: &Core, url: &str, name: &str) -> Result<Vec<Release>, CoreError> {
+async fn feed(
+    core: &Core,
+    url: &str,
+    name: &str,
+    endpoint: &str,
+    sources: &[crate::releases::Endpoint],
+) -> Result<Vec<Release>, CoreError> {
     let timeout = crate::releases::fetch::DEFAULT_TIMEOUT;
     let http = crate::repos::endpoint_http(core);
-    if url.contains("animetosho.org/feed/json") {
+    if is_json_feed(sources, url, endpoint) {
         crate::releases::json_feed::fetch(&http, url, name, timeout).await
     } else {
         crate::releases::fetch::fetch_rss(&http, url, name, timeout).await
     }
+}
+
+/// The sources a subscription's feed can come from: every installed endpoint, then the
+/// sources saved here before repos, which a rule made on one still names.
+#[cfg_attr(not(feature = "phone"), allow(dead_code))]
+fn feed_sources(
+    core: &Core,
+    installed: &[crate::repos::Runnable],
+) -> Vec<crate::releases::Endpoint> {
+    let mut out: Vec<crate::releases::Endpoint> =
+        installed.iter().map(|r| r.endpoint.clone()).collect();
+    for s in sources(core).iter().map(trimmed) {
+        if !out.iter().any(|e| e.name == s.name) {
+            out.push(crate::releases::Endpoint::new(&s.name, &s.kind, &s.url));
+        }
+    }
+    out
+}
+
+/// Whether the feed `url` of a rule on `endpoint` comes from a json-feed source.
+#[cfg_attr(not(feature = "phone"), allow(dead_code))]
+fn is_json_feed(sources: &[crate::releases::Endpoint], url: &str, endpoint: &str) -> bool {
+    crate::releases::endpoints::source_of(sources, url, Some(endpoint))
+        .is_some_and(|e| e.kind == crate::releases::kinds::JSON_FEED)
 }
 
 /// How often the core reads the subscriptions' feeds: qBittorrent's default.
@@ -666,6 +705,7 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
     let _one = core.phone.poll_lock.lock().await;
     let store = rules_store(core);
     let fillers = crate::repos::fillers(core);
+    let from = feed_sources(core, &fillers);
     for rule in store.load().into_iter().filter(|r| r.enabled) {
         let Some(url) = crate::repos::filled_feed(&fillers, &rule.endpoint, &rule.feed_url) else {
             // Its endpoint was removed, or its credentials were: said once, not every round.
@@ -684,7 +724,7 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             continue;
         };
         core.phone.stopped.lock().unwrap().remove(&rule.name);
-        let items = match feed(core, &url, &rule.name).await {
+        let items = match feed(core, &url, &rule.name, &rule.endpoint, &from).await {
             Ok(items) => items,
             Err(e) => {
                 tracing::warn!("subscription {} not read: {e}", rule.name);
@@ -803,4 +843,59 @@ pub fn control(_: &Core, _: Vec<String>, _: PhoneAction) -> Result<Reply, CoreEr
 #[cfg(not(feature = "phone"))]
 pub fn set_held(_: &Core, _: bool) -> Result<Reply, CoreError> {
     Err(unsupported())
+}
+
+#[cfg(test)]
+mod feed_tests {
+    use super::*;
+    use crate::releases::Endpoint;
+
+    #[test]
+    fn a_feed_is_read_the_way_its_sources_kind_answers() {
+        let sources = [
+            Endpoint::new("feed", "json-feed", "https://feed.example/json?q={query}"),
+            Endpoint::new("rss", "rss", "https://rss.example/?q={query}"),
+        ];
+        // By the rule's source, and by the address for a rule that names none.
+        assert!(is_json_feed(&sources, "https://anywhere.example/x", "feed"));
+        assert!(is_json_feed(
+            &sources,
+            "https://feed.example/json?q=Show",
+            ""
+        ));
+        assert!(!is_json_feed(
+            &sources,
+            "https://rss.example/?q=Show",
+            "rss"
+        ));
+        // A source no longer installed reads as RSS.
+        assert!(!is_json_feed(
+            &sources,
+            "https://gone.example/json?q=Show",
+            "gone"
+        ));
+    }
+
+    #[test]
+    fn a_source_saved_before_repos_still_says_how_its_feed_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            crate::net::FakeHttp::new(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        let saved = serde_json::json!([{"name": "old", "kind": "json-feed",
+            "url": "https://feed.example/json?q={query}", "enabled": true}]);
+        std::fs::create_dir_all(&core.paths.config_dir).unwrap();
+        std::fs::write(sources_path(&core), saved.to_string()).unwrap();
+        let from = feed_sources(&core, &[]);
+        assert!(is_json_feed(
+            &from,
+            "https://feed.example/json?q=Show",
+            "old"
+        ));
+        assert!(is_json_feed(&from, "https://feed.example/json?q=Show", ""));
+    }
 }

@@ -1,19 +1,20 @@
 //! Keeping a subscription to what the search showed, on an endpoint anirss
 //! narrows on its own side.
 //!
-//! anirss refines a generic RSS endpoint (1337x through Jackett) by fetching
+//! anirss refines a generic RSS endpoint (a site behind a search proxy) by fetching
 //! the broader query and filtering the releases itself; the endpoint never
 //! sees the narrowing words. Subscribing hands anirss the narrowed query,
 //! and anirss builds the feed from all of it, so the feed searches the
 //! endpoint for words it cannot match ("Helluva Boss S03 1080p WEB-DL"
-//! finds nothing on 1337x where "Helluva Boss S03" finds six) and the rule
+//! finds nothing behind the proxy where "Helluva Boss S03" finds six) and the rule
 //! never fires. The fix keeps anirss's rule and moves it: the feed becomes
 //! the one the search actually read, and the words narrowed away from it
 //! go into the rule's own filters, which qBittorrent applies to every
-//! article. Words the endpoint can answer after all ("TBK" on 1337x) are
+//! article. Words the endpoint can answer after all ("TBK" behind the proxy) are
 //! probed back into the feed's search, so the feed holds what was picked
-//! and not every release of the show. Erai is left alone: anirss already moves its terms into the
-//! rule (its per-show feed), and nyaa searches server-side.
+//! and not every release of the show. A show feed is left alone: anirss
+//! already moves its terms into the rule (its per-show feed), and a
+//! filtered-rss endpoint searches server-side.
 
 use std::sync::LazyLock;
 
@@ -174,8 +175,8 @@ pub fn feed_shared(rules: &Value, except: &str, feed_url: &str) -> bool {
     })
 }
 
-/// The search a feed URL carries: the `q` parameter (torznab, nyaa), else
-/// `s` (Erai-style feeds), as (name, decoded value).
+/// The search a feed URL carries: the `q` parameter (torznab, filtered-rss), else
+/// `s` (show feeds), as (name, decoded value).
 pub fn search_param(url: &str) -> Option<(String, String)> {
     let query = url.split_once('?')?.1;
     let pairs: Vec<(&str, &str)> = query.split('&').filter_map(|p| p.split_once('=')).collect();
@@ -307,9 +308,9 @@ mod tests {
             "http://127.0.0.1:9117/api/torznab/api?apikey=K&t=search&q=Helluva.Boss.%20S03"
         );
         assert_eq!(search_param(&shorter).unwrap().1, "Helluva.Boss. S03");
-        let erai = "https://www.erai-raws.info/episodes/feed/?res=1080p&s=Ranma+1%2F2&token=t";
+        let keyed = "https://www.keyed.example/episodes/feed/?res=1080p&s=Ranma+1%2F2&token=t";
         assert_eq!(
-            search_param(erai).unwrap(),
+            search_param(keyed).unwrap(),
             ("s".to_string(), "Ranma 1/2".to_string())
         );
         assert_eq!(search_param("https://x/feed"), None);

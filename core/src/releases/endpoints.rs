@@ -10,9 +10,9 @@ use std::time::Duration;
 use regex::Regex;
 
 use super::Endpoint;
-use super::erai;
 use super::fetch::{self, DEFAULT_TIMEOUT};
 use super::kinds::{FILTERED_RSS, JSON_FEED};
+use super::quirks;
 use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::{BoxFuture, Http};
 
@@ -312,7 +312,7 @@ pub fn search_url(ep: &Endpoint, query: &str) -> String {
             ("c".to_string(), ep.category.clone()),
             ("f".to_string(), ep.filter.clone()),
         ]);
-        // A nyaa address may carry fixed parameters of its own (a token), as anirss allows
+        // A filtered-rss address may carry fixed parameters of its own (a token), as anirss allows
         let sep = if ep.url.contains('?') { '&' } else { '?' };
         return format!("{}{sep}{qs}", ep.url);
     }
@@ -341,13 +341,13 @@ pub fn split_exclusions(query: &str) -> (String, Vec<String>) {
     (positive.join(" "), excluded)
 }
 
-/// Erai's `s=` search matches post text only; the quality facets (1080p, WEB-DL, and so on)
-/// live in the erai: metadata and would zero the search out, so they are stripped from the
-/// terms here and returned for client-side filtering (`erai::split_noise`). Other endpoints
-/// pass through untouched.
-fn erai_split(ep: &Endpoint, positive: &str) -> (String, Vec<String>) {
-    if ep.kind == "rss" && erai::is_erai(ep) {
-        return erai::split_noise(positive);
+/// A `quality_local` source's search matches post text only; the quality facets (1080p,
+/// WEB-DL, and so on) live in its feed's extension fields and would zero the search out, so
+/// they are stripped from the terms here and returned for client-side filtering
+/// (`quirks::split_noise`). Other endpoints pass through untouched.
+fn quality_split(ep: &Endpoint, positive: &str) -> (String, Vec<String>) {
+    if ep.kind == "rss" && ep.quirks.quality_local {
+        return quirks::split_noise(positive);
     }
     (positive.to_string(), Vec::new())
 }
@@ -355,36 +355,39 @@ fn erai_split(ep: &Endpoint, positive: &str) -> (String, Vec<String>) {
 /// URL to persist as a qBittorrent RSS feed for `query`, plus the exclusion terms that
 /// could not be encoded into it. filtered-rss understands `-tag` exclusions server-side, so they
 /// stay in the URL; generic rss endpoints get only the positive terms and the exclusions
-/// come back for the caller to enforce through the qB rule. erai also loses its quality
-/// tokens.
+/// come back for the caller to enforce through the qB rule. A `quality_local` source also
+/// loses its quality tokens.
 pub fn feed_url(ep: &Endpoint, query: &str) -> (String, Vec<String>) {
     if ep.kind == FILTERED_RSS {
         return (search_url(ep, query), Vec::new());
     }
     let (positive, excluded) = split_exclusions(query);
-    let (positive, _) = erai_split(ep, &positive);
+    let (positive, _) = quality_split(ep, &positive);
     (search_url(ep, &positive), excluded)
 }
 
-/// The synchronous half of `subscription_feed`: everything once the per-show feed (the one
-/// request erai may cost) is known. Returns (feed_url, mustContain, excluded).
+/// The synchronous half of `subscription_feed`: everything once the show's own feed (the one
+/// request a `show_feed` source may cost) is known. Returns (feed_url, mustContain, excluded).
 ///
-/// Erai endpoints subscribe to the per-show anime-list feed when the slug resolved; the
-/// positive query terms then move into the rule's mustContain since the per-show URL no
-/// longer encodes the search. Quoted phrases are unwrapped and poster fields dropped: qB
-/// matches whitespace-separated tokens against the raw feed titles, which carry no
-/// `[group]` poster. When the slug did not resolve, the search feed is used with only the
-/// searchable terms on the wire and the quality tokens moved into mustContain. Either way a
-/// query that picks no AVC/HEVC variant gets the HEVC encode excluded. Every other endpoint
-/// keeps the `feed_url` behaviour with an empty mustContain.
+/// A source whose definition narrows its rule (`Quirks::narrows_in_rule`) subscribes to the
+/// show's own feed when the slug resolved; the positive query terms then move into the
+/// rule's mustContain since that feed's URL no longer encodes the search. Quoted phrases are
+/// unwrapped and poster fields dropped: qB matches whitespace-separated tokens against the
+/// raw feed titles, which carry no `[group]` poster. When the slug did not resolve, the
+/// search feed is used with only the searchable terms on the wire and the quality tokens
+/// moved into mustContain. Either way a query that picks no variant gets the definition's
+/// `one_variant` excluded. Every other endpoint keeps the `feed_url` behaviour with an empty
+/// mustContain.
 pub fn subscription_feed_resolved(
     ep: &Endpoint,
     query: &str,
     per_show: Option<String>,
 ) -> (String, String, Vec<String>) {
-    if erai::is_erai(ep) {
+    if ep.kind == "rss" && ep.quirks.narrows_in_rule() {
         let (positive, mut excluded) = split_exclusions(query);
-        excluded.extend(erai::variant_exclusions(query));
+        if let Some(word) = &ep.quirks.one_variant {
+            excluded.extend(quirks::variant_exclusions(query, word));
+        }
         if let Some(per_show) = per_show.filter(|u| !u.is_empty()) {
             let must = FIELD_RE
                 .find_iter(&positive)
@@ -395,15 +398,15 @@ pub fn subscription_feed_resolved(
                 .join(" ");
             return (per_show, must, excluded);
         }
-        let (positive, quality) = erai_split(ep, &positive);
+        let (positive, quality) = quality_split(ep, &positive);
         return (search_url(ep, &positive), quality.join(" "), excluded);
     }
     let (url, excluded) = feed_url(ep, query);
     (url, String::new(), excluded)
 }
 
-/// (feed_url, mustContain, excluded) to persist as a qB subscription. Erai endpoints cost
-/// one probe request here, to resolve the per-show feed from `items`.
+/// (feed_url, mustContain, excluded) to persist as a qB subscription. A `show_feed` source
+/// costs one probe request here, to resolve the show's own feed from `items`.
 pub async fn subscription_feed(
     http: &dyn Http,
     ep: &Endpoint,
@@ -417,9 +420,9 @@ pub async fn subscription_feed(
     } else {
         ep
     };
-    let per_show = if erai::is_erai(ep) {
-        erai::resolve_show_feed(ep, items, |url: String| async move {
-            fetch::fetch_rss(http, &url, "erai per-show probe", DEFAULT_TIMEOUT).await
+    let per_show = if ep.kind == "rss" {
+        quirks::resolve_show_feed(ep, items, |url: String| async move {
+            fetch::fetch_rss(http, &url, &ep.name, DEFAULT_TIMEOUT).await
         })
         .await
     } else {
@@ -548,13 +551,13 @@ async fn fetch_exact(
         return Ok(filter_excluded(items, &excluded));
     }
     let (positive, excluded) = split_exclusions(query);
-    let (positive, quality) = erai_split(ep, &positive);
+    let (positive, quality) = quality_split(ep, &positive);
     let items = fetch::fetch_rss(http, &search_url(ep, &positive), &ep.name, timeout).await?;
     let mut items = filter_excluded(items, &excluded);
     if !quality.is_empty() {
         // The quality facets cannot be searched server-side (they would zero the s= search
         // out); they narrow the results here instead.
-        items.retain(|it| erai::matches_all(it, &quality));
+        items.retain(|it| quirks::matches_all(it, &quality));
     }
     Ok(items)
 }
@@ -649,12 +652,20 @@ pub fn owner_of<'a>(endpoints: &'a [Endpoint], url: &str) -> Option<&'a Endpoint
 /// the rule keeps its name and that source is still in `endpoints`, else the one that owns
 /// the feed (`owner_of`). A feed no source owns claims nothing.
 pub fn follows(endpoints: &[Endpoint], feed_url: &str, endpoint: Option<&str>) -> bool {
-    let named = endpoint
+    source_of(endpoints, feed_url, endpoint).is_none_or(|e| answers_rss(&e.kind))
+}
+
+/// The source a subscription's feed comes from: `endpoint` when the rule keeps its name and
+/// that source is still in `endpoints`, else the one that owns the feed (`owner_of`).
+pub fn source_of<'a>(
+    endpoints: &'a [Endpoint],
+    feed_url: &str,
+    endpoint: Option<&str>,
+) -> Option<&'a Endpoint> {
+    endpoint
         .filter(|n| !n.is_empty())
-        .and_then(|n| endpoints.iter().find(|e| e.name == n));
-    named
+        .and_then(|n| endpoints.iter().find(|e| e.name == n))
         .or_else(|| owner_of(endpoints, feed_url))
-        .is_none_or(|e| answers_rss(&e.kind))
 }
 
 #[cfg(test)]
@@ -662,28 +673,42 @@ pub(crate) mod tests {
     use super::*;
     use crate::net::FakeHttp;
 
-    fn nyaa() -> Endpoint {
+    fn tracker() -> Endpoint {
         Endpoint {
             category: "1_2".to_string(),
             filter: "1".to_string(),
-            ..Endpoint::new("nyaa", FILTERED_RSS, "https://nyaa.si/")
+            ..Endpoint::new("tracker", FILTERED_RSS, "https://tracker.example/")
         }
     }
 
-    fn anirena() -> Endpoint {
+    fn board() -> Endpoint {
         Endpoint::new(
-            "anirena",
+            "board",
             "rss",
-            "https://www.anirena.com/rss?q={query}&adult=1",
+            "https://www.board.example/rss?q={query}&adult=1",
         )
     }
 
-    pub(crate) fn erai_ep() -> Endpoint {
-        Endpoint::new(
-            "erai",
+    /// An RSS source that needs a token, with every quirk on, as its definition gives them.
+    pub(crate) fn keyed_ep() -> Endpoint {
+        let mut ep = Endpoint::new(
+            "keyed",
             "rss",
-            "https://www.erai-raws.info/episodes/feed/?res=1080p&type=torrent&subs%5B0%5D=us&s={query}&token=TOK",
-        )
+            "https://www.keyed.example/episodes/feed/?res=1080p&type=torrent&subs%5B0%5D=us&s={query}&token=TOK",
+        );
+        ep.quirks = super::quirks::Quirks {
+            quality_local: true,
+            one_variant: Some("HEVC".into()),
+            show_feed: Some(super::quirks::ShowFeed {
+                pages: vec![
+                    r"^https://www\.keyed\.example/(?:episodes|specials|raws)/(?P<slug>[a-z0-9-]+?)-\d+(?:v\d+)?/".into(),
+                    r"^https://www\.keyed\.example/encodes/(?P<slug>[a-z0-9-]+?)-\d+(?:v\d+)?-hevc/".into(),
+                    r"^https://www\.keyed\.example/batches/(?P<slug>[a-z0-9-]+?)-\d+-\d+/".into(),
+                ],
+                url: "https://www.keyed.example/anime-list/{slug}/feed/".into(),
+            }),
+        };
+        ep
     }
 
     pub(crate) fn rel(title: &str, link: &str) -> Release {
@@ -737,11 +762,11 @@ pub(crate) mod tests {
 
     #[test]
     fn validate_accepts_good_endpoints() {
-        validate("nyaa", FILTERED_RSS, "https://nyaa.si/").unwrap();
+        validate("tracker", FILTERED_RSS, "https://tracker.example/").unwrap();
         validate(
-            "anirena",
+            "board",
             "rss",
-            "https://www.anirena.com/rss?q={query}&adult=1",
+            "https://www.board.example/rss?q={query}&adult=1",
         )
         .unwrap();
         validate(" a.b_c-1 ", " rss ", " https://x/?q={query} ").unwrap();
@@ -780,18 +805,21 @@ pub(crate) mod tests {
 
     #[test]
     fn search_url_filtered_rss_kind() {
-        let url = search_url(&nyaa(), "one piece");
-        assert!(url.starts_with("https://nyaa.si/?"));
+        let url = search_url(&tracker(), "one piece");
+        assert!(url.starts_with("https://tracker.example/?"));
         assert!(url.contains("page=rss") && url.contains("q=one+piece"));
         assert!(url.contains("c=1_2") && url.contains("f=1"));
-        assert_eq!(url, "https://nyaa.si/?page=rss&q=one+piece&c=1_2&f=1");
+        assert_eq!(
+            url,
+            "https://tracker.example/?page=rss&q=one+piece&c=1_2&f=1"
+        );
     }
 
     #[test]
     fn search_url_rss_kind_fills_template() {
         assert_eq!(
-            search_url(&anirena(), "shin chan"),
-            "https://www.anirena.com/rss?q=shin+chan&adult=1"
+            search_url(&board(), "shin chan"),
+            "https://www.board.example/rss?q=shin+chan&adult=1"
         );
     }
 
@@ -839,24 +867,24 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn feed_url_nyaa_kind_keeps_exclusions_in_url() {
-        let (url, excluded) = feed_url(&nyaa(), "one piece -HEVC");
-        assert_eq!(url, search_url(&nyaa(), "one piece -HEVC"));
+    fn feed_url_filtered_rss_kind_keeps_exclusions_in_url() {
+        let (url, excluded) = feed_url(&tracker(), "one piece -HEVC");
+        assert_eq!(url, search_url(&tracker(), "one piece -HEVC"));
         assert!(excluded.is_empty());
     }
 
     #[test]
     fn feed_url_rss_kind_strips_exclusions() {
-        let (url, excluded) = feed_url(&anirena(), r#"show 1080p -HEVC -"dual audio""#);
+        let (url, excluded) = feed_url(&board(), r#"show 1080p -HEVC -"dual audio""#);
         assert!(!url.contains("HEVC") && !url.contains("dual"));
-        assert_eq!(url, search_url(&anirena(), "show 1080p"));
+        assert_eq!(url, search_url(&board(), "show 1080p"));
         assert_eq!(excluded, strings(&["HEVC", "dual audio"]));
     }
 
     #[test]
     fn feed_url_rss_kind_no_exclusions_roundtrips() {
-        let (url, excluded) = feed_url(&anirena(), "shin chan");
-        assert_eq!(url, search_url(&anirena(), "shin chan"));
+        let (url, excluded) = feed_url(&board(), "shin chan");
+        assert_eq!(url, search_url(&board(), "shin chan"));
         assert!(excluded.is_empty());
     }
 
@@ -869,8 +897,8 @@ pub(crate) mod tests {
 
     #[test]
     fn split_exclusions_no_exclusions_roundtrip() {
-        let (q, excl) = split_exclusions("[Erai-raws] show 1080p");
-        assert_eq!(q, "[Erai-raws] show 1080p");
+        let (q, excl) = split_exclusions("[Kumo-Subs] show 1080p");
+        assert_eq!(q, "[Kumo-Subs] show 1080p");
         assert!(excl.is_empty());
     }
 
@@ -897,7 +925,7 @@ pub(crate) mod tests {
     async fn fetch_items_rss_kind_applies_exclusions() {
         let http = FakeHttp::new();
         http.push(200, feed(&[("Show 05 HEVC", "l1"), ("Show 05 AVC", "l2")]));
-        let items = fetch_items(http.as_ref(), &anirena(), "show -HEVC")
+        let items = fetch_items(http.as_ref(), &board(), "show -HEVC")
             .await
             .unwrap();
         assert_eq!(
@@ -907,7 +935,7 @@ pub(crate) mod tests {
         // The exclusion never reaches the wire; only positive terms are sent.
         let url = &http.requests()[0].url;
         assert!(!url.contains("HEVC"), "{url}");
-        assert_eq!(url, "https://www.anirena.com/rss?q=show&adult=1");
+        assert_eq!(url, "https://www.board.example/rss?q=show&adult=1");
     }
 
     #[tokio::test]
@@ -971,10 +999,10 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_items_nyaa_kind_sends_exclusions() {
+    async fn fetch_items_filtered_rss_kind_sends_exclusions() {
         let http = FakeHttp::new();
         http.push(200, feed(&[("t", "l")]));
-        let items = fetch_items(http.as_ref(), &nyaa(), "show -HEVC")
+        let items = fetch_items(http.as_ref(), &tracker(), "show -HEVC")
             .await
             .unwrap();
         assert_eq!(items.len(), 1);
@@ -1036,7 +1064,7 @@ pub(crate) mod tests {
     async fn a_filtered_search_with_nothing_asks_again_for_every_upload() {
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         let http = FakeHttp::new();
         http.push(200, feed(&[]));
@@ -1047,7 +1075,7 @@ pub(crate) mod tests {
         let sent: Vec<String> = http.requests().iter().map(|r| f_param(&r.url)).collect();
         assert_eq!(sent, ["2", "0"]);
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].source, "nyaa: all uploads");
+        assert_eq!(items[0].source, "tracker: all uploads");
         // Subscribing to those results keeps the filter off, or the rule finds nothing.
         let (url, _, _) = subscription_feed(http.as_ref(), &trusted, "Seitokai", &items).await;
         assert_eq!(f_param(&url), "0");
@@ -1057,7 +1085,7 @@ pub(crate) mod tests {
     async fn a_filtered_search_with_results_or_no_filter_asks_once() {
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         let http = FakeHttp::new();
         http.push(200, feed(&[("t", "l")]));
@@ -1069,7 +1097,7 @@ pub(crate) mod tests {
 
         let open = Endpoint {
             filter: "0".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         let http = FakeHttp::new();
         http.push(200, feed(&[]));
@@ -1086,7 +1114,7 @@ pub(crate) mod tests {
     async fn a_failed_unfiltered_retry_still_answers_nothing_found() {
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         let http = FakeHttp::new();
         http.push(200, feed(&[]));
@@ -1100,7 +1128,7 @@ pub(crate) mod tests {
     async fn a_refine_refetches_with_the_filter_its_list_was_found_with() {
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         // A trusted list narrowed to nothing stays nothing: no unfiltered retry.
         let http = FakeHttp::new();
@@ -1119,7 +1147,7 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert_eq!(f_param(&http.requests()[0].url), "0");
-        assert_eq!(items[0].source, "nyaa: all uploads");
+        assert_eq!(items[0].source, "tracker: all uploads");
     }
 
     #[tokio::test]
@@ -1128,7 +1156,7 @@ pub(crate) mod tests {
         http.push(200, feed(&[]));
         // Its filter finds nothing, so it asks again unfiltered
         http.push(200, feed(&[]));
-        let mut ep = nyaa();
+        let mut ep = tracker();
         ep.timeout = 60.0;
         fetch_items(http.as_ref(), &ep, "x").await.unwrap();
         let req = &http.requests()[0];
@@ -1141,16 +1169,16 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_items_erai_searches_clean_and_filters_quality() {
-        let xml = r#"<rss version="2.0" xmlns:erai="https://www.erai-raws.info/rss-page/"><channel>
+    async fn fetch_items_quality_local_searches_clean_and_filters_quality() {
+        let xml = r#"<rss version="2.0" xmlns:x="https://www.keyed.example/rss-page/"><channel>
 <item><title>[Torrent] Ranma - 01 [1080p NF WEB-DL AVC AAC][Airing]</title><link>dl</link>
-<erai:resolution>1080p</erai:resolution><erai:infomkv>NF WEB-DL AVC AAC</erai:infomkv><erai:linktype>Torrent</erai:linktype></item>
+<x:resolution>1080p</x:resolution><x:infomkv>NF WEB-DL AVC AAC</x:infomkv><x:linktype>Torrent</x:linktype></item>
 <item><title>[Torrent] Ranma - 01 (HEVC) [1080p NF WEBRip HEVC AAC][Encoded]</title><link>rip</link>
-<erai:resolution>1080p</erai:resolution><erai:infomkv>NF WEBRip HEVC AAC</erai:infomkv><erai:linktype>Torrent</erai:linktype></item>
+<x:resolution>1080p</x:resolution><x:infomkv>NF WEBRip HEVC AAC</x:infomkv><x:linktype>Torrent</x:linktype></item>
 </channel></rss>"#;
         let http = FakeHttp::new();
         http.push(200, xml);
-        let items = fetch_items(http.as_ref(), &erai_ep(), "Ranma 1080p WEB-DL")
+        let items = fetch_items(http.as_ref(), &keyed_ep(), "Ranma 1080p WEB-DL")
             .await
             .unwrap();
         // The search went out with the show name only, since the quality tokens would zero
@@ -1166,9 +1194,7 @@ pub(crate) mod tests {
     async fn fetch_items_failure_names_the_endpoint() {
         let http = FakeHttp::new();
         http.fail_next("boom");
-        let err = fetch_items(http.as_ref(), &anirena(), "q")
-            .await
-            .unwrap_err();
+        let err = fetch_items(http.as_ref(), &board(), "q").await.unwrap_err();
         match err {
             CoreError::Service {
                 service,
@@ -1177,7 +1203,7 @@ pub(crate) mod tests {
             } => {
                 assert_eq!(
                     (service.as_str(), code.as_str(), message.as_str()),
-                    ("anirena", "unreachable", "boom")
+                    ("board", "unreachable", "boom")
                 );
             }
             other => panic!("{other:?}"),
@@ -1186,9 +1212,9 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn probe_fallback_switches_to_first_hit() {
-        let eps = [nyaa(), anirena()];
-        let (items, notes) = probe_with(&eps, "nyaa", |ep| async move {
-            Ok(if ep.name == "anirena" {
+        let eps = [tracker(), board()];
+        let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
+            Ok(if ep.name == "board" {
                 vec![rel("t", "l")]
             } else {
                 vec![]
@@ -1196,15 +1222,15 @@ pub(crate) mod tests {
         })
         .await;
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].source, "anirena");
-        assert_eq!(notes, strings(&["anirena: 1"]));
+        assert_eq!(items[0].source, "board");
+        assert_eq!(notes, strings(&["board: 1"]));
     }
 
     #[tokio::test]
     async fn probe_fallback_tags_items_with_source() {
-        let eps = [nyaa(), anirena()];
-        let (items, _) = probe_with(&eps, "nyaa", |ep| async move {
-            Ok(if ep.name == "anirena" {
+        let eps = [tracker(), board()];
+        let (items, _) = probe_with(&eps, "tracker", |ep| async move {
+            Ok(if ep.name == "board" {
                 vec![rel("t", "l"), rel("t2", "l2")]
             } else {
                 vec![]
@@ -1213,58 +1239,58 @@ pub(crate) mod tests {
         .await;
         assert_eq!(
             items.iter().map(|i| i.source.as_str()).collect::<Vec<_>>(),
-            ["anirena", "anirena"]
+            ["board", "board"]
         );
     }
 
     #[tokio::test]
     async fn probe_fallback_all_fail_returns_nothing() {
-        let third = Endpoint::new("tosho", "rss", "https://x/?q={query}");
-        let eps = [nyaa(), anirena(), third];
-        let (items, notes) = probe_with(&eps, "nyaa", |ep| async move {
-            if ep.name == "anirena" {
-                Err(CoreError::internal("can't reach anirena: boom"))
+        let third = Endpoint::new("feed", "rss", "https://x/?q={query}");
+        let eps = [tracker(), board(), third];
+        let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
+            if ep.name == "board" {
+                Err(CoreError::internal("can't reach board: boom"))
             } else {
                 Ok(vec![])
             }
         })
         .await;
         assert!(items.is_empty());
-        assert_eq!(notes, strings(&["anirena: unreachable", "tosho: 0"]));
+        assert_eq!(notes, strings(&["board: unreachable", "feed: 0"]));
     }
 
     #[tokio::test]
     async fn probe_fallback_over_http_skips_the_active_endpoint() {
-        let eps = [nyaa(), anirena()];
+        let eps = [tracker(), board()];
         let http = FakeHttp::new();
-        http.push_for("anirena.com", 200, feed(&[("Show", "l")]));
-        let (items, notes) = probe_fallback(http.as_ref(), &eps, "nyaa", "show").await;
-        assert_eq!(items[0].source, "anirena");
-        assert_eq!(notes, strings(&["anirena: 1"]));
+        http.push_for("board.example", 200, feed(&[("Show", "l")]));
+        let (items, notes) = probe_fallback(http.as_ref(), &eps, "tracker", "show").await;
+        assert_eq!(items[0].source, "board");
+        assert_eq!(notes, strings(&["board: 1"]));
         assert_eq!(http.requests().len(), 1);
     }
 
     #[test]
     fn owner_of_finds_the_endpoint_by_url_prefix() {
-        let eps = [nyaa(), anirena()];
-        let owner = owner_of(&eps, "https://www.anirena.com/rss?q=x&adult=1").unwrap();
-        assert_eq!(owner.name, "anirena");
+        let eps = [tracker(), board()];
+        let owner = owner_of(&eps, "https://www.board.example/rss?q=x&adult=1").unwrap();
+        assert_eq!(owner.name, "board");
         assert!(owner_of(&eps, "https://elsewhere.example/").is_none());
     }
 
-    // The erai subscription rules (anirss test_erai.py) ----------------------------------
+    // A narrowing source's subscription rules, from anirss's own tests ----------------------
 
     #[test]
-    fn feed_url_erai_strips_quality_tokens() {
-        let (url, excluded) = feed_url(&erai_ep(), "Ranma 1080p WEB-DL -hevc");
+    fn feed_url_quality_local_strips_quality_tokens() {
+        let (url, excluded) = feed_url(&keyed_ep(), "Ranma 1080p WEB-DL -hevc");
         assert_eq!(s_param(&url), "Ranma");
         assert_eq!(excluded, strings(&["hevc"]));
     }
 
     #[test]
-    fn subscription_feed_erai_fallback_puts_quality_in_must() {
+    fn subscription_feed_keyed_fallback_puts_quality_in_must() {
         let (url, must, excluded) =
-            subscription_feed_resolved(&erai_ep(), "Ranma 1080p WEB-DL -hevc", None);
+            subscription_feed_resolved(&keyed_ep(), "Ranma 1080p WEB-DL -hevc", None);
         assert_eq!(s_param(&url), "Ranma");
         // qB enforces the quality facets against the raw feed titles instead.
         assert_eq!(must, "1080p WEB-DL");
@@ -1272,10 +1298,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn subscription_feed_erai_uses_per_show_and_must_contain() {
-        let per_show = "https://www.erai-raws.info/anime-list/x/feed/?res=1080p".to_string();
+    fn subscription_feed_keyed_uses_per_show_and_must_contain() {
+        let per_show = "https://www.keyed.example/anime-list/x/feed/?res=1080p".to_string();
         let (url, must, excluded) = subscription_feed_resolved(
-            &erai_ep(),
+            &keyed_ep(),
             "Gaikotsu 1080p CR WEB-DL -hevc",
             Some(per_show.clone()),
         );
@@ -1287,30 +1313,30 @@ pub(crate) mod tests {
     #[test]
     fn subscription_feed_must_contain_drops_poster_and_quotes() {
         let (_, must, _) = subscription_feed_resolved(
-            &erai_ep(),
-            r#"[Erai-raws] Show "Multi Subs" 1080p"#,
+            &keyed_ep(),
+            r#"[Kumo-Subs] Show "Multi Subs" 1080p"#,
             Some("https://e/f".to_string()),
         );
         assert_eq!(must, "Show Multi Subs 1080p");
     }
 
     #[test]
-    fn subscription_feed_erai_falls_back_to_search_feed() {
-        let (url, must, excluded) = subscription_feed_resolved(&erai_ep(), "gaikotsu -hevc", None);
+    fn subscription_feed_keyed_falls_back_to_search_feed() {
+        let (url, must, excluded) = subscription_feed_resolved(&keyed_ep(), "gaikotsu -hevc", None);
         assert!(url.contains("s=gaikotsu"));
         assert_eq!(must, "");
         assert_eq!(excluded, strings(&["hevc"]));
     }
 
     #[test]
-    fn subscription_feed_non_erai_unchanged() {
-        let (url, must, excluded) = subscription_feed_resolved(&nyaa(), "show -bad", None);
-        assert_eq!(url, feed_url(&nyaa(), "show -bad").0);
+    fn subscription_feed_of_a_plain_source_unchanged() {
+        let (url, must, excluded) = subscription_feed_resolved(&tracker(), "show -bad", None);
+        assert_eq!(url, feed_url(&tracker(), "show -bad").0);
         assert_eq!(must, "");
         assert!(excluded.is_empty());
     }
 
-    // The two releases Erai's feed carries for every episode (Kyoufu Collector, whose
+    // The two releases a source's feed carries for every episode (Kyoufu Collector, whose
     // `kyoufu 1080p` rule downloaded both).
     const KYOUFU_AVC: &str = "[Torrent] Kyoufu Collector - 01 [1080p CR WEB-DL AVC AAC][us][br][mx][es][sa][fr][de][it][ru][pl][Airing]";
     const KYOUFU_HEVC: &str = "[Torrent] Kyoufu Collector - 01 (HEVC) [1080p CR WEBRip HEVC AAC][us][br][mx][es][sa][fr][de][it][ru][pl][Encoded]";
@@ -1326,7 +1352,7 @@ pub(crate) mod tests {
 
     fn kept(query: &str) -> (Vec<&'static str>, Vec<String>) {
         let (_, must, excluded) =
-            subscription_feed_resolved(&erai_ep(), query, Some("https://e/f".to_string()));
+            subscription_feed_resolved(&keyed_ep(), query, Some("https://e/f".to_string()));
         let kept = [KYOUFU_AVC, KYOUFU_HEVC]
             .into_iter()
             .filter(|t| qb_accepts(t, &must, &excluded))
@@ -1350,38 +1376,41 @@ pub(crate) mod tests {
 
     #[test]
     fn subscription_feed_search_fallback_also_drops_the_encode() {
-        let (_, _, excluded) = subscription_feed_resolved(&erai_ep(), "Ranma 1080p", None);
+        let (_, _, excluded) = subscription_feed_resolved(&keyed_ep(), "Ranma 1080p", None);
         assert_eq!(excluded, strings(&["HEVC"]));
     }
 
     #[tokio::test]
     async fn build_subscription_probes_the_per_show_feed_once() {
         let mut page_item = rel("Gaikotsu - 02 [1080p][Airing]", "l");
-        page_item.page = "https://www.erai-raws.info/episodes/gaikotsu-kishi-sama-02/".to_string();
+        page_item.page = "https://www.keyed.example/episodes/gaikotsu-kishi-sama-02/".to_string();
         let http = FakeHttp::new();
         http.push(200, feed(&[("x", "l")]));
         let spec = build_subscription(
             http.as_ref(),
-            &erai_ep(),
+            &keyed_ep(),
             "Gaikotsu 1080p -dub",
             &[page_item],
         )
         .await;
         assert!(
             spec.feed_url
-                .starts_with("https://www.erai-raws.info/anime-list/gaikotsu-kishi-sama/feed/?")
+                .starts_with("https://www.keyed.example/anime-list/gaikotsu-kishi-sama/feed/?")
         );
         assert_eq!(spec.must_contain, "Gaikotsu 1080p");
         assert_eq!(spec.must_not_contain, "dub|HEVC");
-        assert_eq!(spec.endpoint_name, "erai");
+        assert_eq!(spec.endpoint_name, "keyed");
         assert_eq!(http.requests().len(), 1);
     }
 
     #[tokio::test]
     async fn build_subscription_for_a_plain_endpoint_makes_no_request() {
         let http = FakeHttp::new();
-        let spec = build_subscription(http.as_ref(), &anirena(), "show -bad -worse", &[]).await;
-        assert_eq!(spec.feed_url, "https://www.anirena.com/rss?q=show&adult=1");
+        let spec = build_subscription(http.as_ref(), &board(), "show -bad -worse", &[]).await;
+        assert_eq!(
+            spec.feed_url,
+            "https://www.board.example/rss?q=show&adult=1"
+        );
         assert_eq!(spec.must_not_contain, "bad|worse");
         assert!(http.requests().is_empty());
     }
