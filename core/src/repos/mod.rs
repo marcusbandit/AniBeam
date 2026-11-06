@@ -2496,7 +2496,7 @@ mod tests {
             name: "site".to_string(),
             version: 1,
             lang: String::new(),
-            kind: "nyaa".to_string(),
+            kind: crate::releases::kinds::FILTERED_RSS.to_string(),
             url: "https://tracker.example/".to_string(),
             auth: Vec::new(),
             front: None,
@@ -2506,6 +2506,7 @@ mod tests {
             filter: None,
             min_core: None,
             json: None,
+            trusted_groups: Vec::new(),
         };
         let shape = |def: &Definition| {
             let e = endpoint_for(def, &def.url);
