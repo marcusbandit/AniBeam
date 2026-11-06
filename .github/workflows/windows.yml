@@ -158,9 +158,11 @@ jobs:
       # track, and its files block the clippy component (#650): drop those two first.
       - name: Rust toolchain
         run: |
-          tc="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)-x86_64-pc-windows-msvc"
+          tc="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml | tr -d '\r')-x86_64-pc-windows-msvc"
           bin="$(cygpath -u "$(rustup show home)")/toolchains/$tc/bin"
-          if [ -d "$bin" ] && ! rustup component list --installed --toolchain "$tc" | grep -q '^clippy'; then
+          # Read whole before grep looks: grep -q quitting early must not fail rustup's write
+          comps="$(rustup component list --installed --toolchain "$tc" 2>/dev/null || true)"
+          if [ -d "$bin" ] && ! grep -q '^clippy' <<<"$comps"; then
             echo "Removing an untracked clippy from $tc"
             rm -f "$bin/cargo-clippy.exe" "$bin/clippy-driver.exe"
           fi
