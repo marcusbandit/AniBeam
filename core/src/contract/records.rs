@@ -552,6 +552,18 @@ pub struct TrackerOutcome {
     pub message: Option<String>,
 }
 
+/// One episode of a followed show that has just aired (#212): a show on
+/// the Watching list, by its AniList id. `series` is the library series
+/// with files that carries it, None when it is not on disk.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EpisodeOut {
+    pub anilist_id: u64,
+    pub episode: u32,
+    pub at: SystemTime,
+    pub title: String,
+    pub series: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct WatchingEntry {
     pub anilist_id: u64,
@@ -849,6 +861,11 @@ pub struct Preferences {
     /// `discord_presence`. `serde(default)` because older blobs predate it.
     #[serde(default)]
     pub calendar_feed: bool,
+    /// Whether the desktop shows a notification when an episode of a show
+    /// on the Watching list airs (#212). Default on, and per machine.
+    /// `serde(default)` because older blobs predate it.
+    #[serde(default = "default_true")]
+    pub episode_notifications: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1016,6 +1033,7 @@ impl Default for Preferences {
             on_hold_days: ON_HOLD_DAYS,
             discord_presence: false,
             calendar_feed: false,
+            episode_notifications: true,
         }
     }
 }

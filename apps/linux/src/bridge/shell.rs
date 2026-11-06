@@ -85,6 +85,16 @@ pub mod qobject {
         /// installUpdate failed, in a sentence for the person.
         #[qsignal]
         fn update_failed(self: Pin<&mut Self>, message: QString);
+        /// A click on an episode out notification (#212): the library series to open, -1
+        /// when the show is not on disk and Get episodes is what opens.
+        #[qsignal]
+        fn notification_opened(
+            self: Pin<&mut Self>,
+            series: f64,
+            anilist_id: f64,
+            title: QString,
+            token: QString,
+        );
         /// Raises `window` (the QML Window) with the xdg-activation token.
         #[qinvokable]
         unsafe fn raise_window(self: &Self, window: *mut QObject, token: &QString);
@@ -150,6 +160,11 @@ pub mod qobject {
         /// `install`. updateFailed answers when it cannot.
         #[qinvokable]
         fn install_update(self: &Self, version: &QString);
+        /// A desktop notification for one EpisodeOut (#212). A sandbox run (--root, --shoot,
+        /// --drive) shows none, so a capture never puts one on the owner's screen. Linux only
+        /// for now: Windows and macOS are #566 and #567.
+        #[qinvokable]
+        fn notify_episode(self: &Self, episode: &QJsonObject);
         /// Stops installUpdate's download. Nothing answers; QML has already moved on.
         #[qinvokable]
         fn cancel_update(self: &Self);
@@ -440,6 +455,46 @@ impl qobject::Shell {
         let _ = self
             .qt_thread()
             .queue(move |shell| shell.update_failed(QString::from(&message)));
+    }
+
+    pub fn notify_episode(&self, episode: &QJsonObject) {
+        let args = crate::runtime::args();
+        let v = crate::json::from_qjson_object(episode);
+        let title = v["title"].as_str().unwrap_or_default().to_string();
+        let number = v["episode"].as_u64().unwrap_or(0) as u32;
+        if args.root.is_some() || args.shoot.is_some() || args.drive.is_some() {
+            eprintln!(
+                "anibeam: notifications: a sandbox run shows none: episode {number} of {title}"
+            );
+            return;
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            use crate::dbus::notify::{Notifier, Target};
+            static NOTIFIER: std::sync::OnceLock<tokio::sync::Mutex<Notifier>> =
+                std::sync::OnceLock::new();
+            let target = Target {
+                series: v["series"].as_u64(),
+                anilist_id: v["anilist_id"].as_u64().unwrap_or(0),
+                title,
+            };
+            let shell = self.qt_thread();
+            let on_click = std::sync::Arc::new(move |t: Target, token: String| {
+                let series = t.series.map_or(-1.0, |s| s as f64);
+                let _ = shell.queue(move |shell| {
+                    shell.notification_opened(
+                        series,
+                        t.anilist_id as f64,
+                        QString::from(&t.title),
+                        QString::from(&token),
+                    )
+                });
+            });
+            crate::runtime::runtime().spawn(async move {
+                let notifier = NOTIFIER.get_or_init(|| tokio::sync::Mutex::new(Notifier::new()));
+                notifier.lock().await.show(target, number, on_click).await;
+            });
+        }
     }
 
     pub fn cancel_update(&self) {

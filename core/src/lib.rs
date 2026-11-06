@@ -1,6 +1,7 @@
 //! AniBeam's core. One crate, every rule; every shell uses it through the
 //! contract in `contract`.
 
+pub mod aired;
 pub mod airing_now;
 pub mod calendar;
 pub mod cast;

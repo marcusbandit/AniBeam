@@ -763,6 +763,23 @@ FocusScope {
         if (JSON.stringify(d) !== JSON.stringify(subtitleDefaults)) subtitleDefaults = d
     }
     Connections { target: Door; function onSettingsChanged() { frame.subtitleRebuild() } }
+
+    // ---- Episode out (#212): the core says when an episode of a show on the Watching list
+    // airs; the desktop shows it unless Settings turned it off. A click raises the window on
+    // the series, or on Get episodes when the library does not have the show.
+    Connections {
+        target: Door
+        function onEpisodeOut(ep) { if (Door.preferences.episode_notifications !== false) Shell.notifyEpisode(ep) }
+    }
+    Connections {
+        target: Shell
+        function onNotificationOpened(series, anilistId, title, token) {
+            if (frame.hostWindow) Shell.raiseWindow(frame.hostWindow, token)
+            if (series >= 0) frame.go("series", { id: series }, title)
+            else frame.go("downloads", { hit: { id: anilistId, title: title, romaji: title, english: "", native: "",
+                                               cover_url: "", episodes: 0, format: "", year: 0 } }, "Downloads")
+        }
+    }
     Timer { id: subtitleSave; interval: 250; onTriggered: frame.flushSubtitleDefaults() }
     function editSubtitleDefaults(f) {
         var d = JSON.parse(JSON.stringify(subtitleDefaults))
