@@ -68,9 +68,14 @@ struct Node {
 }
 
 fn read(body: &str) -> Result<BTreeMap<u64, Schedule>, String> {
-    let reply: Reply = serde_json::from_str(body).map_err(|e| format!("AniList's answer did not read: {e}"))?;
+    let reply: Reply =
+        serde_json::from_str(body).map_err(|e| format!("AniList's answer did not read: {e}"))?;
     let Some(data) = reply.data else {
-        let why = reply.errors.first().map(|e| e.message.as_str()).unwrap_or("no data");
+        let why = reply
+            .errors
+            .first()
+            .map(|e| e.message.as_str())
+            .unwrap_or("no data");
         return Err(format!("AniList said: {why}"));
     };
     let mut out = BTreeMap::new();
@@ -81,11 +86,21 @@ fn read(body: &str) -> Result<BTreeMap<u64, Schedule>, String> {
             .unwrap_or_default()
             .into_iter()
             .chain(media.next_airing_episode)
-            .map(|n| Airing { episode: n.episode, season: None, at: n.airing_at })
+            .map(|n| Airing {
+                episode: n.episode,
+                season: None,
+                at: n.airing_at,
+            })
             .collect();
         upcoming.sort_by_key(|a| (a.at, a.episode));
         upcoming.dedup_by_key(|a| a.episode);
-        out.insert(media.id, Schedule { status: media.status, upcoming });
+        out.insert(
+            media.id,
+            Schedule {
+                status: media.status,
+                upcoming,
+            },
+        );
     }
     Ok(out)
 }
@@ -135,7 +150,11 @@ mod tests {
         let frieren = &got[&182255];
         assert_eq!(frieren.status.as_deref(), Some("RELEASING"));
         assert_eq!(
-            frieren.upcoming.iter().map(|a| (a.episode, a.at)).collect::<Vec<_>>(),
+            frieren
+                .upcoming
+                .iter()
+                .map(|a| (a.episode, a.at))
+                .collect::<Vec<_>>(),
             vec![(8, 200), (9, 300)]
         );
         assert!(got[&457].upcoming.is_empty());

@@ -15,15 +15,18 @@ use anibeam_companion::address::HostAddress;
 use anibeam_companion::format;
 use anibeam_companion::store::{AniListCache, Cache, Store};
 use anibeam_core::{
-    AiringNow, AiringShow, Call, Direction, PhoneAction, PhoneSource, Reply, SeasonPick, SeriesCard, SeriesDetail, Sort, Tab,
-    Torrent, Tracker, TrackerAccount,
+    AiringNow, AiringShow, Call, Direction, PhoneAction, PhoneSource, Reply, SeasonPick,
+    SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
-use crate::{AiringMenu, AppData, AppWindow, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, SettingHit, Settings, Shelf, SourceRow, Tile};
+use crate::{
+    AiringMenu, AppData, AppWindow, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine,
+    SettingHit, Settings, Shelf, SourceRow, Tile,
+};
 
 /// How often the app looks at the other device while it is open.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -56,7 +59,10 @@ struct Shelves {
 
 impl Shelves {
     fn new() -> Self {
-        Shelves { shelves: list(), tiles: HashMap::new() }
+        Shelves {
+            shelves: list(),
+            tiles: HashMap::new(),
+        }
     }
 
     fn set(&mut self, rows: Vec<(&'static str, Vec<Tile>)>) {
@@ -67,7 +73,11 @@ impl Shelves {
                 let model = self.tiles.entry(title).or_insert_with(list).clone();
                 let count = tiles.len();
                 update(&model, tiles);
-                Shelf { title: title.into(), count: count.to_string().into(), tiles: model.into() }
+                Shelf {
+                    title: title.into(),
+                    count: count.to_string().into(),
+                    tiles: model.into(),
+                }
             })
             .collect();
         update(&self.shelves, shelves);
@@ -178,28 +188,80 @@ fn with_app(f: impl FnOnce(&mut App)) {
     });
 }
 
-
 /// More's sections, by the index Settings.section uses.
-const SECTIONS: [&str; 8] = ["Accounts", "Downloads", "Streaming", "Search sites", "Connection", "Your computer", "About", "App icon"];
+const SECTIONS: [&str; 8] = [
+    "Accounts",
+    "Downloads",
+    "Streaming",
+    "Search sites",
+    "Connection",
+    "Your computer",
+    "About",
+    "App icon",
+];
 
 /// Every setting More's search can land on: its section, its label (the key its page lights),
 /// and the words a person might type for it.
 const SETTINGS: &[(i32, &str, &str)] = &[
-    (0, "AniList", "anilist tracker sign in login account connect list progress"),
-    (0, "MyAnimeList", "mal myanimelist tracker sign in login account connect list progress"),
-    (1, "Storage cap", "space disk limit gb full storage delete size"),
-    (1, "Only on Wi-Fi", "wifi wi-fi mobile data cellular network"),
-    (2, "Stream quality", "auto original 1080p 720p 480p convert data computer play"),
-    (3, "Check repos for new sites", "refresh update repo endpoint"),
-    (3, "Add a repo", "repo endpoint trust fingerprint address url"),
-    (3, "Add a site by hand", "custom endpoint feed rss torznab jackett prowlarr address"),
+    (
+        0,
+        "AniList",
+        "anilist tracker sign in login account connect list progress",
+    ),
+    (
+        0,
+        "MyAnimeList",
+        "mal myanimelist tracker sign in login account connect list progress",
+    ),
+    (
+        1,
+        "Storage cap",
+        "space disk limit gb full storage delete size",
+    ),
+    (
+        1,
+        "Only on Wi-Fi",
+        "wifi wi-fi mobile data cellular network",
+    ),
+    (
+        2,
+        "Stream quality",
+        "auto original 1080p 720p 480p convert data computer play",
+    ),
+    (
+        3,
+        "Check repos for new sites",
+        "refresh update repo endpoint",
+    ),
+    (
+        3,
+        "Add a repo",
+        "repo endpoint trust fingerprint address url",
+    ),
+    (
+        3,
+        "Add a site by hand",
+        "custom endpoint feed rss torznab jackett prowlarr address",
+    ),
     (3, "Your own feeds", "feed rss source remove"),
-    (4, "Check the connection", "network dns test https secure reach internet"),
-    (5, "Your computer's AniBeam", "tailscale tailnet host address desktop library stream test save device"),
+    (
+        4,
+        "Check the connection",
+        "network dns test https secure reach internet",
+    ),
+    (
+        5,
+        "Your computer's AniBeam",
+        "tailscale tailnet host address desktop library stream test save device",
+    ),
     (6, "What's new", "changelog patch notes changes update"),
     (6, "Set up again", "onboarding first run start over"),
     (6, "Version", "build about"),
-    (7, "App icon", "icon launcher home screen logo dark line art themed material you"),
+    (
+        7,
+        "App icon",
+        "icon launcher home screen logo dark line art themed material you",
+    ),
 ];
 
 /// The settings a search names: each word in the label, the words or the section's name, the
@@ -218,7 +280,14 @@ fn find_settings(query: &str, has_feeds: bool, has_repos: bool) -> Vec<SettingHi
             let place = SECTIONS[section as usize];
             let hay = format!("{label} {words} {place}").to_lowercase();
             q.split_whitespace().all(|w| hay.contains(w)).then(|| {
-                (label.to_lowercase().contains(&q), SettingHit { section, label: label.into(), place: place.into() })
+                (
+                    label.to_lowercase().contains(&q),
+                    SettingHit {
+                        section,
+                        label: label.into(),
+                        place: place.into(),
+                    },
+                )
             })
         })
         .collect();
@@ -230,7 +299,9 @@ fn account_line(a: &TrackerAccount) -> String {
     match (a.connected, &a.username) {
         (true, Some(name)) => format!("Signed in as {name}"),
         (true, None) => "Signed in".to_string(),
-        (false, _) if a.client_id.is_empty() && !a.bundled_credentials => "Not available in this build".to_string(),
+        (false, _) if a.client_id.is_empty() && !a.bundled_credentials => {
+            "Not available in this build".to_string()
+        }
         (false, _) => "Not signed in. Tap to sign in.".to_string(),
     }
 }
@@ -242,7 +313,13 @@ impl App {
 
     /// The other device's name, once it has answered.
     fn host_name(&self) -> Option<String> {
-        self.cache.as_ref().map(|c| if c.host.is_empty() { c.address.clone() } else { c.host.clone() })
+        self.cache.as_ref().map(|c| {
+            if c.host.is_empty() {
+                c.address.clone()
+            } else {
+                c.host.clone()
+            }
+        })
     }
 
     fn handle(&mut self, event: Event) {
@@ -261,7 +338,9 @@ impl App {
                 self.cache = Some(cache);
             }
             Event::Poster(id, decoded) => {
-                self.remote_art.posters.insert(id, Image::from_rgba8(decoded.buffer));
+                self.remote_art
+                    .posters
+                    .insert(id, Image::from_rgba8(decoded.buffer));
                 self.remote_art.tones.insert(id, decoded.tone);
             }
             Event::AniList(anilist) => self.anilist = anilist,
@@ -283,7 +362,9 @@ impl App {
 
     /// Reads the phone's cards, the open detail and the trackers again from the core.
     fn reload(&mut self) {
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
         let library = Call::ListLibrary {
             tab: Tab::All,
             query: String::new(),
@@ -298,8 +379,20 @@ impl App {
                 .cards
                 .iter()
                 .map(|c| {
-                    let titles = [Some(&c.title), c.titles.english.as_ref(), c.titles.romaji.as_ref()];
-                    (c.id, titles.into_iter().flatten().map(|t| plain(t)).filter(|t| t.len() >= 4).collect())
+                    let titles = [
+                        Some(&c.title),
+                        c.titles.english.as_ref(),
+                        c.titles.romaji.as_ref(),
+                    ];
+                    (
+                        c.id,
+                        titles
+                            .into_iter()
+                            .flatten()
+                            .map(|t| plain(t))
+                            .filter(|t| t.len() >= 4)
+                            .collect(),
+                    )
                 })
                 .collect();
             self.data().set_ready(true);
@@ -329,7 +422,11 @@ impl App {
     fn tick(&mut self) {
         // A new day moves the calendar's window, so the airings around it are read again.
         let changed = crate::local::take_changed();
-        if changed || self.read_on.is_some_and(|d| d != anibeam_companion::calendar::today(anibeam_companion::now())) {
+        if changed
+            || self
+                .read_on
+                .is_some_and(|d| d != anibeam_companion::calendar::today(anibeam_companion::now()))
+        {
             self.reload();
         }
         let now = anibeam_companion::now();
@@ -354,7 +451,10 @@ impl App {
         data.set_cal_device(self.cal_device as i32);
         self.show_calendar(calendar);
         update(&self.coming, home.coming);
-        self.home_shelves.set(vec![("Recently watched", home.watched), ("Recently downloaded", home.downloaded)]);
+        self.home_shelves.set(vec![
+            ("Recently watched", home.watched),
+            ("Recently downloaded", home.downloaded),
+        ]);
         data.set_phone_shows(self.cards.len() as i32);
         data.set_home_note(
             match self.cards.len() {
@@ -376,21 +476,41 @@ impl App {
             let q = query.trim().to_lowercase();
             let matches = |c: &&SeriesCard| {
                 q.is_empty()
-                    || [Some(&c.title), c.titles.english.as_ref(), c.titles.romaji.as_ref()]
-                        .into_iter()
-                        .flatten()
-                        .any(|t| t.to_lowercase().contains(&q))
+                    || [
+                        Some(&c.title),
+                        c.titles.english.as_ref(),
+                        c.titles.romaji.as_ref(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .any(|t| t.to_lowercase().contains(&q))
             };
             crate::phone::library(self.cards.iter().filter(matches), &self.art, now)
         } else {
-            crate::remote::library(self.cache.as_ref(), &self.anilist, &self.remote_art, now, &query)
+            crate::remote::library(
+                self.cache.as_ref(),
+                &self.anilist,
+                &self.remote_art,
+                now,
+                &query,
+            )
         };
-        let shows = |n: usize| if n == 1 { "1 show".to_string() } else { format!("{n} shows") };
+        let shows = |n: usize| {
+            if n == 1 {
+                "1 show".to_string()
+            } else {
+                format!("{n} shows")
+            }
+        };
         data.set_library_note(
             if device == 0 {
                 format!("This phone, {}", shows(self.cards.len()))
             } else {
-                let at = self.cache.as_ref().map(|c| format::ago(now - c.synced_at)).unwrap_or_default();
+                let at = self
+                    .cache
+                    .as_ref()
+                    .map(|c| format::ago(now - c.synced_at))
+                    .unwrap_or_default();
                 format!("{}, synced {at}", devices[device])
             }
             .into(),
@@ -417,8 +537,17 @@ impl App {
 
         // The series page.
         let page = match self.open {
-            Some(Open::Phone(_)) => self.detail.as_ref().map(|d| crate::phone::series(d, &self.art, now)),
-            Some(Open::Remote(id)) => crate::remote::series(self.cache.as_ref(), &self.anilist, &self.remote_art, id, now),
+            Some(Open::Phone(_)) => self
+                .detail
+                .as_ref()
+                .map(|d| crate::phone::series(d, &self.art, now)),
+            Some(Open::Remote(id)) => crate::remote::series(
+                self.cache.as_ref(),
+                &self.anilist,
+                &self.remote_art,
+                id,
+                now,
+            ),
             None => None,
         };
         match page {
@@ -427,7 +556,8 @@ impl App {
                     data.set_series(head);
                 }
                 // A picked file that is gone (deleted, or the scan moved on) is dropped.
-                let files: HashSet<i32> = lines.iter().map(|l| l.file).filter(|f| *f != 0).collect();
+                let files: HashSet<i32> =
+                    lines.iter().map(|l| l.file).filter(|f| *f != 0).collect();
                 self.picked.retain(|f| files.contains(f));
                 for l in &mut lines {
                     l.picked = self.picked.contains(&l.file);
@@ -440,7 +570,9 @@ impl App {
                 }
                 data.set_deleting(self.deleting);
                 data.set_delete_count(self.picked.len() as i32);
-                data.set_episode_codes(format::code_column(lines.iter().map(|l| l.code.as_str())).into());
+                data.set_episode_codes(
+                    format::code_column(lines.iter().map(|l| l.code.as_str())).into(),
+                );
                 update(&self.episodes, lines);
                 data.set_series_open(true);
             }
@@ -466,9 +598,16 @@ impl App {
             // The warn dot shows only while a row says its sign-in failed.
             let failed = |which: i32, a: &TrackerAccount| matches!(&self.sign_in_error, Some((w, _)) if *w == which && !a.connected);
             data.set_sign_in_failed(failed(0, anilist) || failed(1, mal));
-            let signed: Vec<&str> =
-                [("AniList", anilist), ("MAL", mal)].iter().filter(|(_, a)| a.connected).map(|(n, _)| *n).collect();
-            data.set_trackers_line(if signed.is_empty() { "Not signed in".into() } else { signed.join(" and ").into() });
+            let signed: Vec<&str> = [("AniList", anilist), ("MAL", mal)]
+                .iter()
+                .filter(|(_, a)| a.connected)
+                .map(|(n, _)| *n)
+                .collect();
+            data.set_trackers_line(if signed.is_empty() {
+                "Not signed in".into()
+            } else {
+                signed.join(" and ").into()
+            });
         }
         if self.ticks.is_multiple_of(2) {
             self.poll_torrents();
@@ -482,7 +621,11 @@ impl App {
                 self.show_airing();
             }
         }
-        if self.airing_undo.as_ref().is_some_and(|(_, _, at)| self.ticks.wrapping_sub(*at) > UNDO_TICKS) {
+        if self
+            .airing_undo
+            .as_ref()
+            .is_some_and(|(_, _, at)| self.ticks.wrapping_sub(*at) > UNDO_TICKS)
+        {
             self.airing_undo = None;
             data.set_airing_undo("".into());
         }
@@ -500,7 +643,12 @@ impl App {
     fn show_calendar(&mut self, days: Vec<(CalDay, Vec<CalItem>)>) {
         let window = self.window.clone_strong();
         let data = window.global::<AppData>();
-        let total: usize = days.iter().skip(crate::phone::CAL_BACK).take(7).map(|(_, items)| items.len()).sum();
+        let total: usize = days
+            .iter()
+            .skip(crate::phone::CAL_BACK)
+            .take(7)
+            .map(|(_, items)| items.len())
+            .sum();
         data.set_cal_note(
             match total {
                 0 => "Nothing airs this week".to_string(),
@@ -510,8 +658,14 @@ impl App {
             .into(),
         );
         // The first days, and each new day after, start on today.
-        let today = days.iter().position(|(d, _)| d.today).unwrap_or(crate::phone::CAL_BACK) as i32;
-        let new_day = self.calendar.row_data(today as usize).is_none_or(|d| !d.today);
+        let today = days
+            .iter()
+            .position(|(d, _)| d.today)
+            .unwrap_or(crate::phone::CAL_BACK) as i32;
+        let new_day = self
+            .calendar
+            .row_data(today as usize)
+            .is_none_or(|d| !d.today);
         if self.cal_models.len() != days.len() {
             self.cal_models = days.iter().map(|_| Rc::new(VecModel::default())).collect();
         }
@@ -542,47 +696,57 @@ impl App {
             self.airing_again = Some(ask || self.airing_again.unwrap_or(false));
             return;
         }
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
         self.airing_listing = true;
         let season = self.airing_season;
-        let _ = std::thread::Builder::new().name("airing".into()).spawn(move || {
-            let mut refreshing = false;
-            if ask {
-                match core.call(Call::RefreshAiringNow { season, force: false }) {
-                    Ok(Reply::Started { .. }) => refreshing = true,
-                    Ok(_) => {}
-                    Err(e) => crate::local::log(&format!("airing: {e}")),
-                }
-            }
-            let answer = core.call(Call::ListAiringNow { season });
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app| {
-                    app.airing_listing = false;
-                    // The season changed while this was out: its answer is for the other one.
-                    if app.airing_season != season {
-                        app.airing_again = None;
-                        app.load_airing(true);
-                        return;
-                    }
-                    match answer {
-                        Ok(Reply::AiringNow { now, refreshing: busy }) => {
-                            app.airing_refreshing = refreshing || busy.is_some();
-                            app.airing_note = None;
-                            app.airing = Some(now);
-                        }
+        let _ = std::thread::Builder::new()
+            .name("airing".into())
+            .spawn(move || {
+                let mut refreshing = false;
+                if ask {
+                    match core.call(Call::RefreshAiringNow {
+                        season,
+                        force: false,
+                    }) {
+                        Ok(Reply::Started { .. }) => refreshing = true,
                         Ok(_) => {}
-                        Err(e) => {
-                            app.airing_refreshing = false;
-                            app.airing_note = Some(format!("AniList could not be read: {e}"));
+                        Err(e) => crate::local::log(&format!("airing: {e}")),
+                    }
+                }
+                let answer = core.call(Call::ListAiringNow { season });
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        app.airing_listing = false;
+                        // The season changed while this was out: its answer is for the other one.
+                        if app.airing_season != season {
+                            app.airing_again = None;
+                            app.load_airing(true);
+                            return;
                         }
-                    }
-                    app.show_airing();
-                    if let Some(ask) = app.airing_again.take() {
-                        app.load_airing(ask);
-                    }
-                })
+                        match answer {
+                            Ok(Reply::AiringNow {
+                                now,
+                                refreshing: busy,
+                            }) => {
+                                app.airing_refreshing = refreshing || busy.is_some();
+                                app.airing_note = None;
+                                app.airing = Some(now);
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                app.airing_refreshing = false;
+                                app.airing_note = Some(format!("AniList could not be read: {e}"));
+                            }
+                        }
+                        app.show_airing();
+                        if let Some(ask) = app.airing_again.take() {
+                            app.load_airing(ask);
+                        }
+                    })
+                });
             });
-        });
     }
 
     fn show_airing(&mut self) {
@@ -592,11 +756,19 @@ impl App {
         let now = anibeam_companion::now();
         data.set_airing_season(i32::from(self.airing_season == SeasonPick::Next));
         let Some(airing) = &self.airing else {
-            data.set_airing_line(if self.airing_listing || self.airing_refreshing { "Asking AniList".into() } else { "".into() });
+            data.set_airing_line(if self.airing_listing || self.airing_refreshing {
+                "Asking AniList".into()
+            } else {
+                "".into()
+            });
             return;
         };
         let hidden = &self.airing_hidden;
-        let shows: Vec<&AiringShow> = airing.shows.iter().filter(|s| !hidden.contains(&s.anilist_id)).collect();
+        let shows: Vec<&AiringShow> = airing
+            .shows
+            .iter()
+            .filter(|s| !hidden.contains(&s.anilist_id))
+            .collect();
         let listed = shows.iter().filter(|s| s.list_status.is_some()).count();
         let owned = shows.iter().filter(|s| s.owned.is_some()).count();
         update(
@@ -632,7 +804,11 @@ impl App {
                 initials: format::initials(&s.title).into(),
                 ..Default::default()
             };
-            if let Some(next) = s.next_airing.as_ref().filter(|a| crate::phone::secs(a.at) > now) {
+            if let Some(next) = s
+                .next_airing
+                .as_ref()
+                .filter(|a| crate::phone::secs(a.at) > now)
+            {
                 t.badge = format::episode_code(next.season, next.episode).into();
                 t.ledger = format::countdown(crate::phone::secs(next.at) - now).into();
                 t.ledger_tone = 1;
@@ -664,10 +840,15 @@ impl App {
             })
             .collect();
         update(&self.airing_out, out);
-        let line = match (self.airing_plan_note.as_ref().or(self.airing_note.as_ref()), self.airing_refreshing) {
+        let line = match (
+            self.airing_plan_note.as_ref().or(self.airing_note.as_ref()),
+            self.airing_refreshing,
+        ) {
             (Some(note), _) => note.clone(),
             (None, true) => "Asking AniList for the newest".to_string(),
-            (None, false) if airing.not_interested > 0 => format!("{} hidden as not interested", airing.not_interested),
+            (None, false) if airing.not_interested > 0 => {
+                format!("{} hidden as not interested", airing.not_interested)
+            }
             _ => String::new(),
         };
         data.set_airing_line(line.into());
@@ -696,7 +877,11 @@ impl App {
     /// without being on the season's list; its sheet knows only its name.
     fn airing_tap(&mut self, id: i32) {
         let Some(airing) = &self.airing else { return };
-        let menu = match airing.shows.iter().find(|s| s.anilist_id as i64 == id as i64) {
+        let menu = match airing
+            .shows
+            .iter()
+            .find(|s| s.anilist_id as i64 == id as i64)
+        {
             Some(show) => AiringMenu {
                 show: true,
                 id,
@@ -704,8 +889,18 @@ impl App {
                 listed: show.list_status.is_some(),
                 owned: show.owned.and_then(|o| i32::try_from(o).ok()).unwrap_or(-1),
             },
-            None => match airing.aired.iter().find(|a| a.anilist_id as i64 == id as i64) {
-                Some(aired) => AiringMenu { show: true, id, title: aired.title.clone().into(), listed: false, owned: -1 },
+            None => match airing
+                .aired
+                .iter()
+                .find(|a| a.anilist_id as i64 == id as i64)
+            {
+                Some(aired) => AiringMenu {
+                    show: true,
+                    id,
+                    title: aired.title.clone().into(),
+                    listed: false,
+                    owned: -1,
+                },
                 None => return,
             },
         };
@@ -715,23 +910,28 @@ impl App {
 
     fn airing_plan(&mut self, id: i32) {
         self.data().set_airing_menu(Default::default());
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
         let anilist_id = id as u64;
-        let _ = std::thread::Builder::new().name("plan".into()).spawn(move || {
-            let note = match core.call(Call::PlanToWatch { anilist_id }) {
-                Ok(_) => None,
-                Err(anibeam_core::CoreError::NotConnected { .. }) => {
-                    Some("Plan to watch needs AniList or MAL. Sign in under More, Accounts.".to_string())
-                }
-                Err(e) => Some(format!("Plan to watch did not go through: {e}")),
-            };
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app| {
-                    app.airing_plan_note = note;
-                    app.load_airing(false);
-                })
+        let _ = std::thread::Builder::new()
+            .name("plan".into())
+            .spawn(move || {
+                let note = match core.call(Call::PlanToWatch { anilist_id }) {
+                    Ok(_) => None,
+                    Err(anibeam_core::CoreError::NotConnected { .. }) => Some(
+                        "Plan to watch needs AniList or MAL. Sign in under More, Accounts."
+                            .to_string(),
+                    ),
+                    Err(e) => Some(format!("Plan to watch did not go through: {e}")),
+                };
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        app.airing_plan_note = note;
+                        app.load_airing(false);
+                    })
+                });
             });
-        });
     }
 
     fn airing_dismiss(&mut self, id: i32) {
@@ -741,7 +941,16 @@ impl App {
             .airing
             .as_ref()
             .and_then(|a| {
-                a.shows.iter().find(|s| s.anilist_id == anilist_id).map(|s| s.title.clone()).or_else(|| a.aired.iter().find(|e| e.anilist_id == anilist_id).map(|e| e.title.clone()))
+                a.shows
+                    .iter()
+                    .find(|s| s.anilist_id == anilist_id)
+                    .map(|s| s.title.clone())
+                    .or_else(|| {
+                        a.aired
+                            .iter()
+                            .find(|e| e.anilist_id == anilist_id)
+                            .map(|e| e.title.clone())
+                    })
             })
             .unwrap_or_default();
         self.airing_undo = Some((anilist_id, title.clone(), self.ticks));
@@ -749,26 +958,34 @@ impl App {
         self.data().set_airing_undo(title.into());
         self.show_airing();
         // Read again once the core has the mark, so the show stays gone after Undo lapses.
-        let _ = std::thread::Builder::new().name("not-interested".into()).spawn(move || {
-            crate::airing::mark(anilist_id, true);
-            let _ = slint::invoke_from_event_loop(|| with_app(|app| app.load_airing(false)));
-        });
+        let _ = std::thread::Builder::new()
+            .name("not-interested".into())
+            .spawn(move || {
+                crate::airing::mark(anilist_id, true);
+                let _ = slint::invoke_from_event_loop(|| with_app(|app| app.load_airing(false)));
+            });
     }
 
     fn airing_take_back(&mut self) {
-        let Some((anilist_id, _, _)) = self.airing_undo.take() else { return };
+        let Some((anilist_id, _, _)) = self.airing_undo.take() else {
+            return;
+        };
         self.airing_hidden.remove(&anilist_id);
         self.data().set_airing_undo("".into());
-        let _ = std::thread::Builder::new().name("not-interested".into()).spawn(move || {
-            crate::airing::mark(anilist_id, false);
-            let _ = slint::invoke_from_event_loop(|| with_app(|app| app.load_airing(false)));
-        });
+        let _ = std::thread::Builder::new()
+            .name("not-interested".into())
+            .spawn(move || {
+                crate::airing::mark(anilist_id, false);
+                let _ = slint::invoke_from_event_loop(|| with_app(|app| app.load_airing(false)));
+            });
         self.show_airing();
     }
 
     /// Reads the sources once the core is open, for the search page and More.
     fn load_sources(&mut self) {
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
         if let Ok(Reply::PhoneSources { sources }) = core.call(Call::PhoneSources) {
             self.show_sources(sources);
         }
@@ -778,7 +995,11 @@ impl App {
         let data = self.data();
         let rows: Vec<SourceRow> = sources
             .iter()
-            .map(|s| SourceRow { name: s.name.clone().into(), url: anibeam_core::releases::native::mask(&s.url).into(), enabled: s.enabled })
+            .map(|s| SourceRow {
+                name: s.name.clone().into(),
+                url: anibeam_core::releases::native::mask(&s.url).into(),
+                enabled: s.enabled,
+            })
             .collect();
         data.set_sources(ModelRc::new(VecModel::from(rows)));
         self.sources = sources;
@@ -787,17 +1008,28 @@ impl App {
 
     /// The Downloads chips: the sources and the installed endpoints, in search order.
     fn show_search_sources(&mut self) {
-        let Some(core) = crate::local::core() else { return };
-        let Ok(Reply::PhoneSources { sources }) = core.call(Call::PhoneSearchSources) else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        let Ok(Reply::PhoneSources { sources }) = core.call(Call::PhoneSearchSources) else {
+            return;
+        };
         let rows: Vec<SourceRow> = sources
             .iter()
-            .map(|s| SourceRow { name: s.name.clone().into(), url: s.url.clone().into(), enabled: s.enabled })
+            .map(|s| SourceRow {
+                name: s.name.clone().into(),
+                url: s.url.clone().into(),
+                enabled: s.enabled,
+            })
             .collect();
-        self.data().set_search_sources(ModelRc::new(VecModel::from(rows)));
+        self.data()
+            .set_search_sources(ModelRc::new(VecModel::from(rows)));
     }
 
     fn torrent_action(&mut self, hash: String, action: i32) {
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
         if is_demo(&hash) {
             return;
         }
@@ -807,17 +1039,26 @@ impl App {
             3 => PhoneAction::Forget,
             _ => PhoneAction::Remove,
         };
-        let _ = std::thread::Builder::new().name("torrent".into()).spawn(move || {
-            if let Err(e) = core.call(Call::PhoneControl { hashes: vec![hash], action }) {
-                crate::local::log(&format!("torrent action failed: {e}"));
-            }
-            let _ = slint::invoke_from_event_loop(|| with_app(App::poll_torrents));
-        });
+        let _ = std::thread::Builder::new()
+            .name("torrent".into())
+            .spawn(move || {
+                if let Err(e) = core.call(Call::PhoneControl {
+                    hashes: vec![hash],
+                    action,
+                }) {
+                    crate::local::log(&format!("torrent action failed: {e}"));
+                }
+                let _ = slint::invoke_from_event_loop(|| with_app(App::poll_torrents));
+            });
     }
 
     fn remove_source(&mut self, index: i32) {
-        let Some(core) = crate::local::core() else { return };
-        let Ok(index) = usize::try_from(index) else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        let Ok(index) = usize::try_from(index) else {
+            return;
+        };
         if index >= self.sources.len() {
             return;
         }
@@ -830,7 +1071,9 @@ impl App {
 
     /// Runs the connection check on a thread and lists what it found, failures first.
     fn run_check(&mut self) {
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
         self.data().set_checking(true);
         self.data().set_check_summary("".into());
         let _ = std::thread::Builder::new().name("check".into()).spawn(move || {
@@ -872,23 +1115,27 @@ impl App {
         if self.polling {
             return;
         }
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
         if self.sources.is_empty() {
             self.load_sources();
         }
         crate::repos::opened();
         self.polling = true;
-        let _ = std::thread::Builder::new().name("torrents".into()).spawn(move || {
-            let answer = core.call(Call::PhoneTorrents);
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app| {
-                    app.polling = false;
-                    if let Ok(Reply::PhoneTorrents { torrents, held }) = answer {
-                        app.show_torrents(torrents, held);
-                    }
-                })
+        let _ = std::thread::Builder::new()
+            .name("torrents".into())
+            .spawn(move || {
+                let answer = core.call(Call::PhoneTorrents);
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        app.polling = false;
+                        if let Ok(Reply::PhoneTorrents { torrents, held }) = answer {
+                            app.show_torrents(torrents, held);
+                        }
+                    })
+                });
             });
-        });
     }
 
     /// The library show a torrent fills: the one the core linked, else the show whose title
@@ -903,7 +1150,12 @@ impl App {
             .plain_titles
             .iter()
             .filter_map(|(id, titles)| {
-                titles.iter().filter(|t| name.contains(&format!(" {t} "))).map(String::len).max().map(|len| (*id, len))
+                titles
+                    .iter()
+                    .filter(|t| name.contains(&format!(" {t} ")))
+                    .map(String::len)
+                    .max()
+                    .map(|len| (*id, len))
             })
             .max_by_key(|(_, len)| *len)?;
         self.cards.iter().find(|c| c.id == id)
@@ -915,9 +1167,16 @@ impl App {
         // paused does not keep a notification up.
         let active: Vec<&Torrent> = torrents
             .iter()
-            .filter(|t| !is_demo(&t.hash) && t.progress < 1.0 && matches!(t.state.as_str(), "downloading" | "checkingDL"))
+            .filter(|t| {
+                !is_demo(&t.hash)
+                    && t.progress < 1.0
+                    && matches!(t.state.as_str(), "downloading" | "checkingDL")
+            })
             .collect();
-        let rows = torrents.iter().map(|t| download_row(t, held, self.torrent_show(t), &self.art)).collect();
+        let rows = torrents
+            .iter()
+            .map(|t| download_row(t, held, self.torrent_show(t), &self.art))
+            .collect();
         update(&self.downloads, rows);
         let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
             "Waiting for Wi-Fi. Downloads go on by themselves when the phone is on Wi-Fi."
@@ -927,12 +1186,17 @@ impl App {
             ""
         };
         self.data().set_downloads_note(note.into());
-        let (down, up) = torrents.iter().fold((0u64, 0u64), |(d, u), t| (d + t.dlspeed, u + t.upspeed));
-        self.data().set_rate_down(format!("{}/s", format::bytes(down)).into());
-        self.data().set_rate_up(format!("{}/s", format::bytes(up)).into());
+        let (down, up) = torrents
+            .iter()
+            .fold((0u64, 0u64), |(d, u), t| (d + t.dlspeed, u + t.upspeed));
+        self.data()
+            .set_rate_down(format!("{}/s", format::bytes(down)).into());
+        self.data()
+            .set_rate_up(format!("{}/s", format::bytes(up)).into());
         let finished = torrents.iter().filter(|t| t.progress >= 1.0).count();
         self.data().set_finished_count(finished as i32);
-        self.data().set_downloading_count((torrents.len() - finished) as i32);
+        self.data()
+            .set_downloading_count((torrents.len() - finished) as i32);
         self.data().set_moving_count(active.len() as i32);
 
         // The service runs while something downloads, with how many in its notification.
@@ -965,17 +1229,23 @@ impl App {
     /// Holds downloads off Wi-Fi when the person wants Wi-Fi only. The state is noted once
     /// the core took it, so a refusal is tried again on the next look.
     fn hold_for_network(&mut self) {
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
         let held = self.prefs.wifi_only && crate::android::unmetered() != Some(true);
         if self.held == Some(held) {
             return;
         }
-        let _ = std::thread::Builder::new().name("hold".into()).spawn(move || match core.call(Call::SetPhoneHeld { held }) {
-            Ok(_) => {
-                let _ = slint::invoke_from_event_loop(move || with_app(|app| app.held = Some(held)));
-            }
-            Err(e) => crate::local::log(&format!("could not hold downloads: {e}")),
-        });
+        let _ = std::thread::Builder::new()
+            .name("hold".into())
+            .spawn(move || match core.call(Call::SetPhoneHeld { held }) {
+                Ok(_) => {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        with_app(|app| app.held = Some(held))
+                    });
+                }
+                Err(e) => crate::local::log(&format!("could not hold downloads: {e}")),
+            });
     }
 
     /// Walks the library folder on a thread of its own and sets the storage lines when done,
@@ -983,11 +1253,15 @@ impl App {
     fn storage(&self) {
         let library = self.data_dir.join(crate::local::LIBRARY_DIR);
         let data_dir = self.data_dir.clone();
-        let _ = std::thread::Builder::new().name("storage".into()).spawn(move || {
-            let used = crate::android::used(&library);
-            let space = crate::android::space(&data_dir);
-            let _ = slint::invoke_from_event_loop(move || with_app(|app| app.show_storage(used, space)));
-        });
+        let _ = std::thread::Builder::new()
+            .name("storage".into())
+            .spawn(move || {
+                let used = crate::android::used(&library);
+                let space = crate::android::space(&data_dir);
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| app.show_storage(used, space))
+                });
+            });
     }
 
     fn show_storage(&self, used: u64, space: Option<(u64, u64)>) {
@@ -1009,7 +1283,9 @@ impl App {
                 });
             }
         }
-        let free_text = free.map(|f| format!("{} free", format::bytes(f))).unwrap_or_default();
+        let free_text = free
+            .map(|f| format!("{} free", format::bytes(f)))
+            .unwrap_or_default();
         data.set_used_figure(format::bytes(used).into());
         data.set_free_figure(free.map(format::bytes).unwrap_or_default().into());
         data.set_storage_line(
@@ -1040,7 +1316,10 @@ impl App {
         let data = self.data();
         data.set_onboarding(!self.prefs.onboarded);
         data.set_wifi_only(self.prefs.wifi_only);
-        let quality = crate::stream::Quality::ALL.iter().position(|q| *q == self.prefs.stream_quality).unwrap_or(0);
+        let quality = crate::stream::Quality::ALL
+            .iter()
+            .position(|q| *q == self.prefs.stream_quality)
+            .unwrap_or(0);
         data.set_stream_quality(quality as i32);
         data.set_limit_on(self.prefs.limit_on);
         data.set_cal_days(self.prefs.cal_days);
@@ -1072,10 +1351,18 @@ impl App {
     /// What's new as the app starts: a fresh install counts this version's notes as read,
     /// and the first start after an update opens them.
     fn start_notes(&mut self) {
-        if let Some(seen) = self.prefs.notes.started(crate::notes::VERSION, self.used_before) {
+        if let Some(seen) = self
+            .prefs
+            .notes
+            .started(crate::notes::VERSION, self.used_before)
+        {
             self.prefs.notes = seen;
             self.save_prefs();
-        } else if self.prefs.notes.due(crate::notes::VERSION, self.used_before) {
+        } else if self
+            .prefs
+            .notes
+            .due(crate::notes::VERSION, self.used_before)
+        {
             self.show_notes();
         }
     }
@@ -1103,39 +1390,51 @@ impl App {
         // Picking to delete belongs to the page it started on.
         self.deleting = false;
         self.picked.clear();
-        self.open = Some(if remote { Open::Remote(id) } else { Open::Phone(id) });
+        self.open = Some(if remote {
+            Open::Remote(id)
+        } else {
+            Open::Phone(id)
+        });
         self.detail = None;
         self.reload_open();
         self.tick();
     }
 
     fn confirm_delete(&mut self) {
-        let (Some(Open::Phone(series)), Some(core)) = (self.open, crate::local::core()) else { return };
-        let files: Vec<u64> = self.picked.iter().filter_map(|f| u64::try_from(*f).ok()).collect();
+        let (Some(Open::Phone(series)), Some(core)) = (self.open, crate::local::core()) else {
+            return;
+        };
+        let files: Vec<u64> = self
+            .picked
+            .iter()
+            .filter_map(|f| u64::try_from(*f).ok())
+            .collect();
         if files.is_empty() || self.delete_busy {
             return;
         }
         self.delete_busy = true;
         self.data().set_delete_busy(true);
         self.data().set_delete_error("".into());
-        let _ = std::thread::Builder::new().name("delete".into()).spawn(move || {
-            let answer = core.call(Call::DeleteEpisodes { series, files });
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app| {
-                    app.delete_busy = false;
-                    app.data().set_delete_busy(false);
-                    match answer {
-                        Ok(_) => {
-                            app.deleting = false;
-                            app.picked.clear();
+        let _ = std::thread::Builder::new()
+            .name("delete".into())
+            .spawn(move || {
+                let answer = core.call(Call::DeleteEpisodes { series, files });
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        app.delete_busy = false;
+                        app.data().set_delete_busy(false);
+                        match answer {
+                            Ok(_) => {
+                                app.deleting = false;
+                                app.picked.clear();
+                            }
+                            Err(e) => app.data().set_delete_error(e.to_string().into()),
                         }
-                        Err(e) => app.data().set_delete_error(e.to_string().into()),
-                    }
-                    app.reload_open();
-                    app.tick();
-                })
+                        app.reload_open();
+                        app.tick();
+                    })
+                });
             });
-        });
     }
 
     fn reload_open(&mut self) {
@@ -1157,7 +1456,11 @@ impl App {
     }
 
     fn connect_tracker(&mut self, which: i32) {
-        let tracker = if which == 0 { Tracker::Anilist } else { Tracker::Mal };
+        let tracker = if which == 0 {
+            Tracker::Anilist
+        } else {
+            Tracker::Mal
+        };
         self.sign_in_error = None;
         let Some(core) = crate::local::core() else {
             let line: SharedString = "AniBeam is still starting. Try again in a moment.".into();
@@ -1174,7 +1477,10 @@ impl App {
         }
         if let Err(e) = started {
             crate::local::log(&format!("sign-in did not start: {e}"));
-            self.sign_in_error = Some((which, format!("Sign-in did not start: {e}. Tap to try again.")));
+            self.sign_in_error = Some((
+                which,
+                format!("Sign-in did not start: {e}. Tap to try again."),
+            ));
             self.tick();
         }
     }
@@ -1213,11 +1519,17 @@ impl App {
 fn demo_torrents() -> Vec<Torrent> {
     static DEMO: std::sync::OnceLock<Vec<Torrent>> = std::sync::OnceLock::new();
     DEMO.get_or_init(|| {
-        let list: Vec<Torrent> = std::fs::read_to_string("/data/local/tmp/anibeam-demo/torrents.json")
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default();
-        list.into_iter().map(|t| Torrent { hash: format!("{DEMO_MARK}{}", t.hash), ..t }).collect()
+        let list: Vec<Torrent> =
+            std::fs::read_to_string("/data/local/tmp/anibeam-demo/torrents.json")
+                .ok()
+                .and_then(|text| serde_json::from_str(&text).ok())
+                .unwrap_or_default();
+        list.into_iter()
+            .map(|t| Torrent {
+                hash: format!("{DEMO_MARK}{}", t.hash),
+                ..t
+            })
+            .collect()
     })
     .clone()
 }
@@ -1248,7 +1560,11 @@ fn is_demo(hash: &str) -> bool {
 
 /// Lower case words with single spaces between them, for matching titles in names.
 fn plain(text: &str) -> String {
-    text.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_lowercase).collect::<Vec<_>>().join(" ")
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -> DownloadRow {
@@ -1267,19 +1583,35 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
     let amount = if done {
         format::bytes(t.size)
     } else {
-        format!("{} of {}", format::bytes((t.progress * t.size as f64) as u64), format::bytes(t.size))
+        format!(
+            "{} of {}",
+            format::bytes((t.progress * t.size as f64) as u64),
+            format::bytes(t.size)
+        )
     };
     let mut speed = Vec::new();
     if !done && t.dlspeed > 0 {
         speed.push(format!("{}/s", format::bytes(t.dlspeed)));
     }
     if !done && t.eta > 0 && t.eta < 8_640_000 {
-        speed.push(format!("{} left", format::countdown(t.eta).trim_start_matches("in ")));
+        speed.push(format!(
+            "{} left",
+            format::countdown(t.eta).trim_start_matches("in ")
+        ));
     }
     let speed = speed.join(", ");
-    let facts = if speed.is_empty() { amount.clone() } else { format!("{amount}, {speed}") };
+    let facts = if speed.is_empty() {
+        amount.clone()
+    } else {
+        format!("{amount}, {speed}")
+    };
     // Only the files picked to download: a skipped one has no cube and is not coming.
-    let mut episodes: Vec<f64> = t.files.iter().filter(|f| f.priority != 0).filter_map(|f| f.episode).collect();
+    let mut episodes: Vec<f64> = t
+        .files
+        .iter()
+        .filter(|f| f.priority != 0)
+        .filter_map(|f| f.episode)
+        .collect();
     episodes.sort_by(f64::total_cmp);
     let what = match (t.episode, episodes.first(), episodes.last()) {
         (Some(e), _, _) if !t.batch => format!("Episode {e}"),
@@ -1288,10 +1620,30 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
         _ if t.batch => "A batch".to_string(),
         _ => String::new(),
     };
-    let release = [t.group.as_str(), t.resolution.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(", ");
-    let folder = std::path::Path::new(&t.save_path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let release = [t.group.as_str(), t.resolution.as_str()]
+        .iter()
+        .filter(|s| !s.is_empty())
+        .copied()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let folder = std::path::Path::new(&t.save_path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let cubes: Vec<i32> = if t.files.len() > 1 {
-        t.files.iter().filter(|f| f.priority != 0).map(|f| if f.progress >= 1.0 { 2 } else if f.progress > 0.0 { 6 } else { 4 }).collect()
+        t.files
+            .iter()
+            .filter(|f| f.priority != 0)
+            .map(|f| {
+                if f.progress >= 1.0 {
+                    2
+                } else if f.progress > 0.0 {
+                    6
+                } else {
+                    4
+                }
+            })
+            .collect()
     } else {
         Vec::new()
     };
@@ -1325,24 +1677,36 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
         show: show.map(|c| c.title.clone()).unwrap_or_default().into(),
         poster,
         has_poster,
-        initials: show.map(|c| format::initials(&c.title)).unwrap_or_default().into(),
+        initials: show
+            .map(|c| format::initials(&c.title))
+            .unwrap_or_default()
+            .into(),
     }
 }
 
 /// Reads poster files off the UI thread and hands each decoded one back.
 fn start_poster_loader() -> Sender<(u64, String)> {
     let (tx, rx) = std::sync::mpsc::channel::<(u64, String)>();
-    let _ = std::thread::Builder::new().name("posters".into()).spawn(move || {
-        for (id, path) in rx {
-            let Some(decoded) = std::fs::read(&path).ok().and_then(|b| crate::posters::decode(&b)) else { continue };
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app| {
-                    app.art.posters.insert(id, Image::from_rgba8(decoded.buffer));
-                    app.art.tones.insert(id, decoded.tone);
+    let _ = std::thread::Builder::new()
+        .name("posters".into())
+        .spawn(move || {
+            for (id, path) in rx {
+                let Some(decoded) = std::fs::read(&path)
+                    .ok()
+                    .and_then(|b| crate::posters::decode(&b))
+                else {
+                    continue;
+                };
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        app.art
+                            .posters
+                            .insert(id, Image::from_rgba8(decoded.buffer));
+                        app.art.tones.insert(id, decoded.tone);
+                    });
                 });
-            });
-        }
-    });
+            }
+        });
     tx
 }
 
@@ -1359,19 +1723,29 @@ fn remote_numbers(cache: &Cache) -> HashMap<u64, f64> {
 
 /// Builds the window, starts the core, the sync thread and the clocks, and runs until the
 /// activity goes away.
-pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    data_dir: PathBuf,
+    commands: Commands,
+    inbox: Receiver<Command>,
+) -> Result<(), Box<dyn std::error::Error>> {
     crate::local::start(data_dir.clone());
     crate::airing::start(&data_dir);
     crate::stream::init(data_dir.clone());
     let store = Store::open(&data_dir)?;
-    let address = HostAddress::parse(&store.settings().address)
-        .unwrap_or_else(|_| HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap());
+    let address = HostAddress::parse(&store.settings().address).unwrap_or_else(|_| {
+        HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap()
+    });
 
     let window = AppWindow::new()?;
     crate::player::install(&window);
     let data = window.global::<AppData>();
     data.set_version(
-        format!("AniBeam for Android {} (build {})", env!("CARGO_PKG_VERSION"), env!("ANIBEAM_VERSION_CODE")).into(),
+        format!(
+            "AniBeam for Android {} (build {})",
+            env!("CARGO_PKG_VERSION"),
+            env!("ANIBEAM_VERSION_CODE")
+        )
+        .into(),
     );
     data.set_host_address(address.display().into());
 
@@ -1396,11 +1770,17 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     data.on_close_series(|| with_app(App::close_series));
     data.on_play(|file| crate::player::open(file as u64));
     data.on_play_remote(|file| crate::player::open_remote(file as u64));
-    let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL.iter().map(|q| q.label().into()).collect();
+    let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL
+        .iter()
+        .map(|q| q.label().into())
+        .collect();
     data.set_stream_qualities(ModelRc::new(VecModel::from(qualities)));
     data.on_set_stream_quality(|i| {
         with_app(|app| {
-            if let Some(q) = usize::try_from(i).ok().and_then(|i| crate::stream::Quality::ALL.get(i)) {
+            if let Some(q) = usize::try_from(i)
+                .ok()
+                .and_then(|i| crate::stream::Quality::ALL.get(i))
+            {
                 app.prefs.stream_quality = *q;
                 app.save_prefs();
             }
@@ -1414,7 +1794,11 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     data.on_open_airing(|| with_app(App::open_airing));
     data.on_pick_airing_season(|i| {
         with_app(|app| {
-            app.airing_season = if i == 1 { SeasonPick::Next } else { SeasonPick::Now };
+            app.airing_season = if i == 1 {
+                SeasonPick::Next
+            } else {
+                SeasonPick::Now
+            };
             app.airing = None;
             app.airing_note = None;
             app.show_airing();
@@ -1503,11 +1887,15 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     window.global::<Settings>().on_find({
         let window = window.as_weak();
         move |query| {
-            let Some(window) = window.upgrade() else { return };
+            let Some(window) = window.upgrade() else {
+                return;
+            };
             let has_feeds = window.global::<AppData>().get_sources().row_count() > 0;
             let has_repos = window.global::<crate::RepoData>().get_repos().row_count() > 0;
             let hits = find_settings(&query, has_feeds, has_repos);
-            window.global::<Settings>().set_hits(ModelRc::new(VecModel::from(hits)));
+            window
+                .global::<Settings>()
+                .set_hits(ModelRc::new(VecModel::from(hits)));
         }
     });
     data.on_close_notes(|| with_app(App::close_notes));
@@ -1520,13 +1908,19 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     });
     data.on_test_host(|text| with_app(|app| app.test_host(&text)));
     data.on_save_host(|text| with_app(|app| app.save_host(&text)));
-    data.on_torrent_action(|hash, action| with_app(|app| app.torrent_action(hash.to_string(), action)));
+    data.on_torrent_action(|hash, action| {
+        with_app(|app| app.torrent_action(hash.to_string(), action))
+    });
     data.on_remove_source(|i| with_app(|app| app.remove_source(i)));
     data.on_run_check(|| with_app(App::run_check));
     data.on_copy_check(|| {
         with_app(|app| {
             let copied = crate::android::copy_text("AniBeam connection check", &app.check_text);
-            app.data().set_check_summary(if copied { "Copied. Paste it in a message.".into() } else { "Could not copy.".into() });
+            app.data().set_check_summary(if copied {
+                "Copied. Paste it in a message.".into()
+            } else {
+                "Could not copy.".into()
+            });
         })
     });
     data.on_refresh({
@@ -1611,7 +2005,9 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     let _ = commands.send(Command::Sync);
 
     let clock = Timer::default();
-    clock.start(TimerMode::Repeated, Duration::from_secs(1), || with_app(App::tick));
+    clock.start(TimerMode::Repeated, Duration::from_secs(1), || {
+        with_app(App::tick)
+    });
     // The hinge, for the layout: a bend shows in a fifth of a second, and the sensor costs
     // nothing between changes.
     // A phone without a hinge answers None the first time, and the timer stops there.
@@ -1619,7 +2015,9 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     let fold_window = window.as_weak();
     let stop = Rc::downgrade(&hinge);
     hinge.start(TimerMode::Repeated, Duration::from_millis(200), move || {
-        let Some(window) = fold_window.upgrade() else { return };
+        let Some(window) = fold_window.upgrade() else {
+            return;
+        };
         let (angle, across) = crate::android::fold();
         if angle.is_none() {
             if let Some(t) = stop.upgrade() {

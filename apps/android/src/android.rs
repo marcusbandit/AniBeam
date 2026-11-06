@@ -22,7 +22,12 @@ fn view(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let app = unsafe { JObject::from_raw(ctx.context().cast()) };
     let text = env.new_string(url)?;
     let uri = env
-        .call_static_method("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", &[JValue::Object(&text)])?
+        .call_static_method(
+            "android/net/Uri",
+            "parse",
+            "(Ljava/lang/String;)Landroid/net/Uri;",
+            &[JValue::Object(&text)],
+        )?
         .l()?;
     let action = env.new_string("android.intent.action.VIEW")?;
     let intent = env.new_object(
@@ -31,8 +36,18 @@ fn view(url: &str) -> Result<(), Box<dyn std::error::Error>> {
         &[JValue::Object(&action), JValue::Object(&uri)],
     )?;
     // FLAG_ACTIVITY_NEW_TASK: the call may come from a thread with no activity of its own, and the context is the Application.
-    env.call_method(&intent, "addFlags", "(I)Landroid/content/Intent;", &[JValue::Int(0x1000_0000)])?;
-    env.call_method(&app, "startActivity", "(Landroid/content/Intent;)V", &[JValue::Object(&intent)])?;
+    env.call_method(
+        &intent,
+        "addFlags",
+        "(I)Landroid/content/Intent;",
+        &[JValue::Int(0x1000_0000)],
+    )?;
+    env.call_method(
+        &app,
+        "startActivity",
+        "(Landroid/content/Intent;)V",
+        &[JValue::Object(&intent)],
+    )?;
     Ok(())
 }
 
@@ -142,7 +157,12 @@ pub fn stop_service() {
         let r = with_env(|env, app| {
             use jni::objects::JValue;
             let intent = service_intent(env)?;
-            env.call_method(app, "stopService", "(Landroid/content/Intent;)Z", &[JValue::Object(&intent)])?;
+            env.call_method(
+                app,
+                "stopService",
+                "(Landroid/content/Intent;)Z",
+                &[JValue::Object(&intent)],
+            )?;
             Ok(())
         });
         if let Err(e) = r {
@@ -160,9 +180,16 @@ pub fn unmetered() -> Option<bool> {
             use jni::objects::JValue;
             let name = env.new_string("connectivity")?;
             let cm = env
-                .call_method(app, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", &[JValue::Object(&name)])?
+                .call_method(
+                    app,
+                    "getSystemService",
+                    "(Ljava/lang/String;)Ljava/lang/Object;",
+                    &[JValue::Object(&name)],
+                )?
                 .l()?;
-            let network = env.call_method(&cm, "getActiveNetwork", "()Landroid/net/Network;", &[])?.l()?;
+            let network = env
+                .call_method(&cm, "getActiveNetwork", "()Landroid/net/Network;", &[])?
+                .l()?;
             if network.is_null() {
                 return Ok(None);
             }
@@ -178,7 +205,9 @@ pub fn unmetered() -> Option<bool> {
                 return Ok(None);
             }
             // NET_CAPABILITY_NOT_METERED is 11.
-            let free = env.call_method(&caps, "hasCapability", "(I)Z", &[JValue::Int(11)])?.z()?;
+            let free = env
+                .call_method(&caps, "hasCapability", "(I)Z", &[JValue::Int(11)])?
+                .z()?;
             Ok(Some(free))
         })
         .unwrap_or(None)
@@ -195,7 +224,12 @@ pub fn ask_notifications() -> bool {
     #[cfg(target_os = "android")]
     {
         matches!(
-            java_call("TorrentService", "askPermission", "(Landroid/app/Activity;)Z", None),
+            java_call(
+                "TorrentService",
+                "askPermission",
+                "(Landroid/app/Activity;)Z",
+                None
+            ),
             Some(jni::objects::JValueOwned::Bool(1))
         )
     }
@@ -209,12 +243,21 @@ pub fn notifications_allowed() -> bool {
     {
         let r = with_env(|env, app| {
             use jni::objects::JValue;
-            let sdk = env.get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?.i()?;
+            let sdk = env
+                .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
+                .i()?;
             if sdk < 33 {
                 return Ok(true);
             }
             let permission = env.new_string("android.permission.POST_NOTIFICATIONS")?;
-            let granted = env.call_method(app, "checkSelfPermission", "(Ljava/lang/String;)I", &[JValue::Object(&permission)])?.i()?;
+            let granted = env
+                .call_method(
+                    app,
+                    "checkSelfPermission",
+                    "(Ljava/lang/String;)I",
+                    &[JValue::Object(&permission)],
+                )?
+                .i()?;
             Ok(granted == 0)
         });
         r.unwrap_or(true)
@@ -231,7 +274,12 @@ pub fn copy_text(label: &str, text: &str) -> bool {
             use jni::objects::JValue;
             let name = env.new_string("clipboard")?;
             let manager = env
-                .call_method(app, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", &[JValue::Object(&name)])?
+                .call_method(
+                    app,
+                    "getSystemService",
+                    "(Ljava/lang/String;)Ljava/lang/Object;",
+                    &[JValue::Object(&name)],
+                )?
                 .l()?;
             let label = env.new_string(label)?;
             let text = env.new_string(text)?;
@@ -243,7 +291,12 @@ pub fn copy_text(label: &str, text: &str) -> bool {
                     &[JValue::Object(&label), JValue::Object(&text)],
                 )?
                 .l()?;
-            env.call_method(&manager, "setPrimaryClip", "(Landroid/content/ClipData;)V", &[JValue::Object(&clip)])?;
+            env.call_method(
+                &manager,
+                "setPrimaryClip",
+                "(Landroid/content/ClipData;)V",
+                &[JValue::Object(&clip)],
+            )?;
             Ok(())
         });
         if let Err(e) = r {
@@ -271,7 +324,11 @@ pub fn set_activity(activity: *mut std::ffi::c_void) {
 /// Calls one of `Screen.java`'s static methods with the activity and one more argument, and
 /// hands back what it returns.
 #[cfg(target_os = "android")]
-fn screen_call(method: &str, sig: &str, arg: Option<jni::objects::JValue>) -> Option<jni::objects::JValueOwned<'static>> {
+fn screen_call(
+    method: &str,
+    sig: &str,
+    arg: Option<jni::objects::JValue>,
+) -> Option<jni::objects::JValueOwned<'static>> {
     java_call("Screen", method, sig, arg)
 }
 
@@ -279,7 +336,12 @@ fn screen_call(method: &str, sig: &str, arg: Option<jni::objects::JValue>) -> Op
 /// argument, and hands back what it returns. The class is loaded through the activity's class
 /// loader: a lookup from a native thread would only see the system's classes.
 #[cfg(target_os = "android")]
-fn java_call(class: &str, method: &str, sig: &str, arg: Option<jni::objects::JValue>) -> Option<jni::objects::JValueOwned<'static>> {
+fn java_call(
+    class: &str,
+    method: &str,
+    sig: &str,
+    arg: Option<jni::objects::JValue>,
+) -> Option<jni::objects::JValueOwned<'static>> {
     let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
     if raw == 0 {
         return None;
@@ -289,26 +351,36 @@ fn java_call(class: &str, method: &str, sig: &str, arg: Option<jni::objects::JVa
         use jni::objects::{JClass, JObject, JValue, JValueOwned};
         // The thread stays attached for the life of the app, so the local references made
         // here are freed with a frame of their own rather than piling up per call.
-        env.with_local_frame(8, |env| -> Result<Option<JValueOwned<'static>>, Box<dyn std::error::Error>> {
-            let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
-            let loader = env.call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
-            let name = env.new_string(format!("com.marcusrosado.anibeam.{class}"))?;
-            let class = env
-                .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&name)])?
-                .l()?;
-            let class = JClass::from(class);
-            let mut args = vec![JValue::Object(activity)];
-            args.extend(arg);
-            let out = env.call_static_method(&class, method, sig, &args)?;
-            // Only plain values come back, which hold no reference into the frame.
-            Ok(match out {
-                JValueOwned::Float(f) => Some(JValueOwned::Float(f)),
-                JValueOwned::Int(i) => Some(JValueOwned::Int(i)),
-                JValueOwned::Bool(b) => Some(JValueOwned::Bool(b)),
-                JValueOwned::Long(l) => Some(JValueOwned::Long(l)),
-                _ => None,
-            })
-        })
+        env.with_local_frame(
+            8,
+            |env| -> Result<Option<JValueOwned<'static>>, Box<dyn std::error::Error>> {
+                let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
+                let loader = env
+                    .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
+                    .l()?;
+                let name = env.new_string(format!("com.marcusrosado.anibeam.{class}"))?;
+                let class = env
+                    .call_method(
+                        &loader,
+                        "loadClass",
+                        "(Ljava/lang/String;)Ljava/lang/Class;",
+                        &[JValue::Object(&name)],
+                    )?
+                    .l()?;
+                let class = JClass::from(class);
+                let mut args = vec![JValue::Object(activity)];
+                args.extend(arg);
+                let out = env.call_static_method(&class, method, sig, &args)?;
+                // Only plain values come back, which hold no reference into the frame.
+                Ok(match out {
+                    JValueOwned::Float(f) => Some(JValueOwned::Float(f)),
+                    JValueOwned::Int(i) => Some(JValueOwned::Int(i)),
+                    JValueOwned::Bool(b) => Some(JValueOwned::Bool(b)),
+                    JValueOwned::Long(l) => Some(JValueOwned::Long(l)),
+                    _ => None,
+                })
+            },
+        )
     });
     match r {
         Ok(v) => v,
@@ -321,14 +393,20 @@ fn java_call(class: &str, method: &str, sig: &str, arg: Option<jni::objects::JVa
 
 #[cfg(target_os = "android")]
 fn screen(method: &str, on: bool) {
-    screen_call(method, "(Landroid/app/Activity;Z)V", Some(jni::objects::JValue::Bool(on.into())));
+    screen_call(
+        method,
+        "(Landroid/app/Activity;Z)V",
+        Some(jni::objects::JValue::Bool(on.into())),
+    );
 }
 
 /// How the screen is folded: the hinge angle in degrees, None on a phone without a hinge,
 /// and whether the display is turned a quarter, which lays the crease across the screen.
 pub fn fold() -> (Option<f32>, bool) {
     #[cfg(target_os = "android")]
-    if let Some(jni::objects::JValueOwned::Float(f)) = screen_call("fold", "(Landroid/app/Activity;)F", None) {
+    if let Some(jni::objects::JValueOwned::Float(f)) =
+        screen_call("fold", "(Landroid/app/Activity;)F", None)
+    {
         let rotation = (f / 1000.0).floor();
         let angle = f - rotation * 1000.0;
         return ((angle < 900.0).then_some(angle), rotation as i32 % 2 == 1);
@@ -350,7 +428,11 @@ pub fn brightness() -> f32 {
 /// Sets this window's brightness, 0 to 1; below 0 hands it back to the phone's setting.
 pub fn set_brightness(level: f32) {
     #[cfg(target_os = "android")]
-    screen_call("setBrightness", "(Landroid/app/Activity;F)V", Some(jni::objects::JValue::Float(level)));
+    screen_call(
+        "setBrightness",
+        "(Landroid/app/Activity;F)V",
+        Some(jni::objects::JValue::Float(level)),
+    );
     #[cfg(not(target_os = "android"))]
     let _ = level;
 }
@@ -369,7 +451,11 @@ pub fn volume() -> f32 {
 /// Sets the media volume, 0 to 1.
 pub fn set_volume(level: f32) {
     #[cfg(target_os = "android")]
-    screen_call("setVolume", "(Landroid/app/Activity;F)V", Some(jni::objects::JValue::Float(level)));
+    screen_call(
+        "setVolume",
+        "(Landroid/app/Activity;F)V",
+        Some(jni::objects::JValue::Float(level)),
+    );
     #[cfg(not(target_os = "android"))]
     let _ = level;
 }
@@ -401,7 +487,9 @@ pub fn player_awake(on: bool) {
 /// The launcher icon showing now: 0 Default, 1 Dark, 2 Line art.
 pub fn app_icon() -> i32 {
     #[cfg(target_os = "android")]
-    if let Some(jni::objects::JValueOwned::Int(i)) = java_call("Icons", "current", "(Landroid/app/Activity;)I", None) {
+    if let Some(jni::objects::JValueOwned::Int(i)) =
+        java_call("Icons", "current", "(Landroid/app/Activity;)I", None)
+    {
         return i;
     }
     0
@@ -410,7 +498,12 @@ pub fn app_icon() -> i32 {
 /// Shows launcher icon `which` and hides the others.
 pub fn set_app_icon(which: i32) {
     #[cfg(target_os = "android")]
-    java_call("Icons", "pick", "(Landroid/app/Activity;I)V", Some(jni::objects::JValue::Int(which)));
+    java_call(
+        "Icons",
+        "pick",
+        "(Landroid/app/Activity;I)V",
+        Some(jni::objects::JValue::Int(which)),
+    );
     #[cfg(not(target_os = "android"))]
     let _ = which;
 }
@@ -419,7 +512,9 @@ pub fn set_app_icon(which: i32) {
 /// You colours on Android 12 and later.
 pub fn line_colours() -> Option<(u32, u32)> {
     #[cfg(target_os = "android")]
-    if let Some(jni::objects::JValueOwned::Long(l)) = java_call("Icons", "lineColours", "(Landroid/app/Activity;)J", None) {
+    if let Some(jni::objects::JValueOwned::Long(l)) =
+        java_call("Icons", "lineColours", "(Landroid/app/Activity;)J", None)
+    {
         return Some(((l >> 32) as u32, l as u32));
     }
     None

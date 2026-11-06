@@ -33,7 +33,10 @@ pub struct DiskSeries {
 fn episodes(series: &Series) -> Vec<DiskEpisode> {
     let mut out: Vec<(Option<u32>, &str, DiskEpisode)> = Vec::new();
     for e in &series.episodes {
-        match out.iter_mut().find(|(season, key, _)| *season == e.season && *key == e.key) {
+        match out
+            .iter_mut()
+            .find(|(season, key, _)| *season == e.season && *key == e.key)
+        {
             Some((_, _, seen)) => {
                 seen.watched |= e.watched;
                 seen.file = seen.file.or(e.file);
@@ -59,9 +62,17 @@ fn episodes(series: &Series) -> Vec<DiskEpisode> {
 fn summary(series: &Series, episodes: &[DiskEpisode]) -> String {
     let watched = episodes.iter().filter(|e| e.watched).count();
     // The host's own count is of files; without a file list it is all there is.
-    let on_disk = if episodes.is_empty() { series.episodes_on_disk } else { episodes.len() as u64 };
+    let on_disk = if episodes.is_empty() {
+        series.episodes_on_disk
+    } else {
+        episodes.len() as u64
+    };
     if series.kind == Kind::Movie {
-        return if watched > 0 { "On disk, watched".into() } else { "On disk, not watched yet".into() };
+        return if watched > 0 {
+            "On disk, watched".into()
+        } else {
+            "On disk, not watched yet".into()
+        };
     }
     let have = match series.total_episodes {
         Some(total) if u64::from(total) > on_disk => format!("{on_disk} of {total} on disk"),
@@ -89,7 +100,12 @@ pub fn on_disk(snapshot: &Snapshot) -> Vec<DiskSeries> {
         .into_iter()
         .map(|s| {
             let episodes = episodes(s);
-            DiskSeries { id: s.id, title: s.title.clone(), summary: summary(s, &episodes), episodes }
+            DiskSeries {
+                id: s.id,
+                title: s.title.clone(),
+                summary: summary(s, &episodes),
+                episodes,
+            }
         })
         .collect()
 }
@@ -112,7 +128,9 @@ pub struct Tile {
 }
 
 fn watched_count(series: &Series, episodes: &[DiskEpisode]) -> u32 {
-    series.progress.unwrap_or_else(|| episodes.iter().filter(|e| e.watched).count() as u32)
+    series
+        .progress
+        .unwrap_or_else(|| episodes.iter().filter(|e| e.watched).count() as u32)
 }
 
 /// Every series: the airing ones first, soonest first, then the rest, the most recently
@@ -134,15 +152,26 @@ pub fn tiles(cache: &Cache, anilist: &AniListCache, now: i64) -> Vec<Tile> {
                 next,
                 watched: watched_count(s, &eps),
                 total: s.total_episodes,
-                on_disk: if eps.is_empty() { s.episodes_on_disk as u32 } else { eps.len() as u32 },
-                subscribed: snapshot.subscriptions.iter().any(|sub| sub.series_id == Some(s.id)),
+                on_disk: if eps.is_empty() {
+                    s.episodes_on_disk as u32
+                } else {
+                    eps.len() as u32
+                },
+                subscribed: snapshot
+                    .subscriptions
+                    .iter()
+                    .any(|sub| sub.series_id == Some(s.id)),
             };
             (tile, s.latest_activity_at)
         })
         .collect();
     tiles.sort_by_key(|(t, latest)| {
         let soon = t.next.as_ref().map(|a| a.at).unwrap_or(i64::MAX);
-        (!t.airing, if t.airing { soon } else { -latest }, t.title.to_lowercase())
+        (
+            !t.airing,
+            if t.airing { soon } else { -latest },
+            t.title.to_lowercase(),
+        )
     });
     tiles.into_iter().map(|(t, _)| t).collect()
 }
@@ -205,21 +234,32 @@ pub fn detail(cache: &Cache, anilist: &AniListCache, id: u64, now: i64) -> Optio
     if let Some(total) = s.total_episodes.filter(|t| *t > 1) {
         facts.push(format!("{total} episodes"));
     }
-    let alt_title = s.titles.english.clone().filter(|t| !t.is_empty() && *t != s.title);
-    let subscription = snapshot.subscriptions.iter().find(|sub| sub.series_id == Some(id)).map(|sub| SubscriptionInfo {
-        name: sub.name.clone(),
-        query: sub.query.clone(),
-        enabled: sub.enabled,
-        complete: sub.complete,
-        files: sub.file_count,
-        missing: sub.missing.clone(),
-    });
+    let alt_title = s
+        .titles
+        .english
+        .clone()
+        .filter(|t| !t.is_empty() && *t != s.title);
+    let subscription = snapshot
+        .subscriptions
+        .iter()
+        .find(|sub| sub.series_id == Some(id))
+        .map(|sub| SubscriptionInfo {
+            name: sub.name.clone(),
+            query: sub.query.clone(),
+            enabled: sub.enabled,
+            complete: sub.complete,
+            files: sub.file_count,
+            missing: sub.missing.clone(),
+        });
     Some(Detail {
         id,
         title: s.title.clone(),
         alt_title,
         facts,
-        upcoming: schedule::schedule_for(s, cache.synced_at, anilist).into_iter().filter(|a| a.at > now).collect(),
+        upcoming: schedule::schedule_for(s, cache.synced_at, anilist)
+            .into_iter()
+            .filter(|a| a.at > now)
+            .collect(),
         watched: watched_count(s, &episodes),
         total: s.total_episodes,
         episodes,
@@ -276,7 +316,10 @@ mod tests {
     fn series_on_disk_newest_first_with_a_summary() {
         let rows = on_disk(&fixture());
         let titles: Vec<&str> = rows.iter().map(|r| r.title.as_str()).collect();
-        assert_eq!(titles, vec!["Sousou no Frieren 2nd Season", "Perfect Blue", "Mushishi"]);
+        assert_eq!(
+            titles,
+            vec!["Sousou no Frieren 2nd Season", "Perfect Blue", "Mushishi"]
+        );
         assert_eq!(rows[0].summary, "7 of 12 on disk, 6 watched");
         assert_eq!(rows[1].summary, "On disk, not watched yet");
         assert_eq!(rows[2].summary, "26 on disk, all watched");
@@ -301,7 +344,11 @@ mod tests {
 
     fn cache() -> Cache {
         let snapshot = fixture();
-        Cache { synced_at: snapshot.generated_at + 5, snapshot, ..Default::default() }
+        Cache {
+            synced_at: snapshot.generated_at + 5,
+            snapshot,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -310,7 +357,10 @@ mod tests {
         let tiles = tiles(&cache, &AniListCache::default(), cache.synced_at + 60);
         let order: Vec<(u64, bool)> = tiles.iter().map(|t| (t.id, t.airing)).collect();
         assert_eq!(order, vec![(12, true), (40, false), (3, false)]);
-        assert_eq!((tiles[0].watched, tiles[0].total, tiles[0].on_disk), (6, Some(12), 7));
+        assert_eq!(
+            (tiles[0].watched, tiles[0].total, tiles[0].on_disk),
+            (6, Some(12), 7)
+        );
         assert_eq!(tiles[0].next.as_ref().map(|a| a.episode), Some(8));
         assert!(tiles[0].subscribed);
         assert!(tiles[1].movie);
@@ -321,7 +371,10 @@ mod tests {
         let cache = cache();
         let page = detail(&cache, &AniListCache::default(), 12, cache.synced_at + 60).unwrap();
         assert_eq!(page.facts, vec!["TV", "Fall 2026", "Airing", "12 episodes"]);
-        assert_eq!(page.alt_title.as_deref(), Some("Frieren: Beyond Journey's End Season 2"));
+        assert_eq!(
+            page.alt_title.as_deref(),
+            Some("Frieren: Beyond Journey's End Season 2")
+        );
         assert_eq!(page.upcoming.len(), 5);
         assert_eq!(page.episodes.len(), 7);
         assert_eq!(page.subscription.as_ref().map(|s| s.files), Some(7));

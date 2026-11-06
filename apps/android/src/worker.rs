@@ -23,7 +23,10 @@ pub enum Event {
     Poster(u64, crate::posters::Decoded),
     AniList(AniListCache),
     /// The sync ended; `None` when the host answered.
-    SyncDone { at: i64, error: Option<HostError> },
+    SyncDone {
+        at: i64,
+        error: Option<HostError>,
+    },
     TestStarted,
     TestDone(Result<String, String>),
 }
@@ -36,7 +39,13 @@ pub fn start(
 ) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
         .name("anibeam-sync".into())
-        .spawn(move || Worker { syncer: Syncer::new(store), deliver }.run(inbox))
+        .spawn(move || {
+            Worker {
+                syncer: Syncer::new(store),
+                deliver,
+            }
+            .run(inbox)
+        })
         .expect("the sync thread starts")
 }
 
@@ -60,7 +69,9 @@ impl<F: Fn(Event)> Worker<F> {
                 match command {
                     Command::Sync => sync = true,
                     Command::SaveAndSync(address) => {
-                        let _ = self.syncer.store().save_settings(&Settings { address: address.display() });
+                        let _ = self.syncer.store().save_settings(&Settings {
+                            address: address.display(),
+                        });
                         sync = true;
                     }
                     Command::Test(address) => self.test(&address),
@@ -73,7 +84,12 @@ impl<F: Fn(Event)> Worker<F> {
     }
 
     fn send_poster(&self, series_id: u64) {
-        if let Some(decoded) = self.syncer.store().poster(series_id).and_then(|b| crate::posters::decode(&b)) {
+        if let Some(decoded) = self
+            .syncer
+            .store()
+            .poster(series_id)
+            .and_then(|b| crate::posters::decode(&b))
+        {
             (self.deliver)(Event::Poster(series_id, decoded));
         }
     }
@@ -90,8 +106,9 @@ impl<F: Fn(Event)> Worker<F> {
 
     fn sync(&self) {
         let store = self.syncer.store();
-        let address = HostAddress::parse(&store.settings().address)
-            .unwrap_or_else(|_| HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap());
+        let address = HostAddress::parse(&store.settings().address).unwrap_or_else(|_| {
+            HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap()
+        });
         (self.deliver)(Event::SyncStarted);
         let now = anibeam_companion::now();
         match self.syncer.fetch_snapshot(&address, now) {
@@ -103,19 +120,30 @@ impl<F: Fn(Event)> Worker<F> {
                     cache.snapshot.subscriptions.len()
                 );
                 (self.deliver)(Event::Snapshot(cache.clone()));
-                self.syncer.fetch_posters(&address, &cache, |id| self.send_poster(id));
+                self.syncer
+                    .fetch_posters(&address, &cache, |id| self.send_poster(id));
                 crate::airing::sync(&address);
-                (self.deliver)(Event::SyncDone { at: now, error: None });
+                (self.deliver)(Event::SyncDone {
+                    at: now,
+                    error: None,
+                });
             }
             Err(error) => {
                 eprintln!("AniBeam sync: {} did not: {error:?}", address.display());
                 if let Some(cache) = store.cache()
                     && let Some(anilist) = self.syncer.refresh_anilist_if_due(&cache, now)
                 {
-                    eprintln!("AniBeam sync: asked AniList, {} shows, error {:?}", anilist.shows.len(), anilist.error);
+                    eprintln!(
+                        "AniBeam sync: asked AniList, {} shows, error {:?}",
+                        anilist.shows.len(),
+                        anilist.error
+                    );
                     (self.deliver)(Event::AniList(anilist));
                 }
-                (self.deliver)(Event::SyncDone { at: now, error: Some(error) });
+                (self.deliver)(Event::SyncDone {
+                    at: now,
+                    error: Some(error),
+                });
             }
         }
     }

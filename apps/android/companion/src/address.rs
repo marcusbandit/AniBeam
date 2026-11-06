@@ -22,7 +22,10 @@ impl HostAddress {
             }
         }
         if rest.starts_with("https://") {
-            return Err("Your computer's AniBeam answers on plain http over Tailscale; drop the https://.".into());
+            return Err(
+                "Your computer's AniBeam answers on plain http over Tailscale; drop the https://."
+                    .into(),
+            );
         }
         let rest = rest.split('/').next().unwrap_or("");
         if rest.is_empty() {
@@ -75,7 +78,11 @@ impl HostAddress {
         if self.host.starts_with('[') || self.host.parse::<std::net::Ipv4Addr>().is_ok() {
             return self.host.clone();
         }
-        self.host.split('.').next().unwrap_or(&self.host).to_string()
+        self.host
+            .split('.')
+            .next()
+            .unwrap_or(&self.host)
+            .to_string()
     }
 }
 
