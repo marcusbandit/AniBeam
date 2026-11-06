@@ -12,7 +12,8 @@ SettingsTab {
     readonly property bool offered: upd.phase === "offer" && upd.shown
     // Only a build that can replace itself installs from here; the others say where to get it
     readonly property bool installs: offered && upd.how === "install"
-    readonly property string offerLine: !offered ? ""
+    readonly property string offerLine: upd.phase === "failed" ? "The update did not finish. Try again, or get it from the release page."
+        : !offered ? ""
         : upd.how === "install" ? upd.version + " is ready to install."
         : upd.how === "command" ? upd.version + " is on the AUR: " + upd.command
         : upd.how === "source" ? upd.version + " is out. This copy is built from source: pull and rebuild."
@@ -24,7 +25,9 @@ SettingsTab {
             helper: tab.offerLine
             Row { spacing: theme.space(2)
                 Button { objectName: "data-whats-new"; text: "What's new"; icon: "sparkles"; flat: true; onClicked: frame.openWhatsNew() }
-                Button { visible: tab.installs; text: "Install " + tab.upd.version; icon: "download"; primary: true; onClicked: tab.upd.install() } } }
+                Button { visible: tab.installs; text: "Install " + tab.upd.version; icon: "download"; primary: true; onClicked: tab.upd.install() }
+                Button { visible: tab.upd.phase === "failed"; text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: tab.upd.install() }
+                Button { visible: (tab.upd.phase === "failed" || (tab.offered && tab.upd.how === "page")) && tab.upd.url !== ""; text: "Release page"; icon: "external-link"; flat: true; onClicked: frame.openLink(tab.upd.url) } } }
         SettingRow { label: "Setup"; helper: "The walkthrough a new install opens with: your folder, your list and downloads."
             Button { objectName: "about-run-setup"; text: "Run setup again"; icon: "rotate-ccw"; flat: true; onClicked: frame.openOnboarding(0) } }
         SettingRow { label: "Updates"
