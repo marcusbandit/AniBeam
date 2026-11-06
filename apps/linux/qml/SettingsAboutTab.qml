@@ -25,6 +25,8 @@ SettingsTab {
             Row { spacing: theme.space(2)
                 Button { objectName: "data-whats-new"; text: "What's new"; icon: "sparkles"; flat: true; onClicked: frame.openWhatsNew() }
                 Button { visible: tab.installs; text: "Install " + tab.upd.version; icon: "download"; primary: true; onClicked: tab.upd.install() } } }
+        SettingRow { label: "Setup"; helper: "The walkthrough a new install opens with: your folder, your list and downloads."
+            Button { objectName: "about-run-setup"; text: "Run setup again"; icon: "rotate-ccw"; flat: true; onClicked: frame.openOnboarding(0) } }
         SettingRow { label: "Updates"
             helper: tab.upd.track === "nightly"
                 ? "A new build most days. Newer, and less tested."

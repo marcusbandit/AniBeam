@@ -30,7 +30,7 @@ below where they disagree:
   the next one on disk, never a caught-up show), then Airing now, Catch up, Start something
   new, and the genres as a way into the library. Airing comes first because airing is what the
   app is mostly used for.
-- **A slim sidebar.** Home and Library are the two places; Feed, Watching, Metadata and
+- **A slim sidebar.** Home and Library are the two places; Feed, Watching, Show info and
   Settings are quiet round glyphs at the foot.
 - **A width cap.** Pages sit in a centred column no wider than `theme.contentMax`, so an
   ultrawide window shows a readable page instead of an endless wall.
@@ -76,7 +76,7 @@ below where they disagree:
   a panel naming the phase (Starting 1337x, Searching nyaa), the seconds, why it takes that
   long, a bar (filling toward an on-demand endpoint's start ceiling, else a sweep), Cancel
   and the other endpoints to try; anirss's groups as filter rows (Release group, Quality,
-  the rest behind More filters); Narrow and Best fit; the library series the query names,
+  the rest behind More filters); Narrow and Best match; the library series the query names,
   with its poster, what is on disk, and Tick the missing episodes (the best-seeded release
   per episode the library lacks); then the releases as a sortable table (`ReleaseTable.qml`:
   the cleaned name with its group, resolution, episode or Batch and On disk as chips, then
@@ -105,8 +105,8 @@ below where they disagree:
   files go to the trash. Complete has Unsubscribe all, Files missing has Remove all, and a
   run of removals goes one at a time. The rail's Downloads glyph carries a red count of
   complete subscriptions.
-- **Metadata and Settings are flat too, and `mosaic.js` is gone.** Metadata is the head
-  row (the title in the display cut, the count, the filter, Match unmatched and Refresh
+- **Show info and Settings are flat too, and `mosaic.js` is gone.** Show info is the head
+  row (the title in the display cut, the count, the filter, Find the rest and Refresh
   all as flat pills, the search at the right) over a flat list: a poster thumbnail, the
   title, the kind and the record as pills, the files against the expected count on a
   thin line, Match and Refresh as small flat buttons, a hairline under each row, two to
@@ -128,11 +128,11 @@ below where they disagree:
   knobs people reach for most stay at the top and the preview stays in view of them. Search swaps the section for the matching settings; picking one opens its section,
   scrolls to the row and lights it in the soft accent. Ledgers that belong to other pages
   (the on-disk list, recent scans, the poster wall) are gone from Settings.
-- **Metadata answers the librarian's questions before it lists.** The head is the title
+- **Show info answers the librarian's questions before it lists.** The head is the title
   with its count and the search; under it one line of pills (the filter with its counts,
-  Match unmatched, Refresh all) that wraps on a narrow window. Then the figures on the
+  Find the rest, Refresh all) that wraps on a narrow window. Then the figures on the
   ground (`Tiles.qml`), which are the sections' own counts off the whole library whatever
-  the filter, so they agree with what is below: Needs a match, Folder gone, Missing
+  the filter, so they agree with what is below: Not recognised, Folder not found, Missing
   episodes, Airing, Complete, and the files on disk against the expected total (a zero is
   a fact here; 0 need a match is the good news). The series are cut into those sections in
   the order a person works them, each a heading in the display cut at `typeLarge` with its

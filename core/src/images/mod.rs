@@ -20,6 +20,7 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params, param
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
+use crate::atomic_file;
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::Finished;
@@ -614,21 +615,9 @@ async fn fetch_one(
     }
     let relative = relative_path(url, extension(url, response.header("content-type")));
     let path = dir.join(&relative);
-    let parent = path
-        .parent()
-        .ok_or_else(|| CoreError::internal("an image path has no parent"))?;
-    tokio::fs::create_dir_all(parent)
-        .await
-        .map_err(|e| CoreError::io_at(parent.to_string_lossy(), e))?;
-    let tmp = dir.join(format!("{relative}.tmp"));
-    tokio::fs::write(&tmp, &response.body)
-        .await
-        .map_err(|e| CoreError::io_at(tmp.to_string_lossy(), e))?;
-    tokio::fs::rename(&tmp, &path)
-        .await
-        .map_err(|e| CoreError::io_at(path.to_string_lossy(), e))?;
-
     let bytes = response.body.len() as i64;
+    atomic_file::write_async(&path, response.body).await?;
+
     let now = time::now_secs();
     let (row_url, row_path) = (url.to_string(), relative);
     store

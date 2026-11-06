@@ -74,10 +74,10 @@ FocusScope {
     // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
     // pushed back after the clear, in the order they were opened.
     function reclaimFrameOwned() {
-        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet })
+        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === onboarding })
         escapeStack.clear()
         keep.forEach(function(e) {
-            if (e.closer === drawer ? drawer.open : connectSheet.visible) escapeStack.push(e.kind, e.closer)
+            if (e.closer === drawer ? drawer.open : e.closer.visible) escapeStack.push(e.kind, e.closer)
         })
     }
 
@@ -384,6 +384,15 @@ FocusScope {
             })
             if (failed.length) frame.toast(failed.join("; "))
         }
+        // Notes a tracker refused say so the same way; saved ones say where they went
+        function onNotesSet(series, outcomes) {
+            var names = { Anilist: "AniList", Mal: "MyAnimeList" }
+            var failed = outcomes.filter(function(o) { return !o.ok }).map(function(o) {
+                return (names[o.tracker] || o.tracker) + " did not take your notes" + (o.message ? ": " + o.message : "")
+            })
+            if (failed.length) frame.toast(failed.join("; "))
+            else if (outcomes.length) frame.toast("Notes saved")
+        }
         // Only the url of the job this tracker is waiting on: one from a flow since replaced
         // would open a sign-in page whose listener is already gone.
         function onAuthUrlReady(t, openUrl, redirectUrl, job) {
@@ -435,6 +444,15 @@ FocusScope {
         }
     }
 
+    // The first run (#193): over the whole frame, the rail included, and under the overlay,
+    // so the connect sheet, toasts and tips still draw over it.
+    Onboarding {
+        id: onboarding
+        z: 550
+    }
+    function openOnboarding(step) { whatsNew.close(); onboarding.open(step) }
+    readonly property alias onboardingPanel: onboarding
+
     // The tracker connect sheet, over everything: the Watching page's empty
     // list, the library's nudge and the Trackers panel all send the user here.
     ConnectSheet {
@@ -456,7 +474,7 @@ FocusScope {
         ScanSummary { id: scanSummary }
         UpdateNotice {
             id: updateNotice
-            covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible || scanSummary.visible
+            covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible || onboarding.visible || scanSummary.visible
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.bottom: parent.bottom; anchors.bottomMargin: rail.footHeight + theme.space(4)
         }
@@ -520,6 +538,9 @@ FocusScope {
     function startNotes() {
         if (notesStarted) return
         notesStarted = true
+        // Before What's new, which keeps a fresh install's version as read: a fresh install
+        // gets the first run instead, an older one only has it marked done
+        onboarding.start()
         frame.noteSources()
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
@@ -623,7 +644,8 @@ FocusScope {
         var p = f && f !== frame ? f.mapToItem(frame, theme.space(4), Math.min(f.height, theme.space(10))) : Qt.point(frame.width / 2, frame.height / 3)
         openContextMenu(p)
     }
-    function openMenu(x, y, items) { menu.openAt(x, y, items) }
+    // `above`: (x, y) is the menu's bottom right corner, for an opener at the window's foot.
+    function openMenu(x, y, items, above) { menu.openAt(x, y, items, above) }
     function closeMenu() { menu.close() }
     // A tip belongs to the area the pointer is over (`area`, the anchor item itself unless a
     // caller anchors the tip on part of a bigger hover area, the way Card anchors on its
@@ -792,10 +814,12 @@ FocusScope {
                      action: function() { frame.setListStatus(id, l.status, l.text) } }
         })
     }
+    // True when the write started, so a caller can go on (Start watching plays next)
     function setListStatus(id, status, label) {
         var r = Door.call("SetListStatus", { series: id, status: status })
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.toast(r.error.message); return false }
         frame.toast("Moving to " + label)
+        return true
     }
     // Text onto the clipboard, and a word that it went
     function copyText(text, what) {

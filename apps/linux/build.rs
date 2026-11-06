@@ -51,6 +51,7 @@ fn main() {
             .qml_file("qml/InlineConfirm.qml")
             .qml_file("qml/WhatsNew.qml")
             .qml_file("qml/ScanSummary.qml")
+            .qml_file("qml/Onboarding.qml")
             .qml_file("qml/UpdateNotice.qml")
             .qml_file("qml/EmptyState.qml")
             .qml_file("qml/SectionHeader.qml")
@@ -74,6 +75,7 @@ fn main() {
             .qml_file("qml/MetadataPage.qml")
             .qml_file("qml/MatchPanel.qml")
             .qml_file("qml/ScheduleSheet.qml")
+            .qml_file("qml/NotesSheet.qml")
             .qml_file("qml/FixSheet.qml")
             .qml_file("qml/EpisodesPane.qml")
             .qml_file("qml/ConnectSheet.qml")
@@ -212,6 +214,7 @@ fn main() {
         "assets/icons/copy.svg",
         "assets/icons/database.svg",
         "assets/icons/download.svg",
+        "assets/icons/ellipsis.svg",
         "assets/icons/external-link.svg",
         "assets/icons/eye-off.svg",
         "assets/icons/eye.svg",

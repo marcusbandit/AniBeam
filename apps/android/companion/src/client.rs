@@ -133,6 +133,9 @@ impl HostClient {
                 ))
             })?;
         if status != 200 {
+            if let Some(why) = refusal(status, &body) {
+                return Err(HostError::Bad(why));
+            }
             return Err(HostError::Bad(format!(
                 "{} answered {status} for {path}",
                 self.address.display()
@@ -252,5 +255,35 @@ impl HostClient {
     /// The image bytes and their content type.
     pub fn poster(&self, series_id: u64) -> Result<(Vec<u8>, Option<String>), HostError> {
         self.get(&api::poster_path(series_id), POSTER_LIMIT)
+    }
+}
+
+/// What a computer that refuses this device says: its `{"error": ...}` on a 403, the
+/// answer every route gives a device switched off there.
+pub fn refusal(status: u16, body: &[u8]) -> Option<String> {
+    if status != 403 {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(body).ok()?;
+    v["error"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+#[cfg(test)]
+mod refusal_tests {
+    use super::refusal;
+
+    #[test]
+    fn a_refusal_reads_as_what_the_computer_said() {
+        let body = br#"{"error":"This device is switched off on that computer."}"#;
+        assert_eq!(
+            refusal(403, body).as_deref(),
+            Some("This device is switched off on that computer.")
+        );
+        assert_eq!(refusal(404, body), None);
+        assert_eq!(refusal(403, b"<html>"), None);
+        assert_eq!(refusal(403, br#"{"error":""}"#), None);
     }
 }
