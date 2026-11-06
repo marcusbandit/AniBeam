@@ -80,6 +80,40 @@
   "shot": "player-narrow-480"
  },
  {
+  "log": "the narrowest window the group still shows whole on (the room the fold is decided on grows one for one with the window): the volume keeps its readout and the group stays clear of it"
+ },
+ {
+  "eval": "(function() { var c = driver.item.findItem('player-chrome'), v = driver.item.findItem('player-volume'); var w = window.width + Math.ceil(v.readoutWidth - c.roomFor(c.groupWidth)); window.width = w; return w })()",
+  "as": "edge"
+ },
+ {
+  "eval": "vars.edge > 0",
+  "expect": true
+ },
+ {
+  "wait": 400
+ },
+ {
+  "hover": [
+   200,
+   500
+  ]
+ },
+ {
+  "eval": "driver.item.findItem('player-chrome').folded",
+  "expect": false
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "(function() { var v = driver.item.findItem('player-volume'), d = driver.item.findItem('player-delays'); return driver.item.findItem('player-more') === null && v !== null && d !== null && v.mapToItem(null, v.width, 0).x + 2 * v.parent.spacing <= d.mapToItem(null, 0, 0).x })()",
+  "expect": true
+ },
+ {
+  "shot": "player-narrow-edge"
+ },
+ {
   "eval": "window.width = 440"
  },
  {
@@ -95,7 +129,7 @@
   "wait": 300
  },
  {
-  "log": "findItem skips hidden items, so a null is the volume row gone"
+  "log": "at 440 the group has folded: More alone on the right, and the volume back between it and mute"
  },
  {
   "eval": "(function() { var v = driver.item.findItem('player-volume'), m = driver.item.findItem('player-more'), n = driver.item.findItem('player-next'), mu = driver.item.findItem('player-mute'); var x = function(i) { return i.mapToItem(null, 0, 0).x }; return driver.item.findItem('player-delays') === null && m !== null && v !== null && v.trackShown && x(n) + n.width <= x(mu) && x(mu) + mu.width <= x(v) && x(v) + v.width + 2 * v.parent.spacing <= x(m) && x(m) + m.width <= window.width })()",
@@ -174,7 +208,22 @@
   "until": "frame.item.menuPanel.open === false && frame.item.pageItem.openMenus === 0"
  },
  {
-  "log": "a wide window unfolds the group again"
+  "log": "a picker opened from More closes when the group unfolds, since the button it points at goes"
+ },
+ {
+  "click": "player-more"
+ },
+ {
+  "until": "frame.item.menuPanel.open === true"
+ },
+ {
+  "click": "frame-menu-row-1"
+ },
+ {
+  "until": "frame.item.menuPanel.open === false && frame.item.pageItem.openPicker !== null && frame.item.pageItem.openMenus === 1"
+ },
+ {
+  "log": "a wide window unfolds the group again and the picker is gone"
  },
  {
   "eval": "window.width = 1000"
@@ -192,7 +241,7 @@
   "wait": 300
  },
  {
-  "eval": "driver.item.findItem('player-more') === null && driver.item.findItem('player-delays') !== null",
+  "eval": "driver.item.findItem('player-more') === null && driver.item.findItem('player-delays') !== null && frame.item.pageItem.openPicker === null && frame.item.pageItem.openMenus === 0",
   "expect": true
  }
 ]

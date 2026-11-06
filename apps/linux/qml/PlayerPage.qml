@@ -719,6 +719,9 @@ FocusScope {
     readonly property var openPicker: audioPicker.open ? audioPicker : subPicker.open ? subPicker : null
     function openSubPicker(anchor) { subPicker.openAt(anchor) }
     function openDelays(anchor) { delays.openAt(anchor) }
+    // The chrome closes these when its right-hand group folds or unfolds: each is anchored on
+    // a button the change hides.
+    function closePopovers() { audioPicker.close(); subPicker.close(); delays.close() }
     function showHelp() { help.show() }
     function toggleHelp() { if (help.open) help.close(); else help.show() }
     TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }

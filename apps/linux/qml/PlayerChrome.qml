@@ -17,6 +17,7 @@ import com.marcusrosado.AniBeam
 
 Item {
     id: root
+    objectName: "player-chrome"
     anchors.fill: parent
     // Where the controls tile starts, for the page's subtitle lift. Its geometry holds while
     // it is hidden, so this is the same number whether or not the chrome is up.
@@ -105,36 +106,51 @@ Item {
     // ---- The overflow (#518). Below about 440 px the right-hand group no longer fits beside
     // play, the skips and the mute button, and slid over them. Then the group folds into one
     // More button that opens the frame's menu with the same actions; play, the skips and the
-    // mute button always stay, and the volume gets back the room the group gave up.
-    // The group's width is worked out from which of its buttons apply, never read off the
-    // row, which is one button wide once folded: reading it would be a binding loop.
-    readonly property bool hasAudioChoice: page.audioTracks.length > 1
-    readonly property bool hasSubs: page.subTracks.length > 0
+    // mute button stay, and the volume gets back the room the group gave up.
+    //
+    // The group, one entry a button: its name, glyph and tip, whether it applies, whether it
+    // is lit, what it does from a given anchor, and its words in the menu when they differ
+    // from the tip. The buttons, the width the fold is decided on and the menu's rows all read
+    // this one list. Each field is a function, so a binding that calls one follows what it
+    // reads, and the list itself never changes, so the buttons are made once.
     readonly property bool fullscreen: frame.hostWindow.visibility === Window.FullScreen
-    readonly property int groupCount: 3 + (hasAudioChoice ? 1 : 0) + (hasSubs ? 1 : 0) + (page.canMark ? 1 : 0)
-    readonly property real groupWidth: groupCount * theme.space(9) + (groupCount - 1) * theme.space(1)
+    readonly property var group: [
+        // Shown with no tracks to choose as well: one audio track can still be out of sync.
+        { name: "player-delays", glyph: () => "clock", tip: () => "Subtitle and audio delay", shown: () => true,
+          active: () => page.subDelay !== 0 || page.audioDelay !== 0, run: anchor => page.openDelays(anchor) },
+        { name: "player-audio", glyph: () => "audio-lines", tip: () => "Audio track", shown: () => page.audioTracks.length > 1,
+          active: () => false, run: anchor => page.openAudioPicker(anchor) },
+        { name: "player-subs", glyph: () => "captions", tip: () => page.sid >= 0 ? "Subtitles" : "Subtitles off", shown: () => page.subTracks.length > 0,
+          active: () => page.sid >= 0, run: anchor => page.openSubPicker(anchor) },
+        { name: "player-mark", glyph: () => "check-check", tip: () => "Mark watched", shown: () => page.canMark,
+          active: () => false, run: () => page.markWatched() },
+        { name: "player-help", glyph: () => "keyboard", tip: () => "Keyboard shortcuts", shown: () => true,
+          active: () => false, run: () => page.showHelp() },
+        { name: "player-fullscreen", glyph: () => root.fullscreen ? "minimize" : "maximize", tip: () => "Fullscreen",
+          label: () => root.fullscreen ? "Exit fullscreen" : "Fullscreen", shown: () => true,
+          active: () => false, run: () => page.toggleFullscreen() }
+    ]
+    readonly property var shownGroup: group.filter(e => e.shown())
+    // What the row has between the mute button and a right-hand group `groupWidth` wide, with
+    // a gap on each side. Measured from the mute button, since a Row leaves a hidden child's x
+    // where it was. The volume takes its room from this, and the fold is decided on it.
+    function roomFor(groupWidth) { return bottomRow.width - (muteBtn.x + muteBtn.width) - groupWidth - 3 * bottomRow.spacing }
+    // The whole group's width when it shows: from which buttons apply, never read off the
+    // row, which is one button wide once folded, so reading it would be a binding loop.
+    readonly property real groupWidth: shownGroup.length * moreBtn.width + (shownGroup.length - 1) * rightGroup.spacing
     // Folded once the whole group would leave the volume less than its readout, the point
-    // where the volume would otherwise go too.
-    readonly property bool folded: bottomRow.width - (muteBtn.x + muteBtn.width) - groupWidth - 3 * bottomRow.spacing < volumeRow.readoutWidth
-    // While the menu is up the chrome stays, as it does for the pickers.
+    // where the volume would otherwise go.
+    readonly property bool folded: roomFor(groupWidth) < volumeRow.readoutWidth
+    readonly property var menuRows: shownGroup.map(e => ({ text: e.label ? e.label() : e.tip(), icon: e.glyph(), action: () => e.run(moreBtn) }))
+    // While the menu is up the chrome stays, as it does for the pickers, and its rows follow
+    // the tracks, which can arrive after it opened.
     property bool moreOpen: false
+    onMenuRowsChanged: if (moreOpen) frame.menuPanel.items = menuRows
     function openMore() {
-        var items = [{ text: "Subtitle and audio delay", icon: "clock", action: function() { page.openDelays(moreBtn) } }]
-        if (hasAudioChoice) items.push({ text: "Audio track", icon: "audio-lines", action: function() { page.openAudioPicker(moreBtn) } })
-        if (hasSubs) items.push({ text: page.sid >= 0 ? "Subtitles" : "Subtitles off", icon: "captions", action: function() { page.openSubPicker(moreBtn) } })
-        if (page.canMark) items.push({ text: "Mark watched", icon: "check-check", action: function() { page.markWatched() } })
-        items.push({ text: "Keyboard shortcuts", icon: "keyboard", action: function() { page.showHelp() } })
-        items.push({ text: fullscreen ? "Exit fullscreen" : "Fullscreen", icon: fullscreen ? "minimize" : "maximize", action: function() { page.toggleFullscreen() } })
-        var p = moreBtn.mapToItem(frame, moreBtn.width, 0)
         if (!moreOpen) page.openMenus++
         moreOpen = true
-        frame.openMenu(p.x, p.y, items)
-        // Above the button, right edges in line. The menu opens down from its origin and
-        // clamps to the window, so once its rows are laid out the origin moves up by its
-        // height and left by its width, the same sums its panel is sized by.
-        var m = frame.menuPanel
-        m.originX = p.x - (m.rowWidth + m.pad * 2)
-        m.originY = p.y - (items.length * theme.controlHeight + m.pad * 2) - theme.space(1)
+        var p = moreBtn.mapToItem(frame, moreBtn.width, -theme.space(1))
+        frame.openMenu(p.x, p.y, menuRows, true)
     }
     Connections {
         target: frame.menuPanel
@@ -145,11 +161,21 @@ Item {
             page.showChrome()
         }
     }
-    // A wide window again while it is up: the menu would point at a button that is gone.
-    onFoldedChanged: if (!folded && moreOpen) frame.closeMenu()
-    // A navigation takes the page and this with it; the frame's menu stays, and its rows
-    // would call into a page that is gone.
-    Component.onDestruction: if (moreOpen) frame.closeMenu()
+    // A fold or an unfold hides the button the menu, a picker or the delays were opened from,
+    // and they would point at where it was.
+    onFoldedChanged: {
+        if (moreOpen) frame.closeMenu()
+        page.closePopovers()
+    }
+    // A navigation (auto-next, Back) takes the page and this with it while the frame's menu
+    // stays, and its rows would call into a page that is gone. Focus is not handed back to
+    // the page going away.
+    Component.onDestruction: {
+        if (!moreOpen) return
+        moreOpen = false
+        frame.menuPanel.prevFocus = null
+        frame.closeMenu()
+    }
 
     // ---- Controls island: the time as a ledger line, the seek groove, then the buttons.
     Tile {
@@ -201,10 +227,9 @@ Item {
             // never runs into it, and goes when a usable track no longer fits. The readout
             // stays while it fits; when it goes, the page flashes the level a key sets.
             SliderRow { id: volumeRow; objectName: "player-volume"; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1
-                // What is left between the mute button and the right-hand group, with a gap
-                // on each side, and what of that the track gets after the readout. Measured
-                // from the mute button, since a Row leaves a hidden child's x where it was.
-                readonly property real free: bottomRow.width - (muteBtn.x + muteBtn.width) - rightGroup.width - 3 * bottomRow.spacing
+                // What is left between the mute button and the right-hand group, and what of
+                // that the track gets after the readout.
+                readonly property real free: root.roomFor(rightGroup.width)
                 readonly property real room: free - readoutWidth - spacing
                 trackWidth: Math.min(theme.space(24), Math.max(0, room))
                 trackShown: room >= theme.space(10)
@@ -215,13 +240,12 @@ Item {
         // sized to what the row has left reached zero width on a narrow window, a Row stops
         // placing a child with no width, and the slot then stayed where it was.
         Row { id: rightGroup; anchors.right: bottomRow.right; anchors.verticalCenter: bottomRow.verticalCenter; spacing: theme.space(1)
-            // Shown with no tracks to choose as well: one audio track can still be out of sync.
-            PlayerButton { id: delayBtn; objectName: "player-delays"; glyph: "clock"; tip: "Subtitle and audio delay"; visible: !root.folded; active: page.subDelay !== 0 || page.audioDelay !== 0; onClicked: page.openDelays(delayBtn) }
-            PlayerButton { id: audioBtn; objectName: "player-audio"; glyph: "audio-lines"; tip: "Audio track"; visible: !root.folded && root.hasAudioChoice; onClicked: page.openAudioPicker(audioBtn) }
-            PlayerButton { id: subBtn; objectName: "player-subs"; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: !root.folded && root.hasSubs; onClicked: page.openSubPicker(subBtn) }
-            PlayerButton { objectName: "player-mark"; glyph: "check-check"; tip: "Mark watched"; visible: !root.folded && page.canMark; onClicked: page.markWatched() }
-            PlayerButton { objectName: "player-help"; glyph: "keyboard"; tip: "Keyboard shortcuts"; visible: !root.folded; onClicked: page.showHelp() }
-            PlayerButton { objectName: "player-fullscreen"; glyph: root.fullscreen ? "minimize" : "maximize"; tip: "Fullscreen"; visible: !root.folded; onClicked: page.toggleFullscreen() }
+            Repeater {
+                model: root.group
+                PlayerButton { id: groupBtn; required property var modelData; objectName: modelData.name
+                    glyph: modelData.glyph(); tip: modelData.tip(); active: modelData.active()
+                    visible: !root.folded && modelData.shown(); onClicked: modelData.run(groupBtn) }
+            }
             // The whole group in one button on a window too narrow for it. Lit like
             // the clock when a delay is set, since the clock it holds would be.
             PlayerButton { id: moreBtn; objectName: "player-more"; glyph: "ellipsis"; tip: "More"; visible: root.folded; active: root.moreOpen || page.subDelay !== 0 || page.audioDelay !== 0; onClicked: root.openMore() } }
