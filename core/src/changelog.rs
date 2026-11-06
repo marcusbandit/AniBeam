@@ -18,8 +18,15 @@
 //! The Release workflow names the GitHub release after it. Under each heading one or more of
 //! the sections New, Changed, Fixed and Removed, in that order; under each, one line per
 //! change. The `# ` title and `<!-- -->` comments are skipped.
+//!
+//! A pull request never writes into the file: it adds a change file beside it, which
+//! [`parse_with`] reads under the newest version and the release folds in.
 
 use serde::{Deserialize, Serialize};
+
+#[path = "changelog_files.rs"]
+mod files;
+pub use files::change_files;
 
 /// The section names a version may use, in the order a version lists them.
 pub const KINDS: [&str; 4] = ["New", "Changed", "Fixed", "Removed"];
@@ -89,25 +96,12 @@ pub fn parse(text: &str) -> Vec<Notes> {
 /// Each way `text` breaks the file's shape, one sentence naming the line; empty when it is
 /// fine. `version` is the app's own, which the newest heading has to be.
 pub fn lint(text: &str, version: &str) -> Vec<String> {
-    let mut problems = Vec::new();
-    for (n, raw) in text.lines().enumerate() {
-        if raw.contains(['\u{2014}', '\u{2013}']) {
-            problems.push(format!(
-                "line {}: a long dash; use a comma or end the sentence",
-                n + 1
-            ));
-        }
-    }
+    let mut problems = dashes(text);
     // The heading above, its sections so far, and the open section's line count.
     let mut above: Option<String> = None;
     let mut kinds: Vec<String> = Vec::new();
     let mut open: Option<(usize, usize)> = None;
     let mut first = true;
-    let close = |problems: &mut Vec<String>, open: Option<(usize, usize)>| {
-        if let Some((at, 0)) = open {
-            problems.push(format!("line {at}: a section with no lines under it"));
-        }
-    };
     let mut heading_at = 0;
     // The newest version may have no sections yet: main moves to it the moment the last
     // one ships, before anything is written under it.
@@ -163,27 +157,7 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                 if above.is_none() {
                     problems.push(format!("line {n}: a section before any version"));
                 }
-                let rank = KINDS.iter().position(|k| *k == kind);
-                match rank {
-                    None => problems.push(format!(
-                        "line {n}: \"### {kind}\" is not one of {}",
-                        KINDS.join(", ")
-                    )),
-                    Some(r) => {
-                        if kinds.contains(&kind) {
-                            problems
-                                .push(format!("line {n}: a second {kind} section in one version"));
-                        } else if let Some(last) = kinds.last()
-                            && KINDS.iter().position(|k| *k == *last) > Some(r)
-                        {
-                            problems.push(format!(
-                                "line {n}: {kind} comes before {last}; the order is {}",
-                                KINDS.join(", ")
-                            ));
-                        }
-                    }
-                }
-                kinds.push(kind);
+                section(&mut problems, n, kind, &mut kinds, "one version");
                 open = Some((n, 0));
             }
             Line::Item(item) => {
@@ -191,15 +165,7 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                     Some((_, count)) => *count += 1,
                     None => problems.push(format!("line {n}: a line before any section")),
                 }
-                let len = item.chars().count();
-                if len > MAX_LINE {
-                    problems.push(format!(
-                        "line {n}: {len} characters, {MAX_LINE} at most: \"{item}\""
-                    ));
-                }
-                if item.ends_with('.') {
-                    problems.push(format!("line {n}: no full stop at the end of a line"));
-                }
+                problems.extend(item_problems(n, &item));
             }
             // Words above the first version are the file's own; under one, nothing but
             // sections and their lines.
@@ -219,6 +185,156 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
             problems.push(format!("line {heading_at}: a version with no sections"))
         }
         Some(_) => {}
+    }
+    problems
+}
+
+/// The versions in `text` with each of `changes` under the newest. A change file is one pull
+/// request's lines under their sections, with no heading (`apps/linux/changes/`): the apps
+/// build them in so a nightly shows them, and `.github/changelog-fold.sh` writes them into
+/// the file the same way when a version ships. In each section their lines follow the
+/// file's own, in the order given; a section the newest version lacks takes its place in
+/// [`KINDS`] order.
+pub fn parse_with(text: &str, changes: &[&str]) -> Vec<Notes> {
+    let mut notes = parse(text);
+    let Some(newest) = notes.first_mut() else {
+        return notes;
+    };
+    for change in changes {
+        let mut kind: Option<String> = None;
+        for (_, line) in read(change) {
+            match line {
+                Line::Section(k) => kind = Some(k),
+                Line::Item(text) => {
+                    if let Some(kind) = &kind {
+                        add(newest, kind, text);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    notes
+}
+
+fn add(notes: &mut Notes, kind: &str, line: String) {
+    if let Some(s) = notes.sections.iter_mut().find(|s| s.kind == kind) {
+        s.lines.push(line);
+        return;
+    }
+    let rank = |k: &str| KINDS.iter().position(|x| *x == k).unwrap_or(KINDS.len());
+    let at = notes
+        .sections
+        .iter()
+        .position(|s| rank(&s.kind) > rank(kind))
+        .unwrap_or(notes.sections.len());
+    notes.sections.insert(
+        at,
+        Section {
+            kind: kind.to_string(),
+            lines: vec![line],
+        },
+    );
+}
+
+/// Each way a change file breaks its shape, one sentence naming the line; empty when it is
+/// fine. It holds sections and their lines as a version does, and no heading: the version
+/// is whichever one it ships in.
+pub fn lint_change(text: &str) -> Vec<String> {
+    let mut problems = dashes(text);
+    let mut kinds: Vec<String> = Vec::new();
+    let mut open: Option<(usize, usize)> = None;
+    let mut lines = 0;
+    for (n, line) in read(text) {
+        match line {
+            Line::Title | Line::Heading { .. } => problems.push(format!(
+                "line {n}: a heading; a change file has only sections and lines, and ships under the newest version"
+            )),
+            Line::Section(kind) => {
+                close(&mut problems, open.take());
+                section(&mut problems, n, kind, &mut kinds, "one change file");
+                open = Some((n, 0));
+            }
+            Line::Item(item) => {
+                lines += 1;
+                match open.as_mut() {
+                    Some((_, count)) => *count += 1,
+                    None => problems.push(format!("line {n}: a line before any section")),
+                }
+                problems.extend(item_problems(n, &item));
+            }
+            Line::Other(text) => problems.push(format!(
+                "line {n}: \"{text}\" is not a section or a \"- \" line"
+            )),
+        }
+    }
+    close(&mut problems, open);
+    if lines == 0 {
+        problems.push("no lines; a change file holds at least one".to_string());
+    }
+    problems
+}
+
+/// The section that just ended, opened at its line with its count of lines, when it
+/// had none.
+fn close(problems: &mut Vec<String>, open: Option<(usize, usize)>) {
+    if let Some((at, 0)) = open {
+        problems.push(format!("line {at}: a section with no lines under it"));
+    }
+}
+
+fn dashes(text: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    for (n, raw) in text.lines().enumerate() {
+        if raw.contains(['\u{2014}', '\u{2013}']) {
+            problems.push(format!(
+                "line {}: a long dash; use a comma or end the sentence",
+                n + 1
+            ));
+        }
+    }
+    problems
+}
+
+/// A `### kind` at line `n` after `kinds`, the sections above it in `within`.
+fn section(
+    problems: &mut Vec<String>,
+    n: usize,
+    kind: String,
+    kinds: &mut Vec<String>,
+    within: &str,
+) {
+    match KINDS.iter().position(|k| *k == kind) {
+        None => problems.push(format!(
+            "line {n}: \"### {kind}\" is not one of {}",
+            KINDS.join(", ")
+        )),
+        Some(r) => {
+            if kinds.contains(&kind) {
+                problems.push(format!("line {n}: a second {kind} section in {within}"));
+            } else if let Some(last) = kinds.last()
+                && KINDS.iter().position(|k| *k == *last) > Some(r)
+            {
+                problems.push(format!(
+                    "line {n}: {kind} comes before {last}; the order is {}",
+                    KINDS.join(", ")
+                ));
+            }
+        }
+    }
+    kinds.push(kind);
+}
+
+fn item_problems(n: usize, item: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let len = item.chars().count();
+    if len > MAX_LINE {
+        problems.push(format!(
+            "line {n}: {len} characters, {MAX_LINE} at most: \"{item}\""
+        ));
+    }
+    if item.ends_with('.') {
+        problems.push(format!("line {n}: no full stop at the end of a line"));
     }
     problems
 }
@@ -765,5 +881,61 @@ wraps onto a second line
         assert_eq!(w.note, "Version 2.0.7");
         assert_eq!((w.line.as_str(), w.above), ("", 0));
         assert_eq!(lit(&w), [true, true]);
+    }
+
+    #[test]
+    fn change_files_read_under_the_newest_version_after_its_own_lines() {
+        let fixed = "### Fixed\n- The seek bar holds after a drag\n";
+        let more =
+            "### New\n- Delete episodes from a series page\n\n### Removed\n- The old player\n";
+        let notes = parse_with(NOTES, &[fixed, more]);
+        let newest = &notes[0];
+        assert_eq!(newest.version, "2.0.8");
+        let kinds: Vec<&str> = newest.sections.iter().map(|s| s.kind.as_str()).collect();
+        assert_eq!(kinds, ["New", "Fixed", "Removed"]);
+        assert_eq!(
+            newest.sections[1].lines,
+            [
+                "Letting go near the start does not seek",
+                "The seek bar holds after a drag"
+            ]
+        );
+        assert_eq!(notes[1..], parse(NOTES)[1..]);
+        assert_eq!(parse_with(NOTES, &[]), parse(NOTES));
+    }
+
+    #[test]
+    fn change_files_fill_a_version_that_has_no_lines_yet() {
+        let begun = "## 2.1.0 · 2026-10-25\n\n## 2.0.8 · 2026-10-24\n\n### Fixed\n- A line\n";
+        let notes = parse_with(begun, &["### Changed\n- Sources answer sooner\n"]);
+        assert!(has_lines(&notes, "2.1.0"));
+        assert_eq!(notes[0].sections[0].lines, ["Sources answer sooner"]);
+    }
+
+    #[test]
+    fn a_change_file_holds_sections_and_lines_and_nothing_else() {
+        assert_eq!(
+            lint_change("### New\n- A thing\n\n### Fixed\n- Another thing\n"),
+            Vec::<String>::new()
+        );
+        let has = |text: &str, what: &str| lint_change(text).iter().any(|p| p.contains(what));
+        assert!(has(
+            "## 2.1.0 · 2026-10-25\n\n### New\n- A thing\n",
+            "a heading"
+        ));
+        assert!(has(
+            "### Fixed\n- One\n\n### New\n- Two\n",
+            "New comes before Fixed"
+        ));
+        assert!(has("### Fixes\n- One\n", "is not one of"));
+        assert!(has("- One\n", "a line before any section"));
+        assert!(has("### New\n", "no lines"));
+        assert!(has("### New\n- Ends with a stop.\n", "no full stop"));
+        assert!(has("### New\n- One \u{2014} two\n", "long dash"));
+        assert!(has("### New\nloose words\n", "is not a section"));
+        assert!(has(
+            &format!("### New\n- {}\n", "x".repeat(81)),
+            "80 at most"
+        ));
     }
 }

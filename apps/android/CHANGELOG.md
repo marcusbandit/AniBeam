@@ -3,6 +3,8 @@
 <!--
 The app shows this file in What's new, newest version first. Keep it short.
 - One line per change a person can notice, under New, Changed, Fixed or Removed.
+- A pull request writes its lines in changes/<branch>.md, never here. The
+  release folds them in under the version they ship in.
 - 80 characters at most, no full stop. Say what they see, never why or how.
 - The newest heading is the app's versionName. A version bump adds a heading,
   and a new heading bumps the version.
