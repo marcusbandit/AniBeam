@@ -866,6 +866,7 @@ impl Core {
                     prefs::save_preferences(c, &p)?;
                     Ok((before, p))
                 })?;
+                self.host.set_streaming(preferences.stream_over_tailscale);
                 self.host
                     .set_switched_off(preferences.tailnet_switched_off.clone());
                 self.host.follow(self, preferences.share_over_tailscale);

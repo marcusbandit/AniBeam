@@ -957,6 +957,7 @@ async fn import_preferences(
                 library_group_franchises: current.library_group_franchises,
                 // Whether this machine shares itself is its own business.
                 share_over_tailscale: current.share_over_tailscale,
+                stream_over_tailscale: current.stream_over_tailscale,
                 tailnet_switched_off: current.tailnet_switched_off.clone(),
                 // The export format predates On hold too.
                 on_hold_auto: current.on_hold_auto,
