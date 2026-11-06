@@ -21,6 +21,7 @@ pub mod backend;
 pub mod contents;
 pub mod facts;
 pub mod feed;
+pub mod home;
 pub mod jackett;
 pub mod link;
 pub mod managed;
@@ -42,6 +43,7 @@ use std::time::Duration;
 
 use crate::contract::*;
 use crate::core::Core;
+use home::AnirssHome;
 use crate::jobs::{Finished, JobCtx};
 use crate::net::{Http, HttpRequest, Method};
 use crate::sync::recover;
@@ -64,6 +66,9 @@ pub struct Downloads {
     /// owner's real anirss (a drive script, a screenshot, a sandbox root):
     /// finished feeds are never pruned there.
     unattended_off: AtomicBool,
+    /// Set only by a test: a sandboxed core settles on a qBittorrent it finds
+    /// answering, as an installed one does.
+    sandbox_finds_clients: AtomicBool,
 }
 
 #[derive(Default)]
@@ -112,6 +117,7 @@ impl Default for Downloads {
             torrent_setup: tokio::sync::Mutex::new(()),
             rules: tokio::sync::Mutex::new(()),
             unattended_off: AtomicBool::new(false),
+            sandbox_finds_clients: AtomicBool::new(false),
         }
     }
 }
@@ -123,6 +129,10 @@ impl Downloads {
 
     pub(crate) fn disable_unattended(&self) {
         self.unattended_off.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn let_sandbox_find_clients(&self) {
+        self.sandbox_finds_clients.store(true, Ordering::Relaxed);
     }
 
     fn unattended_allowed(&self) -> bool {
@@ -144,7 +154,8 @@ impl Downloads {
 /// rest from the last connect. No network.
 pub fn status(core: &Core) -> Result<DownloadsStatus, CoreError> {
     let secrets = core.secrets().clone();
-    let settings = core.store.read(move |c| settings::load(c, &secrets))?;
+    let home = AnirssHome::of(&core.paths);
+    let settings = core.store.read(move |c| settings::load(c, &secrets, &home))?;
     Ok(assemble(core, settings))
 }
 
@@ -157,7 +168,7 @@ async fn status_async(core: &Arc<Core>) -> Result<DownloadsStatus, CoreError> {
 fn assemble(core: &Core, settings: DownloadSettings) -> DownloadsStatus {
     let st = core.downloads.state();
     let mut anirss = st.anirss.clone();
-    anirss.config_path = settings::anirss_config_path()
+    anirss.config_path = settings::anirss_config_path(core)
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
     DownloadsStatus {
@@ -169,7 +180,7 @@ fn assemble(core: &Core, settings: DownloadSettings) -> DownloadsStatus {
 }
 
 async fn load_settings(core: &Arc<Core>) -> Result<DownloadSettings, CoreError> {
-    let mut s = core.store.read(settings::load_stored)?;
+    let mut s = settings::read(&core)?;
     let mut keys = vec![settings::ANIRSS_TOKEN.to_string()];
     keys.extend(settings::active_password_key(&s));
     keys.extend(
@@ -291,7 +302,8 @@ async fn reach(core: &Arc<Core>) -> Result<Reached, CoreError> {
         username: &s.torrent_username,
         password: password.as_deref(),
     };
-    let mut sidecar = match Sidecar::spawn(&command, &login) {
+    let home = AnirssHome::of(&core.paths);
+    let mut sidecar = match Sidecar::spawn(&command, &login, &home) {
         Ok(sc) => sc,
         Err(SpawnFailure::Missing) => {
             let hint = format!(
@@ -414,10 +426,13 @@ async fn resolve_password(
     if let Some(pw) = saved {
         return Ok((Some(pw), "anibeam"));
     }
-    let anirss_url = settings::anirss_config_path().and_then(|p| settings::anirss_config_qbt(&p));
+    let home = AnirssHome::of(&core.paths);
+    let anirss_url = home
+        .config_path()
+        .and_then(|p| settings::anirss_config_qbt(&p));
     let borrowed = anirss_url
         .filter(|(url, _)| settings::same_address(url, &s.torrent_url))
-        .and_then(|_| settings::anirss_saved_password());
+        .and_then(|_| settings::anirss_saved_password(&home));
     match borrowed {
         Some(pw) => Ok((Some(pw), "anirss")),
         None => Ok((None, "none")),
@@ -495,20 +510,28 @@ async fn decide_torrent(
             s.torrent_url = own;
         }
     }
-    let (password, _) = resolve_password(core, &s).await?;
-    let probe = QbtClient::new(
-        &s.torrent_url,
-        &s.torrent_username,
-        password.as_deref().unwrap_or(""),
-        core.http.clone(),
-    );
-    let answered = match tokio::time::timeout(PROBE_TIMEOUT, probe.version()).await {
-        Ok(Ok(_)) => true,
-        // A login it refused still came from qBittorrent
-        Ok(Err(CoreError::Service { code, .. })) => code == "unauthorized" || code == "banned",
-        _ => false,
-    };
     let is_own = own_port.is_some_and(|port| s.torrent_url == format!("http://127.0.0.1:{port}"));
+    // A sandboxed run never takes this machine's qBittorrent for its own on its
+    // own: only a client someone picks in Settings is used there (#637).
+    let sandboxed = AnirssHome::of(&core.paths).sandbox().is_some()
+        && !core.downloads.sandbox_finds_clients.load(Ordering::Relaxed);
+    let answered = if sandboxed && !is_own {
+        false
+    } else {
+        let (password, _) = resolve_password(core, &s).await?;
+        let probe = QbtClient::new(
+            &s.torrent_url,
+            &s.torrent_username,
+            password.as_deref().unwrap_or(""),
+            core.http.clone(),
+        );
+        match tokio::time::timeout(PROBE_TIMEOUT, probe.version()).await {
+            Ok(Ok(_)) => true,
+            // A login it refused still came from qBittorrent
+            Ok(Err(CoreError::Service { code, .. })) => code == "unauthorized" || code == "banned",
+            _ => false,
+        }
+    };
     let message = if is_own && (answered || managed::binary().is_some()) {
         s.torrent_mode = TorrentMode::Managed;
         s.torrent_username = managed::USERNAME.to_string();
@@ -593,7 +616,8 @@ async fn start_managed(core: &Arc<Core>, s: &DownloadSettings) -> Result<(), Cor
         .and_then(|p| p.trim_end_matches('/').parse::<u16>().ok())
         .ok_or_else(|| failed(format!("no port in {}", s.torrent_url)))?;
     let profile = managed::profile_dir(&core.paths.data_dir);
-    managed::write_config(&profile, port, managed::save_dir().as_deref())
+    let save = AnirssHome::of(&core.paths).save_dir();
+    managed::write_config(&profile, port, save.as_deref())
         .map_err(|e| failed(format!("cannot write qBittorrent's settings: {e}")))?;
     managed::spawn(&binary, &profile, port)
         .map_err(|e| failed(format!("{} could not start: {e}", binary.display())))?;
@@ -843,12 +867,12 @@ async fn read_anirss(core: &Arc<Core>, reached: &Reached) -> Result<Read, CoreEr
     if !is_current(core, reached.generation) {
         return Ok(Read::Dropped);
     }
-    if let Some(path) = settings::anirss_config_path() {
+    if let Some(path) = settings::anirss_config_path(core) {
         for e in &mut endpoints {
             e.on_demand = settings::anirss_ondemand(&path, &e.name).map(|o| o.timeout);
         }
     }
-    probe_endpoints(core.http.as_ref(), &mut endpoints).await;
+    probe_endpoints(&core, &mut endpoints).await;
     let view = client.qbt_status().await?;
     let mut st = core.downloads.state();
     // Asked again under the lock that writes, so no save lands between the two.
@@ -924,8 +948,9 @@ pub fn test_torrent_client(core: &Core) -> Result<u64, CoreError> {
 /// Whether each on-demand endpoint is up, from its ready URL. A GET and
 /// nothing more: only `start_endpoint`, after a confirm, starts a service
 /// (anirss does too when a search reaches one, which is why `search` checks first).
-async fn probe_endpoints(http: &dyn Http, endpoints: &mut [SearchEndpoint]) {
-    let path = settings::anirss_config_path();
+async fn probe_endpoints(core: &Core, endpoints: &mut [SearchEndpoint]) {
+    let http = core.http.as_ref();
+    let path = settings::anirss_config_path(core);
     for e in endpoints.iter_mut() {
         let ready = path
             .as_deref()
@@ -964,7 +989,7 @@ pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
         .clone()
         .start(JobKind::CheckEndpoints, move |_| async move {
             let mut endpoints = owner.downloads.state().endpoints.clone();
-            probe_endpoints(owner.http.as_ref(), &mut endpoints).await;
+            probe_endpoints(&owner, &mut endpoints).await;
             let up: Vec<String> = endpoints
                 .iter()
                 .filter(|e| e.running == Some(true))
@@ -993,7 +1018,7 @@ pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
 pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
     let owner = core.owner()?;
     forget_probes();
-    let config = settings::anirss_config_path();
+    let config = settings::anirss_config_path(core);
     let ondemand = config
         .as_deref()
         .and_then(|p| settings::anirss_ondemand(p, &name))
@@ -1023,7 +1048,7 @@ pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
             })?;
             forget_probes();
             let mut endpoints = owner.downloads.state().endpoints.clone();
-            probe_endpoints(owner.http.as_ref(), &mut endpoints).await;
+            probe_endpoints(&owner, &mut endpoints).await;
             owner.downloads.state().endpoints = endpoints;
             let status = status_async(&owner).await?;
             Ok(Finished {
@@ -1075,11 +1100,11 @@ fn default_target(endpoint: Option<String>, listed: &[SearchEndpoint]) -> Option
 /// switched off while any on-demand endpoint is down. Returns whether the
 /// fallback may stay on.
 async fn guard_search(
-    http: &dyn Http,
+    core: &Core,
     endpoints: &[SearchEndpoint],
     target: Option<&str>,
 ) -> Result<bool, CoreError> {
-    let path = settings::anirss_config_path();
+    let path = settings::anirss_config_path(core);
     let mut all_up = true;
     for e in endpoints.iter().filter(|e| e.on_demand.is_some()) {
         let ready = path
@@ -1087,7 +1112,7 @@ async fn guard_search(
             .and_then(|p| settings::anirss_ondemand(p, &e.name))
             .map(|o| o.ready)
             .unwrap_or_default();
-        let up = !ready.is_empty() && probe_kept(http, &ready).await;
+        let up = !ready.is_empty() && probe_kept(core.http.as_ref(), &ready).await;
         if !up && target == Some(e.name.as_str()) {
             return Err(CoreError::Service {
                 service: e.name.clone(),
@@ -1113,7 +1138,7 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
     // asked for, else the first anirss lists
     let first = default_target(endpoint.clone(), &owner.downloads.state().endpoints);
     let ondemand = first.as_deref().and_then(|name| {
-        settings::anirss_config_path().and_then(|p| settings::anirss_ondemand(&p, name))
+        settings::anirss_config_path(core).and_then(|p| settings::anirss_ondemand(&p, name))
     });
     Ok(owner
         .jobs
@@ -1140,7 +1165,7 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                         let listed = owner.downloads.state().endpoints.clone();
                         let target = default_target(endpoint.clone(), &listed);
                         let fallback =
-                            guard_search(owner.http.as_ref(), &listed, target.as_deref()).await?;
+                            guard_search(&owner, &listed, target.as_deref()).await?;
                         phase.store(PHASE_FETCHING, Ordering::Relaxed);
                         let raw = backend.search(&query, target.as_deref(), fallback).await?;
                         phase.store(PHASE_READING, Ordering::Relaxed);
@@ -1760,7 +1785,7 @@ pub fn download_with(
     let owner = core.owner()?;
     // What rolls is held back before anything else is asked of it, so a
     // held episode gets no followup that would wait days for its torrent
-    let roll_settings = owner.store.read(settings::load_stored)?.rolling;
+    let roll_settings = settings::read(&owner)?.rolling;
     let plan = rolling::plan(
         &items,
         &options,
@@ -1817,7 +1842,8 @@ pub fn download_with(
 /// its files on another machine, whose paths are its own.
 fn show_folder(core: &Core, series: Option<u64>) -> Result<Option<String>, CoreError> {
     let Some(id) = series else { return Ok(None) };
-    let (path, s) = core.store.read(|c| {
+    let home = AnirssHome::of(&core.paths);
+    let (path, s) = core.store.read(move |c| {
         let path = c
             .query_row(
                 "SELECT path FROM series WHERE id = ?1 AND kind = 'show' AND missing_since IS NULL",
@@ -1825,7 +1851,7 @@ fn show_folder(core: &Core, series: Option<u64>) -> Result<Option<String>, CoreE
                 |r| r.get::<_, String>(0),
             )
             .ok();
-        Ok((path, settings::load_stored(c)?))
+        Ok((path, settings::load_stored(c, &home)?))
     })?;
     Ok(path.filter(|p| settings::files_here(&s) && still_there(Some(p)).is_some()))
 }
@@ -3085,7 +3111,7 @@ pub fn set_settings(
         settings.torrent_url = own_address(core)?;
         settings.torrent_username = managed::USERNAME.to_string();
     }
-    let before = core.store.read(settings::load_stored)?;
+    let before = settings::read(&core)?;
     settings::validate(&mut settings, &before.saved_clients)?;
     match anirss_token.map(str::trim) {
         Some("") => {
@@ -3146,7 +3172,7 @@ pub fn set_settings(
 /// Switches the downloads to the saved client `id`, or to AniBeam's own
 /// when there is none. The rest of the settings stay as they are.
 pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
-    let mut s = core.store.read(settings::load_stored)?;
+    let mut s = settings::read(&core)?;
     let in_use = match id.as_deref() {
         Some(id) => s.torrent_mode == TorrentMode::Existing && s.active_client == id,
         None => s.torrent_mode == TorrentMode::Managed,
@@ -3479,7 +3505,7 @@ mod tests {
             inner: http.clone(),
             at: "/qbt/status",
             mid: Mutex::new(Some(Box::new(move || {
-                let mut s = switcher.store.read(settings::load_stored).unwrap();
+                let mut s = settings::read(&switcher).unwrap();
                 s.anirss_mode = AnirssMode::Remote;
                 s.anirss_url = "http://127.0.0.1:3".to_string();
                 restart(&switcher, s).unwrap();
@@ -3540,7 +3566,7 @@ mod tests {
         assert!(!syncs_into(&core, &remote));
 
         // Half a save: the settings already say AniBeam's own, the bump has not landed.
-        let mut s = core.store.read(settings::load_stored).unwrap();
+        let mut s = settings::read(&core).unwrap();
         s.anirss_mode = AnirssMode::Sidecar;
         core.store.write(move |c| settings::save(c, &s)).unwrap();
         assert!(
@@ -3571,7 +3597,7 @@ mod tests {
         )
         .unwrap();
         let old = core.downloads.state().generation;
-        let s = core.store.read(settings::load_stored).unwrap();
+        let s = settings::read(&core).unwrap();
         restart(&core, s).unwrap();
         assert!(!set_anirss_failure_at(
             &core,

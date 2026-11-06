@@ -101,7 +101,7 @@ pub async fn resolve(core: &Arc<Core>, qbt: &QbtClient) -> Result<SavePaths, Cor
         movie_path: stored.movie_path.map(|p| expand_home(&p)),
         tags: stored.tags,
     };
-    let config = settings::anirss_config_path()
+    let config = settings::anirss_config_path(core)
         .map(|p| from_anirss_config(&p))
         .unwrap_or_default();
     let chosen = stored.or(config);

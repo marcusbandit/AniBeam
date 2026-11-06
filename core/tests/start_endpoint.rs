@@ -2,8 +2,7 @@
 //! start command (anirss's own, or the setting that overrides it), waits for
 //! the ready URL and reports the status. A command the shell cannot find says
 //! Jackett is not installed, and an endpoint that is not on demand is refused
-//! up front. One test in its own binary because it points `XDG_CONFIG_HOME`
-//! at an anirss config of its own, which is process-wide.
+//! up front. The anirss config is the one in the core's own sandboxed home.
 
 mod common;
 
@@ -56,13 +55,13 @@ fn start(core: &Core, name: &str) -> u64 {
 }
 
 /// An anirss config with a plain nyaa endpoint and a 1337x one that has a
-/// `start`, and the XDG config home pointed at it.
+/// `start`, in the home the core under `dir` gives anirss.
 fn on_demand_config(dir: &Path, start: Option<&str>) {
     // A literal string: a Windows path's backslashes are not TOML escapes there
     let start = start
         .map(|s| format!("start = '{s}'\n"))
         .unwrap_or_default();
-    let anirss = dir.join("anirss");
+    let anirss = dir.join("state/home/.config/anirss");
     std::fs::create_dir_all(&anirss).unwrap();
     std::fs::write(
         anirss.join("config.toml"),
@@ -71,10 +70,6 @@ fn on_demand_config(dir: &Path, start: Option<&str>) {
         ),
     )
     .unwrap();
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", dir);
-        std::env::set_var("XDG_STATE_HOME", dir);
-    }
 }
 
 /// What the start command wrote, once it has: the job can finish the moment the

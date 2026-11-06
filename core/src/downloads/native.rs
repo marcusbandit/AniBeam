@@ -618,7 +618,7 @@ async fn execute(
 /// Whether the client in use saves on this machine (`settings::files_here`).
 fn files_here(core: &Core) -> Result<bool, CoreError> {
     Ok(settings::files_here(
-        &core.store.read(settings::load_stored)?,
+        &settings::read(&core)?,
     ))
 }
 
