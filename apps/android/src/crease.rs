@@ -82,6 +82,13 @@ pub fn layout(reading: Reading, rotated: bool, scale: f32) -> Layout {
     }
 }
 
+/// Whether the hinge timer reads the phone on this tick, after `flat` ticks in a row with
+/// no hinge and no fold: every tick for the first second's worth and a bit, then one tick
+/// in ten.
+pub fn look_now(flat: u32) -> bool {
+    flat < 25 || flat.is_multiple_of(10)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,6 +152,13 @@ mod tests {
             assert!(!upright.known && !upright.across);
             assert!(layout(reading, true, 2.0).across);
         }
+    }
+
+    #[test]
+    fn a_phone_with_no_fold_is_read_less_often_but_never_given_up_on() {
+        assert!((0..25).all(look_now));
+        let later: Vec<u32> = (25..60).filter(|t| look_now(*t)).collect();
+        assert_eq!(later, [30, 40, 50]);
     }
 
     #[test]

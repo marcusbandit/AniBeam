@@ -18,23 +18,28 @@ public final class Crease {
 
     /** The last answer, packed as `at` says; -1 while nothing reported a fold. */
     private static volatile long last = -1;
-    private static boolean listening;
+    /** The activity the listener is on. A relaunch in the same process moves it. */
+    private static Activity on;
+    private static Object component;
+    private static java.util.function.Consumer<Object> listener;
 
     /**
      * The crease in the window's own pixels, packed in a long: bit 40 set for a crease that
      * runs left to right, bit 41 set while the phone is half open, bits 20 to 39 where the
      * crease starts along the window's width or height, bits 0 to 19 where it ends. -1 when
-     * no fold crosses the window, -2 on a phone without the extensions. The first call
-     * starts listening.
+     * no fold crosses the window, -2 on a phone without the extensions. The first call from
+     * an activity starts listening on it.
      */
     public static long at(final Activity activity) {
         synchronized (Crease.class) {
-            if (!listening) {
-                listening = true;
+            if (on != activity) {
+                final Activity old = on;
+                on = activity;
+                last = -1;
                 activity.runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        listen(activity);
+                        listen(old, activity);
                     }
                 });
             }
@@ -42,22 +47,40 @@ public final class Crease {
         return last;
     }
 
-    private static void listen(Activity activity) {
+    /** The extensions' public types, so a vendor's hidden implementation class is never called directly. */
+    private static Method method(String type, Object target, String name, Class<?>... params) throws Exception {
+        try {
+            return Class.forName(type).getMethod(name, params);
+        } catch (ClassNotFoundException e) {
+            return target.getClass().getMethod(name, params);
+        }
+    }
+
+    private static void listen(Activity old, Activity activity) {
         try {
             Class<?> provider = Class.forName("androidx.window.extensions.WindowExtensionsProvider");
-            Object extensions = provider.getMethod("getWindowExtensions").invoke(null);
-            if (extensions == null) { last = -2; return; }
-            Object layout = extensions.getClass().getMethod("getWindowLayoutComponent").invoke(extensions);
-            if (layout == null) { last = -2; return; }
-            // Vendor API level 1's listener, which every later level still takes.
-            Method add = layout.getClass().getMethod("addWindowLayoutInfoListener",
-                    Activity.class, java.util.function.Consumer.class);
-            add.invoke(layout, activity, new java.util.function.Consumer<Object>() {
+            if (component == null) {
+                Object extensions = provider.getMethod("getWindowExtensions").invoke(null);
+                if (extensions == null) { last = -2; return; }
+                component = method("androidx.window.extensions.WindowExtensions", extensions,
+                        "getWindowLayoutComponent").invoke(extensions);
+                if (component == null) { last = -2; return; }
+            }
+            String layout = "androidx.window.extensions.layout.WindowLayoutComponent";
+            if (listener != null && old != null) {
+                // The activity that went away keeps no listener, and holds no reference here.
+                method(layout, component, "removeWindowLayoutInfoListener",
+                        java.util.function.Consumer.class).invoke(component, listener);
+            }
+            listener = new java.util.function.Consumer<Object>() {
                 @Override
                 public void accept(Object info) {
                     last = read(info);
                 }
-            });
+            };
+            // Vendor API level 1's listener, which every later level still takes.
+            method(layout, component, "addWindowLayoutInfoListener",
+                    Activity.class, java.util.function.Consumer.class).invoke(component, activity, listener);
         } catch (Throwable e) {
             // No extensions on this phone: it never says, and the layout keeps its guess.
             last = -2;
@@ -67,12 +90,14 @@ public final class Crease {
     /** The first fold in a WindowLayoutInfo, packed as `at` says. */
     static long read(Object info) {
         try {
-            List<?> features = (List<?>) info.getClass().getMethod("getDisplayFeatures").invoke(info);
+            List<?> features = (List<?>) method("androidx.window.extensions.layout.WindowLayoutInfo",
+                    info, "getDisplayFeatures").invoke(info);
             if (features == null) return -1;
+            String folding = "androidx.window.extensions.layout.FoldingFeature";
             for (Object f : features) {
                 if (!f.getClass().getName().endsWith("FoldingFeature")) continue;
-                Rect r = (Rect) f.getClass().getMethod("getBounds").invoke(f);
-                int state = (Integer) f.getClass().getMethod("getState").invoke(f);
+                Rect r = (Rect) method(folding, f, "getBounds").invoke(f);
+                int state = (Integer) method(folding, f, "getState").invoke(f);
                 // A fold with no width is a line; it runs the way it is longer.
                 boolean across = r.width() > r.height();
                 long start = across ? r.top : r.left;
