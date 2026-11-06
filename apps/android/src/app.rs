@@ -168,7 +168,7 @@ struct App {
     held: Option<bool>,
     service: Option<notify::Ongoing>,
     /// The downloads seen not yet whole, so each one that finishes is told once.
-    unfinished: Vec<String>,
+    unfinished: HashSet<String>,
     /// The service's notification went up while Android allowed it to show. One posted
     /// before the person allowed notifications stays hidden until it is posted again.
     service_shown: bool,
@@ -1211,11 +1211,10 @@ impl App {
             .collect();
         for hash in notify::finished(&mut self.unfinished, &now) {
             if let Some((t, row)) = torrents.iter().zip(&rows).find(|(t, _)| t.hash == hash) {
-                let called = notify::called(&row.show, &row.what, &t.name);
                 crate::android::episode_ready(
                     notify::ready_id(&hash),
-                    &format!("{called} is ready"),
-                    "Downloaded to this phone. Tap to open AniBeam.",
+                    &notify::ready_title(&row.show, &row.what, &t.name),
+                    notify::READY_TEXT,
                 );
             }
         }
@@ -1245,9 +1244,12 @@ impl App {
         // far along, with the numbers Downloads shows.
         let text = notify::ongoing(&moving, format::bytes);
         if text != self.service {
-            let done = match &text {
-                Some(t) => crate::android::start_service(t),
-                None => {
+            let done = match (&text, &self.service) {
+                // Running: the notification changes in place. Starting the service again
+                // on every look would be refused once the app is in the background.
+                (Some(t), Some(_)) => crate::android::update_service(t),
+                (Some(t), None) => crate::android::start_service(t),
+                (None, _) => {
                     crate::android::stop_service();
                     true
                 }
@@ -2093,7 +2095,7 @@ pub fn run(
         polling: false,
         held: None,
         service: None,
-        unfinished: Vec::new(),
+        unfinished: HashSet::new(),
         service_shown: false,
         asked_at: None,
     };

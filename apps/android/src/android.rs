@@ -112,42 +112,84 @@ fn service_intent<'a>(
     Ok(intent)
 }
 
-/// Starts the download service, or updates its notification to `shown` when it runs.
-/// False when Android refused, as it does for an app in the background on Android 12 and
-/// later; the caller tries again on its next look.
+/// Starts the download service with `shown` as its notification. False when Android
+/// refused, as it does for an app in the background on Android 12 and later; the caller
+/// tries again on its next look. A running service's notification changes through
+/// `update_service` instead.
 pub fn start_service(shown: &crate::notify::Ongoing) -> bool {
     #[cfg(target_os = "android")]
     {
+        // The UI thread stays attached, so the call's local references go with a frame.
         let r = with_env(|env, app| {
-            use jni::objects::JValue;
-            let intent = service_intent(env)?;
-            for (key, value) in [("title", &shown.title), ("text", &shown.text)] {
-                let key = env.new_string(key)?;
-                let value = env.new_string(value)?;
+            env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
+                use jni::objects::JValue;
+                let intent = service_intent(env)?;
+                for (key, value) in [("title", &shown.title), ("text", &shown.text)] {
+                    let key = env.new_string(key)?;
+                    let value = env.new_string(value)?;
+                    env.call_method(
+                        &intent,
+                        "putExtra",
+                        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+                        &[JValue::Object(&key), JValue::Object(&value)],
+                    )?;
+                }
+                let key = env.new_string("progress")?;
                 env.call_method(
                     &intent,
                     "putExtra",
-                    "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-                    &[JValue::Object(&key), JValue::Object(&value)],
+                    "(Ljava/lang/String;I)Landroid/content/Intent;",
+                    &[JValue::Object(&key), JValue::Int(shown.progress)],
                 )?;
-            }
-            let key = env.new_string("progress")?;
-            env.call_method(
-                &intent,
-                "putExtra",
-                "(Ljava/lang/String;I)Landroid/content/Intent;",
-                &[JValue::Object(&key), JValue::Int(shown.progress)],
-            )?;
-            env.call_method(
-                app,
-                "startForegroundService",
-                "(Landroid/content/Intent;)Landroid/content/ComponentName;",
-                &[JValue::Object(&intent)],
-            )?;
-            Ok(())
+                env.call_method(
+                    app,
+                    "startForegroundService",
+                    "(Landroid/content/Intent;)Landroid/content/ComponentName;",
+                    &[JValue::Object(&intent)],
+                )?;
+                Ok(())
+            })
         });
         if let Err(e) = r {
             crate::local::log(&format!("the download service did not start: {e}"));
+            return false;
+        }
+        true
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = shown;
+        true
+    }
+}
+
+/// Changes the running download service's notification to `shown`, in place
+/// (`TorrentService.update`). False when the call failed, so the next look tries again.
+pub fn update_service(shown: &crate::notify::Ongoing) -> bool {
+    #[cfg(target_os = "android")]
+    {
+        let r = with_env(|env, app| {
+            env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+                use jni::objects::JValue;
+                let class = app_class(env, app, "TorrentService")?;
+                let title = env.new_string(&shown.title)?;
+                let text = env.new_string(&shown.text)?;
+                env.call_static_method(
+                    &class,
+                    "update",
+                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;I)V",
+                    &[
+                        JValue::Object(app),
+                        JValue::Object(&title),
+                        JValue::Object(&text),
+                        JValue::Int(shown.progress),
+                    ],
+                )?;
+                Ok(())
+            })
+        });
+        if let Err(e) = r {
+            crate::local::log(&format!("the download notification did not change: {e}"));
             return false;
         }
         true

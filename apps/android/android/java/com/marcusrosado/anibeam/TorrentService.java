@@ -27,29 +27,55 @@ public class TorrentService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(
-                new NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW));
+        channels(this);
         String title = intent != null ? intent.getStringExtra("title") : null;
         String text = intent != null ? intent.getStringExtra("text") : null;
         // Tenths of a percent, or -1 while nothing says how far along it is.
         int progress = intent != null ? intent.getIntExtra("progress", -1) : -1;
-        Notification.Builder b = new Notification.Builder(this, CHANNEL)
-                .setContentTitle(title != null ? title : "Downloading")
-                .setSmallIcon(android.R.drawable.stat_sys_download)
-                .setOngoing(true)
-                .setOnlyAlertOnce(true)
-                .setShowWhen(false)
-                .setContentIntent(openApp(this))
-                .setProgress(1000, Math.max(progress, 0), progress < 0);
-        if (text != null && !text.isEmpty()) b.setContentText(text);
-        Notification n = b.build();
+        Notification n = ongoing(this, title, text, progress);
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
             startForeground(1, n);
         }
         return START_NOT_STICKY;
+    }
+
+    /**
+     * Both channels, made as the service starts, so Episodes ready is in the app's
+     * notification settings to turn off before the first episode finishes.
+     */
+    private static void channels(Context context) {
+        NotificationManager nm = context.getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        nm.createNotificationChannel(
+                new NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW));
+        nm.createNotificationChannel(
+                new NotificationChannel(READY, "Episodes ready", NotificationManager.IMPORTANCE_DEFAULT));
+    }
+
+    private static Notification ongoing(Context context, String title, String text, int progress) {
+        Notification.Builder b = new Notification.Builder(context, CHANNEL)
+                .setContentTitle(title != null ? title : "Downloading")
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setShowWhen(false)
+                .setContentIntent(openApp(context))
+                .setProgress(1000, Math.max(progress, 0), progress < 0);
+        if (text != null && !text.isEmpty()) b.setContentText(text);
+        return b.build();
+    }
+
+    /**
+     * Changes the running service's notification in place: what is downloading and how far
+     * along. Posting under the service's own id is allowed from the background, where a
+     * second startForegroundService is not.
+     */
+    public static void update(Context context, String title, String text, int progress) {
+        NotificationManager nm = context.getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        nm.notify(1, ongoing(context, title, text, progress));
     }
 
     /** Opens AniBeam where it was, the way its launcher icon does. */
@@ -68,8 +94,7 @@ public class TorrentService extends Service {
     public static void ready(Context context, int id, String title, String text) {
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null) return;
-        nm.createNotificationChannel(
-                new NotificationChannel(READY, "Episodes ready", NotificationManager.IMPORTANCE_DEFAULT));
+        channels(context);
         Notification n = new Notification.Builder(context, READY)
                 .setContentTitle(title)
                 .setContentText(text)

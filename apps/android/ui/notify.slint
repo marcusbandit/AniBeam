@@ -68,7 +68,8 @@ component NotifyCard inherits Rectangle {
 
 // The notifications as the phone's shade shows them: the payoff, drawn before the ask. The
 // ongoing one while an episode downloads, with its bar and the numbers Downloads shows, and
-// below it the one a finished episode posts. The words are the ones the app posts.
+// below it the one a finished episode posts. The words follow `notify.rs` (`ongoing`,
+// `ready_title`, `READY_TEXT`); change them there and here together.
 export component NotifyPreview inherits VerticalLayout {
     in property <string> title: "Downloading Frieren episode 7";
     in property <string> text: "30%, 420 MB of 1.4 GB, 3.2 MB/s, 5m left";

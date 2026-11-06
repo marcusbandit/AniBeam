@@ -3,6 +3,8 @@
 //! twice, and after a second Don't allow only the app's notification settings can turn it on,
 //! so the app asks once and sends every later tap to those settings.
 
+use std::collections::HashSet;
+
 /// Where the permission stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Notify {
@@ -60,14 +62,34 @@ pub struct Ongoing {
 }
 
 /// What a download is called in a notification: the show and its episode, "Frieren
-/// episode 7", or the torrent's own name when it is not a show's.
+/// episode 7" or "Frieren episodes 1 to 12", the show alone for a batch that names none, or
+/// the torrent's own name when it is not a show's.
 pub fn called(show: &str, what: &str, name: &str) -> String {
-    match (show.is_empty(), what.is_empty()) {
-        (false, false) => format!("{show} {}", lower_first(what)),
-        (false, true) => show.to_string(),
-        _ => name.to_string(),
+    if show.is_empty() {
+        return name.to_string();
     }
+    if what.is_empty() || what == "A batch" {
+        return show.to_string();
+    }
+    format!("{show} {}", lower_first(what))
 }
+
+/// The finished download's notification: "Frieren episode 7 is ready", "are" for a run of
+/// episodes, "A batch of Frieren is ready" for a batch that names none.
+pub fn ready_title(show: &str, what: &str, name: &str) -> String {
+    if what == "A batch" && !show.is_empty() {
+        return format!("A batch of {show} is ready");
+    }
+    let verb = if what.starts_with("Episodes") {
+        "are"
+    } else {
+        "is"
+    };
+    format!("{} {verb} ready", called(show, what, name))
+}
+
+/// The line under it, the same words onboarding's preview shows.
+pub const READY_TEXT: &str = "Downloaded to this phone. Tap to open AniBeam.";
 
 fn lower_first(text: &str) -> String {
     let mut chars = text.chars();
@@ -78,13 +100,19 @@ fn lower_first(text: &str) -> String {
 }
 
 /// The ongoing notification for what is moving: one download by name with the numbers
-/// Downloads shows, several as a count with how far along they are together. None while
+/// Downloads shows, several as a count with how far along they are together. A size not
+/// known yet (a torrent still fetching its file list) leaves the bar unsure. None while
 /// nothing moves.
 pub fn ongoing(moving: &[Moving], bytes: impl Fn(u64) -> String) -> Option<Ongoing> {
     let tenths = |p: f64| (p.clamp(0.0, 1.0) * 1000.0).floor() as i32;
     let percent = |p: f64| (p.clamp(0.0, 1.0) * 100.0).floor() as i64;
     match moving {
         [] => None,
+        [one] if one.size == 0 => Some(Ongoing {
+            title: format!("Downloading {}", one.called),
+            text: "Starting".into(),
+            progress: -1,
+        }),
         [one] => Some(Ongoing {
             title: format!("Downloading {}", one.called),
             text: format!("{}%, {}", percent(one.progress), one.facts),
@@ -95,29 +123,34 @@ pub fn ongoing(moving: &[Moving], bytes: impl Fn(u64) -> String) -> Option<Ongoi
             let done: f64 = many.iter().map(|m| m.progress * m.size as f64).sum();
             let progress = if size > 0 { done / size as f64 } else { 0.0 };
             Some(Ongoing {
-                title: format!("Downloading {} episodes", many.len()),
-                text: format!(
-                    "{}%, {} of {}",
-                    percent(progress),
-                    bytes(done as u64),
-                    bytes(size)
-                ),
+                // Downloads, not episodes: one of them may be a whole batch.
+                title: format!("{} downloads", many.len()),
+                text: if size > 0 {
+                    format!(
+                        "{}%, {} of {}",
+                        percent(progress),
+                        bytes(done as u64),
+                        bytes(size)
+                    )
+                } else {
+                    "Starting".into()
+                },
                 progress: if size > 0 { tenths(progress) } else { -1 },
             })
         }
     }
 }
 
-/// The downloads that finished since the last look: each one seen moving before (in
-/// `moving`) that is now whole. `moving` is updated to what moves now, so each finish is
-/// told once, and one removed while it moved is forgotten.
-pub fn finished(moving: &mut Vec<String>, now: &[(String, bool)]) -> Vec<String> {
+/// The downloads that finished since the last look: each one seen unfinished before (in
+/// `unfinished`) that is now whole. `unfinished` is updated to what is unfinished now, so
+/// each finish is told once, and one removed before it finished is forgotten.
+pub fn finished(unfinished: &mut HashSet<String>, now: &[(String, bool)]) -> Vec<String> {
     let done: Vec<String> = now
         .iter()
-        .filter(|(hash, whole)| *whole && moving.contains(hash))
+        .filter(|(hash, whole)| *whole && unfinished.contains(hash))
         .map(|(hash, _)| hash.clone())
         .collect();
-    *moving = now
+    *unfinished = now
         .iter()
         .filter(|(_, whole)| !*whole)
         .map(|(hash, _)| hash.clone())
@@ -168,7 +201,7 @@ mod tests {
             bytes,
         )
         .unwrap();
-        assert_eq!(o.title, "Downloading 2 episodes");
+        assert_eq!(o.title, "2 downloads");
         assert_eq!(o.text, "10%, 200 MB of 2000 MB");
         assert_eq!(o.progress, 100);
         assert!(ongoing(&[], bytes).is_none());
@@ -177,7 +210,9 @@ mod tests {
     #[test]
     fn sizes_not_known_yet_leave_the_bar_unsure() {
         let o = ongoing(&[moving("A", 0.0, 0), moving("B", 0.0, 0)], bytes).unwrap();
-        assert_eq!(o.progress, -1);
+        assert_eq!((o.progress, o.text.as_str()), (-1, "Starting"));
+        let one = ongoing(&[moving("A", 0.0, 0)], bytes).unwrap();
+        assert_eq!((one.progress, one.text.as_str()), (-1, "Starting"));
     }
 
     #[test]
@@ -191,18 +226,36 @@ mod tests {
             called("", "Episode 7", "[G] Frieren - 07"),
             "[G] Frieren - 07"
         );
+        assert_eq!(called("Frieren", "A batch", "[G] Frieren"), "Frieren");
+    }
+
+    #[test]
+    fn a_batch_is_ready_in_the_plural() {
+        assert_eq!(
+            ready_title("Frieren", "Episode 7", "x"),
+            "Frieren episode 7 is ready"
+        );
+        assert_eq!(
+            ready_title("Frieren", "Episodes 1 to 12", "x"),
+            "Frieren episodes 1 to 12 are ready"
+        );
+        assert_eq!(
+            ready_title("Frieren", "A batch", "x"),
+            "A batch of Frieren is ready"
+        );
+        assert_eq!(ready_title("", "", "[G] Film"), "[G] Film is ready");
     }
 
     #[test]
     fn a_finish_is_told_once_and_only_for_one_seen_moving() {
-        let mut was = vec!["a".to_string(), "b".to_string()];
+        let mut was: HashSet<String> = ["a", "b"].map(String::from).into();
         let now = [
             ("a".to_string(), true),
             ("b".to_string(), false),
             ("c".to_string(), true),
         ];
         assert_eq!(finished(&mut was, &now), ["a"]);
-        assert_eq!(was, ["b"]);
+        assert_eq!(was, HashSet::from(["b".to_string()]));
         assert!(finished(&mut was, &now).is_empty(), "told once");
         // Removed while it moved: forgotten, never told.
         assert!(finished(&mut was, &[]).is_empty());
