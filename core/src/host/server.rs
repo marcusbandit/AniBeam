@@ -2,6 +2,7 @@
 //! (`stream`); anything else is told so in a small JSON error. The snapshot is built at most once every thirty seconds
 //! however many clients ask.
 
+use std::collections::HashMap;
 use std::path::Path as FsPath;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -29,8 +30,13 @@ pub struct Served {
     pub(super) core: Weak<Core>,
     pub(super) streams: stream::Streams,
     host: String,
-    snapshot: tokio::sync::Mutex<Option<(Instant, Bytes)>>,
+    /// The built snapshot per profile, each behind its own lock, so one person's
+    /// build never holds up another's cached answer (#631).
+    snapshot: std::sync::Mutex<HashMap<u64, Arc<SnapshotSlot>>>,
     library: tokio::sync::Mutex<Option<(Instant, Arc<LibraryPart>)>>,
+    /// The profile each person was answered as, by Tailscale user id, the owner under
+    /// "": a profile never changes its person, so it is looked up once per launch.
+    profiles: std::sync::Mutex<HashMap<String, u64>>,
     peers: tokio::sync::Mutex<Option<(Instant, Arc<Vec<wire::PeerHost>>)>>,
 }
 
@@ -53,8 +59,9 @@ pub fn router(core: Weak<Core>) -> Router {
         core,
         streams: stream::Streams::default(),
         host: hostname(),
-        snapshot: tokio::sync::Mutex::new(None),
+        snapshot: std::sync::Mutex::new(HashMap::new()),
         library: tokio::sync::Mutex::new(None),
+        profiles: std::sync::Mutex::new(HashMap::new()),
         peers: tokio::sync::Mutex::new(None),
     });
     // The episodes themselves answer only while "Stream episodes" is on.
@@ -106,6 +113,14 @@ async fn known_host(request: axum::extract::Request, next: axum::middleware::Nex
     }
 }
 
+/// One profile's cached snapshot.
+type SnapshotSlot = tokio::sync::Mutex<Option<(Instant, Bytes)>>;
+
+/// The profile a request is answered as (#631), set by [`trusted`] before any
+/// route runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Profile(pub u64);
+
 /// The sentence a phone shows when it asks for an episode here while
 /// streaming is off.
 pub const STREAMING_OFF: &str =
@@ -129,6 +144,8 @@ async fn streaming_on(
 /// Refuses a request from a device the person has not trusted: one switched
 /// off in Settings, one the host cannot place on the tailnet while any is,
 /// and anything off the tailnet (`trust::decide`). It runs before every route.
+/// A trusted request is then answered as the profile of the person whose device
+/// asked, and one the host cannot tie to a person is refused.
 async fn trusted(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
@@ -139,16 +156,62 @@ async fn trusted(
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
     // Reading the tailnet can run `tailscale`, so it stays off the async threads.
-    let verdict = tokio::task::spawn_blocking(move || core.host.verdict(from.ip()))
-        .await
-        .unwrap_or(trust::Verdict::Unknown);
-    match trust::refusal(&verdict) {
-        None => next.run(request).await,
-        Some(why) => {
-            tracing::debug!("host refused {from}: {verdict:?}");
-            error(StatusCode::FORBIDDEN, why)
+    let served = st.clone();
+    let decided = tokio::task::spawn_blocking(move || {
+        let verdict = core.host.verdict(from.ip());
+        if verdict != trust::Verdict::Serve {
+            return Ok((verdict, None));
         }
+        let (asker, me) = core.host.asker(from.ip());
+        let key = match &asker {
+            trust::Asker::Owner => String::new(),
+            trust::Asker::Person(user) => user.id.clone(),
+            trust::Asker::Unknown => return Ok((verdict, None)),
+        };
+        let known = served
+            .profiles
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&key)
+            .copied();
+        if let Some(id) = known {
+            return Ok((verdict, Some(id)));
+        }
+        let now = time::now_secs();
+        let learned = me.is_some();
+        let profile = core
+            .store
+            .write(move |c| crate::profiles::resolve(c, &asker, me.as_ref(), now))?;
+        // The owner is remembered only once their Tailscale user is known, so
+        // profile 1 learns it from the first request that can tell.
+        if let Some(id) = profile
+            && (!key.is_empty() || learned)
+        {
+            served
+                .profiles
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(key, id);
+        }
+        Ok::<_, CoreError>((verdict, profile))
+    })
+    .await;
+    let (verdict, profile) = match decided {
+        Ok(Ok(decided)) => decided,
+        Ok(Err(e)) => return failed(&e),
+        Err(_) => (trust::Verdict::Unknown, None),
+    };
+    if let Some(why) = trust::refusal(&verdict) {
+        tracing::debug!("host refused {from}: {verdict:?}");
+        return error(StatusCode::FORBIDDEN, why);
     }
+    let Some(profile) = profile else {
+        tracing::debug!("host refused {from}: no person for it on the tailnet");
+        return error(StatusCode::FORBIDDEN, trust::UNKNOWN_PERSON);
+    };
+    let mut request = request;
+    request.extensions_mut().insert(Profile(profile));
+    next.run(request).await
 }
 
 pub fn host_allowed(host: &str, machine: &str) -> bool {
@@ -301,17 +364,28 @@ async fn peer_list(
     }
 }
 
-async fn snapshot(State(st): State<Arc<Served>>) -> Response {
-    match snapshot_body(&st).await {
+async fn snapshot(
+    State(st): State<Arc<Served>>,
+    axum::Extension(Profile(profile)): axum::Extension<Profile>,
+) -> Response {
+    match snapshot_body(&st, profile).await {
         Ok(body) => json(body),
         Err(e) => failed(&e),
     }
 }
 
-/// The cached snapshot, or a fresh one. The slot stays locked while it is
-/// built, so a burst of clients waits for one build instead of starting many.
-async fn snapshot_body(st: &Served) -> Result<Bytes, CoreError> {
-    let mut slot = st.snapshot.lock().await;
+/// The cached snapshot of one profile, or a fresh one. The slots stay locked
+/// while one is built, so a burst of clients waits for one build instead of
+/// starting many.
+async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
+    let slot = st
+        .snapshot
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .entry(profile)
+        .or_default()
+        .clone();
+    let mut slot = slot.lock().await;
     if let Some((at, body)) = slot.as_ref()
         && at.elapsed() < CACHE_FOR
     {
@@ -321,9 +395,12 @@ async fn snapshot_body(st: &Served) -> Result<Bytes, CoreError> {
         .core
         .upgrade()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let (snapshot, library) = build::snapshot(&core, &st.host).await?;
+    let (snapshot, library) = build::snapshot(&core, &st.host, profile).await?;
     let body = Bytes::from(serde_json::to_vec(&snapshot)?);
-    *st.library.lock().await = Some((Instant::now(), Arc::new(library)));
+    // The posters are everyone's; the owner's read keeps their table fresh.
+    if profile == crate::profiles::OWNER {
+        *st.library.lock().await = Some((Instant::now(), Arc::new(library)));
+    }
     *slot = Some((Instant::now(), body.clone()));
     Ok(body)
 }
@@ -341,9 +418,10 @@ async fn library(st: &Served) -> Result<Arc<LibraryPart>, CoreError> {
         .core
         .upgrade()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let part = tokio::task::spawn_blocking(move || build::library_part(&core))
-        .await
-        .map_err(|e| CoreError::internal(format!("library read: {e}")))??;
+    let part =
+        tokio::task::spawn_blocking(move || build::library_part(&core, crate::profiles::OWNER))
+            .await
+            .map_err(|e| CoreError::internal(format!("library read: {e}")))??;
     let part = Arc::new(part);
     *slot = Some((Instant::now(), part.clone()));
     Ok(part)

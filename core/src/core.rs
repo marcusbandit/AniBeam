@@ -701,6 +701,61 @@ impl Core {
         launch::start(&core)
     }
 
+    /// A call from a device on the tailnet, answered as `profile` (#631): the
+    /// owner's is [`Core::call`] itself. Anyone else's player writes their own
+    /// history and resume points and touches only the sessions it opened. It
+    /// marks nothing on a tracker, since the accounts here are the owner's
+    /// (#632), and changes nothing everyone shares: a track choice is kept as
+    /// it is and Not interested is refused.
+    pub fn call_as(&self, profile: u64, call: Call) -> Result<Reply, CoreError> {
+        if profile == crate::profiles::OWNER {
+            return self.call(call);
+        }
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(CoreError::Internal {
+                message: "core is shut down".to_string(),
+            });
+        }
+        match &call {
+            Call::OpenPlayback { file } => {
+                return Ok(Reply::Playback {
+                    session: Box::new(session::open_for(self, *file, profile)?),
+                });
+            }
+            Call::Tick { session, .. }
+            | Call::ClosePlayback { session, .. }
+            | Call::ReportChapters { session, .. } => {
+                // A session already gone goes on as it would for the owner: a
+                // second close is quiet. Only another person's is not found.
+                if self
+                    .sessions
+                    .profile_of(*session)
+                    .is_some_and(|owner| owner != profile)
+                {
+                    return Err(CoreError::NotFound {
+                        what: Entity::Session,
+                        id: *session,
+                    });
+                }
+            }
+            Call::MarkEpisode { .. } => {
+                return Err(CoreError::invalid(
+                    "tracker",
+                    "the tracker accounts on that computer are its owner's, so this device marks nothing there",
+                ));
+            }
+            Call::SetTrackChoice { .. } => return Ok(Reply::Ok),
+            Call::SetNotInterested { .. } => {
+                return Err(CoreError::invalid(
+                    "not_interested",
+                    "Not interested on that computer is its owner's list, so this device changes nothing there",
+                ));
+            }
+            _ => {}
+        }
+        self.call(call)
+    }
+
     /// Returns fast, always. Every call after `shutdown` fails the same
     /// way, without touching anything else.
     pub fn call(&self, call: Call) -> Result<Reply, CoreError> {

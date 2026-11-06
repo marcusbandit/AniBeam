@@ -33,6 +33,7 @@ pub mod playback;
 pub mod prefs;
 pub mod presence;
 pub(crate) mod process;
+pub mod profiles;
 pub mod releases;
 pub mod repos;
 pub mod stats;

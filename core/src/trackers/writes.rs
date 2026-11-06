@@ -284,7 +284,7 @@ fn finished_again(
     let watched: i64 = conn.query_row(
         "SELECT EXISTS (SELECT 1 FROM completed c
              JOIN files f ON f.series_id = c.series_id AND f.episode_key = c.episode_key
-             WHERE c.series_id = ?1 AND f.kind = 'episode'
+             WHERE c.profile_id = 1 AND c.series_id = ?1 AND f.kind = 'episode'
                AND f.number >= 1 AND f.number < 2 AND c.at > ?2)",
         params![target.series as i64, updated_at],
         |r| r.get(0),
@@ -369,7 +369,8 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
              WHERE f.series_id = ?1 AND f.kind = 'episode' AND COALESCE(f.season, 1) = ?4
                AND f.number >= 1 AND f.number < ?2
                AND NOT EXISTS (SELECT 1 FROM completed c
-                               WHERE c.series_id = f.series_id AND c.episode_key = f.episode_key)",
+                               WHERE c.profile_id = 1 AND c.series_id = f.series_id
+                                 AND c.episode_key = f.episode_key)",
             params![series as i64, past, now, season, How::Marked.as_str()],
         )?;
         tx.execute(
@@ -381,7 +382,7 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
             params![series as i64, past, now, season],
         )?;
         tx.execute(
-            "DELETE FROM completed WHERE series_id = ?1 AND episode_key IN (
+            "DELETE FROM completed WHERE profile_id = 1 AND series_id = ?1 AND episode_key IN (
                  SELECT episode_key FROM files
                  WHERE series_id = ?1 AND kind = 'episode' AND COALESCE(season, 1) = ?3
                    AND number >= ?2)",
@@ -390,7 +391,7 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
         // Taking a count back takes those episodes' finishes with it, all but
         // the ones the player wrote: those episodes were watched here.
         tx.execute(
-            "DELETE FROM watch_log WHERE series_id = ?1 AND how <> ?4 AND episode_key IN (
+            "DELETE FROM watch_log WHERE profile_id = 1 AND series_id = ?1 AND how <> ?4 AND episode_key IN (
                  SELECT episode_key FROM files
                  WHERE series_id = ?1 AND kind = 'episode' AND COALESCE(season, 1) = ?3
                    AND number >= ?2)",

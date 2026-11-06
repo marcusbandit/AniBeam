@@ -71,8 +71,9 @@ pub(crate) type Finishes = HashMap<u64, Vec<(String, i64)>>;
 
 /// Reads the counted finishes off the watch log.
 pub(crate) fn finishes(conn: &Connection) -> Result<Finishes, CoreError> {
-    let mut stmt =
-        conn.prepare("SELECT series_id, episode_key, at FROM watch_log WHERE how <> ?1")?;
+    let mut stmt = conn.prepare(
+        "SELECT series_id, episode_key, at FROM watch_log WHERE profile_id = 1 AND how <> ?1",
+    )?;
     let rows = stmt.query_map([How::Marked.as_str()], |r| {
         Ok((
             r.get::<_, i64>(0)? as u64,

@@ -395,8 +395,9 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
 
     let mut views = Vec::new();
     {
-        let mut stmt =
-            conn.prepare("SELECT series_id, episode_key, at FROM views ORDER BY series_id")?;
+        let mut stmt = conn.prepare(
+            "SELECT series_id, episode_key, at FROM views WHERE profile_id = 1 ORDER BY series_id",
+        )?;
         let read = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, i64>(0)? as u64,
@@ -424,7 +425,7 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
     let mut completed = Vec::new();
     {
         let mut stmt = conn.prepare(
-            "SELECT series_id, episode_key, at FROM completed ORDER BY series_id, episode_key",
+            "SELECT series_id, episode_key, at FROM completed WHERE profile_id = 1 ORDER BY series_id, episode_key",
         )?;
         let read = stmt.query_map([], |r| {
             Ok((
@@ -452,7 +453,7 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
 
     let mut resume_points = Vec::new();
     {
-        let mut stmt = conn.prepare("SELECT series_id, episode_key, position, duration, at FROM resume_points ORDER BY series_id, episode_key")?;
+        let mut stmt = conn.prepare("SELECT series_id, episode_key, position, duration, at FROM resume_points WHERE profile_id = 1 ORDER BY series_id, episode_key")?;
         let read = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, i64>(0)? as u64,
