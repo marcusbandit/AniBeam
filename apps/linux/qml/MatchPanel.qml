@@ -7,6 +7,10 @@
 // confirmed at once; the assets follow and SeriesChanged re-lists the page behind. It opens
 // onto the frame's escape stack and closes through close(), so Escape, the X, a press on
 // the shield and Apply all leave the same way.
+//
+// A walk through several series (#206, the first scan's "Match the 5") sets walkLine ("2 of
+// 5"), which adds Skip beside Close; ended says how the panel left: applied, skipped or
+// closed, so the page can open the next one or stop.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 import com.marcusrosado.AniBeam
@@ -15,6 +19,8 @@ Corner {
     id: root
     objectName: "match-panel"
     property real seriesId: 0
+    property string walkLine: ""
+    signal ended(string how)
     property string seriesTitle: ""
     property var currentMatch: null
     property var results: []
@@ -46,10 +52,11 @@ Corner {
         search.focusInput()
         runSearch(search.text)
     }
-    function close() {
+    function close(how) {
         if (!visible) return
         visible = false
         frame.escapeStack.pop(root)
+        root.ended(how || "closed")
     }
     Component.onDestruction: if (visible) frame.escapeStack.pop(root)
     function runSearch(q) {
@@ -64,7 +71,7 @@ Corner {
         var r = Door.applyMatch(root.seriesId, target)
         if (r.error) { frame.toast(r.error.message); return }
         frame.toast(title ? "Matched to " + title : "Match applied")
-        root.close()
+        root.close("applied")
     }
     // A result row applies by its provider: a TVmaze show through the id-only call, an
     // AniList media as a target with no season
@@ -73,7 +80,7 @@ Corner {
             var out = Door.applyTvmaze(root.seriesId, r.id)
             if (out.error) { frame.toast(out.error.message); return }
             frame.toast("Matched to " + r.title)
-            root.close()
+            root.close("applied")
         } else root.apply({ "Anilist": { "id": r.id, "season": null } }, r.title)
     }
     // A new provider drops the other's rows and asks again for the same words
@@ -149,9 +156,16 @@ Corner {
             height: Math.max(heading.height, closeBtn.height)
             Column {
                 id: heading
-                width: parent.width - closeBtn.width - theme.space(3)
-                Label { text: "Match"; role: "title" }
+                width: parent.width - closeBtn.width - theme.space(3) - (root.walkLine !== "" ? theme.space(30) : 0)
+                Label { text: root.walkLine !== "" ? "Match, " + root.walkLine : "Match"; role: "title" }
                 Label { width: parent.width; text: root.seriesTitle; role: "ui"; color: theme.textDim; elide: Text.ElideRight }
+            }
+            Button {
+                objectName: "match-skip"
+                visible: root.walkLine !== ""
+                anchors.right: closeBtn.left; anchors.rightMargin: theme.space(2); anchors.top: parent.top
+                small: true; icon: "skip-forward"; text: "Skip"
+                onClicked: root.close("skipped")
             }
             Button {
                 id: closeBtn

@@ -258,23 +258,27 @@ pub const VIEWER_QUERY: &str = r"query { Viewer { id name } }";
 
 /// Electron's current-entry query, trackerHandler.ts:430. `userId` is not
 /// optional in practice: `MediaList(mediaId)` without it ignores the
-/// bearer token and answers with some other user's entry.
-pub const MEDIA_LIST_ENTRY_QUERY: &str = r"query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status } }";
+/// bearer token and answers with some other user's entry. The dates and the
+/// rewatch count are what a write fills in when the list has none (#211).
+pub const MEDIA_LIST_ENTRY_QUERY: &str = r"query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status repeat startedAt { year month day } completedAt { year month day } } }";
 
 /// Electron's progress mutation, trackerHandler.ts:445-449. The reply's
 /// `updatedAt` is the tracker's own stamp for the write, which the cache
-/// keeps rather than this machine's clock.
-pub const SAVE_PROGRESS_MUTATION: &str = r"mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus) {
-      SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
+/// keeps rather than this machine's clock. A start or finish date and a
+/// rewatch count ride along when the write sets one; a variable left out of
+/// the request leaves that field as the list has it.
+pub const SAVE_PROGRESS_MUTATION: &str = r"mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus, $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput, $repeat: Int) {
+      SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status, startedAt: $startedAt, completedAt: $completedAt, repeat: $repeat) {
         id progress status updatedAt
       }
     }";
 
 /// Electron's score mutation, trackerHandler.ts:693-697. `scoreRaw` is the
 /// 0 to 100 form AniList converts to the user's own scale, so one number
-/// works whatever their list format is.
-pub const SAVE_SCORE_MUTATION: &str = r"mutation ($mediaId: Int, $scoreRaw: Int, $status: MediaListStatus) {
-      SaveMediaListEntry(mediaId: $mediaId, scoreRaw: $scoreRaw, status: $status) {
+/// works whatever their list format is. The dates and the rewatch count as
+/// `SAVE_PROGRESS_MUTATION` has them.
+pub const SAVE_SCORE_MUTATION: &str = r"mutation ($mediaId: Int, $scoreRaw: Int, $status: MediaListStatus, $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput, $repeat: Int) {
+      SaveMediaListEntry(mediaId: $mediaId, scoreRaw: $scoreRaw, status: $status, startedAt: $startedAt, completedAt: $completedAt, repeat: $repeat) {
         id score status updatedAt
       }
     }";
@@ -298,10 +302,25 @@ pub const SAVE_STATUS_MUTATION: &str = r"mutation ($mediaId: Int, $status: Media
       }
     }";
 
+/// A status from the menu, with a start or finish date when it sets one
+/// (#211). A date left out of the variables stays as the list has it.
+pub const SAVE_LIST_STATUS_MUTATION: &str = r"mutation ($mediaId: Int, $status: MediaListStatus, $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput) {
+      SaveMediaListEntry(mediaId: $mediaId, status: $status, startedAt: $startedAt, completedAt: $completedAt) {
+        id status updatedAt
+      }
+    }";
+
+/// An entry's notes alone (#211). An empty string clears them.
+pub const SAVE_NOTES_MUTATION: &str = r"mutation ($mediaId: Int, $notes: String) {
+      SaveMediaListEntry(mediaId: $mediaId, notes: $notes) {
+        id notes updatedAt
+      }
+    }";
+
 /// Electron's progress sweep, trackerHandler.ts:775-779.
 pub const MEDIA_LIST_COLLECTION_QUERY: &str = r"query ($userId: Int) {
         MediaListCollection(userId: $userId, type: ANIME) {
-          lists { entries { progress status score(format: POINT_10_DECIMAL) repeat updatedAt media { id } } }
+          lists { entries { progress status score(format: POINT_10_DECIMAL) repeat updatedAt notes media { id } } }
         }
       }";
 

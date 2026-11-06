@@ -219,6 +219,11 @@ Corner {
                         color: index === root.index ? theme.accent : theme.text
                     }
                     MouseArea {
+                        Accessible.role: Accessible.MenuItem
+                        Accessible.name: String(modelData)
+                        Accessible.checkable: true
+                        Accessible.checked: index === root.index
+                        Accessible.onPressAction: root.pick(index)
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor

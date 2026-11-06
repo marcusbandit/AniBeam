@@ -28,6 +28,8 @@ struct Offer {
     in_library: bool,
     poster: Option<String>,
     ledger: String,
+    /// The tile's tone for the ledger: 0 quiet, 1 accent, 2 warning, 3 good.
+    ledger_tone: i32,
 }
 
 /// What one source answered for the open show.
@@ -413,6 +415,7 @@ impl Find {
             in_library: true,
             poster: card.poster.clone(),
             ledger: String::new(),
+            ledger_tone: 0,
         }
     }
 
@@ -445,6 +448,7 @@ impl Find {
             in_library: false,
             poster: None,
             ledger: String::new(),
+            ledger_tone: 0,
         }
     }
 
@@ -494,11 +498,15 @@ impl Find {
                         .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_default();
                     Offer {
-                        ledger: if r.file_count == 1 {
+                        // A rule on a source that answers JSON reads no feed (#536)
+                        ledger: if !r.followable {
+                            "no new episodes: its source has no feed".into()
+                        } else if r.file_count == 1 {
                             "1 file".into()
                         } else {
                             format!("{} files", r.file_count)
                         },
+                        ledger_tone: if r.followable { 0 } else { 2 },
                         ..self.offer_named(&r.name, &folder)
                     }
                 })
@@ -570,6 +578,7 @@ impl Find {
                     has_poster,
                     initials: format::initials(&o.show.title).into(),
                     ledger: o.ledger.clone().into(),
+                    ledger_tone: o.ledger_tone,
                     cubes: model(crate::phone::cube_codes(&o.show.cubes)),
                     ..Default::default()
                 }
@@ -1730,5 +1739,6 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
         in_library: false,
         poster: (!poster.is_empty()).then_some(poster),
         ledger: facts.join(", "),
+        ledger_tone: 0,
     }
 }

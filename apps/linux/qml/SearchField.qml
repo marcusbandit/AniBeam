@@ -87,7 +87,8 @@ Corner {
         width: theme.space(7); height: width; radius: width / 2
         color: clearArea.pressed ? theme.surfacePressed : clearArea.containsMouse ? theme.tileHover : "transparent"
         Icon { anchors.centerIn: parent; glyph: "x"; size: theme.space(4); color: clearArea.containsMouse ? theme.text : theme.textDim }
-        MouseArea { id: clearArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared(); input.forceActiveFocus() } }
+        MouseArea { id: clearArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared(); input.forceActiveFocus() }
+            Accessible.role: Accessible.Button; Accessible.name: "Clear the search"; Accessible.onPressAction: clearArea.clicked(null) }
         Tooltip { text: "Clear the search" }
     }
 }

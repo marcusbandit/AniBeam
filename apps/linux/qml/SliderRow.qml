@@ -4,6 +4,8 @@
 // `takesFocus: false` keeps the slider off the keyboard entirely: clicks and drags still
 // work, but the arrows go on to whoever owns them (the player's seek and volume keys).
 // `ground` is the colour the slider sits on, which the handle's ring is cut from.
+// `trackShown: false` leaves the readout alone, for a row that has run out of room;
+// `readoutWidth` is the readout's width, for a caller sizing the row.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 
@@ -19,6 +21,8 @@ Row {
     property real trackWidth: theme.space(40)
     property bool takesFocus: true
     property color ground: theme.bg
+    property bool trackShown: true
+    readonly property real readoutWidth: readout.width
     signal moved(real v)
     spacing: theme.space(3)
 
@@ -27,6 +31,7 @@ Row {
         id: s
         Accessible.name: theme.spokenName(root.accessibleName, "", root, "") + (/^[A-Za-z]{2,}/.test(root.unit) ? ", in " + root.unit : "")
         width: root.trackWidth
+        visible: root.trackShown
         height: theme.controlHeight
         anchors.verticalCenter: parent.verticalCenter
         focusPolicy: root.takesFocus ? Qt.StrongFocus : Qt.NoFocus
@@ -50,6 +55,7 @@ Row {
         }
     }
     Label {
+        id: readout
         anchors.verticalCenter: parent.verticalCenter
         width: root.unit !== "" ? implicitWidth : theme.space(9)
         role: "ledger"

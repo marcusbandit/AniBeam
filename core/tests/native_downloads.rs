@@ -518,7 +518,110 @@ fn list_rules_lists_every_rule_with_counts() {
     assert_eq!(rules[1].torrent_count, 1);
     assert_eq!(rules[1].file_count, 0, "a folder not on this disk");
     assert_eq!(rules[1].query, "Beta Show");
+    // Both feeds answer RSS, or belong to no source the core has: either can follow.
+    assert!(rules[0].followable && rules[1].followable);
     no_anirss(&r.http);
+}
+
+/// Installs a source whose search answers JSON (the tosho kind) from a repo this test signs,
+/// and gives back its install id.
+fn install_json_source(r: &Rig) -> String {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as B64;
+    use ed25519_dalek::{Signer, SigningKey};
+    let k = SigningKey::from_bytes(&[7; 32]);
+    let key = format!("ed25519:{}", B64.encode(k.verifying_key().to_bytes()));
+    let index = json!({"name": "Signed here", "key": key, "serial": 1, "endpoints": [
+        {"id": "api", "name": "api", "version": 1, "kind": "tosho",
+         "url": "https://search.example/feed/json?q={query}"}
+    ]});
+    let payload = serde_json::to_vec(&index).unwrap();
+    let path = r.dir.path().join("repo.json");
+    let file = json!({
+        "format": "anibeam-endpoint-repo",
+        "version": 1,
+        "payload": B64.encode(&payload),
+        "signature": B64.encode(k.sign(&payload).to_bytes()),
+    });
+    std::fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+    let url = path.to_string_lossy().into_owned();
+    let Reply::EndpointRepoPreview { preview } = r
+        .core
+        .call(Call::AddEndpointRepo { url: url.clone() })
+        .unwrap()
+    else {
+        panic!()
+    };
+    r.core
+        .call(Call::TrustEndpointRepo {
+            url: url.clone(),
+            key: preview.key,
+        })
+        .unwrap();
+    let Reply::EndpointCatalog { catalog } = r
+        .core
+        .call(Call::InstallEndpoint {
+            repo: url,
+            id: "api".into(),
+            credentials: vec![],
+        })
+        .unwrap()
+    else {
+        panic!()
+    };
+    catalog
+        .installed
+        .iter()
+        .find(|i| i.id == "api")
+        .unwrap()
+        .install_id
+        .clone()
+}
+
+fn listed_rules(r: &Rig) -> Vec<SubscriptionRule> {
+    r.http.push_for(
+        "rss/rules",
+        200,
+        json!({
+            "Kept": {"affectedFeeds": ["https://search.example/feed/json?q=Kept"], "savePath": "/srv/TV/Kept"},
+            "Fine": {"affectedFeeds": ["https://feed.example/rss?q=Fine"], "savePath": "/srv/TV/Fine"},
+        })
+        .to_string(),
+    );
+    r.http.push_for("torrents/info", 200, "[]".to_string());
+    let seen = r.c.events().iter().map(|e| e.seq).max().unwrap_or(0);
+    assert_eq!(r.core.call(Call::ListSubscriptionRules).unwrap(), Reply::Ok);
+    let read = common::wait_for(
+        &r.c,
+        move |e| e.seq > seen && matches!(e.body, EventBody::SubscriptionsRead { .. }),
+        Duration::from_secs(10),
+    );
+    let EventBody::SubscriptionsRead { rules } = read.body else {
+        unreachable!()
+    };
+    rules
+}
+
+#[test]
+fn a_rule_on_a_source_that_answers_json_cannot_follow_even_with_the_source_off() {
+    let r = rig();
+    let install = install_json_source(&r);
+    let follows = |rules: &[SubscriptionRule]| -> Vec<(String, bool)> {
+        rules
+            .iter()
+            .map(|r| (r.name.clone(), r.followable))
+            .collect()
+    };
+    let want = vec![("Fine".to_string(), true), ("Kept".to_string(), false)];
+    assert_eq!(follows(&listed_rules(&r)), want);
+    // Switched off for search, its subscriptions are still read, and still cannot follow.
+    r.core
+        .call(Call::SetEndpointEnabled {
+            install,
+            enabled: false,
+        })
+        .unwrap();
+    assert_eq!(follows(&listed_rules(&r)), want);
 }
 
 // Removing --------------------------------------------------------------------------

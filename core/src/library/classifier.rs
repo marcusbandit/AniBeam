@@ -131,6 +131,9 @@ struct ExtraHit {
     index: Option<u32>,
     variant: Option<String>,
     raw_label: String,
+    /// The token less its release revision, `SP01` out of `SP01v2`, when only that
+    /// reads as the extra; None when the token as written does.
+    unrevised: Option<String>,
 }
 
 /// A bare number of up to three digits, a release revision allowed (`2v2`).
@@ -176,10 +179,42 @@ static EPISODE_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
 static EPISODE_WORD: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(?:Episode|Ep)$").unwrap());
 
-/// Where the series title ends among the tokens, and whether an episode reading starts
-/// there: at the first lone dash, which reads as one when an episode number or code comes
-/// right after it, else at the first episode token.
-fn title_end(tokens: &[&str]) -> (usize, bool) {
+/// A zero-padded episode number standing alone, `07` or `012`, a revision allowed. A
+/// series title's own number is rarely padded (`Mob Psycho 100`, `Season 3`, a codec's
+/// `264`), and `00` is no episode (`Gundam 00`).
+static PADDED_NUMBER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(0[0-9]{1,2})(?:v[0-9]+)?$").unwrap());
+static SEASON_WORD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(?:season|part|cour|vol|volume)$").unwrap());
+
+/// Where a name with no dash before its number has its episode reading: the first
+/// zero-padded number after the first word and before any dash (`Show 07 Title`,
+/// `Show.07.Special.Delivery`), not right after a season word, and with no marker before
+/// it, so a marker in the series title keeps its own reading (`Show Trailer Collection
+/// 02`) (#497). Its number, for `extract_episode`.
+fn number_reading(tokens: &[&str]) -> Option<(usize, u32)> {
+    let before_dash = tokens
+        .iter()
+        .position(|t| *t == "-")
+        .unwrap_or(tokens.len());
+    let marker = |t: &str| {
+        EXTRA_PATTERNS.iter().any(|(_, re, _)| re.is_match(t))
+            || OTHER_TOKENS.contains(&t.to_lowercase().as_str())
+    };
+    (1..before_dash).find_map(|at| {
+        let n: u32 = PADDED_NUMBER.captures(tokens[at])?[1].parse().ok()?;
+        (n > 0 && !SEASON_WORD.is_match(tokens[at - 1]) && !tokens[..at].iter().any(|t| marker(t)))
+            .then_some((at, n))
+    })
+}
+
+/// Where the series title ends among the tokens, and where the episode reading starts,
+/// when one does. The title ends at the first lone dash, else at the reading, else at
+/// the end. The reading is the first lone dash with an episode number or code right
+/// after it, which skips the dashes of a series title (`Sword Art Online - Alicization -
+/// 05`); else the first episode token or [`number_reading`], whichever comes first
+/// (#497).
+fn title_end(tokens: &[&str]) -> (usize, Option<usize>) {
     let starts_episode = |at: usize| {
         let Some(token) = tokens.get(at) else {
             return false;
@@ -188,16 +223,18 @@ fn title_end(tokens: &[&str]) -> (usize, bool) {
             || (EPISODE_WORD.is_match(token)
                 && tokens.get(at + 1).is_some_and(|n| BARE_INDEX.is_match(n)))
     };
-    if let Some(dash) = tokens.iter().position(|t| *t == "-") {
-        let next = dash + 1;
-        let episode =
-            tokens.get(next).is_some_and(|n| BARE_INDEX.is_match(n)) || starts_episode(next);
-        return (dash, episode);
-    }
-    match (0..tokens.len()).find(|&at| starts_episode(at)) {
-        Some(at) => (at, true),
-        None => (tokens.len(), false),
-    }
+    let dashes = || (0..tokens.len()).filter(|&at| tokens[at] == "-");
+    let first_dash = dashes().next();
+    let reading = dashes()
+        .find(|&dash| {
+            tokens.get(dash + 1).is_some_and(|n| BARE_INDEX.is_match(n)) || starts_episode(dash + 1)
+        })
+        .or_else(|| {
+            let token = (0..tokens.len()).find(|&at| starts_episode(at));
+            let number = number_reading(tokens).map(|(at, _)| at);
+            token.into_iter().chain(number).min()
+        });
+    (first_dash.or(reading).unwrap_or(tokens.len()), reading)
 }
 
 /// Whether the token at `at` is a word of an episode's title: one with a letter in it
@@ -217,11 +254,11 @@ fn title_word_at(tokens: &[&str], at: usize) -> bool {
 fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     let normalised = normalise_for_tokens(file_name);
     let tokens: Vec<&str> = normalised.split_whitespace().collect();
-    let (title_end, episode_after) = title_end(&tokens);
+    let (title_end, reading) = title_end(&tokens);
     // A bare preview or special marker inside the series title, with another title word
     // after it, may be a word of the title (Trailer Park Boys, Special A). It loses to an
-    // episode reading after the title and to any later marker, and is the reading only
-    // when neither comes (#443). One after the episode reading, with another word after
+    // episode reading anywhere in the name and to any later marker, and is the reading
+    // only when neither comes (#443). One after the episode reading, with another word after
     // it, is a word of the episode's title (`S01E05 - Special Delivery`) and is no
     // reading at all (#466).
     let mut title_word = None;
@@ -232,7 +269,11 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
             .and_then(|m| m.get(1))
             .map(|m| m.as_str());
         for (kind, re, word) in EXTRA_PATTERNS.iter() {
-            if let Some(m) = re.captures(token).or_else(|| re.captures(stem?)) {
+            let (found, unrevised) = match re.captures(token) {
+                Some(m) => (Some(m), None),
+                None => (stem.and_then(|s| re.captures(s)), stem),
+            };
+            if let Some(m) = found {
                 let glued = m.get(1).and_then(|g| g.as_str().parse().ok());
                 let apart = || match kind {
                     ExtraKind::Sp | ExtraKind::Pv => index_apart(&tokens[at + 1..]),
@@ -243,9 +284,10 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
                     index: glued.or_else(apart),
                     variant: m.get(2).map(|g| g.as_str().to_lowercase()),
                     raw_label: token.to_string(),
+                    unrevised: unrevised.map(str::to_string),
                 };
                 let bare = *word && hit.index.is_none();
-                if bare && episode_after && at > title_end && title_word_at(&tokens, at + 1) {
+                if bare && reading.is_some_and(|r| at > r) && title_word_at(&tokens, at + 1) {
                     break;
                 }
                 let in_title = bare && at + 1 < title_end;
@@ -262,10 +304,11 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
                 index: None,
                 variant: None,
                 raw_label: token.to_string(),
+                unrevised: None,
             });
         }
     }
-    title_word.filter(|_| !episode_after)
+    title_word.filter(|_| reading.is_none())
 }
 
 fn finalize(season: Option<u32>, episode: f64) -> (Option<u32>, f64) {
@@ -296,6 +339,14 @@ fn extract_episode(file_name: &str) -> (Option<u32>, f64) {
     }
     if let Some(m) = DASH_DECIMAL.captures(&base) {
         return finalize(None, m[1].parse().unwrap_or(1.0));
+    }
+    // A dotted name has no spaces for the patterns above, so its padded number is read
+    // from the tokens, the way `title_end` read it, before the last number in the name
+    // (a codec's `264`) can stand in.
+    let normalised = normalise_for_tokens(file_name);
+    let tokens: Vec<&str> = normalised.split_whitespace().collect();
+    if let Some((_, n)) = number_reading(&tokens) {
+        return finalize(None, n as f64);
     }
     let unrevised = REVISION.replace_all(&base, "$1");
     let survivors: Vec<u64> = ANY_NUMBER
@@ -349,7 +400,40 @@ pub fn format_number(n: f64) -> String {
 pub fn episode_key(c: &Classified, file_name: &str) -> String {
     match c.extra {
         None => number_key(c.season, c.number),
-        Some(_) => file_name.to_string(),
+        Some(_) => extra_key(file_name),
+    }
+}
+
+/// An extra's key: its file name less what tells one release of it from another, so
+/// `SP01.mkv` and `SP01v2.mkv` are two releases of one extra with one history (#468): a
+/// release revision after its marker (`SP01v2`, `OP1av2`) or its index (`OVA 01v2`), and a
+/// checksum tag (`[A1B2C3D4]`), which differs between any two encodes. A name with none
+/// of those is its own key, as every extra's was.
+fn extra_key(file_name: &str) -> String {
+    let mut name = file_name.to_string();
+    if let Some(ExtraHit {
+        raw_label,
+        unrevised: Some(stem),
+        ..
+    }) = find_extra_token(file_name)
+        && let Some(at) = name.rfind(&raw_label)
+    {
+        name = format!("{}{stem}{}", &name[..at], &name[at + raw_label.len()..]);
+    }
+    let name = REVISION.replace_all(&name, "$1");
+    CHECKSUM.replace_all(&name, "").into_owned()
+}
+
+/// A checksum tag in a release's name, `[A1B2C3D4]` or `(A1B2C3D4)`, with the space before.
+static CHECKSUM: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s*[\[(][0-9A-Fa-f]{8}[\])]").unwrap());
+
+/// The history key a file of this name carries when it is an extra, for a document that
+/// names the file rather than the key (an import): the name itself for anything else.
+pub fn key_of_file_name(file_name: &str) -> String {
+    match classify(file_name).extra {
+        Some(_) => extra_key(file_name),
+        None => file_name.to_string(),
     }
 }
 
@@ -842,6 +926,63 @@ mod tests {
     }
 
     #[test]
+    fn a_bare_marker_in_the_episode_title_reads_with_no_dash_or_a_dashed_series_title() {
+        // A bare number with no dash before it starts the episode reading too, and so
+        // does a dash after a series title that has dashes of its own (#497).
+        for (name, number) in [
+            ("Show 07 Trailer Trouble.mkv", 7.0),
+            ("Show.07.Special.Delivery.mkv", 7.0),
+            ("[Group] Show 07 Special Delivery [1080p].mkv", 7.0),
+            (
+                "Sword Art Online - Alicization - 05 - Special Delivery.mkv",
+                5.0,
+            ),
+            ("Show - Season 2 - 05 - Special Delivery.mkv", 5.0),
+            ("Show S01E05 - Special Delivery.mkv", 5.0),
+        ] {
+            let c = ep(name);
+            assert_eq!((c.extra, c.number), (None, number), "{name}");
+        }
+        // A number in the series title before the marker still lets the marker read, and
+        // a marker with its own number is still the extra.
+        assert_eq!(ep("Mob Psycho 100 Special.mkv").extra, Some(ExtraKind::Sp));
+        let c = ep("Show 07 Special 2 Night.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
+        let c = ep("Show - Alicization - 05 - Special.mkv");
+        assert_eq!(c.extra, Some(ExtraKind::Sp));
+        // A number that is the series title's, a season's or a codec's is no reading,
+        // and a marker before the number keeps the file its extra, as before.
+        for (name, kind) in [
+            ("Mobile Suit Gundam 00 Special Edition I.mkv", ExtraKind::Sp),
+            (
+                "Mobile Suit Gundam 00 - Special Edition I.mkv",
+                ExtraKind::Sp,
+            ),
+            ("Mob Psycho 100 - Special Reigen.mkv", ExtraKind::Sp),
+            (
+                "Attack on Titan Season 3 Special Lost Girls.mkv",
+                ExtraKind::Sp,
+            ),
+            (
+                "Attack on Titan Season 03 Special Lost Girls.mkv",
+                ExtraKind::Sp,
+            ),
+            (
+                "Show.Special.Holiday.1080p.WEB.DDP5.1.H.264-GRP.mkv",
+                ExtraKind::Sp,
+            ),
+            ("Show Trailer Collection 02.mkv", ExtraKind::Pv),
+            ("Show.Trailer.Collection.02.mkv", ExtraKind::Pv),
+            ("Show Special Edition 01.mkv", ExtraKind::Sp),
+        ] {
+            assert_eq!(ep(name).extra, Some(kind), "{name}");
+        }
+        // A dotted name reads its padded number, not a codec's at the end.
+        let c = ep("Show.07.Special.Delivery.1080p.WEB.DDP5.1.H.264-GRP.mkv");
+        assert_eq!((c.extra, c.number), (None, 7.0));
+    }
+
+    #[test]
     fn a_number_apart_from_the_token_is_its_index() {
         // The Girls und Panzer OVA Series files (#167).
         let c = ep("[ak-Submarines] Girls und Panzer - OVA 1 [BD 1080p][F37D267C].mkv");
@@ -935,6 +1076,46 @@ mod tests {
         assert_eq!(episode_key(&c, "Show - 12.mkv"), "12");
         let c = ep("Show OP1.mkv");
         assert_eq!(episode_key(&c, "Show OP1.mkv"), "Show OP1.mkv");
+        // Two revisions of one extra share a key, the name without the
+        // revision, so they are one extra's releases with one history (#468).
+        for name in [
+            "[G] Show - SP01v2 [1080p].mkv",
+            "[G] Show - SP01v3 [1080p].mkv",
+        ] {
+            assert_eq!(episode_key(&ep(name), name), "[G] Show - SP01 [1080p].mkv");
+        }
+        let name = "[G] Show - SP01 [1080p].mkv";
+        assert_eq!(episode_key(&ep(name), name), name);
+        // An index written apart takes its revision too, and a checksum differs between
+        // any two encodes, so neither keeps two releases apart.
+        for name in ["Show - OVA 01v2.mkv", "Show - OVA 01.mkv"] {
+            assert_eq!(episode_key(&ep(name), name), "Show - OVA 01.mkv");
+        }
+        for name in [
+            "[G] Show - SP01 [1080p][A1B2C3D4].mkv",
+            "[G] Show - SP01v2 [1080p][E5F60718].mkv",
+        ] {
+            assert_eq!(episode_key(&ep(name), name), "[G] Show - SP01 [1080p].mkv");
+        }
+        // A document that names the file finds the same key; an episode's name stays.
+        assert_eq!(
+            key_of_file_name("[G] Show - SP01v2 [1080p][E5F60718].mkv"),
+            "[G] Show - SP01 [1080p].mkv"
+        );
+        assert_eq!(key_of_file_name("Show - 07v2.mkv"), "Show - 07v2.mkv");
+        assert_eq!(
+            episode_key(&ep("Show_NCOP1v2.mkv"), "Show_NCOP1v2.mkv"),
+            "Show_NCOP1.mkv"
+        );
+        // A number that only looks like a revision stays: PV2 is preview 2.
+        assert_eq!(
+            episode_key(&ep("Show PV2.mkv"), "Show PV2.mkv"),
+            "Show PV2.mkv"
+        );
+        assert_eq!(
+            episode_key(&ep("Show OP1v.mkv"), "Show OP1v.mkv"),
+            "Show OP1v.mkv"
+        );
         // Season 1 keys by the bare number, as every key did before
         // seasons; a later season is prefixed so S01E01 and S02E01 never
         // share a history row.
