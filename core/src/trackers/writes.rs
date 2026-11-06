@@ -34,7 +34,9 @@ use crate::net::anilist::{
 };
 use crate::prefs;
 use crate::time;
-use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, on_hold};
+use crate::trackers::{
+    NO_TOKEN, TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, on_hold,
+};
 
 /// MAL's list API. AniList's address lives with its queries.
 const MAL_API: &str = "https://api.myanimelist.net/v2";
@@ -295,7 +297,11 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
 /// Rates a series out of ten on every connected tracker. `None` is the
 /// Clear button, which is a score of nought on both rather than a call of
 /// its own.
-pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<u64, CoreError> {
+///
+/// A series no connected tracker carries keeps its score on this device
+/// instead (#213), at once and with no job: None then, where a tracker
+/// write answers with its job.
+pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<Option<u64>, CoreError> {
     let target = core.store.read(|c| targets(c, series))?;
     let score = score.unwrap_or(0.0);
     if !(0.0..=10.0).contains(&score) {
@@ -304,14 +310,29 @@ pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<u64, Co
             format!("{score} is outside 0 to 10"),
         ));
     }
-    guard(core, &target)?;
-    start(core, JobKind::Score, target, Action::Score { score })
+    if kept_here(core, &target)? {
+        let now = time::now_secs();
+        // Nought is unrated here as it is on a tracker.
+        let rated = (score > 0.0).then_some(score);
+        core.store
+            .write(move |c| local::set_score(c, series, rated, now))?;
+        push_card(core, series, "score kept here")?;
+        return Ok(None);
+    }
+    start(core, JobKind::Score, target, Action::Score { score }).map(Some)
 }
 
 /// Puts a series on one list on every connected tracker: the status pill's
 /// menu. Repeating is a rewatch the trackers keep their own count for, so
 /// it is not a status this menu sets.
-pub fn set_list_status(core: &Core, series: u64, status: ListStatus) -> Result<u64, CoreError> {
+///
+/// A series no connected tracker carries keeps its status on this device
+/// instead (#213), the way `set_score` keeps a score.
+pub fn set_list_status(
+    core: &Core,
+    series: u64,
+    status: ListStatus,
+) -> Result<Option<u64>, CoreError> {
     if status == ListStatus::Repeating {
         return Err(CoreError::invalid(
             "status",
@@ -319,8 +340,43 @@ pub fn set_list_status(core: &Core, series: u64, status: ListStatus) -> Result<u
         ));
     }
     let target = core.store.read(|c| targets(c, series))?;
-    guard(core, &target)?;
-    start(core, JobKind::SetStatus, target, Action::Status { status })
+    if kept_here(core, &target)? {
+        let now = time::now_secs();
+        core.store
+            .write(move |c| local::set_status(c, series, status, now))?;
+        push_card(core, series, "list status kept here")?;
+        return Ok(None);
+    }
+    start(core, JobKind::SetStatus, target, Action::Status { status }).map(Some)
+}
+
+/// Whether a status or a score stays on this device: the series has no
+/// tracker match, or no account is connected behind the ids it has. A
+/// hidden series is still refused, since hiding is about its tracker sync
+/// and a person who hid it asked for nothing to go out.
+fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
+    match guard(core, target) {
+        Ok(_) => Ok(false),
+        Err(CoreError::Refused {
+            reason: Refusal::NoMatch,
+        })
+        | Err(CoreError::NotConnected { .. }) => Ok(true),
+        Err(e) => Err(e),
+    }
+}
+
+/// The series' card pushed after a write here, so the page redraws.
+fn push_card(core: &Core, series: u64, line: &str) -> Result<(), CoreError> {
+    let images_dir = core.paths.images_dir();
+    let cards = core
+        .store
+        .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))?;
+    core.bus.debug(
+        Stage::Library,
+        line.to_string(),
+        EventBody::SeriesChanged { series: cards },
+    );
+    Ok(())
 }
 
 /// A list status as the status pill names it.

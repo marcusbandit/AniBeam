@@ -24,9 +24,9 @@ use crate::prefs;
 use crate::time;
 use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::transfer::format::{
-    self, Account, Accounts, Completed, Document, ExportedBy, FixEntry, History, MatchEntry,
-    PrefsEntry, ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName, TrackerName,
-    TvmazeName, View,
+    self, Account, Accounts, Completed, Document, ExportedBy, FixEntry, History, ListEntry,
+    MatchEntry, PrefsEntry, ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName,
+    TrackerName, TvmazeName, View,
 };
 
 /// One series as the tables hold it, before it becomes a document entry.
@@ -47,6 +47,8 @@ struct Row {
     episodes_set_season: Option<u32>,
     romaji: Option<String>,
     english: Option<String>,
+    list_status: Option<ListStatus>,
+    list_score: Option<f64>,
 }
 
 /// The whole document, built off the reader connection and the secrets
@@ -203,9 +205,10 @@ fn series_rows(conn: &Connection) -> Result<Vec<Row>, CoreError> {
     let mut stmt = conn.prepare(
         "SELECT s.id, s.kind, s.path, s.folder_name, s.hidden, s.provider, s.anilist_id, s.mal_id, s.tmdb_id, s.tmdb_kind,
                 s.track_choice, COALESCE(t.name, m.title_romaji), m.title_english, s.tvmaze_id,
-                s.episodes_set, s.episodes_set_season
+                s.episodes_set, s.episodes_set_season, l.status, l.score
          FROM series s
          LEFT JOIN anilist_media m ON m.id = s.anilist_id
+         LEFT JOIN local_entries l ON l.series_id = s.id
          LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
          ORDER BY s.id",
     )?;
@@ -231,6 +234,10 @@ fn series_rows(conn: &Connection) -> Result<Vec<Row>, CoreError> {
                 tvmaze_id: r.get::<_, Option<i64>>(13)?.map(|v| v as u64),
                 episodes_set: r.get::<_, Option<i64>>(14)?.map(|v| v as u32),
                 episodes_set_season: r.get::<_, Option<i64>>(15)?.map(|v| v as u32),
+                list_status: r
+                    .get::<_, Option<String>>(16)?
+                    .and_then(|s| ListStatus::from_column(&s)),
+                list_score: r.get(17)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -336,6 +343,11 @@ fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
         episodes_set: row.episodes_set,
         episodes_set_season: row.episodes_set_season,
         fixes: Vec::new(),
+        list: (row.list_status.is_some() || row.list_score.is_some()).then(|| ListEntry {
+            status: row.list_status,
+            score: row.list_score,
+            extra: HashMap::new(),
+        }),
         extra: HashMap::new(),
     }
 }
@@ -562,6 +574,8 @@ mod tests {
             episodes_set_season: None,
             romaji: None,
             english: None,
+            list_status: None,
+            list_score: None,
         }
     }
 

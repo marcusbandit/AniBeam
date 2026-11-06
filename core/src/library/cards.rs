@@ -811,8 +811,8 @@ impl Snapshot {
             community_score: media
                 .and_then(|m| m.average_score)
                 .map(|s| f64::from(s) / 10.0),
-            my_score: entry.and_then(|e| e.score),
-            list_status: entry.and_then(|e| e.status),
+            my_score: self.list_of(row).1,
+            list_status: self.list_of(row).0,
             next_airing: match next_scheduled {
                 Some(n) => Some(Airing {
                     episode: n.number,

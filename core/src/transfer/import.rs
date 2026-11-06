@@ -331,6 +331,19 @@ async fn import_series(
                         params![id as i64, n as i64, entry.episodes_set_season.map(|s| s as i64)],
                     )?;
                 }
+                // The file wins on the list kept here, as it does on the flag
+                if let Some(list) = &entry.list {
+                    tx.execute(
+                        "INSERT OR REPLACE INTO local_entries (series_id, status, score, updated_at)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![
+                            id as i64,
+                            list.status.filter(|s| *s != ListStatus::Repeating).map(ListStatus::as_str),
+                            list.score.filter(|s| (0.0..=10.0).contains(s) && *s > 0.0),
+                            now
+                        ],
+                    )?;
+                }
                 if apply_fixes(tx, &path, kind, &entry.fixes, now, &mut moves)? {
                     unscanned.push(id);
                 }

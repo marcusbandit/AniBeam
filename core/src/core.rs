@@ -926,12 +926,17 @@ impl Core {
                     None => Reply::Ok,
                 },
             ),
-            Call::SetScore { series, score } => Ok(Reply::Started {
-                job: writes::set_score(self, series, score)?,
+            // A series no connected tracker carries keeps these here: Ok, no job (#213)
+            Call::SetScore { series, score } => Ok(match writes::set_score(self, series, score)? {
+                Some(job) => Reply::Started { job },
+                None => Reply::Ok,
             }),
-            Call::SetListStatus { series, status } => Ok(Reply::Started {
-                job: writes::set_list_status(self, series, status)?,
-            }),
+            Call::SetListStatus { series, status } => {
+                Ok(match writes::set_list_status(self, series, status)? {
+                    Some(job) => Reply::Started { job },
+                    None => Reply::Ok,
+                })
+            }
             // Nothing to check up front: an unconnected or a fresh tracker
             // is the job's own skip, not a refusal.
             Call::RefreshProgress { tracker } => {
