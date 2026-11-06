@@ -1262,12 +1262,19 @@ impl Core {
         match action {
             SeriesAction::Hide { hidden } => reads::set_hidden_many(self, &picks, hidden),
             SeriesAction::Rescan => scan::rescan_many(self, &picks),
-            SeriesAction::Score { score } => Ok(Reply::Started {
-                job: writes::start_many(self, &picks, writes::ManyWrite::Score(score))?,
-            }),
-            SeriesAction::ListStatus { status } => Ok(Reply::Started {
-                job: writes::start_many(self, &picks, writes::ManyWrite::Status(status))?,
-            }),
+            // Every pick kept on this device is Ok with no job (#213)
+            SeriesAction::Score { score } => Ok(
+                match writes::start_many(self, &picks, writes::ManyWrite::Score(score))? {
+                    Some(job) => Reply::Started { job },
+                    None => Reply::Ok,
+                },
+            ),
+            SeriesAction::ListStatus { status } => Ok(
+                match writes::start_many(self, &picks, writes::ManyWrite::Status(status))? {
+                    Some(job) => Reply::Started { job },
+                    None => Reply::Ok,
+                },
+            ),
             SeriesAction::FindMatch => {
                 let core = self
                     .arc()

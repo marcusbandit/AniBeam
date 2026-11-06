@@ -411,7 +411,11 @@ pub enum ManyWrite {
 /// away (no match, hidden, no account behind it) is left out and counted;
 /// when every pick is turned away, the first refusal is the answer, as a
 /// single write would give it.
-pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, CoreError> {
+///
+/// A pick no connected tracker carries keeps the score or the status on
+/// this device instead (#213), as one menu's write does. None when every
+/// pick was kept here, so there was no job to start.
+pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Option<u64>, CoreError> {
     let action = match write {
         ManyWrite::Score(score) => {
             let score = score.unwrap_or(0.0);
@@ -434,10 +438,21 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, 
     let mut reachable = Vec::new();
     let mut refused = None;
     let mut left_out = LeftOut::default();
+    let now = time::now_secs();
     for &id in series {
         let target = core.store.read(|c| targets(c, id))?;
-        match guard(core, &target) {
-            Ok(_) => reachable.push(target),
+        match kept_here(core, &target) {
+            Ok(false) => reachable.push(target),
+            Ok(true) => {
+                core.store.write(move |c| match write {
+                    ManyWrite::Score(score) => {
+                        local::set_score(c, id, score.filter(|s| *s > 0.0), now)
+                    }
+                    ManyWrite::Status(status) => local::set_status(c, id, status, now),
+                })?;
+                push_card(core, id, "kept here");
+                left_out.kept += 1;
+            }
             Err(e) => {
                 match &e {
                     CoreError::Refused {
@@ -451,6 +466,9 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, 
         }
     }
     if reachable.is_empty() {
+        if left_out.kept > 0 {
+            return Ok(None);
+        }
         return Err(refused.unwrap_or_else(|| CoreError::invalid("series", "nothing picked")));
     }
     let kind = match action {
@@ -461,9 +479,9 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, 
         .arc()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let jobs = owner.jobs.clone();
-    Ok(jobs.start(kind, move |ctx| async move {
+    Ok(Some(jobs.start(kind, move |ctx| async move {
         run_many(owner, ctx, reachable, action, left_out).await
-    }))
+    })))
 }
 
 async fn run_many(
@@ -552,11 +570,13 @@ struct LeftOut {
     no_match: u64,
     hidden: u64,
     not_connected: u64,
+    /// Kept on this device instead, with no tracker to send to (#213).
+    kept: u64,
 }
 
 impl LeftOut {
     fn total(self) -> u64 {
-        self.no_match + self.hidden + self.not_connected
+        self.no_match + self.hidden + self.not_connected + self.kept
     }
 
     /// One sentence per reason, so the line says what to do about each.
@@ -582,6 +602,13 @@ impl LeftOut {
             out.push(format!(
                 "{n} {} only on a tracker that is not connected.",
                 crate::words::pick(n, "show is", "shows are")
+            ));
+        }
+        if self.kept > 0 {
+            let n = self.kept;
+            out.push(format!(
+                "{n} {} on this computer, with no tracker to send to.",
+                crate::words::pick(n, "show is kept", "shows are kept")
             ));
         }
         out
