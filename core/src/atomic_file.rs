@@ -83,9 +83,12 @@ fn in_turn<T>(target: &Path, save: impl FnOnce() -> T) -> T {
         save()
     };
     let mut all = locks();
-    // Clones are only made under the map's lock, so two (the map's and this one) means no
-    // other save holds or waits for this file.
-    if Arc::strong_count(&turn) == 2 {
+    // Clones are made and given up only under the map's lock, so two (the map's and this
+    // one) means no other save holds or waits for this file. This one goes before the map
+    // is let go, or a save finishing beside it could count it and leave the entry behind.
+    let last = Arc::strong_count(&turn) == 2;
+    drop(turn);
+    if last {
         all.remove(target);
     }
     out
@@ -302,9 +305,11 @@ mod tests {
         write(&path, vec![b'a'; SIZE]).unwrap();
         let stop = std::sync::atomic::AtomicBool::new(false);
         std::thread::scope(|scope| {
+            // Reading while another rename lands over the file is a Unix guarantee; on
+            // Windows an open reader can refuse the rename, so only the writers run there.
             let reader = scope.spawn(|| {
                 let mut torn = 0;
-                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                while cfg!(unix) && !stop.load(std::sync::atomic::Ordering::Relaxed) {
                     if let Ok(bytes) = std::fs::read(&path)
                         && (bytes.len() != SIZE || bytes.iter().any(|b| *b != bytes[0]))
                     {
@@ -336,6 +341,10 @@ mod tests {
         assert_eq!(last.len(), SIZE);
         assert!(last.iter().all(|b| *b == last[0]));
         assert!(!dir.path().join("entries.json.tmp").exists());
+        assert!(
+            !LOCKS.lock().unwrap().contains_key(&path),
+            "the file's turn is given up once the last save ends"
+        );
     }
 
     #[test]
