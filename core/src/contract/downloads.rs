@@ -523,10 +523,14 @@ pub enum AnirssMode {
 /// subscriptions and adding torrents go to qBittorrent's Web API directly.
 /// The endpoint list is then the core's own sources, and `ConnectDownloads`
 /// never starts or asks anirss.
+///
+/// The native engine is the default (#552): fresh settings pick it, and so
+/// do settings stored before the choice existed or naming an engine this
+/// build does not know. Settings that name anirss keep it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum DownloadsEngine {
-    #[default]
     Anirss,
+    #[default]
     Native,
 }
 
@@ -620,7 +624,8 @@ pub struct DownloadSettings {
     #[serde(default)]
     pub rolling: RollingSettings,
     /// Settings saved before the choice existed, and a value this build
-    /// does not know, read as anirss.
+    /// does not know, read as the native engine (#552); a stored anirss
+    /// stays anirss.
     #[serde(default, deserialize_with = "lenient_engine")]
     pub engine: DownloadsEngine,
 }

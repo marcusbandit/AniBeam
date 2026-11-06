@@ -35,7 +35,8 @@ fn settings(anirss_command: &str) -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: Default::default(),
-        engine: Default::default(),
+        // These run on anirss, which is no longer the default (#552)
+        engine: DownloadsEngine::Anirss,
     }
 }
 

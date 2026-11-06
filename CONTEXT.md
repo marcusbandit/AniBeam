@@ -266,6 +266,10 @@ _Avoid_: match (that is the metadata match), mapping
 A torrent as the torrent client reports it: its state, progress and speed. The one thing in the app that is polled, and only while the Downloads page is up: every two seconds while one is moving, every fifteen while none is.
 _Avoid_: download, job, task
 
+**Downloads choice**:
+What searches, follows and downloads on the desktop, under Settings, Downloads: AniBeam itself (the core's own port of anirss, which searches the core's sources and writes the torrent client's rules directly) or the search helper (anirss, run as the sidecar or reached on a server). AniBeam itself is the default (#552): fresh settings pick it, and so do settings stored before the choice existed or naming one this build does not know. Settings that name the search helper keep it. Sources written only into anirss's own config.toml are not read by AniBeam itself; they come in through an endpoint repo or by hand.
+_Avoid_: backend, mode. The code calls it the downloads engine (`DownloadsEngine`), native or anirss.
+
 **Sidecar**:
 anirss run by the core: `anirss --serve` on a port and token the core chose, started the first time something asks for it and stopped with the core. The other way in is a server somebody else runs, reached by address and token.
 _Avoid_: daemon, service, backend, child

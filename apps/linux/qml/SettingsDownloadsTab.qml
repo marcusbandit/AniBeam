@@ -36,7 +36,8 @@ SettingsTab {
     }
     readonly property bool sidecar: !!draft && draft.anirss_mode === "Sidecar"
     // The engine the draft picks. A stored engine this build does not know comes in as
-    // anirss, and the core keeps it stored until AniBeam itself is picked here (#515)
+    // AniBeam itself, the default (#552), and the core keeps it stored until the search
+    // helper is picked here (#515)
     readonly property bool nativeEngine: !!draft && draft.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
