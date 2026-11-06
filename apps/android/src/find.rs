@@ -289,6 +289,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.on_download_release(|i| with(|f| f.download_release(i)));
     d.on_download_all(|| with(Find::download_all));
     d.on_subscribe(|| with(Find::subscribe));
+    d.on_unfollow(|files| with(|f| f.unfollow(files)));
 }
 
 impl Find {
@@ -389,16 +390,15 @@ impl Find {
             if let Ok(Reply::PhoneRules { rules }) = answer {
                 f.rules = rules;
                 f.show_lens();
+                // The show view's Following card reads the rules too.
+                f.draw_show();
             }
         });
         self.show_lens();
     }
 
     fn offer_of(card: &SeriesCard) -> Offer {
-        let folder = std::path::Path::new(&card.path)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        let folder = last_folder(&card.path);
         Offer {
             show: grid::Show {
                 title: card.title.clone(),
@@ -491,18 +491,16 @@ impl Find {
                 .rules
                 .iter()
                 .map(|r| {
-                    let folder = std::path::Path::new(&r.save_path)
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default();
+                    let folder = last_folder(&r.save_path);
                     Offer {
                         // A rule on a source that answers JSON reads no feed (#536)
                         ledger: if !r.followable {
                             "no new episodes: its source has no feed".into()
-                        } else if r.file_count == 1 {
-                            "1 file".into()
+                        } else if r.torrent_count == 1 {
+                            // Short, for a tile; the show view says the rest.
+                            "1 download".into()
                         } else {
-                            format!("{} files", r.file_count)
+                            format!("{} downloads", r.torrent_count)
                         },
                         ledger_tone: if r.followable { 0 } else { 2 },
                         ..self.offer_named(&r.name, &folder)
@@ -512,10 +510,7 @@ impl Find {
             _ => {
                 let mut folders: Vec<(String, String, f64)> = Vec::new();
                 for t in &self.torrents {
-                    let folder = std::path::Path::new(&t.save_path)
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default();
+                    let folder = last_folder(&t.save_path);
                     match folders.iter_mut().find(|(f, _, _)| *f == folder) {
                         Some(entry) => entry.2 = entry.2.min(t.progress),
                         None => folders.push((folder, t.name.clone(), t.progress)),
@@ -537,7 +532,7 @@ impl Find {
         let lines = [
             "Aired episodes that are not on this phone. Open a show to see who has them.",
             "New episodes still to come, the soonest first.",
-            "The subscriptions: new episodes download by themselves.",
+            "The subscriptions: new episodes download by themselves. Open one to stop it.",
             "What this phone downloaded, a show at a time.",
         ];
         let empty = [
@@ -792,6 +787,8 @@ impl Find {
     }
 
     fn open_show(&mut self, offer: Offer) {
+        // A confirm left open on another show never carries over.
+        self.with_data(|d| d.set_unfollow_ask(false));
         let listed: Vec<_> = crate::local::core()
             .and_then(|c| match c.call(Call::PhoneSearchSources) {
                 Ok(Reply::PhoneSources { sources }) => Some(sources),
@@ -1222,7 +1219,15 @@ impl Find {
         let active = state.active.map(|i| i as i32).unwrap_or(-1);
         let follow = state.follow;
         let replace = state.replace;
+        let rules = rules_for(&self.rules, &show.folder);
+        let rule_name = rules.first().map(|r| r.name.clone()).unwrap_or_default();
+        let rule_said = rules.first().map(|r| rule_line(r)).unwrap_or_default();
         self.with_data(|d| {
+            if rule_name.is_empty() {
+                d.set_unfollow_ask(false);
+            }
+            d.set_rule_name(rule_name.into());
+            d.set_rule_line(rule_said.into());
             d.set_show_title(show.title.clone().into());
             d.set_show_facts(facts_line.join("  ").into());
             d.set_show_poster(poster);
@@ -1618,6 +1623,126 @@ impl Find {
     }
 }
 
+impl Find {
+    /// Stops following the open show: every subscription that fills its folder goes, and
+    /// with `files` what downloaded into that folder too, episodes included. The desktop's
+    /// Unsubscribe, after the same confirm.
+    fn unfollow(&mut self, files: bool) {
+        let busy = self
+            .data()
+            .map(|w| w.global::<FindData>().get_busy())
+            .unwrap_or(false);
+        if busy {
+            return;
+        }
+        let names: Vec<String> = self
+            .show
+            .as_ref()
+            .map(|s| rules_for(&self.rules, &s.offer.show.folder))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|r| r.name.clone())
+            .collect();
+        let Some(name) = names.first().cloned() else {
+            return;
+        };
+        self.with_data(|d| {
+            d.set_unfollow_ask(false);
+            d.set_busy(true);
+        });
+        ask(
+            Call::PhoneUnsubscribe {
+                names: names.clone(),
+                files,
+            },
+            move |f, answer| {
+                f.with_data(|d| d.set_busy(false));
+                match answer {
+                    Ok(_) => {
+                        f.rules.retain(|r| !names.contains(&r.name));
+                        f.line(&unfollowed_line(&name, files), "");
+                    }
+                    // The core takes the subscription out before it deletes, so a failure
+                    // can leave it gone with its downloads still there: the rules are read
+                    // again and the page says what is left.
+                    Err(e) => f.line("", &format!("Stopping did not finish: {}", words(&e))),
+                }
+                f.draw_show();
+                f.refresh();
+            },
+        );
+    }
+}
+
+/// A folder's own name, the last part of `path`.
+fn last_folder(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// A folder name as matching reads it: lower case letters and digits only, so the same show
+/// matches whatever case or punctuation its folder has on either side.
+fn plain_folder(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Every subscription that downloads into a show's folder, matched by the folder's name the
+/// way the Following lens names its shows.
+fn rules_for<'a>(rules: &'a [SubscriptionRule], folder: &str) -> Vec<&'a SubscriptionRule> {
+    let want = plain_folder(folder);
+    if want.is_empty() {
+        return Vec::new();
+    }
+    rules
+        .iter()
+        .filter(|r| plain_folder(&last_folder(&r.save_path)) == want)
+        .collect()
+}
+
+/// What is in a subscription's folder: "3 downloads, 6 files in its folder". The core counts
+/// the folder, so downloads got by hand into it count too.
+fn taken(r: &SubscriptionRule) -> String {
+    let count = |n: u64, one: &str, many: &str| {
+        if n == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{n} {many}")
+        }
+    };
+    format!(
+        "{}, {} in its folder",
+        count(r.torrent_count, "download", "downloads"),
+        count(r.file_count, "file", "files")
+    )
+}
+
+/// The show view's line about its subscription: whether new episodes still come, and what
+/// its folder holds.
+fn rule_line(r: &SubscriptionRule) -> String {
+    let state = if !r.rule_enabled {
+        "It is paused, so no new episodes come"
+    } else if !r.followable {
+        "Its source has no feed, so no new episodes come"
+    } else {
+        "New episodes download by themselves"
+    };
+    format!("{state}. {}.", taken(r))
+}
+
+/// What the page says once a show is no longer followed.
+fn unfollowed_line(name: &str, files: bool) -> String {
+    if files {
+        format!("Stopped following {name} and deleted the downloads in its folder.")
+    } else {
+        format!("Stopped following {name}. Its episodes stay on this phone.")
+    }
+}
+
 /// Every name a library card goes by, the shown title first, each once. A show's
 /// releases are searched by these in order.
 fn names_of(c: &SeriesCard) -> Vec<String> {
@@ -1737,5 +1862,73 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
         poster: (!poster.is_empty()).then_some(poster),
         ledger: facts.join(", "),
         ledger_tone: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule(name: &str, save_path: &str, torrents: u64, files: u64) -> SubscriptionRule {
+        serde_json::from_value(serde_json::json!({
+            "name": name, "feed_url": "https://feed.test/rss?q=x", "save_path": save_path,
+            "torrent_count": torrents, "file_count": files,
+        }))
+        .unwrap()
+    }
+
+    fn names(rules: Vec<&SubscriptionRule>) -> Vec<&str> {
+        rules.iter().map(|r| r.name.as_str()).collect()
+    }
+
+    #[test]
+    fn a_show_finds_every_subscription_that_fills_its_folder() {
+        let rules = [
+            rule("Frieren", "/data/files/Anime/Sousou no Frieren", 3, 3),
+            rule("Dandadan", "/data/files/Anime/Dandadan", 1, 1),
+            rule("Frieren 1080p", "/data/files/Anime/Sousou no Frieren", 3, 3),
+        ];
+        assert_eq!(
+            names(rules_for(&rules, "Sousou no Frieren")),
+            ["Frieren", "Frieren 1080p"]
+        );
+        assert_eq!(
+            names(rules_for(&rules, "dandadan!")),
+            ["Dandadan"],
+            "case and punctuation"
+        );
+        assert!(
+            rules_for(&rules, "Sousou").is_empty(),
+            "the whole name, not a part"
+        );
+        assert!(
+            rules_for(&rules, "").is_empty(),
+            "a show with no folder has none"
+        );
+    }
+
+    #[test]
+    fn a_subscription_says_what_its_folder_holds() {
+        assert_eq!(
+            taken(&rule("A", "/a", 3, 4)),
+            "3 downloads, 4 files in its folder"
+        );
+        assert_eq!(
+            taken(&rule("A", "/a", 1, 1)),
+            "1 download, 1 file in its folder"
+        );
+        let mut stuck = rule("A", "/a", 0, 0);
+        stuck.followable = false;
+        assert!(rule_line(&stuck).starts_with("Its source has no feed"));
+        let mut paused = rule("A", "/a", 0, 0);
+        paused.rule_enabled = false;
+        assert!(rule_line(&paused).starts_with("It is paused"));
+        assert!(rule_line(&rule("A", "/a", 0, 0)).starts_with("New episodes download"));
+    }
+
+    #[test]
+    fn stopping_says_what_happened_to_the_episodes() {
+        assert!(unfollowed_line("Frieren", false).contains("stay on this phone"));
+        assert!(unfollowed_line("Frieren", true).contains("deleted the downloads in its folder"));
     }
 }
