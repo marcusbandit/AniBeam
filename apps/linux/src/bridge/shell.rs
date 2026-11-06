@@ -151,6 +151,21 @@ pub mod qobject {
         /// it opens by itself, what to keep now and once it closes, and what it shows.
         #[qinvokable]
         fn whats_new(self: &Self, seen: &QString, from: &QString) -> QJsonObject;
+        /// Whether the first-run setup opens as the app starts: "open", "settle" (keep it
+        /// as done unseen, this install was in use) or "done". `done` and `notesVersion`
+        /// come from shell.conf, the other two from the core.
+        #[qinvokable]
+        fn first_run(
+            self: &Self,
+            done: bool,
+            notes_version: &QString,
+            has_library: bool,
+            tracked: bool,
+        ) -> QString;
+        /// Makes the Anime folder inside `videos`, a local path, for someone
+        /// with no anime folder yet: { path } on success, { error } when it cannot.
+        #[qinvokable]
+        fn make_starter_folder(self: &Self, videos: &QString) -> QJsonObject;
         /// Asks GitHub whether a newer desktop build is out on `track` (`stable` or
         /// `nightly`, empty for this build's own); updateAvailable says so. No answer, or no
         /// newer build, says nothing.
@@ -253,6 +268,36 @@ const NOTES: &str = include_str!("../../CHANGELOG.md");
 const CHANGES: &[&str] = include!(concat!(env!("OUT_DIR"), "/changes.rs"));
 
 impl qobject::Shell {
+    pub fn first_run(
+        &self,
+        done: bool,
+        notes_version: &QString,
+        has_library: bool,
+        tracked: bool,
+    ) -> QString {
+        use anibeam_core::first_run::{self, Facts};
+        let facts = Facts {
+            done,
+            used_before: crate::runtime::earlier().started,
+            notes_read: !notes_version.to_string().is_empty(),
+            has_library,
+            tracked,
+        };
+        QString::from(first_run::start(facts).as_str())
+    }
+
+    pub fn make_starter_folder(&self, videos: &QString) -> QJsonObject {
+        use anibeam_core::first_run;
+        let videos = std::path::PathBuf::from(videos.to_string());
+        let state = match first_run::make_starter_folder(&videos) {
+            Ok(dir) => serde_json::json!({ "path": dir.to_string_lossy() }),
+            Err(e) => serde_json::json!({
+                "error": format!("Could not make {}: {e}", first_run::starter_folder(&videos).display())
+            }),
+        };
+        crate::json::to_qjson_object(&state)
+    }
+
     pub fn whats_new(&self, seen: &QString, from: &QString) -> QJsonObject {
         use anibeam_core::changelog::{self, Seen};
         let mut seen = Seen {

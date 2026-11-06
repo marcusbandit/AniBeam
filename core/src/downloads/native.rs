@@ -347,6 +347,7 @@ pub(super) async fn subscriptions(core: &Arc<Core>) -> Result<Vec<SubscriptionRu
                 rule_enabled: rule["enabled"].as_bool().unwrap_or(true),
                 save_path,
                 show: None,
+                followable: true,
             }
         })
         .collect();

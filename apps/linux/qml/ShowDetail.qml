@@ -330,7 +330,7 @@ Column {
                 Label { text: "From"; role: "ledger"; color: theme.textFaint }
                 Label { text: root.rule ? (root.source !== "" ? root.source + " (" + root.feedHost(root.rule.feed_url) + ")" : root.feedHost(root.rule.feed_url)) : ""; role: "ui"; color: theme.textDim }
                 Label { text: "Rule"; role: "ledger"; color: theme.textFaint }
-                Label { text: root.rule && root.rule.rule_enabled === false ? "Paused" : "Active"; role: "ui"; color: root.rule && root.rule.rule_enabled === false ? theme.textFaint : theme.text }
+                Label { text: root.rule && root.rule.followable === false ? "Cannot fetch new episodes: its source answers searches but has no feed" : root.rule && root.rule.rule_enabled === false ? "Paused" : "Active"; role: "ui"; color: root.rule && root.rule.followable === false ? theme.red : root.rule && root.rule.rule_enabled === false ? theme.textFaint : theme.text; elide: Text.ElideRight; width: Math.min(implicitWidth, info.width - theme.space(40)) }
                 Label { visible: !!root.ruleView && root.ruleView.must_contain !== ""; text: "Keeps"; role: "ledger"; color: theme.textFaint }
                 Label { visible: !!root.ruleView && root.ruleView.must_contain !== ""; text: root.ruleView ? "releases with \u201c" + root.ruleView.must_contain + "\u201d" : ""; role: "ui"; color: theme.text }
                 Label { visible: !!root.ruleView && root.ruleView.must_not_contain !== ""; text: "Drops"; role: "ledger"; color: theme.textFaint }

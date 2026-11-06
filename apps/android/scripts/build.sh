@@ -82,6 +82,15 @@ fi
 triple() { case "$1" in x86_64) echo x86_64-linux-android ;; arm64-v8a) echo aarch64-linux-android ;; esac; }
 
 scripts/fetch-mpv.sh
+# rust-toolchain.toml pins the version for the whole repo, and that toolchain starts with only
+# the host's standard library, so add the targets this build needs to it. A no-op once they
+# are there; a desktop checkout never downloads Android's standard library.
+if command -v rustup > /dev/null; then
+  targets=()
+  for abi in "${abis[@]}"; do targets+=("$(triple "$abi")"); done
+  rustup target add "${targets[@]}"
+fi
+
 for abi in "${abis[@]}"; do
   echo "build.sh: cargo build --release for $abi"
   cargo build --release --lib --target "$(triple "$abi")"

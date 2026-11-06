@@ -9,13 +9,13 @@ use std::time::{Duration, Instant};
 use anibeam_host_api as wire;
 use axum::Router;
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
+use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 
 use super::build::{self, LibraryPart};
-use super::{convert, stream};
+use super::{convert, stream, trust};
 use crate::contract::CoreError;
 use crate::core::Core;
 use crate::time;
@@ -71,6 +71,10 @@ pub fn router(core: Weak<Core>) -> Router {
         .route("/api/v1/sessions/{id}/skip", get(stream::skip))
         .fallback(not_found)
         .method_not_allowed_fallback(not_allowed)
+        .layer(axum::middleware::from_fn_with_state(
+            served.clone(),
+            trusted,
+        ))
         .layer(axum::middleware::from_fn(known_host))
         .with_state(served)
 }
@@ -89,6 +93,31 @@ async fn known_host(request: axum::extract::Request, next: axum::middleware::Nex
         next.run(request).await
     } else {
         error(StatusCode::MISDIRECTED_REQUEST, "unknown host")
+    }
+}
+
+/// Refuses a request from a device the person has not trusted: one switched
+/// off in Settings, one the host cannot place on the tailnet while any is,
+/// and anything off the tailnet (`trust::decide`). It runs before every route.
+async fn trusted(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let Some(core) = st.core.upgrade() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+    };
+    // Reading the tailnet can run `tailscale`, so it stays off the async threads.
+    let verdict = tokio::task::spawn_blocking(move || core.host.verdict(from.ip()))
+        .await
+        .unwrap_or(trust::Verdict::Unknown);
+    match trust::refusal(&verdict) {
+        None => next.run(request).await,
+        Some(why) => {
+            tracing::debug!("host refused {from}: {verdict:?}");
+            error(StatusCode::FORBIDDEN, why)
+        }
     }
 }
 

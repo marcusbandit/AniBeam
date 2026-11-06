@@ -365,6 +365,10 @@ pub struct Extra {
     /// As `Episode::fixed`.
     #[serde(default)]
     pub fixed: bool,
+    /// As `Episode::versions`: every file of this extra when there is more than one,
+    /// two releases of it (`SP01` and `SP01v2`, #468); empty for a lone file.
+    #[serde(default)]
+    pub versions: Vec<EpisodeVersion>,
 }
 
 /// What a file is, as the user says it (#170): an episode with its number and
@@ -419,6 +423,10 @@ pub struct SeriesDetail {
     pub genres: Vec<String>,
     pub tags: Vec<Tag>,
     pub rewatch_count: Option<u32>,
+    /// The notes on the series' list entry, off the same tracker as the
+    /// card's status: AniList's notes, MAL's comments (#211).
+    #[serde(default)]
+    pub notes: Option<String>,
     pub site_url: Option<String>,
     pub progress: ProgressLine,
     pub next_up: Option<u64>,
@@ -572,7 +580,13 @@ pub struct EpisodeOut {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct WatchingEntry {
     pub anilist_id: u64,
+    /// The display title, by the title-language preference.
     pub title: String,
+    /// AniList's own titles, for a hand-off that needs each one (Get
+    /// episodes searches by the latin titles, whatever the page shows).
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
     pub poster: Option<String>,
     pub progress: u32,
     pub total: Option<u32>,
@@ -846,6 +860,11 @@ pub struct Preferences {
     /// app (`host`). Default off, and per machine: an export never carries it.
     #[serde(default)]
     pub share_over_tailscale: bool,
+    /// The tailnet devices the host refuses, by Tailscale's stable node id.
+    /// Every other device on the tailnet is trusted. Per machine like
+    /// `share_over_tailscale`: an export never carries it.
+    #[serde(default)]
+    pub tailnet_switched_off: Vec<String>,
     /// Whether the core moves a Watching entry nobody has touched in
     /// `on_hold_days` days to On hold on every connected tracker (AniList's
     /// Paused, MAL's On Hold), after each tracker refresh (`trackers::on_hold`).
@@ -1034,6 +1053,7 @@ impl Default for Preferences {
             library_arrange: Arrange::Related,
             library_group_franchises: true,
             share_over_tailscale: false,
+            tailnet_switched_off: Vec::new(),
             on_hold_auto: true,
             on_hold_days: ON_HOLD_DAYS,
             discord_presence: false,
@@ -1051,6 +1071,19 @@ impl Default for Settings {
             provider_order: MATCH_PROVIDERS.to_vec(),
         }
     }
+}
+
+/// A device on the tailnet, for the per-device switch in Settings.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct TailnetDevice {
+    /// Tailscale's stable node id, which `SetTailnetDeviceTrust` takes.
+    pub id: String,
+    pub name: String,
+    /// The operating system Tailscale reports ("android", "linux"), or empty.
+    pub os: String,
+    pub online: bool,
+    /// Whether the host answers it: true unless the person switched it off.
+    pub trusted: bool,
 }
 
 /// What the tailnet host is doing, for the Settings page: whether the

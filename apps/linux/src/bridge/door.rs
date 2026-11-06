@@ -472,6 +472,8 @@ pub mod qobject {
         #[qsignal]
         fn scored(self: Pin<&mut Door>, series: f64, score: f64, outcomes: QJsonArray);
         #[qsignal]
+        fn notes_set(self: Pin<&mut Door>, series: f64, outcomes: QJsonArray);
+        #[qsignal]
         fn list_status_set(
             self: Pin<&mut Door>,
             series: f64,
@@ -507,6 +509,8 @@ pub mod qobject {
         fn import_finished(self: Pin<&mut Door>, summary: QJsonObject);
         #[qsignal]
         fn host_changed(self: Pin<&mut Door>, status: QJsonObject);
+        #[qsignal]
+        fn tailnet_devices_changed(self: Pin<&mut Door>, devices: QJsonArray);
         #[qsignal]
         fn presence_changed(self: Pin<&mut Door>, connected: bool);
         // Downloads
@@ -1371,6 +1375,7 @@ impl qobject::Door {
                 self.as_mut()
                     .list_status_set(n("series"), s("status"), arr("outcomes"))
             }
+            EventBody::NotesSet { .. } => self.as_mut().notes_set(n("series"), arr("outcomes")),
             EventBody::ProgressRefreshed { .. } => self.as_mut().progress_refreshed(s("tracker")),
             EventBody::WatchingRefreshed { .. } => self.as_mut().watching_refreshed(obj("list")),
             EventBody::EpisodeOut { .. } => self.as_mut().episode_out(obj("episode")),
@@ -1402,6 +1407,9 @@ impl qobject::Door {
             EventBody::ExportFinished { .. } => self.as_mut().export_finished(s("path")),
             EventBody::ImportFinished { .. } => self.as_mut().import_finished(obj("summary")),
             EventBody::HostChanged { .. } => self.as_mut().host_changed(obj("status")),
+            EventBody::TailnetDevicesChanged { .. } => {
+                self.as_mut().tailnet_devices_changed(arr("devices"))
+            }
             EventBody::PresenceChanged { connected } => self.as_mut().presence_changed(*connected),
             EventBody::DownloadsStatusChanged { .. } => {
                 self.as_mut().downloads_status_changed(obj("status"))

@@ -3,6 +3,7 @@
 
 pub mod aired;
 pub mod airing_now;
+pub mod atomic_file;
 pub mod calendar;
 pub mod cast;
 pub mod changelog;
@@ -11,6 +12,7 @@ pub mod core;
 pub mod downloads;
 pub mod events;
 pub mod feed;
+pub mod first_run;
 pub mod franchise;
 pub mod host;
 pub mod html;
