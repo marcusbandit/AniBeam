@@ -233,6 +233,19 @@ fn the_auto_match_falls_through_to_tvmaze_when_anilist_misses() {
         (Some("tvmaze".into()), Some(83073), None, 0)
     );
     assert_avatar_drawn(&core, series);
+    // A TVmaze summary was made plain when it was stored, and stays as it is: a
+    // decoded `<Title>` in it is text, not a tag for a second pass to drop (#450).
+    let plain = "A show called <Infinite Dendrogram> & more.";
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE tvmaze_shows SET summary = ?1 WHERE id = 83073",
+                params![plain],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(detail(&core, series).synopsis, plain);
 
     // The metadata table names the provider.
     match core
@@ -1397,29 +1410,26 @@ fn a_cleared_match_survives_a_version_bump_and_a_v1_miss_does_not() {
 /// ones, and text with a bare `<` in it is text, not a tag.
 #[test]
 fn a_summary_decodes_every_entity_and_strips_only_real_tags() {
-    use anibeam_core::net::tvmaze::plain_summary;
+    use anibeam_core::html::plain_text;
     assert_eq!(
-        plain_summary(
+        plain_text(
             "<p>Wait&hellip; it&rsquo;s &ldquo;back&rdquo; &mdash; 2&ndash;3 &lsquo;x&rsquo;</p>"
         ),
         "Wait\u{2026} it\u{2019}s \u{201c}back\u{201d} \u{2014} 2\u{2013}3 \u{2018}x\u{2019}"
     );
-    assert_eq!(
-        plain_summary("Caf&eacute; &#233; &#xE9; &#XE9;"),
-        "Café é é é"
-    );
-    assert_eq!(plain_summary("Tom&#8217;s"), "Tom\u{2019}s");
-    assert_eq!(plain_summary("a < b and c > d"), "a < b and c > d");
-    assert_eq!(plain_summary("1 <2 and 3> 0"), "1 <2 and 3> 0");
-    assert_eq!(plain_summary("<!-- note --><i>One</i></p>"), "One");
+    assert_eq!(plain_text("Caf&eacute; &#233; &#xE9; &#XE9;"), "Café é é é");
+    assert_eq!(plain_text("Tom&#8217;s"), "Tom\u{2019}s");
+    assert_eq!(plain_text("a < b and c > d"), "a < b and c > d");
+    assert_eq!(plain_text("1 <2 and 3> 0"), "1 <2 and 3> 0");
+    assert_eq!(plain_text("<!-- note --><i>One</i></p>"), "One");
     // An entity it cannot name, or a malformed one, stays as written.
     assert_eq!(
-        plain_summary("&bogus; & &#; &#xZZ; AT&T"),
+        plain_text("&bogus; & &#; &#xZZ; AT&T"),
         "&bogus; & &#; &#xZZ; AT&T"
     );
     // Decoding happens once: an escaped entity is not decoded twice.
-    assert_eq!(plain_summary("&amp;lt;b&amp;gt;"), "&lt;b&gt;");
-    assert_eq!(plain_summary("&lt;b&gt;bold&lt;/b&gt;"), "<b>bold</b>");
+    assert_eq!(plain_text("&amp;lt;b&amp;gt;"), "&lt;b&gt;");
+    assert_eq!(plain_text("&lt;b&gt;bold&lt;/b&gt;"), "<b>bold</b>");
 }
 
 fn set_count(core: &Core, series: u64, count: Option<u32>) {

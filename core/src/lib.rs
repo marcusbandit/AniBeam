@@ -13,6 +13,7 @@ pub mod feed;
 pub mod first_run;
 pub mod franchise;
 pub mod host;
+pub mod html;
 pub mod images;
 pub mod jobs;
 pub mod launch;
