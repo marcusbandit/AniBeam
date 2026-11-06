@@ -296,7 +296,7 @@ pub fn connect_tracker(core: &Core, tracker: Tracker, user_id: u64, token: &str)
             c.execute(
                 "INSERT INTO tracker_accounts (tracker, user_id, username, client_id, connected_at, secret_store)
                  VALUES (?1, ?2, 'bandit', '123', ?3, 'file')
-                 ON CONFLICT(tracker) DO UPDATE SET user_id = excluded.user_id, username = excluded.username,
+                 ON CONFLICT(profile_id, tracker) DO UPDATE SET user_id = excluded.user_id, username = excluded.username,
                         client_id = excluded.client_id, connected_at = excluded.connected_at,
                         secret_store = excluded.secret_store",
                 params![tracker.as_str(), user_id as i64, now],

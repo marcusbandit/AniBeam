@@ -88,6 +88,9 @@ pub struct Session {
     /// What Discord shows for this session, built once at `open` and shared
     /// so the clone every tick takes stays cheap.
     pub presence: Arc<Activity>,
+    /// Whose history this session writes (#631): the owner's for this
+    /// computer's own player, the asking person's for a device on the tailnet.
+    pub profile: u64,
 }
 
 /// Every open session, and the counter that names the next one. Ids are per
@@ -109,6 +112,11 @@ impl Sessions {
         self.next.fetch_add(1, Ordering::SeqCst) + 1
     }
 
+    /// Whose history an open session writes (#631), None when it is not open.
+    pub(crate) fn profile_of(&self, id: u64) -> Option<u64> {
+        self.lock().get(&id).map(|s| s.profile)
+    }
+
     /// One session as it stands, cloned so the caller holds no lock while
     /// it works. The skip windows job validates through this and then
     /// carries the clone across its awaits.
@@ -123,9 +131,11 @@ impl Sessions {
 
     /// The newest session that has ticked and was not paused at its last
     /// tick: what is playing, if anything is.
+    /// The owner's session playing now, for Discord: a guest's is never shown.
     pub(crate) fn playing(&self) -> Option<Session> {
         self.lock()
             .values()
+            .filter(|s| s.profile == crate::profiles::OWNER)
             .filter(|s| s.last_position.is_some() && !s.paused)
             .max_by_key(|s| s.id)
             .cloned()
@@ -456,6 +466,12 @@ fn cached_windows(conn: &Connection, series: u64, key: &str) -> Result<Vec<SkipW
 /// Everything the player needs before the first frame, and the session the
 /// ticks that follow belong to.
 pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
+    open_for(core, file, crate::profiles::OWNER)
+}
+
+/// [`open`] for one profile: the resume point it starts from and every row
+/// the session writes are that profile's.
+pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession, CoreError> {
     let images_dir = core.paths.images_dir();
     let (f, s, resume_from, skip_windows, Neighbours { prev, next, first_season }, episode_title, subtitle_defaults, lang) =
         core.store.read(|c| {
@@ -477,8 +493,8 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             let s = series_row(c, f.series, &images_dir)?;
             let resume_from: Option<f64> = c
                 .query_row(
-                    "SELECT position FROM resume_points WHERE series_id = ?1 AND episode_key = ?2",
-                    params![f.series as i64, f.episode_key],
+                    "SELECT position FROM resume_points WHERE profile_id = ?3 AND series_id = ?1 AND episode_key = ?2",
+                    params![f.series as i64, f.episode_key, profile as i64],
                     |r| r.get(0),
                 )
                 .optional()?;
@@ -601,6 +617,7 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             resume_written_at: None,
             paused: false,
             presence,
+            profile,
         },
     );
 
@@ -669,7 +686,10 @@ pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<()
         s.paused = paused;
         (s.clone(), fired)
     };
-    crate::presence::tick(core, s.id, &s.presence, position, paused);
+    // Discord shows the owner's own playing, never a guest's.
+    if s.profile == crate::profiles::OWNER {
+        crate::presence::tick(core, s.id, &s.presence, position, paused);
+    }
     apply(core, &s, &fired)
 }
 
@@ -716,16 +736,20 @@ fn apply(core: &Core, s: &Session, fired: &[Effect]) -> Result<(), CoreError> {
 /// when it is newer than what is there, so a session that outlived a clock
 /// change cannot clobber a fresher one.
 fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
-    let (series, key, now) = (s.series, s.episode_key.clone(), time::now_secs());
+    let (series, key, now, profile) =
+        (s.series, s.episode_key.clone(), time::now_secs(), s.profile);
     core.store.write(move |c| {
         c.execute(
-            "INSERT INTO views (series_id, episode_key, at) VALUES (?1, ?2, ?3)
-             ON CONFLICT(series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
+            "INSERT INTO views (profile_id, series_id, episode_key, at) VALUES (?4, ?1, ?2, ?3)
+             ON CONFLICT(profile_id, series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
              WHERE excluded.at > views.at",
-            params![series as i64, key, now],
+            params![series as i64, key, now, profile as i64],
         )?;
         Ok(())
     })?;
+    if s.profile != crate::profiles::OWNER {
+        return Ok(());
+    }
     let (folder, code) = core.store.read(|c| line_labels(c, s))?;
     core.bus.info(
         Stage::Playback,
@@ -744,6 +768,10 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
 /// The rule has already happened by the time this runs, so whatever the
 /// write answers is the outcome and none of it is a failure of the tick.
 fn mark(core: &Core, s: &Session) {
+    // The tracker accounts are the owner's; a guest's own come with #632.
+    if s.profile != crate::profiles::OWNER {
+        return;
+    }
     let Some(number) = s.number else { return };
     if s.anilist_id.is_none() && s.mal_id.is_none() {
         let folder = core
@@ -788,11 +816,12 @@ fn mark(core: &Core, s: &Session) {
 /// and the card behind the player is pushed so Next up moves on. An extra
 /// only forgets where it was, since it is not an episode of anything.
 fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
-    let (series, key, now, record) = (
+    let (series, key, now, record, profile) = (
         s.series,
         s.episode_key.clone(),
         time::now_secs(),
         !s.is_extra,
+        s.profile,
     );
     // A finish in the watch log needs the episode to have been watched: thirty
     // seconds of forward play, the view rule. A scrub to the credits or a file
@@ -800,19 +829,20 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     let watched = s.viewed;
     core.store.tx(move |tx| {
         tx.execute(
-            "DELETE FROM resume_points WHERE series_id = ?1 AND episode_key = ?2",
-            params![series as i64, key],
+            "DELETE FROM resume_points WHERE profile_id = ?3 AND series_id = ?1 AND episode_key = ?2",
+            params![series as i64, key, profile as i64],
         )?;
         if record {
             tx.execute(
-                "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(series_id, episode_key) DO UPDATE SET at = excluded.at",
-                params![series as i64, key, now],
+                "INSERT INTO completed (profile_id, series_id, episode_key, at) VALUES (?4, ?1, ?2, ?3)
+                 ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET at = excluded.at",
+                params![series as i64, key, now, profile as i64],
             )?;
         }
         if record && watched {
             crate::library::history::log_finish(
                 tx,
+                profile,
                 series,
                 &key,
                 now,
@@ -821,6 +851,11 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
         }
         Ok(())
     })?;
+    // The bus is the owner's shell and log: a guest's playing writes their
+    // rows and says nothing there.
+    if s.profile != crate::profiles::OWNER {
+        return Ok(());
+    }
     core.bus.debug(
         Stage::Playback,
         "resume point cleared",
@@ -852,7 +887,8 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
 /// queued behind whatever the writer is doing, and the queue is FIFO, so a
 /// completion that deletes the row still runs after the upsert before it.
 fn write_resume(core: &Core, s: &Session, position: f64) {
-    let (series, key, now) = (s.series, s.episode_key.clone(), time::now_secs());
+    let (series, key, now, profile) =
+        (s.series, s.episode_key.clone(), time::now_secs(), s.profile);
     // A duration is only known once the shell has reported the chapters, and
     // the row wants a number either way; nought reads as "not known yet" to
     // every fraction drawn off it.
@@ -860,13 +896,16 @@ fn write_resume(core: &Core, s: &Session, position: f64) {
     let named = key.clone();
     core.store.post(move |c| {
         if let Err(e) = c.execute(
-            "INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration, at = excluded.at",
-            params![series as i64, key, position, duration, now],
+            "INSERT INTO resume_points (profile_id, series_id, episode_key, position, duration, at) VALUES (?6, ?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration, at = excluded.at",
+            params![series as i64, key, position, duration, now, profile as i64],
         ) {
             tracing::warn!("the resume point for series {series} {named} was not written: {e}");
         }
     });
+    if s.profile != crate::profiles::OWNER {
+        return;
+    }
     core.bus.debug(
         Stage::Playback,
         "resume point saved",
@@ -965,6 +1004,7 @@ mod tests {
             presence: Arc::new(Activity::describe(
                 "Bebop", "EP 3", None, is_extra, false, None,
             )),
+            profile: crate::profiles::OWNER,
         }
     }
 

@@ -84,6 +84,10 @@ _Avoid_: position, progress, bookmark
 The outcome of the end rule: the position reached the last 30 seconds, a known outro window or the end of the file, so the resume point is cleared and the episode is recorded as completed.
 _Avoid_: finished, done, watched to the end
 
+**Profile**:
+One person's own progress on a computer they share over the tailnet: their history, resume points and tracker accounts. A profile is the Tailscale user a device belongs to, so nobody signs in. The first profile is the person the computer belongs to. The library and the metadata are everyone's.
+_Avoid_: account, user, login
+
 **Watch log**:
 Every finish of an episode, each with its own time and where it came from: played here, set by hand, or imported. A completion records the latest finish for the series page and the cards, and adds one more to the log. Stats reads the log and leaves out what was set by hand. History from before the log came in as one finish per episode.
 _Avoid_: watch history, play log, finishes table
