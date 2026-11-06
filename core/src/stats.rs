@@ -40,7 +40,11 @@ fn finished(snap: &Snapshot, row: &SeriesRow, done: &[(String, i64)]) -> bool {
     let Some(media) = row.media.as_ref() else {
         return false;
     };
-    if media.status.as_deref().and_then(AiringStatus::from_provider) != Some(AiringStatus::Finished)
+    if media
+        .status
+        .as_deref()
+        .and_then(AiringStatus::from_provider)
+        != Some(AiringStatus::Finished)
     {
         return false;
     }

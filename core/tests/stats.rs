@@ -170,7 +170,16 @@ fn a_stale_count_or_an_extra_episode_does_not_finish_a_series() {
     let src = fixtures::insert_source(&core, "/lib");
     // AniList says 24; a hand-set 12 left over must not finish it at 12.
     let long = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Long", "Long");
-    fixtures::insert_media(&core, 1, Some("Long"), None, Some(24), "FINISHED", "TV", None);
+    fixtures::insert_media(
+        &core,
+        1,
+        Some("Long"),
+        None,
+        Some(24),
+        "FINISHED",
+        "TV",
+        None,
+    );
     fixtures::match_series(&core, long, Some(1), None);
     core.store()
         .write(move |c| {
@@ -186,14 +195,26 @@ fn a_stale_count_or_an_extra_episode_does_not_finish_a_series() {
     }
     // Two of three, plus an OVA and an episode 0: still not finished.
     let short = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Short", "Short");
-    fixtures::insert_media(&core, 2, Some("Short"), None, Some(3), "FINISHED", "TV", None);
+    fixtures::insert_media(
+        &core,
+        2,
+        Some("Short"),
+        None,
+        Some(3),
+        "FINISHED",
+        "TV",
+        None,
+    );
     fixtures::match_series(&core, short, Some(2), None);
     for key in ["1", "2", "0", "S00E01"] {
         fixtures::insert_completed(&core, short, key, day(5, 1));
     }
     let s = stats(&core, Some(2026));
     assert_eq!(s.series_completed, 0);
-    assert_eq!(s.episodes, 16, "every finished episode still counts its time");
+    assert_eq!(
+        s.episodes, 16,
+        "every finished episode still counts its time"
+    );
 }
 
 #[test]
