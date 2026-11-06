@@ -871,9 +871,12 @@ fn percent_decode(s: &str) -> String {
 }
 
 /// The definition of a source added by hand, and the secrets lifted out of its address.
+/// `kept` is the kind of the source being edited: one that builds its own search from a bare
+/// address keeps doing so when the address stays bare.
 fn custom_definition(
     name: &str,
     url: &str,
+    kept: Option<&str>,
 ) -> Result<(Definition, Vec<(String, String)>), CoreError> {
     let name = name.trim().to_string();
     let id = id_of(&name);
@@ -887,9 +890,12 @@ fn custom_definition(
     };
     let (template, auth, lifted) = lift_secrets(&url);
     // An address with the search in it is a feed. A kind that builds its own search from a
-    // bare address comes from a repo, whose definition names it.
+    // bare address comes from a repo, whose definition names it, or was added by hand before
+    // #602 and is being edited.
     let kind = if template.contains("{query}") {
         "rss"
+    } else if let Some(kind) = kept.filter(|k| *k == crate::releases::kinds::FILTERED_RSS) {
+        kind
     } else {
         return Err(CoreError::invalid(
             "endpoint url",
@@ -925,7 +931,7 @@ pub fn add_custom(
     url: String,
     credentials: Vec<EndpointCredential>,
 ) -> Result<Reply, CoreError> {
-    let (def, lifted) = custom_definition(&name, &url)?;
+    let (def, lifted) = custom_definition(&name, &url, None)?;
     let (id, name) = (def.id.clone(), def.name.clone());
     let installed = core.store.read(read_installed)?;
     if installed.iter().any(|i| i.def.id == id) {
@@ -983,7 +989,7 @@ pub fn edit_custom(
             "only a source added by hand can be edited",
         ));
     }
-    let (mut def, lifted) = custom_definition(&name, &url)?;
+    let (mut def, lifted) = custom_definition(&name, &url, Some(&row.def.kind))?;
     // A secret the address had as a `{key}` must stay one: a value typed in its place would
     // be kept in the open, and only some keys are lifted out of an address by their name.
     for old in &row.def.auth {
@@ -1054,17 +1060,25 @@ pub fn edit_custom(
 /// sources the same. A row already under a shape name is left alone, so after the first open
 /// this does nothing. Returns how many were renamed.
 pub fn rename_old_kinds(core: &Core) -> Result<usize, CoreError> {
-    let mut renamed = core.store.write(|conn| {
-        let mut n = 0;
-        for (old, now) in crate::releases::kinds::RENAMED {
-            n += conn.execute(
-                "UPDATE installed_endpoints SET definition = json_set(definition, '$.kind', ?2)
+    // Read first: after the first open nothing is left to rename, and a write would take the
+    // store's lock on every open, a CLI's beside a running desktop's.
+    let old = core.store.read(|conn| {
+        let mut n = 0i64;
+        for (old, _) in crate::releases::kinds::RENAMED {
+            n += conn.query_row(
+                "SELECT COUNT(*) FROM installed_endpoints
                  WHERE json_valid(definition) AND json_extract(definition, '$.kind') = ?1",
-                params![old, now],
+                params![old],
+                |r| r.get::<_, i64>(0),
             )?;
         }
         Ok(n)
     })?;
+    let mut renamed = if old == 0 {
+        0
+    } else {
+        rewrite_old_kinds(core)?
+    };
     renamed += crate::phone::rename_old_kinds(core)?;
     if renamed > 0 {
         core.bus.info(
@@ -1074,6 +1088,20 @@ pub fn rename_old_kinds(core: &Core) -> Result<usize, CoreError> {
         );
     }
     Ok(renamed)
+}
+
+fn rewrite_old_kinds(core: &Core) -> Result<usize, CoreError> {
+    core.store.write(|conn| {
+        let mut n = 0;
+        for (old, now) in crate::releases::kinds::RENAMED {
+            n += conn.execute(
+                "UPDATE installed_endpoints SET definition = json_set(definition, '$.kind', ?2)
+                 WHERE json_valid(definition) AND json_extract(definition, '$.kind') = ?1",
+                params![old, now],
+            )?;
+        }
+        Ok(n)
+    })
 }
 
 /// Sources added by hand before #385 can still hold a secret in their stored address. This
@@ -1799,6 +1827,64 @@ mod tests {
     }
 
     #[test]
+    fn a_bare_source_added_by_hand_before_the_rename_can_still_be_edited() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = CorePaths::under(dir.path());
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            FakeHttp::new(),
+            Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        custom(&core, "mirror", "https://tracker.example/rss?q={query}");
+        // As the rename left a bare address added by hand before #602.
+        core.store
+            .write(|conn| {
+                let def: String =
+                    conn.query_row("SELECT definition FROM installed_endpoints", [], |r| {
+                        r.get(0)
+                    })?;
+                let mut def: Definition = serde_json::from_str(&def).unwrap();
+                def.kind = crate::releases::kinds::FILTERED_RSS.into();
+                def.url = "https://tracker.example/".into();
+                conn.execute(
+                    "UPDATE installed_endpoints SET definition = ?1",
+                    params![serde_json::to_string(&def).unwrap()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let install = core
+            .store
+            .read(read_installed)
+            .unwrap()
+            .remove(0)
+            .install_id;
+        edit_custom(
+            &core,
+            install.clone(),
+            "renamed".into(),
+            "https://tracker.example/".into(),
+        )
+        .unwrap();
+        let row = core.store.read(read_installed).unwrap().remove(0);
+        assert_eq!(
+            (row.def.name.as_str(), row.def.kind.as_str()),
+            ("renamed", crate::releases::kinds::FILTERED_RSS)
+        );
+        // A new source by hand still needs its {query}.
+        assert!(
+            add_custom(
+                &core,
+                "other".into(),
+                "https://other.example/".into(),
+                vec![]
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn a_secret_stored_in_an_old_address_moves_to_the_secret_store() {
         let dir = tempfile::tempdir().unwrap();
         let paths = CorePaths::under(dir.path());
@@ -2347,7 +2433,8 @@ mod tests {
     #[test]
     fn a_login_comes_back_filled_and_checks_as_a_custom_source() {
         let (def, lifted) =
-            custom_definition("Tracker", "https://me:p%40ss@t.example/rss?q={query}").unwrap();
+            custom_definition("Tracker", "https://me:p%40ss@t.example/rss?q={query}", None)
+                .unwrap();
         assert!(!def.url.contains("p%40ss"), "{}", def.url);
         let filled = def
             .filled_url(|k| lifted.iter().find(|(l, _)| l == k).map(|(_, v)| v.clone()))
