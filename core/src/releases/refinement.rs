@@ -321,11 +321,11 @@ pub fn add_term_to_query(query: &str, term: &str) -> String {
 
 // One stateless refine step.
 
-/// Generic RSS endpoints (Erai-raws, AniRena, and the like) are word-AND over post text,
-/// so refinements filter the fetched items locally; nyaa refetches server-side so a
-/// narrower query can surface older episodes.
+/// Generic RSS endpoints are word-AND over post text, so refinements filter the fetched
+/// items locally; filtered-rss refetches server-side so a narrower query can surface older
+/// episodes.
 pub fn is_client_side(ep: &Endpoint) -> bool {
-    ep.kind != "nyaa"
+    ep.kind != super::kinds::FILTERED_RSS
 }
 
 /// Result of `apply`. When `applied` is false, `query` and `items` are the inputs
@@ -562,7 +562,11 @@ mod tests {
         Endpoint::new("erai", "rss", "https://erai.example/feed/?s={query}")
     }
     fn nyaa() -> Endpoint {
-        Endpoint::new("nyaa", "nyaa", "https://nyaa.example/")
+        Endpoint::new(
+            "nyaa",
+            crate::releases::kinds::FILTERED_RSS,
+            "https://nyaa.example/",
+        )
     }
     fn generic_rss() -> Endpoint {
         Endpoint::new("rss1", "rss", "https://rss1.example/f?q={query}")

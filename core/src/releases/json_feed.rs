@@ -1,6 +1,8 @@
-//! AnimeTosho, a mirror of nyaa's (and other trackers') releases with a JSON feed. Not an
-//! anirss endpoint kind: the `tosho` kind a repo definition can name, for networks that block
-//! nyaa. The JSON feed lives at the site's own path; `feed.animetosho.org` does not resolve. Its releases come with magnet links, so nothing is fetched from nyaa itself.
+//! The `json-feed` kind: a JSON array of torrent entries in one fixed layout, `title` and
+//! `torrent_name`, a `magnet_uri` or a `torrent_url`, `seeders`, `leechers`,
+//! `torrent_downloaded_count`, `total_size` and the entry's `link`. Not an anirss kind. A
+//! `json` endpoint reads any layout through the field map its definition gives; this one
+//! needs none.
 
 use std::time::Duration;
 
@@ -38,7 +40,7 @@ pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
     Ok(entries
         .into_iter()
         .filter_map(|e| {
-            // A magnet first: the .torrent link points at nyaa, which a network may block.
+            // A magnet first: a network that blocks the tracker may block its .torrent links too.
             let link = e.magnet_uri.or(e.torrent_url)?;
             let title = e
                 .torrent_name
@@ -65,7 +67,7 @@ pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
         .collect())
 }
 
-/// Searches AnimeTosho.
+/// Searches a json-feed endpoint.
 pub async fn fetch(
     http: &dyn Http,
     url: &str,
@@ -113,17 +115,17 @@ mod tests {
     #[test]
     fn the_json_feed_gives_releases_with_magnets_and_the_torrent_name() {
         let body = br#"[{"id":1,"title":"[9volt] Frieren - S2 (WEB 1080p) | Frieren: Beyond (2026)",
-            "torrent_name":"[9volt] Frieren - S2 (WEB 1080p)","link":"https://animetosho.org/view/x",
-            "magnet_uri":"magnet:?xt=urn:btih:F7JB","torrent_url":"https://nyaa.si/download/1.torrent",
+            "torrent_name":"[9volt] Frieren - S2 (WEB 1080p)","link":"https://feed.example/view/x",
+            "magnet_uri":"magnet:?xt=urn:btih:F7JB","torrent_url":"https://tracker.example/download/1.torrent",
             "seeders":12,"leechers":3,"torrent_downloaded_count":0,"total_size":1503238553},
             {"id":2,"title":"no links"}]"#;
-        let items = parse(body, "animetosho").unwrap();
+        let items = parse(body, "feed").unwrap();
         assert_eq!(items.len(), 1, "an entry with no link is left out");
         assert_eq!(items[0].title, "[9volt] Frieren - S2 (WEB 1080p)");
         assert_eq!(items[0].link, "magnet:?xt=urn:btih:F7JB");
         assert_eq!(items[0].size, "1.4 GiB");
         assert_eq!(items[0].seeders, Some(12));
         assert_eq!(items[0].downloads, None);
-        assert_eq!(items[0].source, "animetosho");
+        assert_eq!(items[0].source, "feed");
     }
 }
