@@ -2962,7 +2962,8 @@ Item {
                 ShowCard {
                     required property var modelData
                     width: page.cardWidth
-                    height: implicitHeight
+                    // A folder with no show is still a full card, so the grid stays even
+                    height: modelData.show ? implicitHeight : width * 1.5
                     compact: !modelData.show
                     glyph: "folder"
                     poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
