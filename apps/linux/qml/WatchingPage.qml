@@ -140,7 +140,8 @@ Item {
 
     function reload() {
         var t = Door.getTrackers()
-        if (!t.error) page.anilistConnected = !!(t.reply.state.anilist.connected)
+        // A failed read keeps what the frame last knew, rather than calling AniList not connected
+        page.anilistConnected = !t.error ? !!(t.reply.state.anilist.connected) : !!(Door.trackers.anilist && Door.trackers.anilist.connected)
         if (!page.anilistConnected) { page.entries = []; return }
         var r = Door.listWatching()
         if (r.error) { page.loadFailed = true; frame.fail(r.error, page.reload); return }
@@ -217,7 +218,7 @@ Item {
         // Start watching, or a status changed anywhere, moves an entry between the tabs
         function onJobFinished(job, kind, ok) { if (kind === "SetStatus") page.reload() }
         function onTrackersChanged() { debounce.restart() }
-        function onJobFailed(job, kind, error) { if (kind === "RefreshWatching") { page.refreshing = false; page.loadFailed = page.entries.length === 0; frame.toast(error && error.message ? error.message : "AniList could not be reached") } }
+        function onJobFailed(job, kind, error) { if (kind === "RefreshWatching") { page.refreshing = false; page.loadFailed = page.entries.length === 0; frame.fail(error, function() { page.refresh(true) }) } }
         function onJobCancelled(job, kind) { if (kind === "RefreshWatching") page.refreshing = false }
     }
     Component.onCompleted: { reload(); refresh(false) }

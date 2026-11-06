@@ -35,6 +35,11 @@ Item {
     readonly property var filters: ["All", "Series", "Movies", "MissingFiles"]
     readonly property var filterLabels: ["All", "Series", "Films", "Missing"]
     property string filter: "All"
+    // A read that failed says so with Try again; before #540 it left the page blank
+    property bool loadFailed: false
+    property bool hasFolders: false
+    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast("Scan started") }
+    function clearQuery() { search.text = ""; queryDebounce.stop(); page.query = ""; page.reload() }
     property string query: props.q || ""
     property var counts: ({ all: 0, series: 0, movies: 0, missing_files: 0 })
     property var rows: []            // the filtered list, flat: the drive reads its length
@@ -50,8 +55,10 @@ Item {
     function reload() {
         var keep = scroll.contentY
         var r = Door.listMetadata(page.filter, page.query, Door.revealHidden)
+        page.loadFailed = !!r.error && !page.loaded
         if (r.error) { frame.fail(r.error, page.reload); return }
         page.counts = r.reply.counts
+        if (r.reply.counts.all === 0) { var src = Door.listSources(); page.hasFolders = !src.error && src.reply.sources.length > 0 }
         page.rows = r.reply.rows
         // The figures are the library's, whatever the filter: one more read only when the
         // filtered list is not already the whole library
@@ -496,13 +503,28 @@ Item {
 
         // EmptyState centres itself in its parent, so it gets a plain box in the column
         Item {
-            visible: page.loaded && page.rows.length === 0
+            id: metaEmpty
+            visible: (page.loaded && page.rows.length === 0) || page.loadFailed
             width: parent.width
             height: visible ? theme.space(60) : 0
+            readonly property bool none: !page.loadFailed && page.counts.all === 0
             EmptyState {
-                icon: page.counts.all === 0 ? "database" : "search"
-                title: page.counts.all === 0 ? "No show info yet" : page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing under this filter"
-                body: page.counts.all === 0 ? "Your library is empty. Add a folder in Settings and scan it to get started." : page.query !== "" ? "" : "No series here right now."
+                objectName: "metadata-empty"
+                icon: page.loadFailed ? "circle-alert" : parent.none ? "database" : "search"
+                title: page.loadFailed ? "Show info did not load"
+                     : parent.none ? (page.hasFolders ? "Nothing found in your folders yet" : "No show info yet")
+                     : page.query !== "" ? "No matches for \"" + page.query + "\""
+                     : "Nothing under " + page.filter
+                body: page.loadFailed ? "AniBeam could not read the library just now. Try again in a moment."
+                    : parent.none ? (page.hasFolders ? "AniBeam found no series in the folders it watches. Scan them again, or check the folders in Settings."
+                                                    : "Your library is empty. Add the folder your anime lives in and AniBeam scans it.")
+                    : page.query !== "" ? "No title in this view has those words."
+                    : "None of your series fit this filter right now. All shows the rest."
+                Button { visible: page.loadFailed; text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
+                Button { visible: metaEmpty.none && page.hasFolders; text: "Scan all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
+                Button { visible: metaEmpty.none && !page.hasFolders; text: "Add a folder"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
+                Button { visible: !page.loadFailed && !metaEmpty.none && page.query !== ""; text: "Clear search"; icon: "x"; onClicked: page.clearQuery() }
+                Button { visible: !page.loadFailed && !metaEmpty.none && page.query === "" && page.filter !== "All"; text: "Show all"; icon: "layout-grid"; onClicked: { page.filter = "All"; page.reload() } }
             }
         }
     }
