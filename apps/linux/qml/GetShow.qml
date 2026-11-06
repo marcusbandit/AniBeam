@@ -34,8 +34,9 @@ Item {
     // Set when a Get went through; it clears the picks and is not drawn
     property string actionLine: ""
     property string actionError: ""
-    // The core's own words behind actionError, for Details, and what Try again sends again
+    // The core's own words behind actionError, for Details, and the button that fixes it
     property string actionErrorDetail: ""
+    property string actionFixLabel: ""
     property var actionRetry: null
     property real nowMs: Date.now()
     signal back()
@@ -966,7 +967,7 @@ Item {
                         width: parent.width
                         text: root.actionError
                         detail: root.actionErrorDetail
-                        actionText: root.acting ? "" : "Try again"
+                        actionText: root.acting ? "" : root.actionFixLabel
                         action: root.actionRetry
                     }
                 }

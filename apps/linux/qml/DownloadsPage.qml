@@ -347,12 +347,17 @@ Item {
     property string getLine: ""
     property string getError: ""
     property string getErrorDetail: ""
-    // What the Get error's Try again sends again: the last Get, with its follow
+    // What the last Get sends again: its downloads, with its follow
     property var getRetry: null
-    function failGet(e) {
+    // The Get error's button: { label, act }
+    property var getFix: ({})
+    function failGet(e, retry) {
         page.getError = e ? page.errorWords(e) : ""
         page.getErrorDetail = e ? page.detailOf(e) : ""
+        page.getFix = e ? page.fixOf(e, retry) : ({})
     }
+    // The follow a Get started, so a follow that fails alone is tried again alone
+    property var followPlan: null
     // The torrents that fill a show: linked to its series, or saved under a folder named
     // as it is (a show not scanned into the library yet)
     function keyOf(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "") }
@@ -471,7 +476,7 @@ Item {
             page.pendingFollow = plan.follow ? plan : null
             if (plan.items.length) {
                 var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
-                if (r.error) { page.getActing = false; page.failGet(r.error); return }
+                if (r.error) { page.getActing = false; page.failGet(r.error, page.getRetry); return }
                 page.getJob = r.reply.job
             } else if (plan.follow) page.follow(plan)
             else page.getActing = false
@@ -479,9 +484,10 @@ Item {
     }
     function follow(plan) {
         page.pendingFollow = null
+        page.followPlan = plan
         var series = plan.options && plan.options.series != null ? plan.options.series : -1
         var r = Door.subscribe(plan.followQuery, plan.endpoint, plan.followItems, plan.name, plan.query !== plan.followQuery ? plan.query : "", series)
-        if (r.error) { page.getActing = false; page.failGet(r.error); return }
+        if (r.error) { page.getActing = false; page.failGet(r.error, function() { page.follow(plan) }); return }
         page.followJob = r.reply.job
         page.getActing = true
     }
@@ -539,12 +545,27 @@ Item {
     property string actionLine: ""
     property string actionError: ""
     property string actionErrorDetail: ""
-    // What the action error's Try again sends again: the last subscribe, download or preview
+    // What the last subscribe or download sends again
     property var actionRetry: null
-    function failAction(e) {
+    // The action error's button, taken when the error is shown: { label, act }
+    property var actionFix: ({})
+    function failAction(e, retry) {
         page.actionError = e ? page.errorWords(e) : ""
         page.actionErrorDetail = e ? page.detailOf(e) : ""
+        page.actionFix = e ? page.fixOf(e, retry) : ({})
     }
+    // The button an error offers, read the way frame.fail reads it (#538): a settings fix
+    // opens that tab, a retry runs `retry` again, and an error with no fix offers nothing
+    function fixOf(e, retry) {
+        var fix = String(e && e.fix !== undefined ? e.fix : "retry")
+        if (fix.indexOf("settings:") === 0) {
+            var tab = fix.slice(9)
+            return { label: "Open settings", act: function() { frame.go("settings", { tab: tab }) } }
+        }
+        return fix === "retry" && retry ? { label: "Try again", act: retry } : ({})
+    }
+    // A search error from a call, with its button
+    function failSearch(e, retry) { var f = page.fixOf(e, retry); page.sayOnSearch(page.errorWords(e), page.detailOf(e), f.label, f.act) }
     readonly property var items: state && state.items ? state.items : []
     readonly property var groups: state && state.groups ? state.groups : []
     readonly property int selectedCount: { var n = 0; for (var k in selected) if (selected[k]) n++; return n }
@@ -604,6 +625,12 @@ Item {
     property bool torrentsRead: false
     property string torrentsError: ""
     property string torrentsErrorDetail: ""
+    property var torrentsFix: ({})
+    function failTorrents(e) {
+        page.torrentsError = page.errorWords(e)
+        page.torrentsErrorDetail = page.detailOf(e)
+        page.torrentsFix = page.fixOf(e, page.pollTorrents)
+    }
     // What is being removed, by key: "r:" a rule name, "g:" a group key, "t:" a hash
     property var removing: ({})
     // Removals waiting their turn ({ target, choice }), and the one running
@@ -673,7 +700,7 @@ Item {
     }
     function pollTorrents() {
         var r = Door.listTorrents()
-        if (r.error) { page.torrentsError = page.errorWords(r.error); page.torrentsErrorDetail = page.detailOf(r.error) }
+        if (r.error) page.failTorrents(r.error)
     }
     // A call error in plain words with what to do next (#538): the bridge's own sentences,
     // never the core's message alone; that stays one click away, under Details
@@ -712,7 +739,11 @@ Item {
         if (!names.length) {
             if (page.endpoints.length) {
                 var first = page.endpoints[0].name
-                page.sayOnSearch("Every source is switched off. Switch one on to search.", "", "Turn on " + first, function() { page.setSource(first, true) })
+                page.sayOnSearch("Every source is switched off. Switch one on to search.", "", "Turn on " + first, function() {
+                    page.setSource(first, true)
+                    // A source that runs now searches at once; one to start asks first
+                    if (page.sourceOn(first)) page.runSearch()
+                })
             } else page.sayOnSearch("There are no sources to search yet. Add a source list in Settings, under Downloads.", "", "Open settings", function() { frame.go("settings", { tab: "downloads" }) })
             return
         }
@@ -731,7 +762,8 @@ Item {
         page.searchJobs = jobs
         page.searchResults = results
         if (!Object.keys(jobs).length) {
-            page.sayOnSearch(failed.length === 1 ? page.errorWords(failed[0]) : "No source could start the search. Try again in a moment.",
+            if (failed.length === 1) page.failSearch(failed[0], function() { page.runSearch(only) })
+            else page.sayOnSearch("No source could start the search. Try again in a moment.",
                 failed.map(function(e) { return String(e.message || "") }).join("\n"), "Try again", function() { page.runSearch(only) })
             return
         }
@@ -805,7 +837,7 @@ Item {
     function refine(op) {
         if (!page.state || page.searching) return
         var r = Door.refineReleases(page.state.query, page.state.endpoint, page.state.items, op)
-        if (r.error) { page.sayOnSearch(page.errorWords(r.error), page.detailOf(r.error), "Try again", function() { page.refine(op) }); return }
+        if (r.error) { page.failSearch(r.error, function() { page.refine(op) }); return }
         page.searchJob = r.reply.job
         page.searching = true
         page.searchStartMs = Date.now()
@@ -902,7 +934,7 @@ Item {
     }
     function selectedItems() { return page.items.filter(function(i) { return page.selected[i.link] === true }) }
     function act(r) {
-        if (r.error) { page.failAction(r.error); return }
+        if (r.error) { page.failAction(r.error, page.actionRetry); return }
         page.actionJob = r.reply.job
         page.acting = true
         page.actionLine = ""
@@ -927,9 +959,8 @@ Item {
     }
     function previewSubscription() {
         if (!page.state) return
-        page.actionRetry = page.previewSubscription
         var r = Door.previewSubscription(page.state.query, page.state.endpoint, page.state.items)
-        if (r.error) { page.failAction(r.error); return }
+        if (r.error) { page.failAction(r.error, page.previewSubscription); return }
         page.previewJob = r.reply.job
     }
 
@@ -1563,7 +1594,7 @@ Item {
         }
         function onDownloadsUnavailable(what, error) {
             if (what === "dates") { if (page.datesState === "loading") page.datesState = "none"; return }
-            if (what === "torrents") { page.torrentsError = page.errorWords(error); page.torrentsErrorDetail = page.detailOf(error) }
+            if (what === "torrents") page.failTorrents(error)
             else if (what === "feed" && page.feed) page.feed = { url: page.feed.url, tag: page.feed.tag, entries: page.feed.entries, loading: false, error: page.errorWords(error), detail: page.detailOf(error) }
             // A fresh subscription whose rule could not be read has no feed to read yet. It
             // says so, and the other read, or the watch's next rule read, still fills it.
@@ -1584,7 +1615,13 @@ Item {
                 page.setResult(gn, { state: "error", error: page.errorWords(error), detail: page.detailOf(error) })
                 return
             }
-            if (job === page.getJob || job === page.followJob) { page.getJob = -1; page.followJob = -1; page.getActing = false; page.pendingFollow = null; page.failGet(error); return }
+            if (job === page.getJob || job === page.followJob) {
+                // A follow that failed after its downloads went through is tried again alone
+                var plan = page.followPlan, again = job === page.followJob && plan ? function() { page.follow(plan) } : page.getRetry
+                page.getJob = -1; page.followJob = -1; page.getActing = false; page.pendingFollow = null
+                page.failGet(error, again)
+                return
+            }
             if (job === page.checkJob) { page.checkJob = -1; frame.fail(error, page.checkSources); return }
             if (page.searchJobs[job] !== undefined) {
                 var fn = page.searchJobs[job]
@@ -1594,8 +1631,8 @@ Item {
                 return
             }
             if (job === page.startJob) { page.startDone(false, error); return }
-            if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.sayOnSearch(page.errorWords(error), page.detailOf(error), "Try again", function() { page.runSearch() }) }
-            else if (job === page.actionJob) { page.acting = false; page.failAction(error) }
+            if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.failSearch(error, function() { page.runSearch() }) }
+            else if (job === page.actionJob) { page.acting = false; page.failAction(error, page.actionRetry) }
             else if (job === page.connectJob) { page.connecting = false; frame.fail(error, page.connect) }
             else if (job === page.previewJob) { page.previewJob = -1; frame.fail(error, page.previewSubscription) }
             else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.fail(error, page.repairRule) }
@@ -1606,7 +1643,7 @@ Item {
                 page.queue.forEach(function(q) { page.mark(q.keys, false) })
                 page.queue = []
                 page.finishRunning(false)
-            } else if (kind === "ControlTorrents") frame.fail(error, page.pollTorrents)
+            } else if (kind === "ControlTorrents") frame.fail(error)
         }
         function onJobCancelled(job, kind) {
             if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
@@ -2028,15 +2065,15 @@ Item {
                 Label { visible: !!page.state; text: page.state ? page.state.query : ""; role: "title"; font.pointSize: theme.typeNormal; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle; width: Math.min(implicitWidth, parent.width * 0.5) }
                 Label { visible: !!page.state; text: page.state ? Fmt.plural(page.items.length, "release", "releases") + " on " + page.state.endpoint : ""; role: "ledger"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
                 Label { visible: page.notice !== "" && !page.searching; text: page.notice; role: "ui"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
-                ErrorLine {
-                    objectName: "downloads-search-error"
-                    width: parent.width * 0.6
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: page.searchError
-                    detail: page.searchFix.detail || ""
-                    actionText: page.searchFix.label || ""
-                    action: page.searchFix.act || null
-                }
+            }
+            // On a line of its own: the words wrap and Details opens under them
+            ErrorLine {
+                objectName: "downloads-search-error"
+                width: parent.width
+                text: page.searchError
+                detail: page.searchFix.detail || ""
+                actionText: page.searchFix.label || ""
+                action: page.searchFix.act || null
             }
             // While it runs: what it is doing, for how long, and the ways out
             SearchProgress {
@@ -2341,8 +2378,8 @@ Item {
                             width: parent.width
                             text: page.actionError
                             detail: page.actionErrorDetail
-                            actionText: page.actionErrorDetail !== "" || page.actionRetry ? "Try again" : ""
-                            action: page.actionErrorDetail !== "" ? page.actionRetry : null
+                            actionText: page.actionFix.label || ""
+                            action: page.actionFix.act || null
                         }
                     }
                 }
@@ -2410,7 +2447,8 @@ Item {
                 actionLine: page.getLine
                 actionError: page.getError
                 actionErrorDetail: page.getErrorDetail
-                actionRetry: page.getRetry
+                actionFixLabel: page.getFix.label || ""
+                actionRetry: page.getFix.act || null
                 nowMs: page.nowMs
                 onBack: page.closeGet()
                 onFetch: function(name) { page.fetchGet(name) }
@@ -2719,8 +2757,8 @@ Item {
                 width: parent.width
                 text: page.torrentOn ? page.torrentsError : ""
                 detail: page.torrentsErrorDetail
-                actionText: "Try again"
-                action: function() { page.pollTorrents() }
+                actionText: page.torrentsFix.label || ""
+                action: page.torrentsFix.act || null
             }
             // How much of the disk is watched, counted by episode, and the button that clears it
             Item {
