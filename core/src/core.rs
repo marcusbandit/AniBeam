@@ -305,6 +305,15 @@ impl Core {
         // Here rather than in `launch`: a job that moves the schedule can
         // finish in a core that was never started, as the CLI's are.
         crate::calendar::listen(&core);
+        // Before anything reads an installed endpoint: a kind saved under a site's name gets
+        // its shape name (#602).
+        if let Err(e) = crate::repos::rename_old_kinds(&core) {
+            core.bus.warn(
+                Stage::Downloads,
+                format!("could not give a download source the new name of its kind: {e}"),
+                EventBody::Notice,
+            );
+        }
         Ok(core)
     }
 

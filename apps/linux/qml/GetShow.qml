@@ -473,8 +473,10 @@ Item {
     // ---- Provider words
     function kindWords(e) {
         if (e.on_demand) return "Started when a search needs it"
-        if (e.kind === "nyaa") return "Anime torrents"
+        if (e.kind === "filtered-rss") return "RSS search"
         if (e.kind === "rss") return "RSS feed"
+        if (e.kind === "json-feed" || e.kind === "json") return "JSON search"
+        if (e.kind === "torznab") return "Indexer search"
         return e.kind
     }
     function readyWords(e) {
