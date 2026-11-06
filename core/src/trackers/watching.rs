@@ -4,13 +4,15 @@
 //!
 //! Three rules shape the file. The list is AniList's rather than the main
 //! tracker's, by the watching tab's own decision, and a rewatch counts as
-//! watching, so the page is the `CURRENT` and `REPEATING` entries and
-//! nothing else. Every visit refreshes, the way Electron's
-//! `WatchingPage.tsx` did, so there is no staleness window here at all:
-//! the call answers off the cache at once and hands back the id of the job
-//! filling it. And the cache is the database rather than a session's
-//! memory, which is what Electron never had: the page paints the last list
-//! before the first reply arrives, launch after launch.
+//! watching, so the page is the `CURRENT` and `REPEATING` entries. The
+//! same refresh keeps the `PLANNING` entries for the planning list (#210),
+//! read by `planning`; everything else on the account is another page's.
+//! Every visit refreshes, the way Electron's `WatchingPage.tsx` did, so
+//! there is no staleness window here at all: the call answers off the
+//! cache at once and hands back the id of the job filling it. And the
+//! cache is the database rather than a session's memory, which is what
+//! Electron never had: the page paints the last list before the first
+//! reply arrives, launch after launch.
 //!
 //! Carried from `getAnilistWatchingList` in
 //! `src/main/handlers/trackerHandler.ts` and the page that drew it.
@@ -72,6 +74,27 @@ const AIRING_SQL: &str = "SELECT e.anilist_id, e.number, e.aired_at
 /// recently updated first, with an entry AniList gave none for at the
 /// bottom and ties settled by title.
 pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreError> {
+    list_of(
+        conn,
+        images_dir,
+        [ListStatus::Watching, ListStatus::Repeating],
+    )
+}
+
+/// The planning list (#210): the same read over the Planning entries.
+pub fn planning(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreError> {
+    list_of(
+        conn,
+        images_dir,
+        [ListStatus::Planning, ListStatus::Planning],
+    )
+}
+
+fn list_of(
+    conn: &Connection,
+    images_dir: &Path,
+    statuses: [ListStatus; 2],
+) -> Result<WatchingList, CoreError> {
     let now = time::now_secs();
     // A watching card sits beside the library's own cards, so it reads the
     // same preference: two titles for the same series on one page would be
@@ -84,8 +107,8 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
             params![
                 now,
                 Tracker::Anilist.as_str(),
-                ListStatus::Watching.as_str(),
-                ListStatus::Repeating.as_str()
+                statuses[0].as_str(),
+                statuses[1].as_str()
             ],
             |r| {
                 Ok((
@@ -113,8 +136,8 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
     let rows = stmt.query_map(
         params![
             Tracker::Anilist.as_str(),
-            ListStatus::Watching.as_str(),
-            ListStatus::Repeating.as_str()
+            statuses[0].as_str(),
+            statuses[1].as_str()
         ],
         |r| {
             let anilist_id = r.get::<_, i64>(0)? as u64;
@@ -181,6 +204,13 @@ pub fn list_call(core: &Core) -> Result<Reply, CoreError> {
         .find(|j| j.kind == JobKind::RefreshWatching)
         .map(|j| j.id);
     Ok(Reply::Watching { list, refreshing })
+}
+
+/// `ListPlanning`: the planning list off the cache, at once.
+pub fn planning_call(core: &Core) -> Result<Reply, CoreError> {
+    let images_dir = core.paths.images_dir();
+    let list = core.store.read(|c| planning(c, &images_dir))?;
+    Ok(Reply::Planning { list })
 }
 
 /// How old the cached list may be before `RefreshWatching` without `force`
@@ -330,9 +360,11 @@ async fn fetch(core: &Arc<Core>, user_id: u64, token: &str) -> Result<Vec<Row>, 
             let Some(media_id) = media["id"].as_u64() else {
                 continue;
             };
-            // Anything else on the account is another page's entry.
-            let Some(status @ (ListStatus::Watching | ListStatus::Repeating)) =
-                normalize_status(Tracker::Anilist, entry["status"].as_str(), false)
+            // Planning is kept too, for the planning list (#210); anything
+            // else on the account is another page's entry.
+            let Some(
+                status @ (ListStatus::Watching | ListStatus::Repeating | ListStatus::Planning),
+            ) = normalize_status(Tracker::Anilist, entry["status"].as_str(), false)
             else {
                 continue;
             };
@@ -417,6 +449,22 @@ fn write(tx: &Transaction, rows: &[Row], now: i64) -> Result<(), CoreError> {
             )?;
         }
     }
+    // A show taken off Planning on AniList leaves the planning list now, not at the
+    // next progress sweep: the fetch is the whole list, so a planned row it no longer
+    // carries is stale.
+    let kept: Vec<i64> = rows
+        .iter()
+        .filter(|r| r.status == ListStatus::Planning)
+        .map(|r| r.media_id as i64)
+        .collect();
+    tx.execute(
+        &format!(
+            "DELETE FROM tracker_entries WHERE tracker = ?1 AND status = ?2 AND media_id NOT IN ({})",
+            // SQLite takes an empty list, and NOT IN () is every row
+            kept.iter().map(i64::to_string).collect::<Vec<_>>().join(", ")
+        ),
+        params![Tracker::Anilist.as_str(), ListStatus::Planning.as_str()],
+    )?;
     settings::set(tx, settings::WATCHING_FETCHED_AT, &now)?;
     Ok(())
 }

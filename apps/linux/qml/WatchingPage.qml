@@ -8,6 +8,11 @@
 // The sections: Airing (a next episode is scheduled), Episodes waiting (behind on a
 // finished run), Up to date, and Not in the library (the ghosts). Without AniList the
 // page is one empty state with the connect button.
+//
+// Planning (#210), the second tab: the entries on AniList's Planning list, off the same
+// refresh (ListPlanning reads the cache). On disk first, then the rest. A card opens its
+// actions: Start watching moves it to Watching on every connected tracker and plays the
+// first episode; one not in the library offers Get episodes, which opens Downloads on it.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -20,6 +25,10 @@ Item {
     function escapePressed() { return false }
 
     property var entries: []
+    // "watching" or "planning", kept in the page's props so Back returns to the tab
+    property string tab: props.tab === "planning" ? "planning" : "watching"
+    property var planned: []
+    function pickTab(t) { page.tab = t; frame.nav.current.props = { tab: t }; page.readPlanning() }
     property bool anilistConnected: false
     property bool loadFailed: false
     property real nowMs: Date.now()
@@ -55,7 +64,24 @@ Item {
     // The cards, cut once per reload against that moment's clock. Owned entries go by
     // state: a next episode scheduled is Airing, a finished run with episodes left is
     // waiting, the rest up to date. Every entry the library does not own is a ghost.
-    readonly property var sections: {
+    readonly property var sections: tab === "planning" ? planningSections : watchingSections
+    readonly property var planningSections: {
+        if (!anilistConnected || planned.length === 0) return []
+        var here = [], away = []
+        for (var i = 0; i < planned.length; i++) {
+            var e = planned[i]
+            var item = entryItem(e)
+            var x = { id: item.id, item: item, raw: e, ghost: !owned(e), planning: true,
+                      meta: owned(e) ? "On disk" : (e.total ? Fmt.plural(e.total, "episode", "episodes") : "") }
+            if (owned(e)) here.push(x)
+            else away.push(x)
+        }
+        var out = []
+        if (here.length) out.push({ title: "On disk", cards: here, accent: true, fact: "Ready to start" })
+        if (away.length) out.push({ title: "Not in the library", cards: away, accent: false, fact: "Get episodes to start" })
+        return out
+    }
+    readonly property var watchingSections: {
         if (!anilistConnected || entries.length === 0) return []
         var now = page.cutAt / 1000
         var airing = [], waiting = [], done = [], ghosts = []
@@ -83,7 +109,14 @@ Item {
         return out
     }
     // The head's one line: what the list has to say right now
-    readonly property string summary: {
+    readonly property string summary: tab === "planning" ? planningSummary : watchingSummary
+    readonly property string planningSummary: {
+        if (!anilistConnected) return "What you plan to watch on AniList."
+        if (planned.length === 0) return ""
+        var here = planned.filter(function(e) { return page.owned(e) }).length
+        return Fmt.plural(planned.length, "show", "shows") + " planned, " + here + " on disk."
+    }
+    readonly property string watchingSummary: {
         if (!anilistConnected) return "What you're watching or rewatching on AniList."
         if (entries.length === 0) return ""
         var now = nowMs / 1000, waiting = 0, next = null
@@ -109,6 +142,39 @@ Item {
         page.nowMs = page.cutAt
         page.entries = r.reply.list.entries || []
         if (r.reply.refreshing !== null && r.reply.refreshing !== undefined) page.refreshing = true
+        page.readPlanning()
+    }
+    function readPlanning() {
+        if (!page.anilistConnected) { page.planned = []; return }
+        var r = Door.call("ListPlanning", {})
+        if (r.error) { frame.toast(frame.errorText(r.error)); return }
+        page.planned = r.reply.list.entries || []
+    }
+    // Start watching (#210): Watching on every connected tracker, then the first episode
+    function startWatching(e) {
+        var r = Door.call("SetListStatus", { series: e.owned, status: "Watching" })
+        if (r.error) { frame.toast(frame.errorText(r.error)); return }
+        frame.toast(e.title + " moves to Watching")
+        frame.playNext(e.owned, e.title)
+    }
+    function getEpisodes(e) {
+        frame.go("downloads", { hit: { id: e.anilist_id, title: e.title, romaji: e.title, english: "", native: "",
+                                       cover_url: "", episodes: e.total || 0, format: "", year: 0 } }, "Downloads")
+    }
+    function planningActions(x) {
+        var e = x.raw, items = []
+        if (page.owned(e)) {
+            items.push({ text: "Start watching", icon: "play", action: function() { page.startWatching(e) } })
+            items.push({ text: "Open series", icon: "layers", action: function() { frame.go("series", { id: e.owned }, e.title) } })
+        } else {
+            items.push({ text: "Get episodes", icon: "download", action: function() { page.getEpisodes(e) } })
+        }
+        items.push({ text: "Open on AniList", icon: "external-link", action: function() { frame.openLink(e.site_url || "https://anilist.co/anime/" + e.anilist_id) } })
+        return items
+    }
+    function openPlanning(x, card) {
+        var p = card.mapToItem(frame, card.width / 2, card.height / 2)
+        frame.openMenu(p.x, p.y, page.planningActions(x))
     }
     // To AniList: `force` from Refresh, else only when the cache is stale. The core
     // answers Ok without a fetch when no account is connected, so the page always asks.
@@ -134,7 +200,9 @@ Item {
     Timer { interval: 30000; running: page.entries.length > 0; repeat: true; onTriggered: page.nowMs = Date.now() }
     Connections {
         target: Door
-        function onWatchingRefreshed(list) { page.refreshing = false; page.loadFailed = false; page.cutAt = Date.now(); page.nowMs = page.cutAt; page.entries = list.entries || [] }
+        function onWatchingRefreshed(list) { page.refreshing = false; page.loadFailed = false; page.cutAt = Date.now(); page.nowMs = page.cutAt; page.entries = list.entries || []; page.readPlanning() }
+        // Start watching, or a status changed anywhere, moves an entry between the tabs
+        function onJobFinished(job, kind, ok) { if (kind === "SetStatus") page.reload() }
         function onTrackersChanged() { debounce.restart() }
         function onJobFailed(job, kind, error) { if (kind === "RefreshWatching") { page.refreshing = false; page.loadFailed = page.entries.length === 0; frame.toast(error && error.message ? error.message : "AniList could not be reached") } }
         function onJobCancelled(job, kind) { if (kind === "RefreshWatching") page.refreshing = false }
@@ -159,7 +227,7 @@ Item {
                 id: titleLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Watching"
+                text: page.tab === "planning" ? "Planning" : "Watching"
                 role: "display"
                 font.pointSize: theme.typePage
             }
@@ -167,13 +235,25 @@ Item {
                 objectName: "watching-summary"
                 anchors.left: titleLabel.right
                 anchors.leftMargin: theme.space(3)
-                anchors.right: refreshBtn.visible ? refreshBtn.left : parent.right
+                anchors.right: tabSeg.visible ? tabSeg.left : refreshBtn.visible ? refreshBtn.left : parent.right
                 anchors.rightMargin: theme.space(4)
                 anchors.baseline: titleLabel.baseline
                 text: page.summary
                 role: "ui"
                 color: theme.textDim
                 elide: Text.ElideRight
+            }
+            Seg {
+                id: tabSeg
+                objectName: "watching-tab"
+                visible: page.anilistConnected
+                anchors.right: refreshBtn.visible ? refreshBtn.left : parent.right
+                anchors.rightMargin: theme.space(4)
+                anchors.verticalCenter: parent.verticalCenter
+                options: [{ text: "Watching", name: "watching", count: page.entries.length },
+                          { text: "Planning", name: "planning", count: page.planned.length }]
+                index: page.tab === "planning" ? 1 : 0
+                onPicked: function(i) { page.pickTab(i === 1 ? "planning" : "watching") }
             }
             Button {
                 id: refreshBtn
@@ -232,15 +312,18 @@ Item {
                             width: page.cardWidth
                             height: Math.round(page.cardWidth * 1.5)
                             sourceComponent: Card {
+                                id: watchCard
                                 objectName: "tile-" + tile.modelData.id
                                 item: tile.modelData.item
                                 metaOverride: tile.modelData.meta
                                 ghost: tile.modelData.ghost
                                 posterWidth: page.cardWidth
                                 nowMs: page.nowMs
-                                onOpened: page.open(tile.modelData)
-                                // A show the library does not have has nothing to play: Space opens it
-                                onPlayed: tile.modelData.ghost ? page.open(tile.modelData) : page.playSeries(tile.modelData.raw.owned, tile.modelData.raw.title)
+                                onOpened: tile.modelData.planning ? page.openPlanning(tile.modelData, watchCard) : page.open(tile.modelData)
+                                // A show the library does not have has nothing to play: Space opens it.
+                                // On Planning, Space is Start watching, or Get episodes off disk
+                                onPlayed: tile.modelData.planning ? (tile.modelData.ghost ? page.getEpisodes(tile.modelData.raw) : page.startWatching(tile.modelData.raw))
+                                          : tile.modelData.ghost ? page.open(tile.modelData) : page.playSeries(tile.modelData.raw.owned, tile.modelData.raw.title)
                             }
                         }
                     }
@@ -277,7 +360,15 @@ Item {
                 Button { text: "Try again"; icon: "refresh-cw"; onClicked: { page.reload(); page.refresh(true) } }
             }
             EmptyState {
-                visible: page.anilistConnected && !page.loadFailed
+                objectName: "planning-empty"
+                visible: page.anilistConnected && !page.loadFailed && page.tab === "planning"
+                icon: "bookmark"
+                title: "Nothing on your planning list"
+                body: "Plan to watch on Airing now, or Planning in a show's list menu, puts a show here."
+                Button { text: "Airing now"; icon: "radio"; flat: true; onClicked: frame.go("airing") }
+            }
+            EmptyState {
+                visible: page.anilistConnected && !page.loadFailed && page.tab !== "planning"
                 icon: "eye"
                 title: "Nothing on your watching list"
                 body: "Mark a show as Watching on AniList and it lands here."
