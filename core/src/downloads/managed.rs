@@ -53,10 +53,62 @@ pub fn profile_dir(data_dir: &str) -> PathBuf {
     Path::new(data_dir).join("qbittorrent")
 }
 
-/// Where finished downloads go unless anirss names a folder: the same
-/// `~/Downloads/Anime` anirss itself defaults to.
-pub fn save_dir() -> Option<PathBuf> {
-    Some(std::env::home_dir()?.join("Downloads").join("Anime"))
+/// The save folder a profile's config names already, from an earlier start. None for a
+/// profile that has never been started, or one whose folder was cleared.
+pub fn configured_save_dir(profile: &Path) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(config_file(profile)).ok()?;
+    text.lines()
+        .find_map(|l| l.trim().strip_prefix("Session\\DefaultSavePath="))
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+}
+
+/// Where the built-in client saves, and why (#598).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SaveDir {
+    /// The folder an earlier start wrote into the profile, kept as it is, library or not.
+    Kept(PathBuf),
+    /// A fresh profile saves into the first library folder that is there.
+    Library(PathBuf),
+    /// A fresh profile with no library folder saves into the starter folder, which is made
+    /// and added to the library first, as the setup's "I don't have a folder yet" does.
+    Starter(PathBuf),
+}
+
+impl SaveDir {
+    pub fn path(&self) -> &Path {
+        match self {
+            SaveDir::Kept(p) | SaveDir::Library(p) | SaveDir::Starter(p) => p,
+        }
+    }
+}
+
+/// Where the built-in client saves. `configured` is the profile's own folder, `library`
+/// the library folders that are there now in the order they were added, `videos` the
+/// platform's videos folder. A fresh profile saves into the library, so a download shows
+/// up there by the watcher alone; an existing one keeps the folder it has.
+pub fn pick_save_dir(
+    configured: Option<PathBuf>,
+    library: &[PathBuf],
+    videos: Option<&Path>,
+) -> Option<SaveDir> {
+    if let Some(dir) = configured {
+        return Some(SaveDir::Kept(dir));
+    }
+    if let Some(first) = library.first() {
+        return Some(SaveDir::Library(first.clone()));
+    }
+    videos
+        .filter(|v| v.is_absolute())
+        .map(|v| SaveDir::Starter(crate::first_run::starter_folder(v)))
+}
+
+/// The platform's videos folder (`~/Videos` on Linux), else `Videos` in the home folder.
+pub fn videos_dir() -> Option<PathBuf> {
+    directories::UserDirs::new()
+        .and_then(|u| u.video_dir().map(Path::to_path_buf))
+        .or_else(|| std::env::home_dir().map(|h| h.join("Videos")))
 }
 
 /// The Web UI port an earlier setup wrote into the profile, if there was one.
@@ -265,6 +317,45 @@ mod tests {
         assert_eq!(set_ini(text, "B", "y", "9", false), text);
         assert_eq!(set_ini(text, "B", "y", "9", true), "[A]\nx=1\n\n[B]\ny=9\n");
         assert_eq!(set_ini("", "C", "k", "v", true), "[C]\nk=v\n");
+    }
+
+    #[test]
+    fn the_save_folder_an_earlier_start_wrote_is_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(configured_save_dir(dir.path()), None);
+        write_config(dir.path(), 47321, None).unwrap();
+        assert_eq!(
+            configured_save_dir(dir.path()),
+            None,
+            "a port alone names no folder"
+        );
+        write_config(dir.path(), 47321, Some(Path::new("/mnt/anime"))).unwrap();
+        assert_eq!(
+            configured_save_dir(dir.path()),
+            Some(PathBuf::from("/mnt/anime"))
+        );
+    }
+
+    /// #598: a fresh built-in client saves into the library; one that ran before keeps
+    /// its folder.
+    #[test]
+    fn a_fresh_client_saves_into_the_library_and_an_old_one_keeps_its_folder() {
+        let videos = Path::new("/home/u/Videos");
+        let lib = vec![PathBuf::from("/srv/anime"), PathBuf::from("/srv/films")];
+        assert_eq!(
+            pick_save_dir(Some("/home/u/Downloads/Anime".into()), &lib, Some(videos)),
+            Some(SaveDir::Kept("/home/u/Downloads/Anime".into()))
+        );
+        assert_eq!(
+            pick_save_dir(None, &lib, Some(videos)),
+            Some(SaveDir::Library("/srv/anime".into()))
+        );
+        assert_eq!(
+            pick_save_dir(None, &[], Some(videos)),
+            Some(SaveDir::Starter("/home/u/Videos/Anime".into()))
+        );
+        assert_eq!(pick_save_dir(None, &[], Some(Path::new("Videos"))), None);
+        assert_eq!(pick_save_dir(None, &[], None), None);
     }
 
     #[test]

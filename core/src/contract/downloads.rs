@@ -763,6 +763,14 @@ pub struct DownloadsStatus {
     pub anirss: AnirssStatus,
     pub torrent: TorrentClientStatus,
     pub endpoints: Vec<SearchEndpoint>,
+    /// Where AniBeam's own qBittorrent saves (#598): the folder it was set to, or the one
+    /// it will take on its first start. Empty when there is none to name.
+    #[serde(default)]
+    pub own_save_folder: String,
+    /// `own_save_folder` is a library folder or inside one, so what it saves shows up in
+    /// the library by itself.
+    #[serde(default)]
+    pub own_save_in_library: bool,
 }
 
 /// A place the phone searches. `kind` is `nyaa` (the site's RSS with its

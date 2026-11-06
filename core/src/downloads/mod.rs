@@ -36,6 +36,7 @@ pub mod settings;
 pub mod trash;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
@@ -160,12 +161,78 @@ fn assemble(core: &Core, settings: DownloadSettings) -> DownloadsStatus {
     anirss.config_path = settings::anirss_config_path()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
+    let (own_save_folder, own_save_in_library) = own_save_preview(core);
     DownloadsStatus {
         settings,
         anirss,
         torrent: st.torrent.clone(),
         endpoints: st.endpoints.clone(),
+        own_save_folder,
+        own_save_in_library,
     }
+}
+
+/// The library folders that are there now, in the order they were added, and every
+/// library folder for the in-library check.
+fn library_folders(core: &Core) -> Result<(Vec<PathBuf>, Vec<String>), CoreError> {
+    core.store.read(|c| {
+        let mut stmt = c.prepare("SELECT path, available FROM sources ORDER BY id")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?)))?;
+        let (mut there, mut all) = (Vec::new(), Vec::new());
+        for row in rows {
+            let (path, available) = row?;
+            if available {
+                there.push(PathBuf::from(&path));
+            }
+            all.push(path);
+        }
+        Ok((there, all))
+    })
+}
+
+/// What Settings says about the built-in client's folder, without making anything: the
+/// folder and whether the library covers it.
+fn own_save_preview(core: &Core) -> (String, bool) {
+    let Ok((there, all)) = library_folders(core) else {
+        return (String::new(), false);
+    };
+    let configured = managed::configured_save_dir(&managed::profile_dir(&core.paths.data_dir));
+    match managed::pick_save_dir(configured, &there, managed::videos_dir().as_deref()) {
+        // The starter is added to the library as it is made.
+        Some(managed::SaveDir::Starter(p)) => (p.to_string_lossy().into_owned(), true),
+        Some(dir) => {
+            let path = dir.path().to_string_lossy().into_owned();
+            let covered = all.iter().any(|root| crate::paths::under(&path, root));
+            (path, covered)
+        }
+        None => (String::new(), false),
+    }
+}
+
+/// Where AniBeam's own qBittorrent saves, decided as it starts (#598). A profile that ran
+/// before keeps its folder. A fresh one saves into the first library folder, so a
+/// download shows up by the watcher alone; with no library folder yet it makes `Anime` in
+/// `videos` and adds it to the library, the folder the setup offers to someone with none.
+pub fn own_save_dir(core: &Core, videos: Option<&Path>) -> Result<Option<PathBuf>, CoreError> {
+    let (there, all) = library_folders(core)?;
+    let configured = managed::configured_save_dir(&managed::profile_dir(&core.paths.data_dir));
+    let Some(dir) = managed::pick_save_dir(configured, &there, videos) else {
+        return Ok(None);
+    };
+    if let managed::SaveDir::Starter(path) = &dir {
+        let videos = videos.unwrap_or(Path::new(""));
+        crate::first_run::make_starter_folder(videos)
+            .map_err(|e| CoreError::io_at(path.to_string_lossy(), e))?;
+        let text = path.to_string_lossy().into_owned();
+        // A library folder that is away right now may hold it already, or sit inside it.
+        if !all
+            .iter()
+            .any(|root| crate::paths::under(&text, root) || crate::paths::under(root, &text))
+        {
+            crate::library::scan::add_source(core, &text)?;
+        }
+    }
+    Ok(Some(dir.path().to_path_buf()))
 }
 
 async fn load_settings(core: &Arc<Core>) -> Result<DownloadSettings, CoreError> {
@@ -593,7 +660,8 @@ async fn start_managed(core: &Arc<Core>, s: &DownloadSettings) -> Result<(), Cor
         .and_then(|p| p.trim_end_matches('/').parse::<u16>().ok())
         .ok_or_else(|| failed(format!("no port in {}", s.torrent_url)))?;
     let profile = managed::profile_dir(&core.paths.data_dir);
-    managed::write_config(&profile, port, managed::save_dir().as_deref())
+    let save = own_save_dir(core, managed::videos_dir().as_deref())?;
+    managed::write_config(&profile, port, save.as_deref())
         .map_err(|e| failed(format!("cannot write qBittorrent's settings: {e}")))?;
     managed::spawn(&binary, &profile, port)
         .map_err(|e| failed(format!("{} could not start: {e}", binary.display())))?;
@@ -3773,6 +3841,8 @@ mod tests {
             anirss: AnirssStatus::default(),
             torrent: TorrentClientStatus::default(),
             endpoints: Vec::new(),
+            own_save_folder: String::new(),
+            own_save_in_library: false,
         };
         status.anirss.version = "0.3.4".to_string();
         status.torrent.message = "unreachable".to_string();
