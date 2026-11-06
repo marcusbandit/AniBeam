@@ -26,6 +26,10 @@ pub struct Peer {
     pub os: String,
     pub online: bool,
     pub ips: Vec<IpAddr>,
+    /// Talking to this machine now with no direct address and a home relay:
+    /// Tailscale carries it through DERP. An idle device has no direct
+    /// address either, so it is not counted.
+    pub relayed: bool,
 }
 
 /// This machine's tailnet addresses and every other device on it.
@@ -79,6 +83,9 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
                         os: p["OS"].as_str().unwrap_or_default().to_string(),
                         online: p["Online"].as_bool().unwrap_or(false),
                         ips: ips(p),
+                        relayed: p["Active"].as_bool().unwrap_or(false)
+                            && p["CurAddr"].as_str().unwrap_or_default().is_empty()
+                            && !p["Relay"].as_str().unwrap_or_default().is_empty(),
                     })
                 })
                 .collect()
@@ -152,7 +159,7 @@ pub fn needs_tailnet(from: IpAddr, off: &[String]) -> bool {
 }
 
 /// An IPv4 address that arrived mapped into IPv6 (`::ffff:100.64.0.1`), as itself.
-fn canonical(ip: IpAddr) -> IpAddr {
+pub(crate) fn canonical(ip: IpAddr) -> IpAddr {
     match ip {
         IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
         v4 => v4,
@@ -205,6 +212,27 @@ mod tests {
         );
         assert_eq!(read_status(b"not json"), None);
         assert_eq!(read_status(b"{}"), None);
+    }
+
+    #[test]
+    fn an_active_device_with_no_direct_address_is_relayed() {
+        let t = read_status(br#"{"Self": {"TailscaleIPs": []}, "Peer": {
+            "a": {"ID": "nDirect", "HostName": "a", "Active": true, "CurAddr": "192.168.1.20:41641", "Relay": "fra"},
+            "b": {"ID": "nRelay", "HostName": "b", "Active": true, "CurAddr": "", "Relay": "fra"},
+            "c": {"ID": "nUnknown", "HostName": "c", "Active": true},
+            "d": {"ID": "nIdle", "HostName": "d", "Active": false, "CurAddr": "", "Relay": "fra"}
+        }}"#)
+        .unwrap();
+        let relayed: Vec<_> = t.peers.iter().map(|p| (p.id.as_str(), p.relayed)).collect();
+        assert_eq!(
+            relayed,
+            [
+                ("nDirect", false),
+                ("nRelay", true),
+                ("nUnknown", false),
+                ("nIdle", false)
+            ]
+        );
     }
 
     #[test]
