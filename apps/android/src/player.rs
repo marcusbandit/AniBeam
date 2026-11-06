@@ -22,6 +22,7 @@ use anibeam_core::{
 };
 use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 
+use crate::focus::{Act, Change, Focus};
 use crate::mpv::{Mpv, MpvEvent, Value};
 use crate::thumbs::{Shot, Thumbs};
 use crate::video::{Frame, Share, Video};
@@ -288,6 +289,8 @@ struct Player {
     /// Counts renderers, so a frame or a start from one that has stopped is ignored.
     video_gen: u64,
     paused: bool,
+    /// The pause on its way is the audio focus's, which the gain back may undo.
+    focus_paused: bool,
     seeking: bool,
     /// A drag on the bar is on: the preview bubble takes frames, the episode stays put.
     scrubbing: bool,
@@ -329,6 +332,8 @@ thread_local! {
     static DEVICES: RefCell<Vec<CastDevice>> = const { RefCell::new(Vec::new()) };
     /// Carried from one episode's page to the next's when the cast goes on.
     static PENDING_CAST: RefCell<Option<CastDevice>> = const { RefCell::new(None) };
+    /// The audio focus, held across episodes and given back when the page closes.
+    static FOCUS: RefCell<Focus> = RefCell::new(Focus::default());
 }
 
 fn with_player(f: impl FnOnce(&mut Player)) {
@@ -648,6 +653,7 @@ fn begin(
         no_video: false,
         video_gen: 0,
         paused: false,
+        focus_paused: false,
         seeking: false,
         scrubbing: false,
         thumbs: None,
@@ -760,6 +766,7 @@ pub fn close_page(reason: CloseReason) {
             });
     }
     if !switching {
+        give_focus();
         crate::android::player_awake(false);
         crate::android::player_screen(false);
         // A swipe's brightness was for the episode; the phone's own comes back with the page,
@@ -780,6 +787,25 @@ pub fn close_page(reason: CloseReason) {
             });
         }
     });
+}
+
+/// Android is ending the activity with an episode open: the page closes the way Back closes
+/// it, so the closing tick's resume point is kept, the audio focus goes back, and the screen
+/// is handed back while the activity can still take it, since a relaunch keeps what the old
+/// instance asked of it. A cast plays on: the TV needs neither this activity nor its remote.
+pub fn app_ending() {
+    let mut open = false;
+    with_player(|p| {
+        open = true;
+        crate::local::log(&format!(
+            "player: the app is ending, closing session {} at {:.1} s",
+            p.session.session, p.rules.position
+        ));
+        p.cast = None;
+    });
+    if open {
+        close_page(CloseReason::Stopped);
+    }
 }
 
 /// Next or previous: the same neighbours, and the same rule, as the desktop's buttons.
@@ -810,6 +836,44 @@ fn neighbour(forward: bool) {
             open(file)
         }
     }
+}
+
+/// Android moved the audio focus: a call pauses the episode and its end plays it again,
+/// another app taking over for good pauses it. A cast plays on the TV and gave the focus
+/// back as it started, so a change then leaves it alone. Called on the UI loop.
+// Only Android's focus listener calls it.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn audio_focus(code: i32) {
+    let Some(change) = Change::from_code(code) else {
+        return;
+    };
+    crate::local::log(&format!("player: audio focus {change:?}"));
+    let mut open = false;
+    with_player(|p| {
+        open = true;
+        let act = FOCUS.with(|f| f.borrow_mut().changed(change, p.paused || p.cast.is_some()));
+        if p.cast.is_some() {
+            return;
+        }
+        match act {
+            Act::Pause => {
+                p.focus_paused = true;
+                p.mpv.set("pause", "yes");
+            }
+            Act::Resume => p.mpv.set("pause", "no"),
+            Act::Nothing => {}
+        }
+    });
+    if !open {
+        FOCUS.with(|f| f.borrow_mut().changed(change, true));
+    }
+}
+
+/// Gives the audio focus back: the page closed, or a cast took the sound to the TV.
+fn give_focus() {
+    FOCUS.with(|f| *f.borrow_mut() = Focus::default());
+    crate::android::give_audio_focus();
+    crate::local::log("player: audio focus given back");
 }
 
 /// The core's playback events: AniSkip's windows and the tracker's answers.
@@ -1113,6 +1177,10 @@ impl Player {
                 })
             });
         crate::android::player_awake(true);
+        // The file starts playing unpaused, so the pause watch never sees it begin.
+        if !self.paused && self.cast.is_none() {
+            self.take_focus();
+        }
     }
 
     fn observed(&mut self, name: &str, value: Value) {
@@ -1137,6 +1205,13 @@ impl Player {
                 if was != p {
                     self.send_tick();
                     crate::android::player_awake(!p && self.rules.loaded);
+                    if !p && self.cast.is_none() {
+                        self.take_focus();
+                    }
+                    // Any pause but the focus's own is one the gain back must not undo.
+                    if p && !std::mem::take(&mut self.focus_paused) {
+                        FOCUS.with(|f| f.borrow_mut().user_paused());
+                    }
                     let mut shown = false;
                     self.d(|d| shown = d.get_chrome());
                     if !p && shown {
@@ -1261,6 +1336,30 @@ impl Player {
         self.mpv
             .set("pause", if self.paused { "no" } else { "yes" });
         self.show_chrome();
+    }
+
+    /// The episode started playing here: the audio focus is asked for when not held, so a
+    /// call or another app's sound can pause it.
+    fn take_focus(&mut self) {
+        let ask = FOCUS.with(|f| f.borrow_mut().playing());
+        if !ask {
+            return;
+        }
+        match crate::android::take_audio_focus() {
+            crate::android::FocusAsk::Granted => {
+                FOCUS.with(|f| f.borrow_mut().held = true);
+                crate::local::log("player: audio focus taken");
+            }
+            // Android says not to play, as during a call; Play asks again.
+            crate::android::FocusAsk::Refused => {
+                crate::local::log("player: audio focus refused, pausing");
+                self.mpv.set("pause", "yes");
+            }
+            // No way to hear of a call, so the episode plays without focus.
+            crate::android::FocusAsk::Unavailable => {
+                crate::local::log("player: audio focus unavailable")
+            }
+        }
     }
 
     /// The finger is on the bar at `t`: the bubble asks the preview core for that frame. The
@@ -1722,6 +1821,8 @@ impl Player {
             device: device.clone(),
             state: CastPlayState::Connecting,
         });
+        // The TV makes the sound now, so music the episode paused can play on here.
+        give_focus();
         self.show_cast();
         let call = match &self.host {
             // The other device converts it for the TV, subtitles drawn in, and the phone

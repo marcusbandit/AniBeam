@@ -266,6 +266,93 @@ pub fn notifications_allowed() -> bool {
     true
 }
 
+/// What Android said to a request for the audio focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Off the phone every request is granted.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub enum FocusAsk {
+    Granted,
+    /// Refused, as during a call: the episode should not play.
+    Refused,
+    /// The request could not be made, so focus changes would never arrive.
+    Unavailable,
+}
+
+/// Asks for the player's audio focus. Every change after a grant reaches
+/// `crate::player::audio_focus` on the UI loop.
+pub fn take_audio_focus() -> FocusAsk {
+    #[cfg(target_os = "android")]
+    {
+        // Without its native body the listener would throw on the first change, so no
+        // request goes out until `Focus.changed` has one.
+        if !FOCUS_NATIVES.load(std::sync::atomic::Ordering::Acquire) {
+            if !register_focus() {
+                return FocusAsk::Unavailable;
+            }
+            FOCUS_NATIVES.store(true, std::sync::atomic::Ordering::Release);
+        }
+        match java_call("Focus", "take", "(Landroid/app/Activity;)I", None) {
+            Some(jni::objects::JValueOwned::Int(1)) => FocusAsk::Granted,
+            Some(jni::objects::JValueOwned::Int(_)) => FocusAsk::Refused,
+            _ => FocusAsk::Unavailable,
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    FocusAsk::Granted
+}
+
+/// Gives the player's audio focus back, so the sound it paused can play on.
+pub fn give_audio_focus() {
+    #[cfg(target_os = "android")]
+    java_call("Focus", "give", "(Landroid/app/Activity;)V", None);
+}
+
+#[cfg(target_os = "android")]
+static FOCUS_NATIVES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// `Focus.changed`, which Java calls on its UI thread.
+#[cfg(target_os = "android")]
+extern "system" fn focus_changed(
+    _env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    change: jni::sys::jint,
+) {
+    let _ = slint::invoke_from_event_loop(move || crate::player::audio_focus(change));
+}
+
+/// Hands `Focus.changed` its native body. NativeActivity loads this library itself, so the
+/// JVM would not find the method by its symbol name.
+#[cfg(target_os = "android")]
+fn register_focus() -> bool {
+    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
+    if raw == 0 {
+        return false;
+    }
+    let r = with_env(|env, _app| {
+        use jni::objects::JObject;
+        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+            let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
+            let class = app_class(env, activity, "Focus")?;
+            env.register_native_methods(
+                &class,
+                &[jni::NativeMethod {
+                    name: "changed".into(),
+                    sig: "(I)V".into(),
+                    fn_ptr: focus_changed as *mut std::ffi::c_void,
+                }],
+            )?;
+            Ok(())
+        })
+    });
+    match r {
+        Ok(()) => true,
+        Err(e) => {
+            crate::local::log(&format!("audio focus: {e}"));
+            false
+        }
+    }
+}
+
 /// Puts `text` on the clipboard, so a connection check can be pasted into a message.
 pub fn copy_text(label: &str, text: &str) -> bool {
     #[cfg(target_os = "android")]
@@ -332,9 +419,32 @@ fn screen_call(
     java_call("Screen", method, sig, arg)
 }
 
+/// One of the app's own Java classes, loaded through the activity's class loader: a lookup
+/// from a native thread would only see the system's classes.
+#[cfg(target_os = "android")]
+fn app_class<'l>(
+    env: &mut jni::JNIEnv<'l>,
+    activity: &jni::objects::JObject,
+    class: &str,
+) -> Result<jni::objects::JClass<'l>, Box<dyn std::error::Error>> {
+    use jni::objects::{JClass, JValue};
+    let loader = env
+        .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
+        .l()?;
+    let name = env.new_string(format!("com.marcusrosado.anibeam.{class}"))?;
+    let class = env
+        .call_method(
+            &loader,
+            "loadClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[JValue::Object(&name)],
+        )?
+        .l()?;
+    Ok(JClass::from(class))
+}
+
 /// Calls a static method of one of the app's own Java classes with the activity and one more
-/// argument, and hands back what it returns. The class is loaded through the activity's class
-/// loader: a lookup from a native thread would only see the system's classes.
+/// argument, and hands back what it returns.
 #[cfg(target_os = "android")]
 fn java_call(
     class: &str,
@@ -348,26 +458,14 @@ fn java_call(
     }
     // `with_env`'s context is the Application, and these classes need the Activity.
     let r = with_env(|env, _app| {
-        use jni::objects::{JClass, JObject, JValue, JValueOwned};
+        use jni::objects::{JObject, JValue, JValueOwned};
         // The thread stays attached for the life of the app, so the local references made
         // here are freed with a frame of their own rather than piling up per call.
         env.with_local_frame(
             8,
             |env| -> Result<Option<JValueOwned<'static>>, Box<dyn std::error::Error>> {
                 let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
-                let loader = env
-                    .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
-                    .l()?;
-                let name = env.new_string(format!("com.marcusrosado.anibeam.{class}"))?;
-                let class = env
-                    .call_method(
-                        &loader,
-                        "loadClass",
-                        "(Ljava/lang/String;)Ljava/lang/Class;",
-                        &[JValue::Object(&name)],
-                    )?
-                    .l()?;
-                let class = JClass::from(class);
+                let class = app_class(env, activity, class)?;
                 let mut args = vec![JValue::Object(activity)];
                 args.extend(arg);
                 let out = env.call_static_method(&class, method, sig, &args)?;

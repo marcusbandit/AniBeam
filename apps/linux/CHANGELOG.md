@@ -3,6 +3,8 @@
 <!--
 The app shows this file in What's new, newest version first. Keep it short.
 - One line per change a person can notice, under New, Changed, Fixed or Removed.
+- A pull request writes its lines in changes/<branch>.md, never here. The
+  release folds them in under the version they ship in.
 - 80 characters at most, no full stop. Say what they see, never why or how.
 - The newest heading is the workspace version in the root Cargo.toml. A version
   bump adds a heading, and a new heading bumps the version.
@@ -15,6 +17,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
+- Settings shows whether Discord is connected, under Playback
 - Set a show's schedule under Fixes: pick episodes and a date, or paste a list
 - Fixes is three items: Episodes and dates, Files and Match
 - Refresh a show's info from its Match panel, and rescan its folder from Files
@@ -142,10 +145,12 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
-- An episode titled with a word like Special or Trailer stays an episode
+- A show's synopsis shows symbols like & instead of their codes, in paragraphs
+- Endpoints from repos reach an anirss built from source, whatever its version
 - Seeders show for releases from a tracker written with backslashes
 - Discord shows a series whose title is a single letter
 - The activity log keeps no feed key after a subscription repair
+- The activity log keeps no feed key after a new subscription
 - Sources installed from a repo show up in search on every desktop install
 - Seeking in an episode converted for the phone works on Nvidia graphics
 - A busy sign-in port says to try again, not that another AniBeam is open

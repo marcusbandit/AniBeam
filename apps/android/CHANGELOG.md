@@ -3,6 +3,8 @@
 <!--
 The app shows this file in What's new, newest version first. Keep it short.
 - One line per change a person can notice, under New, Changed, Fixed or Removed.
+- A pull request writes its lines in changes/<branch>.md, never here. The
+  release folds them in under the version they ship in.
 - 80 characters at most, no full stop. Say what they see, never why or how.
 - The newest heading is the app's versionName. A version bump adds a heading,
   and a new heading bumps the version.
@@ -13,7 +15,8 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
-- An episode titled with a word like Special or Trailer stays an episode
+- Seeders show for releases from more trackers
+- A refine or subscribe on a source you just removed says it is gone
 - Seeders show for releases from a tracker written with backslashes
 - Shows followed earlier no longer keep their source's key in the app's files
 - A source with no public address no longer stops DNS-blocked sources loading
@@ -26,6 +29,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Sources on your home network answer sooner
 - Search skips a saved source whose address cannot take a search
 - Spy x Family episodes no longer show up as specials
+- A phone call or another app's sound pauses the episode; a call's end resumes it
+- An episode open when Android closes the app resumes where you left it
+- Changing a phone setting mid-episode no longer leaves the app stuck sideways
 - The first download asks for permission to show its notification
 
 ## 2.4.2 · 2026-11-02

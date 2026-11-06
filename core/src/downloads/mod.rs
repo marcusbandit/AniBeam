@@ -69,6 +69,8 @@ pub struct Downloads {
 struct State {
     sidecar: Option<Sidecar>,
     anirss: AnirssStatus,
+    /// The features the running anirss lists in `/health`, read with its version.
+    anirss_features: Vec<String>,
     torrent: TorrentClientStatus,
     endpoints: Vec<SearchEndpoint>,
     /// The torrent client with its session, built from the settings on
@@ -292,6 +294,7 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
                 if current {
                     st.anirss.state = AnirssState::Ready;
                     st.anirss.version = health.version;
+                    st.anirss_features = health.features;
                     st.anirss.url = sidecar.server();
                     st.anirss.message.clear();
                     st.sidecar = Some(sidecar);
@@ -334,6 +337,7 @@ fn set_anirss_failure(core: &Core, state: AnirssState, message: &str) {
     st.anirss.state = state;
     st.anirss.message = message.to_string();
     st.anirss.version.clear();
+    st.anirss_features.clear();
     st.anirss.url.clear();
     st.endpoints.clear();
 }
@@ -650,15 +654,22 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
     })
 }
 
-/// The anirss this core last read: its version and the names of its endpoints. None until
-/// one has been read, and always on the phone, which has none.
-pub(crate) fn anirss_view(core: &Core) -> Option<(String, Vec<String>)> {
+/// The anirss this core last read: its version, whether it lists
+/// [`anirss::ENDPOINT_WRITES`], and the names of its endpoints.
+pub(crate) struct AnirssView {
+    pub version: String,
+    pub endpoint_writes: bool,
+    pub endpoints: Vec<String>,
+}
+
+/// The [`AnirssView`] of the anirss last read. None until one has been read, and always
+/// on the phone, which has none.
+pub(crate) fn anirss_view(core: &Core) -> Option<AnirssView> {
     let st = core.downloads.state();
-    (st.anirss.state == AnirssState::Ready).then(|| {
-        (
-            st.anirss.version.clone(),
-            st.endpoints.iter().map(|e| e.name.clone()).collect(),
-        )
+    (st.anirss.state == AnirssState::Ready).then(|| AnirssView {
+        version: st.anirss.version.clone(),
+        endpoint_writes: anirss::lists(&st.anirss_features, anirss::ENDPOINT_WRITES),
+        endpoints: st.endpoints.iter().map(|e| e.name.clone()).collect(),
     })
 }
 
@@ -699,10 +710,10 @@ pub(crate) fn repo_endpoints_changed(core: &Core) {
 async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), CoreError> {
     // No feature is asked of a server the user runs: AniBeam never points it
     // at a client, so it reads its own config and keeps its own logins.
-    let version = client.health().await?.version;
+    let health = client.health().await?;
     let mut endpoints = client.endpoints().await?;
     if syncs_endpoints(core).await
-        && crate::repos::sync_anirss(core, client, &version, &endpoints).await
+        && crate::repos::sync_anirss(core, client, &health, &endpoints).await
     {
         endpoints = client.endpoints().await?;
     }
@@ -715,7 +726,8 @@ async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), Core
     let view = client.qbt_status().await?;
     let mut st = core.downloads.state();
     st.anirss.state = AnirssState::Ready;
-    st.anirss.version = version;
+    st.anirss.version = health.version;
+    st.anirss_features = health.features;
     st.anirss.url = client.server();
     st.anirss.message.clear();
     st.anirss.qbt_url = view.url;
@@ -1219,8 +1231,9 @@ pub(crate) fn annotate(
 /// this query reads), and the read is cheap: a plain RSS endpoint answers
 /// at once and Jackett serves a repeat query from its cache. anirss's search
 /// counts as a request to the feed's host, so the read waits its pace after
-/// it rather than going back to back. Not a job; a failure is a debug line
-/// and the page shows no dates.
+/// it rather than going back to back. On the native engine an endpoint
+/// whose search answers JSON is not read again: there is no feed to parse.
+/// Not a job; a failure is a debug line and the page shows no dates.
 fn enrich(
     core: &Arc<Core>,
     backend: DownloadsBackend,
@@ -1228,6 +1241,13 @@ fn enrich(
     endpoint: &str,
     items: &[Release],
 ) {
+    // An endpoint whose kind answers JSON there (`endpoints::answers_rss`) could never be
+    // parsed by this read, so the native engine skips it rather than spend a request.
+    if let DownloadsBackend::Native(native, _) = &backend
+        && !native.feed_is_rss(endpoint)
+    {
+        return;
+    }
     let owner = core.clone();
     let (query, endpoint, items) = (query.to_string(), endpoint.to_string(), items.to_vec());
     // The native engine's search booked its host through the paced client already.
@@ -1365,8 +1385,10 @@ pub fn subscribe(
             let mut result = backend
                 .subscribe(&query, &endpoint, &items, name.as_deref(), home.as_deref())
                 .await?;
-            // The rule exists by now: a failed move leaves it saving where anirss put it, and
-            // the job says so rather than failing over a subscription that was made.
+            // A current anirss wrote the rule into `home` already, and the move is a no-op. An
+            // older one ignored it: the rule exists by now, a failed move leaves it saving
+            // where anirss put it, and the job says so rather than failing over a
+            // subscription that was made.
             let mut unmoved = String::new();
             if let Some(home) = home.as_deref()
                 && let Err(e) = rehome_rule(&owner, &mut result, home).await
@@ -1396,6 +1418,9 @@ pub fn subscribe(
                     describe_terms(&terms)
                 )
             };
+            // An Info event goes into the stored log, and a feed's address can hold a login
+            // and a key: the event names the rule, and the shell reads the feed from it (#478).
+            result.feed_url.clear();
             Ok(Finished {
                 plain: Some(format!("Subscribed to {}.", result.name)),
                 level: Level::Info,
@@ -1417,8 +1442,9 @@ fn describe_terms(terms: &rewire::LocalTerms) -> String {
 }
 
 /// Saves the new rule's episodes into `home`, the library show's folder,
-/// when the rule was written to save elsewhere: anirss takes no save path
-/// for a subscription and puts it under its own root plus the name (#267).
+/// when the rule was written to save elsewhere: an anirss older than the
+/// `subscription_save_path` feature takes no save path for a subscription
+/// and puts it under its own root plus the name (#267, #465).
 async fn rehome_rule(
     core: &Arc<Core>,
     result: &mut Subscribed,
@@ -3008,6 +3034,7 @@ fn restart(core: &Core, settings: DownloadSettings) -> Result<(), CoreError> {
         sc.stop();
     }
     st.anirss = AnirssStatus::default();
+    st.anirss_features.clear();
     st.torrent = TorrentClientStatus::default();
     st.endpoints.clear();
     st.qbt = None;
@@ -3084,6 +3111,46 @@ pub(crate) async fn host_read(
 
 #[cfg(test)]
 mod tests {
+    /// What `/health` lists is what the endpoint note reads, through the state: kept with
+    /// the version on a read, and gone with it when anirss fails (#476).
+    #[test]
+    fn the_features_anirss_lists_reach_the_view_and_go_with_a_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let http = crate::net::FakeHttp::new();
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            http.clone(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        let client = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
+        http.push_for(
+            "/health",
+            200,
+            serde_json::json!({"ok": true, "version": "dev", "features": ["qbt_env_session", "endpoint_writes"]}).to_string(),
+        );
+        http.push_for(
+            "/endpoints",
+            200,
+            serde_json::json!({"endpoints": []}).to_string(),
+        );
+        http.push_for(
+            "/qbt/status",
+            200,
+            serde_json::json!({"url": "http://127.0.0.1:2"}).to_string(),
+        );
+        core.handle.block_on(read_anirss(&core, &client)).unwrap();
+        let view = anirss_view(&core).unwrap();
+        assert_eq!((view.version.as_str(), view.endpoint_writes), ("dev", true));
+
+        set_anirss_failure(&core, AnirssState::Failed, "gone");
+        assert!(anirss_view(&core).is_none());
+        // Ready again by a path that reads no health: the old features are not carried.
+        core.downloads.state().anirss.state = AnirssState::Ready;
+        assert!(!anirss_view(&core).unwrap().endpoint_writes);
+        core.shutdown();
+    }
 
     #[test]
     fn a_batch_downloads_its_unfinished_files_and_lays_them_over_the_cubes() {
