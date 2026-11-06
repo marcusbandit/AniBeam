@@ -939,6 +939,8 @@ Item {
 
     // The subscriptions, by where the show stands
     function subState(r) {
+        // A rule on a source that answers JSON reads no feed, so nothing new comes (#536)
+        if (r.followable === false) return "nofeed"
         var s = r.show
         if (!s) return "missing"
         if (s.complete) return "complete"
@@ -948,6 +950,7 @@ Item {
     readonly property var completeRules: rules.filter(function(r) { return page.subState(r) === "complete" })
     readonly property var subSections: {
         var defs = [
+            { key: "nofeed", title: "Cannot follow", dot: theme.red, line: "Their source answers searches but has no feed, so no new episodes arrive. Unsubscribe, then follow the show on a source with one." },
             { key: "complete", title: "Complete", dot: theme.red, line: "Every episode is in the library and nothing more will air: these subscriptions have nothing left to do." },
             { key: "airing", title: "Airing", dot: theme.accent, line: "New episodes still to come, the soonest first." },
             { key: "incomplete", title: "Incomplete", dot: theme.orange, line: "Finished airing with episodes not here, or nothing says where the show stands." },
@@ -960,13 +963,11 @@ Item {
             var an = a.show.next_airing ? a.show.next_airing.at : 1e12, bn = b.show.next_airing ? b.show.next_airing.at : 1e12
             return an - bn || page.titleOf(a).localeCompare(page.titleOf(b))
         })
-        ;["complete", "incomplete", "missing"].forEach(function(k) { by[k].items.sort(function(a, b) { return page.titleOf(a).localeCompare(page.titleOf(b)) }) })
+        ;["nofeed", "complete", "incomplete", "missing"].forEach(function(k) { by[k].items.sort(function(a, b) { return page.titleOf(a).localeCompare(page.titleOf(b)) }) })
         return defs.filter(function(d) { return d.items.length > 0 })
     }
     // What a rule's card and row say
     function ruleLedger(r) {
-        // A rule on a source that answers JSON reads no feed, so nothing new comes (#536)
-        if (r.followable === false) return "No new episodes: its source has no feed"
         var s = r.show
         if (!s) return Fmt.plural(r.torrent_count || 0, "torrent", "torrents")
         if (s.kind === "Movie") return s.complete ? "Film, on disk" : "Film"
@@ -977,8 +978,8 @@ Item {
         return Fmt.plural(have, "episode", "episodes") + " here"
     }
     function ruleTag(r) {
-        if (r.followable === false) return "Cannot follow"
         var st = page.subState(r)
+        if (st === "nofeed") return "Cannot follow"
         if (st === "complete") return "Complete"
         if (st === "airing") return r.rule_enabled === false ? "Paused" : "Airing"
         if (st === "incomplete") return r.show.missing && r.show.missing.length ? r.show.missing.length + " missing" : "Unknown"
@@ -999,7 +1000,7 @@ Item {
         return Fmt.plural(g.torrents.length, "torrent", "torrents") + ", " + Fmt.bytes(g.size)
     }
     function stateDot(key) {
-        return key === "complete" || key === "broken" ? theme.red : key === "airing" || key === "downloading" ? theme.accent
+        return key === "complete" || key === "broken" || key === "nofeed" ? theme.red : key === "airing" || key === "downloading" ? theme.accent
              : key === "incomplete" ? theme.orange : key === "seeding" ? theme.green : theme.textFaint
     }
     function groupWord(key) { return key === "downloading" ? "Downloading" : key === "seeding" ? "Seeding" : key === "done" ? "Done" : key === "broken" ? "Files missing" : "Stopped" }

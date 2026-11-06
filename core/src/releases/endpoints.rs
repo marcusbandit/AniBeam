@@ -639,9 +639,40 @@ where
     (Vec::new(), notes)
 }
 
-/// The configured endpoint whose feed `url` is, if any.
+/// The configured endpoint whose feed `url` is, if any: of those whose address the feed
+/// starts with, the longest such, then the one whose template past `{query}` the feed also
+/// ends with, then the first listed. Two sources on one host told apart only by a parameter
+/// after the search (`&fmt=json`) are told apart by it, not by their order.
 pub fn owner_of<'a>(endpoints: &'a [Endpoint], url: &str) -> Option<&'a Endpoint> {
-    endpoints.iter().find(|e| e.owns_url(url))
+    let score = |e: &Endpoint| {
+        let (base, tail) = e.url.split_once("{query}").unwrap_or((e.url.as_str(), ""));
+        let tail = if url.ends_with(tail) {
+            1 + tail.len()
+        } else {
+            0
+        };
+        (base.len(), tail)
+    };
+    let mut best: Option<&Endpoint> = None;
+    for e in endpoints.iter().filter(|e| e.owns_url(url)) {
+        if best.is_none_or(|b| score(e) > score(b)) {
+            best = Some(e);
+        }
+    }
+    best
+}
+
+/// Whether a subscription on `feed_url` can fetch new episodes: false when its source
+/// answers JSON, which no client reads as a feed (#507, #536). The source is `endpoint` when
+/// the rule keeps its name and that source is still in `endpoints`, else the one that owns
+/// the feed (`owner_of`). A feed no source owns claims nothing.
+pub fn follows(endpoints: &[Endpoint], feed_url: &str, endpoint: Option<&str>) -> bool {
+    let named = endpoint
+        .filter(|n| !n.is_empty())
+        .and_then(|n| endpoints.iter().find(|e| e.name == n));
+    named
+        .or_else(|| owner_of(endpoints, feed_url))
+        .is_none_or(|e| answers_rss(&e.kind))
 }
 
 #[cfg(test)]
@@ -906,6 +937,46 @@ pub(crate) mod tests {
             http.requests()[0].url,
             "http://10.0.0.2:9696/1/api?t=search&q=show&apikey=k"
         );
+    }
+
+    #[test]
+    fn a_rule_on_a_source_that_answers_json_cannot_follow_new_episodes() {
+        let sources = [
+            Endpoint::new("feed", "rss", "https://a/rss?q={query}"),
+            Endpoint::new("api", "json", "https://c/api?q={query}"),
+            Endpoint::new("anime", "tosho", "https://d/feed/json?q={query}"),
+            Endpoint::new("search", "nyaa", "https://e/"),
+        ];
+        let follows = |feed: &str, name: Option<&str>| follows(&sources, feed, name);
+        // A rule written before #507 holds the JSON search address as its feed.
+        assert!(!follows("https://c/api?q=Show", None));
+        assert!(!follows("https://d/feed/json?q=Show&old=1", None));
+        assert!(follows("https://a/rss?q=Show", None));
+        assert!(follows("https://e/?page=rss&q=Show&c=1_0&f=0", None));
+        // A rule that keeps its source's name is judged by that source, whatever its
+        // feed holds (the phone keeps a key as a placeholder).
+        assert!(!follows("https://c/api?q=Show&key={key}", Some("api")));
+        assert!(follows("https://c/api?q=Show", Some("feed")));
+        // A source gone from the list leaves the feed to say whose it is.
+        assert!(!follows("https://c/api?q=Show", Some("gone")));
+        // A feed no source owns claims nothing.
+        assert!(follows("https://elsewhere/rss?q=Show", None));
+        assert!(follows("https://elsewhere/rss?q=Show", Some("gone")));
+    }
+
+    #[test]
+    fn two_sources_on_one_base_are_told_apart_by_what_follows_the_search() {
+        let rss = Endpoint::new("rss", "rss", "https://x/?q={query}");
+        let json = Endpoint::new("json", "json", "https://x/?q={query}&fmt=json");
+        for list in [[rss.clone(), json.clone()], [json.clone(), rss.clone()]] {
+            assert_eq!(
+                owner_of(&list, "https://x/?q=Show&fmt=json").unwrap().name,
+                "json"
+            );
+            assert_eq!(owner_of(&list, "https://x/?q=Show").unwrap().name, "rss");
+            assert!(!follows(&list, "https://x/?q=Show&fmt=json", None));
+            assert!(follows(&list, "https://x/?q=Show", None));
+        }
     }
 
     #[tokio::test]

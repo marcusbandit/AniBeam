@@ -116,6 +116,25 @@ fn searched(core: &Core) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
     out
 }
 
+/// Every source a rule may have been made on, switched off for search or not: the installed
+/// ones (`repos::fillers`, which the feed poller reads rules through too), then the feeds
+/// saved before repos that no installed one replaced (#536).
+#[cfg(feature = "phone")]
+fn followed_sources(core: &Core) -> Vec<crate::releases::Endpoint> {
+    let mut out: Vec<crate::releases::Endpoint> = crate::repos::fillers(core)
+        .into_iter()
+        .map(|r| r.endpoint)
+        .collect();
+    for s in sources(core).iter().map(trimmed) {
+        if !out.iter().any(|e| e.name == s.name)
+            && crate::releases::endpoints::check_shape(&s.name, &s.kind, &s.url).is_ok()
+        {
+            out.push(crate::releases::Endpoint::new(&s.name, &s.kind, &s.url));
+        }
+    }
+    out
+}
+
 /// `s` with the spaces around its name, kind and address taken off.
 fn trimmed(s: &PhoneSource) -> PhoneSource {
     PhoneSource {
@@ -537,7 +556,7 @@ pub fn rules(core: &Core) -> Result<Reply, CoreError> {
             Err(_) => Vec::new(),
         }
     });
-    let sources = native(core);
+    let sources = followed_sources(core);
     let rules = rules_store(core)
         .load()
         .iter()
@@ -552,7 +571,8 @@ pub fn rules(core: &Core) -> Result<Reply, CoreError> {
                 .filter(|e| e.file_type().is_file())
                 .count() as u64;
             let mut info = crate::releases::rules::info(r, in_engine, files);
-            info.followable = sources.follows(&r.feed_url, Some(&r.endpoint));
+            info.followable =
+                crate::releases::endpoints::follows(&sources, &r.feed_url, Some(&r.endpoint));
             info
         })
         .collect();

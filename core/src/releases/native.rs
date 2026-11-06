@@ -126,22 +126,6 @@ impl Native {
             .is_ok_and(|e| endpoints::answers_rss(&e.kind))
     }
 
-    /// Whether a subscription on `feed_url` can fetch new episodes: false when its source
-    /// answers JSON, which no client reads as a feed (#507, #536). The source is `endpoint`
-    /// when the rule keeps its name, else the one whose address the feed starts with, the
-    /// longest such. A feed no source owns, or a source gone since, claims nothing.
-    pub fn follows(&self, feed_url: &str, endpoint: Option<&str>) -> bool {
-        let source = match endpoint.filter(|n| !n.is_empty()) {
-            Some(name) => self.endpoints.iter().find(|e| e.name == name),
-            None => self
-                .endpoints
-                .iter()
-                .filter(|e| e.owns_url(feed_url))
-                .max_by_key(|e| e.url.split("{query}").next().unwrap_or("").len()),
-        };
-        source.is_none_or(|e| endpoints::answers_rss(&e.kind))
-    }
-
     /// The endpoints as the downloads page lists them, keys masked.
     pub fn list(&self) -> Vec<SearchEndpoint> {
         self.endpoints
@@ -441,31 +425,6 @@ mod tests {
         assert!(!native.feed_is_rss("anime"));
         // One the core no longer has: nothing to read.
         assert!(!native.feed_is_rss("gone"));
-    }
-
-    #[test]
-    fn a_rule_on_a_source_that_answers_json_cannot_follow_new_episodes() {
-        let native = Native::new(
-            FakeHttp::new(),
-            vec![
-                Endpoint::new("feed", "rss", "https://a/rss?q={query}"),
-                Endpoint::new("api", "json", "https://c/api?q={query}"),
-                Endpoint::new("anime", "tosho", "https://d/feed/json?q={query}"),
-                Endpoint::new("search", "nyaa", "https://e/"),
-            ],
-        );
-        // A rule written before #507 holds the JSON search address as its feed.
-        assert!(!native.follows("https://c/api?q=Show", None));
-        assert!(!native.follows("https://d/feed/json?q=Show&old=1", None));
-        assert!(native.follows("https://a/rss?q=Show", None));
-        assert!(native.follows("https://e/?page=rss&q=Show&c=1_0&f=0", None));
-        // A rule that keeps its source's name is judged by that source, whatever its
-        // feed holds (the phone keeps a key as a placeholder).
-        assert!(!native.follows("https://c/api?q=Show&key={key}", Some("api")));
-        assert!(native.follows("https://c/api?q=Show", Some("feed")));
-        // A feed no source owns, or a source gone since, claims nothing.
-        assert!(native.follows("https://elsewhere/rss?q=Show", None));
-        assert!(native.follows("https://elsewhere/rss?q=Show", Some("gone")));
     }
 
     #[tokio::test]

@@ -28,6 +28,8 @@ struct Offer {
     in_library: bool,
     poster: Option<String>,
     ledger: String,
+    /// The tile's tone for the ledger: 0 quiet, 1 accent, 2 warning, 3 good.
+    ledger_tone: i32,
 }
 
 /// What one source answered for the open show.
@@ -571,6 +573,7 @@ impl Find {
                     has_poster,
                     initials: format::initials(&o.show.title).into(),
                     ledger: o.ledger.clone().into(),
+                    ledger_tone: o.ledger_tone,
                     cubes: model(crate::phone::cube_codes(&o.show.cubes)),
                     ..Default::default()
                 }

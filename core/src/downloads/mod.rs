@@ -2103,11 +2103,15 @@ pub fn remove_show(
 
 /// Marks each rule whose feed belongs to one of the core's sources that answers JSON as
 /// one that cannot fetch new episodes (#536). The rules come from qBittorrent on either
-/// engine, so the core's own sources judge them both.
+/// engine, so the core's own sources judge them both: every installed one, switched off
+/// for search or not, since its subscriptions are still read.
 fn follow_rules(core: &Core, rules: &mut [SubscriptionRule]) {
-    let native = crate::releases::native::Native::for_core(core, Vec::new());
+    let sources: Vec<crate::releases::Endpoint> = crate::repos::fillers(core)
+        .into_iter()
+        .map(|r| r.endpoint)
+        .collect();
     for rule in rules.iter_mut() {
-        rule.followable = native.follows(&rule.feed_url, None);
+        rule.followable = crate::releases::endpoints::follows(&sources, &rule.feed_url, None);
     }
 }
 
