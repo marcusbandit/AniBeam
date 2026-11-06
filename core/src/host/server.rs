@@ -15,7 +15,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 
 use super::build::{self, LibraryPart};
-use super::{convert, peers, stream, trust};
+use super::{convert, keys, peers, stream, trust};
 use crate::contract::CoreError;
 use crate::core::Core;
 use crate::time;
@@ -57,11 +57,8 @@ pub fn router(core: Weak<Core>) -> Router {
         library: tokio::sync::Mutex::new(None),
         peers: tokio::sync::Mutex::new(None),
     });
-    Router::new()
-        .route(wire::HELLO, get(hello))
-        .route(wire::SNAPSHOT, get(snapshot))
-        .route(wire::PEERS, get(peer_list))
-        .route("/api/v1/posters/{id}", get(poster))
+    // The episodes themselves answer only while "Stream episodes" is on.
+    let streaming = Router::new()
         .route("/api/v1/files/{id}", get(stream::file))
         .route("/api/v1/files/{id}/sidecars/{index}", get(stream::sidecar))
         .route("/api/v1/files/{id}/probe", get(stream::probe))
@@ -72,6 +69,16 @@ pub fn router(core: Weak<Core>) -> Router {
         .route("/api/v1/files/{id}/hls/{height}/{name}", get(stream::hls))
         .route(wire::CALL, post(stream::call))
         .route("/api/v1/sessions/{id}/skip", get(stream::skip))
+        .layer(axum::middleware::from_fn_with_state(
+            served.clone(),
+            streaming_on,
+        ));
+    Router::new()
+        .route(wire::HELLO, get(hello))
+        .route(wire::SNAPSHOT, get(snapshot))
+        .route(wire::PEERS, get(peer_list))
+        .route("/api/v1/posters/{id}", get(poster))
+        .merge(streaming)
         .fallback(not_found)
         .method_not_allowed_fallback(not_allowed)
         .layer(axum::middleware::from_fn_with_state(
@@ -99,9 +106,32 @@ async fn known_host(request: axum::extract::Request, next: axum::middleware::Nex
     }
 }
 
+/// The sentence a phone shows when it asks for an episode here while
+/// streaming is off.
+pub const STREAMING_OFF: &str =
+    "Streaming is off on that computer. Turn on Stream episodes there, under Settings, Phone app.";
+
+/// Refuses the episode routes while "Stream episodes" is off. The playback
+/// calls that only keep Not interested the same on both sides still pass.
+async fn streaming_on(
+    State(st): State<Arc<Served>>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let on = st.core.upgrade().is_some_and(|c| c.host.streaming());
+    if on || request.uri().path() == wire::CALL {
+        next.run(request).await
+    } else {
+        error(StatusCode::FORBIDDEN, STREAMING_OFF)
+    }
+}
+
 /// Refuses a request from a device the person has not trusted: one switched
 /// off in Settings, one the host cannot place on the tailnet while any is,
-/// and anything off the tailnet (`trust::decide`). It runs before every route.
+/// and anything off the tailnet (`trust::decide`). A request may also carry
+/// a proof of the device that sent it (`keys`): one that does not check out
+/// is refused wherever it comes from, and one from a paired device is
+/// answered from off the tailnet too. It runs before every route.
 async fn trusted(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
@@ -111,14 +141,40 @@ async fn trusted(
     let Some(core) = st.core.upgrade() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
-    // Reading the tailnet can run `tailscale`, so it stays off the async threads.
-    let verdict = tokio::task::spawn_blocking(move || core.host.verdict(from.ip()))
-        .await
-        .unwrap_or(trust::Verdict::Unknown);
-    match trust::refusal(&verdict) {
+    let header = request
+        .headers()
+        .get(wire::proof::HEADER)
+        .map(|h| h.to_str().unwrap_or_default().to_string());
+    let method = request.method().as_str().to_string();
+    let path = request.uri().path_and_query().map_or_else(
+        || request.uri().path().to_string(),
+        |p| p.as_str().to_string(),
+    );
+    // Reading the tailnet can run `tailscale`, and the key the keyring, so
+    // both stay off the async threads.
+    let judged = tokio::task::spawn_blocking(move || {
+        core.host.keys.mine(&core.paths.device_key_path());
+        let verdict = core.host.verdict(from.ip());
+        let proof = core
+            .host
+            .keys
+            .judge(header.as_deref(), &method, &path, time::now_secs());
+        (verdict, proof)
+    })
+    .await;
+    let (verdict, proof) = judged.unwrap_or((trust::Verdict::Unknown, keys::Proof::None));
+    // A paired proof opens only an address off the tailnet. One the host
+    // cannot place there might be the device the person switched off, so it
+    // stays refused whatever key it holds.
+    let refused = match (&verdict, &proof) {
+        (_, keys::Proof::Refused(why)) => Some(*why),
+        (trust::Verdict::Outside, keys::Proof::Paired(_)) => None,
+        _ => trust::refusal(&verdict),
+    };
+    match refused {
         None => next.run(request).await,
         Some(why) => {
-            tracing::debug!("host refused {from}: {verdict:?}");
+            tracing::debug!("host refused {from}: {verdict:?}, {proof:?}");
             error(StatusCode::FORBIDDEN, why)
         }
     }
@@ -185,6 +241,12 @@ async fn hello(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
 ) -> Response {
+    // `trusted` read the key before this route, so this only takes it.
+    let key = st
+        .core
+        .upgrade()
+        .and_then(|c| c.host.keys.mine(&c.paths.device_key_path()));
+    let streaming = st.core.upgrade().is_some_and(|c| c.host.streaming());
     let relayed = st
         .core
         .upgrade()
@@ -195,7 +257,9 @@ async fn hello(
         version: crate::VERSION.to_string(),
         host: st.host.clone(),
         now: time::now_secs(),
-        features: features(),
+        features: features(streaming, key.is_some()),
+        key: key.map(|k| k.public()).unwrap_or_default(),
+        streaming_off: !streaming,
         relayed,
     };
     match serde_json::to_vec(&hello) {
@@ -204,14 +268,20 @@ async fn hello(
     }
 }
 
-/// What this host serves past the snapshot. Streaming always; converting
-/// when ffmpeg and an encoder work here, which the first hello starts finding
-/// out rather than waits for, so hello stays quick.
-fn features() -> Vec<String> {
-    let mut out = vec![
-        wire::FEATURE_STREAM.to_string(),
-        wire::FEATURE_PEERS.to_string(),
-    ];
+/// What this host serves past the snapshot: the list of other AniBeams
+/// always; request proofs while it has its key; streaming while its
+/// switch is on; converting too when ffmpeg and an encoder work here,
+/// which the first hello starts finding out rather than waits for, so
+/// hello stays quick.
+fn features(streaming: bool, keyed: bool) -> Vec<String> {
+    let mut out = vec![wire::FEATURE_PEERS.to_string()];
+    if keyed {
+        out.push(wire::FEATURE_PROOF.to_string());
+    }
+    if !streaming {
+        return out;
+    }
+    out.push(wire::FEATURE_STREAM.to_string());
     if convert::known() == Some(true) {
         out.push(wire::FEATURE_CONVERT.to_string());
     }

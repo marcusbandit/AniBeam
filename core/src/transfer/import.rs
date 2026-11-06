@@ -331,6 +331,26 @@ async fn import_series(
                         params![id as i64, n as i64, entry.episodes_set_season.map(|s| s as i64)],
                     )?;
                 }
+                // The file wins on the list kept here, as it does on the flag. A
+                // status this version does not know is named and left out.
+                if let Some(list) = &entry.list {
+                    let status = list.status.as_deref().map(|raw| {
+                        ListStatus::from_column(raw).filter(|s| *s != ListStatus::Repeating)
+                    });
+                    if status.is_some_and(|s| s.is_none()) {
+                        ignored.push(format!("series[{n}].list.status"));
+                    }
+                    tx.execute(
+                        "INSERT OR REPLACE INTO local_entries (series_id, status, score, updated_at)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![
+                            id as i64,
+                            status.flatten().map(ListStatus::as_str),
+                            list.score.filter(|s| (0.0..=10.0).contains(s) && *s > 0.0),
+                            now
+                        ],
+                    )?;
+                }
                 if apply_fixes(tx, &path, kind, &entry.fixes, now, &mut moves)? {
                     unscanned.push(id);
                 }
@@ -675,6 +695,12 @@ async fn import_history(
                      ON CONFLICT(series_id, episode_key) DO UPDATE SET at = excluded.at WHERE excluded.at > completed.at",
                     params![row.id as i64, key, at],
                 )? as u64;
+                // The finish goes in the watch log once, however often the file comes in.
+                tx.execute(
+                    "INSERT INTO watch_log (series_id, episode_key, at, how) SELECT ?1, ?2, ?3, ?4
+                     WHERE NOT EXISTS (SELECT 1 FROM watch_log WHERE series_id = ?1 AND episode_key = ?2 AND at = ?3)",
+                    params![row.id as i64, key, at, crate::library::history::How::Imported.as_str()],
+                )?;
             }
             let mut resume = 0u64;
             for entry in &history.resume_points {
@@ -937,6 +963,7 @@ async fn import_preferences(
                 library_group_franchises: current.library_group_franchises,
                 // Whether this machine shares itself is its own business.
                 share_over_tailscale: current.share_over_tailscale,
+                stream_over_tailscale: current.stream_over_tailscale,
                 tailnet_switched_off: current.tailnet_switched_off.clone(),
                 // The export format predates On hold too.
                 on_hold_auto: current.on_hold_auto,

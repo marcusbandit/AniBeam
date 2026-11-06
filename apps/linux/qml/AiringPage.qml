@@ -347,7 +347,7 @@ Item {
             page.refreshing = false
             page.refreshJob = -1
             page.loadFailed = !page.listed || page.listed.shows.length === 0
-            frame.toast(error && error.message ? error.message : "AniList could not be reached")
+            frame.fail(error, function() { page.refresh(true) })
         }
         function onJobCancelled(job, kind) { if (job === page.refreshJob) { page.refreshing = false; page.refreshJob = -1 } }
         // Plan to watch lands, a download makes a show the library's: the cache read says so
@@ -735,9 +735,13 @@ Item {
             }
             EmptyState {
                 visible: !page.loadFailed && (!page.listed || page.listed.shows.length === 0)
+                // Read and still empty is a season AniList lists nothing for, not a page never read
+                readonly property bool readEmpty: !!page.listed && page.listed.fetched_at !== null && page.listed.fetched_at !== undefined
                 icon: page.refreshing ? "loader-circle" : "radio"
-                title: page.refreshing ? "Reading what is on air" : "Nothing read yet"
-                body: page.refreshing ? "Every show on air, from AniList. This takes a few seconds the first time." : "Refresh reads every show on air from AniList."
+                title: page.refreshing ? "Reading what is on air" : readEmpty ? (page.season === "Now" ? "Nothing on air right now" : "Nothing on air for " + page.listed.label) : "Nothing read yet"
+                body: page.refreshing ? "Every show on air, from AniList. This takes a few seconds the first time."
+                    : readEmpty ? "AniList lists no shows for this season yet. Refresh reads it again, or pick another season."
+                    : "Refresh reads every show on air from AniList."
                 Button { visible: !page.refreshing; text: "Refresh"; icon: "refresh-cw"; onClicked: page.refresh(true) }
             }
             EmptyState {

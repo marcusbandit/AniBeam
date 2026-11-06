@@ -12,12 +12,19 @@ SettingsTab {
     title: "Phone app"
     lead: "AniBeam on your phone can play this library, see what is airing and follow your downloads, wherever you are."
     property var host: ({ enabled: false, urls: [], message: "" })
-    function reloadHost() { var r = Door.getHost(); if (!r.error) host = r.reply.status }
+    // Read once on open; a failed read says so with Try again, not as sharing switched off
+    function reloadHost() { var r = Door.getHost(); if (r.error) frame.fail(r.error, tab.reloadHost); else host = r.reply.status }
     function setSharing(on) {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.share_over_tailscale = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.fail(r.error)
+        if (r.error) frame.fail(r.error, function() { tab.setSharing(on) })
+    }
+    function setStreaming(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.stream_over_tailscale = on
+        var r = Door.setPreferences(p)
+        if (r.error) frame.toast(r.error.message)
     }
     readonly property string enableCommand: "systemctl --user enable --now anibeam-host"
     // "serving", "waiting" while this window has the library, or empty with no service.
@@ -26,7 +33,7 @@ SettingsTab {
     function reloadDevices() { var r = Door.call("ListTailnetDevices", {}); if (!r.error) devices = r.reply.devices }
     function setTrusted(device, on) {
         var r = Door.call("SetTailnetDeviceTrust", { device: device, trusted: on })
-        if (r.error) frame.fail(r.error)
+        if (r.error) frame.fail(r.error, function() { tab.setTrusted(device, on) })
         reloadDevices()
     }
     function deviceLine(d) {
@@ -58,6 +65,17 @@ SettingsTab {
                 enabled: tab.service === ""
                 opacity: enabled ? 1 : theme.disabledOpacity
                 onToggled: function(on) { tab.setSharing(on) }
+            }
+        }
+        SettingRow {
+            label: "Stream episodes"
+            helper: Door.preferences.stream_over_tailscale !== false
+                ? "Your devices can play and cast the episodes on this computer."
+                : "Your devices see the library and what is airing, but cannot play from here."
+            Switch {
+                objectName: "settings-stream-switch"
+                checked: Door.preferences.stream_over_tailscale !== false
+                onToggled: function(on) { tab.setStreaming(on) }
             }
         }
         SettingRow {

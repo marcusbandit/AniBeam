@@ -56,6 +56,10 @@ _Avoid_: complete, progress update, sync
 A tracker list: AniList calls it Paused, MAL calls it On Hold. With the On hold switch on, which is the default, the core moves a Watching entry there once nothing has touched it for the set number of days, 60 unless changed. A touch is any change either tracker dates, or a play here. An episode past the entry's progress coming out starts the count again, and an entry waiting for its next episode never moves. The check runs after each tracker refresh: at launch, on Sync, on a new connection, and when the switch goes on. Each entry is read live from its tracker just before it moves. A view of the series here, or a mark, puts the entry back on Watching. The desktop runs all of this and the phone none of it. Home shows the series on hold after Continue, in the same row, whenever Continue leaves room there, and a card on hold says so in a tag.
 _Avoid_: paused, idle, stale, backlog
 
+**Local list**:
+The list status and score kept on this device for a series no connected tracker carries: someone with no account, a show matched to a tracker whose account is not connected, a TVmaze show, an unmatched folder. The status menu and the score picker write it at once with no job; a card shows it wherever no tracker entry says otherwise, and a tracker's entry always wins. Export carries it as `series[].list`. Nothing in it leaves the device until the person confirms moving it to a tracker.
+_Avoid_: offline list, guest list
+
 **Rewatch**:
 Watching a completed show again. AniList keeps a rewatch under way as the Repeating list; MAL keeps it as a flag on Watching. The rewatch count goes up one when a rewatch finishes: a mark completes a Repeating entry, or the last episode of a completed show is marked after its first episode was watched to the end here since the list last changed. A film counts when its list has stood still for twelve hours. Playing only the last episode again is not a rewatch, and the status menu never counts one.
 _Avoid_: repeat, rerun
@@ -68,6 +72,10 @@ _Avoid_: watch dates, history dates
 Free text on a tracker's list entry: AniList's notes, MAL's comments, at most 2000 characters. Written from the series page to every connected tracker, read back with each list refresh. Not the schedule notes, which are about a season's dates.
 _Avoid_: comments, schedule notes
 
+**Schedule agent**:
+The coding agent on this computer that looks a show's episode dates up from the Episodes and dates sheet (#419): Claude Code today, run as a live session over its own stream protocol in an empty folder with only web search and web fetch, safe mode and nothing saved. It gets the show and the dates the library has, says what it does as it goes, and answers in lines the schedule parser reads; the answer lands in the sheet's paste box, so the tiles preview it and nothing is kept until Save. Found on the machine, never shipped; with none, the sheet only says what one would do. ACP, and Codex through it, comes next.
+_Avoid_: AI, assistant, bot
+
 **Resume point**:
 The position playback restarts from the next time an episode opens. Not recorded for a session the player never reported on.
 _Avoid_: position, progress, bookmark
@@ -75,6 +83,10 @@ _Avoid_: position, progress, bookmark
 **Completion**:
 The outcome of the end rule: the position reached the last 30 seconds, a known outro window or the end of the file, so the resume point is cleared and the episode is recorded as completed.
 _Avoid_: finished, done, watched to the end
+
+**Watch log**:
+Every finish of an episode, each with its own time and where it came from: played here, set by hand, or imported. A completion records the latest finish for the series page and the cards, and adds one more to the log. Stats reads the log and leaves out what was set by hand. History from before the log came in as one finish per episode.
+_Avoid_: watch history, play log, finishes table
 
 **Skip window**:
 A span of an episode the player offers to jump over, an intro or an outro, taken from the file's chapters first and from AniSkip otherwise.
@@ -147,7 +159,7 @@ The moment an episode of a show on the Watching list airs, said once by the core
 _Avoid_: new episode alert, release notification, reminder
 
 **Stats**:
-A year of watching added up from the episode history: hours, episodes and series finished by month, the top genres, studios and seasons. The recap is the one card for the year that saves as an image.
+A year of watching added up from the watch log: hours, episodes and series finished by month, the top genres, studios and seasons. The recap is the one card for the year that saves as an image.
 _Avoid_: analytics, insights, wrapped, report
 
 **Planning list**:
@@ -309,6 +321,18 @@ _Avoid_: server, sync server
 **Trusted device**:
 A device the tailnet host answers. Every device on the tailnet is trusted until the person switches it off in Settings, Phone app; nothing off the tailnet is.
 _Avoid_: allowed device, whitelisted device
+
+**Device key**:
+The key pair each AniBeam makes once and keeps with its secrets. The tailnet host says its public key in its hello; a phone or another AniBeam signs each request to it with its own.
+_Avoid_: token, password, certificate
+
+**Proof**:
+The signature a request carries of the device key that sent it, good for that one request to that one host, around the time it was made, once. A request whose proof does not check out is refused wherever it comes from.
+_Avoid_: auth header, token
+
+**Paired device**:
+A device whose device key the host keeps. Its requests are answered on any network the host listens on, unless the person switched it off on the tailnet.
+_Avoid_: linked device, registered device
 
 ### Route
 

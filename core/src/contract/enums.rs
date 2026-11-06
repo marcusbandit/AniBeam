@@ -659,6 +659,8 @@ pub enum JobKind {
     RepairSubscription,
     CheckEndpoints,
     StartEndpoint,
+    /// A coding agent's session on one show's schedule (#419).
+    ScheduleAgent,
 }
 
 impl JobKind {
@@ -667,9 +669,8 @@ impl JobKind {
         match self {
             Scan | Subscriptions => Stage::Library,
             AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
-            | RefreshAiring | RefreshImdb | ClearImages | FillImages | RefreshAiringNow => {
-                Stage::Metadata
-            }
+            | RefreshAiring | RefreshImdb | ClearImages | FillImages | RefreshAiringNow
+            | ScheduleAgent => Stage::Metadata,
             ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
             | OnHold | SetStatus | Notes => Stage::Trackers,
             Crawl => Stage::Franchise,
@@ -724,6 +725,7 @@ impl JobKind {
             RepairSubscription => "Repairing a subscription",
             CheckEndpoints => "Checking your download sources",
             StartEndpoint => "Starting a download source",
+            ScheduleAgent => "Asking your coding agent for a schedule",
         }
     }
 
@@ -740,7 +742,7 @@ impl JobKind {
             | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | Notes
             | Export | Import | SearchReleases | RefineReleases | Subscribe | Download
             | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
-            | RepairSubscription | StartEndpoint => false,
+            | RepairSubscription | StartEndpoint | ScheduleAgent => false,
         }
     }
 
@@ -807,6 +809,7 @@ impl JobKind {
             RepairSubscription => "RepairSubscription",
             CheckEndpoints => "CheckEndpoints",
             StartEndpoint => "StartEndpoint",
+            ScheduleAgent => "ScheduleAgent",
         }
     }
 
@@ -851,6 +854,7 @@ impl JobKind {
             "RepairSubscription" => Some(RepairSubscription),
             "CheckEndpoints" => Some(CheckEndpoints),
             "StartEndpoint" => Some(StartEndpoint),
+            "ScheduleAgent" => Some(ScheduleAgent),
             _ => None,
         }
     }

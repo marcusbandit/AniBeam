@@ -37,8 +37,10 @@ Four tabs:
   address), tracker sign-in, the other device's address, and the version.
 
 **Onboarding** runs once: AniList and MAL sign-in, Wi-Fi only (on by default; turning it
-off asks first), and the storage cap, suggested at 18 GB and off unless chosen. More can
-run it again.
+off asks first), the storage cap, suggested at 18 GB and off unless chosen, and the
+download notification, shown as it will look before Android asks for it. More can run it
+again. Turned down, the notification has a row in More and a line in Downloads while
+something downloads, both opening the app's notification settings.
 
 **The player** is the desktop's, on the same libmpv: the core opens the session, keeps the
 resume point and the history, and marks the trackers; the track pick and AniBeam's mpv
@@ -68,7 +70,9 @@ emulator, which cannot see the LAN's multicast, write `/data/local/tmp/anibeam-c
 Downloads run in the core's own torrent engine (`librqbit`, the core's `phone` feature),
 held while the phone is off Wi-Fi unless mobile data was allowed. While anything
 downloads, a small Java service (`android/java/`) keeps a notification up so Android does
-not cut the network with the screen off. The player's screen calls, landscape and the bars
+not cut the network with the screen off; it shows what is downloading with a bar and the
+numbers Downloads shows, and a finished episode posts one of its own, on a channel that can
+be turned off apart from the first. The player's screen calls, landscape and the bars
 and keeping the display awake, are Java too, since only Android's UI thread may make them. A finished download stops: the phone does not
 seed.
 
@@ -162,7 +166,17 @@ ANIBEAM_AVD=anibeam_fold scripts/fold.sh half 120  # fold, unfold, half [degrees
 scripts/seed-demo.sh                             # shows airing this week, and downloads
 ```
 
-Its guest takes 4 GB, so the 7 GB cap is the floor. Folding locks the emulator unless
+A clamshell folds the other way, its crease across the screen held upright. The flip AVD
+has one, and the app reads where the crease runs from the phone's own report (Android's
+window extensions) rather than guessing a book fold:
+
+```sh
+scripts/create-avd.sh --flip                     # once: anibeam_flip, 6.7 inch clamshell
+ANIBEAM_AVD=anibeam_flip scripts/emulator.sh
+ANIBEAM_AVD=anibeam_flip scripts/fold.sh half 100
+```
+
+A foldable guest takes 4 GB, so the 7 GB cap is the floor. Folding locks the emulator unless
 `adb shell settings put secure fold_lock_behavior_setting stay_awake_on_fold_key` is set
 once.
 

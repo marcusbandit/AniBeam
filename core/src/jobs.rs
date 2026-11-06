@@ -119,6 +119,12 @@ impl JobCtx {
         self.cancel.is_cancelled()
     }
 
+    /// Resolves once the job is cancelled, for a job that waits on something
+    /// else and must stop the moment it is (an agent session, #419).
+    pub async fn cancelled(&self) {
+        self.cancel.cancelled().await
+    }
+
     /// `?` on this at the top of every loop body; the runner turns the
     /// error into `JobCancelled`.
     pub fn checkpoint(&self) -> Result<(), CoreError> {

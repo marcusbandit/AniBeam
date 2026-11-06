@@ -30,11 +30,12 @@ pub fn start(core: &Core) -> Result<u64, CoreError> {
         });
     }
     let owner = core.owner()?;
+    let home = crate::downloads::home::AnirssHome::of(&core.paths);
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::Subscriptions, move |_ctx| async move {
-            let result = run().await?;
+            let result = run(&home).await?;
             let message = message_of(&result);
             Ok(Finished {
                 plain: None,
@@ -50,7 +51,7 @@ pub fn start(core: &Core) -> Result<u64, CoreError> {
 /// can end early: a timeout drops the future `wait_with_output` holds the
 /// child in, and so does a cancelled job, and both send the kill the same
 /// way.
-async fn run() -> Result<SubscriptionsResult, CoreError> {
+async fn run(home: &crate::downloads::home::AnirssHome) -> Result<SubscriptionsResult, CoreError> {
     let mut command = crate::process::command(&crate::downloads::anirss::sidecar_command("anirss"));
     command
         .arg("-Qj")
@@ -61,6 +62,7 @@ async fn run() -> Result<SubscriptionsResult, CoreError> {
     if let Some(path) = crate::downloads::anirss::child_path() {
         command.env("PATH", path);
     }
+    home.apply(&mut command);
     let child = match command.spawn() {
         Ok(child) => child,
         Err(e) => {

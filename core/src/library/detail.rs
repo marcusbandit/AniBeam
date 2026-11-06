@@ -374,7 +374,8 @@ impl Snapshot {
                     (SELECT s.id FROM series s WHERE s.anilist_id = m.id ORDER BY s.id LIMIT 1),
                     (SELECT ta.status FROM tracker_entries ta WHERE ta.tracker = 'anilist' AND ta.media_id = m.id),
                     (SELECT tm.status FROM tracker_entries tm WHERE tm.tracker = 'mal' AND tm.media_id = m.mal_id),
-                    m.title_native
+                    m.title_native,
+                    (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = m.id ORDER BY ls.id LIMIT 1)
              FROM recommendations r
              JOIN anilist_media m ON m.id = r.recommended_id
              LEFT JOIN images i ON i.url = m.cover_url
@@ -387,6 +388,7 @@ impl Snapshot {
             let anilist_status: Option<String> = r.get(5)?;
             let mal_status: Option<String> = r.get(6)?;
             let native: Option<String> = r.get(7)?;
+            let kept_here: Option<String> = r.get(8)?;
             let (main, other) = match self.main_tracker {
                 Tracker::Anilist => (anilist_status, mal_status),
                 Tracker::Mal => (mal_status, anilist_status),
@@ -407,7 +409,10 @@ impl Snapshot {
                         .into_owned()
                 }),
                 owned: r.get::<_, Option<i64>>(4)?.map(|v| v as u64),
-                list_status: main.or(other).and_then(|s| ListStatus::from_column(&s)),
+                list_status: main
+                    .or(other)
+                    .or(kept_here)
+                    .and_then(|s| ListStatus::from_column(&s)),
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -418,7 +423,7 @@ impl Snapshot {
 /// `season_of` and the number's bits. Files read as an episode of the same
 /// season and number are two releases of it; the web shell's old rule, moved
 /// here so every shell lists one row per episode. Takes the episodes on disk.
-fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersion>> {
+pub(crate) fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersion>> {
     versions_by(files, version_key)
 }
 
@@ -474,7 +479,7 @@ fn versions_by<K: std::hash::Hash + Eq>(
 }
 
 /// Which episode a file is, for `episode_versions`.
-fn version_key(f: &FileRow) -> (u32, u64) {
+pub(crate) fn version_key(f: &FileRow) -> (u32, u64) {
     (season_of(f), f.number.to_bits())
 }
 

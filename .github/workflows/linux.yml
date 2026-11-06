@@ -133,6 +133,8 @@ jobs:
       - name: Rust toolchain
         run: |
           rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
           rustc --version
 
       - uses: Swatinem/rust-cache@v2

@@ -298,6 +298,21 @@ FocusScope {
     property var connecting: ({})      // the running connect job's id
     property var signInUrls: ({})      // the authorize url, to open it again
     property var connectErrors: ({})   // why the last connect did not finish
+    // The same sign-in errors as the bridge gave them, for their plain words (connectErrors
+    // keeps the core's text, which the client secret check reads)
+    property var connectProblems: ({})
+    function connectWords(t) {
+        // MyAnimeList asking for the app's client secret is a refusal the core words for
+        // people, and the row's Add client secret button is its fix: those words stay
+        if (needsSecret(t)) return connectErrors[t]
+        var e = connectProblems[t]
+        return e ? plainText(e) : connectErrors[t] || ""
+    }
+    function needsSecret(t) { return /client secret/i.test(connectErrors[t] || "") }
+    function connectFailed(t, e) {
+        connectErrors = withKey(connectErrors, t, errorText(e))
+        connectProblems = withKey(connectProblems, t, e)
+    }
     property var connectedAs: ({})     // who the last connect signed in as
     // Bookkeeping by job id rather than by tracker, because the core's events are: a late
     // event of a replaced job must never touch the job that replaced it.
@@ -335,6 +350,12 @@ FocusScope {
         m = m.replace(/^(AniList|MyAnimeList|TMDB|Anilist|Mal|Jikan|Tmdb)( did not respond)?: /, "").replace(/^(io|internal|[Ii]nvalid [a-z_ ]+): /, "")
         return m === "" ? "That did not work." : m.charAt(0).toUpperCase() + m.slice(1)
     }
+    // A call error on one line of a page: the bridge's plain words and what to do next, else
+    // the core's message trimmed for a person
+    function plainText(e) {
+        if (e && e.plain) return e.plain + (e.next ? " " + e.next : "")
+        return errorText(e)
+    }
     // A call error as a toast: what happened and what to do, the button that does it
     // (`retry` runs the same thing again, a settings fix opens that tab), and the core's
     // own message one click away under Details.
@@ -355,13 +376,14 @@ FocusScope {
     function connectTracker(t) {
         if (connectBlockedBy(t) !== "") { toast(blockedTip(t)); return false }
         connectErrors = withKey(connectErrors, t)
+        connectProblems = withKey(connectProblems, t)
         connectedAs = withKey(connectedAs, t)
         signInUrls = withKey(signInUrls, t)
         // A second connect of the same tracker replaces the first: the core cancels it,
         // and that cancel was asked for.
         if (connecting[t] !== undefined) expectedCancels = withKey(expectedCancels, connecting[t], true)
         var r = Door.connectTracker(t)
-        if (r.error) { connectErrors = withKey(connectErrors, t, errorText(r.error)); return false }
+        if (r.error) { connectFailed(t, r.error); return false }
         connecting = withKey(connecting, t, r.reply.job)
         jobTrackers = withKey(jobTrackers, r.reply.job, t)
         latestJob = withKey(latestJob, t, r.reply.job)
@@ -377,7 +399,7 @@ FocusScope {
     function openLink(url) {
         var u = String(url || "")
         if (u === "") return
-        if (!Shell.openUrl(u)) frame.toast("Could not open " + u)
+        if (!Shell.openUrl(u)) frame.toast("AniBeam could not open that. Copy it and open it yourself.", 8, "Copy", function() { frame.copyText(u, "Copied") }, u)
     }
     function reopenSignIn(t) { if (signInUrls[t]) frame.openLink(signInUrls[t]) }
     // One click: with credentials the browser opens at once and the sheet only says where
@@ -438,11 +460,14 @@ FocusScope {
             if (t === undefined) return
             frame.jobTrackers = frame.withKey(frame.jobTrackers, job)
             if (frame.latestJob[t] !== job) return
-            var message = frame.errorText(error)
-            frame.connectErrors = frame.withKey(frame.connectErrors, t, message)
+            frame.connectFailed(t, error)
             // The sheet says it inline when it is up for this tracker; a toast as well would
             // be the same sentence twice.
-            if (!connectSheet.visible || connectSheet.tracker !== t) frame.toast(message, 6)
+            if (!connectSheet.visible || connectSheet.tracker !== t) {
+                // Asking again cannot help a missing secret: the row's button is the fix
+                if (frame.needsSecret(t)) frame.toast(frame.connectWords(t), 8)
+                else frame.fail(error, function() { frame.connectTracker(t) })
+            }
         }
         // A cancel nobody here asked for is a sign-in that stopped under the user. Nothing in
         // the shell starts a connect behind the frame's back today, so this is the guard for
@@ -454,7 +479,7 @@ FocusScope {
             frame.jobTrackers = frame.withKey(frame.jobTrackers, job)
             var asked = frame.expectedCancels[job] === true
             frame.expectedCancels = frame.withKey(frame.expectedCancels, job)
-            if (!asked && frame.latestJob[t] === job) frame.toast("The " + frame.trackerName(t) + " sign-in stopped")
+            if (!asked && frame.latestJob[t] === job) frame.toast("The " + frame.trackerName(t) + " sign-in stopped before it finished.", 8, "Try again", function() { frame.connectTracker(t) })
         }
     }
 
@@ -839,9 +864,9 @@ FocusScope {
         if (frame.canSetListStatus(c)) out = out.concat(frame.listStatusItems(c.id, c.list_status))
         return out
     }
-    // A list status is the trackers': it is offered for a series that a connected tracker
-    // carries an id for, and not for a hidden one, whose tracker sync is off. A match with only
-    // an AniList id and only MAL connected has nowhere to write, so it gets no menu.
+    // A list status is offered for every series but a hidden one, whose tracker sync is off. It
+    // goes to every connected tracker that carries an id for the series, and stays on this
+    // device when none does (#213).
     // A series AniBeam put a name to: any provider id at all. Show info's sections and Help's
     // count both read it, so the two never disagree.
     function hasMatch(card) {
@@ -849,8 +874,21 @@ FocusScope {
     }
     function trackerOn(t) { return !!Door.trackers && !!Door.trackers[t] && Door.trackers[t].connected === true }
     function canSetListStatus(c) {
-        if (!c || c.hidden || !c.match_info) return false
+        return !!c && !c.hidden
+    }
+    // Whether a series' status and score reach a tracker, or stay on this device (#213): a
+    // series with no match, or with no account behind its ids, keeps them here
+    function listsOnline(c) {
+        if (!c || !c.match_info) return false
         return (frame.trackerOn("anilist") && !!c.match_info.anilist_id) || (frame.trackerOn("mal") && !!c.match_info.mal_id)
+    }
+    // Where a series' status and score go, in a line for a tooltip
+    function listHome(c) {
+        if (frame.listsOnline(c)) return "Change it on each list that is connected"
+        var m = c && c.match_info
+        if (!m || (!m.anilist_id && !m.mal_id)) return "Kept on this device: no tracker carries this show"
+        if (frame.trackerOn("anilist") || frame.trackerOn("mal")) return "Kept on this device: your tracker does not carry this show"
+        return "Kept on this device until you connect AniList or MyAnimeList"
     }
     // The five lists a status pill or a card's right-click moves a series to, the one it is on
     // already greyed out. The core writes it to every connected tracker.
@@ -869,7 +907,8 @@ FocusScope {
     function setListStatus(id, status, label) {
         var r = Door.call("SetListStatus", { series: id, status: status })
         if (r.error) { frame.fail(r.error); return false }
-        frame.toast("Moving to " + label)
+        // No job is the list kept on this device, already moved
+        frame.toast(r.reply && r.reply.job !== undefined ? "Moving to " + label : "Moved to " + label)
         return true
     }
     // Text onto the clipboard, and a word that it went

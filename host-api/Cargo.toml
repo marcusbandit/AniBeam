@@ -7,8 +7,13 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Request proof (#555): signing on a client, checking on a host.
+proof = ["dep:ed25519-dalek"]
+
 [dependencies]
 serde.workspace = true
+ed25519-dalek = { version = "2", optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
