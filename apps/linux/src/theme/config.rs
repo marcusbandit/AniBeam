@@ -23,6 +23,21 @@ choice!(Density { Compact = "compact", Normal = "normal", Comfortable = "comfort
 choice!(Poster { S = "s", M = "m", L = "l" }, default M);
 choice!(Corners { Smooth = "smooth", Plain = "plain" }, default Smooth);
 choice!(AppIcon { Default = "default", Dark = "dark" }, default Default);
+choice!(TextSize { Smaller = "smaller", Normal = "normal", Large = "large", Larger = "larger", Largest = "largest" }, default Normal);
+
+impl TextSize {
+    /// How much the system font size is multiplied by: every type size in the shell
+    /// follows it, and so does the height of a control, so a label never outgrows its box.
+    pub fn factor(self) -> f64 {
+        match self {
+            TextSize::Smaller => 0.875,
+            TextSize::Normal => 1.0,
+            TextSize::Large => 1.15,
+            TextSize::Larger => 1.3,
+            TextSize::Largest => 1.5,
+        }
+    }
+}
 
 impl Density {
     pub fn factor(self) -> f64 {
@@ -67,6 +82,8 @@ pub struct ThemeSettings {
     pub reduced_motion: bool,
     /// The window's and the launcher's icon: the yellow one, or its colours swapped.
     pub icon: AppIcon,
+    /// The type size on top of the system's, from smaller to much larger.
+    pub text_size: TextSize,
 }
 
 impl Default for ThemeSettings {
@@ -82,6 +99,7 @@ impl Default for ThemeSettings {
             theme_light: "tesserae-light".into(),
             reduced_motion: false,
             icon: AppIcon::Default,
+            text_size: TextSize::Normal,
         }
     }
 }
@@ -137,6 +155,9 @@ pub fn load(path: &Path) -> ThemeSettings {
         icon: str_of(&doc, "icon")
             .and_then(|s| AppIcon::parse(&s))
             .unwrap_or(d.icon),
+        text_size: str_of(&doc, "text_size")
+            .and_then(|s| TextSize::parse(&s))
+            .unwrap_or(d.text_size),
     }
 }
 
@@ -153,6 +174,7 @@ pub fn save(path: &Path, s: &ThemeSettings) -> std::io::Result<()> {
     doc["corners"] = value(s.corners.as_str());
     doc["reduced_motion"] = value(s.reduced_motion);
     doc["icon"] = value(s.icon.as_str());
+    doc["text_size"] = value(s.text_size.as_str());
     if !doc.contains_table("theme") {
         doc["theme"] = Item::Table(Table::new());
     }
@@ -178,6 +200,33 @@ mod tests {
         assert_eq!(s.theme_dark, "gruvbox-dark-medium");
         assert_eq!(s.theme_light, "tesserae-light");
         assert!(!s.reduced_motion);
+    }
+
+    #[test]
+    fn text_size_reads_back_and_grows_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("theme.toml");
+        std::fs::write(&path, "text_size = \"huge\"\n").unwrap();
+        assert_eq!(
+            load(&path).text_size,
+            TextSize::Normal,
+            "an unknown size falls back"
+        );
+        let mut s = load(&path);
+        s.text_size = TextSize::Largest;
+        save(&path, &s).unwrap();
+        assert_eq!(load(&path).text_size, TextSize::Largest);
+        let steps = [
+            TextSize::Smaller,
+            TextSize::Normal,
+            TextSize::Large,
+            TextSize::Larger,
+            TextSize::Largest,
+        ];
+        assert_eq!(TextSize::Normal.factor(), 1.0);
+        for pair in steps.windows(2) {
+            assert!(pair[0].factor() < pair[1].factor(), "{pair:?}");
+        }
     }
 
     #[test]

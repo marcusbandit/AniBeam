@@ -12,30 +12,31 @@ use regex::Regex;
 use super::Endpoint;
 use super::erai;
 use super::fetch::{self, DEFAULT_TIMEOUT};
+use super::kinds::{FILTERED_RSS, JSON_FEED};
 use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::{BoxFuture, Http};
 
-/// anirss `endpoints.VALID_KINDS`.
-/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs). So is `json`: any JSON
-/// search API, read through the field map its repo definition supplies (json.rs).
-/// `torznab` is a Prowlarr or Jackett search, read as RSS; it may name the person's own
-/// server as `{host}`.
-pub const VALID_KINDS: [&str; 5] = ["json", "nyaa", "rss", "tosho", "torznab"];
+/// The kinds an endpoint can be, each named for the shape it reads (`kinds.rs`).
+/// `filtered-rss` and `rss` are anirss's kinds under shape names. `json-feed` is AniBeam's
+/// own: a JSON feed in one fixed layout (json_feed.rs). So is `json`: any JSON search API,
+/// read through the field map its repo definition supplies (json.rs). `torznab` is an
+/// indexer's torznab search, read as RSS; it may name the person's own server as `{host}`.
+pub const VALID_KINDS: [&str; 5] = ["filtered-rss", "json", "json-feed", "rss", "torznab"];
 
 /// Whether an endpoint of `kind` searches by putting the query into its address at
-/// `{query}`. nyaa builds its own search; rss and tosho have only the address, so without
+/// `{query}`. filtered-rss builds its own search; rss and json-feed have only the address, so without
 /// the placeholder every search would fetch the same fixed page (#248). Every check of an
 /// endpoint or a phone source asks this. A json endpoint has only the address too, and
 /// so does a torznab search.
 pub fn needs_query(kind: &str) -> bool {
-    matches!(kind, "json" | "rss" | "tosho" | "torznab")
+    matches!(kind, "json" | "json-feed" | "rss" | "torznab")
 }
 
 /// Whether what an endpoint of `kind` answers at its search address is an RSS feed, which
-/// `downloads::feed::read` can read. json and tosho answer JSON; every other kind is read
+/// `downloads::feed::read` can read. json and json-feed answer JSON; every other kind is read
 /// as RSS, the way `fetch_exact` falls through to RSS for a kind it has no branch for.
 pub fn answers_rss(kind: &str) -> bool {
-    !matches!(kind, "json" | "tosho")
+    !matches!(kind, "json" | "json-feed")
 }
 
 /// Why a json source cannot be added by hand: its field map only comes from a definition.
@@ -286,11 +287,11 @@ pub(crate) fn split_url(url: &str) -> Result<UrlParts, ()> {
 
 // URLs and queries ---------------------------------------------------------------------
 
-/// Tags results a filtered nyaa endpoint found only with its filter off, after the endpoint's
+/// Tags results a filtered-rss endpoint found only with its filter off, after the endpoint's
 /// name: the results list heads them with it, and a subscription to them keeps the filter off.
 pub const ALL_UPLOADS: &str = ": all uploads";
 
-/// `ep` with its nyaa filter off: every upload, trusted or not.
+/// `ep` with its filter off: every upload, trusted or not.
 fn unfiltered(ep: &Endpoint) -> Endpoint {
     Endpoint {
         filter: "0".to_string(),
@@ -304,20 +305,22 @@ pub fn found_unfiltered(items: &[Release]) -> bool {
 }
 
 pub fn search_url(ep: &Endpoint, query: &str) -> String {
-    if ep.kind == "nyaa" {
+    if ep.kind == FILTERED_RSS {
         let qs = urlencode(&[
             ("page".to_string(), "rss".to_string()),
             ("q".to_string(), query.to_string()),
             ("c".to_string(), ep.category.clone()),
             ("f".to_string(), ep.filter.clone()),
         ]);
-        return format!("{}?{qs}", ep.url);
+        // A nyaa address may carry fixed parameters of its own (a token), as anirss allows
+        let sep = if ep.url.contains('?') { '&' } else { '?' };
+        return format!("{}{sep}{qs}", ep.url);
     }
     ep.url.replace("{query}", &quote_plus(query))
 }
 
 /// Split `query` into (positive-terms query, exclusion terms). An exclusion is a `-tag` or
-/// `-"quoted phrase"` field (nyaa syntax). Generic RSS endpoints do not understand `-tag`,
+/// `-"quoted phrase"` field (filtered-rss syntax). Generic RSS endpoints do not understand `-tag`,
 /// so exclusions are applied client-side after the fetch instead.
 pub fn split_exclusions(query: &str) -> (String, Vec<String>) {
     let mut positive: Vec<&str> = Vec::new();
@@ -350,12 +353,12 @@ fn erai_split(ep: &Endpoint, positive: &str) -> (String, Vec<String>) {
 }
 
 /// URL to persist as a qBittorrent RSS feed for `query`, plus the exclusion terms that
-/// could not be encoded into it. nyaa understands `-tag` exclusions server-side, so they
+/// could not be encoded into it. filtered-rss understands `-tag` exclusions server-side, so they
 /// stay in the URL; generic rss endpoints get only the positive terms and the exclusions
 /// come back for the caller to enforce through the qB rule. erai also loses its quality
 /// tokens.
 pub fn feed_url(ep: &Endpoint, query: &str) -> (String, Vec<String>) {
-    if ep.kind == "nyaa" {
+    if ep.kind == FILTERED_RSS {
         return (search_url(ep, query), Vec::new());
     }
     let (positive, excluded) = split_exclusions(query);
@@ -408,7 +411,7 @@ pub async fn subscription_feed(
     items: &[Release],
 ) -> (String, String, Vec<String>) {
     let relaxed;
-    let ep = if ep.kind == "nyaa" && found_unfiltered(items) {
+    let ep = if ep.kind == FILTERED_RSS && found_unfiltered(items) {
         relaxed = unfiltered(ep);
         &relaxed
     } else {
@@ -456,8 +459,8 @@ pub fn filter_excluded(items: Vec<Release>, terms: &[String]) -> Vec<Release> {
         .collect()
 }
 
-/// Fetch `query` from `ep`. Errors are the feed's: unreachable, refused or unreadable. A nyaa
-/// endpoint whose filter finds nothing is asked again unfiltered, and those results carry
+/// Fetch `query` from `ep`. Errors are the feed's: unreachable, refused or unreadable. A
+/// filtered-rss endpoint whose filter finds nothing is asked again unfiltered, and those results carry
 /// `source` "<name>: all uploads". When that second request fails, the answer stays the
 /// first one: nothing found.
 pub async fn fetch_items(
@@ -466,7 +469,7 @@ pub async fn fetch_items(
     query: &str,
 ) -> Result<Vec<Release>, CoreError> {
     let items = fetch_exact(http, ep, query).await?;
-    if ep.kind != "nyaa" || !items.is_empty() || matches!(ep.filter.as_str(), "" | "0") {
+    if ep.kind != FILTERED_RSS || !items.is_empty() || matches!(ep.filter.as_str(), "" | "0") {
         return Ok(items);
     }
     // A show nobody trusted has uploaded (or that trusted groups name differently)
@@ -474,7 +477,7 @@ pub async fn fetch_items(
     Ok(fetch_all_uploads(http, ep, query).await.unwrap_or_default())
 }
 
-/// `query` from `ep` with its nyaa filter off, tagged "<name>: all uploads".
+/// `query` from `ep` with its filter off, tagged "<name>: all uploads".
 async fn fetch_all_uploads(
     http: &dyn Http,
     ep: &Endpoint,
@@ -500,7 +503,7 @@ pub async fn refetch(
     query: &str,
     all_uploads: bool,
 ) -> Result<Vec<Release>, CoreError> {
-    if ep.kind == "nyaa" && all_uploads {
+    if ep.kind == FILTERED_RSS && all_uploads {
         return fetch_all_uploads(http, ep, query).await;
     }
     fetch_exact(http, ep, query).await
@@ -513,14 +516,14 @@ async fn fetch_exact(
     query: &str,
 ) -> Result<Vec<Release>, CoreError> {
     let timeout = seconds(ep.timeout);
-    if ep.kind == "nyaa" {
+    if ep.kind == FILTERED_RSS {
         return fetch::fetch_rss(http, &search_url(ep, query), &ep.name, timeout).await;
     }
-    if ep.kind == "tosho" {
-        // Exclusions are applied here: AnimeTosho's search does not take `-tag`.
+    if ep.kind == JSON_FEED {
+        // Exclusions are applied here: a json-feed search does not take `-tag`.
         let (positive, excluded) = split_exclusions(query);
         let items =
-            super::tosho::fetch(http, &search_url(ep, &positive), &ep.name, timeout).await?;
+            super::json_feed::fetch(http, &search_url(ep, &positive), &ep.name, timeout).await?;
         return Ok(filter_excluded(items, &excluded));
     }
     if ep.kind == "json" {
@@ -663,7 +666,7 @@ pub(crate) mod tests {
         Endpoint {
             category: "1_2".to_string(),
             filter: "1".to_string(),
-            ..Endpoint::new("nyaa", "nyaa", "https://nyaa.si/")
+            ..Endpoint::new("nyaa", FILTERED_RSS, "https://nyaa.si/")
         }
     }
 
@@ -706,10 +709,20 @@ pub(crate) mod tests {
 
     /// The value of the `s=` search parameter, the only part a query can pollute.
     fn s_param(url: &str) -> String {
+        param(url, "s")
+    }
+
+    /// The search's parameters, in order.
+    fn params(url: &str) -> Vec<(String, String)> {
         let qs = url.split_once('?').map_or("", |(_, q)| q);
         parse_qsl(qs)
+    }
+
+    /// The value of the `key` parameter, empty when there is none.
+    fn param(url: &str, key: &str) -> String {
+        params(url)
             .into_iter()
-            .find(|(k, _)| k == "s")
+            .find(|(k, _)| k == key)
             .map(|(_, v)| v)
             .unwrap_or_default()
     }
@@ -724,7 +737,7 @@ pub(crate) mod tests {
 
     #[test]
     fn validate_accepts_good_endpoints() {
-        validate("nyaa", "nyaa", "https://nyaa.si/").unwrap();
+        validate("nyaa", FILTERED_RSS, "https://nyaa.si/").unwrap();
         validate(
             "anirena",
             "rss",
@@ -746,16 +759,16 @@ pub(crate) mod tests {
     #[test]
     fn validate_rejects_bad_endpoints() {
         for (name, kind, url) in [
-            ("", "nyaa", "https://x/"),             // no name
-            ("a", "html", "https://x/"),            // bad kind
-            ("a", "rss", "https://x/rss"),          // no {query}
-            ("a", "torznab", "http://x/api"),       // no {query}
-            ("a", "tosho", "https://x/json"),       // no {query}
-            ("a", "nyaa", ""),                      // no url
-            ("bad name)", "nyaa", "https://x/"),    // bad name characters
-            ("a", "nyaa", "https://x/?q={query}"),  // nyaa adds its own query
-            ("a", "Tosho", "https://x/?q={query}"), // kinds are lower case
-            ("a", "rss", "x/rss?q={query}"),        // no scheme
+            ("", FILTERED_RSS, "https://x/"),            // no name
+            ("a", "html", "https://x/"),                 // bad kind
+            ("a", "rss", "https://x/rss"),               // no {query}
+            ("a", "torznab", "http://x/api"),            // no {query}
+            ("a", JSON_FEED, "https://x/json"),          // no {query}
+            ("a", FILTERED_RSS, ""),                     // no url
+            ("bad name)", FILTERED_RSS, "https://x/"),   // bad name characters
+            ("a", FILTERED_RSS, "https://x/?q={query}"), // adds its own query
+            ("a", "RSS", "https://x/?q={query}"),        // kinds are lower case
+            ("a", "rss", "x/rss?q={query}"),             // no scheme
         ] {
             let err = validate(name, kind, url).unwrap_err();
             assert!(
@@ -766,7 +779,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn search_url_nyaa_kind() {
+    fn search_url_filtered_rss_kind() {
         let url = search_url(&nyaa(), "one piece");
         assert!(url.starts_with("https://nyaa.si/?"));
         assert!(url.contains("page=rss") && url.contains("q=one+piece"));
@@ -922,8 +935,8 @@ pub(crate) mod tests {
         let sources = [
             Endpoint::new("feed", "rss", "https://a/rss?q={query}"),
             Endpoint::new("api", "json", "https://c/api?q={query}"),
-            Endpoint::new("anime", "tosho", "https://d/feed/json?q={query}"),
-            Endpoint::new("search", "nyaa", "https://e/"),
+            Endpoint::new("anime", JSON_FEED, "https://d/feed/json?q={query}"),
+            Endpoint::new("search", FILTERED_RSS, "https://e/"),
         ];
         let follows = |feed: &str, name: Option<&str>| follows(&sources, feed, name);
         // A rule written before #507 holds the JSON search address as its feed.
@@ -969,12 +982,54 @@ pub(crate) mod tests {
     }
 
     fn f_param(url: &str) -> String {
-        let qs = url.split_once('?').map_or("", |(_, q)| q);
-        parse_qsl(qs)
-            .into_iter()
-            .find(|(k, _)| k == "f")
-            .map(|(_, v)| v)
-            .unwrap_or_default()
+        param(url, "f")
+    }
+
+    #[test]
+    fn a_nyaa_kind_endpoint_named_with_no_category_or_filter_asks_for_everything() {
+        // anirss's Endpoint: category "1_0" (every anime upload) and filter "0" (no filter)
+        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/");
+        assert_eq!((ep.category.as_str(), ep.filter.as_str()), ("1_0", "0"));
+        assert_eq!(
+            search_url(&ep, "Show 1080p"),
+            "https://tracker.example/?page=rss&q=Show+1080p&c=1_0&f=0"
+        );
+        // Trusted only is the definition's to ask for, and goes out as given.
+        let trusted = Endpoint {
+            category: "1_2".to_string(),
+            filter: "2".to_string(),
+            ..ep
+        };
+        let got = params(&search_url(&trusted, "Show"));
+        assert_eq!(
+            got,
+            [("page", "rss"), ("q", "Show"), ("c", "1_2"), ("f", "2")]
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+        );
+    }
+
+    #[test]
+    fn a_nyaa_address_with_its_own_parameters_takes_the_search_after_them() {
+        // anirss: f"{ep.url}{'&' if '?' in ep.url else '?'}{qs}"
+        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/?token=abc");
+        assert_eq!(
+            search_url(&ep, "Show"),
+            "https://tracker.example/?token=abc&page=rss&q=Show&c=1_0&f=0"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_trusted_only_subscription_keeps_its_filter() {
+        // anirss's subscription_feed: unfiltered only when the results were found that way
+        let http = FakeHttp::new();
+        let trusted = Endpoint {
+            filter: "2".to_string(),
+            ..Endpoint::new("site", "nyaa", "https://tracker.example/")
+        };
+        let mut item = rel("[A] Show - 01", "l");
+        item.source = "site".to_string();
+        let spec = build_subscription(http.as_ref(), &trusted, "Show", &[item]).await;
+        assert_eq!(f_param(&spec.feed_url), "2", "{}", spec.feed_url);
     }
 
     #[tokio::test]

@@ -248,7 +248,8 @@ Item {
         width: parent ? parent.width : 0
         height: Math.max(thumb.height, info.implicitHeight, actions.implicitHeight) + theme.space(4)
         Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: lineMouse.containsMouse ? theme.glassFloat : "transparent" }
-        MouseArea { id: lineMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openShow(line.t.grouped ? line.t.members[0] : line.t) }
+        MouseArea { id: lineMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openShow(line.t.grouped ? line.t.members[0] : line.t); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+            Accessible.onPressAction: root.openShow(line.t.grouped ? line.t.members[0] : line.t) }
         HoverHandler { id: lineHover }
         // Stop or start, and cancel (the torrent goes, and what it wrote so far, asked
         // first); each spins until the client has done it. A show's group does all of its

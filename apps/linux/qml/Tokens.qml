@@ -190,6 +190,49 @@ Item {
     // The radius of a shape nested `padding` inside a tile, so the two curves stay
     // concentric; never below the small step so a nested row still reads as rounded.
     function radiusInner(padding) { return Math.max(radiusSm, radiusTile - padding) }
+    // ---- What a screen reader says for a control with no words of its own
+    // The label of the settings row the control sits in
+    function rowLabelOf(item) {
+        for (var p = item ? item.parent : null; p; p = p.parent) {
+            if (p.settingTarget !== true) continue
+            var words = String(p.label || p.title || "")
+            if (words !== "") return words
+        }
+        return ""
+    }
+    // The text of a Tooltip the item carries, which says what an icon-only control does
+    function tipOf(item) {
+        var d = item ? item.data : null
+        if (!d) return ""
+        for (var i = 0; i < d.length; i++) if (d[i] && d[i].isTooltip === true && d[i].text) return String(d[i].text)
+        return ""
+    }
+    // A Lucide glyph's name as words, the last resort: "trash-2" reads "trash"
+    function glyphWords(icon) { return String(icon || "").replace(/-\d+$/, "").replace(/-/g, " ") }
+    // The first words shown inside an item, depth first, for a click area over a tile that
+    // has no name of its own: the title it carries is what a person would call it
+    function textIn(item, depth) {
+        if (!item || depth > 6) return ""
+        var kids = item.children
+        for (var i = 0; i < kids.length; i++) {
+            var k = kids[i]
+            if (!k || k.visible === false || k.isTooltip === true) continue
+            if (typeof k.text === "string" && k.text.trim() !== "") return k.text.trim()
+            var r = textIn(k, depth + 1)
+            if (r !== "") return r
+        }
+        return ""
+    }
+    // A click area's spoken name: the words the item it covers shows (its own text, if it is
+    // a label), else the tip that says what it does
+    function nameNear(item) {
+        var own = item && typeof item.text === "string" ? item.text.trim() : ""
+        return own || textIn(item, 0) || tipOf(item)
+    }
+    // A control's spoken name: its own, its words, its tip, its row, its glyph, in that order
+    function spokenName(own, words, item, icon) {
+        return own || words || tipOf(item) || rowLabelOf(item) || glyphWords(icon)
+    }
     readonly property int posterWidth: Theme.posterWidth
     // The one size posters decode at, in device pixels: a grid card is laid out between the
     // poster width and about a quarter wider (the columns stretch to fill the row), so the
@@ -198,20 +241,24 @@ Item {
     readonly property real devicePixelRatio: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
     readonly property size posterDecodeSize: Qt.size(Math.ceil(posterWidth * 1.25 * devicePixelRatio), Math.ceil(posterWidth * 1.25 * 1.5 * devicePixelRatio))
     readonly property real systemPointSize: Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 10
+    // Text size (Appearance): every type size below is the system's times this, so the
+    // whole window's type follows one setting
+    readonly property real textScale: Theme.textScale
+    readonly property real basePointSize: systemPointSize * textScale
     readonly property string fontSans: fontFamily
     // Shims kept while the surfaces are restyled: the old names all resolve to Archivo.
     // There is no monospace anywhere; tabular figures come from the ledger role.
     readonly property string fontUi: fontFamily
     readonly property string fontSerif: fontFamily
     // Four sizes only; widths and weights do the rest
-    readonly property real typeDisplay: systemPointSize * 2.8
-    readonly property real typeNormal: systemPointSize
-    readonly property real typeSmall: systemPointSize * 0.85
-    readonly property real typeLarge: systemPointSize * 1.5
+    readonly property real typeDisplay: basePointSize * 2.8
+    readonly property real typeNormal: basePointSize
+    readonly property real typeSmall: basePointSize * 0.85
+    readonly property real typeLarge: basePointSize * 1.5
     // A page's own title (Library, Feed, Downloads) and a section's heading: bigger than the
     // display cut's default, the first thing read on a page
-    readonly property real typePage: systemPointSize * 4
-    readonly property real typeHeading: systemPointSize * 2.2
+    readonly property real typePage: basePointSize * 4
+    readonly property real typeHeading: basePointSize * 2.2
     // The four cuts of the face, by role (DESIGN.md, Type). Label.qml applies one with
     // `role: "title"`; a plain Text can take the same through these functions:
     //   font.variableAxes: theme.roleAxes(r)   font.weight: theme.roleWeight(r)
@@ -244,7 +291,11 @@ Item {
     readonly property int motionFast: reducedMotion ? 0 : 120
     readonly property int motionNormal: reducedMotion ? 0 : 200
     readonly property int motionSlow: 320
-    readonly property real controlHeight: space(8)
+    // A length that holds text: space(n), grown with text bigger than Normal, so a label never
+    // outgrows its button, row or column. Smaller text keeps the normal size, so a control
+    // stays as easy to hit.
+    function textSpace(n) { return Math.round(space(n) * Math.max(1, textScale)) }
+    readonly property real controlHeight: textSpace(8)
     readonly property real disabledOpacity: 0.45
 
     // A colour t of the way from a to b, alpha included; takes Qt colours

@@ -332,7 +332,9 @@ pub enum Call {
     GetDownloads,
     /// Starts anirss when it is the core's sidecar, reads its health,
     /// endpoints and qBittorrent view, and tries the torrent client
-    /// directly. Ends in `DownloadsStatusChanged`.
+    /// directly. On the native engine it reads the core's own sources as the
+    /// endpoints and tries the torrent client, and never starts or asks
+    /// anirss. Ends in `DownloadsStatusChanged`.
     ConnectDownloads,
     /// Searches an endpoint (the first one when `None`), falling through
     /// to the others when it is empty or unreachable, and analyses the
@@ -669,7 +671,7 @@ pub enum Call {
         enabled: bool,
     },
     /// Adds an endpoint by hand, outside any repo: a name, and an address with `{query}`
-    /// where the search goes (or a bare nyaa-style site). A secret in the address (a
+    /// where the search goes. A secret in the address (a
     /// `user:password@` login, or a key such as `apikey=`, `token=`, `passkey=`, `rsskey=`;
     /// the full list is `releases::native::SECRET_PARAMS`) moves to the secret store; other
     /// placeholders take their value from `credentials`.

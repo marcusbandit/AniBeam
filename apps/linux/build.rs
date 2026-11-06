@@ -123,6 +123,7 @@ fn main() {
             .qml_file("qml/SettingsKeysTab.qml")
             .qml_file("qml/SettingsPhoneTab.qml")
             .qml_file("qml/SettingsAboutTab.qml")
+            .qml_file("qml/SettingsHelpTab.qml")
             .qml_file("qml/SettingsDownloadsTab.qml")
             .qml_file("qml/EndpointReposPanel.qml")
             .qml_file("qml/DownloadsPage.qml")
