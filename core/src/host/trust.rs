@@ -211,7 +211,10 @@ mod tests {
         }}"#)
         .unwrap();
         let relayed: Vec<_> = t.peers.iter().map(|p| (p.id.as_str(), p.relayed)).collect();
-        assert_eq!(relayed, [("nDirect", false), ("nRelay", true), ("nUnknown", false)]);
+        assert_eq!(
+            relayed,
+            [("nDirect", false), ("nRelay", true), ("nUnknown", false)]
+        );
     }
 
     #[test]
