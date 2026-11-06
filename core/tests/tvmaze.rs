@@ -622,8 +622,8 @@ fn a_series_is_searched_linked_and_rematched_through_tvmaze() {
     core.shutdown();
 }
 
-/// A TVmaze-only series has nothing to report to: a mark and a score are
-/// refused as unmatched, progress is kept on this device instead, and a
+/// A TVmaze-only series has nothing to report to: a mark is refused as
+/// unmatched, progress and a score are kept on this device instead, and a
 /// session's mark rule never fires, while the view and the episode title
 /// still work.
 #[test]
@@ -642,26 +642,27 @@ fn a_tvmaze_series_never_reaches_a_tracker_but_plays_with_its_titles() {
     );
     common::wait_job(&c, job);
 
-    for call in [
-        Call::MarkEpisode {
-            series,
-            episode: 1.0,
-        },
-        Call::SetScore {
+    let mark = Call::MarkEpisode {
+        series,
+        episode: 1.0,
+    };
+    assert!(
+        matches!(
+            core.call(mark),
+            Err(CoreError::Refused {
+                reason: Refusal::NoMatch
+            })
+        ),
+        "a mark is refused"
+    );
+    // A score stays on this device, with no job (#213)
+    assert!(matches!(
+        core.call(Call::SetScore {
             series,
             score: Some(8.0),
-        },
-    ] {
-        assert!(
-            matches!(
-                core.call(call.clone()),
-                Err(CoreError::Refused {
-                    reason: Refusal::NoMatch
-                })
-            ),
-            "{call:?}"
-        );
-    }
+        }),
+        Ok(Reply::Ok)
+    ));
 
     // Progress lands here at once: up to episode 1 watched, nothing after it
     let watched = |core: &Core| -> Vec<bool> {
