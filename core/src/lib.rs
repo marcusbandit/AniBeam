@@ -2,6 +2,7 @@
 //! contract in `contract`.
 
 pub mod airing_now;
+pub mod atomic_file;
 pub mod calendar;
 pub mod cast;
 pub mod changelog;
