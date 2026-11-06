@@ -348,13 +348,16 @@ Item {
     // ---- The grid's geometry: as many columns as the width holds at the poster width
     readonly property real gap: theme.space(4)
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + gap) / (theme.posterWidth + gap)))
-    readonly property real cardWidth: Math.floor((scroll.innerWidth - gap * (cols - 1)) / cols)
+    // The columns stretch a little so the row ends on the head's right edge, the search
+    // and the chips: every card is the same width, a fraction of a pixel included (#694)
+    readonly property real cardWidth: (scroll.innerWidth - gap * (cols - 1)) / cols
 
     PageScroll {
         id: scroll
         anchors.fill: parent
         visible: !page.libraryEmpty
-        readonly property real innerWidth: width - theme.space(16)
+        // The column PageScroll centres the content in, less its side margins
+        readonly property real innerWidth: column - theme.space(16)
 
         // ---- The head: the title and its count, the search at the right
         Item {
@@ -530,7 +533,9 @@ Item {
                             }
                         }
                         Flow {
-                            width: parent.width
+                            // Half a pixel wider than the column so a row of exactly-fitting
+                            // fractional cards never wraps its last card on rounding
+                            width: parent.width + 0.5
                             spacing: page.gap
                             Repeater {
                                 model: section.modelData.ids
