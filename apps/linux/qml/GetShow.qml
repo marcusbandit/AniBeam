@@ -244,8 +244,14 @@ Item {
         order.sort(function(a, b) { return b.count - a.count || (a.batch ? 1 : 0) - (b.batch ? 1 : 0) || b.seeds - a.seeds })
         return order
     }
+    // Whether the source in view has a feed to follow: one that answers JSON has none (#507)
+    readonly property bool activeFollowable: {
+        for (var i = 0; i < endpoints.length; i++) if (endpoints[i].name === active) return endpoints[i].followable !== false
+        return true
+    }
     // The feed a pick follows: a batch row follows its group's episode row, when there is one
     function followOf(row) {
+        if (!activeFollowable) return null
         if (!row || !row.batch) return row
         for (var i = 0; i < rows.length; i++) if (!rows[i].batch && rows[i].key === row.group + "|" + row.resolution) return rows[i]
         return null
@@ -912,6 +918,7 @@ Item {
                         checked: root.follow
                         onToggled: function(on) { root.follow = on }
                         tip: !root.follow ? "Off: new episodes show up here as gaps, and nothing downloads by itself."
+                            : !root.activeFollowable ? root.active + " has no feed to follow, so new episodes cannot download by themselves from it."
                             : !root.chosenRow ? "Pick a group first: a subscription follows one group and quality."
                             : !root.followRow ? root.chosenRow.group + " has only the batch here, so there is no feed of single episodes to subscribe to."
                             : "On: a feed for " + root.followRow.group + (root.followRow.resolution ? " " + root.followRow.resolution : "") + " on " + root.active + ". Each new episode downloads as it appears."
