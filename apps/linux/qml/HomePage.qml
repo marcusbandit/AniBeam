@@ -32,6 +32,11 @@ Item {
     property var airingRows: []   // releasing, on disk, not done with
     property var resume: null     // { card, detail, episode, partial }
     property bool libraryEmpty: false
+    // A read that failed shows Try again on the page, not a blank Home
+    property bool loadFailed: false
+    // An empty library with folders is a scan that found nothing, not a library to start
+    property bool hasFolders: false
+    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast("Scan started") }
     onLibraryEmptyChanged: if (libraryEmpty) loadSeason()
     // The season as the Airing page reads it (AiringNow), for an empty library only
     property var season: null
@@ -148,11 +153,13 @@ Item {
 
     function reload() {
         var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
+        loadFailed = !!r.error && shelf.length === 0
         if (r.error) { frame.fail(r.error, page.reload); return }
         shelf = r.reply.series
         airingRows = r.reply.airing || []
         var n = r.reply.counts || {}
         libraryEmpty = (n.all || 0) === 0 && (n.watched || 0) === 0
+        if (libraryEmpty) { var src = Door.listSources(); hasFolders = !src.error && src.reply.sources.length > 0 }
         resume = pickResume()
         nowMs = Date.now()
     }
@@ -1321,12 +1328,24 @@ Item {
     }
 
     EmptyState {
+        objectName: "home-empty"
         anchors.centerIn: parent
         visible: page.libraryEmpty && !page.seasonShown
-        icon: "folder-plus"
-        title: "No series yet"
-        body: "Add the folder your anime lives in and the library fills itself."
-        Button { text: "Add a folder"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
+        icon: page.hasFolders ? "folder-search" : "folder-plus"
+        title: page.hasFolders ? "Nothing found in your folders yet" : "No series yet"
+        body: page.hasFolders ? "AniBeam found no series or films in the folders it watches. Scan them again, or check the folders in Settings."
+            : "Add the folder your anime lives in and the library fills itself."
+        Button { visible: page.hasFolders; text: "Scan all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
+        Button { text: page.hasFolders ? "Library settings" : "Add a folder"; primary: !page.hasFolders; flat: page.hasFolders; onClicked: frame.go("settings", { tab: "library" }) }
+    }
+    EmptyState {
+        objectName: "home-failed"
+        anchors.centerIn: parent
+        visible: page.loadFailed && !page.libraryEmpty
+        icon: "circle-alert"
+        title: "Home did not load"
+        body: "AniBeam could not read the library just now. Try again in a moment."
+        Button { text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
     }
     // A new install has no library to hold the tracker nudge, so the empty Home carries it
     TrackerNudge {

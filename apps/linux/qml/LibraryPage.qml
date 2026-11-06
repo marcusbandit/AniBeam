@@ -170,6 +170,12 @@ Item {
     property bool hiddenExist: false
     property bool watchedExist: false
     property bool libraryEmpty: false
+    // An empty library with folders is a scan that found nothing, not a library to start
+    property bool hasFolders: false
+    // A read that failed says so with Try again, never as an empty library
+    property bool loadFailed: false
+    function showAll() { tab = "All"; persist(); reload() }
+    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast("Scan started") }
     property real nowMs: Date.now()
 
     function clearGenre() { genre = ""; frame.nav.current.props = { q: page.query }; frame.nav.relabel("Library"); reload() }
@@ -241,7 +247,8 @@ Item {
     function cut() {
         var r = Door.libraryView({ tab: tab, query: query, sort: sort, direction: direction, reveal: Door.revealHidden,
                                    arrange: arrange, group: groupFranchises, genre: genre, now: nowMs, season: currentSeason })
-        if (r.error) { frame.fail(r.error); return false }
+        loadFailed = !!r.error
+        if (r.error) { frame.fail(r.error, page.reload); return false }
         var v = r.reply
         counts = v.counts || {}
         if (v.key !== viewKey) {
@@ -285,6 +292,7 @@ Item {
         watchedExist = (n.watched || 0) > 0
         hiddenExist = Door.revealHidden && (n.hidden || 0) > 0
         libraryEmpty = (n.all || 0) === 0 && !watchedExist && (n.hidden || 0) === 0
+        if (libraryEmpty) { var src = Door.listSources(); hasFolders = !src.error && src.reply.sources.length > 0 }
         scroll.contentY = Math.max(0, Math.min(keep, Math.max(0, scroll.contentHeight - scroll.height)))
     }
     Timer { id: debounce; interval: 400; onTriggered: page.reload() }
@@ -557,11 +565,23 @@ Item {
             visible: page.view.count === 0 && !page.libraryEmpty
             width: parent.width
             height: visible ? theme.space(60) : 0
+            readonly property string what: page.tab === "Series" ? "series" : page.tab === "Movies" ? "films" : page.tab === "Watched" ? "watched shows" : page.tab === "Hidden" ? "hidden shows" : "shows"
             EmptyState {
-                icon: "search"
-                title: page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing here"
-                body: page.query !== "" ? "" : "No " + (page.tab === "Series" ? "series" : page.tab === "Movies" ? "movies" : page.tab === "Watched" ? "watched items" : "items") + " in your library yet."
-                Button { visible: page.query !== ""; text: "Clear search"; icon: "x"; onClicked: { search.text = ""; queryDebounce.stop(); page.query = ""; frame.nav.current.props = page.genre !== "" ? { genre: page.genre } : {}; page.reload() } }
+                objectName: "library-nothing-here"
+                icon: page.loadFailed ? "circle-alert" : "search"
+                title: page.loadFailed ? "The library did not load"
+                     : page.query !== "" ? "No matches for \"" + page.query + "\""
+                     : page.genre !== "" ? "No " + page.genre + " " + parent.what + " here"
+                     : "No " + parent.what + " here"
+                body: page.loadFailed ? "AniBeam could not read the library just now. Try again in a moment."
+                    : page.query !== "" ? "Check the spelling, or search the whole library from All."
+                    : page.genre !== "" ? "Nothing in this view has that genre. All genres shows the rest."
+                    : page.tab !== "All" ? "Your library has none of these yet. All shows everything in it."
+                    : "Everything in your library is filtered out of this view."
+                Button { visible: page.loadFailed; text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
+                Button { visible: !page.loadFailed && page.query !== ""; text: "Clear search"; icon: "x"; onClicked: { search.text = ""; queryDebounce.stop(); page.query = ""; frame.nav.current.props = page.genre !== "" ? { genre: page.genre } : {}; page.reload() } }
+                Button { visible: !page.loadFailed && page.query === "" && page.genre !== ""; text: "All genres"; icon: "x"; onClicked: page.clearGenre() }
+                Button { visible: !page.loadFailed && page.query === "" && page.genre === "" && page.tab !== "All"; text: "Show all"; icon: "layout-grid"; onClicked: page.showAll() }
             }
         }
     }
@@ -650,14 +670,18 @@ Item {
         onCleared: page.ratePicked(null)
     }
 
-    // The empty library: Import, and a pointer at Settings
+    // The empty library: a folder to add, or, with folders, a scan that found nothing
     EmptyState {
+        objectName: "library-empty"
         visible: page.libraryEmpty
-        icon: "tv"
-        title: "Your library is empty"
-        body: "Add a folder in Settings, or import an AniBeam export."
-        Button { text: "Import"; icon: "download"; onClicked: importDialog.open() }
-        Button { text: "Settings"; icon: "settings"; flat: true; onClicked: frame.go("settings") }
+        icon: page.hasFolders ? "folder-search" : "tv"
+        title: page.hasFolders ? "Nothing found in your folders yet" : "Your library is empty"
+        body: page.hasFolders ? "AniBeam found no series or films in the folders it watches. Scan them again, or check the folders in Settings."
+            : "Add the folder your anime lives in and the library fills itself, or import an AniBeam export."
+        Button { visible: page.hasFolders; text: "Scan all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
+        Button { visible: !page.hasFolders; text: "Add a folder"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
+        Button { visible: page.hasFolders; text: "Library settings"; icon: "settings"; flat: true; onClicked: frame.go("settings", { tab: "library" }) }
+        Button { visible: !page.hasFolders; text: "Import"; icon: "download"; flat: true; onClicked: importDialog.open() }
     }
     FileDialog {
         id: importDialog
