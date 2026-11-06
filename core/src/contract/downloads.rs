@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 /// One release from a feed: anirss's `Item`. The three counts are `None`
 /// when the feed did not carry them, which is unknown rather than zero;
-/// Erai-raws and most plain RSS feeds carry none.
+/// A keyed source and most plain RSS feeds carry none.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Release {
     pub title: String,
@@ -38,7 +38,7 @@ pub struct Release {
 }
 
 /// A token, or tokens with one membership, that splits the result set:
-/// `[SubsPlease]`, `1080p`, `HEVC`. `members` are indexes into the items
+/// `[Lumen]`, `1080p`, `HEVC`. `members` are indexes into the items
 /// the group was computed over. Applying one is a `Tokens` refine op with
 /// `tokens` echoed back verbatim.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -394,7 +394,7 @@ pub struct Torrent {
     /// The resolution in the torrent's name.
     #[serde(default)]
     pub resolution: String,
-    /// The anirss endpoint (erai, nyaa) this torrent was picked on, when
+    /// The anirss endpoint (a keyed source or a filtered-rss one) this torrent was picked on, when
     /// AniBeam added it; qBittorrent keeps no such thing, so older
     /// torrents carry none.
     #[serde(default)]
@@ -420,7 +420,7 @@ pub struct TorrentFile {
 
 /// One release in a subscription's feed, read by the core straight from
 /// the feed so the page can show what the feed holds without leaving the
-/// app. Nyaa's own fields and torznab's attributes both land here; a field
+/// app. A filtered-rss source's own fields and torznab's attributes both land here; a field
 /// the feed did not carry is empty or `None`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct FeedEntry {
@@ -584,7 +584,7 @@ pub struct DownloadSettings {
     /// The command a sidecar is started with: a name on PATH or a path.
     pub anirss_command: String,
     /// The command that starts the service behind an on-demand endpoint
-    /// (Jackett for 1337x), run through `sh -c` when the shell asks for it.
+    /// (Jackett for a site behind a search proxy), run through `sh -c` when the shell asks for it.
     /// Empty means anirss's own `start` for that endpoint, else `jackett`.
     #[serde(default)]
     pub jackett_command: String,

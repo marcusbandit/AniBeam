@@ -1,7 +1,7 @@
-//! Tracker stats for feeds that do not carry them (Erai-raws and others). Ported from
+//! Tracker stats for feeds that do not carry them (some groups' feeds and others). Ported from
 //! anirss `stats.py`.
 //!
-//! A feed item without nyaa-style stat extensions has unknown counts, but the numbers do
+//! A feed item without filtered-rss stat extensions has unknown counts, but the numbers do
 //! exist: they live at the torrent's tracker, which is where qBittorrent reads them from
 //! after adding. This module does the same without adding the torrent:
 //!
@@ -593,7 +593,7 @@ const QUERY_SAFE: &str = "/%:@!$&'()*+,;=?";
 
 /// Percent-encode what an http(s) URL cannot hold raw.
 ///
-/// Feed links carry raw spaces and brackets (t.erai-raws.info does). The host is left alone
+/// Feed links carry raw spaces and brackets (t.keyed.example does). The host is left alone
 /// so an IPv6 literal keeps its brackets. Errors on a malformed host, for example an
 /// unclosed `[`. The link is read by the HTTP client's own parser (#493).
 pub fn encode_http_link(link: &str) -> Result<String, BadBencode> {
@@ -820,7 +820,7 @@ fn with_stats(mut item: Release, stats: Stats) -> Release {
 
 /// Fill in unknown seed, peer and download counts from the items' trackers.
 ///
-/// Items whose feed already carries stats (nyaa) pass through untouched. For the rest,
+/// Items whose feed already carries stats (filtered-rss) pass through untouched. For the rest,
 /// stats come from scraping the .torrent's trackers, or for a magnet link the trackers its
 /// `tr=` parameters name: the same numbers qBittorrent shows after adding. Never fails; on
 /// any failure the item keeps its unknown stats.
@@ -1716,7 +1716,7 @@ mod tests {
         }
     }
 
-    const T: &str = "http://erai/t.torrent";
+    const T: &str = "http://keyed.example/t.torrent";
 
     fn infohash() -> Hash {
         torrent_facts(&default_torrent()).unwrap().0
@@ -1808,7 +1808,7 @@ mod tests {
     #[tokio::test]
     async fn enrich_failure_leaves_unknown_and_negative_caches() {
         let cache = StatsCache::default();
-        let items = vec![rel("http://erai/broken.torrent")];
+        let items = vec![rel("http://keyed.example/broken.torrent")];
         let mock = Mock::new(&[]);
         assert_eq!(
             counts(&enrich_one(&mock, &cache, items.clone()).await[0]),
@@ -1962,7 +1962,7 @@ mod tests {
         let mut mock = Mock::new(&[]);
         mock.stall = true;
         let items: Vec<Release> = (0..9)
-            .map(|i| rel(&format!("http://erai/{i}.torrent")))
+            .map(|i| rel(&format!("http://keyed.example/{i}.torrent")))
             .collect();
         let started = Instant::now();
         enrich_with(&mock, &StatsCache::default(), items, Duration::from_secs(1)).await;

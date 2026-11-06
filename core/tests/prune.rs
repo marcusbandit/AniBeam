@@ -80,7 +80,7 @@ fn rules_json(names: &[&str]) -> String {
     let rules: Vec<_> = names
         .iter()
         .map(|n| {
-            json!({"name": n, "feed_url": format!("https://nyaa.si/?page=rss&q={n}"),
+            json!({"name": n, "feed_url": format!("https://tracker.example/?page=rss&q={n}"),
                    "save_path": format!("/lib/{n}"), "torrent_count": 2, "query": n})
         })
         .collect();

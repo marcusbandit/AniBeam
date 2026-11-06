@@ -30,7 +30,7 @@ pub const SERVICE: &str = "anirss";
 /// A search can start an on-demand endpoint (a Jackett pod) and wait a
 /// minute on it, then enrich for twenty seconds more.
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(120);
-/// A refine on a nyaa endpoint searches again; a subscribe may probe Erai.
+/// A refine on a filtered-rss endpoint searches again; a subscribe may probe the show's own feed.
 const STEP_TIMEOUT: Duration = Duration::from_secs(60);
 /// A remove with `files` walks the download roots.
 const REMOVE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -396,7 +396,7 @@ impl AnirssClient {
         let mut rules: Vec<SubscriptionRule> =
             serde_json::from_value(v["subscriptions"].clone()).unwrap_or_default();
         for r in &mut rules {
-            r.query = crate::subscriptions::decode_nyaa_query(&r.feed_url).unwrap_or_default();
+            r.query = crate::subscriptions::decode_search_query(&r.feed_url).unwrap_or_default();
         }
         Ok(rules)
     }
@@ -904,7 +904,7 @@ fn with_dirs(path: &str, dirs: &[String]) -> Option<String> {
     Some(parts.join(":"))
 }
 
-/// A web link with what a URL may not carry raw percent-encoded: erai's
+/// A web link with what a URL may not carry raw percent-encoded: a source's
 /// torrent links come with spaces and square brackets in the file name, and
 /// anirss refuses them as they are. A magnet link, and anything already
 /// encoded, passes unchanged.
@@ -933,12 +933,12 @@ pub fn url_safe(link: &str) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn an_erai_link_is_encoded_and_a_magnet_is_not() {
+    fn a_bracketed_link_is_encoded_and_a_magnet_is_not() {
         assert_eq!(
             url_safe(
-                "https://t.erai-raws.info/Torrent/2026/Spring/[Erai-raws] Show - 24 [1080p].mkv.torrent"
+                "https://t.keyed.example/Torrent/2026/Spring/[Kumo] Show - 24 [1080p].mkv.torrent"
             ),
-            "https://t.erai-raws.info/Torrent/2026/Spring/%5BErai-raws%5D%20Show%20-%2024%20%5B1080p%5D.mkv.torrent"
+            "https://t.keyed.example/Torrent/2026/Spring/%5BKumo%5D%20Show%20-%2024%20%5B1080p%5D.mkv.torrent"
         );
         assert_eq!(
             url_safe("https://x.org/a%20b?q=1&r=2"),
@@ -1098,15 +1098,15 @@ mod tests {
         let http = Arc::new(FakeHttp::new());
         http.push_json(
             200,
-            json!({"query": "Frieren", "endpoint": "erai", "fell_back": true,
-                   "tried": [{"endpoint": "nyaa", "status": "empty", "count": 0, "error": null}],
-                   "items": [{"title": "[Erai-raws] Frieren - 01", "link": "magnet:?x", "seeders": null,
+            json!({"query": "Frieren", "endpoint": "keyed", "fell_back": true,
+                   "tried": [{"endpoint": "tracker", "status": "empty", "count": 0, "error": null}],
+                   "items": [{"title": "[Kumo] Frieren - 01", "link": "magnet:?x", "seeders": null,
                               "leechers": null, "downloads": null, "size": "", "category": "",
-                              "page": "", "source": "erai", "resolution": "1080p", "infomkv": "", "linktype": ""}]}),
+                              "page": "", "source": "keyed", "resolution": "1080p", "infomkv": "", "linktype": ""}]}),
         );
         let s = client(&http).search("Frieren", None, true).await.unwrap();
         assert!(s.fell_back);
-        assert_eq!(s.endpoint, "erai");
+        assert_eq!(s.endpoint, "keyed");
         assert_eq!(s.items[0].seeders, None);
         assert_eq!(s.tried[0].status, "empty");
     }
@@ -1116,17 +1116,17 @@ mod tests {
         let http = Arc::new(FakeHttp::new());
         http.push_json(
             200,
-            json!({"applied": false, "reason": "noop", "mode": "client", "query": "q", "endpoint": "erai",
+            json!({"applied": false, "reason": "noop", "mode": "client", "query": "q", "endpoint": "keyed",
                    "items": [], "previous_count": 0, "delta": 0, "groups": [],
                    "best_fit": {"available": false, "query": "", "item": null, "profile": []}}),
         );
         let r = client(&http)
             .apply(
                 "q",
-                "erai",
+                "keyed",
                 &[],
                 &RefineOp::Tokens {
-                    tokens: vec!["[SubsPlease]".into()],
+                    tokens: vec!["[Lumen]".into()],
                 },
             )
             .await
@@ -1138,7 +1138,7 @@ mod tests {
             _ => panic!("json body"),
         };
         assert_eq!(body["op"]["type"], "tokens");
-        assert_eq!(body["op"]["tokens"][0], "[SubsPlease]");
+        assert_eq!(body["op"]["tokens"][0], "[Lumen]");
     }
 
     /// The anirss the app bundle and the AppImage carry, and the one the AUR

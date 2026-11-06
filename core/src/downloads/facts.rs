@@ -3,10 +3,10 @@
 //! and the size in bytes for sorting. Release names follow a few house
 //! styles, and this reads the common ones and nothing cleverer:
 //!
-//! - fansub: `[SubsPlease] Sousou no Frieren - 01 (1080p) [ABCD1234].mkv`
-//! - Erai: `[Erai-raws] Sousou no Frieren - 28 [1080p CR WEB-DL AVC AAC][MultiSub]`
+//! - fansub: `[Lumen] Sousou no Frieren - 01 (1080p) [ABCD1234].mkv`
+//! - tagged: `[Kumo] Sousou no Frieren - 28 [1080p CR WEB-DL AVC AAC][MultiSub]`
 //! - scene: `Avatar Seven Havens S01E03 1080p WEB h264-ETHEL`
-//! - batches: `[SubsPlease] Frieren (01-28) (1080p) [Batch]`, `Show S01 1080p`
+//! - batches: `[Lumen] Frieren (01-28) (1080p) [Batch]`, `Show S01 1080p`
 //!
 //! The library's file classifier is not used here: a file with no number
 //! in it is episode 1 to the library, which is right for a film on disk
@@ -258,29 +258,29 @@ mod tests {
     }
 
     #[test]
-    fn fansub_erai_and_scene_names_read() {
+    fn fansub_tag_and_scene_names_read() {
         let f = read(&release(
-            "[SubsPlease] Sousou no Frieren - 01 (1080p) [ABCD1234].mkv",
+            "[Lumen] Sousou no Frieren - 01 (1080p) [ABCD1234].mkv",
             "1.4 GiB",
         ));
         assert_eq!((f.episode, f.season, f.batch), (Some(1.0), None, false));
         assert_eq!(
             (f.group.as_str(), f.resolution.as_str()),
-            ("SubsPlease", "1080p")
+            ("Lumen", "1080p")
         );
         assert_eq!(f.size_bytes, Some(1_503_238_554));
 
         let f = read(&release(
-            "[Erai-raws] Sousou no Frieren - 28 [1080p CR WEB-DL AVC AAC][MultiSub][D2E8BC01]",
+            "[Kumo] Sousou no Frieren - 28 [1080p CR WEB-DL AVC AAC][MultiSub][D2E8BC01]",
             "",
         ));
         assert_eq!(
             (f.episode, f.group.as_str(), f.resolution.as_str()),
-            (Some(28.0), "Erai-raws", "1080p")
+            (Some(28.0), "Kumo", "1080p")
         );
 
         let f = read(&release(
-            "[SubsPlease] Kusuriya no Hitorigoto - 12.5 (720p) [F00].mkv",
+            "[Lumen] Kusuriya no Hitorigoto - 12.5 (720p) [F00].mkv",
             "",
         ));
         assert_eq!(f.episode, Some(12.5));
@@ -311,14 +311,14 @@ mod tests {
     #[test]
     fn batches_carry_no_episode() {
         let f = read(&release(
-            "[SubsPlease] Sousou no Frieren (01-28) (1080p) [Batch]",
+            "[Lumen] Sousou no Frieren (01-28) (1080p) [Batch]",
             "",
         ));
         assert!(f.batch);
         assert_eq!(f.episode, None);
         assert_eq!((f.first_episode, f.last_episode), (Some(1), Some(28)));
         let f = read(&release(
-            "[Erai-raws] Kino no Tabi: The Beautiful World - The Animated Series - 01 ~ 12 [1080p][Batch]",
+            "[Kumo] Kino no Tabi: The Beautiful World - The Animated Series - 01 ~ 12 [1080p][Batch]",
             "",
         ));
         assert!(f.batch);
@@ -355,44 +355,41 @@ mod tests {
 
     #[test]
     fn rips_read_in_their_usual_spelling() {
-        assert_eq!(
-            rip("[Erai-raws] Show - 28 [1080p CR WEB-DL AVC AAC]"),
-            "WEB-DL"
-        );
+        assert_eq!(rip("[Kumo] Show - 28 [1080p CR WEB-DL AVC AAC]"), "WEB-DL");
         assert_eq!(rip("Show S01E03 1080p WEBRip x265-Group"), "WEBRip");
         assert_eq!(rip("Show.S01E03.1080p.WEB.h264-ETHEL"), "WEB");
         assert_eq!(rip("[Group] Show - 01 (BD 1080p)"), "BluRay");
-        assert_eq!(rip("[SubsPlease] Show - 01 (1080p) [ABCD1234].mkv"), "");
+        assert_eq!(rip("[Lumen] Show - 01 (1080p) [ABCD1234].mkv"), "");
     }
 
     #[test]
     fn only_the_same_release_is_the_file_on_disk() {
-        let file = "/lib/Show/[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv";
+        let file = "/lib/Show/[Lumen] Show - 05 (1080p) [ABCD1234].mkv";
         assert!(same_release(
-            "[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv",
-            &read_name("[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv"),
+            "[Lumen] Show - 05 (1080p) [ABCD1234].mkv",
+            &read_name("[Lumen] Show - 05 (1080p) [ABCD1234].mkv"),
             file
         ));
         // The same group and resolution, named apart: still this release
         assert!(same_release(
-            "[SubsPlease] Show - 05 (1080p)",
-            &read_name("[SubsPlease] Show - 05 (1080p)"),
+            "[Lumen] Show - 05 (1080p)",
+            &read_name("[Lumen] Show - 05 (1080p)"),
             file
         ));
         // Another group, another resolution, another version: not it
         assert!(!same_release(
-            "[Erai-raws] Show - 05 [1080p CR WEB-DL AVC AAC]",
-            &read_name("[Erai-raws] Show - 05 [1080p CR WEB-DL AVC AAC]"),
+            "[Kumo] Show - 05 [1080p CR WEB-DL AVC AAC]",
+            &read_name("[Kumo] Show - 05 [1080p CR WEB-DL AVC AAC]"),
             file
         ));
         assert!(!same_release(
-            "[SubsPlease] Show - 05 (720p) [EEEE0000].mkv",
-            &read_name("[SubsPlease] Show - 05 (720p) [EEEE0000].mkv"),
+            "[Lumen] Show - 05 (720p) [EEEE0000].mkv",
+            &read_name("[Lumen] Show - 05 (720p) [EEEE0000].mkv"),
             file
         ));
         assert!(!same_release(
-            "[SubsPlease] Show - 05v2 (1080p) [FFFF0000].mkv",
-            &read_name("[SubsPlease] Show - 05v2 (1080p) [FFFF0000].mkv"),
+            "[Lumen] Show - 05v2 (1080p) [FFFF0000].mkv",
+            &read_name("[Lumen] Show - 05v2 (1080p) [FFFF0000].mkv"),
             file
         ));
         assert!(same_release(
@@ -408,24 +405,24 @@ mod tests {
     }
 
     #[test]
-    fn erai_releases_of_one_episode_are_told_apart() {
-        // The owner's file, and what nyaa listed for that episode (#237)
-        let file = "/a/[Erai-raws] Katainaka no Ossan Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B].mkv";
+    fn kumo_releases_of_one_episode_are_told_apart() {
+        // The owner's file, and what the source listed for that episode (#237)
+        let file = "/a/[Kumo] Katainaka no Ossan Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B].mkv";
         let listed = [
             (
-                "[Erai-raws] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEBRip HEVC EAC3][MultiSub][C781A1C2]",
+                "[Kumo] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEBRip HEVC EAC3][MultiSub][C781A1C2]",
                 false,
             ),
             (
-                "[Erai-raws] Katainaka no Ossan, Kensei ni Naru II - 06 [540p AMZN WEB-DL AVC EAC3][MultiSub][8B85B88D]",
+                "[Kumo] Katainaka no Ossan, Kensei ni Naru II - 06 [540p AMZN WEB-DL AVC EAC3][MultiSub][8B85B88D]",
                 false,
             ),
             (
-                "[Erai-raws] Katainaka no Ossan, Kensei ni Naru II - 06 [720p AMZN WEB-DL AVC EAC3][MultiSub][19163F35]",
+                "[Kumo] Katainaka no Ossan, Kensei ni Naru II - 06 [720p AMZN WEB-DL AVC EAC3][MultiSub][19163F35]",
                 false,
             ),
             (
-                "[Erai-raws] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B]",
+                "[Kumo] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B]",
                 true,
             ),
         ];
@@ -440,19 +437,19 @@ mod tests {
 
     #[test]
     fn a_release_naming_less_than_the_file_is_not_it() {
-        let file = "[SubsPlease] Show - 05 (720p) [ABCD1234].mkv";
-        let bare = "[SubsPlease] Show - 05";
+        let file = "[Lumen] Show - 05 (720p) [ABCD1234].mkv";
+        let bare = "[Lumen] Show - 05";
         assert!(!same_release(bare, &read_name(bare), file));
         // A date tag is no CRC: the group and the rest decide
-        let dated = "[SubsPlease] Show - 05 (720p) [20241005]";
+        let dated = "[Lumen] Show - 05 (720p) [20241005]";
         assert!(same_release(dated, &read_name(dated), file));
         assert_eq!(
             rip("[Group] The Web Detective - 03 [1080p BluRay]"),
             "BluRay"
         );
         assert_eq!(
-            read_name("C:\\Anime\\Show\\[SubsPlease] Show - 05 (1080p).mkv").group,
-            "SubsPlease"
+            read_name("C:\\Anime\\Show\\[Lumen] Show - 05 (1080p).mkv").group,
+            "Lumen"
         );
     }
 }

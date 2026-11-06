@@ -924,7 +924,7 @@ fn custom_definition(
 }
 
 /// Adds an endpoint by hand, beside whatever repos there are: a name and an address, for a
-/// site no repo carries (1337x through Jackett, a private tracker's feed). A secret in the
+/// site no repo carries (a site behind a search proxy, a private tracker's feed). A secret in the
 /// address goes to the secret store like a repo endpoint's.
 pub fn add_custom(
     core: &Core,
@@ -2265,10 +2265,14 @@ mod tests {
         )
         .unwrap();
         custom(&core, "mine", "https://a.example/rss?q={query}&token=t1");
-        custom(&core, "1337x", "http://127.0.0.1:9117/x?apikey=k&q={query}");
+        custom(
+            &core,
+            "proxied",
+            "http://127.0.0.1:9117/x?apikey=k&q={query}",
+        );
         let anirss = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
 
-        // anirss has its own 1337x from config.toml; AniBeam writes only "mine".
+        // anirss has its own search-proxy endpoint from config.toml; AniBeam writes only "mine".
         let theirs = |name: &str, url: &str| SearchEndpoint {
             name: name.into(),
             kind: "rss".into(),
@@ -2280,7 +2284,7 @@ mod tests {
         };
         // An anirss that does not list endpoint writes has no endpoint API, whatever its
         // version says: nothing is sent.
-        let have = vec![theirs("1337x", "http://elsewhere/")];
+        let have = vec![theirs("proxied", "http://elsewhere/")];
         let without = health("0.6.0", &["qbt_env_session"]);
         assert!(
             !core
@@ -2307,7 +2311,7 @@ mod tests {
 
         // Listed back with its token masked, as anirss lists it: unchanged, so not sent again.
         let have = vec![
-            theirs("1337x", "http://elsewhere/"),
+            theirs("proxied", "http://elsewhere/"),
             theirs("mine", "https://a.example/rss?q={query}&token=***"),
         ];
         assert!(
@@ -2336,7 +2340,7 @@ mod tests {
             .unwrap();
         http.push_json(200, serde_json::json!({}));
         let have = vec![
-            theirs("1337x", "http://elsewhere/"),
+            theirs("proxied", "http://elsewhere/"),
             theirs("mine", "https://a.example/rss?q={query}&token={token}"),
         ];
         assert!(
@@ -2348,7 +2352,7 @@ mod tests {
         assert_eq!(sent[1].method, crate::net::Method::Delete);
         assert!(sent[1].url.ends_with("/endpoints/mine"));
         // Nothing left to do: nothing is sent.
-        let have = vec![theirs("1337x", "http://elsewhere/")];
+        let have = vec![theirs("proxied", "http://elsewhere/")];
         assert!(
             !core
                 .handle
@@ -2393,7 +2397,7 @@ mod tests {
             name: "site".to_string(),
             version: 1,
             lang: String::new(),
-            kind: "nyaa".to_string(),
+            kind: crate::releases::kinds::FILTERED_RSS.to_string(),
             url: "https://tracker.example/".to_string(),
             auth: Vec::new(),
             front: None,
@@ -2442,11 +2446,11 @@ mod tests {
     #[test]
     fn a_pasted_api_key_moves_out_of_the_address() {
         let (template, fields, lifted) = lift_secrets(
-            "http://127.0.0.1:9117/api/v2.0/indexers/1337x/results/torznab/api?apikey=abc123&t=search&q={query}",
+            "http://127.0.0.1:9117/api/v2.0/indexers/proxied/results/torznab/api?apikey=abc123&t=search&q={query}",
         );
         assert_eq!(
             template,
-            "http://127.0.0.1:9117/api/v2.0/indexers/1337x/results/torznab/api?apikey={apikey}&t=search&q={query}"
+            "http://127.0.0.1:9117/api/v2.0/indexers/proxied/results/torznab/api?apikey={apikey}&t=search&q={query}"
         );
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].label, "API key");
@@ -2533,7 +2537,7 @@ mod tests {
 
     #[test]
     fn ids_come_from_names() {
-        assert_eq!(id_of("1337x"), "1337x");
+        assert_eq!(id_of("proxied"), "proxied");
         assert_eq!(id_of(" My Tracker! "), "my-tracker");
         assert_eq!(id_of("!!"), "");
     }

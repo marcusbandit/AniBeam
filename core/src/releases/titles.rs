@@ -42,7 +42,7 @@ fn strip_ext(title: &str) -> String {
     }
 }
 
-/// The release group in brackets at the front of a title, brackets kept: `[SubsPlease]`.
+/// The release group in brackets at the front of a title, brackets kept: `[Lumen]`.
 pub fn poster_of(title: &str) -> Option<String> {
     POSTER_RE.captures(title).map(|c| format!("[{}]", &c[1]))
 }
@@ -109,22 +109,19 @@ mod tests {
 
     #[test]
     fn poster_is_the_leading_bracket() {
-        assert_eq!(
-            poster_of("[SubsPlease] Frieren - 01"),
-            Some("[SubsPlease]".into())
-        );
-        assert_eq!(poster_of("Frieren [SubsPlease]"), None);
+        assert_eq!(poster_of("[Lumen] Frieren - 01"), Some("[Lumen]".into()));
+        assert_eq!(poster_of("Frieren [Lumen]"), None);
         assert_eq!(poster_of("[] Show"), None);
     }
 
     #[test]
     fn show_name_cuts_at_episode_season_marker_or_metadata() {
         assert_eq!(
-            show_name("[SubsPlease] Frieren - 01 (1080p) [ABCD0001].mkv"),
+            show_name("[Lumen] Frieren - 01 (1080p) [ABCD0001].mkv"),
             "Frieren"
         );
         assert_eq!(
-            show_name("[Erai-raws] Show Name - 04v2 [1080p][HEVC].mkv"),
+            show_name("[Kumo] Show Name - 04v2 [1080p][HEVC].mkv"),
             "Show Name"
         );
         assert_eq!(show_name("[Grp] Some Show S02E05 [1080p]"), "Some Show");
@@ -151,7 +148,7 @@ mod tests {
     #[test]
     fn tokens_drop_noise_and_keep_the_season() {
         // ABCD0001 is six or more hex digits, so it reads as a hash and goes.
-        let t = title_tokens("[SubsPlease] Frieren - 01 (1080p) [ABCD0001].mkv");
+        let t = title_tokens("[Lumen] Frieren - 01 (1080p) [ABCD0001].mkv");
         assert_eq!(t, vec!["Frieren", "1080p"]);
         // Six or more hex digits are a hash; a hash with a letter past f is a word.
         let t = title_tokens("[G] Show S01E03 deadbeef 12345 x a [Multi-Subs]");

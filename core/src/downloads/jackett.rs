@@ -1,4 +1,4 @@
-//! Starting the service behind an on-demand endpoint: Jackett for 1337x.
+//! Starting the service behind an on-demand endpoint: Jackett for a site behind a search proxy.
 //!
 //! anirss boots such a service on its own whenever a search reaches it, and
 //! the search guard in `mod.rs` keeps that from happening behind the user's
@@ -264,29 +264,29 @@ mod tests {
         let cfg = dir.path().join("config.toml");
         std::fs::write(
             &cfg,
-            "[[endpoint]]\nname = \"nyaa\"\nkind = \"nyaa\"\n\n[[endpoint]]\nname = \"1337x\"\nkind = \"rss\"\nstart = \" podman pod start x \"\nready = \"http://127.0.0.1:9117/caps\"\n",
+            "[[endpoint]]\nname = \"tracker\"\nkind = \"rss\"\n\n[[endpoint]]\nname = \"proxied\"\nkind = \"rss\"\nstart = \" podman pod start x \"\nready = \"http://127.0.0.1:9117/caps\"\n",
         )
         .unwrap();
         assert_eq!(
             anirss_start(&cfg, None),
             Some("podman pod start x".to_string())
         );
-        assert_eq!(anirss_start(&cfg, Some("nyaa")), None);
+        assert_eq!(anirss_start(&cfg, Some("tracker")), None);
         assert_eq!(
-            resolve_command(" my-start ", Some(&cfg), "1337x"),
+            resolve_command(" my-start ", Some(&cfg), "proxied"),
             "podman pod start x",
             "the endpoint's own start wins over the setting"
         );
         assert_eq!(
-            resolve_command(" my-start ", Some(&cfg), "nyaa"),
+            resolve_command(" my-start ", Some(&cfg), "tracker"),
             "my-start"
         );
         assert_eq!(
-            resolve_command("", Some(&cfg), "1337x"),
+            resolve_command("", Some(&cfg), "proxied"),
             "podman pod start x"
         );
-        assert_eq!(resolve_command("", Some(&cfg), "nyaa"), "jackett");
-        assert_eq!(resolve_command("", None, "1337x"), "jackett");
+        assert_eq!(resolve_command("", Some(&cfg), "tracker"), "jackett");
+        assert_eq!(resolve_command("", None, "proxied"), "jackett");
     }
 
     #[test]
@@ -345,7 +345,7 @@ mod tests {
             r,
             Err(StartFailure::Missing("anibeam-no-such-jackett".to_string()))
         );
-        let (code, message) = explain("1337x", &r.unwrap_err());
+        let (code, message) = explain("proxied", &r.unwrap_err());
         assert_eq!(code, "missing");
         assert!(message.starts_with("Jackett is not installed"));
     }
@@ -359,7 +359,7 @@ mod tests {
         http.fail_next("refused");
         let r = run(
             &http,
-            "echo 'no pod with name anirss-1337x found' >&2; exit 125",
+            "echo 'no pod with name anirss-proxied found' >&2; exit 125",
             READY,
             &dir,
         )
@@ -367,7 +367,7 @@ mod tests {
         assert_eq!(
             r,
             Err(StartFailure::Failed(
-                "no pod with name anirss-1337x found".to_string()
+                "no pod with name anirss-proxied found".to_string()
             ))
         );
     }
@@ -387,8 +387,8 @@ mod tests {
         .await;
         assert_eq!(r, Err(StartFailure::Timeout(0)));
         assert_eq!(
-            explain("1337x", &StartFailure::Timeout(60)).1,
-            "1337x started but did not answer within 60 seconds."
+            explain("proxied", &StartFailure::Timeout(60)).1,
+            "proxied started but did not answer within 60 seconds."
         );
     }
 

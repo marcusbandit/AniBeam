@@ -778,14 +778,14 @@ mod tests {
         assert_eq!(extract_part_number("P01"), Some(1));
         assert_eq!(
             clean_folder_title(
-                "[Erai-raws] Karakai Jouzu no Takagi-san 2 - 01 ~ 12 [1080p][Multiple Subtitle]"
+                "[Kumo] Karakai Jouzu no Takagi-san 2 - 01 ~ 12 [1080p][Multiple Subtitle]"
             ),
             "Karakai Jouzu no Takagi-san 2"
         );
         assert_eq!(clean_folder_title("Show - 01-12 END"), "Show");
         assert_eq!(
             derive_subfolder_series_name(
-                "[Erai-raws] Karakai Jouzu no Takagi-san 2 - 01 ~ 12 [1080p]",
+                "[Kumo] Karakai Jouzu no Takagi-san 2 - 01 ~ 12 [1080p]",
                 "Karakai Jouzu no Takagi-san"
             ),
             ("Karakai Jouzu no Takagi-san 2".to_string(), Some(2))
@@ -860,24 +860,24 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let show = tmp.path().join("Karakai Jouzu no Takagi-san");
         let seasons = [
-            "[Erai-raws] Karakai Jouzu no Takagi-san - 01 ~ 12 [1080p][Multiple Subtitle]",
-            "[Erai-raws] Karakai Jouzu no Takagi-san 2 - 01 ~ 12 [1080p][Multiple Subtitle]",
-            "[Erai-raws] Karakai Jouzu no Takagi-san 3 - 01 ~ 12 [1080p][Multiple Subtitle]",
+            "[Kumo] Karakai Jouzu no Takagi-san - 01 ~ 12 [1080p][Multiple Subtitle]",
+            "[Kumo] Karakai Jouzu no Takagi-san 2 - 01 ~ 12 [1080p][Multiple Subtitle]",
+            "[Kumo] Karakai Jouzu no Takagi-san 3 - 01 ~ 12 [1080p][Multiple Subtitle]",
         ];
         for s in seasons {
             let stem = s
-                .trim_start_matches("[Erai-raws] ")
+                .trim_start_matches("[Kumo] ")
                 .split(" - 01 ~ 12")
                 .next()
                 .unwrap();
             for ep in 1..=12 {
                 let tag = if ep == 12 { " END" } else { "" };
                 touch(&show.join(s).join(format!(
-                    "[Erai-raws] {stem} - {ep:02}{tag} [1080p][Multiple Subtitle].mkv"
+                    "[Kumo] {stem} - {ep:02}{tag} [1080p][Multiple Subtitle].mkv"
                 )));
             }
         }
-        touch(&show.join("[Erai-raws] Karakai Jouzu no Takagi-san - Movie [1080p][49CCAF8A].mkv"));
+        touch(&show.join("[Kumo] Karakai Jouzu no Takagi-san - Movie [1080p][49CCAF8A].mkv"));
         touch(&show.join("screenshots").join("cap01.png"));
 
         let results = scan_source(tmp.path()).unwrap();

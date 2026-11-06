@@ -1,7 +1,7 @@
-//! Endpoint repos (#143) against copies of the owner's two published groups,
-//! `index/general.json` and `index/nsfw.json` in marcusbandit/anibeam-endpoints, and against
-//! indexes the test signs itself for what those two cannot show: a changed key, a stale
-//! serial, an update.
+//! Endpoint repos (#143) against two groups the test signs itself, a general one and an NSFW
+//! one under the same key, and against indexes it signs for what those two cannot show: a
+//! changed key, a stale serial, an update. Every index is built at run time from made-up
+//! definitions; none is a copy of a real published one.
 
 mod common;
 
@@ -15,14 +15,6 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use ed25519_dalek::{Signer, SigningKey};
 use serde_json::{Value, json};
-
-fn fixture(name: &str) -> String {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/endpoint-repos")
-        .join(name)
-        .to_string_lossy()
-        .into_owned()
-}
 
 fn preview(core: &anibeam_core::Core, url: &str) -> EndpointRepoPreview {
     match core
@@ -72,13 +64,14 @@ fn install_id(c: &EndpointCatalog, id: &str) -> String {
         .clone()
 }
 
-// The owner's published groups -------------------------------------------------------------
+// Two published groups, signed here -------------------------------------------------------------
 
 #[test]
 fn the_general_group_reads_and_verifies() {
-    let (_dir, core, _) = common::open_core();
-    let p = preview(&core, &fixture("general.json"));
-    assert_eq!(p.name, "Bandit's endpoints");
+    let (dir, core, _) = common::open_core();
+    let (general, _) = published(dir.path());
+    let p = preview(&core, &general);
+    assert_eq!(p.name, "Example endpoints");
     assert!(!p.nsfw);
     assert!(!p.trusted);
     assert_eq!(p.fingerprint.split(' ').count(), 8);
@@ -86,37 +79,31 @@ fn the_general_group_reads_and_verifies() {
     ids.sort();
     assert_eq!(
         ids,
-        [
-            "animetosho",
-            "erai",
-            "knaben",
-            "limetorrents",
-            "nyaa",
-            "subsplease"
-        ]
+        ["feed", "indexer", "keyed", "limes", "lumen", "tracker"]
     );
-    let erai = p.endpoints.iter().find(|e| e.id == "erai").unwrap();
-    assert_eq!(erai.auth.len(), 1);
-    assert_eq!(erai.auth[0].key, "token");
-    assert!(erai.auth[0].secret);
-    let nyaa = p.endpoints.iter().find(|e| e.id == "nyaa").unwrap();
-    assert_eq!(nyaa.front.as_deref(), Some("ddos-guard.net"));
-    assert_eq!(nyaa.host, "nyaa.si");
+    let keyed = p.endpoints.iter().find(|e| e.id == "keyed").unwrap();
+    assert_eq!(keyed.auth.len(), 1);
+    assert_eq!(keyed.auth[0].key, "token");
+    assert!(keyed.auth[0].secret);
+    let tracker = p.endpoints.iter().find(|e| e.id == "tracker").unwrap();
+    assert_eq!(tracker.front.as_deref(), Some("edge.example"));
+    assert_eq!(tracker.host, "tracker.example");
 }
 
 #[test]
 fn the_nsfw_group_is_its_own_repo_under_the_same_key() {
-    let (_dir, core, _) = common::open_core();
-    let p = preview(&core, &fixture("nsfw.json"));
+    let (dir, core, _) = common::open_core();
+    let (general, nsfw) = published(dir.path());
+    let p = preview(&core, &nsfw);
     assert!(p.nsfw);
     assert_eq!(p.endpoints.len(), 1);
-    let sukebei = &p.endpoints[0];
-    assert_eq!(sukebei.id, "sukebei");
-    assert!(sukebei.nsfw);
-    assert_eq!(sukebei.front, None);
+    let adult = &p.endpoints[0];
+    assert_eq!(adult.id, "adult");
+    assert!(adult.nsfw);
+    assert_eq!(adult.front, None);
 
-    trust(&core, &fixture("general.json"));
-    let c = trust(&core, &fixture("nsfw.json"));
+    trust(&core, &general);
+    let c = trust(&core, &nsfw);
     assert_eq!(c.repos.len(), 2, "keyed by index URL, not by repo");
     assert_eq!(c.repos[0].fingerprint, c.repos[1].fingerprint);
     assert_eq!(c.offered.len(), 7);
@@ -124,15 +111,15 @@ fn the_nsfw_group_is_its_own_repo_under_the_same_key() {
 
 #[test]
 fn nothing_is_saved_until_the_repo_is_trusted() {
-    let (_dir, core, _) = common::open_core();
-    preview(&core, &fixture("general.json"));
+    let (dir, core, _) = common::open_core();
+    preview(&core, &published(dir.path()).0);
     assert!(catalog(core.call(Call::ListRepoEndpoints)).repos.is_empty());
 }
 
 #[test]
 fn trusting_needs_the_key_that_was_shown() {
-    let (_dir, core, _) = common::open_core();
-    let url = fixture("general.json");
+    let (dir, core, _) = common::open_core();
+    let url = published(dir.path()).0;
     preview(&core, &url);
     let e = core
         .call(Call::TrustEndpointRepo {
@@ -147,35 +134,37 @@ fn trusting_needs_the_key_that_was_shown() {
 
 #[test]
 fn an_endpoint_without_auth_installs_and_joins_the_search() {
-    let (_dir, core, _) = common::open_core();
-    trust(&core, &fixture("general.json"));
+    let (dir, core, _) = common::open_core();
+    let general = published(dir.path()).0;
+    trust(&core, &general);
     let c = catalog(core.call(Call::InstallEndpoint {
-        repo: fixture("general.json"),
-        id: "knaben".into(),
+        repo: general,
+        id: "indexer".into(),
         credentials: vec![],
     }));
-    let knaben = c.installed.iter().find(|i| i.id == "knaben").unwrap();
-    assert!(knaben.enabled && knaben.missing.is_empty() && knaben.offered);
+    let indexer = c.installed.iter().find(|i| i.id == "indexer").unwrap();
+    assert!(indexer.enabled && indexer.missing.is_empty() && indexer.offered);
     assert_eq!(
         c.offered
             .iter()
-            .find(|o| o.id == "knaben")
+            .find(|o| o.id == "indexer")
             .unwrap()
             .installed
             .as_deref(),
-        Some(knaben.install_id.as_str())
+        Some(indexer.install_id.as_str())
     );
     let Reply::PhoneSources { sources } = core.call(Call::PhoneSearchSources).unwrap() else {
         panic!()
     };
     let names: Vec<&str> = sources.iter().map(|s| s.name.as_str()).collect();
     // Nothing is preloaded: the installed endpoint is the whole list.
-    assert_eq!(names, ["knaben"]);
+    assert_eq!(names, ["indexer"]);
 }
 
 #[test]
 fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
-    let (_dir, core, _) = common::open_core();
+    let (dir, core, _) = common::open_core();
+    let general = published(dir.path()).0;
     // A list saved before repos existed.
     let saved = |name: &str, kind: &str, url: &str| anibeam_core::PhoneSource {
         name: name.into(),
@@ -185,19 +174,19 @@ fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
     };
     core.call(Call::SetPhoneSources {
         sources: vec![
-            saved("nyaa", "filtered-rss", "https://nyaa.si/"),
+            saved("tracker", "filtered-rss", "https://tracker.example/"),
             saved(
-                "animetosho",
+                "feed",
                 "json-feed",
-                "https://animetosho.org/feed/json?q={query}&old=1",
+                "https://feed.example/feed/json?q={query}&old=1",
             ),
         ],
     })
     .unwrap();
-    trust(&core, &fixture("general.json"));
-    for id in ["animetosho", "nyaa"] {
+    trust(&core, &general);
+    for id in ["feed", "tracker"] {
         core.call(Call::InstallEndpoint {
-            repo: fixture("general.json"),
+            repo: general.clone(),
             id: id.into(),
             credentials: vec![],
         })
@@ -207,8 +196,8 @@ fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
         panic!()
     };
     let names: Vec<&str> = sources.iter().map(|s| s.name.as_str()).collect();
-    assert_eq!(names, ["nyaa", "animetosho"]);
-    assert_eq!(sources[1].url, "https://animetosho.org/feed/json?q={query}");
+    assert_eq!(names, ["tracker", "feed"]);
+    assert_eq!(sources[1].url, "https://feed.example/feed/json?q={query}");
 }
 
 #[test]
@@ -381,13 +370,13 @@ fn a_json_feed_source_saved_without_the_query_does_not_block_removing_others() {
         enabled: true,
     };
     let old = source("old", "json-feed", "https://feed.example/json");
-    let nyaa = source("nyaa", "filtered-rss", "https://nyaa.si/");
+    let tracker = source("tracker", "filtered-rss", "https://tracker.example/");
     // Saved before the rule covered json-feed.
     let config = anibeam_core::CorePaths::under(dir.path()).config_dir;
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(
         std::path::Path::new(&config).join("phone-sources.json"),
-        serde_json::to_vec(&[&old, &nyaa]).unwrap(),
+        serde_json::to_vec(&[&old, &tracker]).unwrap(),
     )
     .unwrap();
     core.call(Call::SetPhoneSources {
@@ -397,37 +386,38 @@ fn a_json_feed_source_saved_without_the_query_does_not_block_removing_others() {
 }
 
 #[test]
-fn erai_needs_its_token_and_the_token_never_reaches_the_database() {
+fn a_keyed_endpoint_needs_its_token_and_the_token_never_reaches_the_database() {
     let (dir, core, _) = common::open_core();
-    trust(&core, &fixture("general.json"));
+    let general = published(dir.path()).0;
+    trust(&core, &general);
     let e = core
         .call(Call::InstallEndpoint {
-            repo: fixture("general.json"),
-            id: "erai".into(),
+            repo: general.clone(),
+            id: "keyed".into(),
             credentials: vec![],
         })
         .unwrap_err();
     assert!(matches!(e, CoreError::Invalid { .. }), "{e:?}");
 
-    let secret = "sekrit-erai-token-1234";
+    let secret = "sekrit-keyed-token-1234";
     let c = catalog(core.call(Call::InstallEndpoint {
-        repo: fixture("general.json"),
-        id: "erai".into(),
+        repo: general,
+        id: "keyed".into(),
         credentials: token(secret),
     }));
-    let erai = c.installed.iter().find(|i| i.id == "erai").unwrap();
-    assert!(erai.missing.is_empty());
+    let keyed = c.installed.iter().find(|i| i.id == "keyed").unwrap();
+    assert!(keyed.missing.is_empty());
 
     let Reply::PhoneSources { sources } = core.call(Call::PhoneSearchSources).unwrap() else {
         panic!()
     };
-    let shown = sources.iter().find(|s| s.name == "erai").unwrap();
+    let shown = sources.iter().find(|s| s.name == "keyed").unwrap();
     assert!(shown.url.contains("token={token}"), "{}", shown.url);
     assert!(!shown.url.contains(secret));
 
     let secrets = std::fs::read_to_string(dir.path().join("data/secrets.json")).unwrap();
     assert!(secrets.contains(secret));
-    assert!(secrets.contains(&format!("endpoint/{}/token", erai.install_id)));
+    assert!(secrets.contains(&format!("endpoint/{}/token", keyed.install_id)));
     core.shutdown();
     // The database and its journal files, beside secrets.json in the data folder.
     for f in std::fs::read_dir(dir.path().join("data")).unwrap() {
@@ -472,36 +462,37 @@ fn walk(root: &Path) -> Vec<PathBuf> {
 }
 
 #[test]
-fn a_search_through_erai_sends_the_token_and_the_activity_log_never_shows_it() {
+fn a_search_through_a_keyed_endpoint_sends_the_token_and_the_activity_log_never_shows_it() {
     let http = FakeHttp::new();
     http.push_for(
-        "erai-raws.info",
+        "keyed.example",
         200,
         "<?xml version=\"1.0\"?><rss><channel><title>t</title></channel></rss>",
     );
-    let (_dir, core, events) = common::open_core_with_http(http.clone());
-    trust(&core, &fixture("general.json"));
+    let (dir, core, events) = common::open_core_with_http(http.clone());
+    let general = published(dir.path()).0;
+    trust(&core, &general);
     let secret = "tok en&1";
     core.call(Call::InstallEndpoint {
-        repo: fixture("general.json"),
-        id: "erai".into(),
+        repo: general,
+        id: "keyed".into(),
         credentials: token(secret),
     })
     .unwrap();
     let _ = core.call(Call::PhoneSearch {
         query: "Frieren".into(),
-        endpoint: Some("erai".into()),
+        endpoint: Some("keyed".into()),
         fallback: false,
     });
     let sent: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
-    let erai = sent
+    let keyed = sent
         .iter()
-        .find(|u| u.contains("erai-raws.info"))
-        .unwrap_or_else(|| panic!("no erai request in {sent:?}"));
-    assert!(erai.contains("token=tok%20en%261"), "{erai}");
-    assert!(erai.contains("s=Frieren"), "{erai}");
+        .find(|u| u.contains("keyed.example"))
+        .unwrap_or_else(|| panic!("no keyed request in {sent:?}"));
+    assert!(keyed.contains("token=tok%20en%261"), "{keyed}");
+    assert!(keyed.contains("s=Frieren"), "{keyed}");
     assert!(events.wait_for(
-        |evs| format!("{evs:?}").contains("Installed the endpoint Erai-raws"),
+        |evs| format!("{evs:?}").contains("Installed the endpoint Keyed"),
         std::time::Duration::from_secs(5)
     ));
     assert!(!format!("{:?}", events.events()).contains("tok en"));
@@ -510,13 +501,14 @@ fn a_search_through_erai_sends_the_token_and_the_activity_log_never_shows_it() {
 #[test]
 fn removing_an_endpoint_takes_its_credentials_too() {
     let (dir, core, _) = common::open_core();
-    trust(&core, &fixture("general.json"));
+    let general = published(dir.path()).0;
+    trust(&core, &general);
     let c = catalog(core.call(Call::InstallEndpoint {
-        repo: fixture("general.json"),
-        id: "erai".into(),
+        repo: general,
+        id: "keyed".into(),
         credentials: token("gone-after-remove"),
     }));
-    let id = install_id(&c, "erai");
+    let id = install_id(&c, "keyed");
     let c = catalog(core.call(Call::RemoveEndpoint { install: id }));
     assert!(c.installed.is_empty());
     let secrets = find(dir.path(), "secrets.json")
@@ -527,22 +519,23 @@ fn removing_an_endpoint_takes_its_credentials_too() {
 
 #[test]
 fn a_disabled_endpoint_is_left_out_of_the_search() {
-    let (_dir, core, _) = common::open_core();
-    trust(&core, &fixture("general.json"));
+    let (dir, core, _) = common::open_core();
+    let general = published(dir.path()).0;
+    trust(&core, &general);
     let c = catalog(core.call(Call::InstallEndpoint {
-        repo: fixture("general.json"),
-        id: "knaben".into(),
+        repo: general,
+        id: "indexer".into(),
         credentials: vec![],
     }));
     core.call(Call::SetEndpointEnabled {
-        install: install_id(&c, "knaben"),
+        install: install_id(&c, "indexer"),
         enabled: false,
     })
     .unwrap();
     let Reply::PhoneSources { sources } = core.call(Call::PhoneSearchSources).unwrap() else {
         panic!()
     };
-    assert!(sources.iter().all(|s| s.name != "knaben"));
+    assert!(sources.iter().all(|s| s.name != "indexer"));
 }
 
 // Trust over time: indexes the test signs ---------------------------------------------------
@@ -565,7 +558,11 @@ fn endpoint(id: &str, version: u32, url: &str, auth: bool) -> Value {
 
 fn write_repo(path: &Path, k: &SigningKey, serial: u64, endpoints: Vec<Value>) {
     let index = json!({"name": "Signed here", "key": key_text(k), "serial": serial, "endpoints": endpoints});
-    let payload = serde_json::to_vec(&index).unwrap();
+    write_index(path, k, &index);
+}
+
+fn write_index(path: &Path, k: &SigningKey, index: &Value) {
+    let payload = serde_json::to_vec(index).unwrap();
     let file = json!({
         "format": "anibeam-endpoint-repo",
         "version": 1,
@@ -573,6 +570,102 @@ fn write_repo(path: &Path, k: &SigningKey, serial: u64, endpoints: Vec<Value>) {
         "signature": B64.encode(k.sign(&payload).to_bytes()),
     });
     std::fs::write(path, serde_json::to_vec(&file).unwrap()).unwrap();
+}
+
+fn definition(id: &str, name: &str, kind: &str, url: &str) -> Value {
+    json!({
+        "id": id, "name": name, "version": 1, "kind": kind, "url": url,
+        "lang": "all", "auth": [], "front": null, "rate": {"per_minute": 20},
+        "nsfw": false, "min_core": "2.1.0",
+    })
+}
+
+/// A general group and an NSFW group, both signed with one key, written into `dir`. Returns
+/// the two index paths, general first. The definitions are made up and keep the shapes a
+/// published group has: a filtered-rss and a json-feed source, a keyed rss with a token,
+/// plain rss ones, one behind a front, and an NSFW one.
+fn published(dir: &Path) -> (String, String) {
+    let k = key(7);
+    let mut feed = definition(
+        "feed",
+        "Feed",
+        "json-feed",
+        "https://feed.example/feed/json?q={query}",
+    );
+    feed["rate"] = json!({"per_minute": 30});
+    let mut keyed = definition(
+        "keyed",
+        "Keyed",
+        "rss",
+        "https://www.keyed.example/episodes/feed/?res=1080p&type=torrent&subs%5B0%5D=us&s={query}&token={token}",
+    );
+    keyed["lang"] = "en".into();
+    keyed["auth"] = json!([{
+        "key": "token",
+        "label": "RSS token",
+        "secret": true,
+        "help": "Log in on keyed.example, open the RSS page and copy the token= value from any feed link.",
+        "help_url": "https://www.keyed.example/rss-page/",
+    }]);
+    let indexer = definition(
+        "indexer",
+        "Indexer",
+        "rss",
+        "https://rss.indexer.example/{query}/0//hidexxx",
+    );
+    let limes = definition(
+        "limes",
+        "Limes",
+        "rss",
+        "https://www.limes.example/searchrss/{query}/",
+    );
+    let mut tracker = definition(
+        "tracker",
+        "Tracker",
+        "filtered-rss",
+        "https://tracker.example/",
+    );
+    tracker["front"] = "edge.example".into();
+    tracker["rate"] = json!({"per_minute": 30});
+    tracker["category"] = "1_0".into();
+    tracker["filter"] = "0".into();
+    let mut lumen = definition(
+        "lumen",
+        "Lumen",
+        "rss",
+        "https://tracker.example/?page=rss&u=lumen&q={query}&c=1_2&f=0",
+    );
+    lumen["lang"] = "en".into();
+    lumen["front"] = "edge.example".into();
+    lumen["rate"] = json!({"per_minute": 30});
+    let general = json!({
+        "name": "Example endpoints", "nsfw": false, "key": key_text(&k), "serial": 100,
+        "endpoints": [feed, keyed, indexer, limes, tracker, lumen],
+    });
+
+    let mut adult = definition(
+        "adult",
+        "Adult",
+        "filtered-rss",
+        "https://adult.tracker.example/",
+    );
+    adult["rate"] = json!({"per_minute": 30});
+    adult["nsfw"] = true.into();
+    adult["category"] = "0_0".into();
+    adult["filter"] = "0".into();
+    let nsfw = json!({
+        "name": "Example endpoints, NSFW", "nsfw": true, "key": key_text(&k), "serial": 100,
+        "endpoints": [adult],
+    });
+
+    let general_path = dir.join("general.json");
+    let nsfw_path = dir.join("nsfw.json");
+    write_index(&general_path, &k, &general);
+    write_index(&nsfw_path, &k, &nsfw);
+    (
+        general_path.to_string_lossy().into_owned(),
+        nsfw_path.to_string_lossy().into_owned(),
+    )
 }
 
 #[test]
@@ -897,9 +990,9 @@ fn a_missing_repo_file_says_so() {
 #[test]
 fn a_repo_over_https_is_fetched_through_the_core_client() {
     let http = FakeHttp::new();
-    let body = std::fs::read(fixture("general.json")).unwrap();
+    let (dir, core, _) = common::open_core_with_http(http.clone());
+    let body = std::fs::read(published(dir.path()).0).unwrap();
     http.push_for("raw.example", 200, body);
-    let (_dir, core, _) = common::open_core_with_http(http.clone());
     let p = preview(&core, "https://raw.example/index/general.json");
     assert_eq!(p.endpoints.len(), 6);
     assert_eq!(http.requests().len(), 1);
@@ -910,14 +1003,14 @@ fn a_repo_over_https_is_fetched_through_the_core_client() {
 #[test]
 fn a_source_added_by_hand_is_edited_in_place_and_keeps_its_secret() {
     let http = FakeHttp::new();
-    let (_dir, core, _) = common::open_core_with_http(http.clone());
+    let (dir, core, _) = common::open_core_with_http(http.clone());
     let secret = "jackettkey0123456789";
     let c = catalog(add_custom(
         &core,
-        "1337x",
+        "proxied",
         &format!("http://127.0.0.1:9117/api?apikey={secret}&t=search&q={{query}}"),
     ));
-    let x = c.installed.iter().find(|i| i.id == "1337x").unwrap();
+    let x = c.installed.iter().find(|i| i.id == "proxied").unwrap();
     // The address comes back for editing with its secret as a placeholder.
     let address = x.address.clone().unwrap();
     assert!(address.contains("apikey={apikey}"), "{address}");
@@ -927,13 +1020,13 @@ fn a_source_added_by_hand_is_edited_in_place_and_keeps_its_secret() {
     let edited = address.replace("127.0.0.1:9117", "192.168.1.5:9117");
     let c = catalog(core.call(Call::EditCustomEndpoint {
         install: x.install_id.clone(),
-        name: "1337x Jackett".into(),
+        name: "proxied Jackett".into(),
         url: edited,
     }));
     assert_eq!(c.installed.len(), 1);
     let y = &c.installed[0];
     assert_eq!(y.install_id, x.install_id);
-    assert_eq!(y.name, "1337x Jackett");
+    assert_eq!(y.name, "proxied Jackett");
     assert_eq!(y.host, "192.168.1.5");
     assert!(
         y.address
@@ -946,7 +1039,7 @@ fn a_source_added_by_hand_is_edited_in_place_and_keeps_its_secret() {
     // A new key typed into the address replaces the stored one.
     let c = catalog(core.call(Call::EditCustomEndpoint {
         install: x.install_id.clone(),
-        name: "1337x Jackett".into(),
+        name: "proxied Jackett".into(),
         url: "http://192.168.1.5:9117/api?apikey=newkey987&t=search&q={query}".into(),
     }));
     let z = &c.installed[0];
@@ -961,13 +1054,13 @@ fn a_source_added_by_hand_is_edited_in_place_and_keeps_its_secret() {
     // place, where it would be kept in the open.
     let typed_over = core.call(Call::EditCustomEndpoint {
         install: x.install_id.clone(),
-        name: "1337x Jackett".into(),
+        name: "proxied Jackett".into(),
         url: "http://192.168.1.5:9117/api?t=search&q={query}".into(),
     });
     assert!(typed_over.is_err());
 
     // A source from a repo is not edited this way.
-    let general = trust(&core, &fixture("general.json"));
+    let general = trust(&core, &published(dir.path()).0);
     if let Some(offered) = general.offered.iter().find(|o| o.auth.is_empty()) {
         let c = catalog(core.call(Call::InstallEndpoint {
             repo: offered.repo_url.clone(),
@@ -1011,16 +1104,16 @@ fn a_jackett_feed_added_by_hand_keeps_its_key_out_of_the_database() {
     );
     let (dir, core, _) = common::open_core_with_http(http.clone());
     // Beside a repo, not instead of one.
-    trust(&core, &fixture("general.json"));
+    trust(&core, &published(dir.path()).0);
     let secret = "jackettkey0123456789";
     let c = catalog(add_custom(
         &core,
-        "1337x",
+        "proxied",
         &format!(
-            "http://127.0.0.1:9117/api/v2.0/indexers/1337x/results/torznab/api?apikey={secret}&t=search&q={{query}}"
+            "http://127.0.0.1:9117/api/v2.0/indexers/proxied/results/torznab/api?apikey={secret}&t=search&q={{query}}"
         ),
     ));
-    let x = c.installed.iter().find(|i| i.id == "1337x").unwrap();
+    let x = c.installed.iter().find(|i| i.id == "proxied").unwrap();
     assert!(x.custom && x.offered && x.missing.is_empty());
     assert_eq!(x.auth[0].key, "apikey");
     assert_eq!(c.repos.len(), 1);
@@ -1028,12 +1121,12 @@ fn a_jackett_feed_added_by_hand_keeps_its_key_out_of_the_database() {
     let Reply::PhoneSources { sources } = core.call(Call::PhoneSearchSources).unwrap() else {
         panic!()
     };
-    let shown = sources.iter().find(|s| s.name == "1337x").unwrap();
+    let shown = sources.iter().find(|s| s.name == "proxied").unwrap();
     assert!(shown.url.contains("apikey={apikey}"), "{}", shown.url);
 
     let _ = core.call(Call::PhoneSearch {
         query: "Frieren".into(),
-        endpoint: Some("1337x".into()),
+        endpoint: Some("proxied".into()),
         fallback: false,
     });
     let sent: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
@@ -1102,13 +1195,19 @@ fn a_bare_address_by_hand_needs_the_query() {
 
 #[test]
 fn a_repo_endpoint_cannot_take_the_name_of_one_added_by_hand() {
-    let (_dir, core, _) = common::open_core();
-    trust(&core, &fixture("general.json"));
-    add_custom(&core, "nyaa", "https://tracker.example/?page=rss&q={query}").unwrap();
+    let (dir, core, _) = common::open_core();
+    let general = published(dir.path()).0;
+    trust(&core, &general);
+    add_custom(
+        &core,
+        "tracker",
+        "https://tracker.example/?page=rss&q={query}",
+    )
+    .unwrap();
     let e = core
         .call(Call::InstallEndpoint {
-            repo: fixture("general.json"),
-            id: "nyaa".into(),
+            repo: general,
+            id: "tracker".into(),
             credentials: vec![],
         })
         .unwrap_err();

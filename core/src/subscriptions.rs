@@ -5,7 +5,7 @@
 //! error string.
 //!
 //! Carried from Electron's `subscriptionsHandler.ts` and
-//! `SubscriptionsPage.tsx`'s `decodeNyaaQuery`. Electron's ANSI strip
+//! the query decoder in `SubscriptionsPage.tsx`. Electron's ANSI strip
 //! matched `[...m` on its own, with no escape byte required in front of
 //! it; this one only removes a genuine `ESC [ ... m` sequence.
 
@@ -145,7 +145,7 @@ pub fn parse_output(stdout: &str) -> Result<Vec<Feed>, String> {
             .get("torrent_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-        let query = decode_nyaa_query(&feed_url).unwrap_or_default();
+        let query = decode_search_query(&feed_url).unwrap_or_default();
         feeds.push(Feed {
             name: name.to_string(),
             active,
@@ -158,10 +158,10 @@ pub fn parse_output(stdout: &str) -> Result<Vec<Feed>, String> {
     Ok(feeds)
 }
 
-/// A feed's nyaa.si `q` parameter, percent-decoded with `+` read as a
+/// A feed's `q` parameter, percent-decoded with `+` read as a
 /// space. `None` for a URL with no query, no `q` in it, or a `q` that
 /// decodes to nothing.
-pub fn decode_nyaa_query(url: &str) -> Option<String> {
+pub fn decode_search_query(url: &str) -> Option<String> {
     let (_, query) = url.split_once('?')?;
     let query = query.split('#').next().unwrap_or(query);
     for pair in query.split('&') {
@@ -232,24 +232,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decode_nyaa_query_reads_the_q_parameter() {
+    fn decode_search_query_reads_the_q_parameter() {
         assert_eq!(
-            decode_nyaa_query("https://nyaa.si/?page=rss&q=Frieren+1080p&c=1_2"),
+            decode_search_query("https://tracker.example/?page=rss&q=Frieren+1080p&c=1_2"),
             Some("Frieren 1080p".to_string())
         );
     }
 
     #[test]
-    fn decode_nyaa_query_is_none_without_one() {
-        assert_eq!(decode_nyaa_query("https://nyaa.si/?page=rss&c=1_2"), None);
+    fn decode_search_query_is_none_without_one() {
+        assert_eq!(
+            decode_search_query("https://tracker.example/?page=rss&c=1_2"),
+            None
+        );
     }
 
     #[test]
     fn parse_output_drops_a_nameless_item_and_defaults_rule_enabled_active() {
         let json = r#"[
-            {"name": "Frieren", "feed_url": "https://nyaa.si/?q=Frieren+1080p", "save_path": "/downloads/frieren", "rule_enabled": true, "torrent_count": 3},
-            {"feed_url": "https://nyaa.si/?q=Nameless", "save_path": "/downloads/x"},
-            {"name": "Dandadan", "feed_url": "https://nyaa.si/?q=Dandadan", "save_path": "/downloads/dandadan", "torrent_count": 1}
+            {"name": "Frieren", "feed_url": "https://tracker.example/?q=Frieren+1080p", "save_path": "/downloads/frieren", "rule_enabled": true, "torrent_count": 3},
+            {"feed_url": "https://tracker.example/?q=Nameless", "save_path": "/downloads/x"},
+            {"name": "Dandadan", "feed_url": "https://tracker.example/?q=Dandadan", "save_path": "/downloads/dandadan", "torrent_count": 1}
         ]"#;
         let feeds = parse_output(json).unwrap();
         assert_eq!(feeds.len(), 2, "the nameless item should be dropped");

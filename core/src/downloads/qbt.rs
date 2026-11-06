@@ -990,7 +990,7 @@ mod tests {
         let client = client(&http);
         http.push(
             200,
-            json!({"Frieren": {"uid": "a", "url": "https://nyaa.si/?q=f"},
+            json!({"Frieren": {"uid": "a", "url": "https://tracker.example/?q=f"},
                    "TV": {"Avatar": {"uid": "b", "url": "http://127.0.0.1:9117/x"}}})
             .to_string(),
         );
@@ -999,7 +999,10 @@ mod tests {
         assert_eq!(
             feeds,
             vec![
-                ("Frieren".to_string(), "https://nyaa.si/?q=f".to_string()),
+                (
+                    "Frieren".to_string(),
+                    "https://tracker.example/?q=f".to_string()
+                ),
                 (
                     "TV\\Avatar".to_string(),
                     "http://127.0.0.1:9117/x".to_string()
@@ -1009,12 +1012,17 @@ mod tests {
         http.push(409, "Conflict");
         assert!(
             !client
-                .add_feed("https://nyaa.si/?q=f", "Frieren")
+                .add_feed("https://tracker.example/?q=f", "Frieren")
                 .await
                 .unwrap()
         );
         http.push(200, "");
-        assert!(client.add_feed("https://nyaa.si/?q=g", "G").await.unwrap());
+        assert!(
+            client
+                .add_feed("https://tracker.example/?q=g", "G")
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]

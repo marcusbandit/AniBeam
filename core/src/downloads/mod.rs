@@ -1041,7 +1041,7 @@ pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
         }))
 }
 
-/// Starts the service behind an on-demand endpoint (Jackett for 1337x) and
+/// Starts the service behind an on-demand endpoint (Jackett for a site behind a search proxy) and
 /// probes the endpoints again. The shell calls this only after the user
 /// confirmed; nothing else in the core starts one. The command is the
 /// `jackett_command` setting, else anirss's `start` for the endpoint, else
@@ -1114,7 +1114,7 @@ async fn probe_kept(http: &dyn Http, url: &str) -> bool {
 }
 
 /// The endpoint a search asked for, else the first anirss lists that is not
-/// started on demand: a default search never lands on a stopped 1337x.
+/// started on demand: a default search never lands on a stopped proxied endpoint.
 fn default_target(endpoint: Option<String>, listed: &[SearchEndpoint]) -> Option<String> {
     endpoint.or_else(|| {
         listed
@@ -1746,7 +1746,7 @@ async fn swap_feed(
 /// The narrowest feed the endpoint itself can answer. Starting from the
 /// search the feed carries, each narrowing word is tried in it, and a word
 /// stays when the feed still holds every picked release and holds fewer
-/// than before ("Helluva Boss TBK" works on 1337x where "Helluva Boss S03
+/// than before ("Helluva Boss TBK" works behind the proxy where "Helluva Boss S03
 /// TBK" finds nothing). Only what the feed returns decides, so it works the
 /// same for any endpoint whose feed carries a search. A feed that cannot be
 /// read rejects that word; the rule keeps every word either way.
@@ -3669,26 +3669,26 @@ mod tests {
             priority: 1,
             episode: super::facts::read_name(name).episode,
         };
-        let dir = "[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 01~12 [1080p][Multiple Subtitle]";
+        let dir = "[Kumo] Kino no Tabi The Beautiful World - The Animated Series - 01~12 [1080p][Multiple Subtitle]";
         let mut t = super::qbt::tests_torrent();
         t.series_id = Some(7);
         t.progress = 0.4;
         t.files = vec![
             file(
                 &format!(
-                    "{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 01 [1080p][Multiple Subtitle].mkv"
+                    "{dir}/[Kumo] Kino no Tabi The Beautiful World - The Animated Series - 01 [1080p][Multiple Subtitle].mkv"
                 ),
                 1.0,
             ),
             file(
                 &format!(
-                    "{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 02 [1080p][Multiple Subtitle].mkv"
+                    "{dir}/[Kumo] Kino no Tabi The Beautiful World - The Animated Series - 02 [1080p][Multiple Subtitle].mkv"
                 ),
                 0.3,
             ),
             file(
                 &format!(
-                    "{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 03 [1080p][Multiple Subtitle].mkv"
+                    "{dir}/[Kumo] Kino no Tabi The Beautiful World - The Animated Series - 03 [1080p][Multiple Subtitle].mkv"
                 ),
                 0.0,
             ),

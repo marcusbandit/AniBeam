@@ -312,7 +312,7 @@ pub fn search_url(ep: &Endpoint, query: &str) -> String {
             ("c".to_string(), ep.category.clone()),
             ("f".to_string(), ep.filter.clone()),
         ]);
-        // A nyaa address may carry fixed parameters of its own (a token), as anirss allows
+        // A filtered-rss address may carry fixed parameters of its own (a token), as anirss allows
         let sep = if ep.url.contains('?') { '&' } else { '?' };
         return format!("{}{sep}{qs}", ep.url);
     }
@@ -673,11 +673,11 @@ pub(crate) mod tests {
     use super::*;
     use crate::net::FakeHttp;
 
-    fn nyaa() -> Endpoint {
+    fn tracker() -> Endpoint {
         Endpoint {
             category: "1_2".to_string(),
             filter: "1".to_string(),
-            ..Endpoint::new("nyaa", FILTERED_RSS, "https://nyaa.si/")
+            ..Endpoint::new("tracker", FILTERED_RSS, "https://tracker.example/")
         }
     }
 
@@ -762,7 +762,7 @@ pub(crate) mod tests {
 
     #[test]
     fn validate_accepts_good_endpoints() {
-        validate("nyaa", FILTERED_RSS, "https://nyaa.si/").unwrap();
+        validate("tracker", FILTERED_RSS, "https://tracker.example/").unwrap();
         validate(
             "anirena",
             "rss",
@@ -805,11 +805,14 @@ pub(crate) mod tests {
 
     #[test]
     fn search_url_filtered_rss_kind() {
-        let url = search_url(&nyaa(), "one piece");
-        assert!(url.starts_with("https://nyaa.si/?"));
+        let url = search_url(&tracker(), "one piece");
+        assert!(url.starts_with("https://tracker.example/?"));
         assert!(url.contains("page=rss") && url.contains("q=one+piece"));
         assert!(url.contains("c=1_2") && url.contains("f=1"));
-        assert_eq!(url, "https://nyaa.si/?page=rss&q=one+piece&c=1_2&f=1");
+        assert_eq!(
+            url,
+            "https://tracker.example/?page=rss&q=one+piece&c=1_2&f=1"
+        );
     }
 
     #[test]
@@ -864,9 +867,9 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn feed_url_nyaa_kind_keeps_exclusions_in_url() {
-        let (url, excluded) = feed_url(&nyaa(), "one piece -HEVC");
-        assert_eq!(url, search_url(&nyaa(), "one piece -HEVC"));
+    fn feed_url_filtered_rss_kind_keeps_exclusions_in_url() {
+        let (url, excluded) = feed_url(&tracker(), "one piece -HEVC");
+        assert_eq!(url, search_url(&tracker(), "one piece -HEVC"));
         assert!(excluded.is_empty());
     }
 
@@ -996,10 +999,10 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_items_nyaa_kind_sends_exclusions() {
+    async fn fetch_items_filtered_rss_kind_sends_exclusions() {
         let http = FakeHttp::new();
         http.push(200, feed(&[("t", "l")]));
-        let items = fetch_items(http.as_ref(), &nyaa(), "show -HEVC")
+        let items = fetch_items(http.as_ref(), &tracker(), "show -HEVC")
             .await
             .unwrap();
         assert_eq!(items.len(), 1);
@@ -1011,9 +1014,9 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_nyaa_kind_endpoint_named_with_no_category_or_filter_asks_for_everything() {
+    fn a_filtered_rss_endpoint_named_with_no_category_or_filter_asks_for_everything() {
         // anirss's Endpoint: category "1_0" (every anime upload) and filter "0" (no filter)
-        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/");
+        let ep = Endpoint::new("site", FILTERED_RSS, "https://tracker.example/");
         assert_eq!((ep.category.as_str(), ep.filter.as_str()), ("1_0", "0"));
         assert_eq!(
             search_url(&ep, "Show 1080p"),
@@ -1034,9 +1037,9 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_nyaa_address_with_its_own_parameters_takes_the_search_after_them() {
+    fn a_filtered_rss_address_with_its_own_parameters_takes_the_search_after_them() {
         // anirss: f"{ep.url}{'&' if '?' in ep.url else '?'}{qs}"
-        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/?token=abc");
+        let ep = Endpoint::new("site", FILTERED_RSS, "https://tracker.example/?token=abc");
         assert_eq!(
             search_url(&ep, "Show"),
             "https://tracker.example/?token=abc&page=rss&q=Show&c=1_0&f=0"
@@ -1049,7 +1052,7 @@ pub(crate) mod tests {
         let http = FakeHttp::new();
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..Endpoint::new("site", "nyaa", "https://tracker.example/")
+            ..Endpoint::new("site", FILTERED_RSS, "https://tracker.example/")
         };
         let mut item = rel("[A] Show - 01", "l");
         item.source = "site".to_string();
@@ -1061,7 +1064,7 @@ pub(crate) mod tests {
     async fn a_filtered_search_with_nothing_asks_again_for_every_upload() {
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         let http = FakeHttp::new();
         http.push(200, feed(&[]));
@@ -1072,7 +1075,7 @@ pub(crate) mod tests {
         let sent: Vec<String> = http.requests().iter().map(|r| f_param(&r.url)).collect();
         assert_eq!(sent, ["2", "0"]);
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].source, "nyaa: all uploads");
+        assert_eq!(items[0].source, "tracker: all uploads");
         // Subscribing to those results keeps the filter off, or the rule finds nothing.
         let (url, _, _) = subscription_feed(http.as_ref(), &trusted, "Seitokai", &items).await;
         assert_eq!(f_param(&url), "0");
@@ -1082,7 +1085,7 @@ pub(crate) mod tests {
     async fn a_filtered_search_with_results_or_no_filter_asks_once() {
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         let http = FakeHttp::new();
         http.push(200, feed(&[("t", "l")]));
@@ -1094,7 +1097,7 @@ pub(crate) mod tests {
 
         let open = Endpoint {
             filter: "0".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         let http = FakeHttp::new();
         http.push(200, feed(&[]));
@@ -1111,7 +1114,7 @@ pub(crate) mod tests {
     async fn a_failed_unfiltered_retry_still_answers_nothing_found() {
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         let http = FakeHttp::new();
         http.push(200, feed(&[]));
@@ -1125,7 +1128,7 @@ pub(crate) mod tests {
     async fn a_refine_refetches_with_the_filter_its_list_was_found_with() {
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..nyaa()
+            ..tracker()
         };
         // A trusted list narrowed to nothing stays nothing: no unfiltered retry.
         let http = FakeHttp::new();
@@ -1144,7 +1147,7 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert_eq!(f_param(&http.requests()[0].url), "0");
-        assert_eq!(items[0].source, "nyaa: all uploads");
+        assert_eq!(items[0].source, "tracker: all uploads");
     }
 
     #[tokio::test]
@@ -1153,7 +1156,7 @@ pub(crate) mod tests {
         http.push(200, feed(&[]));
         // Its filter finds nothing, so it asks again unfiltered
         http.push(200, feed(&[]));
-        let mut ep = nyaa();
+        let mut ep = tracker();
         ep.timeout = 60.0;
         fetch_items(http.as_ref(), &ep, "x").await.unwrap();
         let req = &http.requests()[0];
@@ -1211,8 +1214,8 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn probe_fallback_switches_to_first_hit() {
-        let eps = [nyaa(), anirena()];
-        let (items, notes) = probe_with(&eps, "nyaa", |ep| async move {
+        let eps = [tracker(), anirena()];
+        let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
             Ok(if ep.name == "anirena" {
                 vec![rel("t", "l")]
             } else {
@@ -1227,8 +1230,8 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn probe_fallback_tags_items_with_source() {
-        let eps = [nyaa(), anirena()];
-        let (items, _) = probe_with(&eps, "nyaa", |ep| async move {
+        let eps = [tracker(), anirena()];
+        let (items, _) = probe_with(&eps, "tracker", |ep| async move {
             Ok(if ep.name == "anirena" {
                 vec![rel("t", "l"), rel("t2", "l2")]
             } else {
@@ -1244,9 +1247,9 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn probe_fallback_all_fail_returns_nothing() {
-        let third = Endpoint::new("tosho", "rss", "https://x/?q={query}");
-        let eps = [nyaa(), anirena(), third];
-        let (items, notes) = probe_with(&eps, "nyaa", |ep| async move {
+        let third = Endpoint::new("feed", "rss", "https://x/?q={query}");
+        let eps = [tracker(), anirena(), third];
+        let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
             if ep.name == "anirena" {
                 Err(CoreError::internal("can't reach anirena: boom"))
             } else {
@@ -1255,15 +1258,15 @@ pub(crate) mod tests {
         })
         .await;
         assert!(items.is_empty());
-        assert_eq!(notes, strings(&["anirena: unreachable", "tosho: 0"]));
+        assert_eq!(notes, strings(&["anirena: unreachable", "feed: 0"]));
     }
 
     #[tokio::test]
     async fn probe_fallback_over_http_skips_the_active_endpoint() {
-        let eps = [nyaa(), anirena()];
+        let eps = [tracker(), anirena()];
         let http = FakeHttp::new();
         http.push_for("anirena.com", 200, feed(&[("Show", "l")]));
-        let (items, notes) = probe_fallback(http.as_ref(), &eps, "nyaa", "show").await;
+        let (items, notes) = probe_fallback(http.as_ref(), &eps, "tracker", "show").await;
         assert_eq!(items[0].source, "anirena");
         assert_eq!(notes, strings(&["anirena: 1"]));
         assert_eq!(http.requests().len(), 1);
@@ -1271,7 +1274,7 @@ pub(crate) mod tests {
 
     #[test]
     fn owner_of_finds_the_endpoint_by_url_prefix() {
-        let eps = [nyaa(), anirena()];
+        let eps = [tracker(), anirena()];
         let owner = owner_of(&eps, "https://www.anirena.com/rss?q=x&adult=1").unwrap();
         assert_eq!(owner.name, "anirena");
         assert!(owner_of(&eps, "https://elsewhere.example/").is_none());
@@ -1329,13 +1332,13 @@ pub(crate) mod tests {
 
     #[test]
     fn subscription_feed_of_a_plain_source_unchanged() {
-        let (url, must, excluded) = subscription_feed_resolved(&nyaa(), "show -bad", None);
-        assert_eq!(url, feed_url(&nyaa(), "show -bad").0);
+        let (url, must, excluded) = subscription_feed_resolved(&tracker(), "show -bad", None);
+        assert_eq!(url, feed_url(&tracker(), "show -bad").0);
         assert_eq!(must, "");
         assert!(excluded.is_empty());
     }
 
-    // The two releases Erai's feed carries for every episode (Kyoufu Collector, whose
+    // The two releases a source's feed carries for every episode (Kyoufu Collector, whose
     // `kyoufu 1080p` rule downloaded both).
     const KYOUFU_AVC: &str = "[Torrent] Kyoufu Collector - 01 [1080p CR WEB-DL AVC AAC][us][br][mx][es][sa][fr][de][it][ru][pl][Airing]";
     const KYOUFU_HEVC: &str = "[Torrent] Kyoufu Collector - 01 (HEVC) [1080p CR WEBRip HEVC AAC][us][br][mx][es][sa][fr][de][it][ru][pl][Encoded]";

@@ -133,7 +133,7 @@ pub fn subscriptions(rules: Vec<SubscriptionRule>) -> Vec<wire::Subscription> {
 }
 
 /// `url` without its credential parameters. A feed that needed one will not
-/// open from a phone, which is the point; a public feed such as nyaa's has
+/// open from a phone, which is the point; a public feed such as a tracker's has
 /// none and passes through unchanged.
 pub fn without_secrets(url: &str) -> String {
     let url = &without_userinfo(url);
@@ -243,8 +243,8 @@ mod tests {
             "https://t.example/rss"
         );
         assert_eq!(
-            without_secrets("https://nyaa.si/?page=rss&q=a@b"),
-            "https://nyaa.si/?page=rss&q=a@b"
+            without_secrets("https://tracker.example/?page=rss&q=a@b"),
+            "https://tracker.example/?page=rss&q=a@b"
         );
     }
 
@@ -260,9 +260,12 @@ mod tests {
             without_secrets("https://t.example/rss?passkey=s3cret"),
             "https://t.example/rss"
         );
-        let nyaa = "https://nyaa.si/?page=rss&q=Frieren+1080p&c=1_2&f=0";
-        assert_eq!(without_secrets(nyaa), nyaa);
-        assert_eq!(without_secrets("https://nyaa.si/"), "https://nyaa.si/");
+        let tracker = "https://tracker.example/?page=rss&q=Frieren+1080p&c=1_2&f=0";
+        assert_eq!(without_secrets(tracker), tracker);
+        assert_eq!(
+            without_secrets("https://tracker.example/"),
+            "https://tracker.example/"
+        );
     }
 
     use super::*;

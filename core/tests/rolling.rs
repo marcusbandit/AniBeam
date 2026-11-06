@@ -70,7 +70,7 @@ fn started(core: &Core, call: Call) -> u64 {
 }
 
 fn release(title: &str, link: &str) -> Release {
-    serde_json::from_value(json!({"title": title, "link": link, "source": "nyaa"})).unwrap()
+    serde_json::from_value(json!({"title": title, "link": link, "source": "tracker"})).unwrap()
 }
 
 fn batch_release(hash: &str) -> Release {
@@ -307,7 +307,7 @@ fn a_pick_of_forty_single_episodes_adds_only_twelve_now() {
         .rev()
         .map(|n| {
             release(
-                &format!("[Erai-raws] Black Clover - {n:03} [1080p].mkv"),
+                &format!("[Kumo] Black Clover - {n:03} [1080p].mkv"),
                 &format!("magnet:?xt=urn:btih:{n:040x}"),
             )
         })
@@ -349,7 +349,7 @@ fn a_pick_of_forty_single_episodes_adds_only_twelve_now() {
         .map(|i| i["title"].as_str().unwrap())
         .collect();
     let want: Vec<String> = (1..=12)
-        .map(|n| format!("[Erai-raws] Black Clover - {n:03} [1080p].mkv"))
+        .map(|n| format!("[Kumo] Black Clover - {n:03} [1080p].mkv"))
         .collect();
     assert_eq!(sent, want, "episodes 1 to 12, in episode order");
     core.shutdown();
