@@ -39,9 +39,15 @@ impl std::fmt::Display for HostError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             HostError::Unreachable(why) => write!(f, "{why}"),
-            HostError::NotAniBeam(what) => write!(f, "Something answered, but not AniBeam ({what})"),
+            HostError::NotAniBeam(what) => {
+                write!(f, "Something answered, but not AniBeam ({what})")
+            }
             HostError::TooNew(api) => {
-                write!(f, "The host speaks API {api}; this app reads {}. Update the app.", api::API_VERSION)
+                write!(
+                    f,
+                    "The host speaks API {api}; this app reads {}. Update the app.",
+                    api::API_VERSION
+                )
             }
             HostError::Bad(why) => write!(f, "{why}"),
         }
@@ -54,15 +60,21 @@ pub fn describe(error: &ureq::Error, host: &str) -> String {
         ureq::Error::HostNotFound => {
             format!("{host} is not a name the phone can find. Is Tailscale connected?")
         }
-        ureq::Error::Timeout(_) => format!("{host} did not answer. Is it on, and is Tailscale connected on both?"),
-        ureq::Error::ConnectionFailed => format!("Could not reach {host}. Is it on, and is Tailscale connected on both?"),
+        ureq::Error::Timeout(_) => {
+            format!("{host} did not answer. Is it on, and is Tailscale connected on both?")
+        }
+        ureq::Error::ConnectionFailed => {
+            format!("Could not reach {host}. Is it on, and is Tailscale connected on both?")
+        }
         ureq::Error::Io(io) => match io.kind() {
             std::io::ErrorKind::ConnectionRefused => {
                 format!(
                     "{host} is on, but AniBeam there is closed or not sharing. Open AniBeam on it and switch on Share over Tailscale in Settings, Phone app."
                 )
             }
-            std::io::ErrorKind::TimedOut => format!("{host} did not answer. Is it on, and is Tailscale connected on both?"),
+            std::io::ErrorKind::TimedOut => {
+                format!("{host} did not answer. Is it on, and is Tailscale connected on both?")
+            }
             std::io::ErrorKind::NetworkUnreachable | std::io::ErrorKind::HostUnreachable => {
                 format!("No route to {host}. Is Tailscale connected?")
             }
@@ -114,9 +126,17 @@ impl HostClient {
             .with_config()
             .limit(limit)
             .read_to_vec()
-            .map_err(|e| HostError::Bad(format!("The answer from {} broke off: {e}", self.address.display())))?;
+            .map_err(|e| {
+                HostError::Bad(format!(
+                    "The answer from {} broke off: {e}",
+                    self.address.display()
+                ))
+            })?;
         if status != 200 {
-            return Err(HostError::Bad(format!("{} answered {status} for {path}", self.address.display())));
+            return Err(HostError::Bad(format!(
+                "{} answered {status} for {path}",
+                self.address.display()
+            )));
         }
         Ok((body, kind))
     }
@@ -125,8 +145,14 @@ impl HostClient {
     /// "Invalid argument" on Android.
     fn resolve(&self) -> Result<(), HostError> {
         use std::net::ToSocketAddrs;
-        let host = self.address.host.trim_start_matches('[').trim_end_matches(']');
-        let found = (host, self.address.port).to_socket_addrs().map(|mut all| all.next().is_some());
+        let host = self
+            .address
+            .host
+            .trim_start_matches('[')
+            .trim_end_matches(']');
+        let found = (host, self.address.port)
+            .to_socket_addrs()
+            .map(|mut all| all.next().is_some());
         match found {
             Ok(true) => Ok(()),
             _ => Err(HostError::Unreachable(format!(
@@ -147,7 +173,10 @@ impl HostClient {
         let hello: Hello = serde_json::from_slice(&body)
             .map_err(|_| HostError::NotAniBeam("its answer is not AniBeam's hello".into()))?;
         if hello.app != api::APP {
-            return Err(HostError::NotAniBeam(format!("it calls itself {}", hello.app)));
+            return Err(HostError::NotAniBeam(format!(
+                "it calls itself {}",
+                hello.app
+            )));
         }
         if hello.api > api::API_VERSION {
             return Err(HostError::TooNew(hello.api));
@@ -157,7 +186,8 @@ impl HostClient {
 
     pub fn snapshot(&self) -> Result<Snapshot, HostError> {
         let (body, _) = self.get(api::SNAPSHOT, SNAPSHOT_LIMIT)?;
-        serde_json::from_slice(&body).map_err(|e| HostError::Bad(format!("The snapshot did not read: {e}")))
+        serde_json::from_slice(&body)
+            .map_err(|e| HostError::Bad(format!("The snapshot did not read: {e}")))
     }
 
     /// The body of any `GET` on the host, up to 1 MB.
@@ -168,15 +198,23 @@ impl HostClient {
     /// What is in one of the host's episode files.
     pub fn probe(&self, file: u64) -> Result<api::Probe, HostError> {
         let (body, _) = self.get(&api::probe_path(file), 1024 * 1024)?;
-        serde_json::from_slice(&body).map_err(|e| HostError::Bad(format!("The file's details did not read: {e}")))
+        serde_json::from_slice(&body)
+            .map_err(|e| HostError::Bad(format!("The file's details did not read: {e}")))
     }
 
     /// The host's address with the name looked up, for a player that resolves names on
     /// its own and may not ask the tailnet's DNS: `http://100.94.40.21:8790`.
     pub fn stream_base(&self) -> Result<String, HostError> {
         use std::net::ToSocketAddrs;
-        let host = self.address.host.trim_start_matches('[').trim_end_matches(']');
-        let found = (host, self.address.port).to_socket_addrs().ok().and_then(|mut all| all.next());
+        let host = self
+            .address
+            .host
+            .trim_start_matches('[')
+            .trim_end_matches(']');
+        let found = (host, self.address.port)
+            .to_socket_addrs()
+            .ok()
+            .and_then(|mut all| all.next());
         match found {
             Some(std::net::SocketAddr::V4(a)) => Ok(format!("http://{}:{}", a.ip(), a.port())),
             Some(std::net::SocketAddr::V6(a)) => Ok(format!("http://[{}]:{}", a.ip(), a.port())),
@@ -202,7 +240,12 @@ impl HostClient {
             .with_config()
             .limit(4 * 1024 * 1024)
             .read_to_vec()
-            .map_err(|e| HostError::Bad(format!("The answer from {} broke off: {e}", self.address.display())))?;
+            .map_err(|e| {
+                HostError::Bad(format!(
+                    "The answer from {} broke off: {e}",
+                    self.address.display()
+                ))
+            })?;
         Ok((status, body))
     }
 

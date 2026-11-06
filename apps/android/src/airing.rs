@@ -36,18 +36,31 @@ fn saved_address() -> Option<HostAddress> {
 }
 
 fn waiting() -> Vec<Waiting> {
-    FILE.get().and_then(|f| std::fs::read(f).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    FILE.get()
+        .and_then(|f| std::fs::read(f).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
 }
 
 fn keep(list: &[Waiting]) {
     let Some(file) = FILE.get() else { return };
     let written = if list.is_empty() {
-        std::fs::remove_file(file).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) })
+        std::fs::remove_file(file).or_else(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                Ok(())
+            } else {
+                Err(e)
+            }
+        })
     } else {
-        serde_json::to_vec(list).map_err(std::io::Error::other).and_then(|b| std::fs::write(file, b))
+        serde_json::to_vec(list)
+            .map_err(std::io::Error::other)
+            .and_then(|b| std::fs::write(file, b))
     };
     if let Err(e) = written {
-        crate::local::log(&format!("not interested: could not keep the marks waiting: {e}"));
+        crate::local::log(&format!(
+            "not interested: could not keep the marks waiting: {e}"
+        ));
     }
 }
 
@@ -55,9 +68,14 @@ fn keep(list: &[Waiting]) {
 /// off the UI thread. The lock is held from the local mark on, so a sync never sees the
 /// mark here without it waiting to go out.
 pub fn mark(anilist_id: u64, on: bool) {
-    let Some(core) = crate::local::core() else { return };
+    let Some(core) = crate::local::core() else {
+        return;
+    };
     let _held = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    if let Err(e) = core.call(Call::SetNotInterested { anilist_id, not_interested: on }) {
+    if let Err(e) = core.call(Call::SetNotInterested {
+        anilist_id,
+        not_interested: on,
+    }) {
         crate::local::log(&format!("not interested: {e}"));
         return;
     }
@@ -76,13 +94,18 @@ pub fn mark(anilist_id: u64, on: bool) {
 /// Sends what waits, in order, and keeps whatever the computer did not take.
 fn send(host: &HostClient, list: &mut Vec<Waiting>) {
     while let Some(w) = list.first() {
-        let call = Call::SetNotInterested { anilist_id: w.anilist_id, not_interested: w.on };
+        let call = Call::SetNotInterested {
+            anilist_id: w.anilist_id,
+            not_interested: w.on,
+        };
         match crate::stream::call_on(host, "your computer", &call) {
             Ok(_) => {
                 list.remove(0);
             }
             Err(e) => {
-                crate::local::log(&format!("not interested: the computer did not take a mark yet: {e}"));
+                crate::local::log(&format!(
+                    "not interested: the computer did not take a mark yet: {e}"
+                ));
                 return;
             }
         }
@@ -92,7 +115,9 @@ fn send(host: &HostClient, list: &mut Vec<Waiting>) {
 /// After a sync with the computer: send what waits, then follow the computer's list. A
 /// computer too old to answer leaves this phone's list as it is.
 pub fn sync(address: &HostAddress) {
-    let Some(core) = crate::local::core() else { return };
+    let Some(core) = crate::local::core() else {
+        return;
+    };
     let _held = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let host = HostClient::new(client::agent(), address.clone());
     let mut list = waiting();
@@ -102,10 +127,15 @@ pub fn sync(address: &HostAddress) {
         return;
     }
     let theirs = match crate::stream::call_on(&host, "your computer", &Call::ListNotInterested) {
-        Ok(Reply::NotInterested { shows }) => shows.into_iter().map(|s| s.anilist_id).collect::<HashSet<u64>>(),
+        Ok(Reply::NotInterested { shows }) => shows
+            .into_iter()
+            .map(|s| s.anilist_id)
+            .collect::<HashSet<u64>>(),
         Ok(_) => return,
         Err(e) => {
-            crate::local::log(&format!("not interested: the computer's list did not come: {e}"));
+            crate::local::log(&format!(
+                "not interested: the computer's list did not come: {e}"
+            ));
             return;
         }
     };
@@ -114,8 +144,17 @@ pub fn sync(address: &HostAddress) {
         _ => return,
     };
     let mut changed = false;
-    for (&id, on) in theirs.difference(&ours).map(|id| (id, true)).chain(ours.difference(&theirs).map(|id| (id, false))) {
-        changed |= core.call(Call::SetNotInterested { anilist_id: id, not_interested: on }).is_ok();
+    for (&id, on) in theirs
+        .difference(&ours)
+        .map(|id| (id, true))
+        .chain(ours.difference(&theirs).map(|id| (id, false)))
+    {
+        changed |= core
+            .call(Call::SetNotInterested {
+                anilist_id: id,
+                not_interested: on,
+            })
+            .is_ok();
     }
     if changed {
         crate::local::touch();
