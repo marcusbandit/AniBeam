@@ -241,20 +241,24 @@ Item {
     readonly property real devicePixelRatio: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
     readonly property size posterDecodeSize: Qt.size(Math.ceil(posterWidth * 1.25 * devicePixelRatio), Math.ceil(posterWidth * 1.25 * 1.5 * devicePixelRatio))
     readonly property real systemPointSize: Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 10
+    // Text size (Appearance): every type size below is the system's times this, so the
+    // whole window's type follows one setting
+    readonly property real textScale: Theme.textScale
+    readonly property real basePointSize: systemPointSize * textScale
     readonly property string fontSans: fontFamily
     // Shims kept while the surfaces are restyled: the old names all resolve to Archivo.
     // There is no monospace anywhere; tabular figures come from the ledger role.
     readonly property string fontUi: fontFamily
     readonly property string fontSerif: fontFamily
     // Four sizes only; widths and weights do the rest
-    readonly property real typeDisplay: systemPointSize * 2.8
-    readonly property real typeNormal: systemPointSize
-    readonly property real typeSmall: systemPointSize * 0.85
-    readonly property real typeLarge: systemPointSize * 1.5
+    readonly property real typeDisplay: basePointSize * 2.8
+    readonly property real typeNormal: basePointSize
+    readonly property real typeSmall: basePointSize * 0.85
+    readonly property real typeLarge: basePointSize * 1.5
     // A page's own title (Library, Feed, Downloads) and a section's heading: bigger than the
     // display cut's default, the first thing read on a page
-    readonly property real typePage: systemPointSize * 4
-    readonly property real typeHeading: systemPointSize * 2.2
+    readonly property real typePage: basePointSize * 4
+    readonly property real typeHeading: basePointSize * 2.2
     // The four cuts of the face, by role (DESIGN.md, Type). Label.qml applies one with
     // `role: "title"`; a plain Text can take the same through these functions:
     //   font.variableAxes: theme.roleAxes(r)   font.weight: theme.roleWeight(r)
@@ -287,7 +291,11 @@ Item {
     readonly property int motionFast: reducedMotion ? 0 : 120
     readonly property int motionNormal: reducedMotion ? 0 : 200
     readonly property int motionSlow: 320
-    readonly property real controlHeight: space(8)
+    // A length that holds text: space(n), grown with text bigger than Normal, so a label never
+    // outgrows its button, row or column. Smaller text keeps the normal size, so a control
+    // stays as easy to hit.
+    function textSpace(n) { return Math.round(space(n) * Math.max(1, textScale)) }
+    readonly property real controlHeight: textSpace(8)
     readonly property real disabledOpacity: 0.45
 
     // A colour t of the way from a to b, alpha included; takes Qt colours

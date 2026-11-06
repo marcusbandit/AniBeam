@@ -33,7 +33,8 @@ const SERVICE: &str = "AniBeam";
 /// into (anirss's fallback name).
 const FALLBACK_NAME: &str = "anirss";
 
-/// How long fetching the .torrent files before an add may take in all.
+/// How long fetching the .torrent files before an add may take in all. anirss 0.7.1
+/// `api.py` `FETCH_DEADLINE_S`.
 const FETCH_DEADLINE: Duration = Duration::from_secs(20);
 
 fn not_found(message: String) -> CoreError {
@@ -656,6 +657,12 @@ async fn blocking<T: Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_download_fetches_torrent_files_as_long_as_anirss_does() {
+        // anirss api.py FETCH_DEADLINE_S: 20 s of .torrent fetches, the rest go as links
+        assert_eq!(FETCH_DEADLINE, Duration::from_secs(20));
+    }
 
     #[test]
     fn a_rule_saves_where_its_torrent_params_say_first() {
