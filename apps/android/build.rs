@@ -1,6 +1,7 @@
 fn main() {
     // The manifest owns the version; the app shows the build number from it in Settings.
-    let manifest = std::fs::read_to_string("android/AndroidManifest.xml").expect("android/AndroidManifest.xml");
+    let manifest = std::fs::read_to_string("android/AndroidManifest.xml")
+        .expect("android/AndroidManifest.xml");
     let code = manifest
         .split("android:versionCode=\"")
         .nth(1)
@@ -17,8 +18,14 @@ fn main() {
             Ok("x86_64") => "x86_64",
             other => panic!("no libmpv for {other:?}"),
         };
-        let dir = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("vendor/mpv").join(abi);
-        assert!(dir.join("libmpv.so").is_file(), "{} has no libmpv.so: run scripts/fetch-mpv.sh", dir.display());
+        let dir = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("vendor/mpv")
+            .join(abi);
+        assert!(
+            dir.join("libmpv.so").is_file(),
+            "{} has no libmpv.so: run scripts/fetch-mpv.sh",
+            dir.display()
+        );
         println!("cargo:rustc-link-search=native={}", dir.display());
         println!("cargo:rustc-link-lib=dylib=mpv");
         println!("cargo:rustc-link-lib=dylib=avcodec");

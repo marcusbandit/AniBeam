@@ -21,7 +21,10 @@ pub fn init(data_dir: PathBuf) {
 
 /// The quality picked in More.
 pub fn quality() -> Quality {
-    DATA_DIR.get().map(|d| crate::prefs::load(d).stream_quality).unwrap_or_default()
+    DATA_DIR
+        .get()
+        .map(|d| crate::prefs::load(d).stream_quality)
+        .unwrap_or_default()
 }
 
 /// How a stream from the other device plays. Auto plays the file as it is on Wi-Fi and a
@@ -37,7 +40,13 @@ pub enum Quality {
 }
 
 impl Quality {
-    pub const ALL: [Quality; 5] = [Quality::Auto, Quality::Original, Quality::P1080, Quality::P720, Quality::P480];
+    pub const ALL: [Quality; 5] = [
+        Quality::Auto,
+        Quality::Original,
+        Quality::P1080,
+        Quality::P720,
+        Quality::P480,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -57,7 +66,12 @@ const AUTO_WIFI_LIMIT: u64 = 25_000_000;
 const AUTO_MOBILE_HEIGHT: u32 = 720;
 
 /// The height to convert to, or None for the file as it is.
-pub fn height(quality: Quality, probe: Option<&Probe>, unmetered: bool, can_convert: bool) -> Option<u32> {
+pub fn height(
+    quality: Quality,
+    probe: Option<&Probe>,
+    unmetered: bool,
+    can_convert: bool,
+) -> Option<u32> {
     if !can_convert {
         return None;
     }
@@ -101,7 +115,10 @@ impl Host {
         let client = HostClient::new(client::agent(), address);
         let hello = client.hello().map_err(|e| e.to_string())?;
         if !hello.features.iter().any(|f| f == api::FEATURE_STREAM) {
-            return Err(format!("{} runs AniBeam {}, which cannot stream yet. Update it there.", hello.host, hello.version));
+            return Err(format!(
+                "{} runs AniBeam {}, which cannot stream yet. Update it there.",
+                hello.host, hello.version
+            ));
         }
         let base = client.stream_base().map_err(|e| e.to_string())?;
         Ok(Host {
@@ -154,9 +171,12 @@ impl Host {
 
 pub(crate) fn call_on(client: &HostClient, name: &str, call: &Call) -> Result<Reply, CoreError> {
     let body = serde_json::to_vec(call).map_err(|e| CoreError::internal(e.to_string()))?;
-    let (status, answer) = client.post(api::CALL, &body).map_err(|e| CoreError::internal(e.to_string()))?;
+    let (status, answer) = client
+        .post(api::CALL, &body)
+        .map_err(|e| CoreError::internal(e.to_string()))?;
     if status == 200 {
-        return serde_json::from_slice(&answer).map_err(|e| CoreError::internal(format!("The answer did not read: {e}")));
+        return serde_json::from_slice(&answer)
+            .map_err(|e| CoreError::internal(format!("The answer did not read: {e}")));
     }
     #[derive(Deserialize)]
     struct Refused {
@@ -175,14 +195,22 @@ pub(crate) fn call_on(client: &HostClient, name: &str, call: &Call) -> Result<Re
 /// as an index of the probe's audio tracks.
 fn saved_audio(session: &PlaybackSession, probe: &Probe) -> Option<usize> {
     let want = session.track_choice.audio.as_ref()?;
-    let lang = |t: &anibeam_companion::api::Track| t.language.as_deref() == want.language.as_deref();
+    let lang =
+        |t: &anibeam_companion::api::Track| t.language.as_deref() == want.language.as_deref();
     let title = |t: &anibeam_companion::api::Track| t.title.as_deref() == want.title.as_deref();
-    probe.audio.iter().position(|t| lang(t) && title(t)).or_else(|| probe.audio.iter().position(lang))
+    probe
+        .audio
+        .iter()
+        .position(|t| lang(t) && title(t))
+        .or_else(|| probe.audio.iter().position(lang))
 }
 
 /// Pictures, not text: these cannot be read out as a subtitle file.
 fn is_bitmap(codec: &str) -> bool {
-    matches!(codec, "hdmv_pgs_subtitle" | "dvd_subtitle" | "dvb_subtitle" | "xsub")
+    matches!(
+        codec,
+        "hdmv_pgs_subtitle" | "dvd_subtitle" | "dvb_subtitle" | "xsub"
+    )
 }
 
 /// A session opened on the host, ready for the player: `path` is what mpv loads, and the
@@ -221,13 +249,25 @@ pub fn open(file: u64, quality: Quality, unmetered: bool) -> Result<Opened, Stri
     if converted.is_some()
         && let Some(p) = &probe
     {
-        let own = p.subtitles.iter().enumerate().filter(|(_, t)| !is_bitmap(&t.codec));
+        let own = p
+            .subtitles
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| !is_bitmap(&t.codec));
         let tracks: Vec<Sidecar> = own
-            .map(|(i, t)| Sidecar { path: host.url(&api::subtitle_path(file, i)), language: t.language.clone(), title: t.title.clone() })
+            .map(|(i, t)| Sidecar {
+                path: host.url(&api::subtitle_path(file, i)),
+                language: t.language.clone(),
+                title: t.title.clone(),
+            })
             .collect();
         session.sidecars.splice(0..0, tracks);
     }
-    Ok(Opened { session, host, converted })
+    Ok(Opened {
+        session,
+        host,
+        converted,
+    })
 }
 
 #[cfg(test)]
@@ -235,7 +275,11 @@ mod tests {
     use super::*;
 
     fn probe(height: u32, bitrate: u64) -> Probe {
-        Probe { height: Some(height), bitrate, ..Default::default() }
+        Probe {
+            height: Some(height),
+            bitrate,
+            ..Default::default()
+        }
     }
 
     #[test]

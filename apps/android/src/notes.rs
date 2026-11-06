@@ -35,7 +35,12 @@ pub fn lines(view: &WhatsNew) -> Vec<NoteLine> {
 }
 
 fn row(kind: i32, text: &str, note: &str, lit: bool) -> NoteLine {
-    NoteLine { kind, text: text.into(), note: note.into(), lit }
+    NoteLine {
+        kind,
+        text: text.into(),
+        note: note.into(),
+        lit,
+    }
 }
 
 #[cfg(test)]
@@ -51,12 +56,18 @@ mod tests {
 
     #[test]
     fn the_line_sits_after_the_last_new_version() {
-        let seen = Seen { version: "2.0.4".into(), from: String::new() };
+        let seen = Seen {
+            version: "2.0.4".into(),
+            from: String::new(),
+        };
         let rows = lines(&view(&seen, true));
         let line = rows.iter().position(|r| r.kind == 3).expect("a line");
         assert_eq!(rows[line].text, "You were on 2.0.4");
         assert!(rows[..line].iter().all(|r| r.lit));
-        assert_eq!((rows[line + 1].kind, rows[line + 1].text.as_str()), (0, "2.0.4"));
+        assert_eq!(
+            (rows[line + 1].kind, rows[line + 1].text.as_str()),
+            (0, "2.0.4")
+        );
         assert!(rows[line + 1..].iter().all(|r| !r.lit));
     }
 
@@ -71,6 +82,10 @@ mod tests {
     #[test]
     fn notes_read_on_a_fresh_install_have_no_line_and_none_dimmed() {
         let seen = Seen::default().started(VERSION, false).unwrap();
-        assert!(lines(&view(&seen, false)).iter().all(|r| r.kind != 3 && r.lit));
+        assert!(
+            lines(&view(&seen, false))
+                .iter()
+                .all(|r| r.kind != 3 && r.lit)
+        );
     }
 }

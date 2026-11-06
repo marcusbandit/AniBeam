@@ -16,8 +16,9 @@ use std::time::Duration;
 
 use anibeam_core::playback::{options, tracks};
 use anibeam_core::{
-    AutoSkip, Call, CastDevice, CastKind, CastPlayState, CastState, CastSubtitle, Chapter, CloseReason, EventBody,
-    PlaybackSession, Reply, SkipKind, SkipWindow, SubtitleChoice, Tracker, TrackerOutcome,
+    AutoSkip, Call, CastDevice, CastKind, CastPlayState, CastState, CastSubtitle, Chapter,
+    CloseReason, EventBody, PlaybackSession, Reply, SkipKind, SkipWindow, SubtitleChoice, Tracker,
+    TrackerOutcome,
 };
 use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 
@@ -58,7 +59,11 @@ pub struct Rules {
 #[derive(Debug, PartialEq)]
 pub enum Step {
     /// Auto-skip: seek here and offer Undo back to `undo`.
-    Skip { to: f64, undo: f64, kind: SkipKind },
+    Skip {
+        to: f64,
+        undo: f64,
+        kind: SkipKind,
+    },
     StartCount,
     StopCount,
 }
@@ -72,7 +77,13 @@ fn slot(kind: &SkipKind) -> usize {
 
 impl Rules {
     pub fn new(windows: Vec<SkipWindow>, auto: AutoSkip, has_next: bool) -> Rules {
-        Rules { windows, auto, has_next, armed: [true, true], ..Rules::default() }
+        Rules {
+            windows,
+            auto,
+            has_next,
+            armed: [true, true],
+            ..Rules::default()
+        }
     }
 
     pub fn window(&self, kind: SkipKind) -> Option<&SkipWindow> {
@@ -85,7 +96,10 @@ impl Rules {
 
     /// The window the position is in, for the Skip chip.
     pub fn current(&self) -> Option<&SkipWindow> {
-        [SkipKind::Intro, SkipKind::Outro].into_iter().filter_map(|k| self.window(k)).find(|w| Self::inside(Some(w), self.position))
+        [SkipKind::Intro, SkipKind::Outro]
+            .into_iter()
+            .filter_map(|k| self.window(k))
+            .find(|w| Self::inside(Some(w), self.position))
     }
 
     pub fn disarm(&mut self, kind: &SkipKind) {
@@ -98,8 +112,13 @@ impl Rules {
         let jumped = self.last.is_some_and(|l| (t - l).abs() > 2.0);
         self.last = Some(t);
         let mut steps = Vec::new();
-        for (kind, on) in [(SkipKind::Intro, self.auto.intro), (SkipKind::Outro, self.auto.outro)] {
-            let Some(w) = self.window(kind).cloned() else { continue };
+        for (kind, on) in [
+            (SkipKind::Intro, self.auto.intro),
+            (SkipKind::Outro, self.auto.outro),
+        ] {
+            let Some(w) = self.window(kind).cloned() else {
+                continue;
+            };
             let i = slot(&kind);
             if !Self::inside(Some(&w), t) {
                 self.landed[i] = false;
@@ -113,7 +132,11 @@ impl Rules {
                 continue;
             }
             self.armed[i] = false;
-            steps.push(Step::Skip { to: w.end + 1.0, undo: w.start, kind });
+            steps.push(Step::Skip {
+                to: w.end + 1.0,
+                undo: w.start,
+                kind,
+            });
         }
         steps.extend(self.update_next());
         steps
@@ -130,7 +153,10 @@ impl Rules {
         let t = self.position;
         let remaining = self.duration - t;
         let outro = self.window(SkipKind::Outro).cloned();
-        let count = outro.as_ref().is_some_and(|o| self.duration - o.end < 20.0 && t >= o.end) || remaining <= 3.0;
+        let count = outro
+            .as_ref()
+            .is_some_and(|o| self.duration - o.end < 20.0 && t >= o.end)
+            || remaining <= 3.0;
         let step = if count && !self.next_counting {
             self.next_counting = true;
             Some(Step::StartCount)
@@ -139,7 +165,8 @@ impl Rules {
         } else {
             None
         };
-        self.next_visible = self.next_counting || outro.map(|o| t >= o.start).unwrap_or(remaining <= 8.0);
+        self.next_visible =
+            self.next_counting || outro.map(|o| t >= o.start).unwrap_or(remaining <= 8.0);
         step
     }
 
@@ -203,7 +230,11 @@ pub fn outcome_line(outcomes: &[TrackerOutcome]) -> String {
             (None, None) => format!("{} could not be updated", tracker_name(&o.tracker)),
         }))
         .collect();
-    if all.is_empty() { head.to_string() } else { format!("{head}: {}", all.join("; ")) }
+    if all.is_empty() {
+        head.to_string()
+    } else {
+        format!("{head}: {}", all.join("; "))
+    }
 }
 
 /// The chapters as the core wants them, from mpv's `chapter-list` JSON.
@@ -213,7 +244,11 @@ pub fn chapters(json: &str) -> Vec<Chapter> {
         .map(|a| {
             a.iter()
                 .map(|c| Chapter {
-                    title: c.get("title").and_then(|t| t.as_str()).unwrap_or_default().to_string(),
+                    title: c
+                        .get("title")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
                     start: c.get("time").and_then(|t| t.as_f64()).unwrap_or(0.0),
                 })
                 .collect()
@@ -336,7 +371,11 @@ pub fn install(window: &AppWindow) {
         with_player(|p| file = Some((p.session.file, p.host.is_some())));
         if let Some((file, remote)) = file {
             close_page(CloseReason::Switched);
-            if remote { open_remote(file) } else { open(file) }
+            if remote {
+                open_remote(file)
+            } else {
+                open(file)
+            }
         }
     });
     d.on_open_picker(|kind| with_player(|p| p.open_picker(kind)));
@@ -361,20 +400,26 @@ pub fn install(window: &AppWindow) {
             return (size.width, size.height);
         }
         let scale = w.window().scale_factor();
-        let height = ((fold.get_height() / 2.0 - fold.get_gutter() / 2.0) * scale).round().max(1.0) as u32;
+        let height = ((fold.get_height() / 2.0 - fold.get_gutter() / 2.0) * scale)
+            .round()
+            .max(1.0) as u32;
         (size.width, height.min(size.height))
     }
 
     let weak = window.as_weak();
-    let r = window.window().set_rendering_notifier(move |state, _api| match state {
-        slint::RenderingState::BeforeRendering => {
-            let Some(share) = crate::video::current_share() else { return };
-            let size = weak.upgrade().map(|w| picture_size(&w)).unwrap_or_default();
-            with_player(|p| p.ensure_video(share, size));
-        }
-        slint::RenderingState::RenderingTeardown => with_player(|p| p.drop_video()),
-        _ => {}
-    });
+    let r = window
+        .window()
+        .set_rendering_notifier(move |state, _api| match state {
+            slint::RenderingState::BeforeRendering => {
+                let Some(share) = crate::video::current_share() else {
+                    return;
+                };
+                let size = weak.upgrade().map(|w| picture_size(&w)).unwrap_or_default();
+                with_player(|p| p.ensure_video(share, size));
+            }
+            slint::RenderingState::RenderingTeardown => with_player(|p| p.drop_video()),
+            _ => {}
+        });
     if let Err(e) = r {
         crate::local::log(&format!("player: no rendering notifier: {e:?}"));
     }
@@ -384,8 +429,12 @@ pub fn install(window: &AppWindow) {
 /// leaves the page shut and says why on the series page's log.
 pub fn open(file: u64) {
     OPENING.with(|o| o.set(o.get() + 1));
-    let Some(window) = WINDOW.with(|w| w.borrow().clone()) else { return };
-    let Some(core) = crate::local::core() else { return };
+    let Some(window) = WINDOW.with(|w| w.borrow().clone()) else {
+        return;
+    };
+    let Some(core) = crate::local::core() else {
+        return;
+    };
     if PLAYER.with(|p| p.borrow().is_some()) {
         close_page(CloseReason::Switched);
     }
@@ -399,10 +448,20 @@ pub fn open(file: u64) {
     };
     // The session carries the series and the file, not the episode number or the tracker
     // ids, so the detail is read once, as the desktop does.
-    let (episode_number, tracked) = match core.call(Call::GetSeries { series: session.series }) {
+    let (episode_number, tracked) = match core.call(Call::GetSeries {
+        series: session.series,
+    }) {
         Ok(Reply::SeriesDetail { detail }) => (
-            detail.episodes.iter().find(|e| e.file == file).map(|e| e.number),
-            detail.card.match_info.as_ref().is_some_and(|m| m.anilist_id.is_some() || m.mal_id.is_some()),
+            detail
+                .episodes
+                .iter()
+                .find(|e| e.file == file)
+                .map(|e| e.number),
+            detail
+                .card
+                .match_info
+                .as_ref()
+                .is_some_and(|m| m.anilist_id.is_some() || m.mal_id.is_some()),
         ),
         _ => (None, false),
     };
@@ -428,7 +487,9 @@ pub fn set_remote_numbers(numbers: std::collections::HashMap<u64, f64>) {
 /// Opens `file` of the other device: the session opens there, off this thread, and the page
 /// says it is connecting meanwhile.
 pub fn open_remote(file: u64) {
-    let Some(window) = WINDOW.with(|w| w.borrow().clone()) else { return };
+    let Some(window) = WINDOW.with(|w| w.borrow().clone()) else {
+        return;
+    };
     if PLAYER.with(|p| p.borrow().is_some()) {
         close_page(CloseReason::Switched);
     }
@@ -448,17 +509,30 @@ pub fn open_remote(file: u64) {
             let (Some(window), true) = (window, waiting) else {
                 // Gone back, or opened something else, while this one connected.
                 if let Ok(o) = opened {
-                    o.host.send(Call::ClosePlayback { session: o.session.session, position: 0.0, reason: CloseReason::Stopped });
+                    o.host.send(Call::ClosePlayback {
+                        session: o.session.session,
+                        position: 0.0,
+                        reason: CloseReason::Stopped,
+                    });
                 }
                 return;
             };
             match opened {
                 Ok(o) => {
                     let number = REMOTE_NUMBERS.with(|n| n.borrow().get(&file).copied());
-                    let note = o.converted.map(|h| format!("Streaming from {} at {h}p", o.host.name));
+                    let note = o
+                        .converted
+                        .map(|h| format!("Streaming from {} at {h}p", o.host.name));
                     // The other device decides what its tracker takes; the button is offered
                     // for every episode, and a refusal says why.
-                    begin(window, o.session, Some(o.host), number, number.is_some(), note);
+                    begin(
+                        window,
+                        o.session,
+                        Some(o.host),
+                        number,
+                        number.is_some(),
+                        note,
+                    );
                 }
                 Err(e) => failed(&window, e),
             }
@@ -498,7 +572,14 @@ fn begin(
     let mpv = match Mpv::new(listener) {
         Ok(mpv) => mpv,
         Err(e) => {
-            send(&host, Call::ClosePlayback { session: session.session, position: 0.0, reason: CloseReason::Stopped });
+            send(
+                &host,
+                Call::ClosePlayback {
+                    session: session.session,
+                    position: 0.0,
+                    reason: CloseReason::Stopped,
+                },
+            );
             failed(&window, e);
             return;
         }
@@ -516,8 +597,19 @@ fn begin(
         let episode = session
             .episode_title
             .clone()
-            .or_else(|| (!session.is_extra).then(|| episode_number.map(|n| format!("Episode {n}"))).flatten())
-            .unwrap_or_else(|| session.path.rsplit('/').next().unwrap_or_default().to_string());
+            .or_else(|| {
+                (!session.is_extra)
+                    .then(|| episode_number.map(|n| format!("Episode {n}")))
+                    .flatten()
+            })
+            .unwrap_or_else(|| {
+                session
+                    .path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or_default()
+                    .to_string()
+            });
         d.set_episode(episode.into());
         d.set_position(session.resume_from.unwrap_or(0.0) as f32);
         d.set_duration(0.0);
@@ -592,14 +684,16 @@ fn begin(
     // The file waits for the renderer, but never forever: with no picture after three
     // seconds it plays on sound, and the page says why.
     let session_id = player.session.session;
-    player.fallback.start(TimerMode::SingleShot, Duration::from_secs(3), move || {
-        with_player(|p| {
-            if p.session.session == session_id && !p.requested {
-                crate::local::log("player: no renderer after 3 s, playing without a picture");
-                p.video_started(false);
-            }
-        })
-    });
+    player
+        .fallback
+        .start(TimerMode::SingleShot, Duration::from_secs(3), move || {
+            with_player(|p| {
+                if p.session.session == session_id && !p.requested {
+                    crate::local::log("player: no renderer after 3 s, playing without a picture");
+                    p.video_started(false);
+                }
+            })
+        });
     player.show_bands();
     player.show_chrome();
     PLAYER.with(|p| *p.borrow_mut() = Some(player));
@@ -662,12 +756,14 @@ pub fn close_page(reason: CloseReason) {
         // of its own; the renderer first, since its render context belongs to the core.
         let (video, mpv) = (p.video.take(), p.mpv.clone());
         drop(p);
-        let _ = std::thread::Builder::new().name("mpv-close".into()).spawn(move || {
-            // Off the phone Video is a stub with nothing to let go of.
-            #[cfg_attr(not(target_os = "android"), allow(clippy::drop_non_drop))]
-            drop(video);
-            drop(mpv);
-        });
+        let _ = std::thread::Builder::new()
+            .name("mpv-close".into())
+            .spawn(move || {
+                // Off the phone Video is a stub with nothing to let go of.
+                #[cfg_attr(not(target_os = "android"), allow(clippy::drop_non_drop))]
+                drop(video);
+                drop(mpv);
+            });
     }
     if !switching {
         give_focus();
@@ -719,7 +815,11 @@ fn neighbour(forward: bool) {
     with_player(|p| {
         remote = p.host.is_some();
         if !p.session.is_extra {
-            target = if forward { p.session.next } else { p.session.prev };
+            target = if forward {
+                p.session.next
+            } else {
+                p.session.prev
+            };
         }
         // A cast goes on with the next episode on the same device.
         if target.is_some()
@@ -730,7 +830,11 @@ fn neighbour(forward: bool) {
     });
     if let Some(file) = target {
         close_page(CloseReason::Switched);
-        if remote { open_remote(file) } else { open(file) }
+        if remote {
+            open_remote(file)
+        } else {
+            open(file)
+        }
     }
 }
 
@@ -740,7 +844,9 @@ fn neighbour(forward: bool) {
 // Only Android's focus listener calls it.
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn audio_focus(code: i32) {
-    let Some(change) = Change::from_code(code) else { return };
+    let Some(change) = Change::from_code(code) else {
+        return;
+    };
     crate::local::log(&format!("player: audio focus {change:?}"));
     let mut open = false;
     with_player(|p| {
@@ -792,19 +898,32 @@ pub fn core_event(body: &EventBody) {
         with_player(|p| match body {
             // This phone's core speaks of its own sessions and series; one of the other
             // device's has ids of that device's, so only the cast's word is for it.
-            EventBody::SkipWindowsReady { .. } | EventBody::Marked { .. } | EventBody::Scored { .. }
+            EventBody::SkipWindowsReady { .. }
+            | EventBody::Marked { .. }
+            | EventBody::Scored { .. }
                 if p.host.is_some() => {}
             EventBody::SkipWindowsReady { session, windows } if session == p.session.session => {
                 p.rules.windows = windows;
                 p.show_bands();
                 p.show_skip();
             }
-            EventBody::Marked { series, outcomes, .. } if series == p.session.series => {
+            EventBody::Marked {
+                series, outcomes, ..
+            } if series == p.session.series => {
                 p.flash(&outcome_line(&outcomes), None);
             }
-            EventBody::Scored { series, outcomes, .. } if series == p.session.series => {
+            EventBody::Scored {
+                series, outcomes, ..
+            } if series == p.session.series => {
                 let ok = outcomes.iter().all(|o| o.ok);
-                p.flash(if ok { "Rated" } else { "Could not save the score" }, None);
+                p.flash(
+                    if ok {
+                        "Rated"
+                    } else {
+                        "Could not save the score"
+                    },
+                    None,
+                );
             }
             EventBody::CastChanged { state } => p.on_cast(state),
             _ => {}
@@ -828,7 +947,11 @@ impl Player {
         }
         self.apply_subtitle_options();
         self.mpv.set("volume", "100");
-        let start = self.session.resume_from.map(|r| r.to_string()).unwrap_or_else(|| "none".into());
+        let start = self
+            .session
+            .resume_from
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| "none".into());
         self.mpv.set("start", &start);
         // The next episode of a cast plays on the TV, not here.
         if self.cast_on_load.is_some() {
@@ -854,7 +977,9 @@ impl Player {
         self.d(|d| {
             let (top, height) = (d.get_controls_top(), d.get_page_height());
             if d.get_chrome() && !d.get_locked() && height > 0.0 && top > 0.0 {
-                pos = pos.min((100.0 * (top - 12.0) / height).floor() as f64).max(0.0);
+                pos = pos
+                    .min((100.0 * (top - 12.0) / height).floor() as f64)
+                    .max(0.0);
             }
         });
         if pos != self.sub_pos {
@@ -883,11 +1008,16 @@ impl Player {
             let window = window.clone();
             let _ = slint::invoke_from_event_loop(move || {
                 PLAYER.with(|p| {
-                    let current = p.try_borrow().ok().and_then(|p| p.as_ref().map(|p| (p.session.session, p.video_gen)));
+                    let current = p
+                        .try_borrow()
+                        .ok()
+                        .and_then(|p| p.as_ref().map(|p| (p.session.session, p.video_gen)));
                     if current != Some((session, generation)) {
                         return;
                     }
-                    let Some(texture) = NonZeroU32::new(frame.texture) else { return };
+                    let Some(texture) = NonZeroU32::new(frame.texture) else {
+                        return;
+                    };
                     // Safety: the texture lives in Slint's share group until the renderer
                     // stops, and the renderer stops before the page lets go of the image.
                     let image = unsafe {
@@ -935,7 +1065,11 @@ impl Player {
             self.requested = true;
             self.mpv.command(&["loadfile", &self.session.path]);
         } else if ok && self.rules.loaded {
-            let vid = self.mpv.get("vid").filter(|v| v != "no").unwrap_or_else(|| "auto".into());
+            let vid = self
+                .mpv
+                .get("vid")
+                .filter(|v| v != "no")
+                .unwrap_or_else(|| "auto".into());
             self.mpv.set("vid", "no");
             self.mpv.set("vid", &vid);
         }
@@ -964,24 +1098,60 @@ impl Player {
     fn loaded(&mut self) {
         self.rules.loaded = true;
         self.mpv.set("start", "none");
-        let duration = self.mpv.get("duration").and_then(|d| d.parse().ok()).unwrap_or(0.0);
+        let duration = self
+            .mpv
+            .get("duration")
+            .and_then(|d| d.parse().ok())
+            .unwrap_or(0.0);
         self.rules.duration = duration;
         if duration > 0.0 {
-            let chapters = self.mpv.get("chapter-list").map(|j| chapters(&j)).unwrap_or_default();
-            send(&self.host, Call::ReportChapters { session: self.session.session, chapters, duration });
+            let chapters = self
+                .mpv
+                .get("chapter-list")
+                .map(|j| chapters(&j))
+                .unwrap_or_default();
+            send(
+                &self.host,
+                Call::ReportChapters {
+                    session: self.session.session,
+                    chapters,
+                    duration,
+                },
+            );
             self.ask_for_windows();
         }
         // Every sidecar the core found beside the file; mpv adds none of its own.
         for s in &self.session.sidecars {
             let title = s.title.clone().unwrap_or_default();
             let lang = s.language.clone().unwrap_or_default();
-            self.mpv.command_now(&["sub-add", &s.path, "auto", &title, &lang]);
+            self.mpv
+                .command_now(&["sub-add", &s.path, "auto", &title, &lang]);
         }
         // The pick is made before the first frame, so the list is asked for here.
-        self.tracks = self.mpv.get("track-list").map(|j| parse_tracks(&j)).unwrap_or_default();
-        let pick = tracks::pick(&self.tracks, &self.session.track_choice, &self.session.subtitle_defaults);
-        self.mpv.set("aid", &pick.aid.map(|a| a.to_string()).unwrap_or_else(|| "no".into()));
-        self.mpv.set("sid", &pick.sid.map(|s| s.to_string()).unwrap_or_else(|| "no".into()));
+        self.tracks = self
+            .mpv
+            .get("track-list")
+            .map(|j| parse_tracks(&j))
+            .unwrap_or_default();
+        let pick = tracks::pick(
+            &self.tracks,
+            &self.session.track_choice,
+            &self.session.subtitle_defaults,
+        );
+        self.mpv.set(
+            "aid",
+            &pick
+                .aid
+                .map(|a| a.to_string())
+                .unwrap_or_else(|| "no".into()),
+        );
+        self.mpv.set(
+            "sid",
+            &pick
+                .sid
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "no".into()),
+        );
         self.aid = pick.aid.unwrap_or(-1);
         self.sid = pick.sid.unwrap_or(-1);
         if let Some(j) = self.mpv.get("track-list") {
@@ -998,13 +1168,14 @@ impl Player {
         self.show_bands();
         // Once a second while playing; the pause, seek and close send their own.
         let weak = self.session.session;
-        self.tick.start(TimerMode::Repeated, Duration::from_secs(1), move || {
-            with_player(|p| {
-                if p.session.session == weak && !p.paused {
-                    p.send_tick();
-                }
-            })
-        });
+        self.tick
+            .start(TimerMode::Repeated, Duration::from_secs(1), move || {
+                with_player(|p| {
+                    if p.session.session == weak && !p.paused {
+                        p.send_tick();
+                    }
+                })
+            });
         crate::android::player_awake(true);
         // The file starts playing unpaused, so the pause watch never sees it begin.
         if !self.paused && self.cast.is_none() {
@@ -1095,11 +1266,16 @@ impl Player {
         match step {
             Step::Skip { to, undo, kind } => {
                 self.mpv.command(&["seek", &to.to_string(), "absolute"]);
-                let line = if kind == SkipKind::Intro { "Skipped intro" } else { "Skipped outro" };
+                let line = if kind == SkipKind::Intro {
+                    "Skipped intro"
+                } else {
+                    "Skipped outro"
+                };
                 self.flash(line, Some(Undo::Skip { to: undo, kind }));
             }
             Step::StartCount => {
-                self.next.start(TimerMode::SingleShot, NEXT_COUNT, || neighbour(true));
+                self.next
+                    .start(TimerMode::SingleShot, NEXT_COUNT, || neighbour(true));
             }
             Step::StopCount => self.next.stop(),
         }
@@ -1109,7 +1285,14 @@ impl Player {
         if self.closed {
             return;
         }
-        send(&self.host, Call::Tick { session: self.session.session, position: self.rules.position, paused: self.paused });
+        send(
+            &self.host,
+            Call::Tick {
+                session: self.session.session,
+                position: self.rules.position,
+                paused: self.paused,
+            },
+        );
     }
 
     fn close(&mut self, reason: CloseReason) {
@@ -1127,19 +1310,31 @@ impl Player {
         {
             let _ = core.call(Call::CastStop);
         }
-        send(&self.host, Call::ClosePlayback { session: self.session.session, position: self.rules.position, reason });
+        send(
+            &self.host,
+            Call::ClosePlayback {
+                session: self.session.session,
+                position: self.rules.position,
+                reason,
+            },
+        );
 
         crate::local::touch();
     }
 
     fn toggle_pause(&mut self) {
         if let Some(c) = &self.cast {
-            let call = if c.state == CastPlayState::Playing { Call::CastPause } else { Call::CastPlay };
+            let call = if c.state == CastPlayState::Playing {
+                Call::CastPause
+            } else {
+                Call::CastPlay
+            };
             self.cast_call(call);
             self.show_chrome();
             return;
         }
-        self.mpv.set("pause", if self.paused { "no" } else { "yes" });
+        self.mpv
+            .set("pause", if self.paused { "no" } else { "yes" });
         self.show_chrome();
     }
 
@@ -1161,7 +1356,9 @@ impl Player {
                 self.mpv.set("pause", "yes");
             }
             // No way to hear of a call, so the episode plays without focus.
-            crate::android::FocusAsk::Unavailable => crate::local::log("player: audio focus unavailable"),
+            crate::android::FocusAsk::Unavailable => {
+                crate::local::log("player: audio focus unavailable")
+            }
         }
     }
 
@@ -1171,7 +1368,11 @@ impl Player {
         if self.cast.is_some() {
             return;
         }
-        let t = if self.rules.duration > 0.0 { t.clamp(0.0, self.rules.duration) } else { t.max(0.0) };
+        let t = if self.rules.duration > 0.0 {
+            t.clamp(0.0, self.rules.duration)
+        } else {
+            t.max(0.0)
+        };
         // A new drag drops the last one's frame, so the bubble never shows the wrong spot.
         if !self.scrubbing {
             self.d(|d| d.set_preview(slint::Image::default()));
@@ -1208,7 +1409,11 @@ impl Player {
 
     fn seek(&mut self, t: f64) {
         self.scrubbing = false;
-        let t = if self.rules.duration > 0.0 { t.clamp(0.0, self.rules.duration) } else { t.max(0.0) };
+        let t = if self.rules.duration > 0.0 {
+            t.clamp(0.0, self.rules.duration)
+        } else {
+            t.max(0.0)
+        };
         if self.cast.is_some() {
             self.cast_call(Call::CastSeek { to: t });
         } else {
@@ -1265,7 +1470,11 @@ impl Player {
     }
 
     fn adjust_start(&mut self, kind: i32) {
-        let base = if kind == 1 { crate::android::brightness() } else { crate::android::volume() };
+        let base = if kind == 1 {
+            crate::android::brightness()
+        } else {
+            crate::android::volume()
+        };
         self.adjusting = Some((kind, base, base));
         self.level_hide.stop();
         self.d(|d| {
@@ -1275,7 +1484,9 @@ impl Player {
     }
 
     fn adjust(&mut self, by: f32) {
-        let Some((kind, base, last)) = self.adjusting else { return };
+        let Some((kind, base, last)) = self.adjusting else {
+            return;
+        };
         let level = (base + by).clamp(0.0, 1.0);
         self.d(|d| d.set_level(level));
         // A drag moves many times a second; the phone is only told when it shows.
@@ -1293,13 +1504,17 @@ impl Player {
     fn adjust_end(&mut self) {
         self.adjusting = None;
         let session = self.session.session;
-        self.level_hide.start(TimerMode::SingleShot, Duration::from_millis(700), move || {
-            with_player(|p| {
-                if p.session.session == session {
-                    p.d(|d| d.set_level_kind(0));
-                }
-            })
-        });
+        self.level_hide.start(
+            TimerMode::SingleShot,
+            Duration::from_millis(700),
+            move || {
+                with_player(|p| {
+                    if p.session.session == session {
+                        p.d(|d| d.set_level_kind(0));
+                    }
+                })
+            },
+        );
     }
 
     /// Double speed while a finger holds the picture, then the speed it had.
@@ -1378,34 +1593,55 @@ impl Player {
                 self.tracks
                     .iter()
                     .filter(|t| t.kind == "audio")
-                    .map(|t| PickRow { label: tracks::label(t).into(), active: t.id == self.aid })
+                    .map(|t| PickRow {
+                        label: tracks::label(t).into(),
+                        active: t.id == self.aid,
+                    })
                     .collect(),
             ),
             2 => {
-                let mut rows = vec![PickRow { label: "Off".into(), active: self.sid < 0 }];
+                let mut rows = vec![PickRow {
+                    label: "Off".into(),
+                    active: self.sid < 0,
+                }];
                 rows.extend(
                     self.tracks
                         .iter()
                         .filter(|t| t.kind == "sub")
-                        .map(|t| PickRow { label: tracks::label(t).into(), active: t.id == self.sid }),
+                        .map(|t| PickRow {
+                            label: tracks::label(t).into(),
+                            active: t.id == self.sid,
+                        }),
                 );
                 ("Subtitles".into(), rows)
             }
             4 => {
                 let mut rows = Vec::new();
                 if let Some(c) = &self.cast {
-                    rows.push(PickRow { label: format!("Stop casting to {}", c.device.name).into(), active: false });
+                    rows.push(PickRow {
+                        label: format!("Stop casting to {}", c.device.name).into(),
+                        active: false,
+                    });
                 }
                 let devices = DEVICES.with(|d| d.borrow().clone());
                 for dev in &devices {
                     let kind = match dev.kind {
-                        CastKind::Chromecast => dev.model.clone().unwrap_or_else(|| "Chromecast".into()),
+                        CastKind::Chromecast => {
+                            dev.model.clone().unwrap_or_else(|| "Chromecast".into())
+                        }
                         CastKind::Dlna => "TV".into(),
                     };
                     let active = self.cast.as_ref().is_some_and(|c| c.device.id == dev.id);
-                    rows.push(PickRow { label: format!("{}   {kind}", dev.name).into(), active });
+                    rows.push(PickRow {
+                        label: format!("{}   {kind}", dev.name).into(),
+                        active,
+                    });
                 }
-                let title = if devices.is_empty() { "Looking for Chromecasts and TVs" } else { "Cast to" };
+                let title = if devices.is_empty() {
+                    "Looking for Chromecasts and TVs"
+                } else {
+                    "Cast to"
+                };
                 (title.into(), rows)
             }
             _ => {
@@ -1415,7 +1651,10 @@ impl Player {
                     "Speed".into(),
                     SPEEDS
                         .iter()
-                        .map(|s| PickRow { label: format!("{s}×").into(), active: (s - speed).abs() < 0.01 })
+                        .map(|s| PickRow {
+                            label: format!("{s}×").into(),
+                            active: (s - speed).abs() < 0.01,
+                        })
                         .collect(),
                 )
             }
@@ -1462,7 +1701,15 @@ impl Player {
         let i = i.max(0) as usize;
         match kind {
             1 => {
-                let Some(t) = self.tracks.iter().filter(|t| t.kind == "audio").nth(i).cloned() else { return };
+                let Some(t) = self
+                    .tracks
+                    .iter()
+                    .filter(|t| t.kind == "audio")
+                    .nth(i)
+                    .cloned()
+                else {
+                    return;
+                };
                 self.mpv.set("aid", &t.id.to_string());
                 let r = tracks::track_ref(&t);
                 self.session.track_choice.audio = Some(r.clone());
@@ -1475,9 +1722,19 @@ impl Player {
                     self.mpv.set("sid", "no");
                     self.session.track_choice.subtitle = Some(SubtitleChoice::Off);
                 } else {
-                    let Some(t) = self.tracks.iter().filter(|t| t.kind == "sub").nth(i - 1).cloned() else { return };
+                    let Some(t) = self
+                        .tracks
+                        .iter()
+                        .filter(|t| t.kind == "sub")
+                        .nth(i - 1)
+                        .cloned()
+                    else {
+                        return;
+                    };
                     self.mpv.set("sid", &t.id.to_string());
-                    self.session.track_choice.subtitle = Some(SubtitleChoice::Track { track: tracks::track_ref(&t) });
+                    self.session.track_choice.subtitle = Some(SubtitleChoice::Track {
+                        track: tracks::track_ref(&t),
+                    });
                     self.sid = t.id;
                 }
                 if i == 0 {
@@ -1513,7 +1770,9 @@ impl Player {
         {
             DEVICES.with(|d| *d.borrow_mut() = devices);
         }
-        self.look.start(TimerMode::SingleShot, LOOK_FOR, || crate::android::multicast(false));
+        self.look.start(TimerMode::SingleShot, LOOK_FOR, || {
+            crate::android::multicast(false)
+        });
     }
 
     /// The Matroska track numbers of the audio and subtitles playing here, from mpv's list:
@@ -1522,15 +1781,29 @@ impl Player {
     fn cast_tracks(&self) -> (Option<u64>, CastSubtitle) {
         let list: serde_json::Value = serde_json::from_str(&self.track_json).unwrap_or_default();
         let entry = |id: i64, kind: &str| {
-            list.as_array().and_then(|a| a.iter().find(|t| t["id"].as_i64() == Some(id) && t["type"] == kind)).cloned()
+            list.as_array()
+                .and_then(|a| {
+                    a.iter()
+                        .find(|t| t["id"].as_i64() == Some(id) && t["type"] == kind)
+                })
+                .cloned()
         };
-        let audio = entry(self.aid, "audio").and_then(|t| t["ff-index"].as_u64()).map(|i| i + 1);
+        let audio = entry(self.aid, "audio")
+            .and_then(|t| t["ff-index"].as_u64())
+            .map(|i| i + 1);
         let subtitle = match entry(self.sid, "sub") {
-            Some(t) if t["external"].as_bool() == Some(true) => match t["external-filename"].as_str() {
-                Some(path) => CastSubtitle::File { path: path.to_string() },
-                None => CastSubtitle::None,
-            },
-            Some(t) => t["ff-index"].as_u64().map(|i| CastSubtitle::Track { number: i + 1 }).unwrap_or(CastSubtitle::None),
+            Some(t) if t["external"].as_bool() == Some(true) => {
+                match t["external-filename"].as_str() {
+                    Some(path) => CastSubtitle::File {
+                        path: path.to_string(),
+                    },
+                    None => CastSubtitle::None,
+                }
+            }
+            Some(t) => t["ff-index"]
+                .as_u64()
+                .map(|i| CastSubtitle::Track { number: i + 1 })
+                .unwrap_or(CastSubtitle::None),
             None => CastSubtitle::None,
         };
         (audio, subtitle)
@@ -1538,11 +1811,16 @@ impl Player {
 
     /// Hands the episode to `device` from where it is now, with the tracks chosen here.
     fn start_cast(&mut self, device: CastDevice, at: Option<f64>) {
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            return;
+        };
         let (audio_track, subtitle) = self.cast_tracks();
         self.mpv.set("pause", "yes");
         let start = at.unwrap_or(self.rules.position);
-        self.cast = Some(Casting { device: device.clone(), state: CastPlayState::Connecting });
+        self.cast = Some(Casting {
+            device: device.clone(),
+            state: CastPlayState::Connecting,
+        });
         // The TV makes the sound now, so music the episode paused can play on here.
         give_focus();
         self.show_cast();
@@ -1553,13 +1831,24 @@ impl Player {
                 let (audio, burn) = self.remote_picks();
                 Call::CastStartStream {
                     device: device.id.clone(),
-                    url: host.url(&anibeam_companion::api::hls_path(self.session.file, 1080, audio, burn)),
+                    url: host.url(&anibeam_companion::api::hls_path(
+                        self.session.file,
+                        1080,
+                        audio,
+                        burn,
+                    )),
                     title: self.session.series_title.clone(),
                     start,
                     duration: self.rules.duration,
                 }
             }
-            None => Call::CastStart { device: device.id.clone(), file: self.session.file, start, audio_track, subtitle },
+            None => Call::CastStart {
+                device: device.id.clone(),
+                file: self.session.file,
+                start,
+                audio_track,
+                subtitle,
+            },
         };
         if let Err(e) = core.call(call) {
             self.cast = None;
@@ -1573,7 +1862,9 @@ impl Player {
     /// chapters are reported; this asks for them a few times, since its event never comes
     /// here.
     fn ask_for_windows(&self) {
-        let Some(host) = self.host.clone() else { return };
+        let Some(host) = self.host.clone() else {
+            return;
+        };
         if !self.rules.windows.is_empty() {
             return;
         }
@@ -1581,7 +1872,9 @@ impl Player {
         std::thread::spawn(move || {
             for _ in 0..6 {
                 std::thread::sleep(Duration::from_secs(3));
-                let Some(windows) = host.skip_windows(session).filter(|w| !w.is_empty()) else { continue };
+                let Some(windows) = host.skip_windows(session).filter(|w| !w.is_empty()) else {
+                    continue;
+                };
                 let _ = slint::invoke_from_event_loop(move || {
                     with_player(|p| {
                         if p.session.session == session && p.host.is_some() {
@@ -1602,11 +1895,20 @@ impl Player {
     fn remote_picks(&self) -> (Option<usize>, Option<usize>) {
         let list: serde_json::Value = serde_json::from_str(&self.track_json).unwrap_or_default();
         let entry = |id: i64, kind: &str| {
-            list.as_array().and_then(|a| a.iter().find(|t| t["id"].as_i64() == Some(id) && t["type"] == kind)).cloned()
+            list.as_array()
+                .and_then(|a| {
+                    a.iter()
+                        .find(|t| t["id"].as_i64() == Some(id) && t["type"] == kind)
+                })
+                .cloned()
         };
         let converted = self.session.path.contains("/hls/");
         // A conversion has the one audio track it was asked for, named in its address.
-        let asked = self.session.path.split(['?', '&']).find_map(|p| p.strip_prefix("audio=")?.parse().ok());
+        let asked = self
+            .session
+            .path
+            .split(['?', '&'])
+            .find_map(|p| p.strip_prefix("audio=")?.parse().ok());
         let audio = match entry(self.aid, "audio") {
             _ if converted => asked,
             Some(t) if t["external"].as_bool() != Some(true) => usize::try_from(self.aid - 1).ok(),
@@ -1615,7 +1917,8 @@ impl Player {
         let burn = entry(self.sid, "sub").and_then(|t| {
             if t["external"].as_bool() == Some(true) {
                 let name = t["external-filename"].as_str()?;
-                name.rsplit_once("/subtitles/").and_then(|(_, i)| i.parse().ok())
+                name.rsplit_once("/subtitles/")
+                    .and_then(|(_, i)| i.parse().ok())
             } else {
                 usize::try_from(self.sid - 1).ok()
             }
@@ -1725,14 +2028,26 @@ impl Player {
 
     fn store_choice(&self) {
         let c = &self.session.track_choice;
-        send(&self.host, Call::SetTrackChoice { series: self.session.series, audio: c.audio.clone(), subtitle: c.subtitle.clone() });
+        send(
+            &self.host,
+            Call::SetTrackChoice {
+                series: self.session.series,
+                audio: c.audio.clone(),
+                subtitle: c.subtitle.clone(),
+            },
+        );
     }
 
     fn mark(&mut self) {
         let Some(n) = self.episode_number else { return };
-        let call = Call::MarkEpisode { series: self.session.series, episode: n };
+        let call = Call::MarkEpisode {
+            series: self.session.series,
+            episode: n,
+        };
         let refused = |e: &anibeam_core::CoreError| match e {
-            anibeam_core::CoreError::Refused { reason } => format!("Not tracked: {}.", refusal_word(reason)),
+            anibeam_core::CoreError::Refused { reason } => {
+                format!("Not tracked: {}.", refusal_word(reason))
+            }
             other => other.to_string(),
         };
         match &self.host {
@@ -1772,14 +2087,15 @@ impl Player {
             d.set_notice_action(action.into());
         });
         let session = self.session.session;
-        self.notice.start(TimerMode::SingleShot, Duration::from_secs(4), move || {
-            with_player(|p| {
-                if p.session.session == session {
-                    p.undo = None;
-                    p.d(|d| d.set_notice("".into()));
-                }
-            })
-        });
+        self.notice
+            .start(TimerMode::SingleShot, Duration::from_secs(4), move || {
+                with_player(|p| {
+                    if p.session.session == session {
+                        p.undo = None;
+                        p.d(|d| d.set_notice("".into()));
+                    }
+                })
+            });
     }
 
     fn notice_clicked(&mut self) {
@@ -1793,7 +2109,9 @@ impl Player {
 }
 
 fn parse_tracks(json: &str) -> Vec<tracks::Track> {
-    serde_json::from_str(json).map(|v| tracks::parse(&v)).unwrap_or_default()
+    serde_json::from_str(json)
+        .map(|v| tracks::parse(&v))
+        .unwrap_or_default()
 }
 
 fn track_id(v: &Value) -> i64 {
@@ -1809,11 +2127,23 @@ mod tests {
     use anibeam_core::SkipSource;
 
     fn w(kind: SkipKind, start: f64, end: f64) -> SkipWindow {
-        SkipWindow { kind, start, end, source: SkipSource::Chapters }
+        SkipWindow {
+            kind,
+            start,
+            end,
+            source: SkipSource::Chapters,
+        }
     }
 
     fn rules(windows: Vec<SkipWindow>, intro: bool) -> Rules {
-        let mut r = Rules::new(windows, AutoSkip { intro, outro: false }, true);
+        let mut r = Rules::new(
+            windows,
+            AutoSkip {
+                intro,
+                outro: false,
+            },
+            true,
+        );
         r.loaded = true;
         r.duration = 1420.0;
         r
@@ -1823,7 +2153,14 @@ mod tests {
     fn auto_skip_fires_once_on_playing_into_the_intro() {
         let mut r = rules(vec![w(SkipKind::Intro, 60.0, 150.0)], true);
         assert!(r.moved(59.5).is_empty());
-        assert_eq!(r.moved(60.2), vec![Step::Skip { to: 151.0, undo: 60.0, kind: SkipKind::Intro }]);
+        assert_eq!(
+            r.moved(60.2),
+            vec![Step::Skip {
+                to: 151.0,
+                undo: 60.0,
+                kind: SkipKind::Intro
+            }]
+        );
         // Undo seeks back to the start; it is disarmed, so playing on does not skip again.
         assert!(r.moved(60.0).is_empty());
         assert!(r.moved(61.0).is_empty());
@@ -1873,7 +2210,13 @@ mod tests {
 
     #[test]
     fn outcome_lines_read_like_the_desktops() {
-        let ok = TrackerOutcome { tracker: Tracker::Anilist, ok: true, progress: Some(12), reason: None, message: None };
+        let ok = TrackerOutcome {
+            tracker: Tracker::Anilist,
+            ok: true,
+            progress: Some(12),
+            reason: None,
+            message: None,
+        };
         let refused = TrackerOutcome {
             tracker: Tracker::Mal,
             ok: false,
@@ -1881,19 +2224,33 @@ mod tests {
             reason: Some(anibeam_core::Refusal::NotNewer),
             message: None,
         };
-        assert_eq!(outcome_line(std::slice::from_ref(&ok)), "Tracked: AniList at 12");
+        assert_eq!(
+            outcome_line(std::slice::from_ref(&ok)),
+            "Tracked: AniList at 12"
+        );
         assert_eq!(
             outcome_line(&[ok, refused.clone()]),
             "Tracked: AniList at 12; MyAnimeList: the tracker is already past this episode"
         );
-        assert_eq!(outcome_line(&[refused]), "Not tracked: MyAnimeList: the tracker is already past this episode");
+        assert_eq!(
+            outcome_line(&[refused]),
+            "Not tracked: MyAnimeList: the tracker is already past this episode"
+        );
     }
 
     #[test]
     fn chapters_come_from_mpvs_list() {
-        let c = chapters(r#"[{"title":"Opening","time":0.0},{"title":"Part A","time":90.5},{"time":1300}]"#);
+        let c = chapters(
+            r#"[{"title":"Opening","time":0.0},{"title":"Part A","time":90.5},{"time":1300}]"#,
+        );
         assert_eq!(c.len(), 3);
-        assert_eq!(c[1], Chapter { title: "Part A".into(), start: 90.5 });
+        assert_eq!(
+            c[1],
+            Chapter {
+                title: "Part A".into(),
+                start: 90.5
+            }
+        );
         assert_eq!(c[2].title, "");
         assert!(chapters("not json").is_empty());
     }
