@@ -143,6 +143,11 @@ fn native_core() -> (
 ) {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
+    // No case reads the machine's own anirss config: its saved best fit would rank these.
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::set_var("XDG_STATE_HOME", dir.path());
+    }
     save(&core, settings(DownloadsEngine::Native));
     core.call(Call::AddCustomEndpoint {
         name: "feed".into(),

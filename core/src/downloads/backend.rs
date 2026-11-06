@@ -44,7 +44,13 @@ impl DownloadsBackend {
         match engine {
             DownloadsEngine::Anirss => ensure_client(core).await.map(DownloadsBackend::Anirss),
             DownloadsEngine::Native => {
-                let native = Native::for_core(core, Vec::new());
+                let mut native = Native::for_core(core, Vec::new());
+                // What the person saved in anirss's config ranks best fit as it does there
+                if let Some(saved) =
+                    settings::anirss_config_path().and_then(|p| settings::anirss_bestfit(&p))
+                {
+                    native.bestfit = saved;
+                }
                 tracing::debug!(
                     "searching on the core's engine: {} endpoints",
                     native.endpoints.len()
