@@ -507,6 +507,8 @@ pub mod qobject {
         #[qsignal]
         fn host_changed(self: Pin<&mut Door>, status: QJsonObject);
         #[qsignal]
+        fn tailnet_devices_changed(self: Pin<&mut Door>, devices: QJsonArray);
+        #[qsignal]
         fn presence_changed(self: Pin<&mut Door>, connected: bool);
         // Downloads
         #[qsignal]
@@ -1401,6 +1403,9 @@ impl qobject::Door {
             EventBody::ExportFinished { .. } => self.as_mut().export_finished(s("path")),
             EventBody::ImportFinished { .. } => self.as_mut().import_finished(obj("summary")),
             EventBody::HostChanged { .. } => self.as_mut().host_changed(obj("status")),
+            EventBody::TailnetDevicesChanged { .. } => {
+                self.as_mut().tailnet_devices_changed(arr("devices"))
+            }
             EventBody::PresenceChanged { connected } => self.as_mut().presence_changed(*connected),
             EventBody::DownloadsStatusChanged { .. } => {
                 self.as_mut().downloads_status_changed(obj("status"))
