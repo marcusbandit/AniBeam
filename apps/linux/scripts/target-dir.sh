@@ -9,8 +9,8 @@
 #    <checkout>/target/debug/anibeam-staged, then sets ANIBEAM_BIN to that copy. A capture runs
 #    the staged copy, the build this script made, which is what ANIBEAM_NO_BUILD=1 reuses.
 #
-# The build gets the target dir as --target-dir, with CARGO_TARGET_DIR taken out of its
-# environment (#263). A compiler cache such as sccache keys every compile on the CARGO_*
+# The build gets the target dir as --target-dir, with CARGO_TARGET_DIR (and its config-env
+# twin CARGO_BUILD_TARGET_DIR) taken out of its environment (#263). A compiler cache such as sccache keys every compile on the CARGO_*
 # variables it sees, so a CARGO_TARGET_DIR that differs per checkout made every third-party
 # crate a miss in every fresh worktree. Without it, a worktree's first build takes the
 # registry crates another checkout already compiled, and still builds its own members.
@@ -26,8 +26,8 @@ _ab_checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 _ab_target="$(realpath -m "${CARGO_TARGET_DIR:-$_ab_checkout/target}")"
 case "$_ab_target" in
   "$_ab_checkout"/*) ;;
-  *) echo "target-dir.sh: CARGO_TARGET_DIR=$_ab_target is outside this checkout;" \
-       "never share it with another checkout (#250)" >&2 ;;
+  *) echo "target-dir.sh: CARGO_TARGET_DIR=$CARGO_TARGET_DIR ($_ab_target) is outside this" \
+       "checkout; never share it with another checkout (#250)" >&2 ;;
 esac
 
 anibeam_stage() {
@@ -39,7 +39,7 @@ anibeam_stage() {
     # build must not stage the last good binary as if it were this one.
     (
       flock 9 \
-        && env -u CARGO_TARGET_DIR cargo build -p anibeam --quiet \
+        && env -u CARGO_TARGET_DIR -u CARGO_BUILD_TARGET_DIR cargo build -p anibeam --quiet \
           --manifest-path "$_ab_checkout/Cargo.toml" --target-dir "$_ab_target" \
         && cp "$_ab_target/debug/anibeam" "$staged.$$" \
         && mv -f "$staged.$$" "$staged"

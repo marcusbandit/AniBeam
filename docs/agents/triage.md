@@ -54,17 +54,18 @@ triage label when someone deletes it.
   shows with a real library gets a `needs more info` ask for a small example, never a copy of the
   owner's library.
 - Build in this worktree's own target, so no other checkout's build can stand in for this one,
-  one triage build at a time, inside a memory cap:
+  one triage build at a time, inside a memory cap. Cargo's default target is the worktree's own
+  `target/` already; leave `CARGO_TARGET_DIR` unset, so sccache can hand this fresh worktree the
+  crates another checkout compiled (#263):
 
-      export CARGO_TARGET_DIR="$PWD/target"
       flock /tmp/anibeam-triage-build.lock \
         systemd-run --user --scope -q -p MemoryMax=8000M -p MemorySwapMax=0 cargo build -p anibeam-cli
 
-  `apps/linux/scripts/shoot.sh` and `drive.sh` keep a `CARGO_TARGET_DIR` that is already set.
+  `apps/linux/scripts/shoot.sh` and `drive.sh` build into the same `target/`.
 - Core behaviour (scanning, matching, sync, franchise) goes through `anibeam-cli`. AddSource
   returns at once, so the scan after it is what waits:
 
-      cli="$CARGO_TARGET_DIR/debug/anibeam-cli" root=/tmp/triage-<n>/root
+      cli="$PWD/target/debug/anibeam-cli" root=/tmp/triage-<n>/root
       $cli --root $root call AddSource --json '{"path":"/tmp/triage-<n>/lib"}'
       $cli --root $root scan --wait
       $cli --root $root list
