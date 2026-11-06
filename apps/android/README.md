@@ -101,7 +101,8 @@ updates on a machine with that keystore, or uninstall first.
 
 You need:
 
-- rustup with the Android targets: `rustup target add aarch64-linux-android x86_64-linux-android`
+- rustup. The repo's `rust-toolchain.toml` picks the Rust version, and `build.sh` adds the
+  Android targets to it the first time it builds for one
 - the Android SDK (`~/Android/Sdk` or `$ANDROID_HOME`) with `platforms;android-36`, a
   recent `build-tools`, and the NDK (the newest under `ndk/` is used)
 - curl and unzip: `build.sh` runs `scripts/fetch-mpv.sh` first, which takes libmpv and its
