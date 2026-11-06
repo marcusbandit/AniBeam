@@ -190,6 +190,49 @@ Item {
     // The radius of a shape nested `padding` inside a tile, so the two curves stay
     // concentric; never below the small step so a nested row still reads as rounded.
     function radiusInner(padding) { return Math.max(radiusSm, radiusTile - padding) }
+    // ---- What a screen reader says for a control with no words of its own
+    // The label of the settings row the control sits in
+    function rowLabelOf(item) {
+        for (var p = item ? item.parent : null; p; p = p.parent) {
+            if (p.settingTarget !== true) continue
+            var words = String(p.label || p.title || "")
+            if (words !== "") return words
+        }
+        return ""
+    }
+    // The text of a Tooltip the item carries, which says what an icon-only control does
+    function tipOf(item) {
+        var d = item ? item.data : null
+        if (!d) return ""
+        for (var i = 0; i < d.length; i++) if (d[i] && d[i].isTooltip === true && d[i].text) return String(d[i].text)
+        return ""
+    }
+    // A Lucide glyph's name as words, the last resort: "trash-2" reads "trash"
+    function glyphWords(icon) { return String(icon || "").replace(/-\d+$/, "").replace(/-/g, " ") }
+    // The first words shown inside an item, depth first, for a click area over a tile that
+    // has no name of its own: the title it carries is what a person would call it
+    function textIn(item, depth) {
+        if (!item || depth > 6) return ""
+        var kids = item.children
+        for (var i = 0; i < kids.length; i++) {
+            var k = kids[i]
+            if (!k || k.visible === false || k.isTooltip === true) continue
+            if (typeof k.text === "string" && k.text.trim() !== "") return k.text.trim()
+            var r = textIn(k, depth + 1)
+            if (r !== "") return r
+        }
+        return ""
+    }
+    // A click area's spoken name: the words the item it covers shows (its own text, if it is
+    // a label), else the tip that says what it does
+    function nameNear(item) {
+        var own = item && typeof item.text === "string" ? item.text.trim() : ""
+        return own || textIn(item, 0) || tipOf(item)
+    }
+    // A control's spoken name: its own, its words, its tip, its row, its glyph, in that order
+    function spokenName(own, words, item, icon) {
+        return own || words || tipOf(item) || rowLabelOf(item) || glyphWords(icon)
+    }
     readonly property int posterWidth: Theme.posterWidth
     // The one size posters decode at, in device pixels: a grid card is laid out between the
     // poster width and about a quarter wider (the columns stretch to fill the row), so the

@@ -49,7 +49,7 @@ global Status {
     out property <string> accounts: AppData.trackers-line == "" ? "Reading..." : AppData.trackers-line == "Not signed in" ? "No tracker connected" : "Syncing to " + AppData.trackers-line;
     out property <bool> accounts-warn: AppData.sign-in-failed;
     out property <string> downloads: (AppData.wifi-only ? "Wi-Fi only" : "Wi-Fi and mobile data") + ", " + (AppData.limit-on ? "capped at " + AppData.limit-label : "no cap");
-    out property <string> streaming: AppData.stream-quality == 0 ? "Auto, 720p on mobile data" : AppData.stream-quality == 1 ? "The original file, every time" : "Converted to " + AppData.stream-qualities[AppData.stream-quality];
+    out property <string> streaming: AppData.stream-quality == 0 ? "Auto, 720p on mobile data or a relay" : AppData.stream-quality == 1 ? "The original file, every time" : "Converted to " + AppData.stream-qualities[AppData.stream-quality];
     out property <string> sites: RepoData.repos.length == 0 && RepoData.on-count == 0 ? "No repo yet" : (RepoData.on-count == 1 ? "1 site on" : RepoData.on-count + " sites on") + (RepoData.repos.length == 1 ? ", from 1 repo" : RepoData.repos.length > 1 ? ", from " + RepoData.repos.length + " repos" : "");
     out property <bool> sites-warn: RepoData.repos.length > 0 && RepoData.on-count == 0;
     out property <string> connection: AppData.checking ? "Checking..." : AppData.checks.length == 0 ? "Not checked yet" : AppData.check-failed == 0 ? "Every step went through" : AppData.check-failed + " of " + AppData.checks.length + " steps failed";
@@ -571,7 +571,7 @@ export component MorePage inherits Rectangle {
                     }
                     Text {
                         text: AppData.stream-quality == 0
-                            ? "Auto plays the file as it is on Wi-Fi, and converted to 720p on mobile data."
+                            ? "Auto plays the file as it is on Wi-Fi, and converted to 720p on mobile data or when Tailscale reaches your computer through a relay."
                             : AppData.stream-quality == 1
                                 ? "The file as it is, every time. Big files need a fast link."
                                 : "Converted on your computer to " + AppData.stream-qualities[AppData.stream-quality] + ". Uses less data; seeking takes a moment.";

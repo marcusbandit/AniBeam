@@ -175,6 +175,9 @@ Item {
             Label { text: mr.entry.text || ""; role: "ui"; anchors.verticalCenter: parent.verticalCenter }
         }
         MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: mr.usable ? Qt.PointingHandCursor : Qt.ArrowCursor
+            Accessible.role: Accessible.MenuItem
+            Accessible.onPressAction: if (mr.usable) mr.chosen()
+            Accessible.name: theme.nameNear(parent)
             onEntered: mr.hoveredIn(); onClicked: if (mr.usable) mr.chosen() }
     }
 }

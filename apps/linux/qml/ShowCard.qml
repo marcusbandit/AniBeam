@@ -28,6 +28,9 @@ Item {
     property bool compact: false
     property bool busy: false
     signal opened()
+    Accessible.role: Accessible.Button
+    Accessible.name: title
+    Accessible.onPressAction: opened()
     signal action(Item anchor)
 
     readonly property bool hasPoster: poster !== "" && !compact

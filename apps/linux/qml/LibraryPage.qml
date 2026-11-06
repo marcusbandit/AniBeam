@@ -97,7 +97,7 @@ Item {
     function act(action, said) {
         var ids = page.pickedIds()
         var r = Door.call("ActOnSeries", { series: ids, action: action })
-        if (r.error) { frame.toast(frame.errorText(r.error)); return null }
+        if (r.error) { frame.fail(r.error); return null }
         page.clearPicks()
         if (said) frame.toast(said)
         return ids
@@ -112,7 +112,7 @@ Item {
                          : (page.pickedNoun(n) + " back, and syncing again"),
                     6, "Undo", function() {
                         var u = Door.call("ActOnSeries", { series: ids, action: { Hide: { hidden: !hide } } })
-                        if (u.error) frame.toast(frame.errorText(u.error))
+                        if (u.error) frame.fail(u.error)
                     })
     }
     function ratePicked(score) {
@@ -241,7 +241,7 @@ Item {
     function cut() {
         var r = Door.libraryView({ tab: tab, query: query, sort: sort, direction: direction, reveal: Door.revealHidden,
                                    arrange: arrange, group: groupFranchises, genre: genre, now: nowMs, season: currentSeason })
-        if (r.error) { frame.toast(r.error.message); return false }
+        if (r.error) { frame.fail(r.error); return false }
         var v = r.reply
         counts = v.counts || {}
         if (v.key !== viewKey) {
@@ -663,6 +663,6 @@ Item {
         id: importDialog
         title: "Import an AniBeam export"
         nameFilters: ["AniBeam export (*.json)", "All files (*)"]
-        onAccepted: { var r = Door.importLibrary(Fmt.localPath(String(selectedFile))); if (r.error) frame.toast(r.error.message); else frame.toast("Import started") }
+        onAccepted: { var r = Door.importLibrary(Fmt.localPath(String(selectedFile))); if (r.error) frame.fail(r.error); else frame.toast("Import started") }
     }
 }

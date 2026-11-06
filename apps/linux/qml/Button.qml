@@ -26,7 +26,13 @@ Corner {
     // A primary button in a colour of the page's own (the home hero's poster tone) rather
     // than the theme's accent
     property color tint: theme.accent
+    // What a screen reader says; empty takes the label, then the tip, then the glyph
+    property string accessibleName: ""
     signal clicked()
+    Accessible.role: Accessible.Button
+    Accessible.name: theme.spokenName(accessibleName, text, root, icon)
+    Accessible.focusable: takesFocus
+    Accessible.onPressAction: if (!busy && enabled) clicked()
 
     implicitWidth: content.implicitWidth + theme.space(small ? 3 : 4) * 2
     implicitHeight: small ? theme.textSpace(6) : theme.controlHeight

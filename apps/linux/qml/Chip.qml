@@ -20,6 +20,11 @@ Corner {
     property string hint: ""
     property real maxLabelWidth: -1
     signal clicked()
+    property string accessibleName: ""
+    Accessible.role: clickable ? Accessible.Button : Accessible.StaticText
+    Accessible.name: theme.spokenName(accessibleName, text, root, icon)
+    Accessible.description: hint
+    Accessible.onPressAction: if (clickable) clicked()
 
     implicitWidth: content.implicitWidth + theme.space(small ? 2 : 2.5) * 2
     implicitHeight: label.implicitHeight + theme.space(small ? 0.75 : 1.25) * 2
