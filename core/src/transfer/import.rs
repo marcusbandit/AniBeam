@@ -946,6 +946,8 @@ async fn import_preferences(
                 discord_presence: current.discord_presence,
                 // So is a calendar file on this machine's disk.
                 calendar_feed: current.calendar_feed,
+                // And so is whether its desktop says when an episode is out.
+                episode_notifications: current.episode_notifications,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

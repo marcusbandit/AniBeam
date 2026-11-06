@@ -158,6 +158,7 @@ FocusScope {
         ["appearance", "Dark theme", "colour scheme base16", "Colours from"],
         ["appearance", "Light theme", "colour scheme base16", "Colours from"],
         ["appearance", "Accent", "colour highlight"],
+        ["appearance", "Text size", "font type words bigger smaller larger zoom scale read accessibility"],
         ["appearance", "Density", "compact comfortable spacing size"],
         ["appearance", "Poster size", "cards small medium large"],
         ["appearance", "Out now on Airing", "airing out now cards list rows style banner posters"],
@@ -332,6 +333,9 @@ FocusScope {
                             }
                         }
                         MouseArea {
+                            Accessible.role: Accessible.Button
+                            Accessible.onPressAction: page.open(entry.modelData.id)
+                            Accessible.name: theme.nameNear(parent)
                             id: hover
                             anchors.fill: parent
                             hoverEnabled: true
@@ -442,7 +446,8 @@ FocusScope {
                                     size: theme.space(4)
                                     color: theme.textFaint
                                 }
-                                MouseArea { id: hitMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openResult(hit.modelData) }
+                                MouseArea { id: hitMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openResult(hit.modelData); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                                    Accessible.onPressAction: page.openResult(hit.modelData) }
                             }
                         }
                     }

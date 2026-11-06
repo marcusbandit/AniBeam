@@ -17,7 +17,7 @@ SettingsTab {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.share_over_tailscale = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     function setStreaming(on) {
         var p = JSON.parse(JSON.stringify(Door.preferences))
@@ -32,7 +32,7 @@ SettingsTab {
     function reloadDevices() { var r = Door.call("ListTailnetDevices", {}); if (!r.error) devices = r.reply.devices }
     function setTrusted(device, on) {
         var r = Door.call("SetTailnetDeviceTrust", { device: device, trusted: on })
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
         reloadDevices()
     }
     function deviceLine(d) {

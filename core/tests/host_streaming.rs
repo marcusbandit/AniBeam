@@ -87,7 +87,11 @@ fn with_streaming_off_only_the_library_answers() {
     assert_eq!(status, 200);
     let hello: wire::Hello = serde_json::from_value(hello).unwrap();
     assert!(hello.streaming_off);
-    assert!(hello.features.is_empty(), "{:?}", hello.features);
+    assert_eq!(
+        hello.features,
+        [wire::FEATURE_PEERS],
+        "only what streaming does not cover"
+    );
     assert_eq!(get(&rt, &format!("{base}{}", wire::SNAPSHOT)).0, 200);
 
     for route in [

@@ -103,6 +103,8 @@ pub struct Host {
     /// `http://100.x.y.z:8790`, the name already looked up.
     base: String,
     pub can_convert: bool,
+    /// The host reaches this phone only through a Tailscale relay.
+    pub relayed: bool,
     pub name: String,
 }
 
@@ -129,6 +131,7 @@ impl Host {
         let base = client.stream_base().map_err(|e| e.to_string())?;
         Ok(Host {
             can_convert: hello.features.iter().any(|f| f == api::FEATURE_CONVERT),
+            relayed: hello.relayed,
             name: hello.host,
             client: Arc::new(client),
             queue: std::sync::Mutex::new(None),
@@ -238,7 +241,13 @@ pub fn open(file: u64, quality: Quality, unmetered: bool) -> Result<Opened, Stri
         Err(e) => return Err(e.to_string()),
     };
     let probe = host.can_convert.then(|| host.probe(file)).flatten();
-    let converted = height(quality, probe.as_ref(), unmetered, host.can_convert);
+    // A relayed path is treated like mobile data: Auto converts.
+    let converted = height(
+        quality,
+        probe.as_ref(),
+        unmetered && !host.relayed,
+        host.can_convert,
+    );
     session.path = match converted {
         // A conversion carries one audio track, so it is the one the series was last
         // watched with; the subtitles come beside it, below.

@@ -560,6 +560,23 @@ pub struct TrackerOutcome {
     pub message: Option<String>,
 }
 
+/// One episode of a followed show that has just aired (#212): a show on
+/// the Watching list, by its AniList id. `series` is the library series
+/// with files that carries it, None when it is not on disk.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EpisodeOut {
+    pub anilist_id: u64,
+    pub episode: u32,
+    pub at: SystemTime,
+    /// The display title, by the title-language preference.
+    pub title: String,
+    /// AniList's own titles, for Get episodes: it searches by the latin ones.
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
+    pub series: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct WatchingEntry {
     pub anilist_id: u64,
@@ -579,6 +596,50 @@ pub struct WatchingEntry {
     pub site_url: Option<String>,
     pub next_airing: Option<Airing>,
     pub score: Option<f64>,
+}
+
+/// A year of watching (#216). Minutes count each finished episode at its
+/// record's length, or a plain default where the record names none.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct Stats {
+    pub year: i32,
+    /// Every year with any episode finished, newest first.
+    pub years: Vec<i32>,
+    pub minutes: u64,
+    pub episodes: u32,
+    pub series_completed: u32,
+    /// January to December.
+    pub months: Vec<StatMonth>,
+    pub genres: Vec<StatCount>,
+    pub studios: Vec<StatCount>,
+    /// The seasons the shows came out in ("Fall 2025").
+    pub seasons: Vec<StatCount>,
+    /// The shows watched most, by minutes.
+    pub top_series: Vec<StatSeries>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct StatMonth {
+    pub month: u32,
+    pub episodes: u32,
+    pub minutes: u64,
+    pub series_completed: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct StatCount {
+    pub name: String,
+    pub episodes: u32,
+    pub series: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct StatSeries {
+    pub series: u64,
+    pub title: String,
+    pub poster: Option<String>,
+    pub episodes: u32,
+    pub minutes: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -874,6 +935,11 @@ pub struct Preferences {
     /// `discord_presence`. `serde(default)` because older blobs predate it.
     #[serde(default)]
     pub calendar_feed: bool,
+    /// Whether the desktop shows a notification when an episode of a show
+    /// on the Watching list airs (#212). Default on, and per machine.
+    /// `serde(default)` because older blobs predate it.
+    #[serde(default = "default_true")]
+    pub episode_notifications: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1043,6 +1109,7 @@ impl Default for Preferences {
             on_hold_days: ON_HOLD_DAYS,
             discord_presence: false,
             calendar_feed: false,
+            episode_notifications: true,
         }
     }
 }

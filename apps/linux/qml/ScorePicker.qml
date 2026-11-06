@@ -82,14 +82,15 @@ Item {
                 required property string modelData
                 required property int index
                 objectName: "score-picker-row-" + index
-                width: list.width; height: theme.space(6)
+                width: list.width; height: theme.textSpace(6)
                                 // The Dropdown's current-row treatment: the highlight a step up from the panel,
                 // the value in the accent
                 readonly property bool isDraft: Number(modelData) === Number(root.draft.toFixed(1))
                 radius: theme.radiusSm
                 color: isDraft ? theme.accentSoft : m.containsMouse ? theme.floatHover : "transparent"
                 Text { anchors.centerIn: parent; text: modelData; color: parent.isDraft ? theme.accent : theme.text; font.family: theme.fontUi; font.pointSize: theme.typeNormal; font.weight: parent.isDraft ? Font.DemiBold : Font.Normal }
-                MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: root.draft = Number(modelData) }
+                MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: root.draft = Number(modelData); Accessible.role: Accessible.RadioButton; Accessible.name: theme.nameNear(parent); Accessible.checkable: true; Accessible.checked: isDraft
+                    Accessible.onPressAction: root.draft = Number(modelData) }
             }
             QC.ScrollBar.vertical: ThinScrollBar {}
         }

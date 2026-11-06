@@ -23,6 +23,7 @@ fn preferences_and_settings_round_trip_with_events() {
         on_hold_days: 90,
         discord_presence: false,
         calendar_feed: false,
+        episode_notifications: true,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {

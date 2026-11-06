@@ -185,10 +185,10 @@ fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
     };
     core.call(Call::SetPhoneSources {
         sources: vec![
-            saved("nyaa", "nyaa", "https://nyaa.si/"),
+            saved("nyaa", "filtered-rss", "https://nyaa.si/"),
             saved(
                 "animetosho",
-                "tosho",
+                "json-feed",
                 "https://animetosho.org/feed/json?q={query}&old=1",
             ),
         ],
@@ -220,7 +220,7 @@ fn a_phone_source_that_searches_by_address_needs_the_query() {
         url: url.into(),
         enabled: true,
     };
-    for kind in ["tosho", "rss", "torznab"] {
+    for kind in ["json-feed", "rss", "torznab"] {
         let err = core
             .call(Call::SetPhoneSources {
                 sources: vec![source(kind, "https://feed.example/json")],
@@ -251,15 +251,15 @@ fn a_phone_source_gets_the_checks_an_endpoint_gets() {
             .unwrap_err()
     };
     // A kind the core does not know, or not as written.
-    for kind in ["html", "Tosho"] {
+    for kind in ["html", "RSS"] {
         let err = refused(source(kind, "https://feed.example/json?q={query}"));
         assert!(
             matches!(&err, CoreError::Invalid { message, .. } if message.contains("kind")),
             "{kind}: {err:?}"
         );
     }
-    // nyaa adds the search itself: a {query} in its address would be a second one.
-    let err = refused(source("nyaa", "https://feed.example/?q={query}"));
+    // filtered-rss adds the search itself: a {query} in its address would be a second one.
+    let err = refused(source("filtered-rss", "https://feed.example/?q={query}"));
     assert!(
         matches!(&err, CoreError::Invalid { message, .. } if message.contains("{query}")),
         "{err:?}"
@@ -272,13 +272,16 @@ fn a_phone_source_gets_the_checks_an_endpoint_gets() {
     // Spaces around the kind are trimmed off, and it is saved as the kind it is.
     let Reply::PhoneSources { sources } = core
         .call(Call::SetPhoneSources {
-            sources: vec![source(" tosho ", " https://feed.example/json?q={query} ")],
+            sources: vec![source(
+                " json-feed ",
+                " https://feed.example/json?q={query} ",
+            )],
         })
         .unwrap()
     else {
         panic!()
     };
-    assert_eq!(sources[0].kind, "tosho");
+    assert_eq!(sources[0].kind, "json-feed");
     assert_eq!(sources[0].url, "https://feed.example/json?q={query}");
 }
 
@@ -292,9 +295,9 @@ fn a_source_saved_before_the_checks_is_kept_but_not_searched() {
         enabled: true,
     };
     let saved = [
-        source("fixed", "tosho", "https://feed.example/json"),
+        source("fixed", "json-feed", "https://feed.example/json"),
         source("unknown", "html", "https://feed.example/?q={query}"),
-        source("twice", "nyaa", "https://feed.example/?q={query}"),
+        source("twice", "filtered-rss", "https://feed.example/?q={query}"),
         source("mapless", "json", "https://feed.example/api?q={query}"),
         source("good", "rss", "https://feed.example/rss?q={query}"),
     ];
@@ -369,7 +372,7 @@ fn search_lists_a_saved_source_under_its_trimmed_name_and_once() {
 }
 
 #[test]
-fn a_tosho_source_saved_without_the_query_does_not_block_removing_others() {
+fn a_json_feed_source_saved_without_the_query_does_not_block_removing_others() {
     let (dir, core, _) = common::open_core();
     let source = |name: &str, kind: &str, url: &str| anibeam_core::PhoneSource {
         name: name.into(),
@@ -377,9 +380,9 @@ fn a_tosho_source_saved_without_the_query_does_not_block_removing_others() {
         url: url.into(),
         enabled: true,
     };
-    let old = source("old", "tosho", "https://feed.example/json");
-    let nyaa = source("nyaa", "nyaa", "https://nyaa.si/");
-    // Saved before the rule covered tosho.
+    let old = source("old", "json-feed", "https://feed.example/json");
+    let nyaa = source("nyaa", "filtered-rss", "https://nyaa.si/");
+    // Saved before the rule covered json-feed.
     let config = anibeam_core::CorePaths::under(dir.path()).config_dir;
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(
@@ -1086,17 +1089,22 @@ fn an_endpoint_by_hand_needs_a_search_and_a_free_name() {
 }
 
 #[test]
-fn a_bare_nyaa_address_by_hand_is_the_nyaa_kind() {
+fn a_bare_address_by_hand_needs_the_query() {
+    // A kind that builds its own search from a bare address comes only from a repo: the
+    // core does not guess one from the host.
     let (_dir, core, _) = common::open_core();
-    let c = catalog(add_custom(&core, "nyaa-mirror", "https://nyaa.land/"));
-    assert_eq!(c.installed[0].kind, "nyaa");
+    let err = add_custom(&core, "mirror", "https://tracker.example/").unwrap_err();
+    assert!(
+        matches!(&err, CoreError::Invalid { message, .. } if message.contains("{query}")),
+        "{err:?}"
+    );
 }
 
 #[test]
 fn a_repo_endpoint_cannot_take_the_name_of_one_added_by_hand() {
     let (_dir, core, _) = common::open_core();
     trust(&core, &fixture("general.json"));
-    add_custom(&core, "nyaa", "https://nyaa.land/").unwrap();
+    add_custom(&core, "nyaa", "https://tracker.example/?page=rss&q={query}").unwrap();
     let e = core
         .call(Call::InstallEndpoint {
             repo: fixture("general.json"),

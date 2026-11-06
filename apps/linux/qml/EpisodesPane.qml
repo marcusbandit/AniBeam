@@ -43,7 +43,7 @@ Corner {
     Component.onDestruction: if (visible) frame.escapeStack.pop(root)
     function load() {
         var r = Door.getSeries(root.seriesId)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error); return }
         root.detail = r.reply.detail
     }
     onVisibleChanged: if (!visible) detail = null
@@ -211,6 +211,9 @@ Corner {
                                     }
                                     // A missing one opens Downloads on the series, to get it
                                     MouseArea {
+                                        Accessible.role: Accessible.Button
+                                        Accessible.onPressAction: { var id = root.seriesId, t = root.title; root.close(); frame.go("downloads", { series: id }, "Downloads") }
+                                        Accessible.name: theme.nameNear(parent)
                                         id: chipMouse
                                         anchors.fill: parent
                                         enabled: !parent.present && !parent.loading
@@ -258,7 +261,7 @@ Corner {
                 Button {
                     objectName: "episodes-refresh"
                     flat: true; small: true; icon: "refresh-cw"; text: "Refresh"
-                    onClicked: { var r = Door.refreshSeries(root.seriesId); frame.toast(r.error ? r.error.message : "Refreshing " + root.title) }
+                    onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Refreshing " + root.title) }
                 }
             }
         }

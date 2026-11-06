@@ -26,8 +26,10 @@ Row {
     signal moved(real v)
     spacing: theme.space(3)
 
+    property string accessibleName: ""
     QC.Slider {
         id: s
+        Accessible.name: theme.spokenName(root.accessibleName, "", root, "") + (/^[A-Za-z]{2,}/.test(root.unit) ? ", in " + root.unit : "")
         width: root.trackWidth
         visible: root.trackShown
         height: theme.controlHeight

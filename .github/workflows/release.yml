@@ -14,8 +14,9 @@ name: Release
 #
 # Either way every platform is built, the release starts as a draft, and it goes public as
 # the latest release only once every file is on it, so the app's update notice never finds
-# a version without its download. The AUR package and the brew cask follow by hand:
-# apps/linux/packaging/aur/publish.sh 2.5.0 and apps/linux/packaging/brew/bump.sh 2.5.0.
+# a version without its download. The AUR packages (anibeam and anibeam-bin) and the brew
+# cask follow by hand: apps/linux/packaging/aur/publish.sh 2.5.0 and
+# apps/linux/packaging/brew/bump.sh 2.5.0.
 # CONTRIBUTING.md, under Releases, has the whole line.
 on:
   workflow_dispatch:
@@ -122,8 +123,17 @@ jobs:
       ref: ${{ needs.resolve.outputs.sha }}
       version: ${{ needs.resolve.outputs.version }}
 
+  # The tarball the AUR's anibeam-bin installs, built in an Arch container (#235).
+  arch:
+    needs: resolve
+    uses: ./.github/workflows/arch.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+      version: ${{ needs.resolve.outputs.version }}
+
   publish:
-    needs: [resolve, macos, linux, windows]
+    needs: [resolve, macos, linux, windows, arch]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

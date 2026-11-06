@@ -143,7 +143,7 @@ Item {
         if (!t.error) page.anilistConnected = !!(t.reply.state.anilist.connected)
         if (!page.anilistConnected) { page.entries = []; return }
         var r = Door.listWatching()
-        if (r.error) { page.loadFailed = true; frame.toast(r.error.message); return }
+        if (r.error) { page.loadFailed = true; frame.fail(r.error, page.reload); return }
         page.loadFailed = false
         page.cutAt = Date.now()
         page.nowMs = page.cutAt
@@ -156,7 +156,7 @@ Item {
         var r = Door.call("ListPlanning", {})
         if (r.error) {
             // Said once, on the tab that shows it; the tab then shows the failure, not old cards
-            if (!page.planningFailed && page.tab === "planning") frame.toast(frame.errorText(r.error))
+            if (!page.planningFailed && page.tab === "planning") frame.fail(r.error)
             page.planningFailed = true
             page.planned = []
             return
@@ -195,7 +195,7 @@ Item {
     function refresh(force) {
         refreshAsked++
         var r = Door.refreshWatching(force === true)
-        if (r.error) { page.loadFailed = page.entries.length === 0; frame.toast(r.error.message); return }
+        if (r.error) { page.loadFailed = page.entries.length === 0; frame.fail(r.error, function() { page.refresh(force) }); return }
         if (r.reply && r.reply.job !== undefined) page.refreshing = true
     }
     function playSeries(id, title) {

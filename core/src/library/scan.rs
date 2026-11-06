@@ -1296,6 +1296,11 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                 scope = next;
             }
 
+            // The torrent each new file came from, while the client that
+            // fetched it still lists it (#241)
+            if added + changed > 0 {
+                crate::downloads::origins::after_scan(&core);
+            }
             Ok(Finished {
                 plain: scan_line(added, changed, removed),
                 level: Level::Info,

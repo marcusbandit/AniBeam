@@ -71,7 +71,7 @@ Grab the newest version from **[Releases](https://github.com/marcusbandit/AniBea
 
 | Platform | Get it | Notes |
 | --- | --- | --- |
-| Arch Linux | `yay -S anibeam` | Pulls in anirss and qbittorrent-nox too. |
+| Arch Linux | `yay -S anibeam-bin` | The release build, installed in seconds. `yay -S anibeam` compiles it instead. Either pulls in anirss and qbittorrent-nox. |
 | Any other Linux | `AniBeam-<version>-x86_64.AppImage` | glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later. |
 | Windows 10 and 11 | `AniBeam-<version>-windows-x64-setup.exe` | Installs for you alone, no admin prompt. A portable `.zip` sits beside it. |
 | macOS 15 and later | `brew install --cask marcusbandit/anibeam/anibeam` | Apple silicon. Or download the `.dmg` and drag it into Applications. |

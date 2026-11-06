@@ -15,7 +15,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 
 use super::build::{self, LibraryPart};
-use super::{convert, stream, trust};
+use super::{convert, peers, stream, trust};
 use crate::contract::CoreError;
 use crate::core::Core;
 use crate::time;
@@ -31,6 +31,7 @@ pub struct Served {
     host: String,
     snapshot: tokio::sync::Mutex<Option<(Instant, Bytes)>>,
     library: tokio::sync::Mutex<Option<(Instant, Arc<LibraryPart>)>>,
+    peers: tokio::sync::Mutex<Option<(Instant, Arc<Vec<wire::PeerHost>>)>>,
 }
 
 /// The machine's name, for `Hello::host`.
@@ -54,6 +55,7 @@ pub fn router(core: Weak<Core>) -> Router {
         host: hostname(),
         snapshot: tokio::sync::Mutex::new(None),
         library: tokio::sync::Mutex::new(None),
+        peers: tokio::sync::Mutex::new(None),
     });
     // The episodes themselves answer only while "Stream episodes" is on.
     let streaming = Router::new()
@@ -74,6 +76,7 @@ pub fn router(core: Weak<Core>) -> Router {
     Router::new()
         .route(wire::HELLO, get(hello))
         .route(wire::SNAPSHOT, get(snapshot))
+        .route(wire::PEERS, get(peer_list))
         .route("/api/v1/posters/{id}", get(poster))
         .merge(streaming)
         .fallback(not_found)
@@ -205,8 +208,15 @@ fn failed(e: &CoreError) -> Response {
     )
 }
 
-async fn hello(State(st): State<Arc<Served>>) -> Response {
+async fn hello(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
     let streaming = st.core.upgrade().is_some_and(|c| c.host.streaming());
+    let relayed = st
+        .core
+        .upgrade()
+        .is_some_and(|core| super::relayed(&core, from.ip()));
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
@@ -215,6 +225,7 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
         now: time::now_secs(),
         features: features(streaming),
         streaming_off: !streaming,
+        relayed,
     };
     match serde_json::to_vec(&hello) {
         Ok(body) => json(Bytes::from(body)),
@@ -222,18 +233,72 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
     }
 }
 
-/// What this host serves past the snapshot. Streaming while its switch is on;
-/// converting too when ffmpeg and an encoder work here, which the first hello
-/// starts finding out rather than waits for, so hello stays quick.
+/// What this host serves past the snapshot: the list of other AniBeams
+/// always; streaming while its switch is on; converting too when ffmpeg
+/// and an encoder work here, which the first hello starts finding out
+/// rather than waits for, so hello stays quick.
 fn features(streaming: bool) -> Vec<String> {
+    let mut out = vec![wire::FEATURE_PEERS.to_string()];
     if !streaming {
-        return Vec::new();
+        return out;
     }
-    let mut out = vec![wire::FEATURE_STREAM.to_string()];
+    out.push(wire::FEATURE_STREAM.to_string());
     if convert::known() == Some(true) {
         out.push(wire::FEATURE_CONVERT.to_string());
     }
     out
+}
+
+/// The other AniBeams on the tailnet. Asking them all takes a moment, so the
+/// list answers every request for `CACHE_FOR`; the slot stays locked while it
+/// is made, so a burst of clients waits for one round of hellos. A tailnet
+/// that cannot be read gives no list rather than an empty one, and nothing is
+/// kept, so the next request asks again.
+async fn peer_list(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
+    let mut slot = st.peers.lock().await;
+    let fresh = slot
+        .as_ref()
+        .filter(|(at, _)| at.elapsed() < CACHE_FOR)
+        .map(|(_, hosts)| hosts.clone());
+    let hosts = match fresh {
+        Some(hosts) => hosts,
+        None => {
+            let Some(core) = st.core.upgrade() else {
+                return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+            };
+            let asked = tokio::task::spawn_blocking(move || {
+                let tailnet = core.host.tailnet(false)?;
+                Some(peers::candidates(
+                    &tailnet,
+                    &core.host.switched_off(),
+                    wire::DEFAULT_PORT,
+                ))
+            })
+            .await
+            .ok()
+            .flatten();
+            let Some(asked) = asked else {
+                return error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "this computer cannot read its tailnet right now",
+                );
+            };
+            let hosts = Arc::new(peers::find(asked).await);
+            *slot = Some((Instant::now(), hosts.clone()));
+            hosts
+        }
+    };
+    drop(slot);
+    let list = wire::Peers {
+        hosts: peers::others(&hosts, from.ip()),
+    };
+    match serde_json::to_vec(&list) {
+        Ok(body) => json(Bytes::from(body)),
+        Err(e) => failed(&e.into()),
+    }
 }
 
 async fn snapshot(State(st): State<Arc<Served>>) -> Response {

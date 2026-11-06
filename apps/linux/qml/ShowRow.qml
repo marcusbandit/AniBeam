@@ -26,6 +26,9 @@ Item {
     property string glyph: "rss"
     property bool busy: false
     signal opened()
+    Accessible.role: Accessible.Button
+    Accessible.name: title
+    Accessible.onPressAction: opened()
     signal action(Item anchor)
 
     width: parent ? parent.width : theme.space(100)
