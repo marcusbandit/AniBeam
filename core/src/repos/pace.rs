@@ -121,7 +121,7 @@ mod tests {
         }
         p.book("192.168.1.10", now);
         assert_eq!(p.book("192.168.1.10", now), Duration::from_secs(2));
-        assert!(!is_own_host("8.8.8.8") && !is_own_host("nyaa.example"));
+        assert!(!is_own_host("8.8.8.8") && !is_own_host("tracker.example"));
     }
 
     #[test]

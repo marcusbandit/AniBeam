@@ -1,7 +1,7 @@
 //! The form-encoded reading of a query string value, by hand, and the
 //! writing of one.
 //!
-//! Two callers want the reading, the OAuth callback's query and a nyaa
+//! Two callers want the reading, the OAuth callback's query and a tracker
 //! feed url's search term, and one the writing, TVmaze's search term;
 //! none of them wants a dependency for thirty lines.
 

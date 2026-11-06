@@ -689,7 +689,10 @@ pub(crate) mod tests {
     fn a_signed_index_reads() {
         let k = signing_key(1);
         let file = sign(
-            &index(&k, vec![def("nyaa", "filtered-rss", "https://nyaa.si/")]),
+            &index(
+                &k,
+                vec![def("tracker", "filtered-rss", "https://tracker.example/")],
+            ),
             &k,
         );
         let idx = parse(&file, "2.1.0").unwrap();
@@ -830,9 +833,9 @@ pub(crate) mod tests {
     #[test]
     fn auth_keys_must_sit_in_the_address_but_not_in_the_host() {
         let mut d: Definition = serde_json::from_value(def(
-            "erai",
+            "keyed",
             "rss",
-            "https://erai.example/feed?s={query}&token={token}",
+            "https://keyed.example/feed?s={query}&token={token}",
         ))
         .unwrap();
         d.auth = vec![AuthField {
@@ -843,7 +846,7 @@ pub(crate) mod tests {
             help_url: None,
         }];
         assert!(check(&d).is_ok());
-        d.url = "https://erai.example/feed?s={query}".into();
+        d.url = "https://keyed.example/feed?s={query}".into();
         assert!(check(&d).is_err());
         d.url = "https://{token}.example/feed?s={query}".into();
         assert!(check(&d).is_err());
@@ -926,9 +929,9 @@ pub(crate) mod tests {
     #[test]
     fn filling_encodes_the_value_and_leaves_the_query() {
         let mut d: Definition = serde_json::from_value(def(
-            "erai",
+            "keyed",
             "rss",
-            "https://erai.example/feed?s={query}&token={token}",
+            "https://keyed.example/feed?s={query}&token={token}",
         ))
         .unwrap();
         d.auth = vec![AuthField {
@@ -940,7 +943,7 @@ pub(crate) mod tests {
         }];
         assert_eq!(
             d.filled_url(|_| Some("a b&c".into())).unwrap(),
-            "https://erai.example/feed?s={query}&token=a%20b%26c"
+            "https://keyed.example/feed?s={query}&token=a%20b%26c"
         );
         assert_eq!(d.filled_url(|_| None), None);
     }

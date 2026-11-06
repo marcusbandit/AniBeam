@@ -975,23 +975,26 @@ mod tests {
                 .as_deref(),
             Some("000102030405060708090a0b0c0d0e0f10111213")
         );
-        assert_eq!(magnet_hash("https://nyaa.si/download/1.torrent"), None);
+        assert_eq!(
+            magnet_hash("https://tracker.example/download/1.torrent"),
+            None
+        );
         assert_eq!(magnet_hash("magnet:?xt=urn:btih:short"), None);
     }
 
     #[test]
     fn a_name_matches_its_title_through_extension_and_punctuation() {
-        let title = "[SubsPlease] Kino no Tabi - 03 (1080p) [ABCD1234].mkv";
+        let title = "[Lumen] Kino no Tabi - 03 (1080p) [ABCD1234].mkv";
         assert!(names_match(
-            "[SubsPlease] Kino no Tabi - 03 (1080p) [ABCD1234]",
+            "[Lumen] Kino no Tabi - 03 (1080p) [ABCD1234]",
             title
         ));
         assert!(names_match(
-            "[SubsPlease]_Kino_no_Tabi_-_03_(1080p)_[ABCD1234].mkv",
+            "[Lumen]_Kino_no_Tabi_-_03_(1080p)_[ABCD1234].mkv",
             title
         ));
         assert!(!names_match(
-            "[SubsPlease] Kino no Tabi - 04 (1080p) [ABCD1234]",
+            "[Lumen] Kino no Tabi - 04 (1080p) [ABCD1234]",
             title
         ));
         assert!(!names_match("", title));
@@ -1002,7 +1005,7 @@ mod tests {
 
     #[test]
     fn binding_takes_the_earliest_new_torrent_with_the_name_and_never_twice() {
-        let title = "[Erai-raws] Show - 03 [1080p][Multiple Subtitle]";
+        let title = "[Kumo-Subs] Show - 03 [1080p][Multiple Subtitle]";
         let mut fus = vec![followup(title, 1000), {
             let mut f = followup(title, 1000);
             f.id = 2;
@@ -1360,7 +1363,7 @@ mod tests {
         ];
         let options = DownloadOptions {
             sequential: false,
-            provider: "erai".into(),
+            provider: "keyed".into(),
             series: Some(1),
             replace: vec![
                 ReplaceItem {

@@ -23,7 +23,7 @@ use anibeam_core::*;
 
 const OK_SCRIPT: &str = r#"#!/bin/sh
 cat <<'JSON'
-[{"name": "Frieren", "feed_url": "https://nyaa.si/?page=rss&q=Frieren+1080p&c=1_2", "save_path": "/downloads/frieren", "rule_enabled": true, "torrent_count": 3}]
+[{"name": "Frieren", "feed_url": "https://tracker.example/?page=rss&q=Frieren+1080p&c=1_2", "save_path": "/downloads/frieren", "rule_enabled": true, "torrent_count": 3}]
 JSON
 "#;
 

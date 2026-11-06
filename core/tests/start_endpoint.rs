@@ -55,7 +55,7 @@ fn start(core: &Core, name: &str) -> u64 {
     }
 }
 
-/// An anirss config with a plain nyaa endpoint and a 1337x one that has a
+/// An anirss config with a plain tracker endpoint and a proxied one that has a
 /// `start`, and the XDG config home pointed at it.
 fn on_demand_config(dir: &Path, start: Option<&str>) {
     // A literal string: a Windows path's backslashes are not TOML escapes there
@@ -67,7 +67,7 @@ fn on_demand_config(dir: &Path, start: Option<&str>) {
     std::fs::write(
         anirss.join("config.toml"),
         format!(
-            "[[endpoint]]\nname = \"nyaa\"\nkind = \"nyaa\"\nurl = \"https://nyaa.si/\"\n\n[[endpoint]]\nname = \"1337x\"\nkind = \"rss\"\nurl = \"http://127.0.0.1:9117/x?q={{query}}\"\n{start}ready = \"http://127.0.0.1:9117/caps\"\ntimeout = 5\n"
+            "[[endpoint]]\nname = \"tracker\"\nkind = \"rss\"\nurl = \"https://tracker.example/?q={{query}}\"\n\n[[endpoint]]\nname = \"proxied\"\nkind = \"rss\"\nurl = \"http://127.0.0.1:9117/x?q={{query}}\"\n{start}ready = \"http://127.0.0.1:9117/caps\"\ntimeout = 5\n"
         ),
     )
     .unwrap();
@@ -103,7 +103,7 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     save(&core, remote(""));
 
     let refused = core.call(Call::StartEndpoint {
-        name: "nyaa".to_string(),
+        name: "tracker".to_string(),
     });
     assert!(
         matches!(refused, Err(CoreError::Invalid { ref field, .. }) if field == "name"),
@@ -113,7 +113,7 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     // Down at the first look, answering on the next
     http.fail_next("refused");
     http.push(200, "ok");
-    let event = common::wait_job(&c, start(&core, "1337x"));
+    let event = common::wait_job(&c, start(&core, "proxied"));
     assert!(
         matches!(event.body, EventBody::DownloadsStatusChanged { .. }),
         "{:?}",
@@ -130,7 +130,7 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     std::fs::remove_file(&marker).unwrap();
     http.fail_next("refused");
     http.push(200, "ok");
-    common::wait_job(&c, start(&core, "1337x"));
+    common::wait_job(&c, start(&core, "proxied"));
     assert_eq!(written(&marker), "anirss");
     assert!(!ignored.exists(), "the setting never ran");
 
@@ -138,7 +138,7 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     on_demand_config(dir.path(), Some("anibeam-no-such-jackett"));
     save(&core, remote(""));
     http.fail_next("refused");
-    let event = common::wait_job(&c, start(&core, "1337x"));
+    let event = common::wait_job(&c, start(&core, "proxied"));
     let EventBody::JobFailed {
         error: CoreError::Service { code, message, .. },
     } = &event.body

@@ -73,7 +73,7 @@ below where they disagree:
   one line saying how anirss and the torrent client stand, the two as chips that open
   the Downloads settings), the search row (the field, the endpoint, Search), and with a
   search up: the query line (Back, the query, the count, what anirss said); while it runs,
-  a panel naming the phase (Starting 1337x, Searching nyaa), the seconds, why it takes that
+  a panel naming the phase (Starting <endpoint>, Searching <endpoint>), the seconds, why it takes that
   long, a bar (filling toward an on-demand endpoint's start ceiling, else a sweep), Cancel
   and the other endpoints to try; anirss's groups as filter rows (Release group, Quality,
   the rest behind More filters); Narrow and Best match; the library series the query names,
@@ -187,7 +187,7 @@ The killed idioms (below) still hold.
   (4x) and section headings `typeHeading` (2.2x).
 - **Downloads is shows first (#69).** The field suggests shows as you type and searches release
   names on Return, asking every source that is on; a Sources row of chips (lit on, grey off)
-  switches providers, and 1337x is on only while it runs. Clicking it while it is down opens a
+  switches providers, and a site reached through a search proxy is on only while it runs. Clicking it while it is down opens a
   sheet asking whether to start Jackett, and AniBeam starts it only on that confirm. A release
   list opened from a show's grid has Back to the grid (and Escape). Four lenses (Gaps, Airing, Following, Downloaded) and
   an Activity column at the right. A show opens `GetShow.qml`: its providers, a click fetches

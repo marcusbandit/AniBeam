@@ -324,7 +324,7 @@ mod tests {
     fn rule(show: Option<ShowLink>) -> SubscriptionRule {
         SubscriptionRule {
             name: "Frieren".to_string(),
-            feed_url: "https://nyaa.si/?page=rss&q=frieren".to_string(),
+            feed_url: "https://tracker.example/?page=rss&q=frieren".to_string(),
             save_path: "/lib/Frieren".to_string(),
             rule_enabled: true,
             torrent_count: 3,

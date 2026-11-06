@@ -5,7 +5,7 @@
 //!   cargo test -p anibeam-core --test qbt_live -- --ignored --nocapture
 //!
 //! It works on a rule named `anibeam-probe` that is created disabled (a
-//! disabled rule never downloads) and a nyaa feed under the same name, and
+//! disabled rule never downloads) and a tracker feed under the same name, and
 //! removes both at the end whatever happened.
 
 use std::sync::Arc;
@@ -25,8 +25,8 @@ async fn the_rewire_calls_work_on_a_disabled_probe_rule() {
     let http = Arc::new(ReqwestHttp::new(Duration::from_secs(30)).unwrap());
     let qbt = QbtClient::new(&url, &user, &pass, http);
     let name = "anibeam-probe";
-    let narrow = "https://nyaa.si/?page=rss&q=Sousou+no+Frieren+zzzznothing&c=1_0&f=0";
-    let wide = "https://nyaa.si/?page=rss&q=Sousou+no+Frieren+1080p&c=1_0&f=0";
+    let narrow = "https://tracker.example/?page=rss&q=Sousou+no+Frieren+zzzznothing&c=1_0&f=0";
+    let wide = "https://tracker.example/?page=rss&q=Sousou+no+Frieren+1080p&c=1_0&f=0";
 
     let outcome = async {
         // What anirss would have made, but disabled
@@ -41,7 +41,7 @@ async fn the_rewire_calls_work_on_a_disabled_probe_rule() {
         let rules = qbt.rules().await?;
         let def = rules.get(name).cloned().expect("the probe rule");
         let terms = rewire::local_terms(
-            "Sousou no Frieren 1080p SubsPlease -HEVC",
+            "Sousou no Frieren 1080p Lumen -HEVC",
             "Sousou no Frieren 1080p",
         );
         let def = rewire::narrowed(&def, &terms, wide);
@@ -75,7 +75,7 @@ async fn the_rewire_calls_work_on_a_disabled_probe_rule() {
             matching.len(),
             matching.first()
         );
-        assert_eq!(rules[name]["mustContain"], "SubsPlease");
+        assert_eq!(rules[name]["mustContain"], "Lumen");
         assert_eq!(rules[name]["mustNotContain"], "HEVC");
         assert_eq!(rules[name]["affectedFeeds"], json!([wide]));
         assert_eq!(rules[name]["enabled"], false);
@@ -86,8 +86,7 @@ async fn the_rewire_calls_work_on_a_disabled_probe_rule() {
         assert!(
             matching
                 .iter()
-                .all(|t| t.to_lowercase().contains("subsplease")
-                    && !t.to_lowercase().contains("hevc"))
+                .all(|t| t.to_lowercase().contains("lumen") && !t.to_lowercase().contains("hevc"))
         );
         Ok::<_, anibeam_core::CoreError>(())
     }

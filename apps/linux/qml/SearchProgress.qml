@@ -1,5 +1,5 @@
 // What a search is doing while it runs, so a slow endpoint never looks like nothing: the
-// phase in a line (Starting 1337x, Searching nyaa, Reading the results), the seconds since
+// phase in a line (Starting a source, Searching it, Reading the results), the seconds since
 // it began, a sentence on why it takes as long as it does, a bar, and the ways out: Cancel,
 // or the same query on another endpoint. An on-demand endpoint's start has a known ceiling
 // (anirss's timeout for it), so its bar fills toward that; everything else runs a sweep.

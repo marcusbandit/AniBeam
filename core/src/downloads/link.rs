@@ -517,7 +517,7 @@ mod tests {
     fn a_query_keeps_only_the_words_that_name_the_show() {
         assert_eq!(query_words("Frieren 1080p"), vec!["frieren"]);
         assert_eq!(
-            query_words("[SubsPlease] Sousou no Frieren 1080p -HEVC"),
+            query_words("[Lumen] Sousou no Frieren 1080p -HEVC"),
             vec!["sousou", "frieren"]
         );
         assert_eq!(
@@ -525,7 +525,7 @@ mod tests {
             vec!["stone", "science", "future"]
         );
         assert_eq!(query_words("Kaiju No. 8 1080p"), vec!["kaiju", "8"]);
-        assert!(query_words("[Erai-raws] 1080p HEVC").is_empty());
+        assert!(query_words("[Kumo-Subs] 1080p HEVC").is_empty());
     }
 
     #[test]

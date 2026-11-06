@@ -121,7 +121,7 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
 
 /// What a search tries, in order: the enabled feeds saved before repos, then the installed
 /// endpoints. An installed endpoint whose id is a saved feed's name takes that feed's place,
-/// so installing nyaa from a repo replaces an old saved one rather than searching it twice.
+/// so installing an endpoint from a repo replaces an old saved one rather than searching it twice.
 fn searched(core: &Core) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
     let mut installed = crate::repos::runnable(core);
     let mut out: Vec<(PhoneSource, crate::releases::Endpoint)> = Vec::new();

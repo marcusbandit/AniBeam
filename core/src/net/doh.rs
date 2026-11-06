@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn public_names_are_not_home_names() {
         for name in [
-            "nyaa.si",
+            "tracker.example",
             "example.com",
             "one.one.one.one",
             "lan.example.com",
@@ -370,9 +370,9 @@ mod tests {
         let body = serde_json::json!({
             "Status": 0,
             "Answer": [
-                { "name": "nyaa.si", "type": 5, "TTL": 60, "data": "alias.example." },
-                { "name": "nyaa.si", "type": 1, "TTL": 300, "data": "186.2.163.20" },
-                { "name": "nyaa.si", "type": 1, "TTL": 120, "data": "186.2.163.21" }
+                { "name": "tracker.example", "type": 5, "TTL": 60, "data": "alias.example." },
+                { "name": "tracker.example", "type": 1, "TTL": 300, "data": "186.2.163.20" },
+                { "name": "tracker.example", "type": 1, "TTL": 120, "data": "186.2.163.21" }
             ]
         });
         let (ips, ttl) = parse(&body).unwrap();

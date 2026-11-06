@@ -1,6 +1,6 @@
 // Endpoint repos (#143) on the desktop: the repos added by address, each repo's key
 // fingerprint shown before it is trusted, the endpoints they offer installed one at a time,
-// and endpoints added by hand beside them for a site no repo carries (1337x through
+// and endpoints added by hand beside them for a site no repo carries (one through
 // Jackett). What is installed goes into AniBeam's own anirss, so the search sees it; one
 // anirss already has from its own config.toml keeps its place and the row says so.
 // The calls that fetch or store a secret run off the Qt thread (Door.callAsync), so a slow or

@@ -305,7 +305,7 @@ pub fn describe(plan: &Plan) -> String {
     }
 }
 
-/// A release title without its group, episode and tags: "[Erai-raws] Black
+/// A release title without its group, episode and tags: "[Kumo-Subs] Black
 /// Clover - 001 [1080p]" reads "Black Clover".
 fn show_title(title: &str) -> String {
     let mut s = title.trim().to_string();
@@ -1474,7 +1474,7 @@ mod tests {
     fn a_long_pick_of_singles_adds_only_the_first_window_in_episode_order() {
         let titles: Vec<String> = (1..=40)
             .rev()
-            .map(|i| format!("[Erai-raws] Black Clover - {i:03} [1080p].mkv"))
+            .map(|i| format!("[Kumo-Subs] Black Clover - {i:03} [1080p].mkv"))
             .collect();
         let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
         let s = RollingSettings::default();
@@ -1687,7 +1687,7 @@ mod tests {
     #[test]
     fn a_show_title_drops_group_episode_and_tags() {
         assert_eq!(
-            show_title("[Erai-raws] Black Clover - 001 [1080p][Multiple Subtitle]"),
+            show_title("[Kumo-Subs] Black Clover - 001 [1080p][Multiple Subtitle]"),
             "Black Clover"
         );
         assert_eq!(show_title("Frieren (2023) [1080p]"), "Frieren");
