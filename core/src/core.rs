@@ -454,6 +454,14 @@ impl Core {
         self.downloads.disable_unattended();
     }
 
+    /// Lets a core under a root settle a fresh install on a qBittorrent it finds
+    /// answering, which only the person's own install does (#637): the tests of that
+    /// choice run under a root. Not part of the contract and not exported to any shell.
+    #[doc(hidden)]
+    pub fn let_sandbox_find_torrent_clients(&self) {
+        self.downloads.let_sandbox_find_clients();
+    }
+
     /// The store itself, for the integration tests' fixtures: they build
     /// library state with plain SQL rather than driving a scan. Not part of
     /// the contract and not exported to any shell.
@@ -783,6 +791,12 @@ impl Core {
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
             Call::ActOnSeries { series, action } => self.act_on_series(series, action),
             Call::ParseSchedule { text } => Ok(crate::library::schedule::parse_call(&text)),
+            Call::ScheduleAgent => Ok(Reply::Agent {
+                name: crate::agent::available(),
+            }),
+            Call::AskScheduleAgent { series } => Ok(Reply::Started {
+                job: crate::agent::start(self, series)?,
+            }),
             Call::SetScheduleNotes {
                 series,
                 season,
@@ -1015,8 +1029,10 @@ impl Core {
                 let now = time::now();
                 let stats = self.store.read(|c| {
                     let snap = crate::library::snapshot::Snapshot::load(c, &images_dir, now, None)?;
+                    let log = crate::stats::finishes(c)?;
                     Ok(crate::stats::compute(
                         &snap,
+                        &log,
                         year,
                         i64::from(utc_offset),
                         &month_starts,

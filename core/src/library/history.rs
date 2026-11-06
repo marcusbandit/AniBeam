@@ -9,7 +9,8 @@
 //!
 //! Two keys that land on one merge (#468): `SP01.mkv` and `SP01v2.mkv` read as
 //! one extra now, so each file's history becomes the one key's, once. The
-//! newest watched date and the furthest resume point win.
+//! newest watched date and the furthest resume point win, and the watch log
+//! keeps the finishes of both.
 
 use std::collections::HashSet;
 
@@ -27,6 +28,48 @@ pub(crate) struct Move {
 /// The tables keyed by series and episode key. `views` keys by series alone
 /// and is moved on its own.
 const KEYED: [&str; 3] = ["completed", "resume_points", "skip_windows"];
+
+/// The tables whose rows under a key just move, with nothing to merge: the
+/// view, and the watch log, where two finishes are two rows wherever they land.
+const LOOSE: [&str; 2] = ["views", "watch_log"];
+
+/// Where a finish in the watch log came from (#593). The migration that made
+/// the log writes a fourth, `copied`, for the history from before it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum How {
+    /// The player reached the end of the episode here.
+    Played,
+    /// Progress set by hand. Stats leaves it out.
+    Marked,
+    /// An export file's completion.
+    Imported,
+}
+
+impl How {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            How::Played => "played",
+            How::Marked => "marked",
+            How::Imported => "imported",
+        }
+    }
+}
+
+/// Appends one finish of an episode to the watch log. `completed` keeps the
+/// latest finish on its own; the log keeps every one.
+pub(crate) fn log_finish(
+    conn: &rusqlite::Connection,
+    series: u64,
+    key: &str,
+    at: i64,
+    how: How,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "INSERT INTO watch_log (series_id, episode_key, at, how) VALUES (?1, ?2, ?3, ?4)",
+        params![series as i64, key, at, how.as_str()],
+    )?;
+    Ok(())
+}
 
 /// Moves each file's history from its old key to its new one, once every row
 /// of the series carries its new key. Two steps, through keys no file can
@@ -68,10 +111,14 @@ pub(crate) fn follow(tx: &Transaction, series: u64, moves: &[Move]) -> Result<()
                 params![series as i64, m.from, parked(i)],
             )?;
         }
-        tx.execute(
-            "UPDATE views SET episode_key = ?3 WHERE series_id = ?1 AND episode_key = ?2",
-            params![series as i64, m.from, parked(i)],
-        )?;
+        for table in LOOSE {
+            tx.execute(
+                &format!(
+                    "UPDATE {table} SET episode_key = ?3 WHERE series_id = ?1 AND episode_key = ?2"
+                ),
+                params![series as i64, m.from, parked(i)],
+            )?;
+        }
     }
     for (i, m) in moves.iter().enumerate() {
         let (series, parked, to) = (series as i64, parked(i), m.to.as_str());
@@ -102,10 +149,14 @@ pub(crate) fn follow(tx: &Transaction, series: u64, moves: &[Move]) -> Result<()
                 params![series, parked],
             )?;
         }
-        tx.execute(
-            "UPDATE views SET episode_key = ?3 WHERE series_id = ?1 AND episode_key = ?2",
-            params![series, parked, to],
-        )?;
+        for table in LOOSE {
+            tx.execute(
+                &format!(
+                    "UPDATE {table} SET episode_key = ?3 WHERE series_id = ?1 AND episode_key = ?2"
+                ),
+                params![series, parked, to],
+            )?;
+        }
     }
     Ok(())
 }
@@ -242,6 +293,44 @@ mod tests {
             })
             .unwrap();
         assert_eq!((view.as_str(), resume.as_str()), ("1", "1"));
+    }
+
+    /// The watch log keeps every finish, so each file's finishes move with
+    /// it, and two keys that merge keep the finishes of both.
+    #[test]
+    fn the_watch_log_follows_its_file_and_keeps_every_finish() {
+        let (_dir, store, ids) = setup(&["1", "2", "SP01.mkv"], &[]);
+        store
+            .tx(|tx| {
+                tx.execute_batch(
+                    "INSERT INTO watch_log (series_id, episode_key, at, how) VALUES
+                       (1, '1', 1, 'played'), (1, '1', 2, 'played'), (1, '2', 3, 'played'),
+                       (1, 'SP01.mkv', 4, 'played'), (1, 'SP01v2.mkv', 5, 'played');",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        // 1 and 2 read as 2 and 3; SP01.mkv lands on SP01v2.mkv's history.
+        set_keys(&store, &ids, &["2", "3", "SP01v2.mkv"]);
+        let m = moves(&ids, &["1", "2", "SP01.mkv"], &["2", "3", "SP01v2.mkv"]);
+        store.tx(move |tx| follow(tx, 1, &m)).unwrap();
+        let log: Vec<(String, i64)> = store
+            .read(|c| {
+                let mut stmt = c.prepare("SELECT episode_key, at FROM watch_log ORDER BY at")?;
+                let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+                Ok(rows.collect::<Result<Vec<_>, _>>()?)
+            })
+            .unwrap();
+        assert_eq!(
+            log,
+            vec![
+                ("2".into(), 1),
+                ("2".into(), 2),
+                ("3".into(), 3),
+                ("SP01v2.mkv".into(), 4),
+                ("SP01v2.mkv".into(), 5),
+            ]
+        );
     }
 
     #[test]

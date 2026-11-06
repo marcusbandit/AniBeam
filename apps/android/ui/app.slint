@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { AiringMenu, AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
+import { AiringMenu, AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, EpisodeVersionLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
 import { Button, NavItem, Pane } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
@@ -14,16 +14,49 @@ import { NotesPage } from "notes.slint";
 import { CalendarPage } from "calendar.slint";
 import { AiringSheet } from "airing.slint";
 import { Area, Fold } from "fold.slint";
+import { NotifyQuestion } from "notify.slint";
+import { Sheet } from "sheet.slint";
 
-export { AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
+export { AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
-component MobileDataQuestion inherits Rectangle {
+component MobileDataQuestion inherits Sheet {
+    dismissed => { Ask.mobile = false; }
+    Text {
+        text: "Download over mobile data?";
+        color: Theme.text;
+        font-size: Theme.section;
+        font-family: Theme.display-face;
+        wrap: word-wrap;
+    }
+    Text {
+        text: "One episode is often 1 to 2 GB. On a capped plan that can use up a month of data in an evening.";
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+    Rectangle { height: Theme.unit; }
+    Button {
+        text: "Keep Wi-Fi only";
+        primary: true;
+        clicked => { Ask.mobile = false; }
+    }
+    Button {
+        text: "Use mobile data too";
+        clicked => {
+            Ask.mobile = false;
+            AppData.set-wifi-only(false);
+        }
+    }
+}
+
+// An episode kept in more than one release: which one plays, each named by its release.
+component VersionsMenu inherits Rectangle {
     in property <length> inset-bottom;
     background: #000000b0;
-    TouchArea { clicked => { Ask.mobile = false; } }
-    sheet := Rectangle {
+    TouchArea { clicked => { Ask.versions-open = false; } }
+    Rectangle {
         x: Fold.sheet-x + Theme.grout;
         width: Fold.sheet-width - 2 * Theme.grout;
         y: parent.height - self.height - root.inset-bottom - Theme.grout;
@@ -38,30 +71,44 @@ component MobileDataQuestion inherits Rectangle {
             padding-top: Theme.pad + Theme.unit;
             spacing: Theme.unit * 3;
             Text {
-                text: "Download over mobile data?";
+                text: Ask.versions-title;
                 color: Theme.text;
                 font-size: Theme.section;
                 font-family: Theme.display-face;
                 wrap: word-wrap;
             }
             Text {
-                text: "One episode is often 1 to 2 GB. On a capped plan that can use up a month of data in an evening.";
+                text: "The same episode from " + Ask.versions.length + " releases. Pick the one to play.";
                 color: Theme.dim;
                 font-size: Theme.small + 1px;
                 wrap: word-wrap;
             }
             Rectangle { height: Theme.unit; }
-            Button {
-                text: "Keep Wi-Fi only";
-                primary: true;
-                clicked => { Ask.mobile = false; }
+            // Many releases scroll inside the sheet rather than push it off the screen.
+            Flickable {
+                height: Math.min(list.preferred-height, root.height * 0.5);
+                content-height: list.preferred-height;
+                interactive: list.preferred-height > self.height;
+                list := VerticalLayout {
+                    spacing: Theme.unit * 3;
+                    // The release the row plays now is the primary one.
+                    for v in Ask.versions: Button {
+                        text: v.file == Ask.versions-current ? v.label + ", plays now" : v.label;
+                        primary: v.file == Ask.versions-current;
+                        clicked => {
+                            Ask.versions-open = false;
+                            if (Ask.versions-remote) {
+                                AppData.play-remote(v.file);
+                            } else {
+                                AppData.play(v.file);
+                            }
+                        }
+                    }
+                }
             }
             Button {
-                text: "Use mobile data too";
-                clicked => {
-                    Ask.mobile = false;
-                    AppData.set-wifi-only(false);
-                }
+                text: "Cancel";
+                clicked => { Ask.versions-open = false; }
             }
         }
     }
@@ -274,8 +321,16 @@ export component AppWindow inherits Window {
                 Ask.mobile = false;
                 return accept;
             }
+            if (AppData.notify-ask) {
+                AppData.notify-ask = false;
+                return accept;
+            }
             if (Ask.menu-id >= 0) {
                 Ask.menu-id = -1;
+                return accept;
+            }
+            if (Ask.versions-open) {
+                Ask.versions-open = false;
                 return accept;
             }
             if (AppData.airing-menu.show) {
@@ -422,7 +477,15 @@ export component AppWindow inherits Window {
             inset-bottom: root.inset-bottom;
         }
 
+        if AppData.notify-ask: NotifyQuestion {
+            inset-bottom: root.inset-bottom;
+        }
+
         if Ask.menu-id >= 0: ShowMenu {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if Ask.versions-open: VersionsMenu {
             inset-bottom: root.inset-bottom;
         }
 

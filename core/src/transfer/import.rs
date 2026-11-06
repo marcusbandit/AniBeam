@@ -708,6 +708,12 @@ pub(crate) async fn merge_history(
                      ON CONFLICT(series_id, episode_key) DO UPDATE SET at = excluded.at WHERE excluded.at > completed.at",
                     params![row.id as i64, key, at],
                 )? as u64;
+                // The finish goes in the watch log once, however often the file comes in.
+                tx.execute(
+                    "INSERT INTO watch_log (series_id, episode_key, at, how) SELECT ?1, ?2, ?3, ?4
+                     WHERE NOT EXISTS (SELECT 1 FROM watch_log WHERE series_id = ?1 AND episode_key = ?2 AND at = ?3)",
+                    params![row.id as i64, key, at, crate::library::history::How::Imported.as_str()],
+                )?;
             }
             let mut resume = 0u64;
             for entry in &history.resume_points {

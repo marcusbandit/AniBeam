@@ -6,7 +6,10 @@
 //             the crease falls in the gutter between them and nothing lies on it.
 //
 // Stood up like a laptop, with the crease across the screen, the pages keep the open layout
-// and only the player splits: the picture above the crease, the controls below it.
+// and only the player splits: the picture above the crease, the controls below it. A
+// clamshell (a flip phone) is that way up at rotation 0, so the crease's place and direction
+// come from the phone's own report where it gives one, and are only guessed as a book
+// fold's, down the middle and turning with the display, where it does not.
 //
 // A change of posture moves the panes and the rail to their new places over `settle` rather
 // than jumping. Rust sets the hinge from the sensor; the window sets its size and insets.
@@ -24,8 +27,17 @@ export struct Area {
 export global Fold {
     // The hinge in degrees, 180 flat. A phone with no hinge stays at 180.
     in property <float> hinge: 180;
-    // The display is turned a quarter, so the crease runs from left to right.
+    // The crease runs from left to right: a clamshell's upright, a book fold's turned.
     in property <bool> crease-across;
+    // The phone reported where its crease is (Android's FoldingFeature). Otherwise the
+    // layout takes it for a book fold's, down the middle of the window.
+    in property <bool> crease-known;
+    // The phone reports itself half open, for one with no hinge sensor to read.
+    in property <bool> crease-half;
+    // Where the reported crease starts and ends across the axis it crosses, in window
+    // coordinates: its top and bottom when it runs across, its left and right otherwise.
+    in property <length> crease-start;
+    in property <length> crease-end;
 
     in-out property <length> width;
     in-out property <length> height;
@@ -40,10 +52,11 @@ export global Fold {
     // under 600 across its short side whichever way it is turned; the inner one is not.
     // Opened a little while the outer screen is still the one lit, the hinge bends but no
     // crease runs through the picture, so nothing splits.
-    out property <bool> creased: Math.min(self.width, self.height) >= 600px;
+    // A clamshell's inner screen is a phone's width, so a reported crease counts on its own.
+    out property <bool> creased: self.crease-known || Math.min(self.width, self.height) >= 600px;
     // Under 30 degrees the phone is shut and shows its outer screen, which turned on its side
     // is wide too: that is a phone in landscape, not a bent inner screen.
-    property <bool> bent: self.creased && self.hinge < 170 && self.hinge > 30;
+    property <bool> bent: self.creased && ((self.hinge < 170 && self.hinge > 30) || self.crease-half);
     out property <bool> half: self.bent && !self.crease-across;
     // Stood up like a laptop, for the player.
     out property <bool> stood: self.bent && self.crease-across;
@@ -71,18 +84,22 @@ export global Fold {
     out property <length> body-width: self.width - self.body-x - self.inset-right;
     out property <length> body-height: self.height - self.body-y - self.inset-bottom - (self.rail ? 0 : self.bar-height);
 
-    // The crease, in body coordinates, and the ground kept clear around it.
-    out property <length> gutter: 40px;
-    out property <length> crease-x: self.width / 2 - self.body-x;
-    out property <length> crease-y: self.height / 2 - self.body-y;
+    // The crease's middle in window coordinates: where the phone says, or the window's middle.
+    out property <length> crease-mid-x: self.crease-known && !self.crease-across ? (self.crease-start + self.crease-end) / 2 : self.width / 2;
+    out property <length> crease-mid-y: self.crease-known && self.crease-across ? (self.crease-start + self.crease-end) / 2 : self.height / 2;
+    // The crease, in body coordinates, and the ground kept clear around it, wider for a
+    // hinge with a gap of its own.
+    out property <length> gutter: Math.max(40px, self.crease-end - self.crease-start + 16px);
+    out property <length> crease-x: self.crease-mid-x - self.body-x;
+    out property <length> crease-y: self.crease-mid-y - self.body-y;
 
     // A sheet or a question, in window coordinates: the whole width folded, the right page
     // as a book, and a column in the middle otherwise.
     out property <length> sheet-x: self.posture == 0 ? self.inset-left
-        : self.posture == 2 ? self.width / 2 + self.gutter / 2
+        : self.posture == 2 ? self.crease-mid-x + self.gutter / 2
         : (self.width - self.sheet-width) / 2;
     out property <length> sheet-width: self.posture == 0 ? self.width - self.inset-left - self.inset-right
-        : self.posture == 2 ? self.width / 2 - self.gutter / 2 - self.inset-right
+        : self.posture == 2 ? self.width - self.crease-mid-x - self.gutter / 2 - self.inset-right
         : Math.min(560px, self.width - self.inset-left - self.inset-right);
 
     // The pane that picks and the pane that shows. `share` is the picking pane's part of an

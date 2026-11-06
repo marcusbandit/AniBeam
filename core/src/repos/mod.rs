@@ -917,6 +917,7 @@ fn custom_definition(
         filter: None,
         min_core: None,
         json: None,
+        trusted_groups: Vec::new(),
     };
     index::check_custom(&def).map_err(|e| CoreError::invalid("endpoint", e))?;
     Ok((def, lifted))
@@ -1345,6 +1346,8 @@ pub struct Runnable {
     /// The address with every field but the secrets filled in: `{query}` and each secret's
     /// placeholder stay.
     pub template: String,
+    /// The release groups its definition trusts (`Definition::trusted_groups`).
+    pub trusted_groups: Vec<String>,
 }
 
 pub struct Secret {
@@ -1649,6 +1652,7 @@ fn installed_runnable(core: &Core, with_off: bool) -> Vec<Runnable> {
             per_minute: row.def.rate.map(|r| r.per_minute),
             secrets: kept,
             template,
+            trusted_groups: row.def.trusted_groups.clone(),
         });
     }
     out
@@ -1662,6 +1666,7 @@ fn rate_gap(per_minute: u32) -> Duration {
 /// Wraps the core's client so every host waits the floor between requests, and a host with a
 /// slower rate from its definition waits that.
 pub fn paced_http(core: &Core, runnable: &[Runnable]) -> Arc<dyn crate::net::Http> {
+    set_fronts(core);
     let gaps = runnable
         .iter()
         .filter_map(|r| r.per_minute.map(|n| (r.host.clone(), rate_gap(n))))
@@ -1669,11 +1674,29 @@ pub fn paced_http(core: &Core, runnable: &[Runnable]) -> Arc<dyn crate::net::Htt
     Arc::new(Paced::new(core.http.clone(), gaps))
 }
 
+/// Hands the client the hosts the installed definitions front, switched off or not, since
+/// the front is the site's: each host's requests then carry its front's name (`net::front`).
+/// Read again before every endpoint fetch, so a definition installed, updated or removed
+/// changes what is fronted from the next request on.
+fn set_fronts(core: &Core) {
+    // A store that cannot be read keeps the table it had, rather than unfronting every host.
+    let Ok(rows) = core.store.read(read_installed) else {
+        return;
+    };
+    let fronts = rows
+        .into_iter()
+        .filter_map(|r| Some((r.def.host(), r.def.front.clone()?.to_ascii_lowercase())))
+        .filter(|(host, _)| !host.is_empty() && !host.contains('{'))
+        .collect();
+    core.http.set_fronts(fronts);
+}
+
 /// The core's client for an endpoint fetch outside the search (a feed read again after
 /// anirss's search, a subscription's feed, a `.torrent`): paced like the search, to every
 /// installed definition's rate, switched off or not, since the rate is the site's. Reads no
 /// credentials.
 pub fn endpoint_http(core: &Core) -> Paced {
+    set_fronts(core);
     let secrets = core.secrets();
     let gaps = core
         .store
@@ -1838,6 +1861,100 @@ mod tests {
             "{note}"
         );
         assert!(!note.contains("or later"), "{note}");
+    }
+
+    /// Installs `def` as a repo's endpoint would be, straight into the store.
+    fn install_raw(core: &Core, def: serde_json::Value, enabled: bool) {
+        let id = def["id"].as_str().unwrap().to_string();
+        let json = def.to_string();
+        core.store
+            .write(move |conn| {
+                conn.execute(
+                    "INSERT INTO installed_endpoints (install_id, repo_url, endpoint_id, version, definition, enabled, position)
+                     VALUES (?1, 'https://repo.example/index.json', ?1, 1, ?2, ?3,
+                             (SELECT COALESCE(MAX(position), 0) + 1 FROM installed_endpoints))",
+                    params![id, json, enabled],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    fn fake_core(dir: &std::path::Path) -> (Arc<Core>, Arc<FakeHttp>) {
+        let paths = CorePaths::under(dir);
+        let http = FakeHttp::new();
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            http.clone(),
+            Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        (core, http)
+    }
+
+    #[test]
+    fn a_host_is_fronted_only_as_its_definition_says() {
+        let dir = tempfile::tempdir().unwrap();
+        let (core, http) = fake_core(dir.path());
+        install_raw(
+            &core,
+            serde_json::json!({"id": "tracker", "name": "Tracker", "version": 1,
+                "kind": "rss", "url": "https://tracker.example/?q={query}",
+                "front": "edge.example"}),
+            // Switched off, the front is still the site's.
+            false,
+        );
+        install_raw(
+            &core,
+            serde_json::json!({"id": "feed", "name": "Feed", "version": 1,
+                "kind": "rss", "url": "https://feed.example/?q={query}"}),
+            true,
+        );
+        let _ = endpoint_http(&core);
+        assert_eq!(
+            http.fronts(),
+            [("tracker.example".to_string(), "edge.example".to_string())]
+        );
+        // The search's client reads them again too, so a removed definition's front goes.
+        core.store
+            .write(|c| {
+                c.execute(
+                    "DELETE FROM installed_endpoints WHERE endpoint_id = 'tracker'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let _ = paced_http(&core, &runnable(&core));
+        assert!(http.fronts().is_empty());
+    }
+
+    #[test]
+    fn best_fit_trusts_the_groups_the_enabled_definitions_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let (core, _) = fake_core(dir.path());
+        let def = |id: &str, groups: &[&str]| {
+            serde_json::json!({"id": id, "name": id, "version": 1, "kind": "rss",
+                "url": format!("https://{id}.example/?q={{query}}"), "trusted_groups": groups})
+        };
+        install_raw(&core, def("one", &["GroupA", "GroupB"]), true);
+        install_raw(&core, def("two", &["groupb", "GroupC"]), true);
+        install_raw(&core, def("off", &["GroupD"]), false);
+        let native = crate::releases::native::Native::for_core(&core, Vec::new(), None);
+        assert_eq!(
+            native.bestfit.preferred_groups,
+            ["GroupA", "GroupB", "GroupC"],
+            "in order, each once, and none from a switched off endpoint"
+        );
+        // With none installed, the core trusts no group of its own.
+        let empty = tempfile::tempdir().unwrap();
+        let (bare, _) = fake_core(empty.path());
+        assert!(
+            crate::releases::native::Native::for_core(&bare, Vec::new(), None)
+                .bestfit
+                .preferred_groups
+                .is_empty()
+        );
     }
 
     fn custom(core: &Core, name: &str, url: &str) {
@@ -2390,6 +2507,7 @@ mod tests {
             filter: None,
             min_core: None,
             json: None,
+            trusted_groups: Vec::new(),
         };
         let shape = |def: &Definition| {
             let e = endpoint_for(def, &def.url);

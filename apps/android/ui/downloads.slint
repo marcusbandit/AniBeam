@@ -7,6 +7,7 @@ import { Theme } from "theme.slint";
 import { AppData, DownloadRow, Nav } from "data.slint";
 import { FindData, Lenses, ReleaseList, ShowView, Suggestions } from "find.slint";
 import { Settings } from "more.slint";
+import { NotifyPointer } from "notify.slint";
 import { Button, CardStack, Chip, ClampedText, Cubes, Figure, IconButton, PageTitle, Poster, ProgressLine, SearchField, SectionHead } from "widgets.slint";
 import { Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
@@ -305,6 +306,7 @@ component Queue inherits VerticalLayout {
             title: "Downloading";
             note: AppData.downloads-note != "" ? AppData.downloads-note : AppData.downloading-count == 1 ? "1 episode" : AppData.downloading-count + " downloads";
         }
+        if AppData.notify != 0: NotifyPointer { }
         Rectangle { height: Theme.unit * 3; }
         for row in AppData.downloads: VerticalLayout {
             padding-bottom: row.done ? 0 : Theme.unit * 2.5;

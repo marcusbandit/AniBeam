@@ -43,6 +43,11 @@
 //! desktop's own export format, without sources, accounts, fixes or
 //! preferences), for another AniBeam computer to merge with its own.
 //!
+//! A host that lists [`FEATURE_PROOF`] says its key in [`Hello::key`], and a
+//! client may sign each request with its own key ([`proof`], with the `proof`
+//! feature): a request whose proof does not check out is refused, and one from
+//! a key the host paired with is known to be that device.
+//!
 //! Times are Unix seconds. Every optional field may be absent or `null`, and a
 //! client must ignore fields it does not know: [`API_VERSION`] only moves for a
 //! change an old client would misread.
@@ -51,6 +56,9 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped only for a change an older client would misread.
 pub const API_VERSION: u32 = 1;
+
+#[cfg(feature = "proof")]
+pub mod proof;
 /// The port a host listens on unless told otherwise.
 pub const DEFAULT_PORT: u16 = 8790;
 /// `GET`: [`Hello`].
@@ -69,6 +77,10 @@ pub const CALL: &str = "/api/v1/call";
 pub const FEATURE_STREAM: &str = "stream";
 /// In [`Hello::features`] when the host can also convert ([`hls_path`]).
 pub const FEATURE_CONVERT: &str = "convert";
+/// In [`Hello::features`] when the host reads request proofs in the scheme
+/// [`Hello::key`] is for. The scheme's version is the first word of each
+/// proof, so a newer one adds a new feature beside this.
+pub const FEATURE_PROOF: &str = "proof-v1";
 /// `GET`: [`Peers`], with [`FEATURE_PEERS`].
 pub const PEERS: &str = "/api/v1/peers";
 /// In [`Hello::features`] when the host answers [`PEERS`].
@@ -164,6 +176,11 @@ pub struct Hello {
     /// [`FEATURE_CONVERT`]. Empty from a host older than streaming.
     #[serde(default)]
     pub features: Vec<String>,
+    /// The host's public key, in hex, with [`FEATURE_PROOF`]: what a client
+    /// signs its requests to, and the key it pairs with. Absent from an older
+    /// host.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub key: String,
     /// Set when the person switched streaming off on the host: it leaves
     /// [`FEATURE_STREAM`] and [`FEATURE_CONVERT`] out and refuses the file
     /// routes, while the snapshot and posters still answer. Absent from a
@@ -374,6 +391,22 @@ pub struct Episode {
     pub watched: bool,
     #[serde(default)]
     pub aired_at: Option<i64>,
+    /// Every file of this episode when the host has it more than once, two
+    /// releases of it, each named by its release; empty when there is one.
+    /// Each copy of the episode carries the same list. Absent from a host
+    /// older than versions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<EpisodeVersion>,
+}
+
+/// One file of an episode the host has more than once.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct EpisodeVersion {
+    /// The host's id for the file, as [`Episode::file`].
+    pub file: u64,
+    /// The release, `group, 1080p WEB-DL H264`, or the file name where two
+    /// would otherwise read alike.
+    pub label: String,
 }
 
 /// One anirss subscription: a feed qBittorrent downloads from by itself.
@@ -458,6 +491,30 @@ mod tests {
         assert_eq!(snapshot.series[0].kind, Kind::Movie);
         assert!(snapshot.torrents.is_none());
         assert!(snapshot.subscriptions.is_empty());
+    }
+
+    #[test]
+    fn an_episode_without_versions_says_nothing_of_them() {
+        let one: Episode =
+            serde_json::from_str(r#"{"key": "7", "number": 7, "code": "E07", "watched": false}"#)
+                .unwrap();
+        assert!(one.versions.is_empty());
+        assert!(!serde_json::to_string(&one).unwrap().contains("versions"));
+        let two = Episode {
+            versions: vec![
+                EpisodeVersion {
+                    file: 4,
+                    label: "Group A, 1080p".into(),
+                },
+                EpisodeVersion {
+                    file: 9,
+                    label: "Group B, 720p".into(),
+                },
+            ],
+            ..one
+        };
+        let back: Episode = serde_json::from_str(&serde_json::to_string(&two).unwrap()).unwrap();
+        assert_eq!(back.versions, two.versions);
     }
 
     #[test]

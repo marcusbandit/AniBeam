@@ -15,6 +15,7 @@ pub mod addr;
 pub mod build;
 pub mod convert;
 pub mod history;
+pub mod keys;
 pub mod peers;
 pub mod server;
 pub mod stream;
@@ -83,6 +84,8 @@ pub struct Host {
     fixed_status: Mutex<Option<Vec<u8>>>,
     /// When each other computer's history was last pulled, by its base URL.
     pub(crate) pulled: Mutex<std::collections::HashMap<String, Instant>>,
+    /// This machine's key and the keys it is paired with (#555).
+    pub keys: keys::Keys,
 }
 
 struct Run {
@@ -140,6 +143,7 @@ impl Host {
             reading: Mutex::new(()),
             fixed_status: Mutex::new(None),
             pulled: Mutex::new(std::collections::HashMap::new()),
+            keys: keys::Keys::new(),
         }
     }
 
@@ -300,6 +304,7 @@ impl Host {
 /// Reads the preference and starts or stops the host to match. Called when
 /// the core starts, and when a shell holds the host or lets it go.
 pub fn sync(core: &Core) {
+    keys::load(core);
     let on = match core.store.read(prefs::load_preferences) {
         Ok(p) => {
             core.host.set_streaming(p.stream_over_tailscale);

@@ -1,12 +1,13 @@
 //! Domain fronting for a host some networks block by name. The name a phone asks for travels
 //! in the clear at the start of every HTTPS connection (SNI), and a filter that reads it can
-//! drop the connection while the address and DNS stay fine. nyaa.si sits behind DDoS-Guard,
-//! whose edge answers for every site it carries: the connection goes to nyaa's own address
-//! under DDoS-Guard's name, the certificate checked is DDoS-Guard's, and the site asked for
-//! travels inside the encrypted request, in its Host header.
+//! drop the connection while the address and DNS stay fine. A site behind a CDN whose edge
+//! answers for every site it carries can be reached under the CDN's name: the connection goes
+//! to the site's own address under the front's name, the certificate checked is the front's,
+//! and the site asked for travels inside the encrypted request, in its Host header. Which
+//! host has which front is the endpoint definition's `front`; the core knows none itself.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
@@ -14,25 +15,50 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use super::doh::Doh;
 use crate::contract::CoreError;
 
-/// Host to the name its connections carry instead.
-const FRONTS: [(&str, &str); 1] = [("nyaa.si", "ddos-guard.net")];
+/// Each fronted host and the name its connections carry instead, as the installed
+/// definitions say. Shared by the client that decides what is fronted and the resolver that
+/// looks a front's name up as its host.
+#[derive(Clone, Default)]
+pub struct Fronts(Arc<RwLock<Vec<(String, String)>>>);
+
+impl Fronts {
+    pub fn set(&self, table: Vec<(String, String)>) {
+        *self.0.write().unwrap_or_else(|e| e.into_inner()) = table;
+    }
+
+    pub fn fronted(&self, url: &str) -> Option<(String, String)> {
+        fronted(url, &self.0.read().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    /// The host a front's name stands for: the first that names it. Every host behind one
+    /// front answers on the same edge, so any of them leads there.
+    fn host_of(&self, front: &str) -> Option<String> {
+        self.0
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find(|(_, f)| f.eq_ignore_ascii_case(front))
+            .map(|(h, _)| h.clone())
+    }
+}
 
 /// The URL to ask, with the front's name for the host, and the real host for the Host
-/// header; None for a host that is not fronted.
-pub fn fronted(url: &str) -> Option<(String, String)> {
+/// header; None for a host `table` does not front. Only an endpoint's request is asked
+/// (`Http::send_endpoint`), never one the core makes for itself.
+pub fn fronted(url: &str, table: &[(String, String)]) -> Option<(String, String)> {
     let (scheme, rest) = url.split_once("://")?;
     if scheme != "https" {
         return None;
     }
     let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let host = &rest[..end];
-    let (_, front) = FRONTS.iter().find(|(h, _)| *h == host)?;
+    let (_, front) = table.iter().find(|(h, _)| h.eq_ignore_ascii_case(host))?;
     Some((format!("https://{front}{}", &rest[end..]), host.to_string()))
 }
 
-/// The gap between the end of one fronted request and the start of the next. DDoS-Guard, in
-/// front of nyaa, quietly stops answering an address that asks for dozens of pages within
-/// seconds, which a new subscription or a batch pick on a long show used to do (#135).
+/// The gap between the end of one fronted request and the start of the next. A front's edge
+/// can quietly stop answering an address that asks for dozens of pages within seconds, which
+/// a new subscription or a batch pick on a long show used to do (#135).
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub const GAP: Duration = Duration::from_secs(1);
 /// How long a front is left alone after a request it did not answer, so an address it has
@@ -77,16 +103,14 @@ impl Gate {
 #[derive(Clone)]
 struct FrontResolve {
     doh: Doh,
+    fronts: Fronts,
 }
 
 impl Resolve for FrontResolve {
     fn resolve(&self, name: Name) -> Resolving {
         let doh = self.doh.clone();
         let asked = name.as_str().to_string();
-        let real = FRONTS
-            .iter()
-            .find(|(_, f)| *f == asked)
-            .map_or(asked.clone(), |(h, _)| h.to_string());
+        let real = self.fronts.host_of(&asked).unwrap_or(asked);
         Box::pin(async move {
             let ips = match doh.lookup(&real).await {
                 Some(ips) => ips,
@@ -107,6 +131,7 @@ impl Resolve for FrontResolve {
 /// `roots` are the phone's bundled roots; None keeps the platform's.
 pub fn client(
     doh: &Doh,
+    fronts: &Fronts,
     roots: Option<Vec<reqwest::Certificate>>,
     timeout: Duration,
 ) -> Result<reqwest::Client, CoreError> {
@@ -120,7 +145,10 @@ pub fn client(
         None => builder,
     };
     builder
-        .dns_resolver(Arc::new(FrontResolve { doh: doh.clone() }))
+        .dns_resolver(Arc::new(FrontResolve {
+            doh: doh.clone(),
+            fronts: fronts.clone(),
+        }))
         .build()
         .map_err(|e| CoreError::internal(format!("fronted client: {e}")))
 }
@@ -129,22 +157,45 @@ pub fn client(
 mod tests {
     use super::*;
 
+    fn table() -> Vec<(String, String)> {
+        vec![("tracker.example".into(), "edge.example".into())]
+    }
+
     #[test]
     fn only_a_fronted_https_host_is_rewritten() {
+        let t = table();
         assert_eq!(
-            fronted("https://nyaa.si/?page=rss&q=frieren"),
+            fronted("https://tracker.example/?page=rss&q=frieren", &t),
             Some((
-                "https://ddos-guard.net/?page=rss&q=frieren".to_string(),
-                "nyaa.si".to_string()
+                "https://edge.example/?page=rss&q=frieren".to_string(),
+                "tracker.example".to_string()
             ))
         );
         assert_eq!(
-            fronted("https://nyaa.si"),
-            Some(("https://ddos-guard.net".to_string(), "nyaa.si".to_string()))
+            fronted("https://tracker.example", &t),
+            Some((
+                "https://edge.example".to_string(),
+                "tracker.example".to_string()
+            ))
         );
-        assert_eq!(fronted("http://nyaa.si/"), None);
-        assert_eq!(fronted("https://animetosho.org/feed/json?q=x"), None);
-        assert_eq!(fronted("https://sub.nyaa.si/"), None);
+        assert_eq!(fronted("http://tracker.example/", &t), None);
+        assert_eq!(fronted("https://feed.example/json?q=x", &t), None);
+        assert_eq!(fronted("https://sub.tracker.example/", &t), None);
+    }
+
+    #[test]
+    fn nothing_is_fronted_until_a_definition_says_so() {
+        let fronts = Fronts::default();
+        assert_eq!(fronts.fronted("https://tracker.example/"), None);
+        fronts.set(table());
+        assert!(fronts.fronted("https://tracker.example/").is_some());
+        assert_eq!(
+            fronts.host_of("edge.example").as_deref(),
+            Some("tracker.example")
+        );
+        // A definition removed takes its front with it.
+        fronts.set(Vec::new());
+        assert_eq!(fronts.fronted("https://tracker.example/"), None);
     }
 
     #[test]
@@ -184,17 +235,5 @@ mod tests {
         assert_eq!(g.admit(now + QUIET), Ok(Duration::ZERO));
         g.finished(now + QUIET, true);
         assert_eq!(g.admit(now + QUIET + GAP), Ok(Duration::ZERO));
-    }
-
-    /// Fetches nyaa's feed through the front, from wherever the test runs.
-    #[tokio::test]
-    #[ignore = "reaches the network"]
-    async fn nyaa_answers_through_its_front() {
-        let doh = Doh::new(reqwest::Client::new());
-        let c = client(&doh, None, Duration::from_secs(20)).unwrap();
-        let (url, host) = fronted("https://nyaa.si/?page=rss&q=frieren").unwrap();
-        let r = c.get(url).header("Host", host).send().await.unwrap();
-        assert_eq!(r.status().as_u16(), 200);
-        assert!(r.text().await.unwrap().contains("<rss"));
     }
 }
