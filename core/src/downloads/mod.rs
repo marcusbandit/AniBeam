@@ -33,6 +33,7 @@ pub mod rewire;
 pub mod rolling;
 pub mod settings;
 pub mod trash;
+pub mod watch;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -2259,6 +2260,8 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
         match outcome {
             Ok((backend, mut rules)) => {
                 link_rules(&owner, &mut rules);
+                // What is followed, for the episode watch (#215)
+                watch::remember(&owner, &rules);
                 follow_rules(&owner, &mut rules);
                 owner.bus.debug(
                     Stage::Downloads,
