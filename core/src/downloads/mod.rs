@@ -34,6 +34,7 @@ pub mod rewire;
 pub mod rolling;
 pub mod settings;
 pub mod trash;
+pub mod watch;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -2271,7 +2272,11 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
         };
         match outcome {
             Ok((backend, mut rules)) => {
-                link_rules(&owner, &mut rules);
+                // What is followed, for the episode watch (#215); a link that
+                // failed says nothing about what is followed, so it is kept
+                if link_rules(&owner, &mut rules) {
+                    watch::remember(&owner, &rules).await;
+                }
                 follow_rules(&owner, &mut rules);
                 owner.bus.debug(
                     Stage::Downloads,
@@ -3016,8 +3021,8 @@ pub fn read_rule(core: &Core, name: String) -> Result<Reply, CoreError> {
 }
 
 /// Fills each rule's `show` from the library. A library that cannot be
-/// read leaves them empty: the rules still stand on their own.
-fn link_rules(core: &Core, rules: &mut [SubscriptionRule]) {
+/// read leaves them empty: the rules still stand on their own. False then.
+fn link_rules(core: &Core, rules: &mut [SubscriptionRule]) -> bool {
     let images = core.paths.images_dir();
     let linked = core.store.read(|c| {
         let linker = link::Linker::load(c)?;
@@ -3031,8 +3036,12 @@ fn link_rules(core: &Core, rules: &mut [SubscriptionRule]) {
             for (rule, id) in rules.iter_mut().zip(ids) {
                 rule.show = id.and_then(|id| shows.get(&id).cloned());
             }
+            true
         }
-        Err(e) => tracing::warn!("subscriptions not linked to the library: {e}"),
+        Err(e) => {
+            tracing::warn!("subscriptions not linked to the library: {e}");
+            false
+        }
     }
 }
 
