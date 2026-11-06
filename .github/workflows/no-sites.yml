@@ -1,0 +1,27 @@
+name: No sites
+
+# AniBeam ships no download sources (#277): nothing in the tree names a site, not in code,
+# tests, fixtures, copy or current docs. A site belongs in an endpoint repo the person adds.
+# Runs on every pull request, docs-only ones too, since a doc can name a site as well; it is
+# one git grep, so it costs seconds. The names and what is skipped live in the script.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: no-sites-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  grep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: .github/no-site-names.sh
