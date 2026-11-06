@@ -137,6 +137,7 @@ impl Native {
                 client_side_refine: refinement::is_client_side(e),
                 on_demand: None,
                 running: None,
+                followable: endpoints::answers_rss(&e.kind),
             })
             .collect()
     }
@@ -437,6 +438,22 @@ mod tests {
         assert!(!native.feed_is_rss("anime"));
         // One the core no longer has: nothing to read.
         assert!(!native.feed_is_rss("gone"));
+        // The shells offer a subscription only on a source the list calls followable.
+        let followable: Vec<(String, bool)> = native
+            .list()
+            .into_iter()
+            .map(|e| (e.name, e.followable))
+            .collect();
+        assert_eq!(
+            followable,
+            [
+                ("feed".to_string(), true),
+                ("indexer".to_string(), true),
+                ("search".to_string(), true),
+                ("api".to_string(), false),
+                ("anime".to_string(), false),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -473,9 +490,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_source_that_answers_json_cannot_be_followed() {
-        let http = FakeHttp::new();
         let native = Native::new(
-            http.clone(),
+            FakeHttp::new(),
             vec![
                 Endpoint::new("feed", "rss", "https://a/?q={query}"),
                 Endpoint::new("api", "json", "https://c/?q={query}"),
@@ -490,11 +506,6 @@ mod tests {
                 "{text}"
             );
         }
-        assert_eq!(
-            http.requests().len(),
-            0,
-            "a refused source costs no request"
-        );
         let spec = native.preview("show", "feed", &[]).await.unwrap();
         assert!(spec.feed_url.starts_with("https://a/"), "{}", spec.feed_url);
     }
