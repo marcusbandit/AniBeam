@@ -399,6 +399,195 @@ fn push_card(core: &Core, series: u64, line: &str) {
     }
 }
 
+/// A score or a list status for several series at once (#208).
+#[derive(Clone, Copy, Debug)]
+pub enum ManyWrite {
+    Score(Option<f64>),
+    Status(ListStatus),
+}
+
+/// Writes one score or one list status to every pick, in one job whose
+/// terminal is the only line the activity log gets. A pick the guards turn
+/// away (no match, hidden, no account behind it) is left out and counted;
+/// when every pick is turned away, the first refusal is the answer, as a
+/// single write would give it.
+pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, CoreError> {
+    let action = match write {
+        ManyWrite::Score(score) => {
+            let score = score.unwrap_or(0.0);
+            if !(0.0..=10.0).contains(&score) {
+                return Err(CoreError::invalid(
+                    "score",
+                    format!("{score} is outside 0 to 10"),
+                ));
+            }
+            Action::Score { score }
+        }
+        ManyWrite::Status(ListStatus::Repeating) => {
+            return Err(CoreError::invalid(
+                "status",
+                "a rewatch is not a status to set by hand",
+            ));
+        }
+        ManyWrite::Status(status) => Action::Status { status },
+    };
+    let mut reachable = Vec::new();
+    let mut refused = None;
+    let mut left_out = LeftOut::default();
+    for &id in series {
+        let target = core.store.read(|c| targets(c, id))?;
+        match guard(core, &target) {
+            Ok(_) => reachable.push(target),
+            Err(e) => {
+                match &e {
+                    CoreError::Refused {
+                        reason: Refusal::Hidden,
+                    } => left_out.hidden += 1,
+                    CoreError::NotConnected { .. } => left_out.not_connected += 1,
+                    _ => left_out.no_match += 1,
+                }
+                refused.get_or_insert(e);
+            }
+        }
+    }
+    if reachable.is_empty() {
+        return Err(refused.unwrap_or_else(|| CoreError::invalid("series", "nothing picked")));
+    }
+    let kind = match action {
+        Action::Score { .. } => JobKind::Score,
+        _ => JobKind::SetStatus,
+    };
+    let owner = core
+        .arc()
+        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let jobs = owner.jobs.clone();
+    Ok(jobs.start(kind, move |ctx| async move {
+        run_many(owner, ctx, reachable, action, left_out).await
+    }))
+}
+
+async fn run_many(
+    core: Arc<Core>,
+    ctx: Arc<JobCtx>,
+    targets: Vec<Targets>,
+    action: Action,
+    left_out: LeftOut,
+) -> Result<Finished, CoreError> {
+    let total = targets.len() as u64;
+    let (mut done, mut failed) = (0u64, 0u64);
+    let mut named = None;
+    let mut landed: Vec<Tracker> = Vec::new();
+    let mut reason: Option<String> = None;
+    for (i, target) in targets.iter().enumerate() {
+        ctx.checkpoint()?;
+        ctx.progress(i as u64, Some(total), &target.folder_name);
+        let outcomes = write_all(&core, &ctx, target, action, false).await?;
+        if outcomes.iter().any(|o| o.ok) {
+            done += 1;
+            named = Some(target.folder_name.clone());
+            for o in outcomes.iter().filter(|o| o.ok) {
+                if !landed.contains(&o.tracker) {
+                    landed.push(o.tracker);
+                }
+            }
+        } else {
+            failed += 1;
+            if reason.is_none() {
+                reason = outcomes.iter().find_map(|o| o.message.clone());
+            }
+        }
+        if let Some(card) = card_for(&core, target.series).await? {
+            ctx.changed(card);
+        }
+    }
+    landed.sort_by_key(|t| *t != Tracker::Anilist);
+    let sites = landed
+        .iter()
+        .map(|t| super::oauth::site_name(*t))
+        .collect::<Vec<_>>()
+        .join(" and ");
+    let who = match (done, named) {
+        (1, Some(name)) => name,
+        (n, _) => format!("{n} {}", crate::words::pick(n, "show", "shows")),
+    };
+    let mut said = Vec::new();
+    if done > 0 {
+        said.push(match action {
+            Action::Score { score } if score > 0.0 => format!("Scored {who} {score} on {sites}."),
+            Action::Score { .. } => format!("Cleared your score for {who} on {sites}."),
+            Action::Status { status } => {
+                format!("Set {who} to {} on {sites}.", status_label(status))
+            }
+            Action::Mark { .. } | Action::Progress { .. } => unreachable!("not a many-write"),
+        });
+    }
+    if failed > 0 {
+        let why = reason.map_or_else(String::new, |r| format!(": {}", r.trim_end_matches('.')));
+        said.push(if done > 0 {
+            format!("{failed} could not be updated{why}.")
+        } else {
+            format!(
+                "{failed} {} could not be updated{why}.",
+                crate::words::pick(failed, "show", "shows")
+            )
+        });
+    }
+    said.extend(left_out.lines());
+    let skipped = left_out.total();
+    Ok(Finished {
+        level: if done == 0 { Level::Warn } else { Level::Info },
+        plain: Some(said.join(" ")),
+        message: format!(
+            "{} on {} series: {done} written, {failed} failed, {skipped} left out",
+            action.verb(),
+            total + skipped
+        ),
+        body: EventBody::Notice,
+    })
+}
+
+/// The picks a many-write left out, by the guard that turned each away.
+#[derive(Clone, Copy, Debug, Default)]
+struct LeftOut {
+    no_match: u64,
+    hidden: u64,
+    not_connected: u64,
+}
+
+impl LeftOut {
+    fn total(self) -> u64 {
+        self.no_match + self.hidden + self.not_connected
+    }
+
+    /// One sentence per reason, so the line says what to do about each.
+    fn lines(self) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.no_match > 0 {
+            let n = self.no_match;
+            out.push(format!(
+                "{n} {} no tracker match.",
+                crate::words::pick(n, "show has", "shows have")
+            ));
+        }
+        if self.hidden > 0 {
+            let n = self.hidden;
+            out.push(format!(
+                "{n} {} hidden, so {} sync is off.",
+                crate::words::pick(n, "show is", "shows are"),
+                crate::words::pick(n, "its", "their")
+            ));
+        }
+        if self.not_connected > 0 {
+            let n = self.not_connected;
+            out.push(format!(
+                "{n} {} only on a tracker that is not connected.",
+                crate::words::pick(n, "show is", "shows are")
+            ));
+        }
+        out
+    }
+}
+
 /// A list status as the status pill names it.
 fn status_label(status: ListStatus) -> &'static str {
     match status {
@@ -519,6 +708,26 @@ async fn run(
     target: Targets,
     action: Action,
 ) -> Result<Finished, CoreError> {
+    let outcomes = write_all(&core, &ctx, &target, action, true).await?;
+    // The cache was patched by each write above, so the card built here
+    // already carries the new number. The runner flushes this before the
+    // terminal event.
+    if let Some(card) = card_for(&core, target.series).await? {
+        ctx.changed(card);
+    }
+    Ok(finished(&target, action, outcomes))
+}
+
+/// One series' write to every connected tracker its match carries an id
+/// for. `loud` says each tracker's failure in the plain log; a write over
+/// several series keeps them to the developer log and counts them instead.
+async fn write_all(
+    core: &Arc<Core>,
+    ctx: &Arc<JobCtx>,
+    target: &Targets,
+    action: Action,
+    loud: bool,
+) -> Result<Vec<TrackerOutcome>, CoreError> {
     let mut outcomes: Vec<TrackerOutcome> = Vec::new();
     for t in [Tracker::Anilist, Tracker::Mal] {
         ctx.checkpoint()?;
@@ -535,15 +744,9 @@ async fn run(
         if row.connected_at.is_none() {
             continue;
         }
-        outcomes.push(write_one(&core, &ctx, t, &target, media_id, row.user_id, action).await);
+        outcomes.push(write_one(core, ctx, t, target, media_id, row.user_id, action, loud).await);
     }
-    // The cache was patched by each write above, so the card built here
-    // already carries the new number. The runner flushes this before the
-    // terminal event.
-    if let Some(card) = card_for(&core, target.series).await? {
-        ctx.changed(card);
-    }
-    Ok(finished(&target, action, outcomes))
+    Ok(outcomes)
 }
 
 /// The terminal's level. A write that reached a tracker and was refused by
@@ -636,6 +839,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
 /// tracker's alone: it becomes a `ok: false` outcome with a line the user
 /// can act on and an Error line carrying the whole message, and the job
 /// carries on to the other tracker.
+#[allow(clippy::too_many_arguments)]
 async fn write_one(
     core: &Arc<Core>,
     ctx: &Arc<JobCtx>,
@@ -644,9 +848,30 @@ async fn write_one(
     media_id: u64,
     user_id: Option<u64>,
     action: Action,
+    loud: bool,
 ) -> TrackerOutcome {
     match attempt(core, ctx, t, target, media_id, user_id, action).await {
         Ok(outcome) => outcome,
+        Err(e) if !loud => {
+            ctx.emit(
+                Level::Debug,
+                format!(
+                    "{} {} failed for {}: {}",
+                    t.as_str(),
+                    action.verb(),
+                    target.folder_name,
+                    message_of(&e)
+                ),
+                EventBody::Notice,
+            );
+            TrackerOutcome {
+                tracker: t,
+                ok: false,
+                progress: None,
+                reason: None,
+                message: Some(sanitize_error(t, &e)),
+            }
+        }
         Err(e) => {
             ctx.say(
                 Level::Error,

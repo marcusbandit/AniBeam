@@ -134,6 +134,10 @@ _Avoid_: seasonal, schedule, calendar, discover
 The user saying one AniList entry should stay off Airing now. It covers that entry and nothing related to it, so the next season of the same show is a new entry and appears again. Settings, Library lists every one with a way back.
 _Avoid_: hidden, ignored, blocked, dismissed
 
+**Pick**:
+A card chosen on a page that acts on several at once: Library and Airing now. Ctrl+click, a held press or Ctrl+Space picks one; Shift picks a run of them. A bar at the foot acts on every pick in one go, and the activity log says it once.
+_Avoid_: select, selection, checked, bulk
+
 ### Look
 
 **Token**:

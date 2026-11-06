@@ -736,7 +736,7 @@ FocusScope {
                      { status: "Paused", text: "On hold", icon: "pause" },
                      { status: "Dropped", text: "Dropped", icon: "ban" }]
         return lists.map(function(l) {
-            return { text: l.text, icon: l.icon, enabled: l.status !== current,
+            return { text: l.text, icon: l.icon, status: l.status, enabled: l.status !== current,
                      action: function() { frame.setListStatus(id, l.status, l.text) } }
         })
     }
