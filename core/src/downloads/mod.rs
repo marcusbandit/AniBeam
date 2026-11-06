@@ -676,6 +676,7 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
     // is built again from the settings now in use, and that one is read.
     if native {
         read_native_endpoints(&core).await?;
+        say_helper_sources(&core);
     }
     let anirss_failure = loop {
         if native {
@@ -852,6 +853,36 @@ pub(crate) fn repo_endpoints_changed(core: &Core) {
 /// the native engine's endpoint list, as `read_anirss` puts anirss's there (#549). Filling
 /// in each source's address reads the secret store, so it runs on a blocking thread, and
 /// only on a connect or a change to the sources, never on every status.
+/// Whether the line below has been said in this run.
+static HELPER_SOURCES_SAID: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// On AniBeam itself with no sources of its own while the search helper's
+/// own config names some (#552): someone moved off anirss by the new
+/// default is told once, in plain words, where their sources went.
+fn say_helper_sources(core: &Arc<Core>) {
+    if !core.downloads.state().endpoints.is_empty() {
+        return;
+    }
+    let Some(path) = settings::anirss_config_path() else {
+        return;
+    };
+    let n = settings::anirss_config_endpoints(&path);
+    if n == 0 || HELPER_SOURCES_SAID.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    core.bus.say(
+        Level::Warn,
+        Stage::Downloads,
+        format!(
+            "Downloads now search with AniBeam itself, which does not read the {n} {} in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.",
+            if n == 1 { "source" } else { "sources" }
+        ),
+        format!("native engine with no endpoints while anirss's config names {n}"),
+        EventBody::Notice,
+    );
+}
+
 async fn read_native_endpoints(core: &Arc<Core>) -> Result<(), CoreError> {
     let owner = core.clone();
     let endpoints = tokio::task::spawn_blocking(move || {
@@ -1165,12 +1196,6 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
         return Err(CoreError::invalid("query", "type something to search for"));
     }
     let owner = core.owner()?;
-    // The endpoint the search starts on, for the progress line: the one
-    // asked for, else the first anirss lists
-    let first = default_target(endpoint.clone(), &owner.downloads.state().endpoints);
-    let ondemand = first.as_deref().and_then(|name| {
-        settings::anirss_config_path().and_then(|p| settings::anirss_ondemand(&p, name))
-    });
     Ok(owner
         .jobs
         .clone()
@@ -1180,6 +1205,14 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                     search_native(&owner, &ctx, &query, endpoint.clone()).await?
                 }
                 DownloadsEngine::Anirss => {
+                    // The endpoint the search starts on, for the progress line: the
+                    // one asked for, else the first anirss lists
+                    let first =
+                        default_target(endpoint.clone(), &owner.downloads.state().endpoints);
+                    let ondemand = first.as_deref().and_then(|name| {
+                        settings::anirss_config_path()
+                            .and_then(|p| settings::anirss_ondemand(&p, name))
+                    });
                     let phase = Arc::new(AtomicU8::new(PHASE_CONNECTING));
                     let watch = watch_search(
                         ctx.clone(),

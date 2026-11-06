@@ -51,7 +51,13 @@ pub fn load_stored(conn: &Connection) -> Result<DownloadSettings, CoreError> {
         Ok(None) => defaults(),
         Err(e) if e.is_decode_failure() => {
             tracing::warn!("reading the downloads settings as the defaults: {e}");
-            defaults()
+            // A stored anirss outlives a blob this build cannot read: the defaults
+            // would move the person onto the native engine without a word (#552).
+            let mut d = defaults();
+            if stored_engine_value(conn) == Some(DownloadsEngine::Anirss) {
+                d.engine = DownloadsEngine::Anirss;
+            }
+            d
         }
         Err(e) => return Err(e),
     };
@@ -465,8 +471,30 @@ fn is_http(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
 
-/// Fresh settings: a sidecar off `anirss` on PATH, and qBittorrent where
-/// anirss's config says it is, else qBittorrent's own stock address.
+/// The engine the stored blob names, read on its own, so a blob the rest of
+/// which this build cannot decode still says which engine it picked.
+fn stored_engine_value(conn: &Connection) -> Option<DownloadsEngine> {
+    let blob = settings::get::<serde_json::Value>(conn, KEY).ok()??;
+    serde_json::from_value(blob.get("engine")?.clone()).ok()
+}
+
+/// How many endpoints anirss's own `config.toml` names, nought when there is
+/// no file or none it can read. AniBeam itself does not read them (#552).
+pub fn anirss_config_endpoints(path: &Path) -> usize {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return 0;
+    };
+    let Ok(doc) = toml::from_str::<toml::Table>(&text) else {
+        return 0;
+    };
+    doc.get("endpoint")
+        .and_then(|e| e.as_array())
+        .map_or(0, |a| a.len())
+}
+
+/// Fresh settings: the native engine (#552), with the search helper's own
+/// sidecar off `anirss` on PATH ready for whoever picks it, and qBittorrent
+/// where anirss's config says it is, else qBittorrent's own stock address.
 pub fn defaults() -> DownloadSettings {
     let (url, username) = anirss_config_path()
         .and_then(|p| anirss_config_qbt(&p))
@@ -599,25 +627,31 @@ mod tests {
         }
     }
 
-    /// The flip to the native engine (#552): fresh settings, and settings
-    /// stored before the choice existed, run on it; settings that name
-    /// anirss keep anirss through a read and a save.
+    /// A blob this build cannot decode still keeps a stored anirss (#552).
     #[test]
-    fn the_native_engine_is_the_default_and_a_stored_anirss_stays() {
+    fn an_unreadable_blob_keeps_its_stored_anirss() {
         let c = store();
-        assert_eq!(defaults().engine, DownloadsEngine::Native);
         let mut blob = serde_json::to_value(defaults()).unwrap();
-        blob.as_object_mut().unwrap().remove("engine");
+        blob["engine"] = serde_json::json!("Anirss");
+        blob["torrent_mode"] = serde_json::json!("Telepathic");
+        settings::set(&c, KEY, &blob).unwrap();
+        assert_eq!(load_stored(&c).unwrap().engine, DownloadsEngine::Anirss);
+        blob["engine"] = serde_json::json!("Native");
         settings::set(&c, KEY, &blob).unwrap();
         assert_eq!(load_stored(&c).unwrap().engine, DownloadsEngine::Native);
+    }
 
-        blob["engine"] = serde_json::json!("Anirss");
-        settings::set(&c, KEY, &blob).unwrap();
-        let s = load_stored(&c).unwrap();
-        assert_eq!(s.engine, DownloadsEngine::Anirss);
-        save(&c, &s).unwrap();
-        assert_eq!(stored_engine(&c), serde_json::json!("Anirss"));
-        assert_eq!(load_stored(&c).unwrap().engine, DownloadsEngine::Anirss);
+    #[test]
+    fn anirss_endpoints_are_counted_off_its_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("config.toml");
+        assert_eq!(anirss_config_endpoints(&p), 0);
+        std::fs::write(
+            &p,
+            "[[endpoint]]\nname = \"a\"\n\n[[endpoint]]\nname = \"b\"\n",
+        )
+        .unwrap();
+        assert_eq!(anirss_config_endpoints(&p), 2);
     }
 
     #[test]
