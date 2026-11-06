@@ -1,0 +1,107 @@
+[
+ {
+  "log": "the player's control bar on a narrow window: the volume track shrinks, then goes, then its readout, and the right-hand group never covers them (#492). Run on a root whose file 2 has two audio tracks and a subtitle track, so all six right-hand buttons show; any density"
+ },
+ {
+  "page": "player",
+  "props": {
+   "file": 2
+  }
+ },
+ {
+  "until": "frame.item.pageItem.loaded === true && frame.item.pageItem.audioTracks.length > 1 && frame.item.pageItem.subTracks.length > 0",
+  "timeout": 20000
+ },
+ {
+  "eval": "window.width = 1000"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "hover": [
+   500,
+   500
+  ]
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('player-volume').trackWidth",
+  "as": "full"
+ },
+ {
+  "eval": "(function() { var r = driver.item.findItem('player-volume'), d = driver.item.findItem('player-delays'); var g = r.mapToItem(null, r.width, 0).x + 2 * r.parent.spacing <= d.mapToItem(null, 0, 0).x; return r.trackShown && vars.full > 0 && g })()",
+  "expect": true
+ },
+ {
+  "eval": "window.width = 520"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "hover": [
+   260,
+   500
+  ]
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "(function() { var r = driver.item.findItem('player-volume'), d = driver.item.findItem('player-delays'); var g = r.mapToItem(null, r.width, 0).x + 2 * r.parent.spacing <= d.mapToItem(null, 0, 0).x; return r.trackShown && r.trackWidth < vars.full && g })()",
+  "expect": true
+ },
+ {
+  "shot": "player-narrow-520"
+ },
+ {
+  "eval": "window.width = 480"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "hover": [
+   240,
+   500
+  ]
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "(function() { var r = driver.item.findItem('player-volume'), d = driver.item.findItem('player-delays'); var g = r.mapToItem(null, r.width, 0).x + 2 * r.parent.spacing <= d.mapToItem(null, 0, 0).x; return !r.trackShown && g })()",
+  "expect": true
+ },
+ {
+  "shot": "player-narrow-480"
+ },
+ {
+  "eval": "window.width = 440"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "hover": [
+   220,
+   500
+  ]
+ },
+ {
+  "wait": 300
+ },
+ {
+  "log": "findItem skips hidden items, so a null is the volume row gone"
+ },
+ {
+  "eval": "(function() { var m = driver.item.findItem('player-mute'), d = driver.item.findItem('player-delays'); return driver.item.findItem('player-volume') === null && m.mapToItem(null, m.width, 0).x <= d.mapToItem(null, 0, 0).x })()",
+  "expect": true
+ },
+ {
+  "shot": "player-narrow-440"
+ }
+]
