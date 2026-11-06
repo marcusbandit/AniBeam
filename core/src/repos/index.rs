@@ -110,6 +110,10 @@ pub struct Definition {
     /// `json` only: where its replies keep each field.
     #[serde(default)]
     pub json: Option<JsonMap>,
+    /// Release groups this source's own definition trusts out of the box. Best fit prefers
+    /// the groups every enabled endpoint names, the core itself trusting none.
+    #[serde(default)]
+    pub trusted_groups: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -128,6 +132,9 @@ fn shape_kind<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error
     let kind = String::deserialize(d)?;
     Ok(crate::releases::kinds::shape_of(&kind).to_string())
 }
+
+/// How many release groups one definition may trust.
+const MAX_TRUSTED_GROUPS: usize = 32;
 
 fn yes() -> bool {
     true
@@ -528,6 +535,17 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if def.rate.is_some_and(|r| r.per_minute == 0) {
         return Err(format!("{}: a rate of zero", def.id));
     }
+    if def.trusted_groups.len() > MAX_TRUSTED_GROUPS
+        || def
+            .trusted_groups
+            .iter()
+            .any(|g| g.trim().is_empty() || g.len() > 64 || g.chars().any(char::is_control))
+    {
+        return Err(format!(
+            "{}: trusted_groups takes at most {MAX_TRUSTED_GROUPS} names, each a short line",
+            def.id
+        ));
+    }
     match (&def.json, def.kind == "json") {
         (None, true) => return Err(format!("{}: a json endpoint needs its `json` map", def.id)),
         (Some(_), false) => {
@@ -708,6 +726,24 @@ pub(crate) mod tests {
             .map(|d| d.kind)
             .collect();
         assert_eq!(again, ["filtered-rss", "json-feed"]);
+    }
+
+    #[test]
+    fn trusted_groups_are_a_short_list_of_short_names() {
+        let mut d: Definition =
+            serde_json::from_value(def("t", "rss", "https://feed.example/?q={query}")).unwrap();
+        assert!(
+            d.trusted_groups.is_empty(),
+            "none unless the definition says"
+        );
+        d.trusted_groups = vec!["GroupA".into(), "Group B".into()];
+        assert!(check(&d).is_ok());
+        for bad in [String::new(), " ".into(), "x".repeat(65), "a\nb".into()] {
+            d.trusted_groups = vec![bad.clone()];
+            assert!(check(&d).is_err(), "{bad:?}");
+        }
+        d.trusted_groups = (0..=MAX_TRUSTED_GROUPS).map(|i| format!("G{i}")).collect();
+        assert!(check(&d).is_err(), "too many");
     }
 
     #[test]

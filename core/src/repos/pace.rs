@@ -80,6 +80,10 @@ impl Http for Paced {
             self.inner.send(req).await
         })
     }
+
+    fn set_fronts(&self, fronts: Vec<(String, String)>) {
+        self.inner.set_fronts(fronts);
+    }
 }
 
 #[cfg(test)]
