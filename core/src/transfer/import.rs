@@ -726,7 +726,7 @@ impl HistorySeries {
         };
         let file = normalise(file);
         (self.kind == SeriesKind::Show && file != self.path && under(&file, &self.path))
-            .then(|| file_name(&file))
+            .then(|| classifier::key_of_file_name(&file_name(&file)))
     }
 }
 
@@ -782,7 +782,7 @@ fn resume_target(
                 .max_by_key(|r| r.path.len())?;
             Some((
                 row.id,
-                file_name(&file),
+                classifier::key_of_file_name(&file_name(&file)),
                 *position,
                 *duration,
                 format::parse_instant(at)?,

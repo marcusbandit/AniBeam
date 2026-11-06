@@ -8,6 +8,26 @@ pub enum MatchTarget {
     Tvmaze { id: u64 },
 }
 
+/// What `ActOnSeries` does to every series it names (#208).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
+pub enum SeriesAction {
+    Hide {
+        hidden: bool,
+    },
+    /// One scan over every pick's folder.
+    Rescan,
+    /// Out of ten on every connected tracker; None clears it.
+    Score {
+        score: Option<f64>,
+    },
+    ListStatus {
+        status: ListStatus,
+    },
+    /// A search for each pick with no match yet, a cleared one included;
+    /// a pick that has one is left alone.
+    FindMatch,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
 pub enum Call {
     // Library
@@ -58,6 +78,15 @@ pub enum Call {
     SetHidden {
         series: u64,
         hidden: bool,
+    },
+    /// One action over several series at once, the library's picking
+    /// (#208), with one line in the activity log however many it names.
+    /// Hide answers `Ok`; the rest `Started` with their one job. A pick a
+    /// tracker write cannot reach is left out and counted, and when none
+    /// can be reached the call is refused as a single write would be.
+    ActOnSeries {
+        series: Vec<u64>,
+        action: SeriesAction,
     },
     /// Sets how many episodes a series has, by hand (#239), or clears it with
     /// None. Nothing past it is predicted until an aired episode or a file goes
@@ -155,6 +184,13 @@ pub enum Call {
         series: u64,
         status: ListStatus,
     },
+    /// Writes the series' notes to every connected tracker, AniList's notes
+    /// and MAL's comments; blank clears them. Started with the job, which
+    /// ends in `NotesSet` (#211).
+    SetSeriesNotes {
+        series: u64,
+        notes: String,
+    },
     RefreshProgress {
         tracker: Option<Tracker>,
     },
@@ -167,6 +203,10 @@ pub enum Call {
     RefreshWatching {
         force: bool,
     },
+    /// The AniList entries on Planning (#210), off the cache the watching
+    /// refresh fills, in the watching list's shape and order. Reads only;
+    /// `RefreshWatching` brings both lists. `owned` says the library has it.
+    ListPlanning,
     // Airing now
     /// The season as last read, at once, and the id of a refresh already
     /// running. Reads only; `RefreshAiringNow` goes to AniList.
@@ -720,6 +760,9 @@ pub enum Reply {
     Watching {
         list: WatchingList,
         refreshing: Option<u64>,
+    },
+    Planning {
+        list: WatchingList,
     },
     AiringNow {
         now: AiringNow,

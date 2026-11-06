@@ -365,6 +365,10 @@ pub struct Extra {
     /// As `Episode::fixed`.
     #[serde(default)]
     pub fixed: bool,
+    /// As `Episode::versions`: every file of this extra when there is more than one,
+    /// two releases of it (`SP01` and `SP01v2`, #468); empty for a lone file.
+    #[serde(default)]
+    pub versions: Vec<EpisodeVersion>,
 }
 
 /// What a file is, as the user says it (#170): an episode with its number and
@@ -419,6 +423,10 @@ pub struct SeriesDetail {
     pub genres: Vec<String>,
     pub tags: Vec<Tag>,
     pub rewatch_count: Option<u32>,
+    /// The notes on the series' list entry, off the same tracker as the
+    /// card's status: AniList's notes, MAL's comments (#211).
+    #[serde(default)]
+    pub notes: Option<String>,
     pub site_url: Option<String>,
     pub progress: ProgressLine,
     pub next_up: Option<u64>,
@@ -555,7 +563,13 @@ pub struct TrackerOutcome {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct WatchingEntry {
     pub anilist_id: u64,
+    /// The display title, by the title-language preference.
     pub title: String,
+    /// AniList's own titles, for a hand-off that needs each one (Get
+    /// episodes searches by the latin titles, whatever the page shows).
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
     pub poster: Option<String>,
     pub progress: u32,
     pub total: Option<u32>,

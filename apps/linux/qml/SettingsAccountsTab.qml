@@ -9,7 +9,7 @@ import com.marcusrosado.AniBeam
 SettingsTab {
     id: tab
     title: "Accounts"
-    lead: "Connect a tracker and every episode you finish is marked there for you. Counts only ever go up."
+    lead: "Connect AniList or MyAnimeList and every episode you finish is marked there for you. Counts only ever go up."
     readonly property bool anilist: !!(Door.trackers.anilist && Door.trackers.anilist.connected)
     readonly property bool mal: !!(Door.trackers.mal && Door.trackers.mal.connected)
     readonly property bool tracked: anilist || mal
@@ -32,12 +32,12 @@ SettingsTab {
     Component.onDestruction: if (daysDebounce.running) tab.saveDays()
     Connections {
         target: Door
-        function onProgressRefreshed() { frame.toast("Tracker progress synced") }
+        function onProgressRefreshed() { frame.toast("Lists synced") }
     }
 
     Panel {
-        title: "Trackers"
-        helper: tab.tracked ? "" : "Without one, AniBeam still remembers what you watched on this computer. A tracker carries it to your phone and your profile."
+        title: "Your anime lists"
+        helper: tab.tracked ? "" : "Without one, AniBeam still remembers what you watched on this computer. A list on AniList or MyAnimeList carries it to your phone and your profile."
         TrackerRow { tracker: "Anilist"; account: Door.trackers.anilist || ({})
             onDisconnect: { var r = Door.disconnectTracker("Anilist"); if (r.error) frame.toast(r.error.message) } }
         TrackerRow { tracker: "Mal"; account: Door.trackers.mal || ({})
@@ -46,17 +46,17 @@ SettingsTab {
     Panel {
         visible: tab.tracked
         title: "Progress"
-        SettingRow { visible: tab.anilist && tab.mal; label: "Main tracker"; helper: "Whose progress the cards show. The other still gets every update."
+        SettingRow { visible: tab.anilist && tab.mal; label: "Main list"; helper: "The cards show progress from this one. The other still gets every update."
             Seg { options: ["AniList", "MyAnimeList"]; index: Door.trackers.main === "Mal" ? 1 : 0; onPicked: function(i) { var r = Door.setMainTracker(i === 1 ? "Mal" : "Anilist"); if (r.error) frame.toast(r.error.message) } } }
-        SettingRow { label: "Sync now"; helper: "Reads your lists from every connected tracker again. AniBeam also does this when it starts."
+        SettingRow { label: "Sync now"; helper: "Reads every connected list again. AniBeam also does this when it starts."
             Button { objectName: "settings-sync-trackers"; text: "Sync"; icon: "refresh-cw"; flat: true
-                onClicked: { var r = Door.refreshProgress(""); frame.toast(r.error ? r.error.message : "Syncing tracker progress") } } }
+                onClicked: { var r = Door.refreshProgress(""); frame.toast(r.error ? r.error.message : "Syncing your lists") } } }
     }
     Panel {
         visible: tab.tracked
         title: "On hold"
         SettingRow { label: "Move to On hold"
-            helper: "A Watching series you have not touched for a while moves to On hold on your trackers. Playing it moves it back. A show waiting for its next episode stays put."
+            helper: "A Watching series you have not touched for a while moves to On hold on your lists. Playing it moves it back. A show waiting for its next episode stays put."
             Switch { objectName: "settings-on-hold"; checked: Door.preferences.on_hold_auto !== false; onToggled: function(on) { tab.setOnHold(on) } } }
         SettingRow { visible: Door.preferences.on_hold_auto !== false; label: "After"
             line: "Days without playing an episode"
