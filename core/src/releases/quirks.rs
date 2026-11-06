@@ -84,12 +84,10 @@ impl Quirks {
         }
         // The show's feed carries the search address's parameters, a token among them, so it
         // must go to the same host.
-        let rest = feed
-            .url
-            .strip_prefix("https://")
-            .ok_or("show_feed url must be https")?;
-        let feed_host = rest.split(['/', '?', '#']).next().unwrap_or("");
-        if !feed_host.eq_ignore_ascii_case(host) {
+        if !feed.url.starts_with("https://") {
+            return Err("show_feed url must be https".into());
+        }
+        if crate::repos::index::host_of(&feed.url) != host.to_ascii_lowercase() {
             return Err("show_feed url must be on the endpoint's own host".into());
         }
         if feed.url.matches("{slug}").count() != 1 || feed.url.replace("{slug}", "").contains('{') {
@@ -202,17 +200,30 @@ pub fn matches_all(item: &Release, tokens: &[String]) -> bool {
 
 /// The show's slug in `page`, by the first of `feed`'s patterns that matches it. Only a plain
 /// slug counts: letters, digits, `.`, `_` and `-`.
+#[cfg(test)]
 pub(crate) fn show_slug(feed: &ShowFeed, page: &str) -> Option<String> {
-    feed.pages
+    slug_in(&patterns(feed), page)
+}
+
+/// A show feed's page patterns, compiled once for every result they are tried on.
+fn patterns(feed: &ShowFeed) -> Vec<Regex> {
+    feed.pages.iter().filter_map(|p| compile(p).ok()).collect()
+}
+
+/// The slug the first matching pattern finds in `page`. Only a plain slug counts: letters,
+/// digits, `.`, `_` and `-`, starting with a letter or digit, so no `..` can climb the show
+/// feed's path.
+fn slug_in(patterns: &[Regex], page: &str) -> Option<String> {
+    patterns
         .iter()
-        .filter_map(|p| compile(p).ok())
         .find_map(|re| {
             re.captures(page)?
                 .name("slug")
                 .map(|m| m.as_str().to_string())
         })
         .filter(|slug| {
-            !slug.is_empty()
+            slug.starts_with(|c: char| c.is_ascii_alphanumeric())
+                && !slug.contains("..")
                 && slug
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
@@ -244,8 +255,9 @@ where
     Fut: Future<Output = Result<Vec<Release>, CoreError>>,
 {
     let feed = ep.quirks.show_feed.as_ref()?;
+    let patterns = patterns(feed);
     for item in items {
-        let Some(slug) = show_slug(feed, &item.page) else {
+        let Some(slug) = slug_in(&patterns, &item.page) else {
             continue;
         };
         let url = per_show_feed_url(ep, feed, &slug);
@@ -332,6 +344,12 @@ mod tests {
             with(&|q| q.show_feed.as_mut().unwrap().url =
                 "http://www.keyed.example/{slug}/".into())
             .is_err()
+        );
+        // The same host with its port written out is still the endpoint's own.
+        assert!(
+            with(&|q| q.show_feed.as_mut().unwrap().url =
+                "https://www.keyed.example:443/anime-list/{slug}/feed/".into())
+            .is_ok()
         );
         assert!(
             with(&|q| q.show_feed.as_mut().unwrap().url =
@@ -454,6 +472,20 @@ mod tests {
         assert_eq!(slug("episodes", "no-number-here"), None);
         assert_eq!(slug("episodes", "02"), None);
         assert_eq!(slug("elsewhere", "show-02"), None);
+        // A broad pattern cannot hand the show feed a path that climbs out of it.
+        let broad = ShowFeed {
+            pages: vec![r"^https://www\.keyed\.example/x/(?P<slug>[^/]+)/".into()],
+            url: "https://www.keyed.example/list/{slug}/feed/".into(),
+        };
+        assert_eq!(show_slug(&broad, "https://www.keyed.example/x/../"), None);
+        assert_eq!(
+            show_slug(&broad, "https://www.keyed.example/x/.hidden/"),
+            None
+        );
+        assert_eq!(
+            show_slug(&broad, "https://www.keyed.example/x/a.b/").as_deref(),
+            Some("a.b")
+        );
     }
 
     #[test]

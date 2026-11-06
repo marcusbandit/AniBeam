@@ -1656,6 +1656,17 @@ fn installed_runnable(core: &Core, with_off: bool) -> Vec<Runnable> {
     out
 }
 
+/// Whether the installed endpoint of this name narrows a subscription in its rule, as its
+/// definition says (`Quirks::narrows_in_rule`). Reads the definitions alone, no credentials.
+pub fn installed_narrows(core: &Core, name: &str) -> bool {
+    core.store
+        .read(read_installed)
+        .unwrap_or_default()
+        .iter()
+        .find(|r| r.def.id == name)
+        .is_some_and(|r| r.def.quirks.narrows_in_rule())
+}
+
 /// The gap a definition's `rate` asks between two requests to its host.
 fn rate_gap(per_minute: u32) -> Duration {
     Duration::from_secs_f64(60.0 / f64::from(per_minute.max(1)))

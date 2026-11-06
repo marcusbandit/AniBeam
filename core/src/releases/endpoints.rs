@@ -652,12 +652,20 @@ pub fn owner_of<'a>(endpoints: &'a [Endpoint], url: &str) -> Option<&'a Endpoint
 /// the rule keeps its name and that source is still in `endpoints`, else the one that owns
 /// the feed (`owner_of`). A feed no source owns claims nothing.
 pub fn follows(endpoints: &[Endpoint], feed_url: &str, endpoint: Option<&str>) -> bool {
-    let named = endpoint
+    source_of(endpoints, feed_url, endpoint).is_none_or(|e| answers_rss(&e.kind))
+}
+
+/// The source a subscription's feed comes from: `endpoint` when the rule keeps its name and
+/// that source is still in `endpoints`, else the one that owns the feed (`owner_of`).
+pub fn source_of<'a>(
+    endpoints: &'a [Endpoint],
+    feed_url: &str,
+    endpoint: Option<&str>,
+) -> Option<&'a Endpoint> {
+    endpoint
         .filter(|n| !n.is_empty())
-        .and_then(|n| endpoints.iter().find(|e| e.name == n));
-    named
+        .and_then(|n| endpoints.iter().find(|e| e.name == n))
         .or_else(|| owner_of(endpoints, feed_url))
-        .is_none_or(|e| answers_rss(&e.kind))
 }
 
 #[cfg(test)]
@@ -886,8 +894,8 @@ pub(crate) mod tests {
 
     #[test]
     fn split_exclusions_no_exclusions_roundtrip() {
-        let (q, excl) = split_exclusions("[Erai-raws] show 1080p");
-        assert_eq!(q, "[Erai-raws] show 1080p");
+        let (q, excl) = split_exclusions("[Kumo] show 1080p");
+        assert_eq!(q, "[Kumo] show 1080p");
         assert!(excl.is_empty());
     }
 
@@ -1305,7 +1313,7 @@ pub(crate) mod tests {
     fn subscription_feed_must_contain_drops_poster_and_quotes() {
         let (_, must, _) = subscription_feed_resolved(
             &keyed_ep(),
-            r#"[Erai-raws] Show "Multi Subs" 1080p"#,
+            r#"[Kumo] Show "Multi Subs" 1080p"#,
             Some("https://e/f".to_string()),
         );
         assert_eq!(must, "Show Multi Subs 1080p");

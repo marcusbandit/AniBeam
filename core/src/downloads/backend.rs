@@ -244,16 +244,18 @@ impl DownloadsBackend {
             |kind: &str, narrows: bool| kind != crate::releases::kinds::FILTERED_RSS && !narrows;
         match self {
             DownloadsBackend::Anirss(_) => {
-                let narrows = crate::repos::runnable(core)
-                    .iter()
-                    .find(|r| r.endpoint.name == endpoint)
-                    .is_some_and(|r| r.endpoint.quirks.narrows_in_rule());
-                core.downloads
+                let Some(kind) = core
+                    .downloads
                     .state()
                     .endpoints
                     .iter()
                     .find(|e| e.name == endpoint)
-                    .is_some_and(|e| plain(&e.kind, narrows))
+                    .map(|e| e.kind.clone())
+                else {
+                    return false;
+                };
+                kind != crate::releases::kinds::FILTERED_RSS
+                    && !crate::repos::installed_narrows(core, endpoint)
             }
             DownloadsBackend::Native(native, _) => native
                 .endpoints
