@@ -31,7 +31,7 @@ pub struct Served {
     host: String,
     snapshot: tokio::sync::Mutex<Option<(Instant, Bytes)>>,
     library: tokio::sync::Mutex<Option<(Instant, Arc<LibraryPart>)>>,
-    peers: tokio::sync::Mutex<Option<(Instant, Bytes)>>,
+    peers: tokio::sync::Mutex<Option<(Instant, Arc<Vec<wire::PeerHost>>)>>,
 }
 
 /// The machine's name, for `Hello::host`.
@@ -212,38 +212,52 @@ fn features() -> Vec<String> {
 
 /// The other AniBeams on the tailnet. Asking them all takes a moment, so the
 /// list answers every request for `CACHE_FOR`; the slot stays locked while it
-/// is made, so a burst of clients waits for one round of hellos.
-async fn peer_list(State(st): State<Arc<Served>>) -> Response {
+/// is made, so a burst of clients waits for one round of hellos. A tailnet
+/// that cannot be read gives no list rather than an empty one, and nothing is
+/// kept, so the next request asks again.
+async fn peer_list(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
     let mut slot = st.peers.lock().await;
-    if let Some((at, body)) = slot.as_ref()
-        && at.elapsed() < CACHE_FOR
-    {
-        return json(body.clone());
-    }
-    let Some(core) = st.core.upgrade() else {
-        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+    let fresh = slot
+        .as_ref()
+        .filter(|(at, _)| at.elapsed() < CACHE_FOR)
+        .map(|(_, hosts)| hosts.clone());
+    let hosts = match fresh {
+        Some(hosts) => hosts,
+        None => {
+            let Some(core) = st.core.upgrade() else {
+                return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+            };
+            let asked = tokio::task::spawn_blocking(move || {
+                let tailnet = core.host.tailnet(false)?;
+                Some(peers::candidates(
+                    &tailnet,
+                    &core.host.switched_off(),
+                    wire::DEFAULT_PORT,
+                ))
+            })
+            .await
+            .ok()
+            .flatten();
+            let Some(asked) = asked else {
+                return error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "this computer cannot read its tailnet right now",
+                );
+            };
+            let hosts = Arc::new(peers::find(asked).await);
+            *slot = Some((Instant::now(), hosts.clone()));
+            hosts
+        }
     };
-    let asked = tokio::task::spawn_blocking(move || {
-        let tailnet = core.host.tailnet(false)?;
-        Some(peers::candidates(
-            &tailnet,
-            &core.host.switched_off(),
-            wire::DEFAULT_PORT,
-        ))
-    })
-    .await
-    .ok()
-    .flatten()
-    .unwrap_or_default();
+    drop(slot);
     let list = wire::Peers {
-        hosts: peers::find(asked).await,
+        hosts: peers::others(&hosts, from.ip()),
     };
     match serde_json::to_vec(&list) {
-        Ok(body) => {
-            let body = Bytes::from(body);
-            *slot = Some((Instant::now(), body.clone()));
-            json(body)
-        }
+        Ok(body) => json(Bytes::from(body)),
         Err(e) => failed(&e.into()),
     }
 }

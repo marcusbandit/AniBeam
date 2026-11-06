@@ -185,16 +185,16 @@ impl Host {
         recover(&self.tailnet).1.clone()
     }
 
-    /// Whether to answer a request from `from` (`trust::decide`). An address
-    /// the last read cannot place, while some device is switched off, reads
-    /// the tailnet again first: it may have just joined.
     /// The switched-off ids, for the peer list.
     pub fn switched_off(&self) -> Vec<String> {
         recover(&self.off).clone()
     }
 
+    /// Whether to answer a request from `from` (`trust::decide`). An address
+    /// the last read cannot place, while some device is switched off, reads
+    /// the tailnet again first: it may have just joined.
     pub fn verdict(&self, from: std::net::IpAddr) -> trust::Verdict {
-        let off = recover(&self.off).clone();
+        let off = self.switched_off();
         // This machine and anything off the tailnet are decided by the
         // address alone, so they never wait on `tailscale`.
         if !trust::needs_tailnet(from, &off) {

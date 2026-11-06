@@ -158,10 +158,13 @@ pub struct Hello {
 
 /// `GET` [`PEERS`]: the other AniBeams the host sees on the tailnet, for a
 /// client that cannot list tailnet devices itself. Only devices the host
-/// trusts and that answered their hello as AniBeam a moment ago; the host
-/// itself is not among them.
+/// trusts and that answered their hello as AniBeam a moment ago; neither the
+/// host nor the device asking is among them. A host that cannot read its
+/// tailnet answers `503` instead of an empty list, so a client keeps the list
+/// it had.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Peers {
+    #[serde(default)]
     pub hosts: Vec<PeerHost>,
 }
 
@@ -169,6 +172,7 @@ pub struct Peers {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PeerHost {
     /// Its machine name, from its own hello.
+    #[serde(default)]
     pub name: String,
     /// `http://<tailnet address>:<port>`, where it answered.
     pub url: String,

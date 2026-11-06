@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use anibeam_host_api as wire;
 
-use super::addr::is_tailscale;
+use super::addr;
 use super::trust::Tailnet;
 
 /// How long one device gets to say hello.
@@ -22,13 +22,8 @@ pub fn candidates(t: &Tailnet, off: &[String], port: u16) -> Vec<(String, String
         .filter(|p| p.online && !off.contains(&p.id))
         .filter_map(|p| {
             // Only tailnet addresses are asked, whatever the status names.
-            let ips: Vec<_> = p.ips.iter().filter(|ip| is_tailscale(ip)).collect();
-            let ip = ips
-                .iter()
-                .find(|ip| ip.is_ipv4())
-                .or(ips.first())
-                .copied()?;
-            let at = std::net::SocketAddr::new(*ip, port);
+            let ip = addr::pick(&p.ips).first().copied()?;
+            let at = std::net::SocketAddr::new(ip, port);
             Some((p.name.clone(), format!("http://{at}")))
         })
         .collect()
@@ -36,7 +31,15 @@ pub fn candidates(t: &Tailnet, off: &[String], port: u16) -> Vec<(String, String
 
 /// The candidates that answer their hello as AniBeam, in the order given.
 pub async fn find(candidates: Vec<(String, String)>) -> Vec<wire::PeerHost> {
-    let Ok(http) = reqwest::Client::builder().timeout(ASK_FOR).build() else {
+    // A device answers for itself only: no redirect is followed, so none can
+    // point this machine at its own or its network's services, and no proxy
+    // stands between two tailnet devices.
+    let Ok(http) = reqwest::Client::builder()
+        .timeout(ASK_FOR)
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .build()
+    else {
         return Vec::new();
     };
     let mut asks = tokio::task::JoinSet::new();
@@ -66,6 +69,22 @@ pub async fn find(candidates: Vec<(String, String)>) -> Vec<wire::PeerHost> {
     }
     out.sort_by_key(|(i, _)| *i);
     out.into_iter().map(|(_, h)| h).collect()
+}
+
+/// The list as handed to the device at `from`, which is never handed itself.
+pub fn others(hosts: &[wire::PeerHost], from: std::net::IpAddr) -> Vec<wire::PeerHost> {
+    let from = super::trust::canonical(from);
+    hosts
+        .iter()
+        .filter(|h| {
+            let at = h
+                .url
+                .strip_prefix("http://")
+                .and_then(|a| a.parse::<std::net::SocketAddr>().ok());
+            at.is_none_or(|at| super::trust::canonical(at.ip()) != from)
+        })
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]
@@ -141,5 +160,52 @@ mod tests {
                 }]
             );
         });
+    }
+
+    #[test]
+    fn a_device_that_sends_the_host_elsewhere_is_not_followed() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let anibeam =
+                answer(r#"{"app":"anibeam","api":1,"version":"2.4.0","host":"kangaeru","now":0}"#)
+                    .await;
+            let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let at = l.local_addr().unwrap();
+            let to = format!("{anibeam}{}", wire::HELLO);
+            let app = axum::Router::new().route(
+                wire::HELLO,
+                axum::routing::get(move || async move { axum::response::Redirect::to(&to) }),
+            );
+            tokio::spawn(async move { axum::serve(l, app).await });
+            let found = find(vec![("sly".into(), format!("http://{at}"))]).await;
+            assert!(found.is_empty(), "{found:?}");
+        });
+    }
+
+    #[test]
+    fn the_device_that_asks_is_not_handed_itself() {
+        let host = |name: &str, url: &str| wire::PeerHost {
+            name: name.into(),
+            url: url.into(),
+            version: "2.4.0".into(),
+        };
+        let all = vec![
+            host("pixel", "http://100.70.1.2:8790"),
+            host("kangaeru", "http://[fd7a:115c:a1e0::3]:8790"),
+        ];
+        assert_eq!(
+            others(&all, "100.70.1.2".parse().unwrap()),
+            vec![all[1].clone()]
+        );
+        assert_eq!(
+            others(&all, "::ffff:100.70.1.2".parse().unwrap()),
+            vec![all[1].clone()],
+            "an IPv4 asker seen through an IPv6 socket"
+        );
+        assert_eq!(
+            others(&all, "fd7a:115c:a1e0::3".parse().unwrap()),
+            vec![all[0].clone()]
+        );
+        assert_eq!(others(&all, "127.0.0.1".parse().unwrap()), all);
     }
 }

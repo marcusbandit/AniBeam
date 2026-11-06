@@ -152,7 +152,7 @@ pub fn needs_tailnet(from: IpAddr, off: &[String]) -> bool {
 }
 
 /// An IPv4 address that arrived mapped into IPv6 (`::ffff:100.64.0.1`), as itself.
-fn canonical(ip: IpAddr) -> IpAddr {
+pub(crate) fn canonical(ip: IpAddr) -> IpAddr {
     match ip {
         IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
         v4 => v4,
