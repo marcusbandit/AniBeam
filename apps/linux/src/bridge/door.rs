@@ -266,13 +266,6 @@ pub mod qobject {
         /// plain sentence. No network; changes arrive as `hostChanged`.
         #[qinvokable]
         fn get_host(self: &Door) -> QJsonObject;
-        /// The devices on the tailnet as last read, each with whether the host
-        /// answers it. Never waits: a fresh read arrives as `tailnetDevicesChanged`.
-        #[qinvokable]
-        fn list_tailnet_devices(self: &Door) -> QJsonObject;
-        /// Switches one tailnet device on or off for the host.
-        #[qinvokable]
-        fn set_tailnet_device_trust(self: &Door, device: &QString, trusted: bool) -> QJsonObject;
         /// The status as last known, settings and endpoints included. No network.
         #[qinvokable]
         fn get_downloads(self: &Door) -> QJsonObject;
@@ -1951,15 +1944,6 @@ impl qobject::Door {
     }
     pub fn get_host(&self) -> QJsonObject {
         self.dispatch(Ok(Call::GetHost))
-    }
-    pub fn list_tailnet_devices(&self) -> QJsonObject {
-        self.dispatch(Ok(Call::ListTailnetDevices))
-    }
-    pub fn set_tailnet_device_trust(&self, device: &QString, trusted: bool) -> QJsonObject {
-        self.dispatch(Ok(Call::SetTailnetDeviceTrust {
-            device: device.to_string(),
-            trusted,
-        }))
     }
     // Downloads
     pub fn get_downloads(&self) -> QJsonObject {
