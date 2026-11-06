@@ -12,6 +12,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ## 2.4.3 · 2026-11-05
 
+### New
+- A TV over DLNA plays your computer's episodes, converted by the computer
+
 ### Fixed
 - Seeders show for releases from more trackers
 - A refine or subscribe on a source you just removed says it is gone

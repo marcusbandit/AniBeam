@@ -6,7 +6,9 @@
 //! A Chromecast gets HLS: the Matroska file is read once for its keyframes and subtitles,
 //! then cut into fragmented MP4 segments as they are asked for, so the TV seeks anywhere. A
 //! DLNA TV gets the file as it is, which most take, and the same fragments as one
-//! progressive stream when it refuses. The session's position comes back once a second as
+//! progressive stream when it refuses. An episode another AniBeam converts as it plays is
+//! passed on from here: as HLS to a Chromecast, and to a DLNA TV as its MPEG-TS pieces joined
+//! into one progressive stream. The session's position comes back once a second as
 //! `CastChanged`, which is what the shell ticks the playback session with.
 
 #[cfg(feature = "cast")]
@@ -69,7 +71,7 @@ mod imp {
 
     use super::discover::{self, Found};
     use super::media::{Prepared, Receiver, Subs};
-    use super::server::{Registry, Served};
+    use super::server::{self as served, Piece, Registry, Relay, Served};
     use super::{castv2, dlna};
     use crate::contract::*;
     use crate::core::Core;
@@ -113,6 +115,9 @@ mod imp {
         base: String,
         title: String,
         prepared: Option<Arc<Prepared>>,
+        /// The pieces of a stream another machine converts, when a TV takes them as one
+        /// progressive stream from here.
+        pieces: Option<Arc<Vec<Piece>>>,
         /// HEVC to a Chromecast whose model is not known to decode it: a refusal says so.
         hevc_doubt: bool,
     }
@@ -365,6 +370,7 @@ mod imp {
                     base: String::new(),
                     title: title.clone(),
                     prepared: None,
+                    pieces: None,
                     hevc_doubt: false,
                 });
                 emit(core, &state, false);
@@ -412,12 +418,6 @@ mod imp {
                     .ok_or_else(|| {
                         CoreError::invalid("device", "That device is no longer on the network")
                     })?;
-                if found.device.kind != CastKind::Chromecast {
-                    return Err(CoreError::invalid(
-                        "device",
-                        "An episode from another computer casts to a Chromecast; a TV over DLNA plays this phone's own",
-                    ));
-                }
                 let Some((dir, name)) = url.split('?').next().and_then(|u| u.rsplit_once('/'))
                 else {
                     return Err(CoreError::invalid("url", "not a playlist address"));
@@ -450,10 +450,14 @@ mod imp {
                     token: token.clone(),
                     state: state.clone(),
                     control: Control::Starting,
-                    mode: Mode::Hls,
+                    mode: match found.device.kind {
+                        CastKind::Chromecast => Mode::Hls,
+                        CastKind::Dlna => Mode::Progressive { offset: start },
+                    },
                     base: String::new(),
                     title: title.clone(),
                     prepared: None,
+                    pieces: None,
                     hevc_doubt: false,
                 });
                 emit(core, &state, false);
@@ -461,10 +465,17 @@ mod imp {
                     .arc()
                     .ok_or_else(|| CoreError::internal("the core is closing"))?;
                 core.handle.spawn(async move {
-                    let begun = relay(
-                        &arc, id, found, dir, playlist, token, title, start, duration,
-                    )
-                    .await;
+                    let begun = match found.device.kind {
+                        CastKind::Chromecast => {
+                            relay(
+                                &arc, id, found, dir, playlist, token, title, start, duration,
+                            )
+                            .await
+                        }
+                        CastKind::Dlna => {
+                            relay_dlna(&arc, id, found, dir, playlist, token, title, start).await
+                        }
+                    };
                     if let Err(e) = begun {
                         fail(&arc, id, e);
                     }
@@ -526,7 +537,7 @@ mod imp {
 
     fn seek(core: &Core, to: f64) -> Result<Reply, CoreError> {
         let inner = inner(core);
-        let (mode, base, title, id, prepared) = {
+        let (mode, base, title, id, prepared, pieces) = {
             let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
             let Some(s) = s.as_mut() else {
                 return Err(CoreError::invalid("cast", "Nothing is casting"));
@@ -538,17 +549,28 @@ mod imp {
                 s.title.clone(),
                 s.id,
                 s.prepared.clone(),
+                s.pieces.clone(),
             )
         };
         match mode {
             Mode::Progressive { .. } => {
                 // A stream with no length seeks by starting again from the new point.
-                let url = format!("{base}/stream.mp4?t={to:.3}");
-                let offset = prepared.map(|p| p.stream_start(to)).unwrap_or(to);
+                let (name, kind, offset) = match (&pieces, prepared) {
+                    (Some(pieces), _) => (
+                        "stream.ts",
+                        "video/mp2t",
+                        pieces
+                            .get(served::piece_at(pieces, to))
+                            .map_or(to, |p| p.start),
+                    ),
+                    (None, Some(p)) => ("stream.mp4", "video/mp4", p.stream_start(to)),
+                    (None, None) => ("stream.mp4", "video/mp4", to),
+                };
+                let url = format!("{base}/{name}?t={to:.3}");
                 update(core, id, |s| s.mode = Mode::Progressive { offset });
                 control(core, |c, id| {
                     if let Ctl::Dlna(d) = c {
-                        let meta = dlna::didl(&url, "video/mp4", &title, None);
+                        let meta = dlna::didl(&url, kind, &title, None);
                         spawn_dlna(core, id, async move {
                             d.set_uri(&url, &meta).await?;
                             d.play().await
@@ -620,7 +642,10 @@ mod imp {
                 path: PathBuf::new(),
                 mime: "application/vnd.apple.mpegurl".to_string(),
                 prepared: None,
-                relay: Some(dir),
+                relay: Some(Relay {
+                    dir,
+                    pieces: Arc::new(Vec::new()),
+                }),
             },
         );
         update(core, id, |s| s.base = base.clone());
@@ -641,6 +666,95 @@ mod imp {
         match s.as_mut().filter(|s| s.id == id) {
             Some(s) => s.control = Control::Cast(controller),
             None => drop(controller),
+        }
+        Ok(())
+    }
+
+    /// Starts a stream another machine converts on a TV over DLNA. Such a TV reads no HLS,
+    /// so this machine reads the playlist once and hands the TV its pieces from the one
+    /// holding `start` as one progressive MPEG-TS stream, fetching each from `dir` as the
+    /// TV reads. A seek starts that stream again (`seek`).
+    #[allow(clippy::too_many_arguments)]
+    async fn relay_dlna(
+        core: &Arc<Core>,
+        id: u64,
+        found: Found,
+        dir: String,
+        playlist: String,
+        token: String,
+        title: String,
+        start: f64,
+    ) -> Result<(), String> {
+        let inner = inner(core);
+        let client = Arc::new(dlna::Client::new(
+            found
+                .control
+                .clone()
+                .ok_or("the TV gave no control address")?,
+        ));
+        let list = reqwest::Client::builder()
+            .timeout(Duration::from_secs(60))
+            .build()
+            .map_err(|e| e.to_string())?
+            .get(format!("{dir}{playlist}"))
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| format!("the other computer did not hand over the episode: {e}"))?
+            .text()
+            .await
+            .map_err(|e| format!("the other computer did not hand over the episode: {e}"))?;
+        let pieces = Arc::new(served::read_pieces(&list));
+        if pieces.is_empty() {
+            return Err("the other computer sent an empty playlist".into());
+        }
+        let port = server(&inner).await?.port();
+        let ip =
+            discover::local_ip_for(found.addr.ip()).ok_or("this device has no route to the TV")?;
+        let host = discover::dev()
+            .advertise
+            .unwrap_or_else(|| format!("{ip}:{port}"));
+        let base = format!("http://{host}/c/{token}");
+        inner.registry.add(
+            token,
+            Served {
+                path: PathBuf::new(),
+                mime: "video/mp2t".to_string(),
+                prepared: None,
+                relay: Some(Relay {
+                    dir,
+                    pieces: pieces.clone(),
+                }),
+            },
+        );
+        let offset = pieces
+            .get(served::piece_at(&pieces, start))
+            .map_or(0.0, |p| p.start);
+        update(core, id, |s| {
+            s.base = base.clone();
+            s.pieces = Some(pieces.clone());
+            s.mode = Mode::Progressive { offset };
+        });
+        let url = format!("{base}/stream.ts?t={start:.3}");
+        let meta = dlna::didl(&url, "video/mp2t", &title, None);
+        client.set_uri(&url, &meta).await?;
+        client.play().await?;
+        let poll_core = core.clone();
+        let poll_client = client.clone();
+        let poll = core
+            .handle
+            .spawn(async move { poll_dlna(poll_core, id, poll_client).await })
+            .abort_handle();
+        let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
+        match s.as_mut().filter(|s| s.id == id) {
+            Some(s) => s.control = Control::Dlna { client, poll },
+            None => {
+                poll.abort();
+                drop(s);
+                core.handle.spawn(async move {
+                    let _ = client.stop().await;
+                });
+            }
         }
         Ok(())
     }
@@ -915,6 +1029,196 @@ mod imp {
                     }
                 }
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        //! A TV over DLNA and another computer, both faked on loopback: no discovery runs and
+        //! nothing leaves this machine.
+
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
+
+        use axum::Router;
+        use axum::body::Bytes;
+        use axum::extract::{Path, State};
+        use axum::http::{HeaderMap, Uri};
+        use axum::routing::{get, post};
+
+        use super::*;
+        use crate::CorePaths;
+        use crate::trackers::Secrets;
+
+        /// What the fake TV was told and what it read.
+        #[derive(Default)]
+        struct Tv {
+            uris: Vec<String>,
+            meta: Vec<String>,
+            read: Vec<Vec<u8>>,
+        }
+
+        fn piece(i: u8) -> Vec<u8> {
+            let mut p = vec![0x47u8; 188];
+            p[1] = i;
+            p
+        }
+
+        fn tag(xml: &str, name: &str) -> String {
+            roxmltree::Document::parse(xml)
+                .ok()
+                .and_then(|d| {
+                    d.descendants()
+                        .find(|n| n.has_tag_name(name))
+                        .and_then(|n| n.text().map(str::to_string))
+                })
+                .unwrap_or_default()
+        }
+
+        async fn tv(State(tv): State<Arc<Mutex<Tv>>>, headers: HeaderMap, body: Bytes) -> String {
+            let action = headers
+                .get("SOAPAction")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            let xml = String::from_utf8_lossy(&body).into_owned();
+            if action.contains("#SetAVTransportURI") {
+                let mut t = tv.lock().unwrap();
+                t.uris.push(tag(&xml, "CurrentURI"));
+                t.meta.push(tag(&xml, "CurrentURIMetadata"));
+            } else if action.contains("#Play") {
+                let url = tv.lock().unwrap().uris.last().cloned().unwrap_or_default();
+                let tv = tv.clone();
+                tokio::spawn(async move {
+                    let bytes = reqwest::get(&url).await.unwrap().bytes().await.unwrap();
+                    tv.lock().unwrap().read.push(bytes.to_vec());
+                });
+            } else if action.contains("#GetTransportInfo") {
+                return "<r><CurrentTransportState>PLAYING</CurrentTransportState></r>".into();
+            } else if action.contains("#GetPositionInfo") {
+                // Counted from the start of the stream it was handed, as many TVs do.
+                return "<r><RelTime>0:00:02</RelTime><TrackDuration>0:00:00</TrackDuration></r>"
+                    .into();
+            }
+            "<ok/>".into()
+        }
+
+        async fn computer(
+            State(asked): State<Arc<Mutex<Vec<String>>>>,
+            Path(name): Path<String>,
+            uri: Uri,
+        ) -> Vec<u8> {
+            asked.lock().unwrap().push(uri.to_string());
+            if name == "index.m3u8" {
+                return crate::host::convert::playlist(18.0, "?burn=0").into_bytes();
+            }
+            let i: u8 = name
+                .strip_prefix("seg")
+                .and_then(|n| n.strip_suffix(".ts"))
+                .and_then(|n| n.parse().ok())
+                .unwrap();
+            piece(i)
+        }
+
+        fn until(what: &str, mut f: impl FnMut() -> bool) {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !f() {
+                assert!(Instant::now() < deadline, "timed out waiting for {what}");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+
+        #[test]
+        fn a_dlna_tv_plays_another_computers_conversion_as_one_stream() {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let tv_state = Arc::new(Mutex::new(Tv::default()));
+            let asked = Arc::new(Mutex::new(Vec::new()));
+            let (tv_at, computer_at) = rt.block_on(async {
+                let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let tv_at = l.local_addr().unwrap();
+                let app = Router::new()
+                    .route("/ctl", post(tv))
+                    .with_state(tv_state.clone());
+                tokio::spawn(async move { axum::serve(l, app).await });
+                let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let computer_at = l.local_addr().unwrap();
+                let app = Router::new()
+                    .route("/hls/{name}", get(computer))
+                    .with_state(asked.clone());
+                tokio::spawn(async move { axum::serve(l, app).await });
+                (tv_at, computer_at)
+            });
+
+            let dir = tempfile::tempdir().unwrap();
+            let paths = CorePaths::under(dir.path());
+            let secrets = Secrets::file_only(paths.secrets_path());
+            let core = crate::Core::open_with_secrets(paths, secrets).unwrap();
+            inner(&core).devices.lock().unwrap().push(Found {
+                device: CastDevice {
+                    id: "dlna:fake".into(),
+                    name: "Fake TV".into(),
+                    kind: CastKind::Dlna,
+                    model: None,
+                    address: tv_at.to_string(),
+                },
+                addr: tv_at,
+                control: Some(format!("http://{tv_at}/ctl")),
+            });
+
+            core.call(Call::CastStartStream {
+                device: "dlna:fake".into(),
+                url: format!("http://{computer_at}/hls/index.m3u8?burn=0"),
+                title: "Show 1".into(),
+                start: 7.0,
+                duration: 18.0,
+            })
+            .expect("a TV over DLNA takes another computer's episode");
+
+            until("the TV to read the stream", || {
+                !tv_state.lock().unwrap().read.is_empty()
+            });
+            {
+                let t = tv_state.lock().unwrap();
+                assert!(t.uris[0].ends_with("/stream.ts?t=7.000"), "{:?}", t.uris);
+                assert!(t.meta[0].contains("video/mp2t"), "{:?}", t.meta);
+                // Second 7 is in the piece from 6: that piece and every one after it.
+                assert_eq!(t.read[0], [piece(1), piece(2)].concat());
+            }
+            // Each piece is asked for with the conversion's own query.
+            assert!(
+                asked
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|u| u == "/hls/seg1.ts?burn=0"),
+                "{:?}",
+                asked.lock().unwrap()
+            );
+            // The TV counts from the start of what it was handed: 6 plus its 2.
+            until("the position from the TV", || {
+                matches!(
+                    core.call(Call::CastStatus),
+                    Ok(Reply::CastState { state: Some(s) }) if (s.position - 8.0).abs() < 0.01
+                )
+            });
+
+            core.call(Call::CastSeek { to: 13.5 }).unwrap();
+            until("the TV to read the stream again", || {
+                tv_state.lock().unwrap().read.len() == 2
+            });
+            {
+                let t = tv_state.lock().unwrap();
+                assert!(t.uris[1].ends_with("/stream.ts?t=13.500"), "{:?}", t.uris);
+                assert!(t.meta[1].contains("video/mp2t"), "{:?}", t.meta);
+                assert_eq!(t.read[1], piece(2));
+            }
+            until("the position after the seek", || {
+                matches!(
+                    core.call(Call::CastStatus),
+                    Ok(Reply::CastState { state: Some(s) }) if (s.position - 14.0).abs() < 0.01
+                )
+            });
+            core.call(Call::CastStop).unwrap();
         }
     }
 }
