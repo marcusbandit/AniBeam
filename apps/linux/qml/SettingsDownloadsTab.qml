@@ -1,5 +1,6 @@
 // Downloads: the torrent client first (which one, which of the person's saved clients,
-// where, the login, a test), then anirss (how AniBeam reaches it, its state), Rolling
+// where, the login, a test), then how searches run (the search helper, anirss, or AniBeam
+// itself) and, for the helper, how AniBeam reaches it and its state, Rolling
 // downloads, finished shows, the search sources anirss was configured with and the endpoint
 // repos. Edits sit in a draft until Save: the secrets only cross once, and saving stops a
 // running sidecar (its environment carries the password), so a save is one deliberate act
@@ -34,8 +35,8 @@ SettingsTab {
         return "Watched episodes kept behind the one you just finished. With " + k + ", finishing episode " + (k + 2) + " deletes episode 1."
     }
     readonly property bool sidecar: !!draft && draft.anirss_mode === "Sidecar"
-    // The engine the draft picks. One this build does not know reads as anirss, and the core
-    // keeps it stored until another is picked here
+    // The engine the draft picks. A stored engine this build does not know comes in as
+    // anirss, and the core keeps it stored until AniBeam itself is picked here (#515)
     readonly property bool nativeEngine: !!draft && draft.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
@@ -93,7 +94,8 @@ SettingsTab {
         var secrets = {}
         if (tokenTouched) secrets.anirss_token = tokenText
         if (passwordTouched) secrets.torrent_password = passwordText
-        var switched = !settings || settings.torrent_url !== draft.torrent_url || settings.torrent_mode !== draft.torrent_mode
+        // Another client, or another engine reading the rules, makes the subscriptions read so far stale
+        var switched = !settings || settings.torrent_url !== draft.torrent_url || settings.torrent_mode !== draft.torrent_mode || settings.engine !== draft.engine
         var r = Door.setDownloadSettings(draft, secrets)
         if (r.error) { frame.toast(r.error.message); return }
         if (switched) frame.forgetDownloadsRules()
@@ -170,7 +172,7 @@ SettingsTab {
     }
     // anirss and this app each have their own idea of where the client is; say so when they differ
     readonly property string mismatch: {
-        if (!anirss || !settings || anirss.state !== "Ready" || !anirss.qbt_url) return ""
+        if (tab.nativeEngine || !anirss || !settings || anirss.state !== "Ready" || !anirss.qbt_url) return ""
         var a = String(anirss.qbt_url).replace(/\/+$/, ""), b = String(settings.torrent_url).replace(/\/+$/, "")
         if (a === b) return ""
         return "The search helper talks to " + a + " while AniBeam talks to " + b + ". A search helper you run yourself reads the address from its own config.toml, so switching clients here does not move it."
@@ -214,7 +216,7 @@ SettingsTab {
     Panel {
         title: tab.nativeEngine ? "Searching" : "Search helper"
         helper: tab.nativeEngine ? "AniBeam searches your sources itself and sends what you pick to the torrent client. The search helper is not needed." : "The part of AniBeam that searches and subscribes, a program called anirss. AniBeam runs it for you; change this only if you run your own."
-        SettingRow { label: "Searches run in"; helper: tab.nativeEngine ? "Subscriptions still go to the torrent client, so new episodes arrive while AniBeam is closed." : "The search helper, a separate program. Its best match rules apply to either."
+        SettingRow { label: "Searches run in"; helper: tab.nativeEngine ? "Subscriptions still go to the torrent client, so new episodes arrive while AniBeam is closed." : "The search helper, a separate program AniBeam runs or you run yourself."
             Seg { objectName: "downloads-engine"; options: [{ text: "Search helper", icon: "wrench", name: "helper" }, { text: "AniBeam itself", icon: "sparkles", name: "anibeam" }]; index: tab.nativeEngine ? 1 : 0
                   onPicked: function(i) { tab.edit(function(d) { d.engine = i === 1 ? "Native" : "Anirss" }) } } }
         SettingRow { visible: !tab.nativeEngine; label: "How it runs"; helper: tab.sidecar ? "AniBeam starts it when it opens and stops it when it quits." : "AniBeam uses one you already run, at the address and with the key below."
@@ -260,7 +262,7 @@ SettingsTab {
     Panel {
         title: "Search sources"
         helper: "Where a search goes, in the order they are tried. One that finds nothing falls through to the next."
-        SettingRow { visible: tab.endpoints.length === 0; label: tab.anirss && tab.anirss.state === "Ready" ? "No sources set up yet" : "Connect the search helper to list them" }
+        SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? "No sources set up yet" : "Connect the search helper to list them" }
         Repeater {
             model: tab.endpoints
             SettingRow {
@@ -271,7 +273,7 @@ SettingsTab {
                 Chip { text: String(modelData.kind); small: true; color: theme.raised }
             }
         }
-        SettingRow { label: "Search helper's settings file"; helper: "Holds the sources, the save folders, the tags and the best match rules."
+        SettingRow { label: "Search helper's settings file"; helper: tab.nativeEngine ? "Holds the save folders, the tags and the best match rules, which AniBeam itself follows when it runs the helper. Its own sources are the helper's alone." : "Holds the sources, the save folders, the tags and the best match rules."
             status: tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml"
             Button { text: "Open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
     }
@@ -298,7 +300,7 @@ SettingsTab {
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
             Label { text: "Unsaved changes"; role: "title"; font.pointSize: theme.typeNormal }
-            Label { width: parent.width; text: tab.nativeEngine ? "Saving applies them at once." : "Saving restarts the search helper on the new settings."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
+            Label { width: parent.width; text: "Saving restarts the search helper on the new settings."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
         }
         Row {
             id: saveRow
