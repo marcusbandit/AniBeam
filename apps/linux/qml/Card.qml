@@ -234,8 +234,9 @@ Item {
                 radius: width / 2
                 antialiasing: true
                 color: root.selected ? theme.accent : Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.55)
-                border.color: root.selected ? theme.accent : Qt.rgba(1, 1, 1, 0.7)
-                border.width: root.selected ? 0 : 1.5
+                // A dark rim on the filled check, so it still reads on a pale poster
+                border.color: root.selected ? Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.6) : Qt.rgba(1, 1, 1, 0.7)
+                border.width: 1.5
                 Icon { visible: root.selected; anchors.centerIn: parent; glyph: "check"; size: Math.round(parent.width * 0.66); color: theme.contrast(theme.accent, Qt.rgba(1, 1, 1, 1)) >= 4.5 ? "#ffffff" : "#0d0e11" }
             }
         }
