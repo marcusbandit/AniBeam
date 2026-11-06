@@ -1345,7 +1345,8 @@ Item {
     readonly property string summary: {
         if (!page.status) return "Connecting."
         var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected: " + (page.torrent.message || "no answer") + "."
-        if (page.nativeEngine) return "AniBeam searches your sources itself. " + t
+        // Until the first connect has asked the client, there is nothing to say about it
+        if (page.nativeEngine) return "AniBeam searches your sources itself." + (page.connecting ? "" : " " + t)
         if (page.connecting && !page.anirssReady) return "Starting the search helper."
         var a = page.anirss
         if (a.state === "Missing") return "The search helper is not installed. " + a.message

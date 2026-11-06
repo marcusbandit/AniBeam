@@ -318,7 +318,9 @@ pub enum Call {
     GetDownloads,
     /// Starts anirss when it is the core's sidecar, reads its health,
     /// endpoints and qBittorrent view, and tries the torrent client
-    /// directly. Ends in `DownloadsStatusChanged`.
+    /// directly. On the native engine it reads the core's own sources as the
+    /// endpoints and tries the torrent client, and never starts or asks
+    /// anirss. Ends in `DownloadsStatusChanged`.
     ConnectDownloads,
     /// Searches an endpoint (the first one when `None`), falling through
     /// to the others when it is empty or unreachable, and analyses the

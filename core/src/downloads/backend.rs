@@ -4,7 +4,8 @@
 //! and writes rules and torrents to qBittorrent itself (`native`). Both
 //! answer in the shapes the handlers already read from anirss, so the
 //! facts, the library link and the dating that follow are the same for
-//! either. The endpoint list stays anirss's whichever runs (#119).
+//! either. The endpoint list is anirss's on anirss and the core's own sources
+//! on the native engine, which never starts anirss (#549).
 
 use std::sync::Arc;
 

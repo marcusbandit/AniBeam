@@ -274,21 +274,37 @@ fn the_native_engine_searches_refines_and_previews_without_anirss() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn on_the_native_engine_the_page_lists_the_core_s_sources_and_a_connect_leaves_anirss_alone() {
-    let (_dir, core, c, http) = native_core();
-    let status = match core.call(Call::GetDownloads).unwrap() {
-        Reply::Downloads { status } => status,
-        other => panic!("{other:?}"),
-    };
-    let names: Vec<&str> = status.endpoints.iter().map(|e| e.name.as_str()).collect();
-    assert_eq!(names, ["feed"], "the core's own sources, not anirss's");
+    let (dir, core, c, http) = native_core();
+    // AniBeam runs anirss itself, through a command that leaves a mark if it is ever
+    // started: the case "never starts anirss" is about.
+    let mark = dir.path().join("anirss-started");
+    let command = dir.path().join("anirss");
+    std::fs::write(
+        &command,
+        format!("#!/bin/sh\ntouch '{}'\nexit 1\n", mark.display()),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut sidecar = settings(DownloadsEngine::Native);
+    sidecar.anirss_mode = AnirssMode::Sidecar;
+    sidecar.anirss_command = command.to_string_lossy().into_owned();
+    save(&core, sidecar);
 
     let job = started(&core, Call::ConnectDownloads);
     let done = common::wait_job(&c, job);
     let EventBody::DownloadsStatusChanged { status } = done.body else {
         panic!("{:?}", done.body)
     };
+    let names: Vec<&str> = status.endpoints.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["feed"], "the core's own sources, not anirss's");
+    match core.call(Call::GetDownloads).unwrap() {
+        Reply::Downloads { status } => assert_eq!(status.endpoints.len(), 1),
+        other => panic!("{other:?}"),
+    }
     assert!(done.message.contains("AniBeam itself"), "{}", done.message);
     assert_eq!(status.endpoints.len(), 1);
     assert!(
@@ -301,6 +317,7 @@ fn on_the_native_engine_the_page_lists_the_core_s_sources_and_a_connect_leaves_a
     );
     let job = started(&core, Call::CheckEndpoints);
     common::wait_job(&c, job);
+    assert!(!mark.exists(), "the anirss sidecar was started");
     // Nothing went to anirss: no connect, no read, no endpoint sync, no probe.
     let sent: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
     assert!(
