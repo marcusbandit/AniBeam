@@ -383,6 +383,16 @@ fn parse_http_scrape(body: &[u8]) -> Result<HashMap<Hash, Stats>, BadBencode> {
     Ok(out)
 }
 
+/// The scrape path for an announce path, by BEP 48: the text after the last `/` has to
+/// start with `announce`, which becomes `scrape`, so `/announce` is `/scrape` and
+/// `/x/announce.php` is `/x/scrape.php` (#494). Matched as written, as BEP 48 and
+/// libtorrent do. None when the last segment does not start with it.
+fn scrape_path(path: &str) -> Option<String> {
+    let (dir, last) = path.rsplit_once('/')?;
+    let rest = last.strip_prefix("announce")?;
+    Some(format!("{dir}/scrape{rest}"))
+}
+
 /// Scrape an http(s) tracker (announce becomes scrape, BEP 48 batching). The announce is
 /// read with the HTTP client's own parser, so one written with backslashes for slashes is
 /// scraped at the path the client would announce to (#471).
@@ -401,15 +411,15 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
             .next()
             .unwrap_or("")
             .ends_with(['/', '\\']);
-    let path = if bare {
-        "/announce".to_string()
+    let scrape = if bare {
+        Some("/scrape".to_string())
     } else {
-        url.path().to_string()
+        scrape_path(url.path())
     };
-    if !path.ends_with("/announce") {
+    let Some(scrape) = scrape else {
         return HashMap::new();
-    }
-    url.set_path(&format!("{}scrape", &path[..path.len() - "announce".len()]));
+    };
+    url.set_path(&scrape);
     // The announce's own query (a passkey, say) stays and the hashes join it with `&`.
     let mut prefix = url.query().unwrap_or("").trim_end_matches('&').to_string();
     if !prefix.is_empty() {
@@ -439,9 +449,11 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
                 tracing::warn!("scrape {shown}: HTTP {}", r.status);
                 continue;
             }
+            // A tracker that did not answer at all, a scrape page that hangs say, will not
+            // answer the next batch either, so it costs one timeout, not one a batch.
             Err(e) => {
                 tracing::warn!("scrape {shown}: {}", e.message);
-                continue;
+                break;
             }
         };
         match parse_http_scrape(&body) {
@@ -1396,6 +1408,57 @@ mod tests {
         assert_eq!(out[&hashes[55]], (4, 3, 2));
     }
 
+    /// BEP 48 only asks that the last path segment start with `announce`: a tracker
+    /// announcing at `announce.php` is scraped at `scrape.php`, its query kept (#494).
+    #[tokio::test]
+    async fn an_announce_php_tracker_is_scraped_at_scrape_php() {
+        let h = [1u8; 20];
+        let http = FakeHttp::new();
+        http.push(200, scrape_body(&h, 5, 1, 9));
+        let out = http_scrape(
+            http.as_ref(),
+            "https://t.example/x/announce.php?passkey=abc",
+            &[h],
+        )
+        .await;
+        let req = &http.requests()[0];
+        assert!(
+            req.url
+                .starts_with("https://t.example/x/scrape.php?passkey=abc&info_hash="),
+            "{}",
+            req.url
+        );
+        assert_eq!(out[&h], (5, 1, 9));
+    }
+
+    /// BEP 48's conversion, on the path alone: `announce` has to start the last segment.
+    #[test]
+    fn scrape_path_swaps_announce_at_the_start_of_the_last_segment() {
+        for (announce, scrape) in [
+            ("/announce", Some("/scrape")),
+            ("/x/announce.php", Some("/x/scrape.php")),
+            ("/pk/announce", Some("/pk/scrape")),
+            ("/announce/x", None),
+            ("/my-announce", None),
+            ("/other", None),
+            ("", None),
+        ] {
+            assert_eq!(scrape_path(announce).as_deref(), scrape, "{announce}");
+        }
+    }
+
+    /// A tracker that does not answer at all is asked once, not once a batch.
+    #[tokio::test]
+    async fn a_tracker_that_does_not_answer_is_not_asked_for_the_next_batch() {
+        let hashes: Vec<Hash> = (0..60u8).map(|i| [i; 20]).collect();
+        let http = FakeHttp::new();
+        http.fail_next("timed out");
+        http.push(200, scrape_body(&hashes[55], 4, 3, 2));
+        let out = http_scrape(http.as_ref(), "http://t.example/announce.php", &hashes).await;
+        assert!(out.is_empty());
+        assert_eq!(http.requests().len(), 1);
+    }
+
     #[tokio::test]
     async fn http_scrape_skips_non_http_trackers_and_odd_paths() {
         let http = FakeHttp::new();
@@ -1408,7 +1471,12 @@ mod tests {
             .await
             .is_empty()
         );
-        for odd in ["http://tracker.example/other", "http://tracker.example/"] {
+        for odd in [
+            "http://tracker.example/other",
+            "http://tracker.example/",
+            "http://tracker.example/announce/x",
+            "http://tracker.example/my-announce",
+        ] {
             assert!(
                 http_scrape(http.as_ref(), odd, &[[1u8; 20]])
                     .await

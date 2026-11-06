@@ -36,12 +36,20 @@ pub fn countdown_full(seconds: i64) -> String {
 
 /// "17:56" in the phone's zone.
 pub fn clock(at: i64) -> String {
-    Local.timestamp_opt(at, 0).single().map(|t| t.format("%H:%M").to_string()).unwrap_or_default()
+    Local
+        .timestamp_opt(at, 0)
+        .single()
+        .map(|t| t.format("%H:%M").to_string())
+        .unwrap_or_default()
 }
 
 /// "17 Oct" in the phone's zone.
 pub fn day_month(at: i64) -> String {
-    Local.timestamp_opt(at, 0).single().map(|t| t.format("%-d %b").to_string()).unwrap_or_default()
+    Local
+        .timestamp_opt(at, 0)
+        .single()
+        .map(|t| t.format("%-d %b").to_string())
+        .unwrap_or_default()
 }
 
 /// "just now", "1 min ago", "3h ago", "2d ago".
@@ -73,7 +81,10 @@ pub fn when_in<Tz: TimeZone>(at: i64, now: i64, zone: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
 {
-    let (Some(at), Some(now)) = (zone.timestamp_opt(at, 0).single(), zone.timestamp_opt(now, 0).single()) else {
+    let (Some(at), Some(now)) = (
+        zone.timestamp_opt(at, 0).single(),
+        zone.timestamp_opt(now, 0).single(),
+    ) else {
         return String::new();
     };
     match day_word(&at, &now) {
@@ -182,13 +193,20 @@ pub fn torrent_facts(progress: f64, size: u64, speed: u64, eta: Option<i64>) -> 
     if progress >= 1.0 {
         return bytes(size);
     }
-    let mut facts = format!("{} of {}", bytes((size as f64 * progress) as u64), bytes(size));
+    let mut facts = format!(
+        "{} of {}",
+        bytes((size as f64 * progress) as u64),
+        bytes(size)
+    );
     if speed > 0 {
         facts.push_str(&format!(", {}/s", bytes(speed)));
     }
     // qBittorrent says 8640000 (100 days) for "no idea".
     if let Some(eta) = eta.filter(|e| *e > 0 && *e < 8_640_000) {
-        facts.push_str(&format!(", {} left", countdown(eta).trim_start_matches("in ")));
+        facts.push_str(&format!(
+            ", {} left",
+            countdown(eta).trim_start_matches("in ")
+        ));
     }
     facts
 }
@@ -205,7 +223,10 @@ mod tests {
         assert_eq!(countdown(12 * MINUTE + 5), "in 12m 05s");
         assert_eq!(countdown(42), "in 42s");
         assert_eq!(countdown(-5), "in 0s");
-        assert_eq!(countdown_full(3 * DAY + 2 * HOUR + 15 * MINUTE + 7), "3d 02h 15m 07s");
+        assert_eq!(
+            countdown_full(3 * DAY + 2 * HOUR + 15 * MINUTE + 7),
+            "3d 02h 15m 07s"
+        );
         assert_eq!(countdown_full(2 * HOUR + 5 * MINUTE + 7), "2h 05m 07s");
         assert_eq!(countdown_full(15 * MINUTE + 7), "15m 07s");
     }
@@ -244,9 +265,15 @@ mod tests {
         assert_eq!(bytes(512), "512 B");
         assert_eq!(torrent_state("stalledDL"), ("Stalled", Tone::Trouble));
         assert_eq!(torrent_state("pausedUP").0, "Done");
-        assert_eq!(torrent_facts(0.5, 1_400_000_000, 3_400_000, Some(240)), "700 MB of 1.4 GB, 3.4 MB/s, 4m 00s left");
+        assert_eq!(
+            torrent_facts(0.5, 1_400_000_000, 3_400_000, Some(240)),
+            "700 MB of 1.4 GB, 3.4 MB/s, 4m 00s left"
+        );
         assert_eq!(torrent_facts(1.0, 1_446_000_000, 0, None), "1.4 GB");
-        assert_eq!(torrent_facts(0.1, 1_000_000_000, 0, Some(8_640_000)), "100 MB of 1.0 GB");
+        assert_eq!(
+            torrent_facts(0.1, 1_000_000_000, 0, Some(8_640_000)),
+            "100 MB of 1.0 GB"
+        );
     }
 
     #[test]
