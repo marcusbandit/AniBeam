@@ -693,7 +693,11 @@ pub(crate) async fn merge_history(
             for entry in &history.resume_points {
                 let Some((id, key, position, duration, at)) = resume_target(&series, entry) else { continue };
                 resume += tx.execute(
-                    "INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (?1, ?2, ?3, ?4, ?5)
+                    // Finishing an episode takes its resume point away, so one
+                    // from before the finish never comes back over it.
+                    "INSERT INTO resume_points (series_id, episode_key, position, duration, at)
+                     SELECT ?1, ?2, ?3, ?4, ?5
+                     WHERE NOT EXISTS (SELECT 1 FROM completed WHERE series_id = ?1 AND episode_key = ?2 AND at >= ?5)
                      ON CONFLICT(series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration,
                             at = excluded.at
                      WHERE excluded.at > resume_points.at",

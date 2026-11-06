@@ -213,3 +213,42 @@ fn the_history_document_carries_nothing_that_belongs_to_one_machine() {
     }
     assert!(doc["sources"].as_array().is_none_or(|s| s.is_empty()));
 }
+
+#[test]
+fn a_resume_point_for_an_episode_finished_here_later_stays_gone() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (a_dir, a, a_c) = common::open_core();
+    let (b_dir, b, b_c) = common::open_core();
+    common::library_show(a_dir.path(), &a, &a_c);
+    common::library_show(b_dir.path(), &b, &b_c);
+    // Half watched there at 200; finished here at 900, which took the resume point.
+    exec(
+        &b,
+        "INSERT INTO resume_points (series_id, episode_key, position, duration, at)
+             VALUES (1, '2', 600, 1400, 1800000200);",
+    );
+    exec(
+        &a,
+        "INSERT INTO completed (series_id, episode_key, at) VALUES (1, '2', 1800000900);",
+    );
+    let base = serve(&rt, &b);
+    pull(&rt, &a, &base);
+    assert!(resume(&a).is_empty(), "{:?}", resume(&a));
+}
+
+#[test]
+fn a_match_the_other_computer_only_guessed_stays_there() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (a_dir, a, a_c) = common::open_core();
+    let (b_dir, b, b_c) = common::open_core();
+    common::library_show(a_dir.path(), &a, &a_c);
+    common::library_show(b_dir.path(), &b, &b_c);
+    exec(
+        &b,
+        "UPDATE series SET provider = 'tvmaze', tvmaze_id = 21, confirmed = 0;",
+    );
+    let base = serve(&rt, &b);
+    let merged = pull(&rt, &a, &base);
+    assert_eq!(merged.matches, 0);
+    assert_eq!(the_match(&a), (None, 0));
+}

@@ -40,18 +40,27 @@ const PULL_FOR: Duration = Duration::from_secs(60);
 /// A history document bigger than this is not one.
 const DOCUMENT_MAX: usize = 64 * 1024 * 1024;
 
-/// The document this computer serves: its series, with their matches, and its
-/// history. No sources, accounts, keys, fixes or preferences: those belong to
-/// this machine.
+/// The document this computer serves: its series, with the matches the person
+/// confirmed, and its history. A match the auto-match only guessed is left
+/// out, so the other computer never takes a guess for the person's choice.
+/// No sources or fixes: those belong to this machine, and a library export
+/// already leaves out accounts, keys and preferences.
 pub fn document(core: &Core) -> Result<Document, CoreError> {
     let mut doc = export::build(core, false, SystemTime::now())?;
     doc.history = Some(export::history_section(core)?);
     doc.sources.clear();
-    doc.accounts = None;
-    doc.keys = None;
-    doc.preferences = None;
+    let confirmed: std::collections::HashSet<String> = core.store.read(|c| {
+        let mut stmt = c.prepare("SELECT path FROM series WHERE confirmed = 1")?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<Result<_, _>>()?;
+        Ok(rows)
+    })?;
     for series in &mut doc.series {
         series.fixes.clear();
+        if !confirmed.contains(&series.path) {
+            series.match_ = None;
+        }
     }
     Ok(doc)
 }
@@ -161,32 +170,45 @@ fn last_segment(path: &str) -> &str {
 }
 
 /// Which series here each series there is, by its path there: the one
-/// series here that shares a provider id with it, else the one with its kind
-/// and folder name. A series whose match here is confirmed and differs from
-/// its match there is another show, and maps to nothing.
+/// series here of its kind that shares a provider id with it, else the one of
+/// its kind and folder name, when no other series there has that name too.
+/// Several here with its id are told apart by the folder name. A series whose
+/// match here is confirmed and differs from its match there is another show,
+/// and maps to nothing.
 fn map(remote: &[SeriesEntry], here: &[Local]) -> HashMap<String, usize> {
+    let name_of = |e: &SeriesEntry| last_segment(&normalise(&e.path)).to_string();
+    let mut names_there: HashMap<(&'static str, String), usize> = HashMap::new();
+    for entry in remote {
+        *names_there
+            .entry((kind_column(&entry.kind), name_of(entry)))
+            .or_default() += 1;
+    }
     let mut out = HashMap::new();
     for entry in remote {
+        let kind = kind_column(&entry.kind);
+        let name = name_of(entry);
         let ids = entry.match_.as_ref().map(Ids::of).unwrap_or_default();
-        let by_id: Vec<usize> = (0..here.len())
-            .filter(|&i| !ids.none() && here[i].ids.shared(&ids))
-            .collect();
-        let found = if by_id.len() == 1 {
-            Some(by_id[0])
-        } else if by_id.is_empty() {
-            let name = last_segment(&normalise(&entry.path)).to_string();
-            let by_name: Vec<usize> = (0..here.len())
-                .filter(|&i| {
-                    here[i].kind == kind_column(&entry.kind) && file_name(&here[i].path) == name
-                })
+        let same_kind = |i: usize| here[i].kind == kind;
+        let by_name = |among: &mut dyn Iterator<Item = usize>| -> Option<usize> {
+            if names_there.get(&(kind, name.clone())) != Some(&1) {
+                return None;
+            }
+            let hits: Vec<usize> = among
+                .filter(|&i| same_kind(i) && file_name(&here[i].path) == name)
                 .collect();
-            (by_name.len() == 1).then(|| by_name[0]).filter(|&i| {
+            (hits.len() == 1).then(|| hits[0])
+        };
+        let by_id: Vec<usize> = (0..here.len())
+            .filter(|&i| same_kind(i) && !ids.none() && here[i].ids.shared(&ids))
+            .collect();
+        let found = match by_id.len() {
+            1 => Some(by_id[0]),
+            0 => by_name(&mut (0..here.len())).filter(|&i| {
                 // Both sides chose a match and they differ: not the same show.
                 let local = &here[i];
                 !(local.confirmed && !ids.none() && !local.ids.none() && !local.ids.shared(&ids))
-            })
-        } else {
-            None
+            }),
+            _ => by_name(&mut by_id.iter().copied()),
         };
         if let Some(i) = found {
             out.insert(normalise(&entry.path), i);
@@ -339,6 +361,7 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
         .await?;
 
     let history = doc.history.map(|h| translate(h, &paths));
+    let ids_by_path: HashMap<&str, u64> = here.iter().map(|l| (l.path.as_str(), l.id)).collect();
     let (views, completed, resume_points) = match history {
         Some(history) => {
             touched.extend(
@@ -347,7 +370,7 @@ pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError>
                     .iter()
                     .map(|v| &v.series)
                     .chain(history.completed.iter().map(|c| &c.series))
-                    .filter_map(|p| here.iter().find(|l| l.path == *p).map(|l| l.id)),
+                    .filter_map(|p| ids_by_path.get(p.as_str()).copied()),
             );
             import::merge_history(core, history).await?
         }
@@ -442,17 +465,45 @@ pub async fn pull(core: &Arc<Core>, base: &str) -> Result<Merged, CoreError> {
     Ok(merged)
 }
 
-/// Whether `base` is due a pull, marking it pulled when it is.
+/// The device a pull is from, by its Tailscale id when the last read knows
+/// its address, so its IPv4 and IPv6 addresses count as one computer.
+fn device(core: &Core, base: &str) -> String {
+    let ip = base
+        .strip_prefix("http://")
+        .and_then(|a| a.parse::<std::net::SocketAddr>().ok())
+        .map(|a| super::trust::canonical(a.ip()));
+    ip.and_then(|ip| {
+        core.host
+            .tailnet_now()
+            .and_then(|t| t.peer(ip).map(|p| p.id.clone()))
+    })
+    .unwrap_or_else(|| base.to_string())
+}
+
+/// Whether the computer at `base` is due a pull, marking it pulled when it is.
 fn due(core: &Core, base: &str) -> bool {
+    let key = device(core, base);
     let mut pulled = recover(&core.host.pulled);
     if pulled
-        .get(base)
+        .get(&key)
         .is_some_and(|at| at.elapsed() < AGAIN_AFTER)
     {
         return false;
     }
-    pulled.insert(base.to_string(), Instant::now());
+    pulled.insert(key, Instant::now());
     true
+}
+
+/// Pulls from `base` once it is due. A pull that fails leaves it due again, so
+/// the next ask from that computer, or the next start, tries once more.
+async fn pull_if_due(core: &Arc<Core>, base: &str) {
+    if !due(core, base) {
+        return;
+    }
+    if let Err(e) = pull(core, base).await {
+        tracing::debug!("history: pulling from {base} failed: {e}");
+        recover(&core.host.pulled).remove(&device(core, base));
+    }
 }
 
 /// Pulls from every trusted AniBeam on the tailnet that is due, on a worker.
@@ -474,11 +525,7 @@ pub fn pull_all(core: &Core) {
         .flatten()
         .unwrap_or_default();
         for found in super::peers::find(asked).await {
-            if due(&core, &found.url)
-                && let Err(e) = pull(&core, &found.url).await
-            {
-                tracing::debug!("history: pulling from {} failed: {e}", found.url);
-            }
+            pull_if_due(&core, &found.url).await;
         }
     });
 }
@@ -495,15 +542,8 @@ pub fn pull_back(core: &Core, from: IpAddr) {
         std::net::SocketAddr::new(from, wire::DEFAULT_PORT)
     );
     let Some(core) = core.arc() else { return };
-    if !due(&core, &base) {
-        return;
-    }
     let handle = core.handle.clone();
-    handle.spawn(async move {
-        if let Err(e) = pull(&core, &base).await {
-            tracing::debug!("history: pulling back from {base} failed: {e}");
-        }
-    });
+    handle.spawn(async move { pull_if_due(&core, &base).await });
 }
 
 #[cfg(test)]
@@ -635,5 +675,31 @@ mod tests {
             })
             .collect();
         assert_eq!(files, ["/home/a/Show/Show - SP.mkv", "/home/a/Film.mkv"]);
+    }
+
+    #[test]
+    fn a_folder_name_two_series_there_share_decides_nothing() {
+        let here = vec![local(1, "/home/a/Twice", None, false)];
+        let there = vec![
+            entry("series", "/mnt/a/Twice", None),
+            entry("series", "/mnt/b/Twice", None),
+        ];
+        assert!(map(&there, &here).is_empty());
+    }
+
+    #[test]
+    fn an_id_only_finds_a_series_of_the_same_kind() {
+        let here = vec![local(1, "/home/a/Show", Some(7), true)];
+        assert!(map(&[entry("movie", "/m/Film.mkv", Some(7))], &here).is_empty());
+    }
+
+    #[test]
+    fn two_series_here_with_the_id_are_told_apart_by_the_folder() {
+        let here = vec![
+            local(1, "/home/a/Show", Some(7), true),
+            local(2, "/home/a/Show [BD]", Some(7), true),
+        ];
+        let found = map(&[entry("series", "/mnt/Show [BD]", Some(7))], &here);
+        assert_eq!(found.get("/mnt/Show [BD]"), Some(&1));
     }
 }

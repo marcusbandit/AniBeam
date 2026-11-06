@@ -132,9 +132,6 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
     Ok(doc)
 }
 
-/// Starts the Export job. The document is built on a blocking thread for
-/// the keyring's sake, then written through a `.tmp` sibling and a rename,
-/// so a reader either sees the whole file or the one that was there.
 /// The history section alone, for another AniBeam computer to merge
 /// (`host::history`). No accounts, so no keyring read.
 pub(crate) fn history_section(core: &Core) -> Result<History, CoreError> {
@@ -144,6 +141,9 @@ pub(crate) fn history_section(core: &Core) -> Result<History, CoreError> {
     })
 }
 
+/// Starts the Export job. The document is built on a blocking thread for
+/// the keyring's sake, then written through a `.tmp` sibling and a rename,
+/// so a reader either sees the whole file or the one that was there.
 pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
     let owner = core.clone();
     core.jobs
