@@ -1871,6 +1871,51 @@ mod tests {
         assert!(out.iter().all(|r| counts(r) == (Some(4), Some(5), Some(6))));
     }
 
+    #[test]
+    fn the_lookups_give_up_when_anirss_s_do() {
+        // anirss stats.py, number for number (#547)
+        assert_eq!(
+            DEFAULT_DEADLINE,
+            Duration::from_secs(20),
+            "enrich(deadline_s=20.0)"
+        );
+        assert_eq!(
+            HTTP_SCRAPE_TIMEOUT,
+            Duration::from_secs(8),
+            "HTTP_SCRAPE_TIMEOUT"
+        );
+        assert_eq!(
+            UDP_SCRAPE_TIMEOUT,
+            Duration::from_secs(5),
+            "UDP_SCRAPE_TIMEOUT"
+        );
+        assert_eq!(TORRENT_TIMEOUT, Duration::from_secs(10), "TORRENT_TIMEOUT");
+        assert_eq!(MAX_TRACKERS_TRIED, 4, "MAX_TRACKERS_TRIED");
+        assert_eq!(DOWNLOAD_WORKERS, 8, "DOWNLOAD_WORKERS");
+        assert_eq!(MAX_HTTP_BATCH, 50, "MAX_HTTP_BATCH");
+        assert_eq!(MAX_UDP_BATCH, 60, "MAX_UDP_BATCH");
+        assert_eq!(
+            CACHE_TTL,
+            Duration::from_secs(2 * 60 * 60),
+            "CACHE_TTL_SECONDS"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_fetch_with_almost_no_time_left_still_gets_half_a_second() {
+        // anirss fetch_torrents: each attempt gets max(0.5, left), the wait max(1.0, left),
+        // so a stalled server with 0.1 s left costs about half a second, not nothing
+        let mut mock = Mock::new(&[]);
+        mock.stall = true;
+        let urls = vec!["http://h/a.torrent".to_string()];
+        let started = Instant::now();
+        let got = fetch_torrents_with(&mock, &urls, Duration::from_millis(100)).await;
+        let took = started.elapsed();
+        assert!(got.is_empty());
+        assert!(took >= Duration::from_millis(450), "{took:?}");
+        assert!(took < Duration::from_secs(3), "{took:?}");
+    }
+
     #[tokio::test]
     async fn enrich_respects_deadline() {
         // A stalled server: the fetch sleeps exactly as long as its timeout allows, so the

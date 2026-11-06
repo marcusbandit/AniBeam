@@ -659,6 +659,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_download_fetches_torrent_files_as_long_as_anirss_does() {
+        // anirss api.py FETCH_DEADLINE_S: 20 s of .torrent fetches, the rest go as links
+        assert_eq!(FETCH_DEADLINE, Duration::from_secs(20));
+    }
+
+    #[test]
     fn a_rule_saves_where_its_torrent_params_say_first() {
         let both = json!({"savePath": "/flat", "torrentParams": {"save_path": "/params"}});
         assert_eq!(rule_save_path(&both), Some("/params"));
