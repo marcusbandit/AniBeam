@@ -145,7 +145,6 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
-- Two releases of one extra, like SP01 and SP01v2, are one row with one history
 - A show's synopsis shows symbols like & instead of their codes, in paragraphs
 - Endpoints from repos reach an anirss built from source, whatever its version
 - Seeders show for releases from a tracker written with backslashes
