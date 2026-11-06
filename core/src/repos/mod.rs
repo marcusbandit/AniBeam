@@ -1461,6 +1461,21 @@ pub fn rekeep_old_rules(
     Ok(rewritten)
 }
 
+/// The endpoint a definition runs as at `url`, its address filled in. A category or filter
+/// the definition leaves out or leaves empty is anirss's default, as anirss reads it
+/// (`raw.get("category") or "1_0"`): every anime upload, no filter (#546).
+fn endpoint_for(def: &Definition, url: &str) -> crate::releases::Endpoint {
+    let mut endpoint = crate::releases::Endpoint::new(&def.id, &def.kind, url);
+    if let Some(c) = def.category.as_deref().filter(|c| !c.trim().is_empty()) {
+        endpoint.category = c.to_string();
+    }
+    if let Some(f) = def.filter.as_deref().filter(|f| !f.trim().is_empty()) {
+        endpoint.filter = f.to_string();
+    }
+    endpoint.json = def.json.clone();
+    endpoint
+}
+
 /// How many characters `a` and `b` start with in common.
 fn shared_start(a: &str, b: &str) -> usize {
     a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
@@ -1545,14 +1560,7 @@ fn installed_runnable(core: &Core, with_off: bool) -> Vec<Runnable> {
                 raw: raw(&field.key).unwrap_or_default(),
             })
             .collect();
-        let mut endpoint = crate::releases::Endpoint::new(&row.def.id, &row.def.kind, &url);
-        if let Some(c) = &row.def.category {
-            endpoint.category = c.clone();
-        }
-        if let Some(f) = &row.def.filter {
-            endpoint.filter = f.clone();
-        }
-        endpoint.json = row.def.json.clone();
+        let endpoint = endpoint_for(&row.def, &url);
         out.push(Runnable {
             endpoint,
             shown_url: row.def.url.clone(),
@@ -2161,6 +2169,29 @@ mod tests {
             "https://example.org/",
         ));
         assert_eq!(other["kind"], "nyaa");
+    }
+
+    #[test]
+    fn a_definition_with_an_empty_category_or_filter_searches_as_anirss_would() {
+        let (mut def, _) = custom_definition("site", "https://tracker.example/?q={query}").unwrap();
+        def.kind = "nyaa".to_string();
+        def.url = "https://tracker.example/".to_string();
+        let shape = |def: &Definition| {
+            let e = endpoint_for(def, &def.url);
+            (e.category, e.filter)
+        };
+        let anirss_default = ("1_0".to_string(), "0".to_string());
+        assert_eq!(shape(&def), anirss_default, "left out");
+        def.category = Some(String::new());
+        def.filter = Some(" ".to_string());
+        assert_eq!(shape(&def), anirss_default, "left empty");
+        def.category = Some("1_2".to_string());
+        def.filter = Some("2".to_string());
+        assert_eq!(
+            shape(&def),
+            ("1_2".to_string(), "2".to_string()),
+            "trusted only"
+        );
     }
 
     #[test]

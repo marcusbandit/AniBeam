@@ -332,7 +332,9 @@ pub fn search_url(ep: &Endpoint, query: &str) -> String {
             ("c".to_string(), ep.category.clone()),
             ("f".to_string(), ep.filter.clone()),
         ]);
-        return format!("{}?{qs}", ep.url);
+        // A nyaa address may carry fixed parameters of its own (a token), as anirss allows
+        let sep = if ep.url.contains('?') { '&' } else { '?' };
+        return format!("{}{sep}{qs}", ep.url);
     }
     ep.url.replace("{query}", &quote_plus(query))
 }
@@ -926,6 +928,62 @@ pub(crate) mod tests {
             .find(|(k, _)| k == "f")
             .map(|(_, v)| v)
             .unwrap_or_default()
+    }
+
+    /// The search's parameters, in order.
+    fn params(url: &str) -> Vec<(String, String)> {
+        let qs = url.split_once('?').map_or("", |(_, q)| q);
+        parse_qsl(qs)
+    }
+
+    #[test]
+    fn a_nyaa_kind_endpoint_named_with_no_category_or_filter_asks_for_everything() {
+        // anirss's Endpoint: category "1_0" (every anime upload) and filter "0" (no filter)
+        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/");
+        assert_eq!((ep.category.as_str(), ep.filter.as_str()), ("1_0", "0"));
+        assert_eq!(
+            search_url(&ep, "Show 1080p"),
+            "https://tracker.example/?page=rss&q=Show+1080p&c=1_0&f=0"
+        );
+        // Trusted only is the definition's to ask for, and goes out as given.
+        let trusted = Endpoint {
+            category: "1_2".to_string(),
+            filter: "2".to_string(),
+            ..ep
+        };
+        let got = params(&search_url(&trusted, "Show"));
+        assert_eq!(
+            got,
+            [("page", "rss"), ("q", "Show"), ("c", "1_2"), ("f", "2")]
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+        );
+    }
+
+    #[test]
+    fn a_nyaa_address_with_its_own_parameters_takes_the_search_after_them() {
+        // anirss: f"{ep.url}{'&' if '?' in ep.url else '?'}{qs}"
+        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/?token=abc");
+        assert_eq!(
+            search_url(&ep, "Show"),
+            "https://tracker.example/?token=abc&page=rss&q=Show&c=1_0&f=0"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_trusted_only_subscription_keeps_its_filter_and_an_all_uploads_one_drops_it() {
+        // anirss's subscription_feed: unfiltered only when the results were found that way
+        let http = FakeHttp::new();
+        let trusted = Endpoint {
+            filter: "2".to_string(),
+            ..Endpoint::new("site", "nyaa", "https://tracker.example/")
+        };
+        let mut item = rel("[A] Show - 01", "l");
+        item.source = "site".to_string();
+        let spec = build_subscription(http.as_ref(), &trusted, "Show", &[item.clone()]).await;
+        assert_eq!(f_param(&spec.feed_url), "2", "{}", spec.feed_url);
+        item.source = format!("site{ALL_UPLOADS}");
+        let spec = build_subscription(http.as_ref(), &trusted, "Show", &[item]).await;
+        assert_eq!(f_param(&spec.feed_url), "0", "{}", spec.feed_url);
     }
 
     #[tokio::test]
