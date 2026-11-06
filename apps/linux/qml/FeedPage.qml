@@ -104,7 +104,7 @@ Item {
     function reload() {
         var keep = scroll.contentY
         var r = Door.listFeed(page.sort)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.reload); return }
         page.cutAt = Date.now()
         page.nowMs = page.cutAt
         page.cards = r.reply.cards

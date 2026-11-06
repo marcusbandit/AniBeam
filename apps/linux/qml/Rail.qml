@@ -64,6 +64,10 @@ Item {
                 required property var modelData
                 objectName: "rail-" + modelData.text.toLowerCase()   // a --drive target
                 readonly property bool on: modelData.index === root.active
+                Accessible.role: Accessible.PageTab
+                Accessible.name: modelData.text
+                Accessible.selected: on
+                Accessible.onPressAction: root.picked(modelData.index)
                 width: root.itemWidth
                 height: theme.space(17)
                 radius: theme.radiusTile
@@ -111,6 +115,10 @@ Item {
                 required property var modelData
                 objectName: "rail-" + modelData.text.toLowerCase()
                 readonly property bool on: modelData.index === root.active
+                Accessible.role: Accessible.PageTab
+                Accessible.name: modelData.text
+                Accessible.selected: on
+                Accessible.onPressAction: root.picked(modelData.index)
                 x: (root.itemWidth - width) / 2
                 width: theme.space(11); height: width
                 radius: width / 2
@@ -161,6 +169,9 @@ Item {
         Rectangle {
             id: lang
             objectName: "title-language"
+            Accessible.role: Accessible.Button
+            Accessible.name: "Title language: " + lang.names[lang.current] + ". Press for the next one"
+            Accessible.onPressAction: langMouse.clicked(null)
             readonly property var order: ["Romaji", "English", "Native"]
             readonly property var names: ({ "Romaji": "Romaji", "English": "English", "Native": "日本語" })
             readonly property string current: order.indexOf(Door.preferences.title_language) >= 0 ? Door.preferences.title_language : "Romaji"
@@ -201,6 +212,9 @@ Item {
             text: Shell.release
             role: "ledger"
             color: versionMouse.containsMouse ? theme.text : theme.textFaint
+            Accessible.role: Accessible.Button
+            Accessible.name: "What's new in " + Shell.release
+            Accessible.onPressAction: root.versionClicked()
             MouseArea { id: versionMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.versionClicked() }
             Tooltip { text: "What's new" }
         }

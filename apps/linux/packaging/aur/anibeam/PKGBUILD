@@ -52,25 +52,6 @@ check() {
 
 package() {
   _src
-  local shell=apps/linux
-  install -Dm755 target/release/anibeam "$pkgdir/usr/bin/anibeam"
-  install -Dm644 "$shell/com.marcusrosado.AniBeam.desktop" \
-    "$pkgdir/usr/share/applications/com.marcusrosado.AniBeam.desktop"
-  local size
-  for size in 16 24 32 48 64 128 256 512; do
-    install -Dm644 "$shell/assets/hicolor/default/$size.png" \
-      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/com.marcusrosado.AniBeam.png"
-  done
-  install -Dm644 "$shell/assets/icon.svg" \
-    "$pkgdir/usr/share/icons/hicolor/scalable/apps/com.marcusrosado.AniBeam.svg"
-  install -Dm644 "$shell/mpv.conf" "$pkgdir/usr/share/anibeam/mpv.conf"
-  install -Dm644 "$shell/packaging/linux/anibeam-host.service" \
-    "$pkgdir/usr/lib/systemd/user/anibeam-host.service"
-  install -Dm644 "$shell/packaging/linux/completions/_anibeam" \
-    "$pkgdir/usr/share/zsh/site-functions/_anibeam"
-  install -Dm644 "$shell/packaging/linux/completions/anibeam.bash" \
-    "$pkgdir/usr/share/bash-completion/completions/anibeam"
-  cp -r "$shell/themes" "$pkgdir/usr/share/anibeam/themes"
-  find "$pkgdir/usr/share/anibeam/themes" -type d -exec chmod 755 {} +
-  find "$pkgdir/usr/share/anibeam/themes" -type f -exec chmod 644 {} +
+  # The same tree the anibeam-bin tarball holds: install-tree.sh lays out both.
+  apps/linux/packaging/linux/install-tree.sh . "$pkgdir" target/release/anibeam
 }

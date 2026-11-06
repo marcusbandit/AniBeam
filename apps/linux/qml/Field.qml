@@ -31,8 +31,11 @@ Corner {
         cursorShape: Qt.IBeamCursor
         onClicked: input.forceActiveFocus()
     }
+    property string accessibleName: ""
     TextInput {
         id: input
+        Accessible.role: Accessible.EditableText
+        Accessible.name: theme.spokenName(root.accessibleName, "", root, "") || root.placeholder
         anchors.fill: parent
         anchors.leftMargin: theme.space(3)
         anchors.rightMargin: theme.space(3)

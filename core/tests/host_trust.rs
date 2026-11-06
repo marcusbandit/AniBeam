@@ -200,6 +200,25 @@ fn without_tailscale_the_host_lists_no_devices_and_still_trusts_the_tailnet() {
     );
 }
 
+/// A tailnet that cannot be read is no list, not an empty one, so the phone
+/// keeps what it had; and that answer is not kept, so the next ask reads again.
+#[test]
+fn a_tailnet_that_cannot_be_read_gives_no_list_and_is_not_kept() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (_dir, core, _c) = common::open_core();
+    core.set_tailscale_status(Some(b"tailscale is not running".to_vec()));
+    let base = serve_as(&rt, &core, "127.0.0.1");
+    let peers = format!("{base}{}", anibeam_host_api::PEERS);
+    let (status, why) = get(&rt, &peers);
+    assert_eq!(status, 503);
+    assert!(why.contains("tailnet"), "{why}");
+
+    // No device online, so nothing off this machine is asked.
+    let alone = br#"{"Self": {"ID": "nSelf", "TailscaleIPs": ["100.65.105.9"]}, "Peer": {}}"#;
+    core.set_tailscale_status(Some(alone.to_vec()));
+    assert_eq!(get(&rt, &peers).0, 200);
+}
+
 /// The real listener, not a mocked address: the host started by the
 /// preference hands every request its peer address, and loopback is this
 /// machine, so it is answered.

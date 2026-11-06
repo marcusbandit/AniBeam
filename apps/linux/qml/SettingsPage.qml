@@ -331,6 +331,9 @@ FocusScope {
                             }
                         }
                         MouseArea {
+                            Accessible.role: Accessible.Button
+                            Accessible.onPressAction: page.open(entry.modelData.id)
+                            Accessible.name: theme.nameNear(parent)
                             id: hover
                             anchors.fill: parent
                             hoverEnabled: true
@@ -441,7 +444,8 @@ FocusScope {
                                     size: theme.space(4)
                                     color: theme.textFaint
                                 }
-                                MouseArea { id: hitMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openResult(hit.modelData) }
+                                MouseArea { id: hitMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openResult(hit.modelData); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                                    Accessible.onPressAction: page.openResult(hit.modelData) }
                             }
                         }
                     }
