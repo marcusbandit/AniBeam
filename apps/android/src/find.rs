@@ -1145,9 +1145,8 @@ impl Find {
                 &provider,
             );
             has_had = state.picks.map.keys().any(|n| grid::have(&library, *n));
-            can_follow = !plan.follow_query.is_empty()
-                && show.airing
-                && !state.no_feed.contains(&provider);
+            can_follow =
+                !plan.follow_query.is_empty() && show.airing && !state.no_feed.contains(&provider);
             let following = state.follow && can_follow;
             let n = plan.episodes.len();
             can_go = n > 0 || following;
