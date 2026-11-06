@@ -59,14 +59,15 @@ impl How {
 /// latest finish on its own; the log keeps every one.
 pub(crate) fn log_finish(
     conn: &rusqlite::Connection,
+    profile: u64,
     series: u64,
     key: &str,
     at: i64,
     how: How,
 ) -> Result<(), CoreError> {
     conn.execute(
-        "INSERT INTO watch_log (series_id, episode_key, at, how) VALUES (?1, ?2, ?3, ?4)",
-        params![series as i64, key, at, how.as_str()],
+        "INSERT INTO watch_log (profile_id, series_id, episode_key, at, how) VALUES (?5, ?1, ?2, ?3, ?4)",
+        params![series as i64, key, at, how.as_str(), profile as i64],
     )?;
     Ok(())
 }

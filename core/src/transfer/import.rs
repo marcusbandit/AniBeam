@@ -678,7 +678,8 @@ async fn import_history(
                 // The finish goes in the watch log once, however often the file comes in.
                 tx.execute(
                     "INSERT INTO watch_log (series_id, episode_key, at, how) SELECT ?1, ?2, ?3, ?4
-                     WHERE NOT EXISTS (SELECT 1 FROM watch_log WHERE series_id = ?1 AND episode_key = ?2 AND at = ?3)",
+                     WHERE NOT EXISTS (SELECT 1 FROM watch_log
+                                       WHERE profile_id = 1 AND series_id = ?1 AND episode_key = ?2 AND at = ?3)",
                     params![row.id as i64, key, at, crate::library::history::How::Imported.as_str()],
                 )?;
             }

@@ -689,6 +689,41 @@ impl Core {
 
     /// Returns fast, always. Every call after `shutdown` fails the same
     /// way, without touching anything else.
+    /// A call from a device on the tailnet, answered as `profile` (#631): the
+    /// owner's is [`Core::call`] itself. Anyone else's player writes their own
+    /// history and resume points, touches only the sessions it opened, and marks
+    /// nothing on a tracker, since the accounts here are the owner's (#632).
+    pub fn call_as(&self, profile: u64, call: Call) -> Result<Reply, CoreError> {
+        if profile == crate::profiles::OWNER {
+            return self.call(call);
+        }
+        match &call {
+            Call::OpenPlayback { file } => {
+                return Ok(Reply::Playback {
+                    session: Box::new(session::open_for(self, *file, profile)?),
+                });
+            }
+            Call::Tick { session, .. }
+            | Call::ClosePlayback { session, .. }
+            | Call::ReportChapters { session, .. } => {
+                if self.sessions.profile_of(*session) != Some(profile) {
+                    return Err(CoreError::NotFound {
+                        what: Entity::Session,
+                        id: *session,
+                    });
+                }
+            }
+            Call::MarkEpisode { .. } => {
+                return Err(CoreError::invalid(
+                    "tracker",
+                    "the tracker accounts on that computer are its owner's, so this device marks nothing there",
+                ));
+            }
+            _ => {}
+        }
+        self.call(call)
+    }
+
     pub fn call(&self, call: Call) -> Result<Reply, CoreError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(CoreError::Internal {

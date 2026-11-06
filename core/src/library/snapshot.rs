@@ -308,6 +308,18 @@ impl Snapshot {
         now: SystemTime,
         scope: Option<&[u64]>,
     ) -> Result<Snapshot, CoreError> {
+        Self::load_for(conn, crate::profiles::OWNER, images_dir, now, scope)
+    }
+
+    /// [`Snapshot::load`] with one profile's progress (#631): its history, resume
+    /// points and tracker lists. The library and the metadata are everyone's.
+    pub fn load_for(
+        conn: &Connection,
+        profile: u64,
+        images_dir: &Path,
+        now: SystemTime,
+        scope: Option<&[u64]>,
+    ) -> Result<Snapshot, CoreError> {
         let mut snap = Snapshot {
             now,
             lang: prefs::load_preferences(conn)?.title_language,
@@ -354,8 +366,8 @@ impl Snapshot {
         }
         snap.fill_tvmaze_totals();
         snap.apply_episodes_set();
-        snap.load_tracker_entries(conn, scope.map(|_| media_ids.as_slice()))?;
-        snap.load_history(conn, scoped_series)?;
+        snap.load_tracker_entries(conn, profile, scope.map(|_| media_ids.as_slice()))?;
+        snap.load_history(conn, profile, scoped_series)?;
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
         snap.imdb = imdb_picks(conn, scoped_series)?;
         snap.franchises = crate::franchise::groups::load(conn, snap.lang)?;
@@ -724,14 +736,19 @@ impl Snapshot {
     fn load_tracker_entries(
         &mut self,
         conn: &Connection,
+        profile: u64,
         scope: Option<&[u64]>,
     ) -> Result<(), CoreError> {
         if scope.is_some_and(<[u64]>::is_empty) {
             return Ok(());
         }
+        // The profile is a row id of ours, never text from outside, so it goes in as a number.
         let where_sql = match scope {
-            Some(ids) => format!(" WHERE media_id IN ({})", placeholders(ids.len())),
-            None => String::new(),
+            Some(ids) => format!(
+                " WHERE profile_id = {profile} AND media_id IN ({})",
+                placeholders(ids.len())
+            ),
+            None => format!(" WHERE profile_id = {profile}"),
         };
         let sql = format!(
             "SELECT tracker, media_id, progress, status, score, repeat, notes FROM tracker_entries{where_sql}"
@@ -767,15 +784,25 @@ impl Snapshot {
         Ok(())
     }
 
-    fn load_history(&mut self, conn: &Connection, scope: Option<&[u64]>) -> Result<(), CoreError> {
+    fn load_history(
+        &mut self,
+        conn: &Connection,
+        profile: u64,
+        scope: Option<&[u64]>,
+    ) -> Result<(), CoreError> {
         let where_sql = match scope {
             Some(ids) => format!(" WHERE series_id IN ({})", placeholders(ids.len())),
             None => String::new(),
         };
+        // The profile's own rows: a row id of ours, so it goes in as a number.
+        let mine = match scope {
+            Some(_) => format!("{where_sql} AND profile_id = {profile}"),
+            None => format!(" WHERE profile_id = {profile}"),
+        };
         let ids = ids_as_i64(scope.unwrap_or(&[]));
 
         let mut stmt = conn.prepare(&format!(
-            "SELECT series_id, episode_key, at FROM views{where_sql}"
+            "SELECT series_id, episode_key, at FROM views{mine}"
         ))?;
         let rows = stmt.query_map(params_from_iter(ids.iter()), |r| {
             Ok((
@@ -790,7 +817,7 @@ impl Snapshot {
         }
 
         let mut stmt = conn.prepare(&format!(
-            "SELECT series_id, episode_key, at FROM completed{where_sql}"
+            "SELECT series_id, episode_key, at FROM completed{mine}"
         ))?;
         let rows = stmt.query_map(params_from_iter(ids.iter()), |r| {
             Ok((
@@ -805,7 +832,7 @@ impl Snapshot {
         }
 
         let mut stmt = conn.prepare(&format!(
-            "SELECT series_id, episode_key, position, duration FROM resume_points{where_sql}"
+            "SELECT series_id, episode_key, position, duration FROM resume_points{mine}"
         ))?;
         let rows = stmt.query_map(params_from_iter(ids.iter()), |r| {
             Ok((

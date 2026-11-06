@@ -364,7 +364,12 @@ fn json(status: StatusCode, body: Vec<u8>) -> Response {
 }
 
 /// One player call, run on this core as if its own player had made it.
-pub async fn call(State(st): State<Arc<Served>>, headers: HeaderMap, body: Bytes) -> Response {
+pub async fn call(
+    State(st): State<Arc<Served>>,
+    axum::Extension(super::server::Profile(profile)): axum::Extension<super::server::Profile>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
     // A web page can send a plain form or text POST anywhere without asking,
     // but JSON only after a preflight this host never answers, so a page in
     // a browser on the tailnet cannot make these calls.
@@ -389,7 +394,7 @@ pub async fn call(State(st): State<Arc<Served>>, headers: HeaderMap, body: Bytes
     let Some(core) = st.core.upgrade() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
-    let reply = tokio::task::spawn_blocking(move || core.call(call)).await;
+    let reply = tokio::task::spawn_blocking(move || core.call_as(profile, call)).await;
     match reply {
         Ok(Ok(reply)) => match serde_json::to_vec(&reply) {
             Ok(body) => json(StatusCode::OK, body),

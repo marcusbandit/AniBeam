@@ -667,7 +667,7 @@ pub fn watched_since(
         .query_row(
             "SELECT 1 FROM files f JOIN completed c
                ON c.series_id = f.series_id AND c.episode_key = f.episode_key
-             WHERE f.kind = 'episode' AND c.at >= ?3
+             WHERE c.profile_id = 1 AND f.kind = 'episode' AND c.at >= ?3
                AND (f.path = ?1 OR (?2 AND f.path LIKE ?4 ESCAPE '\\'))
              LIMIT 1",
             params![trimmed, under, since, like],
@@ -1670,11 +1670,11 @@ mod tests {
         let c = Connection::open_in_memory().unwrap();
         c.execute_batch(
             "CREATE TABLE files (series_id INTEGER, path TEXT, kind TEXT, episode_key TEXT);
-             CREATE TABLE completed (series_id INTEGER, episode_key TEXT, at INTEGER);
+             CREATE TABLE completed (profile_id INTEGER NOT NULL DEFAULT 1, series_id INTEGER, episode_key TEXT, at INTEGER);
              INSERT INTO files VALUES (1, '/lib/Show/ep1.mkv', 'episode', '1'),
                                       (1, '/lib/Show/ep2.mkv', 'episode', '2'),
                                       (1, '/lib/Single [x]/ep3.mkv', 'episode', '3');
-             INSERT INTO completed VALUES (1, '1', 50), (1, '2', 150), (1, '3', 150);",
+             INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 50), (1, '2', 150), (1, '3', 150);",
         )
         .unwrap();
         assert!(!watched_since(&c, "/lib/Show/ep1.mkv", false, 100).unwrap());

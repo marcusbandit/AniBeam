@@ -6,6 +6,10 @@
 //! what `tailscale status --json` says the tailnet holds, so every case is tested without
 //! a network. The host asks it for every request, before any route runs.
 //!
+//! Who asks follows the device too (#631): a device belongs to a Tailscale user, and the
+//! host answers that person's own profile ([`asker`]). This machine and the devices of the
+//! person it belongs to are the owner's.
+//!
 //! Trust follows the address a request comes from, as Tailscale delivers it. A device that
 //! forwards other traffic onto the tailnet (a subnet router that rewrites the source, a
 //! proxy on a trusted device) makes that traffic look like its own, so it is trusted as
@@ -30,6 +34,19 @@ pub struct Peer {
     /// Tailscale carries it through DERP. An idle device has no direct
     /// address either, so it is not counted.
     pub relayed: bool,
+    /// The Tailscale user the device belongs to, by Tailscale's user id.
+    pub user: Option<String>,
+}
+
+/// A person on the tailnet: the Tailscale user a device belongs to.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TailnetUser {
+    /// Tailscale's stable user id.
+    pub id: String,
+    /// "someone@example.com", or a GitHub login.
+    pub login: String,
+    /// The name Tailscale shows for them.
+    pub name: String,
 }
 
 /// This machine's tailnet addresses and every other device on it.
@@ -37,12 +54,78 @@ pub struct Peer {
 pub struct Tailnet {
     pub me: Vec<IpAddr>,
     pub peers: Vec<Peer>,
+    /// The Tailscale user this machine belongs to.
+    pub me_user: Option<String>,
+    /// Every user the status names, by id.
+    pub users: Vec<TailnetUser>,
 }
 
 impl Tailnet {
     pub fn peer(&self, ip: IpAddr) -> Option<&Peer> {
         self.peers.iter().find(|p| p.ips.contains(&ip))
     }
+
+    pub fn user(&self, id: &str) -> Option<&TailnetUser> {
+        self.users.iter().find(|u| u.id == id)
+    }
+
+    /// The person this machine belongs to, when the status names them.
+    pub fn owner(&self) -> Option<&TailnetUser> {
+        self.me_user.as_deref().and_then(|id| self.user(id))
+    }
+}
+
+/// Whose request it is (#631).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Asker {
+    /// This machine, or a device of the person it belongs to.
+    Owner,
+    /// A device of someone else on the tailnet.
+    Person(TailnetUser),
+    /// A tailnet device the host cannot tie to a person.
+    Unknown,
+}
+
+/// Who is asking from `from`. `tailnet` is None when `tailscale status` has never been
+/// read: the host then cannot tell anyone apart, so every device it trusts is the
+/// owner's, as before there were profiles. The same goes for a status that names no
+/// user for this machine.
+pub fn asker(from: IpAddr, tailnet: Option<&Tailnet>) -> Asker {
+    let from = canonical(from);
+    if from.is_loopback() {
+        return Asker::Owner;
+    }
+    let Some(t) = tailnet else {
+        return Asker::Owner;
+    };
+    if t.me.contains(&from) {
+        return Asker::Owner;
+    }
+    let Some(me) = t.me_user.as_deref() else {
+        return Asker::Owner;
+    };
+    match t.peer(from).and_then(|p| p.user.as_deref()) {
+        Some(user) if user == me => Asker::Owner,
+        Some(user) => Asker::Person(t.user(user).cloned().unwrap_or(TailnetUser {
+            id: user.to_string(),
+            ..TailnetUser::default()
+        })),
+        None => Asker::Unknown,
+    }
+}
+
+/// What a device the host cannot tie to a person is told.
+pub const UNKNOWN_PERSON: &str =
+    "That computer cannot tell whose device this is on the tailnet, so it does not answer.";
+
+/// A user id as the status writes it: a number, or a string in some builds.
+fn user_id(v: &serde_json::Value) -> Option<String> {
+    match v {
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        serde_json::Value::String(s) if !s.is_empty() => Some(s.clone()),
+        _ => None,
+    }
+    .filter(|id| id != "0")
 }
 
 /// The tailnet out of `tailscale status --json`. None when it is not that document.
@@ -86,13 +169,35 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
                         relayed: p["Active"].as_bool().unwrap_or(false)
                             && p["CurAddr"].as_str().unwrap_or_default().is_empty()
                             && !p["Relay"].as_str().unwrap_or_default().is_empty(),
+                        user: user_id(&p["UserID"]),
                     })
                 })
                 .collect()
         })
         .unwrap_or_default();
     peers.sort_by_key(|p| p.name.to_lowercase());
-    Some(Tailnet { me, peers })
+    let mut users: Vec<TailnetUser> = v["User"]
+        .as_object()
+        .map(|all| {
+            all.iter()
+                .filter_map(|(key, u)| {
+                    let id = user_id(&u["ID"]).or_else(|| Some(key.clone()))?;
+                    Some(TailnetUser {
+                        id,
+                        login: u["LoginName"].as_str().unwrap_or_default().to_string(),
+                        name: u["DisplayName"].as_str().unwrap_or_default().to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    users.sort_by(|a, b| a.id.cmp(&b.id));
+    Some(Tailnet {
+        me,
+        peers,
+        me_user: user_id(&v["Self"]["UserID"]),
+        users,
+    })
 }
 
 /// The tailnet as far as this machine alone can tell, for before `tailscale status` has
@@ -100,7 +205,7 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
 pub fn local_tailnet(all: &[IpAddr]) -> Tailnet {
     Tailnet {
         me: addr::pick(all),
-        peers: Vec::new(),
+        ..Tailnet::default()
     }
 }
 
@@ -186,6 +291,65 @@ mod tests {
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
+    }
+
+    /// #631: a status with people in it. The phone is the owner's, the tablet a
+    /// friend's, and the laptop names no user.
+    const PEOPLE: &[u8] = br#"{
+        "Self": {"ID": "nSelf", "UserID": 100, "TailscaleIPs": ["100.65.105.9"]},
+        "Peer": {
+            "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "UserID": 100, "TailscaleIPs": ["100.70.1.2"]},
+            "nodekey:bb": {"ID": "nTablet", "HostName": "tab", "UserID": 200, "TailscaleIPs": ["100.70.1.3"]},
+            "nodekey:cc": {"ID": "nLaptop", "HostName": "lap", "TailscaleIPs": ["100.70.1.4"]}
+        },
+        "User": {
+            "100": {"ID": 100, "LoginName": "owner@example.com", "DisplayName": "Owner"},
+            "200": {"ID": 200, "LoginName": "friend@example.com", "DisplayName": "Friend"}
+        }
+    }"#;
+
+    #[test]
+    fn each_device_is_asked_for_by_the_person_it_belongs_to() {
+        let t = read_status(PEOPLE).unwrap();
+        assert_eq!(t.owner().map(|u| u.name.as_str()), Some("Owner"));
+        assert_eq!(asker(ip("127.0.0.1"), Some(&t)), Asker::Owner);
+        assert_eq!(
+            asker(ip("100.65.105.9"), Some(&t)),
+            Asker::Owner,
+            "this machine"
+        );
+        assert_eq!(
+            asker(ip("100.70.1.2"), Some(&t)),
+            Asker::Owner,
+            "the owner's phone"
+        );
+        assert_eq!(
+            asker(ip("100.70.1.3"), Some(&t)),
+            Asker::Person(TailnetUser {
+                id: "200".into(),
+                login: "friend@example.com".into(),
+                name: "Friend".into(),
+            })
+        );
+        assert_eq!(
+            asker(ip("100.70.1.4"), Some(&t)),
+            Asker::Unknown,
+            "no user named"
+        );
+        assert_eq!(
+            asker(ip("100.99.9.9"), Some(&t)),
+            Asker::Unknown,
+            "not in the status"
+        );
+    }
+
+    #[test]
+    fn with_no_people_to_tell_apart_every_device_is_the_owners() {
+        // Never read, or a status that names no user for this machine: as before profiles.
+        assert_eq!(asker(ip("100.70.1.3"), None), Asker::Owner);
+        let t = read_status(STATUS).unwrap();
+        assert_eq!(t.me_user, None);
+        assert_eq!(asker(ip("100.70.1.2"), Some(&t)), Asker::Owner);
     }
 
     const STATUS: &[u8] = br#"{
