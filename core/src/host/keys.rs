@@ -1,14 +1,18 @@
 //! This AniBeam's own key, the keys it is paired with, and the proofs it has
 //! already seen (#555). The scheme itself is `anibeam_host_api::proof`.
 //!
-//! The key is made once and kept with the other secrets. The paired keys are
+//! The key is made once and kept in its own owner-only file beside the
+//! database, not in the keyring: a keyring still locked at start would read
+//! as no key, and a new key would undo every pairing. The paired keys are
 //! kept in the store; pairing (#557) is what adds them. A request may carry a
 //! proof: one that does not check out is refused whatever its address, one
 //! from a paired key is known to be that device, and one from any other key
-//! changes nothing.
+//! changes nothing, so only a paired key's nonces are kept.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::{HashSet, VecDeque};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anibeam_host_api::proof::{self, DeviceKey, ProofError};
 use serde::{Deserialize, Serialize};
@@ -17,13 +21,13 @@ use crate::contract::CoreError;
 use crate::core::Core;
 use crate::store::settings;
 use crate::sync::recover;
-use crate::trackers::secrets::Secrets;
 
-/// Where the key's seed is kept among the secrets.
-pub const SECRET: &str = "anibeam-device-key";
 /// More fresh proofs than this at once and new ones are refused, so a
-/// device signing as fast as it can cannot grow the list without end.
+/// paired device signing as fast as it can cannot grow the list without end.
 const SEEN_MAX: usize = 100_000;
+/// After the key could not be read or made, how long before trying again,
+/// so a broken file is not read on every request.
+const RETRY_AFTER: Duration = Duration::from_secs(60);
 
 /// One AniBeam this one is paired with.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -49,10 +53,24 @@ pub enum Proof {
 }
 
 pub struct Keys {
-    mine: OnceLock<Option<Arc<DeviceKey>>>,
+    /// Held while the key is read or made, so two first requests make one.
+    mine: Mutex<Mine>,
     paired: Mutex<Vec<Paired>>,
-    /// Each fresh proof's key and nonce, with the time it was made.
-    seen: Mutex<HashMap<(String, String), i64>>,
+    seen: Mutex<Seen>,
+}
+
+#[derive(Default)]
+struct Mine {
+    key: Option<Arc<DeviceKey>>,
+    tried: Option<Instant>,
+}
+
+/// The paired keys' nonces still fresh, oldest first by when this machine
+/// saw them.
+#[derive(Default)]
+struct Seen {
+    ids: HashSet<(String, String)>,
+    order: VecDeque<(i64, (String, String))>,
 }
 
 impl Default for Keys {
@@ -64,35 +82,36 @@ impl Default for Keys {
 impl Keys {
     pub fn new() -> Keys {
         Keys {
-            mine: OnceLock::new(),
+            mine: Mutex::new(Mine::default()),
             paired: Mutex::new(Vec::new()),
-            seen: Mutex::new(HashMap::new()),
+            seen: Mutex::new(Seen::default()),
         }
     }
 
-    /// This machine's key, made and kept on first use. None when the secrets
-    /// can be neither read nor written; it is then asked again next time.
-    /// Blocks on the keyring the first time.
-    pub fn mine(&self, secrets: &Secrets) -> Option<Arc<DeviceKey>> {
-        if let Some(key) = self.mine.get() {
-            return key.clone();
+    /// This machine's key, kept at `path` and made there on first use. None
+    /// when it can be neither read nor made, and then not tried again for
+    /// `RETRY_AFTER`. Reads the file the first time.
+    pub fn mine(&self, path: &Path) -> Option<Arc<DeviceKey>> {
+        let mut mine = recover(&self.mine);
+        if let Some(key) = &mine.key {
+            return Some(key.clone());
         }
-        let key = load_or_make(secrets).map(Arc::new);
-        if key.is_some() {
-            let _ = self.mine.set(key.clone());
+        if mine.tried.is_some_and(|at| at.elapsed() < RETRY_AFTER) {
+            return None;
         }
-        key
+        mine.tried = Some(Instant::now());
+        mine.key = load_or_make(path).map(Arc::new);
+        mine.key.clone()
     }
 
-    /// This machine's key if it was already read, without touching the
-    /// secrets.
+    /// This machine's key if it was already read, without touching the file.
     pub fn mine_now(&self) -> Option<Arc<DeviceKey>> {
-        self.mine.get().cloned().flatten()
+        recover(&self.mine).key.clone()
     }
 
     /// Uses `key` as this machine's key, for a test.
     pub fn set_mine(&self, key: DeviceKey) {
-        let _ = self.mine.set(Some(Arc::new(key)));
+        recover(&self.mine).key = Some(Arc::new(key));
     }
 
     pub fn set_paired(&self, list: Vec<Paired>) {
@@ -115,22 +134,34 @@ impl Keys {
             Err(ProofError::Forged) => return Proof::Refused(FORGED),
             Err(ProofError::Stale) => return Proof::Refused(STALE),
         };
-        {
-            let mut seen = recover(&self.seen);
-            seen.retain(|_, at| (now - *at).abs() <= proof::FRESH_FOR);
-            if seen.len() >= SEEN_MAX {
-                return Proof::Refused(BUSY);
+        let paired = recover(&self.paired)
+            .iter()
+            .find(|p| p.key == proven.key)
+            .map(|p| p.name.clone());
+        // Another key's proof opens nothing, so replaying it gains nothing
+        // either, and keeping its nonce would let anyone fill the list.
+        let Some(name) = paired else {
+            return Proof::Unpaired;
+        };
+        let mut seen = recover(&self.seen);
+        // A proof is fresh for `FRESH_FOR` either side of its time, so one
+        // seen here more than twice that long ago can no longer come again.
+        let horizon = now.saturating_sub(2 * proof::FRESH_FOR);
+        while seen.order.front().is_some_and(|(at, _)| *at < horizon) {
+            if let Some((_, id)) = seen.order.pop_front() {
+                seen.ids.remove(&id);
             }
-            let id = (proven.key.clone(), proven.nonce.clone());
-            if seen.contains_key(&id) {
-                return Proof::Refused(REPLAYED);
-            }
-            seen.insert(id, proven.time);
         }
-        match recover(&self.paired).iter().find(|p| p.key == proven.key) {
-            Some(p) => Proof::Paired(p.name.clone()),
-            None => Proof::Unpaired,
+        let id = (proven.key, proven.nonce);
+        if seen.ids.contains(&id) {
+            return Proof::Refused(REPLAYED);
         }
+        if seen.ids.len() >= SEEN_MAX {
+            return Proof::Refused(BUSY);
+        }
+        seen.ids.insert(id.clone());
+        seen.order.push_back((now, id));
+        Proof::Paired(name)
     }
 }
 
@@ -141,28 +172,32 @@ const STALE: &str =
 const REPLAYED: &str = "That request's proof of its device was already used.";
 const BUSY: &str = "Too many requests at once. Try again in a moment.";
 
-fn load_or_make(secrets: &Secrets) -> Option<DeviceKey> {
-    match secrets.get(SECRET, None) {
-        Ok(Some((seed, _))) => match proof::unhex::<32>(&seed) {
-            Some(seed) => return Some(DeviceKey::from_seed(seed)),
-            // A seed that does not read is not replaced: another key would
-            // undo every pairing made with this one.
+fn load_or_make(path: &Path) -> Option<DeviceKey> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => match proof::unhex::<32>(text.trim()) {
+            Some(seed) => Some(DeviceKey::from_seed(seed)),
+            // A key that does not read is left for a person to look at, not
+            // replaced: another key would undo every pairing made with it.
             None => {
-                tracing::warn!("host: the stored device key does not read; requests go unsigned");
-                return None;
+                tracing::warn!(
+                    "host: the device key at {} does not read; requests go unsigned",
+                    path.display()
+                );
+                None
             }
         },
-        Ok(None) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let key = DeviceKey::from_seed(rand::random::<[u8; 32]>());
+            match crate::atomic_file::write_private(path, proof::hex(&key.seed())) {
+                Ok(()) => Some(key),
+                Err(e) => {
+                    tracing::warn!("host: the device key could not be stored: {e}");
+                    None
+                }
+            }
+        }
         Err(e) => {
             tracing::warn!("host: the device key could not be read: {e}");
-            return None;
-        }
-    }
-    let key = DeviceKey::from_seed(rand::random::<[u8; 32]>());
-    match secrets.set(SECRET, &proof::hex(&key.seed())) {
-        Ok(_) => Some(key),
-        Err(e) => {
-            tracing::warn!("host: the device key could not be stored: {e}");
             None
         }
     }
@@ -183,14 +218,14 @@ pub fn load(core: &Core) {
 /// Pairs with the device whose public key is `key`, under `name`, or renames
 /// it when already paired. Kept in the store.
 pub fn pair(core: &Core, key: &str, name: &str) -> Result<(), CoreError> {
-    if proof::unhex::<32>(key).is_none() {
+    let Some(bytes) = proof::unhex::<32>(key) else {
         return Err(CoreError::Invalid {
             field: "key".into(),
             message: format!("{key:?} is not a device key"),
         });
-    }
+    };
     let entry = Paired {
-        key: key.to_ascii_lowercase(),
+        key: proof::hex(&bytes),
         name: name.to_string(),
     };
     let list = core.store.write(move |c| {
@@ -248,25 +283,54 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_good_proof_from_another_key_is_only_unpaired() {
-        let (k, host) = keys();
-        let h = phone().sign(&host, NOW, "a1", "GET", "/");
-        assert_eq!(k.judge(Some(&h), "GET", "/", NOW), Proof::Unpaired);
+    fn pair_phone(k: &Keys) {
+        k.set_paired(vec![Paired {
+            key: phone().public(),
+            name: "pixel".into(),
+        }]);
     }
 
     #[test]
-    fn a_proof_used_twice_is_refused_the_second_time() {
+    fn a_good_proof_from_another_key_is_only_unpaired_and_never_kept() {
         let (k, host) = keys();
         let h = phone().sign(&host, NOW, "a1", "GET", "/");
         assert_eq!(k.judge(Some(&h), "GET", "/", NOW), Proof::Unpaired);
+        // Its replay opens nothing either, and nothing of it was kept.
+        assert_eq!(k.judge(Some(&h), "GET", "/", NOW), Proof::Unpaired);
+        assert!(recover(&k.seen).ids.is_empty());
+    }
+
+    #[test]
+    fn a_paired_proof_used_twice_is_refused_the_second_time() {
+        let (k, host) = keys();
+        pair_phone(&k);
+        let h = phone().sign(&host, NOW, "a1", "GET", "/");
+        assert_eq!(
+            k.judge(Some(&h), "GET", "/", NOW),
+            Proof::Paired("pixel".into())
+        );
         assert_eq!(
             k.judge(Some(&h), "GET", "/", NOW + 1),
             Proof::Refused(REPLAYED)
         );
-        // The same nonce from another device is its own proof.
-        let other = DeviceKey::from_seed([3; 32]).sign(&host, NOW, "a1", "GET", "/");
-        assert_eq!(k.judge(Some(&other), "GET", "/", NOW), Proof::Unpaired);
+    }
+
+    #[test]
+    fn a_nonce_is_forgotten_once_its_proof_could_not_come_again() {
+        let (k, host) = keys();
+        pair_phone(&k);
+        let first = phone().sign(&host, NOW, "a1", "GET", "/");
+        assert!(matches!(
+            k.judge(Some(&first), "GET", "/", NOW),
+            Proof::Paired(_)
+        ));
+        let later = NOW + 2 * proof::FRESH_FOR + 1;
+        let next = phone().sign(&host, later, "a2", "GET", "/");
+        assert!(matches!(
+            k.judge(Some(&next), "GET", "/", later),
+            Proof::Paired(_)
+        ));
+        assert_eq!(recover(&k.seen).ids.len(), 1, "the first nonce went");
     }
 
     #[test]
@@ -295,11 +359,31 @@ mod tests {
     }
 
     #[test]
-    fn the_key_is_made_once_and_kept_with_the_secrets() {
+    fn the_key_is_made_once_and_kept_in_its_own_file() {
         let dir = tempfile::tempdir().unwrap();
-        let secrets = Secrets::file_only(dir.path().join("secrets.json"));
-        let first = Keys::new().mine(&secrets).unwrap().public();
-        let again = Keys::new().mine(&secrets).unwrap().public();
+        let path = dir.path().join("device-key");
+        let first = Keys::new().mine(&path).unwrap().public();
+        let again = Keys::new().mine(&path).unwrap().public();
         assert_eq!(first, again);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o077, 0, "owner only, {mode:o}");
+        }
+    }
+
+    #[test]
+    fn a_key_that_does_not_read_is_left_alone_and_not_read_on_every_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("device-key");
+        std::fs::write(&path, "not a key").unwrap();
+        let k = Keys::new();
+        assert!(k.mine(&path).is_none());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not a key");
+        // Fixed on disk, it still waits out the pause before the next try.
+        std::fs::write(&path, proof::hex(&[5; 32])).unwrap();
+        assert!(k.mine(&path).is_none());
+        assert!(Keys::new().mine(&path).is_some());
     }
 }

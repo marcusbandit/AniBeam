@@ -173,3 +173,23 @@ fn a_switched_off_device_stays_off_even_when_paired() {
     let paired = phone.sign(&host, now(), "n1", "GET", HELLO);
     assert_eq!(get(&rt, &tailnet, HELLO, Some(paired)).0, 403);
 }
+
+#[test]
+fn an_address_the_host_cannot_place_stays_refused_even_when_paired() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (_dir, core, _c) = common::open_core();
+    core.set_tailscale_status(Some(STATUS.to_vec()));
+    let host = hello(&rt, &serve_as(&rt, &core, "100.70.1.2")).key;
+    let phone = DeviceKey::from_seed([7; 32]);
+    anibeam_core::host::keys::pair(&core, &phone.public(), "pixel").unwrap();
+    core.call(Call::SetTailnetDeviceTrust {
+        device: "nPhone".into(),
+        trusted: false,
+    })
+    .unwrap();
+    // A tailnet address the status does not name, while a device is off:
+    // it might be that device, so a paired key does not open it.
+    let unknown = serve_as(&rt, &core, "100.99.9.9");
+    let paired = phone.sign(&host, now(), "n1", "GET", HELLO);
+    assert_eq!(get(&rt, &unknown, HELLO, Some(paired)).0, 403);
+}

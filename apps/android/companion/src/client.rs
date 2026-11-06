@@ -1,5 +1,6 @@
 //! HTTP to the host and to AniList.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -97,13 +98,21 @@ pub fn use_device_key(key: DeviceKey) {
     let _ = DEVICE.set(Arc::new(key));
 }
 
+/// Each host's key and how far its clock is ahead of the phone's, by base URL, once its
+/// hello said it reads proofs. Shared, so a client made for one fetch signs too.
+static HOSTS: OnceLock<Mutex<HashMap<String, (String, i64)>>> = OnceLock::new();
+
+fn hosts() -> std::sync::MutexGuard<'static, HashMap<String, (String, i64)>> {
+    HOSTS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
 pub struct HostClient {
     agent: ureq::Agent,
     address: HostAddress,
     key: Option<Arc<DeviceKey>>,
-    /// The host's key and how far its clock is ahead of the phone's, once its hello said
-    /// it reads proofs.
-    host: Mutex<Option<(String, i64)>>,
 }
 
 impl HostClient {
@@ -112,7 +121,6 @@ impl HostClient {
             agent,
             address,
             key: DEVICE.get().cloned(),
-            host: Mutex::new(None),
         }
     }
 
@@ -123,10 +131,15 @@ impl HostClient {
     }
 
     /// The proof header for one request, when the host reads proofs and the phone has a
-    /// key. Made afresh for every try: a nonce is good once.
+    /// key. Made afresh for every try: a nonce is good once. The hello itself goes
+    /// unsigned: it is how the phone learns the host's key, and a host whose key changed
+    /// would refuse a hello signed to the old one.
     fn proof(&self, method: &str, path: &str) -> Option<String> {
+        if path == api::HELLO {
+            return None;
+        }
         let key = self.key.as_ref()?;
-        let (host, ahead) = self.host.lock().ok()?.clone()?;
+        let (host, ahead) = hosts().get(&self.address.base_url())?.clone();
         let mut nonce = [0u8; 16];
         getrandom::fill(&mut nonce).ok()?;
         Some(key.sign(
@@ -233,10 +246,11 @@ impl HostClient {
         if hello.api > api::API_VERSION {
             return Err(HostError::TooNew(hello.api));
         }
-        if let Ok(mut host) = self.host.lock() {
-            *host = (hello.features.iter().any(|f| f == api::FEATURE_PROOF)
-                && !hello.key.is_empty())
-            .then(|| (hello.key.clone(), hello.now - crate::now()));
+        let base = self.address.base_url();
+        if hello.features.iter().any(|f| f == api::FEATURE_PROOF) && !hello.key.is_empty() {
+            hosts().insert(base, (hello.key.clone(), hello.now - crate::now()));
+        } else {
+            hosts().remove(&base);
         }
         Ok(hello)
     }
@@ -410,8 +424,8 @@ mod proof_tests {
         let phone = DeviceKey::from_seed([7; 32]);
         // The host's clock is an hour ahead: the proof is made on the host's time.
         let ahead = crate::now() + 3600;
-        let (address, seen) = host(hello(&[api::FEATURE_PROOF], &host_key, ahead), 3);
-        let client = HostClient::new(agent(), address).with_key(phone.clone());
+        let (address, seen) = host(hello(&[api::FEATURE_PROOF], &host_key, ahead), 5);
+        let client = HostClient::new(agent(), address.clone()).with_key(phone.clone());
 
         client.hello().unwrap();
         assert_eq!(
@@ -437,6 +451,25 @@ mod proof_tests {
         let (_, header) = seen.recv().unwrap();
         let again = proof::check(&header.unwrap(), &host_key, "POST", api::CALL, ahead).unwrap();
         assert_ne!(again.nonce, proven.nonce, "a nonce is used once");
+
+        // A client made for one fetch, which never says hello itself, signs too.
+        let fresh = HostClient::new(agent(), address).with_key(phone.clone());
+        fresh.get_bytes("/api/v1/posters/4").unwrap();
+        let (_, header) = seen.recv().unwrap();
+        assert!(
+            proof::check(
+                &header.unwrap(),
+                &host_key,
+                "GET",
+                "/api/v1/posters/4",
+                ahead
+            )
+            .is_ok()
+        );
+
+        // Another hello goes unsigned, so a host whose key changed is heard again.
+        client.hello().unwrap();
+        assert_eq!(seen.recv().unwrap().1, None);
     }
 
     #[test]

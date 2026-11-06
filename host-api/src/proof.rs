@@ -118,11 +118,13 @@ pub fn check(
             &Signature::from_bytes(&signature),
         )
         .map_err(|_| ProofError::Forged)?;
-    if (now - time).abs() > FRESH_FOR {
+    // `abs_diff`, so a time chosen to overflow a subtraction is only stale.
+    if now.abs_diff(time) > FRESH_FOR.unsigned_abs() {
         return Err(ProofError::Stale);
     }
     Ok(Proven {
-        key: key.to_string(),
+        // One spelling per key, whatever case the header used.
+        key: hex(public.as_bytes()),
         time,
         nonce: nonce.to_string(),
     })
@@ -141,9 +143,9 @@ pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Exactly `N` bytes out of lowercase or uppercase hex.
+/// Exactly `N` bytes out of lowercase or uppercase hex, and nothing else.
 pub fn unhex<const N: usize>(text: &str) -> Option<[u8; N]> {
-    if text.len() != N * 2 || !text.is_ascii() {
+    if text.len() != N * 2 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     let mut out = [0u8; N];
@@ -232,6 +234,28 @@ mod tests {
         );
         let edge = phone().sign(&host(), NOW - FRESH_FOR, "n1", "GET", "/");
         assert!(check(&edge, &host(), "GET", "/", NOW).is_ok());
+        // A time picked to overflow is stale, never a panic or a wrap to fresh.
+        for time in [i64::MIN, i64::MAX, NOW - i64::MAX] {
+            let far = phone().sign(&host(), time, "n1", "GET", "/");
+            assert_eq!(
+                check(&far, &host(), "GET", "/", NOW),
+                Err(ProofError::Stale),
+                "{time}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_key_has_one_spelling() {
+        let header = phone().sign(&host(), NOW, "n1", "GET", "/");
+        let upper = header.replacen(&phone().public(), &phone().public().to_uppercase(), 1);
+        assert_eq!(
+            check(&upper, &host(), "GET", "/", NOW).map(|p| p.key),
+            Err(ProofError::Forged),
+            "the signature covers the key as written"
+        );
+        let proven = check(&header, &host(), "GET", "/", NOW).unwrap();
+        assert_eq!(proven.key, phone().public());
     }
 
     #[test]
@@ -270,5 +294,10 @@ mod tests {
         assert_eq!(unhex::<3>("000FFF"), Some([0, 15, 255]));
         assert_eq!(unhex::<3>("000ff"), None);
         assert_eq!(unhex::<3>("000fgf"), None);
+        assert_eq!(
+            unhex::<3>("+f0fff"),
+            None,
+            "from_str_radix alone would take a sign"
+        );
     }
 }

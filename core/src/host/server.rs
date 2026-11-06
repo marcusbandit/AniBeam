@@ -101,8 +101,7 @@ async fn known_host(request: axum::extract::Request, next: axum::middleware::Nex
 /// and anything off the tailnet (`trust::decide`). A request may also carry
 /// a proof of the device that sent it (`keys`): one that does not check out
 /// is refused wherever it comes from, and one from a paired device is
-/// answered wherever it comes from, unless that device is switched off. It
-/// runs before every route.
+/// answered from off the tailnet too. It runs before every route.
 async fn trusted(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
@@ -124,7 +123,7 @@ async fn trusted(
     // Reading the tailnet can run `tailscale`, and the key the keyring, so
     // both stay off the async threads.
     let judged = tokio::task::spawn_blocking(move || {
-        core.host.keys.mine(&core.secrets);
+        core.host.keys.mine(&core.paths.device_key_path());
         let verdict = core.host.verdict(from.ip());
         let proof = core
             .host
@@ -134,10 +133,12 @@ async fn trusted(
     })
     .await;
     let (verdict, proof) = judged.unwrap_or((trust::Verdict::Unknown, keys::Proof::None));
+    // A paired proof opens only an address off the tailnet. One the host
+    // cannot place there might be the device the person switched off, so it
+    // stays refused whatever key it holds.
     let refused = match (&verdict, &proof) {
-        (trust::Verdict::SwitchedOff(_), _) => trust::refusal(&verdict),
         (_, keys::Proof::Refused(why)) => Some(*why),
-        (_, keys::Proof::Paired(_)) => None,
+        (trust::Verdict::Outside, keys::Proof::Paired(_)) => None,
         _ => trust::refusal(&verdict),
     };
     match refused {
@@ -207,8 +208,11 @@ fn failed(e: &CoreError) -> Response {
 }
 
 async fn hello(State(st): State<Arc<Served>>) -> Response {
-    // Read by `trusted`, which runs before every route.
-    let key = st.core.upgrade().and_then(|c| c.host.keys.mine_now());
+    // `trusted` read the key before this route, so this only takes it.
+    let key = st
+        .core
+        .upgrade()
+        .and_then(|c| c.host.keys.mine(&c.paths.device_key_path()));
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
