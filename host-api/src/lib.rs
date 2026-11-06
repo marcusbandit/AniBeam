@@ -171,6 +171,12 @@ pub struct Hello {
     /// host.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub key: String,
+    /// Set when the person switched streaming off on the host: it leaves
+    /// [`FEATURE_STREAM`] and [`FEATURE_CONVERT`] out and refuses the file
+    /// routes, while the snapshot and posters still answer. Absent from a
+    /// host older than the switch, which streams whenever it shares.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub streaming_off: bool,
     /// Set when the host's Tailscale is talking to the asking device with no
     /// direct path, carrying it through a DERP relay, as far as `tailscale
     /// status` last said. A client spends less over such a path: a conversion

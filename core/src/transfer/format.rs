@@ -13,6 +13,7 @@
 //!
 //! `series[].fixes`, the quick fixes on a series' files, came the same way:
 //! absent when a series has none, so an older reader names it and moves on.
+//! So did `series[].list`, the status and score kept on this device (#213).
 //!
 //! Every struct carries a flattened `extra` map, so a field this version
 //! has never heard of survives the read and is reported by name rather
@@ -113,6 +114,25 @@ pub struct SeriesEntry {
     /// none. Additive, so a document without them reads as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fixes: Vec<FixEntry>,
+    /// The status and score kept on this device for a series no tracker
+    /// holds them for (#213), absent when there are none. Additive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list: Option<ListEntry>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+/// A series' entry on the list kept on this device.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListEntry {
+    /// The status as the store names it (`watching`, `completed`). A string
+    /// rather than the enum, so a status a later version adds is named as
+    /// ignored instead of failing the whole document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
 }
@@ -402,6 +422,9 @@ impl Document {
         }
         for (i, s) in self.series.iter().enumerate() {
             names(&format!("series[{i}]"), &s.extra, &mut out);
+            if let Some(list) = &s.list {
+                names(&format!("series[{i}].list"), &list.extra, &mut out);
+            }
             for (j, f) in s.fixes.iter().enumerate() {
                 names(&format!("series[{i}].fixes[{j}]"), &f.extra, &mut out);
             }

@@ -208,15 +208,52 @@ fn a_pick_with_nowhere_to_write_is_left_out_and_counted() {
     common::wait_job(&c, job);
     assert_eq!(
         plain_lines(&c),
-        vec!["Set Bebop to Dropped on AniList. 1 show has no tracker match.".to_string()]
+        vec![
+            "Set Bebop to Dropped on AniList. 1 show is kept on this computer, with no tracker to send to."
+                .to_string()
+        ]
     );
 }
 
+/// A pick no tracker carries keeps the score on this computer (#213), so a
+/// selection of only those answers at once with no job.
+#[test]
+fn picks_no_tracker_carries_keep_the_score_here() {
+    let (_dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
+    assert_eq!(
+        core.call(Call::ActOnSeries {
+            series: vec![loose],
+            action: SeriesAction::Score { score: Some(8.0) },
+        })
+        .unwrap(),
+        Reply::Ok
+    );
+    let kept: Option<f64> = core
+        .store()
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT score FROM local_entries WHERE series_id = ?1",
+                [loose as i64],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(kept, Some(8.0));
+}
+
+/// Only hidden picks still say why nothing could be written.
 #[test]
 fn when_no_pick_can_be_written_the_call_says_why() {
     let (_dir, core, _c) = common::open_core();
     let src = fixtures::insert_source(&core, "/lib");
     let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
+    core.call(Call::SetHidden {
+        series: loose,
+        hidden: true,
+    })
+    .unwrap();
     let err = core
         .call(Call::ActOnSeries {
             series: vec![loose],
@@ -227,7 +264,7 @@ fn when_no_pick_can_be_written_the_call_says_why() {
         matches!(
             err,
             CoreError::Refused {
-                reason: Refusal::NoMatch
+                reason: Refusal::Hidden
             }
         ),
         "{err:?}"
