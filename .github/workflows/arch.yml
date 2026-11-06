@@ -1,0 +1,70 @@
+name: Arch
+
+# The tarball the AUR's anibeam-bin installs (#235). It is built in an Arch container, not on
+# the Ubuntu runner linux.yml uses, because the binary links against the system's Qt, MpvQt and
+# libmpv, and anibeam-bin depends on Arch's. release.yml calls it so every stable release
+# carries AniBeam-<version>-linux-x86_64.tar.zst and its .sha256; a pull request that touches
+# the packaging builds it too, to show it still packs.
+on:
+  pull_request:
+    paths:
+      - 'apps/linux/packaging/aur/**'
+      - 'apps/linux/packaging/linux/install-tree.sh'
+      - '.github/workflows/arch.yml'
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+      version:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  ANIBEAM_RELEASE_VERSION: ${{ inputs.version }}
+  CARGO_TERM_COLOR: always
+  # As in linux.yml: the project's own app registrations, so the release signs in with one click.
+  ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
+  ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
+  ANIBEAM_DISCORD_CLIENT_ID: ${{ secrets.ANIBEAM_DISCORD_CLIENT_ID }}
+
+jobs:
+  tarball:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container: archlinux:base-devel
+    steps:
+      - name: Packages
+        # What the anibeam PKGBUILD builds with, plus git for the version and zstd to pack.
+        run: |
+          pacman -Syu --noconfirm --needed git rust lld qt6-base qt6-declarative qt6-svg \
+            mpvqt mpv zstd
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0 # git describe names the version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build and pack
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version="${ANIBEAM_RELEASE_VERSION:-$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)}"
+          apps/linux/packaging/aur/bin-tarball.sh "$version" dist
+          tar -tf "dist/AniBeam-$version-linux-x86_64.tar.zst" | head -n 5
+          # It runs on the libraries it was linked against: nothing missing, and it starts.
+          ! ldd target/release/anibeam | grep 'not found'
+          target/release/anibeam --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anibeam-arch-x86_64
+          path: dist/AniBeam-*-linux-x86_64.tar.zst*
+          if-no-files-found: error

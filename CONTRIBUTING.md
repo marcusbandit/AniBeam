@@ -241,8 +241,8 @@ between two releases carries it as its base.
   a build people have already used: nightly `2.5.0-nightly.20261102.40` ships as `v2.5.0`.
   It builds every platform, publishes the release once every file is on it, folds the
   change files that shipped into `CHANGELOG.md` under `2.5.0`, and moves main to `2.6.0`
-  with a new heading. Then update the AUR package and the brew
-  cask: `apps/linux/packaging/aur/publish.sh 2.5.0` and
+  with a new heading. Then update the AUR packages (`anibeam` and `anibeam-bin`, one
+  command) and the brew cask: `apps/linux/packaging/aur/publish.sh 2.5.0` and
   `apps/linux/packaging/brew/bump.sh 2.5.0`.
 - **Hotfix.** A shipped version that needs a fix gets a branch from its tag, only then:
   `git push origin v2.5.0^{commit}:refs/heads/release/2.5`. The fix lands on main first
