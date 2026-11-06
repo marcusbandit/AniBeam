@@ -1200,18 +1200,8 @@ mod tests {
             "the bundles pin different anirss releases: {bundled:?}"
         );
         let version = &bundled[0];
-        let expected = format!("\"expect\": \"{version}\"");
-        for smoke in ["linux/smoke.sh", "macos/smoke.sh", "windows/smoke.sh"] {
-            let text = std::fs::read_to_string(packaging.join(smoke)).unwrap();
-            let line = text
-                .lines()
-                .find(|l| l.contains("anirss.version"))
-                .unwrap_or_else(|| panic!("{smoke} checks no anirss version"));
-            assert!(
-                line.contains(&expected),
-                "{smoke} expects another anirss than the {version} bundled: {line}"
-            );
-        }
+        // A fresh install searches on AniBeam's own engine (#552), so the Downloads page drive
+        // never starts anirss; the Linux smoke's helpers step runs the bundled one instead.
         let linux = std::fs::read_to_string(packaging.join("linux/smoke.sh")).unwrap();
         assert!(
             linux.contains(&format!("= \"anirss {version}\" ]")),
