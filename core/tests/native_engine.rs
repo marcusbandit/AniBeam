@@ -275,6 +275,41 @@ fn the_native_engine_searches_refines_and_previews_without_anirss() {
 }
 
 #[test]
+fn on_the_native_engine_the_page_lists_the_core_s_sources_and_a_connect_leaves_anirss_alone() {
+    let (_dir, core, c, http) = native_core();
+    let status = match core.call(Call::GetDownloads).unwrap() {
+        Reply::Downloads { status } => status,
+        other => panic!("{other:?}"),
+    };
+    let names: Vec<&str> = status.endpoints.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["feed"], "the core's own sources, not anirss's");
+
+    let job = started(&core, Call::ConnectDownloads);
+    let done = common::wait_job(&c, job);
+    let EventBody::DownloadsStatusChanged { status } = done.body else {
+        panic!("{:?}", done.body)
+    };
+    assert!(done.message.contains("AniBeam itself"), "{}", done.message);
+    assert_eq!(status.endpoints.len(), 1);
+    assert!(
+        !matches!(
+            status.anirss.state,
+            AnirssState::Ready | AnirssState::Starting | AnirssState::Failed
+        ),
+        "{:?}",
+        status.anirss.state
+    );
+    let job = started(&core, Call::CheckEndpoints);
+    common::wait_job(&c, job);
+    // Nothing went to anirss: no connect, no read, no endpoint sync, no probe.
+    let sent: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+    assert!(
+        sent.iter().all(|u| !u.starts_with("http://anirss.test")),
+        "{sent:?}"
+    );
+}
+
+#[test]
 fn an_endpoint_the_core_does_not_hold_is_refused_on_the_native_engine() {
     let (_dir, core, c, http) = native_core();
     let job = started(

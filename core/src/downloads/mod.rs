@@ -154,6 +154,11 @@ async fn status_async(core: &Arc<Core>) -> Result<DownloadsStatus, CoreError> {
 }
 
 fn assemble(core: &Core, settings: DownloadSettings) -> DownloadsStatus {
+    // The native engine searches the core's own sources, so those are the list, keys
+    // masked; anirss's is what the last read of it found (#549). Read before the state is
+    // locked: listing the core's sources reads the store and the secrets.
+    let native = (settings.engine == DownloadsEngine::Native)
+        .then(|| crate::releases::native::Native::for_core(core, Vec::new(), None).list());
     let st = core.downloads.state();
     let mut anirss = st.anirss.clone();
     anirss.config_path = settings::anirss_config_path()
@@ -163,7 +168,7 @@ fn assemble(core: &Core, settings: DownloadSettings) -> DownloadsStatus {
         settings,
         anirss,
         torrent: st.torrent.clone(),
-        endpoints: st.endpoints.clone(),
+        endpoints: native.unwrap_or_else(|| st.endpoints.clone()),
     }
 }
 
@@ -667,9 +672,15 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
         let st = core.downloads.state();
         (st.anirss.state, st.torrent.connected)
     };
+    // The native engine needs no anirss: its connect is the torrent client alone, and
+    // nothing here starts the sidecar (#549).
+    let native = backend::engine(&core)? == DownloadsEngine::Native;
     // A save that lands while anirss is read drops the read (#523): the client
     // is built again from the settings now in use, and that one is read.
     let anirss_failure = loop {
+        if native {
+            break None;
+        }
         let reached = match reach(&core).await {
             Ok(r) => r,
             Err(e) => break Some(plain(&e)),
@@ -694,6 +705,7 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
         status_async(&core).await?
     };
     let anirss_failure = match status.anirss.state {
+        _ if native => None,
         AnirssState::Ready => None,
         _ => anirss_failure.or_else(|| Some(status.anirss.message.clone())),
     };
@@ -871,6 +883,9 @@ async fn read_anirss(core: &Arc<Core>, reached: &Reached) -> Result<Read, CoreEr
 /// One line for the log: both halves, as they are.
 fn describe(status: &DownloadsStatus, anirss_failure: Option<&str>) -> String {
     let anirss = match anirss_failure {
+        _ if status.settings.engine == DownloadsEngine::Native => {
+            "searches run in AniBeam itself".to_string()
+        }
         Some(m) => format!("anirss is not available: {m}"),
         None => format!("anirss {} ready", status.anirss.version),
     };
@@ -962,14 +977,23 @@ pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
         .jobs
         .clone()
         .start(JobKind::CheckEndpoints, move |_| async move {
-            let mut endpoints = owner.downloads.state().endpoints.clone();
+            // The core's own sources start on demand from nothing, so on the native engine
+            // there is nothing to probe; anirss's last list is left as it was.
+            let native = backend::engine(&owner)? == DownloadsEngine::Native;
+            let mut endpoints = if native {
+                Vec::new()
+            } else {
+                owner.downloads.state().endpoints.clone()
+            };
             probe_endpoints(owner.http.as_ref(), &mut endpoints).await;
             let up: Vec<String> = endpoints
                 .iter()
                 .filter(|e| e.running == Some(true))
                 .map(|e| e.name.clone())
                 .collect();
-            owner.downloads.state().endpoints = endpoints;
+            if !native {
+                owner.downloads.state().endpoints = endpoints;
+            }
             let status = status_async(&owner).await?;
             Ok(Finished {
                 plain: None,
