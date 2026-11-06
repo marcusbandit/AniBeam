@@ -6,6 +6,10 @@
 //! A key that a file which did not move still carries keeps its history: that
 //! is a second release of the same episode, and the history is its as much as
 //! the moved file's.
+//!
+//! Two keys that land on one merge (#468): `SP01.mkv` and `SP01v2.mkv` read as
+//! one extra now, so each file's history becomes the one key's, once. The
+//! newest watched date and the furthest resume point win.
 
 use std::collections::HashSet;
 
@@ -27,8 +31,9 @@ const KEYED: [&str; 3] = ["completed", "resume_points", "skip_windows"];
 /// Moves each file's history from its old key to its new one, once every row
 /// of the series carries its new key. Two steps, through keys no file can
 /// carry, so a chain of moves (1 to 2, 2 to 3) never lands on itself. History
-/// that cannot land, because the new key holds history of its own, goes back
-/// where it was.
+/// that lands on a key holding history of its own merges into it: the newer
+/// completion, the resume point further in, and the skip windows already
+/// there.
 pub(crate) fn follow(tx: &Transaction, series: u64, moves: &[Move]) -> Result<(), CoreError> {
     if moves.iter().all(|m| m.from == m.to) {
         return Ok(());
@@ -69,24 +74,37 @@ pub(crate) fn follow(tx: &Transaction, series: u64, moves: &[Move]) -> Result<()
         )?;
     }
     for (i, m) in moves.iter().enumerate() {
+        let (series, parked, to) = (series as i64, parked(i), m.to.as_str());
+        // The new key's own history, where it has some, takes the better of the two.
+        tx.execute(
+            "UPDATE completed SET at = max(at, (SELECT at FROM completed WHERE series_id = ?1 AND episode_key = ?2))
+             WHERE series_id = ?1 AND episode_key = ?3
+               AND EXISTS (SELECT 1 FROM completed WHERE series_id = ?1 AND episode_key = ?2)",
+            params![series, parked, to],
+        )?;
+        tx.execute(
+            "UPDATE resume_points SET (position, duration, at) =
+               (SELECT position, duration, at FROM resume_points WHERE series_id = ?1 AND episode_key = ?2)
+             WHERE series_id = ?1 AND episode_key = ?3
+               AND position < (SELECT position FROM resume_points WHERE series_id = ?1 AND episode_key = ?2)",
+            params![series, parked, to],
+        )?;
         for table in KEYED {
-            for (from, to) in [(parked(i), m.to.as_str()), (parked(i), m.from.as_str())] {
-                tx.execute(
-                    &format!(
-                        "UPDATE OR IGNORE {table} SET episode_key = ?3 WHERE series_id = ?1 AND episode_key = ?2"
-                    ),
-                    params![series as i64, from, to],
-                )?;
-            }
-            // Neither key could take it: the same episode's history is on both.
+            tx.execute(
+                &format!(
+                    "UPDATE OR IGNORE {table} SET episode_key = ?3 WHERE series_id = ?1 AND episode_key = ?2"
+                ),
+                params![series, parked, to],
+            )?;
+            // What is left had a row under the new key already, merged above.
             tx.execute(
                 &format!("DELETE FROM {table} WHERE series_id = ?1 AND episode_key = ?2"),
-                params![series as i64, parked(i)],
+                params![series, parked],
             )?;
         }
         tx.execute(
             "UPDATE views SET episode_key = ?3 WHERE series_id = ?1 AND episode_key = ?2",
-            params![series as i64, parked(i), m.to],
+            params![series, parked, to],
         )?;
     }
     Ok(())
@@ -227,12 +245,66 @@ mod tests {
     }
 
     #[test]
-    fn history_that_cannot_land_stays_where_it_was() {
-        // The new key already has history of its own (an import, say).
+    fn history_landing_on_history_merges_into_it() {
+        // The new key already has history of its own (an import, say): one
+        // episode's history now, under the newer completion.
         let (_dir, store, ids) = setup(&["63"], &["63", "1"]);
         set_keys(&store, &ids, &["1"]);
         let m = moves(&ids, &["63"], &["1"]);
         store.tx(move |tx| follow(tx, 1, &m)).unwrap();
-        assert_eq!(completed(&store), vec![("1".into(), 1), ("63".into(), 0)]);
+        assert_eq!(completed(&store), vec![("1".into(), 1)]);
+    }
+
+    fn resume(store: &Store, key: &str, position: f64, at: i64) {
+        let key = key.to_string();
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (1, ?1, ?2, 1500, ?3)",
+                    params![key, position, at],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    fn resumes(store: &Store) -> Vec<(String, f64, i64)> {
+        store
+            .read(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT episode_key, position, at FROM resume_points ORDER BY episode_key",
+                )?;
+                let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+                Ok(rows.collect::<Result<Vec<_>, _>>()?)
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn two_revisions_of_an_extra_merge_their_history_once() {
+        // SP01 and SP01v2 each kept their own history while they read as two
+        // extras (#468). Read as one, the v2's history lands on the v1's key:
+        // the newer watched date and the resume point further in win.
+        let (_dir, store, ids) = setup(
+            &["S - SP01.mkv", "S - SP01v2.mkv"],
+            &["S - SP01.mkv", "S - SP01v2.mkv"],
+        );
+        resume(&store, "S - SP01.mkv", 600.0, 5);
+        resume(&store, "S - SP01v2.mkv", 100.0, 9);
+        set_keys(&store, &ids[1..], &["S - SP01.mkv"]);
+        let m = moves(&ids[1..], &["S - SP01v2.mkv"], &["S - SP01.mkv"]);
+        store.tx(move |tx| follow(tx, 1, &m)).unwrap();
+        assert_eq!(completed(&store), vec![("S - SP01.mkv".into(), 1)]);
+        assert_eq!(resumes(&store), vec![("S - SP01.mkv".into(), 600.0, 5)]);
+
+        // The other way round, the moved file's resume point is the further one.
+        let (_dir, store, ids) = setup(&["S - SP01.mkv", "S - SP01v2.mkv"], &["S - SP01v2.mkv"]);
+        resume(&store, "S - SP01.mkv", 100.0, 5);
+        resume(&store, "S - SP01v2.mkv", 900.0, 9);
+        set_keys(&store, &ids[1..], &["S - SP01.mkv"]);
+        let m = moves(&ids[1..], &["S - SP01v2.mkv"], &["S - SP01.mkv"]);
+        store.tx(move |tx| follow(tx, 1, &m)).unwrap();
+        assert_eq!(completed(&store), vec![("S - SP01.mkv".into(), 0)]);
+        assert_eq!(resumes(&store), vec![("S - SP01.mkv".into(), 900.0, 9)]);
     }
 }

@@ -1296,6 +1296,11 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                 scope = next;
             }
 
+            // The torrent each new file came from, while the client that
+            // fetched it still lists it (#241)
+            if added + changed > 0 {
+                crate::downloads::origins::after_scan(&core);
+            }
             Ok(Finished {
                 plain: scan_line(added, changed, removed),
                 level: Level::Info,
@@ -1982,6 +1987,90 @@ mod tests {
             part_hint: None,
             files,
         }
+    }
+
+    /// SP01 beside SP01v2, as the walk reads them; `old` keys each by its whole
+    /// file name, as the scan did before #468.
+    fn special_releases(old: bool) -> ScannedSeries {
+        let files = ["Show - SP01.mkv", "Show - SP01v2.mkv"]
+            .iter()
+            .map(|name| {
+                let classified = crate::library::classifier::classify(name);
+                walk::ScannedFile {
+                    path: format!("/lib/Show/{name}"),
+                    size: 1,
+                    mtime: 1,
+                    episode_key: if old {
+                        name.to_string()
+                    } else {
+                        crate::library::classifier::episode_key(&classified, name)
+                    },
+                    label: "Special 1".to_string(),
+                    classified,
+                    sidecars: Vec::new(),
+                }
+            })
+            .collect();
+        ScannedSeries {
+            kind: SeriesKind::Show,
+            path: "/lib/Show".into(),
+            name: "Show".into(),
+            season_hint: None,
+            part_hint: None,
+            files,
+        }
+    }
+
+    /// Two revisions of one extra, each with its own history from before they
+    /// shared a key: the rescan merges the two into the one key, once (#468).
+    #[test]
+    fn a_rescan_merges_the_history_of_two_revisions_of_an_extra() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let series = store
+            .tx(|tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                let r = reconcile_source(tx, 1, &[special_releases(true)], None, 10)?;
+                Ok(r.added[0] as i64)
+            })
+            .unwrap();
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, 'Show - SP01.mkv', 5), (?1, 'Show - SP01v2.mkv', 7)",
+                    params![series],
+                )?;
+                tx.execute(
+                    "INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (?1, 'Show - SP01.mkv', 300, 1500, 5), (?1, 'Show - SP01v2.mkv', 90, 1500, 7)",
+                    params![series],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        store
+            .tx(|tx| reconcile_source(tx, 1, &[special_releases(false)], None, 20))
+            .unwrap();
+        // Each row as "key at" text, which the three tables share a shape for.
+        let rows = |sql: &'static str| -> Vec<String> {
+            store
+                .read(move |c| {
+                    let mut stmt = c.prepare(sql)?;
+                    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+                })
+                .unwrap()
+        };
+        let keys = rows("SELECT episode_key FROM files ORDER BY path");
+        let completed = rows("SELECT episode_key || ' ' || at FROM completed");
+        let resume =
+            rows("SELECT episode_key || ' ' || CAST(position AS INTEGER) FROM resume_points");
+        assert_eq!(keys, vec!["Show - SP01.mkv", "Show - SP01.mkv"]);
+        assert_eq!(completed, vec!["Show - SP01.mkv 7"]);
+        assert_eq!(resume, vec!["Show - SP01.mkv 300"]);
+        store.close();
     }
 
     /// A record of OVAs landing turns the series' numbered specials into its

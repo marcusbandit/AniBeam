@@ -52,6 +52,16 @@ pub struct Entry {
     pub score: Option<f64>,
     pub repeat: u32,
     pub updated_at: Option<i64>,
+    /// The entry's notes, AniList's notes or MAL's comments. None for an
+    /// entry with none, and a blank is none.
+    pub notes: Option<String>,
+}
+
+/// A note as the cache keeps it: trimmed, and nothing when nothing is left.
+pub(crate) fn note_of(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
 }
 
 /// Both trackers' list vocabularies in the one the core stores. MAL has no
@@ -122,6 +132,7 @@ pub async fn fetch_anilist(
                 // hold reads as the user's last touch. Nought is AniList
                 // having none, and `replace` then keeps the stored one.
                 updated_at: entry["updatedAt"].as_i64().filter(|at| *at > 0),
+                notes: note_of(entry["notes"].as_str()),
             });
         }
     }
@@ -136,7 +147,7 @@ pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, Core
     let mut offset = 0u64;
     for _page in 0..MAL_MAX_PAGES {
         let url = format!(
-            "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score,updated_at}}&limit={MAL_PAGE}&offset={offset}"
+            "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score,updated_at,comments}}&limit={MAL_PAGE}&offset={offset}"
         );
         let response = core.mal.get(&url, token).await?;
         if !response.is_success() {
@@ -165,6 +176,7 @@ pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, Core
                 score: status["score"].as_f64().filter(|s| *s > 0.0),
                 repeat: as_count(status["num_times_rewatched"].as_u64()),
                 updated_at: status["updated_at"].as_str().and_then(mal_instant),
+                notes: note_of(status["comments"].as_str()),
             });
         }
         if body["paging"]["next"].as_str().is_none() || (page_entries.len() as u64) < MAL_PAGE {
@@ -211,8 +223,8 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
         // media twice is the provider's business, and the last word wins
         // the way Electron's map did.
         let mut stmt = tx.prepare(
-            "INSERT OR REPLACE INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR REPLACE INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
         for entry in entries {
             stmt.execute(params![
@@ -226,6 +238,7 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
                     .updated_at
                     .or_else(|| kept.get(&entry.media_id).copied()),
                 now,
+                entry.notes,
             ])?;
         }
     }
@@ -327,6 +340,47 @@ pub fn patch_status(
             updated_at,
             now
         ],
+    )?;
+    Ok(())
+}
+
+/// One entry's notes, after a notes write: everything else is left as the
+/// cache has it, and an entry not cached yet is added with its notes alone.
+pub fn patch_notes(
+    conn: &Connection,
+    t: Tracker,
+    media_id: u64,
+    notes: Option<&str>,
+    updated_at: Option<i64>,
+    now: i64,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at, notes)
+         VALUES (?1, ?2, NULL, 0, NULL, 0, ?3, ?4, ?5)
+         ON CONFLICT(tracker, media_id) DO UPDATE SET
+             notes = excluded.notes,
+             updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
+             fetched_at = excluded.fetched_at",
+        params![t.as_str(), media_id as i64, updated_at, now, notes],
+    )?;
+    Ok(())
+}
+
+/// One entry's rewatch count, after a write that finished it again. The
+/// entry's stamp moves to now at the least, even when the tracker's reply
+/// carried none, so the episodes watched for this rewatch are never
+/// evidence for the next one.
+pub fn patch_repeat(
+    conn: &Connection,
+    t: Tracker,
+    media_id: u64,
+    repeat: u32,
+    now: i64,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "UPDATE tracker_entries SET repeat = ?3, updated_at = MAX(COALESCE(updated_at, 0), ?4)
+         WHERE tracker = ?1 AND media_id = ?2",
+        params![t.as_str(), media_id as i64, i64::from(repeat), now],
     )?;
     Ok(())
 }

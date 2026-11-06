@@ -131,6 +131,9 @@ struct ExtraHit {
     index: Option<u32>,
     variant: Option<String>,
     raw_label: String,
+    /// The token less its release revision, `SP01` out of `SP01v2`, when only that
+    /// reads as the extra; None when the token as written does.
+    unrevised: Option<String>,
 }
 
 /// A bare number of up to three digits, a release revision allowed (`2v2`).
@@ -266,7 +269,11 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
             .and_then(|m| m.get(1))
             .map(|m| m.as_str());
         for (kind, re, word) in EXTRA_PATTERNS.iter() {
-            if let Some(m) = re.captures(token).or_else(|| re.captures(stem?)) {
+            let (found, unrevised) = match re.captures(token) {
+                Some(m) => (Some(m), None),
+                None => (stem.and_then(|s| re.captures(s)), stem),
+            };
+            if let Some(m) = found {
                 let glued = m.get(1).and_then(|g| g.as_str().parse().ok());
                 let apart = || match kind {
                     ExtraKind::Sp | ExtraKind::Pv => index_apart(&tokens[at + 1..]),
@@ -277,6 +284,7 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
                     index: glued.or_else(apart),
                     variant: m.get(2).map(|g| g.as_str().to_lowercase()),
                     raw_label: token.to_string(),
+                    unrevised: unrevised.map(str::to_string),
                 };
                 let bare = *word && hit.index.is_none();
                 if bare && reading.is_some_and(|r| at > r) && title_word_at(&tokens, at + 1) {
@@ -296,6 +304,7 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
                 index: None,
                 variant: None,
                 raw_label: token.to_string(),
+                unrevised: None,
             });
         }
     }
@@ -391,7 +400,40 @@ pub fn format_number(n: f64) -> String {
 pub fn episode_key(c: &Classified, file_name: &str) -> String {
     match c.extra {
         None => number_key(c.season, c.number),
-        Some(_) => file_name.to_string(),
+        Some(_) => extra_key(file_name),
+    }
+}
+
+/// An extra's key: its file name less what tells one release of it from another, so
+/// `SP01.mkv` and `SP01v2.mkv` are two releases of one extra with one history (#468): a
+/// release revision after its marker (`SP01v2`, `OP1av2`) or its index (`OVA 01v2`), and a
+/// checksum tag (`[A1B2C3D4]`), which differs between any two encodes. A name with none
+/// of those is its own key, as every extra's was.
+fn extra_key(file_name: &str) -> String {
+    let mut name = file_name.to_string();
+    if let Some(ExtraHit {
+        raw_label,
+        unrevised: Some(stem),
+        ..
+    }) = find_extra_token(file_name)
+        && let Some(at) = name.rfind(&raw_label)
+    {
+        name = format!("{}{stem}{}", &name[..at], &name[at + raw_label.len()..]);
+    }
+    let name = REVISION.replace_all(&name, "$1");
+    CHECKSUM.replace_all(&name, "").into_owned()
+}
+
+/// A checksum tag in a release's name, `[A1B2C3D4]` or `(A1B2C3D4)`, with the space before.
+static CHECKSUM: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s*[\[(][0-9A-Fa-f]{8}[\])]").unwrap());
+
+/// The history key a file of this name carries when it is an extra, for a document that
+/// names the file rather than the key (an import): the name itself for anything else.
+pub fn key_of_file_name(file_name: &str) -> String {
+    match classify(file_name).extra {
+        Some(_) => extra_key(file_name),
+        None => file_name.to_string(),
     }
 }
 
@@ -1034,6 +1076,46 @@ mod tests {
         assert_eq!(episode_key(&c, "Show - 12.mkv"), "12");
         let c = ep("Show OP1.mkv");
         assert_eq!(episode_key(&c, "Show OP1.mkv"), "Show OP1.mkv");
+        // Two revisions of one extra share a key, the name without the
+        // revision, so they are one extra's releases with one history (#468).
+        for name in [
+            "[G] Show - SP01v2 [1080p].mkv",
+            "[G] Show - SP01v3 [1080p].mkv",
+        ] {
+            assert_eq!(episode_key(&ep(name), name), "[G] Show - SP01 [1080p].mkv");
+        }
+        let name = "[G] Show - SP01 [1080p].mkv";
+        assert_eq!(episode_key(&ep(name), name), name);
+        // An index written apart takes its revision too, and a checksum differs between
+        // any two encodes, so neither keeps two releases apart.
+        for name in ["Show - OVA 01v2.mkv", "Show - OVA 01.mkv"] {
+            assert_eq!(episode_key(&ep(name), name), "Show - OVA 01.mkv");
+        }
+        for name in [
+            "[G] Show - SP01 [1080p][A1B2C3D4].mkv",
+            "[G] Show - SP01v2 [1080p][E5F60718].mkv",
+        ] {
+            assert_eq!(episode_key(&ep(name), name), "[G] Show - SP01 [1080p].mkv");
+        }
+        // A document that names the file finds the same key; an episode's name stays.
+        assert_eq!(
+            key_of_file_name("[G] Show - SP01v2 [1080p][E5F60718].mkv"),
+            "[G] Show - SP01 [1080p].mkv"
+        );
+        assert_eq!(key_of_file_name("Show - 07v2.mkv"), "Show - 07v2.mkv");
+        assert_eq!(
+            episode_key(&ep("Show_NCOP1v2.mkv"), "Show_NCOP1v2.mkv"),
+            "Show_NCOP1.mkv"
+        );
+        // A number that only looks like a revision stays: PV2 is preview 2.
+        assert_eq!(
+            episode_key(&ep("Show PV2.mkv"), "Show PV2.mkv"),
+            "Show PV2.mkv"
+        );
+        assert_eq!(
+            episode_key(&ep("Show OP1v.mkv"), "Show OP1v.mkv"),
+            "Show OP1v.mkv"
+        );
         // Season 1 keys by the bare number, as every key did before
         // seasons; a later season is prefixed so S01E01 and S02E01 never
         // share a history row.

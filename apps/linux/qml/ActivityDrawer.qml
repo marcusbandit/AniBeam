@@ -245,7 +245,8 @@ Item {
                 width: list.width
                 height: theme.space(7)
                 Rectangle { anchors.fill: parent; color: rowMouse.containsMouse ? theme.tileHover : "transparent"; radius: theme.radiusSm }
-                MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.copyLine(logRow.modelData) }
+                MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.copyLine(logRow.modelData); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                    Accessible.onPressAction: root.copyLine(logRow.modelData) }
                 Tooltip { text: "Click to copy the line" }
                 Row {
                     id: line

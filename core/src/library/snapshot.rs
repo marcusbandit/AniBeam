@@ -123,6 +123,7 @@ pub struct TrackerRow {
     pub status: Option<ListStatus>,
     pub score: Option<f64>,
     pub repeat: u32,
+    pub notes: Option<String>,
 }
 
 /// The IMDb title a series' match resolves to, and its rating when IMDb's
@@ -737,7 +738,7 @@ impl Snapshot {
             None => String::new(),
         };
         let sql = format!(
-            "SELECT tracker, media_id, progress, status, score, repeat FROM tracker_entries{where_sql}"
+            "SELECT tracker, media_id, progress, status, score, repeat, notes FROM tracker_entries{where_sql}"
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(ids_as_i64(scope.unwrap_or(&[]))), |r| {
@@ -751,6 +752,7 @@ impl Snapshot {
                         .and_then(|s| ListStatus::from_column(&s)),
                     score: r.get(4)?,
                     repeat: r.get::<_, i64>(5)? as u32,
+                    notes: r.get(6)?,
                 },
             ))
         })?;

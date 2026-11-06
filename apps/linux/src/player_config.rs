@@ -54,9 +54,6 @@ pub fn load(path: &Path) -> PlayerSettings {
 }
 
 pub fn save(path: &Path, s: &PlayerSettings) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     // The file the user already has is edited, not replaced: toml_edit keeps their
     // comments and any key a later task adds beside these three.
     let mut doc = std::fs::read_to_string(path)
@@ -66,9 +63,7 @@ pub fn save(path: &Path, s: &PlayerSettings) -> std::io::Result<()> {
     doc["volume"] = value(s.volume);
     doc["mute"] = value(s.mute);
     doc["use_my_mpv_conf"] = value(s.use_my_mpv_conf);
-    let tmp = path.with_extension("toml.tmp");
-    std::fs::write(&tmp, doc.to_string())?;
-    std::fs::rename(tmp, path)
+    Ok(anibeam_core::atomic_file::write(path, doc.to_string())?)
 }
 
 /// Haruna's MpvPreview recipe: its own core, nothing audible, nothing drawn but the frame.

@@ -212,27 +212,6 @@ pub(crate) struct UrlParts {
 }
 
 impl UrlParts {
-    /// `urlunsplit` (`geturl`).
-    pub fn geturl(&self) -> String {
-        let mut url = self.path.clone();
-        if !self.netloc.is_empty() {
-            if !url.is_empty() && !url.starts_with('/') {
-                url.insert(0, '/');
-            }
-            url = format!("//{}{url}", self.netloc);
-        }
-        if !self.scheme.is_empty() {
-            url = format!("{}:{url}", self.scheme);
-        }
-        if !self.query.is_empty() {
-            url = format!("{url}?{}", self.query);
-        }
-        if !self.fragment.is_empty() {
-            url = format!("{url}#{}", self.fragment);
-        }
-        url
-    }
-
     /// `parts.hostname`: lower case, userinfo and brackets gone.
     pub fn hostname(&self) -> Option<String> {
         let host = self
@@ -332,7 +311,9 @@ pub fn search_url(ep: &Endpoint, query: &str) -> String {
             ("c".to_string(), ep.category.clone()),
             ("f".to_string(), ep.filter.clone()),
         ]);
-        return format!("{}?{qs}", ep.url);
+        // A nyaa address may carry fixed parameters of its own (a token), as anirss allows
+        let sep = if ep.url.contains('?') { '&' } else { '?' };
+        return format!("{}{sep}{qs}", ep.url);
     }
     ep.url.replace("{query}", &quote_plus(query))
 }
@@ -639,9 +620,40 @@ where
     (Vec::new(), notes)
 }
 
-/// The configured endpoint whose feed `url` is, if any.
+/// The configured endpoint whose feed `url` is, if any: of those whose address the feed
+/// starts with, the longest such, then the one whose template past `{query}` the feed also
+/// ends with, then the first listed. Two sources on one host told apart only by a parameter
+/// after the search (`&fmt=json`) are told apart by it, not by their order.
 pub fn owner_of<'a>(endpoints: &'a [Endpoint], url: &str) -> Option<&'a Endpoint> {
-    endpoints.iter().find(|e| e.owns_url(url))
+    let score = |e: &Endpoint| {
+        let (base, tail) = e.url.split_once("{query}").unwrap_or((e.url.as_str(), ""));
+        let tail = if url.ends_with(tail) {
+            1 + tail.len()
+        } else {
+            0
+        };
+        (base.len(), tail)
+    };
+    let mut best: Option<&Endpoint> = None;
+    for e in endpoints.iter().filter(|e| e.owns_url(url)) {
+        if best.is_none_or(|b| score(e) > score(b)) {
+            best = Some(e);
+        }
+    }
+    best
+}
+
+/// Whether a subscription on `feed_url` can fetch new episodes: false when its source
+/// answers JSON, which no client reads as a feed (#507, #536). The source is `endpoint` when
+/// the rule keeps its name and that source is still in `endpoints`, else the one that owns
+/// the feed (`owner_of`). A feed no source owns claims nothing.
+pub fn follows(endpoints: &[Endpoint], feed_url: &str, endpoint: Option<&str>) -> bool {
+    let named = endpoint
+        .filter(|n| !n.is_empty())
+        .and_then(|n| endpoints.iter().find(|e| e.name == n));
+    named
+        .or_else(|| owner_of(endpoints, feed_url))
+        .is_none_or(|e| answers_rss(&e.kind))
 }
 
 #[cfg(test)]
@@ -696,10 +708,20 @@ pub(crate) mod tests {
 
     /// The value of the `s=` search parameter, the only part a query can pollute.
     fn s_param(url: &str) -> String {
+        param(url, "s")
+    }
+
+    /// The search's parameters, in order.
+    fn params(url: &str) -> Vec<(String, String)> {
         let qs = url.split_once('?').map_or("", |(_, q)| q);
         parse_qsl(qs)
+    }
+
+    /// The value of the `key` parameter, empty when there is none.
+    fn param(url: &str, key: &str) -> String {
+        params(url)
             .into_iter()
-            .find(|(k, _)| k == "s")
+            .find(|(k, _)| k == key)
             .map(|(_, v)| v)
             .unwrap_or_default()
     }
@@ -809,7 +831,6 @@ pub(crate) mod tests {
         );
         assert_eq!(p.hostname().as_deref(), Some("host.example"));
         assert_eq!(p.port(), Some(8080));
-        assert_eq!(p.geturl(), "http://user@Host.example:8080/a b?x=1#frag");
         assert!(split_url("http://[::1/x").is_err());
         let v6 = split_url("udp://[2001:db8::1]:1337/announce").unwrap();
         assert_eq!(v6.hostname().as_deref(), Some("2001:db8::1"));
@@ -908,6 +929,46 @@ pub(crate) mod tests {
         );
     }
 
+    #[test]
+    fn a_rule_on_a_source_that_answers_json_cannot_follow_new_episodes() {
+        let sources = [
+            Endpoint::new("feed", "rss", "https://a/rss?q={query}"),
+            Endpoint::new("api", "json", "https://c/api?q={query}"),
+            Endpoint::new("anime", "tosho", "https://d/feed/json?q={query}"),
+            Endpoint::new("search", "nyaa", "https://e/"),
+        ];
+        let follows = |feed: &str, name: Option<&str>| follows(&sources, feed, name);
+        // A rule written before #507 holds the JSON search address as its feed.
+        assert!(!follows("https://c/api?q=Show", None));
+        assert!(!follows("https://d/feed/json?q=Show&old=1", None));
+        assert!(follows("https://a/rss?q=Show", None));
+        assert!(follows("https://e/?page=rss&q=Show&c=1_0&f=0", None));
+        // A rule that keeps its source's name is judged by that source, whatever its
+        // feed holds (the phone keeps a key as a placeholder).
+        assert!(!follows("https://c/api?q=Show&key={key}", Some("api")));
+        assert!(follows("https://c/api?q=Show", Some("feed")));
+        // A source gone from the list leaves the feed to say whose it is.
+        assert!(!follows("https://c/api?q=Show", Some("gone")));
+        // A feed no source owns claims nothing.
+        assert!(follows("https://elsewhere/rss?q=Show", None));
+        assert!(follows("https://elsewhere/rss?q=Show", Some("gone")));
+    }
+
+    #[test]
+    fn two_sources_on_one_base_are_told_apart_by_what_follows_the_search() {
+        let rss = Endpoint::new("rss", "rss", "https://x/?q={query}");
+        let json = Endpoint::new("json", "json", "https://x/?q={query}&fmt=json");
+        for list in [[rss.clone(), json.clone()], [json.clone(), rss.clone()]] {
+            assert_eq!(
+                owner_of(&list, "https://x/?q=Show&fmt=json").unwrap().name,
+                "json"
+            );
+            assert_eq!(owner_of(&list, "https://x/?q=Show").unwrap().name, "rss");
+            assert!(!follows(&list, "https://x/?q=Show&fmt=json", None));
+            assert!(follows(&list, "https://x/?q=Show", None));
+        }
+    }
+
     #[tokio::test]
     async fn fetch_items_nyaa_kind_sends_exclusions() {
         let http = FakeHttp::new();
@@ -920,12 +981,54 @@ pub(crate) mod tests {
     }
 
     fn f_param(url: &str) -> String {
-        let qs = url.split_once('?').map_or("", |(_, q)| q);
-        parse_qsl(qs)
-            .into_iter()
-            .find(|(k, _)| k == "f")
-            .map(|(_, v)| v)
-            .unwrap_or_default()
+        param(url, "f")
+    }
+
+    #[test]
+    fn a_nyaa_kind_endpoint_named_with_no_category_or_filter_asks_for_everything() {
+        // anirss's Endpoint: category "1_0" (every anime upload) and filter "0" (no filter)
+        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/");
+        assert_eq!((ep.category.as_str(), ep.filter.as_str()), ("1_0", "0"));
+        assert_eq!(
+            search_url(&ep, "Show 1080p"),
+            "https://tracker.example/?page=rss&q=Show+1080p&c=1_0&f=0"
+        );
+        // Trusted only is the definition's to ask for, and goes out as given.
+        let trusted = Endpoint {
+            category: "1_2".to_string(),
+            filter: "2".to_string(),
+            ..ep
+        };
+        let got = params(&search_url(&trusted, "Show"));
+        assert_eq!(
+            got,
+            [("page", "rss"), ("q", "Show"), ("c", "1_2"), ("f", "2")]
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+        );
+    }
+
+    #[test]
+    fn a_nyaa_address_with_its_own_parameters_takes_the_search_after_them() {
+        // anirss: f"{ep.url}{'&' if '?' in ep.url else '?'}{qs}"
+        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/?token=abc");
+        assert_eq!(
+            search_url(&ep, "Show"),
+            "https://tracker.example/?token=abc&page=rss&q=Show&c=1_0&f=0"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_trusted_only_subscription_keeps_its_filter() {
+        // anirss's subscription_feed: unfiltered only when the results were found that way
+        let http = FakeHttp::new();
+        let trusted = Endpoint {
+            filter: "2".to_string(),
+            ..Endpoint::new("site", "nyaa", "https://tracker.example/")
+        };
+        let mut item = rel("[A] Show - 01", "l");
+        item.source = "site".to_string();
+        let spec = build_subscription(http.as_ref(), &trusted, "Show", &[item]).await;
+        assert_eq!(f_param(&spec.feed_url), "2", "{}", spec.feed_url);
     }
 
     #[tokio::test]

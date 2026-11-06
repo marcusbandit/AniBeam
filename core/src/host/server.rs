@@ -9,13 +9,13 @@ use std::time::{Duration, Instant};
 use anibeam_host_api as wire;
 use axum::Router;
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
+use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 
 use super::build::{self, LibraryPart};
-use super::{convert, stream};
+use super::{convert, peers, stream, trust};
 use crate::contract::CoreError;
 use crate::core::Core;
 use crate::time;
@@ -31,6 +31,7 @@ pub struct Served {
     host: String,
     snapshot: tokio::sync::Mutex<Option<(Instant, Bytes)>>,
     library: tokio::sync::Mutex<Option<(Instant, Arc<LibraryPart>)>>,
+    peers: tokio::sync::Mutex<Option<(Instant, Arc<Vec<wire::PeerHost>>)>>,
 }
 
 /// The machine's name, for `Hello::host`.
@@ -54,10 +55,12 @@ pub fn router(core: Weak<Core>) -> Router {
         host: hostname(),
         snapshot: tokio::sync::Mutex::new(None),
         library: tokio::sync::Mutex::new(None),
+        peers: tokio::sync::Mutex::new(None),
     });
     Router::new()
         .route(wire::HELLO, get(hello))
         .route(wire::SNAPSHOT, get(snapshot))
+        .route(wire::PEERS, get(peer_list))
         .route("/api/v1/posters/{id}", get(poster))
         .route("/api/v1/files/{id}", get(stream::file))
         .route("/api/v1/files/{id}/sidecars/{index}", get(stream::sidecar))
@@ -71,6 +74,10 @@ pub fn router(core: Weak<Core>) -> Router {
         .route("/api/v1/sessions/{id}/skip", get(stream::skip))
         .fallback(not_found)
         .method_not_allowed_fallback(not_allowed)
+        .layer(axum::middleware::from_fn_with_state(
+            served.clone(),
+            trusted,
+        ))
         .layer(axum::middleware::from_fn(known_host))
         .with_state(served)
 }
@@ -89,6 +96,31 @@ async fn known_host(request: axum::extract::Request, next: axum::middleware::Nex
         next.run(request).await
     } else {
         error(StatusCode::MISDIRECTED_REQUEST, "unknown host")
+    }
+}
+
+/// Refuses a request from a device the person has not trusted: one switched
+/// off in Settings, one the host cannot place on the tailnet while any is,
+/// and anything off the tailnet (`trust::decide`). It runs before every route.
+async fn trusted(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let Some(core) = st.core.upgrade() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+    };
+    // Reading the tailnet can run `tailscale`, so it stays off the async threads.
+    let verdict = tokio::task::spawn_blocking(move || core.host.verdict(from.ip()))
+        .await
+        .unwrap_or(trust::Verdict::Unknown);
+    match trust::refusal(&verdict) {
+        None => next.run(request).await,
+        Some(why) => {
+            tracing::debug!("host refused {from}: {verdict:?}");
+            error(StatusCode::FORBIDDEN, why)
+        }
     }
 }
 
@@ -149,7 +181,14 @@ fn failed(e: &CoreError) -> Response {
     )
 }
 
-async fn hello(State(st): State<Arc<Served>>) -> Response {
+async fn hello(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
+    let relayed = st
+        .core
+        .upgrade()
+        .is_some_and(|core| super::relayed(&core, from.ip()));
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
@@ -157,6 +196,7 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
         host: st.host.clone(),
         now: time::now_secs(),
         features: features(),
+        relayed,
     };
     match serde_json::to_vec(&hello) {
         Ok(body) => json(Bytes::from(body)),
@@ -168,11 +208,66 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
 /// when ffmpeg and an encoder work here, which the first hello starts finding
 /// out rather than waits for, so hello stays quick.
 fn features() -> Vec<String> {
-    let mut out = vec![wire::FEATURE_STREAM.to_string()];
+    let mut out = vec![
+        wire::FEATURE_STREAM.to_string(),
+        wire::FEATURE_PEERS.to_string(),
+    ];
     if convert::known() == Some(true) {
         out.push(wire::FEATURE_CONVERT.to_string());
     }
     out
+}
+
+/// The other AniBeams on the tailnet. Asking them all takes a moment, so the
+/// list answers every request for `CACHE_FOR`; the slot stays locked while it
+/// is made, so a burst of clients waits for one round of hellos. A tailnet
+/// that cannot be read gives no list rather than an empty one, and nothing is
+/// kept, so the next request asks again.
+async fn peer_list(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
+    let mut slot = st.peers.lock().await;
+    let fresh = slot
+        .as_ref()
+        .filter(|(at, _)| at.elapsed() < CACHE_FOR)
+        .map(|(_, hosts)| hosts.clone());
+    let hosts = match fresh {
+        Some(hosts) => hosts,
+        None => {
+            let Some(core) = st.core.upgrade() else {
+                return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+            };
+            let asked = tokio::task::spawn_blocking(move || {
+                let tailnet = core.host.tailnet(false)?;
+                Some(peers::candidates(
+                    &tailnet,
+                    &core.host.switched_off(),
+                    wire::DEFAULT_PORT,
+                ))
+            })
+            .await
+            .ok()
+            .flatten();
+            let Some(asked) = asked else {
+                return error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "this computer cannot read its tailnet right now",
+                );
+            };
+            let hosts = Arc::new(peers::find(asked).await);
+            *slot = Some((Instant::now(), hosts.clone()));
+            hosts
+        }
+    };
+    drop(slot);
+    let list = wire::Peers {
+        hosts: peers::others(&hosts, from.ip()),
+    };
+    match serde_json::to_vec(&list) {
+        Ok(body) => json(Bytes::from(body)),
+        Err(e) => failed(&e.into()),
+    }
 }
 
 async fn snapshot(State(st): State<Arc<Served>>) -> Response {

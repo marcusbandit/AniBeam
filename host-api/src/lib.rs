@@ -1,7 +1,9 @@
 //! What an AniBeam host serves over a tailnet, and what the phone app reads.
 //!
 //! The desktop app, with "Share over Tailscale" on, listens on its Tailscale
-//! addresses only, so the tailnet itself is the access control. Nothing a
+//! addresses only. Every device on the tailnet is answered unless the person
+//! switched it off on the host, and a switched-off device gets `403` with
+//! `{"error": ...}` on every route; nothing off the tailnet is answered. Nothing a
 //! client sends changes the library itself: the routes are `GET`s, apart from
 //! the playback calls below, which keep watch history. Two documents and one
 //! kind of file:
@@ -32,6 +34,10 @@
 //!   its place, its history and its tracker progress on the host, as if it had
 //!   played there, and a show marked not interested is hidden on both.
 //!
+//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other AniBeams
+//! it sees on the tailnet ([`Peers`]), for a phone, which cannot list tailnet
+//! devices itself.
+//!
 //! Times are Unix seconds. Every optional field may be absent or `null`, and a
 //! client must ignore fields it does not know: [`API_VERSION`] only moves for a
 //! change an old client would misread.
@@ -58,6 +64,10 @@ pub const CALL: &str = "/api/v1/call";
 pub const FEATURE_STREAM: &str = "stream";
 /// In [`Hello::features`] when the host can also convert ([`hls_path`]).
 pub const FEATURE_CONVERT: &str = "convert";
+/// `GET`: [`Peers`], with [`FEATURE_PEERS`].
+pub const PEERS: &str = "/api/v1/peers";
+/// In [`Hello::features`] when the host answers [`PEERS`].
+pub const FEATURE_PEERS: &str = "peers";
 /// The `Call` variants [`CALL`] takes: the ones a player makes, and the two that keep
 /// Not interested the same on a client as on the host.
 pub const PLAYER_CALLS: &[&str] = &[
@@ -144,6 +154,38 @@ pub struct Hello {
     /// [`FEATURE_CONVERT`]. Empty from a host older than streaming.
     #[serde(default)]
     pub features: Vec<String>,
+    /// Set when the host's Tailscale is talking to the asking device with no
+    /// direct path, carrying it through a DERP relay, as far as `tailscale
+    /// status` last said. A client spends less over such a path: a conversion
+    /// rather than the file. Absent from an older host, and when the host
+    /// cannot tell.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub relayed: bool,
+}
+
+/// `GET` [`PEERS`]: the other AniBeams the host sees on the tailnet, for a
+/// client that cannot list tailnet devices itself. Only devices the host
+/// trusts and that answered their hello as AniBeam a moment ago; neither the
+/// host nor the device asking is among them. A host that cannot read its
+/// tailnet answers `503` instead of an empty list, so a client keeps the list
+/// it had.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Peers {
+    #[serde(default)]
+    pub hosts: Vec<PeerHost>,
+}
+
+/// One AniBeam on the tailnet.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PeerHost {
+    /// Its machine name, from its own hello.
+    #[serde(default)]
+    pub name: String,
+    /// `http://<tailnet address>:<port>`, where it answered.
+    pub url: String,
+    /// Its AniBeam version.
+    #[serde(default)]
+    pub version: String,
 }
 
 /// `GET` [`probe_path`]: what one episode file holds.

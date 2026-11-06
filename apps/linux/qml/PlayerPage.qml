@@ -63,7 +63,7 @@ FocusScope {
     // ---- Session
     Component.onCompleted: {
         var r = Door.openPlayback(props.file)
-        if (r.error) { frame.toast(r.error.message); Qt.callLater(frame.nav.back); return }
+        if (r.error) { frame.fail(r.error); Qt.callLater(frame.nav.back); return }
         session = r.reply.session
         readSeries()
         if (video.isReady) start()
@@ -587,8 +587,8 @@ FocusScope {
     // core sends and is not for anyone to read.
     readonly property var refusalWords: ({
         Hidden: "the show is hidden",
-        NoMatch: "the show has no tracker match",
-        NotNewer: "the tracker is already past this episode",
+        NoMatch: "the show is not matched yet; match it on Show info",
+        NotNewer: "your list is already past this episode",
         Extra: "this is an extra",
         Unmatched: "the file is not matched to an episode",
         OnDisk: "the file is only on disk"
@@ -719,6 +719,9 @@ FocusScope {
     readonly property var openPicker: audioPicker.open ? audioPicker : subPicker.open ? subPicker : null
     function openSubPicker(anchor) { subPicker.openAt(anchor) }
     function openDelays(anchor) { delays.openAt(anchor) }
+    // The chrome closes these when its right-hand group folds or unfolds: each is anchored on
+    // a button the change hides.
+    function closePopovers() { audioPicker.close(); subPicker.close(); delays.close() }
     function showHelp() { help.show() }
     function toggleHelp() { if (help.open) help.close(); else help.show() }
     TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }

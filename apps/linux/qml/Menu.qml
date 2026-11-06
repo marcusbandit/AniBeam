@@ -4,6 +4,10 @@
 // and End move the highlight, Return picks; it takes key focus while open and gives it back to
 // whatever had it.
 //
+// `above`, for an opener at the foot of the window (the player's More button): the point is
+// the menu's bottom right corner rather than its top left, so it sits over the opener,
+// right edges in line, from its own measured size.
+//
 // A row may be split in two, `{ split: [left, right] }`, each half a row of its own with its
 // own `enabled`: Back and Forward share the top row this way. Left and Right move between
 // the halves of a highlighted split row.
@@ -16,6 +20,7 @@ Item {
     property bool open: false
     property real originX: 0
     property real originY: 0
+    property bool above: false
     // The keyboard highlight; -1 until Up or Down, and the hovered row follows the pointer
     property int hi: -1
     // Which half of a split row the keys are on
@@ -25,9 +30,9 @@ Item {
     z: 1000
 
     property Item prevFocus: null
-    function openAt(x, y, list) {
+    function openAt(x, y, list, opensAbove) {
         if (!open) prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
-        items = list; originX = x; originY = y; hi = -1; side = 0; open = true
+        items = list; originX = x; originY = y; above = !!opensAbove; hi = -1; side = 0; open = true
         frame.escapeStack.push("popover", root)
         root.forceActiveFocus()
     }
@@ -74,8 +79,8 @@ Item {
         readonly property real margin: theme.space(2)
         // Clamped both ways, so a window narrower or shorter than the menu never pushes it
         // off the top or left edge
-        x: Math.max(margin, Math.min(root.originX, root.width - width - margin))
-        y: Math.max(margin, Math.min(root.originY, root.height - height - margin))
+        x: Math.max(margin, Math.min(root.above ? root.originX - width : root.originX, root.width - width - margin))
+        y: Math.max(margin, Math.min(root.above ? root.originY - height : root.originY, root.height - height - margin))
         width: root.rowWidth + root.pad * 2
         height: column.implicitHeight + root.pad * 2
         radius: theme.radiusTile
@@ -170,6 +175,9 @@ Item {
             Label { text: mr.entry.text || ""; role: "ui"; anchors.verticalCenter: parent.verticalCenter }
         }
         MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: mr.usable ? Qt.PointingHandCursor : Qt.ArrowCursor
+            Accessible.role: Accessible.MenuItem
+            Accessible.onPressAction: if (mr.usable) mr.chosen()
+            Accessible.name: theme.nameNear(parent)
             onEntered: mr.hoveredIn(); onClicked: if (mr.usable) mr.chosen() }
     }
 }

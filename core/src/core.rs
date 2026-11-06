@@ -330,6 +330,13 @@ impl Core {
         self.host.set_bind(bind);
     }
 
+    /// The `tailscale status --json` document this core's host reads in place
+    /// of asking the CLI, for a test. Not part of the contract.
+    #[doc(hidden)]
+    pub fn set_tailscale_status(&self, json: Option<Vec<u8>>) {
+        self.host.set_status(json);
+    }
+
     /// Keeps the tailnet host serving whatever "Share over Tailscale" says,
     /// for a shell that exists to serve other devices, or hands it back to
     /// the preference. Works before `start` too: the host then comes up with
@@ -834,12 +841,19 @@ impl Core {
             }),
             Call::SetPreferences { preferences } => {
                 prefs::validate_preferences(&preferences)?;
-                let p = preferences.clone();
-                let before = self.store.write(move |c| {
+                let p = preferences;
+                let (before, preferences) = self.store.write(move |c| {
                     let before = prefs::load_preferences(c)?;
+                    // Only SetTailnetDeviceTrust changes which devices are off,
+                    // so a stale copy of the preferences saved from a page
+                    // can never switch a device back on.
+                    let mut p = p;
+                    p.tailnet_switched_off = before.tailnet_switched_off.clone();
                     prefs::save_preferences(c, &p)?;
-                    Ok(before)
+                    Ok((before, p))
                 })?;
+                self.host
+                    .set_switched_off(preferences.tailnet_switched_off.clone());
                 self.host.follow(self, preferences.share_over_tailscale);
                 crate::presence::set_enabled(self, preferences.discord_presence);
                 if before.calendar_feed != preferences.calendar_feed {
@@ -862,6 +876,28 @@ impl Core {
             Call::GetHost => Ok(Reply::Host {
                 status: self.host.status(),
             }),
+            Call::ListTailnetDevices => Ok(Reply::TailnetDevices {
+                devices: crate::host::devices(self),
+            }),
+            Call::SetTailnetDeviceTrust { device, trusted } => {
+                let preferences = self.store.write(move |c| {
+                    let mut p = prefs::load_preferences(c)?;
+                    p.tailnet_switched_off.retain(|d| *d != device);
+                    if !trusted {
+                        p.tailnet_switched_off.push(device);
+                    }
+                    prefs::save_preferences(c, &p)?;
+                    Ok(p)
+                })?;
+                self.host
+                    .set_switched_off(preferences.tailnet_switched_off.clone());
+                self.bus.debug(
+                    Stage::Store,
+                    "preferences changed",
+                    EventBody::PreferencesChanged { preferences },
+                );
+                Ok(Reply::Ok)
+            }
             Call::GetPresence => Ok(Reply::Presence {
                 available: self.presence.available(),
                 connected: self.presence.connected(),
@@ -938,6 +974,9 @@ impl Core {
                     None => Reply::Ok,
                 })
             }
+            Call::SetSeriesNotes { series, notes } => Ok(Reply::Started {
+                job: writes::set_notes(self, series, &notes)?,
+            }),
             // Nothing to check up front: an unconnected or a fresh tracker
             // is the job's own skip, not a refusal.
             Call::RefreshProgress { tracker } => {
@@ -952,6 +991,26 @@ impl Core {
             // with a network side effect made every library change an
             // AniList request. The page asks for a refresh on its own.
             Call::ListWatching => watching::list_call(self),
+            Call::GetStats {
+                year,
+                utc_offset,
+                month_starts,
+            } => {
+                let images_dir = self.paths.images_dir();
+                let now = time::now();
+                let stats = self.store.read(|c| {
+                    let snap = crate::library::snapshot::Snapshot::load(c, &images_dir, now, None)?;
+                    Ok(crate::stats::compute(
+                        &snap,
+                        year,
+                        i64::from(utc_offset),
+                        &month_starts,
+                        time::to_secs(now),
+                    ))
+                })?;
+                Ok(Reply::Stats { stats })
+            }
+            Call::ListPlanning => watching::planning_call(self),
             Call::RefreshWatching { force } => watching::refresh_call(self, force),
             // Airing now reads its own tables, like Watching: the list call
             // answers off the cache and the page asks for a refresh itself.

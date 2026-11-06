@@ -2,6 +2,7 @@
 //! contract in `contract`.
 
 pub mod airing_now;
+pub mod atomic_file;
 pub mod calendar;
 pub mod cast;
 pub mod changelog;
@@ -10,6 +11,7 @@ pub mod core;
 pub mod downloads;
 pub mod events;
 pub mod feed;
+pub mod first_run;
 pub mod franchise;
 pub mod host;
 pub mod html;
@@ -32,6 +34,7 @@ pub mod presence;
 pub(crate) mod process;
 pub mod releases;
 pub mod repos;
+pub mod stats;
 pub mod store;
 pub mod subscriptions;
 pub(crate) mod sync;

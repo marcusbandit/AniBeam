@@ -288,6 +288,7 @@ mod tests {
             host_version: "2.1.0".into(),
             synced_at: snapshot.generated_at + 5,
             snapshot,
+            peers: Vec::new(),
         }
     }
 
