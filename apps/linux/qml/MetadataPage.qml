@@ -502,6 +502,8 @@ Item {
         }
         // Under the glyph, so it takes its own click
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.name: theme.nameNear(parent)
             id: m
             anchors.fill: parent
             anchors.margins: -tile.pad

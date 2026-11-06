@@ -211,6 +211,8 @@ Corner {
                                     }
                                     // A missing one opens Downloads on the series, to get it
                                     MouseArea {
+                                        Accessible.role: Accessible.Button
+                                        Accessible.name: theme.nameNear(parent)
                                         id: chipMouse
                                         anchors.fill: parent
                                         enabled: !parent.present && !parent.loading

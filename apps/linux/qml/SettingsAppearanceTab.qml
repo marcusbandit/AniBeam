@@ -82,6 +82,8 @@ SettingsTab {
                                 smooth: true
                             }
                             MouseArea {
+                                Accessible.role: Accessible.Button
+                                Accessible.name: theme.nameNear(parent)
                                 id: m
                                 anchors.fill: parent
                                 hoverEnabled: true

@@ -163,6 +163,8 @@ Item {
                                     }
                                 }
                                 MouseArea {
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: theme.nameNear(parent)
                                     id: cm
                                     anchors.fill: parent
                                     hoverEnabled: true

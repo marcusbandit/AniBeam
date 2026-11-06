@@ -504,6 +504,8 @@ Item {
             }
         }
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.name: theme.nameNear(parent)
             id: nm
             anchors.fill: parent
             hoverEnabled: true
@@ -606,6 +608,8 @@ Item {
             }
         }
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.name: theme.nameNear(parent)
             id: tm
             anchors.fill: parent
             hoverEnabled: true
@@ -897,7 +901,7 @@ Item {
                     sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
                     fillMode: Image.PreserveAspectCrop; asynchronous: true
                 }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openSeries(hero.c) }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openSeries(hero.c); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
             }
 
             Column {
@@ -1164,6 +1168,8 @@ Item {
                             Label { text: genre.modelData.count; role: "ledger"; color: theme.textFaint; anchors.verticalCenter: parent.verticalCenter }
                         }
                         MouseArea {
+                            Accessible.role: Accessible.Button
+                            Accessible.name: theme.nameNear(parent)
                             id: gm
                             anchors.fill: parent
                             hoverEnabled: true

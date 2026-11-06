@@ -84,6 +84,8 @@ Item {
         }
     }
     MouseArea {
+        Accessible.role: Accessible.Button
+        Accessible.name: theme.nameNear(parent)
         id: mouse
         anchors.fill: tileBox
         hoverEnabled: true

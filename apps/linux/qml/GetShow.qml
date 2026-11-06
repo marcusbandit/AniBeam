@@ -697,6 +697,8 @@ Item {
                                     color: prow.isActive ? theme.accentSoft : rowMouse.containsMouse && prow.on ? theme.glassFloat : "transparent"
                                 }
                                 MouseArea {
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: theme.nameNear(parent)
                                     id: rowMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
@@ -980,7 +982,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, parent.width - optSwitch.width - info.width - theme.space(6))
             text: opt.title; role: "title"; font.pointSize: theme.typeNormal; elide: Text.ElideRight
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: optSwitch.toggle() }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: optSwitch.toggle(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
         }
         Item {
             id: info
@@ -1237,6 +1239,8 @@ Item {
             border.color: theme.accentEdge
         }
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.name: theme.nameNear(parent)
             id: whoMouse
             width: grid.whoWidth; height: parent.height
             enabled: gr.clickable

@@ -14,6 +14,9 @@ Corner {
     property int index: 0
     property bool small: false
     signal picked(int i)
+    property string accessibleName: ""
+    Accessible.role: Accessible.Grouping
+    Accessible.name: theme.spokenName(accessibleName, "", root, "")
     activeFocusOnTab: true
     Keys.onPressed: function(e) {
         var n = options.length, to = -1
@@ -77,6 +80,11 @@ Corner {
                 readonly property string icon: record && modelData.icon ? String(modelData.icon) : ""
                 readonly property var custom: record && modelData.delegate ? modelData.delegate : null
                 readonly property bool on: index === root.index
+                Accessible.role: Accessible.RadioButton
+                Accessible.name: label || (record && modelData.tip ? String(modelData.tip) : theme.glyphWords(icon))
+                Accessible.checkable: true
+                Accessible.checked: on
+                Accessible.onPressAction: root.picked(index)
                 readonly property color tint: on || cellMouse.containsMouse ? theme.text : theme.textDim
                 // A named Seg names its cells "<name>-<label>" (or "<name>-<option.name>" for a
                 // record that carries one), for a --drive script

@@ -39,6 +39,8 @@ Corner {
     }
     TextInput {
         id: input
+        Accessible.role: Accessible.EditableText
+        Accessible.name: root.placeholder
         anchors.fill: parent
         anchors.leftMargin: root.large ? theme.space(14) : theme.space(9); anchors.rightMargin: root.goButton ? theme.space(20) : theme.space(10)
         verticalAlignment: TextInput.AlignVCenter

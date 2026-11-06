@@ -186,7 +186,7 @@ Item {
                 Rectangle { visible: row.ticked; x: 0; y: theme.space(2); width: 2; height: parent.height - theme.space(4); radius: 1; color: theme.accent }
                 // The pointer on a row hands it to the frame's right-click menu: copy its link
                 HoverHandler { id: rowHover; cursorShape: Qt.PointingHandCursor; onHoveredChanged: frame.hoverRelease(row.item, hovered) }
-                MouseArea { anchors.fill: parent; onClicked: root.toggled(row.item) }
+                MouseArea { anchors.fill: parent; onClicked: root.toggled(row.item); Accessible.role: Accessible.CheckBox; Accessible.name: theme.nameNear(parent) }
                 Check { x: (root.wCheck - width) / 2; anchors.verticalCenter: parent.verticalCenter; on: row.ticked; onClicked: root.toggled(row.item) }
 
                 Column {
@@ -296,7 +296,7 @@ Item {
         readonly property bool active: root.sortKey === key
         height: head.height
         HoverHandler { id: hh; cursorShape: Qt.PointingHandCursor }
-        MouseArea { anchors.fill: parent; onClicked: root.sortBy(hc.key) }
+        MouseArea { anchors.fill: parent; onClicked: root.sortBy(hc.key); Accessible.role: Accessible.ColumnHeader; Accessible.name: theme.nameNear(parent) }
         Row {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: hc.alignRight ? parent.right : undefined
@@ -359,6 +359,6 @@ Item {
         border.color: on ? theme.accent : checkMouse.containsMouse ? theme.text : theme.lineStrong
         border.width: 1.5
         Icon { visible: parent.on; anchors.centerIn: parent; glyph: "check"; size: theme.space(3.25); color: theme.contrast(theme.accent, Qt.rgba(1, 1, 1, 1)) >= 3 ? "#ffffff" : "#0d0e11" }
-        MouseArea { id: checkMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
+        MouseArea { id: checkMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked(); Accessible.role: Accessible.CheckBox; Accessible.name: theme.nameNear(parent) }
     }
 }

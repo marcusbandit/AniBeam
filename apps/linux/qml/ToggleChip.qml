@@ -7,6 +7,9 @@ Chip {
     id: root
     property bool checked: false
     signal toggled(bool on)
+    Accessible.role: Accessible.CheckBox
+    Accessible.checkable: true
+    Accessible.checked: checked
     height: theme.controlHeight
     mono: false
     clickable: interactive

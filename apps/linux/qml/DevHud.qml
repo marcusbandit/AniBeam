@@ -55,5 +55,5 @@ Rectangle {
             text: root.mem.VmRSS ? "memory " + root.recorder.mb(root.mem.VmRSS * 1024) + ", peak " + root.recorder.mb(root.mem.VmHWM * 1024) : "memory not readable here"
         }
     }
-    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "developer" }) }
+    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "developer" }); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
 }

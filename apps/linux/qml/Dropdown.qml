@@ -28,6 +28,12 @@ Corner {
     // sets without a label beside it; the list shows the values alone
     property string prefix: ""
     signal picked(int i)
+    property string accessibleName: ""
+    Accessible.role: Accessible.ComboBox
+    Accessible.name: theme.spokenName(accessibleName, "", root, "") || prefix
+    Accessible.description: current
+    Accessible.focusable: interactive
+    Accessible.onPressAction: open()
 
     readonly property string current: options.length > index && index >= 0 ? String(options[index]) : ""
     readonly property bool opened: pop.opened

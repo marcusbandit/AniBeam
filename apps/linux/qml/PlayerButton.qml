@@ -19,6 +19,10 @@ Corner {
     property real glyphSize: theme.space(4.5)
     property color restColor: "transparent"
     signal clicked()
+    property string accessibleName: ""
+    Accessible.role: Accessible.Button
+    Accessible.name: accessibleName || tip || theme.glyphWords(glyph)
+    Accessible.onPressAction: if (interactive) clicked()
 
     width: theme.space(9); height: width
     readonly property bool hovered: m.containsMouse

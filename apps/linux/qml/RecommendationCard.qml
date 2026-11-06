@@ -61,6 +61,6 @@ Item {
         color: "transparent"
         border.color: theme.accent; border.width: 1
     }
-    MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.opened() }
+    MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.opened(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
     Tooltip { text: rec.owned ? "Open " + rec.title + " in your library" : "Open " + rec.title + " on AniList" }
 }

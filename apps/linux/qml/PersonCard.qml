@@ -55,6 +55,8 @@ Item {
         }
     }
     MouseArea {
+        Accessible.role: Accessible.Button
+        Accessible.name: theme.nameNear(parent)
         id: link
         anchors.fill: parent
         enabled: root.linked

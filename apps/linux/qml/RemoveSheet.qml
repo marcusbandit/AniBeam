@@ -163,6 +163,6 @@ Item {
             Label { width: parent.width; text: check.text; role: "ui"; color: theme.text; wrapMode: Text.Wrap }
             Label { width: parent.width; text: check.detail; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap }
         }
-        MouseArea { id: cm; anchors.fill: parent; hoverEnabled: true; cursorShape: check.locked ? Qt.ArrowCursor : Qt.PointingHandCursor; enabled: !check.locked; onClicked: check.toggled() }
+        MouseArea { id: cm; anchors.fill: parent; hoverEnabled: true; cursorShape: check.locked ? Qt.ArrowCursor : Qt.PointingHandCursor; enabled: !check.locked; onClicked: check.toggled(); Accessible.role: Accessible.CheckBox; Accessible.name: theme.nameNear(parent) }
     }
 }
