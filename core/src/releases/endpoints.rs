@@ -988,7 +988,7 @@ pub(crate) mod tests {
     #[test]
     fn a_nyaa_kind_endpoint_named_with_no_category_or_filter_asks_for_everything() {
         // anirss's Endpoint: category "1_0" (every anime upload) and filter "0" (no filter)
-        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/");
+        let ep = Endpoint::new("site", FILTERED_RSS, "https://tracker.example/");
         assert_eq!((ep.category.as_str(), ep.filter.as_str()), ("1_0", "0"));
         assert_eq!(
             search_url(&ep, "Show 1080p"),
@@ -1011,7 +1011,7 @@ pub(crate) mod tests {
     #[test]
     fn a_nyaa_address_with_its_own_parameters_takes_the_search_after_them() {
         // anirss: f"{ep.url}{'&' if '?' in ep.url else '?'}{qs}"
-        let ep = Endpoint::new("site", "nyaa", "https://tracker.example/?token=abc");
+        let ep = Endpoint::new("site", FILTERED_RSS, "https://tracker.example/?token=abc");
         assert_eq!(
             search_url(&ep, "Show"),
             "https://tracker.example/?token=abc&page=rss&q=Show&c=1_0&f=0"
@@ -1024,7 +1024,7 @@ pub(crate) mod tests {
         let http = FakeHttp::new();
         let trusted = Endpoint {
             filter: "2".to_string(),
-            ..Endpoint::new("site", "nyaa", "https://tracker.example/")
+            ..Endpoint::new("site", FILTERED_RSS, "https://tracker.example/")
         };
         let mut item = rel("[A] Show - 01", "l");
         item.source = "site".to_string();
