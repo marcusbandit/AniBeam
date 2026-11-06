@@ -3,13 +3,22 @@
 //! it over the target, which the OS does in one step on the same filesystem. The parent
 //! folder is made first when it is missing, and a `.tmp` a failed write leaves is removed.
 //!
+//! Two saves of one file in this process take turns (#582). They share the one `.tmp`
+//! name, so without turns the second would truncate the first's copy while the first
+//! renames it into place, then go on writing into what is now the live file. Taking turns
+//! keeps the fixed name, so a `.tmp` a crash left is reused and replaced on the next save
+//! instead of piling up, and the secrets file's mode fix over a wide leftover still holds.
+//! A path is locked as it is spelled: callers name each file one way.
+//!
 //! The files the core and the shell keep for themselves and rewrite whole go through here,
 //! so a later hardening (an fsync on every write, keeping the old file's mode) is made once.
 //! [`write_private`] already does both for the secrets file.
 
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
 use crate::contract::CoreError;
 
@@ -57,10 +66,42 @@ fn parent(target: &Path) -> Option<&Path> {
     target.parent().filter(|p| !p.as_os_str().is_empty())
 }
 
+/// One turn per file being saved right now. An entry lives only while a save of its file
+/// holds or waits for it, so the map stays as small as the saves under way.
+static LOCKS: LazyLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = LazyLock::new(Default::default);
+
+fn locks() -> MutexGuard<'static, HashMap<PathBuf, Arc<Mutex<()>>>> {
+    LOCKS.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Runs `save` on its own turn for `target`, after any save of the same file already
+/// under way.
+fn in_turn<T>(target: &Path, save: impl FnOnce() -> T) -> T {
+    let turn = Arc::clone(locks().entry(target.to_path_buf()).or_default());
+    let out = {
+        let _held = turn.lock().unwrap_or_else(PoisonError::into_inner);
+        save()
+    };
+    let mut all = locks();
+    // Clones are only made under the map's lock, so two (the map's and this one) means no
+    // other save holds or waits for this file.
+    if Arc::strong_count(&turn) == 2 {
+        all.remove(target);
+    }
+    out
+}
+
 /// The one copy of the sequence: make the folder, fill the sibling with `fill`, rename it
-/// over the target. A failed fill or rename removes the sibling, so a half-written copy (of
-/// the secrets, say) does not stay on disk.
+/// over the target, on the file's own turn. A failed fill or rename removes the sibling,
+/// so a half-written copy (of the secrets, say) does not stay on disk.
 fn replace(target: &Path, fill: impl FnOnce(&Path) -> io::Result<()>) -> Result<(), WriteError> {
+    in_turn(target, || replace_now(target, fill))
+}
+
+fn replace_now(
+    target: &Path,
+    fill: impl FnOnce(&Path) -> io::Result<()>,
+) -> Result<(), WriteError> {
     let tmp = tmp_sibling(target)?;
     if let Some(dir) = parent(target) {
         std::fs::create_dir_all(dir).map_err(at(dir))?;
@@ -247,6 +288,67 @@ mod tests {
         std::fs::write(path.join("inside"), b"").unwrap();
         assert!(write_private(&path, b"{\"token\":\"x\"}").is_err());
         assert!(!dir.path().join("secrets.json.tmp").exists());
+    }
+
+    /// #582: saves of one file that overlap (the phone's download list from two async
+    /// paths, two fetches of one image) each finish whole, in turn: none writes into a
+    /// `.tmp` another has just renamed into place, so every save succeeds, a reader never
+    /// sees half a file, and no `.tmp` is left.
+    #[test]
+    fn overlapping_saves_of_one_file_each_land_whole() {
+        const SIZE: usize = 256 * 1024;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("entries.json");
+        write(&path, vec![b'a'; SIZE]).unwrap();
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            let reader = scope.spawn(|| {
+                let mut torn = 0;
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    if let Ok(bytes) = std::fs::read(&path)
+                        && (bytes.len() != SIZE || bytes.iter().any(|b| *b != bytes[0]))
+                    {
+                        torn += 1;
+                    }
+                }
+                torn
+            });
+            let writers: Vec<_> = (0..8u8)
+                .map(|i| {
+                    let path = &path;
+                    scope.spawn(move || {
+                        (0..20)
+                            .map(|_| write(path, vec![b'b' + i; SIZE]).map_err(|e| e.to_string()))
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            let failed: Vec<String> = writers
+                .into_iter()
+                .flat_map(|w| w.join().unwrap())
+                .filter_map(Result::err)
+                .collect();
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            assert!(failed.is_empty(), "every save lands: {failed:?}");
+            assert_eq!(reader.join().unwrap(), 0, "a reader never sees half a file");
+        });
+        let last = std::fs::read(&path).unwrap();
+        assert_eq!(last.len(), SIZE);
+        assert!(last.iter().all(|b| *b == last[0]));
+        assert!(!dir.path().join("entries.json.tmp").exists());
+    }
+
+    #[test]
+    fn a_file_gives_up_its_lock_once_no_save_holds_it() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..50 {
+            write(&dir.path().join(format!("{i}.json")), b"x").unwrap();
+        }
+        let held = LOCKS.lock().unwrap();
+        assert!(
+            held.keys().all(|k| !k.starts_with(dir.path())),
+            "the locks of files no one is saving are dropped"
+        );
     }
 
     #[tokio::test]

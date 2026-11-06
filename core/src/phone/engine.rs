@@ -86,9 +86,11 @@ impl Engine {
         })
     }
 
+    /// Saves the list while holding it, so two saves from separate paths land in the
+    /// order their lists were taken and the newest is the one left on disk (#582).
     fn save_entries(&self) {
-        let entries = self.entries.lock().unwrap().clone();
-        if let Ok(bytes) = serde_json::to_vec_pretty(&entries) {
+        let entries = self.entries.lock().unwrap();
+        if let Ok(bytes) = serde_json::to_vec_pretty(&*entries) {
             let _ = crate::atomic_file::write(&self.entries_path, bytes);
         }
     }
