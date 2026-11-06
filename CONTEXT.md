@@ -57,7 +57,7 @@ A tracker list: AniList calls it Paused, MAL calls it On Hold. With the On hold 
 _Avoid_: paused, idle, stale, backlog
 
 **Local list**:
-The list status and score kept on this device for a series no connected tracker carries: someone with no account, a show matched to a tracker whose account is not connected, a TVmaze show, an unmatched folder. The status menu and the score picker write it at once with no job; a card shows it wherever no tracker entry says otherwise, and a tracker's entry always wins. Export carries it as `series[].list`. Nothing in it leaves the device until the person confirms moving it to a tracker.
+The list status and score kept on this device for a series no connected tracker carries: someone with no account, a show matched to a tracker whose account is not connected, a TVmaze show, an unmatched folder. The status menu and the score picker write it at once with no job; a card shows it wherever no tracker entry says otherwise, and a tracker's entry always wins. Export carries it as `series[].list`. Nothing in it leaves the device until the person confirms moving it to a tracker: once a tracker connects and its list is read, a sheet shows each show it would change, this computer's side beside the tracker's, and Move sends them; Not now leaves a pointer under Settings, Accounts. The rows stay after a move, and the tracker's entry wins from then on.
 _Avoid_: offline list, guest list
 
 **Resume point**:

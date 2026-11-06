@@ -484,7 +484,7 @@ fn other(t: Tracker) -> Tracker {
 /// What one write does to an entry. The four actions share a job, a read
 /// and a cache patch, so they share a type rather than four near-copies.
 #[derive(Clone, Copy, Debug)]
-enum Action {
+pub(crate) enum Action {
     Mark { episode: u32 },
     Progress { progress: u32 },
     Score { score: f64 },
@@ -676,7 +676,7 @@ async fn write_one(
 /// The write itself: the tracker's current entry, the action's own guard,
 /// the mutation, the account's `synced_at`, the cache patch and the line
 /// the activity log gets.
-async fn attempt(
+pub(crate) async fn attempt(
     core: &Arc<Core>,
     ctx: &Arc<JobCtx>,
     t: Tracker,

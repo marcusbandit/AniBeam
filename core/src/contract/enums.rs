@@ -640,6 +640,8 @@ pub enum JobKind {
     /// One series' entries to a list status, as a play does to a series on
     /// hold.
     SetStatus,
+    /// The list kept on this device, moved up to a tracker (#580).
+    MoveLists,
     Crawl,
     SkipWindows,
     Export,
@@ -669,7 +671,7 @@ impl JobKind {
                 Stage::Metadata
             }
             ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
-            | OnHold | SetStatus => Stage::Trackers,
+            | OnHold | SetStatus | MoveLists => Stage::Trackers,
             Crawl => Stage::Franchise,
             SkipWindows => Stage::Playback,
             Export | Import => Stage::Store,
@@ -704,6 +706,7 @@ impl JobKind {
             RefreshAiringNow => "Checking this season",
             OnHold => "Moving idle shows to On hold",
             SetStatus => "Changing a list status",
+            MoveLists => "Moving your list to your tracker",
             Crawl => "Finding related shows",
             SkipWindows => "Finding the opening and ending",
             Export => "Saving your library to a file",
@@ -734,8 +737,8 @@ impl JobKind {
             | RefreshAiringNow | OnHold | Crawl | SkipWindows | Subscriptions
             | ConnectDownloads | CheckEndpoints => true,
             Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
-            | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | Export
-            | Import | SearchReleases | RefineReleases | Subscribe | Download
+            | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | MoveLists
+            | Export | Import | SearchReleases | RefineReleases | Subscribe | Download
             | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
             | RepairSubscription | StartEndpoint => false,
         }
@@ -786,6 +789,7 @@ impl JobKind {
             RefreshAiringNow => "RefreshAiringNow",
             OnHold => "OnHold",
             SetStatus => "SetStatus",
+            MoveLists => "MoveLists",
             Crawl => "Crawl",
             SkipWindows => "SkipWindows",
             Export => "Export",
@@ -829,6 +833,7 @@ impl JobKind {
             "RefreshAiringNow" => Some(RefreshAiringNow),
             "OnHold" => Some(OnHold),
             "SetStatus" => Some(SetStatus),
+            "MoveLists" => Some(MoveLists),
             "Crawl" => Some(Crawl),
             "SkipWindows" => Some(SkipWindows),
             "Export" => Some(Export),

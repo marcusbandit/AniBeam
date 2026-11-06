@@ -33,6 +33,7 @@ use crate::sync::recover;
 use crate::time;
 use crate::trackers::accounts;
 use crate::trackers::cache;
+use crate::trackers::move_up;
 use crate::trackers::oauth;
 use crate::trackers::on_hold;
 use crate::trackers::secrets::{KEYRING_UNAVAILABLE, Secrets};
@@ -930,6 +931,12 @@ impl Core {
             Call::SetScore { series, score } => Ok(match writes::set_score(self, series, score)? {
                 Some(job) => Reply::Started { job },
                 None => Reply::Ok,
+            }),
+            Call::PreviewListMove { tracker } => Ok(Reply::ListMove {
+                rows: self.store.read(|c| move_up::preview(c, tracker))?,
+            }),
+            Call::MoveLists { tracker, series } => Ok(Reply::Started {
+                job: move_up::start(self, tracker, series)?,
             }),
             Call::SetListStatus { series, status } => {
                 Ok(match writes::set_list_status(self, series, status)? {

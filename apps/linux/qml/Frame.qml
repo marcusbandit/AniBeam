@@ -384,6 +384,16 @@ FocusScope {
             })
             if (failed.length) frame.toast(failed.join("; "))
         }
+        function onProgressRefreshed(t) {
+            if (frame.moveOffer === "" || frame.moveOffer.toLowerCase() !== String(t).toLowerCase()) return
+            var offered = frame.moveOffer
+            frame.moveOffer = ""
+            moveListsSheet.openFor(offered)
+        }
+        function onListsMoved(t, moved, failed) {
+            if (failed > 0) frame.toast(frame.trackerName(t) + " did not take " + (failed === 1 ? "1 show" : failed + " shows") + "; see the activity log")
+            else if (moved > 0) frame.toast("Moved " + (moved === 1 ? "1 show" : moved + " shows") + " to " + frame.trackerName(t))
+        }
         // Only the url of the job this tracker is waiting on: one from a flow since replaced
         // would open a sign-in page whose listener is already gone.
         function onAuthUrlReady(t, openUrl, redirectUrl, job) {
@@ -404,6 +414,8 @@ FocusScope {
         }
         // The toast, the receipt and the raise; the bookkeeping is onJobFinished's.
         function onTrackerConnected(t, username) {
+            // Once its list is read, the list kept here is offered to it (#580)
+            frame.moveOffer = t
             frame.connectedAs = frame.withKey(frame.connectedAs, t, username || frame.trackerName(t))
             frame.toast("Connected to " + frame.trackerName(t) + " as " + (username || "?"))
             // The user is in the browser tab that just closed; bring them back to the app.
@@ -452,6 +464,7 @@ FocusScope {
         z: 600
         Menu { id: menu }
         RemoveSheet { id: removeSheet }
+        MoveListsSheet { id: moveListsSheet }
         WhatsNew { id: whatsNew }
         UpdateNotice {
             id: updateNotice
@@ -709,6 +722,10 @@ FocusScope {
     // A list status is offered for every series but a hidden one, whose tracker sync is off. It
     // goes to every connected tracker that carries an id for the series, and stays on this
     // device when none does (#213).
+    // The tracker a fresh connection will offer the list kept here to, once its list is read
+    property string moveOffer: ""
+    // The move sheet for a tracker, from Settings; answers whether there was anything to move
+    function openMoveLists(t) { return moveListsSheet.openFor(t) }
     function trackerOn(t) { return !!Door.trackers && !!Door.trackers[t] && Door.trackers[t].connected === true }
     function canSetListStatus(c) {
         return !!c && !c.hidden

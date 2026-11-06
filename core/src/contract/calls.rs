@@ -157,6 +157,19 @@ pub enum Call {
         series: u64,
         status: ListStatus,
     },
+    /// What moving the list kept on this device up to `tracker` would
+    /// change, one row a series, read off the cache (#580). Nothing is sent.
+    PreviewListMove {
+        tracker: Tracker,
+    },
+    /// Moves the named series' status and score from the list kept here up
+    /// to `tracker`, the one write that sends that list anywhere, and only
+    /// on the person's confirm. Started with the job, which ends in
+    /// `ListsMoved`.
+    MoveLists {
+        tracker: Tracker,
+        series: Vec<u64>,
+    },
     RefreshProgress {
         tracker: Option<Tracker>,
     },
@@ -706,6 +719,9 @@ pub enum Reply {
     },
     Trackers {
         state: TrackerState,
+    },
+    ListMove {
+        rows: Vec<MoveRow>,
     },
     Watching {
         list: WatchingList,

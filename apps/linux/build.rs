@@ -128,6 +128,7 @@ fn main() {
             .qml_file("qml/ShowRow.qml")
             .qml_file("qml/ShowDetail.qml")
             .qml_file("qml/RemoveSheet.qml")
+            .qml_file("qml/MoveListsSheet.qml")
             .qml_file("qml/StartSourceSheet.qml")
             .qml_file("qml/TorrentRow.qml")
             .qml_file("qml/RollControls.qml")
