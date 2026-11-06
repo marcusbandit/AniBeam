@@ -297,24 +297,28 @@ pub fn notification_settings() {
 pub fn notifications_allowed() -> bool {
     #[cfg(target_os = "android")]
     {
+        // Read every second on a thread that stays attached, so its local references go
+        // with a frame of their own rather than piling up.
         let r = with_env(|env, app| {
-            use jni::objects::JValue;
-            let sdk = env
-                .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
-                .i()?;
-            if sdk < 33 {
-                return Ok(true);
-            }
-            let permission = env.new_string("android.permission.POST_NOTIFICATIONS")?;
-            let granted = env
-                .call_method(
-                    app,
-                    "checkSelfPermission",
-                    "(Ljava/lang/String;)I",
-                    &[JValue::Object(&permission)],
-                )?
-                .i()?;
-            Ok(granted == 0)
+            env.with_local_frame(4, |env| -> Result<bool, Box<dyn std::error::Error>> {
+                use jni::objects::JValue;
+                let sdk = env
+                    .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
+                    .i()?;
+                if sdk < 33 {
+                    return Ok(true);
+                }
+                let permission = env.new_string("android.permission.POST_NOTIFICATIONS")?;
+                let granted = env
+                    .call_method(
+                        app,
+                        "checkSelfPermission",
+                        "(Ljava/lang/String;)I",
+                        &[JValue::Object(&permission)],
+                    )?
+                    .i()?;
+                Ok(granted == 0)
+            })
         });
         r.unwrap_or(true)
     }

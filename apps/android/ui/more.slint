@@ -554,7 +554,10 @@ export component MorePage inherits Rectangle {
             Lit {
                 on: Settings.lit == "Notifications";
                 reveal(y) => { downloads.reveal(y); }
-                NotifyRow { last: true; }
+                NotifyRow {
+                    last: true;
+                    in-more: true;
+                }
             }
         }
     }

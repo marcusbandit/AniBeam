@@ -15,55 +15,38 @@ import { CalendarPage } from "calendar.slint";
 import { AiringSheet } from "airing.slint";
 import { Area, Fold } from "fold.slint";
 import { NotifyQuestion } from "notify.slint";
+import { Sheet } from "sheet.slint";
 
 export { AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
-component MobileDataQuestion inherits Rectangle {
-    in property <length> inset-bottom;
-    background: #000000b0;
-    TouchArea { clicked => { Ask.mobile = false; } }
-    sheet := Rectangle {
-        x: Fold.sheet-x + Theme.grout;
-        width: Fold.sheet-width - 2 * Theme.grout;
-        y: parent.height - self.height - root.inset-bottom - Theme.grout;
-        height: body.preferred-height;
-        background: Theme.float;
-        border-radius: Theme.radius + 6px;
-        border-width: 1px;
-        border-color: Theme.line-strong;
-        TouchArea { }
-        body := VerticalLayout {
-            padding: Theme.pad;
-            padding-top: Theme.pad + Theme.unit;
-            spacing: Theme.unit * 3;
-            Text {
-                text: "Download over mobile data?";
-                color: Theme.text;
-                font-size: Theme.section;
-                font-family: Theme.display-face;
-                wrap: word-wrap;
-            }
-            Text {
-                text: "One episode is often 1 to 2 GB. On a capped plan that can use up a month of data in an evening.";
-                color: Theme.dim;
-                font-size: Theme.small + 1px;
-                wrap: word-wrap;
-            }
-            Rectangle { height: Theme.unit; }
-            Button {
-                text: "Keep Wi-Fi only";
-                primary: true;
-                clicked => { Ask.mobile = false; }
-            }
-            Button {
-                text: "Use mobile data too";
-                clicked => {
-                    Ask.mobile = false;
-                    AppData.set-wifi-only(false);
-                }
-            }
+component MobileDataQuestion inherits Sheet {
+    dismissed => { Ask.mobile = false; }
+    Text {
+        text: "Download over mobile data?";
+        color: Theme.text;
+        font-size: Theme.section;
+        font-family: Theme.display-face;
+        wrap: word-wrap;
+    }
+    Text {
+        text: "One episode is often 1 to 2 GB. On a capped plan that can use up a month of data in an evening.";
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+    Rectangle { height: Theme.unit; }
+    Button {
+        text: "Keep Wi-Fi only";
+        primary: true;
+        clicked => { Ask.mobile = false; }
+    }
+    Button {
+        text: "Use mobile data too";
+        clicked => {
+            Ask.mobile = false;
+            AppData.set-wifi-only(false);
         }
     }
 }
@@ -429,8 +412,6 @@ export component AppWindow inherits Window {
 
         if AppData.notify-ask: NotifyQuestion {
             inset-bottom: root.inset-bottom;
-            sheet-x: Fold.sheet-x;
-            sheet-width: Fold.sheet-width;
         }
 
         if Ask.menu-id >= 0: ShowMenu {

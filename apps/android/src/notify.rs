@@ -31,21 +31,6 @@ impl Notify {
             Notify::Denied => 2,
         }
     }
-
-    /// What the button does: Android's dialog the first time, its settings after.
-    pub fn action(self) -> Option<Action> {
-        match self {
-            Notify::On => None,
-            Notify::Unasked => Some(Action::Ask),
-            Notify::Denied => Some(Action::Settings),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Action {
-    Ask,
-    Settings,
 }
 
 /// Whether the first download puts its question up before it starts: only for someone
@@ -237,21 +222,16 @@ mod tests {
     fn allowed_is_on_whether_or_not_it_was_asked() {
         assert_eq!(Notify::new(true, false), Notify::On);
         assert_eq!(Notify::new(true, true), Notify::On);
-        assert_eq!(Notify::On.action(), None);
     }
 
     #[test]
-    fn the_first_tap_brings_androids_dialog() {
-        let state = Notify::new(false, false);
-        assert_eq!(state, Notify::Unasked);
-        assert_eq!(state.action(), Some(Action::Ask));
+    fn never_asked_is_unasked() {
+        assert_eq!(Notify::new(false, false), Notify::Unasked);
     }
 
     #[test]
-    fn after_a_denial_the_button_opens_the_settings() {
-        let state = Notify::new(false, true);
-        assert_eq!(state, Notify::Denied);
-        assert_eq!(state.action(), Some(Action::Settings));
+    fn asked_and_not_allowed_is_denied() {
+        assert_eq!(Notify::new(false, true), Notify::Denied);
     }
 
     #[test]

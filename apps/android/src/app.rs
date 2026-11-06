@@ -172,6 +172,8 @@ struct App {
     /// The service's notification went up while Android allowed it to show. One posted
     /// before the person allowed notifications stays hidden until it is posted again.
     service_shown: bool,
+    /// When Android's notification dialog was last asked for.
+    asked_at: Option<std::time::Instant>,
 }
 
 thread_local! {
@@ -183,9 +185,10 @@ pub fn endpoints_changed() {
     with_app(App::show_search_sources);
 }
 
-/// Downloads calls this as a download starts: the first one may explain the notification.
-pub fn download_starting() {
-    with_app(App::download_starting);
+/// Downloads calls this once the core took a download or a subscription: the first one
+/// may explain the notification.
+pub fn download_started() {
+    with_app(App::download_started);
 }
 
 fn with_app(f: impl FnOnce(&mut App)) {
@@ -1392,26 +1395,35 @@ impl App {
         }
     }
 
-    /// The notification's button: Android's dialog the first time, its settings after.
+    /// The notification's button: Android's dialog the first time, its settings after. When
+    /// Android shows no dialog (it stopped asking, as after two denials on an earlier build),
+    /// `TorrentService.askPermission` opens the settings itself.
     fn allow_notifications(&mut self) {
-        match self.notify().action() {
-            Some(notify::Action::Ask) => {
+        // A second tap while Android's dialog is still coming up is the same tap.
+        if self
+            .asked_at
+            .is_some_and(|at| at.elapsed() < Duration::from_secs(2))
+        {
+            return;
+        }
+        match self.notify() {
+            Notify::Unasked => {
                 // Noted only once the ask went out, so one that failed is tried again.
                 if crate::android::ask_notifications() {
+                    self.asked_at = Some(std::time::Instant::now());
                     self.prefs.notify_asked = true;
-                    self.prefs.notify_offered = true;
                     self.save_prefs();
                 }
             }
-            Some(notify::Action::Settings) => crate::android::notification_settings(),
-            None => {}
+            Notify::Denied => crate::android::notification_settings(),
+            Notify::On => {}
         }
         self.show_notify();
     }
 
-    /// A download is starting: the first one explains the notification before Android asks,
-    /// once, unless onboarding already did.
-    fn download_starting(&mut self) {
+    /// The core took a download or a subscription: the first one explains the notification
+    /// before Android asks, once, unless onboarding already did.
+    fn download_started(&mut self) {
         if notify::offer_on_download(self.notify(), self.prefs.notify_offered) {
             self.prefs.notify_offered = true;
             self.save_prefs();
@@ -2083,6 +2095,7 @@ pub fn run(
         service: None,
         unfinished: Vec::new(),
         service_shown: false,
+        asked_at: None,
     };
     app.show_prefs();
     app.start_notes();
