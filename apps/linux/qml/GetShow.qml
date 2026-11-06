@@ -466,7 +466,7 @@ Item {
 
     // ---- Provider words
     function kindWords(e) {
-        if (e.on_demand) return "Jackett, started on demand"
+        if (e.on_demand) return "Started when a search needs it"
         if (e.kind === "nyaa") return "Anime torrents"
         if (e.kind === "rss") return "RSS feed"
         return e.kind
@@ -900,7 +900,7 @@ Item {
                     OptionRow {
                         objectName: "get-rolling"
                         visible: !root.replacing
-                        title: "Rolling download"
+                        title: "Keep the next few ready"
                         checked: root.rolling
                         onToggled: function(on) { root.rollChoice = on }
                         tip: root.rolling ? "On: " + root.rollDefaults.ahead + " episodes download now, and each one you finish starts the next" + (root.rollDefaults.delete_watched !== false ? ". Watched episodes leave the disk." : ".")
@@ -1135,7 +1135,7 @@ Item {
                     Row {
                         anchors.right: parent.right
                         spacing: theme.space(3)
-                        Label { anchors.verticalCenter: parent.verticalCenter; text: "Force download order"; role: "title"; font.pointSize: theme.typeNormal }
+                        Label { anchors.verticalCenter: parent.verticalCenter; text: "Download in episode order"; role: "title"; font.pointSize: theme.typeNormal }
                         Switch {
                             id: seqSwitch
                             objectName: "get-torrent-sequential"

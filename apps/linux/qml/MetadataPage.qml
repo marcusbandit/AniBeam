@@ -26,7 +26,7 @@ Item {
     id: page
     objectName: "metadata-page"
     property var props: ({})
-    property string title: "Metadata"
+    property string title: "Show info"
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
     function focusSearch() { scroll.contentY = 0; search.focusInput() }
@@ -97,8 +97,8 @@ Item {
         return "complete"
     }
     readonly property var sectionOrder: [
-        { key: "unmatched", title: "Needs a match" },
-        { key: "missing", title: "Folder gone" },
+        { key: "unmatched", title: "Not recognised" },
+        { key: "missing", title: "Folder not found" },
         { key: "incomplete", title: "Missing episodes" },
         { key: "airing", title: "Airing" },
         { key: "complete", title: "Complete" }
@@ -108,7 +108,7 @@ Item {
     function stateOf(d) {
         var card = d.series || {}, have = d.have || 0, k = bucketOf(d)
         if (k === "missing") return "Folder not found"
-        if (k === "unmatched") return "No record yet"
+        if (k === "unmatched") return "No show info yet"
         if (k === "airing") { var aired = airedOf(d); return Math.min(have, aired) + " of " + aired + " aired" }
         var expected = expectedOf(d)
         if (k === "incomplete") return have + " of " + expected
@@ -270,8 +270,8 @@ Item {
         }
         function onAutoMatchFinished(backfilled, matched, unmatched) {
             debounce.restart()
-            frame.toast(matched > 0 ? "Matched " + Fmt.plural(matched, "series", "series") + (unmatched > 0 ? ", " + unmatched + " still unmatched" : "")
-                                    : unmatched > 0 ? "No new matches, " + unmatched + " still unmatched" : "Everything is matched")
+            frame.toast(matched > 0 ? "Found " + Fmt.plural(matched, "show", "shows") + (unmatched > 0 ? ", " + unmatched + " still not recognised" : "")
+                                    : unmatched > 0 ? "Found nothing new, " + unmatched + " still not recognised" : "Every show is recognised")
         }
         // A cleared match emits nothing of its own, and the job end is the one signal
         // every bulk action shares
@@ -309,7 +309,7 @@ Item {
                 anchors.right: search.left; anchors.rightMargin: theme.space(6)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(3)
-                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Metadata"; role: "display"; font.pointSize: theme.typePage }
+                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Show info"; role: "display"; font.pointSize: theme.typePage }
                 Label {
                     objectName: "metadata-count"
                     anchors.baseline: titleLabel.baseline
@@ -344,18 +344,18 @@ Item {
             Button {
                 objectName: "metadata-match-all"
                 flat: true
-                text: "Match unmatched"
+                text: "Find the rest"
                 icon: "link"
-                onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up a match for unmatched folders") }
-                Tooltip { text: "Looks up every folder that has no match yet, on each metadata provider in the order Settings gives them" }
+                onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up the folders AniBeam does not know yet") }
+                Tooltip { text: "Looks up every folder AniBeam does not know yet, on each show info site in the order Settings gives them" }
             }
             Button {
                 objectName: "metadata-refresh-all"
                 flat: true
                 text: "Refresh all"
                 icon: "refresh-cw"
-                onClicked: { var r = Door.refreshAll(); frame.toast(r.error ? r.error.message : "Refreshing every matched series") }
-                Tooltip { text: "Fetches every matched series' record again" }
+                onClicked: { var r = Door.refreshAll(); frame.toast(r.error ? r.error.message : "Updating the info of every show") }
+                Tooltip { text: "Fetches the info of every recognised show again" }
             }
             // The franchise crawl's own line, only while it runs
             Column {
@@ -450,7 +450,7 @@ Item {
             height: visible ? theme.space(60) : 0
             EmptyState {
                 icon: page.counts.all === 0 ? "database" : "search"
-                title: page.counts.all === 0 ? "No metadata yet" : page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing under this filter"
+                title: page.counts.all === 0 ? "No show info yet" : page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing under this filter"
                 body: page.counts.all === 0 ? "Your library is empty. Add a folder in Settings and scan it to get started." : page.query !== "" ? "" : "No series here right now."
             }
         }
@@ -558,7 +558,7 @@ Item {
                 objectName: String(tile.card.id) === page.firstRefreshId ? "row-refresh" : ""
                 icon: "refresh-cw"; small: true
                 onClicked: { var r = Door.refreshSeries(tile.card.id); frame.toast(r.error ? r.error.message : "Refreshing " + (tile.card.title || "")) }
-                Tooltip { text: "Fetch the record again" }
+                Tooltip { text: "Fetch this show's info again" }
             }
             Button {
                 id: forgetGlyph
@@ -568,10 +568,10 @@ Item {
                 // Two clicks: the first arms it and says what goes, the second forgets
                 property bool armed: false
                 icon: "trash-2"; small: true; danger: true
-                text: armed ? "Forget it" : ""
+                text: armed ? "Remove it" : ""
                 onClicked: { if (!armed) { armed = true; forgetDisarm.restart(); return } armed = false; page.forget(tile.card) }
                 Timer { id: forgetDisarm; interval: 4000; onTriggered: forgetGlyph.armed = false }
-                Tooltip { text: forgetGlyph.armed ? "Click again to drop this series and its watch history" : "The folder is gone: drop this series and its history" }
+                Tooltip { text: forgetGlyph.armed ? "Click again to remove this show and its watch history from AniBeam" : "The folder is not on the disk any more: remove this show and its history from AniBeam" }
             }
         }
 

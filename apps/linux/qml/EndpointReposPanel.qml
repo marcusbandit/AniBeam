@@ -11,8 +11,8 @@ import com.marcusrosado.AniBeam
 Panel {
     id: root
     objectName: "endpoint-repos"
-    title: "Endpoint repos"; icon: "archive"; grows: true
-    helper: "A repo is a signed list of search endpoints, added by its address. AniBeam checks the signature and shows you the key before anything is saved, then you install the endpoints you want. Installed ones join anirss's list."
+    title: "Source lists"; icon: "archive"; grows: true
+    helper: "A source list is a signed set of places to search, added by its address. AniBeam checks the signature and shows you the key before anything is saved, then you install the sources you want. Installed ones join Search sources above."
 
     property var catalog: null
     property var preview: null
@@ -124,7 +124,7 @@ Panel {
     function installedNote(e) {
         if (e.missing.length > 0) return "Needs its " + e.auth.filter(function(a) { return e.missing.indexOf(a.key) >= 0 }).map(function(a) { return a.label }).join(", ") + " before it searches."
         if (e.desktop_note) return e.desktop_note + "."
-        if (!e.offered) return "No longer offered by its repo."
+        if (!e.offered) return "No longer offered by its source list."
         if (e.update_host) return "The update sends requests to " + e.update_host + "."
         return ""
     }
@@ -148,7 +148,7 @@ Panel {
     }
     SettingRow {
         visible: !root.preview
-        label: "Add a repo"
+        label: "Add a source list"
         helper: "The address of its index file, or a path to one on this machine."
         Row {
             spacing: theme.space(1.5)
@@ -160,7 +160,7 @@ Panel {
         visible: !!root.preview
         label: root.preview ? "Trust " + root.preview.name + (root.preview.nsfw ? " (18+)" : "") + "?" : ""
         line: root.preview ? "Key fingerprint  " + root.preview.fingerprint : ""
-        helper: root.preview ? root.preview.url + "\n" + root.preview.endpoints.length + " endpoints, signed" + (root.preview.trusted ? ", already trusted" : "") + ". Its endpoints decide where your searches go; trust a repo only from someone you trust." : ""
+        helper: root.preview ? root.preview.url + "\n" + root.preview.endpoints.length + " sources, signed" + (root.preview.trusted ? ", already trusted" : "") + ". Its sources decide where your searches go; trust a list only from someone you trust." : ""
         Row {
             spacing: theme.space(1.5)
             Button { text: "Trust"; icon: "badge-check"; primary: true; enabled: !root.busy; onClicked: root.trust() }
@@ -227,7 +227,7 @@ Panel {
     // By hand.
     SettingRow {
         label: "Add one by hand"
-        helper: "For a site no repo carries: any feed with {query} where the search goes, a Jackett or Prowlarr feed among them. A key or token in the address moves to the secret store."
+        helper: "For a site no list carries: any feed with {query} where the search goes, one from a search proxy among them. A key in the address moves to the system password store."
         hairline: false
         Column {
             spacing: theme.space(1)
@@ -242,6 +242,6 @@ Panel {
     }
     foot: Row {
         spacing: theme.space(1.5)
-        Button { text: root.busy ? "Refreshing" : "Refresh repos"; icon: "refresh-cw"; flat: true; small: true; busy: root.busy; enabled: root.repos.length > 0 && !root.busy; onClicked: root.refresh() }
+        Button { text: root.busy ? "Refreshing" : "Refresh lists"; icon: "refresh-cw"; flat: true; small: true; busy: root.busy; enabled: root.repos.length > 0 && !root.busy; onClicked: root.refresh() }
     }
 }
