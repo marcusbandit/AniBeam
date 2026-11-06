@@ -16,7 +16,7 @@ SettingsTab {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.share_over_tailscale = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     readonly property string enableCommand: "systemctl --user enable --now anibeam-host"
     // "serving", "waiting" while this window has the library, or empty with no service.

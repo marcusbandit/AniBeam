@@ -17,7 +17,7 @@ Column {
 
     function send(name, args) {
         var r = Door.call(name, args)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     function setAhead(n) {
         if (n < 1 || n > 500 || n === root.roll.ahead) return

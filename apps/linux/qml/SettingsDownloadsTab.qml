@@ -51,7 +51,7 @@ SettingsTab {
 
     function reload() {
         var r = Door.getDownloads()
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error); return }
         tab.status = r.reply.status
         if (!tab.dirty) tab.draft = JSON.parse(JSON.stringify(r.reply.status.settings))
     }
@@ -92,27 +92,27 @@ SettingsTab {
         if (passwordTouched) secrets.torrent_password = passwordText
         var switched = !settings || settings.torrent_url !== draft.torrent_url || settings.torrent_mode !== draft.torrent_mode
         var r = Door.setDownloadSettings(draft, secrets)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error); return }
         if (switched) frame.forgetDownloadsRules()
         dirty = false
         tokenText = ""; tokenTouched = false
         passwordText = ""; passwordTouched = false
         // The sidecar was stopped by the save; bring both halves back up on the new settings
         var c = Door.connectDownloads()
-        if (c.error) frame.toast(c.error.message)
+        if (c.error) frame.fail(c.error)
     }
     function discard() { dirty = false; tokenText = ""; tokenTouched = false; passwordText = ""; passwordTouched = false; reload() }
     // Unsaved edits are saved first, then the test runs on them
     function test() {
         if (dirty) { save(); if (dirty) return }
         var r = Door.testTorrentClient()
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error); return }
         tab.testJob = r.reply.job
         tab.testing = true
     }
     function connect() {
         var r = Door.connectDownloads()
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     Connections {
         target: Door

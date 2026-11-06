@@ -131,7 +131,7 @@ Item {
     function cut() {
         var r = Door.libraryView({ tab: tab, query: query, sort: sort, direction: direction, reveal: Door.revealHidden,
                                    arrange: arrange, group: groupFranchises, genre: genre, now: nowMs, season: currentSeason })
-        if (r.error) { frame.toast(r.error.message); return false }
+        if (r.error) { frame.fail(r.error); return false }
         var v = r.reply
         counts = v.counts || {}
         if (v.key !== viewKey) {
@@ -462,6 +462,6 @@ Item {
         id: importDialog
         title: "Import an AniBeam export"
         nameFilters: ["AniBeam export (*.json)", "All files (*)"]
-        onAccepted: { var r = Door.importLibrary(Fmt.localPath(String(selectedFile))); if (r.error) frame.toast(r.error.message); else frame.toast("Import started") }
+        onAccepted: { var r = Door.importLibrary(Fmt.localPath(String(selectedFile))); if (r.error) frame.fail(r.error); else frame.toast("Import started") }
     }
 }

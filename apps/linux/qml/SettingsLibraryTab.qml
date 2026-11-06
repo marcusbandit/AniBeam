@@ -41,7 +41,7 @@ SettingsTab {
     function reloadNotInterested() { var r = Door.listNotInterested(); if (!r.error) notInterested = r.reply.shows }
     function showAgain(id) {
         var r = Door.setNotInterested(id, false)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error); return }
         reloadNotInterested()
     }
     Component.onCompleted: { reload(); reloadNotInterested() }
@@ -56,7 +56,7 @@ SettingsTab {
         var p = o.splice(from, 1)[0]
         o.splice(to, 0, p)
         var r = Door.setProviderOrder(o)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     Timer { id: debounce; interval: 250; onTriggered: tab.reload() }
     Connections {
@@ -76,9 +76,9 @@ SettingsTab {
                 required property var modelData
                 source: modelData
                 onOpen: frame.openLink(Fmt.fileUrl(modelData.path))
-                onRescan: { var r = Door.scan(modelData.id); frame.toast(r.error ? r.error.message : "Rescan started") }
+                onRescan: { var r = Door.scan(modelData.id); r.error ? frame.fail(r.error) : frame.toast("Rescan started") }
                 onRemove: confirming = true
-                onRemoveAccepted: { var r = Door.removeSource(modelData.id); if (r.error) frame.toast(r.error.message) }
+                onRemoveAccepted: { var r = Door.removeSource(modelData.id); if (r.error) frame.fail(r.error) }
             }
         }
         SettingRow {
@@ -91,7 +91,7 @@ SettingsTab {
             line: tab.sources.length && tab.lastScan ? tab.scanLine : ""
             Row {
                 spacing: theme.space(2)
-                Button { visible: tab.sources.length > 0; text: "Scan all"; icon: "refresh-cw"; flat: true; onClicked: { var r = Door.scan(-1); frame.toast(r.error ? r.error.message : "Scan started") } }
+                Button { visible: tab.sources.length > 0; text: "Scan all"; icon: "refresh-cw"; flat: true; onClicked: { var r = Door.scan(-1); r.error ? frame.fail(r.error, clicked) : frame.toast("Scan started") } }
                 Button { objectName: "settings-add-folder"; text: "Add folder"; icon: "folder-plus"; primary: tab.sources.length === 0; onClicked: folderDialog.open() }
             }
         }
@@ -158,7 +158,7 @@ SettingsTab {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.calendar_feed = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     Panel {
         objectName: "settings-calendar"
@@ -182,6 +182,6 @@ SettingsTab {
     FolderDialog {
         id: folderDialog
         title: "Add a folder"
-        onAccepted: { var r = Door.addSource(Fmt.localPath(String(selectedFolder))); frame.toast(r.error ? r.error.message : "Folder added, scanning") }
+        onAccepted: { var r = Door.addSource(Fmt.localPath(String(selectedFolder))); r.error ? frame.fail(r.error) : frame.toast("Folder added, scanning") }
     }
 }

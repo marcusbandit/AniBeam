@@ -63,7 +63,7 @@ FocusScope {
     // ---- Session
     Component.onCompleted: {
         var r = Door.openPlayback(props.file)
-        if (r.error) { frame.toast(r.error.message); Qt.callLater(frame.nav.back); return }
+        if (r.error) { frame.fail(r.error); Qt.callLater(frame.nav.back); return }
         session = r.reply.session
         readSeries()
         if (video.isReady) start()

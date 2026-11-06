@@ -18,6 +18,7 @@ mod media;
 mod nowplaying;
 mod paths;
 mod player_config;
+mod problem;
 mod read_cache;
 mod runtime;
 mod serve;

@@ -103,7 +103,7 @@ Item {
         if (!t.error) page.anilistConnected = !!(t.reply.state.anilist.connected)
         if (!page.anilistConnected) { page.entries = []; return }
         var r = Door.listWatching()
-        if (r.error) { page.loadFailed = true; frame.toast(r.error.message); return }
+        if (r.error) { page.loadFailed = true; frame.fail(r.error, page.reload); return }
         page.loadFailed = false
         page.cutAt = Date.now()
         page.nowMs = page.cutAt
@@ -116,7 +116,7 @@ Item {
     function refresh(force) {
         refreshAsked++
         var r = Door.refreshWatching(force === true)
-        if (r.error) { page.loadFailed = page.entries.length === 0; frame.toast(r.error.message); return }
+        if (r.error) { page.loadFailed = page.entries.length === 0; frame.fail(r.error, function() { page.refresh(force) }); return }
         if (r.reply && r.reply.job !== undefined) page.refreshing = true
     }
     function playSeries(id, title) {
