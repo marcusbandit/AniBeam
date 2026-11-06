@@ -801,8 +801,14 @@ impl Snapshot {
     pub fn list_of(&self, row: &SeriesRow) -> (Option<ListStatus>, Option<f64>) {
         match self.tracker(row) {
             Some(entry) => (entry.status, entry.score),
-            None => self.local_entries.get(&row.id).copied().unwrap_or_default(),
+            None => self.local_list(row),
         }
+    }
+
+    /// The list kept on this device alone, for a series no tracker entry
+    /// covers.
+    pub fn local_list(&self, row: &SeriesRow) -> (Option<ListStatus>, Option<f64>) {
+        self.local_entries.get(&row.id).copied().unwrap_or_default()
     }
 
     fn load_history(&mut self, conn: &Connection, scope: Option<&[u64]>) -> Result<(), CoreError> {

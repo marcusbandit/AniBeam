@@ -344,7 +344,7 @@ fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
         episodes_set_season: row.episodes_set_season,
         fixes: Vec::new(),
         list: (row.list_status.is_some() || row.list_score.is_some()).then(|| ListEntry {
-            status: row.list_status,
+            status: row.list_status.map(|s| s.as_str().to_string()),
             score: row.list_score,
             extra: HashMap::new(),
         }),

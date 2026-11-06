@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::contract::{AutoSkip, CoreError, FileReading, ListStatus, TrackChoice};
+use crate::contract::{AutoSkip, CoreError, FileReading, TrackChoice};
 
 /// The `format` field, the only value this reader takes.
 pub const FORMAT: &str = "anibeam-export";
@@ -126,8 +126,11 @@ pub struct SeriesEntry {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListEntry {
+    /// The status as the store names it (`watching`, `completed`). A string
+    /// rather than the enum, so a status a later version adds is named as
+    /// ignored instead of failing the whole document.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<ListStatus>,
+    pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
     #[serde(flatten)]
@@ -419,6 +422,9 @@ impl Document {
         }
         for (i, s) in self.series.iter().enumerate() {
             names(&format!("series[{i}]"), &s.extra, &mut out);
+            if let Some(list) = &s.list {
+                names(&format!("series[{i}].list"), &list.extra, &mut out);
+            }
             for (j, f) in s.fixes.iter().enumerate() {
                 names(&format!("series[{i}].fixes[{j}]"), &f.extra, &mut out);
             }

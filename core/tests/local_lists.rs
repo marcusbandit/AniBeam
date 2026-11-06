@@ -196,7 +196,7 @@ fn export_carries_the_list_kept_here_and_import_reads_it_back() {
         anibeam_core::transfer::format::parse(&std::fs::read(&out).unwrap()).unwrap();
     assert!(ignored.is_empty(), "{ignored:?}");
     let list = doc.series[0].list.clone().expect("the list goes out");
-    assert_eq!(list.status, Some(ListStatus::Completed));
+    assert_eq!(list.status.as_deref(), Some("completed"));
     assert_eq!(list.score, Some(7.5));
 
     let (_dir2, fresh, c2) = common::open_core_with_http(FakeHttp::new());
@@ -217,4 +217,80 @@ fn export_carries_the_list_kept_here_and_import_reads_it_back() {
         })
         .unwrap();
     assert_eq!(stored, vec![(Some("completed".to_string()), Some(7.5))]);
+}
+
+/// A hidden series with no tracker match is refused too: the match is not
+/// what hiding is about.
+#[test]
+fn a_hidden_unmatched_series_is_refused() {
+    let (_dir, core, _c) = common::open_core_with_http(FakeHttp::new());
+    let now = anibeam_core::time::now_secs();
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Show,
+        "/lib/Home Video",
+        "Home Video",
+    );
+    fixtures::insert_file(
+        &core,
+        series,
+        "/lib/Home Video/01.mkv",
+        1.0,
+        None,
+        "episode",
+        now,
+    );
+    core.call(Call::SetHidden {
+        series,
+        hidden: true,
+    })
+    .unwrap();
+    assert_eq!(
+        core.call(Call::SetListStatus {
+            series,
+            status: ListStatus::Watching
+        })
+        .err(),
+        Some(CoreError::Refused {
+            reason: Refusal::Hidden
+        })
+    );
+}
+
+/// The calendar follows the list kept here: a show on Watching here has its
+/// episodes in it, one on Dropped does not.
+#[test]
+fn the_calendar_reads_the_list_kept_here() {
+    let (_dir, core, _c) = common::open_core_with_http(FakeHttp::new());
+    let series = library(&core);
+    let soon = anibeam_core::time::now_secs() + 86_400;
+    fixtures::insert_airing(&core, 1, 2, soon);
+    let in_calendar = |core: &Core| {
+        let snap = core
+            .store()
+            .read(|c| {
+                anibeam_core::library::snapshot::Snapshot::load(
+                    c,
+                    std::path::Path::new("/tmp"),
+                    anibeam_core::time::now(),
+                    None,
+                )
+            })
+            .unwrap();
+        !anibeam_core::calendar::entries(&snap, anibeam_core::time::now_secs()).is_empty()
+    };
+    core.call(Call::SetListStatus {
+        series,
+        status: ListStatus::Watching,
+    })
+    .unwrap();
+    assert!(in_calendar(&core));
+    core.call(Call::SetListStatus {
+        series,
+        status: ListStatus::Dropped,
+    })
+    .unwrap();
+    assert!(!in_calendar(&core));
 }

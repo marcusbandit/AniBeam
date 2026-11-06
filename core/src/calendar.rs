@@ -97,7 +97,7 @@ pub fn entries(snap: &Snapshot, now: i64) -> Vec<Entry> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for row in &snap.series {
-        if row.hidden || row.missing || !wanted(snap.tracker(row).and_then(|t| t.status)) {
+        if row.hidden || row.missing || !wanted(snap.list_of(row).0) {
             continue;
         }
         let media = row.media.as_ref();

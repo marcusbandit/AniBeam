@@ -316,7 +316,7 @@ pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<Option<
         let rated = (score > 0.0).then_some(score);
         core.store
             .write(move |c| local::set_score(c, series, rated, now))?;
-        push_card(core, series, "score kept here")?;
+        push_card(core, series, "score kept here");
         return Ok(None);
     }
     start(core, JobKind::Score, target, Action::Score { score }).map(Some)
@@ -344,7 +344,7 @@ pub fn set_list_status(
         let now = time::now_secs();
         core.store
             .write(move |c| local::set_status(c, series, status, now))?;
-        push_card(core, series, "list status kept here")?;
+        push_card(core, series, "list status kept here");
         return Ok(None);
     }
     start(core, JobKind::SetStatus, target, Action::Status { status }).map(Some)
@@ -355,6 +355,20 @@ pub fn set_list_status(
 /// hidden series is still refused, since hiding is about its tracker sync
 /// and a person who hid it asked for nothing to go out.
 fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
+    // `guard` answers NoMatch before it looks at the hidden flag, which a
+    // series with no ids has nothing else to say about.
+    let hidden = core.store.read(|c| {
+        Ok(c.query_row(
+            "SELECT hidden FROM series WHERE id = ?1",
+            params![target.series as i64],
+            |r| r.get::<_, i64>(0),
+        )? == 1)
+    })?;
+    if hidden {
+        return Err(CoreError::Refused {
+            reason: Refusal::Hidden,
+        });
+    }
     match guard(core, target) {
         Ok(_) => Ok(false),
         Err(CoreError::Refused {
@@ -365,18 +379,24 @@ fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
     }
 }
 
-/// The series' card pushed after a write here, so the page redraws.
-fn push_card(core: &Core, series: u64, line: &str) -> Result<(), CoreError> {
+/// The series' card pushed after a write here, so the page redraws. The
+/// write has already landed by now, so a card that cannot be read is a
+/// line in the log rather than a failure of the call.
+fn push_card(core: &Core, series: u64, line: &str) {
     let images_dir = core.paths.images_dir();
-    let cards = core
+    match core
         .store
-        .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))?;
-    core.bus.debug(
-        Stage::Library,
-        line.to_string(),
-        EventBody::SeriesChanged { series: cards },
-    );
-    Ok(())
+        .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))
+    {
+        Ok(cards) => {
+            core.bus.debug(
+                Stage::Library,
+                line.to_string(),
+                EventBody::SeriesChanged { series: cards },
+            );
+        }
+        Err(e) => tracing::warn!("{line}, but the card for series {series} was not read: {e}"),
+    }
 }
 
 /// A list status as the status pill names it.

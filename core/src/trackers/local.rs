@@ -4,37 +4,11 @@
 //! score picker write here instead of refusing, and a card reads it where
 //! no tracker entry says otherwise. Connecting a tracker later offers to
 //! move it up; until the person confirms, nothing here leaves the device.
+//! The snapshot and the export read the table with their own queries.
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, params};
 
 use crate::contract::*;
-
-/// One series' entry on the list kept here.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct LocalEntry {
-    pub status: Option<ListStatus>,
-    pub score: Option<f64>,
-    pub updated_at: i64,
-}
-
-/// The entry, or none.
-pub fn load(conn: &Connection, series: u64) -> Result<Option<LocalEntry>, CoreError> {
-    Ok(conn
-        .query_row(
-            "SELECT status, score, updated_at FROM local_entries WHERE series_id = ?1",
-            params![series as i64],
-            |r| {
-                Ok(LocalEntry {
-                    status: r
-                        .get::<_, Option<String>>(0)?
-                        .and_then(|s| ListStatus::from_column(&s)),
-                    score: r.get(1)?,
-                    updated_at: r.get(2)?,
-                })
-            },
-        )
-        .optional()?)
-}
 
 /// A status on the list kept here. The score stays as it was.
 pub fn set_status(

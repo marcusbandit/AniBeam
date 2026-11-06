@@ -719,6 +719,14 @@ FocusScope {
         if (!c || !c.match_info) return false
         return (frame.trackerOn("anilist") && !!c.match_info.anilist_id) || (frame.trackerOn("mal") && !!c.match_info.mal_id)
     }
+    // Where a series' status and score go, in a line for a tooltip
+    function listHome(c) {
+        if (frame.listsOnline(c)) return "Change the list on every connected tracker"
+        var m = c && c.match_info
+        if (!m || (!m.anilist_id && !m.mal_id)) return "Kept on this device: no tracker carries this show"
+        if (frame.trackerOn("anilist") || frame.trackerOn("mal")) return "Kept on this device: your tracker does not carry this show"
+        return "Kept on this device until you connect AniList or MyAnimeList"
+    }
     // The five lists a status pill or a card's right-click moves a series to, the one it is on
     // already greyed out. The core writes it to every connected tracker.
     function listStatusItems(id, current) {

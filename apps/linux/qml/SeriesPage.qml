@@ -909,7 +909,7 @@ Item {
                         text: card.list_status ? page.listStatus(card.list_status) : "Add to a list"
                         pressName: "series-status"
                         onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
-                        Tooltip { text: !statusFact.settable ? "" : frame.listsOnline(card) ? "Change the list on every connected tracker" : "Kept on this device until you connect AniList or MyAnimeList" }
+                        Tooltip { text: statusFact.settable ? frame.listHome(card) : "" }
                     }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
                     Button {
@@ -1316,8 +1316,9 @@ Item {
     }
 
     ScorePicker { id: scorePicker; parent: frame.overlay
-        onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.toast(r.error.message) }
-        onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.toast(r.error.message) } }
+        // A score kept on this device has no job to report back, so it says so here (#213)
+        onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.toast(r.error.message); else if (!r.reply || r.reply.job === undefined) frame.toast("Score saved") }
+        onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.toast(r.error.message); else if (!r.reply || r.reply.job === undefined) frame.toast("Score cleared") } }
 
     // The quick fix (#170), over the overlay like the match
     FixSheet {
