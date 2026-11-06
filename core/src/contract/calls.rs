@@ -179,7 +179,9 @@ pub enum Call {
         series: u64,
         score: Option<f64>,
     },
-    /// Sets one list status on every connected tracker. Started with the job.
+    /// Sets one list status on every connected tracker. Started with the job;
+    /// Ok with none when no connected tracker carries the series and the
+    /// status is kept on this device instead (#213). `SetScore` the same.
     SetListStatus {
         series: u64,
         status: ListStatus,
