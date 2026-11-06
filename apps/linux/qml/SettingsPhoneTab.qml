@@ -23,9 +23,9 @@ SettingsTab {
     // "serving", "waiting" while this window has the library, or empty with no service.
     property string service: ""
     property var devices: []
-    function reloadDevices() { var r = Door.listTailnetDevices(); if (!r.error) devices = r.reply.devices }
+    function reloadDevices() { var r = Door.call("ListTailnetDevices", {}); if (!r.error) devices = r.reply.devices }
     function setTrusted(device, on) {
-        var r = Door.setTailnetDeviceTrust(device, on)
+        var r = Door.call("SetTailnetDeviceTrust", { device: device, trusted: on })
         if (r.error) frame.toast(r.error.message)
         reloadDevices()
     }
