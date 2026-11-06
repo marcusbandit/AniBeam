@@ -158,6 +158,7 @@ FocusScope {
         ["appearance", "Dark theme", "colour scheme base16", "Colours from"],
         ["appearance", "Light theme", "colour scheme base16", "Colours from"],
         ["appearance", "Accent", "colour highlight"],
+        ["appearance", "Text size", "font type words bigger smaller larger zoom scale read accessibility"],
         ["appearance", "Density", "compact comfortable spacing size"],
         ["appearance", "Poster size", "cards small medium large"],
         ["appearance", "Out now on Airing", "airing out now cards list rows style banner posters"],
