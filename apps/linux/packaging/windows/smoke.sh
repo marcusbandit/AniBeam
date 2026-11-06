@@ -132,8 +132,8 @@ cat > "$out/downloads.json" <<'JSON'
   {"page": "downloads"},
   {"wait": 25000},
   {"shot": "downloads"},
-  {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
-  {"eval": "frame.item.pageItem.anirss.version", "expect": "0.7.1"},
+  {"eval": "frame.item.pageItem.nativeEngine", "expect": true},
+  {"eval": "frame.item.pageItem.searchReady", "expect": true},
   {"eval": "frame.item.pageItem.torrentOn", "expect": true},
   {"eval": "frame.item.pageItem.status.settings.torrent_mode", "expect": "Managed"}
 ]
