@@ -147,8 +147,8 @@ SettingsTab {
         if (!anirss) return ""
         if (anirss.state === "Ready") return "Running, version " + anirss.version + " at " + anirss.url + "."
         if (anirss.state === "Starting") return "Starting the search helper."
-        if (anirss.state === "Missing") return "anirss is not installed. " + anirss.message
-        if (anirss.state === "Failed") return "anirss is not running: " + anirss.message
+        if (anirss.state === "Missing") return "The search helper is not installed. " + anirss.message
+        if (anirss.state === "Failed") return "The search helper is not running: " + anirss.message
         return "Not started yet. It starts the first time you search on the Downloads page."
     }
     readonly property string torrentLine: {
