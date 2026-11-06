@@ -107,8 +107,8 @@ Item {
                         required property int index
                         width: column.width; height: theme.controlHeight
                         radius: theme.radiusSm
-                        // Pressed darkest, then picked, then the keys' row or the pointer's
-                        color: m.pressed ? theme.surfacePressed : modelData.id === root.selected ? theme.accentSoft
+                        // Pressed darkest, then picked (a step brighter under the pointer or the keys), then the keys' row or the pointer's
+                        color: m.pressed ? theme.surfacePressed : modelData.id === root.selected ? (m.containsMouse || index === root.cursor ? theme.accentSoftHover : theme.accentSoft)
                              : m.containsMouse || index === root.cursor ? theme.floatHover : "transparent"
                         borderColor: index === root.cursor ? theme.focusRing : "transparent"; borderWidth: index === root.cursor ? 1 : 0
                         Text { anchors.left: parent.left; anchors.leftMargin: theme.space(2); anchors.verticalCenter: parent.verticalCenter; text: modelData.label; color: modelData.id === root.selected ? theme.accent : theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: modelData.id === root.selected ? Font.DemiBold : Font.Normal; elide: Text.ElideRight; width: parent.width - theme.space(4) }
