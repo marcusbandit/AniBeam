@@ -88,6 +88,15 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
     Some(Tailnet { me, peers })
 }
 
+/// The tailnet as far as this machine alone can tell, for before `tailscale status` has
+/// ever been read: its own tailnet addresses, from its interfaces, and no other device.
+pub fn local_tailnet(all: &[IpAddr]) -> Tailnet {
+    Tailnet {
+        me: addr::pick(all),
+        peers: Vec::new(),
+    }
+}
+
 /// What the host does with one request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verdict {
@@ -196,6 +205,23 @@ mod tests {
         );
         assert_eq!(read_status(b"not json"), None);
         assert_eq!(read_status(b"{}"), None);
+    }
+
+    #[test]
+    fn this_machines_own_addresses_are_known_without_a_status_read() {
+        let mine = local_tailnet(&[ip("192.168.1.5"), ip("100.65.105.9"), ip("::1")]);
+        assert_eq!(mine.me, vec![ip("100.65.105.9")]);
+        assert!(mine.peers.is_empty());
+        let off = vec!["nPhone".to_string()];
+        assert_eq!(
+            decide(ip("100.65.105.9"), &off, Some(&mine)),
+            Verdict::Serve
+        );
+        // Anyone else is still unplaceable while a device is off.
+        assert_eq!(
+            decide(ip("100.70.1.2"), &off, Some(&mine)),
+            Verdict::Unknown
+        );
     }
 
     #[test]
