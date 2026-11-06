@@ -25,7 +25,7 @@ pub type FetchFn<'f> = dyn for<'a> Fn(&'a Endpoint, &'a str) -> BoxFuture<'a, Re
 pub type EnrichFn<'f> = dyn Fn(Vec<Release>) -> BoxFuture<'static, Vec<Release>> + Send + Sync + 'f;
 
 use super::endpoints::FIELD_RE;
-use super::erai::metadata_hit;
+use super::quirks::metadata_hit;
 
 /// What `auto_resolution` decided.
 #[derive(Clone, Debug, PartialEq)]

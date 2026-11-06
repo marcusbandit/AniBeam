@@ -10,9 +10,9 @@ use std::time::Duration;
 use regex::Regex;
 
 use super::Endpoint;
-use super::erai;
 use super::fetch::{self, DEFAULT_TIMEOUT};
 use super::kinds::{FILTERED_RSS, JSON_FEED};
+use super::quirks;
 use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::{BoxFuture, Http};
 
@@ -341,13 +341,13 @@ pub fn split_exclusions(query: &str) -> (String, Vec<String>) {
     (positive.join(" "), excluded)
 }
 
-/// Erai's `s=` search matches post text only; the quality facets (1080p, WEB-DL, and so on)
-/// live in the erai: metadata and would zero the search out, so they are stripped from the
-/// terms here and returned for client-side filtering (`erai::split_noise`). Other endpoints
-/// pass through untouched.
-fn erai_split(ep: &Endpoint, positive: &str) -> (String, Vec<String>) {
-    if ep.kind == "rss" && erai::is_erai(ep) {
-        return erai::split_noise(positive);
+/// A `quality_local` source's search matches post text only; the quality facets (1080p,
+/// WEB-DL, and so on) live in its feed's extension fields and would zero the search out, so
+/// they are stripped from the terms here and returned for client-side filtering
+/// (`quirks::split_noise`). Other endpoints pass through untouched.
+fn quality_split(ep: &Endpoint, positive: &str) -> (String, Vec<String>) {
+    if ep.kind == "rss" && ep.quirks.quality_local {
+        return quirks::split_noise(positive);
     }
     (positive.to_string(), Vec::new())
 }
@@ -355,36 +355,39 @@ fn erai_split(ep: &Endpoint, positive: &str) -> (String, Vec<String>) {
 /// URL to persist as a qBittorrent RSS feed for `query`, plus the exclusion terms that
 /// could not be encoded into it. filtered-rss understands `-tag` exclusions server-side, so they
 /// stay in the URL; generic rss endpoints get only the positive terms and the exclusions
-/// come back for the caller to enforce through the qB rule. erai also loses its quality
-/// tokens.
+/// come back for the caller to enforce through the qB rule. A `quality_local` source also
+/// loses its quality tokens.
 pub fn feed_url(ep: &Endpoint, query: &str) -> (String, Vec<String>) {
     if ep.kind == FILTERED_RSS {
         return (search_url(ep, query), Vec::new());
     }
     let (positive, excluded) = split_exclusions(query);
-    let (positive, _) = erai_split(ep, &positive);
+    let (positive, _) = quality_split(ep, &positive);
     (search_url(ep, &positive), excluded)
 }
 
-/// The synchronous half of `subscription_feed`: everything once the per-show feed (the one
-/// request erai may cost) is known. Returns (feed_url, mustContain, excluded).
+/// The synchronous half of `subscription_feed`: everything once the show's own feed (the one
+/// request a `show_feed` source may cost) is known. Returns (feed_url, mustContain, excluded).
 ///
-/// Erai endpoints subscribe to the per-show anime-list feed when the slug resolved; the
-/// positive query terms then move into the rule's mustContain since the per-show URL no
-/// longer encodes the search. Quoted phrases are unwrapped and poster fields dropped: qB
-/// matches whitespace-separated tokens against the raw feed titles, which carry no
-/// `[group]` poster. When the slug did not resolve, the search feed is used with only the
-/// searchable terms on the wire and the quality tokens moved into mustContain. Either way a
-/// query that picks no AVC/HEVC variant gets the HEVC encode excluded. Every other endpoint
-/// keeps the `feed_url` behaviour with an empty mustContain.
+/// A source whose definition narrows its rule (`Quirks::narrows_in_rule`) subscribes to the
+/// show's own feed when the slug resolved; the positive query terms then move into the
+/// rule's mustContain since that feed's URL no longer encodes the search. Quoted phrases are
+/// unwrapped and poster fields dropped: qB matches whitespace-separated tokens against the
+/// raw feed titles, which carry no `[group]` poster. When the slug did not resolve, the
+/// search feed is used with only the searchable terms on the wire and the quality tokens
+/// moved into mustContain. Either way a query that picks no variant gets the definition's
+/// `one_variant` excluded. Every other endpoint keeps the `feed_url` behaviour with an empty
+/// mustContain.
 pub fn subscription_feed_resolved(
     ep: &Endpoint,
     query: &str,
     per_show: Option<String>,
 ) -> (String, String, Vec<String>) {
-    if erai::is_erai(ep) {
+    if ep.kind == "rss" && ep.quirks.narrows_in_rule() {
         let (positive, mut excluded) = split_exclusions(query);
-        excluded.extend(erai::variant_exclusions(query));
+        if let Some(word) = &ep.quirks.one_variant {
+            excluded.extend(quirks::variant_exclusions(query, word));
+        }
         if let Some(per_show) = per_show.filter(|u| !u.is_empty()) {
             let must = FIELD_RE
                 .find_iter(&positive)
@@ -395,15 +398,15 @@ pub fn subscription_feed_resolved(
                 .join(" ");
             return (per_show, must, excluded);
         }
-        let (positive, quality) = erai_split(ep, &positive);
+        let (positive, quality) = quality_split(ep, &positive);
         return (search_url(ep, &positive), quality.join(" "), excluded);
     }
     let (url, excluded) = feed_url(ep, query);
     (url, String::new(), excluded)
 }
 
-/// (feed_url, mustContain, excluded) to persist as a qB subscription. Erai endpoints cost
-/// one probe request here, to resolve the per-show feed from `items`.
+/// (feed_url, mustContain, excluded) to persist as a qB subscription. A `show_feed` source
+/// costs one probe request here, to resolve the show's own feed from `items`.
 pub async fn subscription_feed(
     http: &dyn Http,
     ep: &Endpoint,
@@ -417,9 +420,9 @@ pub async fn subscription_feed(
     } else {
         ep
     };
-    let per_show = if erai::is_erai(ep) {
-        erai::resolve_show_feed(ep, items, |url: String| async move {
-            fetch::fetch_rss(http, &url, "erai per-show probe", DEFAULT_TIMEOUT).await
+    let per_show = if ep.kind == "rss" {
+        quirks::resolve_show_feed(ep, items, |url: String| async move {
+            fetch::fetch_rss(http, &url, &ep.name, DEFAULT_TIMEOUT).await
         })
         .await
     } else {
@@ -548,13 +551,13 @@ async fn fetch_exact(
         return Ok(filter_excluded(items, &excluded));
     }
     let (positive, excluded) = split_exclusions(query);
-    let (positive, quality) = erai_split(ep, &positive);
+    let (positive, quality) = quality_split(ep, &positive);
     let items = fetch::fetch_rss(http, &search_url(ep, &positive), &ep.name, timeout).await?;
     let mut items = filter_excluded(items, &excluded);
     if !quality.is_empty() {
         // The quality facets cannot be searched server-side (they would zero the s= search
         // out); they narrow the results here instead.
-        items.retain(|it| erai::matches_all(it, &quality));
+        items.retain(|it| quirks::matches_all(it, &quality));
     }
     Ok(items)
 }
@@ -678,12 +681,26 @@ pub(crate) mod tests {
         )
     }
 
-    pub(crate) fn erai_ep() -> Endpoint {
-        Endpoint::new(
-            "erai",
+    /// An RSS source that needs a token, with every quirk on, as its definition gives them.
+    pub(crate) fn keyed_ep() -> Endpoint {
+        let mut ep = Endpoint::new(
+            "keyed",
             "rss",
-            "https://www.erai-raws.info/episodes/feed/?res=1080p&type=torrent&subs%5B0%5D=us&s={query}&token=TOK",
-        )
+            "https://www.keyed.example/episodes/feed/?res=1080p&type=torrent&subs%5B0%5D=us&s={query}&token=TOK",
+        );
+        ep.quirks = super::quirks::Quirks {
+            quality_local: true,
+            one_variant: Some("HEVC".into()),
+            show_feed: Some(super::quirks::ShowFeed {
+                pages: vec![
+                    r"^https://www\.keyed\.example/(?:episodes|specials|raws)/(?P<slug>[a-z0-9-]+?)-\d+(?:v\d+)?/".into(),
+                    r"^https://www\.keyed\.example/encodes/(?P<slug>[a-z0-9-]+?)-\d+(?:v\d+)?-hevc/".into(),
+                    r"^https://www\.keyed\.example/batches/(?P<slug>[a-z0-9-]+?)-\d+-\d+/".into(),
+                ],
+                url: "https://www.keyed.example/anime-list/{slug}/feed/".into(),
+            }),
+        };
+        ep
     }
 
     pub(crate) fn rel(title: &str, link: &str) -> Release {
@@ -1141,16 +1158,16 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_items_erai_searches_clean_and_filters_quality() {
-        let xml = r#"<rss version="2.0" xmlns:erai="https://www.erai-raws.info/rss-page/"><channel>
+    async fn fetch_items_quality_local_searches_clean_and_filters_quality() {
+        let xml = r#"<rss version="2.0" xmlns:x="https://www.keyed.example/rss-page/"><channel>
 <item><title>[Torrent] Ranma - 01 [1080p NF WEB-DL AVC AAC][Airing]</title><link>dl</link>
-<erai:resolution>1080p</erai:resolution><erai:infomkv>NF WEB-DL AVC AAC</erai:infomkv><erai:linktype>Torrent</erai:linktype></item>
+<x:resolution>1080p</x:resolution><x:infomkv>NF WEB-DL AVC AAC</x:infomkv><x:linktype>Torrent</x:linktype></item>
 <item><title>[Torrent] Ranma - 01 (HEVC) [1080p NF WEBRip HEVC AAC][Encoded]</title><link>rip</link>
-<erai:resolution>1080p</erai:resolution><erai:infomkv>NF WEBRip HEVC AAC</erai:infomkv><erai:linktype>Torrent</erai:linktype></item>
+<x:resolution>1080p</x:resolution><x:infomkv>NF WEBRip HEVC AAC</x:infomkv><x:linktype>Torrent</x:linktype></item>
 </channel></rss>"#;
         let http = FakeHttp::new();
         http.push(200, xml);
-        let items = fetch_items(http.as_ref(), &erai_ep(), "Ranma 1080p WEB-DL")
+        let items = fetch_items(http.as_ref(), &keyed_ep(), "Ranma 1080p WEB-DL")
             .await
             .unwrap();
         // The search went out with the show name only, since the quality tokens would zero
@@ -1252,19 +1269,19 @@ pub(crate) mod tests {
         assert!(owner_of(&eps, "https://elsewhere.example/").is_none());
     }
 
-    // The erai subscription rules (anirss test_erai.py) ----------------------------------
+    // A narrowing source's subscription rules, from anirss's own tests ----------------------
 
     #[test]
-    fn feed_url_erai_strips_quality_tokens() {
-        let (url, excluded) = feed_url(&erai_ep(), "Ranma 1080p WEB-DL -hevc");
+    fn feed_url_quality_local_strips_quality_tokens() {
+        let (url, excluded) = feed_url(&keyed_ep(), "Ranma 1080p WEB-DL -hevc");
         assert_eq!(s_param(&url), "Ranma");
         assert_eq!(excluded, strings(&["hevc"]));
     }
 
     #[test]
-    fn subscription_feed_erai_fallback_puts_quality_in_must() {
+    fn subscription_feed_keyed_fallback_puts_quality_in_must() {
         let (url, must, excluded) =
-            subscription_feed_resolved(&erai_ep(), "Ranma 1080p WEB-DL -hevc", None);
+            subscription_feed_resolved(&keyed_ep(), "Ranma 1080p WEB-DL -hevc", None);
         assert_eq!(s_param(&url), "Ranma");
         // qB enforces the quality facets against the raw feed titles instead.
         assert_eq!(must, "1080p WEB-DL");
@@ -1272,10 +1289,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn subscription_feed_erai_uses_per_show_and_must_contain() {
-        let per_show = "https://www.erai-raws.info/anime-list/x/feed/?res=1080p".to_string();
+    fn subscription_feed_keyed_uses_per_show_and_must_contain() {
+        let per_show = "https://www.keyed.example/anime-list/x/feed/?res=1080p".to_string();
         let (url, must, excluded) = subscription_feed_resolved(
-            &erai_ep(),
+            &keyed_ep(),
             "Gaikotsu 1080p CR WEB-DL -hevc",
             Some(per_show.clone()),
         );
@@ -1287,7 +1304,7 @@ pub(crate) mod tests {
     #[test]
     fn subscription_feed_must_contain_drops_poster_and_quotes() {
         let (_, must, _) = subscription_feed_resolved(
-            &erai_ep(),
+            &keyed_ep(),
             r#"[Erai-raws] Show "Multi Subs" 1080p"#,
             Some("https://e/f".to_string()),
         );
@@ -1295,15 +1312,15 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn subscription_feed_erai_falls_back_to_search_feed() {
-        let (url, must, excluded) = subscription_feed_resolved(&erai_ep(), "gaikotsu -hevc", None);
+    fn subscription_feed_keyed_falls_back_to_search_feed() {
+        let (url, must, excluded) = subscription_feed_resolved(&keyed_ep(), "gaikotsu -hevc", None);
         assert!(url.contains("s=gaikotsu"));
         assert_eq!(must, "");
         assert_eq!(excluded, strings(&["hevc"]));
     }
 
     #[test]
-    fn subscription_feed_non_erai_unchanged() {
+    fn subscription_feed_of_a_plain_source_unchanged() {
         let (url, must, excluded) = subscription_feed_resolved(&nyaa(), "show -bad", None);
         assert_eq!(url, feed_url(&nyaa(), "show -bad").0);
         assert_eq!(must, "");
@@ -1326,7 +1343,7 @@ pub(crate) mod tests {
 
     fn kept(query: &str) -> (Vec<&'static str>, Vec<String>) {
         let (_, must, excluded) =
-            subscription_feed_resolved(&erai_ep(), query, Some("https://e/f".to_string()));
+            subscription_feed_resolved(&keyed_ep(), query, Some("https://e/f".to_string()));
         let kept = [KYOUFU_AVC, KYOUFU_HEVC]
             .into_iter()
             .filter(|t| qb_accepts(t, &must, &excluded))
@@ -1350,30 +1367,30 @@ pub(crate) mod tests {
 
     #[test]
     fn subscription_feed_search_fallback_also_drops_the_encode() {
-        let (_, _, excluded) = subscription_feed_resolved(&erai_ep(), "Ranma 1080p", None);
+        let (_, _, excluded) = subscription_feed_resolved(&keyed_ep(), "Ranma 1080p", None);
         assert_eq!(excluded, strings(&["HEVC"]));
     }
 
     #[tokio::test]
     async fn build_subscription_probes_the_per_show_feed_once() {
         let mut page_item = rel("Gaikotsu - 02 [1080p][Airing]", "l");
-        page_item.page = "https://www.erai-raws.info/episodes/gaikotsu-kishi-sama-02/".to_string();
+        page_item.page = "https://www.keyed.example/episodes/gaikotsu-kishi-sama-02/".to_string();
         let http = FakeHttp::new();
         http.push(200, feed(&[("x", "l")]));
         let spec = build_subscription(
             http.as_ref(),
-            &erai_ep(),
+            &keyed_ep(),
             "Gaikotsu 1080p -dub",
             &[page_item],
         )
         .await;
         assert!(
             spec.feed_url
-                .starts_with("https://www.erai-raws.info/anime-list/gaikotsu-kishi-sama/feed/?")
+                .starts_with("https://www.keyed.example/anime-list/gaikotsu-kishi-sama/feed/?")
         );
         assert_eq!(spec.must_contain, "Gaikotsu 1080p");
         assert_eq!(spec.must_not_contain, "dub|HEVC");
-        assert_eq!(spec.endpoint_name, "erai");
+        assert_eq!(spec.endpoint_name, "keyed");
         assert_eq!(http.requests().len(), 1);
     }
 

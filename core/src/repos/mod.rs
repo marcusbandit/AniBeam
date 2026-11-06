@@ -917,6 +917,7 @@ fn custom_definition(
         filter: None,
         min_core: None,
         json: None,
+        quirks: Default::default(),
     };
     index::check_custom(&def).map_err(|e| CoreError::invalid("endpoint", e))?;
     Ok((def, lifted))
@@ -1553,6 +1554,7 @@ fn endpoint_for(def: &Definition, url: &str) -> crate::releases::Endpoint {
         endpoint.filter = f.to_string();
     }
     endpoint.json = def.json.clone();
+    endpoint.quirks = def.quirks.clone();
     endpoint
 }
 
@@ -2390,6 +2392,7 @@ mod tests {
             filter: None,
             min_core: None,
             json: None,
+            quirks: Default::default(),
         };
         let shape = |def: &Definition| {
             let e = endpoint_for(def, &def.url);

@@ -234,28 +234,32 @@ impl DownloadsBackend {
 
     /// An endpoint whose subscription is narrowed on this side, where a
     /// refined query is no query the endpoint can answer: a generic RSS
-    /// endpoint that does not already narrow its subscription in the rule.
-    /// anirss's endpoints are the list the last connect read from it; the
-    /// core's are its own.
+    /// endpoint that does not already narrow its subscription in the rule,
+    /// as its definition says (`Quirks::narrows_in_rule`). anirss's endpoints
+    /// are the list the last connect read from it, each narrowing as the
+    /// installed endpoint of its name does, and one written into anirss by
+    /// hand as a plain feed; the core's are its own.
     pub fn narrows_locally(&self, core: &Core, endpoint: &str) -> bool {
+        let plain =
+            |kind: &str, narrows: bool| kind != crate::releases::kinds::FILTERED_RSS && !narrows;
         match self {
-            DownloadsBackend::Anirss(_) => core
-                .downloads
-                .state()
-                .endpoints
-                .iter()
-                .find(|e| e.name == endpoint)
-                .is_some_and(|e| {
-                    e.kind != crate::releases::kinds::FILTERED_RSS && !e.url.contains("erai-raws")
-                }),
+            DownloadsBackend::Anirss(_) => {
+                let narrows = crate::repos::runnable(core)
+                    .iter()
+                    .find(|r| r.endpoint.name == endpoint)
+                    .is_some_and(|r| r.endpoint.quirks.narrows_in_rule());
+                core.downloads
+                    .state()
+                    .endpoints
+                    .iter()
+                    .find(|e| e.name == endpoint)
+                    .is_some_and(|e| plain(&e.kind, narrows))
+            }
             DownloadsBackend::Native(native, _) => native
                 .endpoints
                 .iter()
                 .find(|e| e.name == endpoint)
-                .is_some_and(|e| {
-                    e.kind != crate::releases::kinds::FILTERED_RSS
-                        && !crate::releases::erai::is_erai(e)
-                }),
+                .is_some_and(|e| plain(&e.kind, e.quirks.narrows_in_rule())),
         }
     }
 }

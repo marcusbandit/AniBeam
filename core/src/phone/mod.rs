@@ -555,7 +555,10 @@ pub fn subscribe(
     )?;
     // What the feed holds now for episodes the library already has is taken, so the first
     // round does not download them again (qBittorrent's previously matched episodes).
-    if let Ok(now) = core.handle.block_on(feed(core, &filled, &subscribed.name)) {
+    if let Ok(now) =
+        core.handle
+            .block_on(feed(core, &filled, &subscribed.name, &kept.endpoint_name))
+    {
         let (facts, _) = crate::downloads::annotate(core, &query, &now);
         let had: Vec<String> = now
             .iter()
@@ -634,16 +637,35 @@ pub fn unsubscribe(core: &Core, names: Vec<String>, files: bool) -> Result<Reply
     Ok(Reply::Ok)
 }
 
-/// A subscription's feed: AnimeTosho's JSON search, or RSS.
+/// A subscription's feed, read the way its source's kind answers: a json-feed source's
+/// JSON, else RSS. The source is `endpoint` when the rule names one still installed, else
+/// the one whose address the feed is.
 #[cfg(feature = "phone")]
-async fn feed(core: &Core, url: &str, name: &str) -> Result<Vec<Release>, CoreError> {
+async fn feed(
+    core: &Core,
+    url: &str,
+    name: &str,
+    endpoint: &str,
+) -> Result<Vec<Release>, CoreError> {
     let timeout = crate::releases::fetch::DEFAULT_TIMEOUT;
     let http = crate::repos::endpoint_http(core);
-    if url.contains("animetosho.org/feed/json") {
+    if is_json_feed(&crate::repos::fillers(core), url, endpoint) {
         crate::releases::json_feed::fetch(&http, url, name, timeout).await
     } else {
         crate::releases::fetch::fetch_rss(&http, url, name, timeout).await
     }
+}
+
+/// Whether the feed `url` of a rule on `endpoint` comes from a json-feed source.
+#[cfg_attr(not(feature = "phone"), allow(dead_code))]
+fn is_json_feed(installed: &[crate::repos::Runnable], url: &str, endpoint: &str) -> bool {
+    let endpoints: Vec<crate::releases::Endpoint> =
+        installed.iter().map(|r| r.endpoint.clone()).collect();
+    endpoints
+        .iter()
+        .find(|e| !endpoint.is_empty() && e.name == endpoint)
+        .or_else(|| crate::releases::endpoints::owner_of(&endpoints, url))
+        .is_some_and(|e| e.kind == crate::releases::kinds::JSON_FEED)
 }
 
 /// How often the core reads the subscriptions' feeds: qBittorrent's default.
@@ -684,7 +706,7 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             continue;
         };
         core.phone.stopped.lock().unwrap().remove(&rule.name);
-        let items = match feed(core, &url, &rule.name).await {
+        let items = match feed(core, &url, &rule.name, &rule.endpoint).await {
             Ok(items) => items,
             Err(e) => {
                 tracing::warn!("subscription {} not read: {e}", rule.name);
@@ -803,4 +825,46 @@ pub fn control(_: &Core, _: Vec<String>, _: PhoneAction) -> Result<Reply, CoreEr
 #[cfg(not(feature = "phone"))]
 pub fn set_held(_: &Core, _: bool) -> Result<Reply, CoreError> {
     Err(unsupported())
+}
+
+#[cfg(test)]
+mod feed_tests {
+    use super::*;
+
+    fn installed(name: &str, kind: &str, url: &str) -> crate::repos::Runnable {
+        crate::repos::Runnable {
+            endpoint: crate::releases::Endpoint::new(name, kind, url),
+            shown_url: url.to_string(),
+            host: String::new(),
+            per_minute: None,
+            secrets: Vec::new(),
+            template: url.to_string(),
+        }
+    }
+
+    #[test]
+    fn a_feed_is_read_the_way_its_sources_kind_answers() {
+        let sources = [
+            installed("feed", "json-feed", "https://feed.example/json?q={query}"),
+            installed("rss", "rss", "https://rss.example/?q={query}"),
+        ];
+        // By the rule's source, and by the address for a rule that names none.
+        assert!(is_json_feed(&sources, "https://anywhere.example/x", "feed"));
+        assert!(is_json_feed(
+            &sources,
+            "https://feed.example/json?q=Show",
+            ""
+        ));
+        assert!(!is_json_feed(
+            &sources,
+            "https://rss.example/?q=Show",
+            "rss"
+        ));
+        // A source no longer installed reads as RSS.
+        assert!(!is_json_feed(
+            &sources,
+            "https://gone.example/json?q=Show",
+            "gone"
+        ));
+    }
 }

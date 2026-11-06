@@ -1,5 +1,6 @@
-//! RSS fetching and parsing: nyaa's stat extensions, erai's metadata and the generic-feed
-//! fallbacks. Ported from anirss `nyaa.py`. The core's own feed reader (`downloads::feed`)
+//! RSS fetching and parsing: the extension fields a tracker's feed adds to each item (stats,
+//! size, category, quality facets), torznab's attributes and the generic-feed fallbacks.
+//! Ported from anirss's feed reader. The core's own feed reader (`downloads::feed`)
 //! reads the same feeds for a subscription's page and stays as it is; this one produces
 //! anirss's `Item`, field for field.
 
@@ -16,11 +17,10 @@ use crate::net::{Http, HttpRequest, Method};
 /// can move on instead of feeling like a hang.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
-const NYAA_NS: &str = "https://nyaa.si/xmlns/nyaa";
-const ERAI_NS: &str = "https://www.erai-raws.info/rss-page/";
 const TORZNAB_NS: &str = "http://torznab.com/schemas/2015/feed";
 
-/// erai-raws (Cloudflare) 502s non-browser User-Agents, so present as a stock Firefox.
+/// Some feeds behind Cloudflare answer 502 to a User-Agent that is no browser's, so present
+/// as a stock Firefox.
 pub const USER_AGENT: &str =
     "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
 
@@ -62,6 +62,15 @@ fn child<'a, 'i>(node: Node<'a, 'i>, ns: Option<&str>, name: &str) -> Option<Nod
         .find(|c| c.is_element() && c.tag_name().name() == name && c.tag_name().namespace() == ns)
 }
 
+/// The first direct child element with this local name in any namespace but none: a feed's
+/// own extension field, whatever its prefix or URI (`<x:seeders>`), never a plain RSS
+/// element of the same name.
+fn ext<'a, 'i>(node: Node<'a, 'i>, name: &str) -> Option<Node<'a, 'i>> {
+    node.children().find(|c| {
+        c.is_element() && c.tag_name().name() == name && c.tag_name().namespace().is_some()
+    })
+}
+
 /// An element's own text before its first child element, `None` when there is none.
 fn text<'a>(elem: Option<Node<'a, '_>>) -> Option<&'a str> {
     let first = elem?.first_child()?;
@@ -80,7 +89,7 @@ fn str_text(elem: Option<Node>) -> String {
     text(elem).map(|t| t.trim().to_string()).unwrap_or_default()
 }
 
-/// Bytes in nyaa's own notation ("284.7 MiB").
+/// Bytes in the binary notation tracker feeds write ("284.7 MiB").
 fn human_size(n: f64) -> String {
     let mut f = n;
     for unit in ["B", "KiB", "MiB", "GiB", "TiB"] {
@@ -187,7 +196,7 @@ fn item_link(entry: Node, link_text: &str) -> String {
 }
 
 #[derive(Default)]
-struct Erai {
+struct Extras {
     title: String,
     size: String,
     category: String,
@@ -197,22 +206,27 @@ struct Erai {
     linktype: String,
 }
 
-/// The title and extras of an Erai-raws feed item, or the title untouched with empty extras
-/// when the item has no erai: extensions.
+/// The title and extension fields of a feed item. Size and category come as the feed gives
+/// them. An item that also carries `linktype` is a feed of post-text releases whose quality
+/// facets live in these fields instead of the title.
 ///
-/// Erai titles read "[Torrent] Show - 02 [tags][us][br]...[Airing]": the linktype prefix
-/// and the subtitle-language run are noise (the languages live in erai:subtitles), while
-/// the trailing [Airing], [Encoded] or [Batch] tag is kept as a real refine facet. The post
-/// URL from the description becomes `page` so the per-show feed slug can be derived from
-/// it. resolution, infomkv and linktype are the structured quality facets: they exist
-/// because the `s=` search cannot match them (see `erai::split_noise`).
-fn erai_polish(entry: Node, title: &str) -> Erai {
-    let e = Some(ERAI_NS);
-    let linktype = str_text(child(entry, e, "linktype"));
+/// Such titles read "[Torrent] Show - 02 [tags][us][br]...[Airing]": the linktype prefix
+/// and the subtitle-language run are noise (the languages live in `subtitles`), while the
+/// trailing [Airing], [Encoded] or [Batch] tag is kept as a real refine facet, and comes
+/// bracketless as the category. The post URL from the description becomes `page` so a show
+/// feed's slug can be derived from it. resolution, infomkv and linktype are the structured
+/// quality facets: they exist because such a search cannot match them (see
+/// `quirks::split_noise`).
+fn extras(entry: Node, title: &str) -> Extras {
+    let size = str_text(ext(entry, "size"));
+    let category = str_text(ext(entry, "category"));
+    let linktype = str_text(ext(entry, "linktype"));
     if linktype.is_empty() {
-        return Erai {
+        return Extras {
             title: title.to_string(),
-            ..Erai::default()
+            size,
+            category,
+            ..Extras::default()
         };
     }
     let mut title = title.to_string();
@@ -220,23 +234,21 @@ fn erai_polish(entry: Node, title: &str) -> Erai {
     if let Some(rest) = title.strip_prefix(&lead) {
         title = rest.to_string();
     }
-    let subs_tags = str_text(child(entry, e, "subtitles"));
+    let subs_tags = str_text(ext(entry, "subtitles"));
     if !subs_tags.is_empty() {
         title = title.replace(&subs_tags, "");
     }
     let description = str_text(child(entry, None, "description"));
-    Erai {
+    Extras {
         title,
-        size: str_text(child(entry, e, "size")),
-        category: str_text(child(entry, e, "category"))
-            .trim_matches(['[', ']'])
-            .to_string(),
+        size,
+        category: category.trim_matches(['[', ']']).to_string(),
         page: HREF_RE
             .captures(&description)
             .map(|m| m[1].to_string())
             .unwrap_or_default(),
-        resolution: str_text(child(entry, e, "resolution")),
-        infomkv: str_text(child(entry, e, "infomkv")),
+        resolution: str_text(ext(entry, "resolution")),
+        infomkv: str_text(ext(entry, "infomkv")),
         linktype,
     }
 }
@@ -273,8 +285,8 @@ fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreE
     })
 }
 
-/// Parse an RSS feed into releases. Reads nyaa's stat extensions when present; otherwise
-/// falls back to Size: and Category: hints in `<description>`. Errors on malformed XML.
+/// Parse an RSS feed into releases. Reads a tracker's extension fields when present;
+/// otherwise falls back to Size: and Category: hints in `<description>`. Errors on malformed XML.
 pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreError> {
     let data = data.strip_prefix('\u{feff}').unwrap_or(data);
     let doc = roxmltree::Document::parse(data).map_err(|e| CoreError::Service {
@@ -285,7 +297,6 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
     if let Some(e) = indexer_error(&doc, endpoint_name) {
         return Err(e);
     }
-    let n = Some(NYAA_NS);
     let mut out = Vec::new();
     for entry in doc.descendants().filter(|d| {
         d.is_element() && d.tag_name().name() == "item" && d.tag_name().namespace().is_none()
@@ -298,21 +309,12 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
         ) else {
             continue;
         };
-        let erai = erai_polish(entry, title_raw.trim());
-        let mut title_text = erai.title;
+        let extra = extras(entry, title_raw.trim());
+        let mut title_text = extra.title;
         let tz = torznab(entry);
-        let first = |a: String, b: String, c: String| {
-            [a, b, c]
-                .into_iter()
-                .find(|s| !s.is_empty())
-                .unwrap_or_default()
-        };
-        let mut size = first(str_text(child(entry, n, "size")), erai.size, tz.size);
-        let mut category = first(
-            str_text(child(entry, n, "category")),
-            erai.category,
-            tz.category,
-        );
+        let first = |a: String, b: String| if a.is_empty() { b } else { a };
+        let mut size = first(extra.size, tz.size);
+        let mut category = first(extra.category, tz.category);
         if size.is_empty() || category.is_empty() {
             // CDATA descriptions arrive HTML-escaped (AniRena writes "Anime &gt; Subs"), so
             // unescape what the regexes pull out.
@@ -340,22 +342,16 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
         out.push(Release {
             title: title_text,
             link: item_link(entry, link_raw.trim()),
-            seeders: tz
-                .seeders
-                .or_else(|| opt_int_text(child(entry, n, "seeders"))),
-            leechers: tz
-                .leechers
-                .or_else(|| opt_int_text(child(entry, n, "leechers"))),
-            downloads: tz
-                .grabs
-                .or_else(|| opt_int_text(child(entry, n, "downloads"))),
+            seeders: tz.seeders.or_else(|| opt_int_text(ext(entry, "seeders"))),
+            leechers: tz.leechers.or_else(|| opt_int_text(ext(entry, "leechers"))),
+            downloads: tz.grabs.or_else(|| opt_int_text(ext(entry, "downloads"))),
             size,
             category,
-            page: erai.page,
+            page: extra.page,
             source: String::new(),
-            resolution: erai.resolution,
-            infomkv: erai.infomkv,
-            linktype: erai.linktype,
+            resolution: extra.resolution,
+            infomkv: extra.infomkv,
+            linktype: extra.linktype,
         });
     }
     Ok(out)
@@ -505,17 +501,17 @@ mod tests {
     use super::*;
     use crate::net::FakeHttp;
 
-    const NYAA_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:nyaa="https://nyaa.si/xmlns/nyaa">
+    const TRACKER_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:t="https://tracker.example/xmlns/tracker">
 <channel>
   <item>
-    <title>[Erai-raws] Show - 05 [1080p][Multiple Subtitle]</title>
-    <link>https://nyaa.si/download/1837471.torrent</link>
-    <nyaa:seeders>923</nyaa:seeders>
-    <nyaa:leechers>12</nyaa:leechers>
-    <nyaa:downloads>4051</nyaa:downloads>
-    <nyaa:size>1.4 GiB</nyaa:size>
-    <nyaa:category>Anime - English-translated</nyaa:category>
+    <title>[Kumo] Show - 05 [1080p][Multiple Subtitle]</title>
+    <link>https://tracker.example/download/1837471.torrent</link>
+    <t:seeders>923</t:seeders>
+    <t:leechers>12</t:leechers>
+    <t:downloads>4051</t:downloads>
+    <t:size>1.4 GiB</t:size>
+    <t:category>Anime - English-translated</t:category>
   </item>
 </channel>
 </rss>"#;
@@ -527,7 +523,7 @@ mod tests {
   <item>
     <title>[Anime &gt; Subs] Sayonara Lara - 02 [1080p CR WEBRip][768DB037]</title>
     <link>https://www.anirena.com/torrents/019f57b3</link>
-    <description><![CDATA[Size: 485.1 MB | Uploader: Erai-raws | Category: Anime &gt; Subs]]></description>
+    <description><![CDATA[Size: 485.1 MB | Uploader: Kumo | Category: Anime &gt; Subs]]></description>
     <enclosure url="https://www.anirena.com/torrents/019f57b3.torrent" type="application/x-bittorrent" length="0"/>
   </item>
   <item>
@@ -537,21 +533,21 @@ mod tests {
 </channel>
 </rss>"#;
 
-    const ERAI_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:erai="https://www.erai-raws.info/rss-page/">
+    const KEYED_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:k="https://www.keyed.example/rss-page/">
 <channel>
-  <title>Episodes &#8211; Erai-raws Torrent RSS</title>
+  <title>Episodes &#8211; Keyed Torrent RSS</title>
   <item>
     <title>[Torrent] Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu II - 02 [1080p CR WEB-DL AVC AAC][us][br][mx][Airing]</title>
-    <link>https://t.erai-raws.info/Torrent/2026/Summer/Gaikotsu Kishi-sama/file.mkv.torrent</link>
-    <erai:resolution>1080p</erai:resolution>
-    <erai:infomkv>CR WEB-DL AVC AAC</erai:infomkv>
-    <erai:linktype>Torrent</erai:linktype>
-    <erai:size>1.36GB</erai:size>
-    <erai:infohash>88b0c4737b638b6c5bc38c458e812e2dc635f0dc</erai:infohash>
-    <erai:subtitles>[us][br][mx]</erai:subtitles>
-    <erai:category>[Airing]</erai:category>
-    <description><![CDATA[<a href="https://www.erai-raws.info/episodes/gaikotsu-kishi-sama-tadaima-isekai-e-odekake-chuu-ii-02/">[Erai-raws] Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu II - 02 [1080p CR WEB-DL AVC AAC][MultiSub][B8B9B54A].mkv</a> | Subtitles: [us][br][mx] | Size: 1.36GB | InfoHash: 88b0c4737b638b6c5bc38c458e812e2dc635f0dc | Categories: [Airing] ]]></description>
+    <link>https://t.keyed.example/Torrent/2026/Summer/Gaikotsu Kishi-sama/file.mkv.torrent</link>
+    <k:resolution>1080p</k:resolution>
+    <k:infomkv>CR WEB-DL AVC AAC</k:infomkv>
+    <k:linktype>Torrent</k:linktype>
+    <k:size>1.36GB</k:size>
+    <k:infohash>88b0c4737b638b6c5bc38c458e812e2dc635f0dc</k:infohash>
+    <k:subtitles>[us][br][mx]</k:subtitles>
+    <k:category>[Airing]</k:category>
+    <description><![CDATA[<a href="https://www.keyed.example/episodes/gaikotsu-kishi-sama-tadaima-isekai-e-odekake-chuu-ii-02/">[Kumo] Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu II - 02 [1080p CR WEB-DL AVC AAC][MultiSub][B8B9B54A].mkv</a> | Subtitles: [us][br][mx] | Size: 1.36GB | InfoHash: 88b0c4737b638b6c5bc38c458e812e2dc635f0dc | Categories: [Airing] ]]></description>
   </item>
 </channel>
 </rss>"#;
@@ -573,12 +569,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_nyaa_feed_unchanged() {
-        let items = parse(NYAA_XML);
+    fn parse_tracker_feed_unchanged() {
+        let items = parse(TRACKER_XML);
         assert_eq!(items.len(), 1);
         let it = &items[0];
-        assert_eq!(it.title, "[Erai-raws] Show - 05 [1080p][Multiple Subtitle]");
-        assert_eq!(it.link, "https://nyaa.si/download/1837471.torrent");
+        assert_eq!(it.title, "[Kumo] Show - 05 [1080p][Multiple Subtitle]");
+        assert_eq!(it.link, "https://tracker.example/download/1837471.torrent");
         assert_eq!(
             (it.seeders, it.leechers, it.downloads),
             (Some(923), Some(12), Some(4051))
@@ -622,60 +618,57 @@ mod tests {
     }
 
     #[test]
-    fn parse_erai_feed_cleans_title() {
+    fn parse_keyed_feed_cleans_title() {
         // The linktype prefix and the subtitle-language run go; the category tag stays (a
         // real refine facet: [Airing] vs [Encoded] vs [Batch]).
         assert_eq!(
-            parse(ERAI_XML)[0].title,
+            parse(KEYED_XML)[0].title,
             "Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu II - 02 [1080p CR WEB-DL AVC AAC][Airing]"
         );
     }
 
     #[test]
-    fn parse_erai_feed_reads_erai_extensions() {
-        let it = &parse(ERAI_XML)[0];
+    fn parse_keyed_feed_reads_its_extension_fields() {
+        let it = &parse(KEYED_XML)[0];
         assert_eq!(it.size, "1.36GB");
         assert_eq!(it.category, "Airing");
         assert!(it.link.ends_with(".torrent"));
     }
 
     #[test]
-    fn parse_erai_feed_records_post_page() {
+    fn parse_keyed_feed_records_post_page() {
         assert_eq!(
-            parse(ERAI_XML)[0].page,
-            "https://www.erai-raws.info/episodes/gaikotsu-kishi-sama-tadaima-isekai-e-odekake-chuu-ii-02/"
+            parse(KEYED_XML)[0].page,
+            "https://www.keyed.example/episodes/gaikotsu-kishi-sama-tadaima-isekai-e-odekake-chuu-ii-02/"
         );
     }
 
     #[test]
-    fn parse_erai_feed_captures_quality_metadata() {
-        let it = &parse(ERAI_XML)[0];
+    fn parse_keyed_feed_captures_quality_metadata() {
+        let it = &parse(KEYED_XML)[0];
         assert_eq!(it.resolution, "1080p");
         assert_eq!(it.infomkv, "CR WEB-DL AVC AAC");
         assert_eq!(it.linktype, "Torrent");
     }
 
     #[test]
-    fn parse_generic_feed_has_no_erai_metadata() {
+    fn parse_generic_feed_has_no_extension_fields() {
         for it in parse(ANIRENA_XML) {
             assert!(it.resolution.is_empty() && it.infomkv.is_empty() && it.linktype.is_empty());
         }
     }
 
     #[test]
-    fn parse_erai_feed_stats_are_unknown_not_zero() {
-        // The erai: namespace has no seed, peer or download stats; they must stay None so
+    fn parse_keyed_feed_stats_are_unknown_not_zero() {
+        // The keyed feed has no seed, peer or download stats; they must stay None so
         // 0 never masquerades as a dead torrent.
-        let it = &parse(ERAI_XML)[0];
+        let it = &parse(KEYED_XML)[0];
         assert!(it.seeders.is_none() && it.leechers.is_none() && it.downloads.is_none());
     }
 
     #[test]
     fn parse_rss_zero_stats_are_real_zeros() {
-        let xml = NYAA_XML.replace(
-            "<nyaa:seeders>923</nyaa:seeders>",
-            "<nyaa:seeders>0</nyaa:seeders>",
-        );
+        let xml = TRACKER_XML.replace("<t:seeders>923</t:seeders>", "<t:seeders>0</t:seeders>");
         let it = &parse(&xml)[0];
         assert_eq!(
             (it.seeders, it.leechers, it.downloads),
@@ -752,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    fn human_size_uses_nyaas_notation() {
+    fn human_size_uses_binary_units() {
         assert_eq!(human_size(0.0), "0 B");
         assert_eq!(human_size(1023.0), "1023 B");
         assert_eq!(human_size(1024.0), "1.0 KiB");
@@ -790,11 +783,11 @@ mod tests {
     #[tokio::test]
     async fn fetch_rss_sends_firefox_and_parses() {
         let http = FakeHttp::new();
-        http.push(200, NYAA_XML);
+        http.push(200, TRACKER_XML);
         let items = fetch_rss(
             http.as_ref(),
-            "https://nyaa.si/?page=rss",
-            "nyaa",
+            "https://tracker.example/?page=rss",
+            "tracker",
             DEFAULT_TIMEOUT,
         )
         .await
@@ -830,12 +823,17 @@ mod tests {
     async fn fetch_rss_http_error_is_a_service_error() {
         let http = FakeHttp::new();
         http.push(502, "bad gateway");
-        match fetch_rss(http.as_ref(), "https://erai/x", "erai", DEFAULT_TIMEOUT)
-            .await
-            .unwrap_err()
+        match fetch_rss(
+            http.as_ref(),
+            "https://keyed.example/x",
+            "keyed",
+            DEFAULT_TIMEOUT,
+        )
+        .await
+        .unwrap_err()
         {
             CoreError::Service { service, code, .. } => {
-                assert_eq!((service.as_str(), code.as_str()), ("erai", "http_502"));
+                assert_eq!((service.as_str(), code.as_str()), ("keyed", "http_502"));
             }
             other => panic!("{other:?}"),
         }
