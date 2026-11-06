@@ -14,6 +14,7 @@
 pub mod addr;
 pub mod build;
 pub mod convert;
+pub mod history;
 pub mod peers;
 pub mod server;
 pub mod stream;
@@ -78,6 +79,8 @@ pub struct Host {
     reading: Mutex<()>,
     /// A status document a test sets on one core, read in place of the CLI.
     fixed_status: Mutex<Option<Vec<u8>>>,
+    /// When each other computer's history was last pulled, by its base URL.
+    pub(crate) pulled: Mutex<std::collections::HashMap<String, Instant>>,
 }
 
 struct Run {
@@ -133,6 +136,7 @@ impl Host {
             tailnet: Mutex::new((None, None)),
             reading: Mutex::new(()),
             fixed_status: Mutex::new(None),
+            pulled: Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -299,6 +303,11 @@ pub fn sync(core: &Core) {
         }
     };
     core.host.follow(core, on);
+    // Sharing is the person's say that this computer talks to their others:
+    // catch up with every trusted AniBeam that is up.
+    if on {
+        history::pull_all(core);
+    }
 }
 
 /// The devices on the tailnet for Settings, each with whether it is trusted,

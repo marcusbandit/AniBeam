@@ -15,7 +15,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 
 use super::build::{self, LibraryPart};
-use super::{convert, peers, stream, trust};
+use super::{convert, history, peers, stream, trust};
 use crate::contract::CoreError;
 use crate::core::Core;
 use crate::time;
@@ -61,6 +61,7 @@ pub fn router(core: Weak<Core>) -> Router {
         .route(wire::HELLO, get(hello))
         .route(wire::SNAPSHOT, get(snapshot))
         .route(wire::PEERS, get(peer_list))
+        .route(wire::HISTORY, get(history_document))
         .route("/api/v1/posters/{id}", get(poster))
         .route("/api/v1/files/{id}", get(stream::file))
         .route("/api/v1/files/{id}/sidecars/{index}", get(stream::sidecar))
@@ -203,6 +204,7 @@ fn features() -> Vec<String> {
     let mut out = vec![
         wire::FEATURE_STREAM.to_string(),
         wire::FEATURE_PEERS.to_string(),
+        wire::FEATURE_HISTORY.to_string(),
     ];
     if convert::known() == Some(true) {
         out.push(wire::FEATURE_CONVERT.to_string());
@@ -414,5 +416,31 @@ mod tests {
             content_type(FsPath::new("a/b"), b"zzzz"),
             "application/octet-stream"
         );
+    }
+}
+
+/// This computer's series and history, for another AniBeam to merge
+/// (`history`). The asker is pulled from in turn, so two computers that
+/// see each other both end up with everything.
+async fn history_document(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
+    let Some(core) = st.core.upgrade() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+    };
+    let built = tokio::task::spawn_blocking(move || {
+        let doc = history::document(&core);
+        history::pull_back(&core, from.ip());
+        doc
+    })
+    .await;
+    match built {
+        Ok(Ok(doc)) => match serde_json::to_vec(&doc) {
+            Ok(body) => json(Bytes::from(body)),
+            Err(e) => failed(&e.into()),
+        },
+        Ok(Err(e)) => failed(&e),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     }
 }
