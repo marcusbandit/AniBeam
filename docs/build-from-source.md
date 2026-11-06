@@ -30,7 +30,9 @@ ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
 ```
 
 A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.6.0 or newer,
-`yay -S anirss qbittorrent-nox` on Arch).
+`yay -S anirss qbittorrent-nox` on Arch). With anirss 0.7.1 or newer, subscribing to a show
+you already have saves straight into its folder; an older one saves under its own folder
+first and AniBeam moves the rule after.
 
 It also has no AniList or MyAnimeList app registration of its own, so the Trackers tab asks
 for a client ID the first time you connect. To bundle your own, copy `.env.example` to
