@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
+- Seeders show for releases from more trackers
 - A refine or subscribe on a source you just removed says it is gone
 - Seeders show for releases from a tracker written with backslashes
 - Shows followed earlier no longer keep their source's key in the app's files
