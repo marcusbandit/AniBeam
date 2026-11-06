@@ -8,8 +8,9 @@ name: CI
 # so a new Rust release cannot turn clippy red on code nobody touched; bump it on purpose,
 # here, in linux.yml and in android.yml.
 # A change that only touches markdown or docs/ skips it (#428). The two CHANGELOG.md files
-# still run it: the apps compile them in and core/tests/changelog.rs checks them. Later
-# patterns win, so the CHANGELOG line has to stay after the markdown exclusion.
+# and the change files in apps/*/changes still run it: the apps compile them in and
+# core/tests/changelog.rs checks them. Later patterns win, so those lines have to stay
+# after the markdown exclusion.
 on:
   push:
     branches: [main]
@@ -18,12 +19,14 @@ on:
       - '!**.md'
       - '!docs/**'
       - '**/CHANGELOG.md'
+      - 'apps/*/changes/**'
   pull_request:
     paths:
       - '**'
       - '!**.md'
       - '!docs/**'
       - '**/CHANGELOG.md'
+      - 'apps/*/changes/**'
   workflow_dispatch:
 
 permissions:
