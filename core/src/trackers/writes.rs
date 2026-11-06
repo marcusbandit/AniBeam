@@ -836,7 +836,7 @@ fn other(t: Tracker) -> Tracker {
 /// cache patch, so they share a type rather than near-copies. `again` on a
 /// mark is a completed show finished a second time (`finished_again`).
 #[derive(Clone, Debug)]
-enum Action {
+pub(crate) enum Action {
     Mark { episode: u32, again: bool },
     Progress { progress: u32 },
     Score { score: f64 },
@@ -1097,7 +1097,7 @@ async fn write_one(
 /// The write itself: the tracker's current entry, the action's own guard,
 /// the mutation, the account's `synced_at`, the cache patch and the line
 /// the activity log gets.
-async fn attempt(
+pub(crate) async fn attempt(
     core: &Arc<Core>,
     ctx: &Arc<JobCtx>,
     t: Tracker,

@@ -4,6 +4,7 @@
 pub mod accounts;
 pub mod cache;
 pub mod local;
+pub mod move_up;
 pub mod oauth;
 pub mod on_hold;
 pub mod secrets;

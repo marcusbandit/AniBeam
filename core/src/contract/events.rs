@@ -133,6 +133,13 @@ pub enum EventBody {
         status: ListStatus,
         outcomes: Vec<TrackerOutcome>,
     },
+    /// The list kept on this device moved up to a tracker (#580): how many
+    /// series landed and how many the tracker refused.
+    ListsMoved {
+        tracker: Tracker,
+        moved: u32,
+        failed: u32,
+    },
     /// The series' notes as written, None when cleared, with what each
     /// tracker made of them (#211).
     NotesSet {

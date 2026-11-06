@@ -384,6 +384,7 @@ FocusScope {
         if (connecting[t] !== undefined) expectedCancels = withKey(expectedCancels, connecting[t], true)
         var r = Door.connectTracker(t)
         if (r.error) { connectFailed(t, r.error); return false }
+        moveOffers = withKey(moveOffers, t, true)
         connecting = withKey(connecting, t, r.reply.job)
         jobTrackers = withKey(jobTrackers, r.reply.job, t)
         latestJob = withKey(latestJob, t, r.reply.job)
@@ -419,6 +420,19 @@ FocusScope {
                 return (names[o.tracker] || o.tracker) + " did not take it" + (o.message ? ": " + o.message : "")
             })
             if (failed.length) frame.toast(failed.join("; "))
+        }
+        // A connection's first read list is when the list kept here is offered to it (#580).
+        // The offer is made when the connect starts, since the read can finish before the
+        // connect's own end arrives, and one tracker's offer never takes another's place.
+        function onProgressRefreshed(t) {
+            var key = String(t).toLowerCase() === "mal" ? "Mal" : "Anilist"
+            if (frame.moveOffers[key] !== true) return
+            frame.moveOffers = frame.withKey(frame.moveOffers, key)
+            moveListsSheet.openFor(key)
+        }
+        function onListsMoved(t, moved, failed) {
+            if (failed > 0) frame.toast(frame.trackerName(t) + " did not take " + (failed === 1 ? "1 show" : failed + " shows") + "; see the activity log")
+            else if (moved > 0) frame.toast("Moved " + (moved === 1 ? "1 show" : moved + " shows") + " to " + frame.trackerName(t))
         }
         // Notes a tracker refused say so the same way; saved ones say where they went
         function onNotesSet(series, outcomes) {
@@ -460,6 +474,8 @@ FocusScope {
             if (t === undefined) return
             frame.jobTrackers = frame.withKey(frame.jobTrackers, job)
             if (frame.latestJob[t] !== job) return
+            // A connect that failed has nothing to offer the list kept here to
+            frame.moveOffers = frame.withKey(frame.moveOffers, t)
             frame.connectFailed(t, error)
             // The sheet says it inline when it is up for this tracker; a toast as well would
             // be the same sentence twice.
@@ -509,6 +525,7 @@ FocusScope {
         z: 600
         Menu { id: menu }
         RemoveSheet { id: removeSheet }
+        MoveListsSheet { id: moveListsSheet }
         WhatsNew { id: whatsNew }
         ScanSummary { id: scanSummary }
         UpdateNotice {
@@ -867,6 +884,10 @@ FocusScope {
     // A list status is offered for every series but a hidden one, whose tracker sync is off. It
     // goes to every connected tracker that carries an id for the series, and stays on this
     // device when none does (#213).
+    // The trackers a fresh connection will offer the list kept here to, once their list is read
+    property var moveOffers: ({})
+    // The move sheet for a tracker, from Settings; answers whether there was anything to move
+    function openMoveLists(t) { return moveListsSheet.openFor(t) }
     // A series AniBeam put a name to: any provider id at all. Show info's sections and Help's
     // count both read it, so the two never disagree.
     function hasMatch(card) {
