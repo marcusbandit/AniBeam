@@ -161,3 +161,40 @@ fn a_hidden_show_is_not_followed() {
     let ids: Vec<u64> = outs(&c).iter().map(|o| o.anilist_id).collect();
     assert_eq!(ids, vec![2]);
 }
+
+#[test]
+fn a_resume_says_at_once_what_aired_during_the_suspend() {
+    // A suspend stops the clock the alarm sleeps on, so an episode that aired meanwhile is
+    // only said when the alarm wakes. Here the alarm sleeps its longest, for a broadcast an
+    // hour out, and the schedule then moves that broadcast into the past without an event,
+    // as wall time running on through a suspend does.
+    let (_dir, core, c) = common::open_core();
+    let now = anibeam_core::time::now_secs();
+    shows(&core, now + 3600);
+    core.start().unwrap();
+    core.call(Call::GetPreferences).unwrap();
+    std::thread::sleep(Duration::from_millis(1100));
+    let aired = anibeam_core::time::now_secs();
+    fixtures::insert_airing(&core, 1, 7, aired);
+    std::thread::sleep(Duration::from_millis(1100));
+    assert!(outs(&c).is_empty(), "nothing wakes the alarm yet");
+
+    core.call(Call::Resumed).unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::EpisodeOut { .. }),
+        Duration::from_secs(5),
+    );
+    let ids: Vec<u64> = outs(&c).iter().map(|o| o.anilist_id).collect();
+    assert_eq!(ids, vec![1], "only the broadcast now in the past");
+}
+
+#[test]
+fn a_resume_before_start_does_nothing() {
+    let (_dir, core, c) = common::open_core();
+    let now = anibeam_core::time::now_secs();
+    shows(&core, now - 5);
+    core.call(Call::Resumed).unwrap();
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(outs(&c).is_empty(), "a core never started says nothing");
+}
