@@ -36,6 +36,14 @@ impl AnirssHome {
         }
     }
 
+    /// The folder anirss expands `~` against: the person's own home, or the sandbox's.
+    pub fn dir(&self) -> Option<PathBuf> {
+        match self {
+            AnirssHome::Shared => std::env::home_dir(),
+            AnirssHome::Sandbox(dir) => Some(dir.clone()),
+        }
+    }
+
     /// `~/.config/anirss/config.toml`, honouring `XDG_CONFIG_HOME` on the person's own home.
     pub fn config_path(&self) -> Option<PathBuf> {
         let base = match self {
@@ -62,11 +70,7 @@ impl AnirssHome {
 
     /// Where AniBeam's own qBittorrent saves: `~/Downloads/Anime`.
     pub fn save_dir(&self) -> Option<PathBuf> {
-        let home = match self {
-            AnirssHome::Shared => std::env::home_dir()?,
-            AnirssHome::Sandbox(dir) => dir.clone(),
-        };
-        Some(home.join("Downloads").join("Anime"))
+        Some(self.dir()?.join("Downloads").join("Anime"))
     }
 
     /// Points a child at the sandboxed home: `HOME` (`USERPROFILE` on Windows) and the four

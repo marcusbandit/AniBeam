@@ -1028,6 +1028,7 @@ pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
             CoreError::invalid("name", format!("{name} is not an on-demand endpoint"))
         })?;
     let log = std::path::Path::new(&core.paths.state_dir).join("jackett-start.log");
+    let home = AnirssHome::of(&core.paths);
     Ok(owner
         .jobs
         .clone()
@@ -1042,6 +1043,7 @@ pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
                 std::time::Duration::from_secs(ondemand.timeout),
                 std::time::Duration::from_millis(500),
                 &log,
+                &home,
             )
             .await
             .map_err(|failure| {
