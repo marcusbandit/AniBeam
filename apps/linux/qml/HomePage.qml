@@ -148,7 +148,7 @@ Item {
 
     function reload() {
         var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.reload); return }
         shelf = r.reply.series
         airingRows = r.reply.airing || []
         var n = r.reply.counts || {}

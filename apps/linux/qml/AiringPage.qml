@@ -222,7 +222,7 @@ Item {
 
     function reload() {
         var r = Door.listAiringNow(page.season)
-        if (r.error) { page.loadFailed = !page.listed; frame.toast(r.error.message); return }
+        if (r.error) { page.loadFailed = !page.listed; frame.fail(r.error, page.reload); return }
         page.loadFailed = false
         page.nowMs = Date.now()
         page.listed = r.reply.now
@@ -234,7 +234,7 @@ Item {
     function refresh(force) {
         refreshAsked++
         var r = Door.refreshAiringNow(page.season, force === true)
-        if (r.error) { page.loadFailed = !page.listed || page.listed.shows.length === 0; frame.toast(r.error.message); return }
+        if (r.error) { page.loadFailed = !page.listed || page.listed.shows.length === 0; frame.fail(r.error, function() { page.refresh(force) }); return }
         if (r.reply && r.reply.job !== undefined) { page.refreshing = true; page.refreshJob = r.reply.job }
     }
     function pickSeason(s) {
@@ -271,7 +271,7 @@ Item {
         var ids = []
         for (var i = 0; i < list.length; i++) {
             var r = Door.setNotInterested(list[i].anilist_id, true)
-            if (r.error) { frame.toast(r.error.message); break }
+            if (r.error) { frame.fail(r.error); break }
             ids.push(list[i].anilist_id)
         }
         if (ids.length === 0) return
@@ -284,7 +284,7 @@ Item {
         if (!page.undo) return
         for (var i = 0; i < page.undo.ids.length; i++) {
             var r = Door.setNotInterested(page.undo.ids[i], false)
-            if (r.error) { frame.toast(r.error.message); return }
+            if (r.error) { frame.fail(r.error); return }
         }
         page.undo = null
         page.reload()
@@ -296,7 +296,7 @@ Item {
         for (var i = 0; i < list.length; i++) {
             if (list[i].list_status) { already++; continue }
             var r = Door.planToWatch(list[i].anilist_id)
-            if (r.error) { frame.toast(r.error.message); return }
+            if (r.error) { frame.fail(r.error); return }
             if (r.reply && r.reply.job !== undefined) sent++
             else already++
         }

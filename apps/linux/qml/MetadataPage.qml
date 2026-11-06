@@ -50,7 +50,7 @@ Item {
     function reload() {
         var keep = scroll.contentY
         var r = Door.listMetadata(page.filter, page.query, Door.revealHidden)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.reload); return }
         page.counts = r.reply.counts
         page.rows = r.reply.rows
         // The figures are the library's, whatever the filter: one more read only when the
@@ -287,7 +287,7 @@ Item {
     }
     function forget(card) {
         var r = Door.forgetSeries(card.id)
-        frame.toast(r.error ? r.error.message : "Forgot " + (card.title || card.titles.folder))
+        r.error ? frame.fail(r.error) : frame.toast("Forgot " + (card.title || card.titles.folder))
     }
     Timer { id: debounce; interval: 250; onTriggered: page.reload() }
     Timer { id: queryDebounce; interval: 250; onTriggered: { page.query = search.text; page.reload() } }
@@ -390,7 +390,7 @@ Item {
                 flat: true
                 text: "Find the rest"
                 icon: "link"
-                onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up the folders AniBeam does not know yet") }
+                onClicked: { var r = Door.autoMatch(); r.error ? frame.fail(r.error, clicked) : frame.toast("Looking up the folders AniBeam does not know yet") }
                 Tooltip { text: "Looks up every folder AniBeam does not know yet, on each show info site in the order Settings gives them" }
             }
             Button {
@@ -398,7 +398,7 @@ Item {
                 flat: true
                 text: "Refresh all"
                 icon: "refresh-cw"
-                onClicked: { var r = Door.refreshAll(); frame.toast(r.error ? r.error.message : "Updating the info of every show") }
+                onClicked: { var r = Door.refreshAll(); r.error ? frame.fail(r.error, clicked) : frame.toast("Updating the info of every show") }
                 Tooltip { text: "Fetches the info of every recognised show again" }
             }
             // The franchise crawl's own line, only while it runs
@@ -619,7 +619,7 @@ Item {
                 readonly property bool hovered: lift > 0.5
                 objectName: String(tile.card.id) === page.firstRefreshId ? "row-refresh" : ""
                 icon: "refresh-cw"; small: true
-                onClicked: { var r = Door.refreshSeries(tile.card.id); frame.toast(r.error ? r.error.message : "Refreshing " + (tile.card.title || "")) }
+                onClicked: { var r = Door.refreshSeries(tile.card.id); r.error ? frame.fail(r.error) : frame.toast("Refreshing " + (tile.card.title || "")) }
                 Tooltip { text: "Fetch this show's info again" }
             }
         }

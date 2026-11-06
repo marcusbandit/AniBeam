@@ -155,7 +155,7 @@ Item {
     }
     function addFolder(path) {
         var r = Door.addSource(path)
-        if (r.error) { frame.toast(r.error.message); return false }
+        if (r.error) { frame.fail(r.error); return false }
         settling.restart()
         reload()
         return true
@@ -177,7 +177,7 @@ Item {
         var s = JSON.parse(JSON.stringify(d.reply.status.settings))
         s.torrent_mode = torrentMode === "Existing" ? "Existing" : s.torrent_mode === "Managed" ? "Managed" : "Auto"
         var r = Door.setDownloadSettings(s, {})
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     FolderDialog {
         id: folderDialog

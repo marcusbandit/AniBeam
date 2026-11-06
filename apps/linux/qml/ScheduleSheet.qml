@@ -249,10 +249,10 @@ Corner {
         })
         // Always the season the page is about, the one its count and its tiles belong to
         var r = Door.call("SetScheduleNotes", { series: root.seriesId, season: root.season, notes: wire })
-        if (r.error) { frame.toast(frame.errorText(r.error)); return }
+        if (r.error) { frame.fail(r.error); return }
         if (root.endAt !== root.savedEnd) {
             var c = Door.call("SetEpisodeCount", { series: root.seriesId, count: root.endAt > 0 ? root.endAt : null })
-            if (c.error) { frame.toast(frame.errorText(c.error)); return }
+            if (c.error) { frame.fail(c.error); return }
         }
         frame.toast(wire.length || root.endAt ? "Saved" : "Schedule notes cleared")
         root.close()

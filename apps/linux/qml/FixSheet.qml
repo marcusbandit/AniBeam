@@ -217,7 +217,7 @@ Corner {
                 objectName: "fix-rescan"
                 anchors.right: closeBtn.left; anchors.rightMargin: theme.space(2); anchors.top: parent.top
                 small: true; flat: true; icon: "refresh-cw"; text: "Rescan folder"
-                onClicked: { var r = Door.rescanSeries(root.seriesId); frame.toast(r.error ? r.error.message : "Reading the folder again") }
+                onClicked: { var r = Door.rescanSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Reading the folder again") }
             }
             Button {
                 id: closeBtn
