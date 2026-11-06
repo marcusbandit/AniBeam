@@ -56,7 +56,7 @@ SettingsTab {
 
     function reload() {
         var r = Door.getDownloads()
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, tab.reload); return }
         tab.status = r.reply.status
         if (!tab.dirty) tab.draft = JSON.parse(JSON.stringify(r.reply.status.settings))
     }
@@ -98,32 +98,34 @@ SettingsTab {
         // Another client, or another engine reading the rules, makes the subscriptions read so far stale
         var switched = !settings || settings.torrent_url !== draft.torrent_url || settings.torrent_mode !== draft.torrent_mode || settings.engine !== draft.engine
         var r = Door.setDownloadSettings(draft, secrets)
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, tab.save); return }
         if (switched) frame.forgetDownloadsRules()
         dirty = false
         tokenText = ""; tokenTouched = false
         passwordText = ""; passwordTouched = false
         // The sidecar was stopped by the save; bring both halves back up on the new settings
         var c = Door.connectDownloads()
-        if (c.error) frame.fail(c.error)
+        if (c.error) frame.fail(c.error, tab.connect)
     }
     function discard() { dirty = false; tokenText = ""; tokenTouched = false; passwordText = ""; passwordTouched = false; reload() }
     // Unsaved edits are saved first, then the test runs on them
     function test() {
         if (dirty) { save(); if (dirty) return }
         var r = Door.testTorrentClient()
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, tab.test); return }
         tab.testJob = r.reply.job
         tab.testing = true
     }
+    // A helper's or client's own words, one click away: the toast's Details opens and copies them
+    function details(said, raw) { frame.toast(said, 10, "", null, raw) }
     function connect() {
         var r = Door.connectDownloads()
-        if (r.error) frame.fail(r.error)
+        if (r.error) frame.fail(r.error, tab.connect)
     }
     Connections {
         target: Door
         function onDownloadsStatusChanged(status) { tab.status = status; if (!tab.dirty) tab.draft = JSON.parse(JSON.stringify(status.settings)); tab.testing = false }
-        function onJobFailed(job, kind, error) { if (job === tab.testJob) { tab.testing = false; frame.toast(error.message) } }
+        function onJobFailed(job, kind, error) { if (job === tab.testJob) { tab.testing = false; frame.fail(error, tab.test) } }
         function onJobCancelled(job, kind) { if (job === tab.testJob) tab.testing = false }
     }
     // Edits not saved yet outlive a switch to another section or page: the frame keeps them
@@ -148,15 +150,15 @@ SettingsTab {
         if (!anirss) return ""
         if (anirss.state === "Ready") return "Running, version " + anirss.version + " at " + anirss.url + "."
         if (anirss.state === "Starting") return "Starting the search helper."
-        if (anirss.state === "Missing") return "The search helper is not installed. " + anirss.message
-        if (anirss.state === "Failed") return "The search helper is not running: " + anirss.message
+        if (anirss.state === "Missing") return "The search helper is not installed. Reinstall AniBeam, or name your own anirss under Command."
+        if (anirss.state === "Failed") return "The search helper stopped. Try again starts it; Details says what it said."
         return "Not started yet. It starts the first time you search on the Downloads page."
     }
     readonly property string torrentLine: {
         if (!torrent) return ""
         if (tab.testing) return "Trying " + clientName + "."
         if (torrent.connected) return clientName + " " + torrent.version + " answered."
-        return torrent.message ? torrent.message : "Not tried yet."
+        return torrent.message ? clientName + " did not connect. Check the address and password above, then test again." : "Not tried yet."
     }
     readonly property bool managed: !!draft && draft.torrent_mode === "Managed"
     readonly property string modeLine: {
@@ -212,7 +214,10 @@ SettingsTab {
             Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(48); placeholder: tab.hasPassword ? "Saved" : "Not set"
                     onEdited: function(t) { tab.passwordText = t; tab.passwordTouched = true; tab.dirty = true } } }
         SettingRow { label: "Connection"; line: tab.torrentLine; status: tab.mismatch
-            Button { text: tab.testing ? "Trying" : tab.dirty ? "Save and test" : "Test"; icon: "check-check"; flat: true; enabled: !tab.testing; onClicked: tab.test() } }
+            Row { spacing: theme.space(2)
+                Button { visible: tab.mismatch !== "" && !!(tab.anirss && tab.anirss.config_path); text: "Open its config"; icon: "external-link"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) }
+                Button { visible: !!tab.torrent && !tab.torrent.connected && !tab.testing && !!tab.torrent.message; text: "Details"; icon: "info"; flat: true; onClicked: tab.details(tab.clientName + " said this when AniBeam tried it.", tab.torrent.message) }
+                Button { text: tab.testing ? "Trying" : tab.dirty ? "Save and test" : "Test"; icon: "check-check"; flat: true; enabled: !tab.testing; onClicked: tab.test() } } }
     }
     Panel {
         title: tab.nativeEngine ? "Searching" : "Search helper"
@@ -231,8 +236,10 @@ SettingsTab {
             Field { text: tab.tokenText; secret: true; mono: true; width: theme.space(48); placeholder: tab.settings && tab.settings.has_anirss_token ? "Saved" : "Not set"
                     onEdited: function(t) { tab.tokenText = t; tab.tokenTouched = true; tab.dirty = true } } }
         SettingRow { visible: !tab.nativeEngine; label: "Connection"; line: tab.anirssLine
-            Button { text: tab.anirss && tab.anirss.state === "Starting" ? "Starting" : tab.anirss && tab.anirss.state === "Ready" ? "Reconnect" : "Connect"; icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect()
-                Tooltip { text: tab.dirty ? "Save your changes first" : "" } } }
+            Row { spacing: theme.space(2)
+                Button { visible: !!tab.anirss && (tab.anirss.state === "Missing" || tab.anirss.state === "Failed") && !!tab.anirss.message; text: "Details"; icon: "info"; flat: true; onClicked: tab.details("The search helper said this when it stopped.", tab.anirss.message) }
+                Button { text: tab.anirss && tab.anirss.state === "Starting" ? "Starting" : tab.anirss && tab.anirss.state === "Ready" ? "Reconnect" : tab.anirss && tab.anirss.state === "Failed" ? "Try again" : "Connect"; icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect()
+                    Tooltip { text: tab.dirty ? "Save your changes first" : "" } } } }
     }
     Panel {
         title: "Keep the next few ready"
@@ -263,7 +270,9 @@ SettingsTab {
     Panel {
         title: "Search sources"
         helper: "Where a search goes, in the order they are tried. One that finds nothing falls through to the next."
-        SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? "No sources set up yet" : "Connect the search helper to list them" }
+        SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? "No sources set up yet" : "Connect the search helper to list them"
+            helper: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? "Add a source list below and its sources show up here." : ""
+            Button { visible: !(tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready")); text: "Connect"; icon: "refresh-cw"; enabled: !tab.dirty; onClicked: tab.connect() } }
         Repeater {
             model: tab.endpoints
             SettingRow {

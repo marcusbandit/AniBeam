@@ -196,6 +196,7 @@ FocusScope {
         ["downloads", "Search sources", "endpoints feeds config anirss"],
         ["downloads", "Source lists", "repo repos endpoint signed endpoints jackett prowlarr"],
         ["phone", "Share over Tailscale", "phone android tailnet remote host"],
+        ["phone", "Stream episodes", "stream play cast episodes phone files"],
         ["phone", "Devices on your tailnet", "trust trusted switch off block device tailscale"],
         ["storage", "Back up the library", "export backup file json"],
         ["storage", "Restore from a backup", "import restore file json"],

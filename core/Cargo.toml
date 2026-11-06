@@ -42,7 +42,7 @@ tracing = "0.1"
 flate2 = "1"
 toml = "1"
 roxmltree = "0.20"
-anibeam-host-api.workspace = true
+anibeam-host-api = { workspace = true, features = ["proof"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 if-addrs = "0.13"
 # Casting: the Matroska reader for cutting segments, mDNS for finding Chromecasts, and rustls

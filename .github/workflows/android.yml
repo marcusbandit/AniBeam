@@ -56,7 +56,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
-        run: rustup toolchain install
+        run: |
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
 
       - run: cargo fmt --check -p anibeam-android -p anibeam-companion
 
@@ -76,6 +79,8 @@ jobs:
       - name: Rust toolchain
         run: |
           rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
           rustup target add x86_64-linux-android
 
       - uses: Swatinem/rust-cache@v2

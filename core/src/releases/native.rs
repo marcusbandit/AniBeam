@@ -11,18 +11,17 @@ use crate::net::Http;
 
 use super::{BestfitConfig, Endpoint, bestfit, endpoints, refinement, stats};
 
-/// The groups the desktop's best fit trusts out of the box: the owner's anirss config.
-pub const TRUSTED_GROUPS: [&str; 9] = [
-    "Erai-raws",
-    "SubsPlease",
-    "ASW",
-    "EMBER",
-    "Judas",
-    "Osiris",
-    "Moozzi2",
-    "VCB-Studio",
-    "Kawaiika-Raws",
-];
+/// The release groups `installed` trust, in their order, each once, told apart without case.
+pub fn trusted_groups(installed: &[crate::repos::Runnable]) -> Vec<String> {
+    let mut groups: Vec<String> = Vec::new();
+    for g in installed.iter().flat_map(|r| &r.trusted_groups) {
+        let g = g.trim();
+        if !groups.iter().any(|h| h.eq_ignore_ascii_case(g)) {
+            groups.push(g.to_string());
+        }
+    }
+    groups
+}
 
 /// What a search found before its analysis (anirss `SearchResult`).
 #[derive(Clone, Debug)]
@@ -59,15 +58,13 @@ pub struct Native {
 }
 
 impl Native {
+    /// Best fit trusts no group of the core's own; `for_core` gives it the ones the installed
+    /// definitions trust.
     pub fn new(http: Arc<dyn Http>, endpoints: Vec<Endpoint>) -> Native {
-        let bestfit = BestfitConfig {
-            preferred_groups: TRUSTED_GROUPS.map(String::from).to_vec(),
-            ..BestfitConfig::default()
-        };
         Native {
             http,
             endpoints,
-            bestfit,
+            bestfit: BestfitConfig::default(),
         }
     }
 
@@ -78,10 +75,12 @@ impl Native {
     ///
     /// The desktop's list is the core's own, not anirss's `config.toml` (#119, decision B).
     /// `bestfit` ranks best fit when given (the desktop passes what anirss's config saved);
-    /// None keeps `TRUSTED_GROUPS` over anirss's defaults.
+    /// None trusts the groups the enabled installed definitions name, in their order, over
+    /// anirss's defaults.
     pub fn for_core(core: &Core, first: Vec<Endpoint>, bestfit: Option<BestfitConfig>) -> Native {
         let installed = crate::repos::runnable(core);
         let http = crate::repos::paced_http(core, &installed);
+        let groups = trusted_groups(&installed);
         let mut endpoints = first;
         for r in installed {
             if !endpoints.iter().any(|e| e.name == r.endpoint.name) {
@@ -89,8 +88,9 @@ impl Native {
             }
         }
         let mut native = Native::new(http, endpoints);
-        if let Some(bestfit) = bestfit {
-            native.bestfit = bestfit;
+        match bestfit {
+            Some(bestfit) => native.bestfit = bestfit,
+            None => native.bestfit.preferred_groups = groups,
         }
         native
     }

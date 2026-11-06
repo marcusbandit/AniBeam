@@ -634,10 +634,15 @@ pub enum SpawnFailure {
 impl Sidecar {
     /// Starts `command --serve --port <free port>` with the token and the
     /// qBittorrent the core uses in its environment: its address and user
-    /// (anirss 0.4.1 reads them over its own config), and the password.
+    /// (anirss 0.4.1 reads them over its own config), and the password. A
+    /// sandboxed `home` becomes its home, so it keeps its config and state there.
     /// Returns as soon as the process exists; `wait_ready` is the half that
     /// waits on `/health`.
-    pub fn spawn(command: &str, qbt: &QbtLogin<'_>) -> Result<Sidecar, SpawnFailure> {
+    pub fn spawn(
+        command: &str,
+        qbt: &QbtLogin<'_>,
+        home: &super::home::AnirssHome,
+    ) -> Result<Sidecar, SpawnFailure> {
         let port = free_port().map_err(|e| SpawnFailure::Io(format!("no free port: {e}")))?;
         let token = random_token();
         let mut cmd = crate::process::command(command);
@@ -662,6 +667,7 @@ impl Sidecar {
         if let Some(path) = child_path() {
             cmd.env("PATH", path);
         }
+        home.apply(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 SpawnFailure::Missing

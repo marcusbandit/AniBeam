@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 use rusqlite::Connection;
 use serde::Deserialize;
 
+use super::home::AnirssHome;
+use crate::Core;
 use crate::contract::*;
 use crate::releases::BestfitConfig;
 use crate::store::settings;
@@ -45,15 +47,15 @@ pub fn active_password_key(s: &DownloadSettings) -> Option<String> {
 
 /// The stored blob, or the defaults; the two `has_*` flags are false here
 /// and set by `load`, which asks the secret store.
-pub fn load_stored(conn: &Connection) -> Result<DownloadSettings, CoreError> {
+pub fn load_stored(conn: &Connection, home: &AnirssHome) -> Result<DownloadSettings, CoreError> {
     let mut s: DownloadSettings = match settings::get(conn, KEY) {
         Ok(Some(s)) => s,
-        Ok(None) => defaults(),
+        Ok(None) => fresh(home),
         Err(e) if e.is_decode_failure() => {
             tracing::warn!("reading the downloads settings as the defaults: {e}");
             // A stored anirss outlives a blob this build cannot read: the defaults
             // would move the person onto the native engine without a word (#552).
-            let mut d = defaults();
+            let mut d = fresh(home);
             if stored_engine_value(conn) == Some(DownloadsEngine::Anirss) {
                 d.engine = DownloadsEngine::Anirss;
             }
@@ -70,8 +72,18 @@ pub fn load_stored(conn: &Connection) -> Result<DownloadSettings, CoreError> {
     Ok(s)
 }
 
-pub fn load(conn: &Connection, secrets: &Secrets) -> Result<DownloadSettings, CoreError> {
-    let mut s = load_stored(conn)?;
+/// `load_stored` for `core`, off the home its paths give anirss.
+pub fn read(core: &Core) -> Result<DownloadSettings, CoreError> {
+    let home = AnirssHome::of(&core.paths);
+    core.store.read(move |c| load_stored(c, &home))
+}
+
+pub fn load(
+    conn: &Connection,
+    secrets: &Secrets,
+    home: &AnirssHome,
+) -> Result<DownloadSettings, CoreError> {
+    let mut s = load_stored(conn, home)?;
     fill_secret_flags(&mut s, |key| secrets.has(key));
     Ok(s)
 }
@@ -492,13 +504,22 @@ pub fn anirss_config_endpoints(path: &Path) -> usize {
         .map_or(0, |a| a.len())
 }
 
-/// Fresh settings: the native engine (#552), with the search helper's own
-/// sidecar off `anirss` on PATH ready for whoever picks it, and qBittorrent
-/// where anirss's config says it is, else qBittorrent's own stock address.
+/// Fresh settings: [`defaults`], with qBittorrent where the config of the
+/// anirss in `home` says it is.
+pub fn fresh(home: &AnirssHome) -> DownloadSettings {
+    let mut s = defaults();
+    if let Some((url, username)) = home.config_path().and_then(|p| anirss_config_qbt(&p)) {
+        s.torrent_url = url;
+        s.torrent_username = username;
+    }
+    s
+}
+
+/// The stock settings: the native engine (#552), with the search helper's own
+/// sidecar off `anirss` on PATH ready for whoever picks it, and qBittorrent at
+/// its own stock address.
 pub fn defaults() -> DownloadSettings {
-    let (url, username) = anirss_config_path()
-        .and_then(|p| anirss_config_qbt(&p))
-        .unwrap_or_else(|| ("http://localhost:8080".to_string(), "admin".to_string()));
+    let (url, username) = ("http://localhost:8080".to_string(), "admin".to_string());
     DownloadSettings {
         anirss_mode: AnirssMode::Sidecar,
         anirss_command: "anirss".to_string(),
@@ -537,24 +558,17 @@ pub fn anirss_config_qbt(path: &Path) -> Option<(String, String)> {
     Some((url.to_string(), username.to_string()))
 }
 
-/// `~/.config/anirss/config.toml`, honouring `XDG_CONFIG_HOME`.
-pub fn anirss_config_path() -> Option<PathBuf> {
-    let base = match std::env::var("XDG_CONFIG_HOME") {
-        Ok(d) if !d.is_empty() => PathBuf::from(d),
-        _ => std::env::home_dir()?.join(".config"),
-    };
-    Some(base.join("anirss").join("config.toml"))
+/// The config of the anirss `core` runs: in the person's own home, or in a
+/// sandboxed run's own (`AnirssHome`).
+pub fn anirss_config_path(core: &Core) -> Option<PathBuf> {
+    AnirssHome::of(&core.paths).config_path()
 }
 
 /// The qBittorrent password anirss's CLI saved (`qbt.pass` in its state
 /// dir, mode 600), so a machine that already logs in through anirss works
 /// before a password is saved here. `None` when there is none.
-pub fn anirss_saved_password() -> Option<String> {
-    let base = match std::env::var("XDG_STATE_HOME") {
-        Ok(d) if !d.is_empty() => PathBuf::from(d),
-        _ => std::env::home_dir()?.join(".local").join("state"),
-    };
-    let text = std::fs::read_to_string(base.join("anirss").join("qbt.pass")).ok()?;
+pub fn anirss_saved_password(home: &AnirssHome) -> Option<String> {
+    let text = std::fs::read_to_string(home.state_dir()?.join("qbt.pass")).ok()?;
     let pw = text.trim_end_matches(['\n', '\r']).to_string();
     (!pw.is_empty()).then_some(pw)
 }
@@ -564,6 +578,11 @@ mod tests {
     use super::*;
 
     use crate::franchise::testing::conn as store;
+
+    /// A home with nothing in it, so no test reads the machine's own anirss.
+    fn nowhere() -> AnirssHome {
+        AnirssHome::Sandbox(PathBuf::from("/nonexistent/anibeam-test-home"))
+    }
 
     fn stored_engine(c: &Connection) -> serde_json::Value {
         settings::get::<serde_json::Value>(c, KEY).unwrap().unwrap()["engine"].clone()
@@ -576,12 +595,12 @@ mod tests {
         blob["engine"] = serde_json::json!("Telepathy");
         settings::set(&c, KEY, &blob).unwrap();
         // Read as the default, native, here, and saved back with something else changed.
-        let mut s = load_stored(&c).unwrap();
+        let mut s = load_stored(&c, &nowhere()).unwrap();
         assert_eq!(s.engine, DownloadsEngine::Native);
         s.prune_finished_feeds = false;
         save(&c, &s).unwrap();
         assert_eq!(stored_engine(&c), serde_json::json!("Telepathy"));
-        assert!(!load_stored(&c).unwrap().prune_finished_feeds);
+        assert!(!load_stored(&c, &nowhere()).unwrap().prune_finished_feeds);
         // Picking another engine this build knows replaces it.
         s.engine = DownloadsEngine::Anirss;
         save(&c, &s).unwrap();
@@ -594,7 +613,7 @@ mod tests {
         let mut blob = serde_json::to_value(defaults()).unwrap();
         blob["from_the_future"] = serde_json::json!({"on": true});
         settings::set(&c, KEY, &blob).unwrap();
-        save(&c, &load_stored(&c).unwrap()).unwrap();
+        save(&c, &load_stored(&c, &nowhere()).unwrap()).unwrap();
         let stored = settings::get::<serde_json::Value>(&c, KEY)
             .unwrap()
             .unwrap();
@@ -617,7 +636,7 @@ mod tests {
                 }
             }
             settings::set(&c, KEY, &blob).unwrap();
-            save(&c, &load_stored(&c).unwrap()).unwrap();
+            save(&c, &load_stored(&c, &nowhere()).unwrap()).unwrap();
             let kept = stored_engine(&c);
             match engine {
                 // A shape this build cannot read is unknown too, and kept.
@@ -635,10 +654,16 @@ mod tests {
         blob["engine"] = serde_json::json!("Anirss");
         blob["torrent_mode"] = serde_json::json!("Telepathic");
         settings::set(&c, KEY, &blob).unwrap();
-        assert_eq!(load_stored(&c).unwrap().engine, DownloadsEngine::Anirss);
+        assert_eq!(
+            load_stored(&c, &nowhere()).unwrap().engine,
+            DownloadsEngine::Anirss
+        );
         blob["engine"] = serde_json::json!("Native");
         settings::set(&c, KEY, &blob).unwrap();
-        assert_eq!(load_stored(&c).unwrap().engine, DownloadsEngine::Native);
+        assert_eq!(
+            load_stored(&c, &nowhere()).unwrap().engine,
+            DownloadsEngine::Native
+        );
     }
 
     #[test]

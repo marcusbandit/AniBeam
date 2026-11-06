@@ -163,7 +163,8 @@ fn on_path(line: &str) -> bool {
 /// Runs `command` and waits until `ready` answers. A service that already
 /// answers is left alone and the command never runs. Output goes to `log`.
 /// With an empty `ready` there is nothing to wait for: the command counts
-/// as started once it exits cleanly, or has stayed up for a moment.
+/// as started once it exits cleanly, or has stayed up for a moment. A sandboxed `home`
+/// becomes the command's home, as it does for the anirss the core starts (#637).
 pub async fn start(
     http: &dyn Http,
     command: &str,
@@ -171,6 +172,7 @@ pub async fn start(
     timeout: Duration,
     poll: Duration,
     log: &Path,
+    home: &super::home::AnirssHome,
 ) -> Result<(), StartFailure> {
     if !ready.is_empty() && answers(http, ready).await {
         return Ok(());
@@ -198,6 +200,7 @@ pub async fn start(
     if let Some(path) = super::anirss::child_path() {
         cmd.env("PATH", path);
     }
+    home.apply(&mut cmd);
     let mut child = cmd
         .spawn()
         .map_err(|e| StartFailure::Failed(e.to_string()))?;
@@ -254,6 +257,7 @@ mod tests {
             Duration::from_secs(3),
             Duration::from_millis(20),
             &log(dir),
+            &crate::downloads::home::AnirssHome::Shared,
         )
         .await
     }
@@ -383,6 +387,7 @@ mod tests {
             Duration::from_millis(200),
             Duration::from_millis(20),
             &log(&dir),
+            &crate::downloads::home::AnirssHome::Shared,
         )
         .await;
         assert_eq!(r, Err(StartFailure::Timeout(0)));

@@ -163,10 +163,13 @@ fn owned_by(conn: &Connection, n: &Node) -> Result<Option<u64>, CoreError> {
 }
 
 /// Where this node sits on the AniList list. The graph is AniList's own
-/// map, so it reads AniList's row whichever tracker is the main one.
+/// map, so it reads AniList's row whichever tracker is the main one, and
+/// the list kept on this device where AniList has none (#213).
 fn list_status(conn: &Connection, anilist_id: u64) -> Result<Option<ListStatus>, CoreError> {
     let mut stmt = conn.prepare_cached(
-        "SELECT status FROM tracker_entries WHERE tracker = 'anilist' AND media_id = ?1",
+        "SELECT COALESCE(
+             (SELECT status FROM tracker_entries WHERE tracker = 'anilist' AND media_id = ?1),
+             (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = ?1 ORDER BY ls.id LIMIT 1))",
     )?;
     let found: Option<Option<String>> = stmt
         .query_row(params![as_i64(anilist_id)], |r| r.get(0))

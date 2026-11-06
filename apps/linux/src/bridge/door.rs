@@ -478,6 +478,10 @@ pub mod qobject {
         #[qsignal]
         fn notes_set(self: Pin<&mut Door>, series: f64, outcomes: QJsonArray);
         #[qsignal]
+        fn agent_said(self: Pin<&mut Door>, series: f64, text: QString);
+        #[qsignal]
+        fn agent_answered(self: Pin<&mut Door>, series: f64, text: QString);
+        #[qsignal]
         fn list_status_set(
             self: Pin<&mut Door>,
             series: f64,
@@ -1375,6 +1379,8 @@ impl qobject::Door {
                 self.as_mut()
                     .scored(n("series"), n("score"), arr("outcomes"))
             }
+            EventBody::AgentSaid { .. } => self.as_mut().agent_said(n("series"), s("text")),
+            EventBody::AgentAnswered { .. } => self.as_mut().agent_answered(n("series"), s("text")),
             EventBody::ListStatusSet { .. } => {
                 self.as_mut()
                     .list_status_set(n("series"), s("status"), arr("outcomes"))

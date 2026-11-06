@@ -32,6 +32,9 @@ pub struct Engine {
     root: PathBuf,
     entries_path: PathBuf,
     entries: Mutex<HashMap<String, Entry>>,
+    /// Held from taking the list to its landing on disk, so saves land in the order
+    /// their lists were taken (#582), while the list itself is let go at once.
+    saving: Mutex<()>,
     held: Mutex<bool>,
 }
 
@@ -82,14 +85,24 @@ impl Engine {
             root: root.to_path_buf(),
             entries_path,
             entries: Mutex::new(entries),
+            saving: Mutex::new(()),
             held: Mutex::new(true),
         })
     }
 
+    /// Saves the list on its own turn, so two saves from separate paths land in the
+    /// order their lists were taken and the newest is the one left on disk (#582). The
+    /// list is held only while it is copied, never across the write.
     fn save_entries(&self) {
+        let _turn = self.saving.lock().unwrap_or_else(|e| e.into_inner());
         let entries = self.entries.lock().unwrap().clone();
-        if let Ok(bytes) = serde_json::to_vec_pretty(&entries) {
-            let _ = crate::atomic_file::write(&self.entries_path, bytes);
+        match serde_json::to_vec_pretty(&entries) {
+            Ok(bytes) => {
+                if let Err(e) = crate::atomic_file::write(&self.entries_path, bytes) {
+                    tracing::warn!("the download list was not saved: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("the download list was not saved: {e}"),
         }
     }
 

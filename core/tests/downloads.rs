@@ -1812,6 +1812,7 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
+    core.let_sandbox_find_torrent_clients();
     http.push_for("app/version", 200, "v5.1.2");
     http.push_for("app/version", 200, "v5.1.2");
     let job = started(&core, Call::TestTorrentClient);
@@ -1836,6 +1837,7 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
+    core.let_sandbox_find_torrent_clients();
     // Nothing at the stock address, nothing on the new port until it starts
     http.fail_next("connection refused");
     http.fail_next("connection refused");

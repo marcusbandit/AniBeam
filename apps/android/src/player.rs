@@ -400,7 +400,7 @@ pub fn install(window: &AppWindow) {
             return (size.width, size.height);
         }
         let scale = w.window().scale_factor();
-        let height = ((fold.get_height() / 2.0 - fold.get_gutter() / 2.0) * scale)
+        let height = ((fold.get_crease_mid_y() - fold.get_gutter() / 2.0) * scale)
             .round()
             .max(1.0) as u32;
         (size.width, height.min(size.height))

@@ -126,6 +126,7 @@ mod tests {
             RepairSubscription,
             CheckEndpoints,
             StartEndpoint,
+            ScheduleAgent,
         ];
         for kind in &all {
             match kind {
@@ -136,7 +137,7 @@ mod tests {
                 | Import | Subscriptions | ConnectDownloads | SearchReleases | RefineReleases
                 | Subscribe | Download | RemoveSubscription | ControlTorrents
                 | TestTorrentClient | RemoveShow | RepairSubscription | CheckEndpoints
-                | StartEndpoint => {}
+                | StartEndpoint | ScheduleAgent => {}
             }
         }
         all
