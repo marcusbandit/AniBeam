@@ -431,7 +431,7 @@ Item {
                     // The third cell opens every season; it is never the one showing
                     options: [{ text: "Airing now", icon: "radio", name: "now" },
                               { text: page.seasonLabel, icon: "calendar-clock", name: "next" },
-                              { icon: "chevron-down", name: "seasons" }]
+                              { icon: "chevron-down", name: "seasons", tip: "Pick another season" }]
                     index: page.season === "Now" ? 0 : 1
                     onPicked: function(i) {
                         if (i === 0) page.pickSeason("Now")
@@ -682,7 +682,8 @@ Item {
                                 }
                             }
                         }
-                        MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.open() }
+                        MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.open(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                            Accessible.onPressAction: pill.open() }
                     }
                 }
             }

@@ -423,7 +423,8 @@ Corner {
                     role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
                 }
             }
-            MouseArea { id: checkMouse; anchors.fill: parent; hoverEnabled: true; enabled: !root.applying; cursorShape: Qt.PointingHandCursor; onClicked: root.report = !root.report }
+            MouseArea { id: checkMouse; anchors.fill: parent; hoverEnabled: true; enabled: !root.applying; cursorShape: Qt.PointingHandCursor; onClicked: root.report = !root.report; Accessible.role: Accessible.CheckBox; Accessible.name: theme.nameNear(parent); Accessible.checkable: true; Accessible.checked: root.report
+                Accessible.onPressAction: root.report = !root.report }
         }
         Row {
             id: buttons

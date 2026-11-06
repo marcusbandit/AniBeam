@@ -1643,6 +1643,8 @@ Item {
     }
     // Over the page, a click beside the column folds it away again
     MouseArea {
+        // Nothing for a screen reader: the column has its own close
+        Accessible.ignored: true
         visible: page.activityOpen && !page.activityShown
         z: 4
         anchors.left: parent.left
@@ -1728,7 +1730,8 @@ Item {
                     role: "ledger"; font.pointSize: theme.typeNormal
                     color: page.anirssReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
                     font.underline: anirssChipMouse.containsMouse
-                    MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }) }
+                    MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                        Accessible.onPressAction: frame.go("settings", { tab: "downloads" }) }
                     Tooltip { text: page.anirssReady ? page.summary + " It answers at " + page.anirss.url + "." : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
                 }
                 Label {
@@ -1738,6 +1741,10 @@ Item {
                     role: "ledger"; font.pointSize: theme.typeNormal
                     color: page.torrentOn ? theme.textFaint : theme.red
                     MouseArea {
+                        id: clientChipMouse
+                        Accessible.role: Accessible.Button
+                        Accessible.onPressAction: clientChipMouse.clicked(null)
+                        Accessible.name: theme.nameNear(parent)
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
@@ -1804,7 +1811,8 @@ Item {
                         width: parent.width
                         height: theme.space(22)
                         Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: srow.current || sMouse.containsMouse ? theme.glassFloat : "transparent" }
-                        MouseArea { id: sMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSuggestion(srow.modelData) }
+                        MouseArea { id: sMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSuggestion(srow.modelData); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                            Accessible.onPressAction: page.pickSuggestion(srow.modelData) }
                         Corner {
                             id: sPoster
                             x: theme.space(3)
@@ -1885,7 +1893,8 @@ Item {
                         role: "ui"; color: theme.textDim
                     }
                     Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; text: "Return"; role: "ledger"; color: theme.textFaint }
-                    MouseArea { id: releaseRowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch() }
+                    MouseArea { id: releaseRowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                        Accessible.onPressAction: page.runSearch() }
                 }
             }
         }
@@ -2422,7 +2431,8 @@ Item {
                         radius: theme.radiusTile
                         smoothing: theme.cornerSmoothing
                         color: gapMouse.containsMouse ? theme.glassFloatHover : theme.glassFloat
-                        MouseArea { id: gapMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openGet(page.showFromCard(gap.modelData)); onContainsMouseChanged: frame.hoverCard(gap, gap.modelData, containsMouse) }
+                        MouseArea { id: gapMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openGet(page.showFromCard(gap.modelData)); onContainsMouseChanged: frame.hoverCard(gap, gap.modelData, containsMouse); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                            Accessible.onPressAction: page.openGet(page.showFromCard(gap.modelData)) }
                         Component.onDestruction: frame.hoverCard(gap, null, false)
                         Corner {
                             id: gapPoster

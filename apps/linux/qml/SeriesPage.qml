@@ -495,6 +495,9 @@ Item {
         // The menu pill's own name, for drive scripts to click
         property string pressName: ""
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.onPressAction: fact.clicked()
+            Accessible.name: theme.nameNear(parent)
             objectName: fact.pressName
             anchors.fill: parent
             visible: fact.menu
@@ -1331,6 +1334,9 @@ Item {
             }
         }
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.onPressAction: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? frame.openLink(rel.node.site_url) : frame.openLink("https://anilist.co/anime/" + rel.node.anilist_id))
+            Accessible.name: theme.nameNear(parent)
             id: relMouse
             anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
             onClicked: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? frame.openLink(rel.node.site_url) : frame.openLink("https://anilist.co/anime/" + rel.node.anilist_id))

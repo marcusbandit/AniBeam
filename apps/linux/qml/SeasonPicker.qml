@@ -163,6 +163,9 @@ Item {
                                     }
                                 }
                                 MouseArea {
+                                    Accessible.role: Accessible.Button
+                                    Accessible.onPressAction: { pop.close(); root.picked(root.names[cell.index], yearRow.year) }
+                                    Accessible.name: theme.nameNear(parent)
                                     id: cm
                                     anchors.fill: parent
                                     hoverEnabled: true

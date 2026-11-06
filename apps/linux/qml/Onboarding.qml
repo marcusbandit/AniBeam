@@ -269,6 +269,9 @@ Item {
                     // A step already passed can be opened again
                     MouseArea {
                         id: rowMouse
+                        Accessible.role: Accessible.Button
+                        Accessible.name: theme.nameNear(parent)
+                        Accessible.onPressAction: rowMouse.clicked(null)
                         anchors.fill: parent
                         enabled: row.passed
                         hoverEnabled: true
@@ -479,7 +482,7 @@ Item {
                         color: theme.textDim
                     }
                 }
-                MouseArea { id: chooseMouse; anchors.fill: parent; z: -1; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: folderDialog.open() }
+                MouseArea { id: chooseMouse; anchors.fill: parent; z: -1; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: folderDialog.open() ; Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent); Accessible.onPressAction: folderDialog.open() }
             }
             // Chosen: the folders, the scan as it runs, and the posters it found
             Column {
@@ -786,7 +789,8 @@ Item {
                         }
                         Label { width: parent.width; text: modelData.line; color: theme.textDim; wrapMode: Text.Wrap; lineHeight: 1.1 }
                     }
-                    MouseArea { id: choiceMouse; anchors.fill: parent; anchors.margins: -choice.padding; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.torrentMode = modelData.mode; root.saveTorrentMode() } }
+                    MouseArea { id: choiceMouse; anchors.fill: parent; anchors.margins: -choice.padding; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.torrentMode = modelData.mode; root.saveTorrentMode() }
+                        Accessible.role: Accessible.RadioButton; Accessible.name: modelData.title; Accessible.checked: choice.on; Accessible.onPressAction: choiceMouse.clicked(null) }
                 }
             }
           }
