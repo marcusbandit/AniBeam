@@ -4,9 +4,8 @@ name: CI
 # the tests for the core and the terminal shell. The Qt shell (apps/linux, package
 # anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so its
 # tests and clippy run in linux.yml, which sets those up for the AppImage. Runs on main
-# too, so rust-cache keeps a cache every pull request can restore. The toolchain is pinned
-# so a new Rust release cannot turn clippy red on code nobody touched; bump it on purpose,
-# here, in linux.yml and in android.yml.
+# too, so rust-cache keeps a cache every pull request can restore. The toolchain comes from
+# rust-toolchain.toml, which every workflow reads (#526).
 # A change that only touches markdown or docs/ skips it (#428). The two CHANGELOG.md files
 # and the change files in apps/*/changes still run it: the apps compile them in and
 # core/tests/changelog.rs checks them. Later patterns win, so those lines have to stay
@@ -47,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
-        run: rustup toolchain install 1.98 --profile minimal --component rustfmt && rustup default 1.98
+        run: rustup toolchain install
 
       - run: cargo fmt --all --check
 
@@ -73,7 +72,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
-        run: rustup toolchain install 1.98 --profile minimal --component clippy && rustup default 1.98
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
 

@@ -56,6 +56,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
+CI runs these on the Rust version `rust-toolchain.toml` names, and with rustup a checkout
+uses that version too, so a local fmt or clippy run matches CI's. Bump it there, nowhere else
+in CI. The AUR package is the exception: it builds with `RUSTUP_TOOLCHAIN=stable`, the Rust an
+Arch user already has.
+
 The CLI is the quickest way to drive the core: `sources`, `scan`, `list`, `show`, `jobs`,
 `import`, `export`, `events --follow`, and `call <Name> --json '{...}'` for anything else.
 `--root <dir>` puts the database, config, cache and secrets under one directory instead of
