@@ -1232,20 +1232,27 @@ impl Core {
         if picks.is_empty() {
             return Err(CoreError::invalid("series", "nothing picked"));
         }
-        for &id in &picks {
-            let there = self.store.read(move |c| {
-                Ok(c.query_row(
-                    "SELECT EXISTS (SELECT 1 FROM series WHERE id = ?1)",
-                    rusqlite::params![id as i64],
+        // One read for every id, however many were picked
+        let there: std::collections::HashSet<u64> = self.store.read(|c| {
+            let sql = format!(
+                "SELECT id FROM series WHERE id IN ({})",
+                crate::store::sql::placeholders(picks.len())
+            );
+            let mut stmt = c.prepare(&sql)?;
+            let ids = stmt
+                .query_map(
+                    rusqlite::params_from_iter(picks.iter().map(|id| *id as i64)),
                     |r| r.get::<_, i64>(0),
-                )? == 1)
-            })?;
-            if !there {
-                return Err(CoreError::NotFound {
-                    what: Entity::Series,
-                    id,
-                });
-            }
+                )?
+                .map(|id| id.map(|id| id as u64))
+                .collect::<Result<_, _>>()?;
+            Ok(ids)
+        })?;
+        if let Some(&id) = picks.iter().find(|id| !there.contains(id)) {
+            return Err(CoreError::NotFound {
+                what: Entity::Series,
+                id,
+            });
         }
         match action {
             SeriesAction::Hide { hidden } => reads::set_hidden_many(self, &picks, hidden),

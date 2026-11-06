@@ -357,16 +357,23 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, 
     };
     let mut reachable = Vec::new();
     let mut refused = None;
+    let mut left_out = LeftOut::default();
     for &id in series {
         let target = core.store.read(|c| targets(c, id))?;
         match guard(core, &target) {
             Ok(_) => reachable.push(target),
             Err(e) => {
+                match &e {
+                    CoreError::Refused {
+                        reason: Refusal::Hidden,
+                    } => left_out.hidden += 1,
+                    CoreError::NotConnected { .. } => left_out.not_connected += 1,
+                    _ => left_out.no_match += 1,
+                }
                 refused.get_or_insert(e);
             }
         }
     }
-    let skipped = (series.len() - reachable.len()) as u64;
     if reachable.is_empty() {
         return Err(refused.unwrap_or_else(|| CoreError::invalid("series", "nothing picked")));
     }
@@ -379,7 +386,7 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, 
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let jobs = owner.jobs.clone();
     Ok(jobs.start(kind, move |ctx| async move {
-        run_many(owner, ctx, reachable, action, skipped).await
+        run_many(owner, ctx, reachable, action, left_out).await
     }))
 }
 
@@ -388,12 +395,13 @@ async fn run_many(
     ctx: Arc<JobCtx>,
     targets: Vec<Targets>,
     action: Action,
-    skipped: u64,
+    left_out: LeftOut,
 ) -> Result<Finished, CoreError> {
     let total = targets.len() as u64;
     let (mut done, mut failed) = (0u64, 0u64);
     let mut named = None;
     let mut landed: Vec<Tracker> = Vec::new();
+    let mut reason: Option<String> = None;
     for (i, target) in targets.iter().enumerate() {
         ctx.checkpoint()?;
         ctx.progress(i as u64, Some(total), &target.folder_name);
@@ -408,6 +416,9 @@ async fn run_many(
             }
         } else {
             failed += 1;
+            if reason.is_none() {
+                reason = outcomes.iter().find_map(|o| o.message.clone());
+            }
         }
         if let Some(card) = card_for(&core, target.series).await? {
             ctx.changed(card);
@@ -435,21 +446,18 @@ async fn run_many(
         });
     }
     if failed > 0 {
+        let why = reason.map_or_else(String::new, |r| format!(": {}", r.trim_end_matches('.')));
         said.push(if done > 0 {
-            format!("{failed} could not be updated.")
+            format!("{failed} could not be updated{why}.")
         } else {
             format!(
-                "{failed} {} could not be updated.",
+                "{failed} {} could not be updated{why}.",
                 crate::words::pick(failed, "show", "shows")
             )
         });
     }
-    if skipped > 0 {
-        said.push(format!(
-            "{skipped} {} no tracker to write to.",
-            crate::words::pick(skipped, "show has", "shows have")
-        ));
-    }
+    said.extend(left_out.lines());
+    let skipped = left_out.total();
     Ok(Finished {
         level: if done == 0 { Level::Warn } else { Level::Info },
         plain: Some(said.join(" ")),
@@ -460,6 +468,48 @@ async fn run_many(
         ),
         body: EventBody::Notice,
     })
+}
+
+/// The picks a many-write left out, by the guard that turned each away.
+#[derive(Clone, Copy, Debug, Default)]
+struct LeftOut {
+    no_match: u64,
+    hidden: u64,
+    not_connected: u64,
+}
+
+impl LeftOut {
+    fn total(self) -> u64 {
+        self.no_match + self.hidden + self.not_connected
+    }
+
+    /// One sentence per reason, so the line says what to do about each.
+    fn lines(self) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.no_match > 0 {
+            let n = self.no_match;
+            out.push(format!(
+                "{n} {} no tracker match.",
+                crate::words::pick(n, "show has", "shows have")
+            ));
+        }
+        if self.hidden > 0 {
+            let n = self.hidden;
+            out.push(format!(
+                "{n} {} hidden, so {} sync is off.",
+                crate::words::pick(n, "show is", "shows are"),
+                crate::words::pick(n, "its", "their")
+            ));
+        }
+        if self.not_connected > 0 {
+            let n = self.not_connected;
+            out.push(format!(
+                "{n} {} only on a tracker that is not connected.",
+                crate::words::pick(n, "show is", "shows are")
+            ));
+        }
+        out
+    }
 }
 
 /// A list status as the status pill names it.

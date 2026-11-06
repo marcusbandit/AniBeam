@@ -143,7 +143,7 @@ impl LibraryState {
         }
     }
 
-    fn is_matching(&self, series: u64) -> bool {
+    pub(crate) fn is_matching(&self, series: u64) -> bool {
         recover(&self.match_in_flight).contains(&series)
     }
 }
@@ -909,39 +909,45 @@ pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
     })
 }
 
-/// Rescans several series in one scan (#208): a pass over their folders
-/// alone, so the activity log gets the one line a scan ends with. A series
-/// whose source is not there right now is left out; when none is there,
-/// the call is refused as a single rescan would be.
+/// Rescans several series in one scan (#208): each picked series is a
+/// series scope, exactly as a single rescan walks it, all queued for one
+/// scan job to drain, so the activity log gets the one line a scan ends
+/// with. A series whose source is not there right now is left out; when
+/// none is there, the call is refused as a single rescan would be.
 pub fn rescan_many(core: &Core, series: &[u64]) -> Result<Reply, CoreError> {
-    let mut paths = Vec::new();
+    let mut there = Vec::new();
     let mut away = None;
     for &id in series {
-        let row: Option<(String, String, bool)> = core.store.read(|c| {
+        let row: Option<(String, bool)> = core.store.read(|c| {
             Ok(c.query_row(
-                "SELECT s.path, src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
+                "SELECT src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
                 params![id as i64],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)? == 1)),
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? == 1)),
             )
             .optional()?)
         })?;
-        let (path, source, available) = row.ok_or(CoreError::NotFound {
+        let (source, available) = row.ok_or(CoreError::NotFound {
             what: Entity::Series,
             id,
         })?;
         if available {
-            paths.push(path);
+            there.push(id);
         } else {
             away.get_or_insert(source);
         }
     }
-    if paths.is_empty() {
+    let Some((&first, rest)) = there.split_first() else {
         return Err(CoreError::Unavailable {
             path: away.unwrap_or_default(),
         });
+    };
+    // The rest go on the queue before the scan starts, so the job the first
+    // one starts (or the one already running) walks them before it ends.
+    for &id in rest {
+        core.library.remember_scope(ScanScope::Series(id));
     }
     Ok(Reply::Started {
-        job: start(&core.owner()?, ScanScope::Paths(paths)),
+        job: start(&core.owner()?, ScanScope::Series(first)),
     })
 }
 

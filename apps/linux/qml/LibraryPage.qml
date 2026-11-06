@@ -89,9 +89,9 @@ Item {
         if (moved) page.picked = next
     }
     readonly property var pickedCards: { var out = []; for (var k in picked) out.push(Door.card(Number(k))); return out }
-    readonly property bool pickedCanList: pickedCards.some(function(c) { return frame.canSetListStatus(c) })
+    // Rate and a list both need a pick a connected tracker carries
+    readonly property bool pickedTracked: pickedCards.some(function(c) { return frame.canSetListStatus(c) })
     readonly property bool pickedUnmatched: pickedCards.some(function(c) { return !c.match_info })
-    readonly property bool pickedRateable: pickedCards.some(function(c) { return frame.canSetListStatus(c) })
     function pickedNoun(n) { return Fmt.plural(n, "show", "shows") }
     // One call for every pick. A refusal (nothing reachable, a folder that is away) is the toast
     function act(action, said) {
@@ -127,11 +127,10 @@ Item {
         frame.openMenu(p.x, p.y - lists.length * theme.controlHeight - theme.space(8), lists.map(function(l) {
             return { text: l.text, icon: l.icon, action: function() {
                 var n = page.pickedCount
-                page.act({ ListStatus: { status: page.statusOf(l.text) } }, "Moving " + page.pickedNoun(n) + " to " + l.text)
+                page.act({ ListStatus: { status: l.status } }, "Moving " + page.pickedNoun(n) + " to " + l.text)
             } }
         }))
     }
-    function statusOf(label) { return { "Watching": "Watching", "Planning": "Planning", "Completed": "Completed", "On hold": "Paused", "Dropped": "Dropped" }[label] }
     function rescanPicked() { var n = page.pickedCount; page.act("Rescan", "Rescanning " + page.pickedNoun(n)) }
     function matchPicked() {
         var n = page.pickedCards.filter(function(c) { return !c.match_info }).length
@@ -612,7 +611,7 @@ Item {
                 id: rateButton
                 objectName: "library-picked-rate"
                 small: true
-                enabled: page.pickedRateable
+                enabled: page.pickedTracked
                 text: "Rate"; icon: "star"
                 onClicked: pickScore.openAt(rateButton, -1)
                 Tooltip { text: rateButton.enabled ? "One score for every pick, on every connected tracker" : "Needs a connected tracker and a matched show" }
@@ -621,7 +620,7 @@ Item {
                 id: listButton
                 objectName: "library-picked-list"
                 small: true
-                enabled: page.pickedCanList
+                enabled: page.pickedTracked
                 text: "Move to list"; icon: "bookmark"
                 onClicked: page.listPicked(listButton)
                 Tooltip { text: listButton.enabled ? "" : "Needs a connected tracker and a matched show" }

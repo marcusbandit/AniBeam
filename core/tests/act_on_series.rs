@@ -208,7 +208,7 @@ fn a_pick_with_nowhere_to_write_is_left_out_and_counted() {
     common::wait_job(&c, job);
     assert_eq!(
         plain_lines(&c),
-        vec!["Set Bebop to Dropped on AniList. 1 show has no tracker to write to.".to_string()]
+        vec!["Set Bebop to Dropped on AniList. 1 show has no tracker match.".to_string()]
     );
 }
 
@@ -251,9 +251,11 @@ fn a_failed_write_is_counted_in_the_one_line_not_said_per_series() {
         .unwrap(),
     );
     common::wait_job(&c, job);
-    assert_eq!(
-        plain_lines(&c),
-        vec!["Scored Bebop 8 on AniList. 1 could not be updated.".to_string()]
+    let lines = plain_lines(&c);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        lines[0].starts_with("Scored Bebop 8 on AniList. 1 could not be updated: "),
+        "the line says why: {lines:?}"
     );
 }
 
@@ -275,9 +277,11 @@ fn every_write_failing_reads_as_a_warning() {
     );
     let done = common::wait_job(&c, job);
     assert_eq!(done.level, Level::Warn, "{done:?}");
-    assert_eq!(
-        plain_lines(&c),
-        vec!["2 shows could not be updated.".to_string()]
+    let lines = plain_lines(&c);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        lines[0].starts_with("2 shows could not be updated: "),
+        "{lines:?}"
     );
 }
 
@@ -372,5 +376,158 @@ fn a_rescan_of_several_is_one_scan() {
     assert_eq!(
         done.plain.as_deref(),
         Some("Checked your folders: 2 shows changed.")
+    );
+}
+
+fn attempt_version(core: &Core, series: u64) -> (Option<i64>, Option<i64>) {
+    core.store()
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT attempted_at, attempt_version FROM series WHERE id = ?1",
+                rusqlite::params![series as i64],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?)
+        })
+        .unwrap()
+}
+
+#[test]
+fn a_cleared_match_that_still_finds_nothing_stays_cleared() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let loose = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Show,
+        "/lib/Zzz Unknown",
+        "Zzz Unknown",
+    );
+    fixtures::insert_file(
+        &core,
+        loose,
+        "/lib/Zzz Unknown/01.mkv",
+        1.0,
+        None,
+        "episode",
+        1,
+    );
+    core.call(Call::ClearMatch { series: loose }).unwrap();
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [] } } }),
+    );
+    http.push_for("api.tvmaze.com/search/shows", 200, "[]");
+
+    let job = started(
+        core.call(Call::ActOnSeries {
+            series: vec![loose],
+            action: SeriesAction::FindMatch,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+    let (at, version) = attempt_version(&core, loose);
+    assert!(at.is_some());
+    assert_eq!(
+        version, None,
+        "still the user's clear, which no matcher version resets"
+    );
+}
+
+#[test]
+fn a_search_that_fails_is_said_as_one_to_try_again_not_a_miss() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let loose = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Show,
+        "/lib/Zzz Unknown",
+        "Zzz Unknown",
+    );
+    fixtures::insert_file(
+        &core,
+        loose,
+        "/lib/Zzz Unknown/01.mkv",
+        1.0,
+        None,
+        "episode",
+        1,
+    );
+    // A reply that does not parse: the provider answered, wrongly. (An error
+    // reply reads as the provider gone, which ends the job the way the
+    // automatic run ends.)
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [ { "id": "not a number" } ] } } }),
+    );
+
+    let job = started(
+        core.call(Call::ActOnSeries {
+            series: vec![loose],
+            action: SeriesAction::FindMatch,
+        })
+        .unwrap(),
+    );
+    let done = common::wait_job(&c, job);
+    assert_eq!(done.level, Level::Warn, "{done:?}");
+    assert_eq!(
+        plain_lines(&c),
+        vec!["1 show could not be searched; try again later.".to_string()]
+    );
+    assert_eq!(attempt_version(&core, loose).0, None, "nothing stamped");
+}
+
+#[test]
+fn a_pick_gone_from_disk_is_not_counted_as_matched() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/away");
+    let gone = fixtures::insert_series(&core, src, SeriesKind::Show, "/away/Gone", "Gone");
+    fixtures::mark_missing(&core, gone);
+    let ids = matched_shows(&core, &["Bebop"]);
+
+    let job = started(
+        core.call(Call::ActOnSeries {
+            series: vec![gone, ids[0]],
+            action: SeriesAction::FindMatch,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+    assert_eq!(
+        plain_lines(&c),
+        vec!["1 show had a match already.".to_string()]
+    );
+}
+
+#[test]
+fn a_hidden_pick_is_named_as_hidden_not_as_unmatched() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let ids = matched_shows(&core, &["Bebop", "Trigun"]);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    core.call(Call::SetHidden {
+        series: ids[1],
+        hidden: true,
+    })
+    .unwrap();
+    anilist_write(&http);
+
+    let job = started(
+        core.call(Call::ActOnSeries {
+            series: ids,
+            action: SeriesAction::ListStatus {
+                status: ListStatus::Planning,
+            },
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+    assert_eq!(
+        plain_lines(&c),
+        vec!["Set Bebop to Planning on AniList. 1 show is hidden, so its sync is off.".to_string()]
     );
 }
