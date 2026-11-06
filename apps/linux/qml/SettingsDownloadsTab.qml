@@ -34,6 +34,9 @@ SettingsTab {
         return "Watched episodes kept behind the one you just finished. With " + k + ", finishing episode " + (k + 2) + " deletes episode 1."
     }
     readonly property bool sidecar: !!draft && draft.anirss_mode === "Sidecar"
+    // The engine the draft picks. One this build does not know reads as anirss, and the core
+    // keeps it stored until another is picked here
+    readonly property bool nativeEngine: !!draft && draft.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     readonly property string clientName: {
@@ -209,19 +212,22 @@ SettingsTab {
             Button { text: tab.testing ? "Trying" : tab.dirty ? "Save and test" : "Test"; icon: "check-check"; flat: true; enabled: !tab.testing; onClicked: tab.test() } }
     }
     Panel {
-        title: "Search helper"
-        helper: "The part of AniBeam that searches and subscribes, a program called anirss. AniBeam runs it for you; change this only if you run your own."
-        SettingRow { label: "How it runs"; helper: tab.sidecar ? "AniBeam starts it when it opens and stops it when it quits." : "AniBeam uses one you already run, at the address and with the key below."
+        title: tab.nativeEngine ? "Searching" : "Search helper"
+        helper: tab.nativeEngine ? "AniBeam searches your sources itself and sends what you pick to the torrent client. The search helper is not needed." : "The part of AniBeam that searches and subscribes, a program called anirss. AniBeam runs it for you; change this only if you run your own."
+        SettingRow { label: "Searches run in"; helper: tab.nativeEngine ? "Subscriptions still go to the torrent client, so new episodes arrive while AniBeam is closed." : "The search helper, a separate program. Its best match rules apply to either."
+            Seg { objectName: "downloads-engine"; options: [{ text: "Search helper", icon: "wrench", name: "helper" }, { text: "AniBeam itself", icon: "sparkles", name: "anibeam" }]; index: tab.nativeEngine ? 1 : 0
+                  onPicked: function(i) { tab.edit(function(d) { d.engine = i === 1 ? "Native" : "Anirss" }) } } }
+        SettingRow { visible: !tab.nativeEngine; label: "How it runs"; helper: tab.sidecar ? "AniBeam starts it when it opens and stops it when it quits." : "AniBeam uses one you already run, at the address and with the key below."
             Seg { options: [{ text: "AniBeam runs it", icon: "play" }, { text: "I run it", icon: "radio" }]; index: tab.sidecar ? 0 : 1
                   onPicked: function(i) { tab.edit(function(d) { d.anirss_mode = i === 0 ? "Sidecar" : "Remote" }) } } }
-        SettingRow { visible: tab.sidecar; label: "Command"; helper: "A name on PATH or a full path. ~/.local/bin is searched too."
+        SettingRow { visible: !tab.nativeEngine && tab.sidecar; label: "Command"; helper: "A name on PATH or a full path. ~/.local/bin is searched too."
             Field { objectName: "downloads-anirss-command"; text: tab.draft ? tab.draft.anirss_command : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_command = t }) } } }
-        SettingRow { visible: !tab.sidecar; label: "Address"; helper: "The server's base, without /api/v1."
+        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: "Address"; helper: "The server's base, without /api/v1."
             Field { text: tab.draft ? tab.draft.anirss_url : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_url = t }) } } }
-        SettingRow { visible: !tab.sidecar; label: "Key"; helper: tab.settings && tab.settings.has_anirss_token ? "A key is saved. Type a new one to replace it, or clear the field to remove it." : "The key the search helper showed when it started. It lets AniBeam in."
+        SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: "Key"; helper: tab.settings && tab.settings.has_anirss_token ? "A key is saved. Type a new one to replace it, or clear the field to remove it." : "The key the search helper showed when it started. It lets AniBeam in."
             Field { text: tab.tokenText; secret: true; mono: true; width: theme.space(48); placeholder: tab.settings && tab.settings.has_anirss_token ? "Saved" : "Not set"
                     onEdited: function(t) { tab.tokenText = t; tab.tokenTouched = true; tab.dirty = true } } }
-        SettingRow { label: "Connection"; line: tab.anirssLine
+        SettingRow { visible: !tab.nativeEngine; label: "Connection"; line: tab.anirssLine
             Button { text: tab.anirss && tab.anirss.state === "Starting" ? "Starting" : tab.anirss && tab.anirss.state === "Ready" ? "Reconnect" : "Connect"; icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect()
                 Tooltip { text: tab.dirty ? "Save your changes first" : "" } } }
     }
@@ -292,7 +298,7 @@ SettingsTab {
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
             Label { text: "Unsaved changes"; role: "title"; font.pointSize: theme.typeNormal }
-            Label { width: parent.width; text: "Saving restarts the search helper on the new settings."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
+            Label { width: parent.width; text: tab.nativeEngine ? "Saving applies them at once." : "Saving restarts the search helper on the new settings."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
         }
         Row {
             id: saveRow
