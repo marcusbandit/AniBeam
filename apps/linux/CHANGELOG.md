@@ -144,6 +144,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - On a narrow window the player's buttons no longer cover the volume
+- On a very narrow window the player's right-hand buttons fold into a menu
 - Endpoints from repos reach an anirss built from source, whatever its version
 - Seeders show for releases from a tracker written with backslashes
 - Discord shows a series whose title is a single letter

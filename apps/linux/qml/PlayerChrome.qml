@@ -102,6 +102,55 @@ Item {
     // setVolume then flashes the level).
     readonly property bool volumeShown: volumeRow.visible
 
+    // ---- The overflow (#518). Below about 440 px the right-hand group no longer fits beside
+    // play, the skips and the mute button, and slid over them. Then the group folds into one
+    // More button that opens the frame's menu with the same actions; play, the skips and the
+    // mute button always stay, and the volume gets back the room the group gave up.
+    // The group's width is worked out from which of its buttons apply, never read off the
+    // row, which is one button wide once folded: reading it would be a binding loop.
+    readonly property bool hasAudioChoice: page.audioTracks.length > 1
+    readonly property bool hasSubs: page.subTracks.length > 0
+    readonly property bool fullscreen: frame.hostWindow.visibility === Window.FullScreen
+    readonly property int groupCount: 3 + (hasAudioChoice ? 1 : 0) + (hasSubs ? 1 : 0) + (page.canMark ? 1 : 0)
+    readonly property real groupWidth: groupCount * theme.space(9) + (groupCount - 1) * theme.space(1)
+    // Folded once the whole group would leave the volume less than its readout, the point
+    // where the volume would otherwise go too.
+    readonly property bool folded: bottomRow.width - (muteBtn.x + muteBtn.width) - groupWidth - 3 * bottomRow.spacing < volumeRow.readoutWidth
+    // While the menu is up the chrome stays, as it does for the pickers.
+    property bool moreOpen: false
+    function openMore() {
+        var items = [{ text: "Subtitle and audio delay", icon: "clock", action: function() { page.openDelays(moreBtn) } }]
+        if (hasAudioChoice) items.push({ text: "Audio track", icon: "audio-lines", action: function() { page.openAudioPicker(moreBtn) } })
+        if (hasSubs) items.push({ text: page.sid >= 0 ? "Subtitles" : "Subtitles off", icon: "captions", action: function() { page.openSubPicker(moreBtn) } })
+        if (page.canMark) items.push({ text: "Mark watched", icon: "check-check", action: function() { page.markWatched() } })
+        items.push({ text: "Keyboard shortcuts", icon: "keyboard", action: function() { page.showHelp() } })
+        items.push({ text: fullscreen ? "Exit fullscreen" : "Fullscreen", icon: fullscreen ? "minimize" : "maximize", action: function() { page.toggleFullscreen() } })
+        var p = moreBtn.mapToItem(frame, moreBtn.width, 0)
+        if (!moreOpen) page.openMenus++
+        moreOpen = true
+        frame.openMenu(p.x, p.y, items)
+        // Above the button, right edges in line. The menu opens down from its origin and
+        // clamps to the window, so once its rows are laid out the origin moves up by its
+        // height and left by its width, the same sums its panel is sized by.
+        var m = frame.menuPanel
+        m.originX = p.x - (m.rowWidth + m.pad * 2)
+        m.originY = p.y - (items.length * theme.controlHeight + m.pad * 2) - theme.space(1)
+    }
+    Connections {
+        target: frame.menuPanel
+        function onOpenChanged() {
+            if (frame.menuPanel.open || !root.moreOpen) return
+            root.moreOpen = false
+            page.openMenus--
+            page.showChrome()
+        }
+    }
+    // A wide window again while it is up: the menu would point at a button that is gone.
+    onFoldedChanged: if (!folded && moreOpen) frame.closeMenu()
+    // A navigation takes the page and this with it; the frame's menu stays, and its rows
+    // would call into a page that is gone.
+    Component.onDestruction: if (moreOpen) frame.closeMenu()
+
     // ---- Controls island: the time as a ledger line, the seek groove, then the buttons.
     Tile {
         id: controls
@@ -161,19 +210,21 @@ Item {
                 trackShown: room >= theme.space(10)
                 visible: free >= readoutWidth
                 takesFocus: false; ground: theme.raised; onMoved: function(v) { page.setVolume(v) } }
-            // The slot takes its height from what it holds, not from the row: the row
-            // takes its own height from its children, and parent.height here would be a loop.
-            Item { id: rightSlot; width: parent.width - x; height: rightGroup.height
-                anchors.verticalCenter: parent.verticalCenter
-                Row { id: rightGroup; anchors.right: parent.right; spacing: theme.space(1)
-                    // Shown with no tracks to choose as well: one audio track can still be out of sync.
-                    PlayerButton { id: delayBtn; objectName: "player-delays"; glyph: "clock"; tip: "Subtitle and audio delay"; active: page.subDelay !== 0 || page.audioDelay !== 0; onClicked: page.openDelays(delayBtn) }
-                    PlayerButton { id: audioBtn; objectName: "player-audio"; glyph: "audio-lines"; tip: "Audio track"; visible: page.audioTracks.length > 1; onClicked: page.openAudioPicker(audioBtn) }
-                    PlayerButton { id: subBtn; objectName: "player-subs"; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: page.subTracks.length > 0; onClicked: page.openSubPicker(subBtn) }
-                    PlayerButton { objectName: "player-mark"; glyph: "check-check"; tip: "Mark watched"; visible: page.canMark; onClicked: page.markWatched() }
-                    PlayerButton { objectName: "player-help"; glyph: "keyboard"; tip: "Keyboard shortcuts"; onClicked: page.showHelp() }
-                    PlayerButton { objectName: "player-fullscreen"; glyph: frame.hostWindow.visibility === Window.FullScreen ? "minimize" : "maximize"; tip: "Fullscreen"; onClicked: page.toggleFullscreen() } } }
         }
+        // The right-hand group sits on the row's right edge rather than in the row: a slot
+        // sized to what the row has left reached zero width on a narrow window, a Row stops
+        // placing a child with no width, and the slot then stayed where it was.
+        Row { id: rightGroup; anchors.right: bottomRow.right; anchors.verticalCenter: bottomRow.verticalCenter; spacing: theme.space(1)
+            // Shown with no tracks to choose as well: one audio track can still be out of sync.
+            PlayerButton { id: delayBtn; objectName: "player-delays"; glyph: "clock"; tip: "Subtitle and audio delay"; visible: !root.folded; active: page.subDelay !== 0 || page.audioDelay !== 0; onClicked: page.openDelays(delayBtn) }
+            PlayerButton { id: audioBtn; objectName: "player-audio"; glyph: "audio-lines"; tip: "Audio track"; visible: !root.folded && root.hasAudioChoice; onClicked: page.openAudioPicker(audioBtn) }
+            PlayerButton { id: subBtn; objectName: "player-subs"; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: !root.folded && root.hasSubs; onClicked: page.openSubPicker(subBtn) }
+            PlayerButton { objectName: "player-mark"; glyph: "check-check"; tip: "Mark watched"; visible: !root.folded && page.canMark; onClicked: page.markWatched() }
+            PlayerButton { objectName: "player-help"; glyph: "keyboard"; tip: "Keyboard shortcuts"; visible: !root.folded; onClicked: page.showHelp() }
+            PlayerButton { objectName: "player-fullscreen"; glyph: root.fullscreen ? "minimize" : "maximize"; tip: "Fullscreen"; visible: !root.folded; onClicked: page.toggleFullscreen() }
+            // The whole group in one button on a window too narrow for it. Lit like
+            // the clock when a delay is set, since the clock it holds would be.
+            PlayerButton { id: moreBtn; objectName: "player-more"; glyph: "ellipsis"; tip: "More"; visible: root.folded; active: root.moreOpen || page.subDelay !== 0 || page.audioDelay !== 0; onClicked: root.openMore() } }
     }
 
     // ---- Auto-next. Not chrome: it stays on screen once the outro starts even after the
