@@ -512,6 +512,18 @@ pub fn fold() -> (Option<f32>, bool) {
     (None, false)
 }
 
+/// Where the crease runs, as the phone reports it through `Crease.java`. Off the phone,
+/// and on a phone without the window extensions, it never says.
+pub fn crease() -> crate::crease::Reading {
+    #[cfg(target_os = "android")]
+    if let Some(jni::objects::JValueOwned::Long(packed)) =
+        java_call("Crease", "at", "(Landroid/app/Activity;)J", None)
+    {
+        return crate::crease::decode(packed);
+    }
+    crate::crease::Reading::Silent
+}
+
 /// The window's brightness, 0 to 1.
 pub fn brightness() -> f32 {
     #[cfg(target_os = "android")]

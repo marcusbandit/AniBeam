@@ -2008,19 +2008,24 @@ pub fn run(
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || {
         with_app(App::tick)
     });
-    // The hinge, for the layout: a bend shows in a fifth of a second, and the sensor costs
-    // nothing between changes.
-    // A phone without a hinge answers None the first time, and the timer stops there.
+    // The hinge and the crease, for the layout: a bend shows in a fifth of a second, and
+    // reading them costs nothing between changes. A phone without a hinge whose extensions
+    // never report a fold is no foldable, and the timer stops after a few seconds of that.
     let hinge = Rc::new(Timer::default());
     let fold_window = window.as_weak();
     let stop = Rc::downgrade(&hinge);
+    let mut flat_ticks = 0u32;
     hinge.start(TimerMode::Repeated, Duration::from_millis(200), move || {
         let Some(window) = fold_window.upgrade() else {
             return;
         };
-        let (angle, across) = crate::android::fold();
-        if angle.is_none() {
-            if let Some(t) = stop.upgrade() {
+        let (angle, rotated) = crate::android::fold();
+        let reading = crate::android::crease();
+        if angle.is_none() && !matches!(reading, crate::crease::Reading::Fold(_)) {
+            flat_ticks += 1;
+            if (reading == crate::crease::Reading::Silent || flat_ticks >= 25)
+                && let Some(t) = stop.upgrade()
+            {
                 t.stop();
             }
             return;
@@ -2030,8 +2035,21 @@ pub fn run(
         if fold.get_hinge() != angle {
             fold.set_hinge(angle);
         }
-        if fold.get_crease_across() != across {
-            fold.set_crease_across(across);
+        let crease = crate::crease::layout(reading, rotated, window.window().scale_factor());
+        if fold.get_crease_across() != crease.across {
+            fold.set_crease_across(crease.across);
+        }
+        if fold.get_crease_known() != crease.known {
+            fold.set_crease_known(crease.known);
+        }
+        if fold.get_crease_half() != crease.half {
+            fold.set_crease_half(crease.half);
+        }
+        if fold.get_crease_start() != crease.start {
+            fold.set_crease_start(crease.start);
+        }
+        if fold.get_crease_end() != crease.end {
+            fold.set_crease_end(crease.end);
         }
     });
     let syncs = Timer::default();

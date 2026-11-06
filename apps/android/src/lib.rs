@@ -13,6 +13,7 @@ slint::include_modules!();
 mod airing;
 mod android;
 mod app;
+mod crease;
 mod find;
 mod focus;
 mod local;
