@@ -44,28 +44,21 @@ impl AnirssHome {
         }
     }
 
-    /// `~/.config/anirss/config.toml`, honouring `XDG_CONFIG_HOME` on the person's own home.
+    /// `~/.config/anirss/config.toml`. anirss fixes its config there and never reads
+    /// `XDG_CONFIG_HOME` (#610), so neither does this.
     pub fn config_path(&self) -> Option<PathBuf> {
-        let base = match self {
-            AnirssHome::Shared => match std::env::var("XDG_CONFIG_HOME") {
-                Ok(d) if !d.is_empty() => PathBuf::from(d),
-                _ => std::env::home_dir()?.join(".config"),
-            },
-            AnirssHome::Sandbox(dir) => dir.join(".config"),
-        };
-        Some(base.join("anirss").join("config.toml"))
+        Some(
+            self.dir()?
+                .join(".config")
+                .join("anirss")
+                .join("config.toml"),
+        )
     }
 
-    /// anirss's state directory, where its CLI saves the qBittorrent password.
+    /// `~/.local/state/anirss`, where anirss's CLI saves the qBittorrent password. Fixed
+    /// under the home folder in anirss too, whatever `XDG_STATE_HOME` says.
     pub fn state_dir(&self) -> Option<PathBuf> {
-        let base = match self {
-            AnirssHome::Shared => match std::env::var("XDG_STATE_HOME") {
-                Ok(d) if !d.is_empty() => PathBuf::from(d),
-                _ => std::env::home_dir()?.join(".local").join("state"),
-            },
-            AnirssHome::Sandbox(dir) => dir.join(".local").join("state"),
-        };
-        Some(base.join("anirss"))
+        Some(self.dir()?.join(".local").join("state").join("anirss"))
     }
 
     /// Where AniBeam's own qBittorrent saves: `~/Downloads/Anime`.
