@@ -735,8 +735,8 @@ FocusScope {
     function setListStatus(id, status, label) {
         var r = Door.call("SetListStatus", { series: id, status: status })
         if (r.error) { frame.toast(r.error.message); return }
-        // Ok with no job is the list kept on this device, already moved
-        frame.toast(r.reply === "Ok" ? "Moved to " + label : "Moving to " + label)
+        // No job is the list kept on this device, already moved
+        frame.toast(r.reply && r.reply.job !== undefined ? "Moving to " + label : "Moved to " + label)
     }
     // Text onto the clipboard, and a word that it went
     function copyText(text, what) {
