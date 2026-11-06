@@ -217,7 +217,7 @@ impl Host {
     /// again first: it may have just joined. This machine is the owner without a read.
     pub fn asker(&self, from: std::net::IpAddr) -> (trust::Asker, Option<trust::TailnetUser>) {
         let me = |t: &Option<Arc<trust::Tailnet>>| t.as_ref().and_then(|t| t.owner().cloned());
-        if trust::asker(from, None) == trust::Asker::Owner && from.is_loopback() {
+        if from.is_loopback() {
             return (trust::Asker::Owner, me(&self.tailnet_now()));
         }
         let first = self.tailnet(false);

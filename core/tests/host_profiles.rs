@@ -144,7 +144,14 @@ fn each_person_on_the_tailnet_sees_their_own_progress() {
 
     // The friend plays episode 2 to the end on the tablet: it is theirs alone.
     play_through(&rt, &tablet, files[1]);
-    assert_eq!(watched(&rt, &tablet), vec!["2"]);
+    // A snapshot is kept for thirty seconds, so a fresh server reads it anew.
+    let tablet_later = serve_as(&rt, &core, TABLET);
+    assert_eq!(watched(&rt, &tablet_later), vec!["2"]);
+    assert_eq!(
+        watched(&rt, &serve_as(&rt, &core, PHONE)),
+        vec!["1"],
+        "the owner's phone does not see the friend's episode"
+    );
     let owner = match core.call(Call::GetSeries { series }).unwrap() {
         Reply::SeriesDetail { detail } => detail,
         other => panic!("{other:?}"),
