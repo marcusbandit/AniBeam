@@ -42,6 +42,9 @@ enum Answer {
 struct ShowState {
     offer: Offer,
     sources: Vec<(String, Answer)>,
+    /// The sources with no feed to follow, which answer JSON (#507): no subscription
+    /// is offered on them.
+    no_feed: Vec<String>,
     active: Option<usize>,
     picks: grid::Picks,
     follow: bool,
@@ -782,7 +785,7 @@ impl Find {
     }
 
     fn open_show(&mut self, offer: Offer) {
-        let sources = crate::local::core()
+        let listed: Vec<_> = crate::local::core()
             .and_then(|c| match c.call(Call::PhoneSearchSources) {
                 Ok(Reply::PhoneSources { sources }) => Some(sources),
                 _ => None,
@@ -790,12 +793,18 @@ impl Find {
             .unwrap_or_default()
             .into_iter()
             .filter(|s| s.enabled)
-            .map(|s| (s.name, Answer::Idle))
             .collect();
+        let no_feed = listed
+            .iter()
+            .filter(|s| !anibeam_core::releases::endpoints::answers_rss(&s.kind))
+            .map(|s| s.name.clone())
+            .collect();
+        let sources = listed.into_iter().map(|s| (s.name, Answer::Idle)).collect();
         let follow = offer.show.airing;
         self.show = Some(ShowState {
             offer,
             sources,
+            no_feed,
             active: None,
             picks: grid::Picks::default(),
             follow,
@@ -1136,7 +1145,8 @@ impl Find {
                 &provider,
             );
             has_had = state.picks.map.keys().any(|n| grid::have(&library, *n));
-            can_follow = !plan.follow_query.is_empty() && show.airing;
+            can_follow =
+                !plan.follow_query.is_empty() && show.airing && !state.no_feed.contains(&provider);
             let following = state.follow && can_follow;
             let n = plan.episodes.len();
             can_go = n > 0 || following;
@@ -1263,7 +1273,10 @@ impl Find {
             state.replace,
             &provider,
         );
-        let follow = state.follow && !plan.follow_query.is_empty() && state.offer.show.airing;
+        let follow = state.follow
+            && !plan.follow_query.is_empty()
+            && state.offer.show.airing
+            && !state.no_feed.contains(&provider);
         let limit = self.limit();
         self.ask_notifications();
         self.with_data(|d| d.set_busy(true));

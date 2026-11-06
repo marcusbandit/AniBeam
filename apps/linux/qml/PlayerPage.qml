@@ -431,7 +431,7 @@ FocusScope {
     property real volume: Player.volume
     Timer { id: volumeSave; interval: 500; onTriggered: Player.setVolume(page.volume) }
     function flushVolume() { if (volumeSave.running) { volumeSave.stop(); Player.setVolume(volume) } }
-    function setVolume(v) { v = Math.max(0, Math.min(100, v)); volume = v; video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); volumeSave.restart(); showChrome() }
+    function setVolume(v) { v = Math.max(0, Math.min(100, v)); volume = v; video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); volumeSave.restart(); showChrome(); if (!chrome.volumeShown) hud.flash("Volume " + Math.round(v)) }
     function setMute(m) { video.setProperty("mute", m); Player.setMute(m); showChrome() }
     // Playback speed, [ and ] in quarter steps between 0.25 and 3, Backspace back to 1. The
     // page's value moves first so presses inside the round trip add up; the observation then
