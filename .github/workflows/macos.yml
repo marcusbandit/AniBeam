@@ -16,6 +16,7 @@ on:
       - 'apps/cli/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'rust-toolchain.toml'
       - '.github/workflows/macos.yml'
   workflow_dispatch:
   workflow_call:
@@ -102,7 +103,7 @@ jobs:
 
       - name: Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal
+          rustup toolchain install
           rustc --version
 
       - uses: Swatinem/rust-cache@v2

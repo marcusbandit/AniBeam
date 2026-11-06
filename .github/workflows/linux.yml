@@ -121,13 +121,11 @@ jobs:
           path: ~/anibeam-deps
           key: ${{ steps.depkey.outputs.key }}
 
-      # Pinned, as in ci.yml and android.yml, so a new Rust release cannot turn the shell's
-      # clippy red on code nobody touched, and the build, the tests and clippy share one
-      # toolchain and one cache. Bump it on purpose, in all three.
+      # rust-toolchain.toml names the version, so the build, the tests and clippy share one
+      # toolchain with every other workflow, and one cache.
       - name: Rust toolchain
         run: |
-          rustup toolchain install 1.98 --profile minimal --component clippy
-          rustup default 1.98
+          rustup toolchain install
           rustc --version
 
       - uses: Swatinem/rust-cache@v2

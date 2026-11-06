@@ -1,0 +1,7 @@
+# The one Rust toolchain for this repo and apps/android, read by rustup locally and by every
+# CI workflow (#526). Pinned so a new Rust release cannot turn fmt or clippy red on code nobody
+# touched. Bump it on purpose, here only.
+[toolchain]
+channel = "1.98"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
