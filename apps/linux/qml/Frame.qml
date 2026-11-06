@@ -83,7 +83,7 @@ FocusScope {
 
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
-        home: "HomePage.qml", library: "LibraryPage.qml", airing: "AiringPage.qml", feed: "FeedPage.qml", watching: "WatchingPage.qml", metadata: "MetadataPage.qml",
+        home: "HomePage.qml", library: "LibraryPage.qml", airing: "AiringPage.qml", feed: "FeedPage.qml", watching: "WatchingPage.qml", stats: "StatsPage.qml", metadata: "MetadataPage.qml",
         downloads: "DownloadsPage.qml", settings: "SettingsPage.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
     })
 
@@ -328,12 +328,26 @@ FocusScope {
         return out
     }
     // The core's error message reads "MyAnimeList did not respond: ..." or "Invalid client
-    // id: ...", the shape the log wants; a person reading why their sign-in stopped wants
-    // the sentence after it.
+    // id: ...", the shape the log wants; a line that shows it inline wants the sentence
+    // after it. A toast goes through fail() instead, which has the plain words and a fix.
     function errorText(e) {
         var m = String(e && e.message ? e.message : "")
         m = m.replace(/^(AniList|MyAnimeList|TMDB|Anilist|Mal|Jikan|Tmdb)( did not respond)?: /, "").replace(/^(io|internal|[Ii]nvalid [a-z_ ]+): /, "")
-        return m === "" ? "The sign-in did not finish." : m.charAt(0).toUpperCase() + m.slice(1)
+        return m === "" ? "That did not work." : m.charAt(0).toUpperCase() + m.slice(1)
+    }
+    // A call error as a toast: what happened and what to do, the button that does it
+    // (`retry` runs the same thing again, a settings fix opens that tab), and the core's
+    // own message one click away under Details.
+    function fail(e, retry) {
+        if (!e) return
+        var fix = String(e.fix || ""), label = "", act = null
+        if (fix === "retry" && retry) { label = "Try again"; act = retry }
+        else if (fix.indexOf("settings:") === 0) {
+            var tab = fix.slice(9)
+            label = "Open settings"; act = function() { frame.go("settings", { tab: tab }) }
+        }
+        var said = e.plain ? e.plain + (e.next ? " " + e.next : "") : errorText(e), raw = String(e.message || "")
+        frame.toast(said, 8, label, act, raw !== "" && raw !== said ? raw : "")
     }
     // Starts the flow; the browser opens when the core says the listener is up. True when
     // a job started, false with the reason in connectErrors when the call was refused or
@@ -495,18 +509,24 @@ FocusScope {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
             width: Math.min(parent.width - theme.space(8), toastRow.implicitWidth + theme.space(4))
-            height: theme.controlHeight + theme.space(1)
+            height: toastCol.implicitHeight + theme.space(1)
             property var action: null
+            property string detail: ""
+            property bool detailOpen: false
             HoverHandler { id: toastHover }
+            Column {
+                id: toastCol
+                anchors.centerIn: parent
+                width: toastRow.implicitWidth
             Row {
                 id: toastRow
-                anchors.centerIn: parent
                 spacing: theme.space(2)
+                height: theme.controlHeight
                 Label {
                     id: toastText
                     anchors.verticalCenter: parent.verticalCenter
                     leftPadding: theme.space(2)
-                    width: Math.min(implicitWidth, toastBox.parent.width - theme.space(40))
+                    width: Math.min(implicitWidth, toastBox.parent.width - theme.space(toastBox.detail !== "" ? 60 : 40))
                     elide: Text.ElideRight
                     role: "ui"
                 }
@@ -519,12 +539,35 @@ FocusScope {
                     onClicked: { var a = toastBox.action; toastBox.visible = false; if (a) a() }
                 }
                 Button {
+                    objectName: "frame-toast-details"
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: toastBox.detail !== ""
+                    text: toastBox.detailOpen ? "Hide details" : "Details"
+                    small: true; flat: true; takesFocus: false
+                    onClicked: {
+                        toastBox.detailOpen = !toastBox.detailOpen
+                        if (toastBox.detailOpen) frame.copyQuiet(toastBox.detail)
+                    }
+                    Tooltip { text: toastBox.detailOpen ? "" : "Show what went wrong, word for word, and copy it" }
+                }
+                Button {
                     objectName: "frame-toast-close"
                     anchors.verticalCenter: parent.verticalCenter
                     small: true; flat: true; takesFocus: false
                     icon: "x"
                     onClicked: toastBox.visible = false
                     Tooltip { text: "Close" }
+                }
+            }
+                // The raw text, copied on open, so a report can carry it word for word
+                Label {
+                    objectName: "frame-toast-detail"
+                    visible: toastBox.detailOpen
+                    width: parent.width
+                    leftPadding: theme.space(2); rightPadding: theme.space(2); bottomPadding: theme.space(2)
+                    text: toastBox.detail + "\nCopied."
+                    role: "ledger"; color: theme.textDim
+                    wrapMode: Text.Wrap
                 }
             }
             Timer { id: toastTimer; onTriggered: if (toastHover.hovered) restart(); else toastBox.visible = false }
@@ -723,8 +766,11 @@ FocusScope {
     // item's tip comes at once instead of after the hover intent
     property real tipWarmUntil: 0
     function tipWarm() { return tip.visible || Date.now() < tipWarmUntil }
-    // `actionText` and `action` add a button, Undo for one; it closes the toast and runs
-    function toast(text, seconds, actionText, action) {
+    // `actionText` and `action` add a button, Undo for one; it closes the toast and runs.
+    // `detail` adds Details, which opens the raw text under the line and copies it.
+    function toast(text, seconds, actionText, action, detail) {
+        toastBox.detail = detail || ""
+        toastBox.detailOpen = false
         toastText.text = text
         toastAct.text = actionText || ""
         toastBox.action = action || null
@@ -817,7 +863,7 @@ FocusScope {
     // True when the write started, so a caller can go on (Start watching plays next)
     function setListStatus(id, status, label) {
         var r = Door.call("SetListStatus", { series: id, status: status })
-        if (r.error) { frame.toast(r.error.message); return false }
+        if (r.error) { frame.fail(r.error); return false }
         frame.toast("Moving to " + label)
         return true
     }
@@ -852,6 +898,33 @@ FocusScope {
         if (JSON.stringify(d) !== JSON.stringify(subtitleDefaults)) subtitleDefaults = d
     }
     Connections { target: Door; function onSettingsChanged() { frame.subtitleRebuild() } }
+
+    // ---- Episode out (#212): the core says when an episode of a show on the Watching list
+    // airs; the desktop shows it unless Settings turned it off. A click raises the window on
+    // the series, or on Get episodes when the library does not have the show.
+    Connections {
+        target: Door
+        function onEpisodeOut(ep) {
+            if (Door.preferences.episode_notifications === false) return
+            frame.episodesOut[ep.anilist_id] = ep
+            Shell.notifyEpisode(ep)
+        }
+    }
+    // The episodes said this run, by AniList id, so a click on one can hand Downloads its titles
+    property var episodesOut: ({})
+    Connections {
+        target: Shell
+        function onNotificationOpened(series, anilistId, title, token) {
+            if (frame.hostWindow) Shell.raiseWindow(frame.hostWindow, token)
+            if (series >= 0) frame.go("series", { id: series }, title)
+            else {
+                // Downloads searches by the latin titles, so each goes over as AniList has it
+                var ep = frame.episodesOut[anilistId] || {}
+                frame.go("downloads", { hit: { id: anilistId, title: title, romaji: ep.romaji || title, english: ep.english || "",
+                                               native: ep.native || "", cover_url: "", episodes: 0, format: "", year: 0 } }, "Downloads")
+            }
+        }
+    }
     Timer { id: subtitleSave; interval: 250; onTriggered: frame.flushSubtitleDefaults() }
     function editSubtitleDefaults(f) {
         var d = JSON.parse(JSON.stringify(subtitleDefaults))
@@ -867,7 +940,7 @@ FocusScope {
         if (!subtitlePending.length) return
         subtitlePending = []
         var r = Door.setSubtitleDefaults(subtitleDefaults)
-        if (r.error) { frame.toast(r.error.message); subtitleRebuild() }
+        if (r.error) { frame.fail(r.error); subtitleRebuild() }
     }
     Component.onDestruction: if (Door.ready) flushSubtitleDefaults()
     function seriesDeleteItems() {
@@ -885,7 +958,7 @@ FocusScope {
     // `whole` (Downloads' On disk, #266) takes the extras too, so the series leaves the disk
     function askDeleteFiles(anchor, c, watchedOnly, whole) {
         var r = Door.getSeries(c.id)
-        if (r.error || !r.reply.detail) { frame.toast(r.error ? frame.errorText(r.error) : "That series is gone"); return }
+        if (r.error || !r.reply.detail) { r.error ? frame.fail(r.error) : frame.toast("That series is gone"); return }
         // An episode a torrent is still writing is not offered
         var files = (r.reply.detail.episodes || [])
             .filter(function(e) { return (e.downloading === undefined || e.downloading === null) && (!watchedOnly || e.watched) })
@@ -926,7 +999,7 @@ FocusScope {
             var words = frame.deleteCalls[token]
             if (words === undefined) return
             var m = Object.assign({}, frame.deleteCalls); delete m[token]; frame.deleteCalls = m
-            frame.toast(reply.error ? frame.errorText(reply.error) : words + " moved to the trash")
+            reply.error ? frame.fail(reply.error) : frame.toast(words + " moved to the trash")
         }
     }
 

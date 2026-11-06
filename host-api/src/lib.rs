@@ -34,6 +34,10 @@
 //!   its place, its history and its tracker progress on the host, as if it had
 //!   played there, and a show marked not interested is hidden on both.
 //!
+//! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other AniBeams
+//! it sees on the tailnet ([`Peers`]), for a phone, which cannot list tailnet
+//! devices itself.
+//!
 //! A host that lists [`FEATURE_PROOF`] says its key in [`Hello::key`], and a
 //! client may sign each request with its own key ([`proof`], with the `proof`
 //! feature): a request whose proof does not check out is refused, and one from
@@ -72,6 +76,10 @@ pub const FEATURE_CONVERT: &str = "convert";
 /// [`Hello::key`] is for. The scheme's version is the first word of each
 /// proof, so a newer one adds a new feature beside this.
 pub const FEATURE_PROOF: &str = "proof-v1";
+/// `GET`: [`Peers`], with [`FEATURE_PEERS`].
+pub const PEERS: &str = "/api/v1/peers";
+/// In [`Hello::features`] when the host answers [`PEERS`].
+pub const FEATURE_PEERS: &str = "peers";
 /// The `Call` variants [`CALL`] takes: the ones a player makes, and the two that keep
 /// Not interested the same on a client as on the host.
 pub const PLAYER_CALLS: &[&str] = &[
@@ -163,6 +171,38 @@ pub struct Hello {
     /// host.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub key: String,
+    /// Set when the host's Tailscale is talking to the asking device with no
+    /// direct path, carrying it through a DERP relay, as far as `tailscale
+    /// status` last said. A client spends less over such a path: a conversion
+    /// rather than the file. Absent from an older host, and when the host
+    /// cannot tell.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub relayed: bool,
+}
+
+/// `GET` [`PEERS`]: the other AniBeams the host sees on the tailnet, for a
+/// client that cannot list tailnet devices itself. Only devices the host
+/// trusts and that answered their hello as AniBeam a moment ago; neither the
+/// host nor the device asking is among them. A host that cannot read its
+/// tailnet answers `503` instead of an empty list, so a client keeps the list
+/// it had.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Peers {
+    #[serde(default)]
+    pub hosts: Vec<PeerHost>,
+}
+
+/// One AniBeam on the tailnet.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PeerHost {
+    /// Its machine name, from its own hello.
+    #[serde(default)]
+    pub name: String,
+    /// `http://<tailnet address>:<port>`, where it answered.
+    pub url: String,
+    /// Its AniBeam version.
+    #[serde(default)]
+    pub version: String,
 }
 
 /// `GET` [`probe_path`]: what one episode file holds.

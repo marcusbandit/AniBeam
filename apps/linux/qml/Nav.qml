@@ -20,9 +20,9 @@ QtObject {
     property real pendingScroll: -1
     signal changed()
 
-    readonly property var labels: ({ home: "Home", library: "Library", airing: "Airing now", feed: "Feed", watching: "Watching", metadata: "Show info", downloads: "Downloads",
+    readonly property var labels: ({ home: "Home", library: "Library", airing: "Airing now", feed: "Feed", watching: "Watching", stats: "Stats", metadata: "Show info", downloads: "Downloads",
                                      settings: "Settings", series: "Series", player: "Player" })
-    readonly property var railPages: ["home", "library", "airing", "feed", "watching", "metadata", "downloads", "settings"]
+    readonly property var railPages: ["home", "library", "airing", "feed", "watching", "metadata", "downloads", "settings", "stats"]
     readonly property string backLabel: trail.length ? trail[trail.length - 1].label : "Home"
     readonly property int railIndex: {
         var i = railPages.indexOf(current.page)
