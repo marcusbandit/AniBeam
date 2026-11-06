@@ -61,7 +61,11 @@ a `CARGO_TARGET_DIR` already in the environment wins. Never point two checkouts 
 cargo keys each workspace member by its path inside the workspace, so a worktree can take another
 checkout's build of `anibeam-core` or the shell as fresh and run without its own edits (#250). A fresh worktree pays one cold
 build (logged cold builds ran 99 s median, 518 s worst) and keeps a debug `target/` of several GB
-until the worktree goes. Right after each build the scripts copy the
+until the worktree goes. With sccache as cargo's `rustc-wrapper`, that cold build takes most
+third-party crates from another checkout's earlier build instead: the scripts pass the target dir
+as `--target-dir` and keep `CARGO_TARGET_DIR` out of cargo's environment, since sccache keys every
+compile on the `CARGO_*` variables and a per-checkout one would make every crate a miss (#263).
+`docs/build-from-source.md` has the setup. Right after each build the scripts copy the
 binary to `target/debug/anibeam-staged` and run that copy, so a capture runs this checkout's last
 build. `ANIBEAM_NO_BUILD=1` skips the build and reuses that staged copy. Release builds and
 `bench.sh` stay per checkout, so a worktree never replaces the binary the launcher starts.

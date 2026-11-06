@@ -244,7 +244,7 @@ async fn sent(
     user_id: Option<u64>,
     action: writes::Action,
 ) -> bool {
-    match writes::attempt(core, ctx, t, target, media_id, user_id, action).await {
+    match writes::attempt(core, ctx, t, target, media_id, user_id, &action).await {
         Ok(outcome) => outcome.ok,
         Err(e) => {
             let site = super::oauth::site_name(t);

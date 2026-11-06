@@ -33,14 +33,14 @@ fn entity_words(what: Entity) -> &'static str {
     }
 }
 
-fn tracker_name(tracker: Tracker) -> &'static str {
+pub fn tracker_name(tracker: Tracker) -> &'static str {
     match tracker {
         Tracker::Anilist => "AniList",
         Tracker::Mal => "MyAnimeList",
     }
 }
 
-fn provider_name(provider: Provider) -> &'static str {
+pub fn provider_name(provider: Provider) -> &'static str {
     match provider {
         Provider::Anilist => "AniList",
         Provider::Mal => "MyAnimeList",
@@ -62,8 +62,8 @@ fn sentence(message: &str) -> String {
 fn refusal_words(reason: Refusal) -> &'static str {
     match reason {
         Refusal::Hidden => "the show is hidden",
-        Refusal::NoMatch => "the show has no tracker match",
-        Refusal::NotNewer => "the tracker is already past this episode",
+        Refusal::NoMatch => "the show is not matched yet; match it on Show info",
+        Refusal::NotNewer => "your list is already past this episode",
         Refusal::Extra => "this is an extra",
         Refusal::Unmatched => "the file is not matched to an episode",
         Refusal::OnDisk => "the file is only on disk",
@@ -226,5 +226,13 @@ mod tests {
             reason: Refusal::OnDisk,
         };
         assert_eq!(e.to_string(), "Cannot do that: the file is only on disk.");
+    }
+
+    #[test]
+    fn refusals_speak_plain_words() {
+        for reason in [Refusal::NoMatch, Refusal::NotNewer] {
+            let shown = CoreError::Refused { reason }.to_string();
+            assert!(!shown.contains("tracker"), "{shown}");
+        }
     }
 }

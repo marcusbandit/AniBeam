@@ -10,11 +10,11 @@
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
+use crate::atomic_file;
 use crate::contract::*;
 use crate::core::Core;
 use crate::events::Subscription;
@@ -245,15 +245,6 @@ fn enabled(core: &Core) -> bool {
         .unwrap_or(false)
 }
 
-fn tmp_sibling(target: &Path) -> PathBuf {
-    let mut name = target
-        .file_name()
-        .map(std::ffi::OsString::from)
-        .unwrap_or_else(|| std::ffi::OsString::from("anibeam.ics"));
-    name.push(".tmp");
-    target.with_file_name(name)
-}
-
 /// The file's text with the DTSTAMP lines left out: what a calendar app
 /// compares, so a rewrite that only moves the stamp is no rewrite at all.
 fn without_stamps(text: &str) -> String {
@@ -278,13 +269,7 @@ fn write_file(core: &Core) -> Result<bool, CoreError> {
     {
         return Ok(false);
     }
-    if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| CoreError::io_at(parent.to_string_lossy(), e))?;
-    }
-    let tmp = tmp_sibling(&target);
-    std::fs::write(&tmp, text).map_err(|e| CoreError::io_at(tmp.to_string_lossy(), e))?;
-    std::fs::rename(&tmp, &target).map_err(|e| CoreError::io_at(target.to_string_lossy(), e))?;
+    atomic_file::write(&target, text)?;
     Ok(true)
 }
 

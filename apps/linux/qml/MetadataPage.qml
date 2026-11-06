@@ -1,14 +1,14 @@
 // Metadata, flat (DESIGN.md, the flat home pass): every series in the library as one small
 // poster tile, cut into the sections a librarian works in order. The head is the library's:
 // the title in the display cut with the count beside it, the search at the right, then one
-// line of pills (the filter with its counts, Match unmatched, Refresh all) that wraps on a
+// line of pills (the filter with its counts, Find the rest, Refresh all) that wraps on a
 // narrow window. Under it the figures (Tiles.qml), which are the sections' own counts off
-// the whole library, so they agree with what is below. Then the sections: Needs a match,
-// Folder gone, Missing episodes, Airing, Complete, each a heading in the display cut with
+// the whole library, so they agree with what is below. Then the sections: Not recognised,
+// Folder not found, Missing episodes, Airing, Complete, each a heading in the display cut with
 // its count, over a grid of tiles in the library's column math (columns from the width,
 // tiles widened to fill the line, so a narrow window has fewer columns). A tile is the
 // poster at 2:3, the title on one line, a state line that says the section's fact for this
-// series ("9 of 12", "5 of 7 aired", "12 of 12 +2", "No record yet"), and a dim line (the
+// series ("9 of 12", "5 of 7 aired", "12 of 12 +2", "No show info yet"), and a dim line (the
 // season, or the countdown to the next episode on an airing series), each on one line that
 // elides, never wraps. A click on a matched tile opens the episodes pane (EpisodesPane.qml:
 // which numbers are on disk and which are missing, as chips), on an unmatched one the match
@@ -26,7 +26,7 @@ Item {
     id: page
     objectName: "metadata-page"
     property var props: ({})
-    property string title: "Metadata"
+    property string title: "Show info"
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
     function focusSearch() { scroll.contentY = 0; search.focusInput() }
@@ -50,7 +50,7 @@ Item {
     function reload() {
         var keep = scroll.contentY
         var r = Door.listMetadata(page.filter, page.query, Door.revealHidden)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error, page.reload); return }
         page.counts = r.reply.counts
         page.rows = r.reply.rows
         // The figures are the library's, whatever the filter: one more read only when the
@@ -84,7 +84,7 @@ Item {
         return n ? Math.max(0, n.episode - 1) : (d.have || 0)
     }
     // The section a row works in, in the order a person would take them: a gone folder is
-    // past matching, so Folder gone wins over Needs a match; an unmatched folder has no
+    // past matching, so Folder not found wins over Not recognised; an unmatched folder has no
     // expected count to be short of; an airing series is never short of a total that has
     // not aired yet
     function bucketOf(d) {
@@ -97,8 +97,8 @@ Item {
         return "complete"
     }
     readonly property var sectionOrder: [
-        { key: "unmatched", title: "Needs a match" },
-        { key: "missing", title: "Folder gone" },
+        { key: "unmatched", title: "Not recognised" },
+        { key: "missing", title: "Folder not found" },
         { key: "incomplete", title: "Missing episodes" },
         { key: "airing", title: "Airing" },
         { key: "complete", title: "Complete" }
@@ -108,7 +108,7 @@ Item {
     function stateOf(d) {
         var card = d.series || {}, have = d.have || 0, k = bucketOf(d)
         if (k === "missing") return "Folder not found"
-        if (k === "unmatched") return "No record yet"
+        if (k === "unmatched") return "No show info yet"
         if (k === "airing") { var aired = airedOf(d); return Math.min(have, aired) + " of " + aired + " aired" }
         var expected = expectedOf(d)
         if (k === "incomplete") return have + " of " + expected
@@ -126,6 +126,40 @@ Item {
         return stateOf(d)
     }
     // A tile's click: the episodes for a matched series, the match for one without a record
+    // The first scan's walk (#206): the series that need a match, one at a time, by id. Apply
+    // or Skip opens the next; Close, Escape or a press outside stop it.
+    property var walkIds: []
+    property int walkAt: -1
+    function walkOpen() {
+        while (page.walkAt < page.walkIds.length) {
+            var r = Door.getSeries(page.walkIds[page.walkAt])
+            if (!r.error) {
+                var c = r.reply.detail.card
+                matchPanel.walkLine = (page.walkAt + 1) + " of " + page.walkIds.length
+                matchPanel.openFor(c.id, c.title, c.match_info)
+                return
+            }
+            page.walkAt++
+        }
+        page.walkEnd(true)
+    }
+    function walkEnd(done) {
+        var left = page.walkIds.length - page.walkAt
+        page.walkIds = []
+        page.walkAt = -1
+        matchPanel.walkLine = ""
+        if (done) frame.toast("That was the last one")
+        else if (left > 0) frame.toast(left === 1 ? "One left under Needs a match" : left + " left under Needs a match")
+    }
+    Connections {
+        target: matchPanel
+        function onEnded(how) {
+            if (page.walkAt < 0) return
+            if (how === "closed") { page.walkEnd(false); return }
+            page.walkAt++
+            Qt.callLater(page.walkOpen)
+        }
+    }
     function openTile(d) {
         var card = d.series || {}
         if (isMatched(card)) episodesPane.openFor(card.id, detailOf(d))
@@ -209,7 +243,7 @@ Item {
         }
         return out
     }
-    // The names the drives click: row-match on the first Needs a match tile when that
+    // The names the drives click: row-match on the first Not recognised tile when that
     // section is there (its click opens the match panel), else on the page's first tile;
     // row-refresh on the first tile that has a Refresh glyph, row-forget on the first gone
     // folder
@@ -253,7 +287,7 @@ Item {
     }
     function forget(card) {
         var r = Door.forgetSeries(card.id)
-        frame.toast(r.error ? r.error.message : "Forgot " + (card.title || card.titles.folder))
+        r.error ? frame.fail(r.error) : frame.toast("Forgot " + (card.title || card.titles.folder))
     }
     Timer { id: debounce; interval: 250; onTriggered: page.reload() }
     Timer { id: queryDebounce; interval: 250; onTriggered: { page.query = search.text; page.reload() } }
@@ -270,8 +304,8 @@ Item {
         }
         function onAutoMatchFinished(backfilled, matched, unmatched) {
             debounce.restart()
-            frame.toast(matched > 0 ? "Matched " + Fmt.plural(matched, "series", "series") + (unmatched > 0 ? ", " + unmatched + " still unmatched" : "")
-                                    : unmatched > 0 ? "No new matches, " + unmatched + " still unmatched" : "Everything is matched")
+            frame.toast(matched > 0 ? "Found " + Fmt.plural(matched, "show", "shows") + (unmatched > 0 ? ", " + unmatched + " still not recognised" : "")
+                                    : unmatched > 0 ? "Found nothing new, " + unmatched + " still not recognised" : "Every show is recognised")
         }
         // A cleared match emits nothing of its own, and the job end is the one signal
         // every bulk action shares
@@ -281,6 +315,7 @@ Item {
         search.text = query
         queryDebounce.stop()
         reload()
+        if (props.walk && props.walk.length) { page.walkIds = props.walk; page.walkAt = 0; Qt.callLater(page.walkOpen) }
     }
 
     // ---- The crawl, while it runs: a label and a thin line in the tools
@@ -292,6 +327,15 @@ Item {
     readonly property real tileMin: theme.space(24)
     readonly property int tileCols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (tileMin + tileGap)))
     readonly property real tileWidth: Math.floor((scroll.innerWidth - tileGap * (tileCols - 1)) / tileCols)
+    // A tile's height before it is built, so the unbuilt ones lay out as the built ones will
+    // (#612): the poster at 2:3, the title line, the state line, and the note line when the
+    // series has one. MetaTile sizes those lines from these same metrics, so the two agree.
+    FontMetrics { id: metaTitleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
+    FontMetrics { id: metaLedgerMetrics; font.family: theme.roleFamily("ledger"); font.pointSize: theme.roleSize("ledger"); font.weight: theme.roleWeight("ledger"); font.variableAxes: theme.roleAxes("ledger") }
+    readonly property real metaLine: Math.ceil(metaLedgerMetrics.height) + theme.space(0.25)
+    readonly property real metaBase: Math.round(tileWidth * 1.5) + theme.space(1.5) + Math.ceil(metaTitleMetrics.height)
+                                     + metaLine + theme.space(2)
+    function metaHeight(d) { return metaBase + (page.noteOf(d) !== "" ? metaLine : 0) }
 
     PageScroll {
         id: scroll
@@ -309,7 +353,7 @@ Item {
                 anchors.right: search.left; anchors.rightMargin: theme.space(6)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(3)
-                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Metadata"; role: "display"; font.pointSize: theme.typePage }
+                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Show info"; role: "display"; font.pointSize: theme.typePage }
                 Label {
                     objectName: "metadata-count"
                     anchors.baseline: titleLabel.baseline
@@ -344,18 +388,18 @@ Item {
             Button {
                 objectName: "metadata-match-all"
                 flat: true
-                text: "Match unmatched"
+                text: "Find the rest"
                 icon: "link"
-                onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up a match for unmatched folders") }
-                Tooltip { text: "Looks up every folder that has no match yet, on each metadata provider in the order Settings gives them" }
+                onClicked: { var r = Door.autoMatch(); r.error ? frame.fail(r.error, clicked) : frame.toast("Looking up the folders AniBeam does not know yet") }
+                Tooltip { text: "Looks up every folder AniBeam does not know yet, on each show info site in the order Settings gives them" }
             }
             Button {
                 objectName: "metadata-refresh-all"
                 flat: true
                 text: "Refresh all"
                 icon: "refresh-cw"
-                onClicked: { var r = Door.refreshAll(); frame.toast(r.error ? r.error.message : "Refreshing every matched series") }
-                Tooltip { text: "Fetches every matched series' record again" }
+                onClicked: { var r = Door.refreshAll(); r.error ? frame.fail(r.error, clicked) : frame.toast("Updating the info of every show") }
+                Tooltip { text: "Fetches the info of every recognised show again" }
             }
             // The franchise crawl's own line, only while it runs
             Column {
@@ -435,9 +479,18 @@ Item {
                     spacing: page.tileGap
                     // Air under the heading's hairline
                     topPadding: theme.space(3)
+                    // Each tile builds when it comes near the view, as Library's cards do (#612)
                     Repeater {
                         model: section.modelData.rows
-                        MetaTile { width: page.tileWidth }
+                        LazyTile {
+                            id: lazyMeta
+                            required property var modelData
+                            width: page.tileWidth
+                            height: item ? item.implicitHeight : page.metaHeight(modelData)
+                            // A hovered tile draws its lift and its glyph over its neighbours
+                            z: item ? item.z : 0
+                            sourceComponent: MetaTile { modelData: lazyMeta.modelData }
+                        }
                     }
                 }
             }
@@ -450,7 +503,7 @@ Item {
             height: visible ? theme.space(60) : 0
             EmptyState {
                 icon: page.counts.all === 0 ? "database" : "search"
-                title: page.counts.all === 0 ? "No metadata yet" : page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing under this filter"
+                title: page.counts.all === 0 ? "No show info yet" : page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing under this filter"
                 body: page.counts.all === 0 ? "Your library is empty. Add a folder in Settings and scan it to get started." : page.query !== "" ? "" : "No series here right now."
             }
         }
@@ -462,8 +515,9 @@ Item {
     // series), each on one line. At rest nothing else; hover lifts the tile one step of
     // the surface, turns the title to the accent and shows one glyph on the poster's foot:
     // Refresh, or Forget on a gone folder. A click on the tile opens the episodes pane, or
-    // the match panel for a series with no record. The glyph is always present (a drive
-    // click lands on it at rest); only its opacity follows the hover.
+    // the match panel for a series with no record. The glyph is built the first time the
+    // tile is hovered or takes the keyboard, and stays; the drive's first tiles have theirs
+    // from the start, so a drive click lands on it at rest. Its opacity follows the hover.
     component MetaTile: Item {
         id: tile
         required property var modelData
@@ -478,13 +532,12 @@ Item {
         readonly property string provider: card.match_info && card.match_info.provider ? page.providerLabel(card.match_info.provider) : ""
         readonly property string note: page.noteOf(d)
         readonly property real pad: theme.space(2)
-        FontMetrics { id: tileTitleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
         objectName: "meta-row-" + card.id
-        height: poster.height + theme.space(1.5) + writing.height + pad
+        implicitHeight: poster.height + theme.space(1.5) + writing.height + pad
 
         // 0 rest, 1 hover, followed with exponential smoothing like every tracking value
         property real lift: 0
-        readonly property real liftTarget: m.containsMouse || refreshGlyph.hovered || forgetGlyph.hovered ? 1 : 0
+        readonly property real liftTarget: m.containsMouse || (glyph.item && glyph.item.hovered) ? 1 : 0
         FrameAnimation {
             running: Math.abs(tile.lift - tile.liftTarget) > 0.002
             onTriggered: tile.lift = theme.follow(tile.lift, tile.liftTarget, frameTime)
@@ -502,6 +555,9 @@ Item {
         }
         // Under the glyph, so it takes its own click
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.onPressAction: page.openTile(tile.d)
+            Accessible.name: theme.nameNear(parent)
             id: m
             anchors.fill: parent
             anchors.margins: -tile.pad
@@ -542,36 +598,47 @@ Item {
             objectName: String(tile.card.id) === page.firstId ? "row-match" : ""
             anchors.fill: poster
         }
-        // The one glyph on the poster's foot, seen on hover. A hair above zero at rest: the
-        // drive's findItem treats opacity 0 as hidden
-        Item {
+        // The one glyph on the poster's foot, seen on hover. Built the first time the tile is
+        // hovered or focused, then kept, so Tab reaches it from the tile and an armed Forget
+        // outlives the pointer leaving (#612): a Button is a Shape, the dearest thing a tile
+        // held, and every tile carried two. The drive's first tiles have theirs from the
+        // start. A hair above zero at rest: the drive's findItem treats opacity 0 as hidden
+        Loader {
+            id: glyph
             anchors.horizontalCenter: poster.horizontalCenter
             anchors.bottom: poster.bottom
             anchors.bottomMargin: tile.pad
-            width: tile.gone ? forgetGlyph.width : refreshGlyph.width
-            height: tile.gone ? forgetGlyph.height : refreshGlyph.height
             opacity: Math.max(0.001, tile.lift)
+            readonly property bool driven: String(tile.card.id) === (tile.gone ? page.firstGoneId : page.firstRefreshId)
+            readonly property bool wanted: m.containsMouse || tile.activeFocus || driven
+            property bool stays: false
+            onWantedChanged: if (wanted) stays = true
+            active: stays || wanted
+            sourceComponent: tile.gone ? forgetComponent : refreshComponent
+        }
+        Component {
+            id: refreshComponent
             Button {
-                id: refreshGlyph
-                visible: !tile.gone
-                readonly property bool hovered: visible && lift > 0.5
+                readonly property bool hovered: lift > 0.5
                 objectName: String(tile.card.id) === page.firstRefreshId ? "row-refresh" : ""
                 icon: "refresh-cw"; small: true
-                onClicked: { var r = Door.refreshSeries(tile.card.id); frame.toast(r.error ? r.error.message : "Refreshing " + (tile.card.title || "")) }
-                Tooltip { text: "Fetch the record again" }
+                onClicked: { var r = Door.refreshSeries(tile.card.id); r.error ? frame.fail(r.error) : frame.toast("Refreshing " + (tile.card.title || "")) }
+                Tooltip { text: "Fetch this show's info again" }
             }
+        }
+        Component {
+            id: forgetComponent
             Button {
                 id: forgetGlyph
-                visible: tile.gone
-                readonly property bool hovered: visible && lift > 0.5
+                readonly property bool hovered: lift > 0.5
                 objectName: String(tile.card.id) === page.firstGoneId ? "row-forget" : ""
                 // Two clicks: the first arms it and says what goes, the second forgets
                 property bool armed: false
                 icon: "trash-2"; small: true; danger: true
-                text: armed ? "Forget it" : ""
+                text: armed ? "Remove it" : ""
                 onClicked: { if (!armed) { armed = true; forgetDisarm.restart(); return } armed = false; page.forget(tile.card) }
                 Timer { id: forgetDisarm; interval: 4000; onTriggered: forgetGlyph.armed = false }
-                Tooltip { text: forgetGlyph.armed ? "Click again to drop this series and its watch history" : "The folder is gone: drop this series and its history" }
+                Tooltip { text: forgetGlyph.armed ? "Click again to remove this show and its watch history from AniBeam" : "The folder is not on the disk any more: remove this show and its history from AniBeam" }
             }
         }
 
@@ -585,7 +652,7 @@ Item {
             // (a △ in a title took a taller fallback and pushed the lines under it down)
             Label {
                 width: parent.width
-                height: Math.ceil(tileTitleMetrics.height)
+                height: Math.ceil(metaTitleMetrics.height)
                 clip: true
                 text: page.titleOf(tile.d)
                 role: "title"; font.pointSize: theme.typeSmall
@@ -597,7 +664,7 @@ Item {
             // its right
             Item {
                 width: parent.width
-                height: stateLine.implicitHeight
+                height: Math.ceil(metaLedgerMetrics.height)
                 Label {
                     id: stateLine
                     anchors.left: parent.left
@@ -620,6 +687,7 @@ Item {
             Label {
                 visible: tile.note !== ""
                 width: parent.width
+                height: Math.ceil(metaLedgerMetrics.height)
                 text: tile.note
                 role: "ledger"
                 color: theme.textFaint

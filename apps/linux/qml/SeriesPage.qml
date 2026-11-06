@@ -41,6 +41,13 @@ Item {
     property bool optimisticWatched: false
     readonly property bool isMovie: card.kind === "Movie"
     readonly property bool hasTracker: !!(card.match_info && (card.match_info.anilist_id || card.match_info.mal_id))
+    // The connected trackers this series' writes reach, as a person names them
+    readonly property string trackerSites: {
+        var m = card.match_info, out = []
+        if (m && m.anilist_id && frame.trackerOn("anilist")) out.push("AniList")
+        if (m && m.mal_id && frame.trackerOn("mal")) out.push("MyAnimeList")
+        return out.join(" and ")
+    }
     readonly property bool matched: !!card.match_info
     // The site the record came from, named on the button that opens it
     readonly property string siteName: frame.providerName(card.match_info ? card.match_info.provider : "Anilist") || "AniList"
@@ -55,7 +62,7 @@ Item {
     // The episode count set by hand (#239); null clears it
     function setEpisodeCount(n) {
         var r = Door.call("SetEpisodeCount", { series: page.props.id, count: n })
-        if (r && r.error) frame.toast(frame.errorText(r.error))
+        if (r && r.error) frame.fail(r.error)
         else frame.toast(n === null ? "Episode count cleared" : "Set to " + n + " episodes")
     }
     // Schedule notes (#418): what the user told the schedule, for the card's season
@@ -112,7 +119,7 @@ Item {
     function contextItems() {
         return [
             { text: "Rescan show", icon: "refresh-cw", action: page.rescan },
-            { text: "Open in Metadata", icon: "database", action: function() { frame.go("metadata", { q: page.title }) } }
+            { text: "Open in Show info", icon: "database", action: function() { frame.go("metadata", { q: page.title }) } }
         ]
     }
     // Deleting (#158, #168), the phone's way: Delete in the first section's heading, then a bar
@@ -190,10 +197,10 @@ Item {
     // From the page's Quick fix the sheet comes filled in; from Fix files the suggestion waits
     // behind Fill in, so a fix of another file never carries it along
     function openFix(suggested, fill) { fixSheet.openFor(page.props.id, page.title, page.fixRows(), suggested || null, !!fill) }
-    function rescan() { var r = Door.rescanSeries(page.props.id); frame.toast(r.error ? r.error.message : "Rescan started") }
+    function rescan() { var r = Door.rescanSeries(page.props.id); r.error ? frame.fail(r.error) : frame.toast("Rescan started") }
     function load() {
         var r = Door.getSeries(props.id)
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.fail(r.error); return }
         detail = r.reply.detail
         optimisticProgress = -1
         optimisticFile = -1
@@ -282,7 +289,7 @@ Item {
         // The season goes along for a show with no tracker, whose marks are kept per season
         var id = props.id, season = ep.season || 1
         var r = Door.setProgress(id, target, season)
-        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.toast(r.error.message); return }
+        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.fail(r.error); return }
         // A mark that moves more than one episode says so, with the way back
         if (before >= 0 && Math.abs(target - before) > 1)
             frame.toast(target > before ? "Watched up to " + Fmt.episodeName("", target) : "Unwatched from " + Fmt.episodeName("", target + 1), 8, "Undo",
@@ -488,6 +495,9 @@ Item {
         // The menu pill's own name, for drive scripts to click
         property string pressName: ""
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.onPressAction: fact.clicked()
+            Accessible.name: theme.nameNear(parent)
             objectName: fact.pressName
             anchors.fill: parent
             visible: fact.menu
@@ -912,6 +922,18 @@ Item {
                         Tooltip { text: statusFact.settable ? frame.listHome(card) : "" }
                     }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
+                    // The list entry's notes, written to every connected tracker (#211); a show not
+                    // on a list yet has no entry to write them on
+                    Button {
+                        id: notesButton
+                        objectName: "series-notes"
+                        visible: statusFact.settable && !!card.list_status
+                        small: true; ghost: true
+                        icon: "pencil"
+                        text: page.detail && page.detail.notes ? "Your notes" : "Add notes"
+                        onClicked: notesSheet.openFor(page.props.id, page.title, page.detail ? page.detail.notes : "", page.trackerSites)
+                        Tooltip { text: page.detail && page.detail.notes ? page.detail.notes : "Notes on your list entry, kept on " + page.trackerSites }
+                    }
                     Button {
                         objectName: "series-hide"
                         small: true; ghost: true
@@ -922,11 +944,11 @@ Item {
                             // The id is kept here: Undo can come after the page is gone
                             var id = props.id
                             var r = Door.setHidden(id, hide)
-                            if (r.error) { frame.toast(r.error.message); return }
-                            frame.toast(hide ? page.title + " is hidden, and its tracker sync stops" : page.title + " is back, and syncs again", 6, "Undo",
+                            if (r.error) { frame.fail(r.error); return }
+                            frame.toast(hide ? page.title + " is hidden here, and AniBeam stops syncing it to AniList and MyAnimeList" : page.title + " is back, and syncs again", 6, "Undo",
                                         function() { Door.setHidden(id, !hide) })
                         }
-                        Tooltip { text: page.hasTracker ? "Hidden from every list, and tracker sync stops" : "Hidden from every list" }
+                        Tooltip { text: page.hasTracker ? "Hidden from every page here, and AniBeam stops syncing it to AniList and MyAnimeList" : "Hidden from every list" }
                     }
                     Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: frame.openLink(page.detail.site_url) }
                     Button {
@@ -1039,13 +1061,14 @@ Item {
                     visible: !!page.detail && page.detail.extras.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: "Openings, endings and more"; count: page.detail ? page.detail.extras.length : 0; action: DeleteButton { where: "extras" } }
+                    Heading { text: "Openings, endings and more"; count: page.detail ? page.grouped(page.detail.extras).length : 0; action: DeleteButton { where: "extras" } }
                     DeleteBar { where: "extras" }
                     Repeater {
                         model: [["Op", "Openings"], ["Ed", "Endings"], ["Pv", "Previews and trailers"], ["Sp", "Specials"], ["Other", "Other"]]
                         Column {
                             required property var modelData
-                            readonly property var group: page.detail ? page.detail.extras.filter(function(x) { return x.kind === modelData[0] }) : []
+                            // Two releases of one extra are one row, as for an episode (#468)
+                            readonly property var group: page.detail ? page.grouped(page.detail.extras.filter(function(x) { return x.kind === modelData[0] })) : []
                             visible: group.length > 0
                             width: parent.width
                             spacing: theme.space(2)
@@ -1059,7 +1082,9 @@ Item {
                                         required property var modelData
                                         episode: ({ code: modelData.code, title: modelData.label, resume: modelData.resume, watched: false, next_up: false })
                                         title: modelData.label
+                                        versions: page.deleting ? [] : (modelData.versions || [])
                                         onPlay: page.openFile(modelData.file)
+                                        onPlayVersion: function(file) { page.openFile(file) }
                                         picking: page.deleting
                                         picked: page.deletePicked.indexOf(modelData.file) >= 0
                                         onPick: page.togglePick(modelData.file)
@@ -1152,14 +1177,14 @@ Item {
                     Heading { text: "Match" }
                     Label {
                         width: Math.min(parent.width, theme.space(140))
-                        text: "Not matched yet, so there is no poster, synopsis or tracking. Find the record it belongs to on AniList or TVmaze."
+                        text: "Not matched yet, so there is no poster, synopsis or tracking. Find its show info on AniList or TVmaze."
                         role: "ui"; color: theme.textDim
                         wrapMode: Text.Wrap
                     }
                     Row {
                         spacing: theme.space(2)
                         Button { objectName: "series-find-match"; text: "Find a match"; icon: "search"; primary: true; onClicked: matchPanel.openFor(page.props.id, page.title, card.match_info) }
-                        Button { text: "Open in Metadata"; icon: "database"; flat: true; onClicked: frame.go("metadata", { q: page.title }) }
+                        Button { text: "Open in Show info"; icon: "database"; flat: true; onClicked: frame.go("metadata", { q: page.title }) }
                     }
                     // What a name that matches looks like (#207): the show's title as AniList
                     // writes it, then the season, then the episode
@@ -1309,6 +1334,9 @@ Item {
             }
         }
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.onPressAction: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? frame.openLink(rel.node.site_url) : frame.openLink("https://anilist.co/anime/" + rel.node.anilist_id))
+            Accessible.name: theme.nameNear(parent)
             id: relMouse
             anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
             onClicked: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? frame.openLink(rel.node.site_url) : frame.openLink("https://anilist.co/anime/" + rel.node.anilist_id))
@@ -1317,8 +1345,8 @@ Item {
 
     ScorePicker { id: scorePicker; parent: frame.overlay
         // A score kept on this device has no job to report back, so it says so here (#213)
-        onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.toast(r.error.message); else if (!r.reply || r.reply.job === undefined) frame.toast("Score saved") }
-        onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.toast(r.error.message); else if (!r.reply || r.reply.job === undefined) frame.toast("Score cleared") } }
+        onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast("Score saved") }
+        onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast("Score cleared") } }
 
     // The quick fix (#170), over the overlay like the match
     FixSheet {
@@ -1333,6 +1361,21 @@ Item {
         visible: fixSheet.visible
         dismissOnPress: true
         onDismissed: fixSheet.close()
+    }
+
+    // The list entry's notes (#211)
+    NotesSheet {
+        id: notesSheet
+        parent: frame.overlay
+        anchors.centerIn: parent
+    }
+    Blocker {
+        parent: frame.overlay
+        anchors.fill: parent
+        z: -1
+        visible: notesSheet.visible
+        dismissOnPress: true
+        onDismissed: notesSheet.close()
     }
 
     // The schedule notes, from Fixes or the held line (#418)

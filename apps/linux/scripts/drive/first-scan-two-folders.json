@@ -1,0 +1,11 @@
+[
+  {"log": "Run against an empty ANIBEAM_ROOT with the network up. Pass two folders as --props '{\"folders\":[\"...\",\"...\"]}', the first with at least one show no provider knows. Both are added at once, so the second is queued onto the first one's scan, and each still gets its summary."},
+  {"until": "frame.item.knownSources !== null", "timeout": 10000},
+  {"eval": "var f = JSON.parse(Shell.props).folders; var a = Door.addSource(f[0]); var b = Door.addSource(f[1]); (a.error || b.error) ? 'err' : 'ok'", "expect": "ok"},
+  {"until": "frame.item.scanSummaryPanel.visible", "timeout": 300000},
+  {"eval": "frame.item.scanSummaryPanel.folder", "as": "first"},
+  {"click": "scan-summary-later"},
+  {"until": "frame.item.scanSummaryPanel.visible", "timeout": 60000},
+  {"eval": "frame.item.scanSummaryPanel.folder !== vars.first", "expect": true},
+  {"shot": "scan-5-second-folder"}
+]

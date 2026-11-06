@@ -71,6 +71,10 @@ pub mod qobject {
         // Library
         #[qinvokable]
         fn list_sources(self: &Door) -> QJsonObject;
+        /// What the first scan of the folder at `path` found (#206, scan_summary): shows,
+        /// recognised, need_you (id, title, match_info, in title order), episodes, watched.
+        #[qinvokable]
+        fn scan_summary(self: &Door, path: &QString) -> QJsonObject;
         #[qinvokable]
         fn add_source(self: &Door, path: &QString) -> QJsonObject;
         #[qinvokable]
@@ -473,6 +477,7 @@ pub mod qobject {
         fn scored(self: Pin<&mut Door>, series: f64, score: f64, outcomes: QJsonArray);
         #[qsignal]
         fn lists_moved(self: Pin<&mut Door>, tracker: QString, moved: i32, failed: i32);
+        fn notes_set(self: Pin<&mut Door>, series: f64, outcomes: QJsonArray);
         #[qsignal]
         fn list_status_set(
             self: Pin<&mut Door>,
@@ -506,6 +511,8 @@ pub mod qobject {
         fn import_finished(self: Pin<&mut Door>, summary: QJsonObject);
         #[qsignal]
         fn host_changed(self: Pin<&mut Door>, status: QJsonObject);
+        #[qsignal]
+        fn tailnet_devices_changed(self: Pin<&mut Door>, devices: QJsonArray);
         #[qsignal]
         fn presence_changed(self: Pin<&mut Door>, connected: bool);
         // Downloads
@@ -1374,6 +1381,7 @@ impl qobject::Door {
                 self.as_mut()
                     .lists_moved(s("tracker"), *moved as i32, *failed as i32)
             }
+            EventBody::NotesSet { .. } => self.as_mut().notes_set(n("series"), arr("outcomes")),
             EventBody::ProgressRefreshed { .. } => self.as_mut().progress_refreshed(s("tracker")),
             EventBody::WatchingRefreshed { .. } => self.as_mut().watching_refreshed(obj("list")),
             EventBody::AiringNowRefreshed { season } => self
@@ -1404,6 +1412,9 @@ impl qobject::Door {
             EventBody::ExportFinished { .. } => self.as_mut().export_finished(s("path")),
             EventBody::ImportFinished { .. } => self.as_mut().import_finished(obj("summary")),
             EventBody::HostChanged { .. } => self.as_mut().host_changed(obj("status")),
+            EventBody::TailnetDevicesChanged { .. } => {
+                self.as_mut().tailnet_devices_changed(arr("devices"))
+            }
             EventBody::PresenceChanged { connected } => self.as_mut().presence_changed(*connected),
             EventBody::DownloadsStatusChanged { .. } => {
                 self.as_mut().downloads_status_changed(obj("status"))
@@ -1515,6 +1526,23 @@ impl qobject::Door {
                 reveal_hidden,
             })
         })())
+    }
+    pub fn scan_summary(&self, path: &QString) -> QJsonObject {
+        let reply = from_qjson_object(&self.dispatch(Ok(Call::ListSeries {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: true,
+        })));
+        if reply.get("error").is_some() {
+            return to_qjson_object(&reply);
+        }
+        let series = reply["reply"]["series"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        to_qjson_object(&crate::scan_summary::summarise(&series, &path.to_string()))
     }
     pub fn list_airing(&self, offset: f64, limit: f64) -> QJsonObject {
         self.dispatch(Ok(Call::ListAiring {

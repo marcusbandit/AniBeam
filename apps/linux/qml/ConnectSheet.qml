@@ -191,7 +191,8 @@ Item {
                     size: theme.space(4.5)
                     color: closeMouse.containsMouse ? theme.text : theme.textDim
                     anchors.right: parent.right; anchors.top: parent.top
-                    MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
+                    MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close(); Accessible.role: Accessible.Button; Accessible.name: "Close"
+                        Accessible.onPressAction: root.close() }
                 }
             }
 
@@ -286,8 +287,8 @@ Item {
                     StepText {
                         title: root.anilist ? "Create the client on AniList" : "Create the app on MyAnimeList"
                         body: root.anilist
-                            ? "Open AniList's developer settings, create a client, and give it this redirect URL exactly, including the port and the /callback path."
-                            : "Open MyAnimeList's API page, create an ID with App Type \"other\", and give it this redirect URL exactly, including the port and the /callback path."
+                            ? "Open AniList's developer settings, create a new client, and paste this address into its Redirect URL box exactly as it is here."
+                            : "Open MyAnimeList's API page, create an ID with App Type \"other\", and paste this address into its App Redirect URL box exactly as it is here."
                     }
                     Flow {
                         width: parent.width
@@ -300,7 +301,7 @@ Item {
                             icon: urlCopied.running ? "check" : "copy"
                             maxLabelWidth: parent.width - theme.space(30)
                             onClicked: { frame.copyQuiet(frame.redirectUrl); urlCopied.restart() }
-                            Tooltip { text: "Copy the redirect URL" }
+                            Tooltip { text: "Copy the address" }
                         }
                         Timer { id: urlCopied; interval: 1200 }
                     }
@@ -317,8 +318,8 @@ Item {
                     width: parent.width - badge2.width - parent.spacing * 2
                     spacing: theme.space(2)
                     StepText {
-                        title: "Paste the Client ID"
-                        body: root.anilist ? "It is the number on your new client's page." : "It is the long string under \"Client ID\" on your new app's page."
+                        title: "Paste the app's ID"
+                        body: root.anilist ? "AniList calls it Client ID: the number on your new client's page." : "MyAnimeList calls it Client ID: the long string on your new app's page."
                     }
                     Field { id: accountId; width: parent.width; placeholder: "Client ID"; mono: true }
                     Field {

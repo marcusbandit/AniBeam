@@ -209,6 +209,13 @@ impl QbtClient {
         self.call("rss/removeItem", Some(form)).await.map(|_| ())
     }
 
+    /// Asks qBittorrent to read one feed now rather than at its next
+    /// interval; `path` is the feed's path in its RSS tree.
+    pub async fn refresh_feed(&self, path: &str) -> Result<(), CoreError> {
+        let form = vec![("itemPath".to_string(), path.to_string())];
+        self.call("rss/refreshItem", Some(form)).await.map(|_| ())
+    }
+
     pub async fn remove_rule(&self, name: &str) -> Result<(), CoreError> {
         let form = vec![("ruleName".to_string(), name.to_string())];
         self.call("rss/removeRule", Some(form)).await.map(|_| ())
@@ -638,13 +645,25 @@ fn torrent(v: &Value) -> Torrent {
 
 /// `http://t.example:7777/announce` to `t.example`.
 fn tracker_host(url: &str) -> String {
-    let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
-    let host = rest.split(['/', '?']).next().unwrap_or("");
+    let url = url.trim();
+    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
+    // The HTTP client ends an http(s) host at a backslash too, as at a slash, so
+    // `https://t.example\0123abcd\announce` is `t.example`, never its path and passkey
+    // (#493). The host is kept as written, so a udp or non-ASCII one stays readable, and
+    // lowercased, so one tracker shows under one name whatever its scheme.
+    let ends: &[char] =
+        if scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https") {
+            &['/', '\\', '?', '#']
+        } else {
+            &['/', '?', '#']
+        };
+    let host = rest.split(ends).next().unwrap_or("");
     let host = host.rsplit('@').next().unwrap_or(host);
-    match host.strip_prefix('[') {
-        Some(v6) => v6.split(']').next().unwrap_or("").to_string(),
-        None => host.split(':').next().unwrap_or("").to_string(),
-    }
+    let host = match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    host.to_ascii_lowercase()
 }
 
 /// A blank torrent for other modules' tests.
@@ -867,6 +886,24 @@ mod tests {
         assert_eq!(tracker_host("udp://[::1]:80/announce"), "::1");
         assert_eq!(tracker_host(""), "");
         assert!(!torrent(&Value::Null).seq_dl);
+    }
+
+    /// The HTTP client reads a backslash in an http(s) URL as a slash, so the tracker is
+    /// the host it would announce to, never its path and passkey (#493).
+    #[test]
+    fn a_tracker_written_with_backslashes_is_its_host() {
+        assert_eq!(
+            tracker_host("https://t.example\\0123abcd\\announce"),
+            "t.example"
+        );
+        assert_eq!(
+            tracker_host("http://user:pw@T.example:7777\\announce?passkey=x"),
+            "t.example"
+        );
+        // A udp tracker reads backslashes as written, and keeps a readable host; one
+        // tracker is one name whatever its scheme.
+        assert_eq!(tracker_host("udp://трекер.рф:80/announce"), "трекер.рф");
+        assert_eq!(tracker_host("udp://T.Example:80/announce"), "t.example");
     }
 
     #[tokio::test]

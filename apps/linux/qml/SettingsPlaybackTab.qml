@@ -21,7 +21,7 @@ SettingsTab {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.discord_presence = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     // Whether Discord is connected right now: read once, then kept current by the core's event
     property bool discordConnected: false
@@ -30,7 +30,7 @@ SettingsTab {
 
     Panel {
         title: "Skipping"
-        helper: "Uses the file's chapters, else AniSkip. Undo in the player turns skipping off until AniBeam closes."
+        helper: "Uses the file's chapters, else skip times other viewers shared online. Undo in the player turns skipping off until AniBeam closes."
         SettingRow { label: "Skip intros"
             Switch { checked: !!tab.skip.intro; onToggled: function(on) { Door.setAutoSkip(on, !!tab.skip.outro) } } }
         SettingRow { label: "Skip outros"; helper: "Reaching the outro also marks the episode watched."
@@ -57,7 +57,7 @@ SettingsTab {
             Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } }
     }
     Panel {
-        title: "mpv"
+        title: "Advanced"
         SettingRow { label: "Use my mpv settings"; helper: "Reads your mpv.conf. Options that only work at startup are skipped, and scripts never load."
             status: Player.configLayers.length ? Player.configLayers.join("\n") : "No mpv settings file found."
             Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }

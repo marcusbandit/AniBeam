@@ -17,7 +17,7 @@ Column {
 
     function send(name, args) {
         var r = Door.call(name, args)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     function setAhead(n) {
         if (n < 1 || n > 500 || n === root.roll.ahead) return
@@ -27,7 +27,7 @@ Column {
     Label {
         objectName: "roll-window"
         width: parent.width
-        text: !root.on ? "" : "Rolling " + root.roll.ahead + " ahead: episodes " + root.roll.next + " to " + root.roll.through + " of " + root.roll.total
+        text: !root.on ? "" : "Keeping " + root.roll.ahead + " ready: episodes " + root.roll.next + " to " + root.roll.through + " of " + root.roll.total
               + (root.roll.watched > 0 ? ", " + root.roll.watched + " watched" : "")
         role: "ui"
         color: theme.textDim
@@ -45,7 +45,7 @@ Column {
             small: true
             enabled: root.remaining > 0
             onClicked: root.send("RollMore", { id: root.roll.id, count: root.roll.ahead })
-            Tooltip { text: "Download the next episodes now. Rolling carries on once you catch up." }
+            Tooltip { text: "Download the next episodes now. AniBeam keeps the next few ready again once you catch up." }
         }
         // The stepper wraps as one piece
         Row {
@@ -64,7 +64,7 @@ Column {
             flat: true
             enabled: root.remaining > 0
             onClicked: root.confirming = true
-            Tooltip { text: "Stop rolling and download every episode left" }
+            Tooltip { text: "Stop keeping a few ready and download every episode left" }
         }
     }
     // The question over its buttons, so it fits a narrow column
