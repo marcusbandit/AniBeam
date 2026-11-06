@@ -292,6 +292,15 @@ Item {
     readonly property real tileMin: theme.space(24)
     readonly property int tileCols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (tileMin + tileGap)))
     readonly property real tileWidth: Math.floor((scroll.innerWidth - tileGap * (tileCols - 1)) / tileCols)
+    // A tile's height before it is built, so the unbuilt ones lay out as the built ones will
+    // (#612): the poster at 2:3, the title line, the state line, and the note line when the
+    // series has one. A built tile reports its own, so a pixel of difference settles once.
+    FontMetrics { id: metaTitleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
+    FontMetrics { id: metaLedgerMetrics; font.family: theme.roleFamily("ledger"); font.pointSize: theme.roleSize("ledger"); font.weight: theme.roleWeight("ledger"); font.variableAxes: theme.roleAxes("ledger") }
+    readonly property real metaLine: Math.ceil(metaLedgerMetrics.height) + theme.space(0.25)
+    readonly property real metaBase: Math.round(tileWidth * 1.5) + theme.space(1.5) + Math.ceil(metaTitleMetrics.height)
+                                     + metaLine + theme.space(2)
+    function metaHeight(d) { return metaBase + (page.noteOf(d) !== "" ? metaLine : 0) }
 
     PageScroll {
         id: scroll
@@ -435,9 +444,16 @@ Item {
                     spacing: page.tileGap
                     // Air under the heading's hairline
                     topPadding: theme.space(3)
+                    // Each tile builds when it comes near the view, as Library's cards do (#612)
                     Repeater {
                         model: section.modelData.rows
-                        MetaTile { width: page.tileWidth }
+                        LazyTile {
+                            id: lazyMeta
+                            required property var modelData
+                            width: page.tileWidth
+                            height: item ? item.implicitHeight : page.metaHeight(modelData)
+                            sourceComponent: MetaTile { modelData: lazyMeta.modelData }
+                        }
                     }
                 }
             }
@@ -478,13 +494,12 @@ Item {
         readonly property string provider: card.match_info && card.match_info.provider ? page.providerLabel(card.match_info.provider) : ""
         readonly property string note: page.noteOf(d)
         readonly property real pad: theme.space(2)
-        FontMetrics { id: tileTitleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
         objectName: "meta-row-" + card.id
-        height: poster.height + theme.space(1.5) + writing.height + pad
+        implicitHeight: poster.height + theme.space(1.5) + writing.height + pad
 
         // 0 rest, 1 hover, followed with exponential smoothing like every tracking value
         property real lift: 0
-        readonly property real liftTarget: m.containsMouse || refreshGlyph.hovered || forgetGlyph.hovered ? 1 : 0
+        readonly property real liftTarget: m.containsMouse || (glyph.item && glyph.item.hovered) ? 1 : 0
         FrameAnimation {
             running: Math.abs(tile.lift - tile.liftTarget) > 0.002
             onTriggered: tile.lift = theme.follow(tile.lift, tile.liftTarget, frameTime)
@@ -542,28 +557,37 @@ Item {
             objectName: String(tile.card.id) === page.firstId ? "row-match" : ""
             anchors.fill: poster
         }
-        // The one glyph on the poster's foot, seen on hover. A hair above zero at rest: the
-        // drive's findItem treats opacity 0 as hidden
-        Item {
+        // The one glyph on the poster's foot, seen on hover. Built only while the tile is
+        // hovered (#612): a Button is a Shape, the dearest thing a tile held, and every tile
+        // carried two. The drive's first tiles keep theirs at rest, so a drive click lands on
+        // it as before. A hair above zero at rest: the drive's findItem treats opacity 0 as
+        // hidden
+        Loader {
+            id: glyph
             anchors.horizontalCenter: poster.horizontalCenter
             anchors.bottom: poster.bottom
             anchors.bottomMargin: tile.pad
-            width: tile.gone ? forgetGlyph.width : refreshGlyph.width
-            height: tile.gone ? forgetGlyph.height : refreshGlyph.height
             opacity: Math.max(0.001, tile.lift)
+            readonly property bool driven: String(tile.card.id) === (tile.gone ? page.firstGoneId : page.firstRefreshId)
+            active: tile.lift > 0.01 || m.containsMouse || driven
+            sourceComponent: tile.gone ? forgetComponent : refreshComponent
+        }
+        Component {
+            id: refreshComponent
             Button {
                 id: refreshGlyph
-                visible: !tile.gone
-                readonly property bool hovered: visible && lift > 0.5
+                readonly property bool hovered: lift > 0.5
                 objectName: String(tile.card.id) === page.firstRefreshId ? "row-refresh" : ""
                 icon: "refresh-cw"; small: true
                 onClicked: { var r = Door.refreshSeries(tile.card.id); frame.toast(r.error ? r.error.message : "Refreshing " + (tile.card.title || "")) }
                 Tooltip { text: "Fetch the record again" }
             }
+        }
+        Component {
+            id: forgetComponent
             Button {
                 id: forgetGlyph
-                visible: tile.gone
-                readonly property bool hovered: visible && lift > 0.5
+                readonly property bool hovered: lift > 0.5
                 objectName: String(tile.card.id) === page.firstGoneId ? "row-forget" : ""
                 // Two clicks: the first arms it and says what goes, the second forgets
                 property bool armed: false
@@ -585,7 +609,7 @@ Item {
             // (a △ in a title took a taller fallback and pushed the lines under it down)
             Label {
                 width: parent.width
-                height: Math.ceil(tileTitleMetrics.height)
+                height: Math.ceil(metaTitleMetrics.height)
                 clip: true
                 text: page.titleOf(tile.d)
                 role: "title"; font.pointSize: theme.typeSmall
