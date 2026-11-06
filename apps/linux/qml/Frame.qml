@@ -842,6 +842,11 @@ FocusScope {
     // A list status is the trackers': it is offered for a series that a connected tracker
     // carries an id for, and not for a hidden one, whose tracker sync is off. A match with only
     // an AniList id and only MAL connected has nowhere to write, so it gets no menu.
+    // A series AniBeam put a name to: any provider id at all. Show info's sections and Help's
+    // count both read it, so the two never disagree.
+    function hasMatch(card) {
+        return !!card && !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
+    }
     function trackerOn(t) { return !!Door.trackers && !!Door.trackers[t] && Door.trackers[t].connected === true }
     function canSetListStatus(c) {
         if (!c || c.hidden || !c.match_info) return false
@@ -898,6 +903,33 @@ FocusScope {
         if (JSON.stringify(d) !== JSON.stringify(subtitleDefaults)) subtitleDefaults = d
     }
     Connections { target: Door; function onSettingsChanged() { frame.subtitleRebuild() } }
+
+    // ---- Episode out (#212): the core says when an episode of a show on the Watching list
+    // airs; the desktop shows it unless Settings turned it off. A click raises the window on
+    // the series, or on Get episodes when the library does not have the show.
+    Connections {
+        target: Door
+        function onEpisodeOut(ep) {
+            if (Door.preferences.episode_notifications === false) return
+            frame.episodesOut[ep.anilist_id] = ep
+            Shell.notifyEpisode(ep)
+        }
+    }
+    // The episodes said this run, by AniList id, so a click on one can hand Downloads its titles
+    property var episodesOut: ({})
+    Connections {
+        target: Shell
+        function onNotificationOpened(series, anilistId, title, token) {
+            if (frame.hostWindow) Shell.raiseWindow(frame.hostWindow, token)
+            if (series >= 0) frame.go("series", { id: series }, title)
+            else {
+                // Downloads searches by the latin titles, so each goes over as AniList has it
+                var ep = frame.episodesOut[anilistId] || {}
+                frame.go("downloads", { hit: { id: anilistId, title: title, romaji: ep.romaji || title, english: ep.english || "",
+                                               native: ep.native || "", cover_url: "", episodes: 0, format: "", year: 0 } }, "Downloads")
+            }
+        }
+    }
     Timer { id: subtitleSave; interval: 250; onTriggered: frame.flushSubtitleDefaults() }
     function editSubtitleDefaults(f) {
         var d = JSON.parse(JSON.stringify(subtitleDefaults))

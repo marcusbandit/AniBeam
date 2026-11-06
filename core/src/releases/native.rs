@@ -430,9 +430,13 @@ mod tests {
             vec![
                 Endpoint::new("feed", "rss", "https://a/?q={query}"),
                 Endpoint::new("indexer", "torznab", "https://b/?q={query}"),
-                Endpoint::new("search", "nyaa", "https://e/"),
+                Endpoint::new("search", crate::releases::kinds::FILTERED_RSS, "https://e/"),
                 Endpoint::new("api", "json", "https://c/?q={query}"),
-                Endpoint::new("anime", "tosho", "https://d/?q={query}"),
+                Endpoint::new(
+                    "anime",
+                    crate::releases::kinds::JSON_FEED,
+                    "https://d/?q={query}",
+                ),
             ],
         );
         assert!(native.feed_is_rss("feed"));
@@ -499,7 +503,11 @@ mod tests {
             vec![
                 Endpoint::new("feed", "rss", "https://a/?q={query}"),
                 Endpoint::new("api", "json", "https://c/?q={query}"),
-                Endpoint::new("anime", "tosho", "https://d/?q={query}"),
+                Endpoint::new(
+                    "anime",
+                    crate::releases::kinds::JSON_FEED,
+                    "https://d/?q={query}",
+                ),
             ],
         );
         for name in ["api", "anime"] {
