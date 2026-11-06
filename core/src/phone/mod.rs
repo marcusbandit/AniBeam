@@ -161,7 +161,7 @@ pub fn search_sources(core: &Core) -> Vec<PhoneSource> {
 /// pace its repo definition asks for.
 fn native(core: &Core) -> crate::releases::native::Native {
     let sources = searched(core).into_iter().map(|(_, e)| e).collect();
-    crate::releases::native::Native::for_core(core, sources)
+    crate::releases::native::Native::for_core(core, sources, None)
 }
 
 /// How long the show search waits for covers before answering without them.
