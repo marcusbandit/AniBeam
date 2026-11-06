@@ -2,15 +2,20 @@
 # Create the project's phone emulator, the same way on any machine.
 # Usage: scripts/create-avd.sh          AVD anibeam_pixel, Pixel 10 Pro profile, Android 16
 #        scripts/create-avd.sh --fold   AVD anibeam_fold, Pixel 10 Pro Fold with a hinge
-# Use the fold one with ANIBEAM_AVD=anibeam_fold in front of the other scripts.
+#        scripts/create-avd.sh --flip   AVD anibeam_flip, a clamshell that folds across
+# Use the fold one with ANIBEAM_AVD=anibeam_fold in front of the other scripts, the flip
+# one with ANIBEAM_AVD=anibeam_flip.
 set -euo pipefail
-if [[ "${1:-}" == "--fold" ]]; then
-  export ANIBEAM_AVD="${ANIBEAM_AVD:-anibeam_fold}"
-fi
+case "${1:-}" in
+  --fold) export ANIBEAM_AVD="${ANIBEAM_AVD:-anibeam_fold}" ;;
+  --flip) export ANIBEAM_AVD="${ANIBEAM_AVD:-anibeam_flip}" ;;
+esac
 source "$(dirname "$0")/env.sh"
 IMAGE="system-images;android-36;google_apis_playstore;x86_64"
 DEVICE=pixel_10_pro
 [[ "${1:-}" == "--fold" ]] && DEVICE=pixel_10_pro_fold
+# The SDK's 6.7 inch clamshell profile: the crease runs across the screen held upright.
+[[ "${1:-}" == "--flip" ]] && DEVICE="6.7in Foldable"
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk}"
 mkdir -p "$ANDROID_AVD_HOME"
 

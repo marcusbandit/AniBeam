@@ -85,5 +85,8 @@
             android:name="com.marcusrosado.anibeam.TorrentService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <!-- Where the fold's crease runs, as the phone reports it (Crease.java). Optional:
+             a phone without the library installs and runs, and the layout guesses. -->
+        <uses-library android:name="androidx.window.extensions" android:required="false" />
     </application>
 </manifest>

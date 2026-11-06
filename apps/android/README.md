@@ -166,7 +166,17 @@ ANIBEAM_AVD=anibeam_fold scripts/fold.sh half 120  # fold, unfold, half [degrees
 scripts/seed-demo.sh                             # shows airing this week, and downloads
 ```
 
-Its guest takes 4 GB, so the 7 GB cap is the floor. Folding locks the emulator unless
+A clamshell folds the other way, its crease across the screen held upright. The flip AVD
+has one, and the app reads where the crease runs from the phone's own report (Android's
+window extensions) rather than guessing a book fold:
+
+```sh
+scripts/create-avd.sh --flip                     # once: anibeam_flip, 6.7 inch clamshell
+ANIBEAM_AVD=anibeam_flip scripts/emulator.sh
+ANIBEAM_AVD=anibeam_flip scripts/fold.sh half 100
+```
+
+A foldable guest takes 4 GB, so the 7 GB cap is the floor. Folding locks the emulator unless
 `adb shell settings put secure fold_lock_behavior_setting stay_awake_on_fold_key` is set
 once.
 

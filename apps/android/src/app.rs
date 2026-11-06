@@ -2118,30 +2118,63 @@ pub fn run(
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || {
         with_app(App::tick)
     });
-    // The hinge, for the layout: a bend shows in a fifth of a second, and the sensor costs
-    // nothing between changes.
-    // A phone without a hinge answers None the first time, and the timer stops there.
+    // The hinge and the crease, for the layout: a bend shows in a fifth of a second. A phone
+    // with neither a hinge sensor nor window extensions stops the timer; one that has the
+    // extensions but reports no fold for a few seconds is looked at every two seconds after,
+    // so a foldable with no hinge sensor still follows when it opens.
     let hinge = Rc::new(Timer::default());
     let fold_window = window.as_weak();
     let stop = Rc::downgrade(&hinge);
+    let mut flat_ticks = 0u32;
     hinge.start(TimerMode::Repeated, Duration::from_millis(200), move || {
         let Some(window) = fold_window.upgrade() else {
             return;
         };
-        let (angle, across) = crate::android::fold();
-        if angle.is_none() {
+        if !crate::crease::look_now(flat_ticks) {
+            flat_ticks += 1;
+            return;
+        }
+        let (angle, rotated) = crate::android::fold();
+        let reading = crate::android::crease();
+        // No hinge and no window extensions: nothing will ever say, so the timer stops.
+        if angle.is_none() && reading == crate::crease::Reading::Silent {
             if let Some(t) = stop.upgrade() {
                 t.stop();
             }
             return;
         }
         let fold = window.global::<crate::Fold>();
+        if angle.is_none() && !matches!(reading, crate::crease::Reading::Fold(_)) {
+            flat_ticks += 1;
+            // A crease that went away (shut, on a foldable with no hinge sensor) leaves none
+            // behind for the layout.
+            if fold.get_crease_known() {
+                fold.set_crease_known(false);
+                fold.set_crease_half(false);
+                fold.set_crease_across(rotated);
+            }
+            return;
+        }
+        flat_ticks = 0;
         let angle = angle.unwrap_or(180.0);
         if fold.get_hinge() != angle {
             fold.set_hinge(angle);
         }
-        if fold.get_crease_across() != across {
-            fold.set_crease_across(across);
+        let crease = crate::crease::layout(reading, rotated, window.window().scale_factor());
+        if fold.get_crease_across() != crease.across {
+            fold.set_crease_across(crease.across);
+        }
+        if fold.get_crease_known() != crease.known {
+            fold.set_crease_known(crease.known);
+        }
+        if fold.get_crease_half() != crease.half {
+            fold.set_crease_half(crease.half);
+        }
+        if fold.get_crease_start() != crease.start {
+            fold.set_crease_start(crease.start);
+        }
+        if fold.get_crease_end() != crease.end {
+            fold.set_crease_end(crease.end);
         }
     });
     let syncs = Timer::default();
