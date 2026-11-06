@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -224,14 +225,12 @@ fn moved(file: &str, there: &str, here: &str) -> Option<String> {
     if !rest.starts_with(['/', '\\']) {
         return None;
     }
-    // Join with the separator the path here already uses, so a path here
-    // keeps one style whichever system this runs on.
-    let sep = match here.rfind(['/', '\\']) {
-        Some(i) => &here[i..=i],
-        None => std::path::MAIN_SEPARATOR_STR,
-    };
-    let base = here.trim_end_matches(['/', '\\']);
-    Some(format!("{base}{sep}{}", last_segment(rest)))
+    Some(
+        Path::new(here)
+            .join(last_segment(rest))
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 /// The history there, rewritten onto the paths of the series here; what
@@ -611,23 +610,6 @@ mod tests {
     }
 
     #[test]
-    fn a_moved_file_keeps_the_separator_of_the_path_here() {
-        assert_eq!(
-            moved("/m/Show/Show - 01.mkv", "/m/Show", "D:\\Anime\\Show").as_deref(),
-            Some("D:\\Anime\\Show\\Show - 01.mkv")
-        );
-        assert_eq!(
-            moved(
-                "C:\\Anime\\Show\\Show - 01.mkv",
-                "C:\\Anime\\Show",
-                "/home/a/Show/"
-            )
-            .as_deref(),
-            Some("/home/a/Show/Show - 01.mkv")
-        );
-    }
-
-    #[test]
     fn history_lands_on_the_paths_here() {
         let paths = HashMap::from([
             ("C:\\Anime\\Show".to_string(), "/home/a/Show".to_string()),
@@ -680,9 +662,17 @@ mod tests {
         let here = translate(history, &paths);
         assert_eq!(here.views.len(), 1);
         assert_eq!(here.views[0].series, "/home/a/Show");
+        // The scanner here joins with the separator of the system here, so
+        // a file moved onto a series path here does the same.
+        let in_show = |name: &str| {
+            Path::new("/home/a/Show")
+                .join(name)
+                .to_string_lossy()
+                .into_owned()
+        };
         assert_eq!(
             here.completed[0].file.as_deref(),
-            Some("/home/a/Show/Show - OP1.mkv")
+            Some(in_show("Show - OP1.mkv").as_str())
         );
         let files: Vec<_> = here
             .resume_points
@@ -692,7 +682,7 @@ mod tests {
                 ResumeEntry::Series { series, .. } => series.clone(),
             })
             .collect();
-        assert_eq!(files, ["/home/a/Show/Show - SP.mkv", "/home/a/Film.mkv"]);
+        assert_eq!(files, [in_show("Show - SP.mkv"), "/home/a/Film.mkv".into()]);
     }
 
     #[test]
