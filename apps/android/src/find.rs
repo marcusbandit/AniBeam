@@ -291,6 +291,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.on_download_release(|i| with(|f| f.download_release(i)));
     d.on_download_all(|| with(Find::download_all));
     d.on_subscribe(|| with(Find::subscribe));
+    d.on_unfollow(|files| with(|f| f.unfollow(files)));
 }
 
 impl Find {
@@ -501,10 +502,8 @@ impl Find {
                         // A rule on a source that answers JSON reads no feed (#536)
                         ledger: if !r.followable {
                             "no new episodes: its source has no feed".into()
-                        } else if r.file_count == 1 {
-                            "1 file".into()
                         } else {
-                            format!("{} files", r.file_count)
+                            taken(r)
                         },
                         ledger_tone: if r.followable { 0 } else { 2 },
                         ..self.offer_named(&r.name, &folder)
@@ -539,7 +538,7 @@ impl Find {
         let lines = [
             "Aired episodes that are not on this phone. Open a show to see who has them.",
             "New episodes still to come, the soonest first.",
-            "The subscriptions: new episodes download by themselves.",
+            "The subscriptions: new episodes download by themselves. Open one to stop it.",
             "What this phone downloaded, a show at a time.",
         ];
         let empty = [
@@ -1224,7 +1223,15 @@ impl Find {
         let active = state.active.map(|i| i as i32).unwrap_or(-1);
         let follow = state.follow;
         let replace = state.replace;
+        let rule = rule_for(&self.rules, &show.folder);
+        let rule_name = rule.map(|r| r.name.clone()).unwrap_or_default();
+        let rule_said = rule.map(rule_line).unwrap_or_default();
         self.with_data(|d| {
+            if rule_name.is_empty() {
+                d.set_unfollow_ask(false);
+            }
+            d.set_rule_name(rule_name.into());
+            d.set_rule_line(rule_said.into());
             d.set_show_title(show.title.clone().into());
             d.set_show_facts(facts_line.join("  ").into());
             d.set_show_poster(poster);
@@ -1621,6 +1628,93 @@ impl Find {
     }
 }
 
+impl Find {
+    /// Stops following the open show: its subscription goes, and with `files` what it
+    /// downloaded too, episodes included. The desktop's Unsubscribe, after the same confirm.
+    fn unfollow(&mut self, files: bool) {
+        let Some(name) = self
+            .show
+            .as_ref()
+            .and_then(|s| rule_for(&self.rules, &s.offer.show.folder))
+            .map(|r| r.name.clone())
+        else {
+            return;
+        };
+        self.with_data(|d| {
+            d.set_unfollow_ask(false);
+            d.set_busy(true);
+        });
+        ask(
+            Call::PhoneUnsubscribe {
+                names: vec![name.clone()],
+                files,
+            },
+            move |f, answer| {
+                f.with_data(|d| d.set_busy(false));
+                match answer {
+                    Ok(_) => {
+                        f.rules.retain(|r| r.name != name);
+                        f.line(&unfollowed_line(&name, files), "");
+                        f.draw_show();
+                        f.refresh();
+                    }
+                    Err(e) => f.line("", &format!("Still following: {}", words(&e))),
+                }
+            },
+        );
+    }
+}
+
+/// The subscription that downloads into a show's folder, matched by the folder's name the
+/// way the Following lens names its shows.
+fn rule_for<'a>(rules: &'a [SubscriptionRule], folder: &str) -> Option<&'a SubscriptionRule> {
+    if folder.is_empty() {
+        return None;
+    }
+    rules.iter().find(|r| {
+        std::path::Path::new(&r.save_path)
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy() == folder)
+    })
+}
+
+/// What a subscription has taken so far: "3 downloads, 3 files on this phone".
+fn taken(r: &SubscriptionRule) -> String {
+    let count = |n: u64, one: &str, many: &str| {
+        if n == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{n} {many}")
+        }
+    };
+    format!(
+        "{}, {} on this phone",
+        count(r.torrent_count, "download", "downloads"),
+        count(r.file_count, "file", "files")
+    )
+}
+
+/// The show view's line about its subscription: what it took, and whether it still can.
+fn rule_line(r: &SubscriptionRule) -> String {
+    if r.followable {
+        format!("New episodes download by themselves. {}.", taken(r))
+    } else {
+        format!(
+            "Its source has no feed, so no new episodes come. {}.",
+            taken(r)
+        )
+    }
+}
+
+/// What the page says once a show is no longer followed.
+fn unfollowed_line(name: &str, files: bool) -> String {
+    if files {
+        format!("Stopped following {name} and deleted what it downloaded.")
+    } else {
+        format!("Stopped following {name}. Its episodes stay on this phone.")
+    }
+}
+
 /// Every name a library card goes by, the shown title first, each once. A show's
 /// releases are searched by these in order.
 fn names_of(c: &SeriesCard) -> Vec<String> {
@@ -1740,5 +1834,60 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
         poster: (!poster.is_empty()).then_some(poster),
         ledger: facts.join(", "),
         ledger_tone: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule(name: &str, save_path: &str, torrents: u64, files: u64) -> SubscriptionRule {
+        serde_json::from_value(serde_json::json!({
+            "name": name, "feed_url": "https://feed.test/rss?q=x", "save_path": save_path,
+            "torrent_count": torrents, "file_count": files,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_show_finds_the_subscription_that_fills_its_folder() {
+        let rules = [
+            rule("Frieren", "/data/files/Anime/Sousou no Frieren", 3, 3),
+            rule("Dandadan", "/data/files/Anime/Dandadan", 1, 1),
+        ];
+        assert_eq!(
+            rule_for(&rules, "Dandadan").map(|r| r.name.as_str()),
+            Some("Dandadan")
+        );
+        assert!(
+            rule_for(&rules, "Sousou").is_none(),
+            "the whole name, not a part"
+        );
+        assert!(
+            rule_for(&rules, "").is_none(),
+            "a show with no folder has none"
+        );
+    }
+
+    #[test]
+    fn a_subscription_says_what_it_took() {
+        assert_eq!(
+            taken(&rule("A", "/a", 3, 4)),
+            "3 downloads, 4 files on this phone"
+        );
+        assert_eq!(
+            taken(&rule("A", "/a", 1, 1)),
+            "1 download, 1 file on this phone"
+        );
+        let mut stuck = rule("A", "/a", 0, 0);
+        stuck.followable = false;
+        assert!(rule_line(&stuck).starts_with("Its source has no feed"));
+        assert!(rule_line(&rule("A", "/a", 0, 0)).starts_with("New episodes download"));
+    }
+
+    #[test]
+    fn stopping_says_what_happened_to_the_episodes() {
+        assert!(unfollowed_line("Frieren", false).contains("stay on this phone"));
+        assert!(unfollowed_line("Frieren", true).contains("deleted"));
     }
 }

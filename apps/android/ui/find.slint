@@ -102,6 +102,12 @@ export global FindData {
     in-out property <bool> follow;
     in-out property <bool> replace;
     in property <bool> has-had;
+    // The subscription that downloads into the open show's folder, and what it has taken;
+    // empty when the show is not followed.
+    in property <string> rule-name;
+    in property <string> rule-line;
+    // Stop following is asked inline first: keep the episodes, or delete them too.
+    in-out property <bool> unfollow-ask;
 
     // The release list.
     in property <[ReleaseRow]> releases;
@@ -135,6 +141,8 @@ export global FindData {
     callback download-release(int);
     callback download-all();
     callback subscribe();
+    // Stops following the open show; true deletes what it downloaded too.
+    callback unfollow(bool);
 }
 
 // The grid's cube colours, the desktop's: there to take is glass with an edge, picked is
@@ -404,6 +412,61 @@ component GridItem inherits Rectangle {
 }
 
 // The show view: the head, who has it, what the picked one has, and the plan.
+// The open show is followed: what its subscription took, and a way to stop, asked inline
+// first the way the desktop asks, with whether its episodes go too.
+component FollowingPane inherits Rectangle {
+    height: column.preferred-height;
+    background: Theme.raised;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    column := VerticalLayout {
+        padding: Theme.pad;
+        spacing: Theme.unit * 3;
+        Text {
+            text: FindData.unfollow-ask ? "Stop following " + FindData.rule-name + "?" : "Following";
+            color: Theme.text;
+            font-size: Theme.large;
+            font-family: Theme.display-face;
+            wrap: word-wrap;
+        }
+        Text {
+            text: FindData.unfollow-ask
+                ? "New episodes stop downloading. The ones it downloaded can stay or go."
+                : FindData.rule-line;
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        if !FindData.unfollow-ask: HorizontalLayout {
+            alignment: start;
+            Button {
+                text: "Stop following";
+                small: true;
+                enabled: !FindData.busy;
+                clicked => { FindData.unfollow-ask = true; }
+            }
+        }
+        if FindData.unfollow-ask: VerticalLayout {
+            spacing: Theme.unit * 2;
+            Button {
+                text: "Stop, keep the episodes";
+                primary: true;
+                clicked => { FindData.unfollow(false); }
+            }
+            Button {
+                text: "Stop and delete its episodes";
+                danger: true;
+                clicked => { FindData.unfollow(true); }
+            }
+            Button {
+                text: "Cancel";
+                clicked => { FindData.unfollow-ask = false; }
+            }
+        }
+    }
+}
+
 export component ShowView inherits VerticalLayout {
     spacing: Theme.unit * 4;
     PageTitle {
@@ -443,6 +506,8 @@ export component ShowView inherits VerticalLayout {
             }
         }
     }
+
+    if FindData.rule-name != "": FollowingPane { }
 
     SectionHead {
         title: "Where to get it";
