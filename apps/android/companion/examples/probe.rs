@@ -10,10 +10,17 @@ use anibeam_companion::client::HostClient;
 fn main() {
     let agent = anibeam_companion::client::agent();
     for text in std::env::args().skip(1) {
-        let client = HostClient::new(agent.clone(), HostAddress::parse(&text).expect("an address"));
+        let client = HostClient::new(
+            agent.clone(),
+            HostAddress::parse(&text).expect("an address"),
+        );
         println!("{text} hello: {:?}", client.hello());
         match client.snapshot() {
-            Ok(s) => println!("{text} snapshot: {} series, {} subscriptions", s.series.len(), s.subscriptions.len()),
+            Ok(s) => println!(
+                "{text} snapshot: {} series, {} subscriptions",
+                s.series.len(),
+                s.subscriptions.len()
+            ),
             Err(e) => println!("{text} snapshot error: {e:?}"),
         }
     }

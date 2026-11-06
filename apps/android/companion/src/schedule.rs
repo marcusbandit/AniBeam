@@ -12,7 +12,11 @@ pub enum Headline {
     Upcoming(Airing),
     /// An episode that has aired and was not on the host's disk at the last sync.
     /// `at` is unknown for an episode the host listed as missing without a time.
-    Aired { season: Option<u32>, episode: u32, at: Option<i64> },
+    Aired {
+        season: Option<u32>,
+        episode: u32,
+        at: Option<i64>,
+    },
     /// Subscribed or releasing, but nobody knows when the next one airs.
     Unscheduled,
 }
@@ -62,7 +66,9 @@ pub(crate) fn season_of(a: &Airing) -> u32 {
 pub fn schedule_for(series: &Series, synced_at: i64, anilist: &AniListCache) -> Vec<Airing> {
     let mut host = series.upcoming.clone();
     if let Some(next) = &series.next_airing
-        && !host.iter().any(|a| a.episode == next.episode && season_of(a) == season_of(next))
+        && !host
+            .iter()
+            .any(|a| a.episode == next.episode && season_of(a) == season_of(next))
     {
         host.push(next.clone());
     }
@@ -104,8 +110,13 @@ fn finished(series: &Series, synced_at: i64, anilist: &AniListCache) -> bool {
 /// its files is.
 pub(crate) fn on_disk_episodes(series: &Series) -> HashMap<(u32, u32), bool> {
     let mut out = HashMap::new();
-    for e in series.episodes.iter().filter(|e| e.number.fract() == 0.0 && e.number >= 0.0) {
-        *out.entry((e.season.unwrap_or(1), e.number as u32)).or_insert(false) |= e.watched;
+    for e in series
+        .episodes
+        .iter()
+        .filter(|e| e.number.fract() == 0.0 && e.number >= 0.0)
+    {
+        *out.entry((e.season.unwrap_or(1), e.number as u32))
+            .or_insert(false) |= e.watched;
     }
     out
 }
@@ -137,9 +148,15 @@ fn row(
     }
     // What the host itself said was missing when it made the snapshot, unless the schedule
     // says it has not aired yet: then it cannot be missing, whatever the rule thinks.
-    for &episode in subscription.map(|s| s.missing.as_slice()).unwrap_or_default() {
+    for &episode in subscription
+        .map(|s| s.missing.as_slice())
+        .unwrap_or_default()
+    {
         if !disk.contains(&(1, episode)) {
-            let at = schedule.iter().find(|a| season_of(a) == 1 && a.episode == episode).map(|a| a.at);
+            let at = schedule
+                .iter()
+                .find(|a| season_of(a) == 1 && a.episode == episode)
+                .map(|a| a.at);
             if at.is_none_or(|at| at <= now) {
                 missing.entry((1, episode)).or_insert(at);
             }
@@ -152,7 +169,14 @@ fn row(
     let (headline, then) = match missing.last() {
         Some(&((season, episode), at)) => {
             let season = (season > 1).then_some(season);
-            (Headline::Aired { season, episode, at }, next)
+            (
+                Headline::Aired {
+                    season,
+                    episode,
+                    at,
+                },
+                next,
+            )
         }
         None => match next {
             Some(a) => (Headline::Upcoming(a), None),
@@ -168,7 +192,10 @@ fn row(
         complete: subscription.is_some_and(|s| s.complete),
         finished: false,
         headline,
-        missing: missing.into_iter().map(|((s, e), _)| ((s > 1).then_some(s), e)).collect(),
+        missing: missing
+            .into_iter()
+            .map(|((s, e), _)| ((s > 1).then_some(s), e))
+            .collect(),
         then,
     }
 }
@@ -181,7 +208,10 @@ pub fn next_up(cache: &Cache, anilist: &AniListCache, now: i64) -> Vec<NextUp> {
     let mut rows = Vec::new();
 
     for sub in &snapshot.subscriptions {
-        match sub.series_id.filter(|id| snapshot.series.iter().any(|s| s.id == *id)) {
+        match sub
+            .series_id
+            .filter(|id| snapshot.series.iter().any(|s| s.id == *id))
+        {
             Some(id) => {
                 subscribed.entry(id).or_insert(sub);
             }
@@ -250,7 +280,8 @@ mod tests {
 
     fn fixture() -> Cache {
         let snapshot: Snapshot =
-            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json")).unwrap();
+            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json"))
+                .unwrap();
         Cache {
             address: "banditbox:8790".into(),
             host: "banditbox".into(),
@@ -261,18 +292,29 @@ mod tests {
     }
 
     fn airing(episode: u32, at: i64) -> Airing {
-        Airing { episode, season: None, at }
+        Airing {
+            episode,
+            season: None,
+            at,
+        }
     }
 
     #[test]
     fn the_fixture_has_frieren_up_next_and_leaves_finished_shows_out() {
         let cache = fixture();
         let rows = next_up(&cache, &AniListCache::default(), cache.synced_at + 60);
-        assert_eq!(rows.len(), 1, "Mushishi and Perfect Blue are finished and not subscribed");
+        assert_eq!(
+            rows.len(),
+            1,
+            "Mushishi and Perfect Blue are finished and not subscribed"
+        );
         let frieren = &rows[0];
         assert_eq!(frieren.key, "s12");
         assert!(frieren.subscribed);
-        assert_eq!(frieren.headline, Headline::Upcoming(airing(8, 1_792_414_800)));
+        assert_eq!(
+            frieren.headline,
+            Headline::Upcoming(airing(8, 1_792_414_800))
+        );
         assert!(frieren.missing.is_empty());
     }
 
@@ -283,7 +325,14 @@ mod tests {
         let now = 1_792_414_800 + 7_200;
         let rows = next_up(&cache, &AniListCache::default(), now);
         let frieren = &rows[0];
-        assert_eq!(frieren.headline, Headline::Aired { season: None, episode: 8, at: Some(1_792_414_800) });
+        assert_eq!(
+            frieren.headline,
+            Headline::Aired {
+                season: None,
+                episode: 8,
+                at: Some(1_792_414_800)
+            }
+        );
         assert_eq!(frieren.then, Some(airing(9, 1_793_019_600)));
         assert_eq!(frieren.missing, vec![(None, 8)]);
     }
@@ -323,7 +372,14 @@ mod tests {
         let keys: Vec<&str> = rows.iter().map(|r| r.key.as_str()).collect();
         assert_eq!(keys, vec!["rOld gap", "s51", "s12", "s50", "rBatch"]);
         assert!(rows[0].paused);
-        assert_eq!(rows[0].headline, Headline::Aired { season: None, episode: 3, at: None });
+        assert_eq!(
+            rows[0].headline,
+            Headline::Aired {
+                season: None,
+                episode: 3,
+                at: None
+            }
+        );
         assert_eq!(rows[4].headline, Headline::Unscheduled);
     }
 
@@ -331,28 +387,53 @@ mod tests {
     fn a_fresher_anilist_answer_moves_a_delayed_episode() {
         let cache = fixture();
         let fetched_at = 1_792_414_800 + 3_600;
-        let mut anilist = AniListCache { fetched_at, attempted_at: fetched_at, ..Default::default() };
+        let mut anilist = AniListCache {
+            fetched_at,
+            attempted_at: fetched_at,
+            ..Default::default()
+        };
         // AniList says episode 8 slipped a week, and so did the rest.
         anilist.shows.insert(
             182255,
-            Schedule { status: Some("RELEASING".into()), upcoming: vec![airing(8, 1_793_019_600), airing(9, 1_793_624_400)] },
+            Schedule {
+                status: Some("RELEASING".into()),
+                upcoming: vec![airing(8, 1_793_019_600), airing(9, 1_793_624_400)],
+            },
         );
         let rows = next_up(&cache, &anilist, fetched_at + 60);
-        assert_eq!(rows[0].headline, Headline::Upcoming(airing(8, 1_793_019_600)));
+        assert_eq!(
+            rows[0].headline,
+            Headline::Upcoming(airing(8, 1_793_019_600))
+        );
         assert!(!rows[0].finished);
 
         // An AniList answer older than the snapshot changes nothing.
-        let stale = AniListCache { fetched_at: cache.synced_at - 1, ..anilist.clone() };
+        let stale = AniListCache {
+            fetched_at: cache.synced_at - 1,
+            ..anilist.clone()
+        };
         let rows = next_up(&cache, &stale, cache.synced_at + 60);
-        assert_eq!(rows[0].headline, Headline::Upcoming(airing(8, 1_792_414_800)));
+        assert_eq!(
+            rows[0].headline,
+            Headline::Upcoming(airing(8, 1_792_414_800))
+        );
     }
 
     #[test]
     fn a_show_anilist_calls_finished_says_so_and_goes_last() {
         let cache = fixture();
         let fetched_at = cache.synced_at + 60;
-        let mut anilist = AniListCache { fetched_at, ..Default::default() };
-        anilist.shows.insert(182255, Schedule { status: Some("FINISHED".into()), upcoming: vec![] });
+        let mut anilist = AniListCache {
+            fetched_at,
+            ..Default::default()
+        };
+        anilist.shows.insert(
+            182255,
+            Schedule {
+                status: Some("FINISHED".into()),
+                upcoming: vec![],
+            },
+        );
         let rows = next_up(&cache, &anilist, fetched_at + 60);
         assert_eq!(rows[0].headline, Headline::Unscheduled);
         assert!(rows[0].finished);
@@ -363,10 +444,22 @@ mod tests {
     fn anilist_keeps_what_aired_before_its_answer() {
         let cache = fixture();
         let fetched_at = 1_792_414_800 + 3_600;
-        let mut anilist = AniListCache { fetched_at, ..Default::default() };
-        anilist.shows.insert(182255, Schedule { status: None, upcoming: vec![airing(9, 1_793_019_600)] });
+        let mut anilist = AniListCache {
+            fetched_at,
+            ..Default::default()
+        };
+        anilist.shows.insert(
+            182255,
+            Schedule {
+                status: None,
+                upcoming: vec![airing(9, 1_793_019_600)],
+            },
+        );
         let schedule = schedule_for(&cache.snapshot.series[0], cache.synced_at, &anilist);
-        assert_eq!(schedule, vec![airing(8, 1_792_414_800), airing(9, 1_793_019_600)]);
+        assert_eq!(
+            schedule,
+            vec![airing(8, 1_792_414_800), airing(9, 1_793_019_600)]
+        );
     }
 
     #[test]
@@ -376,7 +469,10 @@ mod tests {
         cache.snapshot.subscriptions[0].missing = vec![12];
         let now = cache.synced_at + 60;
         let rows = next_up(&cache, &AniListCache::default(), now);
-        assert_eq!(rows[0].headline, Headline::Upcoming(airing(8, 1_792_414_800)));
+        assert_eq!(
+            rows[0].headline,
+            Headline::Upcoming(airing(8, 1_792_414_800))
+        );
         assert!(rows[0].missing.is_empty());
     }
 

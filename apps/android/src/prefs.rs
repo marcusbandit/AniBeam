@@ -30,7 +30,15 @@ pub struct Prefs {
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { onboarded: false, wifi_only: true, limit_on: false, limit_gb: SUGGESTED_LIMIT_GB, notes: Seen::default(), stream_quality: Default::default(), cal_days: false }
+        Prefs {
+            onboarded: false,
+            wifi_only: true,
+            limit_on: false,
+            limit_gb: SUGGESTED_LIMIT_GB,
+            notes: Seen::default(),
+            stream_quality: Default::default(),
+            cal_days: false,
+        }
     }
 }
 
@@ -42,12 +50,20 @@ fn file(data_dir: &Path) -> PathBuf {
 /// lands on numbers a person reads easily.
 pub fn snap_limit(gb: f64) -> f64 {
     let gb = gb.max(1.0);
-    if gb < 100.0 { (gb * 2.0).round() / 2.0 } else { gb.round() }
+    if gb < 100.0 {
+        (gb * 2.0).round() / 2.0
+    } else {
+        gb.round()
+    }
 }
 
 /// The cap as a person reads it: `18 GB`, `31.5 GB`.
 pub fn limit_label(gb: f64) -> String {
-    if gb.fract() == 0.0 { format!("{gb:.0} GB") } else { format!("{gb:.1} GB") }
+    if gb.fract() == 0.0 {
+        format!("{gb:.0} GB")
+    } else {
+        format!("{gb:.1} GB")
+    }
 }
 
 /// Whether the phone has saved its settings before.
@@ -56,7 +72,10 @@ pub fn exists(data_dir: &Path) -> bool {
 }
 
 pub fn load(data_dir: &Path) -> Prefs {
-    std::fs::read(file(data_dir)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    std::fs::read(file(data_dir))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
 }
 
 /// Written whole to a temporary file and renamed over the old one, so a kill mid-write
@@ -100,8 +119,19 @@ mod tests {
     fn prefs_survive_a_save_and_a_load() {
         let dir = std::env::temp_dir().join(format!("anibeam-prefs-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let notes = Seen { version: "2.1.0".into(), from: "2.0.8".into() };
-        let p = Prefs { onboarded: true, wifi_only: false, limit_on: true, limit_gb: 31.2, notes, stream_quality: crate::stream::Quality::P720, cal_days: true };
+        let notes = Seen {
+            version: "2.1.0".into(),
+            from: "2.0.8".into(),
+        };
+        let p = Prefs {
+            onboarded: true,
+            wifi_only: false,
+            limit_on: true,
+            limit_gb: 31.2,
+            notes,
+            stream_quality: crate::stream::Quality::P720,
+            cal_days: true,
+        };
         save(&dir, &p).unwrap();
         assert_eq!(load(&dir), p);
         let _ = std::fs::remove_dir_all(dir);
