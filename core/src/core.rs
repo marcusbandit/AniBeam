@@ -866,6 +866,7 @@ impl Core {
                     prefs::save_preferences(c, &p)?;
                     Ok((before, p))
                 })?;
+                self.host.set_streaming(preferences.stream_over_tailscale);
                 self.host
                     .set_switched_off(preferences.tailnet_switched_off.clone());
                 self.host.follow(self, preferences.share_over_tailscale);
@@ -977,12 +978,17 @@ impl Core {
                     None => Reply::Ok,
                 },
             ),
-            Call::SetScore { series, score } => Ok(Reply::Started {
-                job: writes::set_score(self, series, score)?,
+            // A series no connected tracker carries keeps these here: Ok, no job (#213)
+            Call::SetScore { series, score } => Ok(match writes::set_score(self, series, score)? {
+                Some(job) => Reply::Started { job },
+                None => Reply::Ok,
             }),
-            Call::SetListStatus { series, status } => Ok(Reply::Started {
-                job: writes::set_list_status(self, series, status)?,
-            }),
+            Call::SetListStatus { series, status } => {
+                Ok(match writes::set_list_status(self, series, status)? {
+                    Some(job) => Reply::Started { job },
+                    None => Reply::Ok,
+                })
+            }
             Call::SetSeriesNotes { series, notes } => Ok(Reply::Started {
                 job: writes::set_notes(self, series, &notes)?,
             }),
@@ -1330,12 +1336,19 @@ impl Core {
         match action {
             SeriesAction::Hide { hidden } => reads::set_hidden_many(self, &picks, hidden),
             SeriesAction::Rescan => scan::rescan_many(self, &picks),
-            SeriesAction::Score { score } => Ok(Reply::Started {
-                job: writes::start_many(self, &picks, writes::ManyWrite::Score(score))?,
-            }),
-            SeriesAction::ListStatus { status } => Ok(Reply::Started {
-                job: writes::start_many(self, &picks, writes::ManyWrite::Status(status))?,
-            }),
+            // Every pick kept on this device is Ok with no job (#213)
+            SeriesAction::Score { score } => Ok(
+                match writes::start_many(self, &picks, writes::ManyWrite::Score(score))? {
+                    Some(job) => Reply::Started { job },
+                    None => Reply::Ok,
+                },
+            ),
+            SeriesAction::ListStatus { status } => Ok(
+                match writes::start_many(self, &picks, writes::ManyWrite::Status(status))? {
+                    Some(job) => Reply::Started { job },
+                    None => Reply::Ok,
+                },
+            ),
             SeriesAction::FindMatch => {
                 let core = self
                     .arc()
