@@ -118,6 +118,7 @@ impl EventBus {
                 | EventBody::JobStarted { .. }
                 | EventBody::TorrentsRead { .. }
                 | EventBody::PresenceChanged { .. }
+                | EventBody::TailnetDevicesChanged { .. }
         ) {
             self.generation.fetch_add(1, Ordering::SeqCst);
         }

@@ -171,6 +171,9 @@ impl Snapshot {
         );
 
         let mut extras: Vec<&FileRow> = files.iter().filter(|f| !f.is_episode).collect();
+        // Two releases of one extra share a key and a folder; the same name in another
+        // folder (Season 2/NCOP.mkv) is another extra.
+        let extra_versions = versions_by(&extras, extra_version_key);
         extras.sort_by(|a, b| {
             extra_order(a.extra_kind)
                 .cmp(&extra_order(b.extra_kind))
@@ -200,6 +203,7 @@ impl Snapshot {
             genres: media.map(|m| m.genres.clone()).unwrap_or_default(),
             tags: media.map(|m| tags_of(&m.tags)).unwrap_or_default(),
             rewatch_count: entry.map(|e| e.repeat).filter(|r| *r > 0),
+            notes: entry.and_then(|e| e.notes.clone()),
             site_url: media.and_then(|m| m.site_url.clone()),
             progress: ProgressLine {
                 watched: card.watched,
@@ -230,6 +234,10 @@ impl Snapshot {
                         resume: self.resume_of(id, &f.episode_key),
                         index: f.extra_index,
                         fixed: f.fixed,
+                        versions: extra_versions
+                            .get(&extra_version_key(f))
+                            .cloned()
+                            .unwrap_or_default(),
                     }
                 })
                 .collect(),
@@ -411,9 +419,25 @@ impl Snapshot {
 /// season and number are two releases of it; the web shell's old rule, moved
 /// here so every shell lists one row per episode. Takes the episodes on disk.
 fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersion>> {
-    let mut by: HashMap<(u32, u64), Vec<&FileRow>> = HashMap::new();
+    versions_by(files, version_key)
+}
+
+/// Which extra a file is, for its versions: its history key in its folder.
+fn extra_version_key(f: &FileRow) -> (String, String) {
+    let folder = f.path.rsplit_once(['/', '\\']).map_or("", |(dir, _)| dir);
+    (f.episode_key.clone(), folder.to_string())
+}
+
+/// The versions of every file that shares its `key` with another, each group
+/// named by release as `episode_versions` names an episode's. Extras group by
+/// their history key, so two revisions of one extra are its two releases.
+fn versions_by<K: std::hash::Hash + Eq>(
+    files: &[&FileRow],
+    key: impl Fn(&FileRow) -> K,
+) -> HashMap<K, Vec<EpisodeVersion>> {
+    let mut by: HashMap<K, Vec<&FileRow>> = HashMap::new();
     for f in files.iter().copied() {
-        by.entry(version_key(f)).or_default().push(f);
+        by.entry(key(f)).or_default().push(f);
     }
     by.into_iter()
         .filter(|(_, group)| group.len() > 1)
@@ -655,6 +679,27 @@ mod tests {
             fixed: false,
             size: 0,
         }
+    }
+
+    #[test]
+    fn two_revisions_of_one_extra_are_its_versions() {
+        // SP01 and SP01v2 share the key the scan gives them (#468); a lone
+        // SP02 has no versions.
+        let mut a = file(1, "[A] Show - SP01.mkv", None, Some(Some(1)));
+        let mut b = file(2, "[A] Show - SP01v2.mkv", None, Some(Some(1)));
+        let c = file(3, "[A] Show - SP02.mkv", None, Some(Some(2)));
+        a.episode_key = "[A] Show - SP01.mkv".into();
+        b.episode_key = "[A] Show - SP01.mkv".into();
+        let mut d = file(4, "Season 2/[A] Show - SP01.mkv", None, Some(Some(1)));
+        d.episode_key = "[A] Show - SP01.mkv".into();
+        let v = versions_by(&[&a, &b, &c, &d], extra_version_key);
+        assert_eq!(
+            v.len(),
+            1,
+            "the same name in another folder is another extra"
+        );
+        let files: Vec<u64> = v[&extra_version_key(&a)].iter().map(|x| x.file).collect();
+        assert_eq!(files, [1, 2]);
     }
 
     fn numbers(fix: &SuggestedFix) -> Vec<(u64, f64)> {

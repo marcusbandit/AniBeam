@@ -71,6 +71,8 @@ struct State {
     anirss: AnirssStatus,
     /// The features the running anirss lists in `/health`, read with its version.
     anirss_features: Vec<String>,
+    /// Whether the endpoints installed from repos go into that anirss, read with it.
+    endpoint_sync: EndpointSync,
     torrent: TorrentClientStatus,
     endpoints: Vec<SearchEndpoint>,
     /// The torrent client with its session, built from the settings on
@@ -184,26 +186,54 @@ async fn load_settings(core: &Arc<Core>) -> Result<DownloadSettings, CoreError> 
 
 // The clients ----------------------------------------------------------------
 
+/// An anirss client with what it was built from: the settings generation, and
+/// whether it is AniBeam's own sidecar rather than a server the person runs. A
+/// read writes into the state only while that generation is current (#523).
+struct Reached {
+    client: AnirssClient,
+    generation: u64,
+    own: bool,
+}
+
 /// The anirss client when one is already there: the remote server, or a
 /// sidecar that is alive. Starts nothing.
 async fn running_client(core: &Arc<Core>) -> Result<Option<AnirssClient>, CoreError> {
+    Ok(running(core).await?.map(|r| r.client))
+}
+
+/// [`running_client`], with what the client was built from.
+async fn running(core: &Arc<Core>) -> Result<Option<Reached>, CoreError> {
     let s = load_settings(core).await?;
     if s.anirss_mode == AnirssMode::Remote {
-        return ensure_client(core).await.map(Some);
+        return reach(core).await.map(Some);
     }
+    // The sidecar and the generation are read under one lock, and a save
+    // drops the one and bumps the other under it too.
     let mut st = core.downloads.state();
+    let generation = st.generation;
     let Some(sc) = st.sidecar.as_mut() else {
         return Ok(None);
     };
-    Ok(sc
-        .alive()
-        .then(|| AnirssClient::new(&sc.server(), &sc.token, core.http.clone())))
+    Ok(sc.alive().then(|| Reached {
+        client: AnirssClient::new(&sc.server(), &sc.token, core.http.clone()),
+        generation,
+        own: true,
+    }))
 }
 
 /// The anirss client, starting the sidecar when that is the mode and it is
 /// not up. The status in the state follows every step, so a shell that
 /// reads `GetDownloads` after a failure sees why.
 async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
+    reach(core).await.map(|r| r.client)
+}
+
+/// [`ensure_client`], with what the client was built from.
+async fn reach(core: &Arc<Core>) -> Result<Reached, CoreError> {
+    // Taken before the settings are read: a save writes them before it bumps
+    // the generation, so settings read after this are never newer than it
+    // says without the bump showing. The worst a race does is drop a read.
+    let generation = core.downloads.state().generation;
     let s = load_settings(core).await?;
     if s.anirss_mode == AnirssMode::Remote {
         let token = with_secrets(core, |sec| {
@@ -215,20 +245,27 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
         .await?;
         {
             let mut st = core.downloads.state();
-            st.anirss.url = s.anirss_url.clone();
+            if st.generation == generation {
+                st.anirss.url = s.anirss_url.clone();
+            }
         }
-        return Ok(AnirssClient::new(&s.anirss_url, &token, core.http.clone()));
+        return Ok(Reached {
+            client: AnirssClient::new(&s.anirss_url, &token, core.http.clone()),
+            generation,
+            own: false,
+        });
     }
     let one_at_a_time = core.downloads.connecting.lock().await;
     let generation = {
         let mut st = core.downloads.state();
+        let generation = st.generation;
         if let Some(sc) = st.sidecar.as_mut() {
             if sc.alive() {
-                return Ok(AnirssClient::new(
-                    &sc.server(),
-                    &sc.token,
-                    core.http.clone(),
-                ));
+                return Ok(Reached {
+                    client: AnirssClient::new(&sc.server(), &sc.token, core.http.clone()),
+                    generation,
+                    own: true,
+                });
             }
             st.sidecar = None;
             st.anirss.state = AnirssState::Failed;
@@ -267,12 +304,12 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
             } else {
                 format!("{} was not found. {hint}", s.anirss_command)
             };
-            set_anirss_failure(core, AnirssState::Missing, &message);
+            set_anirss_failure_at(core, generation, AnirssState::Missing, &message);
             return Err(service(anirss::SERVICE, "missing", message));
         }
         Err(SpawnFailure::Io(e)) => {
             let message = format!("{} could not start: {e}", s.anirss_command);
-            set_anirss_failure(core, AnirssState::Failed, &message);
+            set_anirss_failure_at(core, generation, AnirssState::Failed, &message);
             return Err(service(anirss::SERVICE, "failed", message));
         }
     };
@@ -284,10 +321,11 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
         Ok(health) if !health.has(anirss::SIDECAR_FEATURE) => {
             sidecar.stop();
             let message = anirss::lacks_feature_message(&health.version);
-            set_anirss_failure(core, AnirssState::Failed, &message);
+            set_anirss_failure_at(core, generation, AnirssState::Failed, &message);
             Err(service(anirss::SERVICE, "failed", message))
         }
         Ok(health) => {
+            let unattended = core.downloads.unattended_allowed();
             let kept = {
                 let mut st = core.downloads.state();
                 let current = st.generation == generation;
@@ -295,6 +333,7 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
                     st.anirss.state = AnirssState::Ready;
                     st.anirss.version = health.version;
                     st.anirss_features = health.features;
+                    st.endpoint_sync = sync_of(true, unattended, current);
                     st.anirss.url = sidecar.server();
                     st.anirss.message.clear();
                     st.sidecar = Some(sidecar);
@@ -308,9 +347,13 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
             if !kept {
                 // Start again for the one now in use
                 drop(one_at_a_time);
-                return Box::pin(ensure_client(core)).await;
+                return Box::pin(reach(core)).await;
             }
-            Ok(client)
+            Ok(Reached {
+                client,
+                generation,
+                own: true,
+            })
         }
         Err(message) => {
             // An anirss from before the server mode exits on `--serve`
@@ -326,18 +369,31 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
                 }
                 None => message,
             };
-            set_anirss_failure(core, AnirssState::Failed, &message);
+            set_anirss_failure_at(core, generation, AnirssState::Failed, &message);
             Err(service(anirss::SERVICE, "failed", message))
         }
     }
 }
 
-fn set_anirss_failure(core: &Core, state: AnirssState, message: &str) {
+/// Records why anirss is not available, for a client built under the settings of
+/// `generation`: written only while those are still the ones in use, since a failure
+/// of an anirss a save has dropped says nothing about the new one. True when it was
+/// written.
+fn set_anirss_failure_at(core: &Core, generation: u64, state: AnirssState, message: &str) -> bool {
     let mut st = core.downloads.state();
+    let current = st.generation == generation;
+    if current {
+        write_anirss_failure(&mut st, state, message);
+    }
+    current
+}
+
+fn write_anirss_failure(st: &mut State, state: AnirssState, message: &str) {
     st.anirss.state = state;
     st.anirss.message = message.to_string();
     st.anirss.version.clear();
     st.anirss_features.clear();
+    st.endpoint_sync = EndpointSync::default();
     st.anirss.url.clear();
     st.endpoints.clear();
 }
@@ -611,15 +667,23 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
         let st = core.downloads.state();
         (st.anirss.state, st.torrent.connected)
     };
-    let anirss_failure = match ensure_client(&core).await {
-        Ok(client) => match read_anirss(&core, &client).await {
-            Ok(()) => None,
+    // A save that lands while anirss is read drops the read (#523): the client
+    // is built again from the settings now in use, and that one is read.
+    let anirss_failure = loop {
+        let reached = match reach(&core).await {
+            Ok(r) => r,
+            Err(e) => break Some(plain(&e)),
+        };
+        match read_anirss(&core, &reached).await {
+            Ok(Read::Kept) => break None,
+            Ok(Read::Dropped) => {}
             Err(e) => {
-                set_anirss_failure(&core, AnirssState::Failed, &plain(&e));
-                Some(plain(&e))
+                let message = plain(&e);
+                if set_anirss_failure_at(&core, reached.generation, AnirssState::Failed, &message) {
+                    break Some(message);
+                }
             }
-        },
-        Err(e) => Some(plain(&e)),
+        }
     };
     probe_torrent(&core).await;
     // Any other call may have started anirss again while the torrent half
@@ -655,11 +719,27 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
 }
 
 /// The anirss this core last read: its version, whether it lists
-/// [`anirss::ENDPOINT_WRITES`], and the names of its endpoints.
+/// [`anirss::ENDPOINT_WRITES`], the names of its endpoints, and whether the desktop puts
+/// the installed endpoints into it at all.
 pub(crate) struct AnirssView {
     pub version: String,
     pub endpoint_writes: bool,
     pub endpoints: Vec<String>,
+    pub sync: EndpointSync,
+}
+
+/// Whether the endpoints installed from repos go into the anirss the desktop reads, and
+/// why not when they do not (#499).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum EndpointSync {
+    /// AniBeam's own sidecar, in a run that may change the owner's setup.
+    #[default]
+    Syncs,
+    /// A server the person runs themselves (Remote mode), which keeps its own config.
+    Theirs,
+    /// A sandbox root or a drive, which never writes into the owner's real anirss, or a
+    /// run whose settings could not be read, which writes nothing it cannot be sure of.
+    Sandbox,
 }
 
 /// The [`AnirssView`] of the anirss last read. None until one has been read, and always
@@ -670,17 +750,54 @@ pub(crate) fn anirss_view(core: &Core) -> Option<AnirssView> {
         version: st.anirss.version.clone(),
         endpoint_writes: anirss::lists(&st.anirss_features, anirss::ENDPOINT_WRITES),
         endpoints: st.endpoints.iter().map(|e| e.name.clone()).collect(),
+        sync: st.endpoint_sync,
     })
 }
 
 /// Whether the endpoints installed from repos go into this anirss: AniBeam's own sidecar,
-/// in a run that may change the owner's setup. A server the person runs themselves keeps
-/// its own config, and a sandbox root or a drive never writes into the real one.
-async fn syncs_endpoints(core: &Arc<Core>) -> bool {
-    core.downloads.unattended_allowed()
-        && load_settings(core)
-            .await
-            .is_ok_and(|s| s.anirss_mode != AnirssMode::Remote)
+/// in a run that may change the owner's setup, while the settings it was built from are
+/// still the ones in use. A server the person runs themselves keeps its own config, and a
+/// sandbox root or a drive never writes into the real one. Decided from how the client was
+/// built, never from the settings read again: a save writes those before it bumps the
+/// generation, so they can already name another anirss than the one this client reaches.
+fn syncs_into(core: &Core, reached: &Reached) -> bool {
+    endpoint_sync(core, reached) == EndpointSync::Syncs
+}
+
+/// Whether the endpoints installed from repos go into the anirss `reached` reaches, and why
+/// not when they do not (#499), from how its client was built (#523): a server the person
+/// runs is theirs, and AniBeam's own syncs only in a run that may change the owner's setup
+/// and while the settings it came from are still the ones in use.
+fn endpoint_sync(core: &Core, reached: &Reached) -> EndpointSync {
+    sync_of(
+        reached.own,
+        core.downloads.unattended_allowed(),
+        is_current(core, reached.generation),
+    )
+}
+
+/// [`endpoint_sync`] from its parts, for a caller that already holds the state's lock.
+/// A client the settings have moved past syncs nothing; its read is dropped anyway.
+fn sync_of(own: bool, unattended: bool, current: bool) -> EndpointSync {
+    match (own, unattended && current) {
+        (false, _) => EndpointSync::Theirs,
+        (true, true) => EndpointSync::Syncs,
+        (true, false) => EndpointSync::Sandbox,
+    }
+}
+
+/// Whether the settings are still the ones of `generation`.
+fn is_current(core: &Core, generation: u64) -> bool {
+    core.downloads.state().generation == generation
+}
+
+/// What came of [`read_anirss`].
+#[derive(Debug, PartialEq)]
+enum Read {
+    /// Written into the state.
+    Kept,
+    /// Thrown away: a save replaced the settings the client was built from.
+    Dropped,
 }
 
 /// What is installed from repos changed (#143): a running anirss gets it, and the page
@@ -688,13 +805,13 @@ async fn syncs_endpoints(core: &Arc<Core>) -> bool {
 pub(crate) fn repo_endpoints_changed(core: &Core) {
     let Ok(owner) = core.owner() else { return };
     core.handle.spawn(async move {
-        if !syncs_endpoints(&owner).await {
-            return;
-        }
-        let Ok(Some(client)) = running_client(&owner).await else {
+        let Ok(Some(reached)) = running(&owner).await else {
             return;
         };
-        if read_anirss(&owner, &client).await.is_ok()
+        if !syncs_into(&owner, &reached) {
+            return;
+        }
+        if read_anirss(&owner, &reached).await == Ok(Read::Kept)
             && let Ok(status) = status_async(&owner).await
         {
             owner.bus.debug(
@@ -706,16 +823,24 @@ pub(crate) fn repo_endpoints_changed(core: &Core) {
     });
 }
 
-/// Health, endpoints and anirss's view of qBittorrent, into the state.
-async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), CoreError> {
+/// Health, endpoints and anirss's view of qBittorrent, into the state, while the
+/// settings the client was built from are still the ones in use. A save that lands
+/// while anirss answers has dropped that anirss: what it said is thrown away rather
+/// than written under the new settings (#523), and nothing more is asked of it.
+async fn read_anirss(core: &Arc<Core>, reached: &Reached) -> Result<Read, CoreError> {
+    let client = &reached.client;
     // No feature is asked of a server the user runs: AniBeam never points it
     // at a client, so it reads its own config and keeps its own logins.
     let health = client.health().await?;
     let mut endpoints = client.endpoints().await?;
-    if syncs_endpoints(core).await
+    let sync = endpoint_sync(core, reached);
+    if sync == EndpointSync::Syncs
         && crate::repos::sync_anirss(core, client, &health, &endpoints).await
     {
         endpoints = client.endpoints().await?;
+    }
+    if !is_current(core, reached.generation) {
+        return Ok(Read::Dropped);
     }
     if let Some(path) = settings::anirss_config_path() {
         for e in &mut endpoints {
@@ -725,9 +850,14 @@ async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), Core
     probe_endpoints(core.http.as_ref(), &mut endpoints).await;
     let view = client.qbt_status().await?;
     let mut st = core.downloads.state();
+    // Asked again under the lock that writes, so no save lands between the two.
+    if st.generation != reached.generation {
+        return Ok(Read::Dropped);
+    }
     st.anirss.state = AnirssState::Ready;
     st.anirss.version = health.version;
     st.anirss_features = health.features;
+    st.endpoint_sync = sync;
     st.anirss.url = client.server();
     st.anirss.message.clear();
     st.anirss.qbt_url = view.url;
@@ -735,7 +865,7 @@ async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), Core
     st.anirss.qbt_authenticated = view.authenticated;
     st.anirss.qbt_login_failed = view.login_failed;
     st.endpoints = endpoints;
-    Ok(())
+    Ok(Read::Kept)
 }
 
 /// One line for the log: both halves, as they are.
@@ -1154,7 +1284,7 @@ async fn watch_search(
     let started = std::time::Instant::now();
     loop {
         let label = match phase.load(Ordering::Relaxed) {
-            PHASE_CONNECTING => "Starting anirss".to_string(),
+            PHASE_CONNECTING => "Starting the search".to_string(),
             PHASE_READING => "Reading the results".to_string(),
             _ => match &ondemand {
                 Some(od) if !od.ready.is_empty() && !answers(http.as_ref(), &od.ready).await => {
@@ -2101,6 +2231,20 @@ pub fn remove_show(
         }))
 }
 
+/// Marks each rule whose feed belongs to one of the core's sources that answers JSON as
+/// one that cannot fetch new episodes (#536). The rules come from qBittorrent on either
+/// engine, so the core's own sources judge them both: every installed one, switched off
+/// for search or not, since its subscriptions are still read.
+fn follow_rules(core: &Core, rules: &mut [SubscriptionRule]) {
+    let sources: Vec<crate::releases::Endpoint> = crate::repos::fillers(core)
+        .into_iter()
+        .map(|r| r.endpoint)
+        .collect();
+    for rule in rules.iter_mut() {
+        rule.followable = crate::releases::endpoints::follows(&sources, &rule.feed_url, None);
+    }
+}
+
 /// Not a job: the page asks on open and after every change. The list
 /// arrives as `SubscriptionsRead`, a failure as `DownloadsUnavailable`,
 /// both at debug level so a page polling an absent server writes nothing
@@ -2115,6 +2259,7 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
         match outcome {
             Ok((backend, mut rules)) => {
                 link_rules(&owner, &mut rules);
+                follow_rules(&owner, &mut rules);
                 owner.bus.debug(
                     Stage::Downloads,
                     format!(
@@ -3035,6 +3180,7 @@ fn restart(core: &Core, settings: DownloadSettings) -> Result<(), CoreError> {
     }
     st.anirss = AnirssStatus::default();
     st.anirss_features.clear();
+    st.endpoint_sync = EndpointSync::default();
     st.torrent = TorrentClientStatus::default();
     st.endpoints.clear();
     st.qbt = None;
@@ -3140,15 +3286,295 @@ mod tests {
             200,
             serde_json::json!({"url": "http://127.0.0.1:2"}).to_string(),
         );
-        core.handle.block_on(read_anirss(&core, &client)).unwrap();
+        let reached = Reached {
+            client,
+            generation: core.downloads.state().generation,
+            own: true,
+        };
+        assert_eq!(
+            core.handle.block_on(read_anirss(&core, &reached)).unwrap(),
+            Read::Kept
+        );
         let view = anirss_view(&core).unwrap();
         assert_eq!((view.version.as_str(), view.endpoint_writes), ("dev", true));
 
-        set_anirss_failure(&core, AnirssState::Failed, "gone");
+        write_anirss_failure(&mut core.downloads.state(), AnirssState::Failed, "gone");
         assert!(anirss_view(&core).is_none());
         // Ready again by a path that reads no health: the old features are not carried.
         core.downloads.state().anirss.state = AnirssState::Ready;
         assert!(!anirss_view(&core).unwrap().endpoint_writes);
+        core.shutdown();
+    }
+
+    /// Reads an anirss with one endpoint installed, under settings saved with `saved` and a
+    /// client built as AniBeam's own when `own`: what the view says of syncing, and whether
+    /// anything was written into that anirss.
+    fn read_endpoint_sync(saved: AnirssMode, own: bool) -> (EndpointSync, bool) {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let http = crate::net::FakeHttp::new();
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            http.clone(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        // Saved straight into the store: the settings change, the generation does not, as
+        // in the gap of a save that has not bumped it yet.
+        let settings = DownloadSettings {
+            anirss_mode: saved,
+            anirss_url: "http://anirss.test".to_string(),
+            ..settings::defaults()
+        };
+        core.store
+            .write(move |c| settings::save(c, &settings))
+            .unwrap();
+        crate::repos::add_custom(
+            &core,
+            "mine".into(),
+            "https://a.example/rss?q={query}".into(),
+            Vec::new(),
+        )
+        .unwrap();
+        http.push_for(
+            "/health",
+            200,
+            serde_json::json!({"ok": true, "version": "0.7.0", "features": ["endpoint_writes"]})
+                .to_string(),
+        );
+        for _ in 0..3 {
+            http.push_for(
+                "/endpoints",
+                200,
+                serde_json::json!({"endpoints": []}).to_string(),
+            );
+        }
+        http.push_for(
+            "/qbt/status",
+            200,
+            serde_json::json!({"url": "http://127.0.0.1:2"}).to_string(),
+        );
+        let reached = Reached {
+            client: AnirssClient::new("http://anirss.test", "tok", http.clone()),
+            generation: core.downloads.state().generation,
+            own,
+        };
+        assert_eq!(
+            core.handle.block_on(read_anirss(&core, &reached)).unwrap(),
+            Read::Kept
+        );
+        let sync = anirss_view(&core).unwrap().sync;
+        let wrote = http
+            .requests()
+            .iter()
+            .any(|r| r.url.contains("/endpoints") && !matches!(r.method, Method::Get));
+        core.shutdown();
+        (sync, wrote)
+    }
+
+    /// A server the person runs (Remote mode) is read as one the desktop never syncs
+    /// endpoints into, and gets none, where AniBeam's own anirss gets the same endpoint
+    /// written (#499).
+    #[test]
+    fn a_remote_anirss_reads_as_one_the_desktop_never_syncs_into() {
+        assert_eq!(
+            read_endpoint_sync(AnirssMode::Remote, false),
+            (EndpointSync::Theirs, false)
+        );
+        // The same endpoint is written into AniBeam's own, so the check above can fail.
+        assert_eq!(
+            read_endpoint_sync(AnirssMode::Sidecar, true),
+            (EndpointSync::Syncs, true)
+        );
+    }
+
+    /// A save that has written the other mode but not bumped the generation yet does not
+    /// flip the note: it follows the client the read went to, not the settings read again
+    /// (#499, #523). A server the person runs stays theirs and gets nothing written, and
+    /// AniBeam's own stays one the desktop syncs into.
+    #[test]
+    fn a_settings_save_racing_a_read_does_not_flip_the_endpoint_note() {
+        assert_eq!(
+            read_endpoint_sync(AnirssMode::Sidecar, false),
+            (EndpointSync::Theirs, false)
+        );
+        assert_eq!(
+            read_endpoint_sync(AnirssMode::Remote, true),
+            (EndpointSync::Syncs, true)
+        );
+    }
+
+    /// An [`Http`] that runs `mid` once, just before it hands over the answer for `at`:
+    /// the settings change that lands while anirss is being read.
+    struct SwitchMidRead {
+        inner: Arc<crate::net::FakeHttp>,
+        at: &'static str,
+        mid: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    }
+
+    impl crate::net::Http for SwitchMidRead {
+        fn send(
+            &self,
+            req: HttpRequest,
+        ) -> crate::net::BoxFuture<'_, Result<crate::net::HttpResponse, crate::net::HttpError>>
+        {
+            if req.url.contains(self.at)
+                && let Some(mid) = recover(&self.mid).take()
+            {
+                mid();
+            }
+            self.inner.send(req)
+        }
+    }
+
+    /// A save that switches anirss while the old one is read throws the read away: the
+    /// state never describes the old anirss under the new settings (#523).
+    #[test]
+    fn a_settings_switch_while_anirss_is_read_leaves_the_old_view_out_of_the_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let http = crate::net::FakeHttp::new();
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            http.clone(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        http.push_for(
+            "/health",
+            200,
+            serde_json::json!({"ok": true, "version": "old", "features": ["qbt_env_session"]})
+                .to_string(),
+        );
+        http.push_for(
+            "/endpoints",
+            200,
+            serde_json::json!({"endpoints": [{"name": "old-feed", "kind": "rss", "url": "http://127.0.0.1:4/rss"}]}).to_string(),
+        );
+        http.push_for(
+            "/qbt/status",
+            200,
+            serde_json::json!({"url": "http://127.0.0.1:2", "reachable": true}).to_string(),
+        );
+        let switcher = core.clone();
+        let wrapped = Arc::new(SwitchMidRead {
+            inner: http.clone(),
+            at: "/qbt/status",
+            mid: Mutex::new(Some(Box::new(move || {
+                let mut s = switcher.store.read(settings::load_stored).unwrap();
+                s.anirss_mode = AnirssMode::Remote;
+                s.anirss_url = "http://127.0.0.1:3".to_string();
+                restart(&switcher, s).unwrap();
+            }))),
+        });
+        let client = AnirssClient::new("http://127.0.0.1:1", "tok", wrapped);
+        let reached = Reached {
+            client,
+            generation: core.downloads.state().generation,
+            own: true,
+        };
+        assert_eq!(
+            core.handle.block_on(read_anirss(&core, &reached)).unwrap(),
+            Read::Dropped
+        );
+
+        let st = core.downloads.state();
+        assert_ne!(
+            st.anirss.state,
+            AnirssState::Ready,
+            "the old anirss is not ready under the new settings"
+        );
+        assert!(st.anirss.version.is_empty());
+        assert!(st.anirss.url.is_empty());
+        assert!(st.anirss.qbt_url.is_empty());
+        assert!(st.anirss_features.is_empty());
+        assert!(
+            st.endpoints.is_empty(),
+            "the old anirss's endpoints stay out"
+        );
+        drop(st);
+        assert!(anirss_view(&core).is_none());
+        core.shutdown();
+    }
+
+    /// Repo endpoints go into an anirss by how its client was built, never by the settings
+    /// read again: a save writes the new mode before it bumps the generation, and in that
+    /// gap a remote server's client must not be taken for AniBeam's own (#523).
+    #[test]
+    fn endpoints_sync_only_into_our_own_anirss_under_the_settings_it_came_from() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let http = crate::net::FakeHttp::new();
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            http.clone(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        let reached = |own: bool| Reached {
+            client: AnirssClient::new("http://127.0.0.1:1", "tok", http.clone()),
+            generation: core.downloads.state().generation,
+            own,
+        };
+        let own = reached(true);
+        let remote = reached(false);
+        assert!(syncs_into(&core, &own));
+        assert!(!syncs_into(&core, &remote));
+
+        // Half a save: the settings already say AniBeam's own, the bump has not landed.
+        let mut s = core.store.read(settings::load_stored).unwrap();
+        s.anirss_mode = AnirssMode::Sidecar;
+        core.store.write(move |c| settings::save(c, &s)).unwrap();
+        assert!(
+            !syncs_into(&core, &remote),
+            "a remote server is never written to"
+        );
+
+        // The bump: the old sidecar's client is not synced into either.
+        core.downloads.state().generation += 1;
+        assert!(!syncs_into(&core, &own));
+
+        core.downloads.disable_unattended();
+        assert!(!syncs_into(&core, &reached(true)), "a sandbox never writes");
+        core.shutdown();
+    }
+
+    /// A read that fails after a switch says nothing about the new anirss, so its failure
+    /// is not written either; one under the settings still in use is (#523).
+    #[test]
+    fn a_failure_is_kept_only_under_the_settings_it_was_read_under() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let http = crate::net::FakeHttp::new();
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            http.clone(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        let old = core.downloads.state().generation;
+        let s = core.store.read(settings::load_stored).unwrap();
+        restart(&core, s).unwrap();
+        assert!(!set_anirss_failure_at(
+            &core,
+            old,
+            AnirssState::Failed,
+            "gone"
+        ));
+        assert_eq!(
+            core.downloads.state().anirss.state,
+            AnirssStatus::default().state
+        );
+        assert!(core.downloads.state().anirss.message.is_empty());
+
+        let now = core.downloads.state().generation;
+        assert!(set_anirss_failure_at(
+            &core,
+            now,
+            AnirssState::Failed,
+            "gone"
+        ));
+        assert_eq!(core.downloads.state().anirss.state, AnirssState::Failed);
         core.shutdown();
     }
 

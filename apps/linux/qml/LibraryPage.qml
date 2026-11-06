@@ -11,6 +11,12 @@
 // reloads, debounced, when the core says a series changed. The visible words are Sort by
 // (the core's ordering, `sort` here) and Group by (the cut, `arrange` here); the names stay
 // for the preference keys and the drive scripts.
+//
+// Several at once (#208): Ctrl+click or a held press picks a card, Shift+click picks every card
+// from the last pick to this one, Ctrl+Space and Shift+Space do the same from the keyboard and
+// Ctrl+A picks every card shown. While anything is picked a bar at the foot counts the picks
+// and acts on all of them in one call (ActOnSeries): Hide, Rate, a list, Rescan and Find a
+// match. The core writes one line to the activity log for the lot; Escape or Cancel stops.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 import QtQuick.Dialogs
@@ -23,9 +29,113 @@ Item {
     property alias scrollY: scroll.contentY
     function focusSearch() { scroll.contentY = 0; search.focusInput() }
     // "escape" is reserved by the QML compiler; the frame's hook is named escapePressed.
-    function escapePressed() { return false }
-    // The arrows with nothing focused go to the scroll's grid keys (Down lands on the first card)
-    Keys.onPressed: function(event) { scroll.keyPressed(event) }
+    function escapePressed() {
+        if (page.selecting) { page.clearPicks(); return true }
+        return false
+    }
+    // The arrows with nothing focused go to the scroll's grid keys (Down lands on the first card).
+    // Ctrl+A picks every card shown; the search field keeps it for its own text.
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier) && !search.editing && page.view.count > 0) {
+            page.pickAll(); event.accepted = true; return
+        }
+        scroll.keyPressed(event)
+    }
+
+    // ---- Picking several (#208): the picks by series id, and the one a Shift range runs from
+    property var picked: ({})
+    property int anchorId: -1
+    readonly property int pickedCount: Object.keys(picked).length
+    readonly property bool selecting: pickedCount > 0
+    // Every card in the order the page shows them, each once: a series airing now sits in
+    // the Airing section and again under its franchise or cut, and a range counts it once
+    function shownIds() {
+        var seen = {}, out = []
+        for (var i = 0; i < sections.length; i++) {
+            var ids = sections[i].ids
+            for (var j = 0; j < ids.length; j++) if (!seen[ids[j]]) { seen[ids[j]] = true; out.push(ids[j]) }
+        }
+        return out
+    }
+    function togglePick(id) {
+        var next = Object.assign({}, page.picked)
+        if (next[id]) delete next[id]
+        else next[id] = true
+        page.picked = next
+        page.anchorId = id
+    }
+    function pickRange(id) {
+        var ids = page.shownIds()
+        var from = page.selecting ? ids.indexOf(page.anchorId) : -1, to = ids.indexOf(id)
+        if (from < 0 || to < 0) { page.togglePick(id); return }
+        var next = Object.assign({}, page.picked)
+        for (var i = Math.min(from, to); i <= Math.max(from, to); i++) next[ids[i]] = true
+        page.picked = next
+    }
+    function pickAll() {
+        var next = {}
+        page.shownIds().forEach(function(id) { next[id] = true })
+        page.picked = next
+    }
+    function clearPicks() { page.picked = ({}); page.anchorId = -1 }
+    function pickedIds() { return Object.keys(page.picked).map(Number) }
+    // A pick that left the view (a search, a tab, a hide) is no longer picked
+    function keepShownPicks() {
+        if (!page.selecting) return
+        var shown = {}
+        page.shownIds().forEach(function(id) { shown[id] = true })
+        var next = {}, moved = false
+        for (var k in page.picked) { if (shown[k]) next[k] = true; else moved = true }
+        if (moved) page.picked = next
+    }
+    readonly property var pickedCards: { var out = []; for (var k in picked) out.push(Door.card(Number(k))); return out }
+    // Rate and a list both need a pick a connected tracker carries
+    readonly property bool pickedTracked: pickedCards.some(function(c) { return frame.canSetListStatus(c) })
+    readonly property bool pickedUnmatched: pickedCards.some(function(c) { return !c.match_info })
+    function pickedNoun(n) { return Fmt.plural(n, "show", "shows") }
+    // One call for every pick. A refusal (nothing reachable, a folder that is away) is the toast
+    function act(action, said) {
+        var ids = page.pickedIds()
+        var r = Door.call("ActOnSeries", { series: ids, action: action })
+        if (r.error) { frame.fail(r.error); return null }
+        page.clearPicks()
+        if (said) frame.toast(said)
+        return ids
+    }
+    function hidePicked() {
+        var hide = page.tab !== "Hidden"
+        var n = page.pickedCount
+        var tracked = page.pickedCards.some(function(c) { return !!(c.match_info && (c.match_info.anilist_id || c.match_info.mal_id)) })
+        var ids = page.act({ Hide: { hidden: hide } }, "")
+        if (!ids) return
+        frame.toast(hide ? (page.pickedNoun(n) + " hidden" + (tracked ? ", and their tracker sync stops" : ""))
+                         : (page.pickedNoun(n) + " back, and syncing again"),
+                    6, "Undo", function() {
+                        var u = Door.call("ActOnSeries", { series: ids, action: { Hide: { hidden: !hide } } })
+                        if (u.error) frame.fail(u.error)
+                    })
+    }
+    function ratePicked(score) {
+        var n = page.pickedCount
+        page.act({ Score: { score: score } }, score === null ? "Clearing the score of " + page.pickedNoun(n)
+                                                             : "Rating " + page.pickedNoun(n) + " " + Fmt.score(score))
+    }
+    function listPicked(anchor) {
+        var lists = frame.listStatusItems(-1, "")
+        // Above the bar, clear of it: the menu's rows plus its own padding
+        var p = anchor.mapToItem(frame, 0, 0)
+        frame.openMenu(p.x, p.y - lists.length * theme.controlHeight - theme.space(8), lists.map(function(l) {
+            return { text: l.text, icon: l.icon, action: function() {
+                var n = page.pickedCount
+                page.act({ ListStatus: { status: l.status } }, "Moving " + page.pickedNoun(n) + " to " + l.text)
+            } }
+        }))
+    }
+    function rescanPicked() { var n = page.pickedCount; page.act("Rescan", "Rescanning " + page.pickedNoun(n)) }
+    function matchPicked() {
+        var n = page.pickedCards.filter(function(c) { return !c.match_info }).length
+        page.act("FindMatch", "Looking for a match for " + page.pickedNoun(n))
+    }
 
     readonly property var tabs: ["All", "Series", "Movies"]
     readonly property var sorts: [["LastViewed", "Recently watched"], ["Downloaded", "Recently downloaded"], ["Alpha", "Title"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]
@@ -79,7 +189,7 @@ Item {
         p.library_group_franchises = on
         Door.setPreferences(p)
     }
-    function pickTab(i) { tab = tabNames[i]; persist(); reload() }
+    function pickTab(i) { tab = tabNames[i]; clearPicks(); persist(); reload() }
     function pickSort(key) { sort = key; direction = key === "Alpha" ? "Asc" : "Desc"; persist(); reload() }
     function flipDirection() { direction = direction === "Asc" ? "Desc" : "Asc"; persist(); reload() }
     function pickShowWatched(on) {
@@ -140,6 +250,7 @@ Item {
             sections = v.sections
         }
         facts = v.facts
+        keepShownPicks()
         return true
     }
     // A change of cut re-cuts at once; the first reload and reload itself cut once, so a
@@ -425,6 +536,12 @@ Item {
                                         item: series
                                         posterWidth: page.cardWidth
                                         nowMs: page.nowMs
+                                        selectable: true
+                                        ranges: true
+                                        selecting: page.selecting
+                                        selected: !!page.picked[series.id]
+                                        onSelectToggled: page.togglePick(series.id)
+                                        onSelectRange: page.pickRange(series.id)
                                         onOpened: frame.go("series", { id: series.id }, series.title)
                                         onPlayed: page.playSeries(series)
                                     }
@@ -447,6 +564,90 @@ Item {
                 Button { visible: page.query !== ""; text: "Clear search"; icon: "x"; onClicked: { search.text = ""; queryDebounce.stop(); page.query = ""; frame.nav.current.props = page.genre !== "" ? { genre: page.genre } : {}; page.reload() } }
             }
         }
+    }
+
+    // ---- Picking: how many, and what to do with all of them. Each action is greyed out when
+    // no pick can take it: Rate and a list need a tracker, Find a match a pick without one.
+    Rectangle {
+        objectName: "library-picked"
+        visible: page.selecting
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: theme.space(6)
+        width: Math.min(parent.width - theme.space(8), pickRow.implicitWidth + theme.space(6))
+        height: theme.controlHeight + theme.space(3)
+        radius: theme.radiusTile
+        color: theme.raised
+        border.color: theme.accent
+        border.width: 1
+        // A click on the bar's own ground stays on the bar, not on the card under it
+        MouseArea { anchors.fill: parent }
+        Row {
+            id: pickRow
+            anchors.centerIn: parent
+            spacing: theme.space(3)
+            Label {
+                objectName: "library-picked-count"
+                anchors.verticalCenter: parent.verticalCenter
+                text: page.pickedCount + " picked"
+                role: "ui"
+            }
+            Button {
+                objectName: "library-picked-all"
+                small: true; flat: true
+                visible: page.pickedCount < page.shownIds().length
+                text: "All"; icon: "check-check"
+                onClicked: page.pickAll()
+                Tooltip { text: "Pick every card shown (Ctrl+A)" }
+            }
+            Button {
+                objectName: "library-picked-hide"
+                small: true
+                text: page.tab === "Hidden" ? "Unhide" : "Hide"
+                icon: page.tab === "Hidden" ? "eye" : "eye-off"
+                onClicked: page.hidePicked()
+            }
+            Button {
+                id: rateButton
+                objectName: "library-picked-rate"
+                small: true
+                enabled: page.pickedTracked
+                text: "Rate"; icon: "star"
+                onClicked: pickScore.openAt(rateButton, -1)
+                Tooltip { text: rateButton.enabled ? "One score for every pick, on every connected tracker" : "Needs a connected tracker and a matched show" }
+            }
+            Button {
+                id: listButton
+                objectName: "library-picked-list"
+                small: true
+                enabled: page.pickedTracked
+                text: "Move to list"; icon: "bookmark"
+                onClicked: page.listPicked(listButton)
+                Tooltip { text: listButton.enabled ? "" : "Needs a connected tracker and a matched show" }
+            }
+            Button {
+                objectName: "library-picked-rescan"
+                small: true
+                text: "Rescan"; icon: "refresh-cw"
+                onClicked: page.rescanPicked()
+            }
+            Button {
+                id: matchButton
+                objectName: "library-picked-match"
+                small: true
+                enabled: page.pickedUnmatched
+                text: "Find a match"; icon: "link"
+                onClicked: page.matchPicked()
+                Tooltip { text: matchButton.enabled ? "Search for each pick without a match" : "Every pick has a match" }
+            }
+            Button { objectName: "library-picked-cancel"; small: true; flat: true; text: "Cancel"; onClicked: page.clearPicks() }
+        }
+    }
+    ScorePicker {
+        id: pickScore
+        parent: frame.overlay
+        onSaved: function(v) { page.ratePicked(v) }
+        onCleared: page.ratePicked(null)
     }
 
     // The empty library: Import, and a pointer at Settings

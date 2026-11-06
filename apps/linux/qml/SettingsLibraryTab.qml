@@ -120,8 +120,8 @@ SettingsTab {
         }
         SettingRow {
             label: "Check the matches"
-            helper: "The Metadata page lists every series with the record it matched, and fixes a wrong one."
-            Button { text: "Open Metadata"; icon: "database"; flat: true; onClicked: frame.go("metadata") }
+            helper: "The Show info page lists every show with the info AniBeam found for it, and fixes a wrong one."
+            Button { text: "Open Show info"; icon: "database"; flat: true; onClicked: frame.go("metadata") }
         }
     }
     Panel {

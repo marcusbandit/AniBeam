@@ -141,7 +141,7 @@ SettingsTab {
     readonly property string anirssLine: {
         if (!anirss) return ""
         if (anirss.state === "Ready") return "Running, version " + anirss.version + " at " + anirss.url + "."
-        if (anirss.state === "Starting") return "Starting anirss."
+        if (anirss.state === "Starting") return "Starting the search helper."
         if (anirss.state === "Missing") return "anirss is not installed. " + anirss.message
         if (anirss.state === "Failed") return "anirss is not running: " + anirss.message
         return "Not started yet. It starts the first time you search on the Downloads page."
@@ -162,7 +162,7 @@ SettingsTab {
     readonly property string passwordLine: {
         if (!settings) return ""
         if (tab.hasPassword) return "A password is saved here for this client."
-        if (torrent && torrent.password_source === "anirss") return "Using the password anirss saved; save one here to stop depending on it."
+        if (torrent && torrent.password_source === "anirss") return "Using the password the search helper saved; save one here to stop depending on it."
         return "No password saved. A client that bypasses its login for this machine needs none."
     }
     // anirss and this app each have their own idea of where the client is; say so when they differ
@@ -170,14 +170,14 @@ SettingsTab {
         if (!anirss || !settings || anirss.state !== "Ready" || !anirss.qbt_url) return ""
         var a = String(anirss.qbt_url).replace(/\/+$/, ""), b = String(settings.torrent_url).replace(/\/+$/, "")
         if (a === b) return ""
-        return "anirss talks to " + a + " while AniBeam talks to " + b + ". A remote anirss reads the address from its own config.toml, so switching clients here does not move it."
+        return "The search helper talks to " + a + " while AniBeam talks to " + b + ". A search helper you run yourself reads the address from its own config.toml, so switching clients here does not move it."
     }
 
     Panel {
         title: "Torrent client"
         helper: "The qBittorrent that does the downloading. Its password is kept in the system password store."
         SettingRow { label: "Which client"; helper: tab.modeLine
-            Seg { objectName: "downloads-client-mode"; options: [{ text: "Pick for me", icon: "sparkles" }, { text: "Mine", icon: "user-check" }, { text: "AniBeam's own", icon: "play" }]
+            Seg { objectName: "downloads-client-mode"; options: [{ text: "Pick for me", icon: "sparkles" }, { text: "My own", icon: "user-check" }, { text: "Built-in", icon: "play" }]
                   index: !tab.draft ? 0 : tab.draft.torrent_mode === "Existing" ? 1 : tab.draft.torrent_mode === "Managed" ? 2 : 0
                   onPicked: function(i) {
                       tab.edit(function(d) {
@@ -209,16 +209,16 @@ SettingsTab {
             Button { text: tab.testing ? "Trying" : tab.dirty ? "Save and test" : "Test"; icon: "check-check"; flat: true; enabled: !tab.testing; onClicked: tab.test() } }
     }
     Panel {
-        title: "Search with anirss"
-        helper: "anirss searches the release feeds and hands what you pick to the torrent client. AniBeam can run it for you, or use one you already run."
-        SettingRow { label: "How it runs"; helper: tab.sidecar ? "AniBeam starts anirss itself when it opens and stops it when it quits." : "AniBeam uses an anirss you already run, at the address and with the key below."
+        title: "Search helper"
+        helper: "The part of AniBeam that searches and subscribes, a program called anirss. AniBeam runs it for you; change this only if you run your own."
+        SettingRow { label: "How it runs"; helper: tab.sidecar ? "AniBeam starts it when it opens and stops it when it quits." : "AniBeam uses one you already run, at the address and with the key below."
             Seg { options: [{ text: "AniBeam runs it", icon: "play" }, { text: "I run it", icon: "radio" }]; index: tab.sidecar ? 0 : 1
                   onPicked: function(i) { tab.edit(function(d) { d.anirss_mode = i === 0 ? "Sidecar" : "Remote" }) } } }
         SettingRow { visible: tab.sidecar; label: "Command"; helper: "A name on PATH or a full path. ~/.local/bin is searched too."
             Field { objectName: "downloads-anirss-command"; text: tab.draft ? tab.draft.anirss_command : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_command = t }) } } }
         SettingRow { visible: !tab.sidecar; label: "Address"; helper: "The server's base, without /api/v1."
             Field { text: tab.draft ? tab.draft.anirss_url : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_url = t }) } } }
-        SettingRow { visible: !tab.sidecar; label: "Token"; helper: tab.settings && tab.settings.has_anirss_token ? "A token is saved. Type a new one to replace it, or clear the field to remove it." : "The key anirss showed when it started. It lets AniBeam in."
+        SettingRow { visible: !tab.sidecar; label: "Key"; helper: tab.settings && tab.settings.has_anirss_token ? "A key is saved. Type a new one to replace it, or clear the field to remove it." : "The key the search helper showed when it started. It lets AniBeam in."
             Field { text: tab.tokenText; secret: true; mono: true; width: theme.space(48); placeholder: tab.settings && tab.settings.has_anirss_token ? "Saved" : "Not set"
                     onEdited: function(t) { tab.tokenText = t; tab.tokenTouched = true; tab.dirty = true } } }
         SettingRow { label: "Connection"; line: tab.anirssLine
@@ -226,14 +226,14 @@ SettingsTab {
                 Tooltip { text: tab.dirty ? "Save your changes first" : "" } } }
     }
     Panel {
-        title: "Rolling downloads"
+        title: "Keep the next few ready"
         helper: "A long show downloads a few episodes at a time, and each one you finish starts the next. The whole run never has to fit on the disk."
-        SettingRow { label: "Roll long downloads"; helper: "Anything over " + tab.roll.over + " episodes rolls by itself. Its row on the Downloads page can still get everything at once."
+        SettingRow { label: "For long shows"; helper: "Anything over " + tab.roll.over + " episodes downloads a few at a time by itself. Its row on the Downloads page can still get everything at once."
             Switch { objectName: "downloads-roll-big"; checked: tab.roll.big !== false; onToggled: function(on) { tab.edit(function(d) { tab.rolling(d).big = on }) } } }
         SettingRow { label: "Episodes ahead"; helper: "How many stay downloaded past the one you are on. 12 is about a season."
             SliderRow { objectName: "downloads-roll-ahead"; unit: "episodes"; from: 1; to: 52; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.ahead
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).ahead = Math.round(v) }) } } }
-        SettingRow { label: "Roll above"; helper: "Downloads with more episodes than this roll."
+        SettingRow { label: "Long means over"; helper: "Downloads with more episodes than this get a few at a time."
             SliderRow { objectName: "downloads-roll-over"; unit: "episodes"; from: 12; to: 200; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.over
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).over = Math.round(v) }) } } }
         SettingRow { label: "Watched episodes"; helper: tab.roll.delete_watched !== false ? "Deleted once you are further along, so the disk only holds what is left to watch." : "Every file stays on the disk after you watch it."
@@ -253,8 +253,8 @@ SettingsTab {
     }
     Panel {
         title: "Search sources"
-        helper: "Where a search goes, in the order anirss tries them. One that finds nothing falls through to the next."
-        SettingRow { visible: tab.endpoints.length === 0; label: tab.anirss && tab.anirss.state === "Ready" ? "anirss has no sources set up" : "Connect to anirss to list them" }
+        helper: "Where a search goes, in the order they are tried. One that finds nothing falls through to the next."
+        SettingRow { visible: tab.endpoints.length === 0; label: tab.anirss && tab.anirss.state === "Ready" ? "No sources set up yet" : "Connect the search helper to list them" }
         Repeater {
             model: tab.endpoints
             SettingRow {
@@ -265,7 +265,7 @@ SettingsTab {
                 Chip { text: String(modelData.kind); small: true; color: theme.raised }
             }
         }
-        SettingRow { label: "anirss's config"; helper: "Holds the sources, the save folders, the tags and the best-fit rules."
+        SettingRow { label: "Search helper's settings file"; helper: "Holds the sources, the save folders, the tags and the best match rules."
             status: tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml"
             Button { text: "Open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
     }
@@ -292,7 +292,7 @@ SettingsTab {
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
             Label { text: "Unsaved changes"; role: "title"; font.pointSize: theme.typeNormal }
-            Label { width: parent.width; text: "Saving restarts anirss on the new settings."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
+            Label { width: parent.width; text: "Saving restarts the search helper on the new settings."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
         }
         Row {
             id: saveRow
