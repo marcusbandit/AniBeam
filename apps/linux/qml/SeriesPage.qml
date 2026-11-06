@@ -908,7 +908,7 @@ Item {
                         text: card.list_status ? page.listStatus(card.list_status) : "Add to a list"
                         pressName: "series-status"
                         onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
-                        Tooltip { text: statusFact.settable ? "Change the list on AniList and MyAnimeList" : "" }
+                        Tooltip { text: statusFact.settable ? "Change it on each list that is connected" : "" }
                     }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
                     Button {
@@ -922,10 +922,10 @@ Item {
                             var id = props.id
                             var r = Door.setHidden(id, hide)
                             if (r.error) { frame.toast(r.error.message); return }
-                            frame.toast(hide ? page.title + " is hidden, and its list sync stops" : page.title + " is back, and syncs again", 6, "Undo",
+                            frame.toast(hide ? page.title + " is hidden here, and AniBeam stops syncing it to AniList and MyAnimeList" : page.title + " is back, and syncs again", 6, "Undo",
                                         function() { Door.setHidden(id, !hide) })
                         }
-                        Tooltip { text: page.hasTracker ? "Hidden from every list, and list sync stops" : "Hidden from every list" }
+                        Tooltip { text: page.hasTracker ? "Hidden from every page here, and AniBeam stops syncing it to AniList and MyAnimeList" : "Hidden from every list" }
                     }
                     Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: frame.openLink(page.detail.site_url) }
                     Button {
@@ -1151,7 +1151,7 @@ Item {
                     Heading { text: "Match" }
                     Label {
                         width: Math.min(parent.width, theme.space(140))
-                        text: "Not matched yet, so there is no poster, synopsis or tracking. Find the record it belongs to on AniList or TVmaze."
+                        text: "Not matched yet, so there is no poster, synopsis or tracking. Find its show info on AniList or TVmaze."
                         role: "ui"; color: theme.textDim
                         wrapMode: Text.Wrap
                     }

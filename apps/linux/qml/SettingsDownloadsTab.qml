@@ -141,7 +141,7 @@ SettingsTab {
     readonly property string anirssLine: {
         if (!anirss) return ""
         if (anirss.state === "Ready") return "Running, version " + anirss.version + " at " + anirss.url + "."
-        if (anirss.state === "Starting") return "Starting anirss."
+        if (anirss.state === "Starting") return "Starting the search helper."
         if (anirss.state === "Missing") return "anirss is not installed. " + anirss.message
         if (anirss.state === "Failed") return "anirss is not running: " + anirss.message
         return "Not started yet. It starts the first time you search on the Downloads page."
@@ -177,7 +177,7 @@ SettingsTab {
         title: "Torrent client"
         helper: "The qBittorrent that does the downloading. Its password is kept in the system password store."
         SettingRow { label: "Which client"; helper: tab.modeLine
-            Seg { objectName: "downloads-client-mode"; options: [{ text: "Pick for me", icon: "sparkles" }, { text: "My own", icon: "user-check" }, { text: "Built in", icon: "play" }]
+            Seg { objectName: "downloads-client-mode"; options: [{ text: "Pick for me", icon: "sparkles" }, { text: "My own", icon: "user-check" }, { text: "Built-in", icon: "play" }]
                   index: !tab.draft ? 0 : tab.draft.torrent_mode === "Existing" ? 1 : tab.draft.torrent_mode === "Managed" ? 2 : 0
                   onPicked: function(i) {
                       tab.edit(function(d) {

@@ -303,4 +303,4 @@ The words above are for the code and the docs. The app says these instead, so a 
 | Rolling download | Keep the next few ready |
 | Sequential download | Download in episode order |
 | Tracker | your anime lists, or AniList and MyAnimeList by name |
-| Managed torrent client | Built in |
+| Managed torrent client | Built-in, Built-in client |

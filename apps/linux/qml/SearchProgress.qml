@@ -17,10 +17,10 @@ Tile {
     signal cancel()
     signal switchTo(string name)
 
-    readonly property bool starting: label.indexOf("Starting") === 0 && label !== "Starting anirss"
+    readonly property bool starting: label.indexOf("Starting") === 0 && label !== "Starting the search"
     readonly property bool ondemand: total > 0
     readonly property string why: {
-        if (label === "Starting anirss") return "AniBeam is starting its search helper; this takes a second or two."
+        if (label === "Starting the search") return "AniBeam is starting its search helper; this takes a second or two."
         if (starting) return root.endpoint + " runs through a helper that starts when a search needs it. The first search waits for it, up to " + Math.round(root.total) + " seconds; the ones after skip this."
         if (label.indexOf("Reading") === 0) return "Splitting the releases into groups and checking them against the library."
         if (root.ondemand) return "A helper reads " + root.endpoint + " afresh for every new search, which usually takes ten to twenty seconds."
@@ -44,7 +44,7 @@ Tile {
                 spacing: theme.space(1.25)
                 Row {
                     spacing: theme.space(3)
-                    Label { id: phase; text: root.label === "" ? "Searching" : root.label === "Starting anirss" ? "Starting the search" : root.label; role: "title"; font.pointSize: theme.typeNormal * 1.15 }
+                    Label { id: phase; text: root.label === "" ? "Searching" : root.label; role: "title"; font.pointSize: theme.typeNormal * 1.15 }
                     Label { anchors.baseline: phase.baseline; text: Math.floor(root.elapsed) + " s"; role: "ledger"; color: root.slow ? theme.orange : theme.textDim }
                 }
                 Label {

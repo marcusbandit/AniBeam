@@ -1,14 +1,14 @@
 // Metadata, flat (DESIGN.md, the flat home pass): every series in the library as one small
 // poster tile, cut into the sections a librarian works in order. The head is the library's:
 // the title in the display cut with the count beside it, the search at the right, then one
-// line of pills (the filter with its counts, Match unmatched, Refresh all) that wraps on a
+// line of pills (the filter with its counts, Find the rest, Refresh all) that wraps on a
 // narrow window. Under it the figures (Tiles.qml), which are the sections' own counts off
-// the whole library, so they agree with what is below. Then the sections: Needs a match,
-// Folder gone, Missing episodes, Airing, Complete, each a heading in the display cut with
+// the whole library, so they agree with what is below. Then the sections: Not recognised,
+// Folder not found, Missing episodes, Airing, Complete, each a heading in the display cut with
 // its count, over a grid of tiles in the library's column math (columns from the width,
 // tiles widened to fill the line, so a narrow window has fewer columns). A tile is the
 // poster at 2:3, the title on one line, a state line that says the section's fact for this
-// series ("9 of 12", "5 of 7 aired", "12 of 12 +2", "No record yet"), and a dim line (the
+// series ("9 of 12", "5 of 7 aired", "12 of 12 +2", "No show info yet"), and a dim line (the
 // season, or the countdown to the next episode on an airing series), each on one line that
 // elides, never wraps. A click on a matched tile opens the episodes pane (EpisodesPane.qml:
 // which numbers are on disk and which are missing, as chips), on an unmatched one the match
@@ -84,7 +84,7 @@ Item {
         return n ? Math.max(0, n.episode - 1) : (d.have || 0)
     }
     // The section a row works in, in the order a person would take them: a gone folder is
-    // past matching, so Folder gone wins over Needs a match; an unmatched folder has no
+    // past matching, so Folder not found wins over Not recognised; an unmatched folder has no
     // expected count to be short of; an airing series is never short of a total that has
     // not aired yet
     function bucketOf(d) {
@@ -209,7 +209,7 @@ Item {
         }
         return out
     }
-    // The names the drives click: row-match on the first Needs a match tile when that
+    // The names the drives click: row-match on the first Not recognised tile when that
     // section is there (its click opens the match panel), else on the page's first tile;
     // row-refresh on the first tile that has a Refresh glyph, row-forget on the first gone
     // folder

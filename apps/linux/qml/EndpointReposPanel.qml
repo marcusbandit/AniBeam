@@ -227,7 +227,7 @@ Panel {
     // By hand.
     SettingRow {
         label: "Add one by hand"
-        helper: "For a site no list carries: any feed with {query} where the search goes, one from a search proxy among them. A key in the address moves to the system password store."
+        helper: "For a site no list carries: any feed with {query} where the search goes, one from a search proxy among them. A key in the address is kept apart from it, in the system password store where there is one."
         hairline: false
         Column {
             spacing: theme.space(1)

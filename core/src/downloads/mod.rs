@@ -1154,7 +1154,7 @@ async fn watch_search(
     let started = std::time::Instant::now();
     loop {
         let label = match phase.load(Ordering::Relaxed) {
-            PHASE_CONNECTING => "Starting anirss".to_string(),
+            PHASE_CONNECTING => "Starting the search".to_string(),
             PHASE_READING => "Reading the results".to_string(),
             _ => match &ondemand {
                 Some(od) if !od.ready.is_empty() && !answers(http.as_ref(), &od.ready).await => {

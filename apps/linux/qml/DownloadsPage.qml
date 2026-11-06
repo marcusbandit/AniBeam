@@ -1336,7 +1336,7 @@ Item {
         if (a.state === "Failed") return "The search helper is not running: " + a.message
         if (a.state === "Off") return "The search helper is not running yet."
         var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected: " + (page.torrent.message || "no answer") + "."
-        return "Searches run through anirss " + a.version + ", the search helper. " + t
+        return "The search helper " + a.version + " is ready. " + t
     }
 
     Connections {
@@ -1704,7 +1704,7 @@ Item {
                     color: page.anirssReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
                     font.underline: anirssChipMouse.containsMouse
                     MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }) }
-                    Tooltip { text: page.anirssReady ? "anirss at " + page.anirss.url + ". " + page.summary : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
+                    Tooltip { text: page.anirssReady ? page.summary + " It answers at " + page.anirss.url + "." : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
                 }
                 Label {
                     objectName: "downloads-client-chip"
@@ -1913,7 +1913,7 @@ Item {
             }
         }
 
-        // ---- The search up: the query line, the groups, Narrow and Best fit, then the
+        // ---- The search up: the query line, the groups, Narrow and Best match, then the
         // releases and the actions pane
         Column {
             visible: page.detail === null && (page.state !== null || page.searching || page.searchError !== "")
@@ -2251,7 +2251,7 @@ Item {
             EmptyState {
                 icon: page.anirss && page.anirss.state === "Missing" ? "circle-alert" : "rss"
                 title: page.anirss && page.anirss.state === "Missing" ? "The search helper is not installed" : "The search helper is not running"
-                body: page.anirss && page.anirss.message ? page.anirss.message : "Searches, subscriptions and downloads run through AniBeam's search helper, anirss."
+                body: page.anirss && page.anirss.message ? page.anirss.message : "Searches, subscriptions and downloads run through AniBeam's search helper."
                 Button { text: "Try again"; icon: "refresh-cw"; onClicked: page.connect() }
                 Button { text: "Settings"; icon: "settings"; flat: true; onClicked: frame.go("settings", { tab: "downloads" }) }
             }
