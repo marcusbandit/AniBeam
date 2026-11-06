@@ -410,6 +410,10 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
             if updated && let Some(card) = card_for(&owner, series).await? {
                 ctx.changed(card);
             }
+            // A new date for a followed show's next episode is a new timer (#215)
+            if updated {
+                crate::downloads::watch::arm(&owner);
+            }
             Ok(Finished {
                 plain: None,
                 level: Level::Debug,
@@ -450,6 +454,9 @@ pub fn start_refresh_library(core: &Arc<Core>) -> u64 {
                         ctx.changed(card);
                     }
                 }
+            }
+            if updated > 0 {
+                crate::downloads::watch::arm(&owner);
             }
             Ok(Finished {
                 plain: None,

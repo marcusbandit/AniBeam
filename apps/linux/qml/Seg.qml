@@ -30,7 +30,7 @@ Corner {
     }
 
     readonly property real pad: 2
-    implicitHeight: (small ? theme.space(6) : theme.controlHeight)
+    implicitHeight: (small ? theme.textSpace(6) : theme.controlHeight)
     implicitWidth: row.implicitWidth + pad * 2
     radius: height / 2
     smoothing: theme.cornerSmoothing

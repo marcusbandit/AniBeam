@@ -161,7 +161,7 @@ Corner {
         Label {
             id: code
             anchors.verticalCenter: parent.verticalCenter
-            width: theme.space(12)
+            width: theme.textSpace(12)
             text: root.episode.code || ""
             role: "ledger"
             color: root.nextUp ? theme.accent : theme.textDim

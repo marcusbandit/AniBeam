@@ -118,6 +118,8 @@ fn after_scan(core: &Arc<Core>) {
     imdb::start_refresh(core);
     cache::start_refresh(core, None, false);
     images::start_fill(core);
+    // The followed shows' next episodes, from the rules last read (#215)
+    crate::downloads::watch::arm(core);
 
     // The sweep is bookkeeping rather than a job: one transaction over the
     // rows and one walk of the image directory, so it goes on the runtime

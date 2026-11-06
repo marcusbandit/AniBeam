@@ -13,12 +13,13 @@ pub mod erai;
 pub mod fetch;
 pub mod grid;
 pub mod json;
+pub mod json_feed;
+pub mod kinds;
 pub mod native;
 pub mod refinement;
 pub mod rules;
 pub mod stats;
 pub mod titles;
-pub mod tosho;
 
 /// A search endpoint (anirss `endpoints.Endpoint`, without the on-demand start and stop
 /// commands, which the core keeps elsewhere).
@@ -28,9 +29,9 @@ pub struct Endpoint {
     /// One of `endpoints::VALID_KINDS`.
     pub kind: String,
     pub url: String,
-    /// nyaa only.
+    /// filtered-rss only.
     pub category: String,
-    /// nyaa only.
+    /// filtered-rss only.
     pub filter: String,
     /// Seconds a fetch may take.
     pub timeout: f64,

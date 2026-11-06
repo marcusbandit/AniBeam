@@ -99,7 +99,7 @@ Item {
             Column {
                 id: column
                 width: parent.width
-                Text { text: root.title; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall; font.weight: Font.DemiBold; height: theme.space(6); verticalAlignment: Text.AlignVCenter; leftPadding: theme.space(2) }
+                Text { text: root.title; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall; font.weight: Font.DemiBold; height: theme.textSpace(6); verticalAlignment: Text.AlignVCenter; leftPadding: theme.space(2) }
                 Repeater {
                     model: root.rows
                     Corner {

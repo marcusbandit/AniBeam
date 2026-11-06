@@ -560,6 +560,23 @@ pub struct TrackerOutcome {
     pub message: Option<String>,
 }
 
+/// One episode of a followed show that has just aired (#212): a show on
+/// the Watching list, by its AniList id. `series` is the library series
+/// with files that carries it, None when it is not on disk.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EpisodeOut {
+    pub anilist_id: u64,
+    pub episode: u32,
+    pub at: SystemTime,
+    /// The display title, by the title-language preference.
+    pub title: String,
+    /// AniList's own titles, for Get episodes: it searches by the latin ones.
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
+    pub series: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct WatchingEntry {
     pub anilist_id: u64,
@@ -887,6 +904,12 @@ pub struct Preferences {
     /// app (`host`). Default off, and per machine: an export never carries it.
     #[serde(default)]
     pub share_over_tailscale: bool,
+    /// Whether the host also serves the episodes themselves while it shares:
+    /// the files, their conversions and the playback calls. Default on, so a
+    /// phone that streams today keeps streaming. Per machine like
+    /// `share_over_tailscale`: an export never carries it.
+    #[serde(default = "default_true")]
+    pub stream_over_tailscale: bool,
     /// The tailnet devices the host refuses, by Tailscale's stable node id.
     /// Every other device on the tailnet is trusted. Per machine like
     /// `share_over_tailscale`: an export never carries it.
@@ -912,6 +935,11 @@ pub struct Preferences {
     /// `discord_presence`. `serde(default)` because older blobs predate it.
     #[serde(default)]
     pub calendar_feed: bool,
+    /// Whether the desktop shows a notification when an episode of a show
+    /// on the Watching list airs (#212). Default on, and per machine.
+    /// `serde(default)` because older blobs predate it.
+    #[serde(default = "default_true")]
+    pub episode_notifications: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1075,11 +1103,13 @@ impl Default for Preferences {
             library_arrange: Arrange::Related,
             library_group_franchises: true,
             share_over_tailscale: false,
+            stream_over_tailscale: true,
             tailnet_switched_off: Vec::new(),
             on_hold_auto: true,
             on_hold_days: ON_HOLD_DAYS,
             discord_presence: false,
             calendar_feed: false,
+            episode_notifications: true,
         }
     }
 }
