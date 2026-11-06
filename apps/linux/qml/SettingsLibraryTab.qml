@@ -17,9 +17,13 @@ SettingsTab {
     property var sources: []
     property var lastScan: null              // the newest ScanFinished event
     function sourcePath(id) { for (var i = 0; i < sources.length; i++) if (sources[i].id === id) return sources[i].path; return "" }
+    // A folder list that did not load says so, with Try again, rather than reading as none
+    property bool loadFailed: false
     function reload() {
         var r = Door.listSources()
-        if (!r.error) sources = r.reply.sources
+        loadFailed = !!r.error
+        if (r.error) frame.fail(r.error, tab.reload)
+        else sources = r.reply.sources
         // Source carries no last-scan time of its own, so this reads it off the event
         // history: recentEvents serialises each body externally tagged, { ScanFinished: {...} }
         var ev = Door.recentEvents(2000)
@@ -42,7 +46,7 @@ SettingsTab {
     function reloadNotInterested() { var r = Door.listNotInterested(); if (!r.error) notInterested = r.reply.shows }
     function showAgain(id) {
         var r = Door.setNotInterested(id, false)
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, function() { tab.showAgain(id) }); return }
         reloadNotInterested()
     }
     Component.onCompleted: { reload(); reloadNotInterested() }
@@ -57,7 +61,7 @@ SettingsTab {
         var p = o.splice(from, 1)[0]
         o.splice(to, 0, p)
         var r = Door.setProviderOrder(o)
-        if (r.error) frame.fail(r.error)
+        if (r.error) frame.fail(r.error, function() { tab.moveProvider(from, to) })
     }
     Timer { id: debounce; interval: 250; onTriggered: tab.reload() }
     Connections {
@@ -77,13 +81,20 @@ SettingsTab {
                 required property var modelData
                 source: modelData
                 onOpen: frame.openLink(Fmt.fileUrl(modelData.path))
-                onRescan: { var r = Door.scan(modelData.id); r.error ? frame.fail(r.error) : frame.toast("Rescan started") }
+                onRescan: { var id = modelData.id, again = function() { var r = Door.scan(id); r.error ? frame.fail(r.error, again) : frame.toast("Rescan started") }; again() }
                 onRemove: confirming = true
                 onRemoveAccepted: { var r = Door.removeSource(modelData.id); if (r.error) frame.fail(r.error) }
             }
         }
         SettingRow {
-            visible: tab.sources.length === 0
+            objectName: "settings-folders-failed"
+            visible: tab.loadFailed
+            label: "Your folders could not be read"
+            helper: "AniBeam could not read its list of folders. Try again in a moment."
+            Button { text: "Try again"; icon: "refresh-cw"; onClicked: tab.reload() }
+        }
+        SettingRow {
+            visible: tab.sources.length === 0 && !tab.loadFailed
             label: "No folders yet"
             helper: "Point AniBeam at the folder your anime lives in. It finds the series and films by itself."
         }
@@ -159,7 +170,7 @@ SettingsTab {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.calendar_feed = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.fail(r.error)
+        if (r.error) frame.fail(r.error, function() { tab.setCalendar(on) })
     }
     Panel {
         objectName: "settings-calendar"
@@ -185,7 +196,7 @@ SettingsTab {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.episode_notifications = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error, function() { tab.setEpisodeNotifications(on) })
     }
     Panel {
         objectName: "settings-notifications"
@@ -199,6 +210,6 @@ SettingsTab {
     FolderDialog {
         id: folderDialog
         title: "Add a folder"
-        onAccepted: { var r = Door.addSource(Fmt.localPath(String(selectedFolder))); r.error ? frame.fail(r.error) : frame.toast("Folder added, scanning") }
+        onAccepted: { var r = Door.addSource(Fmt.localPath(String(selectedFolder))); r.error ? frame.fail(r.error, folderDialog.open) : frame.toast("Folder added, scanning") }
     }
 }

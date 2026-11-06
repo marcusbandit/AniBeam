@@ -20,6 +20,7 @@ use anibeam_core::{
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
+use crate::notify::{self, Notify};
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
@@ -165,10 +166,14 @@ struct App {
     downloads: Rc<VecModel<DownloadRow>>,
     polling: bool,
     held: Option<bool>,
-    service: Option<String>,
+    service: Option<notify::Ongoing>,
+    /// The downloads seen not yet whole, so each one that finishes is told once.
+    unfinished: HashSet<String>,
     /// The service's notification went up while Android allowed it to show. One posted
     /// before the person allowed notifications stays hidden until it is posted again.
     service_shown: bool,
+    /// When Android's notification dialog was last asked for.
+    asked_at: Option<std::time::Instant>,
 }
 
 thread_local! {
@@ -178,6 +183,12 @@ thread_local! {
 /// Endpoints were installed, removed or switched: the search page's chips follow.
 pub fn endpoints_changed() {
     with_app(App::show_search_sources);
+}
+
+/// Downloads calls this once the core took a download or a subscription: the first one
+/// may explain the notification.
+pub fn download_started() {
+    with_app(App::download_started);
 }
 
 fn with_app(f: impl FnOnce(&mut App)) {
@@ -222,6 +233,11 @@ const SETTINGS: &[(i32, &str, &str)] = &[
         1,
         "Only on Wi-Fi",
         "wifi wi-fi mobile data cellular network",
+    ),
+    (
+        1,
+        "Notifications",
+        "notification notify alert progress permission shade allow",
     ),
     (
         2,
@@ -429,6 +445,7 @@ impl App {
         {
             self.reload();
         }
+        self.show_notify();
         let now = anibeam_companion::now();
         // A handle of its own, so `data` does not hold `self` while the models change.
         let window = self.window.clone_strong();
@@ -540,7 +557,7 @@ impl App {
             Some(Open::Phone(_)) => self
                 .detail
                 .as_ref()
-                .map(|d| crate::phone::series(d, &self.art, now)),
+                .map(|d| crate::phone::series(d, &self.art, now, self.deleting)),
             Some(Open::Remote(id)) => crate::remote::series(
                 self.cache.as_ref(),
                 &self.anilist,
@@ -1165,18 +1182,42 @@ impl App {
         torrents.extend(demo_torrents());
         // The service is for torrents that are moving: one in error, stuck with no peers or
         // paused does not keep a notification up.
-        let active: Vec<&Torrent> = torrents
-            .iter()
-            .filter(|t| {
-                !is_demo(&t.hash)
-                    && t.progress < 1.0
-                    && matches!(t.state.as_str(), "downloading" | "checkingDL")
-            })
-            .collect();
-        let rows = torrents
+        let real = |t: &Torrent| !is_demo(&t.hash) || demo_notifies();
+        let rows: Vec<DownloadRow> = torrents
             .iter()
             .map(|t| download_row(t, held, self.torrent_show(t), &self.art))
             .collect();
+        let moving: Vec<notify::Moving> = torrents
+            .iter()
+            .zip(&rows)
+            .filter(|(t, _)| {
+                real(t)
+                    && t.progress < 1.0
+                    && matches!(t.state.as_str(), "downloading" | "checkingDL")
+            })
+            .map(|(t, row)| notify::Moving {
+                called: notify::called(&row.show, &row.what, &t.name),
+                facts: row.facts.to_string(),
+                progress: t.progress,
+                size: t.size,
+            })
+            .collect();
+        // A download seen unfinished that is whole now says so, once, with its own
+        // notification.
+        let now: Vec<(String, bool)> = torrents
+            .iter()
+            .filter(|t| real(t))
+            .map(|t| (t.hash.clone(), t.progress >= 1.0))
+            .collect();
+        for hash in notify::finished(&mut self.unfinished, &now) {
+            if let Some((t, row)) = torrents.iter().zip(&rows).find(|(t, _)| t.hash == hash) {
+                crate::android::episode_ready(
+                    notify::ready_id(&hash),
+                    &notify::ready_title(&row.show, &row.what, &t.name),
+                    notify::READY_TEXT,
+                );
+            }
+        }
         update(&self.downloads, rows);
         let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
             "Waiting for Wi-Fi. Downloads go on by themselves when the phone is on Wi-Fi."
@@ -1197,18 +1238,18 @@ impl App {
         self.data().set_finished_count(finished as i32);
         self.data()
             .set_downloading_count((torrents.len() - finished) as i32);
-        self.data().set_moving_count(active.len() as i32);
+        self.data().set_moving_count(moving.len() as i32);
 
-        // The service runs while something downloads, with how many in its notification.
-        let text = match active.len() {
-            0 => None,
-            1 => Some(format!("Downloading {}", active[0].name)),
-            n => Some(format!("Downloading {n} episodes")),
-        };
+        // The service runs while something downloads, its notification saying what and how
+        // far along, with the numbers Downloads shows.
+        let text = notify::ongoing(&moving, format::bytes);
         if text != self.service {
-            let done = match &text {
-                Some(t) => crate::android::start_service(t),
-                None => {
+            let done = match (&text, &self.service) {
+                // Running: the notification changes in place. Starting the service again
+                // on every look would be refused once the app is in the background.
+                (Some(t), Some(_)) => crate::android::update_service(t),
+                (Some(t), None) => crate::android::start_service(t),
+                (None, _) => {
                     crate::android::stop_service();
                     true
                 }
@@ -1337,6 +1378,58 @@ impl App {
         if let Some((ground, ink)) = crate::android::line_colours() {
             data.set_line_ground(slint::Color::from_argb_encoded(ground));
             data.set_line_ink(slint::Color::from_argb_encoded(ink));
+        }
+    }
+
+    fn notify(&self) -> Notify {
+        Notify::new(
+            crate::android::notifications_allowed(),
+            self.prefs.notify_asked,
+        )
+    }
+
+    /// Where the download notification stands, for onboarding, Downloads and More. Read on
+    /// every tick: Android's dialog and its settings answer outside the app.
+    fn show_notify(&self) {
+        let code = self.notify().code();
+        if self.data().get_notify() != code {
+            self.data().set_notify(code);
+        }
+    }
+
+    /// The notification's button: Android's dialog the first time, its settings after. When
+    /// Android shows no dialog (it stopped asking, as after two denials on an earlier build),
+    /// `TorrentService.askPermission` opens the settings itself.
+    fn allow_notifications(&mut self) {
+        // A second tap while Android's dialog is still coming up is the same tap.
+        if self
+            .asked_at
+            .is_some_and(|at| at.elapsed() < Duration::from_secs(2))
+        {
+            return;
+        }
+        match self.notify() {
+            Notify::Unasked => {
+                // Noted only once the ask went out, so one that failed is tried again.
+                if crate::android::ask_notifications() {
+                    self.asked_at = Some(std::time::Instant::now());
+                    self.prefs.notify_asked = true;
+                    self.save_prefs();
+                }
+            }
+            Notify::Denied => crate::android::notification_settings(),
+            Notify::On => {}
+        }
+        self.show_notify();
+    }
+
+    /// The core took a download or a subscription: the first one explains the notification
+    /// before Android asks, once, unless onboarding already did.
+    fn download_started(&mut self) {
+        if notify::offer_on_download(self.notify(), self.prefs.notify_offered) {
+            self.prefs.notify_offered = true;
+            self.save_prefs();
+            self.data().set_notify_ask(true);
         }
     }
 
@@ -1536,6 +1629,13 @@ fn demo_torrents() -> Vec<Torrent> {
 
 const DEMO_MARK: &str = "demo:";
 
+/// Dev only: with this file on the device, the demo downloads drive the notification too,
+/// so it can be seen without a real download.
+fn demo_notifies() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::path::Path::new("/data/local/tmp/anibeam-demo/notify").exists())
+}
+
 /// Set on an Airing now poster's key in the art, apart from every series id.
 const AIRING_ART: u64 = 1 << 48;
 /// How long, in ticks of a second, a not interested mark can be taken back.
@@ -1728,6 +1828,11 @@ pub fn run(
     commands: Commands,
     inbox: Receiver<Command>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Before anything talks to a computer, so every request can carry the phone's proof.
+    match Store::open(&data_dir).and_then(|s| s.device_key()) {
+        Ok(key) => anibeam_companion::client::use_device_key(key),
+        Err(e) => eprintln!("AniBeam: no device key, requests go unsigned: {e}"),
+    }
     crate::local::start(data_dir.clone());
     crate::airing::start(&data_dir);
     crate::stream::init(data_dir.clone());
@@ -1880,10 +1985,13 @@ pub fn run(
     data.on_finish_onboarding(|| {
         with_app(|app| {
             app.prefs.onboarded = true;
+            // Onboarding showed the notification, so a first download does not ask again.
+            app.prefs.notify_offered = true;
             app.save_prefs();
         })
     });
     data.on_open_notes(|| with_app(|app| app.show_notes()));
+    data.on_allow_notifications(|| with_app(App::allow_notifications));
     window.global::<Settings>().on_find({
         let window = window.as_weak();
         move |query| {
@@ -1992,7 +2100,9 @@ pub fn run(
         polling: false,
         held: None,
         service: None,
+        unfinished: HashSet::new(),
         service_shown: false,
+        asked_at: None,
     };
     app.show_prefs();
     app.start_notes();
@@ -2008,30 +2118,63 @@ pub fn run(
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || {
         with_app(App::tick)
     });
-    // The hinge, for the layout: a bend shows in a fifth of a second, and the sensor costs
-    // nothing between changes.
-    // A phone without a hinge answers None the first time, and the timer stops there.
+    // The hinge and the crease, for the layout: a bend shows in a fifth of a second. A phone
+    // with neither a hinge sensor nor window extensions stops the timer; one that has the
+    // extensions but reports no fold for a few seconds is looked at every two seconds after,
+    // so a foldable with no hinge sensor still follows when it opens.
     let hinge = Rc::new(Timer::default());
     let fold_window = window.as_weak();
     let stop = Rc::downgrade(&hinge);
+    let mut flat_ticks = 0u32;
     hinge.start(TimerMode::Repeated, Duration::from_millis(200), move || {
         let Some(window) = fold_window.upgrade() else {
             return;
         };
-        let (angle, across) = crate::android::fold();
-        if angle.is_none() {
+        if !crate::crease::look_now(flat_ticks) {
+            flat_ticks += 1;
+            return;
+        }
+        let (angle, rotated) = crate::android::fold();
+        let reading = crate::android::crease();
+        // No hinge and no window extensions: nothing will ever say, so the timer stops.
+        if angle.is_none() && reading == crate::crease::Reading::Silent {
             if let Some(t) = stop.upgrade() {
                 t.stop();
             }
             return;
         }
         let fold = window.global::<crate::Fold>();
+        if angle.is_none() && !matches!(reading, crate::crease::Reading::Fold(_)) {
+            flat_ticks += 1;
+            // A crease that went away (shut, on a foldable with no hinge sensor) leaves none
+            // behind for the layout.
+            if fold.get_crease_known() {
+                fold.set_crease_known(false);
+                fold.set_crease_half(false);
+                fold.set_crease_across(rotated);
+            }
+            return;
+        }
+        flat_ticks = 0;
         let angle = angle.unwrap_or(180.0);
         if fold.get_hinge() != angle {
             fold.set_hinge(angle);
         }
-        if fold.get_crease_across() != across {
-            fold.set_crease_across(across);
+        let crease = crate::crease::layout(reading, rotated, window.window().scale_factor());
+        if fold.get_crease_across() != crease.across {
+            fold.set_crease_across(crease.across);
+        }
+        if fold.get_crease_known() != crease.known {
+            fold.set_crease_known(crease.known);
+        }
+        if fold.get_crease_half() != crease.half {
+            fold.set_crease_half(crease.half);
+        }
+        if fold.get_crease_start() != crease.start {
+            fold.set_crease_start(crease.start);
+        }
+        if fold.get_crease_end() != crease.end {
+            fold.set_crease_end(crease.end);
         }
     });
     let syncs = Timer::default();

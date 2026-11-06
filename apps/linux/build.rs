@@ -54,6 +54,7 @@ fn main() {
             .qml_file("qml/Onboarding.qml")
             .qml_file("qml/UpdateNotice.qml")
             .qml_file("qml/EmptyState.qml")
+            .qml_file("qml/ErrorLine.qml")
             .qml_file("qml/SectionHeader.qml")
             .qml_file("qml/PagePlaceholder.qml")
             .qml_file("qml/ThinScrollBar.qml")

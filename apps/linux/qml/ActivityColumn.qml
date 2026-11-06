@@ -17,6 +17,7 @@ Item {
     signal openShow(var torrent)
     signal cancelTorrent(Item anchor, var torrent)
     signal control(string hash, string action)
+    signal reconnect()
     // A show's torrents shown as one line: stop, start or cancel them together
     signal controlAll(var hashes, string action)
     signal cancelAll(Item anchor, var torrents)
@@ -168,6 +169,7 @@ Item {
                 }
             }
             Label { visible: !root.connected; width: parent.width; text: root.clientName + " is not connected, so nothing moves here."; role: "ui"; color: theme.textDim; wrapMode: Text.Wrap }
+            Button { objectName: "activity-reconnect"; visible: !root.connected; text: "Connect again"; icon: "refresh-cw"; small: true; onClicked: root.reconnect() }
 
             // ---- Downloading now
             Column {

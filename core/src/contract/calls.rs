@@ -101,6 +101,15 @@ pub enum Call {
     ParseSchedule {
         text: String,
     },
+    /// The coding agent on this computer that can look a schedule up, by the
+    /// name the shell shows, or none (#419). Answers `Agent`.
+    ScheduleAgent,
+    /// Opens a session of that agent on one series' schedule. Started with
+    /// the job: what it says on the way arrives as `AgentSaid`, its answer as
+    /// `AgentAnswered`, for the schedule sheet's paste box. Saves nothing.
+    AskScheduleAgent {
+        series: u64,
+    },
     /// Replaces a series' schedule notes for one season with `notes`, an
     /// empty list clearing them (#418). `season` None means the card's own
     /// season; a record numbering without seasons ignores it. Ends in
@@ -790,6 +799,9 @@ pub enum Reply {
     },
     ListMove {
         rows: Vec<MoveRow>,
+    },
+    Agent {
+        name: Option<String>,
     },
     Watching {
         list: WatchingList,

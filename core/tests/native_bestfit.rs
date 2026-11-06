@@ -1,6 +1,6 @@
 //! The desktop's native engine ranks best fit by what the person saved in anirss's
-//! `config.toml` (#545), so a search there picks the release anirss would. One case in its
-//! own file: it points `XDG_CONFIG_HOME` at a config of its own, which is process-wide.
+//! `config.toml` (#545), so a search there picks the release anirss would. The config is
+//! the one in the home the core's root gives anirss.
 #![cfg(unix)]
 
 mod common;
@@ -72,7 +72,7 @@ fn best_fit_of(core: &Core, c: &anibeam_core::events::Collector) -> BestFit {
 fn a_search_on_the_native_engine_picks_by_the_groups_saved_in_anirss_s_config() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
-    let config = dir.path().join("xdg");
+    let config = dir.path().join("state/home/.config");
     std::fs::create_dir_all(config.join("anirss")).unwrap();
     // The group the core trusts out of the box is not the one the person saved.
     std::fs::write(
@@ -80,10 +80,6 @@ fn a_search_on_the_native_engine_picks_by_the_groups_saved_in_anirss_s_config() 
         "[bestfit]\npreferred_groups = [\"Beta\", \"Alpha\"]\n",
     )
     .unwrap();
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", &config);
-        std::env::set_var("XDG_STATE_HOME", &config);
-    }
     let reply = core
         .call(Call::SetDownloadSettings {
             settings: settings(AnirssMode::Sidecar),

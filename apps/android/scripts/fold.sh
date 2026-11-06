@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Drive the hinge of the fold AVD (scripts/create-avd.sh --fold) and report what changed.
+# Drive the hinge of a foldable AVD (scripts/create-avd.sh --fold or --flip) and report
+# what changed.
 # Usage: ANIBEAM_AVD=anibeam_fold scripts/fold.sh fold | unfold | half [degrees] | state
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -7,7 +8,7 @@ source scripts/env.sh
 
 config="$ANDROID_AVD_HOME/$AVD.avd/config.ini"
 if ! grep -q '^hw.sensor.hinge *= *yes' "$config" 2>/dev/null; then
-  echo "fold.sh: AVD $AVD has no hinge. Create one with: scripts/create-avd.sh --fold" >&2
+  echo "fold.sh: AVD $AVD has no hinge. Create one with: scripts/create-avd.sh --fold or --flip" >&2
   exit 1
 fi
 

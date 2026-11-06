@@ -80,7 +80,8 @@ Frost {
         function onUpdateCurrent(track, error) {
             if (track !== root.track || !root.asked) return
             root.asked = false
-            frame.toast(error ? "Could not check for updates: " + error : "AniBeam is up to date")
+            if (error) frame.toast("AniBeam could not check for updates. Check your internet connection, then try again.", 8, "Try again", root.checkNow, String(error))
+            else frame.toast("AniBeam is up to date")
         }
         function onUpdateProgress(got, total) {
             if (root.phase !== "downloading") return

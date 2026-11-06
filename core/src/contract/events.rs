@@ -116,6 +116,17 @@ pub enum EventBody {
         score: Option<f64>,
         outcomes: Vec<TrackerOutcome>,
     },
+    /// Something the schedule agent said or did on the way (#419): a line of
+    /// its text, or a search or a page it read.
+    AgentSaid {
+        series: u64,
+        text: String,
+    },
+    /// The schedule agent's answer, for the schedule sheet's paste box.
+    AgentAnswered {
+        series: u64,
+        text: String,
+    },
     /// A status from the menu, with what each tracker made of it.
     ListStatusSet {
         series: u64,

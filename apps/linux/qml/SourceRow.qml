@@ -20,7 +20,9 @@ Item {
     signal removeAccepted()
 
     readonly property bool available: source.available !== false
-    readonly property string meta: Fmt.plural(source.series_count || 0, "series", "series")
+    // An unreachable folder says what to do in the row itself, not only in its tip
+    readonly property string meta: !available ? "Plug in its drive, then Rescan. If it moved, remove it and add the new place."
+        : Fmt.plural(source.series_count || 0, "series", "series")
         + ((source.movie_folders || []).length ? ", " + Fmt.plural(source.movie_folders.length, "movie folder", "movie folders") : "")
     readonly property real gutter: theme.space(6)
     readonly property bool stacked: width < lead.width + controls.width + gutter
