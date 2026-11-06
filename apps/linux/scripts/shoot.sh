@@ -19,15 +19,13 @@ if [ -n "${ANIBEAM_QML_DIR:-}" ]; then
   export QML_DISK_CACHE_PATH="${QML_DISK_CACHE_PATH:-$root/qmlcache}"
 fi
 anibeam_stage
-source "$(dirname "$0")/silent-mpv.sh"
-anibeam_silent_mpv_conf "$here/mpv.conf" "$root"
 # The software scene graph cannot paint a Shapes fillItem, so every poster comes back white
 # under plain offscreen; forcing the RHI backend fixes that, but RHI's GL backend needs GLX,
 # which needs a DISPLAY. Without one, forcing it aborts (no context, no PNG) instead of
 # falling back, so only force it when there is an X display to make the context against.
 rhi_env=()
 [ -n "${DISPLAY:-}" ] && rhi_env=(QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl)
-env "${rhi_env[@]}" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$ANIBEAM_SILENT_MPV_CONF" \
+env "${rhi_env[@]}" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$here/mpv.conf" \
   "$ANIBEAM_BIN" --root "$root" --shoot "$out/$name.png" --width "${W:-1600}" --height "${H:-1000}" "$@" \
   2> "$out/$name.log" || { echo "anibeam exited $?; see $out/$name.log"; exit 1; }
 file "$out/$name.png" | grep -q PNG && echo "$name ok" || { echo "no PNG written; see $out/$name.log"; exit 1; }
