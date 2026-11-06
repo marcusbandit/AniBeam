@@ -26,6 +26,8 @@ pub struct Peer {
     pub os: String,
     pub online: bool,
     pub ips: Vec<IpAddr>,
+    /// No direct address and a home relay: Tailscale carries it through DERP.
+    pub relayed: bool,
 }
 
 /// This machine's tailnet addresses and every other device on it.
@@ -79,6 +81,8 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
                         os: p["OS"].as_str().unwrap_or_default().to_string(),
                         online: p["Online"].as_bool().unwrap_or(false),
                         ips: ips(p),
+                        relayed: p["CurAddr"].as_str().unwrap_or_default().is_empty()
+                            && !p["Relay"].as_str().unwrap_or_default().is_empty(),
                     })
                 })
                 .collect()
@@ -196,6 +200,18 @@ mod tests {
         );
         assert_eq!(read_status(b"not json"), None);
         assert_eq!(read_status(b"{}"), None);
+    }
+
+    #[test]
+    fn a_device_with_no_direct_address_is_relayed() {
+        let t = read_status(br#"{"Self": {"TailscaleIPs": []}, "Peer": {
+            "a": {"ID": "nDirect", "HostName": "a", "CurAddr": "192.168.1.20:41641", "Relay": "fra"},
+            "b": {"ID": "nRelay", "HostName": "b", "CurAddr": "", "Relay": "fra"},
+            "c": {"ID": "nUnknown", "HostName": "c"}
+        }}"#)
+        .unwrap();
+        let relayed: Vec<_> = t.peers.iter().map(|p| (p.id.as_str(), p.relayed)).collect();
+        assert_eq!(relayed, [("nDirect", false), ("nRelay", true), ("nUnknown", false)]);
     }
 
     #[test]

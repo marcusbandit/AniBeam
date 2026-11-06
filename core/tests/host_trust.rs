@@ -237,3 +237,35 @@ fn the_real_server_knows_who_is_asking() {
         200
     );
 }
+
+/// Hello says whether Tailscale carries the asking device through a relay,
+/// as the status says of that device, and says nothing for a direct one.
+#[test]
+fn hello_says_when_the_path_to_the_asker_is_relayed() {
+    const PATHS: &[u8] = br#"{
+        "Self": {"ID": "nSelf", "HostName": "banditbox", "TailscaleIPs": ["100.65.105.9"]},
+        "Peer": {
+            "a": {"ID": "nPhone", "HostName": "pixel", "Online": true, "CurAddr": "", "Relay": "fra",
+                  "TailscaleIPs": ["100.70.1.2"]},
+            "b": {"ID": "nLaptop", "HostName": "kangaeru", "Online": true,
+                  "CurAddr": "192.168.1.20:41641", "Relay": "fra", "TailscaleIPs": ["100.80.3.4"]}
+        }
+    }"#;
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (_dir, core, _c) = common::open_core();
+    core.set_tailscale_status(Some(PATHS.to_vec()));
+    let hello = |from: &str| -> serde_json::Value {
+        let base = serve_as(&rt, &core, from);
+        rt.block_on(async {
+            reqwest::get(format!("{base}{}", anibeam_host_api::HELLO))
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap()
+        })
+    };
+    assert_eq!(hello("100.70.1.2")["relayed"], serde_json::json!(true));
+    assert!(hello("100.80.3.4").get("relayed").is_none());
+    assert!(hello("127.0.0.1").get("relayed").is_none());
+}
