@@ -25,6 +25,7 @@ pub mod jackett;
 pub mod link;
 pub mod managed;
 pub mod native;
+pub mod origins;
 pub mod paths;
 pub mod prune;
 pub mod qbt;
@@ -1389,13 +1390,25 @@ pub(crate) fn annotate(
         });
     match found {
         Ok(Some((show, files))) => {
+            // Which torrent each of the show's files came from, where the
+            // core saw it (#241); a read that fails leaves the names to decide
+            let paths: Vec<&str> = files.iter().map(|(_, _, p)| p.as_str()).collect();
+            let known = core
+                .store
+                .read(|c| origins::of(c, &paths))
+                .unwrap_or_default();
             // On disk means this very release is the file (#237); the episode
-            // from another release is only other_on_disk
+            // from another release is only other_on_disk. A file whose torrent
+            // is known is that torrent's and no other's; one with none is read
+            // by its name.
             for (f, item) in facts.iter_mut().zip(items) {
                 if let Some(n) = f.episode {
                     let mut paths = link::episode_files(&files, f.season, n).peekable();
                     let any = paths.peek().is_some();
-                    f.on_disk = paths.any(|p| facts::same_release(&item.title, f, p));
+                    f.on_disk = paths.any(|p| match known.get(p) {
+                        Some(origin) => origins::is_release(origin, &item.title, &item.link, f),
+                        None => facts::same_release(&item.title, f, p),
+                    });
                     f.other_on_disk = any && !f.on_disk;
                 }
             }
@@ -2349,6 +2362,11 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
         let outcome = async {
             let client = qbt_client(&owner).await?;
             let mut torrents = client.torrents().await?;
+            // Which torrent each library file came from (#241); a failure
+            // only leaves them for the next read
+            if let Err(e) = origins::record_from(&owner, &client, &torrents).await {
+                tracing::debug!("origins not recorded: {e}");
+            }
             // The files of each unfinished torrent, so a batch shows each
             // episode's progress; a single file adds nothing to the torrent's
             for t in torrents.iter_mut().filter(|t| t.progress < 1.0) {

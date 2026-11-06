@@ -986,6 +986,25 @@ impl Core {
             // with a network side effect made every library change an
             // AniList request. The page asks for a refresh on its own.
             Call::ListWatching => watching::list_call(self),
+            Call::GetStats {
+                year,
+                utc_offset,
+                month_starts,
+            } => {
+                let images_dir = self.paths.images_dir();
+                let now = time::now();
+                let stats = self.store.read(|c| {
+                    let snap = crate::library::snapshot::Snapshot::load(c, &images_dir, now, None)?;
+                    Ok(crate::stats::compute(
+                        &snap,
+                        year,
+                        i64::from(utc_offset),
+                        &month_starts,
+                        time::to_secs(now),
+                    ))
+                })?;
+                Ok(Reply::Stats { stats })
+            }
             Call::ListPlanning => watching::planning_call(self),
             Call::RefreshWatching { force } => watching::refresh_call(self, force),
             // Airing now reads its own tables, like Watching: the list call
