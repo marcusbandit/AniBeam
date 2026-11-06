@@ -454,6 +454,14 @@ impl Core {
         self.downloads.disable_unattended();
     }
 
+    /// Lets a core under a root settle a fresh install on a qBittorrent it finds
+    /// answering, which only the person's own install does (#637): the tests of that
+    /// choice run under a root. Not part of the contract and not exported to any shell.
+    #[doc(hidden)]
+    pub fn let_sandbox_find_torrent_clients(&self) {
+        self.downloads.let_sandbox_find_clients();
+    }
+
     /// The store itself, for the integration tests' fixtures: they build
     /// library state with plain SQL rather than driving a scan. Not part of
     /// the contract and not exported to any shell.
