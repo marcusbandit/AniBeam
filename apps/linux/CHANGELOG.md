@@ -145,7 +145,6 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
-- A source behind an anirss you run says to add it to that anirss's config
 - A show's synopsis shows symbols like & instead of their codes, in paragraphs
 - Endpoints from repos reach an anirss built from source, whatever its version
 - Seeders show for releases from a tracker written with backslashes
