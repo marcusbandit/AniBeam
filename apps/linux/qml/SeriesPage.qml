@@ -1226,16 +1226,26 @@ Item {
                     Flow { width: parent.width; spacing: theme.space(3); Repeater { model: page.detail ? page.detail.characters : []; PersonCard { required property var modelData; person: modelData } } }
                 }
 
-                // Recommendations, a row of small cards
+                // Relations: the franchise as small rows, in the crawl's own order
                 Column {
-                    visible: !!page.detail && page.detail.recommendations.length > 0
+                    objectName: "series-relations"
+                    visible: page.relationNodes.length > 0
                     width: parent.width
                     spacing: theme.space(3)
-                    Heading { text: "Recommendations"; count: page.detail ? page.detail.recommendations.length : 0 }
-                    Flow { width: parent.width; spacing: theme.space(3)
-                        Repeater { model: page.detail ? page.detail.recommendations : []
-                            RecommendationCard { required property var modelData; rec: modelData; width: theme.space(26)
-                                onOpened: modelData.owned ? frame.go("series", { id: modelData.owned }, modelData.title) : frame.openLink("https://anilist.co/anime/" + modelData.anilist_id) } } }
+                    Heading { text: "Related"; count: page.relationNodes.length }
+                    Flow {
+                        id: relationFlow
+                        width: parent.width
+                        spacing: theme.space(3)
+                        // As many a row as fit at theme.space(64), the row filled
+                        readonly property int per: Math.max(1, Math.floor((width + spacing) / (theme.space(64) + spacing)))
+                        readonly property real stoneW: (width - (per - 1) * spacing) / per
+                        Repeater {
+                            model: page.relationNodes
+                            RelationStone { required property var modelData; node: modelData; width: relationFlow.stoneW }
+                        }
+                    }
+                    Caption { visible: !!page.graph && !page.graph.complete; text: "Still filling in from AniList." }
                 }
 
                 // Tags by rank; spoiler and adult tags behind the toggle
@@ -1272,26 +1282,22 @@ Item {
                     }
                 }
 
-                // Relations: the franchise as small rows, in the crawl's own order
+                // Recommendations last: AniList's top eight, as one even row of eight when the
+                // column fits them at a readable width, else 4x2; the cards share the width
                 Column {
-                    objectName: "series-relations"
-                    visible: page.relationNodes.length > 0
+                    id: recCol
+                    objectName: "series-recommendations"
+                    visible: !!page.detail && page.detail.recommendations.length > 0
                     width: parent.width
                     spacing: theme.space(3)
-                    Heading { text: "Related"; count: page.relationNodes.length }
-                    Flow {
-                        id: relationFlow
-                        width: parent.width
-                        spacing: theme.space(3)
-                        // As many a row as fit at theme.space(64), the row filled
-                        readonly property int per: Math.max(1, Math.floor((width + spacing) / (theme.space(64) + spacing)))
-                        readonly property real stoneW: (width - (per - 1) * spacing) / per
-                        Repeater {
-                            model: page.relationNodes
-                            RelationStone { required property var modelData; node: modelData; width: relationFlow.stoneW }
-                        }
-                    }
-                    Caption { visible: !!page.graph && !page.graph.complete; text: "Still filling in from AniList." }
+                    readonly property real gap: theme.space(3)
+                    readonly property int cols: (width - 7 * gap) / 8 >= theme.space(28) ? 8 : 4
+                    readonly property real cardW: Math.floor((width - (cols - 1) * gap) / cols)
+                    Heading { text: "Recommendations"; count: page.detail ? page.detail.recommendations.length : 0 }
+                    Grid { columns: recCol.cols; spacing: recCol.gap
+                        Repeater { model: page.detail ? page.detail.recommendations : []
+                            RecommendationCard { required property var modelData; rec: modelData; width: recCol.cardW
+                                onOpened: modelData.owned ? frame.go("series", { id: modelData.owned }, modelData.title) : frame.openLink("https://anilist.co/anime/" + modelData.anilist_id) } } }
                 }
             }
         }
