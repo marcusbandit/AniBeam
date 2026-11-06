@@ -1,6 +1,10 @@
 //! HTTP to the host and to AniList.
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
+
+use anibeam_host_api::proof::{self, DeviceKey};
 
 use crate::address::HostAddress;
 use crate::api::{self, Hello, Snapshot};
@@ -86,14 +90,65 @@ pub fn describe(error: &ureq::Error, host: &str) -> String {
     }
 }
 
+/// The phone's key, set once at start ([`use_device_key`]), that every client signs with.
+static DEVICE: OnceLock<Arc<DeviceKey>> = OnceLock::new();
+
+/// Signs every request to a host that reads proofs with `key` from now on (#555).
+pub fn use_device_key(key: DeviceKey) {
+    let _ = DEVICE.set(Arc::new(key));
+}
+
+/// Each host's key and how far its clock is ahead of the phone's, by base URL, once its
+/// hello said it reads proofs. Shared, so a client made for one fetch signs too.
+static HOSTS: OnceLock<Mutex<HashMap<String, (String, i64)>>> = OnceLock::new();
+
+fn hosts() -> std::sync::MutexGuard<'static, HashMap<String, (String, i64)>> {
+    HOSTS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
 pub struct HostClient {
     agent: ureq::Agent,
     address: HostAddress,
+    key: Option<Arc<DeviceKey>>,
 }
 
 impl HostClient {
     pub fn new(agent: ureq::Agent, address: HostAddress) -> Self {
-        HostClient { agent, address }
+        HostClient {
+            agent,
+            address,
+            key: DEVICE.get().cloned(),
+        }
+    }
+
+    /// Signs with `key` instead of the phone's.
+    pub fn with_key(mut self, key: DeviceKey) -> Self {
+        self.key = Some(Arc::new(key));
+        self
+    }
+
+    /// The proof header for one request, when the host reads proofs and the phone has a
+    /// key. Made afresh for every try: a nonce is good once. The hello itself goes
+    /// unsigned: it is how the phone learns the host's key, and a host whose key changed
+    /// would refuse a hello signed to the old one.
+    fn proof(&self, method: &str, path: &str) -> Option<String> {
+        if path == api::HELLO {
+            return None;
+        }
+        let key = self.key.as_ref()?;
+        let (host, ahead) = hosts().get(&self.address.base_url())?.clone();
+        let mut nonce = [0u8; 16];
+        getrandom::fill(&mut nonce).ok()?;
+        Some(key.sign(
+            &host,
+            crate::now() + ahead,
+            &proof::hex(&nonce),
+            method,
+            path,
+        ))
     }
 
     pub fn address(&self) -> &HostAddress {
@@ -110,8 +165,15 @@ impl HostClient {
                     | std::io::ErrorKind::ConnectionReset
                     | std::io::ErrorKind::ConnectionAborted))
         };
-        let mut response = match self.agent.get(&url).call() {
-            Err(e) if dropped(&e) => self.agent.get(&url).call(),
+        let call = || {
+            let mut request = self.agent.get(&url);
+            if let Some(p) = self.proof("GET", path) {
+                request = request.header(proof::HEADER, p);
+            }
+            request.call()
+        };
+        let mut response = match call() {
+            Err(e) if dropped(&e) => call(),
             other => other,
         }
         .map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
@@ -184,6 +246,12 @@ impl HostClient {
         if hello.api > api::API_VERSION {
             return Err(HostError::TooNew(hello.api));
         }
+        let base = self.address.base_url();
+        if hello.features.iter().any(|f| f == api::FEATURE_PROOF) && !hello.key.is_empty() {
+            hosts().insert(base, (hello.key.clone(), hello.now - crate::now()));
+        } else {
+            hosts().remove(&base);
+        }
         Ok(hello)
     }
 
@@ -231,10 +299,14 @@ impl HostClient {
     /// `POST`s JSON and hands back the status and the answer, whatever the status.
     pub fn post(&self, path: &str, body: &[u8]) -> Result<(u16, Vec<u8>), HostError> {
         let url = format!("{}{}", self.address.base_url(), path);
-        let mut response = self
+        let mut request = self
             .agent
             .post(&url)
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(p) = self.proof("POST", path) {
+            request = request.header(proof::HEADER, p);
+        }
+        let mut response = request
             .send(body)
             .map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
         let status = response.status().as_u16();
@@ -293,5 +365,128 @@ mod refusal_tests {
         assert_eq!(refusal(404, body), None);
         assert_eq!(refusal(403, b"<html>"), None);
         assert_eq!(refusal(403, br#"{"error":""}"#), None);
+    }
+}
+
+#[cfg(test)]
+mod proof_tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+
+    use anibeam_host_api::proof::{self, DeviceKey};
+
+    use super::*;
+
+    /// A host on loopback that answers `hello` for `count` requests, each on its own
+    /// connection, and hands back each request's line and proof header.
+    fn host(
+        hello: String,
+        count: usize,
+    ) -> (HostAddress, mpsc::Receiver<(String, Option<String>)>) {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = HostAddress::parse(&l.local_addr().unwrap().to_string()).unwrap();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            for stream in l.incoming().take(count) {
+                let mut stream = stream.unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let mut proof = None;
+                loop {
+                    let mut header = String::new();
+                    reader.read_line(&mut header).unwrap();
+                    let header = header.trim_end();
+                    if header.is_empty() {
+                        break;
+                    }
+                    if let Some((name, value)) = header.split_once(": ")
+                        && name.eq_ignore_ascii_case(proof::HEADER)
+                    {
+                        proof = Some(value.to_string());
+                    }
+                }
+                tx.send((line.trim_end().to_string(), proof)).unwrap();
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{hello}",
+                    hello.len()
+                );
+            }
+        });
+        (address, rx)
+    }
+
+    fn hello(features: &[&str], key: &str, now: i64) -> String {
+        serde_json::json!({
+            "app": "anibeam", "api": 1, "version": "2.5.0", "host": "banditbox",
+            "now": now, "features": features, "key": key,
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn requests_carry_a_proof_the_host_can_check_once_it_reads_them() {
+        let host_key = DeviceKey::from_seed([9; 32]).public();
+        let phone = DeviceKey::from_seed([7; 32]);
+        // The host's clock is an hour ahead: the proof is made on the host's time.
+        let ahead = crate::now() + 3600;
+        let (address, seen) = host(hello(&[api::FEATURE_PROOF], &host_key, ahead), 5);
+        let client = HostClient::new(agent(), address.clone()).with_key(phone.clone());
+
+        client.hello().unwrap();
+        assert_eq!(
+            seen.recv().unwrap().1,
+            None,
+            "nothing to sign to before the hello"
+        );
+
+        client.get_bytes("/api/v1/posters/3?x=1").unwrap();
+        let (line, header) = seen.recv().unwrap();
+        assert!(line.starts_with("GET /api/v1/posters/3?x=1 "), "{line}");
+        let proven = proof::check(
+            &header.unwrap(),
+            &host_key,
+            "GET",
+            "/api/v1/posters/3?x=1",
+            ahead,
+        )
+        .unwrap();
+        assert_eq!(proven.key, phone.public());
+
+        client.post(api::CALL, b"{}").unwrap();
+        let (_, header) = seen.recv().unwrap();
+        let again = proof::check(&header.unwrap(), &host_key, "POST", api::CALL, ahead).unwrap();
+        assert_ne!(again.nonce, proven.nonce, "a nonce is used once");
+
+        // A client made for one fetch, which never says hello itself, signs too.
+        let fresh = HostClient::new(agent(), address).with_key(phone.clone());
+        fresh.get_bytes("/api/v1/posters/4").unwrap();
+        let (_, header) = seen.recv().unwrap();
+        assert!(
+            proof::check(
+                &header.unwrap(),
+                &host_key,
+                "GET",
+                "/api/v1/posters/4",
+                ahead
+            )
+            .is_ok()
+        );
+
+        // Another hello goes unsigned, so a host whose key changed is heard again.
+        client.hello().unwrap();
+        assert_eq!(seen.recv().unwrap().1, None);
+    }
+
+    #[test]
+    fn a_host_that_does_not_read_proofs_gets_none() {
+        let (address, seen) = host(hello(&[], "", crate::now()), 2);
+        let client = HostClient::new(agent(), address).with_key(DeviceKey::from_seed([7; 32]));
+        client.hello().unwrap();
+        client.get_bytes("/api/v1/snapshot").unwrap();
+        assert_eq!(seen.recv().unwrap().1, None);
+        assert_eq!(seen.recv().unwrap().1, None);
     }
 }

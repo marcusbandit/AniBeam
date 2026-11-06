@@ -14,6 +14,7 @@
 pub mod addr;
 pub mod build;
 pub mod convert;
+pub mod keys;
 pub mod peers;
 pub mod server;
 pub mod stream;
@@ -80,6 +81,8 @@ pub struct Host {
     reading: Mutex<()>,
     /// A status document a test sets on one core, read in place of the CLI.
     fixed_status: Mutex<Option<Vec<u8>>>,
+    /// This machine's key and the keys it is paired with (#555).
+    pub keys: keys::Keys,
 }
 
 struct Run {
@@ -136,6 +139,7 @@ impl Host {
             tailnet: Mutex::new((None, None)),
             reading: Mutex::new(()),
             fixed_status: Mutex::new(None),
+            keys: keys::Keys::new(),
         }
     }
 
@@ -296,6 +300,7 @@ impl Host {
 /// Reads the preference and starts or stops the host to match. Called when
 /// the core starts, and when a shell holds the host or lets it go.
 pub fn sync(core: &Core) {
+    keys::load(core);
     let on = match core.store.read(prefs::load_preferences) {
         Ok(p) => {
             core.host.set_streaming(p.stream_over_tailscale);

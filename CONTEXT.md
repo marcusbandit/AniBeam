@@ -314,6 +314,18 @@ _Avoid_: server, sync server
 A device the tailnet host answers. Every device on the tailnet is trusted until the person switches it off in Settings, Phone app; nothing off the tailnet is.
 _Avoid_: allowed device, whitelisted device
 
+**Device key**:
+The key pair each AniBeam makes once and keeps with its secrets. The tailnet host says its public key in its hello; a phone or another AniBeam signs each request to it with its own.
+_Avoid_: token, password, certificate
+
+**Proof**:
+The signature a request carries of the device key that sent it, good for that one request to that one host, around the time it was made, once. A request whose proof does not check out is refused wherever it comes from.
+_Avoid_: auth header, token
+
+**Paired device**:
+A device whose device key the host keeps. Its requests are answered on any network the host listens on, unless the person switched it off on the tailnet.
+_Avoid_: linked device, registered device
+
 ### Route
 
 **Parity checklist**:
