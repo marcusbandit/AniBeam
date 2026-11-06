@@ -909,6 +909,42 @@ pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
     })
 }
 
+/// Rescans several series in one scan (#208): a pass over their folders
+/// alone, so the activity log gets the one line a scan ends with. A series
+/// whose source is not there right now is left out; when none is there,
+/// the call is refused as a single rescan would be.
+pub fn rescan_many(core: &Core, series: &[u64]) -> Result<Reply, CoreError> {
+    let mut paths = Vec::new();
+    let mut away = None;
+    for &id in series {
+        let row: Option<(String, String, bool)> = core.store.read(|c| {
+            Ok(c.query_row(
+                "SELECT s.path, src.path, src.available FROM series s JOIN sources src ON src.id = s.source_id WHERE s.id = ?1",
+                params![id as i64],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)? == 1)),
+            )
+            .optional()?)
+        })?;
+        let (path, source, available) = row.ok_or(CoreError::NotFound {
+            what: Entity::Series,
+            id,
+        })?;
+        if available {
+            paths.push(path);
+        } else {
+            away.get_or_insert(source);
+        }
+    }
+    if paths.is_empty() {
+        return Err(CoreError::Unavailable {
+            path: away.unwrap_or_default(),
+        });
+    }
+    Ok(Reply::Started {
+        job: start(&core.owner()?, ScanScope::Paths(paths)),
+    })
+}
+
 // The job ---------------------------------------------------------------
 
 /// Writes a source's availability and says so once. Called when the flag

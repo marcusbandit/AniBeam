@@ -760,6 +760,7 @@ impl Core {
             }
             Call::GetSeries { series } => reads::get_series(self, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
+            Call::ActOnSeries { series, action } => self.act_on_series(series, action),
             Call::ParseSchedule { text } => Ok(crate::library::schedule::parse_call(&text)),
             Call::SetScheduleNotes {
                 series,
@@ -1216,6 +1217,53 @@ impl Core {
             Call::Import { path } => Ok(Reply::Started {
                 job: transfer::import::start(self, &path)?,
             }),
+        }
+    }
+
+    /// `Call::ActOnSeries` (#208): every id checked first, so a pick that is
+    /// gone fails the whole call before anything is written.
+    fn act_on_series(&self, series: Vec<u64>, action: SeriesAction) -> Result<Reply, CoreError> {
+        let mut picks: Vec<u64> = Vec::with_capacity(series.len());
+        for id in series {
+            if !picks.contains(&id) {
+                picks.push(id);
+            }
+        }
+        if picks.is_empty() {
+            return Err(CoreError::invalid("series", "nothing picked"));
+        }
+        for &id in &picks {
+            let there = self.store.read(move |c| {
+                Ok(c.query_row(
+                    "SELECT EXISTS (SELECT 1 FROM series WHERE id = ?1)",
+                    rusqlite::params![id as i64],
+                    |r| r.get::<_, i64>(0),
+                )? == 1)
+            })?;
+            if !there {
+                return Err(CoreError::NotFound {
+                    what: Entity::Series,
+                    id,
+                });
+            }
+        }
+        match action {
+            SeriesAction::Hide { hidden } => reads::set_hidden_many(self, &picks, hidden),
+            SeriesAction::Rescan => scan::rescan_many(self, &picks),
+            SeriesAction::Score { score } => Ok(Reply::Started {
+                job: writes::start_many(self, &picks, writes::ManyWrite::Score(score))?,
+            }),
+            SeriesAction::ListStatus { status } => Ok(Reply::Started {
+                job: writes::start_many(self, &picks, writes::ManyWrite::Status(status))?,
+            }),
+            SeriesAction::FindMatch => {
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: automatch::start_for(&core, picks),
+                })
+            }
         }
     }
 

@@ -499,6 +499,109 @@ pub fn start(core: &Arc<Core>) -> u64 {
     })
 }
 
+/// A search for each of `series` that has no match (#208), in the order
+/// given, as one job with one line for the lot. Asking is asking: a match
+/// the user cleared, or a miss already stamped, is searched all the same,
+/// where the automatic run leaves both alone. A series that has a match is
+/// counted and left as it is; one still being copied in is searched anyway,
+/// since the person picked it.
+pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
+    let owner = core.clone();
+    core.jobs.clone().start(JobKind::ApplyMatch, move |ctx| async move {
+        let picked = series.clone();
+        let rows: Vec<(u64, String, SeriesKind)> = owner
+            .store
+            .write_async(move |c| {
+                let sql = format!(
+                    "SELECT id, folder_name, kind FROM series
+                     WHERE provider IS NULL AND missing_since IS NULL AND id IN ({})",
+                    placeholders(picked.len())
+                );
+                let mut stmt = c.prepare(&sql)?;
+                let rows = stmt
+                    .query_map(params_from_iter(picked.iter().map(|id| *id as i64)), |r| {
+                        let kind: String = r.get(2)?;
+                        Ok((
+                            r.get::<_, i64>(0)? as u64,
+                            r.get::<_, String>(1)?,
+                            SeriesKind::from_column(&kind).unwrap_or(SeriesKind::Show),
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .await?;
+        let mut rows = rows;
+        rows.sort_by_key(|(id, _, _)| series.iter().position(|s| s == id));
+        let had = (series.len() - rows.len()) as u64;
+        let order = owner.store.write_async(|c| prefs::load_provider_order(c)).await?;
+        let images_dir = owner.paths.images_dir();
+        let total = rows.len() as u64;
+        let (mut matched, mut unmatched) = (0u64, 0u64);
+        let (mut hit_line, mut miss_name) = (None, None);
+        for (series, folder, kind) in rows {
+            ctx.checkpoint()?;
+            ctx.progress(matched + unmatched, Some(total), &folder);
+            let outcome = {
+                let _in_flight = InFlight::begin(&owner.library, series);
+                attempt(&owner, series, &folder, kind, &order).await
+            };
+            match outcome {
+                Ok(Some(hit)) => {
+                    matched += 1;
+                    let label = hit.provider.label();
+                    ctx.emit(Level::Debug, format!("Match ({label} {:.2}): {folder} -> {}", hit.score, hit.title), EventBody::Notice);
+                    hit_line = Some(format!("Matched {folder} to {}.", hit.title));
+                    let dir = images_dir.clone();
+                    let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
+                    if let Some(card) = cards.into_iter().next() {
+                        ctx.changed(card);
+                    }
+                }
+                Ok(None) => {
+                    unmatched += 1;
+                    stamp_attempt(&owner, series, time::now_secs()).await?;
+                    ctx.emit(Level::Debug, format!("No match for {folder} (threshold {THRESHOLD})"), EventBody::Notice);
+                    miss_name = Some(folder);
+                }
+                Err((_, e)) if provider_stopped(&e) => return Err(e),
+                Err((provider, e))
+                    if matches!(&e, CoreError::Provider { status: Some(_), .. }) || e.is_decode_failure() =>
+                {
+                    unmatched += 1;
+                    ctx.emit(Level::Debug, format!("{} search failed for {folder}: {}", provider.label(), message_of(&e)), EventBody::Notice);
+                    miss_name = Some(folder);
+                }
+                Err((_, e)) => return Err(e),
+            }
+        }
+        if matched > 0 {
+            images::sweep_after(&owner, "match").await;
+        }
+        let shows = |n: u64| format!("{n} {}", crate::words::pick(n, "show", "shows"));
+        let mut said = Vec::new();
+        match (matched, hit_line) {
+            (0, _) => {}
+            (1, Some(line)) => said.push(line),
+            (m, _) => said.push(format!("Matched {}.", shows(m))),
+        }
+        match (unmatched, miss_name) {
+            (0, _) => {}
+            (1, Some(name)) => said.push(format!("No match found for {name}.")),
+            (u, _) => said.push(format!("No match found for {}.", shows(u))),
+        }
+        if had > 0 {
+            said.push(format!("{had} {} a match already.", crate::words::pick(had, "show had", "shows had")));
+        }
+        Ok(Finished {
+            plain: Some(said.join(" ")),
+            level: Level::Info,
+            message: format!("Find a match on {} series: {matched} matched, {unmatched} unmatched, {had} had one", series.len()),
+            body: EventBody::Notice,
+        })
+    })
+}
+
 /// Takes a series' identity away again, and keeps the auto-match off it
 /// for good: the user cleared the match because it was wrong, and the same
 /// search would only find the same wrong answer, so the series stays out
