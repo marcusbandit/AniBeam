@@ -182,19 +182,10 @@ async fn hello(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
 ) -> Response {
-    // Only a tailnet address has a path Tailscale can relay.
-    let on_tailnet = super::addr::is_tailscale(&from.ip().to_canonical());
-    let relayed = match st.core.upgrade().filter(|_| on_tailnet) {
-        Some(core) => tokio::task::spawn_blocking(move || {
-            core.host
-                .tailnet(false)
-                .and_then(|t| t.peer(from.ip().to_canonical()).map(|p| p.relayed))
-                .unwrap_or(false)
-        })
-        .await
-        .unwrap_or(false),
-        None => false,
-    };
+    let relayed = st
+        .core
+        .upgrade()
+        .is_some_and(|core| super::relayed(&core, from.ip()));
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
