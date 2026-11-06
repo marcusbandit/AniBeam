@@ -45,6 +45,9 @@ public class TorrentService extends Service {
      * Asks for the notification permission Android 13 and later want before this service
      * may show its notification: true when the ask went out or was not needed. Only an
      * Activity can ask, and from its UI thread; the native side calls this from its own.
+     * Android stops showing its dialog after two denials, and the app cannot tell that apart
+     * from never asked (an earlier build asked without saving that it had). So when no dialog
+     * took the window's focus a moment after the ask, the settings open instead.
      */
     public static boolean askPermission(final Activity activity) {
         if (Build.VERSION.SDK_INT < 33) return true;
@@ -55,6 +58,15 @@ public class TorrentService extends Service {
             @Override
             public void run() {
                 activity.requestPermissions(new String[] {permission}, 1);
+                activity.getWindow().getDecorView().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (activity.hasWindowFocus()
+                                && activity.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                            openSettings(activity);
+                        }
+                    }
+                }, 800);
             }
         });
         return true;

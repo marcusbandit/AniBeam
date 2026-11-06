@@ -1278,7 +1278,6 @@ impl Find {
             && state.offer.show.airing
             && !state.no_feed.contains(&provider);
         let limit = self.limit();
-        crate::app::download_starting();
         self.with_data(|d| d.set_busy(true));
         self.line("Working...", "");
         let name = plan.name.clone();
@@ -1326,6 +1325,11 @@ impl Find {
                     with(|f| {
                         f.with_data(|d| d.set_busy(false));
                         f.line(&line.join(" "), &error);
+                        // Something was taken: the first time, the notification is
+                        // explained before Android asks for it.
+                        if !line.is_empty() {
+                            crate::app::download_started();
+                        }
                         if error.is_empty()
                             && let Some(s) = f.show.as_mut()
                         {
@@ -1530,7 +1534,6 @@ impl Find {
         if items.is_empty() {
             return;
         }
-        crate::app::download_starting();
         let count = items.len();
         let name = self
             .show
@@ -1544,14 +1547,17 @@ impl Find {
                 limit_bytes: self.limit(),
             },
             move |f, answer| match answer {
-                Ok(_) => f.line(
-                    &if count == 1 {
-                        "Downloading 1 release.".into()
-                    } else {
-                        format!("Downloading {count} releases.")
-                    },
-                    "",
-                ),
+                Ok(_) => {
+                    f.line(
+                        &if count == 1 {
+                            "Downloading 1 release.".into()
+                        } else {
+                            format!("Downloading {count} releases.")
+                        },
+                        "",
+                    );
+                    crate::app::download_started();
+                }
                 Err(e) => f.line("", &format!("Not added: {}", words(&e))),
             },
         );
@@ -1586,7 +1592,6 @@ impl Find {
             .as_ref()
             .map(|s| s.offer.show.folder.clone())
             .filter(|f| !f.is_empty());
-        crate::app::download_starting();
         ask(
             Call::PhoneSubscribe {
                 query: list.query,
@@ -1604,6 +1609,7 @@ impl Find {
                         "",
                     );
                     f.refresh();
+                    crate::app::download_started();
                 }
                 Ok(_) => {}
                 Err(e) => f.line("", &format!("Not subscribed: {}", words(&e))),
