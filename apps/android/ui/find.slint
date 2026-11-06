@@ -432,7 +432,7 @@ component FollowingPane inherits Rectangle {
         }
         Text {
             text: FindData.unfollow-ask
-                ? "New episodes stop downloading. The ones it downloaded can stay or go."
+                ? "New episodes stop downloading. What is in its folder can stay, or go with it: every download there, episodes you got by hand included."
                 : FindData.rule-line;
             color: Theme.dim;
             font-size: Theme.small;
@@ -452,11 +452,13 @@ component FollowingPane inherits Rectangle {
             Button {
                 text: "Stop, keep the episodes";
                 primary: true;
+                enabled: !FindData.busy;
                 clicked => { FindData.unfollow(false); }
             }
             Button {
-                text: "Stop and delete its episodes";
+                text: "Stop and delete its folder's downloads";
                 danger: true;
+                enabled: !FindData.busy;
                 clicked => { FindData.unfollow(true); }
             }
             Button {
