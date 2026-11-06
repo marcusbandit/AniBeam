@@ -213,6 +213,7 @@ fn main() {
         "assets/icons/copy.svg",
         "assets/icons/database.svg",
         "assets/icons/download.svg",
+        "assets/icons/ellipsis.svg",
         "assets/icons/external-link.svg",
         "assets/icons/eye-off.svg",
         "assets/icons/eye.svg",

@@ -579,7 +579,8 @@ FocusScope {
         var p = f && f !== frame ? f.mapToItem(frame, theme.space(4), Math.min(f.height, theme.space(10))) : Qt.point(frame.width / 2, frame.height / 3)
         openContextMenu(p)
     }
-    function openMenu(x, y, items) { menu.openAt(x, y, items) }
+    // `above`: (x, y) is the menu's bottom right corner, for an opener at the window's foot.
+    function openMenu(x, y, items, above) { menu.openAt(x, y, items, above) }
     function closeMenu() { menu.close() }
     // A tip belongs to the area the pointer is over (`area`, the anchor item itself unless a
     // caller anchors the tip on part of a bigger hover area, the way Card anchors on its
