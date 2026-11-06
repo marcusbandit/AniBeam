@@ -11,6 +11,9 @@
 // owner sets `index`. While open the list is a popover on the frame's escape stack, so the
 // frame's other layers (tooltips) know a popover is up.
 //
+// `dividerAfter` draws a rule under that row (0 sets the first entry apart); -1, the default,
+// draws none. Rows keep their option indexes, so keys and `picked` ignore the rule.
+//
 // `interactive`, not the root's own `enabled`: `enabled` cascades to every child, so turning
 // it off would take the popup's own focus and hover handling with it for no visual gain
 // beyond what the caller's own row opacity already gives.
@@ -24,6 +27,7 @@ Corner {
     property int index: 0
     property real minWidth: theme.space(40)
     property bool interactive: true
+    property int dividerAfter: -1
     // A dim word inside the pill before the value ("Sort", "Group"), so the pill names what it
     // sets without a label beside it; the list shows the values alone
     property string prefix: ""
@@ -135,7 +139,8 @@ Corner {
         readonly property real gap: theme.space(1)
         // Kept clear of the window's edge, the grout's width
         readonly property real edge: theme.space(2)
-        readonly property real wanted: Math.min(root.options.length, 8) * rowHeight + inset * 2
+        readonly property real rule: root.dividerAfter >= 0 && root.dividerAfter < root.options.length - 1 ? theme.space(2) : 0
+        readonly property real wanted: Math.min(root.options.length, 8) * rowHeight + rule + inset * 2
         y: root.height + gap
         height: wanted
         // Qt's own positioner as the backstop for anything place() missed (x, mostly)
@@ -198,37 +203,53 @@ Corner {
                 // Tab out of an open list closes it rather than walking the page behind it
                 Keys.onTabPressed: pop.close()
                 Keys.onBacktabPressed: pop.close()
-                delegate: Corner {
+                delegate: Item {
+                    id: slot
                     required property int index
                     required property var modelData
-                    objectName: root.objectName !== "" ? root.objectName + "-option-" + index : ""
+                    readonly property bool ruled: pop.rule > 0 && index === root.dividerAfter
                     width: list.width
-                    height: pop.rowHeight
-                    radius: theme.radiusInner(pop.inset)
-                    smoothing: theme.cornerSmoothing
-                    color: index === pop.hi ? theme.floatHover : index === root.index ? theme.accentSoft : "transparent"
-                    Label {
+                    height: pop.rowHeight + (ruled ? pop.rule : 0)
+                    Rectangle {
+                        visible: slot.ruled
                         anchors.left: parent.left
-                        anchors.leftMargin: theme.space(3)
                         anchors.right: parent.right
+                        anchors.leftMargin: theme.space(3)
                         anchors.rightMargin: theme.space(3)
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: String(modelData)
-                        elide: Text.ElideRight
-                        role: "ui"
-                        color: index === root.index ? theme.accent : theme.text
+                        y: pop.rowHeight + (pop.rule - 1) / 2
+                        height: 1
+                        color: theme.line
                     }
-                    MouseArea {
-                        Accessible.role: Accessible.MenuItem
-                        Accessible.name: String(modelData)
-                        Accessible.checkable: true
-                        Accessible.checked: index === root.index
-                        Accessible.onPressAction: root.pick(index)
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onEntered: pop.hi = index
-                        onClicked: root.pick(index)
+                    Corner {
+                        objectName: root.objectName !== "" ? root.objectName + "-option-" + slot.index : ""
+                        width: parent.width
+                        height: pop.rowHeight
+                        radius: theme.radiusInner(pop.inset)
+                        smoothing: theme.cornerSmoothing
+                        color: slot.index === pop.hi ? theme.floatHover : slot.index === root.index ? theme.accentSoft : "transparent"
+                        Label {
+                            anchors.left: parent.left
+                            anchors.leftMargin: theme.space(3)
+                            anchors.right: parent.right
+                            anchors.rightMargin: theme.space(3)
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: String(slot.modelData)
+                            elide: Text.ElideRight
+                            role: "ui"
+                            color: slot.index === root.index ? theme.accent : theme.text
+                        }
+                        MouseArea {
+                            Accessible.role: Accessible.MenuItem
+                            Accessible.name: String(slot.modelData)
+                            Accessible.checkable: true
+                            Accessible.checked: slot.index === root.index
+                            Accessible.onPressAction: root.pick(slot.index)
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onEntered: pop.hi = slot.index
+                            onClicked: root.pick(slot.index)
+                        }
                     }
                 }
             }

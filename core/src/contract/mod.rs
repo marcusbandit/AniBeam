@@ -222,7 +222,11 @@ mod tests {
         assert_eq!(p.library_direction, Direction::Asc);
         assert_eq!(p.feed_sort, FeedSort::Recent);
         assert!(!p.library_show_watched);
-        assert_eq!(p.library_arrange, Arrange::Related);
+        assert_eq!(
+            p.library_arrange,
+            Arrange::Flat,
+            "a fresh install groups by nothing"
+        );
         assert!(p.library_group_franchises);
     }
 

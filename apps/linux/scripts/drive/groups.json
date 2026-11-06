@@ -1,6 +1,11 @@
 [
   {"eval": "frame.item.nav.current.page", "expect": "library"},
   {"until": "driver.item.findItem('library-page') !== null && driver.item.findItem('library-page').boxes().length > 0"},
+  {"eval": "Door.preferences.library_arrange", "expect": "None"},
+  {"click": "arrange-menu"},
+  {"shot": "lib-group-menu"},
+  {"click": "arrange-menu-option-1"},
+  {"until": "Door.preferences.library_arrange === 'Season'"},
   {"eval": "driver.item.findItem('library-page').groupFranchises", "expect": true},
   {"eval": "driver.item.findItem('library-page').boxes().map(function(b){return b.title+':'+b.ids.length}).join(' | ')", "as": "on"},
   {"shot": "lib-groups-on"},
@@ -14,12 +19,12 @@
   {"until": "driver.item.findItem('library-page').groupFranchises === true"},
   {"eval": "driver.item.findItem('library-page').groupFranchises", "expect": true},
   {"click": "arrange-menu"},
-  {"click": "arrange-menu-option-1"},
+  {"click": "arrange-menu-option-2"},
   {"until": "Door.preferences.library_arrange === 'Type'"},
   {"eval": "Door.preferences.library_arrange", "expect": "Type"},
   {"eval": "driver.item.findItem('library-page').boxes().map(function(b){return b.title+':'+b.ids.length}).join(' | ')", "as": "type"},
   {"click": "arrange-menu"},
-  {"click": "arrange-menu-option-0"},
+  {"click": "arrange-menu-option-1"},
   {"until": "Door.preferences.library_arrange === 'Season'"},
   {"eval": "Door.preferences.library_arrange", "expect": "Season"}
 ]
