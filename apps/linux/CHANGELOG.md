@@ -145,7 +145,6 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
-- On a narrow window the player's buttons no longer cover the volume
 - A show's synopsis shows symbols like & instead of their codes, in paragraphs
 - Endpoints from repos reach an anirss built from source, whatever its version
 - Seeders show for releases from a tracker written with backslashes
