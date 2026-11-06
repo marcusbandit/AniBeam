@@ -193,6 +193,7 @@ FocusScope {
         ["downloads", "Search sources", "endpoints feeds config"],
         ["downloads", "Endpoint repos", "repo signed endpoints jackett prowlarr"],
         ["phone", "Share over Tailscale", "phone android tailnet remote host"],
+        ["phone", "Devices on your tailnet", "trust trusted switch off block device tailscale"],
         ["storage", "Back up the library", "export backup file json"],
         ["storage", "Restore from a backup", "import restore file json"],
         ["storage", "Image cache", "posters clear images disk cache"],

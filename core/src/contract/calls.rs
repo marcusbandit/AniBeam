@@ -231,6 +231,18 @@ pub enum Call {
     /// or serving and on which URLs. Never touches the network; changes
     /// arrive as `HostChanged`.
     GetHost,
+    /// The devices on the tailnet as `tailscale status` last named them, each
+    /// with whether the host answers it. Never waits on `tailscale`: it starts
+    /// a fresh read, which arrives as `TailnetDevicesChanged`. Empty until the
+    /// first read, and when `tailscale` is not there.
+    ListTailnetDevices,
+    /// Switches one tailnet device on or off for the host, by its id from
+    /// `ListTailnetDevices`. Every device is on until switched off; one that
+    /// is off gets a refusal on every route.
+    SetTailnetDeviceTrust {
+        device: String,
+        trusted: bool,
+    },
     /// Whether this build can show what plays on Discord, and whether it is
     /// talking to a Discord client right now. Never touches the socket.
     GetPresence,
@@ -730,6 +742,9 @@ pub enum Reply {
     },
     Host {
         status: HostStatus,
+    },
+    TailnetDevices {
+        devices: Vec<TailnetDevice>,
     },
     /// `available` is false for a build with no Discord application id,
     /// where the switch can do nothing.

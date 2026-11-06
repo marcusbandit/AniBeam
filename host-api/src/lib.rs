@@ -1,7 +1,9 @@
 //! What an AniBeam host serves over a tailnet, and what the phone app reads.
 //!
 //! The desktop app, with "Share over Tailscale" on, listens on its Tailscale
-//! addresses only, so the tailnet itself is the access control. Nothing a
+//! addresses only. Every device on the tailnet is answered unless the person
+//! switched it off on the host, and a switched-off device gets `403` with
+//! `{"error": ...}` on every route; nothing off the tailnet is answered. Nothing a
 //! client sends changes the library itself: the routes are `GET`s, apart from
 //! the playback calls below, which keep watch history. Two documents and one
 //! kind of file:

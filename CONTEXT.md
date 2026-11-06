@@ -264,6 +264,16 @@ _Avoid_: release notes (the GitHub page), changelog entry, commit log
 The sheet that shows the patch notes. It opens by itself once after an update, with a line at the version the install came from; the rail's version, Settings and More open it again. Closing it marks the notes read.
 _Avoid_: changelog dialog, update popup, splash
 
+### Devices
+
+**Tailnet host**:
+The core serving its library, downloads and episodes to the person's other devices on Tailscale while Share over Tailscale is on.
+_Avoid_: server, sync server
+
+**Trusted device**:
+A device the tailnet host answers. Every device on the tailnet is trusted until the person switches it off in Settings, Phone app; nothing off the tailnet is.
+_Avoid_: allowed device, whitelisted device
+
 ### Route
 
 **Parity checklist**:

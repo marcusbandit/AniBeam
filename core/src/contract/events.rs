@@ -167,6 +167,11 @@ pub enum EventBody {
     HostChanged {
         status: HostStatus,
     },
+    /// A fresh read of the tailnet's devices for Settings, which
+    /// `ListTailnetDevices` starts and does not wait for.
+    TailnetDevicesChanged {
+        devices: Vec<TailnetDevice>,
+    },
     /// Discord rich presence connected, or let the connection go: Discord
     /// closed, stopped answering, or the switch went off.
     PresenceChanged {

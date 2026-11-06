@@ -829,6 +829,11 @@ pub struct Preferences {
     /// app (`host`). Default off, and per machine: an export never carries it.
     #[serde(default)]
     pub share_over_tailscale: bool,
+    /// The tailnet devices the host refuses, by Tailscale's stable node id.
+    /// Every other device on the tailnet is trusted. Per machine like
+    /// `share_over_tailscale`: an export never carries it.
+    #[serde(default)]
+    pub tailnet_switched_off: Vec<String>,
     /// Whether the core moves a Watching entry nobody has touched in
     /// `on_hold_days` days to On hold on every connected tracker (AniList's
     /// Paused, MAL's On Hold), after each tracker refresh (`trackers::on_hold`).
@@ -1012,6 +1017,7 @@ impl Default for Preferences {
             library_arrange: Arrange::Related,
             library_group_franchises: true,
             share_over_tailscale: false,
+            tailnet_switched_off: Vec::new(),
             on_hold_auto: true,
             on_hold_days: ON_HOLD_DAYS,
             discord_presence: false,
@@ -1028,6 +1034,19 @@ impl Default for Settings {
             provider_order: MATCH_PROVIDERS.to_vec(),
         }
     }
+}
+
+/// A device on the tailnet, for the per-device switch in Settings.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct TailnetDevice {
+    /// Tailscale's stable node id, which `SetTailnetDeviceTrust` takes.
+    pub id: String,
+    pub name: String,
+    /// The operating system Tailscale reports ("android", "linux"), or empty.
+    pub os: String,
+    pub online: bool,
+    /// Whether the host answers it: true unless the person switched it off.
+    pub trusted: bool,
 }
 
 /// What the tailnet host is doing, for the Settings page: whether the
