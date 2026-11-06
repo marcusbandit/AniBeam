@@ -10,6 +10,7 @@ import { Button, Field, Figure, ListGroup, ListRow, Lit, PageTitle, SearchField,
 import { RepoData, RepoPanes } from "repos.slint";
 import { Area, Fold } from "fold.slint";
 import { Leaf } from "panes.slint";
+import { NotifyRow } from "notify.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -542,6 +543,20 @@ export component MorePage inherits Rectangle {
                             AppData.set-wifi-only(true);
                         }
                     }
+                }
+            }
+        }
+        SectionHead {
+            title: "Notifications";
+            note: AppData.notify == 0 ? "On" : "Off";
+        }
+        ListGroup {
+            Lit {
+                on: Settings.lit == "Notifications";
+                reveal(y) => { downloads.reveal(y); }
+                NotifyRow {
+                    last: true;
+                    in-more: true;
                 }
             }
         }

@@ -26,6 +26,11 @@ pub struct Prefs {
     /// Unfolded, the Calendar shows its days as a list beside the picked one rather than
     /// the week as a board.
     pub cal_days: bool,
+    /// Android's notification dialog went out once; every later tap opens the settings.
+    pub notify_asked: bool,
+    /// The notification was explained, in onboarding or on a first download, so the
+    /// download's question does not come up again.
+    pub notify_offered: bool,
 }
 
 impl Default for Prefs {
@@ -38,6 +43,8 @@ impl Default for Prefs {
             notes: Seen::default(),
             stream_quality: Default::default(),
             cal_days: false,
+            notify_asked: false,
+            notify_offered: false,
         }
     }
 }
@@ -113,6 +120,8 @@ mod tests {
         assert_eq!(p.limit_gb, 18.0);
         // A file from before What's new has read no notes.
         assert_eq!(p.notes, Seen::default());
+        // Nor was it asked about notifications.
+        assert!(!p.notify_asked && !p.notify_offered);
     }
 
     #[test]
@@ -131,6 +140,8 @@ mod tests {
             notes,
             stream_quality: crate::stream::Quality::P720,
             cal_days: true,
+            notify_asked: true,
+            notify_offered: true,
         };
         save(&dir, &p).unwrap();
         assert_eq!(load(&dir), p);

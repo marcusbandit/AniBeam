@@ -112,30 +112,43 @@ fn service_intent<'a>(
     Ok(intent)
 }
 
-/// Starts the download service, or updates its notification to `text` when it runs.
-/// False when Android refused, as it does for an app in the background on Android 12 and
-/// later; the caller tries again on its next look.
-pub fn start_service(text: &str) -> bool {
+/// Starts the download service with `shown` as its notification. False when Android
+/// refused, as it does for an app in the background on Android 12 and later; the caller
+/// tries again on its next look. A running service's notification changes through
+/// `update_service` instead.
+pub fn start_service(shown: &crate::notify::Ongoing) -> bool {
     #[cfg(target_os = "android")]
     {
+        // The UI thread stays attached, so the call's local references go with a frame.
         let r = with_env(|env, app| {
-            use jni::objects::JValue;
-            let intent = service_intent(env)?;
-            let key = env.new_string("text")?;
-            let value = env.new_string(text)?;
-            env.call_method(
-                &intent,
-                "putExtra",
-                "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-                &[JValue::Object(&key), JValue::Object(&value)],
-            )?;
-            env.call_method(
-                app,
-                "startForegroundService",
-                "(Landroid/content/Intent;)Landroid/content/ComponentName;",
-                &[JValue::Object(&intent)],
-            )?;
-            Ok(())
+            env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
+                use jni::objects::JValue;
+                let intent = service_intent(env)?;
+                for (key, value) in [("title", &shown.title), ("text", &shown.text)] {
+                    let key = env.new_string(key)?;
+                    let value = env.new_string(value)?;
+                    env.call_method(
+                        &intent,
+                        "putExtra",
+                        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+                        &[JValue::Object(&key), JValue::Object(&value)],
+                    )?;
+                }
+                let key = env.new_string("progress")?;
+                env.call_method(
+                    &intent,
+                    "putExtra",
+                    "(Ljava/lang/String;I)Landroid/content/Intent;",
+                    &[JValue::Object(&key), JValue::Int(shown.progress)],
+                )?;
+                env.call_method(
+                    app,
+                    "startForegroundService",
+                    "(Landroid/content/Intent;)Landroid/content/ComponentName;",
+                    &[JValue::Object(&intent)],
+                )?;
+                Ok(())
+            })
         });
         if let Err(e) = r {
             crate::local::log(&format!("the download service did not start: {e}"));
@@ -145,9 +158,82 @@ pub fn start_service(text: &str) -> bool {
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = text;
+        let _ = shown;
         true
     }
+}
+
+/// Changes the running download service's notification to `shown`, in place
+/// (`TorrentService.update`). False when the call failed, so the next look tries again.
+pub fn update_service(shown: &crate::notify::Ongoing) -> bool {
+    #[cfg(target_os = "android")]
+    {
+        let r = with_env(|env, app| {
+            env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+                use jni::objects::JValue;
+                let class = app_class(env, app, "TorrentService")?;
+                let title = env.new_string(&shown.title)?;
+                let text = env.new_string(&shown.text)?;
+                env.call_static_method(
+                    &class,
+                    "update",
+                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;I)V",
+                    &[
+                        JValue::Object(app),
+                        JValue::Object(&title),
+                        JValue::Object(&text),
+                        JValue::Int(shown.progress),
+                    ],
+                )?;
+                Ok(())
+            })
+        });
+        if let Err(e) = r {
+            crate::local::log(&format!("the download notification did not change: {e}"));
+            return false;
+        }
+        true
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = shown;
+        true
+    }
+}
+
+/// Posts "<show> episode 7 is ready" for a download that finished, under `id`, on the
+/// channel for finished episodes (`TorrentService.ready`).
+pub fn episode_ready(id: i32, title: &str, text: &str) {
+    #[cfg(target_os = "android")]
+    {
+        let r = with_env(|env, app| {
+            use jni::objects::JValue;
+            env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+                // The Application's class loader sees the app's own classes, as the
+                // activity's does.
+                let class = app_class(env, app, "TorrentService")?;
+                let title = env.new_string(title)?;
+                let text = env.new_string(text)?;
+                env.call_static_method(
+                    &class,
+                    "ready",
+                    "(Landroid/content/Context;ILjava/lang/String;Ljava/lang/String;)V",
+                    &[
+                        JValue::Object(app),
+                        JValue::Int(id),
+                        JValue::Object(&title),
+                        JValue::Object(&text),
+                    ],
+                )?;
+                Ok(())
+            })
+        });
+        if let Err(e) = r {
+            crate::local::log(&format!("could not say an episode is ready: {e}"));
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = (id, title, text);
 }
 
 /// Stops the download service once nothing is downloading.
@@ -237,28 +323,44 @@ pub fn ask_notifications() -> bool {
     true
 }
 
+/// Opens the app's notification settings, where notifications go back on once Android has
+/// stopped asking.
+pub fn notification_settings() {
+    #[cfg(target_os = "android")]
+    java_call(
+        "TorrentService",
+        "openSettings",
+        "(Landroid/app/Activity;)Z",
+        None,
+    );
+}
+
 /// Whether the app may show notifications: Android 13 and later ask the person first.
 pub fn notifications_allowed() -> bool {
     #[cfg(target_os = "android")]
     {
+        // Read every second on a thread that stays attached, so its local references go
+        // with a frame of their own rather than piling up.
         let r = with_env(|env, app| {
-            use jni::objects::JValue;
-            let sdk = env
-                .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
-                .i()?;
-            if sdk < 33 {
-                return Ok(true);
-            }
-            let permission = env.new_string("android.permission.POST_NOTIFICATIONS")?;
-            let granted = env
-                .call_method(
-                    app,
-                    "checkSelfPermission",
-                    "(Ljava/lang/String;)I",
-                    &[JValue::Object(&permission)],
-                )?
-                .i()?;
-            Ok(granted == 0)
+            env.with_local_frame(4, |env| -> Result<bool, Box<dyn std::error::Error>> {
+                use jni::objects::JValue;
+                let sdk = env
+                    .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
+                    .i()?;
+                if sdk < 33 {
+                    return Ok(true);
+                }
+                let permission = env.new_string("android.permission.POST_NOTIFICATIONS")?;
+                let granted = env
+                    .call_method(
+                        app,
+                        "checkSelfPermission",
+                        "(Ljava/lang/String;)I",
+                        &[JValue::Object(&permission)],
+                    )?
+                    .i()?;
+                Ok(granted == 0)
+            })
         });
         r.unwrap_or(true)
     }
