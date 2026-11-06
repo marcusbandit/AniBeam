@@ -17,6 +17,8 @@ depends=(qt6-base qt6-declarative qt6-svg mpvqt mpv gcc-libs glibc hicolor-icon-
 optdepends=(
   'org.freedesktop.secrets: tracker sign-ins kept in the keyring rather than a file'
 )
+# The tarball's binary is stripped already, so there is nothing to strip or split off.
+options=(!strip !debug)
 provides=("$_pkgname=$pkgver")
 conflicts=("$_pkgname")
 source=("AniBeam-$pkgver-linux-x86_64.tar.zst::$url/releases/download/v$pkgver/AniBeam-$pkgver-linux-x86_64.tar.zst")

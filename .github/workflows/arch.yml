@@ -5,11 +5,17 @@ name: Arch
 # libmpv, and anibeam-bin depends on Arch's. release.yml calls it so every stable release
 # carries AniBeam-<version>-linux-x86_64.tar.zst and its .sha256; a pull request that touches
 # the packaging builds it too, to show it still packs.
+# The pull request paths are linux.yml's: whatever can break the shell's build in the
+# container breaks it here too, and a release finds out only if a pull request did not.
 on:
   pull_request:
     paths:
-      - 'apps/linux/packaging/aur/**'
-      - 'apps/linux/packaging/linux/install-tree.sh'
+      - 'core/**'
+      - 'host-api/**'
+      - 'apps/linux/**'
+      - 'apps/cli/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/arch.yml'
   workflow_dispatch:
   workflow_call:
@@ -23,6 +29,12 @@ on:
 
 permissions:
   contents: read
+
+# A newer push to the same pull request cancels the older run, as in linux.yml (#529); any
+# other run, a release's among them, has a group of its own.
+concurrency:
+  group: ${{ github.workflow }}-arch-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 env:
   ANIBEAM_RELEASE_VERSION: ${{ inputs.version }}
@@ -60,7 +72,7 @@ jobs:
           apps/linux/packaging/aur/bin-tarball.sh "$version" dist
           tar -tf "dist/AniBeam-$version-linux-x86_64.tar.zst" | head -n 5
           # It runs on the libraries it was linked against: nothing missing, and it starts.
-          ! ldd target/release/anibeam | grep 'not found'
+          if ldd target/release/anibeam | grep 'not found'; then exit 1; fi
           target/release/anibeam --version
 
       - uses: actions/upload-artifact@v4
