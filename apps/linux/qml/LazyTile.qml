@@ -9,6 +9,10 @@
 // is settled) and as the view scrolls, and builds those within a screen of the viewport:
 // synchronously when already in view, asynchronously ahead of it. A built card stays
 // built. Outside a PageScroll the tile builds at once, as a plain card would.
+//
+// An unbuilt tile is a tab stop in its card's place (#627): Tab or Shift+Tab onto it builds
+// the card at once, hands the card the focus and scrolls it into view, so the keyboard
+// reaches every card on a long page.
 import QtQuick
 
 Item {
@@ -20,6 +24,22 @@ Item {
     // false for a tile that holds tiles (a section of cards): it builds at once while the
     // first frame's budget lasts but spends none of it, so the budget goes to its cards
     property bool spends: true
+
+    // A tab stop only while there is no card to take the focus itself
+    activeFocusOnTab: !loader.item
+    property bool focusOnBuild: false
+    onActiveFocusChanged: {
+        if (!activeFocus || loader.item) return
+        focusOnBuild = true
+        if (flick && !seen) flick.lazyRemove(root)
+        build(true)
+        if (loader.item) handFocus()
+    }
+    function handFocus() {
+        focusOnBuild = false
+        loader.item.forceActiveFocus(Qt.TabFocusReason)
+        if (flick && flick.reveal !== undefined) flick.reveal(loader.item)
+    }
 
     function findFlick() {
         for (var p = parent; p; p = p.parent)
@@ -56,5 +76,6 @@ Item {
         active: root.seen
         asynchronous: false
         sourceComponent: root.sourceComponent
+        onLoaded: if (root.focusOnBuild && root.activeFocus) root.handFocus()
     }
 }
