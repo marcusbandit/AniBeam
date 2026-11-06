@@ -438,15 +438,18 @@ fn secret_names() -> String {
         .join("|")
 }
 
-/// `user:password@` right after `scheme://`.
+/// `user:password@` right after `scheme://`, up to the last `@` before the path, the way
+/// the HTTP client and `repos::index::split_login` read it: `u:p@ss@host` is a login of
+/// `u:p@ss`. A backslash ends the authority, as it does for them.
 static LOGIN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r#"(?i)([a-z][a-z0-9+.\-]*://)[^/?#\s"'<>@]*@"#).unwrap()
+    regex::Regex::new(r#"(?i)([a-z][a-z0-9+.\-]*://)[^/?#\\\s"'<>]*@"#).unwrap()
 });
 
-/// A secret parameter's value, written plain: `?apikey=abc`, `&passkey=abc`.
+/// A secret parameter's value, written plain: `?apikey=abc`, `&passkey=abc`, after an
+/// `&amp;` in quoted XML, or in a fragment (`#token=abc`).
 static SECRET: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(&format!(
-        r#"(?i)([?&](?:{})=)[^&#\s"'<>\\]*"#,
+        r#"(?i)([?&;#](?:{})=)[^&#\s"'<>]*"#,
         secret_names()
     ))
     .unwrap()
@@ -457,7 +460,7 @@ static SECRET: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
 /// the next encoded `&`.
 static SECRET_ENCODED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(&format!(
-        r#"(?i)((?:%3F|%26)(?:{})%3D)(?:[^%&#\s"'<>\\]|%(?:[013-9a-f][0-9a-f]|2[0-57-9a-f]))*"#,
+        r#"(?i)((?:%3F|%26|%23)(?:{})%3D)(?:[^%&#\s"'<>]|%(?:[013-9a-f][0-9a-f]|2[0-57-9a-f]))*"#,
         secret_names()
     ))
     .unwrap()
@@ -468,7 +471,8 @@ static SECRET_ENCODED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::
 /// [`SECRET_PARAMS`](crate::releases::native::SECRET_PARAMS), `apikey=` and
 /// `passkey=` among them), written plain or percent-encoded inside another address.
 /// The rest of the address stays, so a line still says which feed or tracker it was.
-/// Safe on JSON text: it never removes a quote or splits an escape.
+/// A key the address keeps in its path rather than its query is not told from any
+/// other path, and stays.
 pub fn scrub_secrets(text: &str) -> String {
     let text = LOGIN.replace_all(text, "$1");
     let text = SECRET.replace_all(&text, "$1...");
@@ -477,10 +481,14 @@ pub fn scrub_secrets(text: &str) -> String {
 }
 
 /// [`scrub_secrets`]'s login rule for an address percent-encoded inside another:
-/// `https%3A%2F%2Fuser%3Apass%40t.example` keeps `https%3A%2F%2Ft.example`.
+/// `https%3A%2F%2Fuser%3Apass%40t.example` keeps `https%3A%2F%2Ft.example`, and so
+/// does a login that ends in a raw `@`.
 fn scrub_encoded_logins(text: &str) -> String {
     const START: &str = "%3a%2f%2f";
     let lower = text.to_ascii_lowercase();
+    if !lower.contains(START) {
+        return text.to_string();
+    }
     let mut out = String::with_capacity(text.len());
     let mut from = 0;
     while let Some(found) = lower[from..].find(START) {
@@ -488,16 +496,20 @@ fn scrub_encoded_logins(text: &str) -> String {
         out.push_str(&text[from..start]);
         let rest = &lower[start..];
         // The encoded authority ends at a slash, a query or a fragment, encoded or not.
-        let end = ["%2f", "%3f", "%23", "/", "?", "#", "&", "\"", "'", " "]
-            .iter()
-            .filter_map(|stop| rest.find(stop))
-            .chain(rest.find(char::is_whitespace))
-            .min()
+        let end = rest
+            .find(|c: char| matches!(c, '/' | '?' | '#' | '&' | '"' | '\'') || c.is_whitespace())
             .unwrap_or(rest.len());
-        match rest[..end].rfind("%40") {
-            Some(at) => from = start + at + 3,
-            None => from = start,
-        }
+        let end = ["%2f", "%3f", "%23"]
+            .iter()
+            .filter_map(|stop| rest[..end].find(stop))
+            .min()
+            .unwrap_or(end);
+        // The login ends at the last @, encoded or not.
+        let at = [("%40", 3), ("@", 1)]
+            .iter()
+            .filter_map(|(sign, len)| rest[..end].rfind(sign).map(|at| at + len))
+            .max();
+        from = start + at.unwrap_or(0);
     }
     out.push_str(&text[from..]);
     out
@@ -923,20 +935,23 @@ mod scrub_tests {
             scrub_secrets("no address, a@b.example"),
             "no address, a@b.example"
         );
+        // A password with an @ in it: the login runs to the last one, as the client reads it.
+        assert_eq!(
+            scrub_secrets("https://alice:p@ss@feed.example/rss"),
+            "https://feed.example/rss"
+        );
+        // A key after an XML-escaped separator, or in a fragment.
+        assert_eq!(
+            scrub_secrets("<link>https://h/?q=x&amp;apikey=SEKRIT</link>"),
+            "<link>https://h/?q=x&amp;apikey=...</link>"
+        );
+        assert_eq!(
+            scrub_secrets("https://h/cb#token=SEKRIT"),
+            "https://h/cb#token=..."
+        );
         // A key-like word that is not a parameter stays.
         assert_eq!(scrub_secrets("https://h/monkey=1"), "https://h/monkey=1");
         assert_eq!(scrub_secrets("https://h/?monkey=1"), "https://h/?monkey=1");
-    }
-
-    #[test]
-    fn json_text_stays_json() {
-        let body =
-            serde_json::json!({"a": "https://u:\"p@h/?apikey=\"x\"&b=1", "b": ["https://h/\\@x"]});
-        let text = serde_json::to_string(&body).unwrap();
-        let scrubbed = scrub_secrets(&text);
-        let back: serde_json::Value = serde_json::from_str(&scrubbed).unwrap();
-        assert!(!scrubbed.contains("apikey=\\\"x"), "{scrubbed}");
-        assert!(back.is_object());
     }
 
     #[test]
@@ -946,6 +961,11 @@ mod scrub_tests {
                 "magnet:?xt=1&tr=udp%3A%2F%2Fme%3Asecret%40t.example%3A80%2Fa%3Fpasskey%3Dzz%26b%3D2&dn=x"
             ),
             "magnet:?xt=1&tr=udp%3A%2F%2Ft.example%3A80%2Fa%3Fpasskey%3D...%26b%3D2&dn=x"
+        );
+        // An encoded address whose login ends in a raw @.
+        assert_eq!(
+            scrub_secrets("tr=https%3A%2F%2Fuser%3Apw@t.example%2Fannounce"),
+            "tr=https%3A%2F%2Ft.example%2Fannounce"
         );
         // An encoded @ after the host is no login.
         assert_eq!(

@@ -40,6 +40,7 @@ impl EventBus {
         let last: i64 = store.write(|c| {
             Ok(c.query_row("SELECT coalesce(max(seq), 0) FROM events", [], |r| r.get(0))?)
         })?;
+        scrub_stored(&store)?;
         Ok(Arc::new(EventBus {
             seq: AtomicU64::new(last as u64),
             generation: AtomicU64::new(0),
@@ -182,8 +183,8 @@ impl EventBus {
                 Some(j) => (Some(j.id as i64), Some(j.kind.as_str()), Some(j.phase.as_str())),
                 None => (None, None, None),
             };
-            let body = match serde_json::to_string(&e.body) {
-                Ok(body) => crate::net::scrub_secrets(&body),
+            let body = match serde_json::to_value(&e.body).map(scrub_value) {
+                Ok(body) => body.to_string(),
                 Err(err) => {
                     tracing::warn!("failed to serialise event body for seq {}: {err}", e.seq);
                     return;
@@ -392,6 +393,47 @@ impl EventListener for Collector {
     }
 }
 
+/// Every string in a body, scrubbed one by one, so the JSON stays whole whatever a
+/// key's value holds.
+fn scrub_value(value: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match value {
+        Value::String(s) => Value::String(crate::net::scrub_secrets(&s)),
+        Value::Array(items) => Value::Array(items.into_iter().map(scrub_value).collect()),
+        Value::Object(map) => {
+            Value::Object(map.into_iter().map(|(k, v)| (k, scrub_value(v))).collect())
+        }
+        other => other,
+    }
+}
+
+/// The rows stored before every event was scrubbed, scrubbed as the bus starts (#509),
+/// as 0005 dropped the rows of an earlier leak. Cheap, since the ring holds 2000 rows
+/// at most, and a row with nothing to scrub is left as it is.
+fn scrub_stored(store: &Store) -> Result<(), CoreError> {
+    store.write(|c| {
+        let rows: Vec<(i64, String, Option<String>, String)> = {
+            let mut stmt = c.prepare("SELECT seq, message, plain, body FROM events")?;
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<Result<_, _>>()?
+        };
+        for (seq, message, plain, body) in rows {
+            let new_message = crate::net::scrub_secrets(&message);
+            let new_plain = plain.as_deref().map(crate::net::scrub_secrets);
+            let new_body = serde_json::from_str(&body)
+                .map(|v| scrub_value(v).to_string())
+                .unwrap_or_else(|_| crate::net::scrub_secrets(&body));
+            if new_message != message || new_plain != plain || new_body != body {
+                c.execute(
+                    "UPDATE events SET message = ?2, plain = ?3, body = ?4 WHERE seq = ?1",
+                    params![seq, new_message, new_plain, new_body],
+                )?;
+            }
+        }
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,6 +472,8 @@ mod tests {
         const FEED: &str = "https://alice:hunter2@feed.example/rss?q=show&apikey=SEKRIT1&page=2";
         const MAGNET: &str = "magnet:?xt=urn:btih:abc&tr=https%3A%2F%2Fbob%3Apw9%40t.example%2Fannounce%3Fpasskey%3DSEKRIT2%26x%3D1";
         let (_d, bus) = bus();
+        let heard = Arc::new(Heard(Mutex::new(Vec::new())));
+        bus.subscribe(heard.clone());
         let spec = SubscriptionSpec {
             feed_url: FEED.into(),
             must_contain: String::new(),
@@ -492,6 +536,60 @@ mod tests {
         );
         // The stored bodies still read back, and the listeners' copy was whole.
         assert_eq!(bus.recent(100).unwrap().len(), 6);
+        let heard = heard.0.lock().unwrap().join("\n");
+        assert!(heard.contains(FEED) && heard.contains(MAGNET), "{heard}");
+    }
+
+    /// What a listener heard, each event as its debug text.
+    struct Heard(Mutex<Vec<String>>);
+
+    impl EventListener for Heard {
+        fn on_event(&self, event: Event) {
+            self.0.lock().unwrap().push(format!("{event:?}"));
+        }
+    }
+
+    #[test]
+    fn a_key_whose_value_json_escapes_is_stored_without_it() {
+        let (_d, bus) = bus();
+        bus.info(
+            Stage::Downloads,
+            "read",
+            EventBody::ReleaseInspected {
+                link: r#"https://h/?apikey=ab\cd\ef&x=1"#.into(),
+                episodes: vec![],
+                files: 0,
+            },
+        );
+        let stored = stored_text(&bus);
+        assert!(!stored.contains("cd") && !stored.contains("ef"), "{stored}");
+        assert_eq!(bus.recent(10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn rows_stored_before_the_scrub_lose_their_keys_on_the_next_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        {
+            let store = Store::open(&path).unwrap();
+            store
+                .write(|c| {
+                    c.execute(
+                        "INSERT INTO events (seq, at, level, stage, message, body, plain) VALUES (1, 0, 'info', 'downloads', 'read https://u:pw@h/?passkey=SEKRIT', '\"Notice\"', 'read https://u:pw@h/?passkey=SEKRIT')",
+                        [],
+                    )?;
+                    Ok(())
+                })
+                .unwrap();
+            store.close();
+        }
+        let bus = EventBus::new(Store::open(&path).unwrap()).unwrap();
+        let stored = stored_text(&bus);
+        assert!(
+            !stored.contains("SEKRIT") && !stored.contains("pw@"),
+            "{stored}"
+        );
+        assert!(stored.contains("https://h/?passkey=..."), "{stored}");
     }
 
     #[test]
