@@ -3,9 +3,10 @@
 -- new episode when it airs without reaching the client at launch. A miss is
 -- said once per episode, never again after a restart.
 CREATE TABLE follows (
-    series_id   INTEGER PRIMARY KEY REFERENCES series(id) ON DELETE CASCADE,
-    feed_url    TEXT NOT NULL,
-    read_at     INTEGER NOT NULL
+    series_id   INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+    feed_url    TEXT NOT NULL,                -- a show two rules follow has two rows
+    read_at     INTEGER NOT NULL,
+    PRIMARY KEY (series_id, feed_url)
 );
 
 CREATE TABLE follow_misses (

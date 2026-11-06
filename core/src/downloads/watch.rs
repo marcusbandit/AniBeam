@@ -51,15 +51,14 @@ pub enum Step {
 }
 
 /// The steps still ahead of `now` for an episode that aired at `aired_at`,
-/// as absolute times. A step already past is dropped, except the last one
-/// before now when it is a check or the give-up: a restart then looks once
-/// straight away rather than waiting for the next step.
+/// as absolute times. The last step already past is done now rather than
+/// dropped, since this process has not done it: a restart half an hour
+/// after an episode aired still asks the feed straight away, and one past
+/// three days gives up straight away.
 pub fn steps_ahead(aired_at: i64, now: i64) -> Vec<(i64, Step)> {
     let all: Vec<(i64, Step)> = STEPS.iter().map(|(d, s)| (aired_at + d, *s)).collect();
     let mut out: Vec<(i64, Step)> = Vec::new();
-    if let Some(&(_, step)) = all.iter().rev().find(|(at, _)| *at <= now)
-        && step != Step::Refresh
-    {
+    if let Some(&(_, step)) = all.iter().rev().find(|(at, _)| *at <= now) {
         out.push((now, step));
     }
     out.extend(all.into_iter().filter(|(at, _)| *at > now));
@@ -71,7 +70,6 @@ pub fn steps_ahead(aired_at: i64, now: i64) -> Vec<(i64, Step)> {
 pub struct Due {
     pub series: u64,
     pub title: String,
-    pub feed_url: String,
     pub episode: u32,
     pub aired_at: i64,
 }
@@ -81,7 +79,7 @@ pub struct Due {
 /// not already been given up on. A hidden or missing show is left out.
 pub fn due(conn: &Connection, now: i64) -> Result<Vec<Due>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT f.series_id, s.folder_name, f.feed_url, e.number, e.aired_at
+        "SELECT DISTINCT f.series_id, s.folder_name, e.number, e.aired_at
          FROM follows f
          JOIN series s ON s.id = f.series_id
          JOIN anilist_episodes e ON e.anilist_id = s.anilist_id
@@ -101,61 +99,102 @@ pub fn due(conn: &Connection, now: i64) -> Result<Vec<Due>, CoreError> {
             Ok(Due {
                 series: r.get::<_, i64>(0)? as u64,
                 title: r.get(1)?,
-                feed_url: r.get(2)?,
-                episode: r.get::<_, i64>(3)? as u32,
-                aired_at: r.get(4)?,
+                episode: r.get::<_, i64>(2)? as u32,
+                aired_at: r.get(3)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
 
-/// Whether the library holds the episode now.
-pub fn arrived(conn: &Connection, series: u64, episode: u32) -> Result<bool, CoreError> {
-    let n: i64 = conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM files WHERE series_id = ?1 AND kind = 'episode'
-                        AND number >= ?2 AND number < ?2 + 1)",
-        params![series as i64, f64::from(episode)],
-        |r| r.get(0),
+/// What a step finds before it acts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Standing {
+    /// The episode is in the library: the watch is done.
+    Arrived,
+    /// The show is no longer followed, is hidden or gone, or the episode
+    /// moved to another date: this watch is done, and a new one is set for
+    /// the new date by the arming that read it.
+    Stale,
+    /// Still due and still missing.
+    Missing,
+}
+
+/// Where a watched episode stands now, read from the library alone.
+pub fn standing(conn: &Connection, d: &Due) -> Result<Standing, CoreError> {
+    let (followed, aired_at, here): (i64, Option<i64>, i64) = conn.query_row(
+        "SELECT
+             EXISTS (SELECT 1 FROM follows f JOIN series s ON s.id = f.series_id
+                     WHERE f.series_id = ?1 AND s.hidden = 0 AND s.missing_since IS NULL),
+             (SELECT e.aired_at FROM series s JOIN anilist_episodes e ON e.anilist_id = s.anilist_id
+              WHERE s.id = ?1 AND e.number = ?2),
+             EXISTS (SELECT 1 FROM files WHERE series_id = ?1 AND kind = 'episode'
+                     AND number >= ?2 AND number < ?2 + 1)",
+        params![d.series as i64, i64::from(d.episode)],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )?;
-    Ok(n == 1)
+    Ok(if here == 1 {
+        Standing::Arrived
+    } else if followed == 0 || aired_at != Some(d.aired_at) {
+        Standing::Stale
+    } else {
+        Standing::Missing
+    })
 }
 
 /// The followed shows as the last read of the client's rules linked them:
-/// every enabled rule whose folder is a library show. Replaces what was
-/// there, since the rules are the truth about what is followed.
-pub fn remember(core: &Core, rules: &[SubscriptionRule]) {
+/// every enabled rule whose folder is a library show, each feed of a show
+/// kept. Replaces what was there, since the rules are the truth about what
+/// is followed.
+pub async fn remember(core: &Arc<Core>, rules: &[SubscriptionRule]) {
     let follows: Vec<(u64, String)> = rules
         .iter()
         .filter(|r| r.rule_enabled)
         .filter_map(|r| r.show.as_ref().map(|s| (s.series_id, r.feed_url.clone())))
         .collect();
     let now = crate::time::now_secs();
-    let saved = core.store.tx(move |tx| {
-        tx.execute("DELETE FROM follows", [])?;
-        let mut stmt = tx.prepare(
-            "INSERT OR REPLACE INTO follows (series_id, feed_url, read_at) VALUES (?1, ?2, ?3)",
-        )?;
-        for (series, feed) in &follows {
-            stmt.execute(params![*series as i64, feed, now])?;
-        }
-        Ok(())
-    });
+    let saved = core
+        .store
+        .tx_async(move |tx| {
+            tx.execute("DELETE FROM follows", [])?;
+            let mut stmt = tx.prepare(
+                "INSERT OR IGNORE INTO follows (series_id, feed_url, read_at) VALUES (?1, ?2, ?3)",
+            )?;
+            for (series, feed) in &follows {
+                stmt.execute(params![*series as i64, feed, now])?;
+            }
+            Ok(())
+        })
+        .await;
     match saved {
         Ok(()) => arm(core),
         Err(e) => tracing::warn!("followed shows not kept: {e}"),
     }
 }
 
-/// The episodes a timer is already set for, so arming again sets none twice.
-static ARMED: LazyLock<Mutex<HashSet<(u64, u32)>>> = LazyLock::new(Default::default);
+/// The episodes a timer is set for, at the date it was set for. A new date
+/// is a new key, so a rescheduled episode gets a timer of its own, and the
+/// old one finds itself stale at its next step.
+static ARMED: LazyLock<Mutex<HashSet<(u64, u32, i64)>>> = LazyLock::new(Default::default);
 
-fn armed() -> std::sync::MutexGuard<'static, HashSet<(u64, u32)>> {
+fn armed() -> std::sync::MutexGuard<'static, HashSet<(u64, u32, i64)>> {
     ARMED.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// A watch's place in `ARMED`, given up however the task ends: done,
+/// stale, or dropped with the runtime when the core shuts down, so a core
+/// opened again in the same process arms it afresh.
+struct Slot((u64, u32, i64));
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        armed().remove(&self.0);
+    }
+}
+
 /// Sets a timer for every followed episode that has none yet. Called at
-/// launch, after the rules are read, and after a schedule changes.
+/// launch, after the rules are read, after a schedule changes, and when a
+/// watch ends, so the episode after it gets one.
 pub fn arm(core: &Core) {
     let now = crate::time::now_secs();
     let found = match core.store.read(|c| due(c, now)) {
@@ -167,75 +206,124 @@ pub fn arm(core: &Core) {
     };
     let Ok(owner) = core.owner() else { return };
     for d in found {
-        if !armed().insert((d.series, d.episode)) {
+        let key = (d.series, d.episode, d.aired_at);
+        if !armed().insert(key) {
             continue;
         }
         let core = owner.clone();
         owner.handle.spawn(async move {
-            watch(&core, &d).await;
-            armed().remove(&(d.series, d.episode));
+            let _slot = Slot(key);
+            let ended = watch(&core, &d).await;
+            if ended {
+                arm(&core);
+            }
         });
     }
 }
 
-/// One episode's watch, step by step, until it arrives or the watch gives
-/// up.
-async fn watch(core: &Arc<Core>, d: &Due) {
+/// The longest one sleep goes before the wall clock is read again, so a
+/// machine that slept through a step does it on waking rather than hours
+/// late: the runtime's clock does not count a suspend.
+const NAP: u64 = 10 * 60;
+
+/// One episode's watch, step by step. True when it ended on its own (the
+/// episode arrived, or the watch gave up), so the next one can be armed.
+async fn watch(core: &Arc<Core>, d: &Due) -> bool {
     for (at, step) in steps_ahead(d.aired_at, crate::time::now_secs()) {
-        let wait = (at - crate::time::now_secs()).max(0) as u64;
         // The runtime ends this sleep with the core, so a shutdown needs
         // nothing of its own here.
-        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
-        let (series, episode) = (d.series, d.episode);
-        let here = core
-            .store
-            .read(|c| arrived(c, series, episode))
-            .unwrap_or(false);
-        if here {
-            return;
+        loop {
+            let left = at - crate::time::now_secs();
+            if left <= 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs((left as u64).min(NAP))).await;
         }
-        match step {
-            Step::Refresh | Step::Check => refresh(core, &d.feed_url).await,
-            Step::GiveUp => {
-                give_up(core, d);
-                return;
+        let read = d.clone();
+        let now = match core.store.write_async(move |c| standing(c, &read)).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::debug!("followed episode not read: {e}");
+                continue;
+            }
+        };
+        match (now, step) {
+            (Standing::Arrived, _) => return true,
+            (Standing::Stale, _) => return false,
+            (Standing::Missing, Step::Refresh | Step::Check) => refresh(core, d.series).await,
+            (Standing::Missing, Step::GiveUp) => {
+                give_up(core, d).await;
+                return true;
             }
         }
     }
+    true
 }
 
-/// Asks the client to read the show's feed now, only through a client that
-/// is already running.
-async fn refresh(core: &Arc<Core>, feed_url: &str) {
-    let Some(client) = core.downloads.state().qbt.clone() else {
+/// A client to ask the feeds through, only one that runs without the core
+/// starting it: the one this session already reached, or the person's own
+/// (Existing). AniBeam's own managed client is never started for this.
+async fn running_client(core: &Arc<Core>) -> Option<Arc<super::qbt::QbtClient>> {
+    if let Some(client) = core.downloads.state().qbt.clone() {
+        return Some(client);
+    }
+    let settings = super::load_settings(core).await.ok()?;
+    if settings.torrent_mode != TorrentMode::Existing {
+        return None;
+    }
+    super::qbt_client(core).await.ok()
+}
+
+/// Asks the client to read every feed that follows the show, now.
+async fn refresh(core: &Arc<Core>, series: u64) {
+    let Some(client) = running_client(core).await else {
         return;
     };
-    let path = match client.feeds().await {
-        Ok(feeds) => feeds
-            .into_iter()
-            .find(|(_, url)| url == feed_url)
-            .map(|(p, _)| p),
+    let feeds: Vec<String> = match core
+        .store
+        .write_async(move |c| {
+            let mut stmt = c.prepare("SELECT feed_url FROM follows WHERE series_id = ?1")?;
+            let rows = stmt
+                .query_map([series as i64], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::debug!("followed feeds not read: {e}");
+            return;
+        }
+    };
+    let paths = match client.feeds().await {
+        Ok(paths) => paths,
         Err(e) => {
             tracing::debug!("feeds not read for a followed episode: {e}");
             return;
         }
     };
-    if let Some(path) = path
-        && let Err(e) = client.refresh_feed(&path).await
-    {
-        tracing::debug!("feed {path} not refreshed: {e}");
+    for (path, url) in paths {
+        if feeds.contains(&url)
+            && let Err(e) = client.refresh_feed(&path).await
+        {
+            tracing::debug!("feed {path} not refreshed: {e}");
+        }
     }
 }
 
 /// The one line for an episode that never came, said once ever.
-fn give_up(core: &Arc<Core>, d: &Due) {
+async fn give_up(core: &Arc<Core>, d: &Due) {
     let (series, episode, now) = (d.series, d.episode, crate::time::now_secs());
-    let first = core.store.write(move |c| {
-        Ok(c.execute(
-            "INSERT OR IGNORE INTO follow_misses (series_id, episode, said_at) VALUES (?1, ?2, ?3)",
-            params![series as i64, episode as i64, now],
-        )? == 1)
-    });
+    let first = core
+        .store
+        .write_async(move |c| {
+            Ok(c.execute(
+                "INSERT OR IGNORE INTO follow_misses (series_id, episode, said_at) VALUES (?1, ?2, ?3)",
+                params![series as i64, i64::from(episode), now],
+            )? == 1)
+        })
+        .await;
     if !matches!(first, Ok(true)) {
         return;
     }
@@ -279,11 +367,10 @@ mod tests {
                 (aired + 72 * H, Step::GiveUp),
             ]
         );
-        // Between the refresh and the first check: nothing to redo now.
-        assert_eq!(
-            steps_ahead(aired, aired + H)[0],
-            (aired + 6 * H, Step::Check)
-        );
+        // Past the refresh, which this process never did: ask the feed now.
+        let now = aired + H;
+        assert_eq!(steps_ahead(aired, now)[0], (now, Step::Refresh));
+        assert_eq!(steps_ahead(aired, now)[1], (aired + 6 * H, Step::Check));
         // After the first check: look again at once, then the rest.
         let now = aired + 10 * H;
         assert_eq!(
@@ -378,8 +465,35 @@ mod tests {
             .map(|d| d.episode)
             .collect();
         assert_eq!(found, vec![4]);
-        assert!(core.store.read(|c| arrived(c, 1, 1)).unwrap());
-        assert!(!core.store.read(|c| arrived(c, 1, 4)).unwrap());
+        // A step reads where the episode stands: here, gone stale with a new
+        // date, or still missing.
+        let due4 = Due {
+            series: 1,
+            title: "Show".into(),
+            episode: 4,
+            aired_at: now + 86_400,
+        };
+        assert_eq!(
+            core.store.read(|c| standing(c, &due4)).unwrap(),
+            Standing::Missing
+        );
+        let due1 = Due {
+            episode: 1,
+            aired_at: now - 14 * 86_400,
+            ..due4.clone()
+        };
+        assert_eq!(
+            core.store.read(|c| standing(c, &due1)).unwrap(),
+            Standing::Arrived
+        );
+        let moved = Due {
+            aired_at: now + 2 * 86_400,
+            ..due4.clone()
+        };
+        assert_eq!(
+            core.store.read(|c| standing(c, &moved)).unwrap(),
+            Standing::Stale
+        );
         core.shutdown();
     }
 
@@ -403,7 +517,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        remember(&core, &[]);
+        core.handle.block_on(remember(&core, &[]));
         assert!(core.store.read(|c| due(c, now)).unwrap().is_empty());
         core.shutdown();
     }
