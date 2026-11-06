@@ -2203,3 +2203,83 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
     assert_eq!(form_of(&delete), "hashes=aa&deleteFiles=false");
     core.shutdown();
 }
+
+fn source_paths(core: &Core) -> Vec<String> {
+    core.store()
+        .read(|c| {
+            let mut stmt = c.prepare("SELECT path FROM sources ORDER BY id")?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .unwrap()
+}
+
+/// #598: on a fresh install the built-in client saves into the library, so a download
+/// shows up there by itself. With no library folder it makes the starter folder and adds
+/// it, the folder the setup offers to someone with none.
+#[test]
+fn a_fresh_built_in_client_saves_into_the_library() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let videos = dir.path().join("Videos");
+    let starter = videos.join("Anime");
+    assert_eq!(
+        downloads::own_save_dir(&core, Some(&videos)).unwrap(),
+        Some(starter.clone())
+    );
+    assert!(starter.is_dir());
+    assert_eq!(
+        source_paths(&core),
+        vec![starter.to_string_lossy().into_owned()]
+    );
+    // Asked again it is the library's first folder, added once.
+    assert_eq!(
+        downloads::own_save_dir(&core, Some(&videos)).unwrap(),
+        Some(starter.clone())
+    );
+    assert_eq!(source_paths(&core).len(), 1);
+    let status = downloads_status(&core);
+    assert_eq!(status.own_save_folder, starter.to_string_lossy());
+    assert!(status.own_save_in_library);
+}
+
+#[test]
+fn a_fresh_built_in_client_takes_the_first_library_folder() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let lib = dir.path().join("lib");
+    std::fs::create_dir_all(&lib).unwrap();
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    let videos = dir.path().join("Videos");
+    assert_eq!(
+        downloads::own_save_dir(&core, Some(&videos)).unwrap(),
+        Some(lib.clone())
+    );
+    assert!(
+        !videos.exists(),
+        "no starter folder when the library has one"
+    );
+    assert_eq!(source_paths(&core).len(), 1);
+}
+
+/// An install whose client ran before keeps its folder, and Settings says plainly that
+/// the library does not watch it.
+#[test]
+fn a_built_in_client_that_ran_before_keeps_its_folder() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let profile = downloads::managed::profile_dir(&CorePaths::under(dir.path()).data_dir);
+    downloads::managed::write_config(&profile, 47321, Some(Path::new("/mnt/anime"))).unwrap();
+    let videos = dir.path().join("Videos");
+    assert_eq!(
+        downloads::own_save_dir(&core, Some(&videos)).unwrap(),
+        Some(std::path::PathBuf::from("/mnt/anime"))
+    );
+    assert!(source_paths(&core).is_empty());
+    let status = downloads_status(&core);
+    assert_eq!(status.own_save_folder, "/mnt/anime");
+    assert!(!status.own_save_in_library);
+}

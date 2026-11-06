@@ -161,8 +161,15 @@ SettingsTab {
     readonly property string modeLine: {
         if (!draft) return ""
         if (draft.torrent_mode === "Existing") return "A qBittorrent you run yourself, with its Web UI turned on."
-        if (draft.torrent_mode === "Managed") return "AniBeam runs a qBittorrent of its own into ~/Downloads/Anime. It keeps going after AniBeam quits, so subscriptions keep downloading."
-        return "Uses a qBittorrent that answers at the address below, else runs one of its own."
+        if (draft.torrent_mode === "Managed") return "AniBeam runs a qBittorrent of its own. It keeps going after AniBeam quits, so subscriptions keep downloading. " + tab.saveLine
+        return "Uses a qBittorrent that answers at the address below, else runs one of its own. " + tab.saveLine
+    }
+    // Where the built-in client puts finished downloads, and whether the library sees them
+    readonly property string saveLine: {
+        var st = tab.status
+        if (!st || !st.own_save_folder) return ""
+        if (st.own_save_in_library) return "Its downloads save to " + st.own_save_folder + ", in your library, so they show up there by themselves."
+        return "Its downloads save to " + st.own_save_folder + ". That is not a library folder, so add it under Settings, Library to see them there."
     }
     readonly property string passwordLine: {
         if (!settings) return ""
