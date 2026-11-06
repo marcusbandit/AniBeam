@@ -995,8 +995,10 @@ impl Core {
                 let now = time::now();
                 let stats = self.store.read(|c| {
                     let snap = crate::library::snapshot::Snapshot::load(c, &images_dir, now, None)?;
+                    let log = crate::stats::finishes(c)?;
                     Ok(crate::stats::compute(
                         &snap,
+                        &log,
                         year,
                         i64::from(utc_offset),
                         &month_starts,

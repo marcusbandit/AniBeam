@@ -783,7 +783,8 @@ fn mark(core: &Core, s: &Session) {
     }
 }
 
-/// The episode is done: the resume point goes, the completion is recorded,
+/// The episode is done: the resume point goes, the completion is recorded
+/// (the latest in `completed`, and one more finish in the watch log),
 /// and the card behind the player is pushed so Next up moves on. An extra
 /// only forgets where it was, since it is not an episode of anything.
 fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
@@ -803,6 +804,13 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
                 "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)
                  ON CONFLICT(series_id, episode_key) DO UPDATE SET at = excluded.at",
                 params![series as i64, key, now],
+            )?;
+            crate::library::history::log_finish(
+                tx,
+                series,
+                &key,
+                now,
+                crate::library::history::How::Played,
             )?;
         }
         Ok(())

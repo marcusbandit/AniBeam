@@ -25,6 +25,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
+use crate::library::history::How;
 use crate::metadata::apply::card_for;
 use crate::metadata::fetch::message_of;
 use crate::net::HttpResponse;
@@ -357,6 +358,18 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
     let now = time::now_secs();
     let past = f64::from(progress) + 1.0;
     core.store.tx(move |tx| {
+        // Each episode this marks for the first time is a hand-set finish in
+        // the watch log, which Stats leaves out (#593). One already watched
+        // keeps its own finishes and gains none.
+        tx.execute(
+            "INSERT INTO watch_log (series_id, episode_key, at, how)
+             SELECT DISTINCT f.series_id, f.episode_key, ?3, ?5 FROM files f
+             WHERE f.series_id = ?1 AND f.kind = 'episode' AND COALESCE(f.season, 1) = ?4
+               AND f.number >= 1 AND f.number < ?2
+               AND NOT EXISTS (SELECT 1 FROM completed c
+                               WHERE c.series_id = f.series_id AND c.episode_key = f.episode_key)",
+            params![series as i64, past, now, season, How::Marked.as_str()],
+        )?;
         tx.execute(
             "INSERT INTO completed (series_id, episode_key, at)
              SELECT DISTINCT series_id, episode_key, ?3 FROM files
@@ -371,6 +384,15 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
                  WHERE series_id = ?1 AND kind = 'episode' AND COALESCE(season, 1) = ?3
                    AND number >= ?2)",
             params![series as i64, past, season],
+        )?;
+        // Taking a hand-set count back takes its hand-set finishes with it.
+        // A finish the player wrote stays: that episode was watched.
+        tx.execute(
+            "DELETE FROM watch_log WHERE series_id = ?1 AND how = ?4 AND episode_key IN (
+                 SELECT episode_key FROM files
+                 WHERE series_id = ?1 AND kind = 'episode' AND COALESCE(season, 1) = ?3
+                   AND number >= ?2)",
+            params![series as i64, past, season, How::Marked.as_str()],
         )?;
         Ok(())
     })?;

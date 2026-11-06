@@ -1,12 +1,15 @@
-//! Stats (#216): what a year of watching adds up to, read off the history the
-//! core already keeps (`completed`, one row per episode finished, with when)
-//! and the records behind each series (length, genres, studio, season).
+//! Stats (#216): what a year of watching adds up to, read off the watch log
+//! (#593: every finish of an episode, with when) and the records behind each
+//! series (length, genres, studio, season). A rewatch adds to the year it
+//! happened in; progress set by hand adds nothing.
 //!
-//! Pure over one snapshot: no request, no write. An episode's minutes are its
+//! Pure over one snapshot and the log: no request, no write. An episode's minutes are its
 //! record's length, or a plain default when the record names none, so a
 //! number is always there; the page says hours, rounded.
 
 use std::collections::{HashMap, HashSet};
+
+use rusqlite::Connection;
 
 use crate::contract::*;
 use crate::library::snapshot::{SeriesRow, Snapshot};
@@ -61,6 +64,46 @@ fn finished(snap: &Snapshot, row: &SeriesRow, done: &[(String, i64)]) -> bool {
     (1..=total).all(|n| keys.contains(&n))
 }
 
+/// Every finish Stats counts, by series: what the watch log holds but the
+/// progress set by hand.
+pub(crate) type Finishes = HashMap<u64, Vec<(String, i64)>>;
+
+/// Reads the counted finishes off the watch log.
+pub(crate) fn finishes(conn: &Connection) -> Result<Finishes, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT series_id, episode_key, at FROM watch_log WHERE how <> 'marked' ORDER BY at",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, i64>(0)? as u64,
+            r.get::<_, String>(1)?,
+            r.get::<_, i64>(2)?,
+        ))
+    })?;
+    let mut out = Finishes::new();
+    for row in rows {
+        let (series, key, at) = row?;
+        out.entry(series).or_default().push((key, at));
+    }
+    Ok(out)
+}
+
+/// When a finished series was finished: the moment the last of its watched
+/// episodes was first finished, so watching one again never moves it. None
+/// when none of them has a counted finish, all set by hand.
+fn finished_at(done: &[(String, i64)], log: &[(String, i64)]) -> Option<i64> {
+    let mut first: HashMap<&str, i64> = HashMap::new();
+    for (key, at) in log {
+        first
+            .entry(key.as_str())
+            .and_modify(|t| *t = (*t).min(*at))
+            .or_insert(*at);
+    }
+    done.iter()
+        .filter_map(|(key, _)| first.get(key.as_str()).copied())
+        .max()
+}
+
 /// The calendar year and month (1 to 12) of a moment, `offset` seconds east of UTC.
 pub fn year_month(at: i64, offset: i64) -> (i32, u32) {
     let days = (at + offset).div_euclid(86_400);
@@ -107,6 +150,7 @@ fn top(map: HashMap<String, Tally>) -> Vec<StatCount> {
 /// daylight saving change; anything else is placed by `offset`.
 pub fn compute(
     snap: &Snapshot,
+    log: &Finishes,
     year: Option<i32>,
     offset: i64,
     month_starts: &[i64],
@@ -132,12 +176,14 @@ pub fn compute(
     let (mut genres, mut studios, mut seasons) = (HashMap::new(), HashMap::new(), HashMap::new());
     let mut per_series: Vec<StatSeries> = Vec::new();
     for row in &snap.series {
-        let Some(done) = snap.completed.get(&row.id) else {
+        let done = snap.completed.get(&row.id).map_or(&[][..], Vec::as_slice);
+        let finishes = log.get(&row.id).map_or(&[][..], Vec::as_slice);
+        if finishes.is_empty() {
             continue;
-        };
+        }
         let minutes = minutes_of(row);
         let mut episodes = 0u32;
-        for (_, at) in done {
+        for (_, at) in finishes {
             let (y, m) = place(*at);
             if !years.contains(&y) {
                 years.push(y);
@@ -151,10 +197,10 @@ pub fn compute(
             slot.minutes += u64::from(minutes);
         }
         // Finished by the library's own rule (the provider says Finished and
-        // every episode of its count is watched), in the month the last
-        // finished episode was watched.
+        // every episode of its count is watched), in the month the last of
+        // its episodes was first watched.
         if finished(snap, row, done)
-            && let Some(last) = done.iter().map(|(_, at)| *at).max()
+            && let Some(last) = finished_at(done, finishes)
         {
             let (y, m) = place(last);
             if y == year {

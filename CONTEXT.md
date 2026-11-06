@@ -76,6 +76,10 @@ _Avoid_: position, progress, bookmark
 The outcome of the end rule: the position reached the last 30 seconds, a known outro window or the end of the file, so the resume point is cleared and the episode is recorded as completed.
 _Avoid_: finished, done, watched to the end
 
+**Watch log**:
+Every finish of an episode, each with its own time and where it came from: played here, set by hand, or imported. A completion records the latest finish for the series page and the cards, and adds one more to the log. Stats reads the log and leaves out what was set by hand. History from before the log came in as one finish per episode.
+_Avoid_: watch history, play log, finishes table
+
 **Skip window**:
 A span of an episode the player offers to jump over, an intro or an outro, taken from the file's chapters first and from AniSkip otherwise.
 _Avoid_: skip times, OP/ED range, chapter
@@ -143,7 +147,7 @@ The user saying one AniList entry should stay off Airing now. It covers that ent
 _Avoid_: hidden, ignored, blocked, dismissed
 
 **Stats**:
-A year of watching added up from the episode history: hours, episodes and series finished by month, the top genres, studios and seasons. The recap is the one card for the year that saves as an image.
+A year of watching added up from the watch log: hours, episodes and series finished by month, the top genres, studios and seasons. The recap is the one card for the year that saves as an image.
 _Avoid_: analytics, insights, wrapped, report
 
 **Planning list**:

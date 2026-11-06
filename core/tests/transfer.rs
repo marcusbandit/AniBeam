@@ -262,6 +262,15 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
     assert_eq!(again.resume_points_merged, 0);
     assert_eq!(again.accounts_imported, 0);
     assert_eq!(again.fields_ignored, vec!["keys.tmdb".to_string()]);
+    // The watch log holds the imported finish once, however often the file comes in.
+    assert_eq!(
+        crate::rows(
+            &core,
+            "SELECT c.episode_key, w.how FROM watch_log w JOIN completed c
+               ON c.series_id = w.series_id AND c.episode_key = w.episode_key AND c.at = w.at"
+        ),
+        vec![(completed(&core)[0].1.clone(), "imported".to_string())]
+    );
     assert_eq!(metadata(&core).len(), 3);
 }
 

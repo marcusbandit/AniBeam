@@ -239,3 +239,169 @@ fn the_month_edges_the_shell_sends_hold_across_a_clock_change() {
     assert_eq!(s.months[7].episodes, 1, "August, not July");
     assert_eq!(s.months[6].episodes, 0);
 }
+
+/// #593: a rewatch adds to the year it happened in and leaves the earlier
+/// year alone, and the series stays finished in the month it first was.
+#[test]
+fn a_rewatch_counts_in_its_own_year_and_the_series_stays_finished_where_it_was() {
+    let (_dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let bebop = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
+    fixtures::insert_media(
+        &core,
+        1,
+        Some("Cowboy Bebop"),
+        None,
+        Some(3),
+        "FINISHED",
+        "TV",
+        None,
+    );
+    fixtures::match_series(&core, bebop, Some(1), None);
+    // Finished in December 2025, episode 1 watched again in May 2026.
+    let december = day(1, 1) - 20 * 86_400;
+    for n in 1..=3 {
+        fixtures::insert_completed(&core, bebop, &n.to_string(), december + i64::from(n));
+    }
+    fixtures::insert_completed(&core, bebop, "1", day(5, 5));
+
+    let last = stats(&core, Some(2025));
+    assert_eq!(
+        (last.episodes, last.minutes, last.series_completed),
+        (3, 72, 1),
+        "the first viewing stays in 2025"
+    );
+    assert_eq!(last.months[11].series_completed, 1);
+    let this = stats(&core, Some(2026));
+    assert_eq!(
+        (this.episodes, this.minutes, this.series_completed),
+        (1, 24, 0),
+        "the rewatch adds to 2026 and finishes nothing again"
+    );
+    assert_eq!(this.months[4].episodes, 1);
+    assert_eq!(this.years, vec![2026, 2025]);
+}
+
+/// #593: progress set by hand is marked as such and stays out of the hours,
+/// while the series page still reads those episodes as watched.
+#[test]
+fn progress_set_by_hand_stays_out_of_the_hours() {
+    let (_dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
+    let now = anibeam_core::time::now_secs();
+    for n in 1..=3 {
+        fixtures::insert_file(
+            &core,
+            loose,
+            &format!("/lib/Loose/Episode {n}.mkv"),
+            f64::from(n),
+            None,
+            "episode",
+            now,
+        );
+    }
+    // Episode 1 was watched to the end here; then 1 to 3 are set by hand.
+    fixtures::insert_completed(&core, loose, "1", now - 60);
+    core.call(Call::SetProgress {
+        series: loose,
+        progress: 3,
+        season: None,
+    })
+    .unwrap();
+
+    let s = stats(&core, None);
+    assert_eq!((s.episodes, s.minutes), (1, 24), "only the played finish");
+    let detail = match core.call(Call::GetSeries { series: loose }).unwrap() {
+        Reply::SeriesDetail { detail } => *detail,
+        other => panic!("{other:?}"),
+    };
+    assert!(detail.episodes.iter().all(|e| e.watched));
+    let how: Vec<(String, String)> = core
+        .store()
+        .read(move |c| {
+            let mut stmt = c.prepare(
+                "SELECT episode_key, how FROM watch_log WHERE series_id = ?1 ORDER BY episode_key, id",
+            )?;
+            let rows = stmt.query_map([loose as i64], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .unwrap();
+    assert_eq!(
+        how,
+        vec![
+            ("1".to_string(), "played".to_string()),
+            ("2".to_string(), "marked".to_string()),
+            ("3".to_string(), "marked".to_string()),
+        ],
+        "an episode already watched gains no hand-set finish"
+    );
+
+    // Setting it back to 1 takes the hand-set finishes away and keeps the played one.
+    core.call(Call::SetProgress {
+        series: loose,
+        progress: 1,
+        season: None,
+    })
+    .unwrap();
+    let left: i64 = core
+        .store()
+        .read(move |c| {
+            Ok(c.query_row(
+                "SELECT count(*) FROM watch_log WHERE series_id = ?1",
+                [loose as i64],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(left, 1);
+}
+
+/// #593: the player keeps every finish. Two runs to the end of one episode
+/// are two finishes in the log and one completion on the series page.
+#[test]
+fn each_finish_of_an_episode_is_kept() {
+    let (_dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
+    let file = fixtures::insert_file(
+        &core,
+        loose,
+        "/lib/Loose/Episode 1.mkv",
+        1.0,
+        None,
+        "episode",
+        anibeam_core::time::now_secs(),
+    );
+    for _ in 0..2 {
+        let session = match core.call(Call::OpenPlayback { file }).unwrap() {
+            Reply::Playback { session } => session.session,
+            other => panic!("{other:?}"),
+        };
+        core.call(Call::ClosePlayback {
+            session,
+            position: 1400.0,
+            reason: CloseReason::Ended,
+        })
+        .unwrap();
+    }
+    let (completed, played): (i64, i64) = core
+        .store()
+        .read(move |c| {
+            Ok((
+                c.query_row(
+                    "SELECT count(*) FROM completed WHERE series_id = ?1",
+                    [loose as i64],
+                    |r| r.get(0),
+                )?,
+                c.query_row(
+                    "SELECT count(*) FROM watch_log WHERE series_id = ?1 AND how = 'played'",
+                    [loose as i64],
+                    |r| r.get(0),
+                )?,
+            ))
+        })
+        .unwrap();
+    assert_eq!((completed, played), (1, 2));
+    assert_eq!(stats(&core, None).episodes, 2);
+}
