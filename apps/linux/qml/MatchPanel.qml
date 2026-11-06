@@ -63,13 +63,13 @@ Corner {
         q = String(q || "").trim()
         if (q.length < 2) { root.searching = false; root.results = []; root.searchJob = -1; return }
         var r = Door.searchOn(root.provider, q, 12)
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, function() { root.runSearch(q) }); return }
         root.searchJob = r.reply.job
         root.searching = true
     }
     function apply(target, title) {
         var r = Door.applyMatch(root.seriesId, target)
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, function() { root.apply(target, title) }); return }
         frame.toast(title ? "Matched to " + title : "Match applied")
         root.close("applied")
     }
@@ -78,7 +78,7 @@ Corner {
     function applyResult(r) {
         if (r.provider === "Tvmaze") {
             var out = Door.applyTvmaze(root.seriesId, r.id)
-            if (out.error) { frame.fail(out.error); return }
+            if (out.error) { frame.fail(out.error, function() { root.applyResult(r) }); return }
             frame.toast("Matched to " + r.title)
             root.close("applied")
         } else root.apply({ "Anilist": { "id": r.id, "season": null } }, r.title)
@@ -138,7 +138,7 @@ Corner {
         function onJobFailed(job, kind, error) {
             if (job === root.searchJob) { root.searching = false; root.searchJob = -1 }
             else if (job !== root.resolveJob) return
-            frame.toast(error && error.message ? error.message : root.providerName + " did not answer")
+            frame.fail(error, job === root.resolveJob ? function() { lookUp.clicked() } : function() { root.runSearch(search.text) })
         }
     }
 
@@ -191,7 +191,7 @@ Corner {
                 small: true
                 icon: "refresh-cw"
                 text: "Refresh info"
-                onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Refreshing " + root.seriesTitle) }
+                onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error, clicked) : frame.toast("Refreshing " + root.seriesTitle) }
             }
             // Two steps: it drops the tracker link and a hand-set episode count, and the
             // series is then left alone by the automatic match
@@ -204,8 +204,10 @@ Corner {
                 onClicked: {
                     if (!armed) { armed = true; disarm.restart(); return }
                     armed = false
-                    var r = Door.clearMatch(root.seriesId)
-                    if (r.error) frame.fail(r.error)
+                    var id = root.seriesId
+                    var again = function() { var c = Door.clearMatch(id); if (c.error) frame.fail(c.error, again); else frame.toast("Match cleared") }
+                    var r = Door.clearMatch(id)
+                    if (r.error) frame.fail(r.error, again)
                     else frame.toast("Match cleared")
                     root.close()
                 }
@@ -256,7 +258,7 @@ Corner {
                 text: "Look up"
                 onClicked: {
                     var r = Door.resolveLink(linkField.text)
-                    if (r.error) { frame.fail(r.error); return }
+                    if (r.error) { frame.fail(r.error, clicked); return }
                     root.resolveJob = r.reply && r.reply.job !== undefined ? r.reply.job : -1
                 }
             }
@@ -276,7 +278,7 @@ Corner {
 
         Label {
             visible: root.results.length === 0
-            text: root.searching ? "Searching " + root.providerName : search.text.trim().length < 2 ? "Type at least two letters to search " + root.providerName + "." : "No titles found on " + root.providerName + "."
+            text: root.searching ? "Searching " + root.providerName : search.text.trim().length < 2 ? "Type at least two letters to search " + root.providerName + "." : "No titles match that on " + root.providerName + ". Try other words, or paste a link below."
             role: "ui"; color: theme.textDim
         }
     }
