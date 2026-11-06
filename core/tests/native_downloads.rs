@@ -523,7 +523,7 @@ fn list_rules_lists_every_rule_with_counts() {
     no_anirss(&r.http);
 }
 
-/// Installs a source whose search answers JSON (the tosho kind) from a repo this test signs,
+/// Installs a source whose search answers JSON (the json-feed kind) from a repo this test signs,
 /// and gives back its install id.
 fn install_json_source(r: &Rig) -> String {
     use base64::Engine;
@@ -532,7 +532,7 @@ fn install_json_source(r: &Rig) -> String {
     let k = SigningKey::from_bytes(&[7; 32]);
     let key = format!("ed25519:{}", B64.encode(k.verifying_key().to_bytes()));
     let index = json!({"name": "Signed here", "key": key, "serial": 1, "endpoints": [
-        {"id": "api", "name": "api", "version": 1, "kind": "tosho",
+        {"id": "api", "name": "api", "version": 1, "kind": "json-feed",
          "url": "https://search.example/feed/json?q={query}"}
     ]});
     let payload = serde_json::to_vec(&index).unwrap();

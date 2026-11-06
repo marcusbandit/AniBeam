@@ -67,6 +67,7 @@ pub struct Core {
     launch: Mutex<Option<Arc<Subscription>>>,
     /// The calendar feed's listener and file lock (`calendar`).
     pub(crate) calendar: crate::calendar::Calendar,
+    pub(crate) aired: crate::aired::Aired,
     /// Airing now's read in flight per season, so a second ask for the same
     /// season joins it and the other season's read runs beside it.
     pub(crate) airing_reads: Mutex<HashMap<String, u64>>,
@@ -266,6 +267,7 @@ impl Core {
             watcher: Mutex::new(None),
             launch: Mutex::new(None),
             calendar: crate::calendar::Calendar::default(),
+            aired: crate::aired::Aired::default(),
             airing_reads: Mutex::new(HashMap::new()),
             runtime: Mutex::new(Some(runtime)),
             handle,
@@ -305,6 +307,15 @@ impl Core {
         // Here rather than in `launch`: a job that moves the schedule can
         // finish in a core that was never started, as the CLI's are.
         crate::calendar::listen(&core);
+        // Before anything reads an installed endpoint: a kind saved under a site's name gets
+        // its shape name (#602).
+        if let Err(e) = crate::repos::rename_old_kinds(&core) {
+            core.bus.warn(
+                Stage::Downloads,
+                format!("could not give a download source the new name of its kind: {e}"),
+                EventBody::Notice,
+            );
+        }
         Ok(core)
     }
 
@@ -684,6 +695,9 @@ impl Core {
             #[cfg(feature = "phone")]
             crate::phone::rekeep_rules(&lifting, lifted);
         });
+        // A started core says when a followed episode airs (#212); the CLI's,
+        // never started, leaves that to the window.
+        crate::aired::listen(&core);
         launch::start(&core)
     }
 
@@ -1381,6 +1395,7 @@ impl Core {
         // A launch whose scan never finished has no list left to run.
         self.take_launch_listener();
         crate::calendar::stop(self);
+        crate::aired::stop(self);
         // The anirss sidecar goes with the core that started it.
         self.downloads.stop();
         self.host.stop();
