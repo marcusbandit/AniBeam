@@ -740,8 +740,8 @@ impl JobKind {
             | RefreshAiringNow | OnHold | Crawl | SkipWindows | Subscriptions
             | ConnectDownloads | CheckEndpoints => true,
             Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
-            | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | MoveLists | Notes
-            | Export | Import | SearchReleases | RefineReleases | Subscribe | Download
+            | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | MoveLists
+            | Notes | Export | Import | SearchReleases | RefineReleases | Subscribe | Download
             | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
             | RepairSubscription | StartEndpoint => false,
         }

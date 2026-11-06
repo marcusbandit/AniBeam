@@ -477,6 +477,7 @@ pub mod qobject {
         fn scored(self: Pin<&mut Door>, series: f64, score: f64, outcomes: QJsonArray);
         #[qsignal]
         fn lists_moved(self: Pin<&mut Door>, tracker: QString, moved: i32, failed: i32);
+        #[qsignal]
         fn notes_set(self: Pin<&mut Door>, series: f64, outcomes: QJsonArray);
         #[qsignal]
         fn list_status_set(
