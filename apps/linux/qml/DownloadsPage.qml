@@ -55,6 +55,12 @@ Item {
     readonly property bool anirssStarting: !!anirss && anirss.state === "Starting"
     readonly property bool torrentOn: !!torrent && torrent.connected
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
+    // Whether the search's source has a feed a subscription can follow (#507)
+    readonly property bool followable: {
+        var name = page.state ? page.state.endpoint : ""
+        for (var i = 0; i < endpoints.length; i++) if (endpoints[i].name === name) return endpoints[i].followable !== false
+        return true
+    }
     readonly property string clientName: status && status.settings ? (status.settings.torrent_client === "Qbittorrent" ? "qBittorrent" : String(status.settings.torrent_client)) : "qBittorrent"
     readonly property var savedClients: status && status.settings && status.settings.saved_clients ? status.settings.saved_clients : []
     // A remote anirss keeps the client its own config names, so the chip cannot switch it
@@ -1523,7 +1529,7 @@ Item {
             if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.searchError = page.errorWords(error) }
             else if (job === page.actionJob) { page.acting = false; page.actionError = page.errorWords(error) }
             else if (job === page.connectJob) { page.connecting = false; frame.toast(page.errorWords(error)) }
-            else if (job === page.previewJob) { page.previewJob = -1 }
+            else if (job === page.previewJob) { page.previewJob = -1; frame.toast(page.errorWords(error)) }
             else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.toast(page.errorWords(error), 6) }
             else if (job === page.runningJob) {
                 frame.toast(page.errorWords(error))
@@ -2218,9 +2224,9 @@ Item {
                         Button {
                             objectName: "downloads-subscribe"
                             width: parent.width
-                            text: page.acting ? "Working" : "Subscribe to this search"
+                            text: page.acting ? "Working" : page.followable ? "Subscribe to this search" : "No feed to subscribe to here"
                             icon: "rss"
-                            enabled: !!page.state && page.items.length > 0 && !page.acting && !page.searching
+                            enabled: !!page.state && page.items.length > 0 && !page.acting && !page.searching && page.followable
                             onClicked: page.subscribe()
                         }
                         Button {
@@ -2229,7 +2235,7 @@ Item {
                             icon: "eye"
                             flat: true
                             small: true
-                            enabled: !!page.state && page.items.length > 0 && !page.searching
+                            enabled: !!page.state && page.items.length > 0 && !page.searching && page.followable
                             onClicked: page.previewSubscription()
                         }
                         Column {

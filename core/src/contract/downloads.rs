@@ -96,6 +96,11 @@ pub struct SearchEndpoint {
     /// ready URL to ask. The probe is a plain GET and never starts it.
     #[serde(default)]
     pub running: Option<bool>,
+    /// Whether a subscription can follow this source: its search answers a feed a client
+    /// can read. A source that answers JSON cannot be followed (#507), so the shells
+    /// offer no subscription on it. anirss lists only feed kinds, so true when missing.
+    #[serde(default = "default_true")]
+    pub followable: bool,
 }
 
 /// A search and its first analysis in one: the items, where they came

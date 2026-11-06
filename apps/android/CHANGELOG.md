@@ -3,6 +3,8 @@
 <!--
 The app shows this file in What's new, newest version first. Keep it short.
 - One line per change a person can notice, under New, Changed, Fixed or Removed.
+- A pull request writes its lines in changes/<branch>.md, never here. The
+  release folds them in under the version they ship in.
 - 80 characters at most, no full stop. Say what they see, never why or how.
 - The newest heading is the app's versionName. A version bump adds a heading,
   and a new heading bumps the version.
@@ -13,7 +15,6 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
-- A show followed on a source with no feed says no new episodes will come
 - Seeders show for releases from more trackers
 - A refine or subscribe on a source you just removed says it is gone
 - Seeders show for releases from a tracker written with backslashes
