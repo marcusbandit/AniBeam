@@ -77,6 +77,16 @@ fn the_preview_lists_what_would_change_and_sends_nothing() {
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
     fixtures::insert_tracker_entry(&core, "anilist", 1, 3, "planning", None);
     fixtures::insert_tracker_entry(&core, "anilist", 2, 12, "completed", None);
+    // The tracker's entries last changed a day before the list kept here.
+    core.store()
+        .write(|c| {
+            c.execute(
+                "UPDATE tracker_entries SET updated_at = updated_at - 86400",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
 
     let rows = preview(&core);
     assert_eq!(
@@ -174,4 +184,56 @@ fn the_move_writes_only_what_was_picked() {
     let rows = preview(&core);
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0].series, other);
+}
+
+/// Once the tracker has changed since the list kept here was set, the
+/// tracker's word is the newer one: the row is not offered, so a stale
+/// local status can never overwrite it. A score alone, for a show not on
+/// the tracker's list, waits for a status rather than picking a list for
+/// the person; and Watching here against a rewatch there is no change.
+#[test]
+fn a_stale_row_a_lone_score_and_a_rewatch_are_not_offered() {
+    let (_dir, core, _c) = common::open_core_with_http(FakeHttp::new());
+    let src = fixtures::insert_source(&core, "/lib");
+    let stale = show(&core, src, "Stale", Some(1));
+    let lone = show(&core, src, "Lone", Some(2));
+    let again = show(&core, src, "Again", Some(3));
+    core.call(Call::SetListStatus {
+        series: stale,
+        status: ListStatus::Watching,
+    })
+    .unwrap();
+    core.call(Call::SetScore {
+        series: lone,
+        score: Some(6.0),
+    })
+    .unwrap();
+    core.call(Call::SetListStatus {
+        series: again,
+        status: ListStatus::Watching,
+    })
+    .unwrap();
+    // The local rows are an hour old; the tracker changed after them.
+    core.store()
+        .write(|c| {
+            c.execute(
+                "UPDATE local_entries SET updated_at = updated_at - 3600",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::insert_tracker_entry(&core, "anilist", 1, 12, "completed", None);
+    fixtures::insert_tracker_entry(&core, "anilist", 3, 2, "repeating", None);
+    core.store()
+        .write(|c| {
+            c.execute(
+                "UPDATE tracker_entries SET updated_at = updated_at - 7200 WHERE media_id = 3",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(preview(&core).is_empty(), "{:?}", preview(&core));
 }

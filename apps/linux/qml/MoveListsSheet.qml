@@ -13,7 +13,7 @@ Item {
     visible: false
     property string tracker: "Anilist"
     property var rows: []
-    readonly property string site: tracker === "Mal" ? "MyAnimeList" : "AniList"
+    readonly property string site: frame.trackerName(tracker)
     readonly property real pad: theme.space(6)
 
     // The preview for a tracker, and the sheet open when it has anything to move. Answers

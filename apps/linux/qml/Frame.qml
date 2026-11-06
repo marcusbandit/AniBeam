@@ -348,6 +348,7 @@ FocusScope {
         if (connecting[t] !== undefined) expectedCancels = withKey(expectedCancels, connecting[t], true)
         var r = Door.connectTracker(t)
         if (r.error) { connectErrors = withKey(connectErrors, t, errorText(r.error)); return false }
+        moveOffers = withKey(moveOffers, t, true)
         connecting = withKey(connecting, t, r.reply.job)
         jobTrackers = withKey(jobTrackers, r.reply.job, t)
         latestJob = withKey(latestJob, t, r.reply.job)
@@ -384,11 +385,14 @@ FocusScope {
             })
             if (failed.length) frame.toast(failed.join("; "))
         }
+        // A connection's first read list is when the list kept here is offered to it (#580).
+        // The offer is made when the connect starts, since the read can finish before the
+        // connect's own end arrives, and one tracker's offer never takes another's place.
         function onProgressRefreshed(t) {
-            if (frame.moveOffer === "" || frame.moveOffer.toLowerCase() !== String(t).toLowerCase()) return
-            var offered = frame.moveOffer
-            frame.moveOffer = ""
-            moveListsSheet.openFor(offered)
+            var key = String(t).toLowerCase() === "mal" ? "Mal" : "Anilist"
+            if (frame.moveOffers[key] !== true) return
+            frame.moveOffers = frame.withKey(frame.moveOffers, key)
+            moveListsSheet.openFor(key)
         }
         function onListsMoved(t, moved, failed) {
             if (failed > 0) frame.toast(frame.trackerName(t) + " did not take " + (failed === 1 ? "1 show" : failed + " shows") + "; see the activity log")
@@ -414,8 +418,6 @@ FocusScope {
         }
         // The toast, the receipt and the raise; the bookkeeping is onJobFinished's.
         function onTrackerConnected(t, username) {
-            // Once its list is read, the list kept here is offered to it (#580)
-            frame.moveOffer = t
             frame.connectedAs = frame.withKey(frame.connectedAs, t, username || frame.trackerName(t))
             frame.toast("Connected to " + frame.trackerName(t) + " as " + (username || "?"))
             // The user is in the browser tab that just closed; bring them back to the app.
@@ -427,6 +429,8 @@ FocusScope {
             if (t === undefined) return
             frame.jobTrackers = frame.withKey(frame.jobTrackers, job)
             if (frame.latestJob[t] !== job) return
+            // A connect that failed has nothing to offer the list kept here to
+            frame.moveOffers = frame.withKey(frame.moveOffers, t)
             var message = frame.errorText(error)
             frame.connectErrors = frame.withKey(frame.connectErrors, t, message)
             // The sheet says it inline when it is up for this tracker; a toast as well would
@@ -722,8 +726,8 @@ FocusScope {
     // A list status is offered for every series but a hidden one, whose tracker sync is off. It
     // goes to every connected tracker that carries an id for the series, and stays on this
     // device when none does (#213).
-    // The tracker a fresh connection will offer the list kept here to, once its list is read
-    property string moveOffer: ""
+    // The trackers a fresh connection will offer the list kept here to, once their list is read
+    property var moveOffers: ({})
     // The move sheet for a tracker, from Settings; answers whether there was anything to move
     function openMoveLists(t) { return moveListsSheet.openFor(t) }
     function trackerOn(t) { return !!Door.trackers && !!Door.trackers[t] && Door.trackers[t].connected === true }

@@ -18,10 +18,16 @@ use crate::trackers::{accounts, writes};
 
 /// What the preview shows for one series: what is kept here, and what the
 /// tracker has now (none for a show not on its list).
+///
+/// A row is only offered while it is newer than the tracker's entry: once
+/// the tracker has changed since (a move landed, or the person set it on
+/// the phone), the tracker's word is the newer one and nothing here may
+/// overwrite it. A show that any hidden folder shares a match with is left
+/// out, the way every tracker write leaves it out.
 pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError> {
-    let id_column = match t {
-        Tracker::Anilist => "s.anilist_id",
-        Tracker::Mal => "s.mal_id",
+    let (id_column, bare) = match t {
+        Tracker::Anilist => ("s.anilist_id", "anilist_id"),
+        Tracker::Mal => ("s.mal_id", "mal_id"),
     };
     let lang = crate::prefs::load_preferences(conn)?.title_language;
     let sql = format!(
@@ -32,6 +38,8 @@ pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError>
          LEFT JOIN anilist_media m ON m.id = s.anilist_id
          LEFT JOIN tracker_entries e ON e.tracker = ?1 AND e.media_id = {id_column}
          WHERE {id_column} IS NOT NULL AND s.hidden = 0 AND s.missing_since IS NULL
+           AND (e.updated_at IS NULL OR l.updated_at > e.updated_at)
+           AND NOT EXISTS (SELECT 1 FROM series h WHERE h.hidden = 1 AND h.{bare} = {id_column})
          ORDER BY s.folder_name COLLATE NOCASE"
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -61,10 +69,19 @@ pub fn preview(conn: &Connection, t: Tracker) -> Result<Vec<MoveRow>, CoreError>
 }
 
 /// Whether moving this row would change the tracker: a status it does not
-/// have, or a score it does not have.
+/// have, or a score it does not have. Watching here against a rewatch there
+/// is the same list, and a move must not end the rewatch. A score alone,
+/// for a show not on the tracker's list, would put the show on a list the
+/// person never picked, so it waits until it has a status.
 fn changes_something(row: &MoveRow) -> bool {
-    (row.status.is_some() && row.status != row.tracker_status)
-        || (row.score.is_some() && row.score != row.tracker_score)
+    let same_list = row.status == row.tracker_status
+        || (row.status == Some(ListStatus::Watching)
+            && row.tracker_status == Some(ListStatus::Repeating));
+    let status_changes = row.status.is_some() && !same_list;
+    let score_changes = row.score.is_some()
+        && row.score != row.tracker_score
+        && (row.status.is_some() || row.tracker_status.is_some());
+    status_changes || score_changes
 }
 
 /// Starts the move: refused at once when the tracker is not connected, and
@@ -118,33 +135,65 @@ async fn run(
         ctx.checkpoint()?;
         ctx.progress(n as u64, Some(total), &row.title);
         let series = row.series;
-        let target = core
+        // A series gone since the preview is that series' failure alone.
+        let Ok(target) = core
             .store
             .write_async(move |c| writes::targets(c, series))
-            .await?;
+            .await
+        else {
+            failed += 1;
+            continue;
+        };
         let Some(media_id) = (match t {
             Tracker::Anilist => target.anilist,
             Tracker::Mal => target.mal,
         }) else {
             continue;
         };
-        let mut ok = true;
-        if let Some(status) = row.status.filter(|s| Some(*s) != row.tracker_status) {
+        // A status first, a score after. Whatever landed counts the show as
+        // moved; a part the tracker refused says so in the log on its own.
+        let mut landed = false;
+        let mut refused = false;
+        let rewatch = row.status == Some(ListStatus::Watching)
+            && row.tracker_status == Some(ListStatus::Repeating);
+        if let Some(status) = row
+            .status
+            .filter(|s| Some(*s) != row.tracker_status && !rewatch)
+        {
             let action = writes::Action::Status { status };
-            ok &= sent(&core, &ctx, t, &target, media_id, user_id, action).await;
+            match sent(&core, &ctx, t, &target, media_id, user_id, action).await {
+                true => landed = true,
+                false => refused = true,
+            }
         }
         if let Some(score) = row.score.filter(|s| Some(*s) != row.tracker_score)
-            && ok
+            && !refused
         {
             let action = writes::Action::Score { score };
-            ok &= sent(&core, &ctx, t, &target, media_id, user_id, action).await;
+            match sent(&core, &ctx, t, &target, media_id, user_id, action).await {
+                true => landed = true,
+                false => refused = true,
+            }
         }
-        if ok {
+        if landed {
+            // The tracker now has the newer word, whether or not its reply
+            // carried a stamp, so the preview never offers this row again.
+            let now = crate::time::now_secs();
+            core.store
+                .write_async(move |c| {
+                    c.execute(
+                        "UPDATE tracker_entries SET updated_at = MAX(COALESCE(updated_at, 0), ?3)
+                         WHERE tracker = ?1 AND media_id = ?2",
+                        params![t.as_str(), media_id as i64, now],
+                    )?;
+                    Ok(())
+                })
+                .await?;
             moved += 1;
-        } else {
+        } else if refused {
             failed += 1;
         }
-        if let Some(card) = crate::metadata::apply::card_for(&core, series).await? {
+        if let Ok(Some(card)) = crate::metadata::apply::card_for(&core, series).await {
             ctx.changed(card);
         }
     }
@@ -184,7 +233,8 @@ fn shows(n: u32) -> String {
 }
 
 /// One write to one tracker, true when it landed. A failure says so in the
-/// log with the tracker's own words, sanitised, and the move goes on.
+/// activity log, the way any tracker write's failure does, with the
+/// tracker's own words sanitised, and the move goes on.
 async fn sent(
     core: &Arc<Core>,
     ctx: &Arc<JobCtx>,
@@ -197,14 +247,15 @@ async fn sent(
     match writes::attempt(core, ctx, t, target, media_id, user_id, action).await {
         Ok(outcome) => outcome.ok,
         Err(e) => {
-            ctx.emit(
-                Level::Debug,
+            let site = super::oauth::site_name(t);
+            ctx.say(
+                Level::Error,
                 format!(
-                    "{} move of {} failed: {}",
-                    t.as_str(),
+                    "{site} did not take {}: {}",
                     target.folder_name,
                     writes::sanitize_error(t, &e)
                 ),
+                format!("{} move of {} failed: {e}", t.as_str(), target.folder_name),
                 EventBody::Notice,
             );
             false

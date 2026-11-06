@@ -71,7 +71,7 @@ SettingsTab {
             readonly property int count: tab.waiting[to]
             visible: count > 0
             label: "Lists on this computer"
-            helper: (count === 1 ? "One show has" : count + " shows have") + " a status or a score only here. Move them to " + (to === "Mal" ? "MyAnimeList" : "AniList") + " to see them on your phone and your profile."
+            helper: (count === 1 ? "One show has" : count + " shows have") + " a status or a score only here. Move them to " + frame.trackerName(to) + " to see them on your phone and your profile."
             Button { objectName: "settings-move-lists"; text: "Review and move"; icon: "upload"; flat: true
                 onClicked: if (!frame.openMoveLists(moveRow.to)) frame.toast("Nothing left to move") } }
         SettingRow { label: "Sync now"; helper: "Reads your lists from every connected tracker again. AniBeam also does this when it starts."
