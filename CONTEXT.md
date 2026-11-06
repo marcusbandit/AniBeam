@@ -56,6 +56,18 @@ _Avoid_: complete, progress update, sync
 A tracker list: AniList calls it Paused, MAL calls it On Hold. With the On hold switch on, which is the default, the core moves a Watching entry there once nothing has touched it for the set number of days, 60 unless changed. A touch is any change either tracker dates, or a play here. An episode past the entry's progress coming out starts the count again, and an entry waiting for its next episode never moves. The check runs after each tracker refresh: at launch, on Sync, on a new connection, and when the switch goes on. Each entry is read live from its tracker just before it moves. A view of the series here, or a mark, puts the entry back on Watching. The desktop runs all of this and the phone none of it. Home shows the series on hold after Continue, in the same row, whenever Continue leaves room there, and a card on hold says so in a tag.
 _Avoid_: paused, idle, stale, backlog
 
+**Rewatch**:
+Watching a completed show again. AniList keeps a rewatch under way as the Repeating list; MAL keeps it as a flag on Watching. The rewatch count goes up one when a rewatch finishes: a mark completes a Repeating entry, or the last episode of a completed show is marked after its first episode was watched to the end here since the list last changed. A film counts when its list has stood still for twelve hours. Playing only the last episode again is not a rewatch, and the status menu never counts one.
+_Avoid_: repeat, rerun
+
+**List dates**:
+The start and finish dates on a tracker's list entry. A write fills one in when the list has none, dated the UTC day: the start when the entry goes onto Watching or its first episode is marked, the finish when it goes onto Completed. A date already there is never moved.
+_Avoid_: watch dates, history dates
+
+**List notes**:
+Free text on a tracker's list entry: AniList's notes, MAL's comments, at most 2000 characters. Written from the series page to every connected tracker, read back with each list refresh. Not the schedule notes, which are about a season's dates.
+_Avoid_: comments, schedule notes
+
 **Resume point**:
 The position playback restarts from the next time an episode opens. Not recorded for a session the player never reported on.
 _Avoid_: position, progress, bookmark
@@ -129,6 +141,14 @@ _Avoid_: seasonal, schedule, calendar, discover
 **Not interested**:
 The user saying one AniList entry should stay off Airing now. It covers that entry and nothing related to it, so the next season of the same show is a new entry and appears again. Settings, Library lists every one with a way back.
 _Avoid_: hidden, ignored, blocked, dismissed
+
+**Planning list**:
+The shows on the AniList Planning list, read off the same refresh as the watching list and shown as the second tab of Watching. Each says whether the library has it; Start watching moves one to Watching and plays its first episode.
+_Avoid_: plan to watch list, backlog, queue
+
+**Pick**:
+A card chosen on a page that acts on several at once: Library and Airing now. Ctrl+click, a held press or Ctrl+Space picks one; Shift picks a run of them. A bar at the foot acts on every pick in one go, and the activity log says it once.
+_Avoid_: select, selection, checked, bulk
 
 ### Look
 
@@ -260,6 +280,10 @@ _Avoid_: confirm dialog, modal, alert
 An app's `CHANGELOG.md`: every version newest first, each a few one-line changes under New, Changed, Fixed or Removed. The desktop and the phone keep their own, since each has its own version, and each build carries its own copy. A pull request adds its lines as a **change file** in the app's `changes/`, which shows under the newest version until the release folds it into the file.
 _Avoid_: release notes (the GitHub page), changelog entry, commit log
 
+**First run**:
+The walkthrough a fresh desktop install opens with instead of an empty library: what AniBeam is, the anime folder (or a new Anime folder in the videos folder), the tracker, how Downloads works, and what is left for later. Every step can be skipped. It shows once; an install that was already in use never sees it, and Settings, About runs it again.
+_Avoid_: onboarding wizard, tour, setup assistant
+
 **What's new**:
 The sheet that shows the patch notes. It opens by itself once after an update, with a line at the version the install came from; the rail's version, Settings and More open it again. Closing it marks the notes read.
 _Avoid_: changelog dialog, update popup, splash
@@ -295,3 +319,22 @@ _Avoid_: window class, WM_CLASS, desktop file id, bundle id
 **Install**:
 A build of the checkout put on a machine. Every install carries a version unique to the commit it came from, so a build is a version, never just a file.
 _Avoid_: deploy, release build, dev build
+
+### On screen
+
+The words above are for the code and the docs. The app says these instead, so a person never needs the glossary:
+
+| Here | On screen |
+| --- | --- |
+| Metadata page | Show info |
+| Unmatched series | Not recognised |
+| Missing | Folder not found |
+| Forget | Remove |
+| Endpoint | source |
+| Endpoint repo | source list |
+| Sidecar, anirss | search helper |
+| Best fit | Best match |
+| Rolling download | Keep the next few ready |
+| Sequential download | Download in episode order |
+| Tracker | your anime lists, or AniList and MyAnimeList by name |
+| Managed torrent client | Built-in, Built-in client |

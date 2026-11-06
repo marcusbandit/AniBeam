@@ -767,6 +767,7 @@ impl Core {
             }
             Call::GetSeries { series } => reads::get_series(self, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
+            Call::ActOnSeries { series, action } => self.act_on_series(series, action),
             Call::ParseSchedule { text } => Ok(crate::library::schedule::parse_call(&text)),
             Call::SetScheduleNotes {
                 series,
@@ -968,6 +969,9 @@ impl Core {
             Call::SetListStatus { series, status } => Ok(Reply::Started {
                 job: writes::set_list_status(self, series, status)?,
             }),
+            Call::SetSeriesNotes { series, notes } => Ok(Reply::Started {
+                job: writes::set_notes(self, series, &notes)?,
+            }),
             // Nothing to check up front: an unconnected or a fresh tracker
             // is the job's own skip, not a refusal.
             Call::RefreshProgress { tracker } => {
@@ -982,6 +986,7 @@ impl Core {
             // with a network side effect made every library change an
             // AniList request. The page asks for a refresh on its own.
             Call::ListWatching => watching::list_call(self),
+            Call::ListPlanning => watching::planning_call(self),
             Call::RefreshWatching { force } => watching::refresh_call(self, force),
             // Airing now reads its own tables, like Watching: the list call
             // answers off the cache and the page asks for a refresh itself.
@@ -1252,6 +1257,60 @@ impl Core {
             Call::Import { path } => Ok(Reply::Started {
                 job: transfer::import::start(self, &path)?,
             }),
+        }
+    }
+
+    /// `Call::ActOnSeries` (#208): every id checked first, so a pick that is
+    /// gone fails the whole call before anything is written.
+    fn act_on_series(&self, series: Vec<u64>, action: SeriesAction) -> Result<Reply, CoreError> {
+        let mut picks: Vec<u64> = Vec::with_capacity(series.len());
+        for id in series {
+            if !picks.contains(&id) {
+                picks.push(id);
+            }
+        }
+        if picks.is_empty() {
+            return Err(CoreError::invalid("series", "nothing picked"));
+        }
+        // One read for every id, however many were picked
+        let there: std::collections::HashSet<u64> = self.store.read(|c| {
+            let sql = format!(
+                "SELECT id FROM series WHERE id IN ({})",
+                crate::store::sql::placeholders(picks.len())
+            );
+            let mut stmt = c.prepare(&sql)?;
+            let ids = stmt
+                .query_map(
+                    rusqlite::params_from_iter(picks.iter().map(|id| *id as i64)),
+                    |r| r.get::<_, i64>(0),
+                )?
+                .map(|id| id.map(|id| id as u64))
+                .collect::<Result<_, _>>()?;
+            Ok(ids)
+        })?;
+        if let Some(&id) = picks.iter().find(|id| !there.contains(id)) {
+            return Err(CoreError::NotFound {
+                what: Entity::Series,
+                id,
+            });
+        }
+        match action {
+            SeriesAction::Hide { hidden } => reads::set_hidden_many(self, &picks, hidden),
+            SeriesAction::Rescan => scan::rescan_many(self, &picks),
+            SeriesAction::Score { score } => Ok(Reply::Started {
+                job: writes::start_many(self, &picks, writes::ManyWrite::Score(score))?,
+            }),
+            SeriesAction::ListStatus { status } => Ok(Reply::Started {
+                job: writes::start_many(self, &picks, writes::ManyWrite::Status(status))?,
+            }),
+            SeriesAction::FindMatch => {
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: automatch::start_for(&core, picks),
+                })
+            }
         }
     }
 

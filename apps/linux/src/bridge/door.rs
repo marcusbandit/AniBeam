@@ -472,6 +472,8 @@ pub mod qobject {
         #[qsignal]
         fn scored(self: Pin<&mut Door>, series: f64, score: f64, outcomes: QJsonArray);
         #[qsignal]
+        fn notes_set(self: Pin<&mut Door>, series: f64, outcomes: QJsonArray);
+        #[qsignal]
         fn list_status_set(
             self: Pin<&mut Door>,
             series: f64,
@@ -1370,6 +1372,7 @@ impl qobject::Door {
                 self.as_mut()
                     .list_status_set(n("series"), s("status"), arr("outcomes"))
             }
+            EventBody::NotesSet { .. } => self.as_mut().notes_set(n("series"), arr("outcomes")),
             EventBody::ProgressRefreshed { .. } => self.as_mut().progress_refreshed(s("tracker")),
             EventBody::WatchingRefreshed { .. } => self.as_mut().watching_refreshed(obj("list")),
             EventBody::AiringNowRefreshed { season } => self

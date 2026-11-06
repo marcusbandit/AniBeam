@@ -13,6 +13,7 @@ use rusqlite::Connection;
 use serde::Deserialize;
 
 use crate::contract::*;
+use crate::releases::BestfitConfig;
 use crate::store::settings;
 use crate::trackers::Secrets;
 
@@ -953,6 +954,220 @@ pub fn anirss_ondemand(path: &Path, name: &str) -> Option<OnDemand> {
             .to_string(),
         timeout,
     })
+}
+
+/// anirss's `[bestfit]` over anirss's own defaults, merged the way anirss merges its config:
+/// what the person saved there (the groups they trust, the source order, the resolution and
+/// the codec-normalised size target) ranks the native engine's best fit as it ranks anirss's
+/// (#545). `None` when there is no file. One that does not read is anirss's defaults, as
+/// anirss warns about it and ranks with them. A key of the wrong shape keeps the default.
+pub fn anirss_bestfit(path: &Path) -> Option<BestfitConfig> {
+    if !path.exists() {
+        return None;
+    }
+    let mut cfg = BestfitConfig::default();
+    let doc = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| toml::from_str::<toml::Table>(&text).ok());
+    let Some(saved) = doc
+        .as_ref()
+        .and_then(|d| d.get("bestfit"))
+        .and_then(|b| b.as_table())
+    else {
+        return Some(cfg);
+    };
+    // A list with anything but words in it is the wrong shape as a whole
+    let words = |key: &str| -> Option<Vec<String>> {
+        saved
+            .get(key)?
+            .as_array()?
+            .iter()
+            .map(|v| v.as_str().map(str::to_string))
+            .collect()
+    };
+    let number = |key: &str| -> Option<f64> {
+        let v = saved.get(key)?;
+        v.as_float().or_else(|| v.as_integer().map(|i| i as f64))
+    };
+    if let Some(groups) = words("preferred_groups") {
+        cfg.preferred_groups = groups;
+    }
+    if let Some(order) = words("source_order") {
+        cfg.source_order = order;
+    }
+    // anirss reads the target through str(), so 1080 written as a number is "1080"
+    match saved.get("preferred_resolution") {
+        Some(toml::Value::String(s)) => cfg.preferred_resolution = s.clone(),
+        Some(toml::Value::Integer(i)) => cfg.preferred_resolution = i.to_string(),
+        Some(toml::Value::Float(f)) => cfg.preferred_resolution = format!("{f:?}"),
+        _ => {}
+    }
+    if let Some(mib) = number("target_mib_per_episode") {
+        cfg.target_mib_per_episode = mib;
+    }
+    if let Some(ratio) = number("max_size_ratio") {
+        cfg.max_size_ratio = ratio;
+    }
+    if let Some(source) = saved.get("assumed_source").and_then(|v| v.as_str()) {
+        cfg.assumed_source = source.to_string();
+    }
+    Some(cfg)
+}
+
+#[cfg(test)]
+mod bestfit_tests {
+    use super::*;
+    use crate::releases::bestfit::best_item;
+
+    fn read(text: &str) -> Option<BestfitConfig> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, text).unwrap();
+        anirss_bestfit(&path)
+    }
+
+    fn items(titles: &[&str]) -> Vec<Release> {
+        titles
+            .iter()
+            .enumerate()
+            .map(|(i, t)| Release {
+                title: t.to_string(),
+                link: format!("link-{i}"),
+                seeders: None,
+                leechers: None,
+                downloads: None,
+                size: String::new(),
+                category: String::new(),
+                page: String::new(),
+                source: String::new(),
+                resolution: String::new(),
+                infomkv: String::new(),
+                linktype: String::new(),
+            })
+            .collect()
+    }
+
+    /// anirss's own test config, `_BESTFIT_CFG` in test_anirss.py.
+    const ANIRSS_TEST_CFG: &str = r#"
+[bestfit]
+preferred_groups = ["Erai-raws", "SubsPlease", "ASW"]
+source_order = ["WEB-DL", "WEB", "BluRay", "WEBRip", "HDTV"]
+preferred_resolution = "highest"
+target_mib_per_episode = 1000
+max_size_ratio = 3.0
+assumed_source = "WEB"
+"#;
+
+    #[test]
+    fn no_config_is_nothing_and_one_that_does_not_read_is_anirss_s_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(anirss_bestfit(&dir.path().join("missing.toml")), None);
+        // anirss warns about a bad config and ranks with its defaults
+        assert_eq!(
+            read("[bestfit\npreferred_groups = ["),
+            Some(BestfitConfig::default())
+        );
+    }
+
+    #[test]
+    fn a_config_without_bestfit_ranks_as_anirss_does_out_of_the_box() {
+        // test_config.py: the default config trusts no group
+        let cfg = read("[downloads]\nsave_base = \"~/TV\"\n").unwrap();
+        assert_eq!(cfg, BestfitConfig::default());
+        assert!(cfg.preferred_groups.is_empty());
+    }
+
+    #[test]
+    fn every_saved_key_is_read() {
+        let cfg = read(ANIRSS_TEST_CFG).unwrap();
+        assert_eq!(
+            cfg,
+            BestfitConfig {
+                preferred_groups: vec!["Erai-raws".into(), "SubsPlease".into(), "ASW".into()],
+                source_order: ["WEB-DL", "WEB", "BluRay", "WEBRip", "HDTV"]
+                    .map(String::from)
+                    .to_vec(),
+                preferred_resolution: "highest".into(),
+                target_mib_per_episode: 1000.0,
+                max_size_ratio: 3.0,
+                assumed_source: "WEB".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_partial_section_keeps_the_rest_of_anirss_s_defaults() {
+        let cfg = read("[bestfit]\npreferred_resolution = 1080\nmax_size_ratio = 2\n").unwrap();
+        assert_eq!(
+            cfg.preferred_resolution, "1080",
+            "a number reads as anirss's str() of it"
+        );
+        assert_eq!(cfg.max_size_ratio, 2.0);
+        assert_eq!(cfg.source_order, BestfitConfig::default().source_order);
+        assert_eq!(cfg.target_mib_per_episode, 1000.0);
+        // A key of the wrong shape keeps the default rather than failing the whole section.
+        let cfg = read("[bestfit]\npreferred_groups = \"Beta\"\nassumed_source = 3\n").unwrap();
+        assert!(cfg.preferred_groups.is_empty());
+        assert_eq!(cfg.assumed_source, "WEB");
+        let cfg = read("[bestfit]\npreferred_groups = [\"Beta\", 1]\n").unwrap();
+        assert!(
+            cfg.preferred_groups.is_empty(),
+            "{:?}",
+            cfg.preferred_groups
+        );
+    }
+
+    #[test]
+    fn a_saved_resolution_target_avoids_4k() {
+        // test_anirss.py: test_preferred_resolution_target_avoids_4k
+        let text = ANIRSS_TEST_CFG.replace("\"highest\"", "\"1080\"");
+        let cfg = read(&text).unwrap();
+        let found = items(&[
+            "[Erai-raws] Show 2160p WEB-DL",
+            "[Erai-raws] Show 1080p WEB-DL",
+        ]);
+        assert_eq!(
+            best_item(&found, &cfg).unwrap().title,
+            "[Erai-raws] Show 1080p WEB-DL"
+        );
+        // anirss's stock "highest" takes the sharper one.
+        let stock = read(ANIRSS_TEST_CFG).unwrap();
+        assert_eq!(
+            best_item(&found, &stock).unwrap().title,
+            "[Erai-raws] Show 2160p WEB-DL"
+        );
+    }
+
+    #[test]
+    fn the_saved_group_order_decides_between_equal_releases() {
+        let found = items(&["[Alpha] Show - 01 [1080p]", "[Beta] Show - 01 [1080p]"]);
+        let pick = |groups: &str| {
+            let cfg = read(&format!("[bestfit]\npreferred_groups = {groups}\n")).unwrap();
+            best_item(&found, &cfg).unwrap().title.clone()
+        };
+        assert_eq!(pick(r#"["Beta", "Alpha"]"#), "[Beta] Show - 01 [1080p]");
+        assert_eq!(pick(r#"["Alpha", "Beta"]"#), "[Alpha] Show - 01 [1080p]");
+    }
+
+    #[test]
+    fn a_saved_size_target_reads_a_codec_s_efficiency_as_anirss_does() {
+        // One episode of 600 MiB: starved against anirss's 1000 MiB x264 target, adequate
+        // once the person lowers it. HEVC is credited for its efficiency either way.
+        let found = |title: &str| Release {
+            size: "600 MiB".into(),
+            ..items(&[title])[0].clone()
+        };
+        let x264 = found("[A] Show - 01 [1080p x264]");
+        let hevc = found("[B] Show - 01 [1080p HEVC]");
+        let stock = read("[bestfit]\n").unwrap();
+        let lowered = read("[bestfit]\ntarget_mib_per_episode = 500\n").unwrap();
+        let both = [x264.clone(), hevc.clone()];
+        assert_eq!(best_item(&both, &stock).unwrap().title, hevc.title);
+        assert!(
+            crate::releases::bestfit::size_ratio(&x264, &lowered, None).unwrap()
+                > crate::releases::bestfit::size_ratio(&x264, &stock, None).unwrap()
+        );
+    }
 }
 
 #[cfg(test)]

@@ -44,7 +44,7 @@
   {"shot": "pages-04-metadata"},
   {"log": "the figures stand under the head and are the sections' own counts; the rows are cut into sections, every one non-empty, in the working order"},
   {"eval": "driver.item.findItem('metadata-figures') !== null", "expect": true},
-  {"eval": "driver.item.findItem('metadata-page').figures.map(function(f) { return f.caption })", "expect": ["Needs a match", "Folder gone", "Missing episodes", "Airing", "Complete", "Files on disk"]},
+  {"eval": "driver.item.findItem('metadata-page').figures.map(function(f) { return f.caption })", "expect": ["Not recognised", "Folder not found", "Missing episodes", "Airing", "Complete", "Files on disk"]},
   {"eval": "driver.item.findItem('metadata-page').sections.length > 0", "expect": true},
   {"eval": "driver.item.findItem('metadata-page').sections.every(function(s) { return s.rows.length > 0 })", "expect": true},
   {"eval": "driver.item.findItem('metadata-page').sections.reduce(function(n, s) { return n + s.rows.length }, 0) === driver.item.findItem('metadata-page').rows.length", "expect": true},
