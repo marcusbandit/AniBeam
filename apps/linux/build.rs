@@ -7,6 +7,7 @@
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
+    changes();
     println!("cargo:rerun-if-env-changed=MPVQT_PREFIX");
     println!("cargo:rerun-if-env-changed=MPV_PREFIX");
     let mpvqt_prefix = std::env::var("MPVQT_PREFIX").unwrap_or_else(|_| "/usr".to_string());
@@ -335,4 +336,20 @@ fn main() {
 
     println!("cargo:rustc-link-lib=MpvQt");
     println!("cargo:rustc-link-lib=mpv");
+}
+
+include!("../../core/src/changelog_files.rs");
+
+/// The patch notes waiting in changes/ for the next version, built in beside CHANGELOG.md:
+/// What's new shows them under the newest heading until the release folds them into the
+/// file (#504). A slice of `include_str!`s in name order, in OUT_DIR/changes.rs.
+fn changes() {
+    println!("cargo:rerun-if-changed=changes");
+    let dir = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("changes");
+    let list: String = change_files(&dir)
+        .iter()
+        .map(|p| format!("include_str!({:?}),", p.display().to_string()))
+        .collect();
+    let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("changes.rs");
+    std::fs::write(out, format!("&[{list}]")).unwrap();
 }

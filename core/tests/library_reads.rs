@@ -640,3 +640,42 @@ fn an_untracked_show_watched_through_is_caught_up_and_counts_episodes() {
     fixtures::insert_completed(&core, show, last, now - 5);
     assert_eq!(card().watched_state, WatchedState::CaughtUp);
 }
+
+/// AniList sends its description as HTML. The series page gets it as plain text in
+/// paragraphs, so no shell strips tags or decodes entities itself (#450).
+#[test]
+fn an_anilist_description_reaches_the_series_page_as_plain_text() {
+    let (_dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let show = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Show", "Show");
+    fixtures::insert_media(
+        &core,
+        900001,
+        Some("Show"),
+        None,
+        Some(2),
+        "FINISHED",
+        "TV",
+        Some(80),
+    );
+    fixtures::match_series(&core, show, Some(900001), None);
+    core.store()
+        .write(|c| {
+            c.execute(
+                "UPDATE anilist_media SET description = ?1 WHERE id = 900001",
+                [
+                    "A mage &amp; her friends.<br><br>Lessons &mdash; <i>quiet</i> ones.<br>\n<br>\n(Source: the publisher&#039;s note)",
+                ],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let Reply::SeriesDetail { detail } = core.call(Call::GetSeries { series: show }).unwrap()
+    else {
+        panic!("not a series detail")
+    };
+    assert_eq!(
+        detail.synopsis,
+        "A mage & her friends.\n\nLessons \u{2014} quiet ones.\n\n(Source: the publisher's note)"
+    );
+}
