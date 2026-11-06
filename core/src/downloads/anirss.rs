@@ -1136,6 +1136,13 @@ mod tests {
                 "{file} pins anirss {pinned}, older than the {MIN_VERSION} the core needs: \
                  pin a release that has it, with its sha256"
             );
+            // A subscription for a library show saves straight into its folder only with an
+            // anirss that lists subscription_save_path, which 0.7.1 is the first to (#503).
+            assert!(
+                parse_version(pinned) >= parse_version("0.7.1"),
+                "{file} pins anirss {pinned}, which writes a show's rule under its own root: \
+                 pin 0.7.1 or newer, with its sha256"
+            );
         }
         // The three bundles ship one release, and each smoke check expects that one.
         let bundled: Vec<String> = pins[..3]
