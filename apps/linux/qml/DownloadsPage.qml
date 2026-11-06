@@ -965,6 +965,8 @@ Item {
     }
     // What a rule's card and row say
     function ruleLedger(r) {
+        // A rule on a source that answers JSON reads no feed, so nothing new comes (#536)
+        if (r.followable === false) return "No new episodes: its source has no feed"
         var s = r.show
         if (!s) return Fmt.plural(r.torrent_count || 0, "torrent", "torrents")
         if (s.kind === "Movie") return s.complete ? "Film, on disk" : "Film"
@@ -975,6 +977,7 @@ Item {
         return Fmt.plural(have, "episode", "episodes") + " here"
     }
     function ruleTag(r) {
+        if (r.followable === false) return "Cannot follow"
         var st = page.subState(r)
         if (st === "complete") return "Complete"
         if (st === "airing") return r.rule_enabled === false ? "Paused" : "Airing"

@@ -2101,6 +2101,16 @@ pub fn remove_show(
         }))
 }
 
+/// Marks each rule whose feed belongs to one of the core's sources that answers JSON as
+/// one that cannot fetch new episodes (#536). The rules come from qBittorrent on either
+/// engine, so the core's own sources judge them both.
+fn follow_rules(core: &Core, rules: &mut [SubscriptionRule]) {
+    let native = crate::releases::native::Native::for_core(core, Vec::new());
+    for rule in rules.iter_mut() {
+        rule.followable = native.follows(&rule.feed_url, None);
+    }
+}
+
 /// Not a job: the page asks on open and after every change. The list
 /// arrives as `SubscriptionsRead`, a failure as `DownloadsUnavailable`,
 /// both at debug level so a page polling an absent server writes nothing
@@ -2115,6 +2125,7 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
         match outcome {
             Ok((backend, mut rules)) => {
                 link_rules(&owner, &mut rules);
+                follow_rules(&owner, &mut rules);
                 owner.bus.debug(
                     Stage::Downloads,
                     format!(

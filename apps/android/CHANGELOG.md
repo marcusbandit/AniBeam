@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.3 · 2026-11-05
 
 ### Fixed
+- A show followed on a source with no feed says no new episodes will come
 - Seeders show for releases from more trackers
 - A refine or subscribe on a source you just removed says it is gone
 - Seeders show for releases from a tracker written with backslashes

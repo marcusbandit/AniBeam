@@ -491,11 +491,15 @@ impl Find {
                         .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_default();
                     Offer {
-                        ledger: if r.file_count == 1 {
+                        // A rule on a source that answers JSON reads no feed (#536)
+                        ledger: if !r.followable {
+                            "no new episodes: its source has no feed".into()
+                        } else if r.file_count == 1 {
                             "1 file".into()
                         } else {
                             format!("{} files", r.file_count)
                         },
+                        ledger_tone: if r.followable { 0 } else { 2 },
                         ..self.offer_named(&r.name, &folder)
                     }
                 })

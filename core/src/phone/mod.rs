@@ -537,6 +537,7 @@ pub fn rules(core: &Core) -> Result<Reply, CoreError> {
             Err(_) => Vec::new(),
         }
     });
+    let sources = native(core);
     let rules = rules_store(core)
         .load()
         .iter()
@@ -550,7 +551,9 @@ pub fn rules(core: &Core) -> Result<Reply, CoreError> {
                 .flatten()
                 .filter(|e| e.file_type().is_file())
                 .count() as u64;
-            crate::releases::rules::info(r, in_engine, files)
+            let mut info = crate::releases::rules::info(r, in_engine, files);
+            info.followable = sources.follows(&r.feed_url, Some(&r.endpoint));
+            info
         })
         .collect();
     Ok(Reply::PhoneRules { rules })

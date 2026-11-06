@@ -518,6 +518,8 @@ fn list_rules_lists_every_rule_with_counts() {
     assert_eq!(rules[1].torrent_count, 1);
     assert_eq!(rules[1].file_count, 0, "a folder not on this disk");
     assert_eq!(rules[1].query, "Beta Show");
+    // Both feeds answer RSS, or belong to no source the core has: either can follow.
+    assert!(rules[0].followable && rules[1].followable);
     no_anirss(&r.http);
 }
 
