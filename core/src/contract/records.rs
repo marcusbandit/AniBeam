@@ -419,6 +419,10 @@ pub struct SeriesDetail {
     pub genres: Vec<String>,
     pub tags: Vec<Tag>,
     pub rewatch_count: Option<u32>,
+    /// The notes on the series' list entry, off the same tracker as the
+    /// card's status: AniList's notes, MAL's comments (#211).
+    #[serde(default)]
+    pub notes: Option<String>,
     pub site_url: Option<String>,
     pub progress: ProgressLine,
     pub next_up: Option<u64>,

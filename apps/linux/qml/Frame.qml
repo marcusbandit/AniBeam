@@ -384,6 +384,15 @@ FocusScope {
             })
             if (failed.length) frame.toast(failed.join("; "))
         }
+        // Notes a tracker refused say so the same way; saved ones say where they went
+        function onNotesSet(series, outcomes) {
+            var names = { Anilist: "AniList", Mal: "MyAnimeList" }
+            var failed = outcomes.filter(function(o) { return !o.ok }).map(function(o) {
+                return (names[o.tracker] || o.tracker) + " did not take your notes" + (o.message ? ": " + o.message : "")
+            })
+            if (failed.length) frame.toast(failed.join("; "))
+            else if (outcomes.length) frame.toast("Notes saved")
+        }
         // Only the url of the job this tracker is waiting on: one from a flow since replaced
         // would open a sign-in page whose listener is already gone.
         function onAuthUrlReady(t, openUrl, redirectUrl, job) {
