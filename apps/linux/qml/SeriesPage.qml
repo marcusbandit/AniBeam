@@ -1058,13 +1058,14 @@ Item {
                     visible: !!page.detail && page.detail.extras.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: "Openings, endings and more"; count: page.detail ? page.detail.extras.length : 0; action: DeleteButton { where: "extras" } }
+                    Heading { text: "Openings, endings and more"; count: page.detail ? page.grouped(page.detail.extras).length : 0; action: DeleteButton { where: "extras" } }
                     DeleteBar { where: "extras" }
                     Repeater {
                         model: [["Op", "Openings"], ["Ed", "Endings"], ["Pv", "Previews and trailers"], ["Sp", "Specials"], ["Other", "Other"]]
                         Column {
                             required property var modelData
-                            readonly property var group: page.detail ? page.detail.extras.filter(function(x) { return x.kind === modelData[0] }) : []
+                            // Two releases of one extra are one row, as for an episode (#468)
+                            readonly property var group: page.detail ? page.grouped(page.detail.extras.filter(function(x) { return x.kind === modelData[0] })) : []
                             visible: group.length > 0
                             width: parent.width
                             spacing: theme.space(2)
@@ -1078,7 +1079,9 @@ Item {
                                         required property var modelData
                                         episode: ({ code: modelData.code, title: modelData.label, resume: modelData.resume, watched: false, next_up: false })
                                         title: modelData.label
+                                        versions: page.deleting ? [] : (modelData.versions || [])
                                         onPlay: page.openFile(modelData.file)
+                                        onPlayVersion: function(file) { page.openFile(file) }
                                         picking: page.deleting
                                         picked: page.deletePicked.indexOf(modelData.file) >= 0
                                         onPick: page.togglePick(modelData.file)
