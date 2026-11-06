@@ -24,9 +24,79 @@ pub struct Served {
     pub path: PathBuf,
     pub mime: String,
     pub prepared: Option<Arc<Prepared>>,
-    /// Set for a stream another machine serves: the address of its playlist's directory,
-    /// and every name under the token is fetched from there.
-    pub relay: Option<String>,
+    /// Set for a stream another machine serves, passed on from here.
+    pub relay: Option<Relay>,
+}
+
+/// A stream another machine serves.
+pub struct Relay {
+    /// The address of its playlist's directory: every name under the token is fetched
+    /// from there.
+    pub dir: String,
+    /// Its pieces in order, for a TV that takes them as one progressive stream. Empty for
+    /// a receiver that reads the playlist itself.
+    pub pieces: Arc<Vec<Piece>>,
+}
+
+/// One piece of a media playlist: its name under the playlist's directory, query
+/// included, and the second of the episode it starts at.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Piece {
+    pub name: String,
+    pub start: f64,
+}
+
+/// The pieces a media playlist lists, in order. A name that is not a plain relative name
+/// with an optional plain query is left out, so a playlist never points this machine
+/// anywhere but under its own directory.
+pub fn read_pieces(playlist: &str) -> Vec<Piece> {
+    let mut out = Vec::new();
+    let mut at = 0.0;
+    let mut length: Option<f64> = None;
+    for line in playlist.lines().map(str::trim) {
+        if let Some(rest) = line.strip_prefix("#EXTINF:") {
+            length = rest.split(',').next().and_then(|v| v.trim().parse().ok());
+        } else if !line.is_empty() && !line.starts_with('#') {
+            let Some(len) = length.take() else { continue };
+            if relative(line) {
+                out.push(Piece {
+                    name: line.to_string(),
+                    start: at,
+                });
+            }
+            at += len;
+        }
+    }
+    out
+}
+
+/// The piece holding second `secs`: the last one starting at or before it.
+pub fn piece_at(pieces: &[Piece], secs: f64) -> usize {
+    pieces
+        .iter()
+        .rposition(|p| p.start <= secs + 1e-6)
+        .unwrap_or(0)
+}
+
+/// A name plain enough to pass on: letters, digits, dots, dashes and underscores, and
+/// never `.` or `..`, which would climb out of the directory it is joined to.
+fn plain(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+}
+
+/// A plain name, maybe with a query of plain keys and values.
+fn relative(entry: &str) -> bool {
+    let (name, query) = entry.split_once('?').unwrap_or((entry, ""));
+    plain(name)
+        && query.split('&').filter(|p| !p.is_empty()).all(|pair| {
+            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+            plain(k) && (v.is_empty() || plain(v))
+        })
 }
 
 #[derive(Default)]
@@ -145,8 +215,12 @@ async fn file(
     let Some(served) = reg.get(&token) else {
         return missing();
     };
-    if let Some(dir) = &served.relay {
-        return relay(dir, &name, &q).await;
+    if let Some(r) = &served.relay {
+        if name == "stream.ts" && !r.pieces.is_empty() {
+            let from: f64 = q.get("t").and_then(|t| t.parse().ok()).unwrap_or(0.0);
+            return relayed_stream(r, from);
+        }
+        return relay(&r.dir, &name, &q).await;
     }
     let p = served.prepared.clone();
     match (name.as_str(), p) {
@@ -189,18 +263,9 @@ async fn file(
 /// pieces are a few seconds each, so holding one costs little, and a fetch may wait as long
 /// as the other machine takes to convert it.
 async fn relay(dir: &str, name: &str, q: &HashMap<String, String>) -> Response {
-    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    let client = CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
-            .build()
-            .unwrap_or_default()
-    });
+    let client = relay_client();
     // Only the names a playlist lists pass: no part of the request becomes a path elsewhere.
-    let plain = name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
-    if !plain {
+    if !plain(name) {
         return missing();
     }
     let mut url = format!("{dir}{name}");
@@ -241,6 +306,66 @@ async fn relay(dir: &str, name: &str, q: &HashMap<String, String>) -> Response {
         Ok(bytes) => body(StatusCode::OK, &kind, bytes.to_vec()),
         Err(_) => cors(StatusCode::BAD_GATEWAY.into_response()),
     }
+}
+
+/// The client every fetch from another machine goes through. It follows no redirect, so
+/// what a playlist names is all that machine can make this one fetch.
+pub(crate) fn relay_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap_or_default()
+    })
+}
+
+/// Every piece of a relayed stream from the one holding `from`, fetched from the other
+/// machine one after another, as one MPEG-TS stream with no length. TS pieces join end to
+/// end, and each carries the episode's own times, so a TV reads them as one file. It
+/// seeks by asking again from another point.
+fn relayed_stream(r: &Relay, from: f64) -> Response {
+    let pieces = r.pieces.clone();
+    let dir = r.dir.clone();
+    let first = piece_at(&pieces, from);
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, std::io::Error>>(2);
+    tokio::spawn(async move {
+        for p in &pieces[first..] {
+            let url = format!("{dir}{}", p.name);
+            let got = match relay_client().get(&url).send().await {
+                Ok(a) if a.status().is_success() => a.bytes().await.map(|b| b.to_vec()),
+                Ok(a) => {
+                    tracing::warn!("cast relay: {url} answered {}", a.status());
+                    let _ = tx
+                        .send(Err(std::io::Error::other(
+                            "the other machine refused a piece",
+                        )))
+                        .await;
+                    return;
+                }
+                Err(e) => Err(e),
+            };
+            let chunk = got.map_err(std::io::Error::other);
+            let stop = chunk.is_err();
+            if tx.send(chunk).await.is_err() || stop {
+                return;
+            }
+        }
+    });
+    cors(
+        (
+            [
+                (header::CONTENT_TYPE, "video/mp2t"),
+                (
+                    header::HeaderName::from_static("transfermode.dlna.org"),
+                    "Streaming",
+                ),
+            ],
+            Body::from_stream(Chunks(rx)),
+        )
+            .into_response(),
+    )
 }
 
 /// The init segment, then every segment from the one holding `from`, as one MP4 stream with
@@ -334,4 +459,63 @@ async fn ranged(served: &Served, method: &Method, headers: &HeaderMap) -> Respon
     }
     let stream = tokio_util::io::ReaderStream::with_capacity(f.take(count), 256 * 1024);
     cors((status, h, Body::from_stream(stream)).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_converted_playlist_reads_as_pieces_with_their_starts() {
+        let list = crate::host::convert::playlist(15.0, "?audio=1&burn=0");
+        let pieces = read_pieces(&list);
+        assert_eq!(
+            pieces,
+            vec![
+                Piece {
+                    name: "seg0.ts?audio=1&burn=0".into(),
+                    start: 0.0
+                },
+                Piece {
+                    name: "seg1.ts?audio=1&burn=0".into(),
+                    start: 6.0
+                },
+                Piece {
+                    name: "seg2.ts?audio=1&burn=0".into(),
+                    start: 12.0
+                },
+            ]
+        );
+        assert_eq!(piece_at(&pieces, 0.0), 0);
+        assert_eq!(piece_at(&pieces, 5.9), 0);
+        assert_eq!(piece_at(&pieces, 6.0), 1);
+        assert_eq!(piece_at(&pieces, 13.0), 2);
+        assert_eq!(piece_at(&pieces, 99.0), 2);
+        assert_eq!(piece_at(&[], 3.0), 0);
+    }
+
+    #[test]
+    fn a_name_passed_on_never_climbs_out_of_its_directory() {
+        assert!(plain("seg0.ts") && plain("index.m3u8"));
+        for name in ["", ".", "..", "a/b", "../x", "%2e%2e", "seg0.ts?x=1"] {
+            assert!(!plain(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_playlist_cannot_point_this_machine_anywhere_else() {
+        let list = "#EXTM3U\n#EXTINF:6.0,\nhttp://elsewhere/seg0.ts\n#EXTINF:6.0,\n../seg1.ts\n\
+                    #EXTINF:6.0,\na/seg2.ts\n#EXTINF:6.0,\nseg3.ts?x=../y\n#EXTINF:6.0,\n..\n\
+                    #EXTINF:6.0,\nseg5.ts?burn=0\n#EXT-X-ENDLIST\n";
+        let pieces = read_pieces(list);
+        // The refused entries still count toward the time, so what is left starts where
+        // the playlist says.
+        assert_eq!(
+            pieces,
+            vec![Piece {
+                name: "seg5.ts?burn=0".into(),
+                start: 30.0
+            }]
+        );
+    }
 }

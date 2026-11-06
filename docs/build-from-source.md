@@ -30,7 +30,9 @@ ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
 ```
 
 A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.6.0 or newer,
-`yay -S anirss qbittorrent-nox` on Arch).
+`yay -S anirss qbittorrent-nox` on Arch). With anirss 0.7.1 or newer, subscribing to a show
+you already have saves straight into its folder; an older one saves under its own folder
+first and AniBeam moves the rule after.
 
 It also has no AniList or MyAnimeList app registration of its own, so the Trackers tab asks
 for a client ID the first time you connect. To bundle your own, copy `.env.example` to
@@ -53,6 +55,11 @@ cargo test --workspace                 # unit tests plus core/tests/
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
+
+CI runs these on the Rust version `rust-toolchain.toml` names, and with rustup a checkout
+uses that version too, so a local fmt or clippy run matches CI's. Bump it there, nowhere else
+in CI. The AUR package is the exception: it builds with `RUSTUP_TOOLCHAIN=stable`, the Rust an
+Arch user already has.
 
 Every checkout and worktree builds into its own `target/` (#250), so a fresh worktree starts
 cold. [sccache](https://github.com/mozilla/sccache) lets it take the third-party crates another

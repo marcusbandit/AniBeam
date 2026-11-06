@@ -34,7 +34,7 @@ SettingsTab {
                      Fmt.plural(s.matches_applied, "match", "matches") + " applied",
                      Fmt.plural(s.views_merged, "view", "views") + " and " + Fmt.plural(s.completed_merged, "finished episode", "finished episodes") + " merged",
                      Fmt.plural(s.resume_points_merged, "resume point", "resume points") + " merged",
-                     Fmt.plural(s.accounts_imported, "tracker account", "tracker accounts") + " brought in"]
+                     Fmt.plural(s.accounts_imported, "list account", "list accounts") + " brought in"]
         var out = parts.join(", ") + "."
         if (s.fixes_applied > 0) out += " " + Fmt.plural(s.fixes_applied, "file takes", "files take") + " a fix you made."
         if (s.sources_unavailable > 0) out += " " + Fmt.plural(s.sources_unavailable, "folder was", "folders were") + " not found on this computer."
@@ -49,7 +49,7 @@ SettingsTab {
             Row { spacing: theme.space(2)
                 Button { visible: tab.lastExport !== ""; text: "Open folder"; icon: "folder-open"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.dir(tab.lastExport))) }
                 Button { objectName: "data-export"; text: "Back up"; icon: "file-up"; primary: true; onClicked: exportDialog.open() } } }
-        SettingRow { label: "Include private data"; helper: "Adds tracker sign-ins, watch history and preferences. Sign-ins are written as plain text, so keep the file to yourself."
+        SettingRow { label: "Include private data"; helper: "Adds AniList and MyAnimeList sign-ins, watch history and preferences. Sign-ins are written as plain text, so keep the file to yourself."
             Switch { objectName: "data-private"; checked: tab.includePrivate; onToggled: function(on) { tab.includePrivate = on } } }
         SettingRow { label: "Restore from a backup"; helper: "Reads a backup into this library. What is on disk wins; the file fills in the rest."
             status: tab.summaryLine(tab.importSummary)

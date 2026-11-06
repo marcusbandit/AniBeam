@@ -1,14 +1,14 @@
 // Metadata, flat (DESIGN.md, the flat home pass): every series in the library as one small
 // poster tile, cut into the sections a librarian works in order. The head is the library's:
 // the title in the display cut with the count beside it, the search at the right, then one
-// line of pills (the filter with its counts, Match unmatched, Refresh all) that wraps on a
+// line of pills (the filter with its counts, Find the rest, Refresh all) that wraps on a
 // narrow window. Under it the figures (Tiles.qml), which are the sections' own counts off
-// the whole library, so they agree with what is below. Then the sections: Needs a match,
-// Folder gone, Missing episodes, Airing, Complete, each a heading in the display cut with
+// the whole library, so they agree with what is below. Then the sections: Not recognised,
+// Folder not found, Missing episodes, Airing, Complete, each a heading in the display cut with
 // its count, over a grid of tiles in the library's column math (columns from the width,
 // tiles widened to fill the line, so a narrow window has fewer columns). A tile is the
 // poster at 2:3, the title on one line, a state line that says the section's fact for this
-// series ("9 of 12", "5 of 7 aired", "12 of 12 +2", "No record yet"), and a dim line (the
+// series ("9 of 12", "5 of 7 aired", "12 of 12 +2", "No show info yet"), and a dim line (the
 // season, or the countdown to the next episode on an airing series), each on one line that
 // elides, never wraps. A click on a matched tile opens the episodes pane (EpisodesPane.qml:
 // which numbers are on disk and which are missing, as chips), on an unmatched one the match
@@ -26,7 +26,7 @@ Item {
     id: page
     objectName: "metadata-page"
     property var props: ({})
-    property string title: "Metadata"
+    property string title: "Show info"
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
     function focusSearch() { scroll.contentY = 0; search.focusInput() }
@@ -84,7 +84,7 @@ Item {
         return n ? Math.max(0, n.episode - 1) : (d.have || 0)
     }
     // The section a row works in, in the order a person would take them: a gone folder is
-    // past matching, so Folder gone wins over Needs a match; an unmatched folder has no
+    // past matching, so Folder not found wins over Not recognised; an unmatched folder has no
     // expected count to be short of; an airing series is never short of a total that has
     // not aired yet
     function bucketOf(d) {
@@ -97,8 +97,8 @@ Item {
         return "complete"
     }
     readonly property var sectionOrder: [
-        { key: "unmatched", title: "Needs a match" },
-        { key: "missing", title: "Folder gone" },
+        { key: "unmatched", title: "Not recognised" },
+        { key: "missing", title: "Folder not found" },
         { key: "incomplete", title: "Missing episodes" },
         { key: "airing", title: "Airing" },
         { key: "complete", title: "Complete" }
@@ -108,7 +108,7 @@ Item {
     function stateOf(d) {
         var card = d.series || {}, have = d.have || 0, k = bucketOf(d)
         if (k === "missing") return "Folder not found"
-        if (k === "unmatched") return "No record yet"
+        if (k === "unmatched") return "No show info yet"
         if (k === "airing") { var aired = airedOf(d); return Math.min(have, aired) + " of " + aired + " aired" }
         var expected = expectedOf(d)
         if (k === "incomplete") return have + " of " + expected
@@ -126,6 +126,40 @@ Item {
         return stateOf(d)
     }
     // A tile's click: the episodes for a matched series, the match for one without a record
+    // The first scan's walk (#206): the series that need a match, one at a time, by id. Apply
+    // or Skip opens the next; Close, Escape or a press outside stop it.
+    property var walkIds: []
+    property int walkAt: -1
+    function walkOpen() {
+        while (page.walkAt < page.walkIds.length) {
+            var r = Door.getSeries(page.walkIds[page.walkAt])
+            if (!r.error) {
+                var c = r.reply.detail.card
+                matchPanel.walkLine = (page.walkAt + 1) + " of " + page.walkIds.length
+                matchPanel.openFor(c.id, c.title, c.match_info)
+                return
+            }
+            page.walkAt++
+        }
+        page.walkEnd(true)
+    }
+    function walkEnd(done) {
+        var left = page.walkIds.length - page.walkAt
+        page.walkIds = []
+        page.walkAt = -1
+        matchPanel.walkLine = ""
+        if (done) frame.toast("That was the last one")
+        else if (left > 0) frame.toast(left === 1 ? "One left under Needs a match" : left + " left under Needs a match")
+    }
+    Connections {
+        target: matchPanel
+        function onEnded(how) {
+            if (page.walkAt < 0) return
+            if (how === "closed") { page.walkEnd(false); return }
+            page.walkAt++
+            Qt.callLater(page.walkOpen)
+        }
+    }
     function openTile(d) {
         var card = d.series || {}
         if (isMatched(card)) episodesPane.openFor(card.id, detailOf(d))
@@ -209,7 +243,7 @@ Item {
         }
         return out
     }
-    // The names the drives click: row-match on the first Needs a match tile when that
+    // The names the drives click: row-match on the first Not recognised tile when that
     // section is there (its click opens the match panel), else on the page's first tile;
     // row-refresh on the first tile that has a Refresh glyph, row-forget on the first gone
     // folder
@@ -270,8 +304,8 @@ Item {
         }
         function onAutoMatchFinished(backfilled, matched, unmatched) {
             debounce.restart()
-            frame.toast(matched > 0 ? "Matched " + Fmt.plural(matched, "series", "series") + (unmatched > 0 ? ", " + unmatched + " still unmatched" : "")
-                                    : unmatched > 0 ? "No new matches, " + unmatched + " still unmatched" : "Everything is matched")
+            frame.toast(matched > 0 ? "Found " + Fmt.plural(matched, "show", "shows") + (unmatched > 0 ? ", " + unmatched + " still not recognised" : "")
+                                    : unmatched > 0 ? "Found nothing new, " + unmatched + " still not recognised" : "Every show is recognised")
         }
         // A cleared match emits nothing of its own, and the job end is the one signal
         // every bulk action shares
@@ -281,6 +315,7 @@ Item {
         search.text = query
         queryDebounce.stop()
         reload()
+        if (props.walk && props.walk.length) { page.walkIds = props.walk; page.walkAt = 0; Qt.callLater(page.walkOpen) }
     }
 
     // ---- The crawl, while it runs: a label and a thin line in the tools
@@ -309,7 +344,7 @@ Item {
                 anchors.right: search.left; anchors.rightMargin: theme.space(6)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(3)
-                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Metadata"; role: "display"; font.pointSize: theme.typePage }
+                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Show info"; role: "display"; font.pointSize: theme.typePage }
                 Label {
                     objectName: "metadata-count"
                     anchors.baseline: titleLabel.baseline
@@ -344,18 +379,18 @@ Item {
             Button {
                 objectName: "metadata-match-all"
                 flat: true
-                text: "Match unmatched"
+                text: "Find the rest"
                 icon: "link"
-                onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up a match for unmatched folders") }
-                Tooltip { text: "Looks up every folder that has no match yet, on each metadata provider in the order Settings gives them" }
+                onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up the folders AniBeam does not know yet") }
+                Tooltip { text: "Looks up every folder AniBeam does not know yet, on each show info site in the order Settings gives them" }
             }
             Button {
                 objectName: "metadata-refresh-all"
                 flat: true
                 text: "Refresh all"
                 icon: "refresh-cw"
-                onClicked: { var r = Door.refreshAll(); frame.toast(r.error ? r.error.message : "Refreshing every matched series") }
-                Tooltip { text: "Fetches every matched series' record again" }
+                onClicked: { var r = Door.refreshAll(); frame.toast(r.error ? r.error.message : "Updating the info of every show") }
+                Tooltip { text: "Fetches the info of every recognised show again" }
             }
             // The franchise crawl's own line, only while it runs
             Column {
@@ -450,7 +485,7 @@ Item {
             height: visible ? theme.space(60) : 0
             EmptyState {
                 icon: page.counts.all === 0 ? "database" : "search"
-                title: page.counts.all === 0 ? "No metadata yet" : page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing under this filter"
+                title: page.counts.all === 0 ? "No show info yet" : page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing under this filter"
                 body: page.counts.all === 0 ? "Your library is empty. Add a folder in Settings and scan it to get started." : page.query !== "" ? "" : "No series here right now."
             }
         }
@@ -558,7 +593,7 @@ Item {
                 objectName: String(tile.card.id) === page.firstRefreshId ? "row-refresh" : ""
                 icon: "refresh-cw"; small: true
                 onClicked: { var r = Door.refreshSeries(tile.card.id); frame.toast(r.error ? r.error.message : "Refreshing " + (tile.card.title || "")) }
-                Tooltip { text: "Fetch the record again" }
+                Tooltip { text: "Fetch this show's info again" }
             }
             Button {
                 id: forgetGlyph
@@ -568,10 +603,10 @@ Item {
                 // Two clicks: the first arms it and says what goes, the second forgets
                 property bool armed: false
                 icon: "trash-2"; small: true; danger: true
-                text: armed ? "Forget it" : ""
+                text: armed ? "Remove it" : ""
                 onClicked: { if (!armed) { armed = true; forgetDisarm.restart(); return } armed = false; page.forget(tile.card) }
                 Timer { id: forgetDisarm; interval: 4000; onTriggered: forgetGlyph.armed = false }
-                Tooltip { text: forgetGlyph.armed ? "Click again to drop this series and its watch history" : "The folder is gone: drop this series and its history" }
+                Tooltip { text: forgetGlyph.armed ? "Click again to remove this show and its watch history from AniBeam" : "The folder is not on the disk any more: remove this show and its history from AniBeam" }
             }
         }
 

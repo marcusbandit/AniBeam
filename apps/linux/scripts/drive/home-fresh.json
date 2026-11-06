@@ -1,0 +1,19 @@
+[
+  {"log": "Run against an empty ANIBEAM_ROOT with the network up: Home reads the season from AniList."},
+  {"page": "home"},
+  {"until": "frame.item.pageItem.seasonShown === true", "timeout": 60000},
+  {"eval": "frame.item.pageItem.outNowList.length > 0 && frame.item.pageItem.popularList.length > 0", "expect": true},
+  {"wait": 2500},
+  {"log": "The 30 s clock must not rebuild the Out now cards"},
+  {"eval": "var c = driver.item.findItem('card-' + frame.item.pageItem.outNowList[0].id); c.objectName = 'probe-card'; true"},
+  {"eval": "frame.item.pageItem.nowMs = Date.now() + 1000; true"},
+  {"wait": 300},
+  {"eval": "driver.item.findItem('probe-card') !== null", "expect": true},
+  {"shot": "home-1-fresh"},
+  {"eval": "var f = driver.item.findItem('home-fresh-install'); f.contentY = Math.max(0, f.contentHeight - f.height); true"},
+  {"wait": 800},
+  {"shot": "home-2-fresh-bottom"},
+  {"click": "home-add-folder-button"},
+  {"until": "frame.item.nav.current.page", "expect": "settings"},
+  {"eval": "frame.item.settingsTab", "expect": "library"}
+]

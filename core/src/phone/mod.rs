@@ -80,12 +80,10 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
     }
     let sources: Vec<PhoneSource> = checked.into_iter().map(|(s, _)| s).collect();
     let path = sources_path(core);
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| CoreError::internal(e.to_string()))?;
-    }
     let bytes =
         serde_json::to_vec_pretty(&sources).map_err(|e| CoreError::internal(e.to_string()))?;
-    std::fs::write(&path, bytes).map_err(|e| CoreError::internal(e.to_string()))?;
+    crate::atomic_file::write(&path, bytes)
+        .map_err(|e| CoreError::internal(e.source.to_string()))?;
     Ok(Reply::PhoneSources { sources })
 }
 
@@ -112,6 +110,25 @@ fn searched(core: &Core) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
     }
     for r in installed {
         out.push((installed_source(&r), r.endpoint));
+    }
+    out
+}
+
+/// Every source a rule may have been made on, switched off for search or not: the installed
+/// ones (`repos::fillers`, which the feed poller reads rules through too), then the feeds
+/// saved before repos that no installed one replaced (#536).
+#[cfg(feature = "phone")]
+fn followed_sources(core: &Core) -> Vec<crate::releases::Endpoint> {
+    let mut out: Vec<crate::releases::Endpoint> = crate::repos::fillers(core)
+        .into_iter()
+        .map(|r| r.endpoint)
+        .collect();
+    for s in sources(core).iter().map(trimmed) {
+        if !out.iter().any(|e| e.name == s.name)
+            && crate::releases::endpoints::check_shape(&s.name, &s.kind, &s.url).is_ok()
+        {
+            out.push(crate::releases::Endpoint::new(&s.name, &s.kind, &s.url));
+        }
     }
     out
 }
@@ -144,7 +161,7 @@ pub fn search_sources(core: &Core) -> Vec<PhoneSource> {
 /// pace its repo definition asks for.
 fn native(core: &Core) -> crate::releases::native::Native {
     let sources = searched(core).into_iter().map(|(_, e)| e).collect();
-    crate::releases::native::Native::for_core(core, sources)
+    crate::releases::native::Native::for_core(core, sources, None)
 }
 
 /// How long the show search waits for covers before answering without them.
@@ -537,6 +554,7 @@ pub fn rules(core: &Core) -> Result<Reply, CoreError> {
             Err(_) => Vec::new(),
         }
     });
+    let sources = followed_sources(core);
     let rules = rules_store(core)
         .load()
         .iter()
@@ -550,7 +568,10 @@ pub fn rules(core: &Core) -> Result<Reply, CoreError> {
                 .flatten()
                 .filter(|e| e.file_type().is_file())
                 .count() as u64;
-            crate::releases::rules::info(r, in_engine, files)
+            let mut info = crate::releases::rules::info(r, in_engine, files);
+            info.followable =
+                crate::releases::endpoints::follows(&sources, &r.feed_url, Some(&r.endpoint));
+            info
         })
         .collect();
     Ok(Reply::PhoneRules { rules })

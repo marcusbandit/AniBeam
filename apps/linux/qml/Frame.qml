@@ -74,10 +74,10 @@ FocusScope {
     // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
     // pushed back after the clear, in the order they were opened.
     function reclaimFrameOwned() {
-        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet })
+        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === onboarding })
         escapeStack.clear()
         keep.forEach(function(e) {
-            if (e.closer === drawer ? drawer.open : connectSheet.visible) escapeStack.push(e.kind, e.closer)
+            if (e.closer === drawer ? drawer.open : e.closer.visible) escapeStack.push(e.kind, e.closer)
         })
     }
 
@@ -186,7 +186,7 @@ FocusScope {
     // reclaimFrameOwned() keeps their entries, in this same handler, so Escape still
     // reaches them; a second Connections on nav.changed would race this one with no
     // ordering guarantee between them.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); whatsNew.close(); frame.reclaimFrameOwned() } }
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); whatsNew.close(); scanSummary.close(); frame.reclaimFrameOwned() } }
 
     Rail {
         id: rail
@@ -384,6 +384,15 @@ FocusScope {
             })
             if (failed.length) frame.toast(failed.join("; "))
         }
+        // Notes a tracker refused say so the same way; saved ones say where they went
+        function onNotesSet(series, outcomes) {
+            var names = { Anilist: "AniList", Mal: "MyAnimeList" }
+            var failed = outcomes.filter(function(o) { return !o.ok }).map(function(o) {
+                return (names[o.tracker] || o.tracker) + " did not take your notes" + (o.message ? ": " + o.message : "")
+            })
+            if (failed.length) frame.toast(failed.join("; "))
+            else if (outcomes.length) frame.toast("Notes saved")
+        }
         // Only the url of the job this tracker is waiting on: one from a flow since replaced
         // would open a sign-in page whose listener is already gone.
         function onAuthUrlReady(t, openUrl, redirectUrl, job) {
@@ -435,6 +444,15 @@ FocusScope {
         }
     }
 
+    // The first run (#193): over the whole frame, the rail included, and under the overlay,
+    // so the connect sheet, toasts and tips still draw over it.
+    Onboarding {
+        id: onboarding
+        z: 550
+    }
+    function openOnboarding(step) { whatsNew.close(); onboarding.open(step) }
+    readonly property alias onboardingPanel: onboarding
+
     // The tracker connect sheet, over everything: the Watching page's empty
     // list, the library's nudge and the Trackers panel all send the user here.
     ConnectSheet {
@@ -453,9 +471,10 @@ FocusScope {
         Menu { id: menu }
         RemoveSheet { id: removeSheet }
         WhatsNew { id: whatsNew }
+        ScanSummary { id: scanSummary }
         UpdateNotice {
             id: updateNotice
-            covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible
+            covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible || onboarding.visible || scanSummary.visible
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.bottom: parent.bottom; anchors.bottomMargin: rail.footHeight + theme.space(4)
         }
@@ -519,9 +538,76 @@ FocusScope {
     function startNotes() {
         if (notesStarted) return
         notesStarted = true
+        // Before What's new, which keeps a fresh install's version as read: a fresh install
+        // gets the first run instead, an older one only has it marked done
+        onboarding.start()
+        frame.noteSources()
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
     function openWhatsNew() { whatsNew.open() }
+
+    // ---- The first scan of a folder added while the app runs (#206): once its scan and the
+    // lookup after it settle, the summary says what it found. Folders known at start are the
+    // baseline, so a launch never summarises a library it already had.
+    property var knownSources: null
+    property var firstScans: ({})   // by source id: { path, scanned }
+    readonly property alias scanSummaryPanel: scanSummary
+    function noteSources() {
+        var r = Door.listSources()
+        if (r.error) return
+        var ids = {}, add = Object.assign({}, frame.firstScans), fresh = false
+        r.reply.sources.forEach(function(src) {
+            ids[src.id] = true
+            if (frame.knownSources !== null && !frame.knownSources[src.id]) { add[src.id] = { path: src.path, scanned: false }; fresh = true }
+        })
+        for (var k in add) if (!ids[k]) { delete add[k]; fresh = true }
+        frame.knownSources = ids
+        if (fresh) frame.firstScans = add
+    }
+    function scanBusy() {
+        var jobs = Door.runningJobs
+        for (var i = 0; i < jobs.length; i++) if (/^(Scan|AutoMatch)$/.test(String(jobs[i].kind))) return true
+        return false
+    }
+    function settleFirstScans() {
+        var ready = Object.keys(frame.firstScans).filter(function(k) { return frame.firstScans[k].scanned })
+        if (!ready.length) return
+        // Still working, or the first-run walkthrough is up and shows the same result itself
+        var ob = frame["onboardingPanel"]
+        if (frame.scanBusy() || (ob && ob.visible) || scanSummary.visible || whatsNew.visible) { firstScanSettle.restart(); return }
+        var left = Object.assign({}, frame.firstScans)
+        var id = ready[0], path = left[id].path
+        delete left[id]
+        frame.firstScans = left
+        var sum = Door.scanSummary(path)
+        if (!sum.error && sum.shows > 0) scanSummary.open(path, sum)
+        if (ready.length > 1) firstScanSettle.restart()
+    }
+    // After a scan the lookup starts once the folder settles, a few seconds on; this waits that
+    // out, and AutoMatchFinished shortens it
+    Timer { id: firstScanSettle; interval: 8000; onTriggered: frame.settleFirstScans() }
+    Connections {
+        target: Door
+        function onSourceChanged(src) { frame.noteSources() }
+        // Any scan's end counts, not only one naming the new folder: a folder added while a
+        // scan runs is queued onto that job, whose ScanFinished names its first pass's source.
+        // The settle step still waits for every Scan and AutoMatch job, so no folder is
+        // summarised before its own pass has run.
+        function onScanFinished(source, added, changed, removed) {
+            var keys = Object.keys(frame.firstScans)
+            if (!keys.length) return
+            var left = {}
+            keys.forEach(function(k) { left[k] = { path: frame.firstScans[k].path, scanned: true } })
+            frame.firstScans = left
+            firstScanSettle.interval = 8000
+            firstScanSettle.restart()
+        }
+        function onAutoMatchFinished(backfilled, matched, unmatched) {
+            if (!Object.keys(frame.firstScans).length) return
+            firstScanSettle.interval = 1500
+            firstScanSettle.restart()
+        }
+    }
     // The shell's own choices that more than one page reads, kept in shell.conf. One object
     // for all of them: two Settings on one file do not see each other's writes until they sync.
     Settings {
@@ -558,7 +644,8 @@ FocusScope {
         var p = f && f !== frame ? f.mapToItem(frame, theme.space(4), Math.min(f.height, theme.space(10))) : Qt.point(frame.width / 2, frame.height / 3)
         openContextMenu(p)
     }
-    function openMenu(x, y, items) { menu.openAt(x, y, items) }
+    // `above`: (x, y) is the menu's bottom right corner, for an opener at the window's foot.
+    function openMenu(x, y, items, above) { menu.openAt(x, y, items, above) }
     function closeMenu() { menu.close() }
     // A tip belongs to the area the pointer is over (`area`, the anchor item itself unless a
     // caller anchors the tip on part of a bigger hover area, the way Card anchors on its
@@ -723,14 +810,16 @@ FocusScope {
                      { status: "Paused", text: "On hold", icon: "pause" },
                      { status: "Dropped", text: "Dropped", icon: "ban" }]
         return lists.map(function(l) {
-            return { text: l.text, icon: l.icon, enabled: l.status !== current,
+            return { text: l.text, icon: l.icon, status: l.status, enabled: l.status !== current,
                      action: function() { frame.setListStatus(id, l.status, l.text) } }
         })
     }
+    // True when the write started, so a caller can go on (Start watching plays next)
     function setListStatus(id, status, label) {
         var r = Door.call("SetListStatus", { series: id, status: status })
-        if (r.error) { frame.toast(r.error.message); return }
+        if (r.error) { frame.toast(r.error.message); return false }
         frame.toast("Moving to " + label)
+        return true
     }
     // Text onto the clipboard, and a word that it went
     function copyText(text, what) {

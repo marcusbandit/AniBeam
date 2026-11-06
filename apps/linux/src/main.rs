@@ -20,6 +20,7 @@ mod paths;
 mod player_config;
 mod read_cache;
 mod runtime;
+mod scan_summary;
 mod serve;
 mod theme;
 #[cfg(windows)]
