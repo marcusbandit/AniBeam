@@ -14,6 +14,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - Following a show on a source with no feed says so, instead of never matching
+- Seeders show for releases from more trackers
 - A refine or subscribe on a source you just removed says it is gone
 - Seeders show for releases from a tracker written with backslashes
 - Shows followed earlier no longer keep their source's key in the app's files
