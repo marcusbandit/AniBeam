@@ -17,9 +17,14 @@ pub struct Decoded {
 
 pub fn decode(bytes: &[u8]) -> Option<Decoded> {
     let image = image::load_from_memory(bytes).ok()?;
-    let image = image.resize_to_fill(WIDTH, HEIGHT, FilterType::Triangle).to_rgba8();
+    let image = image
+        .resize_to_fill(WIDTH, HEIGHT, FilterType::Triangle)
+        .to_rgba8();
     let tone = tone(&image);
-    Some(Decoded { buffer: SharedPixelBuffer::clone_from_slice(image.as_raw(), image.width(), image.height()), tone })
+    Some(Decoded {
+        buffer: SharedPixelBuffer::clone_from_slice(image.as_raw(), image.width(), image.height()),
+        tone,
+    })
 }
 
 /// The desktop's PosterTone: on a 24x36 copy, every pixel with some colour votes for one of
@@ -52,7 +57,10 @@ fn tone(image: &RgbaImage) -> Option<[u8; 3]> {
             *acc += c * w;
         }
     }
-    let (best, &w) = weight.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1))?;
+    let (best, &w) = weight
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.total_cmp(b.1))?;
     if w <= 0.0 {
         return None;
     }

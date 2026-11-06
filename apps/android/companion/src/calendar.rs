@@ -33,7 +33,12 @@ pub struct Entry {
 /// Every entry with `from <= at < to`, in air order.
 pub fn entries(cache: &Cache, anilist: &AniListCache, from: i64, to: i64, now: i64) -> Vec<Entry> {
     let snapshot = &cache.snapshot;
-    let subscribed = |id: u64| snapshot.subscriptions.iter().any(|s| s.series_id == Some(id));
+    let subscribed = |id: u64| {
+        snapshot
+            .subscriptions
+            .iter()
+            .any(|s| s.series_id == Some(id))
+    };
     let mut out = Vec::new();
 
     for series in &snapshot.series {
@@ -50,11 +55,19 @@ pub fn entries(cache: &Cache, anilist: &AniListCache, from: i64, to: i64, now: i
                 None if a.at <= now => State::Missing,
                 None => State::Upcoming,
             };
-            out.push(entry(Some(series.id), &series.title, &a, state, subscribed(series.id)));
+            out.push(entry(
+                Some(series.id),
+                &series.title,
+                &a,
+                state,
+                subscribed(series.id),
+            ));
         }
         // What is on disk carries its own air date; the schedule only lists what is to come.
         for e in &series.episodes {
-            let Some(at) = e.aired_at.filter(|at| *at >= from && *at < to) else { continue };
+            let Some(at) = e.aired_at.filter(|at| *at >= from && *at < to) else {
+                continue;
+            };
             if e.number.fract() != 0.0 || e.number < 0.0 {
                 continue;
             }
@@ -62,14 +75,36 @@ pub fn entries(cache: &Cache, anilist: &AniListCache, from: i64, to: i64, now: i
             if !seen.insert(key) {
                 continue;
             }
-            let a = Airing { episode: key.1, season: e.season, at };
+            let a = Airing {
+                episode: key.1,
+                season: e.season,
+                at,
+            };
             let watched = disk.get(&key).copied().unwrap_or(e.watched);
-            out.push(entry(Some(series.id), &series.title, &a, State::OnDisk { watched }, subscribed(series.id)));
+            out.push(entry(
+                Some(series.id),
+                &series.title,
+                &a,
+                State::OnDisk { watched },
+                subscribed(series.id),
+            ));
         }
     }
-    for sub in snapshot.subscriptions.iter().filter(|s| s.series_id.is_none()) {
-        if let Some(a) = sub.next_airing.as_ref().filter(|a| a.at >= from && a.at < to) {
-            let state = if a.at <= now { State::Missing } else { State::Upcoming };
+    for sub in snapshot
+        .subscriptions
+        .iter()
+        .filter(|s| s.series_id.is_none())
+    {
+        if let Some(a) = sub
+            .next_airing
+            .as_ref()
+            .filter(|a| a.at >= from && a.at < to)
+        {
+            let state = if a.at <= now {
+                State::Missing
+            } else {
+                State::Upcoming
+            };
             out.push(entry(None, &sub.title, a, state, true));
         }
     }
@@ -91,7 +126,11 @@ fn entry(series_id: Option<u64>, title: &str, a: &Airing, state: State, subscrib
 
 /// The Monday of the week `weeks` away from the one `now` falls in, in `zone`.
 pub fn week_start_in<Tz: TimeZone>(now: i64, weeks: i64, zone: &Tz) -> NaiveDate {
-    let today = zone.timestamp_opt(now, 0).single().map(|t| t.date_naive()).unwrap_or_default();
+    let today = zone
+        .timestamp_opt(now, 0)
+        .single()
+        .map(|t| t.date_naive())
+        .unwrap_or_default();
     let monday = today - Days::new(u64::from(today.weekday().num_days_from_monday()));
     if weeks >= 0 {
         monday + Days::new(7 * weeks as u64)
@@ -111,7 +150,10 @@ pub fn midnight_in<Tz: TimeZone>(date: NaiveDate, zone: &Tz) -> i64 {
 }
 
 pub fn today_in<Tz: TimeZone>(now: i64, zone: &Tz) -> NaiveDate {
-    zone.timestamp_opt(now, 0).single().map(|t| t.date_naive()).unwrap_or_default()
+    zone.timestamp_opt(now, 0)
+        .single()
+        .map(|t| t.date_naive())
+        .unwrap_or_default()
 }
 
 pub fn week_start(now: i64, weeks: i64) -> NaiveDate {
@@ -134,7 +176,8 @@ mod tests {
 
     fn fixture() -> Cache {
         let snapshot: Snapshot =
-            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json")).unwrap();
+            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json"))
+                .unwrap();
         Cache {
             address: "banditbox:8790".into(),
             host: "banditbox".into(),
@@ -149,11 +192,26 @@ mod tests {
         let cet = FixedOffset::east_opt(2 * 3600).unwrap();
         // Saturday 2026-10-17 15:40 CEST.
         let now = 1_792_244_400;
-        assert_eq!(week_start_in(now, 0, &cet), NaiveDate::from_ymd_opt(2026, 10, 12).unwrap());
-        assert_eq!(week_start_in(now, 1, &cet), NaiveDate::from_ymd_opt(2026, 10, 19).unwrap());
-        assert_eq!(week_start_in(now, -1, &cet), NaiveDate::from_ymd_opt(2026, 10, 5).unwrap());
-        assert_eq!(midnight_in(NaiveDate::from_ymd_opt(2026, 10, 17).unwrap(), &cet), now - (15 * 3600 + 40 * 60));
-        assert_eq!(today_in(now, &cet), NaiveDate::from_ymd_opt(2026, 10, 17).unwrap());
+        assert_eq!(
+            week_start_in(now, 0, &cet),
+            NaiveDate::from_ymd_opt(2026, 10, 12).unwrap()
+        );
+        assert_eq!(
+            week_start_in(now, 1, &cet),
+            NaiveDate::from_ymd_opt(2026, 10, 19).unwrap()
+        );
+        assert_eq!(
+            week_start_in(now, -1, &cet),
+            NaiveDate::from_ymd_opt(2026, 10, 5).unwrap()
+        );
+        assert_eq!(
+            midnight_in(NaiveDate::from_ymd_opt(2026, 10, 17).unwrap(), &cet),
+            now - (15 * 3600 + 40 * 60)
+        );
+        assert_eq!(
+            today_in(now, &cet),
+            NaiveDate::from_ymd_opt(2026, 10, 17).unwrap()
+        );
     }
 
     #[test]
@@ -174,7 +232,13 @@ mod tests {
     fn a_span_cuts_and_a_passed_airing_is_missing() {
         let cache = fixture();
         // Episode 8 airs at 1_792_414_800; look at that day only, an hour after.
-        let rows = entries(&cache, &AniListCache::default(), 1_792_414_800 - 3600, 1_792_414_800 + 3600, 1_792_414_800 + 60);
+        let rows = entries(
+            &cache,
+            &AniListCache::default(),
+            1_792_414_800 - 3600,
+            1_792_414_800 + 3600,
+            1_792_414_800 + 60,
+        );
         assert_eq!(rows.len(), 1);
         assert_eq!((rows[0].episode, rows[0].state), (8, State::Missing));
     }

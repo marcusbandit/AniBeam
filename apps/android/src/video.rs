@@ -46,12 +46,22 @@ pub struct Video;
 
 #[cfg(not(target_os = "android"))]
 impl Video {
-    pub fn start(_mpv: &Arc<Mpv>, _share: Share, _size: (u32, u32), _on_frame: OnFrame, _on_started: OnStarted) -> Option<Video> {
+    pub fn start(
+        _mpv: &Arc<Mpv>,
+        _share: Share,
+        _size: (u32, u32),
+        _on_frame: OnFrame,
+        _on_started: OnStarted,
+    ) -> Option<Video> {
         None
     }
     pub fn resize(&self, _size: (u32, u32)) {}
     pub fn share(&self) -> Share {
-        Share { display: 0, context: 0, config: 0 }
+        Share {
+            display: 0,
+            context: 0,
+            config: 0,
+        }
     }
 }
 
@@ -84,12 +94,32 @@ mod imp {
         fn eglGetCurrentDisplay() -> EGLDisplay;
         fn eglGetCurrentContext() -> EGLContext;
         fn eglQueryContext(d: EGLDisplay, c: EGLContext, attr: i32, value: *mut i32) -> c_uint;
-        fn eglChooseConfig(d: EGLDisplay, attrs: *const i32, configs: *mut EGLConfig, size: i32, n: *mut i32) -> c_uint;
-        fn eglCreateContext(d: EGLDisplay, config: EGLConfig, share: EGLContext, attrs: *const i32) -> EGLContext;
+        fn eglChooseConfig(
+            d: EGLDisplay,
+            attrs: *const i32,
+            configs: *mut EGLConfig,
+            size: i32,
+            n: *mut i32,
+        ) -> c_uint;
+        fn eglCreateContext(
+            d: EGLDisplay,
+            config: EGLConfig,
+            share: EGLContext,
+            attrs: *const i32,
+        ) -> EGLContext;
         fn eglDestroyContext(d: EGLDisplay, c: EGLContext) -> c_uint;
-        fn eglCreatePbufferSurface(d: EGLDisplay, config: EGLConfig, attrs: *const i32) -> EGLSurface;
+        fn eglCreatePbufferSurface(
+            d: EGLDisplay,
+            config: EGLConfig,
+            attrs: *const i32,
+        ) -> EGLSurface;
         fn eglDestroySurface(d: EGLDisplay, s: EGLSurface) -> c_uint;
-        fn eglMakeCurrent(d: EGLDisplay, draw: EGLSurface, read: EGLSurface, c: EGLContext) -> c_uint;
+        fn eglMakeCurrent(
+            d: EGLDisplay,
+            draw: EGLSurface,
+            read: EGLSurface,
+            c: EGLContext,
+        ) -> c_uint;
         fn eglReleaseThread() -> c_uint;
         fn eglGetError() -> i32;
         fn eglGetProcAddress(name: *const c_char) -> *mut c_void;
@@ -112,7 +142,13 @@ mod imp {
         fn glGenFramebuffers(n: c_int, out: *mut c_uint);
         fn glDeleteFramebuffers(n: c_int, ids: *const c_uint);
         fn glBindFramebuffer(target: c_uint, id: c_uint);
-        fn glFramebufferTexture2D(target: c_uint, attachment: c_uint, textarget: c_uint, texture: c_uint, level: c_int);
+        fn glFramebufferTexture2D(
+            target: c_uint,
+            attachment: c_uint,
+            textarget: c_uint,
+            texture: c_uint,
+            level: c_int,
+        );
         fn glCheckFramebufferStatus(target: c_uint) -> c_uint;
         fn glFinish();
 
@@ -163,11 +199,18 @@ mod imp {
             let mut config: EGLConfig = std::ptr::null_mut();
             let mut n = 0;
             if eglChooseConfig(display, attrs.as_ptr(), &mut config, 1, &mut n) == 0 || n < 1 {
-                crate::local::log(&format!("video: config {id} not found (0x{:x})", eglGetError()));
+                crate::local::log(&format!(
+                    "video: config {id} not found (0x{:x})",
+                    eglGetError()
+                ));
                 MISSED.set((display as usize, context as usize));
                 return None;
             }
-            let share = Share { display: display as usize, context: context as usize, config: config as usize };
+            let share = Share {
+                display: display as usize,
+                context: context as usize,
+                config: config as usize,
+            };
             LAST.set(Some(share));
             Some(share)
         }
@@ -182,7 +225,11 @@ mod imp {
             return p;
         }
         let lib = *GLES.get_or_init(|| unsafe { dlopen(c"libGLESv3.so".as_ptr(), 2) as usize });
-        if lib == 0 { std::ptr::null_mut() } else { unsafe { dlsym(lib as *mut c_void, name) } }
+        if lib == 0 {
+            std::ptr::null_mut()
+        } else {
+            unsafe { dlsym(lib as *mut c_void, name) }
+        }
     }
 
     #[derive(Default)]
@@ -213,9 +260,19 @@ mod imp {
         /// Starts drawing `mpv`'s picture at `size` on a context shared with `share`. None
         /// when the thread would not start; whether EGL and mpv took it comes later, through
         /// `on_started`.
-        pub fn start(mpv: &Arc<Mpv>, share: Share, size: (u32, u32), on_frame: OnFrame, on_started: OnStarted) -> Option<Video> {
+        pub fn start(
+            mpv: &Arc<Mpv>,
+            share: Share,
+            size: (u32, u32),
+            on_frame: OnFrame,
+            on_started: OnStarted,
+        ) -> Option<Video> {
             let shared = Arc::new(Shared {
-                state: Mutex::new(State { dirty: true, size, stop: false }),
+                state: Mutex::new(State {
+                    dirty: true,
+                    size,
+                    stop: false,
+                }),
                 wake: Condvar::new(),
             });
             let (ready_tx, ready_rx) = std::sync::mpsc::channel();
@@ -230,13 +287,19 @@ mod imp {
             // The UI thread never waits on the renderer's start: EGL and mpv can take their
             // time there, and a touch must not.
             std::thread::spawn(move || {
-                let r = ready_rx.recv().unwrap_or_else(|_| Err("the renderer stopped".into()));
+                let r = ready_rx
+                    .recv()
+                    .unwrap_or_else(|_| Err("the renderer stopped".into()));
                 if let Err(e) = &r {
                     crate::local::log(&format!("video: {e}"));
                 }
                 on_started(r);
             });
-            Some(Video { shared, share, thread: Some(thread) })
+            Some(Video {
+                shared,
+                share,
+                thread: Some(thread),
+            })
         }
 
         pub fn resize(&self, size: (u32, u32)) {
@@ -271,7 +334,11 @@ mod imp {
 
     impl Target {
         unsafe fn new(size: (u32, u32)) -> Option<Target> {
-            let mut t = Target { textures: [0; 3], fbos: [0; 3], size };
+            let mut t = Target {
+                textures: [0; 3],
+                fbos: [0; 3],
+                size,
+            };
             unsafe {
                 glGenTextures(3, t.textures.as_mut_ptr());
                 glGenFramebuffers(3, t.fbos.as_mut_ptr());
@@ -293,7 +360,13 @@ mod imp {
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                     glBindFramebuffer(GL_FRAMEBUFFER, t.fbos[i]);
-                    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.textures[i], 0);
+                    glFramebufferTexture2D(
+                        GL_FRAMEBUFFER,
+                        GL_COLOR_ATTACHMENT0,
+                        GL_TEXTURE_2D,
+                        t.textures[i],
+                        0,
+                    );
                     if glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE {
                         t.free();
                         return None;
@@ -324,13 +397,18 @@ mod imp {
         let config = share.config as EGLConfig;
         unsafe {
             let attrs = [EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE];
-            let mut context = eglCreateContext(display, config, share.context as EGLContext, attrs.as_ptr());
+            let mut context =
+                eglCreateContext(display, config, share.context as EGLContext, attrs.as_ptr());
             if context.is_null() {
                 let attrs = [EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE];
-                context = eglCreateContext(display, config, share.context as EGLContext, attrs.as_ptr());
+                context =
+                    eglCreateContext(display, config, share.context as EGLContext, attrs.as_ptr());
             }
             if context.is_null() {
-                let _ = ready.send(Err(format!("no shared EGL context (0x{:x})", eglGetError())));
+                let _ = ready.send(Err(format!(
+                    "no shared EGL context (0x{:x})",
+                    eglGetError()
+                )));
                 return;
             }
             // Surfaceless where the driver allows it, else a one pixel pbuffer: the frames
@@ -340,7 +418,10 @@ mod imp {
                 let attrs = [EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE];
                 surface = eglCreatePbufferSurface(display, config, attrs.as_ptr());
                 if surface.is_null() || eglMakeCurrent(display, surface, surface, context) == 0 {
-                    let _ = ready.send(Err(format!("the EGL context would not bind (0x{:x})", eglGetError())));
+                    let _ = ready.send(Err(format!(
+                        "the EGL context would not bind (0x{:x})",
+                        eglGetError()
+                    )));
                     if !surface.is_null() {
                         eglDestroySurface(display, surface);
                     }
@@ -354,23 +435,43 @@ mod imp {
                 get_proc_address_ctx: std::ptr::null_mut(),
             };
             let mut params = [
-                mpv_render_param { kind: RENDER_PARAM_API_TYPE, data: c"opengl".as_ptr() as *mut c_void },
-                mpv_render_param { kind: RENDER_PARAM_OPENGL_INIT_PARAMS, data: (&mut init as *mut mpv_opengl_init_params).cast() },
-                mpv_render_param { kind: RENDER_PARAM_INVALID, data: std::ptr::null_mut() },
+                mpv_render_param {
+                    kind: RENDER_PARAM_API_TYPE,
+                    data: c"opengl".as_ptr() as *mut c_void,
+                },
+                mpv_render_param {
+                    kind: RENDER_PARAM_OPENGL_INIT_PARAMS,
+                    data: (&mut init as *mut mpv_opengl_init_params).cast(),
+                },
+                mpv_render_param {
+                    kind: RENDER_PARAM_INVALID,
+                    data: std::ptr::null_mut(),
+                },
             ];
             let mut ctx: *mut mpv_render_context = std::ptr::null_mut();
             let code = mpv_render_context_create(&mut ctx, mpv.handle, params.as_mut_ptr());
             if code < 0 {
-                let word = CStr::from_ptr(mpv_error_string(code)).to_string_lossy().into_owned();
+                let word = CStr::from_ptr(mpv_error_string(code))
+                    .to_string_lossy()
+                    .into_owned();
                 let _ = ready.send(Err(format!("mpv's render context: {word}")));
-                eglMakeCurrent(display, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+                eglMakeCurrent(
+                    display,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                );
                 if !surface.is_null() {
                     eglDestroySurface(display, surface);
                 }
                 eglDestroyContext(display, context);
                 return;
             }
-            mpv_render_context_set_update_callback(ctx, Some(on_update), Arc::as_ptr(&shared) as *mut c_void);
+            mpv_render_context_set_update_callback(
+                ctx,
+                Some(on_update),
+                Arc::as_ptr(&shared) as *mut c_void,
+            );
             let _ = ready.send(Ok(()));
 
             let mut target: Option<Target> = None;
@@ -420,15 +521,28 @@ mod imp {
                 // which is what Slint reads as TopLeft.
                 let mut flip: c_int = 0;
                 let mut params = [
-                    mpv_render_param { kind: RENDER_PARAM_OPENGL_FBO, data: (&mut fbo as *mut mpv_opengl_fbo).cast() },
-                    mpv_render_param { kind: RENDER_PARAM_FLIP_Y, data: (&mut flip as *mut c_int).cast() },
-                    mpv_render_param { kind: RENDER_PARAM_INVALID, data: std::ptr::null_mut() },
+                    mpv_render_param {
+                        kind: RENDER_PARAM_OPENGL_FBO,
+                        data: (&mut fbo as *mut mpv_opengl_fbo).cast(),
+                    },
+                    mpv_render_param {
+                        kind: RENDER_PARAM_FLIP_Y,
+                        data: (&mut flip as *mut c_int).cast(),
+                    },
+                    mpv_render_param {
+                        kind: RENDER_PARAM_INVALID,
+                        data: std::ptr::null_mut(),
+                    },
                 ];
                 mpv_render_context_render(ctx, params.as_mut_ptr());
                 // The frame is whole before Slint's context samples it.
                 glFinish();
                 mpv_render_context_report_swap(ctx);
-                on_frame(Frame { texture: t.textures[next], width: size.0, height: size.1 });
+                on_frame(Frame {
+                    texture: t.textures[next],
+                    width: size.0,
+                    height: size.1,
+                });
                 next = (next + 1) % 3;
                 for r in retired.iter_mut() {
                     r.1 += 1;
@@ -450,7 +564,12 @@ mod imp {
             for (t, _) in retired.drain(..) {
                 t.free();
             }
-            eglMakeCurrent(display, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+            eglMakeCurrent(
+                display,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
             if !surface.is_null() {
                 eglDestroySurface(display, surface);
             }
