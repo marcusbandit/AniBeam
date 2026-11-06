@@ -36,6 +36,8 @@ pub struct Peer {
     pub relayed: bool,
     /// The Tailscale user the device belongs to, by Tailscale's user id.
     pub user: Option<String>,
+    /// Tagged in the tailnet's ACLs: such a device belongs to the tailnet, not to a person.
+    pub tagged: bool,
 }
 
 /// A person on the tailnet: the Tailscale user a device belongs to.
@@ -54,7 +56,8 @@ pub struct TailnetUser {
 pub struct Tailnet {
     pub me: Vec<IpAddr>,
     pub peers: Vec<Peer>,
-    /// The Tailscale user this machine belongs to.
+    /// The Tailscale user this machine belongs to. None for a tagged machine, which
+    /// belongs to no person, so the host cannot tell whose computer it is.
     pub me_user: Option<String>,
     /// Every user the status names, by id.
     pub users: Vec<TailnetUser>,
@@ -104,7 +107,12 @@ pub fn asker(from: IpAddr, tailnet: Option<&Tailnet>) -> Asker {
     let Some(me) = t.me_user.as_deref() else {
         return Asker::Owner;
     };
-    match t.peer(from).and_then(|p| p.user.as_deref()) {
+    let peer = t.peer(from);
+    // A tagged device belongs to the tailnet rather than to anyone: the owner's.
+    if peer.is_some_and(|p| p.tagged) {
+        return Asker::Owner;
+    }
+    match peer.and_then(|p| p.user.as_deref()) {
         Some(user) if user == me => Asker::Owner,
         Some(user) => Asker::Person(t.user(user).cloned().unwrap_or(TailnetUser {
             id: user.to_string(),
@@ -117,6 +125,11 @@ pub fn asker(from: IpAddr, tailnet: Option<&Tailnet>) -> Asker {
 /// What a device the host cannot tie to a person is told.
 pub const UNKNOWN_PERSON: &str =
     "That computer cannot tell whose device this is on the tailnet, so it does not answer.";
+
+/// Whether a node carries ACL tags.
+fn tagged(node: &serde_json::Value) -> bool {
+    node["Tags"].as_array().is_some_and(|t| !t.is_empty())
+}
 
 /// A user id as the status writes it: a number, or a string in some builds.
 fn user_id(v: &serde_json::Value) -> Option<String> {
@@ -170,6 +183,7 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
                             && p["CurAddr"].as_str().unwrap_or_default().is_empty()
                             && !p["Relay"].as_str().unwrap_or_default().is_empty(),
                         user: user_id(&p["UserID"]),
+                        tagged: tagged(p),
                     })
                 })
                 .collect()
@@ -192,10 +206,14 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
         })
         .unwrap_or_default();
     users.sort_by(|a, b| a.id.cmp(&b.id));
+    // A tagged machine reports Tailscale's shared tagged-devices user, which is no person.
+    let me_user = Some(&v["Self"])
+        .filter(|s| !tagged(s))
+        .and_then(|s| user_id(&s["UserID"]));
     Some(Tailnet {
         me,
         peers,
-        me_user: user_id(&v["Self"]["UserID"]),
+        me_user,
         users,
     })
 }
@@ -341,6 +359,36 @@ mod tests {
             Asker::Unknown,
             "not in the status"
         );
+    }
+
+    /// Review of #661: a tagged machine reports Tailscale's tagged-devices user as its
+    /// own, which is nobody, so the host cannot tell whose computer it is and every
+    /// device is the owner's, as before profiles. A tagged peer is the owner's too.
+    #[test]
+    fn a_tagged_machine_cannot_tell_people_apart() {
+        let status = br#"{
+            "Self": {"ID": "nSelf", "UserID": 9, "Tags": ["tag:server"], "TailscaleIPs": ["100.65.105.9"]},
+            "Peer": {
+                "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "UserID": 100, "TailscaleIPs": ["100.70.1.2"]},
+                "nodekey:bb": {"ID": "nTv", "HostName": "tv", "UserID": 9, "Tags": ["tag:tv"], "TailscaleIPs": ["100.70.1.5"]}
+            }
+        }"#;
+        let t = read_status(status).unwrap();
+        assert_eq!(t.me_user, None);
+        assert_eq!(asker(ip("100.70.1.2"), Some(&t)), Asker::Owner);
+        let t = read_status(PEOPLE).unwrap();
+        let mut t = t;
+        t.peers.push(Peer {
+            id: "nTv".into(),
+            name: "tv".into(),
+            os: String::new(),
+            online: true,
+            ips: vec![ip("100.70.1.5")],
+            relayed: false,
+            user: Some("9".into()),
+            tagged: true,
+        });
+        assert_eq!(asker(ip("100.70.1.5"), Some(&t)), Asker::Owner);
     }
 
     #[test]

@@ -30,8 +30,9 @@ pub struct Served {
     pub(super) core: Weak<Core>,
     pub(super) streams: stream::Streams,
     host: String,
-    /// The built snapshot per profile: each person's progress is their own (#631).
-    snapshot: tokio::sync::Mutex<HashMap<u64, (Instant, Bytes)>>,
+    /// The built snapshot per profile, each behind its own lock, so one person's
+    /// build never holds up another's cached answer (#631).
+    snapshot: std::sync::Mutex<HashMap<u64, Arc<SnapshotSlot>>>,
     library: tokio::sync::Mutex<Option<(Instant, Arc<LibraryPart>)>>,
     /// The profile each person was answered as, by Tailscale user id, the owner under
     /// "": a profile never changes its person, so it is looked up once per launch.
@@ -58,7 +59,7 @@ pub fn router(core: Weak<Core>) -> Router {
         core,
         streams: stream::Streams::default(),
         host: hostname(),
-        snapshot: tokio::sync::Mutex::new(HashMap::new()),
+        snapshot: std::sync::Mutex::new(HashMap::new()),
         library: tokio::sync::Mutex::new(None),
         profiles: std::sync::Mutex::new(HashMap::new()),
         peers: tokio::sync::Mutex::new(None),
@@ -105,6 +106,9 @@ async fn known_host(request: axum::extract::Request, next: axum::middleware::Nex
     }
 }
 
+/// One profile's cached snapshot.
+type SnapshotSlot = tokio::sync::Mutex<Option<(Instant, Bytes)>>;
+
 /// The profile a request is answered as (#631), set by [`trusted`] before any
 /// route runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,10 +151,15 @@ async fn trusted(
             return Ok((verdict, Some(id)));
         }
         let now = time::now_secs();
+        let learned = me.is_some();
         let profile = core
             .store
             .write(move |c| crate::profiles::resolve(c, &asker, me.as_ref(), now))?;
-        if let Some(id) = profile {
+        // The owner is remembered only once their Tailscale user is known, so
+        // profile 1 learns it from the first request that can tell.
+        if let Some(id) = profile
+            && (!key.is_empty() || learned)
+        {
             served
                 .profiles
                 .lock()
@@ -338,8 +347,15 @@ async fn snapshot(
 /// while one is built, so a burst of clients waits for one build instead of
 /// starting many.
 async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
-    let mut slots = st.snapshot.lock().await;
-    if let Some((at, body)) = slots.get(&profile)
+    let slot = st
+        .snapshot
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .entry(profile)
+        .or_default()
+        .clone();
+    let mut slot = slot.lock().await;
+    if let Some((at, body)) = slot.as_ref()
         && at.elapsed() < CACHE_FOR
     {
         return Ok(body.clone());
@@ -354,7 +370,7 @@ async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
     if profile == crate::profiles::OWNER {
         *st.library.lock().await = Some((Instant::now(), Arc::new(library)));
     }
-    slots.insert(profile, (Instant::now(), body.clone()));
+    *slot = Some((Instant::now(), body.clone()));
     Ok(body)
 }
 

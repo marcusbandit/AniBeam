@@ -131,9 +131,11 @@ impl Sessions {
 
     /// The newest session that has ticked and was not paused at its last
     /// tick: what is playing, if anything is.
+    /// The owner's session playing now, for Discord: a guest's is never shown.
     pub(crate) fn playing(&self) -> Option<Session> {
         self.lock()
             .values()
+            .filter(|s| s.profile == crate::profiles::OWNER)
             .filter(|s| s.last_position.is_some() && !s.paused)
             .max_by_key(|s| s.id)
             .cloned()
@@ -745,6 +747,9 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
         )?;
         Ok(())
     })?;
+    if s.profile != crate::profiles::OWNER {
+        return Ok(());
+    }
     let (folder, code) = core.store.read(|c| line_labels(c, s))?;
     core.bus.info(
         Stage::Playback,
@@ -754,11 +759,8 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
             episode: s.episode_key.clone(),
         },
     );
-    // Watching a series on hold again takes it off hold. The tracker lists
-    // are the owner's, so only the owner's views move them.
-    if s.profile == crate::profiles::OWNER {
-        on_hold::played(core, s.series);
-    }
+    // Watching a series on hold again takes it off hold.
+    on_hold::played(core, s.series);
     Ok(())
 }
 
@@ -849,6 +851,11 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
         }
         Ok(())
     })?;
+    // The bus is the owner's shell and log: a guest's playing writes their
+    // rows and says nothing there.
+    if s.profile != crate::profiles::OWNER {
+        return Ok(());
+    }
     core.bus.debug(
         Stage::Playback,
         "resume point cleared",
@@ -860,10 +867,7 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     if s.is_extra {
         return Ok(());
     }
-    // Rolling downloads follow the owner's watching, never a guest's.
-    if s.profile == crate::profiles::OWNER {
-        crate::downloads::rolling::nudge(core);
-    }
+    crate::downloads::rolling::nudge(core);
     let images_dir = core.paths.images_dir();
     let cards = core
         .store
@@ -899,6 +903,9 @@ fn write_resume(core: &Core, s: &Session, position: f64) {
             tracing::warn!("the resume point for series {series} {named} was not written: {e}");
         }
     });
+    if s.profile != crate::profiles::OWNER {
+        return;
+    }
     core.bus.debug(
         Stage::Playback,
         "resume point saved",

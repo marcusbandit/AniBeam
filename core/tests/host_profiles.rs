@@ -201,6 +201,29 @@ fn each_person_on_the_tailnet_sees_their_own_progress() {
         status, 422,
         "a session the tablet did not open is not found"
     );
+
+    // A second close of the tablet's own session is quiet, as it is for the owner.
+    let theirs = play_through(&rt, &tablet, files[0]);
+    let (status, _) = call(
+        &rt,
+        &tablet,
+        &Call::ClosePlayback {
+            session: theirs,
+            position: 1400.0,
+            reason: CloseReason::Ended,
+        },
+    );
+    assert_eq!(status, 200);
+    // Not interested is the owner's list.
+    let (status, _) = call(
+        &rt,
+        &tablet,
+        &Call::SetNotInterested {
+            anilist_id: 1,
+            not_interested: true,
+        },
+    );
+    assert_eq!(status, 422);
 }
 
 fn play_open(rt: &tokio::runtime::Runtime, base: &str, file: u64) -> u64 {
