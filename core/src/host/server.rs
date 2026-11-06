@@ -16,7 +16,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 
 use super::build::{self, LibraryPart};
-use super::{convert, keys, peers, stream, trust};
+use super::{convert, history, keys, peers, stream, trust};
 use crate::contract::CoreError;
 use crate::core::Core;
 use crate::time;
@@ -84,6 +84,7 @@ pub fn router(core: Weak<Core>) -> Router {
         .route(wire::HELLO, get(hello))
         .route(wire::SNAPSHOT, get(snapshot))
         .route(wire::PEERS, get(peer_list))
+        .route(wire::HISTORY, get(history_document))
         .route("/api/v1/posters/{id}", get(poster))
         .merge(streaming)
         .fallback(not_found)
@@ -340,12 +341,15 @@ async fn hello(
 }
 
 /// What this host serves past the snapshot: the list of other AniBeams
-/// always; request proofs while it has its key; streaming while its
-/// switch is on; converting too when ffmpeg and an encoder work here,
-/// which the first hello starts finding out rather than waits for, so
-/// hello stays quick.
+/// and this one's history always, since neither is streaming; request
+/// proofs while it has its key; streaming while its switch is on;
+/// converting too when ffmpeg and an encoder work here, which the first
+/// hello starts finding out rather than waits for, so hello stays quick.
 fn features(streaming: bool, keyed: bool) -> Vec<String> {
-    let mut out = vec![wire::FEATURE_PEERS.to_string()];
+    let mut out = vec![
+        wire::FEATURE_PEERS.to_string(),
+        wire::FEATURE_HISTORY.to_string(),
+    ];
     if keyed {
         out.push(wire::FEATURE_PROOF.to_string());
     }
@@ -539,6 +543,32 @@ pub fn content_type(path: &FsPath, bytes: &[u8]) -> &'static str {
         _ if bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" => "image/webp",
         _ if bytes.starts_with(b"GIF8") => "image/gif",
         _ => "application/octet-stream",
+    }
+}
+
+/// This computer's series and history, for another AniBeam to merge
+/// (`history`). The asker is pulled from in turn, so two computers that
+/// see each other both end up with everything.
+async fn history_document(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
+    let Some(core) = st.core.upgrade() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+    };
+    let built = tokio::task::spawn_blocking(move || {
+        let doc = history::document(&core);
+        history::pull_back(&core, from.ip());
+        doc
+    })
+    .await;
+    match built {
+        Ok(Ok(doc)) => match serde_json::to_vec(&doc) {
+            Ok(body) => json(Bytes::from(body)),
+            Err(e) => failed(&e.into()),
+        },
+        Ok(Err(e)) => failed(&e),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     }
 }
 

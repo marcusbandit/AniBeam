@@ -134,6 +134,15 @@ pub fn build(core: &Core, private: bool, now: SystemTime) -> Result<Document, Co
     Ok(doc)
 }
 
+/// The history section alone, for another AniBeam computer to merge
+/// (`host::history`). No accounts, so no keyring read.
+pub(crate) fn history_section(core: &Core) -> Result<History, CoreError> {
+    core.store.read(|c| {
+        let rows = series_rows(c)?;
+        history(c, &rows)
+    })
+}
+
 /// Starts the Export job. The document is built on a blocking thread for
 /// the keyring's sake, then written through a `.tmp` sibling and a rename,
 /// so a reader either sees the whole file or the one that was there.

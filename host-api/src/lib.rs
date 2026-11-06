@@ -38,6 +38,11 @@
 //! it sees on the tailnet ([`Peers`]), for a phone, which cannot list tailnet
 //! devices itself.
 //!
+//! A host that lists [`FEATURE_HISTORY`] answers [`HISTORY`]: its watch
+//! history, resume points and matches as an `anibeam-export` document (the
+//! desktop's own export format, without sources, accounts, fixes or
+//! preferences), for another AniBeam computer to merge with its own.
+//!
 //! A host that lists [`FEATURE_PROOF`] says its key in [`Hello::key`], and a
 //! client may sign each request with its own key ([`proof`], with the `proof`
 //! feature): a request whose proof does not check out is refused, and one from
@@ -80,6 +85,11 @@ pub const FEATURE_PROOF: &str = "proof-v1";
 pub const PEERS: &str = "/api/v1/peers";
 /// In [`Hello::features`] when the host answers [`PEERS`].
 pub const FEATURE_PEERS: &str = "peers";
+/// `GET`: an `anibeam-export` document of the host's series and history, with
+/// [`FEATURE_HISTORY`]. Its shape is versioned by the document's own `version`.
+pub const HISTORY: &str = "/api/v1/history";
+/// In [`Hello::features`] when the host answers [`HISTORY`].
+pub const FEATURE_HISTORY: &str = "history";
 /// The `Call` variants [`CALL`] takes: the ones a player makes, and the two that keep
 /// Not interested the same on a client as on the host.
 pub const PLAYER_CALLS: &[&str] = &[

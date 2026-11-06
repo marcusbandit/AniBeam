@@ -14,6 +14,7 @@
 pub mod addr;
 pub mod build;
 pub mod convert;
+pub mod history;
 pub mod keys;
 pub mod peers;
 pub mod server;
@@ -81,6 +82,8 @@ pub struct Host {
     reading: Mutex<()>,
     /// A status document a test sets on one core, read in place of the CLI.
     fixed_status: Mutex<Option<Vec<u8>>>,
+    /// When each other computer's history was last pulled, by its base URL.
+    pub(crate) pulled: Mutex<std::collections::HashMap<String, Instant>>,
     /// This machine's key and the keys it is paired with (#555).
     pub keys: keys::Keys,
 }
@@ -139,6 +142,7 @@ impl Host {
             tailnet: Mutex::new((None, None)),
             reading: Mutex::new(()),
             fixed_status: Mutex::new(None),
+            pulled: Mutex::new(std::collections::HashMap::new()),
             keys: keys::Keys::new(),
         }
     }
@@ -540,6 +544,14 @@ async fn supervise(
                             {
                                 s.name = Some(name);
                                 status.put(Some(&cancel), s.status());
+                            }
+                            // Serving on the tailnet: catch up with every
+                            // trusted AniBeam that is up. Not on an address a
+                            // test or the env var chose, which is no tailnet.
+                            if bind.is_none()
+                                && let Some(core) = core.upgrade()
+                            {
+                                history::pull_all(&core);
                             }
                         }
                         Err(message) => status.put(Some(&cancel), waiting(&message)),

@@ -511,7 +511,7 @@ fn owning_source(sources: &[(u64, String)], path: &str) -> Option<u64> {
 /// already carries: an imported match is user-confirmed, and a second
 /// import of the same file must change nothing at all. Answers whether it
 /// wrote.
-fn apply_match(
+pub(crate) fn apply_match(
     tx: &Transaction,
     series: u64,
     entry: &MatchEntry,
@@ -671,7 +671,20 @@ async fn import_history(
     history: format::History,
     summary: &mut ImportSummary,
 ) -> Result<(), CoreError> {
-    let (views, completed, resume) = core
+    let (views, completed, resume) = merge_history(core, history).await?;
+    summary.views_merged = views;
+    summary.completed_merged = completed;
+    summary.resume_points_merged = resume;
+    Ok(())
+}
+
+/// [`import_history`]'s merge, for a caller with no import summary: the
+/// views, completed episodes and resume points it wrote.
+pub(crate) async fn merge_history(
+    core: &Arc<Core>,
+    history: format::History,
+) -> Result<(u64, u64, u64), CoreError> {
+    core
         .store
         .tx_async(move |tx| {
             let series = series_by_path(tx)?;
@@ -707,7 +720,11 @@ async fn import_history(
             for entry in &history.resume_points {
                 let Some((id, key, position, duration, at)) = resume_target(&series, entry) else { continue };
                 resume += tx.execute(
-                    "INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (?1, ?2, ?3, ?4, ?5)
+                    // Finishing an episode takes its resume point away, so one
+                    // from before the finish never comes back over it.
+                    "INSERT INTO resume_points (series_id, episode_key, position, duration, at)
+                     SELECT ?1, ?2, ?3, ?4, ?5
+                     WHERE NOT EXISTS (SELECT 1 FROM completed WHERE series_id = ?1 AND episode_key = ?2 AND at >= ?5)
                      ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration,
                             at = excluded.at
                      WHERE excluded.at > resume_points.at",
@@ -716,11 +733,7 @@ async fn import_history(
             }
             Ok((views, completed, resume))
         })
-        .await?;
-    summary.views_merged = views;
-    summary.completed_merged = completed;
-    summary.resume_points_merged = resume;
-    Ok(())
+        .await
 }
 
 /// A series as the history sections need it: its id, and how it keys an
