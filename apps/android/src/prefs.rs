@@ -78,13 +78,11 @@ pub fn load(data_dir: &Path) -> Prefs {
         .unwrap_or_default()
 }
 
-/// Written whole to a temporary file and renamed over the old one, so a kill mid-write
-/// leaves the last good file.
+/// Written whole through the core's atomic write, so a kill mid-write leaves the last good
+/// file.
 pub fn save(data_dir: &Path, prefs: &Prefs) -> std::io::Result<()> {
-    let path = file(data_dir);
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(prefs)?)?;
-    std::fs::rename(tmp, path)
+    anibeam_core::atomic_file::write(&file(data_dir), serde_json::to_vec_pretty(prefs)?)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -113,6 +111,27 @@ mod tests {
         assert_eq!(p.limit_gb, 18.0);
         // A file from before What's new has read no notes.
         assert_eq!(p.notes, Seen::default());
+    }
+
+    /// #575: the save is the core's atomic write, so it makes a missing data folder and
+    /// leaves no `.tmp` beside the file.
+    #[test]
+    fn a_save_makes_its_folder_and_leaves_no_tmp() {
+        let root = std::env::temp_dir().join(format!("anibeam-prefs-dir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("not/yet");
+        let p = Prefs {
+            onboarded: true,
+            ..Prefs::default()
+        };
+        save(&dir, &p).unwrap();
+        assert_eq!(load(&dir), p);
+        let names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, ["phone.json"]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
