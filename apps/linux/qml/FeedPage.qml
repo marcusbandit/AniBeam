@@ -19,6 +19,10 @@ Item {
 
     property string sort: Door.preferences.feed_sort === "Upcoming" ? "Upcoming" : "Recent"
     property var cards: []
+    // A read that failed says so with Try again, never as an empty feed
+    property bool loadFailed: false
+    // With folders, an empty feed waits on dated episodes, not on a folder
+    property bool hasFolders: false
     property real nowMs: Date.now()
     // The clock the sections are cut against: set on reload, so the lists do not move
     // between This week and Earlier as the countdowns tick
@@ -104,7 +108,9 @@ Item {
     function reload() {
         var keep = scroll.contentY
         var r = Door.listFeed(page.sort)
+        page.loadFailed = !!r.error && page.cards.length === 0
         if (r.error) { frame.fail(r.error, page.reload); return }
+        if (r.reply.cards.length === 0) { var src = Door.listSources(); page.hasFolders = !src.error && src.reply.sources.length > 0 }
         page.cutAt = Date.now()
         page.nowMs = page.cutAt
         page.cards = r.reply.cards
@@ -246,10 +252,15 @@ Item {
             width: parent.width
             height: visible ? theme.space(60) : 0
             EmptyState {
-                icon: "rss"
-                title: "Nothing here yet"
-                body: "Add a folder in Settings to build your feed."
-                Button { text: "Settings"; icon: "settings"; onClicked: frame.go("settings") }
+                objectName: "feed-empty"
+                icon: page.loadFailed ? "circle-alert" : "rss"
+                title: page.loadFailed ? "The feed did not load" : "Nothing here yet"
+                body: page.loadFailed ? "AniBeam could not read the feed just now. Try again in a moment."
+                    : page.hasFolders ? "The feed fills as episodes air and arrive. Airing now shows what is on this season."
+                    : "Add the folder your anime lives in and the feed fills with its episodes."
+                Button { visible: page.loadFailed; text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
+                Button { visible: !page.loadFailed && !page.hasFolders; text: "Add a folder"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
+                Button { visible: !page.loadFailed && page.hasFolders; text: "Airing now"; icon: "radio"; onClicked: frame.go("airing") }
             }
         }
     }

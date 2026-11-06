@@ -10,7 +10,7 @@ use anibeam_companion::store::{AniListCache, Cache};
 use slint::Image;
 
 use crate::posters;
-use crate::{CalDay, CalItem, EpisodeLine, SeriesHead, Tile};
+use crate::{CalDay, CalItem, EpisodeLine, EpisodeVersionLine, SeriesHead, Tile};
 
 /// Decoded posters and their hues, by series id.
 #[derive(Default)]
@@ -211,6 +211,7 @@ pub fn series(
                 file: e.file.and_then(|f| i32::try_from(f).ok()).unwrap_or(0),
                 picked: false,
                 remote: e.file.is_some(),
+                versions: version_lines(e),
             };
             ((e.season.unwrap_or(1), e.number), line)
         })
@@ -225,6 +226,7 @@ pub fn series(
             file: 0,
             picked: false,
             remote: false,
+            versions: Default::default(),
         };
         lines.push(((1, f64::from(*n)), line));
     }
@@ -246,9 +248,20 @@ pub fn series(
             file: 0,
             picked: false,
             remote: false,
+            versions: Default::default(),
         });
     }
     Some((head, lines))
+}
+
+/// The versions the other device keeps of an episode, streamed from there at a tap.
+fn version_lines(e: &library::DiskEpisode) -> slint::ModelRc<EpisodeVersionLine> {
+    let list: Vec<(u64, String)> = e
+        .versions
+        .iter()
+        .map(|v| (v.file, v.label.clone()))
+        .collect();
+    crate::versions::model(crate::versions::offered(&list, |_| true))
 }
 
 /// The computer's calendar over the same days as this phone's, from its cached snapshot:

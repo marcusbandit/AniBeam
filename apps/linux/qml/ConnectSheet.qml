@@ -59,7 +59,7 @@ Item {
     // first, so a kill mid-flow does not lose it, then the flow starts over.
     function saveAndConnect(clientId, secret) {
         var c = Door.setTrackerCredentials(root.tracker, clientId, secret)
-        if (c.error) { frame.connectErrors = frame.withKey(frame.connectErrors, root.tracker, frame.errorText(c.error)); return }
+        if (c.error) { frame.connectFailed(root.tracker, c.error); return }
         frame.connectTracker(root.tracker)
     }
 
@@ -176,7 +176,7 @@ Item {
                             ? "Signed in as " + root.connectedName + "." + (root.anilist ? " Your list is on the Watching page." : " Episodes are marked there as you watch.")
                             : root.mode === "setup"
                                 ? root.name + " signs AniBeam in through an app of your own. It takes about a minute, once."
-                                : root.error !== "" ? root.error
+                                : root.error !== "" ? frame.connectWords(root.tracker)
                                 : root.signInUrl !== ""
                                     ? root.name + "'s sign-in page is open in your browser. Approve AniBeam there and this closes itself."
                                     : "Opening " + root.name + "'s sign-in page in your browser."

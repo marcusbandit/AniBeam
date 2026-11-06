@@ -16,7 +16,10 @@ SettingsTab {
     property var storage: ({ image_count: 0, image_bytes: 0 })
     property bool confirmingClear: false
     readonly property var about: Door.about || ({})
-    function loadStorage() { var r = Door.getStorage(); if (!r.error) storage = r.reply }
+    // A cache that could not be measured says so, rather than reading as empty
+    property bool storageFailed: false
+    function loadStorage() { var r = Door.getStorage(); storageFailed = !!r.error; if (!r.error) storage = r.reply }
+    function clearImages() { var r = Door.clearImages(); if (r.error) frame.fail(r.error, tab.clearImages) }
     function path(url) { return Fmt.localPath(String(url)) }
     function dir(p) { var i = Math.max(String(p || "").lastIndexOf("/"), String(p || "").lastIndexOf("\\")); return i > 0 ? p.slice(0, i) : p }
     Component.onCompleted: loadStorage()
@@ -25,7 +28,11 @@ SettingsTab {
         function onExportFinished(p) { tab.lastExport = p; frame.toast("Backed up to " + p) }
         function onImportFinished(summary) { tab.importSummary = summary; frame.toast("Restore finished") }
         function onImagesCleared(removed) { tab.loadStorage(); frame.toast("Removed " + Fmt.plural(removed, "image", "images")) }
-        function onJobFailed(job, kind, error) { if (kind === "Export" || kind === "Import" || kind === "ClearImages") frame.toast(error && error.message ? error.message : "That did not finish") }
+        function onJobFailed(job, kind, error) {
+            if (kind === "Export") frame.fail(error, exportDialog.open)
+            else if (kind === "Import") frame.fail(error, importDialog.open)
+            else if (kind === "ClearImages") frame.fail(error, tab.clearImages)
+        }
     }
     function summaryLine(s) {
         if (!s) return ""
@@ -60,17 +67,18 @@ SettingsTab {
         title: "Image cache"
         helper: "Posters, banners and portraits are kept on disk so the library works offline. Cleared images download again as pages need them."
         SettingRow {
-            label: tab.storage.image_count ? Fmt.bytes(tab.storage.image_bytes || 0) + " in " + Fmt.plural(tab.storage.image_count, "image", "images") : "No images cached"
+            label: tab.storageFailed ? "The image cache could not be measured" : tab.storage.image_count ? Fmt.bytes(tab.storage.image_bytes || 0) + " in " + Fmt.plural(tab.storage.image_count, "image", "images") : "No images cached"
+            helper: tab.storageFailed ? "Try again in a moment. The images themselves are fine." : ""
             Item {
                 width: tab.confirmingClear ? confirm.implicitWidth : clearBtn.width
                 height: tab.confirmingClear ? confirm.implicitHeight : clearBtn.height
-                Button { id: clearBtn; objectName: "data-clear-images"; visible: !tab.confirmingClear; text: "Clear"; icon: "trash-2"; flat: true; enabled: tab.storage.image_count > 0; onClicked: tab.confirmingClear = true }
+                Button { id: clearBtn; objectName: "data-clear-images"; visible: !tab.confirmingClear; text: tab.storageFailed ? "Try again" : "Clear"; icon: tab.storageFailed ? "refresh-cw" : "trash-2"; flat: true; enabled: tab.storageFailed || tab.storage.image_count > 0; onClicked: tab.storageFailed ? tab.loadStorage() : tab.confirmingClear = true }
                 InlineConfirm {
                     id: confirm
                     visible: tab.confirmingClear
                     question: "Remove " + Fmt.plural(tab.storage.image_count, "image", "images") + "?"
                     confirmText: "Clear"
-                    onAccepted: { tab.confirmingClear = false; var r = Door.clearImages(); if (r.error) frame.fail(r.error) }
+                    onAccepted: { tab.confirmingClear = false; tab.clearImages() }
                     onKept: tab.confirmingClear = false
                 }
             }
@@ -95,12 +103,12 @@ SettingsTab {
         defaultSuffix: "json"
         currentFile: Fmt.fileUrl((tab.about.data_dir ? tab.dir(tab.about.data_dir) : "") + "/anibeam-export.json")
         nameFilters: ["AniBeam backup (*.json)"]
-        onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); r.error ? frame.fail(r.error) : frame.toast("Backing up") }
+        onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); r.error ? frame.fail(r.error, exportDialog.open) : frame.toast("Backing up") }
     }
     FileDialog {
         id: importDialog
         title: "Restore from a backup"
         nameFilters: ["AniBeam backup (*.json)", "All files (*)"]
-        onAccepted: { var r = Door.importLibrary(tab.path(selectedFile)); r.error ? frame.fail(r.error) : frame.toast("Restoring") }
+        onAccepted: { var r = Door.importLibrary(tab.path(selectedFile)); r.error ? frame.fail(r.error, importDialog.open) : frame.toast("Restoring") }
     }
 }

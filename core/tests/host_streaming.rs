@@ -89,7 +89,7 @@ fn with_streaming_off_only_the_library_answers() {
     assert!(hello.streaming_off);
     assert_eq!(
         hello.features,
-        [wire::FEATURE_PEERS],
+        [wire::FEATURE_PEERS, wire::FEATURE_PROOF],
         "only what streaming does not cover"
     );
     assert_eq!(get(&rt, &format!("{base}{}", wire::SNAPSHOT)).0, 200);

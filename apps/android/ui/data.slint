@@ -107,6 +107,12 @@ export struct SeriesHead {
     play-remote: bool,
 }
 
+// One release of an episode kept more than once: the file it plays and its name.
+export struct EpisodeVersionLine {
+    file: int,
+    label: string,
+}
+
 // One episode row on a series page.
 export struct EpisodeLine {
     code: string,
@@ -123,6 +129,9 @@ export struct EpisodeLine {
     picked: bool,
     // file is the other device's: a tap streams it from there.
     remote: bool,
+    // The episode's releases when it is on disk more than once; empty for one file. The
+    // row plays `file`, and its versions chip offers the others.
+    versions: [EpisodeVersionLine],
 }
 
 // One download on this phone, the desktop's Downloading panel.
@@ -290,6 +299,10 @@ export global AppData {
     in property <string> mal-state;
     // The last sign-in to AniList or MAL failed.
     in property <bool> sign-in-failed;
+    // The download notification: 0 on, 1 never asked, 2 turned down.
+    in property <int> notify;
+    // The first download's question about the notification is up.
+    in-out property <bool> notify-ask;
 
     // Downloads and sources, on More.
     in property <[DownloadRow]> downloads;
@@ -368,6 +381,8 @@ export global AppData {
     callback set-limit(bool, float);
     callback connect-tracker(int);
     callback finish-onboarding();
+    // Android's notification dialog the first time, the app's notification settings after.
+    callback allow-notifications();
     callback restart-onboarding();
     callback test-host(string);
     callback save-host(string);

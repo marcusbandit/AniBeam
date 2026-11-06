@@ -167,6 +167,8 @@ jobs:
             rm -f "$bin/cargo-clippy.exe" "$bin/clippy-driver.exe"
           fi
           rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
           rustc --version
 
       - uses: Swatinem/rust-cache@v2

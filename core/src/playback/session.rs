@@ -849,6 +849,15 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
                 crate::library::history::How::Played,
             )?;
         }
+        if record && watched {
+            crate::library::history::log_finish(
+                tx,
+                series,
+                &key,
+                now,
+                crate::library::history::How::Played,
+            )?;
+        }
         Ok(())
     })?;
     // The bus is the owner's shell and log: a guest's playing writes their
