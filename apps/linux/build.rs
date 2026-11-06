@@ -50,6 +50,7 @@ fn main() {
             .qml_file("qml/Tooltip.qml")
             .qml_file("qml/InlineConfirm.qml")
             .qml_file("qml/WhatsNew.qml")
+            .qml_file("qml/ScanSummary.qml")
             .qml_file("qml/Onboarding.qml")
             .qml_file("qml/UpdateNotice.qml")
             .qml_file("qml/EmptyState.qml")
