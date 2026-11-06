@@ -64,14 +64,10 @@ impl RuleStore {
     }
 
     pub fn save(&self, rules: &[Rule]) -> Result<(), CoreError> {
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| CoreError::internal(e.to_string()))?;
-        }
         let bytes =
             serde_json::to_vec_pretty(rules).map_err(|e| CoreError::internal(e.to_string()))?;
-        let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, bytes).map_err(|e| CoreError::internal(e.to_string()))?;
-        std::fs::rename(tmp, &self.path).map_err(|e| CoreError::internal(e.to_string()))
+        crate::atomic_file::write(&self.path, bytes)
+            .map_err(|e| CoreError::internal(e.source.to_string()))
     }
 
     /// Adds or replaces a rule. The same show from another endpoint gets ` @endpoint`

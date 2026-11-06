@@ -141,9 +141,6 @@ pub fn load(path: &Path) -> ThemeSettings {
 }
 
 pub fn save(path: &Path, s: &ThemeSettings) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let mut doc = std::fs::read_to_string(path)
         .ok()
         .and_then(|t| t.parse::<DocumentMut>().ok())
@@ -161,9 +158,7 @@ pub fn save(path: &Path, s: &ThemeSettings) -> std::io::Result<()> {
     }
     doc["theme"]["dark"] = value(s.theme_dark.as_str());
     doc["theme"]["light"] = value(s.theme_light.as_str());
-    let tmp = path.with_extension("toml.tmp");
-    std::fs::write(&tmp, doc.to_string())?;
-    std::fs::rename(tmp, path)
+    Ok(anibeam_core::atomic_file::write(path, doc.to_string())?)
 }
 
 #[cfg(test)]

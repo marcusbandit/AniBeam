@@ -16,10 +16,6 @@
 
 use std::any::Any;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::ffi::OsString;
-use std::io::Write;
-#[cfg(unix)]
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
@@ -414,37 +410,7 @@ impl FileStore {
     fn write_all(&self, map: &BTreeMap<String, String>) -> keyring_core::Result<()> {
         let text = serde_json::to_string_pretty(map)
             .map_err(|e| KeyringError::PlatformFailure(Box::new(e)))?;
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent).map_err(platform)?;
-        }
-        let tmp = self.tmp_path();
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        // Windows has no mode bits; the file sits in the user's own profile,
-        // which only they can read.
-        #[cfg(unix)]
-        options.mode(0o600);
-        let mut file = options.open(&tmp).map_err(platform)?;
-        file.write_all(text.as_bytes()).map_err(platform)?;
-        file.sync_all().map_err(platform)?;
-        drop(file);
-        // `mode` above only applies when the open created the file, and a
-        // crashed write can leave one behind with a wider mode, so say it
-        // again before the rename carries it over the real file.
-        #[cfg(unix)]
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600)).map_err(platform)?;
-        std::fs::rename(&tmp, &self.path).map_err(platform)?;
-        Ok(())
-    }
-
-    fn tmp_path(&self) -> PathBuf {
-        let mut name = self
-            .path
-            .file_name()
-            .map(OsString::from)
-            .unwrap_or_else(|| OsString::from("secrets.json"));
-        name.push(".tmp");
-        self.path.with_file_name(name)
+        crate::atomic_file::write_private(&self.path, text).map_err(|e| platform(e.source))
     }
 
     fn arc(&self) -> Option<Arc<FileStore>> {
