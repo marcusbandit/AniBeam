@@ -658,7 +658,7 @@ mod tests {
 
     #[test]
     fn standard_release_patterns() {
-        assert_eq!(ep("[Kumo] Show Name - 01 [1080p].mkv").number, 1.0);
+        assert_eq!(ep("[Kumo-Subs] Show Name - 01 [1080p].mkv").number, 1.0);
         let c = ep("Show.Name.S02E07.1080p.WEB.mkv");
         assert_eq!((c.number, c.season), (7.0, Some(2)));
         assert_eq!(ep("Show Name - Episode 12.mkv").number, 12.0);
@@ -1042,13 +1042,16 @@ mod tests {
     #[test]
     fn a_revision_suffix_is_not_the_episode_number() {
         let c = ep(
-            "[Kumo] Honzuki no Gekokujou S4 - 17v2 [1080p CR WEB-DL AVC AAC][MultiSub][BC7A5FC1].mkv",
+            "[Kumo-Subs] Honzuki no Gekokujou S4 - 17v2 [1080p CR WEB-DL AVC AAC][MultiSub][BC7A5FC1].mkv",
         );
         assert_eq!((c.extra, c.number), (None, 17.0));
-        assert_eq!(ep("[Kumo] Neko to Ryuu - 07v2 [1080p].mkv").number, 7.0);
+        assert_eq!(
+            ep("[Kumo-Subs] Neko to Ryuu - 07v2 [1080p].mkv").number,
+            7.0
+        );
         assert_eq!(ep("Show 05v3.mkv").number, 5.0);
         assert_eq!(ep("Show.Name.12v2.mkv").number, 12.0);
-        assert_eq!(ep("[Kumo] Show Name - 02 [1080p].mkv").number, 2.0);
+        assert_eq!(ep("[Kumo-Subs] Show Name - 02 [1080p].mkv").number, 2.0);
     }
 
     #[test]
@@ -1217,8 +1220,8 @@ mod tests {
             "ELiTE, 1080p x265"
         );
         assert_eq!(
-            release_label("[Kumo] Show - 17v2 [1080p CR WEB-DL AVC AAC].mkv"),
-            "Kumo, v2 1080p WEB-DL AVC"
+            release_label("[Kumo-Subs] Show - 17v2 [1080p CR WEB-DL AVC AAC].mkv"),
+            "Kumo-Subs, v2 1080p WEB-DL AVC"
         );
         assert_eq!(release_label("Show.S01E01.1080p-x265.mkv"), "1080p x265");
         assert_eq!(release_label("plain name.mkv"), "plain name");

@@ -264,10 +264,10 @@ pub struct ReqwestHttp {
     fronted: Option<Front>,
 }
 
-/// Fronted requests' client, cookies and pace. The bot shield hands out cookies for the site
+/// Fronted requests' client, cookies and pace. DDoS-Guard hands out cookies for the site
 /// asked for and treats a client that never sends them back as a bot (#135). The URL names
 /// the front, so a cookie store on the client would file them under the front's name and
-/// turn away their `Domain=.tracker.example`; the jar is kept by the real host instead.
+/// turn away their `Domain=.nyaa.si`; the jar is kept by the real host instead.
 struct Front {
     client: reqwest::Client,
     #[cfg(target_os = "android")]

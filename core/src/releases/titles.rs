@@ -121,7 +121,7 @@ mod tests {
             "Frieren"
         );
         assert_eq!(
-            show_name("[Kumo] Show Name - 04v2 [1080p][HEVC].mkv"),
+            show_name("[Kumo-Subs] Show Name - 04v2 [1080p][HEVC].mkv"),
             "Show Name"
         );
         assert_eq!(show_name("[Grp] Some Show S02E05 [1080p]"), "Some Show");

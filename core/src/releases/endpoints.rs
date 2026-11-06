@@ -681,11 +681,11 @@ pub(crate) mod tests {
         }
     }
 
-    fn anirena() -> Endpoint {
+    fn board() -> Endpoint {
         Endpoint::new(
-            "anirena",
+            "board",
             "rss",
-            "https://www.anirena.com/rss?q={query}&adult=1",
+            "https://www.board.example/rss?q={query}&adult=1",
         )
     }
 
@@ -764,9 +764,9 @@ pub(crate) mod tests {
     fn validate_accepts_good_endpoints() {
         validate("tracker", FILTERED_RSS, "https://tracker.example/").unwrap();
         validate(
-            "anirena",
+            "board",
             "rss",
-            "https://www.anirena.com/rss?q={query}&adult=1",
+            "https://www.board.example/rss?q={query}&adult=1",
         )
         .unwrap();
         validate(" a.b_c-1 ", " rss ", " https://x/?q={query} ").unwrap();
@@ -818,8 +818,8 @@ pub(crate) mod tests {
     #[test]
     fn search_url_rss_kind_fills_template() {
         assert_eq!(
-            search_url(&anirena(), "shin chan"),
-            "https://www.anirena.com/rss?q=shin+chan&adult=1"
+            search_url(&board(), "shin chan"),
+            "https://www.board.example/rss?q=shin+chan&adult=1"
         );
     }
 
@@ -875,16 +875,16 @@ pub(crate) mod tests {
 
     #[test]
     fn feed_url_rss_kind_strips_exclusions() {
-        let (url, excluded) = feed_url(&anirena(), r#"show 1080p -HEVC -"dual audio""#);
+        let (url, excluded) = feed_url(&board(), r#"show 1080p -HEVC -"dual audio""#);
         assert!(!url.contains("HEVC") && !url.contains("dual"));
-        assert_eq!(url, search_url(&anirena(), "show 1080p"));
+        assert_eq!(url, search_url(&board(), "show 1080p"));
         assert_eq!(excluded, strings(&["HEVC", "dual audio"]));
     }
 
     #[test]
     fn feed_url_rss_kind_no_exclusions_roundtrips() {
-        let (url, excluded) = feed_url(&anirena(), "shin chan");
-        assert_eq!(url, search_url(&anirena(), "shin chan"));
+        let (url, excluded) = feed_url(&board(), "shin chan");
+        assert_eq!(url, search_url(&board(), "shin chan"));
         assert!(excluded.is_empty());
     }
 
@@ -897,8 +897,8 @@ pub(crate) mod tests {
 
     #[test]
     fn split_exclusions_no_exclusions_roundtrip() {
-        let (q, excl) = split_exclusions("[Kumo] show 1080p");
-        assert_eq!(q, "[Kumo] show 1080p");
+        let (q, excl) = split_exclusions("[Kumo-Subs] show 1080p");
+        assert_eq!(q, "[Kumo-Subs] show 1080p");
         assert!(excl.is_empty());
     }
 
@@ -925,7 +925,7 @@ pub(crate) mod tests {
     async fn fetch_items_rss_kind_applies_exclusions() {
         let http = FakeHttp::new();
         http.push(200, feed(&[("Show 05 HEVC", "l1"), ("Show 05 AVC", "l2")]));
-        let items = fetch_items(http.as_ref(), &anirena(), "show -HEVC")
+        let items = fetch_items(http.as_ref(), &board(), "show -HEVC")
             .await
             .unwrap();
         assert_eq!(
@@ -935,7 +935,7 @@ pub(crate) mod tests {
         // The exclusion never reaches the wire; only positive terms are sent.
         let url = &http.requests()[0].url;
         assert!(!url.contains("HEVC"), "{url}");
-        assert_eq!(url, "https://www.anirena.com/rss?q=show&adult=1");
+        assert_eq!(url, "https://www.board.example/rss?q=show&adult=1");
     }
 
     #[tokio::test]
@@ -1194,9 +1194,7 @@ pub(crate) mod tests {
     async fn fetch_items_failure_names_the_endpoint() {
         let http = FakeHttp::new();
         http.fail_next("boom");
-        let err = fetch_items(http.as_ref(), &anirena(), "q")
-            .await
-            .unwrap_err();
+        let err = fetch_items(http.as_ref(), &board(), "q").await.unwrap_err();
         match err {
             CoreError::Service {
                 service,
@@ -1205,7 +1203,7 @@ pub(crate) mod tests {
             } => {
                 assert_eq!(
                     (service.as_str(), code.as_str(), message.as_str()),
-                    ("anirena", "unreachable", "boom")
+                    ("board", "unreachable", "boom")
                 );
             }
             other => panic!("{other:?}"),
@@ -1214,9 +1212,9 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn probe_fallback_switches_to_first_hit() {
-        let eps = [tracker(), anirena()];
+        let eps = [tracker(), board()];
         let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
-            Ok(if ep.name == "anirena" {
+            Ok(if ep.name == "board" {
                 vec![rel("t", "l")]
             } else {
                 vec![]
@@ -1224,15 +1222,15 @@ pub(crate) mod tests {
         })
         .await;
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].source, "anirena");
-        assert_eq!(notes, strings(&["anirena: 1"]));
+        assert_eq!(items[0].source, "board");
+        assert_eq!(notes, strings(&["board: 1"]));
     }
 
     #[tokio::test]
     async fn probe_fallback_tags_items_with_source() {
-        let eps = [tracker(), anirena()];
+        let eps = [tracker(), board()];
         let (items, _) = probe_with(&eps, "tracker", |ep| async move {
-            Ok(if ep.name == "anirena" {
+            Ok(if ep.name == "board" {
                 vec![rel("t", "l"), rel("t2", "l2")]
             } else {
                 vec![]
@@ -1241,42 +1239,42 @@ pub(crate) mod tests {
         .await;
         assert_eq!(
             items.iter().map(|i| i.source.as_str()).collect::<Vec<_>>(),
-            ["anirena", "anirena"]
+            ["board", "board"]
         );
     }
 
     #[tokio::test]
     async fn probe_fallback_all_fail_returns_nothing() {
         let third = Endpoint::new("feed", "rss", "https://x/?q={query}");
-        let eps = [tracker(), anirena(), third];
+        let eps = [tracker(), board(), third];
         let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
-            if ep.name == "anirena" {
-                Err(CoreError::internal("can't reach anirena: boom"))
+            if ep.name == "board" {
+                Err(CoreError::internal("can't reach board: boom"))
             } else {
                 Ok(vec![])
             }
         })
         .await;
         assert!(items.is_empty());
-        assert_eq!(notes, strings(&["anirena: unreachable", "feed: 0"]));
+        assert_eq!(notes, strings(&["board: unreachable", "feed: 0"]));
     }
 
     #[tokio::test]
     async fn probe_fallback_over_http_skips_the_active_endpoint() {
-        let eps = [tracker(), anirena()];
+        let eps = [tracker(), board()];
         let http = FakeHttp::new();
-        http.push_for("anirena.com", 200, feed(&[("Show", "l")]));
+        http.push_for("board.example", 200, feed(&[("Show", "l")]));
         let (items, notes) = probe_fallback(http.as_ref(), &eps, "tracker", "show").await;
-        assert_eq!(items[0].source, "anirena");
-        assert_eq!(notes, strings(&["anirena: 1"]));
+        assert_eq!(items[0].source, "board");
+        assert_eq!(notes, strings(&["board: 1"]));
         assert_eq!(http.requests().len(), 1);
     }
 
     #[test]
     fn owner_of_finds_the_endpoint_by_url_prefix() {
-        let eps = [tracker(), anirena()];
-        let owner = owner_of(&eps, "https://www.anirena.com/rss?q=x&adult=1").unwrap();
-        assert_eq!(owner.name, "anirena");
+        let eps = [tracker(), board()];
+        let owner = owner_of(&eps, "https://www.board.example/rss?q=x&adult=1").unwrap();
+        assert_eq!(owner.name, "board");
         assert!(owner_of(&eps, "https://elsewhere.example/").is_none());
     }
 
@@ -1316,7 +1314,7 @@ pub(crate) mod tests {
     fn subscription_feed_must_contain_drops_poster_and_quotes() {
         let (_, must, _) = subscription_feed_resolved(
             &keyed_ep(),
-            r#"[Kumo] Show "Multi Subs" 1080p"#,
+            r#"[Kumo-Subs] Show "Multi Subs" 1080p"#,
             Some("https://e/f".to_string()),
         );
         assert_eq!(must, "Show Multi Subs 1080p");
@@ -1408,8 +1406,11 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn build_subscription_for_a_plain_endpoint_makes_no_request() {
         let http = FakeHttp::new();
-        let spec = build_subscription(http.as_ref(), &anirena(), "show -bad -worse", &[]).await;
-        assert_eq!(spec.feed_url, "https://www.anirena.com/rss?q=show&adult=1");
+        let spec = build_subscription(http.as_ref(), &board(), "show -bad -worse", &[]).await;
+        assert_eq!(
+            spec.feed_url,
+            "https://www.board.example/rss?q=show&adult=1"
+        );
         assert_eq!(spec.must_not_contain, "bad|worse");
         assert!(http.requests().is_empty());
     }

@@ -401,7 +401,7 @@ pub struct Plan {
     /// The torrents behind them: a batch once however many episodes it covers.
     pub items: Vec<Release>,
     pub bytes: u64,
-    /// The groups they come from: "Lumen", "Kumo's batch".
+    /// The groups they come from: "Lumen", "Kumo-Subs's batch".
     pub groups: Vec<String>,
     /// Follow's search and the releases it is made from; empty when there is no row to
     /// follow.
@@ -588,8 +588,8 @@ mod tests {
             rel("[Lumen] Sousou no Frieren - 01 (1080p)", 50),
             rel("[Lumen] Sousou no Frieren - 02 (1080p)", 50),
             rel("[Lumen] Sousou no Frieren - 03 (1080p)", 50),
-            rel("[Kumo] Sousou no Frieren - 03 [1080p]", 90),
-            rel("[Kumo] Sousou no Frieren - 04 [1080p]", 90),
+            rel("[Kumo-Subs] Sousou no Frieren - 03 [1080p]", 90),
+            rel("[Kumo-Subs] Sousou no Frieren - 04 [1080p]", 90),
         ];
         let f: Vec<ReleaseFacts> = items.iter().map(facts::read).collect();
         let s = show("dd"); // 1 and 2 on disk
@@ -600,7 +600,7 @@ mod tests {
         let rs = rows(&items, &f, t, "tracker");
         assert_eq!(rs.len(), 2);
         let best = best_row(&rs, &lib, t).unwrap();
-        assert_eq!(rs[best].group, "Kumo", "fills 3 and 4");
+        assert_eq!(rs[best].group, "Kumo-Subs", "fills 3 and 4");
         let picks = pick_row(&rs[best], &lib, t, false);
         assert_eq!(picks.map.keys().copied().collect::<Vec<_>>(), vec![3, 4]);
         let codes: String = codes_of(&rs[best], &picks, &lib, t).into_iter().collect();
@@ -618,7 +618,7 @@ mod tests {
         );
         assert_eq!(p.episodes, vec![3, 4]);
         assert_eq!(p.items.len(), 2);
-        assert_eq!(p.follow_query, "Sousou no Frieren Kumo 1080p");
+        assert_eq!(p.follow_query, "Sousou no Frieren Kumo-Subs 1080p");
         assert_eq!(episodes_phrase(&p.episodes), "Episodes 3 to 4");
     }
 

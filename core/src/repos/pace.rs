@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use crate::net::{BoxFuture, Http, HttpError, HttpRequest, HttpResponse};
 
 /// The least gap between two requests to one endpoint host, whatever its definition says
-/// or when it has none: `net::front`'s gap, which keeps the bot shield answering (#135). A
+/// or when it has none: `net::front`'s gap, which keeps DDoS-Guard answering (#135). A
 /// person's own server (localhost, a home-network address) has no floor, only its rate.
 pub const FLOOR: Duration = crate::net::front::GAP;
 

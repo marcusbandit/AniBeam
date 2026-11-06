@@ -4,7 +4,7 @@
 //! styles, and this reads the common ones and nothing cleverer:
 //!
 //! - fansub: `[Lumen] Sousou no Frieren - 01 (1080p) [ABCD1234].mkv`
-//! - tagged: `[Kumo] Sousou no Frieren - 28 [1080p CR WEB-DL AVC AAC][MultiSub]`
+//! - tagged: `[Kumo-Subs] Sousou no Frieren - 28 [1080p CR WEB-DL AVC AAC][MultiSub]`
 //! - scene: `Avatar Seven Havens S01E03 1080p WEB h264-ETHEL`
 //! - batches: `[Lumen] Frieren (01-28) (1080p) [Batch]`, `Show S01 1080p`
 //!
@@ -20,7 +20,7 @@ use regex::Regex;
 use crate::contract::*;
 
 static GROUP_LEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*\[([^\]]+)\]").unwrap());
-/// A scene group at the end: `h264-ETHEL`, `x265-NeoNoir[EZTVx.to]`
+/// A scene group at the end: `h264-ETHEL`, `x265-NeoNoir[Uploader.example]`
 static GROUP_TAIL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"-([A-Za-z0-9]{2,20})(?:\[[^\]]*\])?(?:\.[a-z0-9]{2,4})?\s*$").unwrap()
 });
@@ -271,12 +271,12 @@ mod tests {
         assert_eq!(f.size_bytes, Some(1_503_238_554));
 
         let f = read(&release(
-            "[Kumo] Sousou no Frieren - 28 [1080p CR WEB-DL AVC AAC][MultiSub][D2E8BC01]",
+            "[Kumo-Subs] Sousou no Frieren - 28 [1080p CR WEB-DL AVC AAC][MultiSub][D2E8BC01]",
             "",
         ));
         assert_eq!(
             (f.episode, f.group.as_str(), f.resolution.as_str()),
-            (Some(28.0), "Kumo", "1080p")
+            (Some(28.0), "Kumo-Subs", "1080p")
         );
 
         let f = read(&release(
@@ -318,7 +318,7 @@ mod tests {
         assert_eq!(f.episode, None);
         assert_eq!((f.first_episode, f.last_episode), (Some(1), Some(28)));
         let f = read(&release(
-            "[Kumo] Kino no Tabi: The Beautiful World - The Animated Series - 01 ~ 12 [1080p][Batch]",
+            "[Kumo-Subs] Kino no Tabi: The Beautiful World - The Animated Series - 01 ~ 12 [1080p][Batch]",
             "",
         ));
         assert!(f.batch);
@@ -355,7 +355,10 @@ mod tests {
 
     #[test]
     fn rips_read_in_their_usual_spelling() {
-        assert_eq!(rip("[Kumo] Show - 28 [1080p CR WEB-DL AVC AAC]"), "WEB-DL");
+        assert_eq!(
+            rip("[Kumo-Subs] Show - 28 [1080p CR WEB-DL AVC AAC]"),
+            "WEB-DL"
+        );
         assert_eq!(rip("Show S01E03 1080p WEBRip x265-Group"), "WEBRip");
         assert_eq!(rip("Show.S01E03.1080p.WEB.h264-ETHEL"), "WEB");
         assert_eq!(rip("[Group] Show - 01 (BD 1080p)"), "BluRay");
@@ -378,8 +381,8 @@ mod tests {
         ));
         // Another group, another resolution, another version: not it
         assert!(!same_release(
-            "[Kumo] Show - 05 [1080p CR WEB-DL AVC AAC]",
-            &read_name("[Kumo] Show - 05 [1080p CR WEB-DL AVC AAC]"),
+            "[Kumo-Subs] Show - 05 [1080p CR WEB-DL AVC AAC]",
+            &read_name("[Kumo-Subs] Show - 05 [1080p CR WEB-DL AVC AAC]"),
             file
         ));
         assert!(!same_release(
@@ -405,24 +408,24 @@ mod tests {
     }
 
     #[test]
-    fn kumo_releases_of_one_episode_are_told_apart() {
+    fn kumo_subs_releases_of_one_episode_are_told_apart() {
         // The owner's file, and what the source listed for that episode (#237)
-        let file = "/a/[Kumo] Katainaka no Ossan Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B].mkv";
+        let file = "/a/[Kumo-Subs] Katainaka no Ossan Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B].mkv";
         let listed = [
             (
-                "[Kumo] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEBRip HEVC EAC3][MultiSub][C781A1C2]",
+                "[Kumo-Subs] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEBRip HEVC EAC3][MultiSub][C781A1C2]",
                 false,
             ),
             (
-                "[Kumo] Katainaka no Ossan, Kensei ni Naru II - 06 [540p AMZN WEB-DL AVC EAC3][MultiSub][8B85B88D]",
+                "[Kumo-Subs] Katainaka no Ossan, Kensei ni Naru II - 06 [540p AMZN WEB-DL AVC EAC3][MultiSub][8B85B88D]",
                 false,
             ),
             (
-                "[Kumo] Katainaka no Ossan, Kensei ni Naru II - 06 [720p AMZN WEB-DL AVC EAC3][MultiSub][19163F35]",
+                "[Kumo-Subs] Katainaka no Ossan, Kensei ni Naru II - 06 [720p AMZN WEB-DL AVC EAC3][MultiSub][19163F35]",
                 false,
             ),
             (
-                "[Kumo] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B]",
+                "[Kumo-Subs] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B]",
                 true,
             ),
         ];

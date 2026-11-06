@@ -271,7 +271,10 @@ mod tests {
     fn qbittorrent_wildcard_rules_take_what_they_should() {
         let r = rule("Frieren 1080p", "HEVC|480p");
         assert!(matches(&r, "[Lumen] Sousou no Frieren - 01 (1080p)"));
-        assert!(!matches(&r, "[Kumo] Sousou no Frieren - 01 [1080p HEVC]"));
+        assert!(!matches(
+            &r,
+            "[Kumo-Subs] Sousou no Frieren - 01 [1080p HEVC]"
+        ));
         assert!(!matches(&r, "[Lumen] Sousou no Frieren - 01 (720p)"));
         assert!(matches(&rule("", ""), "anything"));
         assert!(matches(&rule("Fri*ren 108?p", ""), "Frieren 1080p"));

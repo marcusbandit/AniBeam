@@ -3669,26 +3669,26 @@ mod tests {
             priority: 1,
             episode: super::facts::read_name(name).episode,
         };
-        let dir = "[Kumo] Kino no Tabi The Beautiful World - The Animated Series - 01~12 [1080p][Multiple Subtitle]";
+        let dir = "[Kumo-Subs] Kino no Tabi The Beautiful World - The Animated Series - 01~12 [1080p][Multiple Subtitle]";
         let mut t = super::qbt::tests_torrent();
         t.series_id = Some(7);
         t.progress = 0.4;
         t.files = vec![
             file(
                 &format!(
-                    "{dir}/[Kumo] Kino no Tabi The Beautiful World - The Animated Series - 01 [1080p][Multiple Subtitle].mkv"
+                    "{dir}/[Kumo-Subs] Kino no Tabi The Beautiful World - The Animated Series - 01 [1080p][Multiple Subtitle].mkv"
                 ),
                 1.0,
             ),
             file(
                 &format!(
-                    "{dir}/[Kumo] Kino no Tabi The Beautiful World - The Animated Series - 02 [1080p][Multiple Subtitle].mkv"
+                    "{dir}/[Kumo-Subs] Kino no Tabi The Beautiful World - The Animated Series - 02 [1080p][Multiple Subtitle].mkv"
                 ),
                 0.3,
             ),
             file(
                 &format!(
-                    "{dir}/[Kumo] Kino no Tabi The Beautiful World - The Animated Series - 03 [1080p][Multiple Subtitle].mkv"
+                    "{dir}/[Kumo-Subs] Kino no Tabi The Beautiful World - The Animated Series - 03 [1080p][Multiple Subtitle].mkv"
                 ),
                 0.0,
             ),

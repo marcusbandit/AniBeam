@@ -203,7 +203,7 @@ An endpoint anirss starts only when a search needs it (a site reached through a 
 _Avoid_: harness, container, lazy endpoint
 
 **Endpoint**:
-One site a search goes to, as anirss configures it: an RSS search the core builds with a category and a filter, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
+One site a search goes to, as anirss configures it: an RSS search built from a site's address with a category and a filter, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
 _Avoid_: tracker site, indexer, source
 
 **Search state**:

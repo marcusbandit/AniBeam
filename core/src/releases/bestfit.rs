@@ -196,7 +196,7 @@ fn group_rank(title: &str, preferred: &[String]) -> i64 {
 /// Rank of the title's source type in `source_order` (first is highest), 0 when the type
 /// is absent and no `assumed` fallback places it.
 ///
-/// Plenty of groups (Lumen, Kumo) never write a source tag at all. Scoring those
+/// Plenty of groups (Lumen, Kumo-Subs) never write a source tag at all. Scoring those
 /// as 0 buried them below every tagged release no matter how trusted they were, so
 /// `assumed` lets config name what an untagged release most likely is (in practice a
 /// simulcast "WEB") instead of assuming the worst.
@@ -600,9 +600,9 @@ mod tests {
 
     #[test]
     fn group_rank_follows_the_preferred_order() {
-        let preferred = vec!["Lumen".to_string(), "Kumo".to_string()];
+        let preferred = vec!["Lumen".to_string(), "Kumo-Subs".to_string()];
         assert_eq!(group_rank("[Lumen] x", &preferred), 2);
-        assert_eq!(group_rank("[kumo] x", &preferred), 1);
+        assert_eq!(group_rank("[kumo-subs] x", &preferred), 1);
         assert_eq!(group_rank("[Judas] x", &preferred), 0);
         assert_eq!(group_rank("no poster", &preferred), 0);
     }
@@ -747,10 +747,10 @@ mod tests {
     #[test]
     fn score_orders_trust_then_size_then_source() {
         let c = BestfitConfig {
-            preferred_groups: vec!["Kumo".into()],
+            preferred_groups: vec!["Kumo-Subs".into()],
             ..cfg()
         };
-        let trusted = item("[Kumo] Show - 01 [720p]");
+        let trusted = item("[Kumo-Subs] Show - 01 [720p]");
         let other = sized("[Judas] Show - 01 [1080p BluRay]", "1000 MiB");
         assert!(score(&trusted, &c, None) > score(&other, &c, None));
         // Size outranks source: a WEB-DL with enough bits beats a starved BluRay.
@@ -794,18 +794,18 @@ mod tests {
 
     #[test]
     fn profile_parts_are_the_literals_in_the_title() {
-        let it = item("[Kumo] Show S02E05 [1080p][WEB-DL][Dual-Audio]");
+        let it = item("[Kumo-Subs] Show S02E05 [1080p][WEB-DL][Dual-Audio]");
         assert_eq!(
             profile_parts(&it),
-            vec!["[Kumo]", "S02", "1080p", "WEB-DL", "Dual-Audio"]
+            vec!["[Kumo-Subs]", "S02", "1080p", "WEB-DL", "Dual-Audio"]
         );
         assert!(profile_parts(&item("Show")).is_empty());
     }
 
     #[test]
     fn matches_profile_is_case_insensitive_substrings() {
-        let parts = vec!["[Kumo]".to_string(), "1080p".to_string()];
-        assert!(matches_profile("[kumo] Show [1080P]", &parts));
+        let parts = vec!["[Kumo-Subs]".to_string(), "1080p".to_string()];
+        assert!(matches_profile("[kumo-subs] Show [1080P]", &parts));
         assert!(!matches_profile("[Other] Show [1080p]", &parts));
         assert!(matches_profile("anything", &[]));
     }
@@ -821,10 +821,10 @@ mod tests {
 
     #[test]
     fn best_fit_query_pins_group_name_season_resolution_source_audio() {
-        let it = item("[Kumo] Frieren S01E02 [1080p][WEB-DL][Dual-Audio].mkv");
+        let it = item("[Kumo-Subs] Frieren S01E02 [1080p][WEB-DL][Dual-Audio].mkv");
         assert_eq!(
             best_fit_query(&it),
-            "[Kumo] Frieren S01 1080p WEB-DL Dual-Audio"
+            "[Kumo-Subs] Frieren S01 1080p WEB-DL Dual-Audio"
         );
         let plain = item("[Lumen] Frieren - 01 (1080p) [ABCD0001].mkv");
         assert_eq!(best_fit_query(&plain), "[Lumen] Frieren 1080p");

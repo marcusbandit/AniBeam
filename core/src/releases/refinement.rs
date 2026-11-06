@@ -703,8 +703,8 @@ mod tests {
         let items = vec![
             item("[Lumen] Frieren - 01 (1080p) [A1].mkv", "l1"),
             item("[Lumen] Frieren - 02 (1080p) [A2].mkv", "l2"),
-            item("[Kumo] Frieren - 02 [1080p][HEVC].mkv", "l3"),
-            item("[Kumo] Frieren - 03 [1080p][HEVC].mkv", "l4"),
+            item("[Kumo-Subs] Frieren - 02 [1080p][HEVC].mkv", "l3"),
+            item("[Kumo-Subs] Frieren - 03 [1080p][HEVC].mkv", "l4"),
             item("[Judas] Frieren - 04 [1080p].mkv", "l5"),
         ];
         let groups = compute_groups(&items);
@@ -712,8 +712,11 @@ mod tests {
         let by_label: HashMap<&str, &ReleaseGroup> =
             groups.iter().map(|g| (g.label.as_str(), g)).collect();
         assert_eq!(by_label["[Lumen]"].members, vec![0, 1]);
-        assert_eq!(by_label["[Kumo]+HEVC"].members, vec![2, 3]);
-        assert_eq!(by_label["[Kumo]+HEVC"].tokens, vec!["[Kumo]", "HEVC"]);
+        assert_eq!(by_label["[Kumo-Subs]+HEVC"].members, vec![2, 3]);
+        assert_eq!(
+            by_label["[Kumo-Subs]+HEVC"].tokens,
+            vec!["[Kumo-Subs]", "HEVC"]
+        );
         for g in &groups {
             let mut sorted = g.members.clone();
             sorted.sort_unstable();
@@ -1051,7 +1054,7 @@ mod tests {
     #[tokio::test]
     async fn tracker_best_fit_refetches_with_the_best_query() {
         let items = vec![
-            item("[Kumo] Show - 01 [1080p][HEVC]", "l1"),
+            item("[Kumo-Subs] Show - 01 [1080p][HEVC]", "l1"),
             item("[Other] Show - 03 [720p]", "l3"),
         ];
         let want = best_fit_info("Show", &items, &BestfitConfig::default()).query;
@@ -1065,7 +1068,7 @@ mod tests {
     #[tokio::test]
     async fn best_fit_is_a_noop_when_the_query_is_already_pinned() {
         let items = vec![
-            item("[Kumo] Show - 01 [1080p][HEVC]", "l1"),
+            item("[Kumo-Subs] Show - 01 [1080p][HEVC]", "l1"),
             item("[Other] Show - 03 [720p]", "l3"),
         ];
         let pinned = best_fit_info("Show", &items, &BestfitConfig::default()).query;
@@ -1274,8 +1277,8 @@ mod tests {
     #[tokio::test]
     async fn rss_best_fit_filters_to_the_profile_and_then_noops() {
         let items = vec![
-            item("[Kumo] Show - 01 [1080p][HEVC]", "l1"),
-            item("[Kumo] Show - 02 [1080p][HEVC]", "l2"),
+            item("[Kumo-Subs] Show - 01 [1080p][HEVC]", "l1"),
+            item("[Kumo-Subs] Show - 02 [1080p][HEVC]", "l2"),
             item("[Other] Show - 03 [720p]", "l3"),
         ];
         let out = run(&generic_rss(), "Show", &items, RefineOp::BestFit, &never()).await;
@@ -1338,7 +1341,7 @@ mod tests {
     #[test]
     fn best_fit_info_describes_the_step() {
         let items = vec![
-            item("[Kumo] Frieren - 02 [1080p][HEVC].mkv", "l1"),
+            item("[Kumo-Subs] Frieren - 02 [1080p][HEVC].mkv", "l1"),
             item("[Lumen] Frieren - 01 (720p) [AB].mkv", "l2"),
         ];
         let cfg = BestfitConfig::default();
@@ -1346,7 +1349,7 @@ mod tests {
         assert!(best.available);
         assert!(items.contains(best.item.as_ref().unwrap()));
         assert!(!best.query.is_empty() && best.query != "Frieren");
-        assert!(best.profile.contains(&"[Kumo]".to_string()));
+        assert!(best.profile.contains(&"[Kumo-Subs]".to_string()));
         // When the query already is the best-fit query there is nothing to do.
         let again = best_fit_info(&best.query, &items, &cfg);
         assert!(!again.available);

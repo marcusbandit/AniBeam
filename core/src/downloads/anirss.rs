@@ -936,9 +936,9 @@ mod tests {
     fn a_bracketed_link_is_encoded_and_a_magnet_is_not() {
         assert_eq!(
             url_safe(
-                "https://t.keyed.example/Torrent/2026/Spring/[Kumo] Show - 24 [1080p].mkv.torrent"
+                "https://t.keyed.example/Torrent/2026/Spring/[Kumo-Subs] Show - 24 [1080p].mkv.torrent"
             ),
-            "https://t.keyed.example/Torrent/2026/Spring/%5BKumo%5D%20Show%20-%2024%20%5B1080p%5D.mkv.torrent"
+            "https://t.keyed.example/Torrent/2026/Spring/%5BKumo-Subs%5D%20Show%20-%2024%20%5B1080p%5D.mkv.torrent"
         );
         assert_eq!(
             url_safe("https://x.org/a%20b?q=1&r=2"),
@@ -1100,7 +1100,7 @@ mod tests {
             200,
             json!({"query": "Frieren", "endpoint": "keyed", "fell_back": true,
                    "tried": [{"endpoint": "tracker", "status": "empty", "count": 0, "error": null}],
-                   "items": [{"title": "[Kumo] Frieren - 01", "link": "magnet:?x", "seeders": null,
+                   "items": [{"title": "[Kumo-Subs] Frieren - 01", "link": "magnet:?x", "seeders": null,
                               "leechers": null, "downloads": null, "size": "", "category": "",
                               "page": "", "source": "keyed", "resolution": "1080p", "infomkv": "", "linktype": ""}]}),
         );

@@ -1005,7 +1005,7 @@ mod tests {
 
     #[test]
     fn binding_takes_the_earliest_new_torrent_with_the_name_and_never_twice() {
-        let title = "[Kumo] Show - 03 [1080p][Multiple Subtitle]";
+        let title = "[Kumo-Subs] Show - 03 [1080p][Multiple Subtitle]";
         let mut fus = vec![followup(title, 1000), {
             let mut f = followup(title, 1000);
             f.id = 2;

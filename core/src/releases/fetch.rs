@@ -316,7 +316,7 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
         let mut size = first(extra.size, tz.size);
         let mut category = first(extra.category, tz.category);
         if size.is_empty() || category.is_empty() {
-            // CDATA descriptions arrive HTML-escaped (AniRena writes "Anime &gt; Subs"), so
+            // CDATA descriptions arrive HTML-escaped (Board writes "Anime &gt; Subs"), so
             // unescape what the regexes pull out.
             let desc = html_unescape(&str_text(child(entry, None, "description")));
             if !desc.is_empty() {
@@ -505,7 +505,7 @@ mod tests {
 <rss version="2.0" xmlns:t="https://tracker.example/xmlns/tracker">
 <channel>
   <item>
-    <title>[Kumo] Show - 05 [1080p][Multiple Subtitle]</title>
+    <title>[Kumo-Subs] Show - 05 [1080p][Multiple Subtitle]</title>
     <link>https://tracker.example/download/1837471.torrent</link>
     <t:seeders>923</t:seeders>
     <t:leechers>12</t:leechers>
@@ -516,19 +516,19 @@ mod tests {
 </channel>
 </rss>"#;
 
-    const ANIRENA_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+    const BOARD_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
-  <title>AniRena</title>
+  <title>Board</title>
   <item>
     <title>[Anime &gt; Subs] Sayonara Lara - 02 [1080p CR WEBRip][768DB037]</title>
-    <link>https://www.anirena.com/torrents/019f57b3</link>
-    <description><![CDATA[Size: 485.1 MB | Uploader: Kumo | Category: Anime &gt; Subs]]></description>
-    <enclosure url="https://www.anirena.com/torrents/019f57b3.torrent" type="application/x-bittorrent" length="0"/>
+    <link>https://www.board.example/torrents/019f57b3</link>
+    <description><![CDATA[Size: 485.1 MB | Uploader: Kumo-Subs | Category: Anime &gt; Subs]]></description>
+    <enclosure url="https://www.board.example/torrents/019f57b3.torrent" type="application/x-bittorrent" length="0"/>
   </item>
   <item>
     <title>Bare Title Without Prefix - 03</title>
-    <link>https://www.anirena.com/torrents/019f57a5</link>
+    <link>https://www.board.example/torrents/019f57a5</link>
   </item>
 </channel>
 </rss>"#;
@@ -547,7 +547,7 @@ mod tests {
     <k:infohash>88b0c4737b638b6c5bc38c458e812e2dc635f0dc</k:infohash>
     <k:subtitles>[us][br][mx]</k:subtitles>
     <k:category>[Airing]</k:category>
-    <description><![CDATA[<a href="https://www.keyed.example/episodes/gaikotsu-kishi-sama-tadaima-isekai-e-odekake-chuu-ii-02/">[Kumo] Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu II - 02 [1080p CR WEB-DL AVC AAC][MultiSub][B8B9B54A].mkv</a> | Subtitles: [us][br][mx] | Size: 1.36GB | InfoHash: 88b0c4737b638b6c5bc38c458e812e2dc635f0dc | Categories: [Airing] ]]></description>
+    <description><![CDATA[<a href="https://www.keyed.example/episodes/gaikotsu-kishi-sama-tadaima-isekai-e-odekake-chuu-ii-02/">[Kumo-Subs] Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu II - 02 [1080p CR WEB-DL AVC AAC][MultiSub][B8B9B54A].mkv</a> | Subtitles: [us][br][mx] | Size: 1.36GB | InfoHash: 88b0c4737b638b6c5bc38c458e812e2dc635f0dc | Categories: [Airing] ]]></description>
   </item>
 </channel>
 </rss>"#;
@@ -573,7 +573,7 @@ mod tests {
         let items = parse(TRACKER_XML);
         assert_eq!(items.len(), 1);
         let it = &items[0];
-        assert_eq!(it.title, "[Kumo] Show - 05 [1080p][Multiple Subtitle]");
+        assert_eq!(it.title, "[Kumo-Subs] Show - 05 [1080p][Multiple Subtitle]");
         assert_eq!(it.link, "https://tracker.example/download/1837471.torrent");
         assert_eq!(
             (it.seeders, it.leechers, it.downloads),
@@ -587,33 +587,33 @@ mod tests {
     #[test]
     fn parse_generic_feed_prefers_torrent_enclosure() {
         assert_eq!(
-            parse(ANIRENA_XML)[0].link,
-            "https://www.anirena.com/torrents/019f57b3.torrent"
+            parse(BOARD_XML)[0].link,
+            "https://www.board.example/torrents/019f57b3.torrent"
         );
     }
 
     #[test]
     fn parse_generic_feed_description_fallbacks() {
-        let it = &parse(ANIRENA_XML)[0];
+        let it = &parse(BOARD_XML)[0];
         assert_eq!(it.size, "485.1 MB");
         assert_eq!(it.category, "Anime > Subs");
-        // AniRena carries no stat extensions: unknown, not zero.
+        // Board carries no stat extensions: unknown, not zero.
         assert_eq!((it.seeders, it.leechers, it.downloads), (None, None, None));
     }
 
     #[test]
     fn parse_generic_feed_strips_category_title_prefix() {
         assert_eq!(
-            parse(ANIRENA_XML)[0].title,
+            parse(BOARD_XML)[0].title,
             "Sayonara Lara - 02 [1080p CR WEBRip][768DB037]"
         );
     }
 
     #[test]
     fn parse_generic_feed_item_without_extras() {
-        let it = &parse(ANIRENA_XML)[1];
+        let it = &parse(BOARD_XML)[1];
         assert_eq!(it.title, "Bare Title Without Prefix - 03");
-        assert_eq!(it.link, "https://www.anirena.com/torrents/019f57a5");
+        assert_eq!(it.link, "https://www.board.example/torrents/019f57a5");
         assert!(it.size.is_empty() && it.category.is_empty());
     }
 
@@ -653,7 +653,7 @@ mod tests {
 
     #[test]
     fn parse_generic_feed_has_no_extension_fields() {
-        for it in parse(ANIRENA_XML) {
+        for it in parse(BOARD_XML) {
             assert!(it.resolution.is_empty() && it.infomkv.is_empty() && it.linktype.is_empty());
         }
     }
@@ -678,9 +678,9 @@ mod tests {
 
     #[test]
     fn parse_rss_bad_xml_is_an_error_naming_the_endpoint() {
-        match parse_rss("<not-xml", "anirena").unwrap_err() {
+        match parse_rss("<not-xml", "board").unwrap_err() {
             CoreError::Service { service, code, .. } => {
-                assert_eq!((service.as_str(), code.as_str()), ("anirena", "unreadable"));
+                assert_eq!((service.as_str(), code.as_str()), ("board", "unreadable"));
             }
             other => panic!("{other:?}"),
         }
@@ -809,13 +809,13 @@ mod tests {
         let err = fetch_rss(
             http.as_ref(),
             "https://example.invalid/rss?apikey=SECRET",
-            "anirena",
+            "board",
             DEFAULT_TIMEOUT,
         )
         .await
         .unwrap_err();
         let text = err.to_string();
-        assert!(text.contains("anirena") && text.contains("boom"), "{text}");
+        assert!(text.contains("board") && text.contains("boom"), "{text}");
         assert!(!text.contains("SECRET"));
     }
 

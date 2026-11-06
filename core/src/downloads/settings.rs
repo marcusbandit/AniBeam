@@ -1050,7 +1050,7 @@ mod bestfit_tests {
     /// anirss's own test config, `_BESTFIT_CFG` in test_anirss.py.
     const ANIRSS_TEST_CFG: &str = r#"
 [bestfit]
-preferred_groups = ["Kumo", "Lumen", "ASW"]
+preferred_groups = ["Kumo-Subs", "Lumen", "ASW"]
 source_order = ["WEB-DL", "WEB", "BluRay", "WEBRip", "HDTV"]
 preferred_resolution = "highest"
 target_mib_per_episode = 1000
@@ -1083,7 +1083,7 @@ assumed_source = "WEB"
         assert_eq!(
             cfg,
             BestfitConfig {
-                preferred_groups: vec!["Kumo".into(), "Lumen".into(), "ASW".into()],
+                preferred_groups: vec!["Kumo-Subs".into(), "Lumen".into(), "ASW".into()],
                 source_order: ["WEB-DL", "WEB", "BluRay", "WEBRip", "HDTV"]
                     .map(String::from)
                     .to_vec(),
@@ -1122,16 +1122,19 @@ assumed_source = "WEB"
         // test_anirss.py: test_preferred_resolution_target_avoids_4k
         let text = ANIRSS_TEST_CFG.replace("\"highest\"", "\"1080\"");
         let cfg = read(&text).unwrap();
-        let found = items(&["[Kumo] Show 2160p WEB-DL", "[Kumo] Show 1080p WEB-DL"]);
+        let found = items(&[
+            "[Kumo-Subs] Show 2160p WEB-DL",
+            "[Kumo-Subs] Show 1080p WEB-DL",
+        ]);
         assert_eq!(
             best_item(&found, &cfg).unwrap().title,
-            "[Kumo] Show 1080p WEB-DL"
+            "[Kumo-Subs] Show 1080p WEB-DL"
         );
         // anirss's stock "highest" takes the sharper one.
         let stock = read(ANIRSS_TEST_CFG).unwrap();
         assert_eq!(
             best_item(&found, &stock).unwrap().title,
-            "[Kumo] Show 2160p WEB-DL"
+            "[Kumo-Subs] Show 2160p WEB-DL"
         );
     }
 

@@ -241,7 +241,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     http.push_for(
         "/endpoints",
         200,
-        json!({"endpoints": [{"name": "tracker", "kind": "filtered-rss", "url": "https://tracker.example/", "client_side_refine": false}]}).to_string(),
+        json!({"endpoints": [{"name": "tracker", "kind": anibeam_core::releases::kinds::RENAMED[0].0, "url": "https://tracker.example/", "client_side_refine": false}]}).to_string(),
     );
     http.push_for(
         "/qbt/status",
@@ -1914,7 +1914,7 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
     );
 
     let mut item = release(2, Value::Null);
-    item.title = "[Kumo] Sousou no Frieren - 02 [1080p]".to_string();
+    item.title = "[Kumo-Subs] Sousou no Frieren - 02 [1080p]".to_string();
     let hash = format!("{:040}", 2);
     http.push_for(
         "/downloads",
@@ -1947,14 +1947,14 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
     );
 
     let new_torrent = |progress: f64| {
-        json!([{"hash": hash, "name": "[Kumo] Sousou no Frieren - 02 [1080p]", "state": "downloading",
+        json!([{"hash": hash, "name": "[Kumo-Subs] Sousou no Frieren - 02 [1080p]", "state": "downloading",
                 "progress": progress, "size": 100, "save_path": "/dl/Frieren",
-                "content_path": "/dl/Frieren/[Kumo] Sousou no Frieren - 02 [1080p].mkv",
+                "content_path": "/dl/Frieren/[Kumo-Subs] Sousou no Frieren - 02 [1080p].mkv",
                 "added_on": 1, "completion_on": -1, "seq_dl": false}])
         .to_string()
     };
     let new_file = |progress: f64| {
-        json!([{"name": "[Kumo] Sousou no Frieren - 02 [1080p].mkv", "size": 100,
+        json!([{"name": "[Kumo-Subs] Sousou no Frieren - 02 [1080p].mkv", "size": 100,
                 "progress": progress, "priority": 1}])
         .to_string()
     };
