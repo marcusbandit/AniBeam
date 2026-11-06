@@ -82,6 +82,11 @@ SettingsTab {
                                 smooth: true
                             }
                             MouseArea {
+                                Accessible.role: Accessible.RadioButton
+                                Accessible.onPressAction: Theme.pickAppIcon(pick.modelData.id)
+                                Accessible.name: pick.modelData.text + " app icon"
+                                Accessible.checkable: true
+                                Accessible.checked: pick.on
                                 id: m
                                 anchors.fill: parent
                                 hoverEnabled: true

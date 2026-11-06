@@ -598,6 +598,21 @@ Item {
         if (r.error) { frame.toast(r.error.message); return }
         page.status = r.reply.status
     }
+    // The helper the settings point at is not the one AniBeam comes with: a remote server, or
+    // a command typed into Settings. When that one does not answer, the fix is going back.
+    readonly property bool helperChanged: !!status && !!status.settings
+        && (status.settings.anirss_mode === "Remote" || status.settings.anirss_command !== "anirss")
+    // The first-open fix (#204): back to the built-in helper, then start it. Saving stops the
+    // old one; the connect starts the new one.
+    function useBuiltInHelper() {
+        var s = JSON.parse(JSON.stringify(page.status.settings))
+        s.anirss_mode = "Sidecar"
+        s.anirss_command = "anirss"
+        var r = Door.setDownloadSettings(s, {})
+        if (r.error) { frame.toast(r.error.message); return }
+        page.reload()
+        page.connect()
+    }
     function connect() {
         var r = Door.connectDownloads()
         if (r.error) { frame.toast(r.error.message); return }
@@ -1340,11 +1355,11 @@ Item {
     // ---- The head's one line
     readonly property string summary: {
         if (!page.status) return "Connecting."
-        if (page.connecting && !page.anirssReady) return "Starting the search helper."
+        // Until it runs, the line is in plain words: the helper's name means nothing yet
+        if (page.connecting && !page.anirssReady) return "Starting downloads."
         var a = page.anirss
-        if (a.state === "Missing") return "The search helper is not installed. " + a.message
-        if (a.state === "Failed") return "The search helper is not running: " + a.message
-        if (a.state === "Off") return "The search helper is not running yet."
+        if (a.state === "Missing" || a.state === "Failed") return "Downloads is not running."
+        if (a.state === "Off") return "Downloads has not started yet."
         var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected: " + (page.torrent.message || "no answer") + "."
         return "The search helper " + a.version + " is ready. " + t
     }
@@ -1628,6 +1643,8 @@ Item {
     }
     // Over the page, a click beside the column folds it away again
     MouseArea {
+        // Nothing for a screen reader: the column has its own close
+        Accessible.ignored: true
         visible: page.activityOpen && !page.activityShown
         z: 4
         anchors.left: parent.left
@@ -1713,7 +1730,8 @@ Item {
                     role: "ledger"; font.pointSize: theme.typeNormal
                     color: page.anirssReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
                     font.underline: anirssChipMouse.containsMouse
-                    MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }) }
+                    MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                        Accessible.onPressAction: frame.go("settings", { tab: "downloads" }) }
                     Tooltip { text: page.anirssReady ? page.summary + " It answers at " + page.anirss.url + "." : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
                 }
                 Label {
@@ -1723,6 +1741,10 @@ Item {
                     role: "ledger"; font.pointSize: theme.typeNormal
                     color: page.torrentOn ? theme.textFaint : theme.red
                     MouseArea {
+                        id: clientChipMouse
+                        Accessible.role: Accessible.Button
+                        Accessible.onPressAction: clientChipMouse.clicked(null)
+                        Accessible.name: theme.nameNear(parent)
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
@@ -1789,7 +1811,8 @@ Item {
                         width: parent.width
                         height: theme.space(22)
                         Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: srow.current || sMouse.containsMouse ? theme.glassFloat : "transparent" }
-                        MouseArea { id: sMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSuggestion(srow.modelData) }
+                        MouseArea { id: sMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSuggestion(srow.modelData); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                            Accessible.onPressAction: page.pickSuggestion(srow.modelData) }
                         Corner {
                             id: sPoster
                             x: theme.space(3)
@@ -1870,7 +1893,8 @@ Item {
                         role: "ui"; color: theme.textDim
                     }
                     Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; text: "Return"; role: "ledger"; color: theme.textFaint }
-                    MouseArea { id: releaseRowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch() }
+                    MouseArea { id: releaseRowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                        Accessible.onPressAction: page.runSearch() }
                 }
             }
         }
@@ -2253,17 +2277,42 @@ Item {
             }
         }
 
-        // ---- Nothing to search with: anirss is not here
+        // ---- Nothing to search with: the helper is not running. Plain words and one button
+        // that fixes it (#204); the helper's own message waits in Settings, Downloads.
         Item {
+            id: helperDown
+            objectName: "downloads-helper-down"
             visible: !!page.status && !page.anirssReady && !page.connecting && page.state === null && page.detail === null
             width: parent.width
             height: visible ? theme.space(50) : 0
+            readonly property bool missing: !!page.anirss && page.anirss.state === "Missing"
             EmptyState {
-                icon: page.anirss && page.anirss.state === "Missing" ? "circle-alert" : "rss"
-                title: page.anirss && page.anirss.state === "Missing" ? "The search helper is not installed" : "The search helper is not running"
-                body: page.anirss && page.anirss.message ? page.anirss.message : "Searches, subscriptions and downloads run through AniBeam's search helper."
-                Button { text: "Try again"; icon: "refresh-cw"; onClicked: page.connect() }
-                Button { text: "Settings"; icon: "settings"; flat: true; onClicked: frame.go("settings", { tab: "downloads" }) }
+                objectName: "downloads-helper-state"
+                icon: page.helperChanged ? "rotate-ccw" : helperDown.missing ? "download" : "circle-alert"
+                title: page.helperChanged ? "Downloads is set to a helper that does not answer"
+                     : helperDown.missing ? "This copy of AniBeam came without downloads"
+                     : "Downloads could not start"
+                body: page.helperChanged
+                    ? "Searches and downloads run through a small helper program. Settings point at another one than AniBeam's own, and it is not answering. Switch back and it starts by itself."
+                    : helperDown.missing
+                    ? "It was built without the helper program searches and downloads run through. The installers on the releases page have it. Settings, Downloads says how to add it to this copy."
+                    : "The helper program searches and downloads run through stopped before it was ready. Starting it again fixes this most of the time."
+                Button {
+                    objectName: "downloads-helper-fix"
+                    visible: page.helperChanged || !helperDown.missing
+                    primary: true
+                    text: page.helperChanged ? "Use AniBeam's own" : "Start again"
+                    icon: page.helperChanged ? "rotate-ccw" : "refresh-cw"
+                    onClicked: page.helperChanged ? page.useBuiltInHelper() : page.connect()
+                }
+                Button {
+                    objectName: "downloads-helper-settings"
+                    text: helperDown.missing && !page.helperChanged ? "Show me how" : "What went wrong"
+                    icon: helperDown.missing && !page.helperChanged ? "arrow-right" : "info"
+                    primary: helperDown.missing && !page.helperChanged
+                    flat: !(helperDown.missing && !page.helperChanged)
+                    onClicked: frame.go("settings", { tab: "downloads" })
+                }
             }
         }
 
@@ -2382,7 +2431,8 @@ Item {
                         radius: theme.radiusTile
                         smoothing: theme.cornerSmoothing
                         color: gapMouse.containsMouse ? theme.glassFloatHover : theme.glassFloat
-                        MouseArea { id: gapMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openGet(page.showFromCard(gap.modelData)); onContainsMouseChanged: frame.hoverCard(gap, gap.modelData, containsMouse) }
+                        MouseArea { id: gapMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openGet(page.showFromCard(gap.modelData)); onContainsMouseChanged: frame.hoverCard(gap, gap.modelData, containsMouse); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                            Accessible.onPressAction: page.openGet(page.showFromCard(gap.modelData)) }
                         Component.onDestruction: frame.hoverCard(gap, null, false)
                         Corner {
                             id: gapPoster

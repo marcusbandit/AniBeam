@@ -140,7 +140,8 @@ SettingsTab {
                             Label { width: tab.col(12); role: "ledger"; text: modelData.scene.images.offscreen + " of " + modelData.scene.images.total; color: theme.textDim }
                             Label { width: tab.col(10); role: "ledger"; text: tab.mb(modelData.memAfter.VmRSS || 0, true); color: theme.textDim }
                         }
-                        MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: tab.picked = modelData }
+                        MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: tab.picked = modelData; Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                            Accessible.onPressAction: tab.picked = modelData }
                     }
                 }
                 Label { visible: tab.rec.loads.length === 0; topPadding: theme.space(2); text: "Open any page and it shows up here."; color: theme.textDim }

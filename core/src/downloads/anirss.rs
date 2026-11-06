@@ -1127,6 +1127,7 @@ mod tests {
             ("linux/appimage.sh", "ANIRSS_VERSION="),
             ("windows/anirss.sh", "ANIRSS_VERSION="),
             ("aur/anibeam/PKGBUILD", "'anirss>="),
+            ("aur/anibeam-bin/PKGBUILD", "'anirss>="),
         ];
         for (file, prefix) in pins {
             let text = std::fs::read_to_string(packaging.join(file)).unwrap();

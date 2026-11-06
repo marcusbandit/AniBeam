@@ -217,7 +217,7 @@ Corner {
                 objectName: "fix-rescan"
                 anchors.right: closeBtn.left; anchors.rightMargin: theme.space(2); anchors.top: parent.top
                 small: true; flat: true; icon: "refresh-cw"; text: "Rescan folder"
-                onClicked: { var r = Door.rescanSeries(root.seriesId); frame.toast(r.error ? r.error.message : "Reading the folder again") }
+                onClicked: { var r = Door.rescanSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Reading the folder again") }
             }
             Button {
                 id: closeBtn
@@ -423,7 +423,8 @@ Corner {
                     role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
                 }
             }
-            MouseArea { id: checkMouse; anchors.fill: parent; hoverEnabled: true; enabled: !root.applying; cursorShape: Qt.PointingHandCursor; onClicked: root.report = !root.report }
+            MouseArea { id: checkMouse; anchors.fill: parent; hoverEnabled: true; enabled: !root.applying; cursorShape: Qt.PointingHandCursor; onClicked: root.report = !root.report; Accessible.role: Accessible.CheckBox; Accessible.name: theme.nameNear(parent); Accessible.checkable: true; Accessible.checked: root.report
+                Accessible.onPressAction: root.report = !root.report }
         }
         Row {
             id: buttons
