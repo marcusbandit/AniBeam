@@ -303,11 +303,6 @@ pub fn sync(core: &Core) {
         }
     };
     core.host.follow(core, on);
-    // Sharing is the person's say that this computer talks to their others:
-    // catch up with every trusted AniBeam that is up.
-    if on {
-        history::pull_all(core);
-    }
 }
 
 /// The devices on the tailnet for Settings, each with whether it is trusted,
@@ -492,6 +487,14 @@ async fn supervise(
                             {
                                 s.name = Some(name);
                                 status.put(Some(&cancel), s.status());
+                            }
+                            // Serving on the tailnet: catch up with every
+                            // trusted AniBeam that is up. Not on an address a
+                            // test or the env var chose, which is no tailnet.
+                            if bind.is_none()
+                                && let Some(core) = core.upgrade()
+                            {
+                                history::pull_all(&core);
                             }
                         }
                         Err(message) => status.put(Some(&cancel), waiting(&message)),

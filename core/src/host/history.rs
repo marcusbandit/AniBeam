@@ -3,8 +3,8 @@
 //!
 //! Each computer serves its own as an `anibeam-export` document at
 //! [`wire::HISTORY`]. While Share over Tailscale is on, a computer pulls from
-//! every trusted AniBeam on the tailnet when it starts, and pulls back from
-//! any computer that asks for its own, so two that see each other end with
+//! every trusted AniBeam on the tailnet once it serves there, and pulls back
+//! from any computer that asks for its own, so two that see each other end with
 //! the same history whichever came up first. Nothing is polled.
 //!
 //! The two libraries live in different folders, so a series here is found
@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use anibeam_host_api as wire;
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 
 use crate::contract::*;
 use crate::core::Core;
@@ -304,7 +304,8 @@ fn translate(history: History, paths: &HashMap<String, String>) -> History {
 
 /// Merges another computer's document into this library.
 pub async fn merge(core: &Arc<Core>, doc: Document) -> Result<Merged, CoreError> {
-    let here = core.store.read(locals)?;
+    // A read, on the writer the async side has, so no runtime thread blocks.
+    let here = core.store.write_async(|c| locals(c)).await?;
     let mapping = map(&doc.series, &here);
     let paths: HashMap<String, String> = mapping
         .iter()
