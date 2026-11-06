@@ -134,6 +134,10 @@ _Avoid_: hidden, ignored, blocked, dismissed
 The shows on the AniList Planning list, read off the same refresh as the watching list and shown as the second tab of Watching. Each says whether the library has it; Start watching moves one to Watching and plays its first episode.
 _Avoid_: plan to watch list, backlog, queue
 
+**Pick**:
+A card chosen on a page that acts on several at once: Library and Airing now. Ctrl+click, a held press or Ctrl+Space picks one; Shift picks a run of them. A bar at the foot acts on every pick in one go, and the activity log says it once.
+_Avoid_: select, selection, checked, bulk
+
 ### Look
 
 **Token**:
@@ -261,7 +265,7 @@ The guard on a destructive action: the row's controls give way to a line naming 
 _Avoid_: confirm dialog, modal, alert
 
 **Patch notes**:
-An app's `CHANGELOG.md`: every version newest first, each a few one-line changes under New, Changed, Fixed or Removed. The desktop and the phone keep their own, since each has its own version, and each build carries its own copy.
+An app's `CHANGELOG.md`: every version newest first, each a few one-line changes under New, Changed, Fixed or Removed. The desktop and the phone keep their own, since each has its own version, and each build carries its own copy. A pull request adds its lines as a **change file** in the app's `changes/`, which shows under the newest version until the release folds it into the file.
 _Avoid_: release notes (the GitHub page), changelog entry, commit log
 
 **What's new**:

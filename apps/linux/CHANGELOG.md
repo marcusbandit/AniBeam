@@ -3,6 +3,8 @@
 <!--
 The app shows this file in What's new, newest version first. Keep it short.
 - One line per change a person can notice, under New, Changed, Fixed or Removed.
+- A pull request writes its lines in changes/<branch>.md, never here. The
+  release folds them in under the version they ship in.
 - 80 characters at most, no full stop. Say what they see, never why or how.
 - The newest heading is the workspace version in the root Cargo.toml. A version
   bump adds a heading, and a new heading bumps the version.
@@ -92,6 +94,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can add a source that answers in JSON
 - Airing times of your shows can go to a calendar app, set in Settings
 - Change a show's list status from its status pill or right-click menu
+- Pick several shows in Library with Ctrl or Shift and hide, rate or move them
 
 ### Changed
 - Out now on Airing shows its episodes as small cards with their wide banners
@@ -143,6 +146,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Library, Airing and Feed open two to four times faster and use less memory
 
 ### Fixed
+- A show's synopsis shows symbols like & instead of their codes, in paragraphs
 - Endpoints from repos reach an anirss built from source, whatever its version
 - Seeders show for releases from a tracker written with backslashes
 - Discord shows a series whose title is a single letter
