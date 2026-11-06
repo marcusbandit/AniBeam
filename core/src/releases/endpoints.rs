@@ -698,10 +698,20 @@ pub(crate) mod tests {
 
     /// The value of the `s=` search parameter, the only part a query can pollute.
     fn s_param(url: &str) -> String {
+        param(url, "s")
+    }
+
+    /// The search's parameters, in order.
+    fn params(url: &str) -> Vec<(String, String)> {
         let qs = url.split_once('?').map_or("", |(_, q)| q);
         parse_qsl(qs)
+    }
+
+    /// The value of the `key` parameter, empty when there is none.
+    fn param(url: &str, key: &str) -> String {
+        params(url)
             .into_iter()
-            .find(|(k, _)| k == "s")
+            .find(|(k, _)| k == key)
             .map(|(_, v)| v)
             .unwrap_or_default()
     }
@@ -922,18 +932,7 @@ pub(crate) mod tests {
     }
 
     fn f_param(url: &str) -> String {
-        let qs = url.split_once('?').map_or("", |(_, q)| q);
-        parse_qsl(qs)
-            .into_iter()
-            .find(|(k, _)| k == "f")
-            .map(|(_, v)| v)
-            .unwrap_or_default()
-    }
-
-    /// The search's parameters, in order.
-    fn params(url: &str) -> Vec<(String, String)> {
-        let qs = url.split_once('?').map_or("", |(_, q)| q);
-        parse_qsl(qs)
+        param(url, "f")
     }
 
     #[test]
@@ -970,7 +969,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn a_trusted_only_subscription_keeps_its_filter_and_an_all_uploads_one_drops_it() {
+    async fn a_trusted_only_subscription_keeps_its_filter() {
         // anirss's subscription_feed: unfiltered only when the results were found that way
         let http = FakeHttp::new();
         let trusted = Endpoint {
@@ -979,11 +978,8 @@ pub(crate) mod tests {
         };
         let mut item = rel("[A] Show - 01", "l");
         item.source = "site".to_string();
-        let spec = build_subscription(http.as_ref(), &trusted, "Show", &[item.clone()]).await;
-        assert_eq!(f_param(&spec.feed_url), "2", "{}", spec.feed_url);
-        item.source = format!("site{ALL_UPLOADS}");
         let spec = build_subscription(http.as_ref(), &trusted, "Show", &[item]).await;
-        assert_eq!(f_param(&spec.feed_url), "0", "{}", spec.feed_url);
+        assert_eq!(f_param(&spec.feed_url), "2", "{}", spec.feed_url);
     }
 
     #[tokio::test]

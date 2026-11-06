@@ -1466,10 +1466,20 @@ pub fn rekeep_old_rules(
 /// (`raw.get("category") or "1_0"`): every anime upload, no filter (#546).
 fn endpoint_for(def: &Definition, url: &str) -> crate::releases::Endpoint {
     let mut endpoint = crate::releases::Endpoint::new(&def.id, &def.kind, url);
-    if let Some(c) = def.category.as_deref().filter(|c| !c.trim().is_empty()) {
+    if let Some(c) = def
+        .category
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
         endpoint.category = c.to_string();
     }
-    if let Some(f) = def.filter.as_deref().filter(|f| !f.trim().is_empty()) {
+    if let Some(f) = def
+        .filter
+        .as_deref()
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+    {
         endpoint.filter = f.to_string();
     }
     endpoint.json = def.json.clone();
@@ -2173,9 +2183,22 @@ mod tests {
 
     #[test]
     fn a_definition_with_an_empty_category_or_filter_searches_as_anirss_would() {
-        let (mut def, _) = custom_definition("site", "https://tracker.example/?q={query}").unwrap();
-        def.kind = "nyaa".to_string();
-        def.url = "https://tracker.example/".to_string();
+        let mut def = Definition {
+            id: "site".to_string(),
+            name: "site".to_string(),
+            version: 1,
+            lang: String::new(),
+            kind: "nyaa".to_string(),
+            url: "https://tracker.example/".to_string(),
+            auth: Vec::new(),
+            front: None,
+            rate: None,
+            nsfw: false,
+            category: None,
+            filter: None,
+            min_core: None,
+            json: None,
+        };
         let shape = |def: &Definition| {
             let e = endpoint_for(def, &def.url);
             (e.category, e.filter)
@@ -2191,6 +2214,13 @@ mod tests {
             shape(&def),
             ("1_2".to_string(), "2".to_string()),
             "trusted only"
+        );
+        def.category = Some(" 1_2".to_string());
+        def.filter = Some("2 ".to_string());
+        assert_eq!(
+            shape(&def),
+            ("1_2".to_string(), "2".to_string()),
+            "spaces around"
         );
     }
 
