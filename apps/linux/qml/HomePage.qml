@@ -57,7 +57,8 @@ Item {
             episodes_on_disk: 0, list_status: null, site_url: "", meta: meta
         }
     }
-    // Out now: one card per show, its newest episode, newest first
+    // Out now: one card per show, its newest episode, newest first. Free of nowMs, so the
+    // 30 s clock does not rebuild the row; each card's "out 2h ago" line is its own binding.
     readonly property var outNowList: {
         if (!season) return []
         var seen = ({}), out = []
@@ -68,7 +69,10 @@ Item {
             var s = showOf(e.anilist_id)
             if (!s) continue
             seen[e.anilist_id] = true
-            out.push(airingCard(s, Fmt.episodeName("", e.episode) + " out " + ago(e.at)))
+            var c = airingCard(s, "")
+            c.aired_episode = e.episode
+            c.aired_at = e.at
+            out.push(c)
         }
         return out
     }
@@ -770,7 +774,9 @@ Item {
                     required property var modelData
                     objectName: "card-" + modelData.id   // a --drive target
                     item: modelData
-                    metaOverride: shelfBox.airing ? (modelData.meta || "") : ""
+                    metaOverride: !shelfBox.airing ? ""
+                        : modelData.aired_at !== undefined ? Fmt.episodeName("", modelData.aired_episode) + " out " + page.ago(modelData.aired_at)
+                        : (modelData.meta || "")
                     posterWidth: shelfBox.cardWidth
                     nowMs: page.nowMs
                     onOpened: if (shelfBox.airing) frame.go("airing"); else page.openSeries(modelData)
