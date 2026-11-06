@@ -10,7 +10,8 @@ Grid {
     property var tiles: []                 // [{ value, caption }]
     property color stone: "transparent"
     readonly property real gap: theme.space(8)
-    readonly property real minTile: theme.space(36)
+    // The figures are text, which density does not shrink, so neither does their width
+    readonly property real minTile: Math.round(4 * 36 * Math.max(1, theme.textScale))
     readonly property int fit: Math.max(1, Math.floor((width + gap) / (minTile + gap)))
     readonly property int lines: Math.max(1, Math.ceil(tiles.length / fit))
     readonly property real tileWidth: (width - (columns - 1) * gap) / columns
