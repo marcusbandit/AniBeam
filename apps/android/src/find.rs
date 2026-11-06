@@ -415,6 +415,7 @@ impl Find {
             in_library: true,
             poster: card.poster.clone(),
             ledger: String::new(),
+            ledger_tone: 0,
         }
     }
 
@@ -447,6 +448,7 @@ impl Find {
             in_library: false,
             poster: None,
             ledger: String::new(),
+            ledger_tone: 0,
         }
     }
 
@@ -1737,5 +1739,6 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
         in_library: false,
         poster: (!poster.is_empty()).then_some(poster),
         ledger: facts.join(", "),
+        ledger_tone: 0,
     }
 }
