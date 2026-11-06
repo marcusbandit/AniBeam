@@ -54,6 +54,24 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
+Every checkout and worktree builds into its own `target/` (#250), so a fresh worktree starts
+cold. [sccache](https://github.com/mozilla/sccache) lets it take the third-party crates another
+checkout already compiled: install it (`pacman -S sccache`) and make it cargo's wrapper in
+`~/.cargo/config.toml`.
+
+```toml
+[build]
+rustc-wrapper = "sccache"
+```
+
+Then keep `CARGO_TARGET_DIR` out of the environment. Cargo's default is the checkout's own
+`target/` already, and sccache keys every compile on the `CARGO_*` variables it sees, so one
+that differs per worktree turns every crate into a miss. Pass `--target-dir` when you need
+another dir; `apps/linux/scripts/shoot.sh` and `drive.sh` do that themselves. Crates that read
+a build script's output (`OUT_DIR`) and the C++ the Qt bridge compiles still rebuild in each
+worktree, since their paths name the target dir. Your own crates always rebuild, so an edit in
+the worktree is what runs.
+
 The CLI is the quickest way to drive the core: `sources`, `scan`, `list`, `show`, `jobs`,
 `import`, `export`, `events --follow`, and `call <Name> --json '{...}'` for anything else.
 `--root <dir>` puts the database, config, cache and secrets under one directory instead of
