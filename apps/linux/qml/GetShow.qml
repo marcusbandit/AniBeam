@@ -34,6 +34,9 @@ Item {
     // Set when a Get went through; it clears the picks and is not drawn
     property string actionLine: ""
     property string actionError: ""
+    // The core's own words behind actionError, for Details, and what Try again sends again
+    property string actionErrorDetail: ""
+    property var actionRetry: null
     property real nowMs: Date.now()
     signal back()
     signal fetch(string name)
@@ -958,7 +961,14 @@ Item {
                     // What the last Get or Subscribe did, until the next pick
                     Label { objectName: "get-action-line"; visible: root.actionLine !== "" && root.actionError === "" && root.planList.length === 0
                         width: parent.width; text: root.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }
-                    Label { visible: root.actionError !== ""; width: parent.width; text: root.actionError; role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap }
+                    ErrorLine {
+                        objectName: "get-action-error"
+                        width: parent.width
+                        text: root.actionError
+                        detail: root.actionErrorDetail
+                        actionText: root.acting ? "" : "Try again"
+                        action: root.actionRetry
+                    }
                 }
             }
         }
