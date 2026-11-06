@@ -252,6 +252,14 @@ impl HostClient {
         Ok((status, body))
     }
 
+    /// The other AniBeams the host sees on the tailnet.
+    pub fn peers(&self) -> Result<Vec<api::PeerHost>, HostError> {
+        let (body, _) = self.get(api::PEERS, 256 * 1024)?;
+        serde_json::from_slice::<api::Peers>(&body)
+            .map(|p| p.hosts)
+            .map_err(|e| HostError::Bad(format!("The list of AniBeams did not read: {e}")))
+    }
+
     /// The image bytes and their content type.
     pub fn poster(&self, series_id: u64) -> Result<(Vec<u8>, Option<String>), HostError> {
         self.get(&api::poster_path(series_id), POSTER_LIMIT)

@@ -47,12 +47,23 @@ impl Syncer {
         let client = self.client(address);
         let hello = client.hello()?;
         let snapshot = client.snapshot()?;
+        // The list is a bonus: a host that fails it still syncs.
+        let peers = if hello
+            .features
+            .iter()
+            .any(|f| f == crate::api::FEATURE_PEERS)
+        {
+            client.peers().unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let cache = Cache {
             address: address.display(),
             host: hello.host,
             host_version: hello.version,
             synced_at: now,
             snapshot,
+            peers,
         };
         if let Err(e) = self.store.save_cache(&cache) {
             return Err(HostError::Bad(format!("Could not save the snapshot: {e}")));

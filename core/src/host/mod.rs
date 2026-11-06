@@ -14,6 +14,7 @@
 pub mod addr;
 pub mod build;
 pub mod convert;
+pub mod peers;
 pub mod server;
 pub mod stream;
 pub mod trust;
@@ -187,6 +188,11 @@ impl Host {
     /// Whether to answer a request from `from` (`trust::decide`). An address
     /// the last read cannot place, while some device is switched off, reads
     /// the tailnet again first: it may have just joined.
+    /// The switched-off ids, for the peer list.
+    pub fn switched_off(&self) -> Vec<String> {
+        recover(&self.off).clone()
+    }
+
     pub fn verdict(&self, from: std::net::IpAddr) -> trust::Verdict {
         let off = recover(&self.off).clone();
         // This machine and anything off the tailnet are decided by the
