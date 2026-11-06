@@ -16,7 +16,7 @@
   "wait": 800
  },
  {
-  "click": "provider-erai"
+  "click": "provider-keyed"
  },
  {
   "wait": 12000

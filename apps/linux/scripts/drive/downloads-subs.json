@@ -249,7 +249,7 @@
   "log": "something moving brings Downloading up front"
  },
  {
-  "eval": "var p = frame.item.pageItem; p.torrents = p.torrents.concat([{hash: 'f00', name: '[SubsPlease] Test Show - 08 (1080p).mkv', state: 'downloading', progress: 0.42, size: 1500000000, dlspeed: 5200000, upspeed: 0, eta: 160, num_seeds: 41, num_leechs: 3, ratio: 0, save_path: '/x/Test Show', content_path: '/x/Test Show/a.mkv', added_on: 2000000000, completion_on: 0, tags: '', category: '', series_id: null}]); p.downloading.length > 0",
+  "eval": "var p = frame.item.pageItem; p.torrents = p.torrents.concat([{hash: 'f00', name: '[Lumen] Test Show - 08 (1080p).mkv', state: 'downloading', progress: 0.42, size: 1500000000, dlspeed: 5200000, upspeed: 0, eta: 160, num_seeds: 41, num_leechs: 3, ratio: 0, save_path: '/x/Test Show', content_path: '/x/Test Show/a.mkv', added_on: 2000000000, completion_on: 0, tags: '', category: '', series_id: null}]); p.downloading.length > 0",
   "expect": true
  },
  {

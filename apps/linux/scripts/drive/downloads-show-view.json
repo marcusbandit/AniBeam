@@ -43,7 +43,7 @@
   "shot": "view-02-scrolled"
  },
  {
-  "eval": "var p = frame.item.pageItem; p.closeGet(); var t = { hash: 'ee11', name: '[SubsPlease] Isekai Shoukan - 04 (1080p) [ABCD1234].mkv', state: 'downloading', progress: 0.62, size: 1400000000, dlspeed: 3200000, upspeed: 0, eta: 190, num_seeds: 14, num_leechs: 2, ratio: 0, save_path: '/mnt/media/Anime/Isekai Shoukan', content_path: '/mnt/media/Anime/Isekai Shoukan/a.mkv', added_on: 1, completion_on: -1, tags: '', category: '', series_id: null, episode: 4, batch: false, files: [], seq_dl: true, f_l_piece_prio: false, tracker: 't.example', group: 'SubsPlease', resolution: '1080p', provider: 'nyaa' }; p.torrents = [t]; p.openFromTorrent(t); p.getShow.title + ' | ' + p.getShow.folderName + ' | ' + p.getShow.seriesId + ' | ' + p.getShow.hashes.join(',')",
+  "eval": "var p = frame.item.pageItem; p.closeGet(); var t = { hash: 'ee11', name: '[Lumen] Isekai Shoukan - 04 (1080p) [ABCD1234].mkv', state: 'downloading', progress: 0.62, size: 1400000000, dlspeed: 3200000, upspeed: 0, eta: 190, num_seeds: 14, num_leechs: 2, ratio: 0, save_path: '/mnt/media/Anime/Isekai Shoukan', content_path: '/mnt/media/Anime/Isekai Shoukan/a.mkv', added_on: 1, completion_on: -1, tags: '', category: '', series_id: null, episode: 4, batch: false, files: [], seq_dl: true, f_l_piece_prio: false, tracker: 't.example', group: 'Lumen', resolution: '1080p', provider: 'tracker' }; p.torrents = [t]; p.openFromTorrent(t); p.getShow.title + ' | ' + p.getShow.folderName + ' | ' + p.getShow.seriesId + ' | ' + p.getShow.hashes.join(',')",
   "as": "unlinked"
  },
  {

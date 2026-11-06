@@ -199,11 +199,11 @@ What the core reads off a release's title beside anirss's fields: the episode (a
 _Avoid_: metadata, parsed info
 
 **On-demand endpoint**:
-An endpoint anirss starts only when a search needs it (1337x: a podman pod behind Jackett), and keeps up while the sidecar holds its lease. The first search waits for it to come up, up to the endpoint's timeout; the page says so while it waits ("Starting 1337x"), then "Searching 1337x".
+An endpoint anirss starts only when a search needs it (a site reached through a search proxy: a podman pod behind Jackett), and keeps up while the sidecar holds its lease. The first search waits for it to come up, up to the endpoint's timeout; the page says so while it waits ("Starting <name>"), then "Searching <name>".
 _Avoid_: harness, container, lazy endpoint
 
 **Endpoint**:
-One site a search goes to, as anirss configures it: nyaa-style, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
+One site a search goes to, as anirss configures it: an RSS search the core builds with a category and a filter, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
 _Avoid_: tracker site, indexer, source
 
 **Search state**:
@@ -231,7 +231,7 @@ What the core adds to a subscription whose folder is a library show (#215): a on
 _Avoid_: poll, auto-download, follow job
 
 **Wire query**:
-The query an endpoint itself was last asked. On a generic RSS endpoint (1337x through Jackett) anirss narrows a search on its own side, so the page's query can hold words the endpoint never saw, and a feed built from them finds nothing. Subscribing hands the core the wire query too: the subscription's feed reads that, and the narrowing words go into the rule's own filters (its "keeps" and "drops"). A feed found empty later can be repaired the same way: its search shortened from the end until the endpoint answers, the dropped words kept in the rule.
+The query an endpoint itself was last asked. On a generic RSS endpoint (a site reached through a search proxy) anirss narrows a search on its own side, so the page's query can hold words the endpoint never saw, and a feed built from them finds nothing. Subscribing hands the core the wire query too: the subscription's feed reads that, and the narrowing words go into the rule's own filters (its "keeps" and "drops"). A feed found empty later can be repaired the same way: its search shortened from the end until the endpoint answers, the dropped words kept in the rule.
 _Avoid_: base query, raw query
 
 **Complete subscription**:

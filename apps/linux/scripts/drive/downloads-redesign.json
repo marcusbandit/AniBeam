@@ -79,7 +79,7 @@
   "shot": "redesign-05-get-providers"
  },
  {
-  "click": "provider-nyaa"
+  "click": "provider-tracker"
  },
  {
   "wait": 600

@@ -16,7 +16,7 @@
   "as": "sources"
  },
  {
-  "click": "downloads-source-1337x"
+  "click": "downloads-source-proxied"
  },
  {
   "wait": 600
@@ -31,21 +31,21 @@
   "wait": 400
  },
  {
-  "eval": "var p = frame.item.pageItem; p.sourceOn('1337x') + ':' + p.startJob",
+  "eval": "var p = frame.item.pageItem; p.sourceOn('proxied') + ':' + p.startJob",
   "as": "after-cancel",
   "expect": "false:-1"
  },
  {
-  "click": "downloads-source-nyaa"
+  "click": "downloads-source-tracker"
  },
  {
   "wait": 300
  },
  {
-  "shot": "chrome-02-nyaa-off"
+  "shot": "chrome-02-tracker-off"
  },
  {
-  "click": "downloads-source-nyaa"
+  "click": "downloads-source-tracker"
  },
  {
   "wait": 300
@@ -77,7 +77,7 @@
   "wait": 800
  },
  {
-  "click": "provider-erai"
+  "click": "provider-keyed"
  },
  {
   "wait": 12000
@@ -105,7 +105,7 @@
  {
   "eval": "var p = frame.item.pageItem; (p.getShow !== null) + ':' + (p.state === null) + ':' + p.getActive + ':' + Object.keys(p.getResults).join(',')",
   "as": "back",
-  "expect": "true:true:erai:erai"
+  "expect": "true:true:keyed:keyed"
  },
  {
   "shot": "chrome-06-back-on-grid"

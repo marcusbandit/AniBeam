@@ -77,7 +77,7 @@ triage label when someone deletes it.
   downloads bugs with tests and with calls that only read, such as a search; calls that add,
   remove or control torrents or subscriptions change the owner's real client.
 - Network: AniList, MAL, Jikan, AniSkip and TVmaze calls go through the limiter in
-  `core/src/net/limiter.rs`. Feed sources such as nyaa do not, and nyaa's DDoS-Guard blocks bursts
+  `core/src/net/limiter.rs`. Feed sources such as a public tracker feed do not, and a source behind a CDN front blocks bursts
   (#135), so a reproduction makes a single request there or reads a saved response.
 - The desktop shell: `apps/linux/scripts/shoot.sh` and `drive.sh` with `ANIBEAM_ROOT` set to the
   sandbox root; `apps/linux/README.md` has the steps. Look at the capture before you trust it.
