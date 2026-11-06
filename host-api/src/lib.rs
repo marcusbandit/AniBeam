@@ -164,6 +164,38 @@ pub struct Hello {
     /// [`FEATURE_CONVERT`]. Empty from a host older than streaming.
     #[serde(default)]
     pub features: Vec<String>,
+    /// Set when the host's Tailscale is talking to the asking device with no
+    /// direct path, carrying it through a DERP relay, as far as `tailscale
+    /// status` last said. A client spends less over such a path: a conversion
+    /// rather than the file. Absent from an older host, and when the host
+    /// cannot tell.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub relayed: bool,
+}
+
+/// `GET` [`PEERS`]: the other AniBeams the host sees on the tailnet, for a
+/// client that cannot list tailnet devices itself. Only devices the host
+/// trusts and that answered their hello as AniBeam a moment ago; neither the
+/// host nor the device asking is among them. A host that cannot read its
+/// tailnet answers `503` instead of an empty list, so a client keeps the list
+/// it had.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Peers {
+    #[serde(default)]
+    pub hosts: Vec<PeerHost>,
+}
+
+/// One AniBeam on the tailnet.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PeerHost {
+    /// Its machine name, from its own hello.
+    #[serde(default)]
+    pub name: String,
+    /// `http://<tailnet address>:<port>`, where it answered.
+    pub url: String,
+    /// Its AniBeam version.
+    #[serde(default)]
+    pub version: String,
 }
 
 /// `GET` [`PEERS`]: the other AniBeams the host sees on the tailnet, for a

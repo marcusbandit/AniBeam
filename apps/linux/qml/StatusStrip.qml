@@ -15,7 +15,7 @@ Item {
     property int unseenErrors: 0
     signal clicked()
 
-    height: theme.space(7) + theme.grout
+    height: theme.textSpace(7) + theme.grout
 
     Corner {
         id: tileBox
@@ -84,6 +84,9 @@ Item {
         }
     }
     MouseArea {
+        Accessible.role: Accessible.Button
+        Accessible.onPressAction: root.clicked()
+        Accessible.name: theme.nameNear(parent)
         id: mouse
         anchors.fill: tileBox
         hoverEnabled: true

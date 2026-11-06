@@ -1,6 +1,6 @@
 // The sidebar: one flat column a step up from the ground. The brand at the top, then the
 // places the app is for, Home, Library and Airing, each a glyph over its name. The rest of the app
-// (Feed, Watching, Metadata, Downloads, Settings) is a quiet stack of round glyph buttons near the
+// (Feed, Watching, Stats, Metadata, Downloads, Settings) is a quiet stack of round glyph buttons near the
 // foot, named by their tips, and the foot itself holds the title-language switch and the
 // version, which opens What's new. The active place takes the soft accent; nothing else is lit.
 import QtQuick
@@ -8,7 +8,8 @@ import com.marcusrosado.AniBeam
 
 Item {
     id: root
-    // Indexes into Nav.railPages: home, library, airing, feed, watching, metadata, downloads, settings
+    // Indexes into Nav.railPages: home, library, airing, feed, watching, metadata, downloads,
+    // settings, stats (last, so the older indexes kept their numbers)
     property int active: 0
     // Complete subscriptions waiting to be cleared: a red count on Downloads
     property int downloadsBadge: 0
@@ -21,7 +22,7 @@ Item {
     ]
     readonly property var secondary: [
         { index: 3, text: "Feed", icon: "rss" }, { index: 4, text: "Watching", icon: "eye" },
-        { index: 5, text: "Show info", icon: "database" }, { index: 6, text: "Downloads", icon: "download" },
+        { index: 8, text: "Stats", icon: "chart-pie" }, { index: 5, text: "Show info", icon: "database" }, { index: 6, text: "Downloads", icon: "download" },
         { index: 7, text: "Settings", icon: "settings" }
     ]
     readonly property real pad: theme.space(2)
@@ -63,6 +64,10 @@ Item {
                 required property var modelData
                 objectName: "rail-" + modelData.text.toLowerCase()   // a --drive target
                 readonly property bool on: modelData.index === root.active
+                Accessible.role: Accessible.PageTab
+                Accessible.name: modelData.text
+                Accessible.selected: on
+                Accessible.onPressAction: root.picked(modelData.index)
                 width: root.itemWidth
                 height: theme.space(17)
                 radius: theme.radiusTile
@@ -110,6 +115,10 @@ Item {
                 required property var modelData
                 objectName: "rail-" + modelData.text.toLowerCase()
                 readonly property bool on: modelData.index === root.active
+                Accessible.role: Accessible.PageTab
+                Accessible.name: modelData.text
+                Accessible.selected: on
+                Accessible.onPressAction: root.picked(modelData.index)
                 x: (root.itemWidth - width) / 2
                 width: theme.space(11); height: width
                 radius: width / 2
@@ -160,13 +169,16 @@ Item {
         Rectangle {
             id: lang
             objectName: "title-language"
+            Accessible.role: Accessible.Button
+            Accessible.name: "Title language: " + lang.names[lang.current] + ". Press for the next one"
+            Accessible.onPressAction: langMouse.clicked(null)
             readonly property var order: ["Romaji", "English", "Native"]
             readonly property var names: ({ "Romaji": "Romaji", "English": "English", "Native": "日本語" })
             readonly property string current: order.indexOf(Door.preferences.title_language) >= 0 ? Door.preferences.title_language : "Romaji"
             x: (root.itemWidth - width) / 2
             implicitWidth: langWidest.implicitWidth + theme.space(4)
             width: implicitWidth
-            height: theme.space(6)
+            height: theme.textSpace(6)
             radius: height / 2
             color: langMouse.containsMouse ? theme.raisedHover : theme.raised
             scale: theme.reducedMotion ? 1 : (langMouse.pressed ? 0.98 : 1)
@@ -200,6 +212,9 @@ Item {
             text: Shell.release
             role: "ledger"
             color: versionMouse.containsMouse ? theme.text : theme.textFaint
+            Accessible.role: Accessible.Button
+            Accessible.name: "What's new in " + Shell.release
+            Accessible.onPressAction: root.versionClicked()
             MouseArea { id: versionMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.versionClicked() }
             Tooltip { text: "What's new" }
         }

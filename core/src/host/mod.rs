@@ -323,6 +323,27 @@ pub fn devices(core: &Core) -> Vec<TailnetDevice> {
     listed(core)
 }
 
+/// Whether Tailscale carries the path to `from` through a relay, as the last
+/// read says. Hello asks it, so it never waits on `tailscale`: a read older
+/// than `TAILNET_AGAIN` is made on a worker for the next ask, and before any
+/// read the answer is no, which plays the file as a host without this would.
+pub fn relayed(core: &Core, from: std::net::IpAddr) -> bool {
+    let from = trust::canonical(from);
+    // Only a tailnet address has a path Tailscale can relay.
+    if !addr::is_tailscale(&from) {
+        return false;
+    }
+    if let Some(arc) = core.arc() {
+        core.handle.spawn_blocking(move || {
+            arc.host.tailnet(true);
+        });
+    }
+    core.host
+        .tailnet_now()
+        .and_then(|t| t.peer(from).map(|p| p.relayed))
+        .unwrap_or(false)
+}
+
 fn listed(core: &Core) -> Vec<TailnetDevice> {
     let off = recover(&core.host.off).clone();
     core.host

@@ -22,6 +22,13 @@ Corner {
     property string title: episode.title || ""
     property string detailText: ""
     signal play()
+    Accessible.role: Accessible.Button
+    // "Episode 3, The title", without saying the number twice when the title is only that
+    Accessible.name: {
+        var n = episode.number !== undefined && episode.number !== null ? "Episode " + episode.number : ""
+        return !title || title === n ? n : n ? n + ", " + title : title
+    }
+    Accessible.onPressAction: play()
     signal marker()
     // More than one file of this episode: [{ file, label }], the row's own file among them.
     // A chip beside the title says how many and opens a menu that plays any of them (#324).
@@ -154,7 +161,7 @@ Corner {
         Label {
             id: code
             anchors.verticalCenter: parent.verticalCenter
-            width: theme.space(12)
+            width: theme.textSpace(12)
             text: root.episode.code || ""
             role: "ledger"
             color: root.nextUp ? theme.accent : theme.textDim

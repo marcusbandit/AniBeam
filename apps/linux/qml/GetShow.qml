@@ -473,8 +473,10 @@ Item {
     // ---- Provider words
     function kindWords(e) {
         if (e.on_demand) return "Started when a search needs it"
-        if (e.kind === "nyaa") return "Anime torrents"
+        if (e.kind === "filtered-rss") return "RSS search"
         if (e.kind === "rss") return "RSS feed"
+        if (e.kind === "json-feed" || e.kind === "json") return "JSON search"
+        if (e.kind === "torznab") return "Indexer search"
         return e.kind
     }
     function readyWords(e) {
@@ -697,6 +699,9 @@ Item {
                                     color: prow.isActive ? theme.accentSoft : rowMouse.containsMouse && prow.on ? theme.glassFloat : "transparent"
                                 }
                                 MouseArea {
+                                    Accessible.role: Accessible.Button
+                                    Accessible.onPressAction: root.fetch(prow.modelData.name)
+                                    Accessible.name: theme.nameNear(parent)
                                     id: rowMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
@@ -742,6 +747,7 @@ Item {
                                     Label { anchors.verticalCenter: parent.verticalCenter; text: root.readyWords(prow.modelData); role: "ui"; color: !prow.modelData.on_demand || prow.modelData.running === true ? theme.text : theme.textFaint }
                                     Switch {
                                         objectName: "provider-switch-" + prow.modelData.name
+                                        accessibleName: "Search " + prow.modelData.name
                                         anchors.verticalCenter: parent.verticalCenter
                                         checked: prow.on
                                         onToggled: function(on) { root.sourceToggled(prow.modelData.name, on) }
@@ -881,6 +887,7 @@ Item {
                         height: visible ? Math.max(replaceSwitch.height, replaceText.implicitHeight) : 0
                         Switch {
                             id: replaceSwitch
+                            accessibleName: "Replace current episodes"
                             objectName: "get-replace"
                             checked: root.replaceOn
                             onToggled: function(on) { root.replaceOn = on }
@@ -969,6 +976,7 @@ Item {
         height: Math.max(optSwitch.height, optTitle.implicitHeight)
         Switch {
             id: optSwitch
+            accessibleName: opt.title
             anchors.verticalCenter: parent.verticalCenter
             checked: opt.checked
             onToggled: function(on) { opt.toggled(on) }
@@ -980,7 +988,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, parent.width - optSwitch.width - info.width - theme.space(6))
             text: opt.title; role: "title"; font.pointSize: theme.typeNormal; elide: Text.ElideRight
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: optSwitch.toggle() }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: optSwitch.toggle(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                Accessible.onPressAction: optSwitch.toggle() }
         }
         Item {
             id: info
@@ -1145,6 +1154,7 @@ Item {
                         Label { anchors.verticalCenter: parent.verticalCenter; text: "Download in episode order"; role: "title"; font.pointSize: theme.typeNormal }
                         Switch {
                             id: seqSwitch
+                            accessibleName: "Download in episode order"
                             objectName: "get-torrent-sequential"
                             anchors.verticalCenter: parent.verticalCenter
                             checked: card.seq
@@ -1205,8 +1215,8 @@ Item {
         property string value: ""
         width: parent ? parent.width : 0
         height: Math.max(keyLabel.implicitHeight, valueLabel.implicitHeight, openBtn.visible ? openBtn.height : 0)
-        Label { id: keyLabel; width: theme.space(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
-        Label { id: valueLabel; x: theme.space(18); width: parent.width - x - (openBtn.visible ? openBtn.width + theme.space(2) : 0); text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
+        Label { id: keyLabel; width: theme.textSpace(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+        Label { id: valueLabel; x: theme.textSpace(18); width: parent.width - x - (openBtn.visible ? openBtn.width + theme.space(2) : 0); text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
         // A folder opens from its line
         property bool folder: false
         Button { id: openBtn; visible: parent.folder && parent.value !== ""; anchors.right: parent.right; anchors.verticalCenter: valueLabel.verticalCenter
@@ -1237,6 +1247,9 @@ Item {
             border.color: theme.accentEdge
         }
         MouseArea {
+            Accessible.role: Accessible.Button
+            Accessible.name: theme.nameNear(parent)
+            Accessible.onPressAction: gr.picked(0)
             id: whoMouse
             width: grid.whoWidth; height: parent.height
             enabled: gr.clickable

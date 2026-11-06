@@ -182,7 +182,14 @@ fn failed(e: &CoreError) -> Response {
     )
 }
 
-async fn hello(State(st): State<Arc<Served>>) -> Response {
+async fn hello(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
+    let relayed = st
+        .core
+        .upgrade()
+        .is_some_and(|core| super::relayed(&core, from.ip()));
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
@@ -190,6 +197,7 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
         host: st.host.clone(),
         now: time::now_secs(),
         features: features(),
+        relayed,
     };
     match serde_json::to_vec(&hello) {
         Ok(body) => json(Bytes::from(body)),

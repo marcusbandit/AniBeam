@@ -31,21 +31,27 @@ use crate::contract::Release;
 use crate::downloads::replace::magnet_hash;
 use crate::net::{BoxFuture, Http, HttpRequest, Method};
 
-/// Tracker counts go stale quickly.
+// Every number here is anirss's, from `stats.py` as of anirss 0.7.1, and has to stay so: the
+// native engine's lookups give up when anirss's do (#547). Change one only with anirss.
+
+/// Tracker counts go stale quickly. anirss `CACHE_TTL_SECONDS`.
 pub const CACHE_TTL: Duration = Duration::from_secs(2 * 60 * 60);
-/// Per HTTP scrape request.
+/// Per HTTP scrape request. anirss `HTTP_SCRAPE_TIMEOUT`.
 pub const HTTP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(8);
-/// For each step of the UDP connect and scrape.
+/// For each step of the UDP connect and scrape. anirss `UDP_SCRAPE_TIMEOUT`.
 pub const UDP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(5);
-/// Per .torrent download.
+/// A single .torrent download asked for on its own. anirss `TORRENT_TIMEOUT`. An enrich
+/// does not use it: as in anirss, each of its downloads gets the time the deadline leaves.
 pub const TORRENT_TIMEOUT: Duration = Duration::from_secs(10);
-/// Info-hashes per HTTP scrape.
+/// Info-hashes per HTTP scrape. anirss `MAX_HTTP_BATCH`.
 pub const MAX_HTTP_BATCH: usize = 50;
-/// Keeps the datagram well under the MTU.
+/// Keeps the datagram well under the MTU. anirss `MAX_UDP_BATCH`.
 pub const MAX_UDP_BATCH: usize = 60;
+/// Trackers an enrich scrapes. anirss `MAX_TRACKERS_TRIED`.
 pub const MAX_TRACKERS_TRIED: usize = 4;
+/// .torrent downloads at a time. anirss `DOWNLOAD_WORKERS`.
 pub const DOWNLOAD_WORKERS: usize = 8;
-/// anirss `enrich(deadline_s=20.0)`.
+/// anirss `enrich(deadline_s=20.0)`, checked before each tracker as anirss checks it.
 pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(20);
 
 const USER_AGENT: &str = "anirss/1.0";
@@ -1901,6 +1907,52 @@ mod tests {
         let out = enrich_one(&mock, &StatsCache::default(), vec![rel(T), rel(T)]).await;
         assert_eq!(mock.fetched().len(), 1);
         assert!(out.iter().all(|r| counts(r) == (Some(4), Some(5), Some(6))));
+    }
+
+    #[test]
+    fn the_lookups_give_up_when_anirss_s_do() {
+        // anirss 0.7.1 stats.py, number for number (#547). This guards the port, not anirss:
+        // a change to anirss's numbers has to be carried over by hand.
+        assert_eq!(
+            DEFAULT_DEADLINE,
+            Duration::from_secs(20),
+            "enrich(deadline_s=20.0)"
+        );
+        assert_eq!(
+            HTTP_SCRAPE_TIMEOUT,
+            Duration::from_secs(8),
+            "HTTP_SCRAPE_TIMEOUT"
+        );
+        assert_eq!(
+            UDP_SCRAPE_TIMEOUT,
+            Duration::from_secs(5),
+            "UDP_SCRAPE_TIMEOUT"
+        );
+        assert_eq!(TORRENT_TIMEOUT, Duration::from_secs(10), "TORRENT_TIMEOUT");
+        assert_eq!(MAX_TRACKERS_TRIED, 4, "MAX_TRACKERS_TRIED");
+        assert_eq!(DOWNLOAD_WORKERS, 8, "DOWNLOAD_WORKERS");
+        assert_eq!(MAX_HTTP_BATCH, 50, "MAX_HTTP_BATCH");
+        assert_eq!(MAX_UDP_BATCH, 60, "MAX_UDP_BATCH");
+        assert_eq!(
+            CACHE_TTL,
+            Duration::from_secs(2 * 60 * 60),
+            "CACHE_TTL_SECONDS"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_fetch_with_almost_no_time_left_still_gets_half_a_second() {
+        // anirss fetch_torrents: each attempt gets max(0.5, left), so a stalled server with
+        // 0.1 s left still costs about half a second, not nothing
+        let mut mock = Mock::new(&[]);
+        mock.stall = true;
+        let urls = vec!["http://h/a.torrent".to_string()];
+        let started = Instant::now();
+        let got = fetch_torrents_with(&mock, &urls, Duration::from_millis(100)).await;
+        let took = started.elapsed();
+        assert!(got.is_empty());
+        assert!(took >= Duration::from_millis(450), "{took:?}");
+        assert!(took < Duration::from_secs(3), "{took:?}");
     }
 
     #[tokio::test]
