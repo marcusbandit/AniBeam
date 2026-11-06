@@ -1336,7 +1336,7 @@ Item {
         body: page.hasFolders ? "AniBeam found no series or films in the folders it watches. Scan them again, or check the folders in Settings."
             : "Add the folder your anime lives in and the library fills itself."
         Button { visible: page.hasFolders; text: "Scan all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
-        Button { text: page.hasFolders ? "Library settings" : "Add a folder"; primary: !page.hasFolders; flat: page.hasFolders; onClicked: frame.go("settings", { tab: "library" }) }
+        Button { text: page.hasFolders ? "Library settings" : "Add a folder"; icon: page.hasFolders ? "settings" : "folder-plus"; primary: !page.hasFolders; flat: page.hasFolders; onClicked: frame.go("settings", { tab: "library" }) }
     }
     EmptyState {
         objectName: "home-failed"
