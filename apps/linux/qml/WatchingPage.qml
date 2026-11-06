@@ -72,7 +72,7 @@ Item {
             var e = planned[i]
             var item = entryItem(e)
             var x = { id: item.id, item: item, raw: e, ghost: !owned(e), planning: true,
-                      meta: owned(e) ? "On disk" : (e.total ? Fmt.plural(e.total, "episode", "episodes") : "") }
+                      meta: owned(e) ? "On disk" : (e.total ? Fmt.plural(e.total, "episode", "episodes") : "On AniList") }
             if (owned(e)) here.push(x)
             else away.push(x)
         }
