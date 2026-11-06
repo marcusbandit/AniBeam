@@ -174,10 +174,15 @@ fn the_move_writes_only_what_was_picked() {
         }
     );
     let saves = graphql_variables(&http, "SaveMediaListEntry");
+    // A show not on the list yet goes onto Watching the way the status menu
+    // puts it there: dated today (#211).
+    let t = ::time::OffsetDateTime::now_utc();
+    let today =
+        serde_json::json!({ "year": t.year(), "month": u8::from(t.month()), "day": t.day() });
     assert_eq!(
         saves,
         vec![
-            serde_json::json!({ "mediaId": 1, "status": "CURRENT" }),
+            serde_json::json!({ "mediaId": 1, "status": "CURRENT", "startedAt": today }),
             serde_json::json!({ "mediaId": 1, "scoreRaw": 70 }),
         ]
     );
