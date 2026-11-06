@@ -823,4 +823,34 @@ mod tests {
         );
         assert_eq!(count("SELECT count(*) FROM tracker_accounts"), 2);
     }
+
+    /// Review of #653: the profile comes last in each key, so a read or a delete by
+    /// series, or by tracker, still finds its rows through the key instead of a scan.
+    #[test]
+    fn history_reads_by_series_keep_their_index() {
+        let (_dir, store) = open_temp();
+        let plans: Vec<String> = store
+            .read(|c| {
+                let mut out = Vec::new();
+                for sql in [
+                    "SELECT at FROM completed WHERE series_id = 1",
+                    "DELETE FROM resume_points WHERE series_id = 1 AND episode_key = '1'",
+                    "SELECT at FROM views WHERE series_id = 1",
+                    "SELECT 1 FROM watch_log WHERE series_id = 1 AND episode_key = '1' AND at = 5",
+                    "SELECT 1 FROM tracker_entries WHERE tracker = 'anilist' AND media_id = 7",
+                    "SELECT 1 FROM tracker_accounts WHERE tracker = 'anilist'",
+                ] {
+                    let mut stmt = c.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))?;
+                    let detail: Vec<String> = stmt
+                        .query_map([], |r| r.get::<_, String>(3))?
+                        .collect::<Result<_, _>>()?;
+                    out.push(format!("{sql} => {}", detail.join("; ")));
+                }
+                Ok(out)
+            })
+            .unwrap();
+        for plan in plans {
+            assert!(!plan.contains("=> SCAN"), "{plan}");
+        }
+    }
 }

@@ -349,7 +349,7 @@ mod tests {
                     "INSERT INTO profiles (id, created_at) VALUES (2, 0);
                      INSERT INTO completed (profile_id, series_id, episode_key, at) VALUES (2, 1, '63', 10), (2, 1, '1', 3);
                      INSERT INTO resume_points (profile_id, series_id, episode_key, position, duration, at) VALUES
-                       (1, 1, '63', 100, 1400, 1), (2, 1, '63', 50, 1400, 1), (2, 1, '1', 70, 1400, 1);",
+                       (1, 1, '63', 100, 1400, 1), (2, 1, '63', 90, 1400, 1), (2, 1, '1', 70, 1400, 1);",
                 )?;
                 Ok(())
             })
@@ -375,8 +375,8 @@ mod tests {
         );
         assert_eq!(
             rows("SELECT profile_id, episode_key, position FROM resume_points ORDER BY profile_id"),
-            vec![(1, "1".into(), 100.0), (2, "1".into(), 70.0)],
-            "each keeps its own furthest point"
+            vec![(1, "1".into(), 100.0), (2, "1".into(), 90.0)],
+            "each takes its own furthest point, never the other's"
         );
     }
 
