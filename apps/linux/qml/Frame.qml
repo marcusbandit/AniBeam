@@ -327,11 +327,10 @@ FocusScope {
         if (value !== undefined) out[key] = value
         return out
     }
-    // An error in a person's words: the shell's bridge adds `plain` (what happened) and
-    // `next` (what to do) to every call error. An error without them, from an event or an
-    // older path, falls back to the core's own sentence with its log prefix cut off.
+    // The core's error message reads "MyAnimeList did not respond: ..." or "Invalid client
+    // id: ...", the shape the log wants; a line that shows it inline wants the sentence
+    // after it. A toast goes through fail() instead, which has the plain words and a fix.
     function errorText(e) {
-        if (e && e.plain) return e.plain + (e.next ? " " + e.next : "")
         var m = String(e && e.message ? e.message : "")
         m = m.replace(/^(AniList|MyAnimeList|TMDB|Anilist|Mal|Jikan|Tmdb)( did not respond)?: /, "").replace(/^(io|internal|[Ii]nvalid [a-z_ ]+): /, "")
         return m === "" ? "That did not work." : m.charAt(0).toUpperCase() + m.slice(1)
@@ -347,7 +346,7 @@ FocusScope {
             var tab = fix.slice(9)
             label = "Open settings"; act = function() { frame.go("settings", { tab: tab }) }
         }
-        var said = errorText(e), raw = String(e.message || "")
+        var said = e.plain ? e.plain + (e.next ? " " + e.next : "") : errorText(e), raw = String(e.message || "")
         frame.toast(said, 8, label, act, raw !== "" && raw !== said ? raw : "")
     }
     // Starts the flow; the browser opens when the core says the listener is up. True when
