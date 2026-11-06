@@ -135,6 +135,10 @@ pub enum EventBody {
     WatchingRefreshed {
         list: WatchingList,
     },
+    /// An episode of a show on the Watching list aired (#212), said once.
+    EpisodeOut {
+        episode: EpisodeOut,
+    },
     /// A season of Airing now was read afresh; `ListAiringNow` has it.
     AiringNowRefreshed {
         season: SeasonPick,

@@ -10,7 +10,9 @@ use cxx_qt_lib::{
 };
 use tokio::sync::mpsc;
 
-use crate::theme::config::{AppIcon, Corners, Density, ModeSetting, Poster, Source, ThemeSettings};
+use crate::theme::config::{
+    AppIcon, Corners, Density, ModeSetting, Poster, Source, TextSize, ThemeSettings,
+};
 use crate::theme::engine::{Resolved, resolve};
 use crate::theme::{Mode, Palette, format_hue, status_hue};
 
@@ -50,6 +52,8 @@ pub mod qobject {
         #[qproperty(bool, ready)]
         #[qproperty(bool, reduced_motion)]
         #[qproperty(QString, app_icon)]
+        #[qproperty(QString, text_size)]
+        #[qproperty(f64, text_scale)]
         type Theme = super::ThemeRust;
 
         #[qinvokable]
@@ -68,6 +72,8 @@ pub mod qobject {
         fn pick_theme(self: Pin<&mut Self>, mode: &QString, stem: &QString);
         #[qinvokable]
         fn pick_reduced_motion(self: Pin<&mut Self>, on: bool);
+        #[qinvokable]
+        fn pick_text_size(self: Pin<&mut Self>, size: &QString);
         #[qinvokable]
         fn pick_app_icon(self: Pin<&mut Self>, icon: &QString);
         #[qinvokable]
@@ -101,6 +107,8 @@ pub struct ThemeRust {
     ready: bool,
     reduced_motion: bool,
     app_icon: QString,
+    text_size: QString,
+    text_scale: f64,
     resolved: Option<Resolved>,
     commands: Option<mpsc::UnboundedSender<ThemeSettings>>,
 }
@@ -128,6 +136,8 @@ impl Default for ThemeRust {
             ready: false,
             reduced_motion: false,
             app_icon: QString::default(),
+            text_size: QString::from("normal"),
+            text_scale: 1.0,
             resolved: None,
             commands: None,
         }
@@ -182,6 +192,9 @@ impl qobject::Theme {
         self.as_mut().set_poster_width(s.poster.width());
         self.as_mut().set_smoothing(s.corners.smoothing());
         self.as_mut().set_reduced_motion(s.reduced_motion);
+        self.as_mut()
+            .set_text_size(QString::from(s.text_size.as_str()));
+        self.as_mut().set_text_scale(s.text_size.factor());
         let icon = QString::from(s.icon.as_str());
         if self.as_ref().app_icon() != &icon {
             crate::bridge::helpers::ffi::set_window_icon(&QString::from(crate::app_icon::qrc(
@@ -285,6 +298,11 @@ impl qobject::Theme {
     }
     pub fn pick_reduced_motion(self: Pin<&mut Self>, on: bool) {
         self.change(|s| s.reduced_motion = on)
+    }
+    pub fn pick_text_size(self: Pin<&mut Self>, size: &QString) {
+        if let Some(v) = TextSize::parse(&size.to_string()) {
+            self.change(|s| s.text_size = v)
+        }
     }
     pub fn pick_app_icon(self: Pin<&mut Self>, icon: &QString) {
         if let Some(v) = AppIcon::parse(&icon.to_string()) {

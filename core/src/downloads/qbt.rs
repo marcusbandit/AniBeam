@@ -209,6 +209,13 @@ impl QbtClient {
         self.call("rss/removeItem", Some(form)).await.map(|_| ())
     }
 
+    /// Asks qBittorrent to read one feed now rather than at its next
+    /// interval; `path` is the feed's path in its RSS tree.
+    pub async fn refresh_feed(&self, path: &str) -> Result<(), CoreError> {
+        let form = vec![("itemPath".to_string(), path.to_string())];
+        self.call("rss/refreshItem", Some(form)).await.map(|_| ())
+    }
+
     pub async fn remove_rule(&self, name: &str) -> Result<(), CoreError> {
         let form = vec![("ruleName".to_string(), name.to_string())];
         self.call("rss/removeRule", Some(form)).await.map(|_| ())

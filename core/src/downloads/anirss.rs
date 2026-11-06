@@ -165,9 +165,15 @@ impl AnirssClient {
         })
     }
 
+    /// Each endpoint's kind comes back under its shape name, whatever anirss calls it.
     pub async fn endpoints(&self) -> Result<Vec<SearchEndpoint>, CoreError> {
         let v = self.get("/endpoints", &[], None).await?;
-        Ok(serde_json::from_value(v["endpoints"].clone()).unwrap_or_default())
+        let mut endpoints: Vec<SearchEndpoint> =
+            serde_json::from_value(v["endpoints"].clone()).unwrap_or_default();
+        for e in &mut endpoints {
+            e.kind = crate::releases::kinds::shape_of(&e.kind).to_string();
+        }
+        Ok(endpoints)
     }
 
     /// `POST /endpoints` (anirss 0.6): writes an endpoint into anirss's config, or replaces
@@ -979,6 +985,27 @@ mod tests {
 
     fn client(http: &Arc<FakeHttp>) -> AnirssClient {
         AnirssClient::new("http://127.0.0.1:8787/", "tok", http.clone())
+    }
+
+    #[tokio::test]
+    async fn the_endpoints_anirss_lists_come_back_under_their_shape_kinds() {
+        let http = Arc::new(FakeHttp::new());
+        let old = crate::releases::kinds::RENAMED[0].0;
+        http.push_json(
+            200,
+            json!({"endpoints": [
+                {"name": "search", "kind": old, "url": "https://tracker.example/"},
+                {"name": "feed", "kind": "rss", "url": "https://feed.example/?q={query}"},
+            ]}),
+        );
+        let kinds: Vec<String> = client(&http)
+            .endpoints()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.kind)
+            .collect();
+        assert_eq!(kinds, ["filtered-rss", "rss"]);
     }
 
     #[tokio::test]

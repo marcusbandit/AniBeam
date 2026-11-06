@@ -337,7 +337,17 @@ fn progress_set_by_hand_stays_out_of_the_hours() {
         "an episode already watched gains no hand-set finish"
     );
 
-    // Setting it back to 1 takes the hand-set finishes away and keeps the played one.
+    // A finish copied from before the log is history the count says is wrong too.
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "INSERT INTO watch_log (series_id, episode_key, at, how) VALUES (?1, '3', 1, 'copied')",
+                [loose as i64],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    // Setting it back to 1 takes the hand-set and older finishes away and keeps the played one.
     core.call(Call::SetProgress {
         series: loose,
         progress: 1,
@@ -378,6 +388,15 @@ fn each_finish_of_an_episode_is_kept() {
             Reply::Playback { session } => session.session,
             other => panic!("{other:?}"),
         };
+        // Watched, not only opened: thirty seconds of forward play is a view.
+        for step in 0..35 {
+            core.call(Call::Tick {
+                session,
+                position: f64::from(step),
+                paused: false,
+            })
+            .unwrap();
+        }
         core.call(Call::ClosePlayback {
             session,
             position: 1400.0,
@@ -404,4 +423,91 @@ fn each_finish_of_an_episode_is_kept() {
         .unwrap();
     assert_eq!((completed, played), (1, 2));
     assert_eq!(stats(&core, None).episodes, 2);
+}
+
+/// Review of #646: a run that never played (a scrub to the credits, a file that
+/// ends at once) still completes the episode on the series page, but is no
+/// finish in the log, so Stats gains nothing for it.
+#[test]
+fn a_run_that_never_played_is_no_finish() {
+    let (_dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
+    let file = fixtures::insert_file(
+        &core,
+        loose,
+        "/lib/Loose/Episode 1.mkv",
+        1.0,
+        None,
+        "episode",
+        anibeam_core::time::now_secs(),
+    );
+    let session = match core.call(Call::OpenPlayback { file }).unwrap() {
+        Reply::Playback { session } => session.session,
+        other => panic!("{other:?}"),
+    };
+    core.call(Call::ClosePlayback {
+        session,
+        position: 1400.0,
+        reason: CloseReason::Ended,
+    })
+    .unwrap();
+    let (completed, logged): (i64, i64) = core
+        .store()
+        .read(move |c| {
+            Ok((
+                c.query_row(
+                    "SELECT count(*) FROM completed WHERE series_id = ?1",
+                    [loose as i64],
+                    |r| r.get(0),
+                )?,
+                c.query_row(
+                    "SELECT count(*) FROM watch_log WHERE series_id = ?1",
+                    [loose as i64],
+                    |r| r.get(0),
+                )?,
+            ))
+        })
+        .unwrap();
+    assert_eq!((completed, logged), (1, 0));
+    assert_eq!(stats(&core, None).episodes, 0);
+}
+
+/// Review of #646: a series finished partly by hand was finished by hand, so
+/// Stats counts no finish for it, rather than dating it to the one episode
+/// that was played.
+#[test]
+fn a_series_finished_partly_by_hand_counts_no_finish() {
+    let (_dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let show = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Show", "Show");
+    fixtures::insert_media(
+        &core,
+        1,
+        Some("Show"),
+        None,
+        Some(3),
+        "FINISHED",
+        "TV",
+        None,
+    );
+    fixtures::match_series(&core, show, Some(1), None);
+    fixtures::insert_completed(&core, show, "1", day(2, 1));
+    core.store()
+        .write(move |c| {
+            for key in ["2", "3"] {
+                c.execute(
+                    "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)",
+                    params![show as i64, key, day(5, 1)],
+                )?;
+                c.execute(
+                    "INSERT INTO watch_log (series_id, episode_key, at, how) VALUES (?1, ?2, ?3, 'marked')",
+                    params![show as i64, key, day(5, 1)],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let s = stats(&core, Some(2026));
+    assert_eq!((s.episodes, s.series_completed), (1, 0));
 }

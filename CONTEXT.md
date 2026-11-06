@@ -150,6 +150,10 @@ _Avoid_: seasonal, schedule, calendar, discover
 The user saying one AniList entry should stay off Airing now. It covers that entry and nothing related to it, so the next season of the same show is a new entry and appears again. Settings, Library lists every one with a way back.
 _Avoid_: hidden, ignored, blocked, dismissed
 
+**Episode out**:
+The moment an episode of a show on the Watching list airs, said once by the core from the schedule it keeps, with no polling. The desktop shows it as a notification unless Settings turned that off.
+_Avoid_: new episode alert, release notification, reminder
+
 **Stats**:
 A year of watching added up from the watch log: hours, episodes and series finished by month, the top genres, studios and seasons. The recap is the one card for the year that saves as an image.
 _Avoid_: analytics, insights, wrapped, report
@@ -229,6 +233,10 @@ _Avoid_: auto-pick, recommended
 **Subscription**:
 An RSS feed and an auto-download rule registered in the torrent client under one name, so every new release that matches lands under that name's folder. anirss registers and removes them; the core only asks.
 _Avoid_: rule, feed, watch
+
+**Episode watch**:
+What the core adds to a subscription whose folder is a library show (#215): a one-shot timer for the episode that airs next, and for one that aired in the last three days and is not here. A little after it airs the core asks the torrent client to read the show's feed now; it looks again six hours and a day on, reading only the library and asking the feed again when the episode is still missing; three days on it says once in the activity log that the episode has not turned up, and the subscription goes on looking. The followed shows are kept from the last read of the client's rules, so the timers are set at launch without reaching the client, and a feed is only ever asked through a client already running.
+_Avoid_: poll, auto-download, follow job
 
 **Wire query**:
 The query an endpoint itself was last asked. On a generic RSS endpoint (1337x through Jackett) anirss narrows a search on its own side, so the page's query can hold words the endpoint never saw, and a feed built from them finds nothing. Subscribing hands the core the wire query too: the subscription's feed reads that, and the narrowing words go into the rule's own filters (its "keeps" and "drops"). A feed found empty later can be repaired the same way: its search shortened from the end until the endpoint answers, the dropped words kept in the rule.

@@ -34,6 +34,7 @@ pub mod rewire;
 pub mod rolling;
 pub mod settings;
 pub mod trash;
+pub mod watch;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -668,9 +669,18 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
         let st = core.downloads.state();
         (st.anirss.state, st.torrent.connected)
     };
+    // The native engine needs no anirss: its connect is the torrent client alone, and
+    // nothing here starts the sidecar (#549).
+    let native = backend::engine(&core)? == DownloadsEngine::Native;
     // A save that lands while anirss is read drops the read (#523): the client
     // is built again from the settings now in use, and that one is read.
+    if native {
+        read_native_endpoints(&core).await?;
+    }
     let anirss_failure = loop {
+        if native {
+            break None;
+        }
         let reached = match reach(&core).await {
             Ok(r) => r,
             Err(e) => break Some(plain(&e)),
@@ -695,6 +705,7 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
         status_async(&core).await?
     };
     let anirss_failure = match status.anirss.state {
+        _ if native => None,
         AnirssState::Ready => None,
         _ => anirss_failure.or_else(|| Some(status.anirss.message.clone())),
     };
@@ -714,7 +725,7 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
     Ok(Finished {
         plain: said,
         level,
-        message: describe(&status, anirss_failure.as_deref()),
+        message: describe(&status, native, anirss_failure.as_deref()),
         body: EventBody::DownloadsStatusChanged { status },
     })
 }
@@ -806,6 +817,19 @@ enum Read {
 pub(crate) fn repo_endpoints_changed(core: &Core) {
     let Ok(owner) = core.owner() else { return };
     core.handle.spawn(async move {
+        // On the native engine the list is the core's own sources: read them again (#549).
+        if backend::engine(&owner).is_ok_and(|e| e == DownloadsEngine::Native) {
+            if read_native_endpoints(&owner).await.is_ok()
+                && let Ok(status) = status_async(&owner).await
+            {
+                owner.bus.debug(
+                    Stage::Downloads,
+                    "Search endpoints read again",
+                    EventBody::DownloadsStatusChanged { status },
+                );
+            }
+            return;
+        }
         let Ok(Some(reached)) = running(&owner).await else {
             return;
         };
@@ -822,6 +846,21 @@ pub(crate) fn repo_endpoints_changed(core: &Core) {
             );
         }
     });
+}
+
+/// The core's own sources as the downloads page lists them, keys masked, into the state:
+/// the native engine's endpoint list, as `read_anirss` puts anirss's there (#549). Filling
+/// in each source's address reads the secret store, so it runs on a blocking thread, and
+/// only on a connect or a change to the sources, never on every status.
+async fn read_native_endpoints(core: &Arc<Core>) -> Result<(), CoreError> {
+    let owner = core.clone();
+    let endpoints = tokio::task::spawn_blocking(move || {
+        crate::releases::native::Native::for_core(&owner, Vec::new(), None).list()
+    })
+    .await
+    .map_err(|e| CoreError::internal(e.to_string()))?;
+    core.downloads.state().endpoints = endpoints;
+    Ok(())
 }
 
 /// Health, endpoints and anirss's view of qBittorrent, into the state, while the
@@ -870,8 +909,11 @@ async fn read_anirss(core: &Arc<Core>, reached: &Reached) -> Result<Read, CoreEr
 }
 
 /// One line for the log: both halves, as they are.
-fn describe(status: &DownloadsStatus, anirss_failure: Option<&str>) -> String {
+/// The connect's log line. `native` is the engine the connect ran on, decided at its
+/// start, not the one a save may have picked since.
+fn describe(status: &DownloadsStatus, native: bool, anirss_failure: Option<&str>) -> String {
     let anirss = match anirss_failure {
+        _ if native => "searches run in AniBeam itself".to_string(),
         Some(m) => format!("anirss is not available: {m}"),
         None => format!("anirss {} ready", status.anirss.version),
     };
@@ -958,11 +1000,25 @@ async fn probe(http: &dyn Http, url: &str) -> bool {
 /// nothing, anirss included: with no endpoint list there is nothing to ask.
 pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
     let owner = core.owner()?;
-    forget_probes();
+    // None of the core's own sources starts on demand, so on the native engine there is
+    // nothing to probe and nothing kept to forget (#549).
+    let native = backend::engine(core)? == DownloadsEngine::Native;
+    if !native {
+        forget_probes();
+    }
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::CheckEndpoints, move |_| async move {
+            if native {
+                let status = status_async(&owner).await?;
+                return Ok(Finished {
+                    plain: None,
+                    level: Level::Debug,
+                    message: "Nothing to check: no source here starts on demand".to_string(),
+                    body: EventBody::DownloadsStatusChanged { status },
+                });
+            }
             let mut endpoints = owner.downloads.state().endpoints.clone();
             probe_endpoints(owner.http.as_ref(), &mut endpoints).await;
             let up: Vec<String> = endpoints
@@ -2271,7 +2327,11 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
         };
         match outcome {
             Ok((backend, mut rules)) => {
-                link_rules(&owner, &mut rules);
+                // What is followed, for the episode watch (#215); a link that
+                // failed says nothing about what is followed, so it is kept
+                if link_rules(&owner, &mut rules) {
+                    watch::remember(&owner, &rules).await;
+                }
                 follow_rules(&owner, &mut rules);
                 owner.bus.debug(
                     Stage::Downloads,
@@ -3016,8 +3076,8 @@ pub fn read_rule(core: &Core, name: String) -> Result<Reply, CoreError> {
 }
 
 /// Fills each rule's `show` from the library. A library that cannot be
-/// read leaves them empty: the rules still stand on their own.
-fn link_rules(core: &Core, rules: &mut [SubscriptionRule]) {
+/// read leaves them empty: the rules still stand on their own. False then.
+fn link_rules(core: &Core, rules: &mut [SubscriptionRule]) -> bool {
     let images = core.paths.images_dir();
     let linked = core.store.read(|c| {
         let linker = link::Linker::load(c)?;
@@ -3031,8 +3091,12 @@ fn link_rules(core: &Core, rules: &mut [SubscriptionRule]) {
             for (rule, id) in rules.iter_mut().zip(ids) {
                 rule.show = id.and_then(|id| shows.get(&id).cloned());
             }
+            true
         }
-        Err(e) => tracing::warn!("subscriptions not linked to the library: {e}"),
+        Err(e) => {
+            tracing::warn!("subscriptions not linked to the library: {e}");
+            false
+        }
     }
 }
 
@@ -3777,13 +3841,13 @@ mod tests {
         status.anirss.version = "0.3.4".to_string();
         status.torrent.message = "unreachable".to_string();
         assert_eq!(
-            describe(&status, None),
+            describe(&status, false, None),
             "anirss 0.3.4 ready; qBittorrent not connected: unreachable"
         );
         status.torrent.connected = true;
         status.torrent.version = "v5.2.4".to_string();
         assert_eq!(
-            describe(&status, Some("anirss exited")),
+            describe(&status, false, Some("anirss exited")),
             "anirss is not available: anirss exited; qBittorrent v5.2.4 connected"
         );
     }
