@@ -126,6 +126,40 @@ Item {
         return stateOf(d)
     }
     // A tile's click: the episodes for a matched series, the match for one without a record
+    // The first scan's walk (#206): the series that need a match, one at a time, by id. Apply
+    // or Skip opens the next; Close, Escape or a press outside stop it.
+    property var walkIds: []
+    property int walkAt: -1
+    function walkOpen() {
+        while (page.walkAt < page.walkIds.length) {
+            var r = Door.getSeries(page.walkIds[page.walkAt])
+            if (!r.error) {
+                var c = r.reply.detail.card
+                matchPanel.walkLine = (page.walkAt + 1) + " of " + page.walkIds.length
+                matchPanel.openFor(c.id, c.title, c.match_info)
+                return
+            }
+            page.walkAt++
+        }
+        page.walkEnd(true)
+    }
+    function walkEnd(done) {
+        var left = page.walkIds.length - page.walkAt
+        page.walkIds = []
+        page.walkAt = -1
+        matchPanel.walkLine = ""
+        if (done) frame.toast("That was the last one")
+        else if (left > 0) frame.toast(left === 1 ? "One left under Needs a match" : left + " left under Needs a match")
+    }
+    Connections {
+        target: matchPanel
+        function onEnded(how) {
+            if (page.walkAt < 0) return
+            if (how === "closed") { page.walkEnd(false); return }
+            page.walkAt++
+            Qt.callLater(page.walkOpen)
+        }
+    }
     function openTile(d) {
         var card = d.series || {}
         if (isMatched(card)) episodesPane.openFor(card.id, detailOf(d))
@@ -281,6 +315,7 @@ Item {
         search.text = query
         queryDebounce.stop()
         reload()
+        if (props.walk && props.walk.length) { page.walkIds = props.walk; page.walkAt = 0; Qt.callLater(page.walkOpen) }
     }
 
     // ---- The crawl, while it runs: a label and a thin line in the tools
