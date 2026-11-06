@@ -137,6 +137,7 @@ impl Native {
                 client_side_refine: refinement::is_client_side(e),
                 on_demand: None,
                 running: None,
+                followable: endpoints::answers_rss(&e.kind),
             })
             .collect()
     }
@@ -309,6 +310,9 @@ impl Native {
     }
 
     /// What subscribing to (query, items) would register (anirss `subscription_spec`).
+    /// A source whose search answers JSON has no feed a client can read, so it is
+    /// refused with a line saying so rather than handed over as one (#507); the
+    /// desktop's rule and the phone's both come from here.
     pub async fn preview(
         &self,
         query: &str,
@@ -316,6 +320,15 @@ impl Native {
         items: &[Release],
     ) -> Result<SubscriptionSpec, CoreError> {
         let ep = self.step_endpoint(endpoint)?;
+        if !endpoints::answers_rss(&ep.kind) {
+            return Err(CoreError::invalid(
+                "endpoint",
+                format!(
+                    "{} cannot be followed: it answers searches, but has no feed to check for new episodes",
+                    ep.name
+                ),
+            ));
+        }
         Ok(endpoints::build_subscription(self.http.as_ref(), ep, query, items).await)
     }
 
@@ -425,6 +438,22 @@ mod tests {
         assert!(!native.feed_is_rss("anime"));
         // One the core no longer has: nothing to read.
         assert!(!native.feed_is_rss("gone"));
+        // The shells offer a subscription only on a source the list calls followable.
+        let followable: Vec<(String, bool)> = native
+            .list()
+            .into_iter()
+            .map(|e| (e.name, e.followable))
+            .collect();
+        assert_eq!(
+            followable,
+            [
+                ("feed".to_string(), true),
+                ("indexer".to_string(), true),
+                ("search".to_string(), true),
+                ("api".to_string(), false),
+                ("anime".to_string(), false),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -457,6 +486,28 @@ mod tests {
             search.to_string().contains("no source named gone"),
             "{search}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_source_that_answers_json_cannot_be_followed() {
+        let native = Native::new(
+            FakeHttp::new(),
+            vec![
+                Endpoint::new("feed", "rss", "https://a/?q={query}"),
+                Endpoint::new("api", "json", "https://c/?q={query}"),
+                Endpoint::new("anime", "tosho", "https://d/?q={query}"),
+            ],
+        );
+        for name in ["api", "anime"] {
+            let err = native.preview("show", name, &[]).await.unwrap_err();
+            let text = err.to_string();
+            assert!(
+                text.contains(&format!("{name} cannot be followed")),
+                "{text}"
+            );
+        }
+        let spec = native.preview("show", "feed", &[]).await.unwrap();
+        assert!(spec.feed_url.starts_with("https://a/"), "{}", spec.feed_url);
     }
 
     #[tokio::test]

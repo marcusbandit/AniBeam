@@ -421,7 +421,8 @@ Item {
         if (caughtUp) return "All watched"
         return ""
     }
-    readonly property string synopsisText: detail ? detail.synopsis.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").trim() : ""
+    // The core hands the synopsis over as plain text in paragraphs, whatever the provider.
+    readonly property string synopsisText: detail ? detail.synopsis : ""
     readonly property var tagList: detail ? detail.tags.filter(function(t) { return page.spoilers || (!t.spoiler && !t.adult) }).sort(function(a, b) { return b.rank - a.rank }) : []
     readonly property bool anySpoiler: detail ? detail.tags.some(function(t) { return t.spoiler || t.adult }) : false
     readonly property var relationNodes: graph ? graph.nodes.filter(function(n) { return !n.current }).sort(function(a, b) { return a.y - b.y || a.x - b.x }) : []
