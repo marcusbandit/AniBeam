@@ -86,6 +86,60 @@ Flickable {
         }
     }
     onContentYChanged: if (lazyCount > 0 && Math.abs(contentY - lazySweptAt) > height / 4) lazySweep()
+
+    // ---- Painting picks (#695). A card whose press-and-hold began picking hands its pointer
+    // here (window coordinates). Each move picks (`brushAdd`) or unpicks the card under it,
+    // and near the top or bottom of the view a timer scrolls on, picking what slides under
+    // the still pointer. Cards answer to `brushable`, `selected` and `selectToggled`.
+    property bool brushing: false
+    property bool brushAdd: true
+    property point brushAt: Qt.point(0, 0)
+    readonly property real brushEdge: theme.space(18)
+    readonly property real brushMaxSpeed: 1400     // px a second, at the very edge or past it
+    function brushBegin(winPoint, add) {
+        wheel.glide.stop()
+        root.cancelFlick()
+        brushAdd = add
+        brushAt = winPoint
+        brushing = true
+        brushHit()
+    }
+    function brushMove(winPoint) { brushAt = winPoint; brushHit() }
+    function brushEnd() { brushing = false }
+    function brushCard(x, y) {
+        var it = root.contentItem, p = root.mapToItem(it, x, y)
+        for (var depth = 0; depth < 12; depth++) {
+            var c = it.childAt(p.x, p.y)
+            if (!c) return null
+            if (c.brushable === true) return c
+            p = it.mapToItem(c, p.x, p.y)
+            it = c
+        }
+        return null
+    }
+    function brushHit() {
+        var v = root.mapFromItem(null, brushAt.x, brushAt.y)
+        var c = brushCard(Math.max(0, Math.min(v.x, root.width - 1)), Math.max(0, Math.min(v.y, root.height - 1)))
+        if (c && c.selected !== brushAdd) c.selectToggled()
+    }
+    Timer {
+        interval: 16
+        repeat: true
+        running: root.brushing
+        onTriggered: {
+            var y = root.mapFromItem(null, root.brushAt.x, root.brushAt.y).y
+            var depth = y < root.brushEdge ? (root.brushEdge - y) / root.brushEdge
+                      : y > root.height - root.brushEdge ? -(y - (root.height - root.brushEdge)) / root.brushEdge : 0
+            if (depth === 0) return
+            var step = -Math.max(-1, Math.min(1, depth)) * root.brushMaxSpeed * interval / 1000
+            var to = Math.max(0, Math.min(root.contentY + step, Math.max(0, root.contentHeight - root.height)))
+            if (to === root.contentY) return
+            wheel.glide.stop()
+            root.contentY = to
+            root.brushHit()
+        }
+    }
+
     function keyPressed(event) { gridKeys.handle(event, root.Window.window ? root.Window.window.activeFocusItem : null) }
     Keys.onPressed: function(event) { root.keyPressed(event) }
     MouseArea { anchors.fill: parent; onPressed: function(m) { root.forceActiveFocus(); m.accepted = false } }
