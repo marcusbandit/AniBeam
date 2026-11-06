@@ -821,6 +821,10 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
         !s.is_extra,
         s.profile,
     );
+    // A finish in the watch log needs the episode to have been watched: thirty
+    // seconds of forward play, the view rule. A scrub to the credits or a file
+    // that ends at once still completes the episode, but adds no finish.
+    let watched = s.viewed;
     core.store.tx(move |tx| {
         tx.execute(
             "DELETE FROM resume_points WHERE profile_id = ?3 AND series_id = ?1 AND episode_key = ?2",
@@ -832,6 +836,8 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
                  ON CONFLICT(profile_id, series_id, episode_key) DO UPDATE SET at = excluded.at",
                 params![series as i64, key, now, profile as i64],
             )?;
+        }
+        if record && watched {
             crate::library::history::log_finish(
                 tx,
                 profile,

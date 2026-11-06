@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::Connection;
 
 use crate::contract::*;
+use crate::library::history::How;
 use crate::library::snapshot::{SeriesRow, Snapshot};
 use crate::library::titles;
 
@@ -71,10 +72,9 @@ pub(crate) type Finishes = HashMap<u64, Vec<(String, i64)>>;
 /// Reads the counted finishes off the watch log.
 pub(crate) fn finishes(conn: &Connection) -> Result<Finishes, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT series_id, episode_key, at FROM watch_log
-         WHERE profile_id = 1 AND how <> 'marked' ORDER BY at",
+        "SELECT series_id, episode_key, at FROM watch_log WHERE profile_id = 1 AND how <> ?1",
     )?;
-    let rows = stmt.query_map([], |r| {
+    let rows = stmt.query_map([How::Marked.as_str()], |r| {
         Ok((
             r.get::<_, i64>(0)? as u64,
             r.get::<_, String>(1)?,
@@ -91,7 +91,8 @@ pub(crate) fn finishes(conn: &Connection) -> Result<Finishes, CoreError> {
 
 /// When a finished series was finished: the moment the last of its watched
 /// episodes was first finished, so watching one again never moves it. None
-/// when none of them has a counted finish, all set by hand.
+/// when any of them has no counted finish: a series finished partly by hand
+/// was finished by hand, and Stats counts no finish for it.
 fn finished_at(done: &[(String, i64)], log: &[(String, i64)]) -> Option<i64> {
     let mut first: HashMap<&str, i64> = HashMap::new();
     for (key, at) in log {
@@ -101,7 +102,9 @@ fn finished_at(done: &[(String, i64)], log: &[(String, i64)]) -> Option<i64> {
             .or_insert(*at);
     }
     done.iter()
-        .filter_map(|(key, _)| first.get(key.as_str()).copied())
+        .map(|(key, _)| first.get(key.as_str()).copied())
+        .collect::<Option<Vec<i64>>>()?
+        .into_iter()
         .max()
 }
 

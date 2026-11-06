@@ -386,14 +386,14 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
                    AND number >= ?2)",
             params![series as i64, past, season],
         )?;
-        // Taking a hand-set count back takes its hand-set finishes with it.
-        // A finish the player wrote stays: that episode was watched.
+        // Taking a count back takes those episodes' finishes with it, all but
+        // the ones the player wrote: those episodes were watched here.
         tx.execute(
-            "DELETE FROM watch_log WHERE profile_id = 1 AND series_id = ?1 AND how = ?4 AND episode_key IN (
+            "DELETE FROM watch_log WHERE profile_id = 1 AND series_id = ?1 AND how <> ?4 AND episode_key IN (
                  SELECT episode_key FROM files
                  WHERE series_id = ?1 AND kind = 'episode' AND COALESCE(season, 1) = ?3
                    AND number >= ?2)",
-            params![series as i64, past, season, How::Marked.as_str()],
+            params![series as i64, past, season, How::Played.as_str()],
         )?;
         Ok(())
     })?;

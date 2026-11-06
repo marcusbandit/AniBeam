@@ -332,8 +332,8 @@ pub(crate) fn set_enabled(core: &Core, on: bool) {
 /// source removed, a tracker connected, dropped or made main, the
 /// preferences (the title language names every event). A broad net on
 /// purpose: a rewrite that changes nothing is skipped, so a false alarm
-/// costs one read.
-fn may_change(event: &Event) -> bool {
+/// costs one read. The episode-out alarm re-arms on the same net.
+pub(crate) fn may_change(event: &Event) -> bool {
     if event
         .job
         .as_ref()
@@ -353,7 +353,7 @@ fn may_change(event: &Event) -> bool {
 
 /// How long a burst of changes is gathered before one rewrite: a scan or a
 /// sync emits many events, and the file needs writing once after them.
-const SETTLE: Duration = Duration::from_secs(1);
+pub(crate) const SETTLE: Duration = Duration::from_secs(1);
 
 /// Subscribes the listener that rewrites the file after a change. Called
 /// once, by `Core::open`; `shutdown` drops it.

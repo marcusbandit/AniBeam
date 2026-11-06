@@ -4,7 +4,8 @@
 -- History, resume points and tracker accounts carry a profile; the library and the
 -- metadata stay shared. Every row already here becomes profile 1's, and nothing is lost.
 --
--- `profile_id` defaults to 1, so a write that names no profile is the owner's.
+-- `profile_id` defaults to 1, so a write that names no profile is the owner's. It comes
+-- last in each key, so every read and delete by series or tracker keeps its index.
 
 CREATE TABLE profiles (
     id            INTEGER PRIMARY KEY,
@@ -20,7 +21,7 @@ CREATE TABLE views_p (
     series_id     INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
     episode_key   TEXT NOT NULL,
     at            INTEGER NOT NULL,
-    PRIMARY KEY (profile_id, series_id)
+    PRIMARY KEY (series_id, profile_id)
 );
 INSERT INTO views_p (profile_id, series_id, episode_key, at)
 SELECT 1, series_id, episode_key, at FROM views;
@@ -32,7 +33,7 @@ CREATE TABLE completed_p (
     series_id     INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
     episode_key   TEXT NOT NULL,
     at            INTEGER NOT NULL,
-    PRIMARY KEY (profile_id, series_id, episode_key)
+    PRIMARY KEY (series_id, episode_key, profile_id)
 );
 INSERT INTO completed_p (profile_id, series_id, episode_key, at)
 SELECT 1, series_id, episode_key, at FROM completed;
@@ -46,7 +47,7 @@ CREATE TABLE resume_points_p (
     position      REAL NOT NULL,
     duration      REAL NOT NULL,
     at            INTEGER NOT NULL,
-    PRIMARY KEY (profile_id, series_id, episode_key)
+    PRIMARY KEY (series_id, episode_key, profile_id)
 );
 INSERT INTO resume_points_p (profile_id, series_id, episode_key, position, duration, at)
 SELECT 1, series_id, episode_key, position, duration, at FROM resume_points;
@@ -65,7 +66,7 @@ INSERT INTO watch_log_p (id, profile_id, series_id, episode_key, at, how)
 SELECT id, 1, series_id, episode_key, at, how FROM watch_log;
 DROP TABLE watch_log;
 ALTER TABLE watch_log_p RENAME TO watch_log;
-CREATE INDEX watch_log_episode ON watch_log(profile_id, series_id, episode_key);
+CREATE INDEX watch_log_episode ON watch_log(series_id, episode_key, profile_id);
 
 CREATE TABLE tracker_accounts_p (
     profile_id    INTEGER NOT NULL DEFAULT 1 REFERENCES profiles(id) ON DELETE CASCADE,
@@ -78,7 +79,7 @@ CREATE TABLE tracker_accounts_p (
     synced_at     INTEGER,                       -- last successful write to the tracker
     progress_fetched_at INTEGER,                 -- the five minute cache gate
     secret_store  TEXT,                          -- 'keyring' | 'file': where the token went
-    PRIMARY KEY (profile_id, tracker)
+    PRIMARY KEY (tracker, profile_id)
 );
 INSERT INTO tracker_accounts_p (profile_id, tracker, user_id, username, client_id, expires_at,
                                 connected_at, synced_at, progress_fetched_at, secret_store)
@@ -98,7 +99,7 @@ CREATE TABLE tracker_entries_p (                 -- the progress cache, per prof
     updated_at    INTEGER,
     fetched_at    INTEGER NOT NULL,
     notes         TEXT,
-    PRIMARY KEY (profile_id, tracker, media_id)
+    PRIMARY KEY (tracker, media_id, profile_id)
 );
 INSERT INTO tracker_entries_p (profile_id, tracker, media_id, status, progress, score, repeat,
                                updated_at, fetched_at, notes)
