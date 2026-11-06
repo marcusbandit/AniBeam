@@ -113,6 +113,10 @@ pub struct Definition {
     /// `rss` only: how its search and feed differ from a plain feed (`releases::quirks`).
     #[serde(default, flatten)]
     pub quirks: crate::releases::quirks::Quirks,
+    /// Release groups this source's own definition trusts out of the box. Best fit prefers
+    /// the groups every enabled endpoint names, the core itself trusting none.
+    #[serde(default)]
+    pub trusted_groups: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -131,6 +135,25 @@ fn shape_kind<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error
     let kind = String::deserialize(d)?;
     Ok(crate::releases::kinds::shape_of(&kind).to_string())
 }
+
+/// A host name as DNS writes it: lower-case labels of letters, digits and hyphens, joined by
+/// dots, at least two of them, none starting or ending with a hyphen.
+fn dns_name(name: &str) -> bool {
+    name.len() <= 253
+        && name.split('.').count() >= 2
+        && name.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
+}
+
+/// How many release groups one definition may trust.
+const MAX_TRUSTED_GROUPS: usize = 32;
 
 fn yes() -> bool {
     true
@@ -523,10 +546,21 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if crate::releases::endpoints::needs_query(&def.kind) && !has_query {
         return Err(format!("{}: the address needs {{query}}", def.id));
     }
-    if let Some(front) = &def.front
-        && (front.is_empty() || front.contains(['/', ':', '{', '@']))
-    {
-        return Err(format!("{}: the front must be a bare host", def.id));
+    if let Some(front) = &def.front {
+        if !dns_name(front) {
+            return Err(format!(
+                "{}: the front must be a bare host name in lower case",
+                def.id
+            ));
+        }
+        // A fronted request goes to the front by name alone, so the address it stands for
+        // has no port or login of its own.
+        if authority_of(&def.url).contains([':', '@']) {
+            return Err(format!(
+                "{}: an address with a port or a login cannot be fronted",
+                def.id
+            ));
+        }
     }
     if def.rate.is_some_and(|r| r.per_minute == 0) {
         return Err(format!("{}: a rate of zero", def.id));
@@ -541,6 +575,17 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
         def.quirks
             .check(&def.host())
             .map_err(|e| format!("{}: {e}", def.id))?;
+    }
+    if def.trusted_groups.len() > MAX_TRUSTED_GROUPS
+        || def
+            .trusted_groups
+            .iter()
+            .any(|g| g.trim().is_empty() || g.len() > 64 || g.chars().any(char::is_control))
+    {
+        return Err(format!(
+            "{}: trusted_groups takes at most {MAX_TRUSTED_GROUPS} names, each a short line",
+            def.id
+        ));
     }
     match (&def.json, def.kind == "json") {
         (None, true) => return Err(format!("{}: a json endpoint needs its `json` map", def.id)),
@@ -756,6 +801,46 @@ pub(crate) mod tests {
         other["kind"] = "torznab".into();
         let other: Definition = serde_json::from_value(other).unwrap();
         assert!(check(&other).unwrap_err().contains("only an rss endpoint"));
+    }
+
+    #[test]
+    fn a_front_is_a_plain_host_name_for_a_plain_address() {
+        let mut d: Definition =
+            serde_json::from_value(def("t", "rss", "https://tracker.example/?q={query}")).unwrap();
+        d.front = Some("edge.example".into());
+        assert!(check(&d).is_ok());
+        for bad in [
+            "Edge.Example",
+            "edge.example?",
+            "edge.example#x",
+            "edge",
+            "-edge.example",
+            "edge .example",
+        ] {
+            d.front = Some(bad.into());
+            assert!(check(&d).is_err(), "{bad:?}");
+        }
+        d.front = Some("edge.example".into());
+        d.url = "https://tracker.example:8443/?q={query}".into();
+        assert!(check(&d).is_err(), "a port the front cannot carry");
+    }
+
+    #[test]
+    fn trusted_groups_are_a_short_list_of_short_names() {
+        let mut d: Definition =
+            serde_json::from_value(def("t", "rss", "https://feed.example/?q={query}")).unwrap();
+        assert!(
+            d.trusted_groups.is_empty(),
+            "none unless the definition says"
+        );
+        d.trusted_groups = vec!["GroupA".into(), "Group B".into()];
+        assert!(check(&d).is_ok());
+        for bad in [String::new(), " ".into(), "x".repeat(65), "a\nb".into()] {
+            d.trusted_groups = vec![bad.clone()];
+            assert!(check(&d).is_err(), "{bad:?}");
+        }
+        d.trusted_groups = (0..=MAX_TRUSTED_GROUPS).map(|i| format!("G{i}")).collect();
+        assert!(check(&d).is_err(), "too many");
     }
 
     #[test]
