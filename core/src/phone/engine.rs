@@ -89,10 +89,7 @@ impl Engine {
     fn save_entries(&self) {
         let entries = self.entries.lock().unwrap().clone();
         if let Ok(bytes) = serde_json::to_vec_pretty(&entries) {
-            let tmp = self.entries_path.with_extension("json.tmp");
-            if std::fs::write(&tmp, bytes).is_ok() {
-                let _ = std::fs::rename(tmp, &self.entries_path);
-            }
+            let _ = crate::atomic_file::write(&self.entries_path, bytes);
         }
     }
 

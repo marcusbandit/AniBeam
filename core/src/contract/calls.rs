@@ -184,6 +184,13 @@ pub enum Call {
         series: u64,
         status: ListStatus,
     },
+    /// Writes the series' notes to every connected tracker, AniList's notes
+    /// and MAL's comments; blank clears them. Started with the job, which
+    /// ends in `NotesSet` (#211).
+    SetSeriesNotes {
+        series: u64,
+        notes: String,
+    },
     RefreshProgress {
         tracker: Option<Tracker>,
     },
@@ -196,6 +203,10 @@ pub enum Call {
     RefreshWatching {
         force: bool,
     },
+    /// The AniList entries on Planning (#210), off the cache the watching
+    /// refresh fills, in the watching list's shape and order. Reads only;
+    /// `RefreshWatching` brings both lists. `owned` says the library has it.
+    ListPlanning,
     // Airing now
     /// The season as last read, at once, and the id of a refresh already
     /// running. Reads only; `RefreshAiringNow` goes to AniList.
@@ -260,6 +271,18 @@ pub enum Call {
     /// or serving and on which URLs. Never touches the network; changes
     /// arrive as `HostChanged`.
     GetHost,
+    /// The devices on the tailnet as `tailscale status` last named them, each
+    /// with whether the host answers it. Never waits on `tailscale`: it starts
+    /// a fresh read, which arrives as `TailnetDevicesChanged`. Empty until the
+    /// first read, and when `tailscale` is not there.
+    ListTailnetDevices,
+    /// Switches one tailnet device on or off for the host, by its id from
+    /// `ListTailnetDevices`. Every device is on until switched off; one that
+    /// is off gets a refusal on every route.
+    SetTailnetDeviceTrust {
+        device: String,
+        trusted: bool,
+    },
     /// Whether this build can show what plays on Discord, and whether it is
     /// talking to a Discord client right now. Never touches the socket.
     GetPresence,
@@ -738,6 +761,9 @@ pub enum Reply {
         list: WatchingList,
         refreshing: Option<u64>,
     },
+    Planning {
+        list: WatchingList,
+    },
     AiringNow {
         now: AiringNow,
         refreshing: Option<u64>,
@@ -759,6 +785,9 @@ pub enum Reply {
     },
     Host {
         status: HostStatus,
+    },
+    TailnetDevices {
+        devices: Vec<TailnetDevice>,
     },
     /// `available` is false for a build with no Discord application id,
     /// where the switch can do nothing.

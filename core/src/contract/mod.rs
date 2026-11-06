@@ -108,6 +108,7 @@ mod tests {
             RefreshAiringNow,
             OnHold,
             SetStatus,
+            Notes,
             Crawl,
             SkipWindows,
             Export,
@@ -131,8 +132,8 @@ mod tests {
                 Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
                 | RefreshAiring | RefreshImdb | ClearImages | FillImages | ConnectTracker
                 | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
-                | RefreshAiringNow | OnHold | SetStatus | Crawl | SkipWindows | Export | Import
-                | Subscriptions | ConnectDownloads | SearchReleases | RefineReleases
+                | RefreshAiringNow | OnHold | SetStatus | Notes | Crawl | SkipWindows | Export
+                | Import | Subscriptions | ConnectDownloads | SearchReleases | RefineReleases
                 | Subscribe | Download | RemoveSubscription | ControlTorrents
                 | TestTorrentClient | RemoveShow | RepairSubscription | CheckEndpoints
                 | StartEndpoint => {}

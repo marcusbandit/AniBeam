@@ -17,13 +17,13 @@ Tile {
     signal cancel()
     signal switchTo(string name)
 
-    readonly property bool starting: label.indexOf("Starting") === 0 && label !== "Starting anirss"
+    readonly property bool starting: label.indexOf("Starting") === 0 && label !== "Starting the search"
     readonly property bool ondemand: total > 0
     readonly property string why: {
-        if (label === "Starting anirss") return "AniBeam is starting anirss; this takes a second or two."
-        if (starting) return root.endpoint + " runs through a helper that anirss starts when a search needs it. The first search waits for it, up to " + Math.round(root.total) + " seconds; the ones after skip this."
+        if (label === "Starting the search") return "AniBeam is starting its search helper; this takes a second or two."
+        if (starting) return root.endpoint + " runs through a helper that starts when a search needs it. The first search waits for it, up to " + Math.round(root.total) + " seconds; the ones after skip this."
         if (label.indexOf("Reading") === 0) return "Splitting the releases into groups and checking them against the library."
-        if (root.ondemand) return "Jackett scrapes " + root.endpoint + " for every new query, which usually takes ten to twenty seconds."
+        if (root.ondemand) return "A helper reads " + root.endpoint + " afresh for every new search, which usually takes ten to twenty seconds."
         return root.elapsed > 8 ? root.endpoint + " is slow to answer right now." : "This usually takes a second or two."
     }
     readonly property bool slow: elapsed >= (ondemand ? (starting ? total : 35) : 15)
@@ -49,7 +49,7 @@ Tile {
                 }
                 Label {
                     width: parent.width
-                    text: root.why + (root.slow ? " This is taking longer than usual; cancel to try another endpoint." : "")
+                    text: root.why + (root.slow ? " This is taking longer than usual; cancel to try another source." : "")
                     role: "ui"
                     color: theme.textDim
                     wrapMode: Text.Wrap

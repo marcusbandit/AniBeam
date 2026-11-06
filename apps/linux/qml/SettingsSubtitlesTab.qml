@@ -85,7 +85,7 @@ SettingsTab {
         SettingRow { label: "Styled subtitles"
             helper: tab.assMode === "AsScripted" ? "Styled (ASS) files look exactly as their makers set them."
                   : tab.assMode === "Force" ? "Your style below goes on every file. Signs and karaoke can break."
-                  : "Styled (ASS) files keep their look and take your size. Plain files take your style."
+                  : "Styled subtitle files keep their look and take your size. Plain files take your style."
             Seg { options: ["As made", "Size only", "Mine"]; index: ["AsScripted", "ScaleOnly", "Force"].indexOf(tab.assMode); onPicked: function(i) { tab.edit(function(d) { d.ass_override = ["AsScripted", "ScaleOnly", "Force"][i] }) } } }
         SettingRow { label: "Font"
             Field { text: tab.ts ? tab.ts.font : ""; width: theme.space(40); invalid: !!tab.bad.font; onEdited: function(t) { if (tab.flag("font", t.trim() !== "")) tab.edit(function(d) { d.text_style.font = t.trim() }) } } }

@@ -1,7 +1,8 @@
 //! The tailnet host: with "Share over Tailscale" on, the core answers a
 //! read-only JSON API (`anibeam-host-api`) on this machine's Tailscale
-//! addresses and nowhere else, for the phone app. The tailnet is the access
-//! control, so nothing here asks who is calling.
+//! addresses and nowhere else, for the phone app. Every device on the tailnet
+//! is trusted unless the person switched it off (`trust`), and the host asks
+//! who is calling before every request.
 //!
 //! A supervisor task owns the listening. It looks at the interfaces, binds
 //! the Tailscale addresses it finds, and looks again every minute, so a
@@ -15,11 +16,12 @@ pub mod build;
 pub mod convert;
 pub mod server;
 pub mod stream;
+pub mod trust;
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anibeam_host_api::DEFAULT_PORT;
 use tokio::net::TcpListener;
@@ -46,6 +48,14 @@ const NAME_LIMIT: Duration = Duration::from_secs(2);
 
 /// The env var that names the one address to listen on.
 pub const BIND_ENV: &str = "ANIBEAM_HOST_BIND";
+/// The env var that names a file read in place of `tailscale status --json`,
+/// for development and captures.
+pub const STATUS_ENV: &str = "ANIBEAM_TAILSCALE_STATUS";
+/// How long a read of the tailnet answers every request.
+const TAILNET_FOR: Duration = Duration::from_secs(30);
+/// An address the last read could not place reads the tailnet again, but not
+/// more often than this.
+const TAILNET_AGAIN: Duration = Duration::from_secs(5);
 
 pub struct Host {
     status: Arc<Status>,
@@ -57,6 +67,16 @@ pub struct Host {
     /// says: the headless host service, and the desktop app while that
     /// service has stepped aside for it.
     held: AtomicBool,
+    /// The ids of the tailnet devices the person switched off.
+    off: Mutex<Vec<String>>,
+    /// When the tailnet was last read, and the last read that worked: a
+    /// failed read keeps the one before it, so one hiccup of `tailscale`
+    /// does not make every device unplaceable.
+    tailnet: Mutex<(Option<Instant>, Option<Arc<trust::Tailnet>>)>,
+    /// Held across a read, so a burst of requests runs `tailscale` once.
+    reading: Mutex<()>,
+    /// A status document a test sets on one core, read in place of the CLI.
+    fixed_status: Mutex<Option<Vec<u8>>>,
 }
 
 struct Run {
@@ -108,7 +128,82 @@ impl Host {
             run: Mutex::new(None),
             bind: Mutex::new(None),
             held: AtomicBool::new(false),
+            off: Mutex::new(Vec::new()),
+            tailnet: Mutex::new((None, None)),
+            reading: Mutex::new(()),
+            fixed_status: Mutex::new(None),
         }
+    }
+
+    /// The tailnet devices the person switched off, by Tailscale id.
+    pub fn set_switched_off(&self, ids: Vec<String>) {
+        *recover(&self.off) = ids;
+    }
+
+    /// For a test: read this status document instead of asking `tailscale`.
+    pub fn set_status(&self, json: Option<Vec<u8>>) {
+        *recover(&self.fixed_status) = json;
+        *recover(&self.tailnet) = (None, None);
+    }
+
+    /// The tailnet as last read, read again when the read is older than
+    /// `TAILNET_FOR`, or than `TAILNET_AGAIN` when `again` is set. Blocks
+    /// while it runs `tailscale`, at most `NAME_LIMIT` per program.
+    pub fn tailnet(&self, again: bool) -> Option<Arc<trust::Tailnet>> {
+        let fresh_for = if again { TAILNET_AGAIN } else { TAILNET_FOR };
+        let fresh = |slot: &(Option<Instant>, Option<Arc<trust::Tailnet>>)| {
+            slot.0.is_some_and(|at| at.elapsed() < fresh_for)
+        };
+        {
+            let slot = recover(&self.tailnet);
+            if fresh(&slot) {
+                return slot.1.clone();
+            }
+        }
+        let _reading = recover(&self.reading);
+        // Another request may have read it while this one waited.
+        {
+            let slot = recover(&self.tailnet);
+            if fresh(&slot) {
+                return slot.1.clone();
+            }
+        }
+        let json = recover(&self.fixed_status).clone().or_else(status_json);
+        let read = json.as_deref().and_then(trust::read_status).map(Arc::new);
+        let mut slot = recover(&self.tailnet);
+        slot.0 = Some(Instant::now());
+        if read.is_some() {
+            slot.1 = read;
+        }
+        slot.1.clone()
+    }
+
+    /// The tailnet as last read, without reading it: for a caller that must
+    /// not wait, such as the Settings list.
+    pub fn tailnet_now(&self) -> Option<Arc<trust::Tailnet>> {
+        recover(&self.tailnet).1.clone()
+    }
+
+    /// Whether to answer a request from `from` (`trust::decide`). An address
+    /// the last read cannot place, while some device is switched off, reads
+    /// the tailnet again first: it may have just joined.
+    pub fn verdict(&self, from: std::net::IpAddr) -> trust::Verdict {
+        let off = recover(&self.off).clone();
+        // This machine and anything off the tailnet are decided by the
+        // address alone, so they never wait on `tailscale`.
+        if !trust::needs_tailnet(from, &off) {
+            return trust::decide(from, &off, None);
+        }
+        // Before `tailscale` has ever answered, this machine still knows its own
+        // tailnet addresses from its interfaces.
+        let known = |t: Option<Arc<trust::Tailnet>>| {
+            t.unwrap_or_else(|| Arc::new(trust::local_tailnet(&addr::local_addresses())))
+        };
+        let first = trust::decide(from, &off, Some(&known(self.tailnet(false))));
+        if first != trust::Verdict::Unknown {
+            return first;
+        }
+        trust::decide(from, &off, Some(&known(self.tailnet(true))))
     }
 
     pub fn status(&self) -> HostStatus {
@@ -183,12 +278,111 @@ impl Host {
 /// Reads the preference and starts or stops the host to match. Called when
 /// the core starts, and when a shell holds the host or lets it go.
 pub fn sync(core: &Core) {
-    let on = core
-        .store
-        .read(prefs::load_preferences)
-        .map(|p| p.share_over_tailscale)
-        .unwrap_or(false);
+    let on = match core.store.read(prefs::load_preferences) {
+        Ok(p) => {
+            core.host.set_switched_off(p.tailnet_switched_off);
+            p.share_over_tailscale
+        }
+        Err(e) => {
+            // A held host serves on through this, so the devices switched off
+            // stay off rather than everyone becoming trusted.
+            tracing::warn!(
+                "host: the preferences could not be read, so the switches stay as they were: {e}"
+            );
+            false
+        }
+    };
     core.host.follow(core, on);
+}
+
+/// The devices on the tailnet for Settings, each with whether it is trusted,
+/// as last read. It never waits: a fresh read runs on a worker and arrives as
+/// `TailnetDevicesChanged`.
+pub fn devices(core: &Core) -> Vec<TailnetDevice> {
+    if let Some(arc) = core.arc() {
+        core.handle.spawn_blocking(move || {
+            arc.host.tailnet(true);
+            let devices = listed(&arc);
+            arc.bus.debug(
+                Stage::System,
+                "tailnet devices",
+                EventBody::TailnetDevicesChanged { devices },
+            );
+        });
+    }
+    listed(core)
+}
+
+fn listed(core: &Core) -> Vec<TailnetDevice> {
+    let off = recover(&core.host.off).clone();
+    core.host
+        .tailnet_now()
+        .map(|t| {
+            t.peers
+                .iter()
+                .map(|p| TailnetDevice {
+                    id: p.id.clone(),
+                    name: p.name.clone(),
+                    os: p.os.clone(),
+                    online: p.online,
+                    trusted: !off.contains(&p.id),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `tailscale status --json`, from the file `STATUS_ENV` names when it is
+/// set, else from the CLI, waiting at most `NAME_LIMIT` for each program.
+fn status_json() -> Option<Vec<u8>> {
+    if let Ok(path) = std::env::var(STATUS_ENV) {
+        return std::fs::read(path).ok();
+    }
+    for program in [
+        "tailscale",
+        "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+    ] {
+        let Ok(mut child) = std::process::Command::new(program)
+            .args(["status", "--json"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        else {
+            continue;
+        };
+        // The document is read on its own thread, so a big tailnet cannot
+        // fill the pipe and stall the CLI while this one waits for it.
+        let reader = child.stdout.take().map(|mut out| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                std::io::Read::read_to_end(&mut out, &mut buf).map(|_| buf)
+            })
+        });
+        let deadline = Instant::now() + NAME_LIMIT;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break Some(status),
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                _ => {
+                    // Stuck on its daemon: ended through its own handle, which
+                    // is not reaped yet, so no other process can be hit.
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
+            }
+        };
+        let out = reader.and_then(|r| r.join().ok()).and_then(Result::ok);
+        if let (Some(status), Some(out)) = (status, out)
+            && status.success()
+        {
+            return Some(out);
+        }
+    }
+    None
 }
 
 /// What the supervisor is serving right now.
@@ -345,6 +539,7 @@ impl Serving {
                     let stop = self.token.clone();
                     let app = self.router.clone();
                     self.tasks.push(tokio::spawn(async move {
+                        let app = app.into_make_service_with_connect_info::<SocketAddr>();
                         let served = axum::serve(listener, app)
                             .with_graceful_shutdown(async move { stop.cancelled().await })
                             .await;
@@ -401,6 +596,32 @@ fn dns_name_of(json: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preferences_that_cannot_be_read_leave_the_switched_off_list_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let secrets = crate::trackers::Secrets::file_only(paths.secrets_path());
+        let core = Core::open_with_secrets(paths, secrets).unwrap();
+        core.call(Call::SetTailnetDeviceTrust {
+            device: "nPhone".into(),
+            trusted: false,
+        })
+        .unwrap();
+        core.store
+            .write(|c| {
+                c.execute(
+                    "UPDATE settings SET value = 'not json' WHERE key = 'preferences'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        sync(&core);
+        // A held host keeps serving through a failed read, so the list it
+        // had must still stand: never fall back to trusting everyone.
+        assert_eq!(*recover(&core.host.off), ["nPhone"]);
+    }
 
     #[test]
     fn the_dns_name_comes_out_of_the_status_document() {
