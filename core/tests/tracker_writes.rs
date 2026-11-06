@@ -1232,3 +1232,190 @@ fn a_note_too_long_is_invalid() {
     assert!(matches!(err, CoreError::Invalid { .. }), "{err:?}");
     assert!(http.requests().is_empty());
 }
+
+/// The status menu says where the list stands and never counts a rewatch:
+/// Completed from Repeating sends no count on either tracker.
+#[test]
+fn completed_from_the_menu_ends_a_rewatch_without_counting_one() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"MediaList":{"progress":12,"status":"REPEATING","repeat":2,"startedAt":{"year":2025},"completedAt":{"year":2025}}}}"#,
+    );
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"SaveMediaListEntry":{"id":9}}}"#,
+    );
+    http.push_for(
+        "myanimelist",
+        200,
+        r#"{"my_list_status":{"status":"watching","num_episodes_watched":12,"is_rewatching":true,"num_times_rewatched":2,"start_date":"2025-01-01","finish_date":"2025-02-01"}}"#,
+    );
+    http.push_for("myanimelist", 200, "{}");
+    let job = started(
+        core.call(Call::SetListStatus {
+            series,
+            status: ListStatus::Completed,
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+    assert_eq!(
+        graphql_variables(&http, "SaveMediaListEntry"),
+        vec![serde_json::json!({ "mediaId": 1, "status": "COMPLETED" })]
+    );
+    let forms = mal_forms(&http);
+    assert!(
+        !form_keys(&forms[0]).contains(&"num_times_rewatched".to_string()),
+        "{:?}",
+        forms[0]
+    );
+}
+
+/// A show the person put on Completed by hand partway through, then
+/// finished here from where they were, was watched once: only a run from
+/// the first episode is a rewatch, and a list with no stamp is no evidence.
+#[test]
+fn finishing_after_completing_by_hand_is_not_a_rewatch() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    let now = anibeam_core::time::now_secs();
+    fixtures::insert_file(
+        &core,
+        series,
+        "/lib/Bebop/11.mkv",
+        11.0,
+        None,
+        "episode",
+        now,
+    );
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::insert_tracker_entry(&core, "anilist", 1, 12, "completed", None);
+    age_entry(&core, "anilist", 1, 30 * 86_400);
+    fixtures::insert_completed(&core, series, "11", now);
+    let refused = |core: &Core| {
+        core.call(Call::MarkEpisode {
+            series,
+            episode: 12.0,
+        })
+        .err()
+            == Some(CoreError::Refused {
+                reason: Refusal::NotNewer,
+            })
+    };
+    assert!(refused(&core));
+
+    // Episode 1 again, but the cached entry carries no stamp to compare.
+    fixtures::insert_completed(&core, series, "1", now);
+    core.store()
+        .write(|c| {
+            c.execute("UPDATE tracker_entries SET updated_at = NULL", [])?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(refused(&core));
+    assert!(http.requests().is_empty());
+}
+
+/// A film finished, then marked again the same evening, is the same
+/// viewing; a day later it is a rewatch.
+#[test]
+fn a_film_counts_again_only_once_the_list_has_stood_still() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let now = anibeam_core::time::now_secs();
+    let src = fixtures::insert_source(&core, "/lib");
+    let film = fixtures::insert_series(&core, src, SeriesKind::Movie, "/lib/Film.mkv", "Film");
+    fixtures::insert_file(&core, film, "/lib/Film.mkv", 1.0, None, "episode", now);
+    fixtures::insert_media(
+        &core,
+        5,
+        Some("Film"),
+        None,
+        Some(1),
+        "FINISHED",
+        "MOVIE",
+        None,
+    );
+    fixtures::match_series(&core, film, Some(5), None);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    fixtures::insert_tracker_entry(&core, "anilist", 5, 1, "completed", None);
+
+    let mark = |core: &Core| {
+        core.call(Call::MarkEpisode {
+            series: film,
+            episode: 1.0,
+        })
+    };
+    assert!(mark(&core).is_err());
+
+    age_entry(&core, "anilist", 5, 86_400);
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"MediaList":{"progress":1,"status":"COMPLETED","repeat":0,"startedAt":{"year":2025},"completedAt":{"year":2025}}}}"#,
+    );
+    http.push_for(
+        "anilist",
+        200,
+        r#"{"data":{"SaveMediaListEntry":{"id":9}}}"#,
+    );
+    let job = started(mark(&core).unwrap());
+    common::wait_job(&c, job);
+    assert_eq!(
+        graphql_variables(&http, "SaveMediaListEntry"),
+        vec![
+            serde_json::json!({ "mediaId": 5, "progress": 1, "status": "COMPLETED", "repeat": 1 })
+        ]
+    );
+    // The count moved the list's stamp, so the same viewing marked again
+    // is refused before a request.
+    assert!(mark(&core).is_err());
+    assert_eq!(graphql_variables(&http, "SaveMediaListEntry").len(), 1);
+}
+
+/// Notes on a show the list does not hold would add it to the list, so
+/// that tracker says so and nothing is written.
+#[test]
+fn notes_on_a_show_not_on_the_list_write_nothing() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
+    http.push_for(
+        "anilist",
+        404,
+        r#"{"errors":[{"message":"Not Found.","status":404}],"data":{"MediaList":null}}"#,
+    );
+    let job = started(
+        core.call(Call::SetSeriesNotes {
+            series,
+            notes: "later".into(),
+        })
+        .unwrap(),
+    );
+    let done = common::wait_job(&c, job);
+    match done.body {
+        EventBody::NotesSet { outcomes, .. } => {
+            assert!(!outcomes[0].ok);
+            assert!(
+                outcomes[0]
+                    .message
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("add it to a list"),
+                "{outcomes:?}"
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(graphql_variables(&http, "notes: $notes").is_empty());
+}

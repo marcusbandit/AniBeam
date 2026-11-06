@@ -12,9 +12,10 @@ Corner {
     property string saved: ""
     // Where the notes go, as a person names the sites
     property string sites: ""
-    // MAL keeps comments to this many characters, so both trackers take what fits here
+    // The core's one limit for both trackers, so a note never fits one and fails on the other
     readonly property int maxChars: 2000
-    readonly property int count: input.text.trim().length
+    // Characters as the core counts them: a pair of UTF-16 halves, an emoji say, is one
+    readonly property int count: input.text.trim().replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "_").length
 
     function openFor(id, title, notes, sites) {
         root.seriesId = id

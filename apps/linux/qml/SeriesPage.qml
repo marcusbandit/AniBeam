@@ -918,11 +918,12 @@ Item {
                         Tooltip { text: statusFact.settable ? "Change the list on every connected tracker" : "" }
                     }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
-                    // The list entry's notes, written to every connected tracker (#211)
+                    // The list entry's notes, written to every connected tracker (#211); a show not
+                    // on a list yet has no entry to write them on
                     Button {
                         id: notesButton
                         objectName: "series-notes"
-                        visible: statusFact.settable
+                        visible: statusFact.settable && !!card.list_status
                         small: true; ghost: true
                         icon: "pencil"
                         text: page.detail && page.detail.notes ? "Your notes" : "Add notes"

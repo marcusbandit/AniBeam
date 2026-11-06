@@ -213,7 +213,9 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
     // the list may already cover.
     let again = core
         .store
-        .read(|c| finished_again(c, &target, main, episode))?;
+        .read(|c| finished_again(c, &target, main, episode))?
+        && rewatching().insert(series);
+    let slot = again.then_some(RewatchSlot(series));
     // The cheap half of the monotonic rule: the cache already knows how
     // far the main tracker says the user has got, so a mark it covers is
     // refused without a request. The job checks again against the tracker
@@ -228,15 +230,26 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
             reason: Refusal::NotNewer,
         });
     }
-    start(core, JobKind::Mark, target, Action::Mark { episode, again })
+    start_holding(
+        core,
+        JobKind::Mark,
+        target,
+        Action::Mark { episode, again },
+        slot,
+    )
 }
 
+/// How long a film's list must have stood still before watching it again
+/// counts as a rewatch: a second mark the same evening is the same viewing.
+const FILM_REWATCH_GAP: i64 = 12 * 3600;
+
 /// Whether this mark finishes a completed show a second time: the list
-/// says Completed, the episode is the last one, and another episode of it
-/// was watched to the end here since the list last changed. A film has no
-/// other episode, so watching it again is enough. Playing only the last
-/// episode again is not a rewatch, and a show with no published total is
-/// never finished at all.
+/// says Completed, the episode is the last one, and the first episode was
+/// watched to the end here since the list last changed, so the show was
+/// watched again from its start. A film has no first episode to go by, so
+/// it counts when the list has not changed in twelve hours. Playing only the
+/// last episode again is not a rewatch, a list with no stamp gives no
+/// evidence, and a show with no published total is never finished at all.
 fn finished_again(
     conn: &Connection,
     target: &Targets,
@@ -246,11 +259,7 @@ fn finished_again(
     if !target.completes(episode) {
         return Ok(false);
     }
-    let t = match target.id_for(main) {
-        Some(_) => main,
-        None => other(main),
-    };
-    let Some(id) = target.id_for(t) else {
+    let Some((t, id)) = cached_id(target, main) else {
         return Ok(false);
     };
     let entry = conn
@@ -260,28 +269,54 @@ fn finished_again(
             |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<i64>>(1)?)),
         )
         .optional()?;
-    let Some((status, updated_at)) = entry else {
+    let Some((status, Some(updated_at))) = entry else {
         return Ok(false);
     };
     if status.as_deref().and_then(ListStatus::from_column) != Some(ListStatus::Completed) {
         return Ok(false);
     }
     if target.total == Some(1) {
-        return Ok(true);
+        return Ok(updated_at < time::now_secs() - FILM_REWATCH_GAP);
     }
     let watched: i64 = conn.query_row(
         "SELECT EXISTS (SELECT 1 FROM completed c
              JOIN files f ON f.series_id = c.series_id AND f.episode_key = c.episode_key
              WHERE c.series_id = ?1 AND f.kind = 'episode'
-               AND f.number >= 1 AND f.number < ?2 AND c.at > ?3)",
-        params![
-            target.series as i64,
-            f64::from(episode),
-            updated_at.unwrap_or(0)
-        ],
+               AND f.number >= 1 AND f.number < 2 AND c.at > ?2)",
+        params![target.series as i64, updated_at],
         |r| r.get(0),
     )?;
     Ok(watched == 1)
+}
+
+/// The series whose rewatch is being written right now. Two marks of one
+/// finish (the rule at the end and the player's button, say) both read the
+/// list before either has written, so the second waits its turn out here
+/// rather than counting the same rewatch twice.
+static REWATCHING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<u64>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn rewatching() -> std::sync::MutexGuard<'static, std::collections::HashSet<u64>> {
+    REWATCHING.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A series' place in `REWATCHING`, given up when the job that holds it ends
+/// however it ends.
+struct RewatchSlot(u64);
+
+impl Drop for RewatchSlot {
+    fn drop(&mut self) {
+        rewatching().remove(&self.0);
+    }
+}
+
+/// The tracker and id a cached read goes by: the main tracker's when the
+/// match carries one, otherwise the other's, the rule a card's own number
+/// follows.
+fn cached_id(target: &Targets, main: Tracker) -> Option<(Tracker, u64)> {
+    [main, other(main)]
+        .into_iter()
+        .find_map(|t| target.id_for(t).map(|id| (t, id)))
 }
 
 /// Sets the watched count to an exact value, including a lower one. The
@@ -398,7 +433,7 @@ pub fn set_notes(core: &Core, series: u64, notes: &str) -> Result<u64, CoreError
     }
     let target = core.store.read(|c| targets(c, series))?;
     guard(core, &target)?;
-    let notes = (!notes.is_empty()).then(|| notes.to_string());
+    let notes = cache::note_of(Some(notes));
     start(core, JobKind::Notes, target, Action::Notes { notes })
 }
 
@@ -458,11 +493,7 @@ fn cached_progress(
     target: &Targets,
     main: Tracker,
 ) -> Result<Option<u32>, CoreError> {
-    let t = match target.id_for(main) {
-        Some(_) => main,
-        None => other(main),
-    };
-    let Some(id) = target.id_for(t) else {
+    let Some((t, id)) = cached_id(target, main) else {
         return Ok(None);
     };
     let progress = conn
@@ -510,11 +541,23 @@ impl Action {
 }
 
 fn start(core: &Core, kind: JobKind, target: Targets, action: Action) -> Result<u64, CoreError> {
+    start_holding(core, kind, target, action, None)
+}
+
+/// `start`, with the rewatch slot the job keeps until it ends.
+fn start_holding(
+    core: &Core,
+    kind: JobKind,
+    target: Targets,
+    action: Action,
+    slot: Option<RewatchSlot>,
+) -> Result<u64, CoreError> {
     let owner = core
         .arc()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let jobs = owner.jobs.clone();
     Ok(jobs.start(kind, move |ctx| async move {
+        let _slot = slot;
         run(owner, ctx, target, action).await
     }))
 }
@@ -848,6 +891,20 @@ async fn attempt(
             })
         }
         Action::Notes { notes } => {
+            // Notes on a show the list does not hold would add it to the
+            // list, on a list the person never picked.
+            if entry.status.is_none() {
+                return Ok(TrackerOutcome {
+                    tracker: t,
+                    ok: false,
+                    progress: None,
+                    reason: None,
+                    message: Some(format!(
+                        "Not on your {} list yet, add it to a list first.",
+                        t.label()
+                    )),
+                });
+            }
             let stamp = send_notes(core, t, media_id, &token, notes.as_deref()).await?;
             record_notes(core, t, media_id, notes.clone(), stamp).await?;
             ctx.emit(
@@ -936,8 +993,10 @@ fn watched_status(entry: &Current, completes: bool) -> ListStatus {
 /// - The finish date: the write puts the entry on Completed from another
 ///   list. Completing it from the status menu says when it was finished,
 ///   not when it was started, so that alone sets no start date.
-/// - The rewatch: Completed from Repeating, or a completed show finished
-///   again (`again`), counts one more.
+/// - The rewatch: a watched count that completes a Repeating entry, or a
+///   completed show finished again (`again`), counts one more. The status
+///   menu and a rating never count one, on either tracker: they say where
+///   the list stands, not that an episode was watched.
 pub(crate) fn plan(
     entry: &Current,
     sending: ListStatus,
@@ -951,6 +1010,7 @@ pub(crate) fn plan(
         || (watched && entry.progress == 0);
     let finishes = sending == ListStatus::Completed && was != Some(ListStatus::Completed);
     let rewatched = sending == ListStatus::Completed
+        && watched
         && (was == Some(ListStatus::Repeating) || (was == Some(ListStatus::Completed) && again));
     Extras {
         start: (starts && !entry.started).then_some(today),
@@ -991,6 +1051,14 @@ fn mal_extras(form: &mut Vec<(String, String)>, extras: &Extras) {
     }
 }
 
+/// Whether an AniList fuzzy date holds anything: a day and month with no
+/// year is still a date the person wrote, and is never written over.
+fn fuzzy_dated(date: &serde_json::Value) -> bool {
+    ["year", "month", "day"]
+        .iter()
+        .any(|k| date[*k].as_u64().is_some())
+}
+
 // The provider calls ---------------------------------------------------------
 
 /// The entry as the tracker itself has it. An anime the user has never
@@ -1026,8 +1094,8 @@ async fn read_entry(
                     Ok(Current {
                         progress: as_count(entry["progress"].as_u64()),
                         status: cache::normalize_status(t, entry["status"].as_str(), false),
-                        started: entry["startedAt"]["year"].as_u64().is_some(),
-                        finished: entry["completedAt"]["year"].as_u64().is_some(),
+                        started: fuzzy_dated(&entry["startedAt"]),
+                        finished: fuzzy_dated(&entry["completedAt"]),
                         repeat: as_count(entry["repeat"].as_u64()),
                     })
                 }
@@ -1330,15 +1398,7 @@ async fn send_list_status(
             if let Some(progress) = fill {
                 form.push(("num_watched_episodes".to_string(), progress.to_string()));
             }
-            // The status menu never counts a rewatch, so the flag above is
-            // the only one this form carries.
-            mal_extras(
-                &mut form,
-                &Extras {
-                    repeat: None,
-                    ..*extras
-                },
-            );
+            mal_extras(&mut form, extras);
             let response = core
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)
@@ -1460,8 +1520,9 @@ async fn record_repeat(
     let Some(repeat) = extras.repeat else {
         return Ok(());
     };
+    let now = time::now_secs();
     core.store
-        .write_async(move |c| cache::patch_repeat(c, t, media_id, repeat))
+        .write_async(move |c| cache::patch_repeat(c, t, media_id, repeat, now))
         .await
 }
 

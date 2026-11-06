@@ -366,16 +366,21 @@ pub fn patch_notes(
     Ok(())
 }
 
-/// One entry's rewatch count, after a write that finished it again.
+/// One entry's rewatch count, after a write that finished it again. The
+/// entry's stamp moves to now at the least, even when the tracker's reply
+/// carried none, so the episodes watched for this rewatch are never
+/// evidence for the next one.
 pub fn patch_repeat(
     conn: &Connection,
     t: Tracker,
     media_id: u64,
     repeat: u32,
+    now: i64,
 ) -> Result<(), CoreError> {
     conn.execute(
-        "UPDATE tracker_entries SET repeat = ?3 WHERE tracker = ?1 AND media_id = ?2",
-        params![t.as_str(), media_id as i64, i64::from(repeat)],
+        "UPDATE tracker_entries SET repeat = ?3, updated_at = MAX(COALESCE(updated_at, 0), ?4)
+         WHERE tracker = ?1 AND media_id = ?2",
+        params![t.as_str(), media_id as i64, i64::from(repeat), now],
     )?;
     Ok(())
 }

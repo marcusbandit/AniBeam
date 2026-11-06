@@ -260,7 +260,7 @@ pub const VIEWER_QUERY: &str = r"query { Viewer { id name } }";
 /// optional in practice: `MediaList(mediaId)` without it ignores the
 /// bearer token and answers with some other user's entry. The dates and the
 /// rewatch count are what a write fills in when the list has none (#211).
-pub const MEDIA_LIST_ENTRY_QUERY: &str = r"query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status repeat startedAt { year } completedAt { year } } }";
+pub const MEDIA_LIST_ENTRY_QUERY: &str = r"query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status repeat startedAt { year month day } completedAt { year month day } } }";
 
 /// Electron's progress mutation, trackerHandler.ts:445-449. The reply's
 /// `updatedAt` is the tracker's own stamp for the write, which the cache
