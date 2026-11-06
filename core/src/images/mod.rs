@@ -615,9 +615,9 @@ async fn fetch_one(
     }
     let relative = relative_path(url, extension(url, response.header("content-type")));
     let path = dir.join(&relative);
-    atomic_file::write_async(&path, &response.body).await?;
-
     let bytes = response.body.len() as i64;
+    atomic_file::write_async(&path, response.body).await?;
+
     let now = time::now_secs();
     let (row_url, row_path) = (url.to_string(), relative);
     store

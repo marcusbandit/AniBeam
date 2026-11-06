@@ -80,12 +80,10 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
     }
     let sources: Vec<PhoneSource> = checked.into_iter().map(|(s, _)| s).collect();
     let path = sources_path(core);
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| CoreError::internal(e.to_string()))?;
-    }
     let bytes =
         serde_json::to_vec_pretty(&sources).map_err(|e| CoreError::internal(e.to_string()))?;
-    std::fs::write(&path, bytes).map_err(|e| CoreError::internal(e.to_string()))?;
+    crate::atomic_file::write(&path, bytes)
+        .map_err(|e| CoreError::internal(e.source.to_string()))?;
     Ok(Reply::PhoneSources { sources })
 }
 
