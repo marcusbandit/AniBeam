@@ -78,9 +78,12 @@ pub fn piece_at(pieces: &[Piece], secs: f64) -> usize {
         .unwrap_or(0)
 }
 
-/// A name plain enough to pass on: letters, digits, dots, dashes and underscores.
+/// A name plain enough to pass on: letters, digits, dots, dashes and underscores, and
+/// never `.` or `..`, which would climb out of the directory it is joined to.
 fn plain(name: &str) -> bool {
     !name.is_empty()
+        && name != "."
+        && name != ".."
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
@@ -90,8 +93,6 @@ fn plain(name: &str) -> bool {
 fn relative(entry: &str) -> bool {
     let (name, query) = entry.split_once('?').unwrap_or((entry, ""));
     plain(name)
-        && name != "."
-        && name != ".."
         && query.split('&').filter(|p| !p.is_empty()).all(|pair| {
             let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
             plain(k) && (v.is_empty() || plain(v))
@@ -307,11 +308,14 @@ async fn relay(dir: &str, name: &str, q: &HashMap<String, String>) -> Response {
     }
 }
 
-fn relay_client() -> &'static reqwest::Client {
+/// The client every fetch from another machine goes through. It follows no redirect, so
+/// what a playlist names is all that machine can make this one fetch.
+pub(crate) fn relay_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .unwrap_or_default()
     })
@@ -488,6 +492,14 @@ mod tests {
         assert_eq!(piece_at(&pieces, 13.0), 2);
         assert_eq!(piece_at(&pieces, 99.0), 2);
         assert_eq!(piece_at(&[], 3.0), 0);
+    }
+
+    #[test]
+    fn a_name_passed_on_never_climbs_out_of_its_directory() {
+        assert!(plain("seg0.ts") && plain("index.m3u8"));
+        for name in ["", ".", "..", "a/b", "../x", "%2e%2e", "seg0.ts?x=1"] {
+            assert!(!plain(name), "{name}");
+        }
     }
 
     #[test]

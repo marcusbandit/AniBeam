@@ -692,10 +692,7 @@ mod imp {
                 .clone()
                 .ok_or("the TV gave no control address")?,
         ));
-        let list = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()
-            .map_err(|e| e.to_string())?
+        let list = served::relay_client()
             .get(format!("{dir}{playlist}"))
             .send()
             .await
@@ -704,6 +701,11 @@ mod imp {
             .text()
             .await
             .map_err(|e| format!("the other computer did not hand over the episode: {e}"))?;
+        // The fetch can take as long as the other computer needs to start converting; a
+        // cast stopped or replaced meanwhile is left alone, and so is the TV.
+        if !current(&inner, id) {
+            return Ok(());
+        }
         let pieces = Arc::new(served::read_pieces(&list));
         if pieces.is_empty() {
             return Err("the other computer sent an empty playlist".into());
@@ -757,6 +759,16 @@ mod imp {
             }
         }
         Ok(())
+    }
+
+    /// Whether session `id` is still the one casting.
+    fn current(inner: &Inner, id: u64) -> bool {
+        inner
+            .session
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .is_some_and(|s| s.id == id)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1056,6 +1068,8 @@ mod imp {
             uris: Vec<String>,
             meta: Vec<String>,
             read: Vec<Vec<u8>>,
+            /// Every action but the two status reads, in order.
+            actions: Vec<String>,
         }
 
         fn piece(i: u8) -> Vec<u8> {
@@ -1082,6 +1096,9 @@ mod imp {
                 .unwrap_or_default()
                 .to_string();
             let xml = String::from_utf8_lossy(&body).into_owned();
+            if !action.contains("#Get") {
+                tv.lock().unwrap().actions.push(action.clone());
+            }
             if action.contains("#SetAVTransportURI") {
                 let mut t = tv.lock().unwrap();
                 t.uris.push(tag(&xml, "CurrentURI"));
@@ -1090,8 +1107,14 @@ mod imp {
                 let url = tv.lock().unwrap().uris.last().cloned().unwrap_or_default();
                 let tv = tv.clone();
                 tokio::spawn(async move {
-                    let bytes = reqwest::get(&url).await.unwrap().bytes().await.unwrap();
-                    tv.lock().unwrap().read.push(bytes.to_vec());
+                    // A stream that breaks off still counts what arrived before it did.
+                    let mut got = Vec::new();
+                    if let Ok(mut r) = reqwest::get(&url).await {
+                        while let Ok(Some(chunk)) = r.chunk().await {
+                            got.extend_from_slice(&chunk);
+                        }
+                    }
+                    tv.lock().unwrap().read.push(got);
                 });
             } else if action.contains("#GetTransportInfo") {
                 return "<r><CurrentTransportState>PLAYING</CurrentTransportState></r>".into();
@@ -1126,6 +1149,128 @@ mod imp {
                 assert!(Instant::now() < deadline, "timed out waiting for {what}");
                 std::thread::sleep(Duration::from_millis(20));
             }
+        }
+
+        /// A fake TV and a core that knows it, on loopback, for the tests below.
+        fn tv_and_core(
+            rt: &tokio::runtime::Runtime,
+        ) -> (Arc<Mutex<Tv>>, tempfile::TempDir, Arc<crate::Core>) {
+            let tv_state = Arc::new(Mutex::new(Tv::default()));
+            let tv_at = rt.block_on(async {
+                let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let at = l.local_addr().unwrap();
+                let app = Router::new()
+                    .route("/ctl", post(tv))
+                    .with_state(tv_state.clone());
+                tokio::spawn(async move { axum::serve(l, app).await });
+                at
+            });
+            let dir = tempfile::tempdir().unwrap();
+            let paths = CorePaths::under(dir.path());
+            let secrets = Secrets::file_only(paths.secrets_path());
+            let core = crate::Core::open_with_secrets(paths, secrets).unwrap();
+            inner(&core).devices.lock().unwrap().push(Found {
+                device: CastDevice {
+                    id: "dlna:fake".into(),
+                    name: "Fake TV".into(),
+                    kind: CastKind::Dlna,
+                    model: None,
+                    address: tv_at.to_string(),
+                },
+                addr: tv_at,
+                control: Some(format!("http://{tv_at}/ctl")),
+            });
+            (tv_state, dir, core)
+        }
+
+        fn serve(rt: &tokio::runtime::Runtime, app: Router) -> std::net::SocketAddr {
+            rt.block_on(async {
+                let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let at = l.local_addr().unwrap();
+                tokio::spawn(async move { axum::serve(l, app).await });
+                at
+            })
+        }
+
+        #[test]
+        fn a_stop_while_the_playlist_comes_leaves_the_tv_alone() {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let (tv_state, _dir, core) = tv_and_core(&rt);
+            // The other computer takes its time over the playlist, as it does
+            // while it starts converting.
+            let slow = Router::new().route(
+                "/hls/{name}",
+                get(|| async {
+                    tokio::time::sleep(Duration::from_millis(800)).await;
+                    crate::host::convert::playlist(18.0, "")
+                }),
+            );
+            let computer_at = serve(&rt, slow);
+            core.call(Call::CastStartStream {
+                device: "dlna:fake".into(),
+                url: format!("http://{computer_at}/hls/index.m3u8"),
+                title: "Show 1".into(),
+                start: 0.0,
+                duration: 18.0,
+            })
+            .unwrap();
+            core.call(Call::CastStop).unwrap();
+            std::thread::sleep(Duration::from_millis(1500));
+            let t = tv_state.lock().unwrap();
+            assert!(t.uris.is_empty(), "the TV was handed {:?}", t.uris);
+            assert!(t.actions.is_empty(), "the TV was told {:?}", t.actions);
+        }
+
+        #[test]
+        fn a_redirect_from_the_other_computer_is_not_followed() {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let (tv_state, _dir, core) = tv_and_core(&rt);
+            let elsewhere = serve(
+                &rt,
+                Router::new().route("/secret", get(|| async { "not for the TV" })),
+            );
+            let computer = Router::new().route(
+                "/hls/{name}",
+                get(move |Path(name): Path<String>| async move {
+                    if name == "index.m3u8" {
+                        return (
+                            axum::http::StatusCode::OK,
+                            [(axum::http::header::LOCATION, String::new())],
+                            crate::host::convert::playlist(12.0, "").into_bytes(),
+                        );
+                    }
+                    if name == "seg0.ts" {
+                        return (
+                            axum::http::StatusCode::OK,
+                            [(axum::http::header::LOCATION, String::new())],
+                            piece(0),
+                        );
+                    }
+                    (
+                        axum::http::StatusCode::FOUND,
+                        [(
+                            axum::http::header::LOCATION,
+                            format!("http://{elsewhere}/secret"),
+                        )],
+                        Vec::new(),
+                    )
+                }),
+            );
+            let computer_at = serve(&rt, computer);
+            core.call(Call::CastStartStream {
+                device: "dlna:fake".into(),
+                url: format!("http://{computer_at}/hls/index.m3u8"),
+                title: "Show 1".into(),
+                start: 0.0,
+                duration: 12.0,
+            })
+            .unwrap();
+            until("the TV to read the stream", || {
+                !tv_state.lock().unwrap().read.is_empty()
+            });
+            let t = tv_state.lock().unwrap();
+            // The first piece, and nothing the redirect pointed at.
+            assert_eq!(t.read[0], piece(0));
         }
 
         #[test]
