@@ -74,7 +74,12 @@ build:
 
 `--root` keeps the database, config, cache and secrets in that directory, and
 gives the run its own bus names, so it opens beside the installed app instead
-of handing off to it and never touches its data. For a picture without a
+of handing off to it and never touches its data. anirss gets a home of its own
+there too, `<root>/state/home`: the run reads anirss's config from
+`<root>/state/home/.config/anirss/config.toml`, the anirss it starts keeps its
+state there, and a fresh run sets up AniBeam's own qBittorrent rather than
+taking one it finds on the machine. Point it at your own qBittorrent in
+Settings when you want that. For a picture without a
 window, `apps/linux/scripts/shoot.sh` captures a page offscreen and
 `apps/linux/scripts/drive.sh` clicks through a script first, and shoots a set
 of pages in one run with a `pages` step; see `apps/linux/README.md`.

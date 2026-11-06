@@ -121,6 +121,7 @@ version = "0.1.0"
 dependencies = [
  "anibeam-host-api",
  "chrono",
+ "getrandom 0.3.4",
  "serde",
  "serde_json",
  "ureq",
@@ -177,6 +178,7 @@ dependencies = [
 name = "anibeam-host-api"
 version = "2.4.0"
 dependencies = [
+ "ed25519-dalek",
  "serde",
 ]
 

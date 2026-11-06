@@ -904,6 +904,12 @@ pub struct Preferences {
     /// app (`host`). Default off, and per machine: an export never carries it.
     #[serde(default)]
     pub share_over_tailscale: bool,
+    /// Whether the host also serves the episodes themselves while it shares:
+    /// the files, their conversions and the playback calls. Default on, so a
+    /// phone that streams today keeps streaming. Per machine like
+    /// `share_over_tailscale`: an export never carries it.
+    #[serde(default = "default_true")]
+    pub stream_over_tailscale: bool,
     /// The tailnet devices the host refuses, by Tailscale's stable node id.
     /// Every other device on the tailnet is trusted. Per machine like
     /// `share_over_tailscale`: an export never carries it.
@@ -1097,6 +1103,7 @@ impl Default for Preferences {
             library_arrange: Arrange::Related,
             library_group_franchises: true,
             share_over_tailscale: false,
+            stream_over_tailscale: true,
             tailnet_switched_off: Vec::new(),
             on_hold_auto: true,
             on_hold_days: ON_HOLD_DAYS,

@@ -28,18 +28,18 @@ pub enum DownloadsBackend {
 /// The engine the settings pick. A store that cannot be read is an error,
 /// not a quiet fall back to one or the other.
 pub fn engine(core: &Core) -> Result<DownloadsEngine, CoreError> {
-    Ok(core.store.read(settings::load_stored)?.engine)
+    Ok(settings::read(core)?.engine)
 }
 
 /// What best fit ranks by on the desktop's native engine: the preferences saved in the
 /// config of the anirss AniBeam runs, as anirss itself ranks (#545). A remote anirss keeps
 /// its config on its own machine, and a missing file leaves the core's own ranking: None.
 fn saved_bestfit(core: &Core) -> Result<Option<BestfitConfig>, CoreError> {
-    let mode = core.store.read(settings::load_stored)?.anirss_mode;
+    let mode = settings::read(core)?.anirss_mode;
     if mode == AnirssMode::Remote {
         return Ok(None);
     }
-    Ok(settings::anirss_config_path().and_then(|p| settings::anirss_bestfit(&p)))
+    Ok(settings::anirss_config_path(core).and_then(|p| settings::anirss_bestfit(&p)))
 }
 
 impl DownloadsBackend {

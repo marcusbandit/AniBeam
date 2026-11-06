@@ -308,9 +308,9 @@ export component PlayerPage inherits Rectangle {
     // every control to the half below it, on the table: back, cast and lock too, so nothing
     // lies on the picture.
     property <bool> stood: Fold.stood;
-    property <length> picture-height: root.stood ? Fold.height / 2 - Fold.gutter / 2 : root.height;
+    property <length> picture-height: root.stood ? Fold.crease-mid-y - Fold.gutter / 2 : root.height;
     // Where the controls start: the top of the screen, or the top of the half on the table.
-    property <length> desk-y: root.stood ? Fold.height / 2 + Fold.gutter / 2 : 0;
+    property <length> desk-y: root.stood ? Fold.crease-mid-y + Fold.gutter / 2 : 0;
     property <length> head-top: root.stood ? root.desk-y : root.inset-top;
     // The middle of the ground the controls leave free: the screen's, or between the header
     // and the island on the table.

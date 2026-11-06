@@ -261,6 +261,11 @@ pub fn insert_completed(core: &Core, series: u64, key: &str, at: i64) {
                 "INSERT OR REPLACE INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)",
                 params![series as i64, key, at],
             )?;
+            // A finish lands in the watch log too, the way the player writes one.
+            c.execute(
+                "INSERT INTO watch_log (series_id, episode_key, at, how) VALUES (?1, ?2, ?3, 'played')",
+                params![series as i64, key, at],
+            )?;
             Ok(())
         })
         .unwrap()

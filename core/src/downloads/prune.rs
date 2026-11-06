@@ -233,9 +233,10 @@ async fn check(
     if rules.iter().all(|r| r.show.is_none()) {
         return Ok(());
     }
-    let (enabled, last) = core.store.read(|c| {
+    let home = super::home::AnirssHome::of(&core.paths);
+    let (enabled, last) = core.store.read(move |c| {
         Ok((
-            settings::load_stored(c)?.prune_finished_feeds,
+            settings::load_stored(c, &home)?.prune_finished_feeds,
             kv::get::<i64>(c, LAST_CHECK)?,
         ))
     })?;

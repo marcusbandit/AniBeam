@@ -669,4 +669,67 @@ mod tests {
             .unwrap();
         assert_eq!(n, 1);
     }
+
+    /// The watch log (#593) starts from the history already there: every
+    /// completion a database at the version before it holds becomes one
+    /// finish, copied once, and `completed` keeps every row it had.
+    #[test]
+    fn the_version_before_the_watch_log_copies_its_history_in_keeping_every_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        {
+            let mut c = rusqlite::Connection::open(&path).unwrap();
+            migrations::MIGRATIONS
+                .to_version(&mut c, migrations::WATCH_LOG - 1)
+                .unwrap();
+            c.execute_batch(
+                "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES
+                   (1, 1, 'show', '/tv/A', 'A', 0),
+                   (2, 1, 'show', '/tv/B', 'B', 0);
+                 INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 5), (1, '2', 6), (2, 'S02E01', 7);
+                 INSERT INTO views (series_id, episode_key, at) VALUES (1, '2', 6);
+                 INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (2, 'S02E02', 10, 100, 8);",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let read = |sql: &str| -> Vec<(i64, String, i64)> {
+            let sql = sql.to_string();
+            store
+                .read(move |c| {
+                    let mut stmt = c.prepare(&sql)?;
+                    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+                    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+                })
+                .unwrap()
+        };
+        let history = vec![
+            (1, "1".to_string(), 5),
+            (1, "2".to_string(), 6),
+            (2, "S02E01".to_string(), 7),
+        ];
+        assert_eq!(
+            read("SELECT series_id, episode_key, at FROM completed ORDER BY at"),
+            history
+        );
+        assert_eq!(
+            read(
+                "SELECT series_id, episode_key, at FROM watch_log WHERE how = 'copied' ORDER BY at"
+            ),
+            history
+        );
+        assert_eq!(
+            read("SELECT count(*), '', 0 FROM watch_log"),
+            vec![(3, String::new(), 0)]
+        );
+        assert_eq!(
+            read("SELECT series_id, episode_key, at FROM views"),
+            vec![(1, "2".to_string(), 6)]
+        );
+        assert_eq!(
+            read("SELECT series_id, episode_key, at FROM resume_points"),
+            vec![(2, "S02E02".to_string(), 8)]
+        );
+    }
 }

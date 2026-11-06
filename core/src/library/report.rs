@@ -157,18 +157,18 @@ fn folder_of(kind: &str, path: &str) -> String {
 // The agents --------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum AgentKind {
+pub(crate) enum AgentKind {
     Claude,
     Codex,
 }
 
-struct Agent {
-    kind: AgentKind,
-    path: PathBuf,
+pub(crate) struct Agent {
+    pub(crate) kind: AgentKind,
+    pub(crate) path: PathBuf,
 }
 
 impl Agent {
-    fn name(&self) -> &'static str {
+    pub(crate) fn name(&self) -> &'static str {
         match self.kind {
             AgentKind::Claude => "Claude Code",
             AgentKind::Codex => "Codex",
@@ -178,7 +178,7 @@ impl Agent {
 
 /// Where the agents install when not on PATH: an app started from a desktop
 /// launcher, the Mac's Finder especially, gets a short PATH of its own.
-fn search_dirs() -> Vec<PathBuf> {
+pub(crate) fn search_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
@@ -222,7 +222,7 @@ fn executable(p: &Path) -> bool {
 /// Claude Code first, then Codex. `ANIBEAM_TRIAGE_AGENT` names a stand in
 /// that reads the prompt on stdin and answers on stdout the way Claude Code
 /// does (drives and tests), or `none`.
-fn find_agent() -> Option<Agent> {
+pub(crate) fn find_agent() -> Option<Agent> {
     if let Some(v) = std::env::var_os("ANIBEAM_TRIAGE_AGENT") {
         if v == "none" {
             return None;
@@ -233,6 +233,12 @@ fn find_agent() -> Option<Agent> {
             path,
         });
     }
+    find_installed()
+}
+
+/// The agents installed on this machine, Claude Code first, with no stand
+/// in: what a caller with its own override looks for.
+pub(crate) fn find_installed() -> Option<Agent> {
     let dirs = search_dirs();
     [(AgentKind::Claude, "claude"), (AgentKind::Codex, "codex")]
         .into_iter()
@@ -266,16 +272,46 @@ const PIPE_GRACE: Duration = Duration::from_secs(5);
 /// npm shim takes the real agent down with it. Called only while the agent or
 /// something it started is still running, so the group id is still theirs.
 fn end_group(child: &mut std::process::Child) {
+    kill_group(child.id());
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Kills a process group by its leader's pid: the agent and everything it
+/// started, an npm shim's real agent included.
+pub(crate) fn kill_group(pid: u32) {
     #[cfg(unix)]
     {
         let _ = Command::new("kill")
-            .args(["-KILL", "--", &format!("-{}", child.id())])
+            .args(["-KILL", "--", &format!("-{pid}")])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
     }
-    let _ = child.kill();
-    let _ = child.wait();
+    #[cfg(not(unix))]
+    let _ = pid;
+}
+
+/// A fresh empty folder in the temp dir for one agent run, named `stem`.
+pub(crate) fn fresh_dir(stem: &str) -> std::io::Result<PathBuf> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!("{stem}-{}-{nanos}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+/// The PATH an agent runs with: its own folder first, so a script-installed
+/// agent finds the runtime installed beside it, then the usual places.
+pub(crate) fn agent_path_env(agent: &Path) -> Option<std::ffi::OsString> {
+    let mut path = Vec::new();
+    if let Some(own) = agent.parent() {
+        path.push(own.to_path_buf());
+    }
+    path.extend(search_dirs());
+    std::env::join_paths(path).ok()
 }
 
 /// One read only run of the agent on `prompt`, fed on stdin in a fresh empty

@@ -21,20 +21,31 @@ SettingsTab {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.discord_presence = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.fail(r.error)
+        if (r.error) frame.fail(r.error, function() { tab.setDiscord(on) })
+    }
+    function setSkip(intro, outro) {
+        var r = Door.setAutoSkip(intro, outro)
+        if (r && r.error) frame.fail(r.error, function() { tab.setSkip(intro, outro) })
+    }
+    // A presence check that failed is not a build without Discord: it says so, with Try again
+    property bool presenceFailed: false
+    function readPresence() {
+        var presence = Door.call("GetPresence", {})
+        presenceFailed = !!presence.error
+        if (!presence.error) { discordAvailable = presence.reply.available; discordConnected = presence.reply.connected }
     }
     // Whether Discord is connected right now: read once, then kept current by the core's event
     property bool discordConnected: false
-    Component.onCompleted: { var presence = Door.call("GetPresence", {}); if (!presence.error) { discordAvailable = presence.reply.available; discordConnected = presence.reply.connected } }
+    Component.onCompleted: readPresence()
     Connections { target: Door; function onPresenceChanged(connected) { tab.discordConnected = connected } }
 
     Panel {
         title: "Skipping"
         helper: "Uses the file's chapters, else skip times other viewers shared online. Undo in the player turns skipping off until AniBeam closes."
         SettingRow { label: "Skip intros"
-            Switch { checked: !!tab.skip.intro; onToggled: function(on) { Door.setAutoSkip(on, !!tab.skip.outro) } } }
+            Switch { checked: !!tab.skip.intro; onToggled: function(on) { tab.setSkip(on, !!tab.skip.outro) } } }
         SettingRow { label: "Skip outros"; helper: "Reaching the outro also marks the episode watched."
-            Switch { checked: !!tab.skip.outro; onToggled: function(on) { Door.setAutoSkip(!!tab.skip.intro, on) } } }
+            Switch { checked: !!tab.skip.outro; onToggled: function(on) { tab.setSkip(!!tab.skip.intro, on) } } }
     }
     Panel {
         title: "Next episode"
@@ -52,14 +63,17 @@ SettingsTab {
     Panel {
         title: "Discord"
         SettingRow { label: "Show what you watch on Discord"
-            helper: tab.discordAvailable ? "The series, episode and poster appear on your Discord profile while you play. Nothing is sent while this is off or Discord is closed." : "This build has no Discord application."
+            helper: tab.presenceFailed ? "AniBeam could not check Discord just now. Try again in a moment."
+                : tab.discordAvailable ? "The series, episode and poster appear on your Discord profile while you play. Nothing is sent while this is off or Discord is closed." : "This build has no Discord application."
             status: !tab.discordAvailable || !Door.preferences.discord_presence ? "" : tab.discordConnected ? "Connected to Discord" : "Not connected. AniBeam connects while an episode plays and Discord is open"
-            Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } }
+            Row { spacing: theme.space(2)
+                Button { visible: tab.presenceFailed; text: "Try again"; icon: "refresh-cw"; flat: true; small: true; onClicked: tab.readPresence() }
+                Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } } }
     }
     Panel {
         title: "Advanced"
         SettingRow { label: "Use my mpv settings"; helper: "Reads your mpv.conf. Options that only work at startup are skipped, and scripts never load."
-            status: Player.configLayers.length ? Player.configLayers.join("\n") : "No mpv settings file found."
+            status: Player.configLayers.length ? Player.configLayers.join("\n") : "No mpv settings file found. Put your options in mpv.conf, then turn this on."
             Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
     }
 }
