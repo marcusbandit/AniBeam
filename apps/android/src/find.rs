@@ -103,7 +103,6 @@ struct Find {
     history: Vec<ListState>,
     /// Whether the list was opened from the show view, so Back returns there.
     list_from_show: bool,
-    asked_notifications: bool,
     posters: BTreeMap<String, Image>,
     /// The shows under the field as you type, the desktop's suggestions: the library's
     /// first, then AniList's.
@@ -185,7 +184,6 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             list: None,
             history: Vec::new(),
             list_from_show: false,
-            asked_notifications: false,
             posters: BTreeMap::new(),
             suggestions: Vec::new(),
             suggest_for: String::new(),
@@ -1251,13 +1249,6 @@ impl Find {
         p.limit_on.then_some((p.limit_gb * 1e9) as u64)
     }
 
-    fn ask_notifications(&mut self) {
-        // Noted only once the ask went out, so one that failed is tried on the next download.
-        if !self.asked_notifications {
-            self.asked_notifications = crate::android::ask_notifications();
-        }
-    }
-
     /// Get, and Follow: the picked releases download into the show's folder, then the
     /// subscription is made when Follow is on.
     fn go(&mut self) {
@@ -1287,7 +1278,7 @@ impl Find {
             && state.offer.show.airing
             && !state.no_feed.contains(&provider);
         let limit = self.limit();
-        self.ask_notifications();
+        crate::app::download_starting();
         self.with_data(|d| d.set_busy(true));
         self.line("Working...", "");
         let name = plan.name.clone();
@@ -1539,7 +1530,7 @@ impl Find {
         if items.is_empty() {
             return;
         }
-        self.ask_notifications();
+        crate::app::download_starting();
         let count = items.len();
         let name = self
             .show
@@ -1595,7 +1586,7 @@ impl Find {
             .as_ref()
             .map(|s| s.offer.show.folder.clone())
             .filter(|f| !f.is_empty());
-        self.ask_notifications();
+        crate::app::download_starting();
         ask(
             Call::PhoneSubscribe {
                 query: list.query,

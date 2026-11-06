@@ -14,6 +14,7 @@ import { NotesPage } from "notes.slint";
 import { CalendarPage } from "calendar.slint";
 import { AiringSheet } from "airing.slint";
 import { Area, Fold } from "fold.slint";
+import { NotifyQuestion } from "notify.slint";
 
 export { AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
@@ -274,6 +275,10 @@ export component AppWindow inherits Window {
                 Ask.mobile = false;
                 return accept;
             }
+            if (AppData.notify-ask) {
+                AppData.notify-ask = false;
+                return accept;
+            }
             if (Ask.menu-id >= 0) {
                 Ask.menu-id = -1;
                 return accept;
@@ -420,6 +425,12 @@ export component AppWindow inherits Window {
 
         if Ask.mobile: MobileDataQuestion {
             inset-bottom: root.inset-bottom;
+        }
+
+        if AppData.notify-ask: NotifyQuestion {
+            inset-bottom: root.inset-bottom;
+            sheet-x: Fold.sheet-x;
+            sheet-width: Fold.sheet-width;
         }
 
         if Ask.menu-id >= 0: ShowMenu {

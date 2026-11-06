@@ -1,0 +1,135 @@
+// The download notification, as the person meets it: a picture of it before Android's own
+// dialog, in onboarding and on the first download, and a quiet line in Downloads while it is
+// off. `AppData.notify` says where it stands: 0 on, 1 never asked, 2 turned down.
+
+import { Theme } from "theme.slint";
+import { AppData } from "data.slint";
+import { Button, ListRow, TextButton } from "widgets.slint";
+
+// The notification as the phone's shade shows it while episodes download: the payoff, drawn
+// before the ask. The text is the one the download service posts.
+export component NotifyPreview inherits Rectangle {
+    in property <string> text: "Downloading 2 episodes";
+    height: row.preferred-height;
+    background: Theme.float;
+    border-radius: Theme.radius + 6px;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    row := HorizontalLayout {
+        padding: Theme.unit * 4;
+        spacing: Theme.unit * 3;
+        alignment: start;
+        Rectangle {
+            width: 10 * Theme.unit;
+            height: self.width;
+            y: (parent.height - self.height) / 2;
+            border-radius: self.width / 2;
+            background: Theme.accent-soft;
+            Image {
+                width: 5 * Theme.unit;
+                height: self.width;
+                source: @image-url("icons/download.svg");
+                colorize: Theme.accent;
+            }
+        }
+        VerticalLayout {
+            spacing: Theme.unit;
+            alignment: center;
+            Text {
+                text: "AniBeam · now";
+                color: Theme.dim;
+                font-size: Theme.small;
+            }
+            Text {
+                text: root.text;
+                color: Theme.text;
+                font-size: Theme.normal;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+// The notification's one row, the same in onboarding and More: how it stands, and while it
+// is off, a tap that turns it on.
+export component NotifyRow inherits ListRow {
+    label: AppData.notify == 0 ? "Notifications" : AppData.notify == 1 ? "Allow notifications" : "Open notification settings";
+    helper: AppData.notify == 0 ? "On. Downloads show in your notifications while they run."
+        : AppData.notify == 1 ? "Android asks next. You can change your mind later in More."
+        : "Off. Turn on notifications for AniBeam there.";
+    tappable: AppData.notify != 0;
+    chevron: AppData.notify != 0;
+    clicked => { AppData.allow-notifications(); }
+}
+
+// The first download's question, for someone onboarding never asked: the notification as it
+// will look, then Android's dialog if they want it. The download starts either way.
+export component NotifyQuestion inherits Rectangle {
+    in property <length> inset-bottom;
+    in property <length> sheet-x;
+    in property <length> sheet-width;
+    background: #000000b0;
+    TouchArea { clicked => { AppData.notify-ask = false; } }
+    Rectangle {
+        x: root.sheet-x + Theme.grout;
+        width: root.sheet-width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        height: body.preferred-height;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
+            spacing: Theme.unit * 3;
+            Text {
+                text: "See downloads in your notifications?";
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            Text {
+                text: "While episodes download, a notification says what is downloading. They download either way; this only decides whether you see it.";
+                color: Theme.dim;
+                font-size: Theme.small + 1px;
+                wrap: word-wrap;
+            }
+            NotifyPreview { }
+            Rectangle { height: Theme.unit; }
+            Button {
+                text: "Allow";
+                primary: true;
+                clicked => {
+                    AppData.notify-ask = false;
+                    AppData.allow-notifications();
+                }
+            }
+            Button {
+                text: "Not now";
+                clicked => { AppData.notify-ask = false; }
+            }
+        }
+    }
+}
+
+// In Downloads while something downloads and the notification is off: one quiet line and a
+// way to turn it on. Never more than that.
+export component NotifyPointer inherits HorizontalLayout {
+    spacing: Theme.unit * 2;
+    alignment: start;
+    Text {
+        text: "Downloads don't show in your notifications.";
+        color: Theme.dim;
+        font-size: Theme.small;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+    TextButton {
+        text: "Turn on";
+        ink: Theme.accent;
+        clicked => { AppData.allow-notifications(); }
+    }
+}

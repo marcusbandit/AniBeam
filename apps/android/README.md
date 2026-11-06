@@ -37,8 +37,10 @@ Four tabs:
   address), tracker sign-in, the other device's address, and the version.
 
 **Onboarding** runs once: AniList and MAL sign-in, Wi-Fi only (on by default; turning it
-off asks first), and the storage cap, suggested at 18 GB and off unless chosen. More can
-run it again.
+off asks first), the storage cap, suggested at 18 GB and off unless chosen, and the
+download notification, shown as it will look before Android asks for it. More can run it
+again. Turned down, the notification has a row in More and a line in Downloads while
+something downloads, both opening the app's notification settings.
 
 **The player** is the desktop's, on the same libmpv: the core opens the session, keeps the
 resume point and the history, and marks the trackers; the track pick and AniBeam's mpv

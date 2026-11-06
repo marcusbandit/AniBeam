@@ -61,6 +61,30 @@ public class TorrentService extends Service {
     }
 
     /**
+     * Opens this app's notification settings, the one way back once Android stops asking:
+     * after a second Don't allow, requestPermissions shows nothing. Falls back to the app's
+     * info page on a phone without the notification page.
+     */
+    public static boolean openSettings(final Activity activity) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                // Settings.ACTION_APP_NOTIFICATION_SETTINGS and EXTRA_APP_PACKAGE, spelled
+                // out for the --release 8 build.
+                Intent notifications = new Intent("android.settings.APP_NOTIFICATION_SETTINGS")
+                        .putExtra("android.provider.extra.APP_PACKAGE", activity.getPackageName());
+                try {
+                    activity.startActivity(notifications);
+                } catch (RuntimeException e) {
+                    activity.startActivity(new Intent("android.settings.APPLICATION_DETAILS_SETTINGS",
+                            android.net.Uri.fromParts("package", activity.getPackageName(), null)));
+                }
+            }
+        });
+        return true;
+    }
+
+    /**
      * Android 15 gives a dataSync service six hours a day and stops the app if the service
      * outlives them. It stops here instead; downloads go on the next time the app is open.
      */

@@ -20,6 +20,7 @@ use anibeam_core::{
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
+use crate::notify::{self, Notify};
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
@@ -180,6 +181,11 @@ pub fn endpoints_changed() {
     with_app(App::show_search_sources);
 }
 
+/// Downloads calls this as a download starts: the first one may explain the notification.
+pub fn download_starting() {
+    with_app(App::download_starting);
+}
+
 fn with_app(f: impl FnOnce(&mut App)) {
     APP.with(|app| {
         if let Some(app) = app.borrow_mut().as_mut() {
@@ -222,6 +228,11 @@ const SETTINGS: &[(i32, &str, &str)] = &[
         1,
         "Only on Wi-Fi",
         "wifi wi-fi mobile data cellular network",
+    ),
+    (
+        1,
+        "Notifications",
+        "notification notify alert progress permission shade allow",
     ),
     (
         2,
@@ -429,6 +440,7 @@ impl App {
         {
             self.reload();
         }
+        self.show_notify();
         let now = anibeam_companion::now();
         // A handle of its own, so `data` does not hold `self` while the models change.
         let window = self.window.clone_strong();
@@ -1340,6 +1352,49 @@ impl App {
         }
     }
 
+    fn notify(&self) -> Notify {
+        Notify::new(
+            crate::android::notifications_allowed(),
+            self.prefs.notify_asked,
+        )
+    }
+
+    /// Where the download notification stands, for onboarding, Downloads and More. Read on
+    /// every tick: Android's dialog and its settings answer outside the app.
+    fn show_notify(&self) {
+        let code = self.notify().code();
+        if self.data().get_notify() != code {
+            self.data().set_notify(code);
+        }
+    }
+
+    /// The notification's button: Android's dialog the first time, its settings after.
+    fn allow_notifications(&mut self) {
+        match self.notify().action() {
+            Some(notify::Action::Ask) => {
+                // Noted only once the ask went out, so one that failed is tried again.
+                if crate::android::ask_notifications() {
+                    self.prefs.notify_asked = true;
+                    self.prefs.notify_offered = true;
+                    self.save_prefs();
+                }
+            }
+            Some(notify::Action::Settings) => crate::android::notification_settings(),
+            None => {}
+        }
+        self.show_notify();
+    }
+
+    /// A download is starting: the first one explains the notification before Android asks,
+    /// once, unless onboarding already did.
+    fn download_starting(&mut self) {
+        if notify::offer_on_download(self.notify(), self.prefs.notify_offered) {
+            self.prefs.notify_offered = true;
+            self.save_prefs();
+            self.data().set_notify_ask(true);
+        }
+    }
+
     fn save_prefs(&mut self) {
         if let Err(e) = prefs::save(&self.data_dir, &self.prefs) {
             crate::local::log(&format!("could not save the phone's settings: {e}"));
@@ -1880,10 +1935,13 @@ pub fn run(
     data.on_finish_onboarding(|| {
         with_app(|app| {
             app.prefs.onboarded = true;
+            // Onboarding showed the notification, so a first download does not ask again.
+            app.prefs.notify_offered = true;
             app.save_prefs();
         })
     });
     data.on_open_notes(|| with_app(|app| app.show_notes()));
+    data.on_allow_notifications(|| with_app(App::allow_notifications));
     window.global::<Settings>().on_find({
         let window = window.as_weak();
         move |query| {

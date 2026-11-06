@@ -3,19 +3,22 @@ import { AppData } from "data.slint";
 import { Ask } from "more.slint";
 import { Button, Figure, ListGroup, ListRow, Slider, TextButton } from "widgets.slint";
 import { RepoData, RepoPanes } from "repos.slint";
+import { NotifyPreview, NotifyRow } from "notify.slint";
 
 // The first run, one question a step: who you are on AniList and MAL, Wi-Fi or mobile data,
-// how much room the phone gives AniBeam, and which endpoint repo it searches. Shown once; More can run it again. Each step
+// how much room the phone gives AniBeam, whether downloads show in the notifications, and
+// which endpoint repo it searches. Shown once; More can run it again. Each step
 // is a page in the desktop's idiom: the step's title in the display cut, a dim line, the
 // one pane it asks about, and the buttons at the foot where a thumb is.
 export component Onboarding inherits Rectangle {
     background: Theme.ground;
-    property <int> steps: 5;
+    property <int> steps: 6;
     property <[{title: string, note: string}]> pages: [
         { title: "AniBeam", note: "Your anime on this phone. Find a show, see who has it, download it, and keep your lists in step." },
         { title: "Your lists", note: "Sign in so what you watch here counts on AniList or MyAnimeList. You can do this later in More." },
         { title: "Wi-Fi only", note: "Episodes are big. AniBeam downloads on Wi-Fi unless you say otherwise." },
         { title: "Storage", note: "A cap on how much AniBeam may download. It reserves nothing: the space stays free until episodes fill it." },
+        { title: "Notifications", note: "While episodes download, a notification says what is downloading, so you can check on it from anywhere. Downloads run either way." },
         { title: "Search sites", note: "AniBeam comes with nothing to search. A repo is a signed list of sites to search. Paste a repo's address, check its key, then install the sites you want. You can do this later in More." },
     ];
 
@@ -134,6 +137,14 @@ export component Onboarding inherits Rectangle {
             }
 
             if AppData.step == 4: VerticalLayout {
+                spacing: Theme.unit * 4;
+                NotifyPreview { }
+                ListGroup {
+                    NotifyRow { last: true; }
+                }
+            }
+
+            if AppData.step == 5: VerticalLayout {
                 spacing: Theme.unit * 4;
                 HorizontalLayout {
                     alignment: start;

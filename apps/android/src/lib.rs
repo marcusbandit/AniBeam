@@ -18,6 +18,7 @@ mod focus;
 mod local;
 mod mpv;
 mod notes;
+mod notify;
 mod phone;
 mod player;
 mod posters;

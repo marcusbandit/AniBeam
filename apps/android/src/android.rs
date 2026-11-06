@@ -237,6 +237,18 @@ pub fn ask_notifications() -> bool {
     true
 }
 
+/// Opens the app's notification settings, where notifications go back on once Android has
+/// stopped asking.
+pub fn notification_settings() {
+    #[cfg(target_os = "android")]
+    java_call(
+        "TorrentService",
+        "openSettings",
+        "(Landroid/app/Activity;)Z",
+        None,
+    );
+}
+
 /// Whether the app may show notifications: Android 13 and later ask the person first.
 pub fn notifications_allowed() -> bool {
     #[cfg(target_os = "android")]

@@ -290,6 +290,10 @@ export global AppData {
     in property <string> mal-state;
     // The last sign-in to AniList or MAL failed.
     in property <bool> sign-in-failed;
+    // The download notification: 0 on, 1 never asked, 2 turned down.
+    in property <int> notify;
+    // The first download's question about the notification is up.
+    in-out property <bool> notify-ask;
 
     // Downloads and sources, on More.
     in property <[DownloadRow]> downloads;
@@ -368,6 +372,8 @@ export global AppData {
     callback set-limit(bool, float);
     callback connect-tracker(int);
     callback finish-onboarding();
+    // Android's notification dialog the first time, the app's notification settings after.
+    callback allow-notifications();
     callback restart-onboarding();
     callback test-host(string);
     callback save-host(string);
