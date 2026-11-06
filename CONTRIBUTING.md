@@ -183,8 +183,10 @@ The phone's `build.sh` refuses an APK whose newest heading is not its
 AniBeam ships no download sources, and this repo takes no PR that adds one. Nothing in
 the app points at a site: no address, no host, no default, no onboarding link, and no code,
 test or fixture that names one. A PR that adds a site gets closed, however well it is built.
-CI keeps it that way: `.github/no-site-names.sh` greps the tree for the known site names and
-fails on any hit, skipping only the changelogs and dated plans kept as history.
+CI keeps it that way: `.github/no-site-names.sh` greps the tree, file names included, for
+the known site names and fails on any hit. It skips what is kept as history (the changelogs
+and dated plans), applied SQL migrations, lockfiles, and `core/src/releases/kinds.rs`, the one
+module that holds the kinds' old names to rename them.
 
 What the core does hold is endpoint kinds. A kind is a type of input the core knows how to
 read and handle well: an RSS feed, a torznab API, a JSON search API, a feed that needs a key.

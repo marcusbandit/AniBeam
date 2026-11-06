@@ -11,20 +11,38 @@ cd "$(dirname "$0")/.."
 
 names='nyaa|animetosho|tosho|erai|erai-raws|subsplease|sukebei|1337x|knaben|limetorrents|everythingmoe|ddos-guard|anirena|eztv|eztvx'
 
-# A letter or digit on either side makes it another word; an underscore does not, so a test
-# named tracker_nyaa_kind still counts.
-hits=$(git grep -nIiP "(?<![A-Za-z0-9])(${names})(?![A-Za-z0-9])" -- . \
-  ':(exclude)**/CHANGELOG.md' \
-  ':(exclude)CHANGELOG.md' \
-  ':(exclude)docs/superpowers/' \
-  ':(exclude)core/src/store/sql/' \
-  ':(exclude)core/src/releases/kinds.rs' \
-  ':(exclude)*.lock' \
-  ':(exclude).github/no-site-names.sh' || true)
+# A name counts unless a lower-case letter or a digit runs on into it: tracker_nyaa_kind,
+# nyaaSource and SubspleaseQuirks are hits, surfaceRaised is another word. The name itself
+# is matched in any case.
+pattern="(?<!(?-i:[a-z0-9]))(${names})(?!(?-i:[a-z0-9]))"
+skip=(
+  ':(exclude)**/CHANGELOG.md'
+  ':(exclude)CHANGELOG.md'
+  ':(exclude)docs/superpowers/'
+  ':(exclude)core/src/store/sql/'
+  ':(exclude)core/src/releases/kinds.rs'
+  ':(exclude)*.lock'
+  ':(exclude).github/no-site-names.sh'
+)
 
-if [ -n "$hits" ]; then
-  echo "These lines name a download site. A site belongs in an endpoint repo, never here:"
-  echo "$hits"
+# git grep answers 1 for no match; anything else, such as a git built without PCRE, is an
+# error and must not read as a clean tree.
+set +e
+hits=$(git grep -nIiP "$pattern" -- . "${skip[@]}")
+rc=$?
+set -e
+if [ "$rc" -gt 1 ]; then
+  echo "git grep failed (exit $rc); the check needs a git with PCRE." >&2
+  exit 2
+fi
+
+# File and folder names count too.
+named=$(git ls-files -- . "${skip[@]}" | grep -iP "$pattern" || true)
+
+if [ -n "$hits" ] || [ -n "$named" ]; then
+  echo "These name a download site. A site belongs in an endpoint repo, never here:"
+  [ -n "$hits" ] && echo "$hits"
+  [ -n "$named" ] && echo "$named"
   exit 1
 fi
 echo "No download site is named."
