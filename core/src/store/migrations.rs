@@ -34,7 +34,7 @@ pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
 
 /// The count. Private to the crate so this `usize` never crosses the
 /// contract boundary (constraint 10 forbids `usize` in any exported type).
-pub(crate) const SCHEMA_VERSION: usize = 20;
+pub(crate) const SCHEMA_VERSION: usize = 21;
 
 /// The version that adds the watch log (#593), for the test that migrates the
 /// one before it.
@@ -43,7 +43,7 @@ pub(crate) const WATCH_LOG: usize = 20;
 
 /// The version that gives history, resume points and tracker accounts a profile (#630).
 #[cfg(test)]
-pub(crate) const PROFILES: usize = 20;
+pub(crate) const PROFILES: usize = 21;
 
 /// Refuses a database written by a newer build, then applies what is pending
 /// inside rusqlite_migration's own transaction.
