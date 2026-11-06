@@ -233,6 +233,7 @@ pub fn info(rule: &Rule, torrent_count: u64, file_count: u64) -> SubscriptionRul
         file_count,
         query: query_of(&rule.feed_url),
         show: None,
+        followable: true,
     }
 }
 

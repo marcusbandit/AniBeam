@@ -230,6 +230,11 @@ pub struct SubscriptionRule {
     /// it: the core fills this in, anirss knows nothing of it.
     #[serde(default)]
     pub show: Option<ShowLink>,
+    /// Whether the rule can fetch new episodes. False when its feed belongs to a source
+    /// that answers JSON: a rule made there before #507 holds a search address no client
+    /// reads as a feed (#536). The core fills this in; true when missing.
+    #[serde(default = "default_true")]
+    pub followable: bool,
 }
 
 /// A library series as the downloads page shows it beside a rule or a

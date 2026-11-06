@@ -331,6 +331,7 @@ mod tests {
             file_count: 3,
             query: "Frieren".to_string(),
             show,
+            followable: true,
         }
     }
 
