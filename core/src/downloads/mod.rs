@@ -1305,7 +1305,7 @@ pub(crate) fn annotate(
                     let mut paths = link::episode_files(&files, f.season, n).peekable();
                     let any = paths.peek().is_some();
                     f.on_disk = paths.any(|p| match known.get(p) {
-                        Some(origin) => origins::is_release(origin, &item.title, &item.link),
+                        Some(origin) => origins::is_release(origin, &item.title, &item.link, f),
                         None => facts::same_release(&item.title, f, p),
                     });
                     f.other_on_disk = any && !f.on_disk;

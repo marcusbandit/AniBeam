@@ -2,7 +2,8 @@
 //! tell this release from another by the torrent rather than by the name.
 //!
 //! The torrent client is the one that knows: a file in the library is
-//! recorded once the client lists a torrent that holds it. The core reads
+//! recorded once the client lists a finished torrent that holds it, and
+//! again when the file is newer than its record (downloaded over). The core reads
 //! the client's torrents when the Downloads page does, and once after a
 //! scan that brought in files, but only through a client already running:
 //! a scan never starts one. Nothing here polls. A file the client never
@@ -10,13 +11,14 @@
 //! name the way it always has.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, params, params_from_iter};
 
 use crate::contract::*;
 use crate::core::Core;
 use crate::downloads::qbt::QbtClient;
+use crate::store::sql::placeholders;
 
 /// One recorded origin: the torrent's info hash, lower case, and its name.
 #[derive(Clone, Debug, PartialEq)]
@@ -25,76 +27,106 @@ pub struct Origin {
     pub name: String,
 }
 
-/// The origins of these paths, by path. A path with none is absent.
+/// The origins of these paths, by path, in one read. A path with none is
+/// absent.
 pub fn of(conn: &Connection, paths: &[&str]) -> Result<HashMap<String, Origin>, CoreError> {
     let mut out = HashMap::new();
-    let mut stmt =
-        conn.prepare_cached("SELECT info_hash, torrent_name FROM file_origins WHERE path = ?1")?;
-    for path in paths {
-        if let Some((hash, name)) = stmt
-            .query_row(params![path], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-            })
-            .optional()?
-        {
-            out.insert((*path).to_string(), Origin { hash, name });
+    for chunk in paths.chunks(500) {
+        let sql = format!(
+            "SELECT path, info_hash, torrent_name FROM file_origins WHERE path IN ({})",
+            placeholders(chunk.len())
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(chunk.iter()), |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                Origin {
+                    hash: r.get(1)?,
+                    name: r.get(2)?,
+                },
+            ))
+        })?;
+        for row in rows {
+            let (path, origin) = row?;
+            out.insert(path, origin);
         }
     }
     Ok(out)
 }
 
 /// Whether a search's release is the torrent a file came from: its magnet
-/// names the same info hash, or its title is the torrent's name, with a
-/// file extension and case set aside, which is how a torrent added from a
-/// `.torrent` link is named.
-pub fn is_release(origin: &Origin, title: &str, link: &str) -> bool {
-    if let Some(hash) = crate::downloads::replace::magnet_hash(link) {
-        return hash.eq_ignore_ascii_case(&origin.hash);
+/// names the same info hash, or, for a `.torrent` link, which names none,
+/// the release reads as the torrent the way it would read as the file
+/// (`facts::same_release`, with the torrent's name in the file's place).
+pub fn is_release(origin: &Origin, title: &str, link: &str, facts: &ReleaseFacts) -> bool {
+    match crate::downloads::replace::magnet_hash(link) {
+        Some(hash) => hash.eq_ignore_ascii_case(&origin.hash),
+        None => super::facts::same_release(title, facts, &origin.name),
     }
-    let norm = |s: &str| {
-        let s = s.trim();
-        let s = match s.rsplit_once('.') {
-            Some((stem, ext)) if VIDEO.contains(&ext.to_ascii_lowercase().as_str()) => stem,
-            _ => s,
-        };
-        s.trim().to_lowercase()
-    };
-    norm(title) == norm(&origin.name)
 }
 
-const VIDEO: [&str; 7] = ["mkv", "mp4", "avi", "m4v", "webm", "ts", "wmv"];
+/// The finished torrents already read since the library last gained files:
+/// a torrent's files do not change once it is done, so it is read once,
+/// and a scan that brings files in clears this for the next read.
+static SEEN: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 
-/// Records every library file the client's torrents hold that has no origin
-/// yet. A torrent of one file is its content path; a batch is read file by
-/// file, and only when some unrecorded library file sits under its folder,
-/// so a client full of finished batches costs nothing once they are known.
+fn seen() -> std::sync::MutexGuard<'static, HashSet<String>> {
+    SEEN.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Records which finished torrent holds each library file whose origin is
+/// unknown, or older than the file. A one-file torrent is its content path;
+/// a batch is read file by file. A torrent still downloading is left for a
+/// later read, and a finished one is read once until the library gains
+/// files again, so a client full of done torrents costs no request at all.
+/// Two torrents holding one path (a cross-seed) leave the first one read.
 pub async fn record_from(
     core: &Arc<Core>,
     client: &QbtClient,
     torrents: &[Torrent],
 ) -> Result<u64, CoreError> {
-    let unknown: HashSet<String> = core
+    let fresh: Vec<&Torrent> = {
+        let seen = seen();
+        torrents
+            .iter()
+            .filter(|t| t.progress >= 1.0 && !seen.contains(&t.hash.to_ascii_lowercase()))
+            .collect()
+    };
+    if fresh.is_empty() {
+        return Ok(0);
+    }
+    let (unknown, sources) = core
         .store
         .write_async(|c| {
             let mut stmt = c.prepare(
                 "SELECT f.path FROM files f
-                 WHERE NOT EXISTS (SELECT 1 FROM file_origins o WHERE o.path = f.path)",
+                 LEFT JOIN file_origins o ON o.path = f.path
+                 WHERE o.path IS NULL OR o.recorded_at < f.mtime",
             )?;
-            let rows = stmt
+            let unknown = stmt
                 .query_map([], |r| r.get::<_, String>(0))?
                 .collect::<Result<HashSet<_>, _>>()?;
-            Ok(rows)
+            let mut stmt = c.prepare("SELECT path FROM sources")?;
+            let sources = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((unknown, sources))
         })
         .await?;
-    if unknown.is_empty() {
-        return Ok(0);
-    }
+    let local = Local::new(&sources);
     let mut found: Vec<(String, String, String)> = Vec::new();
-    for t in torrents {
+    let mut taken: HashSet<String> = HashSet::new();
+    for t in fresh {
         let hash = t.hash.to_ascii_lowercase();
-        let content = norm_path(&t.content_path);
+        seen().insert(hash.clone());
+        if unknown.is_empty() {
+            continue;
+        }
+        let content = local.path(&t.content_path);
         if unknown.contains(&content) {
-            found.push((content, hash, t.name.clone()));
+            if taken.insert(content.clone()) {
+                found.push((content, hash, t.name.clone()));
+            }
             continue;
         }
         let folder = format!("{}/", content.trim_end_matches('/'));
@@ -105,22 +137,23 @@ pub async fn record_from(
             Ok(files) => files,
             Err(e) => {
                 tracing::debug!("files of {} not read for origins: {e}", t.name);
+                seen().remove(&hash);
                 continue;
             }
         };
-        let base = norm_path(&t.save_path);
+        let base = local.path(&t.save_path);
         for f in files {
-            let path = format!("{}/{}", base.trim_end_matches('/'), norm_path(&f.name));
-            if unknown.contains(&path) {
+            let path = format!("{}/{}", base.trim_end_matches('/'), slashes(&f.name));
+            if unknown.contains(&path) && taken.insert(path.clone()) {
                 found.push((path, hash.clone(), t.name.clone()));
             }
         }
     }
+    let now = crate::time::now_secs();
     let count = found.len() as u64;
-    if count > 0 {
-        let now = crate::time::now_secs();
-        core.store
-            .tx_async(move |tx| {
+    core.store
+        .tx_async(move |tx| {
+            {
                 let mut stmt = tx.prepare(
                     "INSERT OR REPLACE INTO file_origins (path, info_hash, torrent_name, recorded_at)
                      VALUES (?1, ?2, ?3, ?4)",
@@ -128,18 +161,25 @@ pub async fn record_from(
                 for (path, hash, name) in &found {
                     stmt.execute(params![path, hash, name, now])?;
                 }
-                Ok(())
-            })
-            .await?;
-    }
+            }
+            // A file the library no longer holds takes its origin with it
+            tx.execute(
+                "DELETE FROM file_origins WHERE path NOT IN (SELECT path FROM files)",
+                [],
+            )?;
+            Ok(())
+        })
+        .await?;
     Ok(count)
 }
 
 /// After a scan brought files in: one read of the client's torrents, only
-/// through a client already running, so a scan never starts one. Not a
-/// job; a failure is a debug line and the files stay unrecorded until the
-/// next read.
+/// through a client already running, so a scan never starts one. The
+/// finished torrents are read again, since one of them may hold the new
+/// files. Not a job; a failure is a debug line and the files stay
+/// unrecorded until the next read.
 pub fn after_scan(core: &Core) {
+    seen().clear();
     let Some(client) = core.downloads.state().qbt.clone() else {
         return;
     };
@@ -160,9 +200,42 @@ pub fn after_scan(core: &Core) {
     });
 }
 
-/// A client's path with forward slashes, the way the library stores one on
-/// this machine.
-fn norm_path(p: &str) -> String {
+/// A client's path as the library writes it: forward slashes on Windows,
+/// and a source the library reaches through a symlink written the way the
+/// library added it, so the client's real path and the library's agree.
+struct Local {
+    /// Each source whose real path differs from the one the library keeps:
+    /// (real, as kept).
+    links: Vec<(String, String)>,
+}
+
+impl Local {
+    fn new(sources: &[String]) -> Local {
+        let links = sources
+            .iter()
+            .filter_map(|s| {
+                let real = std::fs::canonicalize(s).ok()?;
+                let real = slashes(&real.to_string_lossy());
+                (real != *s).then(|| (real, s.clone()))
+            })
+            .collect();
+        Local { links }
+    }
+
+    fn path(&self, client: &str) -> String {
+        let p = slashes(client);
+        for (real, kept) in &self.links {
+            if let Some(rest) = p.strip_prefix(real.as_str())
+                && (rest.is_empty() || rest.starts_with('/'))
+            {
+                return format!("{kept}{rest}");
+            }
+        }
+        p
+    }
+}
+
+fn slashes(p: &str) -> String {
     if cfg!(windows) {
         p.replace('\\', "/")
     } else {
@@ -186,29 +259,32 @@ mod tests {
     /// torrent's name, with the extension and case set aside.
     #[test]
     fn a_release_is_its_torrent_by_hash_or_by_name() {
-        let o = origin(
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "[Grp] Show - 01 [1080p].mkv",
-        );
+        let o = origin(&"a".repeat(40), "[Grp] Show - 01 [1080p].mkv");
+        let facts = |title: &str| super::super::facts::read(&release(title, ""));
+        let magnet = |h: &str| format!("magnet:?xt=urn:btih:{h}&dn=x");
         assert!(is_release(
             &o,
             "anything",
-            "magnet:?xt=urn:btih:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&dn=x"
+            &magnet(&"A".repeat(40)),
+            &facts("anything")
         ));
-        assert!(!is_release(
-            &o,
-            "[Grp] Show - 01 [1080p]",
-            "magnet:?xt=urn:btih:ffffffffffffffffffffffffffffffffffffffff"
-        ));
+        let t = "[Grp] Show - 01 [1080p]";
+        assert!(!is_release(&o, t, &magnet(&"f".repeat(40)), &facts(t)));
+        // A .torrent link reads as the torrent the way it reads as a file:
+        // case, dots and underscores aside
+        let t = "[grp]_show_-_01_[1080p]";
         assert!(is_release(
             &o,
-            "[grp] show - 01 [1080p]",
-            "https://example.invalid/1.torrent"
+            t,
+            "https://example.invalid/1.torrent",
+            &facts(t)
         ));
+        let t = "[Grp] Show - 01 [720p]";
         assert!(!is_release(
             &o,
-            "[Grp] Show - 01 [720p]",
-            "https://example.invalid/2.torrent"
+            t,
+            "https://example.invalid/2.torrent",
+            &facts(t)
         ));
     }
 
@@ -255,6 +331,7 @@ mod tests {
 
     fn torrent(hash: &str, name: &str, content: &str) -> Torrent {
         let mut t = crate::downloads::qbt::tests_torrent();
+        t.progress = 1.0;
         t.hash = hash.into();
         t.name = name.into();
         t.save_path = "/lib/Show".into();
@@ -282,8 +359,8 @@ mod tests {
                 "[Grp] Show - 01 [1080p].mkv",
                 "/lib/Show/[Grp] Show - 01 [1080p].mkv",
             ),
-            torrent("BBB", "Batch", "/lib/Show/Batch"),
-            torrent("CCC", "Elsewhere", "/downloads/Elsewhere"),
+            torrent("R1BBB", "Batch", "/lib/Show/Batch"),
+            torrent("R1CCC", "Elsewhere", "/downloads/Elsewhere"),
         ];
         let n = core
             .handle
@@ -308,7 +385,7 @@ mod tests {
         );
         assert_eq!(
             known["/lib/Show/Batch/Show - 02.mkv"],
-            origin("bbb", "Batch")
+            origin("r1bbb", "Batch")
         );
 
         let asked = http.requests().len();
@@ -318,6 +395,44 @@ mod tests {
             .unwrap();
         assert_eq!(again, 0);
         assert_eq!(http.requests().len(), asked);
+
+        // Downloaded over by another torrent: the file is newer than its
+        // record, so the new torrent is the origin. A file the library no
+        // longer holds loses its origin.
+        core.store
+            .write(|c| {
+                c.execute(
+                    "UPDATE files SET mtime = (SELECT recorded_at FROM file_origins LIMIT 1) + 10
+                     WHERE number = 1",
+                    [],
+                )?;
+                c.execute("DELETE FROM files WHERE number = 2", [])?;
+                Ok(())
+            })
+            .unwrap();
+        seen().clear();
+        let over = vec![torrent(
+            "R1DDD",
+            "[Grp] Show - 01 [1080p].mkv",
+            "/lib/Show/[Grp] Show - 01 [1080p].mkv",
+        )];
+        core.handle
+            .block_on(record_from(&core, &client, &over))
+            .unwrap();
+        let known = core
+            .store
+            .read(|c| {
+                of(
+                    c,
+                    &[
+                        "/lib/Show/[Grp] Show - 01 [1080p].mkv",
+                        "/lib/Show/Batch/Show - 02.mkv",
+                    ],
+                )
+            })
+            .unwrap();
+        assert_eq!(known.len(), 1, "{known:?}");
+        assert_eq!(known["/lib/Show/[Grp] Show - 01 [1080p].mkv"].hash, "r1ddd");
         core.shutdown();
     }
 
