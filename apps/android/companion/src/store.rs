@@ -88,6 +88,26 @@ impl Store {
         write_atomic(&self.dir.join(name), &bytes)
     }
 
+    /// The phone's key (#555), made and kept on first use. A key file that does not read
+    /// is an error and is left alone: a new key would undo every pairing made with it.
+    pub fn device_key(&self) -> std::io::Result<anibeam_host_api::proof::DeviceKey> {
+        use anibeam_host_api::proof::{DeviceKey, hex, unhex};
+        let path = self.dir.join("device-key");
+        match fs::read_to_string(&path) {
+            Ok(text) => unhex::<32>(text.trim())
+                .map(DeviceKey::from_seed)
+                .ok_or_else(|| std::io::Error::other("the device key does not read")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let mut seed = [0u8; 32];
+                getrandom::fill(&mut seed).map_err(|e| std::io::Error::other(e.to_string()))?;
+                let key = DeviceKey::from_seed(seed);
+                write_atomic(&path, hex(&key.seed()).as_bytes())?;
+                Ok(key)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn settings(&self) -> Settings {
         self.read_json("settings.json").unwrap_or_default()
     }
@@ -175,6 +195,23 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("anibeam-store-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         dir
+    }
+
+    #[test]
+    fn the_device_key_is_made_once_and_never_replaced() {
+        let store = Store::open(scratch("key")).unwrap();
+        let first = store.device_key().unwrap().public();
+        assert_eq!(store.device_key().unwrap().public(), first);
+        let reopened = Store::open(store.dir().to_path_buf()).unwrap();
+        assert_eq!(reopened.device_key().unwrap().public(), first);
+
+        fs::write(store.dir().join("device-key"), "not a key").unwrap();
+        assert!(store.device_key().is_err());
+        assert_eq!(
+            fs::read_to_string(store.dir().join("device-key")).unwrap(),
+            "not a key",
+            "a key that does not read is left for a person to look at"
+        );
     }
 
     #[test]

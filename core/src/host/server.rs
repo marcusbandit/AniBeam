@@ -15,7 +15,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 
 use super::build::{self, LibraryPart};
-use super::{convert, stream, trust};
+use super::{convert, keys, stream, trust};
 use crate::contract::CoreError;
 use crate::core::Core;
 use crate::time;
@@ -98,7 +98,11 @@ async fn known_host(request: axum::extract::Request, next: axum::middleware::Nex
 
 /// Refuses a request from a device the person has not trusted: one switched
 /// off in Settings, one the host cannot place on the tailnet while any is,
-/// and anything off the tailnet (`trust::decide`). It runs before every route.
+/// and anything off the tailnet (`trust::decide`). A request may also carry
+/// a proof of the device that sent it (`keys`): one that does not check out
+/// is refused wherever it comes from, and one from a paired device is
+/// answered wherever it comes from, unless that device is switched off. It
+/// runs before every route.
 async fn trusted(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
@@ -108,14 +112,38 @@ async fn trusted(
     let Some(core) = st.core.upgrade() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
-    // Reading the tailnet can run `tailscale`, so it stays off the async threads.
-    let verdict = tokio::task::spawn_blocking(move || core.host.verdict(from.ip()))
-        .await
-        .unwrap_or(trust::Verdict::Unknown);
-    match trust::refusal(&verdict) {
+    let header = request
+        .headers()
+        .get(wire::proof::HEADER)
+        .map(|h| h.to_str().unwrap_or_default().to_string());
+    let method = request.method().as_str().to_string();
+    let path = request.uri().path_and_query().map_or_else(
+        || request.uri().path().to_string(),
+        |p| p.as_str().to_string(),
+    );
+    // Reading the tailnet can run `tailscale`, and the key the keyring, so
+    // both stay off the async threads.
+    let judged = tokio::task::spawn_blocking(move || {
+        core.host.keys.mine(&core.secrets);
+        let verdict = core.host.verdict(from.ip());
+        let proof = core
+            .host
+            .keys
+            .judge(header.as_deref(), &method, &path, time::now_secs());
+        (verdict, proof)
+    })
+    .await;
+    let (verdict, proof) = judged.unwrap_or((trust::Verdict::Unknown, keys::Proof::None));
+    let refused = match (&verdict, &proof) {
+        (trust::Verdict::SwitchedOff(_), _) => trust::refusal(&verdict),
+        (_, keys::Proof::Refused(why)) => Some(*why),
+        (_, keys::Proof::Paired(_)) => None,
+        _ => trust::refusal(&verdict),
+    };
+    match refused {
         None => next.run(request).await,
         Some(why) => {
-            tracing::debug!("host refused {from}: {verdict:?}");
+            tracing::debug!("host refused {from}: {verdict:?}, {proof:?}");
             error(StatusCode::FORBIDDEN, why)
         }
     }
@@ -179,13 +207,16 @@ fn failed(e: &CoreError) -> Response {
 }
 
 async fn hello(State(st): State<Arc<Served>>) -> Response {
+    // Read by `trusted`, which runs before every route.
+    let key = st.core.upgrade().and_then(|c| c.host.keys.mine_now());
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
         version: crate::VERSION.to_string(),
         host: st.host.clone(),
         now: time::now_secs(),
-        features: features(),
+        features: features(key.is_some()),
+        key: key.map(|k| k.public()).unwrap_or_default(),
     };
     match serde_json::to_vec(&hello) {
         Ok(body) => json(Bytes::from(body)),
@@ -196,10 +227,13 @@ async fn hello(State(st): State<Arc<Served>>) -> Response {
 /// What this host serves past the snapshot. Streaming always; converting
 /// when ffmpeg and an encoder work here, which the first hello starts finding
 /// out rather than waits for, so hello stays quick.
-fn features() -> Vec<String> {
+fn features(keyed: bool) -> Vec<String> {
     let mut out = vec![wire::FEATURE_STREAM.to_string()];
     if convert::known() == Some(true) {
         out.push(wire::FEATURE_CONVERT.to_string());
+    }
+    if keyed {
+        out.push(wire::FEATURE_PROOF.to_string());
     }
     out
 }

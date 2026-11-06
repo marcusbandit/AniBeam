@@ -1728,6 +1728,11 @@ pub fn run(
     commands: Commands,
     inbox: Receiver<Command>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Before anything talks to a computer, so every request can carry the phone's proof.
+    match Store::open(&data_dir).and_then(|s| s.device_key()) {
+        Ok(key) => anibeam_companion::client::use_device_key(key),
+        Err(e) => eprintln!("AniBeam: no device key, requests go unsigned: {e}"),
+    }
     crate::local::start(data_dir.clone());
     crate::airing::start(&data_dir);
     crate::stream::init(data_dir.clone());
