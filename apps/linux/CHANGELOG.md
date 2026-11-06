@@ -94,6 +94,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An endpoint repo can add a source that answers in JSON
 - Airing times of your shows can go to a calendar app, set in Settings
 - Change a show's list status from its status pill or right-click menu
+- Pick several shows in Library with Ctrl or Shift and hide, rate or move them
 
 ### Changed
 - Out now on Airing shows its episodes as small cards with their wide banners

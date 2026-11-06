@@ -65,6 +65,9 @@ Item {
         { name: "Library", keys: [
             ["Ctrl+K", "Library and search"],
             ["/ or Ctrl+F", "Search this page"],
+            ["Ctrl+Space", "Pick a card, to act on several"],
+            ["Shift+Space", "Pick every card up to this one"],
+            ["Ctrl+A", "Pick every card shown"],
             ["Ctrl+L", "Activity"],
             ["Ctrl+,", "Settings"],
             ["Ctrl+Q", "Quit"]
