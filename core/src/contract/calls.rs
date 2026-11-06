@@ -203,6 +203,10 @@ pub enum Call {
     RefreshWatching {
         force: bool,
     },
+    /// The AniList entries on Planning (#210), off the cache the watching
+    /// refresh fills, in the watching list's shape and order. Reads only;
+    /// `RefreshWatching` brings both lists. `owned` says the library has it.
+    ListPlanning,
     // Airing now
     /// The season as last read, at once, and the id of a refresh already
     /// running. Reads only; `RefreshAiringNow` goes to AniList.
@@ -744,6 +748,9 @@ pub enum Reply {
     Watching {
         list: WatchingList,
         refreshing: Option<u64>,
+    },
+    Planning {
+        list: WatchingList,
     },
     AiringNow {
         now: AiringNow,

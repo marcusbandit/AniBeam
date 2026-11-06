@@ -950,6 +950,7 @@ impl Core {
             // with a network side effect made every library change an
             // AniList request. The page asks for a refresh on its own.
             Call::ListWatching => watching::list_call(self),
+            Call::ListPlanning => watching::planning_call(self),
             Call::RefreshWatching { force } => watching::refresh_call(self, force),
             // Airing now reads its own tables, like Watching: the list call
             // answers off the cache and the page asks for a refresh itself.
