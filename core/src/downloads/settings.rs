@@ -95,10 +95,10 @@ fn adopt_client(s: &mut DownloadSettings) {
 }
 
 /// Writes the settings over what is stored, so a key a newer build added survives a save
-/// here. An engine this build does not know reads as anirss (a newer build wrote it), so a
-/// save that still says anirss keeps the stored value rather than undo the newer build's
-/// choice; picking the native engine replaces it. This build cannot tell an anirss read that
-/// way from one picked on purpose, and in this build both mean anirss.
+/// here. An engine this build does not know reads as the native engine, the default (a newer
+/// build wrote it), so a save that still says native keeps the stored value rather than undo
+/// the newer build's choice; picking anirss replaces it. This build cannot tell a native
+/// engine read that way from one picked on purpose, and in this build both mean native.
 pub fn save(conn: &Connection, s: &DownloadSettings) -> Result<(), CoreError> {
     let serde_json::Value::Object(fields) = serde_json::to_value(s)? else {
         return Err(CoreError::internal(
@@ -487,7 +487,7 @@ pub fn defaults() -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: RollingSettings::default(),
-        engine: DownloadsEngine::Anirss,
+        engine: DownloadsEngine::Native,
     }
 }
 
@@ -547,17 +547,17 @@ mod tests {
         let mut blob = serde_json::to_value(defaults()).unwrap();
         blob["engine"] = serde_json::json!("Telepathy");
         settings::set(&c, KEY, &blob).unwrap();
-        // Read as anirss here, and saved back with something else changed.
+        // Read as the default, native, here, and saved back with something else changed.
         let mut s = load_stored(&c).unwrap();
-        assert_eq!(s.engine, DownloadsEngine::Anirss);
+        assert_eq!(s.engine, DownloadsEngine::Native);
         s.prune_finished_feeds = false;
         save(&c, &s).unwrap();
         assert_eq!(stored_engine(&c), serde_json::json!("Telepathy"));
         assert!(!load_stored(&c).unwrap().prune_finished_feeds);
-        // Picking an engine this build knows replaces it.
-        s.engine = DownloadsEngine::Native;
+        // Picking another engine this build knows replaces it.
+        s.engine = DownloadsEngine::Anirss;
         save(&c, &s).unwrap();
-        assert_eq!(stored_engine(&c), serde_json::json!("Native"));
+        assert_eq!(stored_engine(&c), serde_json::json!("Anirss"));
     }
 
     #[test]
@@ -594,9 +594,30 @@ mod tests {
             match engine {
                 // A shape this build cannot read is unknown too, and kept.
                 Some(e) if e.is_object() => assert_eq!(kept, e),
-                _ => assert_eq!(kept, serde_json::json!("Anirss")),
+                _ => assert_eq!(kept, serde_json::json!("Native")),
             }
         }
+    }
+
+    /// The flip to the native engine (#552): fresh settings, and settings
+    /// stored before the choice existed, run on it; settings that name
+    /// anirss keep anirss through a read and a save.
+    #[test]
+    fn the_native_engine_is_the_default_and_a_stored_anirss_stays() {
+        let c = store();
+        assert_eq!(defaults().engine, DownloadsEngine::Native);
+        let mut blob = serde_json::to_value(defaults()).unwrap();
+        blob.as_object_mut().unwrap().remove("engine");
+        settings::set(&c, KEY, &blob).unwrap();
+        assert_eq!(load_stored(&c).unwrap().engine, DownloadsEngine::Native);
+
+        blob["engine"] = serde_json::json!("Anirss");
+        settings::set(&c, KEY, &blob).unwrap();
+        let s = load_stored(&c).unwrap();
+        assert_eq!(s.engine, DownloadsEngine::Anirss);
+        save(&c, &s).unwrap();
+        assert_eq!(stored_engine(&c), serde_json::json!("Anirss"));
+        assert_eq!(load_stored(&c).unwrap().engine, DownloadsEngine::Anirss);
     }
 
     #[test]

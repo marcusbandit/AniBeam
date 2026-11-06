@@ -84,7 +84,8 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: Default::default(),
-        engine: Default::default(),
+        // These run on anirss, which is no longer the default (#552)
+        engine: DownloadsEngine::Anirss,
     };
     core.call(Call::SetDownloadSettings {
         settings,
