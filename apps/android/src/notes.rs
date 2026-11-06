@@ -16,7 +16,12 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// What's new for this build, given what the phone has read.
 pub fn view(seen: &Seen, used_before: bool) -> WhatsNew {
-    changelog::whats_new(&changelog::parse_with(NOTES, CHANGES), VERSION, seen, used_before)
+    changelog::whats_new(
+        &changelog::parse_with(NOTES, CHANGES),
+        VERSION,
+        seen,
+        used_before,
+    )
 }
 
 /// The page's rows, top to bottom: each version, its sections and their changes, and the
