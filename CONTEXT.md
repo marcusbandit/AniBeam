@@ -289,3 +289,22 @@ _Avoid_: window class, WM_CLASS, desktop file id, bundle id
 **Install**:
 A build of the checkout put on a machine. Every install carries a version unique to the commit it came from, so a build is a version, never just a file.
 _Avoid_: deploy, release build, dev build
+
+### On screen
+
+The words above are for the code and the docs. The app says these instead, so a person never needs the glossary:
+
+| Here | On screen |
+| --- | --- |
+| Metadata page | Show info |
+| Unmatched series | Not recognised |
+| Missing | Folder not found |
+| Forget | Remove |
+| Endpoint | source |
+| Endpoint repo | source list |
+| Sidecar, anirss | search helper |
+| Best fit | Best match |
+| Rolling download | Keep the next few ready |
+| Sequential download | Download in episode order |
+| Tracker | your anime lists, or AniList and MyAnimeList by name |
+| Managed torrent client | Built-in, Built-in client |

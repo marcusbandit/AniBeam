@@ -587,8 +587,8 @@ FocusScope {
     // core sends and is not for anyone to read.
     readonly property var refusalWords: ({
         Hidden: "the show is hidden",
-        NoMatch: "the show has no tracker match",
-        NotNewer: "the tracker is already past this episode",
+        NoMatch: "the show is not matched yet; match it on Show info",
+        NotNewer: "your list is already past this episode",
         Extra: "this is an extra",
         Unmatched: "the file is not matched to an episode",
         OnDisk: "the file is only on disk"

@@ -102,7 +102,7 @@ FocusScope {
             var on = []
             if (tracked("anilist")) on.push("AniList")
             if (tracked("mal")) on.push("MyAnimeList")
-            return on.length ? "Syncing to " + on.join(" and ") : "No tracker connected"
+            return on.length ? "Syncing to " + on.join(" and ") : "No list connected"
         }
         if (id === "appearance") {
             var mode = Theme.mode === "system" ? "Follows the system" : Theme.mode === "light" ? "Light" : "Dark"
@@ -145,14 +145,14 @@ FocusScope {
     // for it. `label` is the row's own label (or the group's title), so reveal finds it.
     readonly property var searchIndex: [
         ["library", "Folders", "add folder scan rescan remove source path collection"],
-        ["library", "Matching", "metadata provider anilist tvmaze order match"],
+        ["library", "Matching", "metadata show info provider anilist tvmaze order match"],
         ["library", "Show hidden shows", "hidden reveal"],
         ["library", "Hidden from Airing now", "not interested airing show again"],
         ["library", "Airing times in a calendar", "calendar ics ical airing schedule subscribe"],
-        ["accounts", "Trackers", "anilist myanimelist mal sign in connect login account disconnect"],
-        ["accounts", "Main tracker", "progress cards primary", "Trackers"],
-        ["accounts", "Sync now", "refresh progress lists tracker", "Trackers"],
-        ["accounts", "Move to On hold", "on hold paused inactive untouched days", "Trackers"],
+        ["accounts", "Your anime lists", "anilist myanimelist mal sign in connect login account disconnect tracker"],
+        ["accounts", "Main list", "progress cards primary tracker", "Your anime lists"],
+        ["accounts", "Sync now", "refresh progress lists tracker", "Your anime lists"],
+        ["accounts", "Move to On hold", "on hold paused inactive untouched days", "Your anime lists"],
         ["appearance", "Mode", "dark light system theme night"],
         ["appearance", "Colours from", "terminal desktop system theme source kitty"],
         ["appearance", "Dark theme", "colour scheme base16", "Colours from"],
@@ -166,7 +166,7 @@ FocusScope {
         ["appearance", "App icon", "logo launcher dock taskbar window dark"],
         ["playback", "Skip intros", "opening op auto skip aniskip chapters"],
         ["playback", "Skip outros", "ending ed credits auto skip aniskip"],
-        ["playback", "Use my mpv settings", "mpv.conf config"],
+        ["playback", "Use my mpv settings", "mpv.conf config advanced"],
         ["playback", "Show what you watch on Discord", "discord rich presence status profile"],
         ["playback", "Name the next episode", "next button title autoplay end"],
         ["playback", "Subtitle languages", "language track subs"],
@@ -186,12 +186,12 @@ FocusScope {
         ["keys", "Getting around", "keyboard shortcuts back forward right-click menu fullscreen"],
         ["keys", "Anywhere", "keyboard shortcuts keys hotkeys settings quit"],
         ["downloads", "Torrent client", "qbittorrent password username address webui seedbox"],
-        ["downloads", "Search with anirss", "anirss rss feeds token command server"],
-        ["downloads", "Rolling downloads", "roll episodes ahead delete watched keep disk space"],
+        ["downloads", "Search helper", "anirss rss feeds token command server advanced"],
+        ["downloads", "Keep the next few ready", "rolling roll episodes ahead delete watched keep disk space"],
         ["downloads", "Unsubscribe from finished shows", "prune feeds finished"],
         ["downloads", "Keep the last search", "downloads query remember"],
-        ["downloads", "Search sources", "endpoints feeds config"],
-        ["downloads", "Endpoint repos", "repo signed endpoints jackett prowlarr"],
+        ["downloads", "Search sources", "endpoints feeds config anirss"],
+        ["downloads", "Source lists", "repo repos endpoint signed endpoints jackett prowlarr"],
         ["phone", "Share over Tailscale", "phone android tailnet remote host"],
         ["storage", "Back up the library", "export backup file json"],
         ["storage", "Restore from a backup", "import restore file json"],
