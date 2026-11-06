@@ -166,7 +166,7 @@ Item {
             x: (root.itemWidth - width) / 2
             implicitWidth: langWidest.implicitWidth + theme.space(4)
             width: implicitWidth
-            height: theme.space(6)
+            height: theme.textSpace(6)
             radius: height / 2
             color: langMouse.containsMouse ? theme.raisedHover : theme.raised
             scale: theme.reducedMotion ? 1 : (langMouse.pressed ? 0.98 : 1)

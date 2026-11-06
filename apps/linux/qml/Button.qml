@@ -29,7 +29,7 @@ Corner {
     signal clicked()
 
     implicitWidth: content.implicitWidth + theme.space(small ? 3 : 4) * 2
-    implicitHeight: small ? theme.space(6) : theme.controlHeight
+    implicitHeight: small ? theme.textSpace(6) : theme.controlHeight
     radius: height / 2
     smoothing: theme.cornerSmoothing
     activeFocusOnTab: takesFocus

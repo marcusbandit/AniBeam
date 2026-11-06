@@ -39,6 +39,8 @@ Corner {
     }
     TextInput {
         id: input
+        // Not being edited, a long query shows its start, as a Field does
+        autoScroll: activeFocus
         anchors.fill: parent
         anchors.leftMargin: root.large ? theme.space(14) : theme.space(9); anchors.rightMargin: root.goButton ? theme.space(20) : theme.space(10)
         verticalAlignment: TextInput.AlignVCenter

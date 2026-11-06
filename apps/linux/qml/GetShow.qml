@@ -1205,8 +1205,8 @@ Item {
         property string value: ""
         width: parent ? parent.width : 0
         height: Math.max(keyLabel.implicitHeight, valueLabel.implicitHeight, openBtn.visible ? openBtn.height : 0)
-        Label { id: keyLabel; width: theme.space(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
-        Label { id: valueLabel; x: theme.space(18); width: parent.width - x - (openBtn.visible ? openBtn.width + theme.space(2) : 0); text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
+        Label { id: keyLabel; width: theme.textSpace(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+        Label { id: valueLabel; x: theme.textSpace(18); width: parent.width - x - (openBtn.visible ? openBtn.width + theme.space(2) : 0); text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
         // A folder opens from its line
         property bool folder: false
         Button { id: openBtn; visible: parent.folder && parent.value !== ""; anchors.right: parent.right; anchors.verticalCenter: valueLabel.verticalCenter

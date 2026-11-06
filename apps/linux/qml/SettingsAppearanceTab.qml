@@ -10,6 +10,9 @@ import QtCore
 import com.marcusrosado.AniBeam
 
 SettingsTab {
+    // The text sizes, as theme.toml names them and as the row says them
+    readonly property var textSizes: [{ id: "smaller", text: "Smaller" }, { id: "normal", text: "Normal" }, { id: "large", text: "Large" },
+                                      { id: "larger", text: "Larger" }, { id: "largest", text: "Largest" }]
     id: tab
     title: "Appearance"
     lead: "Changes show at once, here and on every page. They live in ~/.config/anibeam/theme.toml, which you can edit by hand too."
@@ -104,9 +107,9 @@ SettingsTab {
     Panel {
         title: "Size and motion"
         SettingRow { label: "Text size"; helper: "How big the words are everywhere in AniBeam, on top of your system's own size."
-            Seg { objectName: "text-size"; options: ["Smaller", "Normal", "Large", "Larger", "Largest"]
-                  index: Math.max(0, ["smaller", "normal", "large", "larger", "largest"].indexOf(Theme.textSize))
-                  onPicked: function(i) { Theme.pickTextSize(["smaller", "normal", "large", "larger", "largest"][i]) } } }
+            Seg { objectName: "text-size"; options: tab.textSizes.map(function(s) { return s.text })
+                  index: Math.max(0, tab.textSizes.map(function(s) { return s.id }).indexOf(Theme.textSize))
+                  onPicked: function(i) { Theme.pickTextSize(tab.textSizes[i].id) } } }
         SettingRow { label: "Density"; helper: "The room around everything, from tight to airy."
             Seg { options: ["Compact", "Normal", "Comfortable"]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
         SettingRow { label: "Poster size"; helper: "How big a series is in the library and on Home."

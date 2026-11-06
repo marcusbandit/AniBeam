@@ -200,7 +200,7 @@ Item {
     readonly property real systemPointSize: Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 10
     // Text size (Appearance): every type size below is the system's times this, so the
     // whole window's type follows one setting
-    readonly property real textScale: Theme.textScale > 0 ? Theme.textScale : 1
+    readonly property real textScale: Theme.textScale
     readonly property real basePointSize: systemPointSize * textScale
     readonly property string fontSans: fontFamily
     // Shims kept while the surfaces are restyled: the old names all resolve to Archivo.
@@ -248,8 +248,11 @@ Item {
     readonly property int motionFast: reducedMotion ? 0 : 120
     readonly property int motionNormal: reducedMotion ? 0 : 200
     readonly property int motionSlow: 320
-    // Grows with text bigger than normal, so a label never outgrows its button or field
-    readonly property real controlHeight: Math.round(space(8) * Math.max(1, textScale))
+    // A length that holds text: space(n), grown with text bigger than Normal, so a label never
+    // outgrows its button, row or column. Smaller text keeps the normal size, so a control
+    // stays as easy to hit.
+    function textSpace(n) { return Math.round(space(n) * Math.max(1, textScale)) }
+    readonly property real controlHeight: textSpace(8)
     readonly property real disabledOpacity: 0.45
 
     // A colour t of the way from a to b, alpha included; takes Qt colours
