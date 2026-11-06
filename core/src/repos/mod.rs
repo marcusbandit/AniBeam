@@ -19,6 +19,7 @@ use rusqlite::params;
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::downloads::EndpointSync;
 use crate::net::{HttpRequest, Method};
 use index::{Definition, Index, RepoFault};
 
@@ -1135,8 +1136,9 @@ fn read_synced(core: &Core) -> Synced {
 }
 
 /// Why the desktop does not search an installed endpoint, when it does not: anirss has its own
-/// of that name from its config, cannot search the kind, or does not list
-/// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES), whatever its version says.
+/// of that name from its config, cannot search the kind, does not list
+/// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES), whatever its version says,
+/// or is one the desktop never writes into (a server the person runs, a sandbox run).
 /// None on the phone, and before the desktop has read its anirss.
 ///
 /// Only the anirss engine has these limits. AniBeam's own engine searches every installed
@@ -1153,25 +1155,41 @@ fn note_for(
         return None;
     }
     let view = view?;
-    if !view.endpoint_writes {
-        return Some(format!(
-            "anirss {} cannot take endpoints from AniBeam; update it to {} or newer for the desktop to search this",
-            view.version,
-            crate::downloads::anirss::MIN_VERSION
-        ));
-    }
     if !ANIRSS_KINDS.contains(&def.kind.as_str()) {
         return Some(format!(
             "anirss cannot search the {} kind, so the desktop leaves it out; the phone searches it",
             def.kind
         ));
     }
-    (view.endpoints.contains(&def.id) && !synced.contains_key(&def.id)).then(|| {
+    let listed = view.endpoints.contains(&def.id);
+    let by_hand = || {
         format!(
             "anirss has its own {}, written by hand; the desktop searches that one",
             def.id
         )
-    })
+    };
+    match view.sync {
+        // A server the person runs keeps its own config, and searches what it lists: once
+        // they have added the endpoint there, there is nothing to note (#499).
+        EndpointSync::Theirs => (!listed).then(|| {
+            format!(
+                "This anirss is one you run, and the desktop never changes its config: add {} to that anirss's own config for the desktop to search it",
+                def.id
+            )
+        }),
+        // A sandbox run reads the owner's anirss as it is, notes and all, and adds nothing.
+        EndpointSync::Sandbox if listed => (!synced.contains_key(&def.id)).then(by_hand),
+        EndpointSync::Sandbox => Some(format!(
+            "This run never writes into anirss's config, so the desktop does not search {} here",
+            def.id
+        )),
+        EndpointSync::Syncs if !view.endpoint_writes => Some(format!(
+            "anirss {} cannot take endpoints from AniBeam; update it to {} or newer for the desktop to search this",
+            view.version,
+            crate::downloads::anirss::MIN_VERSION
+        )),
+        EndpointSync::Syncs => (listed && !synced.contains_key(&def.id)).then(by_hand),
+    }
 }
 
 fn spec_of(e: &crate::releases::Endpoint) -> serde_json::Value {
@@ -1651,7 +1669,60 @@ mod tests {
             version: version.to_string(),
             endpoint_writes,
             endpoints: endpoints.iter().map(|e| e.to_string()).collect(),
+            sync: EndpointSync::Syncs,
         }
+    }
+
+    /// An anirss the desktop never syncs endpoints into, a server the person runs (Remote)
+    /// or the owner's own behind a sandbox run, is not searched for one it lacks, whatever
+    /// it lists: the note says what to do there instead of asking for an update (#499).
+    #[test]
+    fn the_endpoint_note_says_when_the_desktop_never_syncs_into_that_anirss() {
+        let def: Definition = serde_json::from_value(
+            serde_json::json!({"id": "mine", "name": "mine", "version": 1,
+                "kind": "rss", "url": "https://a.example/rss?q={query}"}),
+        )
+        .unwrap();
+        let synced = Synced::new();
+        let at = |sync, writes, endpoints: &[&str]| AnirssView {
+            sync,
+            ..view("0.7.0", writes, endpoints)
+        };
+        let note = |v: AnirssView| note_for(DownloadsEngine::Anirss, Some(&v), &def, &synced);
+        // A server the person runs: to its own config, whether or not it lists writes.
+        for writes in [true, false] {
+            let n = note(at(EndpointSync::Theirs, writes, &[])).unwrap();
+            assert!(n.contains("add mine to that anirss's own config"), "{n}");
+            assert!(!n.contains("update"), "{n}");
+        }
+        // Once the person has added it there, it is searched and the note goes.
+        assert_eq!(note(at(EndpointSync::Theirs, false, &["mine"])), None);
+        // A sandbox run leaves the owner's anirss alone: searched only if it is there, and
+        // one there by hand says so, as the owner's own run does.
+        let n = note(at(EndpointSync::Sandbox, true, &[])).unwrap();
+        assert!(n.contains("never writes into anirss's config"), "{n}");
+        let n = note(at(EndpointSync::Sandbox, true, &["mine"])).unwrap();
+        assert!(n.contains("written by hand"), "{n}");
+        let mut ours = Synced::new();
+        ours.insert("mine".to_string(), String::new());
+        let v = at(EndpointSync::Sandbox, true, &["mine"]);
+        assert_eq!(
+            note_for(DownloadsEngine::Anirss, Some(&v), &def, &ours),
+            None
+        );
+        // A kind anirss cannot search says so first, wherever anirss runs.
+        let tosho: Definition =
+            serde_json::from_value(serde_json::json!({"id": "t", "name": "t", "version": 1,
+                "kind": "tosho", "url": "https://a.example/json?q={query}"}))
+            .unwrap();
+        let n = note_for(
+            DownloadsEngine::Anirss,
+            Some(&at(EndpointSync::Theirs, true, &[])),
+            &tosho,
+            &synced,
+        )
+        .unwrap();
+        assert!(n.contains("cannot search the tosho kind"), "{n}");
     }
 
     fn health(version: &str, features: &[&str]) -> Health {
