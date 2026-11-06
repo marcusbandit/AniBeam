@@ -380,6 +380,32 @@ pub fn content_type(path: &FsPath, bytes: &[u8]) -> &'static str {
     }
 }
 
+/// This computer's series and history, for another AniBeam to merge
+/// (`history`). The asker is pulled from in turn, so two computers that
+/// see each other both end up with everything.
+async fn history_document(
+    State(st): State<Arc<Served>>,
+    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+) -> Response {
+    let Some(core) = st.core.upgrade() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+    };
+    let built = tokio::task::spawn_blocking(move || {
+        let doc = history::document(&core);
+        history::pull_back(&core, from.ip());
+        doc
+    })
+    .await;
+    match built {
+        Ok(Ok(doc)) => match serde_json::to_vec(&doc) {
+            Ok(body) => json(Bytes::from(body)),
+            Err(e) => failed(&e.into()),
+        },
+        Ok(Err(e)) => failed(&e),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -416,31 +442,5 @@ mod tests {
             content_type(FsPath::new("a/b"), b"zzzz"),
             "application/octet-stream"
         );
-    }
-}
-
-/// This computer's series and history, for another AniBeam to merge
-/// (`history`). The asker is pulled from in turn, so two computers that
-/// see each other both end up with everything.
-async fn history_document(
-    State(st): State<Arc<Served>>,
-    ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
-) -> Response {
-    let Some(core) = st.core.upgrade() else {
-        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
-    };
-    let built = tokio::task::spawn_blocking(move || {
-        let doc = history::document(&core);
-        history::pull_back(&core, from.ip());
-        doc
-    })
-    .await;
-    match built {
-        Ok(Ok(doc)) => match serde_json::to_vec(&doc) {
-            Ok(body) => json(Bytes::from(body)),
-            Err(e) => failed(&e.into()),
-        },
-        Ok(Err(e)) => failed(&e),
-        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     }
 }
