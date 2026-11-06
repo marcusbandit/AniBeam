@@ -42,13 +42,19 @@ impl Syncer {
     }
 
     /// Hello and snapshot, stored before anything else, so the screens can show it while
-    /// the posters are still coming.
+    /// the posters are still coming. The list of other AniBeams is carried over from the
+    /// last sync with this host; [`Syncer::fetch_peers`] brings it up to date afterwards.
     pub fn fetch_snapshot(&self, address: &HostAddress, now: i64) -> Result<Cache, HostError> {
         let client = self.client(address);
         let hello = client.hello()?;
         let snapshot = client.snapshot()?;
+        let offers_peers = hello
+            .features
+            .iter()
+            .any(|f| f == crate::api::FEATURE_PEERS);
         let cache = Cache {
             address: address.display(),
+            peers: carried(self.store.cache(), &address.display(), offers_peers),
             host: hello.host,
             host_version: hello.version,
             synced_at: now,
@@ -58,6 +64,19 @@ impl Syncer {
             return Err(HostError::Bad(format!("Could not save the snapshot: {e}")));
         }
         Ok(cache)
+    }
+
+    /// Asks the host for the other AniBeams it sees and stores the answer. Returns the
+    /// cache when the list changed. The list is a bonus: a host that cannot answer it
+    /// leaves the last list in place.
+    pub fn fetch_peers(&self, address: &HostAddress, cache: &Cache) -> Option<Cache> {
+        let peers = updated(&cache.peers, self.client(address).peers())?;
+        let cache = Cache {
+            peers,
+            ..cache.clone()
+        };
+        self.store.save_cache(&cache).ok()?;
+        Some(cache)
     }
 
     /// Fetches every poster whose tag differs from the one on disk, calling `fetched` with
@@ -113,5 +132,72 @@ impl Syncer {
         }
         let _ = self.store.save_anilist(&anilist);
         Some(anilist)
+    }
+}
+
+/// The peers a new snapshot starts from: the last sync's, when it was this host and the
+/// host still offers the list.
+fn carried(last: Option<Cache>, address: &str, offers: bool) -> Vec<crate::api::PeerHost> {
+    match last {
+        Some(last) if offers && last.address == address => last.peers,
+        _ => Vec::new(),
+    }
+}
+
+/// The new list when the host answered one that differs from `now`.
+fn updated(
+    now: &[crate::api::PeerHost],
+    answer: Result<Vec<crate::api::PeerHost>, HostError>,
+) -> Option<Vec<crate::api::PeerHost>> {
+    answer.ok().filter(|list| list != now)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::PeerHost;
+
+    fn peer(name: &str) -> PeerHost {
+        PeerHost {
+            name: name.into(),
+            url: format!("http://{name}:8790"),
+            version: "2.4.0".into(),
+        }
+    }
+
+    fn cache_at(address: &str, peers: Vec<PeerHost>) -> Cache {
+        Cache {
+            address: address.into(),
+            peers,
+            ..Cache::default()
+        }
+    }
+
+    #[test]
+    fn a_failed_list_keeps_the_last_one() {
+        let now = vec![peer("kangaeru")];
+        let failed = Err(HostError::Bad("500".into()));
+        assert_eq!(updated(&now, failed), None);
+        assert_eq!(updated(&now, Ok(now.clone())), None, "nothing changed");
+        assert_eq!(
+            updated(&now, Ok(vec![])),
+            Some(vec![]),
+            "an answered empty list is real"
+        );
+    }
+
+    #[test]
+    fn a_new_snapshot_keeps_the_list_only_from_the_same_host() {
+        let last = || Some(cache_at("banditbox:8790", vec![peer("kangaeru")]));
+        assert_eq!(
+            carried(last(), "banditbox:8790", true),
+            vec![peer("kangaeru")]
+        );
+        assert!(carried(last(), "nemurenai:8790", true).is_empty());
+        assert!(
+            carried(last(), "banditbox:8790", false).is_empty(),
+            "a host that stopped offering the list has none"
+        );
+        assert!(carried(None, "banditbox:8790", true).is_empty());
     }
 }

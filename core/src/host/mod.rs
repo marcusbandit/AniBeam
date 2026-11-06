@@ -14,6 +14,7 @@
 pub mod addr;
 pub mod build;
 pub mod convert;
+pub mod peers;
 pub mod server;
 pub mod stream;
 pub mod trust;
@@ -184,11 +185,16 @@ impl Host {
         recover(&self.tailnet).1.clone()
     }
 
+    /// The switched-off ids, for the peer list.
+    pub fn switched_off(&self) -> Vec<String> {
+        recover(&self.off).clone()
+    }
+
     /// Whether to answer a request from `from` (`trust::decide`). An address
     /// the last read cannot place, while some device is switched off, reads
     /// the tailnet again first: it may have just joined.
     pub fn verdict(&self, from: std::net::IpAddr) -> trust::Verdict {
-        let off = recover(&self.off).clone();
+        let off = self.switched_off();
         // This machine and anything off the tailnet are decided by the
         // address alone, so they never wait on `tailscale`.
         if !trust::needs_tailnet(from, &off) {
@@ -311,6 +317,27 @@ pub fn devices(core: &Core) -> Vec<TailnetDevice> {
         });
     }
     listed(core)
+}
+
+/// Whether Tailscale carries the path to `from` through a relay, as the last
+/// read says. Hello asks it, so it never waits on `tailscale`: a read older
+/// than `TAILNET_AGAIN` is made on a worker for the next ask, and before any
+/// read the answer is no, which plays the file as a host without this would.
+pub fn relayed(core: &Core, from: std::net::IpAddr) -> bool {
+    let from = trust::canonical(from);
+    // Only a tailnet address has a path Tailscale can relay.
+    if !addr::is_tailscale(&from) {
+        return false;
+    }
+    if let Some(arc) = core.arc() {
+        core.handle.spawn_blocking(move || {
+            arc.host.tailnet(true);
+        });
+    }
+    core.host
+        .tailnet_now()
+        .and_then(|t| t.peer(from).map(|p| p.relayed))
+        .unwrap_or(false)
 }
 
 fn listed(core: &Core) -> Vec<TailnetDevice> {

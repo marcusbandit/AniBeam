@@ -39,6 +39,8 @@ Corner {
     }
     TextInput {
         id: input
+        Accessible.role: Accessible.EditableText
+        Accessible.name: root.placeholder
         anchors.fill: parent
         anchors.leftMargin: root.large ? theme.space(14) : theme.space(9); anchors.rightMargin: root.goButton ? theme.space(20) : theme.space(10)
         verticalAlignment: TextInput.AlignVCenter
@@ -85,7 +87,8 @@ Corner {
         width: theme.space(7); height: width; radius: width / 2
         color: clearArea.pressed ? theme.surfacePressed : clearArea.containsMouse ? theme.tileHover : "transparent"
         Icon { anchors.centerIn: parent; glyph: "x"; size: theme.space(4); color: clearArea.containsMouse ? theme.text : theme.textDim }
-        MouseArea { id: clearArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared(); input.forceActiveFocus() } }
+        MouseArea { id: clearArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared(); input.forceActiveFocus() }
+            Accessible.role: Accessible.Button; Accessible.name: "Clear the search"; Accessible.onPressAction: clearArea.clicked(null) }
         Tooltip { text: "Clear the search" }
     }
 }

@@ -21,7 +21,7 @@ SettingsTab {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.discord_presence = on
         var r = Door.setPreferences(p)
-        if (r.error) frame.toast(r.error.message)
+        if (r.error) frame.fail(r.error)
     }
     // Whether Discord is connected right now: read once, then kept current by the core's event
     property bool discordConnected: false

@@ -200,6 +200,25 @@ fn without_tailscale_the_host_lists_no_devices_and_still_trusts_the_tailnet() {
     );
 }
 
+/// A tailnet that cannot be read is no list, not an empty one, so the phone
+/// keeps what it had; and that answer is not kept, so the next ask reads again.
+#[test]
+fn a_tailnet_that_cannot_be_read_gives_no_list_and_is_not_kept() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (_dir, core, _c) = common::open_core();
+    core.set_tailscale_status(Some(b"tailscale is not running".to_vec()));
+    let base = serve_as(&rt, &core, "127.0.0.1");
+    let peers = format!("{base}{}", anibeam_host_api::PEERS);
+    let (status, why) = get(&rt, &peers);
+    assert_eq!(status, 503);
+    assert!(why.contains("tailnet"), "{why}");
+
+    // No device online, so nothing off this machine is asked.
+    let alone = br#"{"Self": {"ID": "nSelf", "TailscaleIPs": ["100.65.105.9"]}, "Peer": {}}"#;
+    core.set_tailscale_status(Some(alone.to_vec()));
+    assert_eq!(get(&rt, &peers).0, 200);
+}
+
 /// The real listener, not a mocked address: the host started by the
 /// preference hands every request its peer address, and loopback is this
 /// machine, so it is answered.
@@ -236,4 +255,54 @@ fn the_real_server_knows_who_is_asking() {
         get(&rt, &format!("{base}{}", anibeam_host_api::HELLO)).0,
         200
     );
+}
+
+/// Hello says whether Tailscale carries the asking device through a relay,
+/// as the status says of that device, and says nothing for a direct one or an
+/// idle one. Hello never waits on `tailscale`: the first answer can come from
+/// before the read it starts, so the test waits for that read to land.
+#[test]
+fn hello_says_when_the_path_to_the_asker_is_relayed() {
+    const PATHS: &[u8] = br#"{
+        "Self": {"ID": "nSelf", "HostName": "banditbox", "TailscaleIPs": ["100.65.105.9"]},
+        "Peer": {
+            "a": {"ID": "nPhone", "HostName": "pixel", "Online": true, "Active": true,
+                  "CurAddr": "", "Relay": "fra", "TailscaleIPs": ["100.70.1.2", "fd7a:115c:a1e0::2"]},
+            "b": {"ID": "nLaptop", "HostName": "kangaeru", "Online": true, "Active": true,
+                  "CurAddr": "192.168.1.20:41641", "Relay": "fra", "TailscaleIPs": ["100.80.3.4"]},
+            "c": {"ID": "nTablet", "HostName": "tab", "Online": true, "Active": false,
+                  "CurAddr": "", "Relay": "fra", "TailscaleIPs": ["100.80.3.5"]}
+        }
+    }"#;
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (_dir, core, _c) = common::open_core();
+    core.set_tailscale_status(Some(PATHS.to_vec()));
+    let hello = |from: &str| -> serde_json::Value {
+        let base = serve_as(&rt, &core, from);
+        rt.block_on(async {
+            reqwest::get(format!("{base}{}", anibeam_host_api::HELLO))
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap()
+        })
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while hello("100.70.1.2").get("relayed").is_none() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(hello("100.70.1.2")["relayed"], serde_json::json!(true));
+    assert_eq!(
+        hello("::ffff:100.70.1.2")["relayed"],
+        serde_json::json!(true),
+        "an IPv4 asker seen through an IPv6 socket"
+    );
+    assert_eq!(
+        hello("fd7a:115c:a1e0::2")["relayed"],
+        serde_json::json!(true)
+    );
+    assert!(hello("100.80.3.4").get("relayed").is_none(), "direct");
+    assert!(hello("100.80.3.5").get("relayed").is_none(), "idle");
+    assert!(hello("127.0.0.1").get("relayed").is_none());
 }

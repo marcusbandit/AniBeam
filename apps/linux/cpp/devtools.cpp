@@ -10,11 +10,13 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QMetaEnum>
 #include <QtCore/QMutex>
 #include <QtCore/QMutexLocker>
 #include <QtCore/QThread>
 #include <QtCore/QUrl>
 #include <QtCore/QVector>
+#include <QtGui/QAccessible>
 #include <QtGui/QImage>
 #include <QtGui/QImageReader>
 #include <QtQml/QQmlAbstractUrlInterceptor>
@@ -357,4 +359,59 @@ void dev_release(QObject *window)
 #ifdef __GLIBC__
     malloc_trim(0);
 #endif
+}
+
+// ---- What a screen reader gets
+
+namespace {
+bool isControl(QAccessible::Role r)
+{
+    switch (r) {
+    case QAccessible::Button: case QAccessible::CheckBox: case QAccessible::RadioButton:
+    case QAccessible::ComboBox: case QAccessible::PageTab: case QAccessible::EditableText:
+    case QAccessible::Slider: case QAccessible::SpinBox: case QAccessible::Link:
+    case QAccessible::MenuItem: case QAccessible::ButtonMenu:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void walkAccessible(QAccessibleInterface *a, const QRect &screen, int depth, QJsonObject &roles,
+                    QJsonArray &unnamed, QJsonArray &sample, int &nodes, int &controls)
+{
+    if (!a || !a->isValid() || depth > 80) return;
+    const QAccessible::State st = a->state();
+    const QRect r = a->rect();
+    // Scrolled out of view still counts: a control below the fold is read all the same
+    Q_UNUSED(screen);
+    if (st.invisible) return;
+    ++nodes;
+    const QAccessible::Role role = a->role();
+    const QString roleName = QString::fromLatin1(QMetaEnum::fromType<QAccessible::Role>().valueToKey(role));
+    if (isControl(role)) {
+        ++controls;
+        roles[roleName] = roles.value(roleName).toInt() + 1;
+        const QString name = a->text(QAccessible::Name).trimmed();
+        if (name.isEmpty())
+            unnamed.append(QJsonObject { { "role", roleName }, { "rect", QJsonArray { r.x(), r.y(), r.width(), r.height() } } });
+        else if (sample.size() < 400)
+            sample.append(QJsonArray { roleName, name });
+    }
+    const int n = a->childCount();
+    for (int i = 0; i < n; ++i)
+        walkAccessible(a->child(i), screen, depth + 1, roles, unnamed, sample, nodes, controls);
+}
+} // namespace
+
+QString dev_accessible(QObject *window)
+{
+    auto *w = qobject_cast<QQuickWindow *>(window);
+    QJsonObject roles;
+    QJsonArray unnamed, sample;
+    int nodes = 0, controls = 0;
+    if (w) walkAccessible(QAccessible::queryAccessibleInterface(w), QRect(w->mapToGlobal(QPoint(0, 0)), w->size()), 0, roles, unnamed, sample, nodes, controls);
+    return QString::fromUtf8(QJsonDocument(QJsonObject {
+        { "nodes", nodes }, { "controls", controls }, { "roles", roles }, { "unnamed", unnamed }, { "sample", sample } })
+        .toJson(QJsonDocument::Compact));
 }

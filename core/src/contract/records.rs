@@ -581,6 +581,50 @@ pub struct WatchingEntry {
     pub score: Option<f64>,
 }
 
+/// A year of watching (#216). Minutes count each finished episode at its
+/// record's length, or a plain default where the record names none.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct Stats {
+    pub year: i32,
+    /// Every year with any episode finished, newest first.
+    pub years: Vec<i32>,
+    pub minutes: u64,
+    pub episodes: u32,
+    pub series_completed: u32,
+    /// January to December.
+    pub months: Vec<StatMonth>,
+    pub genres: Vec<StatCount>,
+    pub studios: Vec<StatCount>,
+    /// The seasons the shows came out in ("Fall 2025").
+    pub seasons: Vec<StatCount>,
+    /// The shows watched most, by minutes.
+    pub top_series: Vec<StatSeries>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct StatMonth {
+    pub month: u32,
+    pub episodes: u32,
+    pub minutes: u64,
+    pub series_completed: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct StatCount {
+    pub name: String,
+    pub episodes: u32,
+    pub series: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct StatSeries {
+    pub series: u64,
+    pub title: String,
+    pub poster: Option<String>,
+    pub episodes: u32,
+    pub minutes: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct WatchingList {
     pub entries: Vec<WatchingEntry>,

@@ -184,7 +184,7 @@ Corner {
 
         Row {
             spacing: theme.space(3)
-            Switch { anchors.verticalCenter: parent.verticalCenter; checked: true }
+            Switch { anchors.verticalCenter: parent.verticalCenter; checked: true; accessibleName: "Sample switch" }
             Button { anchors.verticalCenter: parent.verticalCenter; text: "Button" }
             Button { anchors.verticalCenter: parent.verticalCenter; text: "Remove"; icon: "trash-2"; danger: true }
         }

@@ -6,6 +6,14 @@ Corner {
     id: root
     property bool checked: false
     signal toggled(bool on)
+    property string accessibleName: ""
+    Accessible.role: Accessible.CheckBox
+    Accessible.name: theme.spokenName(accessibleName, "", root, "")
+    Accessible.checkable: true
+    Accessible.checked: checked
+    Accessible.focusable: true
+    Accessible.onPressAction: if (enabled) toggle()
+    Accessible.onToggleAction: if (enabled) toggle()
 
     readonly property real pad: theme.space(0.75)
     implicitWidth: theme.space(11)

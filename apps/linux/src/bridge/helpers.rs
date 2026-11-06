@@ -89,6 +89,8 @@ pub mod ffi {
         fn dev_image_stats(since: f64) -> QString;
         /// The x-ray of an item tree, as JSON text. Both pointers are QML objects.
         unsafe fn dev_scene(item: *mut QObject, window: *mut QObject) -> QString;
+        /// What a screen reader gets from the window, as JSON text.
+        unsafe fn dev_accessible(window: *mut QObject) -> QString;
         /// Drops what the scene graph can rebuild, collects JS garbage, trims the heap.
         unsafe fn dev_release(window: *mut QObject);
     }
