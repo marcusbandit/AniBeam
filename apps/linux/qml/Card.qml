@@ -42,6 +42,10 @@ import com.marcusrosado.AniBeam
 Item {
     id: root
     property var item: ({})
+    Accessible.role: Accessible.Button
+    Accessible.name: item.title || (item.titles ? item.titles.folder || "" : "")
+    Accessible.focusable: true
+    Accessible.onPressAction: root.selecting ? root.selectToggled() : root.opened()
     property real posterWidth: theme.posterWidth
     property real nowMs: Date.now()
     // Overrides for the pages that own the card's story: the feed says what

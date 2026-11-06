@@ -117,7 +117,8 @@ Item {
                 size: theme.space(4.5)
                 color: closeMouse.containsMouse ? theme.text : theme.textDim
                 anchors.right: parent.right; anchors.top: parent.top
-                MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
+                MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close(); Accessible.role: Accessible.Button; Accessible.name: "Close"
+                    Accessible.onPressAction: root.close() }
             }
         }
 

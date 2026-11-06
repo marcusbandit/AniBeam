@@ -145,7 +145,7 @@ pub enum RefineOp {
 
 /// What a refine step did. With `applied` false the state is unchanged and
 /// `reason` (`noop`, `zero_results`, `no_match`, `empty_term`) says why;
-/// `mode` is `refetch` (nyaa searched again) or `client` (filtered locally).
+/// `mode` is `refetch` (a filtered-rss source searched again) or `client` (filtered locally).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Refinement {
     pub applied: bool,
@@ -521,8 +521,8 @@ pub enum AnirssMode {
 /// and the subscription preview run on the core's port of anirss
 /// (`releases::native`), and subscribing, listing and removing
 /// subscriptions and adding torrents go to qBittorrent's Web API directly.
-/// `ConnectDownloads` still starts anirss with either, for its endpoint
-/// list.
+/// The endpoint list is then the core's own sources, and `ConnectDownloads`
+/// never starts or asks anirss.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum DownloadsEngine {
     #[default]
@@ -773,9 +773,9 @@ pub struct DownloadsStatus {
     pub own_save_in_library: bool,
 }
 
-/// A place the phone searches. `kind` is `nyaa` (the site's RSS with its
-/// `q`, `c` and `f` parameters) or `rss` (any feed whose URL holds
-/// `{query}`, erai's among them).
+/// A place the phone searches. `kind` is one of `releases::endpoints::VALID_KINDS`: most often
+/// `filtered-rss` (an RSS search the core builds with its `q`, `c` and `f` parameters) or
+/// `rss` (any feed whose URL holds `{query}`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct PhoneSource {
     pub name: String,

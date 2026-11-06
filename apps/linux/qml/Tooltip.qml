@@ -18,6 +18,8 @@ import QtQuick
 Item {
     id: root
     property string text: ""
+    // Read by theme.tipOf, so the item this tip describes can name itself to a screen reader
+    readonly property bool isTooltip: true
     readonly property bool hovered: hh.hovered
     readonly property Item target: parent
     // Manual mode: the owner tracks the pointer itself and says when it is on the target

@@ -122,6 +122,10 @@ impl<F: Fn(Event)> Worker<F> {
                 (self.deliver)(Event::Snapshot(cache.clone()));
                 self.syncer
                     .fetch_posters(&address, &cache, |id| self.send_poster(id));
+                // Last, so a host slow to ask its tailnet never holds up the screens.
+                if let Some(cache) = self.syncer.fetch_peers(&address, &cache) {
+                    (self.deliver)(Event::Snapshot(cache));
+                }
                 crate::airing::sync(&address);
                 (self.deliver)(Event::SyncDone {
                     at: now,
