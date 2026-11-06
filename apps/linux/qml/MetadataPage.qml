@@ -324,7 +324,7 @@ Item {
     // ---- The grid's geometry: small poster tiles, as many to a line as the width holds at
     // theme.space(24) each, widened to fill the line (the library's column math)
     readonly property real tileGap: theme.space(4)
-    readonly property real tileMin: theme.space(24)
+    readonly property real tileMin: theme.textSpace(24)
     readonly property int tileCols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (tileMin + tileGap)))
     readonly property real tileWidth: Math.floor((scroll.innerWidth - tileGap * (tileCols - 1)) / tileCols)
     // A tile's height before it is built, so the unbuilt ones lay out as the built ones will
@@ -444,7 +444,7 @@ Item {
                 spacing: theme.space(2)
                 Item {
                     width: parent.width
-                    height: theme.space(12)
+                    height: theme.textSpace(12)
                     Row {
                         anchors.left: parent.left
                         anchors.bottom: parent.bottom

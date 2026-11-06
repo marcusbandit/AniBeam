@@ -39,6 +39,8 @@ Corner {
     }
     TextInput {
         id: input
+        // Not being edited, a long query shows its start, as a Field does
+        autoScroll: activeFocus
         Accessible.role: Accessible.EditableText
         Accessible.name: root.placeholder
         anchors.fill: parent
