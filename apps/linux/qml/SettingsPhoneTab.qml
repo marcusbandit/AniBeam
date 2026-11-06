@@ -19,6 +19,12 @@ SettingsTab {
         var r = Door.setPreferences(p)
         if (r.error) frame.fail(r.error)
     }
+    function setStreaming(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.stream_over_tailscale = on
+        var r = Door.setPreferences(p)
+        if (r.error) frame.toast(r.error.message)
+    }
     readonly property string enableCommand: "systemctl --user enable --now anibeam-host"
     // "serving", "waiting" while this window has the library, or empty with no service.
     property string service: ""
@@ -58,6 +64,17 @@ SettingsTab {
                 enabled: tab.service === ""
                 opacity: enabled ? 1 : theme.disabledOpacity
                 onToggled: function(on) { tab.setSharing(on) }
+            }
+        }
+        SettingRow {
+            label: "Stream episodes"
+            helper: Door.preferences.stream_over_tailscale !== false
+                ? "Your devices can play and cast the episodes on this computer."
+                : "Your devices see the library and what is airing, but cannot play from here."
+            Switch {
+                objectName: "settings-stream-switch"
+                checked: Door.preferences.stream_over_tailscale !== false
+                onToggled: function(on) { tab.setStreaming(on) }
             }
         }
         SettingRow {

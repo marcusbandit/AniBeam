@@ -155,6 +155,8 @@ pub struct Snapshot {
     pub notes: HashMap<u64, Vec<(Option<u32>, NoteRow)>>,
     pub anilist_entries: HashMap<u64, TrackerRow>,
     pub mal_entries: HashMap<u64, TrackerRow>,
+    /// The list kept on this device, by series id (#213): status and score.
+    pub local_entries: HashMap<u64, (Option<ListStatus>, Option<f64>)>,
     pub views: HashMap<u64, (String, i64)>,
     pub completed: HashMap<u64, Vec<(String, i64)>>,
     pub resume: HashMap<(u64, String), (f64, f64)>,
@@ -332,6 +334,7 @@ impl Snapshot {
             notes: HashMap::new(),
             anilist_entries: HashMap::new(),
             mal_entries: HashMap::new(),
+            local_entries: HashMap::new(),
             views: HashMap::new(),
             completed: HashMap::new(),
             resume: HashMap::new(),
@@ -368,6 +371,10 @@ impl Snapshot {
         snap.apply_episodes_set();
         snap.load_tracker_entries(conn, profile, scope.map(|_| media_ids.as_slice()))?;
         snap.load_history(conn, profile, scoped_series)?;
+        // The list kept on this device is the owner's until it gets a profile (#632).
+        if profile == crate::profiles::OWNER {
+            snap.load_local_entries(conn, scoped_series)?;
+        }
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
         snap.imdb = imdb_picks(conn, scoped_series)?;
         snap.franchises = crate::franchise::groups::load(conn, snap.lang)?;
@@ -782,6 +789,48 @@ impl Snapshot {
             }
         }
         Ok(())
+    }
+
+    fn load_local_entries(
+        &mut self,
+        conn: &Connection,
+        scope: Option<&[u64]>,
+    ) -> Result<(), CoreError> {
+        let where_sql = match scope {
+            Some(ids) => format!(" WHERE series_id IN ({})", placeholders(ids.len())),
+            None => String::new(),
+        };
+        let mut stmt = conn.prepare(&format!(
+            "SELECT series_id, status, score FROM local_entries{where_sql}"
+        ))?;
+        let rows = stmt.query_map(params_from_iter(ids_as_i64(scope.unwrap_or(&[]))), |r| {
+            Ok((
+                r.get::<_, i64>(0)? as u64,
+                r.get::<_, Option<String>>(1)?
+                    .and_then(|s| ListStatus::from_column(&s)),
+                r.get::<_, Option<f64>>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (series, status, score) = row?;
+            self.local_entries.insert(series, (status, score));
+        }
+        Ok(())
+    }
+
+    /// The status and the score a card shows: the tracker's entry where
+    /// there is one, otherwise the list kept on this device (#213).
+    pub fn list_of(&self, row: &SeriesRow) -> (Option<ListStatus>, Option<f64>) {
+        match self.tracker(row) {
+            Some(entry) => (entry.status, entry.score),
+            None => self.local_list(row),
+        }
+    }
+
+    /// The list kept on this device alone, for a series no tracker entry
+    /// covers.
+    pub fn local_list(&self, row: &SeriesRow) -> (Option<ListStatus>, Option<f64>) {
+        self.local_entries.get(&row.id).copied().unwrap_or_default()
     }
 
     fn load_history(

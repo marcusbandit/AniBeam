@@ -68,6 +68,8 @@ pub struct Host {
     /// says: the headless host service, and the desktop app while that
     /// service has stepped aside for it.
     held: AtomicBool,
+    /// Whether the episodes themselves are served, from the preference.
+    streaming: AtomicBool,
     /// The ids of the tailnet devices the person switched off.
     off: Mutex<Vec<String>>,
     /// When the tailnet was last read, and the last read that worked: a
@@ -129,11 +131,21 @@ impl Host {
             run: Mutex::new(None),
             bind: Mutex::new(None),
             held: AtomicBool::new(false),
+            streaming: AtomicBool::new(true),
             off: Mutex::new(Vec::new()),
             tailnet: Mutex::new((None, None)),
             reading: Mutex::new(()),
             fixed_status: Mutex::new(None),
         }
+    }
+
+    /// Whether the host serves the episodes, as "Stream episodes" says.
+    pub fn streaming(&self) -> bool {
+        self.streaming.load(Ordering::SeqCst)
+    }
+
+    pub fn set_streaming(&self, on: bool) {
+        self.streaming.store(on, Ordering::SeqCst);
     }
 
     /// The tailnet devices the person switched off, by Tailscale id.
@@ -303,12 +315,14 @@ impl Host {
 pub fn sync(core: &Core) {
     let on = match core.store.read(prefs::load_preferences) {
         Ok(p) => {
+            core.host.set_streaming(p.stream_over_tailscale);
             core.host.set_switched_off(p.tailnet_switched_off);
             p.share_over_tailscale
         }
         Err(e) => {
-            // A held host serves on through this, so the devices switched off
-            // stay off rather than everyone becoming trusted.
+            // A held host serves on through this, so streaming and the devices
+            // switched off stay as they were rather than falling back to on and
+            // everyone trusted.
             tracing::warn!(
                 "host: the preferences could not be read, so the switches stay as they were: {e}"
             );
@@ -640,6 +654,32 @@ fn dns_name_of(json: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preferences_that_cannot_be_read_leave_streaming_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let secrets = crate::trackers::Secrets::file_only(paths.secrets_path());
+        let core = Core::open_with_secrets(paths, secrets).unwrap();
+        let mut p = core.store.read(prefs::load_preferences).unwrap();
+        p.stream_over_tailscale = false;
+        core.call(Call::SetPreferences { preferences: p }).unwrap();
+        assert!(!core.host.streaming());
+        core.store
+            .write(|c| {
+                c.execute(
+                    "UPDATE settings SET value = 'not json' WHERE key = 'preferences'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        sync(&core);
+        assert!(
+            !core.host.streaming(),
+            "a failed read turned streaming back on"
+        );
+    }
 
     #[test]
     fn preferences_that_cannot_be_read_leave_the_switched_off_list_alone() {

@@ -394,6 +394,10 @@ pub async fn call(
     let Some(core) = st.core.upgrade() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
+    let hiding = matches!(name.as_str(), "SetNotInterested" | "ListNotInterested");
+    if !hiding && !core.host.streaming() {
+        return error(StatusCode::FORBIDDEN, super::server::STREAMING_OFF);
+    }
     let reply = tokio::task::spawn_blocking(move || core.call_as(profile, call)).await;
     match reply {
         Ok(Ok(reply)) => match serde_json::to_vec(&reply) {
