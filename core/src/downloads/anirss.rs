@@ -47,10 +47,15 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 /// from the environment, 0.4.2 a client that needs no login, which AniBeam's
 /// own qBittorrent is, 0.5.0 [`SIDECAR_FEATURE`], and 0.6.0 the endpoints AniBeam
 /// puts in through `POST` and `DELETE /endpoints` (`repos::sync_anirss`). It names
-/// the release to install in the hints and the one the bundles pin
+/// the release to install in the hints and the oldest the AUR package may ask for
 /// (`the_bundled_anirss_is_new_enough`). Whether a running sidecar will do is
 /// decided by the features it lists, not by this.
 pub const MIN_VERSION: &str = "0.6.0";
+
+/// The first anirss that lists `subscription_save_path`, so a subscription for a
+/// library show is written straight into its folder (#503). The bundles pin this or
+/// newer; an older anirss still works, and its rule is moved after (`rehome_rule`).
+pub const SAVE_PATH_SINCE: &str = "0.7.1";
 
 /// The feature a sidecar has to list in `/health`: an address only the
 /// environment names keeps its own session and saved password. AniBeam points
@@ -1110,9 +1115,9 @@ mod tests {
     }
 
     /// The anirss the app bundle and the AppImage carry, and the one the AUR
-    /// package asks for, have to be ones the core accepts. This fails when
-    /// MIN_VERSION has moved past the pinned release: pin one that has what
-    /// it needs (its ANIRSS_VERSION and sha256) before this can pass.
+    /// package asks for, have to be ones the core accepts: MIN_VERSION or newer.
+    /// The three bundles also pin SAVE_PATH_SINCE or newer. When either moves past
+    /// a pin, pin a release that has it (its ANIRSS_VERSION and sha256).
     #[test]
     fn the_bundled_anirss_is_new_enough() {
         let packaging =
@@ -1136,13 +1141,17 @@ mod tests {
                 "{file} pins anirss {pinned}, older than the {MIN_VERSION} the core needs: \
                  pin a release that has it, with its sha256"
             );
-            // A subscription for a library show saves straight into its folder only with an
-            // anirss that lists subscription_save_path, which 0.7.1 is the first to (#503).
-            assert!(
-                parse_version(pinned) >= parse_version("0.7.1"),
-                "{file} pins anirss {pinned}, which writes a show's rule under its own root: \
-                 pin 0.7.1 or newer, with its sha256"
-            );
+            let version = parse_version(pinned)
+                .unwrap_or_else(|| panic!("{file} pins {pinned:?}, which is no version"));
+            // The bundles save a library show's subscription straight into its folder. The
+            // AUR asks for what the AUR has, until it carries SAVE_PATH_SINCE (#542).
+            if !file.starts_with("aur/") {
+                assert!(
+                    Some(version) >= parse_version(SAVE_PATH_SINCE),
+                    "{file} pins anirss {pinned}, which writes a show's rule under its own \
+                     root: pin {SAVE_PATH_SINCE} or newer, with its sha256"
+                );
+            }
         }
         // The three bundles ship one release, and each smoke check expects that one.
         let bundled: Vec<String> = pins[..3]
