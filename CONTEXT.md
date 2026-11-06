@@ -146,6 +146,10 @@ _Avoid_: seasonal, schedule, calendar, discover
 The user saying one AniList entry should stay off Airing now. It covers that entry and nothing related to it, so the next season of the same show is a new entry and appears again. Settings, Library lists every one with a way back.
 _Avoid_: hidden, ignored, blocked, dismissed
 
+**Episode out**:
+The moment an episode of a show on the Watching list airs, said once by the core from the schedule it keeps, with no polling. The desktop shows it as a notification unless Settings turned that off.
+_Avoid_: new episode alert, release notification, reminder
+
 **Stats**:
 A year of watching added up from the episode history: hours, episodes and series finished by month, the top genres, studios and seasons. The recap is the one card for the year that saves as an image.
 _Avoid_: analytics, insights, wrapped, report

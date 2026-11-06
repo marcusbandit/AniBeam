@@ -53,6 +53,10 @@ Item {
     readonly property var torrent: status ? status.torrent : null
     readonly property bool anirssReady: !!anirss && anirss.state === "Ready"
     readonly property bool anirssStarting: !!anirss && anirss.state === "Starting"
+    // AniBeam itself searches: nothing waits on the search helper (#549)
+    readonly property bool nativeEngine: !!status && !!status.settings && status.settings.engine === "Native"
+    // Searches, subscriptions and the rules list can go ahead
+    readonly property bool searchReady: nativeEngine || anirssReady
     readonly property bool torrentOn: !!torrent && torrent.connected
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     // Whether the search's source has a feed a subscription can follow (#507)
@@ -64,7 +68,7 @@ Item {
     readonly property string clientName: status && status.settings ? (status.settings.torrent_client === "Qbittorrent" ? "qBittorrent" : String(status.settings.torrent_client)) : "qBittorrent"
     readonly property var savedClients: status && status.settings && status.settings.saved_clients ? status.settings.saved_clients : []
     // A remote anirss keeps the client its own config names, so the chip cannot switch it
-    readonly property bool remoteAnirss: !!status && !!status.settings && status.settings.anirss_mode === "Remote"
+    readonly property bool remoteAnirss: !nativeEngine && !!status && !!status.settings && status.settings.anirss_mode === "Remote"
     // The client in use by the name it was saved under, once there is more than one to
     // tell apart (the saved ones and AniBeam's own); with one, plain "qBittorrent"
     readonly property string activeClientName: {
@@ -1355,12 +1359,14 @@ Item {
     // ---- The head's one line
     readonly property string summary: {
         if (!page.status) return "Connecting."
+        var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected: " + (page.torrent.message || "no answer") + "."
+        // Until the first connect has asked the client, there is nothing to say about it
+        if (page.nativeEngine) return "AniBeam searches your sources itself." + (page.connecting ? "" : " " + t)
         // Until it runs, the line is in plain words: the helper's name means nothing yet
         if (page.connecting && !page.anirssReady) return "Starting downloads."
         var a = page.anirss
         if (a.state === "Missing" || a.state === "Failed") return "Downloads is not running."
         if (a.state === "Off") return "Downloads has not started yet."
-        var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected: " + (page.torrent.message || "no answer") + "."
         return "The search helper " + a.version + " is ready. " + t
     }
 
@@ -1374,7 +1380,7 @@ Item {
             page.status = status
             page.connecting = false
             page.checkJob = -1
-            if (page.anirssReady && !frame.downloadsRulesRead) page.loadRules()
+            if (page.searchReady && !frame.downloadsRulesRead) page.loadRules()
             if (page.repoll && page.torrentOn) { page.repoll = false; page.pollTorrents() }
         }
         function onJobProgress(job, kind, done, total, label) {
@@ -1726,13 +1732,13 @@ Item {
                 Label {
                     objectName: "downloads-anirss-chip"
                     anchors.verticalCenter: parent.verticalCenter
-                    text: page.anirssReady ? "Search ready" : page.connecting ? "Search starting" : "Search off"
+                    text: page.searchReady ? "Search ready" : page.connecting ? "Search starting" : "Search off"
                     role: "ledger"; font.pointSize: theme.typeNormal
-                    color: page.anirssReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
+                    color: page.searchReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
                     font.underline: anirssChipMouse.containsMouse
                     MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
                         Accessible.onPressAction: frame.go("settings", { tab: "downloads" }) }
-                    Tooltip { text: page.anirssReady ? page.summary + " It answers at " + page.anirss.url + "." : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
+                    Tooltip { text: page.nativeEngine ? page.summary : page.anirssReady ? page.summary + " It answers at " + page.anirss.url + "." : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
                 }
                 Label {
                     objectName: "downloads-client-chip"
@@ -2282,7 +2288,7 @@ Item {
         Item {
             id: helperDown
             objectName: "downloads-helper-down"
-            visible: !!page.status && !page.anirssReady && !page.connecting && page.state === null && page.detail === null
+            visible: !!page.status && !page.searchReady && !page.connecting && page.state === null && page.detail === null
             width: parent.width
             height: visible ? theme.space(50) : 0
             readonly property bool missing: !!page.anirss && page.anirss.state === "Missing"
@@ -2519,7 +2525,7 @@ Item {
             BandHead {
                 title: "Following"
                 count: page.rules.length
-                line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds AniBeam watches, as the shows they fill." : "None yet.") : (page.anirssReady ? "Reading." : "")
+                line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds AniBeam watches, as the shows they fill." : "None yet.") : (page.searchReady ? "Reading." : "")
                 alarm: page.rulesError !== ""
                 view: frame.downloadsSubView
                 viewName: "downloads-sub-view"

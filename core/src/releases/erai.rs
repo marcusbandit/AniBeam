@@ -215,7 +215,11 @@ mod tests {
     use std::sync::Mutex;
 
     fn nyaa_ep() -> Endpoint {
-        Endpoint::new("nyaa", "nyaa", "https://nyaa.si/")
+        Endpoint::new(
+            "nyaa",
+            crate::releases::kinds::FILTERED_RSS,
+            "https://nyaa.si/",
+        )
     }
 
     const GAIKOTSU_PAGE: &str = "https://www.erai-raws.info/episodes/gaikotsu-kishi-sama-tadaima-isekai-e-odekake-chuu-ii-02/";
@@ -239,7 +243,7 @@ mod tests {
         assert!(!is_erai(&nyaa_ep()));
         assert!(!is_erai(&Endpoint::new(
             "n",
-            "nyaa",
+            crate::releases::kinds::FILTERED_RSS,
             "https://erai-raws.info/"
         )));
     }

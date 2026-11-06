@@ -82,7 +82,7 @@ Item {
                 required property string modelData
                 required property int index
                 objectName: "score-picker-row-" + index
-                width: list.width; height: theme.space(6)
+                width: list.width; height: theme.textSpace(6)
                                 // The Dropdown's current-row treatment: the highlight a step up from the panel,
                 // the value in the accent
                 readonly property bool isDraft: Number(modelData) === Number(root.draft.toFixed(1))
