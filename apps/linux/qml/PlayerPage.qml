@@ -431,7 +431,7 @@ FocusScope {
     property real volume: Player.volume
     Timer { id: volumeSave; interval: 500; onTriggered: Player.setVolume(page.volume) }
     function flushVolume() { if (volumeSave.running) { volumeSave.stop(); Player.setVolume(volume) } }
-    function setVolume(v) { v = Math.max(0, Math.min(100, v)); volume = v; video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); volumeSave.restart(); showChrome() }
+    function setVolume(v) { v = Math.max(0, Math.min(100, v)); volume = v; video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); volumeSave.restart(); showChrome(); if (!chrome.volumeShown) hud.flash("Volume " + Math.round(v)) }
     function setMute(m) { video.setProperty("mute", m); Player.setMute(m); showChrome() }
     // Playback speed, [ and ] in quarter steps between 0.25 and 3, Backspace back to 1. The
     // page's value moves first so presses inside the round trip add up; the observation then
@@ -587,8 +587,8 @@ FocusScope {
     // core sends and is not for anyone to read.
     readonly property var refusalWords: ({
         Hidden: "the show is hidden",
-        NoMatch: "the show has no tracker match",
-        NotNewer: "the tracker is already past this episode",
+        NoMatch: "the show is not matched yet; match it on Show info",
+        NotNewer: "your list is already past this episode",
         Extra: "this is an extra",
         Unmatched: "the file is not matched to an episode",
         OnDisk: "the file is only on disk"
@@ -719,6 +719,9 @@ FocusScope {
     readonly property var openPicker: audioPicker.open ? audioPicker : subPicker.open ? subPicker : null
     function openSubPicker(anchor) { subPicker.openAt(anchor) }
     function openDelays(anchor) { delays.openAt(anchor) }
+    // The chrome closes these when its right-hand group folds or unfolds: each is anchored on
+    // a button the change hides.
+    function closePopovers() { audioPicker.close(); subPicker.close(); delays.close() }
     function showHelp() { help.show() }
     function toggleHelp() { if (help.open) help.close(); else help.show() }
     TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }

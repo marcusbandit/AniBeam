@@ -76,10 +76,10 @@ impl Native {
     /// repos' and the ones added by hand) that `first` does not already name. The phone
     /// passes the sources it searches; the desktop passes none.
     ///
-    /// The desktop's list is the core's own, not anirss's `config.toml`: whether it should
-    /// match anirss's endpoints before the native engine is the default is the owner's call
-    /// (#119, decision B).
-    pub fn for_core(core: &Core, first: Vec<Endpoint>) -> Native {
+    /// The desktop's list is the core's own, not anirss's `config.toml` (#119, decision B).
+    /// `bestfit` ranks best fit when given (the desktop passes what anirss's config saved);
+    /// None keeps `TRUSTED_GROUPS` over anirss's defaults.
+    pub fn for_core(core: &Core, first: Vec<Endpoint>, bestfit: Option<BestfitConfig>) -> Native {
         let installed = crate::repos::runnable(core);
         let http = crate::repos::paced_http(core, &installed);
         let mut endpoints = first;
@@ -88,7 +88,11 @@ impl Native {
                 endpoints.push(r.endpoint);
             }
         }
-        Native::new(http, endpoints)
+        let mut native = Native::new(http, endpoints);
+        if let Some(bestfit) = bestfit {
+            native.bestfit = bestfit;
+        }
+        native
     }
 
     /// The endpoint by name, else the first (anirss `endpoint`).

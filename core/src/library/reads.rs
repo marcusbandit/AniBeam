@@ -295,6 +295,42 @@ pub fn set_hidden(core: &Core, series: u64, hidden: bool) -> Result<Reply, CoreE
     Ok(Reply::Ok)
 }
 
+/// Hides or shows several series at once (#208): one write, one card push
+/// and one line in the activity log for the lot. The caller has checked
+/// every id is there.
+pub fn set_hidden_many(core: &Core, series: &[u64], hidden: bool) -> Result<Reply, CoreError> {
+    let ids = series.to_vec();
+    core.store.tx(move |tx| {
+        for id in &ids {
+            tx.execute(
+                "UPDATE series SET hidden = ?1 WHERE id = ?2",
+                params![i64::from(hidden), *id as i64],
+            )?;
+        }
+        Ok(())
+    })?;
+    let images_dir = core.paths.images_dir();
+    let cards = core
+        .store
+        .read(|c| cards::cards_for(c, &images_dir, series))?;
+    let n = cards.len();
+    let plain = match (cards.as_slice(), hidden) {
+        ([one], true) => format!("Hid {}.", one.title),
+        ([one], false) => format!("{} is back.", one.title),
+        (_, true) => format!("Hid {n} shows."),
+        (_, false) => format!("{n} shows are back."),
+    };
+    let what = if hidden { "hidden" } else { "shown" };
+    core.bus.say(
+        Level::Info,
+        Stage::Library,
+        plain,
+        format!("{n} series {what}"),
+        EventBody::SeriesChanged { series: cards },
+    );
+    Ok(Reply::Ok)
+}
+
 /// Sets or clears the episode count the person gave a series (#239). For a
 /// TVmaze match it is the length of the card's season, and keeps that season
 /// (#283).

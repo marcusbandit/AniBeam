@@ -70,7 +70,7 @@ Item {
     readonly property string activeClientName: {
         var s = status ? status.settings : null
         if (!s || savedClients.length === 0) return clientName
-        if (s.torrent_mode === "Managed") return "AniBeam's own"
+        if (s.torrent_mode === "Managed") return "Built-in client"
         if (savedClients.length < 2) return clientName
         for (var i = 0; i < savedClients.length; i++) if (savedClients[i].id === s.active_client) return savedClients[i].name
         return clientName
@@ -631,7 +631,7 @@ Item {
             items.push({ text: c.name, icon: inUse ? "check" : "hard-drive", action: page.useClient.bind(null, c.id) })
         }
         var own = !!s && s.torrent_mode === "Managed"
-        items.push({ text: "AniBeam's own", icon: own ? "check" : "play", action: page.useClient.bind(null, "") })
+        items.push({ text: "Built-in client", icon: own ? "check" : "play", action: page.useClient.bind(null, "") })
         items.push({ text: "Torrent client settings", icon: "settings", action: function() { frame.go("settings", { tab: "downloads" }) } })
         return items
     }
@@ -677,7 +677,7 @@ Item {
         var names = only && only.length ? only : page.enabledEndpoints.map(function(e) { return e.name })
         if (!names.length) {
             page.searchError = page.endpoints.length ? "Every source is switched off. Switch one on under the search."
-                : "There are no sources to search yet. Add an endpoint repo in Settings, under Downloads."
+                : "There are no sources to search yet. Add a source list in Settings, under Downloads."
             return
         }
         page.closeGet()
@@ -960,6 +960,8 @@ Item {
 
     // The subscriptions, by where the show stands
     function subState(r) {
+        // A rule on a source that answers JSON reads no feed, so nothing new comes (#536)
+        if (r.followable === false) return "nofeed"
         var s = r.show
         if (!s) return "missing"
         if (s.complete) return "complete"
@@ -969,6 +971,7 @@ Item {
     readonly property var completeRules: rules.filter(function(r) { return page.subState(r) === "complete" })
     readonly property var subSections: {
         var defs = [
+            { key: "nofeed", title: "Cannot follow", dot: theme.red, line: "Their source answers searches but has no feed, so no new episodes arrive. Unsubscribe, then follow the show on a source with one." },
             { key: "complete", title: "Complete", dot: theme.red, line: "Every episode is in the library and nothing more will air: these subscriptions have nothing left to do." },
             { key: "airing", title: "Airing", dot: theme.accent, line: "New episodes still to come, the soonest first." },
             { key: "incomplete", title: "Incomplete", dot: theme.orange, line: "Finished airing with episodes not here, or nothing says where the show stands." },
@@ -981,7 +984,7 @@ Item {
             var an = a.show.next_airing ? a.show.next_airing.at : 1e12, bn = b.show.next_airing ? b.show.next_airing.at : 1e12
             return an - bn || page.titleOf(a).localeCompare(page.titleOf(b))
         })
-        ;["complete", "incomplete", "missing"].forEach(function(k) { by[k].items.sort(function(a, b) { return page.titleOf(a).localeCompare(page.titleOf(b)) }) })
+        ;["nofeed", "complete", "incomplete", "missing"].forEach(function(k) { by[k].items.sort(function(a, b) { return page.titleOf(a).localeCompare(page.titleOf(b)) }) })
         return defs.filter(function(d) { return d.items.length > 0 })
     }
     // What a rule's card and row say
@@ -997,6 +1000,7 @@ Item {
     }
     function ruleTag(r) {
         var st = page.subState(r)
+        if (st === "nofeed") return "Cannot follow"
         if (st === "complete") return "Complete"
         if (st === "airing") return r.rule_enabled === false ? "Paused" : "Airing"
         if (st === "incomplete") return r.show.missing && r.show.missing.length ? r.show.missing.length + " missing" : "Unknown"
@@ -1017,7 +1021,7 @@ Item {
         return Fmt.plural(g.torrents.length, "torrent", "torrents") + ", " + Fmt.bytes(g.size)
     }
     function stateDot(key) {
-        return key === "complete" || key === "broken" ? theme.red : key === "airing" || key === "downloading" ? theme.accent
+        return key === "complete" || key === "broken" || key === "nofeed" ? theme.red : key === "airing" || key === "downloading" ? theme.accent
              : key === "incomplete" ? theme.orange : key === "seeding" ? theme.green : theme.textFaint
     }
     function groupWord(key) { return key === "downloading" ? "Downloading" : key === "seeding" ? "Seeding" : key === "done" ? "Done" : key === "broken" ? "Files missing" : "Stopped" }
@@ -1357,7 +1361,7 @@ Item {
         if (a.state === "Missing" || a.state === "Failed") return "Downloads is not running."
         if (a.state === "Off") return "Downloads has not started yet."
         var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected: " + (page.torrent.message || "no answer") + "."
-        return "Searches run through anirss " + a.version + ". " + t
+        return "The search helper " + a.version + " is ready. " + t
     }
 
     Connections {
@@ -1720,12 +1724,12 @@ Item {
                 Label {
                     objectName: "downloads-anirss-chip"
                     anchors.verticalCenter: parent.verticalCenter
-                    text: page.anirssReady ? "anirss " + page.anirss.version : page.connecting ? "Starting" : "Not running"
+                    text: page.anirssReady ? "Search ready" : page.connecting ? "Search starting" : "Search off"
                     role: "ledger"; font.pointSize: theme.typeNormal
                     color: page.anirssReady || page.connecting ? (anirssChipMouse.containsMouse ? theme.text : theme.textFaint) : theme.red
                     font.underline: anirssChipMouse.containsMouse
                     MouseArea { id: anirssChipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }) }
-                    Tooltip { text: page.anirssReady ? "anirss at " + page.anirss.url + ". " + page.summary : "Open the Downloads settings" }
+                    Tooltip { text: page.anirssReady ? page.summary + " It answers at " + page.anirss.url + "." : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
                 }
                 Label {
                     objectName: "downloads-client-chip"
@@ -1741,7 +1745,7 @@ Item {
                             var p = parent.mapToItem(frame, 0, parent.height); frame.openMenu(p.x, p.y, page.clientMenu())
                         }
                     }
-                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url.replace(/\/\/[^\/@]*@/, "//") : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + (page.remoteAnirss ? "\nA remote anirss uses the client its own config names" : "\nClick to switch clients") }
+                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url.replace(/\/\/[^\/@]*@/, "//") : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + (page.remoteAnirss ? "\nA search helper you run yourself uses the client its own settings name" : "\nClick to switch clients") }
                 }
                 Button {
                     text: page.connecting ? "Connecting" : "Reconnect"
@@ -1915,7 +1919,7 @@ Item {
                     onClicked: page.toggleSource(modelData.name)
                     Tooltip {
                         text: src.down
-                            ? modelData.name + " runs behind Jackett, which is not running. Click to start it."
+                            ? modelData.name + " needs a helper service that is not running. Click to start it."
                             : (src.on ? "Searches ask " + modelData.name + ". Click to switch it off." : "Switched off. Click to ask " + modelData.name + " again.")
                               + (modelData.on_demand ? "" : " " + modelData.url)
                     }
@@ -1934,7 +1938,7 @@ Item {
             }
         }
 
-        // ---- The search up: the query line, the groups, Narrow and Best fit, then the
+        // ---- The search up: the query line, the groups, Narrow and Best match, then the
         // releases and the actions pane
         Column {
             visible: page.detail === null && (page.state !== null || page.searching || page.searchError !== "")
@@ -2032,12 +2036,12 @@ Item {
                 Button {
                     id: bestFit
                     objectName: "downloads-best-fit"
-                    text: "Best fit"
+                    text: "Best match"
                     icon: "sparkles"
                     flat: true
                     enabled: !!page.state && page.state.bestFit.available && !page.searching
                     onClicked: page.refine({ type: "best_fit" })
-                    Tooltip { text: page.state && page.state.bestFit.available ? "Pins the best release's profile: " + page.state.bestFit.query : "Best fit has nothing to pin here" }
+                    Tooltip { text: page.state && page.state.bestFit.available ? "Keeps the releases that look like the best one: " + page.state.bestFit.query : "No release stands out here" }
                 }
             }
             // The show the search names, when the library has it
@@ -2153,7 +2157,7 @@ Item {
                     EmptyState {
                         icon: "search"
                         title: "No releases"
-                        body: "Nothing on " + (page.state ? page.state.endpoint : "") + " matches \u201c" + (page.state ? page.state.query : "") + "\u201d. Another endpoint, or fewer words, may find it."
+                        body: "Nothing on " + (page.state ? page.state.endpoint : "") + " matches \u201c" + (page.state ? page.state.query : "") + "\u201d. Another source, or fewer words, may find it."
                         Repeater {
                             model: page.state ? page.endpoints.map(function(e) { return e.name }).filter(function(n) { return n !== page.state.endpoint }) : []
                             Button { required property string modelData; text: "Try " + modelData; icon: "search"; flat: true; onClicked: page.searchOn(modelData) }
@@ -2228,7 +2232,7 @@ Item {
                         Field {
                             objectName: "downloads-name"
                             width: parent.width
-                            placeholder: page.searchShow ? page.searchShow.title : "anirss picks one from the first release"
+                            placeholder: page.searchShow ? page.searchShow.title : "Picked from the first release"
                             text: page.nameText
                             onEdited: function(t) { page.nameText = t }
                         }
@@ -2505,7 +2509,7 @@ Item {
             BandHead {
                 title: "Following"
                 count: page.rules.length
-                line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds anirss watches, as the shows they fill." : "None yet.") : (page.anirssReady ? "Reading." : "")
+                line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds AniBeam watches, as the shows they fill." : "None yet.") : (page.anirssReady ? "Reading." : "")
                 alarm: page.rulesError !== ""
                 view: frame.downloadsSubView
                 viewName: "downloads-sub-view"
