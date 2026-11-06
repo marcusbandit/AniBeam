@@ -200,11 +200,16 @@ impl Host {
         if !trust::needs_tailnet(from, &off) {
             return trust::decide(from, &off, None);
         }
-        let first = trust::decide(from, &off, self.tailnet(false).as_deref());
+        // Before `tailscale` has ever answered, this machine still knows its own
+        // tailnet addresses from its interfaces.
+        let known = |t: Option<Arc<trust::Tailnet>>| {
+            t.unwrap_or_else(|| Arc::new(trust::local_tailnet(&addr::local_addresses())))
+        };
+        let first = trust::decide(from, &off, Some(&known(self.tailnet(false))));
         if first != trust::Verdict::Unknown {
             return first;
         }
-        trust::decide(from, &off, self.tailnet(true).as_deref())
+        trust::decide(from, &off, Some(&known(self.tailnet(true))))
     }
 
     pub fn status(&self) -> HostStatus {
@@ -279,10 +284,20 @@ impl Host {
 /// Reads the preference and starts or stops the host to match. Called when
 /// the core starts, and when a shell holds the host or lets it go.
 pub fn sync(core: &Core) {
-    let prefs = core.store.read(prefs::load_preferences).ok();
-    let on = prefs.as_ref().is_some_and(|p| p.share_over_tailscale);
-    core.host
-        .set_switched_off(prefs.map(|p| p.tailnet_switched_off).unwrap_or_default());
+    let on = match core.store.read(prefs::load_preferences) {
+        Ok(p) => {
+            core.host.set_switched_off(p.tailnet_switched_off);
+            p.share_over_tailscale
+        }
+        Err(e) => {
+            // A held host serves on through this, so the devices switched off
+            // stay off rather than everyone becoming trusted.
+            tracing::warn!(
+                "host: the preferences could not be read, so the switches stay as they were: {e}"
+            );
+            false
+        }
+    };
     core.host.follow(core, on);
 }
 
@@ -587,6 +602,32 @@ fn dns_name_of(json: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preferences_that_cannot_be_read_leave_the_switched_off_list_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let secrets = crate::trackers::Secrets::file_only(paths.secrets_path());
+        let core = Core::open_with_secrets(paths, secrets).unwrap();
+        core.call(Call::SetTailnetDeviceTrust {
+            device: "nPhone".into(),
+            trusted: false,
+        })
+        .unwrap();
+        core.store
+            .write(|c| {
+                c.execute(
+                    "UPDATE settings SET value = 'not json' WHERE key = 'preferences'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        sync(&core);
+        // A held host keeps serving through a failed read, so the list it
+        // had must still stand: never fall back to trusting everyone.
+        assert_eq!(*recover(&core.host.off), ["nPhone"]);
+    }
 
     #[test]
     fn the_dns_name_comes_out_of_the_status_document() {
