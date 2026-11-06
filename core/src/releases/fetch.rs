@@ -466,29 +466,10 @@ fn named_legacy(name: &str) -> Option<char> {
 }
 
 fn named(body: &str) -> Option<char> {
+    // The legacy names first, with the values Python gives them (`nbsp` is U+00A0 here,
+    // where the shared table reads it as a plain space); then the core's one table.
     if let Some(name) = body.strip_suffix(';') {
-        let c = match name {
-            "apos" => '\'',
-            "hellip" => '\u{2026}',
-            "ndash" => '\u{2013}',
-            "mdash" => '\u{2014}',
-            "lsquo" => '\u{2018}',
-            "rsquo" => '\u{2019}',
-            "ldquo" => '\u{201c}',
-            "rdquo" => '\u{201d}',
-            "bull" => '\u{2022}',
-            "middot" => '\u{b7}',
-            "times" => '\u{d7}',
-            "deg" => '\u{b0}',
-            "plusmn" => '\u{b1}',
-            "laquo" => '\u{ab}',
-            "raquo" => '\u{bb}',
-            "euro" => '\u{20ac}',
-            "trade" => '\u{2122}',
-            "hearts" => '\u{2665}',
-            _ => return named_legacy(name),
-        };
-        return Some(c);
+        return named_legacy(name).or_else(|| crate::html::entity(name));
     }
     named_legacy(body)
 }

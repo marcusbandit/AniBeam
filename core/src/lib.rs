@@ -13,6 +13,7 @@ pub mod events;
 pub mod feed;
 pub mod franchise;
 pub mod host;
+pub mod html;
 pub mod images;
 pub mod jobs;
 pub mod launch;

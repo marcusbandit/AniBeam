@@ -17,7 +17,7 @@ use crate::core::Core;
 use crate::metadata::automatch::AUTO_MATCH_VERSION;
 use crate::metadata::record;
 use crate::net::anilist::{Enrichment, Media};
-use crate::net::tvmaze::{self, Show};
+use crate::net::tvmaze::Show;
 use crate::store::sql::as_i64;
 
 /// The whole record behind `anilist_id`, written against `series`.
@@ -213,7 +213,7 @@ pub fn write_show(tx: &Transaction, show: &Show, now: i64) -> Result<(), CoreErr
     let summary = show
         .summary
         .as_deref()
-        .map(tvmaze::plain_summary)
+        .map(crate::html::plain_text)
         .filter(|s| !s.is_empty());
     tx.execute(
         "INSERT INTO tvmaze_shows (id, name, url, type, language, genres, status, premiered, ended, average_runtime,
