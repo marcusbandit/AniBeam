@@ -294,7 +294,7 @@ Item {
     readonly property real tileWidth: Math.floor((scroll.innerWidth - tileGap * (tileCols - 1)) / tileCols)
     // A tile's height before it is built, so the unbuilt ones lay out as the built ones will
     // (#612): the poster at 2:3, the title line, the state line, and the note line when the
-    // series has one. A built tile reports its own, so a pixel of difference settles once.
+    // series has one. MetaTile sizes those lines from these same metrics, so the two agree.
     FontMetrics { id: metaTitleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
     FontMetrics { id: metaLedgerMetrics; font.family: theme.roleFamily("ledger"); font.pointSize: theme.roleSize("ledger"); font.weight: theme.roleWeight("ledger"); font.variableAxes: theme.roleAxes("ledger") }
     readonly property real metaLine: Math.ceil(metaLedgerMetrics.height) + theme.space(0.25)
@@ -452,6 +452,8 @@ Item {
                             required property var modelData
                             width: page.tileWidth
                             height: item ? item.implicitHeight : page.metaHeight(modelData)
+                            // A hovered tile draws its lift and its glyph over its neighbours
+                            z: item ? item.z : 0
                             sourceComponent: MetaTile { modelData: lazyMeta.modelData }
                         }
                     }
@@ -478,8 +480,9 @@ Item {
     // series), each on one line. At rest nothing else; hover lifts the tile one step of
     // the surface, turns the title to the accent and shows one glyph on the poster's foot:
     // Refresh, or Forget on a gone folder. A click on the tile opens the episodes pane, or
-    // the match panel for a series with no record. The glyph is always present (a drive
-    // click lands on it at rest); only its opacity follows the hover.
+    // the match panel for a series with no record. The glyph is built the first time the
+    // tile is hovered or takes the keyboard, and stays; the drive's first tiles have theirs
+    // from the start, so a drive click lands on it at rest. Its opacity follows the hover.
     component MetaTile: Item {
         id: tile
         required property var modelData
@@ -557,11 +560,11 @@ Item {
             objectName: String(tile.card.id) === page.firstId ? "row-match" : ""
             anchors.fill: poster
         }
-        // The one glyph on the poster's foot, seen on hover. Built only while the tile is
-        // hovered (#612): a Button is a Shape, the dearest thing a tile held, and every tile
-        // carried two. The drive's first tiles keep theirs at rest, so a drive click lands on
-        // it as before. A hair above zero at rest: the drive's findItem treats opacity 0 as
-        // hidden
+        // The one glyph on the poster's foot, seen on hover. Built the first time the tile is
+        // hovered or focused, then kept, so Tab reaches it from the tile and an armed Forget
+        // outlives the pointer leaving (#612): a Button is a Shape, the dearest thing a tile
+        // held, and every tile carried two. The drive's first tiles have theirs from the
+        // start. A hair above zero at rest: the drive's findItem treats opacity 0 as hidden
         Loader {
             id: glyph
             anchors.horizontalCenter: poster.horizontalCenter
@@ -569,13 +572,15 @@ Item {
             anchors.bottomMargin: tile.pad
             opacity: Math.max(0.001, tile.lift)
             readonly property bool driven: String(tile.card.id) === (tile.gone ? page.firstGoneId : page.firstRefreshId)
-            active: tile.lift > 0.01 || m.containsMouse || driven
+            readonly property bool wanted: m.containsMouse || tile.activeFocus || driven
+            property bool stays: false
+            onWantedChanged: if (wanted) stays = true
+            active: stays || wanted
             sourceComponent: tile.gone ? forgetComponent : refreshComponent
         }
         Component {
             id: refreshComponent
             Button {
-                id: refreshGlyph
                 readonly property bool hovered: lift > 0.5
                 objectName: String(tile.card.id) === page.firstRefreshId ? "row-refresh" : ""
                 icon: "refresh-cw"; small: true
@@ -621,7 +626,7 @@ Item {
             // its right
             Item {
                 width: parent.width
-                height: stateLine.implicitHeight
+                height: Math.ceil(metaLedgerMetrics.height)
                 Label {
                     id: stateLine
                     anchors.left: parent.left
@@ -644,6 +649,7 @@ Item {
             Label {
                 visible: tile.note !== ""
                 width: parent.width
+                height: Math.ceil(metaLedgerMetrics.height)
                 text: tile.note
                 role: "ledger"
                 color: theme.textFaint
