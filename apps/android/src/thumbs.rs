@@ -87,7 +87,11 @@ mod imp {
     const EVENT_PLAYBACK_RESTART: c_int = 21;
 
     unsafe extern "C" {
-        fn mpv_command_ret(ctx: *mut mpv_handle, args: *mut *const c_char, result: *mut Node) -> c_int;
+        fn mpv_command_ret(
+            ctx: *mut mpv_handle,
+            args: *mut *const c_char,
+            result: *mut Node,
+        ) -> c_int;
         fn mpv_free_node_contents(node: *mut Node);
     }
 
@@ -106,7 +110,9 @@ mod imp {
     fn wait_for(h: *mut mpv_handle, id: c_int, secs: f64) -> bool {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(secs);
         loop {
-            let left = deadline.saturating_duration_since(std::time::Instant::now()).as_secs_f64();
+            let left = deadline
+                .saturating_duration_since(std::time::Instant::now())
+                .as_secs_f64();
             if left <= 0.0 {
                 return false;
             }
@@ -115,8 +121,13 @@ mod imp {
                 x if x == id => return true,
                 EVENT_LOG_MESSAGE => {
                     let m = unsafe { &*(e.data as *const mpv_event_log_message) };
-                    let (prefix, text) = unsafe { (CStr::from_ptr(m.prefix), CStr::from_ptr(m.text)) };
-                    crate::local::log(&format!("thumbs[{}] {}", prefix.to_string_lossy(), text.to_string_lossy().trim_end()));
+                    let (prefix, text) =
+                        unsafe { (CStr::from_ptr(m.prefix), CStr::from_ptr(m.text)) };
+                    crate::local::log(&format!(
+                        "thumbs[{}] {}",
+                        prefix.to_string_lossy(),
+                        text.to_string_lossy().trim_end()
+                    ));
                 }
                 EVENT_SHUTDOWN | EVENT_END_FILE => return false,
                 _ => {}
@@ -185,7 +196,10 @@ mod imp {
         let owned = [c("screenshot-raw"), c("video")];
         let mut ptrs: Vec<*const c_char> = owned.iter().map(|a| a.as_ptr()).collect();
         ptrs.push(std::ptr::null());
-        let mut node = Node { u: NodeUnion { int64: 0 }, format: 0 };
+        let mut node = Node {
+            u: NodeUnion { int64: 0 },
+            format: 0,
+        };
         let code = unsafe { mpv_command_ret(h, ptrs.as_mut_ptr(), &mut node) };
         if code < 0 {
             crate::local::log(&format!("thumbs: screenshot-raw failed {code}"));
@@ -211,7 +225,11 @@ mod imp {
                 ("w", FORMAT_INT64) => w = unsafe { v.u.int64 },
                 ("h", FORMAT_INT64) => hgt = unsafe { v.u.int64 },
                 ("stride", FORMAT_INT64) => stride = unsafe { v.u.int64 },
-                ("format", FORMAT_STRING) => format = unsafe { CStr::from_ptr(v.u.string) }.to_string_lossy().into_owned(),
+                ("format", FORMAT_STRING) => {
+                    format = unsafe { CStr::from_ptr(v.u.string) }
+                        .to_string_lossy()
+                        .into_owned()
+                }
                 ("data", FORMAT_BYTE_ARRAY) => {
                     let ba = unsafe { &*v.u.ba };
                     bytes = unsafe { std::slice::from_raw_parts(ba.data as *const u8, ba.size) };
@@ -219,8 +237,16 @@ mod imp {
                 _ => {}
             }
         }
-        if w <= 0 || hgt <= 0 || stride < w * 4 || bytes.len() < (stride * hgt) as usize || format != "bgr0" {
-            crate::local::log(&format!("thumbs: odd frame {w}x{hgt} stride {stride} {format} {} bytes", bytes.len()));
+        if w <= 0
+            || hgt <= 0
+            || stride < w * 4
+            || bytes.len() < (stride * hgt) as usize
+            || format != "bgr0"
+        {
+            crate::local::log(&format!(
+                "thumbs: odd frame {w}x{hgt} stride {stride} {format} {} bytes",
+                bytes.len()
+            ));
             return None;
         }
         let (w, hgt, stride) = (w as usize, hgt as usize, stride as usize);
@@ -230,7 +256,12 @@ mod imp {
                 rgba.extend_from_slice(&[px[2], px[1], px[0], 255]);
             }
         }
-        Some(Shot { at: 0.0, width: w as u32, height: hgt as u32, rgba })
+        Some(Shot {
+            at: 0.0,
+            width: w as u32,
+            height: hgt as u32,
+            rgba,
+        })
     }
 }
 

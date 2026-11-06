@@ -8,8 +8,8 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use anibeam_core::trackers::Secrets;
 use anibeam_core::events::Subscription;
+use anibeam_core::trackers::Secrets;
 use anibeam_core::{Call, Core, CorePaths, Event, EventBody, EventListener, Level, Reply};
 
 /// Where downloads land and what the library scans.
@@ -22,7 +22,10 @@ static SIGN_IN_FAILED: std::sync::Mutex<Option<(u64, String)>> = std::sync::Mute
 
 /// The last sign-in job that failed and why, if one did since this was last asked.
 pub fn sign_in_failed() -> Option<(u64, String)> {
-    SIGN_IN_FAILED.lock().unwrap_or_else(|e| e.into_inner()).take()
+    SIGN_IN_FAILED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
 }
 
 /// Whether the core said something since the last call.
@@ -50,13 +53,17 @@ impl EventListener for Logcat {
         if let (EventBody::JobFailed { error }, Some(job)) = (&event.body, &event.job)
             && job.kind == anibeam_core::JobKind::ConnectTracker
         {
-            *SIGN_IN_FAILED.lock().unwrap_or_else(|e| e.into_inner()) = Some((job.id, error.to_string()));
+            *SIGN_IN_FAILED.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some((job.id, error.to_string()));
         }
         crate::player::core_event(&event.body);
         // Debug events are progress chatter; the state changes the pages show come as Info
         // and above, so only those make the UI read the core again.
         if !matches!(event.level, Level::Debug) {
-            log(&format!("{:?} {:?} {}", event.level, event.stage, event.message));
+            log(&format!(
+                "{:?} {:?} {}",
+                event.level, event.stage, event.message
+            ));
             CHANGED.store(true, Ordering::Release);
         }
     }
@@ -67,7 +74,11 @@ pub fn log(line: &str) {
     {
         use std::ffi::CString;
         unsafe extern "C" {
-            fn __android_log_write(prio: i32, tag: *const std::ffi::c_char, text: *const std::ffi::c_char) -> i32;
+            fn __android_log_write(
+                prio: i32,
+                tag: *const std::ffi::c_char,
+                text: *const std::ffi::c_char,
+            ) -> i32;
         }
         let tag = CString::new("AniBeamCore").unwrap();
         let text = CString::new(line.replace('\0', " ")).unwrap();
@@ -86,18 +97,20 @@ static CORE: OnceLock<(Arc<Core>, Arc<Subscription>)> = OnceLock::new();
 /// Opens and starts the core on its own thread, so migrations and the first scan never hold
 /// up the first frame. A second call in the same process does nothing.
 pub fn start(data_dir: PathBuf) {
-    let spawned = std::thread::Builder::new().name("core-open".into()).spawn(move || {
-        if CORE.get().is_some() {
-            return;
-        }
-        match open(&data_dir) {
-            Ok(opened) => {
-                let _ = CORE.set(opened);
-                CHANGED.store(true, Ordering::Release);
+    let spawned = std::thread::Builder::new()
+        .name("core-open".into())
+        .spawn(move || {
+            if CORE.get().is_some() {
+                return;
             }
-            Err(e) => log(&format!("core did not open: {e}")),
-        }
-    });
+            match open(&data_dir) {
+                Ok(opened) => {
+                    let _ = CORE.set(opened);
+                    CHANGED.store(true, Ordering::Release);
+                }
+                Err(e) => log(&format!("core did not open: {e}")),
+            }
+        });
     if let Err(e) = spawned {
         log(&format!("core thread did not start: {e}"));
     }
@@ -106,7 +119,9 @@ pub fn start(data_dir: PathBuf) {
 fn open(data_dir: &Path) -> Result<(Arc<Core>, Arc<Subscription>), Box<dyn std::error::Error>> {
     // `/data/data/<pkg>` and `/data/user/0/<pkg>` are the same folder; one spelling keeps
     // the library from being added twice under two names.
-    let data_dir = data_dir.canonicalize().unwrap_or_else(|_| data_dir.to_path_buf());
+    let data_dir = data_dir
+        .canonicalize()
+        .unwrap_or_else(|_| data_dir.to_path_buf());
     let paths = CorePaths::under(&data_dir.join("core"));
     let secrets = Secrets::file_only(paths.secrets_path());
     let core = Core::open_with_secrets(paths, secrets)?;
@@ -142,7 +157,10 @@ fn seed(library: &Path) {
         };
         // Only a plain relative path stays inside the library: an absolute one would
         // replace it in `join`, and `..` would climb out of it.
-        if !Path::new(name).components().all(|c| matches!(c, Component::Normal(_))) {
+        if !Path::new(name)
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)))
+        {
             log(&format!("seed refused {name}"));
             continue;
         }

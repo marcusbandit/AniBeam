@@ -21,7 +21,11 @@ impl Drop for Mock {
 }
 
 fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+    TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
 }
 
 fn start_mock(port: u16) -> Option<Mock> {
