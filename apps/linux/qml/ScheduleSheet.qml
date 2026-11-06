@@ -34,6 +34,44 @@ Corner {
     // made again live from the record's own dates, so the grid shows what Save would give
     property var known: ({})
     property string siteName: ""
+    // The coding agent on this computer that can look the schedule up (#419), "" for none
+    property string agentName: ""
+    // The session under way: its job, what it has said so far, and why one failed
+    property real agentJob: 0
+    property var agentLines: []
+    property string agentError: ""
+    readonly property bool asking: agentJob > 0
+    function askAgent() {
+        var r = Door.call("AskScheduleAgent", { series: root.seriesId })
+        if (r.error) { root.agentError = frame.errorText(r.error); return }
+        root.agentError = ""
+        root.agentLines = []
+        root.agentJob = r.reply.job
+    }
+    function stopAgent() {
+        if (root.agentJob > 0) Door.call("CancelJob", { job: root.agentJob })
+        root.agentJob = 0
+    }
+    Connections {
+        target: Door
+        function onAgentSaid(series, text) {
+            if (!root.asking || series !== root.seriesId) return
+            root.agentLines = root.agentLines.concat([text.split("\n")[0]]).slice(-4)
+        }
+        // The answer lands in the paste box, read at once: the tiles show what Save would keep
+        function onAgentAnswered(series, text) {
+            if (!root.asking || series !== root.seriesId) return
+            root.agentJob = 0
+            root.pasting = true
+            input.text = text
+            root.parse()
+        }
+        function onJobFailed(job, kind, error) {
+            if (job !== root.agentJob) return
+            root.agentJob = 0
+            root.agentError = frame.errorText(error)
+        }
+    }
     // The record's real dates, without its guesses
     readonly property var recordDates: {
         var out = {}
@@ -220,11 +258,17 @@ Corner {
         dateField.text = ""
         input.text = ""
         root.pasting = false
+        root.agentJob = 0
+        root.agentLines = []
+        root.agentError = ""
+        var a = Door.call("ScheduleAgent", {})
+        root.agentName = !a.error && a.reply && a.reply.name ? a.reply.name : ""
         visible = true
         frame.escapeStack.push("popover", root)
     }
     function close() {
         if (!visible) return
+        root.stopAgent()
         visible = false
         frame.escapeStack.pop(root)
     }
@@ -312,6 +356,14 @@ Corner {
                     anchors.verticalCenter: heading.verticalCenter
                     spacing: theme.space(2)
                     Button {
+                        objectName: "schedule-ask-agent"
+                        visible: root.agentName !== "" && !root.asking
+                        flat: true
+                        icon: "sparkles"
+                        text: "Ask " + root.agentName
+                        onClicked: root.askAgent()
+                    }
+                    Button {
                         objectName: "schedule-paste-toggle"
                         flat: true
                         icon: root.pasting ? "check" : "copy"
@@ -324,6 +376,57 @@ Corner {
                         icon: "x"
                         text: ""
                         onClicked: root.close()
+                    }
+                }
+            }
+
+            // The agent's session: what it is doing, a way to stop it, or why it stopped
+            Corner {
+                objectName: "schedule-agent-panel"
+                visible: root.asking || root.agentError !== ""
+                width: parent.width
+                height: agentCol.implicitHeight + theme.space(3) * 2
+                radius: theme.radiusTile
+                smoothing: theme.cornerSmoothing
+                color: theme.tile
+                borderColor: theme.line
+                borderWidth: 1
+                Column {
+                    id: agentCol
+                    x: theme.space(3); y: theme.space(3)
+                    width: parent.width - theme.space(6)
+                    spacing: theme.space(1)
+                    Item {
+                        width: parent.width
+                        height: Math.max(agentHead.implicitHeight, stopButton.height)
+                        Label {
+                            id: agentHead
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - stopButton.width - theme.space(2)
+                            elide: Text.ElideRight
+                            role: "ui"
+                            text: root.asking ? root.agentName + " is looking up the dates. Nothing is saved until you press Save."
+                                              : root.agentName + " stopped: " + root.agentError
+                            color: root.asking ? theme.text : theme.textDim
+                        }
+                        Button {
+                            id: stopButton
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: root.asking
+                            flat: true; small: true
+                            text: "Stop"
+                            onClicked: root.stopAgent()
+                        }
+                    }
+                    Repeater {
+                        model: root.asking ? root.agentLines : []
+                        Label {
+                            width: agentCol.width
+                            elide: Text.ElideRight
+                            role: "ui"; color: theme.textDim
+                            text: modelData
+                        }
                     }
                 }
             }
@@ -383,6 +486,14 @@ Corner {
                 Label {
                     text: "What AniBeam reads shows on the episodes below."
                     role: "ui"; color: theme.textDim
+                }
+                // No agent here: one quiet line on what one would do, never a nag (#419)
+                Label {
+                    visible: root.agentName === ""
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    text: "With Claude Code on this computer, AniBeam can ask it to look the dates up for you."
+                    role: "ui"; color: theme.textFaint
                 }
             }
 

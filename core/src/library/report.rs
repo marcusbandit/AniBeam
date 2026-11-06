@@ -157,18 +157,18 @@ fn folder_of(kind: &str, path: &str) -> String {
 // The agents --------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum AgentKind {
+pub(crate) enum AgentKind {
     Claude,
     Codex,
 }
 
-struct Agent {
-    kind: AgentKind,
-    path: PathBuf,
+pub(crate) struct Agent {
+    pub(crate) kind: AgentKind,
+    pub(crate) path: PathBuf,
 }
 
 impl Agent {
-    fn name(&self) -> &'static str {
+    pub(crate) fn name(&self) -> &'static str {
         match self.kind {
             AgentKind::Claude => "Claude Code",
             AgentKind::Codex => "Codex",
@@ -178,7 +178,7 @@ impl Agent {
 
 /// Where the agents install when not on PATH: an app started from a desktop
 /// launcher, the Mac's Finder especially, gets a short PATH of its own.
-fn search_dirs() -> Vec<PathBuf> {
+pub(crate) fn search_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
@@ -222,7 +222,7 @@ fn executable(p: &Path) -> bool {
 /// Claude Code first, then Codex. `ANIBEAM_TRIAGE_AGENT` names a stand in
 /// that reads the prompt on stdin and answers on stdout the way Claude Code
 /// does (drives and tests), or `none`.
-fn find_agent() -> Option<Agent> {
+pub(crate) fn find_agent() -> Option<Agent> {
     if let Some(v) = std::env::var_os("ANIBEAM_TRIAGE_AGENT") {
         if v == "none" {
             return None;

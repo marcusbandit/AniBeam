@@ -783,6 +783,12 @@ impl Core {
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
             Call::ActOnSeries { series, action } => self.act_on_series(series, action),
             Call::ParseSchedule { text } => Ok(crate::library::schedule::parse_call(&text)),
+            Call::ScheduleAgent => Ok(Reply::Agent {
+                name: crate::agent::available(),
+            }),
+            Call::AskScheduleAgent { series } => Ok(Reply::Started {
+                job: crate::agent::start(self, series)?,
+            }),
             Call::SetScheduleNotes {
                 series,
                 season,

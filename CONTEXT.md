@@ -68,6 +68,10 @@ _Avoid_: watch dates, history dates
 Free text on a tracker's list entry: AniList's notes, MAL's comments, at most 2000 characters. Written from the series page to every connected tracker, read back with each list refresh. Not the schedule notes, which are about a season's dates.
 _Avoid_: comments, schedule notes
 
+**Schedule agent**:
+The coding agent on this computer that looks a show's episode dates up from the Episodes and dates sheet (#419): Claude Code today, run as a live session over its own stream protocol in an empty folder with only web search and web fetch, safe mode and nothing saved. It gets the show and the dates the library has, says what it does as it goes, and answers in lines the schedule parser reads; the answer lands in the sheet's paste box, so the tiles preview it and nothing is kept until Save. Found on the machine, never shipped; with none, the sheet only says what one would do. ACP, and Codex through it, comes next.
+_Avoid_: AI, assistant, bot
+
 **Resume point**:
 The position playback restarts from the next time an episode opens. Not recorded for a session the player never reported on.
 _Avoid_: position, progress, bookmark
