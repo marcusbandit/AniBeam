@@ -122,8 +122,9 @@ Item {
     }
     function listPicked(anchor) {
         var lists = frame.listStatusItems(-1, "")
-        var p = anchor.mapToItem(frame, 0, -theme.space(1))
-        frame.openMenu(p.x, p.y - lists.length * theme.controlHeight, lists.map(function(l) {
+        // Above the bar, clear of it: the menu's rows plus its own padding
+        var p = anchor.mapToItem(frame, 0, 0)
+        frame.openMenu(p.x, p.y - lists.length * theme.controlHeight - theme.space(8), lists.map(function(l) {
             return { text: l.text, icon: l.icon, action: function() {
                 var n = page.pickedCount
                 page.act({ ListStatus: { status: page.statusOf(l.text) } }, "Moving " + page.pickedNoun(n) + " to " + l.text)
