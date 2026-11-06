@@ -12,15 +12,14 @@ SettingsTab {
     // Folders AniBeam could not put a name to, from the library as it is now
     property int unrecognised: 0
     property int folders: 0
+    // Counted the way Show info sections them, hidden shows included when they are revealed
     function readLibrary() {
-        var r = Door.listMetadata("All", "", false)
+        var r = Door.listMetadata("All", "", Door.revealHidden)
         if (!r.error) {
             var n = 0, rows = r.reply.rows || []
             for (var i = 0; i < rows.length; i++) {
                 var card = rows[i].series || {}
-                var info = card.match_info || {}
-                var known = ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return info[k] !== null && info[k] !== undefined })
-                if (!known && card.missing !== true) n++
+                if (card.missing !== true && !frame.hasMatch(card)) n++
             }
             tab.unrecognised = n
         }
@@ -28,7 +27,24 @@ SettingsTab {
         tab.folders = s.error ? 0 : s.reply.sources.length
     }
     Component.onCompleted: readLibrary()
-    readonly property bool canRerunSetup: typeof frame.openOnboarding === "function"
+    Timer { id: readDebounce; interval: 400; onTriggered: tab.readLibrary() }
+    Connections {
+        target: Door
+        function onSourceChanged(s) { readDebounce.restart() }
+        function onSourceRemoved(s) { readDebounce.restart() }
+        function onScanFinished(s, a, c, r) { readDebounce.restart() }
+        function onSeriesChanged(cards) { readDebounce.restart() }
+        function onRevealHiddenChanged() { readDebounce.restart() }
+    }
+    // A jump to another section of Settings is a visit of its own, and this one is kept as
+    // Help, so Back from there comes back here rather than to whichever section Settings
+    // opened on
+    function visit(page, props) {
+        var n = frame.nav
+        n.current = { page: n.current.page, props: Object.assign({}, n.current.props, { tab: "help" }), label: n.current.label }
+        frame.go(page, props)
+    }
+    function openSection(id, focus) { visit("settings", { tab: id, focus: focus || "" }) }
 
     Panel {
         objectName: "help-folders"
@@ -41,7 +57,7 @@ SettingsTab {
         SettingRow {
             label: tab.folders === 0 ? "No folder added yet" : tab.folders === 1 ? "AniBeam reads one folder" : "AniBeam reads " + tab.folders + " folders"
             helper: "Add the folder that holds your shows, not each show on its own."
-            Button { objectName: "help-open-folders"; text: tab.folders === 0 ? "Add a folder" : "Open your folders"; icon: "folder"; flat: true; onClicked: frame.go("settings", { tab: "library", focus: "Folders" }) }
+            Button { objectName: "help-open-folders"; text: tab.folders === 0 ? "Add a folder" : "Open your folders"; icon: "folder"; flat: true; onClicked: tab.openSection("library", "Folders") }
         }
     }
     Panel {
@@ -50,7 +66,7 @@ SettingsTab {
         helper: "AniBeam looks each folder up by its name, on AniList first, then TVmaze. Extra words, a typo or a name in another language can miss. Pick the right show by hand on Show info; a choice you make is never replaced."
         SettingRow {
             label: tab.unrecognised === 0 ? "Every show is recognised" : tab.unrecognised === 1 ? "One show is not recognised" : tab.unrecognised + " shows are not recognised"
-            Button { objectName: "help-open-show-info"; text: "Open Show info"; icon: "database"; flat: true; onClicked: frame.go("metadata") }
+            Button { objectName: "help-open-show-info"; text: "Open Show info"; icon: "database"; flat: true; onClicked: tab.visit("metadata", {}) }
         }
     }
     Panel {
@@ -71,13 +87,13 @@ SettingsTab {
         helper: "AniBeam comes with no places to search. Add a source list in Settings, under Downloads, and install the sources you want from it. Downloading also needs a torrent client: AniBeam can run its own, or use a qBittorrent you already have."
         SettingRow {
             label: "Sources and the torrent client"
-            Button { objectName: "help-open-downloads"; text: "Open Downloads settings"; icon: "download"; flat: true; onClicked: frame.go("settings", { tab: "downloads", focus: "Source lists" }) }
+            Button { objectName: "help-open-downloads"; text: "Open Downloads settings"; icon: "download"; flat: true; onClicked: tab.openSection("downloads", "Source lists") }
         }
     }
     Panel {
         objectName: "help-data"
         title: "Where is my data?"
-        helper: "Your library, what you watched and your settings stay on this computer. Sign-ins for AniList and MyAnimeList are kept in the system password store. Back it all up to one file from Storage and backup."
+        helper: "Your library, what you watched and your settings stay on this computer. Sign-ins for AniList and MyAnimeList go in the system password store, or in a file only you can read where there is none. Back it all up to one file from Storage and backup."
         SettingRow {
             label: "Library and history"
             status: tab.about.data_dir || ""
@@ -85,24 +101,23 @@ SettingsTab {
         }
         SettingRow {
             label: "Back up or restore"
-            Button { objectName: "help-open-storage"; text: "Open Storage and backup"; icon: "hard-drive"; flat: true; onClicked: frame.go("settings", { tab: "storage" }) }
+            Button { objectName: "help-open-storage"; text: "Open Storage and backup"; icon: "hard-drive"; flat: true; onClicked: tab.openSection("storage") }
         }
     }
     Panel {
         objectName: "help-more"
         title: "Something else?"
-        helper: tab.canRerunSetup ? "Run the first setup again, or tell us what went wrong. A screenshot and the version from About help a lot."
-                                  : "Tell us what went wrong. A screenshot and the version from About help a lot."
+        helper: "Run the first setup again, or tell us what went wrong. A screenshot helps a lot."
         SettingRow {
-            visible: tab.canRerunSetup
             label: "The first setup"
             helper: "Your folder, your list and downloads, one step at a time."
             Button { objectName: "help-run-setup"; text: "Run setup again"; icon: "rotate-ccw"; flat: true; onClicked: frame.openOnboarding(0) }
         }
         SettingRow {
             label: "Report a problem"
-            helper: "Opens a new issue on GitHub in your browser."
-            Button { objectName: "help-report"; text: "Report a problem"; icon: "external-link"; flat: true; onClicked: frame.openLink("https://github.com/marcusbandit/AniBeam/issues/new/choose") }
+            helper: "Opens a bug report on GitHub in your browser, with this version filled in."
+            Button { objectName: "help-report"; text: "Report a problem"; icon: "external-link"; flat: true
+                     onClicked: frame.openLink("https://github.com/marcusbandit/AniBeam/issues/new?template=2-bug-report.yml&version=" + encodeURIComponent(Shell.release)) }
         }
     }
 }

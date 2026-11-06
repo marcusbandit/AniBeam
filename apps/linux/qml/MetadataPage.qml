@@ -64,9 +64,7 @@ Item {
     }
 
     // ---- What a row is, read once for the figures, the sections and the tiles
-    function isMatched(card) {
-        return !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
-    }
+    function isMatched(card) { return frame.hasMatch(card) }
     function expectedOf(d) {
         var card = d.series || {}
         return d.expected !== null && d.expected !== undefined ? d.expected : (!!card.film ? 1 : 0)
