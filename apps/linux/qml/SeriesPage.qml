@@ -290,7 +290,12 @@ Item {
         if (refusedOnly) frame.toast(bad + ".", 8, "", null, raw)
         else frame.toast(bad + ". Check the connection in Settings, under Accounts.", 8, "Open settings", function() { frame.go("settings", { tab: "accounts" }) }, raw)
     }
-    function saveScore(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.fail(r.error, function() { page.saveScore(v) }) }
+    // A score kept on this device has no job to report back, so it says so here (#213)
+    function saveScore(v) {
+        var r = Door.setScore(page.props.id, v)
+        if (r.error) frame.fail(r.error, function() { page.saveScore(v) })
+        else if (!r.reply || r.reply.job === undefined) frame.toast(v < 0 ? "Score cleared" : "Score saved")
+    }
     function marker(ep) {
         var watched = !!ep.watched
         var target = watched ? Math.max(0, Math.floor(ep.number) - 1) : Math.floor(ep.number)
@@ -906,8 +911,8 @@ Item {
                     Button {
                         id: rateButton
                         objectName: "fact-mine"
-                        // A score is the tracker's: a series no tracker carries (a TVmaze match) has none to set
-                        visible: page.hasTracker
+                        // With no tracker behind the series the score stays on this device (#213)
+                        visible: !card.hidden
                         small: true; ghost: true
                         icon: "star"
                         text: page.hasScore ? "Your score " + Fmt.score(card.my_score) : "Rate"
@@ -932,7 +937,7 @@ Item {
                         text: card.list_status ? page.listStatus(card.list_status) : "Add to a list"
                         pressName: "series-status"
                         onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
-                        Tooltip { text: statusFact.settable ? "Change it on each list that is connected" : "" }
+                        Tooltip { text: statusFact.settable ? frame.listHome(card) : "" }
                     }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
                     // The list entry's notes, written to every connected tracker (#211); a show not

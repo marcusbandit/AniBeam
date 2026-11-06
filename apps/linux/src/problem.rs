@@ -106,6 +106,12 @@ fn service_problem(service: &str, code: &str) -> Problem {
         _ => problem(format!("{name} could not do that."), REPORT, Fix::Retry),
     };
     match service_of(service) {
+        // anirss's own word for a qBittorrent that wants the password it was not given
+        Service::SearchHelper if code == "qbt_auth_required" => problem(
+            "The search helper cannot log in to the torrent client.",
+            "Save the torrent client's password in Settings, under Downloads.",
+            Fix::Settings("downloads"),
+        ),
         Service::SearchHelper => local("The search helper"),
         Service::TorrentClient => local("The torrent client"),
         Service::Trash => problem(
@@ -323,6 +329,7 @@ mod tests {
                 "not_running",
                 "missing",
                 "failed",
+                "qbt_auth_required",
             ] {
                 all.push(CoreError::Service {
                     service: service.into(),
@@ -472,6 +479,22 @@ mod tests {
         };
         let p = plain(&e);
         assert_eq!(p.said, "The torrent client turned down the login.");
+        assert_eq!(p.fix.key(), "settings:downloads");
+    }
+
+    #[test]
+    fn a_search_helper_that_cannot_log_in_points_at_the_torrent_password() {
+        let e = CoreError::Service {
+            service: "anirss".into(),
+            code: "qbt_auth_required".into(),
+            message: "qBittorrent wants a login".into(),
+        };
+        let p = plain(&e);
+        assert_eq!(
+            p.said,
+            "The search helper cannot log in to the torrent client."
+        );
+        assert!(p.next.contains("password"), "{}", p.next);
         assert_eq!(p.fix.key(), "settings:downloads");
     }
 

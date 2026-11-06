@@ -16,6 +16,8 @@ Item {
     property string name: ""
     property bool busy: false
     property string error: ""
+    // The core's own words behind `error`, under Details
+    property string detail: ""
     // What the service is called to a person; the endpoint's name is what the chip says
     readonly property string service: "Jackett"
     property Item prevFocus: null
@@ -25,6 +27,7 @@ Item {
     function openAt(anchor, endpoint) {
         root.name = endpoint
         root.error = ""
+        root.detail = ""
         root.prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         if (anchor) {
             var p = anchor.mapToItem(root, 0, 0)
@@ -87,7 +90,7 @@ Item {
                 color: theme.textDim
                 wrapMode: Text.Wrap
             }
-            Label { width: parent.width; visible: root.error !== ""; text: root.error; role: "ui"; color: theme.red; wrapMode: Text.Wrap }
+            ErrorLine { width: parent.width; text: root.error; detail: root.detail }
             Item {
                 width: parent.width
                 height: theme.controlHeight
