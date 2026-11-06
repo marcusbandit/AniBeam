@@ -6,7 +6,7 @@
 //! record's length, or a plain default when the record names none, so a
 //! number is always there; the page says hours, rounded.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::contract::*;
 use crate::library::snapshot::{SeriesRow, Snapshot};
@@ -28,15 +28,33 @@ fn minutes_of(row: &SeriesRow) -> u32 {
         })
 }
 
-/// The episodes a series has in all, when anything says.
-fn total_of(row: &SeriesRow) -> Option<u32> {
-    match row.kind {
-        SeriesKind::Movie => Some(1),
-        _ => row
-            .episodes_set
-            .or_else(|| row.media.as_ref().and_then(|m| m.episodes))
-            .filter(|n| *n > 0),
+/// Whether a series is finished: the library's own rule (the provider says
+/// Finished and every episode of its own count is watched, never a guessed
+/// or hand-set count), or the same rule over the history alone, so a show
+/// whose files are gone still counts. Only plain episode keys count there:
+/// an episode 0, a half episode, a special or an extra finishes nothing.
+fn finished(snap: &Snapshot, row: &SeriesRow, done: &[(String, i64)]) -> bool {
+    if snap.finished_watched(row, &snap.watched_of(row)) {
+        return true;
     }
+    let Some(media) = row.media.as_ref() else {
+        return false;
+    };
+    if media.status.as_deref().and_then(AiringStatus::from_provider) != Some(AiringStatus::Finished)
+    {
+        return false;
+    }
+    if row.kind == SeriesKind::Movie {
+        return !done.is_empty();
+    }
+    let Some(total) = media.episodes.filter(|n| *n > 0) else {
+        return false;
+    };
+    let keys: HashSet<u32> = done
+        .iter()
+        .filter_map(|(key, _)| key.parse::<u32>().ok())
+        .collect();
+    (1..=total).all(|n| keys.contains(&n))
 }
 
 /// The calendar year and month (1 to 12) of a moment, `offset` seconds east of UTC.
@@ -79,9 +97,25 @@ fn top(map: HashMap<String, Tally>) -> Vec<StatCount> {
     out
 }
 
-/// The year's stats. `year` None is the year `now` falls in.
-pub fn compute(snap: &Snapshot, year: Option<i32>, offset: i64, now: i64) -> Stats {
+/// The year's stats. `year` None is the year `now` falls in. `month_starts`,
+/// when the shell sends the thirteen local midnights that open each month of
+/// `year` and the next, places the year's moments in their months across a
+/// daylight saving change; anything else is placed by `offset`.
+pub fn compute(
+    snap: &Snapshot,
+    year: Option<i32>,
+    offset: i64,
+    month_starts: &[i64],
+    now: i64,
+) -> Stats {
     let year = year.unwrap_or_else(|| year_month(now, offset).0);
+    let place = |at: i64| -> (i32, u32) {
+        if month_starts.len() == 13 && at >= month_starts[0] && at < month_starts[12] {
+            let m = month_starts.partition_point(|start| *start <= at) as u32;
+            return (year, m);
+        }
+        year_month(at, offset)
+    };
     let mut years: Vec<i32> = Vec::new();
     let mut months: Vec<StatMonth> = (1..=12)
         .map(|month| StatMonth {
@@ -100,7 +134,7 @@ pub fn compute(snap: &Snapshot, year: Option<i32>, offset: i64, now: i64) -> Sta
         let minutes = minutes_of(row);
         let mut episodes = 0u32;
         for (_, at) in done {
-            let (y, m) = year_month(*at, offset);
+            let (y, m) = place(*at);
             if !years.contains(&y) {
                 years.push(y);
             }
@@ -112,12 +146,13 @@ pub fn compute(snap: &Snapshot, year: Option<i32>, offset: i64, now: i64) -> Sta
             slot.episodes += 1;
             slot.minutes += u64::from(minutes);
         }
-        // Finished in the month the last episode it needed was watched.
-        if let Some(total) = total_of(row)
-            && done.len() as u32 >= total
+        // Finished by the library's own rule (the provider says Finished and
+        // every episode of its count is watched), in the month the last
+        // finished episode was watched.
+        if finished(snap, row, done)
             && let Some(last) = done.iter().map(|(_, at)| *at).max()
         {
-            let (y, m) = year_month(last, offset);
+            let (y, m) = place(last);
             if y == year {
                 months[(m - 1) as usize].series_completed += 1;
             }

@@ -7,10 +7,15 @@ use anibeam_core::*;
 use rusqlite::params;
 
 fn stats(core: &Core, year: Option<i32>) -> Stats {
+    stats_with(core, year, 0, Vec::new())
+}
+
+fn stats_with(core: &Core, year: Option<i32>, utc_offset: i32, month_starts: Vec<i64>) -> Stats {
     match core
         .call(Call::GetStats {
             year,
-            utc_offset: 0,
+            utc_offset,
+            month_starts,
         })
         .unwrap()
     {
@@ -153,26 +158,63 @@ fn an_offset_moves_a_late_night_into_the_next_month() {
     let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
     // 23:30 UTC on 31 January is 00:30 on 1 February an hour east.
     fixtures::insert_completed(&core, loose, "1", day(1, 31) + 11 * 3600 + 1800);
-    let utc = match core
-        .call(Call::GetStats {
-            year: Some(2026),
-            utc_offset: 0,
-        })
-        .unwrap()
-    {
-        Reply::Stats { stats } => stats,
-        other => panic!("{other:?}"),
-    };
+    let utc = stats_with(&core, Some(2026), 0, Vec::new());
     assert_eq!(utc.months[0].episodes, 1);
-    let east = match core
-        .call(Call::GetStats {
-            year: Some(2026),
-            utc_offset: 3600,
-        })
-        .unwrap()
-    {
-        Reply::Stats { stats } => stats,
-        other => panic!("{other:?}"),
-    };
+    let east = stats_with(&core, Some(2026), 3600, Vec::new());
     assert_eq!(east.months[1].episodes, 1);
+}
+
+#[test]
+fn a_stale_count_or_an_extra_episode_does_not_finish_a_series() {
+    let (_dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    // AniList says 24; a hand-set 12 left over must not finish it at 12.
+    let long = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Long", "Long");
+    fixtures::insert_media(&core, 1, Some("Long"), None, Some(24), "FINISHED", "TV", None);
+    fixtures::match_series(&core, long, Some(1), None);
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE series SET episodes_set = 12 WHERE id = ?1",
+                params![long as i64],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    for n in 1..=12 {
+        fixtures::insert_completed(&core, long, &n.to_string(), day(4, n));
+    }
+    // Two of three, plus an OVA and an episode 0: still not finished.
+    let short = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Short", "Short");
+    fixtures::insert_media(&core, 2, Some("Short"), None, Some(3), "FINISHED", "TV", None);
+    fixtures::match_series(&core, short, Some(2), None);
+    for key in ["1", "2", "0", "S00E01"] {
+        fixtures::insert_completed(&core, short, key, day(5, 1));
+    }
+    let s = stats(&core, Some(2026));
+    assert_eq!(s.series_completed, 0);
+    assert_eq!(s.episodes, 16, "every finished episode still counts its time");
+}
+
+#[test]
+fn the_month_edges_the_shell_sends_hold_across_a_clock_change() {
+    let (_dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
+    // 22:30 UTC on 31 July is 00:30 on 1 August in summer time two hours
+    // east, though the page is opened in winter, at one hour east.
+    let at = day(7, 31) + 10 * 3600 + 1800;
+    fixtures::insert_completed(&core, loose, "1", at);
+    // Local midnights opening each month of 2026: one hour east in winter,
+    // two from the end of March to the end of October.
+    let starts: Vec<i64> = (1..=12)
+        .map(|m| {
+            let east = if (4..=10).contains(&m) { 7200 } else { 3600 };
+            day(m, 1) - 12 * 3600 - east
+        })
+        .chain(std::iter::once(1_798_761_600 - 3600))
+        .collect();
+    let s = stats_with(&core, Some(2026), 3600, starts);
+    assert_eq!(s.months[7].episodes, 1, "August, not July");
+    assert_eq!(s.months[6].episodes, 0);
 }

@@ -3,6 +3,7 @@
 // month), a bar per month, then the top genres, studios and seasons as ranked rows, and the
 // recap: one card for the year with the shows watched most, which Save as image writes to a
 // PNG. GetStats reads only; the page reads again when a series changes (an episode finished).
+import QtCore
 import QtQuick
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
@@ -33,16 +34,36 @@ Item {
         return m
     }
 
+    // The years to pick from: this one, and every year with any watching, newest first
+    readonly property var yearOptions: {
+        if (!stats) return []
+        var ys = stats.years.slice()
+        var now = new Date().getFullYear()
+        if (ys.indexOf(now) < 0) ys.push(now)
+        if (ys.indexOf(stats.year) < 0) ys.push(stats.year)
+        return ys.sort(function(a, b) { return b - a })
+    }
+
     function reload() {
-        var offset = -new Date().getTimezoneOffset() * 60
-        var r = Door.call("GetStats", page.year > 0 ? { year: page.year, utc_offset: offset } : { year: null, utc_offset: offset })
+        stale = false
+        var y = page.year > 0 ? page.year : new Date().getFullYear()
+        // The local midnights opening each month and the next January, so a month keeps its
+        // edges across a clock change; the offset places the other years
+        var starts = []
+        for (var m = 0; m <= 12; m++) starts.push(Math.floor(new Date(y, m, 1).getTime() / 1000))
+        var offset = -new Date(y, 0, 1).getTimezoneOffset() * 60
+        var r = Door.call("GetStats", { year: y, utc_offset: offset, month_starts: starts })
         if (r.error) { frame.toast(frame.errorText(r.error)); return }
         page.stats = r.reply.stats
         if (page.year === 0) page.year = page.stats.year
     }
     function pickYear(y) { page.year = y; frame.nav.current.props = { year: y }; page.reload() }
-    Timer { id: debounce; interval: 600; onTriggered: page.reload() }
+    // A finished episode changes the numbers, but a scan says SeriesChanged in bursts and
+    // every read loads the library: read once the burst settles, and only while on screen
+    property bool stale: false
+    Timer { id: debounce; interval: 1500; onTriggered: page.visible ? page.reload() : (page.stale = true) }
     Connections { target: Door; function onSeriesChanged() { debounce.restart() } }
+    onVisibleChanged: if (visible && stale) reload()
     Component.onCompleted: reload()
 
     // A figure: a big number over a dim word
@@ -93,7 +114,6 @@ Item {
     PageScroll {
         id: scroll
         anchors.fill: parent
-        readonly property real innerWidth: width - theme.space(16)
 
         // ---- The head: the title, the year's words, the years with any watching
         Item {
@@ -107,11 +127,11 @@ Item {
             }
             Seg {
                 objectName: "stats-year"
-                visible: !!page.stats && page.stats.years.length > 1
+                visible: page.yearOptions.length > 1
                 anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                options: page.stats ? page.stats.years.slice(0, 5).map(function(y) { return { text: String(y), name: String(y) } }) : []
-                index: page.stats ? Math.max(0, page.stats.years.indexOf(page.year)) : 0
-                onPicked: function(i) { page.pickYear(page.stats.years[i]) }
+                options: page.yearOptions.map(function(y) { return { text: String(y), name: String(y) } })
+                index: Math.max(0, page.yearOptions.indexOf(page.stats ? page.stats.year : page.year))
+                onPicked: function(i) { page.pickYear(page.yearOptions[i]) }
             }
         }
 
@@ -134,7 +154,7 @@ Item {
             spacing: theme.grout
             readonly property real cell: (width - 3 * spacing) / 4
             Figure { width: parent.cell; objectName: "stats-hours"; value: page.stats ? String(page.hours(page.stats.minutes)) : ""; label: "hours watched" }
-            Figure { width: parent.cell; value: page.stats ? String(page.stats.episodes) : ""; label: Fmt.plural(page.stats ? page.stats.episodes : 0, "episode", "episodes").replace(/^[0-9]+ /, "") }
+            Figure { width: parent.cell; value: page.stats ? String(page.stats.episodes) : ""; label: page.stats && page.stats.episodes === 1 ? "episode" : "episodes" }
             Figure { width: parent.cell; value: page.stats ? String(page.stats.series_completed) : ""; label: "series finished" }
             Figure { width: parent.cell; value: page.busiest >= 0 ? page.monthWords[page.busiest] : "None"; label: "busiest month" }
         }
@@ -193,7 +213,8 @@ Item {
             Tile {
                 id: recap
                 objectName: "stats-recap"
-                width: Math.min(parent.width, theme.space(160))
+                // Room kept beside it for Save as image, so the button never falls off the edge
+                width: Math.min(parent.width - saveRecapButton.width - theme.space(4), theme.space(160))
                 height: width * 0.62
                 padding: theme.space(8)
                 Column {
@@ -245,6 +266,7 @@ Item {
                 Label { anchors.left: parent.left; anchors.bottom: parent.bottom; text: "AniBeam"; role: "ledger"; color: theme.textFaint }
             }
             Button {
+                id: saveRecapButton
                 objectName: "stats-save-recap"
                 anchors.left: recap.right; anchors.leftMargin: theme.space(4)
                 anchors.top: recap.top
@@ -259,7 +281,8 @@ Item {
         fileMode: FileDialog.SaveFile
         defaultSuffix: "png"
         nameFilters: ["PNG image (*.png)"]
-        currentFile: "file:///AniBeam " + (page.stats ? page.stats.year : "") + ".png"
+        currentFolder: StandardPaths.writableLocation(StandardPaths.PicturesLocation)
+        currentFile: currentFolder + "/AniBeam " + (page.stats ? page.stats.year : "") + ".png"
         onAccepted: page.saveRecap(Fmt.localPath(String(selectedFile)))
     }
     // The card at twice its size on screen, so the PNG holds up when shared

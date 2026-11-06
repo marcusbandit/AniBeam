@@ -167,6 +167,11 @@ pub enum Call {
     GetStats {
         year: Option<i32>,
         utc_offset: i32,
+        /// The thirteen local midnights (Unix seconds) that open each month
+        /// of `year` and the next January, so a month keeps its edges across
+        /// a daylight saving change. Empty places everything by `utc_offset`.
+        #[serde(default)]
+        month_starts: Vec<i64>,
     },
     /// Starts the AniList watching refresh when the cached list is older
     /// than five minutes, or always with `force`. `Started` with the job
