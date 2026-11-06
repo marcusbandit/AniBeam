@@ -726,7 +726,7 @@ impl HistorySeries {
         };
         let file = normalise(file);
         (self.kind == SeriesKind::Show && file != self.path && under(&file, &self.path))
-            .then(|| file_name(&file))
+            .then(|| classifier::key_of_file_name(&file_name(&file)))
     }
 }
 
@@ -782,7 +782,7 @@ fn resume_target(
                 .max_by_key(|r| r.path.len())?;
             Some((
                 row.id,
-                file_name(&file),
+                classifier::key_of_file_name(&file_name(&file)),
                 *position,
                 *duration,
                 format::parse_instant(at)?,
@@ -938,6 +938,7 @@ async fn import_preferences(
                 // Whether this machine shares itself is its own business.
                 share_over_tailscale: current.share_over_tailscale,
                 stream_over_tailscale: current.stream_over_tailscale,
+                tailnet_switched_off: current.tailnet_switched_off.clone(),
                 // The export format predates On hold too.
                 on_hold_auto: current.on_hold_auto,
                 on_hold_days: current.on_hold_days,

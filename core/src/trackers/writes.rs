@@ -1,5 +1,5 @@
-//! The four writes a shell asks a tracker for: a mark, a corrective
-//! progress, a score and a list status. Every one of them answers the shell
+//! The five writes a shell asks a tracker for: a mark, a corrective
+//! progress, a score, a list status and the entry's notes. Every one of them answers the shell
 //! before a request is made if it can, and otherwise becomes a job that
 //! writes to every connected tracker the match carries an id for. The On
 //! hold sweep (`on_hold`) also sends a status alone, through `send_status`.
@@ -29,8 +29,8 @@ use crate::metadata::apply::card_for;
 use crate::metadata::fetch::message_of;
 use crate::net::HttpResponse;
 use crate::net::anilist::{
-    MEDIA_LIST_ENTRY_QUERY, ON_HOLD_ENTRY_QUERY, SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION,
-    SAVE_STATUS_MUTATION,
+    MEDIA_LIST_ENTRY_QUERY, ON_HOLD_ENTRY_QUERY, SAVE_LIST_STATUS_MUTATION, SAVE_NOTES_MUTATION,
+    SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION, SAVE_STATUS_MUTATION,
 };
 use crate::prefs;
 use crate::time;
@@ -209,20 +209,114 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
     }
     let episode = episode.floor() as u32;
     let main = guard(core, &target)?;
+    // A completed show finished again is a rewatch, which is the one mark
+    // the list may already cover.
+    let again = core
+        .store
+        .read(|c| finished_again(c, &target, main, episode))?
+        && rewatching().insert(series);
+    let slot = again.then_some(RewatchSlot(series));
     // The cheap half of the monotonic rule: the cache already knows how
     // far the main tracker says the user has got, so a mark it covers is
     // refused without a request. The job checks again against the tracker
     // itself, which is what actually decides.
-    if core
-        .store
-        .read(|c| cached_progress(c, &target, main))?
-        .is_some_and(|current| current >= episode)
+    if !again
+        && core
+            .store
+            .read(|c| cached_progress(c, &target, main))?
+            .is_some_and(|current| current >= episode)
     {
         return Err(CoreError::Refused {
             reason: Refusal::NotNewer,
         });
     }
-    start(core, JobKind::Mark, target, Action::Mark { episode })
+    start_holding(
+        core,
+        JobKind::Mark,
+        target,
+        Action::Mark { episode, again },
+        slot,
+    )
+}
+
+/// How long a film's list must have stood still before watching it again
+/// counts as a rewatch: a second mark the same evening is the same viewing.
+const FILM_REWATCH_GAP: i64 = 12 * 3600;
+
+/// Whether this mark finishes a completed show a second time: the list
+/// says Completed, the episode is the last one, and the first episode was
+/// watched to the end here since the list last changed, so the show was
+/// watched again from its start. A film has no first episode to go by, so
+/// it counts when the list has not changed in twelve hours. Playing only the
+/// last episode again is not a rewatch, a list with no stamp gives no
+/// evidence, and a show with no published total is never finished at all.
+fn finished_again(
+    conn: &Connection,
+    target: &Targets,
+    main: Tracker,
+    episode: u32,
+) -> Result<bool, CoreError> {
+    if !target.completes(episode) {
+        return Ok(false);
+    }
+    let Some((t, id)) = cached_id(target, main) else {
+        return Ok(false);
+    };
+    let entry = conn
+        .query_row(
+            "SELECT status, updated_at FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2",
+            params![t.as_str(), id as i64],
+            |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<i64>>(1)?)),
+        )
+        .optional()?;
+    let Some((status, Some(updated_at))) = entry else {
+        return Ok(false);
+    };
+    if status.as_deref().and_then(ListStatus::from_column) != Some(ListStatus::Completed) {
+        return Ok(false);
+    }
+    if target.total == Some(1) {
+        return Ok(updated_at < time::now_secs() - FILM_REWATCH_GAP);
+    }
+    let watched: i64 = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM completed c
+             JOIN files f ON f.series_id = c.series_id AND f.episode_key = c.episode_key
+             WHERE c.series_id = ?1 AND f.kind = 'episode'
+               AND f.number >= 1 AND f.number < 2 AND c.at > ?2)",
+        params![target.series as i64, updated_at],
+        |r| r.get(0),
+    )?;
+    Ok(watched == 1)
+}
+
+/// The series whose rewatch is being written right now. Two marks of one
+/// finish (the rule at the end and the player's button, say) both read the
+/// list before either has written, so the second waits its turn out here
+/// rather than counting the same rewatch twice.
+static REWATCHING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<u64>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn rewatching() -> std::sync::MutexGuard<'static, std::collections::HashSet<u64>> {
+    REWATCHING.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A series' place in `REWATCHING`, given up when the job that holds it ends
+/// however it ends.
+struct RewatchSlot(u64);
+
+impl Drop for RewatchSlot {
+    fn drop(&mut self) {
+        rewatching().remove(&self.0);
+    }
+}
+
+/// The tracker and id a cached read goes by: the main tracker's when the
+/// match carries one, otherwise the other's, the rule a card's own number
+/// follows.
+fn cached_id(target: &Targets, main: Tracker) -> Option<(Tracker, u64)> {
+    [main, other(main)]
+        .into_iter()
+        .find_map(|t| target.id_for(t).map(|id| (t, id)))
 }
 
 /// Sets the watched count to an exact value, including a lower one. The
@@ -323,6 +417,217 @@ pub fn set_list_status(core: &Core, series: u64, status: ListStatus) -> Result<u
     start(core, JobKind::SetStatus, target, Action::Status { status })
 }
 
+/// The longest note a write sends, one limit for both trackers so a note
+/// never fits one and fails on the other. Short of what either keeps.
+pub const NOTES_MAX: usize = 2000;
+
+/// Writes the series' notes to every connected tracker: AniList's notes,
+/// MAL's comments. Blank clears them on both.
+pub fn set_notes(core: &Core, series: u64, notes: &str) -> Result<u64, CoreError> {
+    let notes = notes.trim();
+    if notes.chars().count() > NOTES_MAX {
+        return Err(CoreError::invalid(
+            "notes",
+            format!("notes are kept to {NOTES_MAX} characters"),
+        ));
+    }
+    let target = core.store.read(|c| targets(c, series))?;
+    guard(core, &target)?;
+    let notes = cache::note_of(Some(notes));
+    start(core, JobKind::Notes, target, Action::Notes { notes })
+}
+
+/// A score or a list status for several series at once (#208).
+#[derive(Clone, Copy, Debug)]
+pub enum ManyWrite {
+    Score(Option<f64>),
+    Status(ListStatus),
+}
+
+/// Writes one score or one list status to every pick, in one job whose
+/// terminal is the only line the activity log gets. A pick the guards turn
+/// away (no match, hidden, no account behind it) is left out and counted;
+/// when every pick is turned away, the first refusal is the answer, as a
+/// single write would give it.
+pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, CoreError> {
+    let action = match write {
+        ManyWrite::Score(score) => {
+            let score = score.unwrap_or(0.0);
+            if !(0.0..=10.0).contains(&score) {
+                return Err(CoreError::invalid(
+                    "score",
+                    format!("{score} is outside 0 to 10"),
+                ));
+            }
+            Action::Score { score }
+        }
+        ManyWrite::Status(ListStatus::Repeating) => {
+            return Err(CoreError::invalid(
+                "status",
+                "a rewatch is not a status to set by hand",
+            ));
+        }
+        ManyWrite::Status(status) => Action::Status { status },
+    };
+    let mut reachable = Vec::new();
+    let mut refused = None;
+    let mut left_out = LeftOut::default();
+    for &id in series {
+        let target = core.store.read(|c| targets(c, id))?;
+        match guard(core, &target) {
+            Ok(_) => reachable.push(target),
+            Err(e) => {
+                match &e {
+                    CoreError::Refused {
+                        reason: Refusal::Hidden,
+                    } => left_out.hidden += 1,
+                    CoreError::NotConnected { .. } => left_out.not_connected += 1,
+                    _ => left_out.no_match += 1,
+                }
+                refused.get_or_insert(e);
+            }
+        }
+    }
+    if reachable.is_empty() {
+        return Err(refused.unwrap_or_else(|| CoreError::invalid("series", "nothing picked")));
+    }
+    let kind = match action {
+        Action::Score { .. } => JobKind::Score,
+        _ => JobKind::SetStatus,
+    };
+    let owner = core
+        .arc()
+        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let jobs = owner.jobs.clone();
+    Ok(jobs.start(kind, move |ctx| async move {
+        run_many(owner, ctx, reachable, action, left_out).await
+    }))
+}
+
+async fn run_many(
+    core: Arc<Core>,
+    ctx: Arc<JobCtx>,
+    targets: Vec<Targets>,
+    action: Action,
+    left_out: LeftOut,
+) -> Result<Finished, CoreError> {
+    let total = targets.len() as u64;
+    let (mut done, mut failed) = (0u64, 0u64);
+    let mut named = None;
+    let mut landed: Vec<Tracker> = Vec::new();
+    let mut reason: Option<String> = None;
+    for (i, target) in targets.iter().enumerate() {
+        ctx.checkpoint()?;
+        ctx.progress(i as u64, Some(total), &target.folder_name);
+        let outcomes = write_all(&core, &ctx, target, &action, false).await?;
+        if outcomes.iter().any(|o| o.ok) {
+            done += 1;
+            named = Some(target.folder_name.clone());
+            for o in outcomes.iter().filter(|o| o.ok) {
+                if !landed.contains(&o.tracker) {
+                    landed.push(o.tracker);
+                }
+            }
+        } else {
+            failed += 1;
+            if reason.is_none() {
+                reason = outcomes.iter().find_map(|o| o.message.clone());
+            }
+        }
+        if let Some(card) = card_for(&core, target.series).await? {
+            ctx.changed(card);
+        }
+    }
+    landed.sort_by_key(|t| *t != Tracker::Anilist);
+    let sites = landed
+        .iter()
+        .map(|t| super::oauth::site_name(*t))
+        .collect::<Vec<_>>()
+        .join(" and ");
+    let who = match (done, named) {
+        (1, Some(name)) => name,
+        (n, _) => format!("{n} {}", crate::words::pick(n, "show", "shows")),
+    };
+    let mut said = Vec::new();
+    if done > 0 {
+        said.push(match action {
+            Action::Score { score } if score > 0.0 => format!("Scored {who} {score} on {sites}."),
+            Action::Score { .. } => format!("Cleared your score for {who} on {sites}."),
+            Action::Status { status } => {
+                format!("Set {who} to {} on {sites}.", status_label(status))
+            }
+            Action::Mark { .. } | Action::Progress { .. } | Action::Notes { .. } => {
+                unreachable!("not a many-write")
+            }
+        });
+    }
+    if failed > 0 {
+        let why = reason.map_or_else(String::new, |r| format!(": {}", r.trim_end_matches('.')));
+        said.push(if done > 0 {
+            format!("{failed} could not be updated{why}.")
+        } else {
+            format!(
+                "{failed} {} could not be updated{why}.",
+                crate::words::pick(failed, "show", "shows")
+            )
+        });
+    }
+    said.extend(left_out.lines());
+    let skipped = left_out.total();
+    Ok(Finished {
+        level: if done == 0 { Level::Warn } else { Level::Info },
+        plain: Some(said.join(" ")),
+        message: format!(
+            "{} on {} series: {done} written, {failed} failed, {skipped} left out",
+            action.verb(),
+            total + skipped
+        ),
+        body: EventBody::Notice,
+    })
+}
+
+/// The picks a many-write left out, by the guard that turned each away.
+#[derive(Clone, Copy, Debug, Default)]
+struct LeftOut {
+    no_match: u64,
+    hidden: u64,
+    not_connected: u64,
+}
+
+impl LeftOut {
+    fn total(self) -> u64 {
+        self.no_match + self.hidden + self.not_connected
+    }
+
+    /// One sentence per reason, so the line says what to do about each.
+    fn lines(self) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.no_match > 0 {
+            let n = self.no_match;
+            out.push(format!(
+                "{n} {} no tracker match.",
+                crate::words::pick(n, "show has", "shows have")
+            ));
+        }
+        if self.hidden > 0 {
+            let n = self.hidden;
+            out.push(format!(
+                "{n} {} hidden, so {} sync is off.",
+                crate::words::pick(n, "show is", "shows are"),
+                crate::words::pick(n, "its", "their")
+            ));
+        }
+        if self.not_connected > 0 {
+            let n = self.not_connected;
+            out.push(format!(
+                "{n} {} only on a tracker that is not connected.",
+                crate::words::pick(n, "show is", "shows are")
+            ));
+        }
+        out
+    }
+}
+
 /// A list status as the status pill names it.
 fn status_label(status: ListStatus) -> &'static str {
     match status {
@@ -379,11 +684,7 @@ fn cached_progress(
     target: &Targets,
     main: Tracker,
 ) -> Result<Option<u32>, CoreError> {
-    let t = match target.id_for(main) {
-        Some(_) => main,
-        None => other(main),
-    };
-    let Some(id) = target.id_for(t) else {
+    let Some((t, id)) = cached_id(target, main) else {
         return Ok(None);
     };
     let progress = conn
@@ -405,34 +706,49 @@ fn other(t: Tracker) -> Tracker {
 
 // The job --------------------------------------------------------------------
 
-/// What one write does to an entry. The four actions share a job, a read
-/// and a cache patch, so they share a type rather than four near-copies.
-#[derive(Clone, Copy, Debug)]
+/// What one write does to an entry. The actions share a job, a read and a
+/// cache patch, so they share a type rather than near-copies. `again` on a
+/// mark is a completed show finished a second time (`finished_again`).
+#[derive(Clone, Debug)]
 enum Action {
-    Mark { episode: u32 },
+    Mark { episode: u32, again: bool },
     Progress { progress: u32 },
     Score { score: f64 },
     Status { status: ListStatus },
+    Notes { notes: Option<String> },
 }
 
 impl Action {
     /// What the activity log calls this write when it fails.
-    fn verb(self) -> &'static str {
+    fn verb(&self) -> &'static str {
         match self {
             Action::Mark { .. } => "mark",
             Action::Progress { .. } => "set progress",
             Action::Score { .. } => "score",
             Action::Status { .. } => "set status",
+            Action::Notes { .. } => "save notes",
         }
     }
 }
 
 fn start(core: &Core, kind: JobKind, target: Targets, action: Action) -> Result<u64, CoreError> {
+    start_holding(core, kind, target, action, None)
+}
+
+/// `start`, with the rewatch slot the job keeps until it ends.
+fn start_holding(
+    core: &Core,
+    kind: JobKind,
+    target: Targets,
+    action: Action,
+    slot: Option<RewatchSlot>,
+) -> Result<u64, CoreError> {
     let owner = core
         .arc()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let jobs = owner.jobs.clone();
     Ok(jobs.start(kind, move |ctx| async move {
+        let _slot = slot;
         run(owner, ctx, target, action).await
     }))
 }
@@ -443,6 +759,26 @@ async fn run(
     target: Targets,
     action: Action,
 ) -> Result<Finished, CoreError> {
+    let outcomes = write_all(&core, &ctx, &target, &action, true).await?;
+    // The cache was patched by each write above, so the card built here
+    // already carries the new number. The runner flushes this before the
+    // terminal event.
+    if let Some(card) = card_for(&core, target.series).await? {
+        ctx.changed(card);
+    }
+    Ok(finished(&target, action, outcomes))
+}
+
+/// One series' write to every connected tracker its match carries an id
+/// for. `loud` says each tracker's failure in the plain log; a write over
+/// several series keeps them to the developer log and counts them instead.
+async fn write_all(
+    core: &Arc<Core>,
+    ctx: &Arc<JobCtx>,
+    target: &Targets,
+    action: &Action,
+    loud: bool,
+) -> Result<Vec<TrackerOutcome>, CoreError> {
     let mut outcomes: Vec<TrackerOutcome> = Vec::new();
     for t in [Tracker::Anilist, Tracker::Mal] {
         ctx.checkpoint()?;
@@ -459,15 +795,9 @@ async fn run(
         if row.connected_at.is_none() {
             continue;
         }
-        outcomes.push(write_one(&core, &ctx, t, &target, media_id, row.user_id, action).await);
+        outcomes.push(write_one(core, ctx, t, target, media_id, row.user_id, action, loud).await);
     }
-    // The cache was patched by each write above, so the card built here
-    // already carries the new number. The runner flushes this before the
-    // terminal event.
-    if let Some(card) = card_for(&core, target.series).await? {
-        ctx.changed(card);
-    }
-    Ok(finished(&target, action, outcomes))
+    Ok(outcomes)
 }
 
 /// The terminal's level. A write that reached a tracker and was refused by
@@ -499,7 +829,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
     let level = level_of(&outcomes);
     let sites = landed_on(&outcomes);
     match action {
-        Action::Mark { episode } => Finished {
+        Action::Mark { episode, .. } => Finished {
             plain: sites.map(|s| format!("Marked episode {episode} of {folder} on {s}.")),
             level,
             message: format!("Marked episode {episode} of {folder}"),
@@ -553,6 +883,25 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
                 },
             }
         }
+        Action::Notes { notes } => {
+            let cleared = notes.is_none();
+            Finished {
+                plain: sites.map(|s| match cleared {
+                    false => format!("Saved your notes on {folder} to {s}."),
+                    true => format!("Cleared your notes on {folder} on {s}."),
+                }),
+                level,
+                message: match cleared {
+                    false => format!("notes of {folder} saved"),
+                    true => format!("notes of {folder} cleared"),
+                },
+                body: EventBody::NotesSet {
+                    series,
+                    notes,
+                    outcomes,
+                },
+            }
+        }
     }
 }
 
@@ -560,6 +909,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
 /// tracker's alone: it becomes a `ok: false` outcome with a line the user
 /// can act on and an Error line carrying the whole message, and the job
 /// carries on to the other tracker.
+#[allow(clippy::too_many_arguments)]
 async fn write_one(
     core: &Arc<Core>,
     ctx: &Arc<JobCtx>,
@@ -567,10 +917,31 @@ async fn write_one(
     target: &Targets,
     media_id: u64,
     user_id: Option<u64>,
-    action: Action,
+    action: &Action,
+    loud: bool,
 ) -> TrackerOutcome {
     match attempt(core, ctx, t, target, media_id, user_id, action).await {
         Ok(outcome) => outcome,
+        Err(e) if !loud => {
+            ctx.emit(
+                Level::Debug,
+                format!(
+                    "{} {} failed for {}: {}",
+                    t.as_str(),
+                    action.verb(),
+                    target.folder_name,
+                    message_of(&e)
+                ),
+                EventBody::Notice,
+            );
+            TrackerOutcome {
+                tracker: t,
+                ok: false,
+                progress: None,
+                reason: None,
+                message: Some(sanitize_error(t, &e)),
+            }
+        }
         Err(e) => {
             ctx.say(
                 Level::Error,
@@ -607,18 +978,22 @@ async fn attempt(
     target: &Targets,
     media_id: u64,
     user_id: Option<u64>,
-    action: Action,
+    action: &Action,
 ) -> Result<TrackerOutcome, CoreError> {
     let token = accounts::access_token(core, t)
         .await?
         .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
-    let current = read_entry(core, t, media_id, user_id, &token).await?;
+    let entry = read_entry(core, t, media_id, user_id, &token).await?;
+    let current = entry.progress;
+    let today = today();
     match action {
-        Action::Mark { episode } => {
+        &Action::Mark { episode, again } => {
             // The monotonic rule, decided against the tracker itself: a
             // mark only ever moves progress up, and a list already past
-            // this episode is not wrong, it is ahead.
-            if current >= episode {
+            // this episode is not wrong, it is ahead. A completed show
+            // finished again is the one exception, and it counts a rewatch.
+            let rewatch = again && entry.status == Some(ListStatus::Completed);
+            if current >= episode && !rewatch {
                 return Ok(TrackerOutcome {
                     tracker: t,
                     ok: false,
@@ -627,43 +1002,20 @@ async fn attempt(
                     message: None,
                 });
             }
-            let status = if target.completes(episode) {
-                ListStatus::Completed
-            } else {
-                ListStatus::Watching
-            };
-            let stamp = send_progress(core, t, media_id, &token, episode, status).await?;
-            record_progress(core, t, media_id, episode, status, stamp).await?;
+            let progress = current.max(episode);
+            let status = watched_status(&entry, target.completes(progress));
+            let extras = plan(&entry, status, true, rewatch, today);
+            let stamp = send_progress(core, t, media_id, &token, progress, status, &extras).await?;
+            record_progress(core, t, media_id, progress, status, stamp).await?;
+            record_repeat(core, t, media_id, &extras).await?;
             // The terminal event carries every tracker's outcome, so a
             // line per tracker here would say the same thing twice.
             ctx.emit(
                 Level::Debug,
-                format!("{} {current} -> {episode} (mediaId {media_id})", t.as_str()),
-                EventBody::Notice,
-            );
-            Ok(TrackerOutcome {
-                tracker: t,
-                ok: true,
-                progress: Some(episode),
-                reason: None,
-                message: None,
-            })
-        }
-        Action::Progress { progress } => {
-            let status = if progress == 0 {
-                ListStatus::Planning
-            } else if target.completes(progress) {
-                ListStatus::Completed
-            } else {
-                ListStatus::Watching
-            };
-            let stamp = send_progress(core, t, media_id, &token, progress, status).await?;
-            record_progress(core, t, media_id, progress, status, stamp).await?;
-            ctx.emit(
-                Level::Debug,
                 format!(
-                    "{} set {current} -> {progress} (mediaId {media_id})",
-                    t.as_str()
+                    "{} {current} -> {progress} (mediaId {media_id}){}",
+                    t.as_str(),
+                    extras.tail()
                 ),
                 EventBody::Notice,
             );
@@ -675,17 +1027,54 @@ async fn attempt(
                 message: None,
             })
         }
-        Action::Score { score } => {
+        &Action::Progress { progress } => {
+            let status = if progress == 0 {
+                ListStatus::Planning
+            } else {
+                watched_status(&entry, target.completes(progress))
+            };
+            let extras = plan(&entry, status, progress > 0, false, today);
+            let stamp = send_progress(core, t, media_id, &token, progress, status, &extras).await?;
+            record_progress(core, t, media_id, progress, status, stamp).await?;
+            record_repeat(core, t, media_id, &extras).await?;
+            ctx.emit(
+                Level::Debug,
+                format!(
+                    "{} set {current} -> {progress} (mediaId {media_id}){}",
+                    t.as_str(),
+                    extras.tail()
+                ),
+                EventBody::Notice,
+            );
+            Ok(TrackerOutcome {
+                tracker: t,
+                ok: true,
+                progress: Some(progress),
+                reason: None,
+                message: None,
+            })
+        }
+        &Action::Score { score } => {
             // Rating a series whose every episode is already watched is
             // also saying it is finished, which is what the list should
             // have said all along.
             let completed = target.total.is_some_and(|total| current >= total);
-            let (sent, stamp) = send_score(core, t, media_id, &token, score, completed).await?;
+            let extras = match completed {
+                true => plan(&entry, ListStatus::Completed, false, false, today),
+                false => Extras::default(),
+            };
+            let (sent, stamp) =
+                send_score(core, t, media_id, &token, score, completed, &extras).await?;
             record_score(core, t, media_id, sent, completed, stamp).await?;
+            record_repeat(core, t, media_id, &extras).await?;
             let tail = if completed { " + completed" } else { "" };
             ctx.emit(
                 Level::Debug,
-                format!("{} score -> {sent} (mediaId {media_id}){tail}", t.as_str()),
+                format!(
+                    "{} score -> {sent} (mediaId {media_id}){tail}{}",
+                    t.as_str(),
+                    extras.tail()
+                ),
                 EventBody::Notice,
             );
             Ok(TrackerOutcome {
@@ -696,7 +1085,7 @@ async fn attempt(
                 message: None,
             })
         }
-        Action::Status { status } => {
+        &Action::Status { status } => {
             // Completed fills the list to the published total, the way a
             // rating that completes does; every other status leaves the
             // progress as the tracker has it.
@@ -705,16 +1094,18 @@ async fn attempt(
                 _ => current,
             };
             let fill = (progress != current).then_some(progress);
-            let stamp = send_list_status(core, t, media_id, &token, status, fill).await?;
+            let extras = plan(&entry, status, false, false, today);
+            let stamp = send_list_status(core, t, media_id, &token, status, fill, &extras).await?;
             // A series not on the list yet has no cached entry to patch, so
             // the entry is upserted with the progress the tracker now has.
             record_progress(core, t, media_id, progress, status, stamp).await?;
             ctx.emit(
                 Level::Debug,
                 format!(
-                    "{} status -> {} (mediaId {media_id})",
+                    "{} status -> {} (mediaId {media_id}){}",
                     t.as_str(),
-                    status.as_str()
+                    status.as_str(),
+                    extras.tail()
                 ),
                 EventBody::Notice,
             );
@@ -726,13 +1117,179 @@ async fn attempt(
                 message: None,
             })
         }
+        Action::Notes { notes } => {
+            // Notes on a show the list does not hold would add it to the
+            // list, on a list the person never picked.
+            if entry.status.is_none() {
+                return Ok(TrackerOutcome {
+                    tracker: t,
+                    ok: false,
+                    progress: None,
+                    reason: None,
+                    message: Some(format!(
+                        "Not on your {} list yet, add it to a list first.",
+                        t.label()
+                    )),
+                });
+            }
+            let stamp = send_notes(core, t, media_id, &token, notes.as_deref()).await?;
+            record_notes(core, t, media_id, notes.clone(), stamp).await?;
+            ctx.emit(
+                Level::Debug,
+                format!("{} notes saved (mediaId {media_id})", t.as_str()),
+                EventBody::Notice,
+            );
+            Ok(TrackerOutcome {
+                tracker: t,
+                ok: true,
+                progress: Some(current),
+                reason: None,
+                message: None,
+            })
+        }
     }
+}
+
+// Dates and rewatches --------------------------------------------------------
+
+/// A list entry as a write reads it first: how far it has got, its status,
+/// whether it carries a start and a finish date, and how many rewatches.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct Current {
+    pub progress: u32,
+    pub status: Option<ListStatus>,
+    pub started: bool,
+    pub finished: bool,
+    pub repeat: u32,
+}
+
+/// A calendar day, year, month and day.
+pub(crate) type Day = (i32, u8, u8);
+
+/// Today, as the tracker's dates read it. The core keeps UTC everywhere,
+/// and a tracker keeps a day with no time, so this is the UTC day.
+fn today() -> Day {
+    let t = ::time::OffsetDateTime::from_unix_timestamp(time::now_secs())
+        .unwrap_or(::time::OffsetDateTime::UNIX_EPOCH);
+    (t.year(), u8::from(t.month()), t.day())
+}
+
+/// What a write adds beside its progress and status: a start date, a
+/// finish date, and a rewatch count one up. Each is only ever filled in,
+/// never moved: a date the list already has stays as it is.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct Extras {
+    pub start: Option<Day>,
+    pub finish: Option<Day>,
+    pub repeat: Option<u32>,
+}
+
+impl Extras {
+    /// The end of the debug line, naming what rode along.
+    fn tail(&self) -> String {
+        let mut out = String::new();
+        if self.start.is_some() {
+            out.push_str(" + started");
+        }
+        if self.finish.is_some() {
+            out.push_str(" + finished");
+        }
+        if let Some(repeat) = self.repeat {
+            out.push_str(&format!(" + rewatch {repeat}"));
+        }
+        out
+    }
+}
+
+/// The status a watched count sends: Completed when it reaches the total,
+/// and otherwise Watching, or Repeating for a rewatch under way, which a
+/// mark must not quietly turn back into a first watch.
+fn watched_status(entry: &Current, completes: bool) -> ListStatus {
+    match (completes, entry.status) {
+        (true, _) => ListStatus::Completed,
+        (false, Some(ListStatus::Repeating)) => ListStatus::Repeating,
+        (false, _) => ListStatus::Watching,
+    }
+}
+
+/// The dates and the rewatch a write sends, when the list has none.
+///
+/// - The start date: the write puts the entry on Watching from another
+///   list, or it is a watched count leaving nought, so a film watched in
+///   one go gets both dates.
+/// - The finish date: the write puts the entry on Completed from another
+///   list. Completing it from the status menu says when it was finished,
+///   not when it was started, so that alone sets no start date.
+/// - The rewatch: a watched count that completes a Repeating entry, or a
+///   completed show finished again (`again`), counts one more. The status
+///   menu and a rating never count one, on either tracker: they say where
+///   the list stands, not that an episode was watched.
+pub(crate) fn plan(
+    entry: &Current,
+    sending: ListStatus,
+    watched: bool,
+    again: bool,
+    today: Day,
+) -> Extras {
+    let was = entry.status;
+    let starts = (sending == ListStatus::Watching
+        && !matches!(was, Some(ListStatus::Watching | ListStatus::Repeating)))
+        || (watched && entry.progress == 0);
+    let finishes = sending == ListStatus::Completed && was != Some(ListStatus::Completed);
+    let rewatched = sending == ListStatus::Completed
+        && watched
+        && (was == Some(ListStatus::Repeating) || (was == Some(ListStatus::Completed) && again));
+    Extras {
+        start: (starts && !entry.started).then_some(today),
+        finish: (finishes && !entry.finished).then_some(today),
+        repeat: rewatched.then(|| entry.repeat.saturating_add(1)),
+    }
+}
+
+/// The extras as AniList's variables: a `FuzzyDateInput` per date and the
+/// count. A key left out leaves the field alone.
+fn anilist_extras(variables: &mut serde_json::Value, extras: &Extras) {
+    let date =
+        |(year, month, day): Day| serde_json::json!({ "year": year, "month": month, "day": day });
+    if let Some(day) = extras.start {
+        variables["startedAt"] = date(day);
+    }
+    if let Some(day) = extras.finish {
+        variables["completedAt"] = date(day);
+    }
+    if let Some(repeat) = extras.repeat {
+        variables["repeat"] = serde_json::json!(repeat);
+    }
+}
+
+/// The same as MAL's form fields. A rewatch finished is a rewatch no longer
+/// under way, so the flag goes with the count.
+fn mal_extras(form: &mut Vec<(String, String)>, extras: &Extras) {
+    let date = |(year, month, day): Day| format!("{year:04}-{month:02}-{day:02}");
+    if let Some(day) = extras.start {
+        form.push(("start_date".to_string(), date(day)));
+    }
+    if let Some(day) = extras.finish {
+        form.push(("finish_date".to_string(), date(day)));
+    }
+    if let Some(repeat) = extras.repeat {
+        form.push(("num_times_rewatched".to_string(), repeat.to_string()));
+        form.push(("is_rewatching".to_string(), "false".to_string()));
+    }
+}
+
+/// Whether an AniList fuzzy date holds anything: a day and month with no
+/// year is still a date the person wrote, and is never written over.
+fn fuzzy_dated(date: &serde_json::Value) -> bool {
+    ["year", "month", "day"]
+        .iter()
+        .any(|k| date[*k].as_u64().is_some())
 }
 
 // The provider calls ---------------------------------------------------------
 
-/// How far the tracker itself says the user has got. An anime the user has
-/// never added is nought rather than a failure: that is exactly what a
+/// The entry as the tracker itself has it. An anime the user has never
+/// added is an empty entry rather than a failure: that is exactly what a
 /// first mark is for, on either tracker.
 async fn read_entry(
     core: &Arc<Core>,
@@ -740,7 +1297,7 @@ async fn read_entry(
     media_id: u64,
     user_id: Option<u64>,
     token: &str,
-) -> Result<u32, CoreError> {
+) -> Result<Current, CoreError> {
     match t {
         Tracker::Anilist => {
             // `MediaList(mediaId)` without the user id ignores the bearer
@@ -759,30 +1316,49 @@ async fn read_entry(
                 )
                 .await
             {
-                Ok(data) => Ok(as_count(data["MediaList"]["progress"].as_u64())),
-                Err(e) if e.is_provider_not_found() => Ok(0),
+                Ok(data) => {
+                    let entry = &data["MediaList"];
+                    Ok(Current {
+                        progress: as_count(entry["progress"].as_u64()),
+                        status: cache::normalize_status(t, entry["status"].as_str(), false),
+                        started: fuzzy_dated(&entry["startedAt"]),
+                        finished: fuzzy_dated(&entry["completedAt"]),
+                        repeat: as_count(entry["repeat"].as_u64()),
+                    })
+                }
+                Err(e) if e.is_provider_not_found() => Ok(Current::default()),
                 Err(e) => Err(e),
             }
         }
         Tracker::Mal => {
-            let url = format!("{MAL_API}/anime/{media_id}?fields=my_list_status");
+            let url = format!(
+                "{MAL_API}/anime/{media_id}?fields=my_list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,start_date,finish_date}}"
+            );
             let response = core.mal.get(&url, token).await?;
             if response.status == 404 {
-                return Ok(0);
+                return Ok(Current::default());
             }
             if !response.is_success() {
                 return Err(mal_failure(&response));
             }
             let body: serde_json::Value = response.json()?;
-            Ok(as_count(
-                body["my_list_status"]["num_episodes_watched"].as_u64(),
-            ))
+            let list = &body["my_list_status"];
+            let dated = |key: &str| list[key].as_str().is_some_and(|d| !d.is_empty());
+            Ok(Current {
+                progress: as_count(list["num_episodes_watched"].as_u64()),
+                status: cache::normalize_status(
+                    t,
+                    list["status"].as_str(),
+                    list["is_rewatching"].as_bool().unwrap_or(false),
+                ),
+                started: dated("start_date"),
+                finished: dated("finish_date"),
+                repeat: as_count(list["num_times_rewatched"].as_u64()),
+            })
         }
     }
 }
 
-/// The progress and the status, answering with the tracker's own stamp for
-/// the write when its reply carried one.
 /// An entry as the tracker has it now, with the media's airing state, for
 /// On hold's last look before a status write. `None` is an entry the list
 /// no longer holds. MAL has no broadcast schedule, so its `next` is empty
@@ -854,6 +1430,9 @@ pub(crate) async fn read_live(
     }
 }
 
+/// The progress and the status, with whatever dates and rewatch count ride
+/// along, answering with the tracker's own stamp for the write when its
+/// reply carried one.
 async fn send_progress(
     core: &Arc<Core>,
     t: Tracker,
@@ -861,10 +1440,12 @@ async fn send_progress(
     token: &str,
     progress: u32,
     status: ListStatus,
+    extras: &Extras,
 ) -> Result<Option<i64>, CoreError> {
     match t {
         Tracker::Anilist => {
-            let variables = serde_json::json!({ "mediaId": media_id, "progress": progress, "status": anilist_status(status) });
+            let mut variables = serde_json::json!({ "mediaId": media_id, "progress": progress, "status": anilist_status(status) });
+            anilist_extras(&mut variables, extras);
             let data = core
                 .anilist
                 .graphql_within(
@@ -877,10 +1458,11 @@ async fn send_progress(
             Ok(anilist_stamp(&data))
         }
         Tracker::Mal => {
-            let form = vec![
+            let mut form = vec![
                 ("num_watched_episodes".to_string(), progress.to_string()),
                 ("status".to_string(), mal_status(status).to_string()),
             ];
+            mal_extras(&mut form, extras);
             let response = core
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)
@@ -922,6 +1504,7 @@ async fn send_score(
     token: &str,
     score: f64,
     completed: bool,
+    extras: &Extras,
 ) -> Result<(f64, Option<i64>), CoreError> {
     match t {
         Tracker::Anilist => {
@@ -933,6 +1516,7 @@ async fn send_score(
                 variables["status"] =
                     serde_json::Value::String(anilist_status(ListStatus::Completed).to_string());
             }
+            anilist_extras(&mut variables, extras);
             let data = core
                 .anilist
                 .graphql_within(SAVE_SCORE_MUTATION, variables, Some(token), TRACKER_TIMEOUT)
@@ -948,6 +1532,7 @@ async fn send_score(
                     mal_status(ListStatus::Completed).to_string(),
                 ));
             }
+            mal_extras(&mut form, extras);
             let response = core
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)
@@ -1011,12 +1596,27 @@ async fn send_list_status(
     token: &str,
     status: ListStatus,
     fill: Option<u32>,
+    extras: &Extras,
 ) -> Result<Option<i64>, CoreError> {
     match (t, fill) {
         (Tracker::Anilist, Some(progress)) => {
-            send_progress(core, t, media_id, token, progress, status).await
+            send_progress(core, t, media_id, token, progress, status, extras).await
         }
-        (Tracker::Anilist, None) => send_status(core, t, media_id, token, status).await,
+        (Tracker::Anilist, None) => {
+            let mut variables =
+                serde_json::json!({ "mediaId": media_id, "status": anilist_status(status) });
+            anilist_extras(&mut variables, extras);
+            let data = core
+                .anilist
+                .graphql_within(
+                    SAVE_LIST_STATUS_MUTATION,
+                    variables,
+                    Some(token),
+                    TRACKER_TIMEOUT,
+                )
+                .await?;
+            Ok(anilist_stamp(&data))
+        }
         (Tracker::Mal, fill) => {
             let mut form = vec![
                 ("status".to_string(), mal_status(status).to_string()),
@@ -1025,6 +1625,40 @@ async fn send_list_status(
             if let Some(progress) = fill {
                 form.push(("num_watched_episodes".to_string(), progress.to_string()));
             }
+            mal_extras(&mut form, extras);
+            let response = core
+                .mal
+                .patch_form(&list_status_url(media_id), token, form)
+                .await?;
+            if !response.is_success() {
+                return Err(mal_failure(&response));
+            }
+            Ok(mal_stamp(&response))
+        }
+    }
+}
+
+/// The entry's notes alone: AniList's notes, MAL's comments. None clears
+/// them, which both trackers read from an empty string.
+async fn send_notes(
+    core: &Arc<Core>,
+    t: Tracker,
+    media_id: u64,
+    token: &str,
+    notes: Option<&str>,
+) -> Result<Option<i64>, CoreError> {
+    let text = notes.unwrap_or("").to_string();
+    match t {
+        Tracker::Anilist => {
+            let variables = serde_json::json!({ "mediaId": media_id, "notes": text });
+            let data = core
+                .anilist
+                .graphql_within(SAVE_NOTES_MUTATION, variables, Some(token), TRACKER_TIMEOUT)
+                .await?;
+            Ok(anilist_stamp(&data))
+        }
+        Tracker::Mal => {
+            let form = vec![("comments".to_string(), text)];
             let response = core
                 .mal
                 .patch_form(&list_status_url(media_id), token, form)
@@ -1099,6 +1733,39 @@ async fn record_score(
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_score(tx, t, media_id, rated, status, stamp, now)
+        })
+        .await
+}
+
+/// The rewatch count a write sent, when it sent one.
+async fn record_repeat(
+    core: &Arc<Core>,
+    t: Tracker,
+    media_id: u64,
+    extras: &Extras,
+) -> Result<(), CoreError> {
+    let Some(repeat) = extras.repeat else {
+        return Ok(());
+    };
+    let now = time::now_secs();
+    core.store
+        .write_async(move |c| cache::patch_repeat(c, t, media_id, repeat, now))
+        .await
+}
+
+/// The same for a notes write.
+async fn record_notes(
+    core: &Arc<Core>,
+    t: Tracker,
+    media_id: u64,
+    notes: Option<String>,
+    stamp: Option<i64>,
+) -> Result<(), CoreError> {
+    let now = time::now_secs();
+    core.store
+        .tx_async(move |tx| {
+            mark_synced(tx, t, now)?;
+            cache::patch_notes(tx, t, media_id, notes.as_deref(), stamp, now)
         })
         .await
 }
@@ -1244,6 +1911,98 @@ mod tests {
         assert_eq!(
             sanitize(Tracker::Anilist, None, None, None, ""),
             "AniList error, see activity log."
+        );
+    }
+
+    const DAY: Day = (2026, 11, 6);
+
+    fn entry(progress: u32, status: Option<ListStatus>, dated: bool, repeat: u32) -> Current {
+        Current {
+            progress,
+            status,
+            started: dated,
+            finished: dated,
+            repeat,
+        }
+    }
+
+    /// Dates are only ever filled in: a list that has one keeps it,
+    /// whatever the write.
+    #[test]
+    fn a_date_the_list_has_is_never_moved() {
+        let dated = entry(0, None, true, 0);
+        assert_eq!(
+            plan(&dated, ListStatus::Completed, true, false, DAY),
+            Extras::default()
+        );
+    }
+
+    /// A film watched in one go starts and finishes the same day; the
+    /// status menu's Completed dates the finish alone.
+    #[test]
+    fn a_watched_count_from_nought_starts_and_the_menu_only_finishes() {
+        let fresh = entry(0, Some(ListStatus::Planning), false, 0);
+        assert_eq!(
+            plan(&fresh, ListStatus::Completed, true, false, DAY),
+            Extras {
+                start: Some(DAY),
+                finish: Some(DAY),
+                repeat: None
+            }
+        );
+        assert_eq!(
+            plan(&fresh, ListStatus::Completed, false, false, DAY),
+            Extras {
+                start: None,
+                finish: Some(DAY),
+                repeat: None
+            }
+        );
+        // Watching from the menu starts it; staying on Watching does not.
+        assert_eq!(
+            plan(&fresh, ListStatus::Watching, false, false, DAY).start,
+            Some(DAY)
+        );
+        let watching = entry(4, Some(ListStatus::Watching), false, 0);
+        assert_eq!(
+            plan(&watching, ListStatus::Watching, true, false, DAY),
+            Extras::default()
+        );
+    }
+
+    /// A rewatch counts when one finishes: from Repeating, or a completed
+    /// show finished again. Completed alone, without the evidence, is not one.
+    #[test]
+    fn a_rewatch_counts_once_it_finishes() {
+        let repeating = entry(11, Some(ListStatus::Repeating), true, 2);
+        assert_eq!(
+            plan(&repeating, ListStatus::Completed, true, false, DAY).repeat,
+            Some(3)
+        );
+        assert_eq!(
+            plan(&repeating, ListStatus::Repeating, true, false, DAY).repeat,
+            None
+        );
+        let done = entry(12, Some(ListStatus::Completed), true, 0);
+        assert_eq!(
+            plan(&done, ListStatus::Completed, true, true, DAY).repeat,
+            Some(1)
+        );
+        assert_eq!(
+            plan(&done, ListStatus::Completed, true, false, DAY).repeat,
+            None
+        );
+    }
+
+    /// A mark on a rewatch under way stays Repeating until it completes.
+    #[test]
+    fn a_watched_count_keeps_a_rewatch_under_way() {
+        let repeating = entry(3, Some(ListStatus::Repeating), true, 1);
+        assert_eq!(watched_status(&repeating, false), ListStatus::Repeating);
+        assert_eq!(watched_status(&repeating, true), ListStatus::Completed);
+        assert_eq!(
+            watched_status(&Current::default(), false),
+            ListStatus::Watching
         );
     }
 

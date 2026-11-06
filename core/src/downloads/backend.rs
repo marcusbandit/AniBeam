@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::releases::BestfitConfig;
 use crate::releases::native::Native;
 
 use super::anirss::{Analysis, AnirssClient, SearchRaw};
@@ -29,6 +30,17 @@ pub fn engine(core: &Core) -> Result<DownloadsEngine, CoreError> {
     Ok(core.store.read(settings::load_stored)?.engine)
 }
 
+/// What best fit ranks by on the desktop's native engine: the preferences saved in the
+/// config of the anirss AniBeam runs, as anirss itself ranks (#545). A remote anirss keeps
+/// its config on its own machine, and a missing file leaves the core's own ranking: None.
+fn saved_bestfit(core: &Core) -> Result<Option<BestfitConfig>, CoreError> {
+    let mode = core.store.read(settings::load_stored)?.anirss_mode;
+    if mode == AnirssMode::Remote {
+        return Ok(None);
+    }
+    Ok(settings::anirss_config_path().and_then(|p| settings::anirss_bestfit(&p)))
+}
+
 impl DownloadsBackend {
     /// The backend the settings pick.
     pub async fn open(core: &Arc<Core>) -> Result<DownloadsBackend, CoreError> {
@@ -44,7 +56,7 @@ impl DownloadsBackend {
         match engine {
             DownloadsEngine::Anirss => ensure_client(core).await.map(DownloadsBackend::Anirss),
             DownloadsEngine::Native => {
-                let native = Native::for_core(core, Vec::new());
+                let native = Native::for_core(core, Vec::new(), saved_bestfit(core)?);
                 tracing::debug!(
                     "searching on the core's engine: {} endpoints",
                     native.endpoints.len()

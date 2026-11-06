@@ -2,7 +2,8 @@
 // themselves on this computer's Tailscale addresses while sharing is on. The page says what
 // the phone gets before the switch, then whether the headless host service keeps it
 // reachable with this window closed, then the addresses the phone app should be given, one
-// row each, with Copy.
+// row each, with Copy. Below them, every device on the tailnet with a switch: all are
+// trusted until the person switches one off, and one switched off gets nothing.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -27,7 +28,25 @@ SettingsTab {
     readonly property string enableCommand: "systemctl --user enable --now anibeam-host"
     // "serving", "waiting" while this window has the library, or empty with no service.
     property string service: ""
-    Component.onCompleted: { reloadHost(); service = Shell.hostService() }
+    property var devices: []
+    function reloadDevices() { var r = Door.call("ListTailnetDevices", {}); if (!r.error) devices = r.reply.devices }
+    function setTrusted(device, on) {
+        var r = Door.call("SetTailnetDeviceTrust", { device: device, trusted: on })
+        if (r.error) frame.toast(r.error.message)
+        reloadDevices()
+    }
+    function deviceLine(d) {
+        // Tailscale's own words for the system, as people write them
+        var names = { linux: "Linux", windows: "Windows", android: "Android", ios: "iOS", macos: "macOS", freebsd: "FreeBSD", openbsd: "OpenBSD" }
+        var os = names[d.os.toLowerCase()] || d.os
+        var parts = []
+        if (os !== "") parts.push(os)
+        parts.push(d.online ? "Online" : "Offline")
+        if (!d.trusted) parts.push("Gets nothing from this computer")
+        return parts.join(" · ")
+    }
+    Component.onCompleted: { reloadHost(); reloadDevices(); service = Shell.hostService() }
+    Connections { target: Door; function onTailnetDevicesChanged(devices) { tab.devices = devices } }
     Connections { target: Door; function onHostChanged(status) { tab.host = status } }
     readonly property bool on: !!Door.preferences.share_over_tailscale
 
@@ -68,6 +87,24 @@ SettingsTab {
                 visible: tab.service === ""
                 text: "Copy command"; icon: "copy"; flat: true; small: true
                 onClicked: frame.copyText(tab.enableCommand, "Command copied")
+            }
+        }
+    }
+    Panel {
+        objectName: "settings-tailnet-devices"
+        visible: tab.devices.length > 0
+        title: "Devices on your tailnet"
+        helper: "Every device on your tailnet can reach this computer while sharing is on. Switch one off and it gets nothing from here."
+        Repeater {
+            model: tab.devices
+            SettingRow {
+                required property var modelData
+                label: modelData.name
+                line: tab.deviceLine(modelData)
+                Switch {
+                    checked: modelData.trusted
+                    onToggled: function(on) { tab.setTrusted(modelData.id, on) }
+                }
             }
         }
     }

@@ -330,6 +330,13 @@ impl Core {
         self.host.set_bind(bind);
     }
 
+    /// The `tailscale status --json` document this core's host reads in place
+    /// of asking the CLI, for a test. Not part of the contract.
+    #[doc(hidden)]
+    pub fn set_tailscale_status(&self, json: Option<Vec<u8>>) {
+        self.host.set_status(json);
+    }
+
     /// Keeps the tailnet host serving whatever "Share over Tailscale" says,
     /// for a shell that exists to serve other devices, or hands it back to
     /// the preference. Works before `start` too: the host then comes up with
@@ -760,6 +767,7 @@ impl Core {
             }
             Call::GetSeries { series } => reads::get_series(self, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
+            Call::ActOnSeries { series, action } => self.act_on_series(series, action),
             Call::ParseSchedule { text } => Ok(crate::library::schedule::parse_call(&text)),
             Call::SetScheduleNotes {
                 series,
@@ -833,13 +841,20 @@ impl Core {
             }),
             Call::SetPreferences { preferences } => {
                 prefs::validate_preferences(&preferences)?;
-                let p = preferences.clone();
-                let before = self.store.write(move |c| {
+                let p = preferences;
+                let (before, preferences) = self.store.write(move |c| {
                     let before = prefs::load_preferences(c)?;
+                    // Only SetTailnetDeviceTrust changes which devices are off,
+                    // so a stale copy of the preferences saved from a page
+                    // can never switch a device back on.
+                    let mut p = p;
+                    p.tailnet_switched_off = before.tailnet_switched_off.clone();
                     prefs::save_preferences(c, &p)?;
-                    Ok(before)
+                    Ok((before, p))
                 })?;
                 self.host.set_streaming(preferences.stream_over_tailscale);
+                self.host
+                    .set_switched_off(preferences.tailnet_switched_off.clone());
                 self.host.follow(self, preferences.share_over_tailscale);
                 crate::presence::set_enabled(self, preferences.discord_presence);
                 if before.calendar_feed != preferences.calendar_feed {
@@ -862,6 +877,28 @@ impl Core {
             Call::GetHost => Ok(Reply::Host {
                 status: self.host.status(),
             }),
+            Call::ListTailnetDevices => Ok(Reply::TailnetDevices {
+                devices: crate::host::devices(self),
+            }),
+            Call::SetTailnetDeviceTrust { device, trusted } => {
+                let preferences = self.store.write(move |c| {
+                    let mut p = prefs::load_preferences(c)?;
+                    p.tailnet_switched_off.retain(|d| *d != device);
+                    if !trusted {
+                        p.tailnet_switched_off.push(device);
+                    }
+                    prefs::save_preferences(c, &p)?;
+                    Ok(p)
+                })?;
+                self.host
+                    .set_switched_off(preferences.tailnet_switched_off.clone());
+                self.bus.debug(
+                    Stage::Store,
+                    "preferences changed",
+                    EventBody::PreferencesChanged { preferences },
+                );
+                Ok(Reply::Ok)
+            }
             Call::GetPresence => Ok(Reply::Presence {
                 available: self.presence.available(),
                 connected: self.presence.connected(),
@@ -933,6 +970,9 @@ impl Core {
             Call::SetListStatus { series, status } => Ok(Reply::Started {
                 job: writes::set_list_status(self, series, status)?,
             }),
+            Call::SetSeriesNotes { series, notes } => Ok(Reply::Started {
+                job: writes::set_notes(self, series, &notes)?,
+            }),
             // Nothing to check up front: an unconnected or a fresh tracker
             // is the job's own skip, not a refusal.
             Call::RefreshProgress { tracker } => {
@@ -947,6 +987,7 @@ impl Core {
             // with a network side effect made every library change an
             // AniList request. The page asks for a refresh on its own.
             Call::ListWatching => watching::list_call(self),
+            Call::ListPlanning => watching::planning_call(self),
             Call::RefreshWatching { force } => watching::refresh_call(self, force),
             // Airing now reads its own tables, like Watching: the list call
             // answers off the cache and the page asks for a refresh itself.
@@ -1217,6 +1258,60 @@ impl Core {
             Call::Import { path } => Ok(Reply::Started {
                 job: transfer::import::start(self, &path)?,
             }),
+        }
+    }
+
+    /// `Call::ActOnSeries` (#208): every id checked first, so a pick that is
+    /// gone fails the whole call before anything is written.
+    fn act_on_series(&self, series: Vec<u64>, action: SeriesAction) -> Result<Reply, CoreError> {
+        let mut picks: Vec<u64> = Vec::with_capacity(series.len());
+        for id in series {
+            if !picks.contains(&id) {
+                picks.push(id);
+            }
+        }
+        if picks.is_empty() {
+            return Err(CoreError::invalid("series", "nothing picked"));
+        }
+        // One read for every id, however many were picked
+        let there: std::collections::HashSet<u64> = self.store.read(|c| {
+            let sql = format!(
+                "SELECT id FROM series WHERE id IN ({})",
+                crate::store::sql::placeholders(picks.len())
+            );
+            let mut stmt = c.prepare(&sql)?;
+            let ids = stmt
+                .query_map(
+                    rusqlite::params_from_iter(picks.iter().map(|id| *id as i64)),
+                    |r| r.get::<_, i64>(0),
+                )?
+                .map(|id| id.map(|id| id as u64))
+                .collect::<Result<_, _>>()?;
+            Ok(ids)
+        })?;
+        if let Some(&id) = picks.iter().find(|id| !there.contains(id)) {
+            return Err(CoreError::NotFound {
+                what: Entity::Series,
+                id,
+            });
+        }
+        match action {
+            SeriesAction::Hide { hidden } => reads::set_hidden_many(self, &picks, hidden),
+            SeriesAction::Rescan => scan::rescan_many(self, &picks),
+            SeriesAction::Score { score } => Ok(Reply::Started {
+                job: writes::start_many(self, &picks, writes::ManyWrite::Score(score))?,
+            }),
+            SeriesAction::ListStatus { status } => Ok(Reply::Started {
+                job: writes::start_many(self, &picks, writes::ManyWrite::Status(status))?,
+            }),
+            SeriesAction::FindMatch => {
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: automatch::start_for(&core, picks),
+                })
+            }
         }
     }
 
