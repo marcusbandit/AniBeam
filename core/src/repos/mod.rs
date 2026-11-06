@@ -2064,6 +2064,7 @@ mod tests {
             client_side_refine: false,
             on_demand: None,
             running: None,
+            followable: true,
         };
         // An anirss that does not list endpoint writes has no endpoint API, whatever its
         // version says: nothing is sent.
