@@ -842,6 +842,11 @@ FocusScope {
     // A list status is the trackers': it is offered for a series that a connected tracker
     // carries an id for, and not for a hidden one, whose tracker sync is off. A match with only
     // an AniList id and only MAL connected has nowhere to write, so it gets no menu.
+    // A series AniBeam put a name to: any provider id at all. Show info's sections and Help's
+    // count both read it, so the two never disagree.
+    function hasMatch(card) {
+        return !!card && !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
+    }
     function trackerOn(t) { return !!Door.trackers && !!Door.trackers[t] && Door.trackers[t].connected === true }
     function canSetListStatus(c) {
         if (!c || c.hidden || !c.match_info) return false
