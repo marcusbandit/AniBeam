@@ -33,7 +33,8 @@ const SERVICE: &str = "AniBeam";
 /// into (anirss's fallback name).
 const FALLBACK_NAME: &str = "anirss";
 
-/// How long fetching the .torrent files before an add may take in all.
+/// How long fetching the .torrent files before an add may take in all. anirss 0.7.1
+/// `api.py` `FETCH_DEADLINE_S`.
 const FETCH_DEADLINE: Duration = Duration::from_secs(20);
 
 fn not_found(message: String) -> CoreError {
