@@ -71,6 +71,10 @@ pub mod qobject {
         // Library
         #[qinvokable]
         fn list_sources(self: &Door) -> QJsonObject;
+        /// What the first scan of the folder at `path` found (#206, scan_summary): shows,
+        /// recognised, need_you (id, title, match_info, in title order), episodes, watched.
+        #[qinvokable]
+        fn scan_summary(self: &Door, path: &QString) -> QJsonObject;
         #[qinvokable]
         fn add_source(self: &Door, path: &QString) -> QJsonObject;
         #[qinvokable]
@@ -1521,6 +1525,23 @@ impl qobject::Door {
                 reveal_hidden,
             })
         })())
+    }
+    pub fn scan_summary(&self, path: &QString) -> QJsonObject {
+        let reply = from_qjson_object(&self.dispatch(Ok(Call::ListSeries {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: true,
+        })));
+        if reply.get("error").is_some() {
+            return to_qjson_object(&reply);
+        }
+        let series = reply["reply"]["series"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        to_qjson_object(&crate::scan_summary::summarise(&series, &path.to_string()))
     }
     pub fn list_airing(&self, offset: f64, limit: f64) -> QJsonObject {
         self.dispatch(Ok(Call::ListAiring {

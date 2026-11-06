@@ -146,6 +146,10 @@ _Avoid_: hidden, ignored, blocked, dismissed
 The moment an episode of a show on the Watching list airs, said once by the core from the schedule it keeps, with no polling. The desktop shows it as a notification unless Settings turned that off.
 _Avoid_: new episode alert, release notification, reminder
 
+**Stats**:
+A year of watching added up from the episode history: hours, episodes and series finished by month, the top genres, studios and seasons. The recap is the one card for the year that saves as an image.
+_Avoid_: analytics, insights, wrapped, report
+
 **Planning list**:
 The shows on the AniList Planning list, read off the same refresh as the watching list and shown as the second tab of Watching. Each says whether the library has it; Start watching moves one to Watching and plays its first episode.
 _Avoid_: plan to watch list, backlog, queue
@@ -191,7 +195,7 @@ One entry a search endpoint returns: a title, a link (a magnet or a `.torrent` U
 _Avoid_: torrent (that is what it becomes once added), result, item, entry
 
 **Release facts**:
-What the core reads off a release's title beside anirss's fields: the episode (and season), whether it is a batch, the release group, the resolution, the size in bytes, and whether the library series the search names already has that episode (On disk). A title the core cannot read gets no episode, never episode 1. The date each release was posted, and a torznab feed's counts, come from the core's own read of the feed the search used, after the search answers.
+What the core reads off a release's title beside anirss's fields: the episode (and season), whether it is a batch, the release group, the resolution, the size in bytes, and whether the library series the search names already has that episode (On disk). A file whose torrent the core has seen (its file origin, recorded from the torrent client after a scan brings files in or when the Downloads page reads the client) is on disk only for that torrent, matched by the magnet's hash or by the torrent's name; a file with no origin is matched by its name. A title the core cannot read gets no episode, never episode 1. The date each release was posted, and a torznab feed's counts, come from the core's own read of the feed the search used, after the search answers.
 _Avoid_: metadata, parsed info
 
 **On-demand endpoint**:
