@@ -39,14 +39,14 @@ Panel {
         root.busy = false
         var c = replyOf(r, "EndpointCatalog")
         if (c) { root.catalog = c.catalog; root.error = ""; return true }
-        if (r && r.error) root.error = frame.plainText(r.error)
+        if (r && r.error) { root.error = frame.plainText(r.error); root.errorFix = r.error.fix }
         return false
     }
     // Replies to calls run off the Qt thread, by token.
     property var waiting: ({})
     function later(call, args, done) {
         var t = Door.callAsync(call, args)
-        if (t < 0) { root.busy = false; root.error = "AniBeam could not start that. Try again in a moment."; return }
+        if (t < 0) { root.busy = false; root.error = "AniBeam could not start that. Try again in a moment."; root.errorFix = "retry"; return }
         root.waiting[t] = done
     }
     Connections {
@@ -60,6 +60,8 @@ Panel {
     }
     // What the error line's Try again runs: the last load, refresh or add
     property var again: null
+    // The bridge's fix for the error shown: Try again only where trying again can help
+    property var errorFix: undefined
     function load() { root.again = root.load; take(Door.call("ListRepoEndpoints", {})) }
     function refresh() { root.again = root.refresh; root.busy = true; later("RefreshEndpointRepos", {}, root.take) }
     function add() {
@@ -70,7 +72,7 @@ Panel {
             root.busy = false
             var p = replyOf(r, "EndpointRepoPreview")
             if (p) root.preview = p.preview
-            else if (r.error) root.error = frame.plainText(r.error)
+            else if (r.error) { root.error = frame.plainText(r.error); root.errorFix = r.error.fix }
         })
     }
     function trust() {
@@ -175,7 +177,7 @@ Panel {
         width: parent ? parent.width : theme.space(100)
         spacing: theme.space(2)
         Note { width: Math.min(implicitWidth, parent.width - (retry.visible ? retry.width + theme.space(2) : 0)); text: root.error; color: theme.red; anchors.verticalCenter: parent.verticalCenter }
-        Button { id: retry; objectName: "repos-try-again"; visible: !!root.again && !root.busy; text: "Try again"; icon: "refresh-cw"; flat: true; small: true; onClicked: root.again() }
+        Button { id: retry; objectName: "repos-try-again"; visible: !!root.again && !root.busy && (root.errorFix === undefined || root.errorFix === "retry"); text: "Try again"; icon: "refresh-cw"; flat: true; small: true; onClicked: root.again() }
     }
 
     // What an install asks for.
