@@ -113,7 +113,8 @@ const SHOWS_SQL: &str = "SELECT s.anilist_id, s.mal_id, s.title_romaji, s.title_
           (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker
             WHERE t.tracker = 'anilist' AND t.media_id = s.anilist_id AND a.connected_at IS NOT NULL),
           (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker
-            WHERE t.tracker = 'mal' AND t.media_id = s.mal_id AND a.connected_at IS NOT NULL)),
+            WHERE t.tracker = 'mal' AND t.media_id = s.mal_id AND a.connected_at IS NOT NULL),
+          (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = s.anilist_id ORDER BY ls.id LIMIT 1)),
         b.path
      FROM season_shows s
      LEFT JOIN images i ON i.url = s.cover_url

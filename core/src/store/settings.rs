@@ -10,6 +10,8 @@ pub const MAIN_TRACKER: &str = "main_tracker";
 pub const AUTO_MATCH_VERSION: &str = "auto_match_version";
 pub const WATCHING_FETCHED_AT: &str = "watching_fetched_at";
 pub const PROVIDER_ORDER: &str = "provider_order";
+/// Unix seconds: every followed episode that aired up to here has been said (#212).
+pub const EPISODES_OUT_AT: &str = "episodes_out_at";
 /// When the IMDb dump was last fetched or confirmed unchanged, in Unix
 /// seconds, and the `Last-Modified` it came with, sent back as
 /// `If-Modified-Since` so an unchanged dump costs a 304 rather than 8 MB.

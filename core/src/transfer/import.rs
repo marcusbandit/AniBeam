@@ -331,6 +331,26 @@ async fn import_series(
                         params![id as i64, n as i64, entry.episodes_set_season.map(|s| s as i64)],
                     )?;
                 }
+                // The file wins on the list kept here, as it does on the flag. A
+                // status this version does not know is named and left out.
+                if let Some(list) = &entry.list {
+                    let status = list.status.as_deref().map(|raw| {
+                        ListStatus::from_column(raw).filter(|s| *s != ListStatus::Repeating)
+                    });
+                    if status.is_some_and(|s| s.is_none()) {
+                        ignored.push(format!("series[{n}].list.status"));
+                    }
+                    tx.execute(
+                        "INSERT OR REPLACE INTO local_entries (series_id, status, score, updated_at)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![
+                            id as i64,
+                            status.flatten().map(ListStatus::as_str),
+                            list.score.filter(|s| (0.0..=10.0).contains(s) && *s > 0.0),
+                            now
+                        ],
+                    )?;
+                }
                 if apply_fixes(tx, &path, kind, &entry.fixes, now, &mut moves)? {
                     unscanned.push(id);
                 }
@@ -945,6 +965,8 @@ async fn import_preferences(
                 discord_presence: current.discord_presence,
                 // So is a calendar file on this machine's disk.
                 calendar_feed: current.calendar_feed,
+                // And so is whether its desktop says when an episode is out.
+                episode_notifications: current.episode_notifications,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

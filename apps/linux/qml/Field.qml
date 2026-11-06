@@ -51,6 +51,9 @@ Corner {
         selectedTextColor: theme.text
         clip: true
         onEditingFinished: root.edited(text)
+        // Not being edited, a value longer than the field shows its start, not its end: an
+        // address reads "http://local..." rather than "...ost:8080". The caret stays put.
+        autoScroll: activeFocus
         Text {
             anchors.fill: parent
             verticalAlignment: Text.AlignVCenter

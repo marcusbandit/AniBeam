@@ -4,7 +4,8 @@
 //! and writes rules and torrents to qBittorrent itself (`native`). Both
 //! answer in the shapes the handlers already read from anirss, so the
 //! facts, the library link and the dating that follow are the same for
-//! either. The endpoint list stays anirss's whichever runs (#119).
+//! either. The endpoint list is anirss's on anirss and the core's own sources
+//! on the native engine, which never starts anirss (#549).
 
 use std::sync::Arc;
 
@@ -244,12 +245,17 @@ impl DownloadsBackend {
                 .endpoints
                 .iter()
                 .find(|e| e.name == endpoint)
-                .is_some_and(|e| e.kind != "nyaa" && !e.url.contains("erai-raws")),
+                .is_some_and(|e| {
+                    e.kind != crate::releases::kinds::FILTERED_RSS && !e.url.contains("erai-raws")
+                }),
             DownloadsBackend::Native(native, _) => native
                 .endpoints
                 .iter()
                 .find(|e| e.name == endpoint)
-                .is_some_and(|e| e.kind != "nyaa" && !crate::releases::erai::is_erai(e)),
+                .is_some_and(|e| {
+                    e.kind != crate::releases::kinds::FILTERED_RSS
+                        && !crate::releases::erai::is_erai(e)
+                }),
         }
     }
 }
