@@ -839,9 +839,9 @@ FocusScope {
         if (frame.canSetListStatus(c)) out = out.concat(frame.listStatusItems(c.id, c.list_status))
         return out
     }
-    // A list status is the trackers': it is offered for a series that a connected tracker
-    // carries an id for, and not for a hidden one, whose tracker sync is off. A match with only
-    // an AniList id and only MAL connected has nowhere to write, so it gets no menu.
+    // A list status is offered for every series but a hidden one, whose tracker sync is off. It
+    // goes to every connected tracker that carries an id for the series, and stays on this
+    // device when none does (#213).
     // A series AniBeam put a name to: any provider id at all. Show info's sections and Help's
     // count both read it, so the two never disagree.
     function hasMatch(card) {
@@ -849,8 +849,21 @@ FocusScope {
     }
     function trackerOn(t) { return !!Door.trackers && !!Door.trackers[t] && Door.trackers[t].connected === true }
     function canSetListStatus(c) {
-        if (!c || c.hidden || !c.match_info) return false
+        return !!c && !c.hidden
+    }
+    // Whether a series' status and score reach a tracker, or stay on this device (#213): a
+    // series with no match, or with no account behind its ids, keeps them here
+    function listsOnline(c) {
+        if (!c || !c.match_info) return false
         return (frame.trackerOn("anilist") && !!c.match_info.anilist_id) || (frame.trackerOn("mal") && !!c.match_info.mal_id)
+    }
+    // Where a series' status and score go, in a line for a tooltip
+    function listHome(c) {
+        if (frame.listsOnline(c)) return "Change it on each list that is connected"
+        var m = c && c.match_info
+        if (!m || (!m.anilist_id && !m.mal_id)) return "Kept on this device: no tracker carries this show"
+        if (frame.trackerOn("anilist") || frame.trackerOn("mal")) return "Kept on this device: your tracker does not carry this show"
+        return "Kept on this device until you connect AniList or MyAnimeList"
     }
     // The five lists a status pill or a card's right-click moves a series to, the one it is on
     // already greyed out. The core writes it to every connected tracker.
@@ -869,7 +882,8 @@ FocusScope {
     function setListStatus(id, status, label) {
         var r = Door.call("SetListStatus", { series: id, status: status })
         if (r.error) { frame.fail(r.error); return false }
-        frame.toast("Moving to " + label)
+        // No job is the list kept on this device, already moved
+        frame.toast(r.reply && r.reply.job !== undefined ? "Moving to " + label : "Moved to " + label)
         return true
     }
     // Text onto the clipboard, and a word that it went

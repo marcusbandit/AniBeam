@@ -35,7 +35,9 @@ use crate::net::anilist::{
 };
 use crate::prefs;
 use crate::time;
-use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, on_hold};
+use crate::trackers::{
+    NO_TOKEN, TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, on_hold,
+};
 
 /// MAL's list API. AniList's address lives with its queries.
 const MAL_API: &str = "https://api.myanimelist.net/v2";
@@ -411,7 +413,11 @@ fn mark_here(core: &Core, series: u64, progress: u32, season: u32) -> Result<(),
 /// Rates a series out of ten on every connected tracker. `None` is the
 /// Clear button, which is a score of nought on both rather than a call of
 /// its own.
-pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<u64, CoreError> {
+///
+/// A series no connected tracker carries keeps its score on this device
+/// instead (#213), at once and with no job: None then, where a tracker
+/// write answers with its job.
+pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<Option<u64>, CoreError> {
     let target = core.store.read(|c| targets(c, series))?;
     let score = score.unwrap_or(0.0);
     if !(0.0..=10.0).contains(&score) {
@@ -420,14 +426,29 @@ pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<u64, Co
             format!("{score} is outside 0 to 10"),
         ));
     }
-    guard(core, &target)?;
-    start(core, JobKind::Score, target, Action::Score { score })
+    if kept_here(core, &target)? {
+        let now = time::now_secs();
+        // Nought is unrated here as it is on a tracker.
+        let rated = (score > 0.0).then_some(score);
+        core.store
+            .write(move |c| local::set_score(c, series, rated, now))?;
+        push_card(core, series, "score kept here");
+        return Ok(None);
+    }
+    start(core, JobKind::Score, target, Action::Score { score }).map(Some)
 }
 
 /// Puts a series on one list on every connected tracker: the status pill's
 /// menu. Repeating is a rewatch the trackers keep their own count for, so
 /// it is not a status this menu sets.
-pub fn set_list_status(core: &Core, series: u64, status: ListStatus) -> Result<u64, CoreError> {
+///
+/// A series no connected tracker carries keeps its status on this device
+/// instead (#213), the way `set_score` keeps a score.
+pub fn set_list_status(
+    core: &Core,
+    series: u64,
+    status: ListStatus,
+) -> Result<Option<u64>, CoreError> {
     if status == ListStatus::Repeating {
         return Err(CoreError::invalid(
             "status",
@@ -435,8 +456,63 @@ pub fn set_list_status(core: &Core, series: u64, status: ListStatus) -> Result<u
         ));
     }
     let target = core.store.read(|c| targets(c, series))?;
-    guard(core, &target)?;
-    start(core, JobKind::SetStatus, target, Action::Status { status })
+    if kept_here(core, &target)? {
+        let now = time::now_secs();
+        core.store
+            .write(move |c| local::set_status(c, series, status, now))?;
+        push_card(core, series, "list status kept here");
+        return Ok(None);
+    }
+    start(core, JobKind::SetStatus, target, Action::Status { status }).map(Some)
+}
+
+/// Whether a status or a score stays on this device: the series has no
+/// tracker match, or no account is connected behind the ids it has. A
+/// hidden series is still refused, since hiding is about its tracker sync
+/// and a person who hid it asked for nothing to go out.
+fn kept_here(core: &Core, target: &Targets) -> Result<bool, CoreError> {
+    // `guard` answers NoMatch before it looks at the hidden flag, which a
+    // series with no ids has nothing else to say about.
+    let hidden = core.store.read(|c| {
+        Ok(c.query_row(
+            "SELECT hidden FROM series WHERE id = ?1",
+            params![target.series as i64],
+            |r| r.get::<_, i64>(0),
+        )? == 1)
+    })?;
+    if hidden {
+        return Err(CoreError::Refused {
+            reason: Refusal::Hidden,
+        });
+    }
+    match guard(core, target) {
+        Ok(_) => Ok(false),
+        Err(CoreError::Refused {
+            reason: Refusal::NoMatch,
+        })
+        | Err(CoreError::NotConnected { .. }) => Ok(true),
+        Err(e) => Err(e),
+    }
+}
+
+/// The series' card pushed after a write here, so the page redraws. The
+/// write has already landed by now, so a card that cannot be read is a
+/// line in the log rather than a failure of the call.
+fn push_card(core: &Core, series: u64, line: &str) {
+    let images_dir = core.paths.images_dir();
+    match core
+        .store
+        .read(|c| crate::library::cards::cards_for(c, &images_dir, &[series]))
+    {
+        Ok(cards) => {
+            core.bus.debug(
+                Stage::Library,
+                line.to_string(),
+                EventBody::SeriesChanged { series: cards },
+            );
+        }
+        Err(e) => tracing::warn!("{line}, but the card for series {series} was not read: {e}"),
+    }
 }
 
 /// The longest note a write sends, one limit for both trackers so a note
@@ -471,7 +547,11 @@ pub enum ManyWrite {
 /// away (no match, hidden, no account behind it) is left out and counted;
 /// when every pick is turned away, the first refusal is the answer, as a
 /// single write would give it.
-pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, CoreError> {
+///
+/// A pick no connected tracker carries keeps the score or the status on
+/// this device instead (#213), as one menu's write does. None when every
+/// pick was kept here, so there was no job to start.
+pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Option<u64>, CoreError> {
     let action = match write {
         ManyWrite::Score(score) => {
             let score = score.unwrap_or(0.0);
@@ -494,10 +574,21 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, 
     let mut reachable = Vec::new();
     let mut refused = None;
     let mut left_out = LeftOut::default();
+    let now = time::now_secs();
     for &id in series {
         let target = core.store.read(|c| targets(c, id))?;
-        match guard(core, &target) {
-            Ok(_) => reachable.push(target),
+        match kept_here(core, &target) {
+            Ok(false) => reachable.push(target),
+            Ok(true) => {
+                core.store.write(move |c| match write {
+                    ManyWrite::Score(score) => {
+                        local::set_score(c, id, score.filter(|s| *s > 0.0), now)
+                    }
+                    ManyWrite::Status(status) => local::set_status(c, id, status, now),
+                })?;
+                push_card(core, id, "kept here");
+                left_out.kept += 1;
+            }
             Err(e) => {
                 match &e {
                     CoreError::Refused {
@@ -511,6 +602,9 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, 
         }
     }
     if reachable.is_empty() {
+        if left_out.kept > 0 {
+            return Ok(None);
+        }
         return Err(refused.unwrap_or_else(|| CoreError::invalid("series", "nothing picked")));
     }
     let kind = match action {
@@ -521,9 +615,9 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<u64, 
         .arc()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let jobs = owner.jobs.clone();
-    Ok(jobs.start(kind, move |ctx| async move {
+    Ok(Some(jobs.start(kind, move |ctx| async move {
         run_many(owner, ctx, reachable, action, left_out).await
-    }))
+    })))
 }
 
 async fn run_many(
@@ -614,11 +708,13 @@ struct LeftOut {
     no_match: u64,
     hidden: u64,
     not_connected: u64,
+    /// Kept on this device instead, with no tracker to send to (#213).
+    kept: u64,
 }
 
 impl LeftOut {
     fn total(self) -> u64 {
-        self.no_match + self.hidden + self.not_connected
+        self.no_match + self.hidden + self.not_connected + self.kept
     }
 
     /// One sentence per reason, so the line says what to do about each.
@@ -644,6 +740,13 @@ impl LeftOut {
             out.push(format!(
                 "{n} {} only on a tracker that is not connected.",
                 crate::words::pick(n, "show is", "shows are")
+            ));
+        }
+        if self.kept > 0 {
+            let n = self.kept;
+            out.push(format!(
+                "{n} {} on this computer, with no tracker to send to.",
+                crate::words::pick(n, "show is kept", "shows are kept")
             ));
         }
         out
