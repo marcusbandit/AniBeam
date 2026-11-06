@@ -1,7 +1,8 @@
 import { Theme } from "theme.slint";
 import { AppData, EpisodeLine, Nav } from "data.slint";
 import { FindData } from "find.slint";
-import { Button, ClampedText, Cubes, PageTitle, Poster, SectionHead } from "widgets.slint";
+import { Button, Chip, ClampedText, Cubes, PageTitle, Poster, SectionHead } from "widgets.slint";
+import { Ask } from "more.slint";
 
 // An episode code's type, shared by the rows and the probe that sizes their column.
 component CodeText inherits Text {
@@ -18,6 +19,8 @@ component EpisodeItem inherits Rectangle {
     // Episodes still to air are quieter.
     property <bool> later: root.data.cube == 5;
     property <bool> next: root.data.note == "Next up";
+    // Kept in more than one release: the row plays one, and its chip offers the rest.
+    property <bool> versioned: root.data.versions.length > 1 && !AppData.deleting;
     height: Math.max(Theme.unit * 13, texts.preferred-height + 4 * Theme.unit);
     border-radius: Theme.radius-row + 4px;
     background: touch.pressed && root.data.file != 0 ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
@@ -55,7 +58,7 @@ component EpisodeItem inherits Rectangle {
     }
     texts := VerticalLayout {
         x: code.x + code.width;
-        width: parent.width - self.x - date.width - Theme.unit * 6;
+        width: parent.width - self.x - date.width - Theme.unit * 6 - (root.versioned ? chip.width + Theme.unit * 2 : 0);
         alignment: center;
         spacing: 2px;
         Text {
@@ -98,6 +101,21 @@ component EpisodeItem inherits Rectangle {
             } else {
                 AppData.play(root.data.file);
             }
+        }
+    }
+    chip := Chip {
+        visible: root.versioned;
+        x: date.x - self.width - Theme.unit * 2;
+        y: (parent.height - self.height) / 2;
+        small: true;
+        tappable: root.versioned;
+        ink: Theme.dim;
+        text: root.data.versions.length + " versions";
+        clicked => {
+            Ask.versions = root.data.versions;
+            Ask.versions-title = root.data.code + "  " + root.data.title;
+            Ask.versions-remote = root.data.remote;
+            Ask.versions-open = true;
         }
     }
 }

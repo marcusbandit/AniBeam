@@ -540,7 +540,7 @@ impl App {
             Some(Open::Phone(_)) => self
                 .detail
                 .as_ref()
-                .map(|d| crate::phone::series(d, &self.art, now)),
+                .map(|d| crate::phone::series(d, &self.art, now, self.deleting)),
             Some(Open::Remote(id)) => crate::remote::series(
                 self.cache.as_ref(),
                 &self.anilist,

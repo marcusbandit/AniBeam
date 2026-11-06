@@ -418,7 +418,7 @@ impl Snapshot {
 /// `season_of` and the number's bits. Files read as an episode of the same
 /// season and number are two releases of it; the web shell's old rule, moved
 /// here so every shell lists one row per episode. Takes the episodes on disk.
-fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersion>> {
+pub(crate) fn episode_versions(files: &[&FileRow]) -> HashMap<(u32, u64), Vec<EpisodeVersion>> {
     versions_by(files, version_key)
 }
 
@@ -474,7 +474,7 @@ fn versions_by<K: std::hash::Hash + Eq>(
 }
 
 /// Which episode a file is, for `episode_versions`.
-fn version_key(f: &FileRow) -> (u32, u64) {
+pub(crate) fn version_key(f: &FileRow) -> (u32, u64) {
     (season_of(f), f.number.to_bits())
 }
 

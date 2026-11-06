@@ -4,12 +4,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anibeam_companion::calendar;
 use anibeam_companion::format;
-use anibeam_core::{SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
+use anibeam_core::{Episode, SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
 use chrono::{Datelike, Days, NaiveDate};
 
 use crate::posters;
 use crate::remote::Art;
-use crate::{CalDay, CalItem, EpisodeLine, Hero, SeriesHead, Tile};
+use crate::{CalDay, CalItem, EpisodeLine, EpisodeVersionLine, Hero, SeriesHead, Tile};
 
 /// How many tiles a Home shelf holds.
 const SHELF: usize = 12;
@@ -351,7 +351,60 @@ fn hero(card: &SeriesCard, at: i64, art: &Art, now: i64) -> Hero {
 
 /// A series page from the core's detail: the band, then every episode in number order,
 /// on the phone or not, aired or still to come.
-pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<EpisodeLine>) {
+/// One row per episode. An episode on disk in more than one release (the core's
+/// `versions`) is led by one copy, the desktop's rule: the one next up, else one with a
+/// resume point, else one no torrent is still writing, else the first. While deleting,
+/// every file keeps its own row so each can be picked. The order is the files' own.
+pub fn one_per_episode(episodes: &[Episode], deleting: bool) -> Vec<&Episode> {
+    if deleting {
+        return episodes.iter().collect();
+    }
+    let key = |e: &Episode| match e.versions.first() {
+        Some(v) if e.versions.len() > 1 => v.file,
+        _ => e.file,
+    };
+    let mut groups: Vec<(u64, Vec<&Episode>)> = Vec::new();
+    for e in episodes {
+        match groups.iter_mut().find(|(k, _)| *k == key(e)) {
+            Some((_, all)) => all.push(e),
+            None => groups.push((key(e), vec![e])),
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(_, all)| {
+            let pick = |f: fn(&&Episode) -> bool| all.iter().copied().find(f);
+            pick(|e| e.next_up)
+                .or_else(|| pick(|e| e.resume.is_some()))
+                .or_else(|| pick(|e| e.downloading.is_none()))
+                .unwrap_or(all[0])
+        })
+        .collect()
+}
+
+/// An episode's versions as its row offers them, a file to play and the release's name.
+/// Empty for an episode on disk once.
+fn version_lines(e: &Episode) -> slint::ModelRc<EpisodeVersionLine> {
+    let rows: Vec<EpisodeVersionLine> = if e.versions.len() > 1 {
+        e.versions
+            .iter()
+            .map(|v| EpisodeVersionLine {
+                file: v.file as i32,
+                label: v.label.clone().into(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    std::rc::Rc::new(slint::VecModel::from(rows)).into()
+}
+
+pub fn series(
+    detail: &SeriesDetail,
+    art: &Art,
+    now: i64,
+    deleting: bool,
+) -> (SeriesHead, Vec<EpisodeLine>) {
     let card = &detail.card;
     let (poster, has_poster) = art.poster(Some(card.id));
     let tone = art.tone(card.id);
@@ -449,7 +502,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
 
     // Sorted by season, then number: a show with S1 and S2 lists each season in order.
     let mut lines: Vec<((u32, f64), EpisodeLine)> = Vec::new();
-    for e in &detail.episodes {
+    for e in one_per_episode(&detail.episodes, deleting) {
         let note = if let Some(p) = e.downloading {
             format!("Downloading {}%", (p * 100.0).round() as i64)
         } else if e.next_up {
@@ -486,6 +539,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 },
                 picked: false,
                 remote: false,
+                versions: version_lines(e),
             },
         ));
     }
@@ -515,6 +569,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 file: 0,
                 picked: false,
                 remote: false,
+                versions: Default::default(),
             },
         ));
     }
@@ -542,6 +597,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 file: 0,
                 picked: false,
                 remote: false,
+                versions: Default::default(),
             },
         ));
     }
@@ -567,5 +623,61 @@ mod tests {
     #[test]
     fn every_core_cube_letter_has_a_colour_code() {
         assert_eq!(cube_codes("wldmgft"), vec![0, 1, 2, 3, 4, 5, 6]);
+    }
+
+    /// A file of episode `number`, kept in the releases `versions` names.
+    fn episode(file: u64, number: f64, versions: &[u64]) -> Episode {
+        let versions: Vec<serde_json::Value> = versions
+            .iter()
+            .map(|f| serde_json::json!({ "file": f, "label": format!("release {f}") }))
+            .collect();
+        serde_json::from_value(serde_json::json!({
+            "file": file, "number": number, "season": null, "code": format!("E{number:02}"),
+            "title": null, "air_date": null, "path": format!("/a/{file}.mkv"), "sidecars": [],
+            "resume": null, "stopped_short": false, "watched": false, "next_up": false,
+            "versions": versions,
+        }))
+        .unwrap()
+    }
+
+    fn files(rows: Vec<&Episode>) -> Vec<u64> {
+        rows.iter().map(|e| e.file).collect()
+    }
+
+    #[test]
+    fn an_episode_in_two_releases_is_one_row_led_by_the_first() {
+        let list = [
+            episode(1, 1.0, &[]),
+            episode(2, 2.0, &[2, 3]),
+            episode(3, 2.0, &[2, 3]),
+            episode(4, 3.0, &[]),
+        ];
+        assert_eq!(files(one_per_episode(&list, false)), [1, 2, 4]);
+    }
+
+    #[test]
+    fn the_copy_next_up_or_with_a_resume_point_leads() {
+        let mut list = [episode(2, 2.0, &[2, 3]), episode(3, 2.0, &[2, 3])];
+        list[1].next_up = true;
+        assert_eq!(files(one_per_episode(&list, false)), [3]);
+        list[1].next_up = false;
+        list[1].resume = Some(anibeam_core::ResumePoint {
+            position: 300.0,
+            duration: 1400.0,
+        });
+        assert_eq!(files(one_per_episode(&list, false)), [3]);
+    }
+
+    #[test]
+    fn a_copy_still_downloading_does_not_lead_a_whole_one() {
+        let mut list = [episode(2, 2.0, &[2, 3]), episode(3, 2.0, &[2, 3])];
+        list[0].downloading = Some(0.4);
+        assert_eq!(files(one_per_episode(&list, false)), [3]);
+    }
+
+    #[test]
+    fn deleting_keeps_every_file_on_its_own_row() {
+        let list = [episode(2, 2.0, &[2, 3]), episode(3, 2.0, &[2, 3])];
+        assert_eq!(files(one_per_episode(&list, true)), [2, 3]);
     }
 }

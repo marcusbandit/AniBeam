@@ -9,6 +9,7 @@ use anibeam_host_api as wire;
 
 use crate::contract::*;
 use crate::library::classifier::format_number;
+use crate::library::detail::{episode_versions, version_key};
 use crate::library::snapshot::{FileRow, SeriesRow, Snapshot};
 use crate::time;
 
@@ -46,10 +47,25 @@ impl Snapshot {
             .get(&row.id)
             .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
             .unwrap_or_default();
-        let episodes = self
-            .episodes_on_disk(row.id)
+        let files = self.episodes_on_disk(row.id);
+        let versions = episode_versions(&files);
+        let episodes = files
             .into_iter()
-            .map(|f| self.host_episode(row, f, &completed, card.watched))
+            .map(|f| {
+                let mut e = self.host_episode(row, f, &completed, card.watched);
+                e.versions = versions
+                    .get(&version_key(f))
+                    .map(|list| {
+                        list.iter()
+                            .map(|v| wire::EpisodeVersion {
+                                file: v.file,
+                                label: v.label.clone(),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                e
+            })
             .collect();
         let series = wire::Series {
             id: row.id,
@@ -139,6 +155,7 @@ impl Snapshot {
             watched: completed.contains(f.episode_key.as_str())
                 || tracked.is_some_and(|w| f.number <= f64::from(w)),
             aired_at: air.and_then(|a| a.aired_at),
+            versions: Vec::new(),
         }
     }
 }
