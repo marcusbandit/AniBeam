@@ -144,6 +144,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### Fixed
 - Two releases of one extra, like SP01 and SP01v2, are one row with one history
+- A show's synopsis shows symbols like & instead of their codes, in paragraphs
 - Endpoints from repos reach an anirss built from source, whatever its version
 - Seeders show for releases from a tracker written with backslashes
 - Discord shows a series whose title is a single letter

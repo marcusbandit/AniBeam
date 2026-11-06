@@ -184,8 +184,18 @@ impl Snapshot {
 
         Ok(Some(SeriesDetail {
             banner: row.banner_path.clone(),
+            // Plain text in paragraphs for every shell. AniList's description is HTML;
+            // TVmaze's summary was made plain when it was stored, and a second pass would
+            // read a decoded `<Title>` in it as a tag (#450).
             synopsis: media
-                .and_then(|m| m.description.clone())
+                .and_then(|m| m.description.as_deref())
+                .map(|d| {
+                    if row.provider == Some(Provider::Tvmaze) {
+                        d.to_string()
+                    } else {
+                        crate::html::plain_text(d)
+                    }
+                })
                 .unwrap_or_default(),
             year: media.and_then(|m| m.year),
             studio: media.and_then(|m| m.studio.clone()),
