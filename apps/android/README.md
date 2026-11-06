@@ -132,7 +132,8 @@ scripts/build.sh cargo clippy --workspace --all-targets -- -D warnings
 
 The version lives in `android/AndroidManifest.xml` (`versionCode` and `versionName`).
 Bump both for every build that leaves the machine, and give the new version its heading in
-`CHANGELOG.md`, which the app shows as What's new; `build.sh` stops if `versionName`, the
+`CHANGELOG.md`, which the app shows as What's new. Then run `.github/changelog-fold.sh
+apps/android`, so the notes waiting in `changes/` land under the version that ships them; `build.sh` stops if `versionName`, the
 `version` in `Cargo.toml` and the newest heading in `CHANGELOG.md` disagree.
 
 ## The emulator loop
