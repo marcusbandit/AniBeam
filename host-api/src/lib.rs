@@ -381,6 +381,22 @@ pub struct Episode {
     pub watched: bool,
     #[serde(default)]
     pub aired_at: Option<i64>,
+    /// Every file of this episode when the host has it more than once, two
+    /// releases of it, each named by its release; empty when there is one.
+    /// Each copy of the episode carries the same list. Absent from a host
+    /// older than versions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<EpisodeVersion>,
+}
+
+/// One file of an episode the host has more than once.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct EpisodeVersion {
+    /// The host's id for the file, as [`Episode::file`].
+    pub file: u64,
+    /// The release, `group, 1080p WEB-DL H264`, or the file name where two
+    /// would otherwise read alike.
+    pub label: String,
 }
 
 /// One anirss subscription: a feed qBittorrent downloads from by itself.
@@ -465,6 +481,30 @@ mod tests {
         assert_eq!(snapshot.series[0].kind, Kind::Movie);
         assert!(snapshot.torrents.is_none());
         assert!(snapshot.subscriptions.is_empty());
+    }
+
+    #[test]
+    fn an_episode_without_versions_says_nothing_of_them() {
+        let one: Episode =
+            serde_json::from_str(r#"{"key": "7", "number": 7, "code": "E07", "watched": false}"#)
+                .unwrap();
+        assert!(one.versions.is_empty());
+        assert!(!serde_json::to_string(&one).unwrap().contains("versions"));
+        let two = Episode {
+            versions: vec![
+                EpisodeVersion {
+                    file: 4,
+                    label: "Group A, 1080p".into(),
+                },
+                EpisodeVersion {
+                    file: 9,
+                    label: "Group B, 720p".into(),
+                },
+            ],
+            ..one
+        };
+        let back: Episode = serde_json::from_str(&serde_json::to_string(&two).unwrap()).unwrap();
+        assert_eq!(back.versions, two.versions);
     }
 
     #[test]

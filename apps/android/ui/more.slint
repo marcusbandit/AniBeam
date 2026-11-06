@@ -5,7 +5,7 @@
 // over one pane of rows closed by hairlines.
 
 import { Theme } from "theme.slint";
-import { AppData } from "data.slint";
+import { AppData, EpisodeVersionLine } from "data.slint";
 import { Button, Field, Figure, ListGroup, ListRow, Lit, PageTitle, SearchField, SectionHead, Segmented, Slider } from "widgets.slint";
 import { RepoData, RepoPanes } from "repos.slint";
 import { Area, Fold } from "fold.slint";
@@ -19,6 +19,14 @@ export global Ask {
     // A poster of this phone's held down: its series and its title. -1 is none.
     in-out property <int> menu-id: -1;
     in-out property <string> menu-title;
+    // An episode kept in more than one release: its versions chip lists them to pick from.
+    in-out property <bool> versions-open;
+    in-out property <string> versions-title;
+    in-out property <[EpisodeVersionLine]> versions;
+    // The versions are the other device's, so a pick streams from there.
+    in-out property <bool> versions-remote;
+    // The file the row plays now, marked in the list.
+    in-out property <int> versions-current;
 }
 
 // A setting the search found: the section it lives in, its label, and the section's name.

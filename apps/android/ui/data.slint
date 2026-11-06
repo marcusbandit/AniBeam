@@ -107,6 +107,12 @@ export struct SeriesHead {
     play-remote: bool,
 }
 
+// One release of an episode kept more than once: the file it plays and its name.
+export struct EpisodeVersionLine {
+    file: int,
+    label: string,
+}
+
 // One episode row on a series page.
 export struct EpisodeLine {
     code: string,
@@ -123,6 +129,9 @@ export struct EpisodeLine {
     picked: bool,
     // file is the other device's: a tap streams it from there.
     remote: bool,
+    // The episode's releases when it is on disk more than once; empty for one file. The
+    // row plays `file`, and its versions chip offers the others.
+    versions: [EpisodeVersionLine],
 }
 
 // One download on this phone, the desktop's Downloading panel.
