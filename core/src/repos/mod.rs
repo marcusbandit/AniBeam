@@ -2393,7 +2393,7 @@ mod tests {
             name: "site".to_string(),
             version: 1,
             lang: String::new(),
-            kind: "nyaa".to_string(),
+            kind: crate::releases::kinds::FILTERED_RSS.to_string(),
             url: "https://tracker.example/".to_string(),
             auth: Vec::new(),
             front: None,
