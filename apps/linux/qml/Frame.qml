@@ -568,11 +568,15 @@ FocusScope {
     Connections {
         target: Door
         function onSourceChanged(src) { frame.noteSources() }
+        // Any scan's end counts, not only one naming the new folder: a folder added while a
+        // scan runs is queued onto that job, whose ScanFinished names its first pass's source.
+        // The settle step still waits for every Scan and AutoMatch job, so no folder is
+        // summarised before its own pass has run.
         function onScanFinished(source, added, changed, removed) {
-            var f = frame.firstScans[source]
-            if (!f) return
-            var left = Object.assign({}, frame.firstScans)
-            left[source] = { path: f.path, scanned: true }
+            var keys = Object.keys(frame.firstScans)
+            if (!keys.length) return
+            var left = {}
+            keys.forEach(function(k) { left[k] = { path: frame.firstScans[k].path, scanned: true } })
             frame.firstScans = left
             firstScanSettle.interval = 8000
             firstScanSettle.restart()
