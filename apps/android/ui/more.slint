@@ -24,6 +24,8 @@ export global Ask {
     in-out property <[EpisodeVersionLine]> versions;
     // The versions are the other device's, so a pick streams from there.
     in-out property <bool> versions-remote;
+    // The file the row plays now, marked in the list.
+    in-out property <int> versions-current;
 }
 
 // A setting the search found: the section it lives in, its label, and the section's name.

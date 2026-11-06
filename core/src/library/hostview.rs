@@ -55,14 +55,7 @@ impl Snapshot {
                 let mut e = self.host_episode(row, f, &completed, card.watched);
                 e.versions = versions
                     .get(&version_key(f))
-                    .map(|list| {
-                        list.iter()
-                            .map(|v| wire::EpisodeVersion {
-                                file: v.file,
-                                label: v.label.clone(),
-                            })
-                            .collect()
-                    })
+                    .map(|list| list.iter().map(wire_version).collect())
                     .unwrap_or_default();
                 e
             })
@@ -157,6 +150,14 @@ impl Snapshot {
             aired_at: air.and_then(|a| a.aired_at),
             versions: Vec::new(),
         }
+    }
+}
+
+/// One version as the wire carries it.
+fn wire_version(v: &EpisodeVersion) -> wire::EpisodeVersion {
+    wire::EpisodeVersion {
+        file: v.file,
+        label: v.label.clone(),
     }
 }
 

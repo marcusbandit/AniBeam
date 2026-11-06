@@ -107,13 +107,13 @@ export struct SeriesHead {
     play-remote: bool,
 }
 
-// One episode row on a series page.
 // One release of an episode kept more than once: the file it plays and its name.
 export struct EpisodeVersionLine {
     file: int,
     label: string,
 }
 
+// One episode row on a series page.
 export struct EpisodeLine {
     code: string,
     title: string,
@@ -133,7 +133,6 @@ export struct EpisodeLine {
     // row plays `file`, and its versions chip offers the others.
     versions: [EpisodeVersionLine],
 }
-
 
 // One download on this phone, the desktop's Downloading panel.
 export struct DownloadRow {

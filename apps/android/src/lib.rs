@@ -26,6 +26,7 @@ mod remote;
 mod repos;
 mod stream;
 mod thumbs;
+mod versions;
 mod video;
 mod worker;
 

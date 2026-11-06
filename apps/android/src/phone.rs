@@ -1,5 +1,6 @@
 //! This phone's own library, read from its core, in the shapes the Slint pages take.
 
+use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anibeam_companion::calendar;
@@ -352,9 +353,10 @@ fn hero(card: &SeriesCard, at: i64, art: &Art, now: i64) -> Hero {
 /// A series page from the core's detail: the band, then every episode in number order,
 /// on the phone or not, aired or still to come.
 /// One row per episode. An episode on disk in more than one release (the core's
-/// `versions`) is led by one copy, the desktop's rule: the one next up, else one with a
-/// resume point, else one no torrent is still writing, else the first. While deleting,
-/// every file keeps its own row so each can be picked. The order is the files' own.
+/// `versions`) is led by one copy, the desktop's rule among the copies no torrent is still
+/// writing: the one next up, else one with a resume point, else any whole one; a copy still
+/// downloading leads only when no whole one is there. While deleting, every file keeps its
+/// own row so each can be picked. The order is the files' own.
 pub fn one_per_episode(episodes: &[Episode], deleting: bool) -> Vec<&Episode> {
     if deleting {
         return episodes.iter().collect();
@@ -363,40 +365,38 @@ pub fn one_per_episode(episodes: &[Episode], deleting: bool) -> Vec<&Episode> {
         Some(v) if e.versions.len() > 1 => v.file,
         _ => e.file,
     };
-    let mut groups: Vec<(u64, Vec<&Episode>)> = Vec::new();
+    let mut index: HashMap<u64, usize> = HashMap::new();
+    let mut groups: Vec<Vec<&Episode>> = Vec::new();
     for e in episodes {
-        match groups.iter_mut().find(|(k, _)| *k == key(e)) {
-            Some((_, all)) => all.push(e),
-            None => groups.push((key(e), vec![e])),
-        }
+        let i = *index.entry(key(e)).or_insert_with(|| {
+            groups.push(Vec::new());
+            groups.len() - 1
+        });
+        groups[i].push(e);
     }
     groups
         .into_iter()
-        .map(|(_, all)| {
-            let pick = |f: fn(&&Episode) -> bool| all.iter().copied().find(f);
+        .map(|all| {
+            let whole = |e: &&Episode| e.downloading.is_none();
+            let pick = |f: fn(&&Episode) -> bool| all.iter().copied().find(|e| whole(e) && f(e));
             pick(|e| e.next_up)
                 .or_else(|| pick(|e| e.resume.is_some()))
-                .or_else(|| pick(|e| e.downloading.is_none()))
+                .or_else(|| pick(|_| true))
                 .unwrap_or(all[0])
         })
         .collect()
 }
 
-/// An episode's versions as its row offers them, a file to play and the release's name.
-/// Empty for an episode on disk once.
-fn version_lines(e: &Episode) -> slint::ModelRc<EpisodeVersionLine> {
-    let rows: Vec<EpisodeVersionLine> = if e.versions.len() > 1 {
-        e.versions
-            .iter()
-            .map(|v| EpisodeVersionLine {
-                file: v.file as i32,
-                label: v.label.clone().into(),
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-    std::rc::Rc::new(slint::VecModel::from(rows)).into()
+/// An episode's versions as its row offers them: the whole copies, each a file to play.
+fn version_lines(e: &Episode, downloading: &HashSet<u64>) -> slint::ModelRc<EpisodeVersionLine> {
+    let list: Vec<(u64, String)> = e
+        .versions
+        .iter()
+        .map(|v| (v.file, v.label.clone()))
+        .collect();
+    crate::versions::model(crate::versions::offered(&list, |f| {
+        !downloading.contains(&f)
+    }))
 }
 
 pub fn series(
@@ -446,6 +446,11 @@ pub fn series(
         })
         .unwrap_or_default();
     let watched = detail.progress.watched.unwrap_or(0);
+    // The core counts files; a second release of an episode is not another episode, as on
+    // the desktop's page.
+    let extra_versions =
+        (detail.episodes.len() - one_per_episode(&detail.episodes, false).len()) as u64;
+    let on_disk = detail.progress.on_disk.saturating_sub(extra_versions);
     let progress_text = match (movie, detail.progress.total) {
         (true, _) => if watched > 0 {
             "Watched"
@@ -457,10 +462,10 @@ pub fn series(
             format!(
                 "{} of {total} watched, {} on this phone",
                 watched.min(total),
-                detail.progress.on_disk
+                on_disk
             )
         }
-        _ => format!("{} on this phone", detail.progress.on_disk),
+        _ => format!("{on_disk} on this phone"),
     };
     // Play opens the next one up, the desktop hero's rule, when it is whole on the phone.
     let play = detail
@@ -502,6 +507,12 @@ pub fn series(
 
     // Sorted by season, then number: a show with S1 and S2 lists each season in order.
     let mut lines: Vec<((u32, f64), EpisodeLine)> = Vec::new();
+    let downloading: HashSet<u64> = detail
+        .episodes
+        .iter()
+        .filter(|e| e.downloading.is_some())
+        .map(|e| e.file)
+        .collect();
     for e in one_per_episode(&detail.episodes, deleting) {
         let note = if let Some(p) = e.downloading {
             format!("Downloading {}%", (p * 100.0).round() as i64)
@@ -539,7 +550,7 @@ pub fn series(
                 },
                 picked: false,
                 remote: false,
-                versions: version_lines(e),
+                versions: version_lines(e, &downloading),
             },
         ));
     }
@@ -665,6 +676,20 @@ mod tests {
             position: 300.0,
             duration: 1400.0,
         });
+        assert_eq!(files(one_per_episode(&list, false)), [3]);
+    }
+
+    #[test]
+    fn a_resume_point_on_a_copy_still_downloading_does_not_lead() {
+        let mut list = [episode(2, 2.0, &[2, 3]), episode(3, 2.0, &[2, 3])];
+        let at = anibeam_core::ResumePoint {
+            position: 300.0,
+            duration: 1400.0,
+        };
+        // Both copies share the episode's resume point; the one still downloading is first.
+        list[0].downloading = Some(0.4);
+        list[0].resume = Some(at.clone());
+        list[1].resume = Some(at);
         assert_eq!(files(one_per_episode(&list, false)), [3]);
     }
 

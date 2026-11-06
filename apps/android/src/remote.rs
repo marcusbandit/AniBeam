@@ -256,20 +256,12 @@ pub fn series(
 
 /// The versions the other device keeps of an episode, streamed from there at a tap.
 fn version_lines(e: &library::DiskEpisode) -> slint::ModelRc<EpisodeVersionLine> {
-    let rows: Vec<EpisodeVersionLine> = if e.versions.len() > 1 {
-        e.versions
-            .iter()
-            .filter_map(|v| {
-                Some(EpisodeVersionLine {
-                    file: i32::try_from(v.file).ok()?,
-                    label: v.label.clone().into(),
-                })
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-    std::rc::Rc::new(slint::VecModel::from(rows)).into()
+    let list: Vec<(u64, String)> = e
+        .versions
+        .iter()
+        .map(|v| (v.file, v.label.clone()))
+        .collect();
+    crate::versions::model(crate::versions::offered(&list, |_| true))
 }
 
 /// The computer's calendar over the same days as this phone's, from its cached snapshot:

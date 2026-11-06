@@ -32,15 +32,15 @@ pub struct DiskSeries {
 }
 
 /// One entry per episode, in the host's order. The host lists every file, so an episode
-/// kept in two releases comes twice; it counts as watched when either copy is.
+/// kept in two releases comes twice; it counts as watched when either copy is. Copies are
+/// one episode by season and number, a missing season read as the first, the way the host
+/// groups their versions.
 fn episodes(series: &Series) -> Vec<DiskEpisode> {
-    let mut out: Vec<(Option<u32>, &str, DiskEpisode)> = Vec::new();
+    let mut out: Vec<((u32, u64), DiskEpisode)> = Vec::new();
     for e in &series.episodes {
-        match out
-            .iter_mut()
-            .find(|(season, key, _)| *season == e.season && *key == e.key)
-        {
-            Some((_, _, seen)) => {
+        let key = (e.season.unwrap_or(1), e.number.to_bits());
+        match out.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, seen)) => {
                 seen.watched |= e.watched;
                 seen.file = seen.file.or(e.file);
                 if seen.versions.is_empty() {
@@ -48,8 +48,7 @@ fn episodes(series: &Series) -> Vec<DiskEpisode> {
                 }
             }
             None => out.push((
-                e.season,
-                &e.key,
+                key,
                 DiskEpisode {
                     season: e.season,
                     number: e.number,
@@ -63,7 +62,7 @@ fn episodes(series: &Series) -> Vec<DiskEpisode> {
             )),
         }
     }
-    out.into_iter().map(|(_, _, e)| e).collect()
+    out.into_iter().map(|(_, e)| e).collect()
 }
 
 fn summary(series: &Series, episodes: &[DiskEpisode]) -> String {
@@ -374,6 +373,17 @@ mod tests {
         assert_eq!(seventh.file, Some(70), "the first copy plays");
         assert_eq!(seventh.versions, versions);
         assert!(rows[0].episodes[0].versions.is_empty());
+    }
+
+    #[test]
+    fn a_copy_with_no_season_and_one_in_the_first_are_one_episode() {
+        let mut snapshot = fixture();
+        let frieren = &mut snapshot.series[0];
+        frieren.episodes[6].season = None;
+        let mut copy = frieren.episodes[6].clone();
+        copy.season = Some(1);
+        frieren.episodes.push(copy);
+        assert_eq!(on_disk(&snapshot)[0].episodes.len(), 7);
     }
 
     fn cache() -> Cache {

@@ -100,14 +100,25 @@ component VersionsMenu inherits Rectangle {
                 wrap: word-wrap;
             }
             Rectangle { height: Theme.unit; }
-            for v in Ask.versions: Button {
-                text: v.label;
-                clicked => {
-                    Ask.versions-open = false;
-                    if (Ask.versions-remote) {
-                        AppData.play-remote(v.file);
-                    } else {
-                        AppData.play(v.file);
+            // Many releases scroll inside the sheet rather than push it off the screen.
+            Flickable {
+                height: Math.min(list.preferred-height, root.height * 0.5);
+                content-height: list.preferred-height;
+                interactive: list.preferred-height > self.height;
+                list := VerticalLayout {
+                    spacing: Theme.unit * 3;
+                    // The release the row plays now is the primary one.
+                    for v in Ask.versions: Button {
+                        text: v.file == Ask.versions-current ? v.label + ", plays now" : v.label;
+                        primary: v.file == Ask.versions-current;
+                        clicked => {
+                            Ask.versions-open = false;
+                            if (Ask.versions-remote) {
+                                AppData.play-remote(v.file);
+                            } else {
+                                AppData.play(v.file);
+                            }
+                        }
                     }
                 }
             }
