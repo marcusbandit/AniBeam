@@ -218,7 +218,7 @@ Corner {
                         anchors.rightMargin: theme.space(3)
                         y: pop.rowHeight + (pop.rule - 1) / 2
                         height: 1
-                        color: theme.line
+                        color: theme.lineStrong
                     }
                     Corner {
                         objectName: root.objectName !== "" ? root.objectName + "-option-" + slot.index : ""

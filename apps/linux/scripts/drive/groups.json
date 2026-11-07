@@ -1,6 +1,6 @@
 [
   {"eval": "frame.item.nav.current.page", "expect": "library"},
-  {"until": "driver.item.findItem('library-page') !== null && driver.item.findItem('library-page').boxes().length > 0"},
+  {"until": "driver.item.findItem('library-page') !== null && driver.item.findItem('library-page').view.count > 0"},
   {"eval": "Door.preferences.library_arrange", "expect": "None"},
   {"click": "arrange-menu"},
   {"shot": "lib-group-menu"},
