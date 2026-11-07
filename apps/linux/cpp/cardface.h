@@ -81,8 +81,8 @@ class CardFace : public QQuickItem
     Q_PROPERTY(qreal lift READ lift WRITE setLift NOTIFY liftChanged)
     Q_PROPERTY(bool focused READ focused WRITE setFocused NOTIFY focusedChanged)
     Q_PROPERTY(qreal rightInset READ rightInset WRITE setRightInset NOTIFY rightInsetChanged)
-    // The episode code's tag gives its corner to something the card draws there (a pick check)
-    Q_PROPERTY(bool hideCode READ hideCode WRITE setHideCode NOTIFY hideCodeChanged)
+    // How far the episode code's tag sits right of the corner, to clear the pick check
+    Q_PROPERTY(qreal leftInset READ leftInset WRITE setLeftInset NOTIFY leftInsetChanged)
     // The decoded poster: an Image whose texture the face draws, cropped to fill the tile and
     // rounded by a shader; null until it is Ready. posterOpacity dims a ghost's or a dropped
     // series'.
@@ -117,8 +117,8 @@ public:
     void setFocused(bool v);
     qreal rightInset() const { return m_rightInset; }
     void setRightInset(qreal v);
-    bool hideCode() const { return m_hideCode; }
-    void setHideCode(bool v);
+    qreal leftInset() const { return m_leftInset; }
+    void setLeftInset(qreal v);
     QQuickItem *poster() const { return m_poster; }
     void setPoster(QQuickItem *v);
     qreal posterOpacity() const { return m_posterOpacity; }
@@ -142,7 +142,7 @@ signals:
     void liftChanged();
     void focusedChanged();
     void rightInsetChanged();
-    void hideCodeChanged();
+    void leftInsetChanged();
     void posterChanged();
     void laidOut();
 
@@ -183,9 +183,9 @@ private:
     QVariantMap m_item;
     QString m_meta;
     QVariant m_countdown;
-    bool m_ghost = false, m_hero = false, m_focused = false, m_hideCode = false;
+    bool m_ghost = false, m_hero = false, m_focused = false;
     double m_nowMs = 0;
-    qreal m_lift = 0, m_rightInset = 0, m_playY = 0, m_posterOpacity = 1;
+    qreal m_lift = 0, m_rightInset = 0, m_leftInset = 0, m_playY = 0, m_posterOpacity = 1;
     QPointer<QQuickItem> m_poster;
     QMetaObject::Connection m_textureWatch;
 
