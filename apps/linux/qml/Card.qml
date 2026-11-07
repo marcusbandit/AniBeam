@@ -169,7 +169,8 @@ Item {
         function endBrush() {
             if (!press.painting) return
             press.painting = false
-            if (press.host) press.host.brushEnd()
+            // On a page teardown the scroller can go first
+            try { if (press.host) press.host.brushEnd() } catch (e) {}
             press.host = null
         }
         Component.onDestruction: press.endBrush()
