@@ -78,6 +78,9 @@ Item {
     readonly property color accentText: token("accent_text")
     // The soft fills are glass tinted by the hue, translucent like every other pane
     readonly property color accentSoft: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.16 : 0.14)
+    // The soft accent under the pointer: a step more of the hue, so a selected row that is
+    // hovered reads brighter than at rest, as a plain hovered row does against its pane
+    readonly property color accentSoftHover: Qt.rgba(accent.r, accent.g, accent.b, accentSoft.a + 0.1)
     // The edge of a pane filled with the soft accent (the rail's active page, a switch's
     // thumb, a list's current row)
     readonly property color accentEdge: Qt.rgba(accent.r, accent.g, accent.b, 0.5)

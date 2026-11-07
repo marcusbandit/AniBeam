@@ -302,7 +302,7 @@ Corner {
             height: root.rowHeight
             radius: theme.radiusMd
             smoothing: theme.cornerSmoothing
-            color: isChanged ? theme.accentSoft : rowMouse.containsMouse ? theme.floatHover : "transparent"
+            color: isChanged ? (rowMouse.containsMouse ? theme.accentSoftHover : theme.accentSoft) : rowMouse.containsMouse ? theme.floatHover : "transparent"
             MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true }
             Row {
                 x: theme.space(3)

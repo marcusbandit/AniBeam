@@ -226,7 +226,7 @@ Corner {
                         height: pop.rowHeight
                         radius: theme.radiusInner(pop.inset)
                         smoothing: theme.cornerSmoothing
-                        color: slot.index === pop.hi ? theme.floatHover : slot.index === root.index ? theme.accentSoft : "transparent"
+                        color: slot.index === root.index ? (slot.index === pop.hi ? theme.accentSoftHover : theme.accentSoft) : slot.index === pop.hi ? theme.floatHover : "transparent"
                         Label {
                             anchors.left: parent.left
                             anchors.leftMargin: theme.space(3)
