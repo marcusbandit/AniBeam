@@ -988,6 +988,8 @@ async fn import_preferences(
                 calendar_feed: current.calendar_feed,
                 // And so is whether its desktop says when an episode is out.
                 episode_notifications: current.episode_notifications,
+                // And how its Home board draws the week.
+                home_hide_empty_days: current.home_hide_empty_days,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

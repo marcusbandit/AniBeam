@@ -962,6 +962,11 @@ pub struct Preferences {
     /// `serde(default)` because older blobs predate it.
     #[serde(default = "default_true")]
     pub episode_notifications: bool,
+    /// Whether Home's Coming up board leaves out the days with nothing on
+    /// them (#688). Default off, and per machine like `episode_notifications`.
+    /// `serde(default)` because older blobs predate it.
+    #[serde(default)]
+    pub home_hide_empty_days: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1132,6 +1137,7 @@ impl Default for Preferences {
             discord_presence: false,
             calendar_feed: false,
             episode_notifications: true,
+            home_hide_empty_days: false,
         }
     }
 }
