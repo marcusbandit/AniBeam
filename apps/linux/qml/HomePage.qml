@@ -470,8 +470,8 @@ Item {
         Label { id: wf; anchors.baseline: wl.baseline; role: "ui"; color: theme.textDim; visible: text !== "" }
     }
     // The next episode to air, first in its day on the board: a band in its own tone with
-    // the poster fading in from the right, the time left in large figures, then the title and when. The one loud thing
-    // on the board. Opens the series.
+    // the poster fading in from the right, the time left in large figures, then the title
+    // and when. The one loud thing on the board. Opens the series.
     component NextTile: Corner {
         id: nextTile
         objectName: "home-week-next"
@@ -502,42 +502,55 @@ Item {
         readonly property real pad: compact ? theme.space(4) : theme.space(5)
         readonly property real gap: theme.space(2)
         readonly property real artW: Math.round(width * (compact ? 0.4 : 0.36))
-        readonly property real wordsW: width - pad * 2 - artW * 0.5
-        height: Math.max(theme.space(compact ? 30 : 36), lead.height + gap + info.height + pad * 2)
-        Item {
+        // The words stop where the wash is still near solid
+        readonly property real wordsW: width - pad * 2 - artW * 0.45
+        readonly property bool hasArt: nextArt.status === Image.Ready
+        // Tall enough that the poster shows as a poster, not a strip from its middle
+        height: Math.max(theme.space(compact ? 30 : 36), Math.round(artW * 1.15), lead.height + gap + info.height + pad * 2)
+        // Only with a poster to show: without one the band is the tone alone
+        Corner {
+            id: nextPoster
+            visible: nextTile.hasArt
+            anchors.right: parent.right
+            width: nextTile.artW; height: parent.height
+            radius: nextTile.radius
+            fillItem: nextTile.hasArt ? nextArt : null
+            Image {
+                id: nextArt
+                visible: false
+                width: nextPoster.width; height: nextPoster.height
+                source: nextTile.card.poster ? Fmt.fileUrl(nextTile.card.poster) : ""
+                // the shared poster decode, a cache hit; Corner scales it to the box
+                sourceSize: theme.posterDecodeSize
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+            }
+        }
+        // The wash: solid under the words, clearing to the right. Its radius rounds the two
+        // right corners it shares with the card.
+        Rectangle {
+            visible: nextTile.hasArt
+            anchors.right: parent.right
+            width: nextTile.artW + theme.space(12); height: parent.height
+            radius: nextTile.radius
+            antialiasing: true
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: nextTile.base }
+                GradientStop { position: 0.25; color: nextTile.base }
+                GradientStop { position: 0.5; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.8) }
+                GradientStop { position: 0.8; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.2) }
+                GradientStop { position: 1.0; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.0) }
+            }
+        }
+        // The card's own edge (focus ring, hover line) above the art, so it runs all the way round
+        Corner {
+            z: 2
             anchors.fill: parent
-            Corner {
-                id: nextPoster
-                anchors.right: parent.right
-                width: nextTile.artW; height: parent.height
-                radius: nextTile.radius
-                color: Qt.rgba(0, 0, 0, 0.3)
-                fillItem: nextArt.status === Image.Ready ? nextArt : null
-                Image {
-                    id: nextArt
-                    visible: false
-                    width: nextPoster.width; height: nextPoster.height
-                    source: nextTile.card.poster ? Fmt.fileUrl(nextTile.card.poster) : ""
-                    sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                }
-            }
-            // The wash shares the card's rounding; solid under the words, clearing to the right
-            Rectangle {
-                anchors.right: parent.right
-                width: nextTile.artW + theme.space(12); height: parent.height
-                radius: nextTile.radius
-                antialiasing: true
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: nextTile.base }
-                    GradientStop { position: 0.3; color: nextTile.base }
-                    GradientStop { position: 0.55; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.75) }
-                    GradientStop { position: 0.8; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.3) }
-                    GradientStop { position: 1.0; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.0) }
-                }
-            }
+            radius: nextTile.radius
+            color: "transparent"
+            borderColor: nextTile.borderColor
+            borderWidth: nextTile.borderWidth
         }
         // The time left
         Column {
