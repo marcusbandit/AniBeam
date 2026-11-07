@@ -296,7 +296,7 @@ Item {
     readonly property string weekKey: {
         var e = weekEntries()
         function entries(list) { return list.map(function(x) { return [x.card, x.drop, x.state] }) }
-        return JSON.stringify([dayKey, entries(e.out), entries(e.ahead), entries(e.later), e.aired.map(function(x) { return [x.card, x.drop, x.state, x.watched] })])
+        return JSON.stringify([dayKey, entries(e.out), entries(e.ahead), entries(e.later), e.aired.map(function(x) { return [x.card.id, x.drop, x.state, x.watched] })])
     }
     property var weekSplit: ({ out: [], ahead: [], next: null, later: [], aired: [] })
     function splitWeek() {
@@ -306,7 +306,8 @@ Item {
     }
     onWeekKeyChanged: splitWeek()
     // The board (#352): today and the six days after as columns, each with its episodes
-    // still to come in air order, the next one first in its day. A day with nothing on it
+    // still to come in air order, the next one first in its day. Today opens with the
+    // episodes that already aired today (#715), over a Now line. A day with nothing on it
     // stays as a narrow column, so the week keeps its shape and a gap reads as a gap. A
     // guessed episode past its time and not out yet sits on today, after the next one; the
     // series with no date close the board in a column of their own.
@@ -643,7 +644,7 @@ Item {
         readonly property bool guessed: entry.state === "future" && !!drop && !!drop.predicted
         // Out already today: it stays, counting up from when it aired
         readonly property bool aired: entry.aired === true
-        opacity: aired && entry.watched ? 0.55 : 1
+        readonly property real dim: aired && entry.watched ? 0.55 : 1
         readonly property int toWatch: page.toWatchOf(card)
         height: Math.max(theme.space(21), tileText.implicitHeight + theme.space(4))
         radius: theme.radiusMd
@@ -662,6 +663,7 @@ Item {
             height: theme.space(17); width: Math.round(height * 2 / 3)
             radius: theme.radiusSm
             color: theme.tileSunken
+            opacity: tile.dim
             fillItem: thumbImg.status === Image.Ready ? thumbImg : null
             Image {
                 id: thumbImg
@@ -679,6 +681,7 @@ Item {
             anchors.right: parent.right; anchors.rightMargin: theme.space(3)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
+            opacity: tile.dim
             Row {
                 width: parent.width
                 spacing: theme.space(1.5)
@@ -697,7 +700,7 @@ Item {
                     text: tile.aired ? (tile.entry.watched ? "watched" : tile.entry.state === "downloading" ? "downloading" : "out " + page.ago(tile.drop.at))
                         : tile.overdue ? "not out yet" : "estimated"
                     role: "ledger"
-                    color: tile.aired ? (tile.entry.state === "here" && !tile.entry.watched ? theme.accent : theme.textDim)
+                    color: tile.aired ? (tile.entry.state === "late" ? theme.red : tile.entry.state === "here" && !tile.entry.watched ? theme.accent : theme.textDim)
                         : tile.overdue ? theme.red : theme.yellow
                     opacity: tile.aired ? 1 : 0.8
                 }
@@ -797,7 +800,7 @@ Item {
                 objectName: "week-now-line"
                 readonly property bool hasAired: (bday.day.items || []).some(function(e) { return e.aired })
                 visible: bday.day.today && hasAired && bday.day.items.some(function(e) { return !e.aired })
-                width: bday.tileW
+                width: list.width
                 height: nowLabel.implicitHeight
                 Label { id: nowLabel; text: "Now " + Qt.formatTime(new Date(page.nowMs), "HH:mm"); role: "ledger"; color: theme.accent }
                 Rectangle {
@@ -1179,6 +1182,8 @@ Item {
             readonly property var split: page.weekSplit
             readonly property int outCount: split.out.length
             readonly property bool hasAhead: page.board.some(function(d) { return d.items.length > 0 })
+            // Still to come, leaving out what aired today and stays on Today
+            readonly property bool hasUpcoming: page.board.some(function(d) { return d.items.some(function(e) { return !e.aired }) })
             readonly property real cardW: theme.posterWidth
             Heading {
                 text: "This week"; fact: page.weekFact
@@ -1222,7 +1227,7 @@ Item {
             }
             Item { visible: weekBox.outCount > 0 && weekBox.hasAhead; width: 1; height: theme.space(3) }
             WeekLabel {
-                visible: weekBox.outCount > 0 && weekBox.hasAhead
+                visible: weekBox.outCount > 0 && weekBox.hasUpcoming
                 text: "Coming up"
                 // The heading counts them already when it has nothing more pressing to say
                 fact: { var n = weekBox.split.ahead.length + (weekBox.split.next ? 1 : 0); return n && !page.weekFactCounts ? Fmt.plural(n, "episode", "episodes") : "" }
