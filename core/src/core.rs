@@ -790,6 +790,10 @@ impl Core {
                 self.bus.clear()?;
                 Ok(Reply::Ok)
             }
+            Call::Resumed => {
+                crate::aired::resumed(self);
+                Ok(Reply::Ok)
+            }
             Call::ListJobs => Ok(Reply::Jobs {
                 jobs: self.jobs.list(),
             }),
