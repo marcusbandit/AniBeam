@@ -115,7 +115,7 @@ const SHOWS_SQL: &str = "SELECT s.anilist_id, s.mal_id, s.title_romaji, s.title_
           (SELECT t.status FROM tracker_entries t JOIN tracker_accounts a ON a.tracker = t.tracker
             WHERE t.tracker = 'mal' AND t.media_id = s.mal_id AND a.connected_at IS NOT NULL),
           (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = s.anilist_id ORDER BY ls.id LIMIT 1)),
-        b.path
+        b.path, s.trending, s.favourites, s.duration, s.start_date
      FROM season_shows s
      LEFT JOIN images i ON i.url = s.cover_url
      LEFT JOIN images b ON b.url = s.banner_url
@@ -215,6 +215,10 @@ pub fn list(
             format: r.get(5)?,
             episodes: r.get::<_, Option<i64>>(6)?.map(|e| e as u32),
             average_score: r.get::<_, Option<i64>>(7)?.map(|s| s as u32),
+            trending: r.get::<_, Option<i64>>(15)?.map(|v| v.max(0) as u32),
+            favourites: r.get::<_, Option<i64>>(16)?.map(|v| v.max(0) as u32),
+            duration: r.get::<_, Option<i64>>(17)?.map(|v| v.max(0) as u32),
+            start_date: r.get::<_, Option<i64>>(18)?.map(|v| v.max(0) as u32),
             site_url: r.get(8)?,
             // An episode whose moment has passed is the strip's now, not
             // a countdown to something already out.
@@ -350,6 +354,10 @@ pub struct SeasonRow {
     pub format: Option<String>,
     pub episodes: Option<u32>,
     pub average_score: Option<u32>,
+    pub trending: Option<u32>,
+    pub favourites: Option<u32>,
+    pub duration: Option<u32>,
+    pub start_date: Option<u32>,
     pub cover_url: Option<String>,
     pub banner_url: Option<String>,
     pub site_url: Option<String>,
@@ -509,6 +517,10 @@ pub fn parse_shows(data: &serde_json::Value) -> Vec<SeasonRow> {
                 format: text(&m["format"]),
                 episodes: as_u32(m["episodes"].as_u64()),
                 average_score: as_u32(m["averageScore"].as_u64()),
+                trending: as_u32(m["trending"].as_u64()),
+                favourites: as_u32(m["favourites"].as_u64()),
+                duration: as_u32(m["duration"].as_u64()),
+                start_date: start_date(&m["startDate"]),
                 cover_url: text(&m["coverImage"]["large"]),
                 banner_url: text(&m["bannerImage"]),
                 site_url: text(&m["siteUrl"]),
@@ -516,6 +528,15 @@ pub fn parse_shows(data: &serde_json::Value) -> Vec<SeasonRow> {
             })
         })
         .collect()
+}
+
+/// AniList's `startDate` as yyyymmdd. A year alone is a date too, so a show
+/// with a known year and no month still sorts among the rest; no year is none.
+fn start_date(date: &serde_json::Value) -> Option<u32> {
+    let year = as_u32(date["year"].as_u64())?;
+    let month = as_u32(date["month"].as_u64()).unwrap_or(0).min(12);
+    let day = as_u32(date["day"].as_u64()).unwrap_or(0).min(31);
+    Some(year * 10_000 + month * 100 + day)
 }
 
 /// One page of `AIRED_PAGE_QUERY`. An adult show, or one in a format the
@@ -581,8 +602,9 @@ fn write(
     )?;
     let mut insert = tx.prepare(
         "INSERT INTO season_shows (season, anilist_id, rank, mal_id, title_romaji, title_english, title_native,
-            format, episodes, average_score, cover_url, site_url, next_episode, next_at, banner_url)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            format, episodes, average_score, cover_url, site_url, next_episode, next_at, banner_url,
+            trending, favourites, duration, start_date)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
     )?;
     for (rank, s) in shows.iter().enumerate() {
         insert.execute(params![
@@ -601,6 +623,10 @@ fn write(
             s.next.map(|(e, _)| i64::from(e)),
             s.next.map(|(_, at)| at),
             s.banner_url,
+            s.trending.map(i64::from),
+            s.favourites.map(i64::from),
+            s.duration.map(i64::from),
+            s.start_date.map(i64::from),
         ])?;
     }
     tx.execute(
@@ -981,6 +1007,25 @@ mod tests {
         assert_eq!(rows[0].title_english, None);
         assert_eq!(rows[0].next, Some((7, 100)));
         assert!(has_next(&data));
+    }
+
+    #[test]
+    fn the_orderable_fields_are_read_and_a_partial_date_still_sorts() {
+        let data = serde_json::json!({ "Page": { "media": [
+            { "id": 1, "trending": 120, "favourites": 3400, "duration": 24,
+              "startDate": { "year": 2026, "month": 10, "day": 4 } },
+            { "id": 2, "startDate": { "year": 2027, "month": null, "day": null } },
+            { "id": 3, "startDate": { "year": null, "month": null, "day": null } },
+        ] } });
+        let rows = parse_shows(&data);
+        assert_eq!(
+            (rows[0].trending, rows[0].favourites, rows[0].duration),
+            (Some(120), Some(3400), Some(24))
+        );
+        assert_eq!(rows[0].start_date, Some(2026_10_04));
+        assert_eq!(rows[1].start_date, Some(2027_00_00));
+        assert_eq!(rows[2].start_date, None);
+        assert_eq!(rows[1].trending, None);
     }
 
     #[test]

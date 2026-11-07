@@ -366,6 +366,10 @@ pub const SEASON_PAGE_QUERY: &str = r"query ($page: Int, $status: MediaStatus, $
           format
           episodes
           averageScore
+          trending
+          favourites
+          duration
+          startDate { year month day }
           title { romaji english native }
           coverImage { large }
           bannerImage
