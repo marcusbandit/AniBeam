@@ -178,6 +178,11 @@ impl Store {
     }
 }
 
+/// The companion's own copy of the core's `atomic_file::write`, kept on purpose: this crate
+/// does not depend on `anibeam-core`, and pulling the whole core in for one rename is not
+/// worth it (#575). It already differs where it matters here: the name is unique per
+/// write, since a relaunched activity can overlap the old one's sync thread, and the bytes
+/// reach the disk before the rename.
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     // Unique per write: a relaunched activity can overlap the old one's sync thread.
     static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
