@@ -62,7 +62,7 @@ Item {
     // The episode count set by hand (#239); null clears it
     function setEpisodeCount(n) {
         var r = Door.call("SetEpisodeCount", { series: page.props.id, count: n })
-        if (r && r.error) frame.fail(r.error)
+        if (r && r.error) frame.fail(r.error, function() { page.setEpisodeCount(n) })
         else frame.toast(n === null ? "Episode count cleared" : "Set to " + n + " episodes")
     }
     // Schedule notes (#418): what the user told the schedule, for the card's season
@@ -164,7 +164,7 @@ Item {
         function onCallDone(token, reply) {
             if (token !== page.deleteToken) return
             page.deleteToken = -1
-            if (reply.error) { page.deleteError = frame.errorText(reply.error); return }
+            if (reply.error) { page.deleteError = reply.error.plain ? reply.error.plain + (reply.error.next ? " " + reply.error.next : "") : frame.errorText(reply.error); return }
             page.deleting = false
             page.deletePicked = []
             frame.toast(page.deleteWords + " moved to the trash")
@@ -197,10 +197,10 @@ Item {
     // From the page's Quick fix the sheet comes filled in; from Fix files the suggestion waits
     // behind Fill in, so a fix of another file never carries it along
     function openFix(suggested, fill) { fixSheet.openFor(page.props.id, page.title, page.fixRows(), suggested || null, !!fill) }
-    function rescan() { var r = Door.rescanSeries(page.props.id); r.error ? frame.fail(r.error) : frame.toast("Rescan started") }
+    function rescan() { var r = Door.rescanSeries(page.props.id); r.error ? frame.fail(r.error, page.rescan) : frame.toast("Rescan started") }
     function load() {
         var r = Door.getSeries(props.id)
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, page.load); return }
         detail = r.reply.detail
         optimisticProgress = -1
         optimisticFile = -1
@@ -223,15 +223,13 @@ Item {
         function onProgressSet(series, progress, outcomes) {
             if (series !== page.props.id) return
             reloadDebounce.restart()
-            var bad = page.failedOutcomes(outcomes)
-            if (bad !== "") frame.toast(bad, 8)
+            page.sayOutcomes(outcomes)
         }
-        function onScored(series, score, outcomes) { if (series === page.props.id) { reloadDebounce.restart(); frame.toast(outcomes.every(function(o) { return o.ok }) ? "Rated " + (score < 0 ? "cleared" : Fmt.score(score)) : "Score failed") } }
+        function onScored(series, score, outcomes) { if (series === page.props.id) { reloadDebounce.restart(); if (outcomes.every(function(o) { return o.ok })) frame.toast("Rated " + (score < 0 ? "cleared" : Fmt.score(score))); else frame.toast("Could not save the score. Try again.", 8, "Try again", function() { page.saveScore(score) }) } }
         function onMarked(series, episode, outcomes) {
             if (series !== page.props.id) return
             reloadDebounce.restart()
-            var bad = page.failedOutcomes(outcomes)
-            if (bad !== "") frame.toast(bad, 8)
+            page.sayOutcomes(outcomes)
         }
         function onMatchApplied(series) { if (series === page.props.id) reloadDebounce.restart() }
         // The crawl fills the franchise in behind the first read; its root is an AniList id
@@ -245,7 +243,11 @@ Item {
     }
     // Never a file a torrent is still writing; the core refuses it too, behind every Play
     function openFile(file) {
-        for (var i = 0; i < episodes.length; i++) if (episodes[i].file === file && isDownloading(episodes[i])) { frame.toast(Fmt.episodeName("", episodes[i].number) + " is still downloading"); return }
+        for (var i = 0; i < episodes.length; i++) if (episodes[i].file === file && isDownloading(episodes[i])) {
+            var id = page.props.id
+            frame.toast(Fmt.episodeName("", episodes[i].number) + " is still downloading. It plays once the download finishes.", 6, "Open Downloads", function() { frame.go("downloads", { series: id }, "Downloads") })
+            return
+        }
         frame.go("player", { file: file }, page.title)
     }
     function isDownloading(ep) { return ep.downloading !== undefined && ep.downloading !== null }
@@ -274,9 +276,25 @@ Item {
         for (var i = 0; i < outcomes.length; i++) {
             var o = outcomes[i]
             if (o.ok) continue
-            list.push((names[o.tracker] || o.tracker) + " did not take it" + (o.message ? ": " + o.message : ""))
+            list.push((names[o.tracker] || o.tracker) + " did not take it")
         }
         return list.join("; ")
+    }
+    // The toast for a write a list turned down: plain words, Open settings when the list did
+    // not answer (not a refusal), and the list's own message under Details
+    function sayOutcomes(outcomes) {
+        var bad = page.failedOutcomes(outcomes)
+        if (bad === "") return
+        var raw = outcomes.filter(function(o) { return !o.ok && o.message }).map(function(o) { return o.message }).join("\n")
+        var refusedOnly = outcomes.every(function(o) { return o.ok || !!o.reason })
+        if (refusedOnly) frame.toast(bad + ".", 8, "", null, raw)
+        else frame.toast(bad + ". Check the connection in Settings, under Accounts.", 8, "Open settings", function() { frame.go("settings", { tab: "accounts" }) }, raw)
+    }
+    // A score kept on this device has no job to report back, so it says so here (#213)
+    function saveScore(v) {
+        var r = Door.setScore(page.props.id, v)
+        if (r.error) frame.fail(r.error, function() { page.saveScore(v) })
+        else if (!r.reply || r.reply.job === undefined) frame.toast(v < 0 ? "Score cleared" : "Score saved")
     }
     function marker(ep) {
         var watched = !!ep.watched
@@ -289,7 +307,7 @@ Item {
         // The season goes along for a show with no tracker, whose marks are kept per season
         var id = props.id, season = ep.season || 1
         var r = Door.setProgress(id, target, season)
-        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.fail(r.error); return }
+        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.fail(r.error, function() { page.marker(ep) }); return }
         // A mark that moves more than one episode says so, with the way back
         if (before >= 0 && Math.abs(target - before) > 1)
             frame.toast(target > before ? "Watched up to " + Fmt.episodeName("", target) : "Unwatched from " + Fmt.episodeName("", target + 1), 8, "Undo",
@@ -944,7 +962,7 @@ Item {
                             // The id is kept here: Undo can come after the page is gone
                             var id = props.id
                             var r = Door.setHidden(id, hide)
-                            if (r.error) { frame.fail(r.error); return }
+                            if (r.error) { frame.fail(r.error, clicked); return }
                             frame.toast(hide ? page.title + " is hidden here, and AniBeam stops syncing it to AniList and MyAnimeList" : page.title + " is back, and syncs again", 6, "Undo",
                                         function() { Door.setHidden(id, !hide) })
                         }
@@ -1344,9 +1362,8 @@ Item {
     }
 
     ScorePicker { id: scorePicker; parent: frame.overlay
-        // A score kept on this device has no job to report back, so it says so here (#213)
-        onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast("Score saved") }
-        onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast("Score cleared") } }
+        onSaved: function(v) { page.saveScore(v) }
+        onCleared: page.saveScore(-1) }
 
     // The quick fix (#170), over the overlay like the match
     FixSheet {

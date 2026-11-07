@@ -282,7 +282,7 @@ Corner {
     function parse() {
         if (!input.text.trim()) return
         var r = Door.call("ParseSchedule", { text: input.text })
-        if (r.error) return
+        if (r.error) { frame.fail(r.error, root.parse); return }
         root.draft = root.collapse(root.expand(r.reply.notes || []))
         root.readSeason = has(r.reply.season) ? r.reply.season : null
         // A list naming episodes past the marked end moves the end out of their way
@@ -298,10 +298,10 @@ Corner {
         })
         // Always the season the page is about, the one its count and its tiles belong to
         var r = Door.call("SetScheduleNotes", { series: root.seriesId, season: root.season, notes: wire })
-        if (r.error) { frame.fail(r.error); return }
+        if (r.error) { frame.fail(r.error, function() { root.save(notes) }); return }
         if (root.endAt !== root.savedEnd) {
             var c = Door.call("SetEpisodeCount", { series: root.seriesId, count: root.endAt > 0 ? root.endAt : null })
-            if (c.error) { frame.fail(c.error); return }
+            if (c.error) { frame.fail(c.error, function() { root.save(notes) }); return }
         }
         frame.toast(wire.length || root.endAt ? "Saved" : "Schedule notes cleared")
         root.close()
