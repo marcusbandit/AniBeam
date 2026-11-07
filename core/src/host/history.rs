@@ -662,9 +662,17 @@ mod tests {
         let here = translate(history, &paths);
         assert_eq!(here.views.len(), 1);
         assert_eq!(here.views[0].series, "/home/a/Show");
+        // The scanner here joins with the separator of the system here, so
+        // a file moved onto a series path here does the same.
+        let in_show = |name: &str| {
+            Path::new("/home/a/Show")
+                .join(name)
+                .to_string_lossy()
+                .into_owned()
+        };
         assert_eq!(
             here.completed[0].file.as_deref(),
-            Some("/home/a/Show/Show - OP1.mkv")
+            Some(in_show("Show - OP1.mkv").as_str())
         );
         let files: Vec<_> = here
             .resume_points
@@ -674,7 +682,7 @@ mod tests {
                 ResumeEntry::Series { series, .. } => series.clone(),
             })
             .collect();
-        assert_eq!(files, ["/home/a/Show/Show - SP.mkv", "/home/a/Film.mkv"]);
+        assert_eq!(files, [in_show("Show - SP.mkv"), "/home/a/Film.mkv".into()]);
     }
 
     #[test]
