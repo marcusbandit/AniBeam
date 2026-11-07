@@ -231,7 +231,7 @@ Item {
     PageScroll {
         id: scroll
         anchors.fill: parent
-        readonly property real innerWidth: width - theme.space(16)
+        readonly property real innerWidth: column - theme.space(16)
 
         // ---- The head: the title, the one line beside it, Refresh at the right
         Item {
