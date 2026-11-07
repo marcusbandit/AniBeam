@@ -404,12 +404,12 @@ Item {
     // ---- The grid's geometry: as many columns as the width holds at the poster width
     readonly property real gap: theme.space(4)
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + gap) / (theme.posterWidth + gap)))
-    readonly property real cardWidth: Math.floor((scroll.innerWidth - gap * (cols - 1)) / cols)
+    readonly property real cardWidth: (scroll.innerWidth - gap * (cols - 1)) / cols
 
     PageScroll {
         id: scroll
         anchors.fill: parent
-        readonly property real innerWidth: width - theme.space(16)
+        readonly property real innerWidth: column - theme.space(16)
 
         // ---- The head: the title, the one line beside it, Refresh at the right
         Item {
@@ -765,7 +765,8 @@ Item {
         // ---- The shows, in the order above
         Flow {
             objectName: "airing-grid"
-            width: parent.width
+            // Half a pixel over, so a row of exact cards never wraps its last one
+            width: parent.width + 0.5
             spacing: page.gap
             Repeater {
                 model: page.shows

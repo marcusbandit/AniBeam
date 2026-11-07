@@ -151,7 +151,7 @@ Item {
     PageScroll {
         id: scroll
         anchors.fill: parent
-        readonly property real innerWidth: width - theme.space(16)
+        readonly property real innerWidth: column - theme.space(16)
 
         // ---- The head: the title, this sort's one line beside it, the sort at the right
         Item {

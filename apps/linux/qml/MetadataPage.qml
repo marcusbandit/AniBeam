@@ -345,7 +345,7 @@ Item {
     PageScroll {
         id: scroll
         anchors.fill: parent
-        readonly property real innerWidth: width - theme.space(16)
+        readonly property real innerWidth: column - theme.space(16)
 
         // ---- The head: the title and its count, the search at the right
         Item {
