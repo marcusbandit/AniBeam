@@ -80,8 +80,9 @@ Item {
         case "trending": return s.trending
         case "favourites": return s.favourites
         case "soonest": return s.next_airing ? s.next_airing.at : null
-        // The last episode out: the one before the next, or all of them for a show with none due
-        case "aired": return s.next_airing ? s.next_airing.episode - 1 : (s.episodes || null)
+        // The last episode out: the newest one seen airing, else the one before the next, else
+        // all of them for a show with none due and none just out
+        case "aired": return s.latest ? s.latest.episode : s.next_airing ? s.next_airing.episode - 1 : (s.episodes || null)
         case "episodes": return s.episodes
         case "start": return s.start_date
         case "duration": return s.duration
