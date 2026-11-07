@@ -905,8 +905,12 @@ pub struct Preferences {
     pub library_show_watched: bool,
     /// How the library page arranges its cards. `serde(default)` because
     /// older blobs predate it, which is the whole migration: they read as
-    /// `Arrange::default()` (Related), while a fresh install starts on Flat.
-    #[serde(default, deserialize_with = "lenient::arrange")]
+    /// Related, what they showed before the key existed, while a fresh install
+    /// starts on Flat.
+    #[serde(
+        default = "arrange_before_the_key",
+        deserialize_with = "lenient::arrange"
+    )]
     pub library_arrange: Arrange,
     /// Whether the library pulls a franchise's series (two or more in the
     /// library) out into a section of their own ahead of the cut, or leaves
@@ -963,6 +967,11 @@ fn default_true() -> bool {
     true
 }
 
+/// What a preferences blob written before `library_arrange` existed shows
+fn arrange_before_the_key() -> Arrange {
+    Arrange::Related
+}
+
 fn default_on_hold_days() -> u32 {
     ON_HOLD_DAYS
 }
@@ -998,7 +1007,7 @@ mod lenient {
         or(d, Preferences::default().feed_sort)
     }
     pub fn arrange<'de, D: Deserializer<'de>>(d: D) -> Result<Arrange, D::Error> {
-        or(d, Arrange::default())
+        or(d, Preferences::default().library_arrange)
     }
 }
 

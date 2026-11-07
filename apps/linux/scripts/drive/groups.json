@@ -1,7 +1,9 @@
 [
   {"eval": "frame.item.nav.current.page", "expect": "library"},
   {"until": "driver.item.findItem('library-page') !== null && driver.item.findItem('library-page').view.count > 0"},
-  {"eval": "Door.preferences.library_arrange", "expect": "None"},
+  {"log": "start ungrouped whatever an earlier run left: the fresh default is the core's test"},
+  {"eval": "Door.setPreferences(Object.assign({}, Door.preferences, {library_arrange: 'None'})); true"},
+  {"until": "Door.preferences.library_arrange === 'None'"},
   {"click": "arrange-menu"},
   {"shot": "lib-group-menu"},
   {"click": "arrange-menu-option-1"},
