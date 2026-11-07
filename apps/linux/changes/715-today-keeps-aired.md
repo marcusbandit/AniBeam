@@ -1,2 +1,2 @@
 ### Fixed
-- Today on Home keeps episodes that already aired, with how long ago
+- This week keeps episodes that aired today or yesterday, with how long ago

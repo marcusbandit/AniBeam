@@ -265,9 +265,9 @@ Item {
                 var e = day.cards[k]
                 if (day.later) { later.push({ card: e.card, drop: null, state: "none", day: i }); continue }
                 var st = page.dropState(e.card, e.drop, nowMs)
-                // Today's episodes stay on Today once they air, saying how long ago, watched or
-                // not, so the day still answers whether something came out
-                if (i === 2 && (st === "here" || st === "downloading" || st === "late"))
+                // Yesterday's and today's episodes stay on their day once they air, saying how
+                // long ago, watched or not, so the board still answers whether something came out
+                if ((i === 1 || i === 2) && (st === "here" || st === "downloading" || st === "late"))
                     aired.push({ card: e.card, drop: e.drop, day: i, state: st, aired: true,
                                  watched: st === "here" && page.dropWatched(e.card, e.drop) })
                 if (st === "here" || st === "downloading" || st === "late") {
@@ -307,7 +307,8 @@ Item {
     onWeekKeyChanged: splitWeek()
     // The board (#352): today and the six days after as columns, each with its episodes
     // still to come in air order, the next one first in its day. Today opens with the
-    // episodes that already aired today (#715), over a Now line. A day with nothing on it
+    // episodes that already aired today (#715), over a Now line, and a Yesterday column
+    // leads when something aired yesterday. A day with nothing on it
     // stays as a narrow column, so the week keeps its shape and a gap reads as a gap. A
     // guessed episode past its time and not out yet sits on today, after the next one; the
     // series with no date close the board in a column of their own.
@@ -316,10 +317,17 @@ Item {
         // every standing as it was keeps the board's tiles, their focus and hover
         var cols = [], split = weekSplit, now = new Date(dayKey + "T00:00:00")
         var overdue = split.ahead.filter(function(a) { return a.state === "overdue" })
+        // Yesterday leads the board only when something aired on it
+        var yesterday = split.aired.filter(function(a) { return a.day === 1 })
+        if (yesterday.length) {
+            var yd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+            cols.push({ name: "Yesterday", short: "Yesterday", date: Qt.formatDate(yd, "ddd d MMM"), shortDate: Qt.formatDate(yd, "d MMM"),
+                        today: false, past: true, later: false, items: yesterday, next: null })
+        }
         for (var o = 0; o < 7; o++) {
             var i = o + 2   // the week's index: it starts two days back
             var items = split.ahead.filter(function(a) { return a.day === i && a.state !== "overdue" })
-            if (o === 0) items = split.aired.concat(items, overdue)
+            if (o === 0) items = split.aired.filter(function(a) { return a.day === i }).concat(items, overdue)
             // A copy marked as the next, since a model hands the tiles copies, never the same object
             var next = split.next && split.next.day === i ? { card: split.next.card, drop: split.next.drop, day: i, state: split.next.state, next: true } : null
             if (next) items.unshift(next)
@@ -773,7 +781,7 @@ Item {
                 text: bday.narrow && !bday.across ? bday.day.short : bday.day.name
                 role: "title"
                 font.pointSize: theme.typeNormal
-                color: bday.day.today ? theme.accent : bday.day.later ? theme.textDim : theme.text
+                color: bday.day.today ? theme.accent : bday.day.later || bday.day.past ? theme.textDim : theme.text
                 elide: Text.ElideRight
             }
             Label {
