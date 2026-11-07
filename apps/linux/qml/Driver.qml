@@ -14,6 +14,8 @@
 //   {"hover": [x, y] | "objectName"}
 //   {"drag": [x1, y1, x2, y2], "steps": n, "button": ...}       press, n moves held, release;
 //                                                              "release": false keeps it held
+//   {"press": [x, y], "button": ...}                           presses and holds there; "hover" steps
+//                                                              move it, "release" lets go
 //   {"release": [x, y], "button": ...}                         lets go of a held drag there
 //   {"wheel": [x, y, dy] | "objectName", "dy": n, "dx": n}     angle delta; 120 is a notch
 //   {"key": "Escape" | "Ctrl+K" | "a" | ...}
@@ -373,6 +375,10 @@ QtObject {
             })(k / n)
             if (step.release !== false)
                 out.push(function() { Shell.driveMouse(hostWindow, 3, point.x, point.y, b, 0); return settle })
+        } else if (step.press !== undefined) {
+            b = button(step)
+            out.push(moveTo(step.press))
+            out.push(function() { Shell.driveMouse(hostWindow, 1, point.x, point.y, b, 0); return settle })
         } else if (step.release !== undefined) {
             b = button(step)
             out.push(moveTo(step.release))
