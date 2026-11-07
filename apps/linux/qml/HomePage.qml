@@ -469,8 +469,8 @@ Item {
         Label { id: wl; role: "title"; font.pointSize: theme.typeNormal }
         Label { id: wf; anchors.baseline: wl.baseline; role: "ui"; color: theme.textDim; visible: text !== "" }
     }
-    // The next episode to air, first in its day on the board: the poster on a band in its
-    // own tone, the time left in large figures, then the title and when. The one loud thing
+    // The next episode to air, first in its day on the board: a band in its own tone with
+    // the poster fading in from the right, the time left in large figures, then the title and when. The one loud thing
     // on the board. Opens the series.
     component NextTile: Corner {
         id: nextTile
@@ -495,39 +495,56 @@ Item {
         Keys.onSpacePressed: page.playSeries(card)
         scale: theme.reducedMotion ? 1 : (nm.pressed ? 0.99 : 1)
         PosterTone { id: nextTone; source: nextTile.card.poster ? Fmt.fileUrl(nextTile.card.poster) : "" }
-        // Wide, the poster stands at the left and the words beside it; in a narrow column the
-        // time left runs across the top and a smaller poster sits beside the title under it.
-        // Every size here follows the width, so the height never feeds back into it.
+        // Like the series page band: the poster fills the right side top to bottom, the show's
+        // colour is solid under the words and fades across into it. Every size follows the
+        // width, so the height never feeds back into it.
         readonly property bool compact: width < theme.space(110)
-        readonly property real pad: compact ? theme.space(4) : theme.space(3)
+        readonly property real pad: compact ? theme.space(4) : theme.space(5)
         readonly property real gap: theme.space(2)
-        readonly property real wordsH: lead.height + gap + info.height
-        readonly property real wideH: Math.max(nextPoster.height, wordsH)
-        height: compact ? nextPoster.y + Math.max(nextPoster.height, info.height) + pad : wideH + pad * 2
-        Corner {
-            id: nextPoster
-            x: nextTile.pad
-            y: nextTile.compact ? lead.y + lead.height + theme.space(3) : nextTile.pad + Math.round((nextTile.wideH - height) / 2)
-            height: nextTile.compact ? theme.space(24) : theme.space(40); width: Math.round(height * 2 / 3)
-            radius: theme.radiusInner(theme.space(3))
-            color: Qt.rgba(0, 0, 0, 0.3)
-            fillItem: nextArt.status === Image.Ready ? nextArt : null
-            Image {
-                id: nextArt
-                visible: false
-                width: nextPoster.width; height: nextPoster.height
-                source: nextTile.card.poster ? Fmt.fileUrl(nextTile.card.poster) : ""
-                sourceSize: theme.posterDecodeSize
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
+        readonly property real artW: Math.round(width * (compact ? 0.4 : 0.36))
+        readonly property real wordsW: width - pad * 2 - artW * 0.5
+        height: Math.max(theme.space(compact ? 30 : 36), lead.height + gap + info.height + pad * 2)
+        Item {
+            anchors.fill: parent
+            Corner {
+                id: nextPoster
+                anchors.right: parent.right
+                width: nextTile.artW; height: parent.height
+                radius: nextTile.radius
+                color: Qt.rgba(0, 0, 0, 0.3)
+                fillItem: nextArt.status === Image.Ready ? nextArt : null
+                Image {
+                    id: nextArt
+                    visible: false
+                    width: nextPoster.width; height: nextPoster.height
+                    source: nextTile.card.poster ? Fmt.fileUrl(nextTile.card.poster) : ""
+                    sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                }
+            }
+            // The wash shares the card's rounding; solid under the words, clearing to the right
+            Rectangle {
+                anchors.right: parent.right
+                width: nextTile.artW + theme.space(12); height: parent.height
+                radius: nextTile.radius
+                antialiasing: true
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: nextTile.base }
+                    GradientStop { position: 0.3; color: nextTile.base }
+                    GradientStop { position: 0.55; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.75) }
+                    GradientStop { position: 0.8; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.3) }
+                    GradientStop { position: 1.0; color: Qt.rgba(nextTile.base.r, nextTile.base.g, nextTile.base.b, 0.0) }
+                }
             }
         }
         // The time left
         Column {
             id: lead
-            x: nextTile.compact ? nextTile.pad : nextPoster.x + nextPoster.width + theme.space(5)
-            y: nextTile.compact ? nextTile.pad : nextTile.pad + Math.round((nextTile.wideH - nextTile.wordsH) / 2)
-            width: nextTile.width - x - nextTile.pad
+            x: nextTile.pad
+            y: nextTile.pad
+            width: nextTile.wordsW
             spacing: theme.space(1)
             Label { text: "Next up"; role: "ledger"; color: nextTile.inkAccent }
             Flow {
@@ -547,9 +564,9 @@ Item {
         // The series and when
         Column {
             id: info
-            x: nextTile.compact ? nextPoster.x + nextPoster.width + theme.space(3) : lead.x
-            y: nextTile.compact ? nextPoster.y : lead.y + lead.height + nextTile.gap
-            width: nextTile.width - x - nextTile.pad
+            x: nextTile.pad
+            y: lead.y + lead.height + nextTile.gap
+            width: nextTile.wordsW
             spacing: theme.space(1)
             Label {
                 width: parent.width
