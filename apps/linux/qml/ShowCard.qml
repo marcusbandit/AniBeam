@@ -75,7 +75,11 @@ Item {
                 visible: false
                 anchors.fill: parent
                 source: Fmt.fileUrl(root.poster)
-                sourceSize: theme.posterDecodeSize
+                // The shared decode (a cache hit) while the card is about a grid poster's
+                // size; a card well past it, like the four-across lens, decodes at twice it
+                sourceSize: root.width > theme.posterDecodeSize.width / theme.devicePixelRatio
+                            ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
+                            : theme.posterDecodeSize
                 fillMode: Image.PreserveAspectCrop
                 smooth: true
                 asynchronous: true
