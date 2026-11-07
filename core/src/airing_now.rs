@@ -33,8 +33,8 @@ pub const STALE_AFTER_SECS: i64 = 30 * 60;
 /// How long a season browsed to, neither on air nor next, stays cached.
 const BROWSED_KEPT_SECS: i64 = 86_400;
 
-/// How far back the strip of episodes out reaches.
-pub const AIRED_WINDOW_SECS: i64 = 2 * 86_400;
+/// How far back the strip of episodes out reaches: the last 24 hours.
+pub const AIRED_WINDOW_SECS: i64 = 86_400;
 
 /// Fifty shows a page. Ten pages is more than any season has carried, and
 /// a cap all the same: a reply that keeps saying there is more must not
