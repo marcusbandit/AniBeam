@@ -1295,7 +1295,7 @@ Item {
                     // else two even rows; a column too narrow for two rows wraps at the
                     // smallest readable card instead of shrinking past it
                     readonly property int count: page.detail ? page.detail.recommendations.length : 0
-                    readonly property int fit: Math.max(1, Math.floor((width + gap) / (theme.space(26) + gap)))
+                    readonly property int fit: Math.max(1, Math.floor((width + gap) / (theme.space(22) + gap)))
                     readonly property int cols: count < 1 ? 1
                         : (width - (count - 1) * gap) / count >= theme.space(28) ? count
                         : Math.min(Math.ceil(count / 2), fit)
