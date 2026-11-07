@@ -151,7 +151,7 @@ The user saying what a file's reading should be when its name read wrong. It is 
 _Avoid_: override, correction, remap, manual match
 
 **Airing now**:
-Every show AniList has on air, not only the library's, read whole from AniList and kept apart from the library's own tables, so a show only browsed never reaches the franchise graph or the image fill. Its other pick is the next season by name. Along the top sits Out now, the episodes out in the last two days, newest first.
+Every show AniList has on air, not only the library's, read whole from AniList and kept apart from the library's own tables, so a show only browsed never reaches the franchise graph or the image fill. Its other pick is the next season by name. Along the top sits Out now, the episodes out in the last 24 hours, newest first.
 _Avoid_: seasonal, schedule, calendar, discover
 
 **Not interested**:

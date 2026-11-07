@@ -681,7 +681,7 @@ pub struct AiringShow {
     pub average_score: Option<u32>,
     pub site_url: Option<String>,
     pub next_airing: Option<Airing>,
-    /// The newest episode out in the last two days, if one is.
+    /// The newest episode out in the last 24 hours, if one is.
     pub latest: Option<AiredEpisode>,
     pub owned: Option<u64>,
     pub list_status: Option<ListStatus>,
@@ -698,7 +698,7 @@ pub struct AiredEpisode {
 
 /// Airing now as the page draws it: the shows, most popular first, with
 /// every one marked not interested left out, and the episodes out in the
-/// last two days, newest first.
+/// last 24 hours, newest first.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct AiringNow {
     pub season: SeasonPick,
