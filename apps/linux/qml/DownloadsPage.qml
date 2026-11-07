@@ -1692,7 +1692,11 @@ Item {
     readonly property real paneWidth: theme.space(90)
     readonly property real tileGap: theme.grout
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (theme.posterWidth + tileGap)))
-    readonly property real cardWidth: Math.floor((scroll.innerWidth - tileGap * (cols - 1)) / cols)
+    readonly property real cardWidth: (scroll.innerWidth - tileGap * (cols - 1)) / cols
+    // The lens grids (Gaps, Airing, Following) are four columns across the whole width, fewer
+    // only when a window is too narrow to give each at least a poster's width (#686)
+    readonly property int lensCols: Math.max(1, Math.min(4, Math.floor((scroll.innerWidth + tileGap) / (theme.space(80) + tileGap))))
+    readonly property real lensCardWidth: (scroll.innerWidth - tileGap * (lensCols - 1)) / lensCols
     readonly property bool home: page.detail === null && page.getShow === null && page.state === null && !page.searching && page.searchError === ""
 
     // ---- Activity at the right, while the window has the width for it. Narrower, it folds
@@ -1781,7 +1785,9 @@ Item {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: page.activityShown ? activity.left : activityStrip.left
-        readonly property real innerWidth: width - theme.space(16)
+        // The column the content sits in, which stops at theme.contentMax on a wide window, so
+        // the grids are sized to it and not to the Flickable (#686)
+        readonly property real innerWidth: column - theme.space(16)
 
         // ---- The head: back (with a show open), the title, the two halves in plain words
         Item {
@@ -2529,7 +2535,7 @@ Item {
                 line: page.gapCards.length ? "Aired episodes that are not on disk. Open a show to see who has them." : "Nothing is missing: every aired episode of every show is on disk."
             }
             Flow {
-                width: parent.width
+                width: parent.width + 0.5  // a hair wider so an exact row never wraps
                 spacing: page.tileGap
                 Repeater {
                     model: page.gapCards
@@ -2537,8 +2543,7 @@ Item {
                         id: gap
                         required property var modelData
                         objectName: "gap-" + modelData.id
-                        readonly property real cols: Math.max(1, Math.floor((scroll.innerWidth + page.tileGap) / (theme.space(105) + page.tileGap)))
-                        width: Math.floor((scroll.innerWidth - page.tileGap * (cols - 1)) / cols)
+                        width: page.lensCardWidth
                         height: theme.space(36)
                         radius: theme.radiusTile
                         smoothing: theme.cornerSmoothing
@@ -2603,13 +2608,13 @@ Item {
                 }
             }
             Flow {
-                width: parent.width
+                width: parent.width + 0.5  // a hair wider so an exact row never wraps
                 spacing: page.tileGap
                 Repeater {
                     model: page.airingCards
                     ShowCard {
                         required property var modelData
-                        width: page.cardWidth
+                        width: page.lensCardWidth
                         height: implicitHeight
                         poster: modelData.poster || ""
                         title: modelData.title
@@ -2670,13 +2675,13 @@ Item {
                     }
                     Flow {
                         visible: frame.downloadsSubView === "grid"
-                        width: parent.width
+                        width: parent.width + 0.5  // a hair wider so an exact row never wraps
                         spacing: page.tileGap
                         Repeater {
                             model: frame.downloadsSubView === "grid" ? subSection.modelData.items : []
                             ShowCard {
                                 required property var modelData
-                                width: page.cardWidth
+                                width: page.lensCardWidth
                                 height: implicitHeight
                                 compact: !modelData.show
                                 poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
@@ -2955,7 +2960,7 @@ Item {
         Flow {
             id: glFlow
             visible: gl.grid
-            width: parent.width
+            width: parent.width + 0.5  // a hair wider so an exact row never wraps
             spacing: page.tileGap
             Repeater {
                 model: gl.grid ? gl.groups : []
@@ -3042,7 +3047,7 @@ Item {
         Flow {
             id: dlFlow
             visible: dl.grid
-            width: parent.width
+            width: parent.width + 0.5  // a hair wider so an exact row never wraps
             spacing: page.tileGap
             Repeater {
                 model: dl.grid ? dl.cards : []
