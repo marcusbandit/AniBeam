@@ -913,8 +913,13 @@ pub struct Preferences {
     #[serde(default)]
     pub library_show_watched: bool,
     /// How the library page arranges its cards. `serde(default)` because
-    /// older blobs predate it, which is the whole migration.
-    #[serde(default, deserialize_with = "lenient::arrange")]
+    /// older blobs predate it, which is the whole migration: they read as
+    /// Related, what they showed before the key existed, while a fresh install
+    /// starts on Flat.
+    #[serde(
+        default = "arrange_before_the_key",
+        deserialize_with = "lenient::arrange"
+    )]
     pub library_arrange: Arrange,
     /// Whether the library pulls a franchise's series (two or more in the
     /// library) out into a section of their own ahead of the cut, or leaves
@@ -974,6 +979,11 @@ pub const ON_HOLD_DAYS: u32 = 60;
 
 fn default_true() -> bool {
     true
+}
+
+/// What a preferences blob written before `library_arrange` existed shows
+fn arrange_before_the_key() -> Arrange {
+    Arrange::Related
 }
 
 fn default_on_hold_days() -> u32 {
@@ -1127,7 +1137,7 @@ impl Default for Preferences {
             library_direction: Direction::Asc,
             feed_sort: FeedSort::Recent,
             library_show_watched: false,
-            library_arrange: Arrange::Related,
+            library_arrange: Arrange::Flat,
             library_group_franchises: true,
             share_over_tailscale: false,
             stream_over_tailscale: true,

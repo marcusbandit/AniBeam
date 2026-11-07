@@ -340,8 +340,9 @@ rail  header: one unit tall, whole column spans, spare columns to the title (cou
   opens the series when nothing is next). A series is a hero once on the wall.
 - **Arrange: the wall is boxes.** The owner's ask, after SpaceSniffer (its grouping, not
   its colours): related shows in one labelled box. The header's Arrange control picks
-  Related (the default), Type (TV; Movie; OVA, ONA and specials; Music; Unknown), Genre
-  (the first genre), Watch state (Watching, Not started, Caught up) or None, and it is a
+  None (the default, first in the menu and set apart by a rule), Related, Type (TV; Movie;
+  OVA, ONA and specials; Music; Unknown), Genre (the first genre) or Watch state (Watching,
+  Not started, Caught up), and it is a
   preference (`library_arrange`). Related groups by the core's franchise tag on each card
   (the connected franchise among library series); a group of one is a plain tile, no box.
   Type, Genre and Watch state box every group, one included, since there the label is the

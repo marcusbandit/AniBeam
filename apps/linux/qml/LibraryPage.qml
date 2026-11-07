@@ -150,7 +150,7 @@ Item {
     }
     // The cuts. A stored "Related" (the cut before the franchise toggle) reads as Season
     // with the toggle on, which is what it was.
-    readonly property var arrangements: [["Season", "Season"], ["Type", "Type"], ["Genre", "Genre"], ["WatchState", "Watch state"], ["None", "Nothing"]]
+    readonly property var arrangements: [["None", "Nothing"], ["Season", "Season"], ["Type", "Type"], ["Genre", "Genre"], ["WatchState", "Watch state"]]
     function cutOf(key) { return key === "Related" ? "Season" : key }
     // Loaded-with copies, not bindings on Door.preferences: seeded once in
     // Component.onCompleted, ordinary state from then on, so the preferences-changed
@@ -160,7 +160,7 @@ Item {
     property string direction: "Asc"
     property string titleLanguage: "Romaji"
     property bool showWatched: false
-    property string arrange: "Season"
+    property string arrange: "None"
     // Franchises as sections of their own ahead of the cut, or every series under its own
     // season, type or genre: a person who wants to know when things came out turns it off
     property bool groupFranchises: true
@@ -327,7 +327,7 @@ Item {
         direction = p.library_direction || "Asc"
         titleLanguage = p.title_language || "Romaji"
         showWatched = p.library_show_watched === true
-        arrange = cutOf(p.library_arrange || "Season")
+        arrange = cutOf(p.library_arrange || "None")
         groupFranchises = p.library_group_franchises !== false
         search.text = query
         var asked = props.arrange || (props.group === "Viewed" ? "WatchState" : props.group)
@@ -460,6 +460,7 @@ Item {
                         objectName: "arrange-menu"
                         prefix: "Group"
                         minWidth: theme.space(42)
+                        dividerAfter: 0
                         options: page.arrangements.map(function(a) { return a[1] })
                         index: Math.max(0, page.arrangements.findIndex(function(a) { return a[0] === page.arrange }))
                         onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }

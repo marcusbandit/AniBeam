@@ -301,13 +301,14 @@ impl Sort {
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
 )]
 pub enum Arrange {
-    #[default]
     Related,
     Type,
     Genre,
     Season,
     WatchState,
+    /// No grouping, the fresh-install default
     #[serde(rename = "None")]
+    #[default]
     Flat,
 }
 
