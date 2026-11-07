@@ -2,7 +2,7 @@
 // uniform cards, most popular first. The core owns the season (ListAiringNow answers the
 // cached read at once; RefreshAiringNow goes to AniList on open when that read is over half
 // an hour old, and from Refresh). Along the top, Out now: the episodes that came out in the
-// last two days across everything on air, newest first. A seg picks Airing now or the next
+// last 24 hours across everything on air, newest first. A seg picks Airing now or the next
 // season, another narrows the cards to the user's lists or the library.
 //
 // The x on a card marks the show not interested: it leaves the page at once, with Undo in a
@@ -221,9 +221,11 @@ Item {
     }
     // Out now's grid, small cards or list rows by Settings, Appearance, until All opens the rest
     readonly property real outGap: outList ? theme.space(2) : theme.space(3)
-    // Cards come columns by rows, from Settings, Appearance; a window too narrow for the
-    // columns at a readable width gets fewer
     Settings { id: sortPref; location: Shell.settingsUrl; category: "airing"; property string sortKey: "popular"; property bool sortAsc: true }
+    // Cards come columns by rows, from Settings, Appearance. The grid wins over the image: a
+    // banner is cropped to its cell, and a column goes only when a cell would drop under
+    // outMinCard, too small to read a title in
+    readonly property real outMinCard: theme.space(32)
     Settings { id: kept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
     readonly property var outLayout: {
         var m = /^(\d)x(\d)$/.exec(kept.outLayout)
@@ -235,8 +237,9 @@ Item {
     readonly property int outRows: outList ? 3 : outLayout[1]
     readonly property int outCols: outList
         ? Math.max(1, Math.floor((scroll.innerWidth + outGap) / (theme.space(84) + outGap)))
-        : Math.max(1, Math.min(outLayout[0], Math.floor((scroll.innerWidth + outGap) / (theme.space(45) + outGap))))
-    readonly property real outCellWidth: Math.floor((scroll.innerWidth - outGap * (outCols - 1)) / outCols)
+        : Math.max(1, Math.min(outLayout[0], Math.floor((scroll.innerWidth + outGap) / (outMinCard + outGap))))
+    // Not floored: the cells then sum to the full width, so the grid ends where the posters do
+    readonly property real outCellWidth: (scroll.innerWidth - outGap * (outCols - 1)) / outCols
     // Tall enough for two lines of words, and close to a banner's wide shape as the tile narrows
     readonly property real outCellHeight: outList ? theme.space(17) : Math.max(theme.space(20), Math.round(outCellWidth / 3.4))
     readonly property int outFirst: outCols * outRows
@@ -530,7 +533,7 @@ Item {
             }
         }
 
-        // ---- Out now: the episodes of the last two days, newest first, as an even grid of
+        // ---- Out now: the episodes of the last 24 hours, newest first, as an even grid of
         // rows (thumb, title, episode and age), three rows deep until All opens the rest
         Column {
             objectName: "airing-out-now"
@@ -554,7 +557,7 @@ Item {
                     }
                     Label {
                         anchors.baseline: outTitle.baseline
-                        text: Fmt.plural(page.aired.length, "episode", "episodes") + " in the last two days"
+                        text: Fmt.plural(page.aired.length, "episode", "episodes") + " in the last 24 hours"
                         role: "ui"
                         color: theme.textDim
                     }
@@ -572,7 +575,8 @@ Item {
                 }
             }
             Flow {
-                width: parent.width
+                // Half a pixel over, so a row of exact cells never wraps its last one
+                width: parent.width + 0.5
                 spacing: page.outGap
                 Repeater {
                     model: page.outShown
