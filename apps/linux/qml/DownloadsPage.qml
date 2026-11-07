@@ -2682,8 +2682,8 @@ Item {
                             ShowCard {
                                 required property var modelData
                                 width: page.lensCardWidth
+                                // a feed with no library show is a full card too, so rows stay even
                                 height: implicitHeight
-                                compact: !modelData.show
                                 poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
                                 title: page.titleOf(modelData)
                                 tag: page.ruleTag(modelData)
@@ -2967,8 +2967,9 @@ Item {
                 ShowCard {
                     required property var modelData
                     width: page.cardWidth
+                    // A folder with no show is still a full card (ShowCard's poster-less
+                    // pane, its glyph centred), so the grid stays even
                     height: implicitHeight
-                    compact: !modelData.show
                     glyph: "folder"
                     poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
                     title: modelData.title

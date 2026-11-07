@@ -3,8 +3,8 @@
 // is on disk (or how far a download has come), and a state tag top left: dark glass, a
 // coloured dot, light writing, so it reads on any poster. Hovering puts the pane's one
 // action (Unsubscribe, Remove) across its foot; it opens the removal sheet. A click
-// elsewhere opens the show. `compact` is a pane with no poster to show: a short text tile
-// with the glyph, for the shows the library has not found.
+// elsewhere opens the show. Without a poster the pane keeps its full size and centres its
+// glyph, so a grid stays even. `compact` is a short text tile with the glyph, for lists.
 import QtQuick
 import com.marcusrosado.AniBeam
 
