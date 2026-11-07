@@ -1,2 +1,2 @@
-### Fixed
-- Downloads: a folder in the grid is as tall as a poster card
+### Changed
+- Downloads: folders and feeds without a show are full-size cards in the grid
