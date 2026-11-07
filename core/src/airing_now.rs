@@ -1022,8 +1022,8 @@ mod tests {
             (rows[0].trending, rows[0].favourites, rows[0].duration),
             (Some(120), Some(3400), Some(24))
         );
-        assert_eq!(rows[0].start_date, Some(2026_10_04));
-        assert_eq!(rows[1].start_date, Some(2027_00_00));
+        assert_eq!(rows[0].start_date, Some(20_261_004));
+        assert_eq!(rows[1].start_date, Some(20_270_000));
         assert_eq!(rows[2].start_date, None);
         assert_eq!(rows[1].trending, None);
     }
