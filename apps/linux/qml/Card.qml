@@ -190,7 +190,8 @@ Item {
         nowMs: root.nowMs
         lift: root.lift
         focused: root.activeFocus
-        hideCode: root.selecting || root.selected
+        // The pick check takes the corner; the tag (list status, in library) sits right of it
+        leftInset: root.selecting || root.selected ? Math.round(theme.space(6)) + theme.space(1) : 0
         rightInset: dismissLoader.item && dismissLoader.item.visible ? dismissLoader.item.width + theme.space(1) : 0
     }
 
@@ -216,7 +217,7 @@ Item {
         }
     }
 
-    // ---- Picked: an accent edge, and the check top left where the episode code was; while
+    // ---- Picked: an accent edge, and the check top left, the episode code tag beside it; while
     // picking, an empty ring on the cards not picked yet. Built only while picking.
     Loader {
         anchors.fill: parent
