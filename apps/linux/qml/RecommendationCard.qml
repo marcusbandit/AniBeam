@@ -34,7 +34,8 @@ Item {
             width: parent.width; height: parent.height
             source: rec.poster ? Fmt.fileUrl(rec.poster) : ""
             fillMode: Image.PreserveAspectCrop; asynchronous: true; smooth: true
-            sourceSize: Qt.size(Math.ceil(width * theme.devicePixelRatio), Math.ceil(height * theme.devicePixelRatio))
+            // the shared poster decode, so a resize never decodes again; Corner scales it
+            sourceSize: theme.posterDecodeSize
         }
     }
     Rectangle {

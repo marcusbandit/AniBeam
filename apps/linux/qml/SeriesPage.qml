@@ -1291,8 +1291,15 @@ Item {
                     width: parent.width
                     spacing: theme.space(3)
                     readonly property real gap: theme.space(3)
-                    readonly property int cols: (width - 7 * gap) / 8 >= theme.space(28) ? 8 : 4
-                    readonly property real cardW: Math.floor((width - (cols - 1) * gap) / cols)
+                    // AniList keeps up to eight. One row when every card stays readable,
+                    // else two even rows; a column too narrow for two rows wraps at the
+                    // smallest readable card instead of shrinking past it
+                    readonly property int count: page.detail ? page.detail.recommendations.length : 0
+                    readonly property int fit: Math.max(1, Math.floor((width + gap) / (theme.space(26) + gap)))
+                    readonly property int cols: count < 1 ? 1
+                        : (width - (count - 1) * gap) / count >= theme.space(28) ? count
+                        : Math.min(Math.ceil(count / 2), fit)
+                    readonly property real cardW: Math.max(0, Math.floor((width - (cols - 1) * gap) / cols))
                     Heading { text: "Recommendations"; count: page.detail ? page.detail.recommendations.length : 0 }
                     Grid { columns: recCol.cols; spacing: recCol.gap
                         Repeater { model: page.detail ? page.detail.recommendations : []
