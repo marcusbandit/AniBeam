@@ -721,16 +721,12 @@ FocusScope {
         // Each kind of row is its own group, with a line between groups
         function group(list) {
             if (!list || !list.length) return
-            var first = {}
-            for (var k in list[0]) first[k] = list[0][k]
-            first.gapBefore = true
-            items = items.concat([first], list.slice(1))
+            list[0].gapBefore = true
+            items = items.concat(list)
         }
         group(frame.releaseItems())
         group(frame.episodeItems())
-        var card = frame.seriesCardItems()
-        group(card.filter(function(it) { return !it.status }))
-        group(card.filter(function(it) { return !!it.status }))
+        group(frame.seriesCardItems())
         if (page.item && page.item.contextItems) group(page.item.contextItems())
         group(frame.seriesDeleteItems())
         frame.openMenu(p.x, p.y, items)
@@ -890,7 +886,12 @@ FocusScope {
         out.push({ text: "Copy title", icon: "copy", action: function() { frame.copyText(c.title) } })
         var site = c.site_url || (c.match_info && c.match_info.anilist_id ? "https://anilist.co/anime/" + c.match_info.anilist_id : "")
         if (site) out.push({ text: "Open on AniList", icon: "external-link", action: function() { frame.openLink(site) } })
-        if (frame.canSetListStatus(c)) out = out.concat(frame.listStatusItems(c.id, c.list_status))
+        if (frame.canSetListStatus(c)) {
+            // The lists are a group of their own in the menu
+            var lists = frame.listStatusItems(c.id, c.list_status)
+            lists[0].gapBefore = true
+            out = out.concat(lists)
+        }
         return out
     }
     // A list status is offered for every series but a hidden one, whose tracker sync is off. It

@@ -120,7 +120,7 @@ Item {
                         x: theme.space(2); width: parent.width - theme.space(4)
                         y: Math.round(rowItem.sepH / 2) - 1
                         height: 1
-                        color: theme.line
+                        color: theme.lineStrong
                     }
                     MenuRow {
                         id: plain
