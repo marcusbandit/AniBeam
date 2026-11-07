@@ -325,6 +325,14 @@ Item {
         if (split.later.length) cols.push({ name: "No date yet", short: "No date yet", date: "", shortDate: "", today: false, later: true, items: split.later, next: null })
         return cols
     }
+    // Whether the board leaves out the days with nothing on them (#688), kept in the
+    // preferences so it holds across launches
+    readonly property bool hideEmptyDays: Door.preferences.home_hide_empty_days === true
+    function setHideEmptyDays(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.home_hide_empty_days = on
+        Door.setPreferences(p)
+    }
     // "1 day 20 h 36 m" as parts, for the countdown's large figures
     function countdownParts(secs) {
         var t = Math.max(0, Math.floor(secs)), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
@@ -1114,7 +1122,18 @@ Item {
             readonly property real cardW: theme.posterWidth
             Heading {
                 text: "This week"; fact: page.weekFact
-                action: Button { objectName: "home-week-airing"; flat: true; small: true; text: "Airing now"; icon: "chevron-right"; onClicked: frame.go("airing") }
+                action: Row {
+                    spacing: theme.space(2)
+                    Button {
+                        objectName: "home-week-hide-empty"
+                        visible: weekBox.hasAhead
+                        flat: true; small: true
+                        text: page.hideEmptyDays ? "Show empty days" : "Hide empty days"
+                        icon: page.hideEmptyDays ? "eye" : "eye-off"
+                        onClicked: page.setHideEmptyDays(!page.hideEmptyDays)
+                    }
+                    Button { objectName: "home-week-airing"; flat: true; small: true; text: "Airing now"; icon: "chevron-right"; onClicked: frame.go("airing") }
+                }
             }
             // Out now
             Column {
@@ -1157,16 +1176,18 @@ Item {
                 spacing: across ? theme.space(4) : theme.space(3)
                 readonly property real narrowW: theme.space(20)
                 readonly property real minDayW: theme.space(52)
-                readonly property int busy: page.board.filter(function(d) { return d.items.length > 0 }).length
-                readonly property int idle: page.board.length - busy
-                readonly property real dayW: busy ? Math.floor((width - idle * narrowW - (page.board.length - 1) * theme.space(3)) / busy) : 0
+                // The days drawn: every one, or with #688's toggle on only those with episodes
+                readonly property var shown: page.hideEmptyDays ? page.board.filter(function(d) { return d.items.length > 0 }) : page.board
+                readonly property int busy: shown.filter(function(d) { return d.items.length > 0 }).length
+                readonly property int idle: shown.length - busy
+                readonly property real dayW: busy ? Math.floor((width - idle * narrowW - (shown.length - 1) * theme.space(3)) / busy) : 0
                 // Too narrow for a column a day: a row a day instead, the days down the page
                 readonly property bool across: dayW < minDayW
                 // Its days are lanes for the arrow keys (GridKeys)
                 readonly property bool gridBoard: true
                 readonly property bool gridAcross: across
                 Repeater {
-                    model: page.board
+                    model: board.shown
                     BoardDay {
                         required property var modelData
                         day: modelData

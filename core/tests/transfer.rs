@@ -246,6 +246,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 discord_presence: false,
                 calendar_feed: false,
                 episode_notifications: true,
+                home_hide_empty_days: false,
             }
         ),
         other => panic!("{other:?}"),
@@ -321,6 +322,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         discord_presence: false,
         calendar_feed: false,
         episode_notifications: true,
+        home_hide_empty_days: false,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

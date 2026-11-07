@@ -24,6 +24,7 @@ fn preferences_and_settings_round_trip_with_events() {
         discord_presence: false,
         calendar_feed: false,
         episode_notifications: true,
+        home_hide_empty_days: true,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {
