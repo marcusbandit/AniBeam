@@ -679,6 +679,15 @@ pub struct AiringShow {
     pub episodes: Option<u32>,
     /// AniList's 0 to 100, as it came.
     pub average_score: Option<u32>,
+    /// AniList's trending score, as it came.
+    pub trending: Option<u32>,
+    /// How many AniList users favourited it.
+    pub favourites: Option<u32>,
+    /// Minutes an episode runs.
+    pub duration: Option<u32>,
+    /// The first episode's date as yyyymmdd; a month or day AniList does not
+    /// know yet reads 00.
+    pub start_date: Option<u32>,
     pub site_url: Option<String>,
     pub next_airing: Option<Airing>,
     /// The newest episode out in the last 24 hours, if one is.

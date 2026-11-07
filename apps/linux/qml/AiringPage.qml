@@ -46,12 +46,51 @@ Item {
     // What to leave out, on top of the filter: the shows on the user's lists, the library's
     property bool hideListed: !!props.hideListed
     property bool hideOwned: !!props.hideOwned
-    // The cards' order: AniList's popularity as it came, or one of these
-    property string sort: props.sort || "popular"
-    readonly property var sorts: [["popular", "Most popular"], ["score", "Highest score"],
-                                  ["soonest", "Next episode soonest"], ["episodes", "Most episodes"], ["title", "Title"]]
+    // The season grid's order, any field AniList gives a show. The pick and its direction are
+    // kept across launches; the value is what ascending runs over, `asc` the direction a field
+    // starts in and `words` what the direction button says for ascending and descending.
+    readonly property var sorts: [
+        { key: "popular", label: "Popularity", asc: true, words: ["Most popular first", "Least popular first"] },
+        { key: "score", label: "Score", asc: false, words: ["Lowest first", "Highest first"] },
+        { key: "trending", label: "Trending", asc: false, words: ["Least trending first", "Most trending first"] },
+        { key: "favourites", label: "Favourites", asc: false, words: ["Fewest first", "Most first"] },
+        { key: "soonest", label: "Next episode", asc: true, words: ["Soonest first", "Latest first"] },
+        { key: "aired", label: "Episodes aired", asc: false, words: ["Fewest first", "Most first"] },
+        { key: "episodes", label: "Episode count", asc: false, words: ["Fewest first", "Most first"] },
+        { key: "start", label: "Start date", asc: false, words: ["Oldest first", "Newest first"] },
+        { key: "duration", label: "Episode length", asc: false, words: ["Shortest first", "Longest first"] },
+        { key: "title", label: "Title", asc: true, words: ["A to Z", "Z to A"] }]
+    function sortIndex(key) {
+        for (var i = 0; i < page.sorts.length; i++) if (page.sorts[i].key === key) return i
+        return 0
+    }
+    readonly property int sortAt: page.sortIndex(sortPref.sortKey)
+    readonly property bool sortAsc: sortPref.sortAsc
+    function pickSort(i) {
+        sortPref.sortKey = page.sorts[i].key
+        sortPref.sortAsc = page.sorts[i].asc
+        scroll.contentY = 0
+    }
+    function flipSort() { sortPref.sortAsc = !sortPref.sortAsc }
+    // What a show is ordered by, or null when AniList gave none: those sort last either way
+    function sortValue(key, s, i) {
+        switch (key) {
+        case "popular": return i
+        case "score": return s.average_score
+        case "trending": return s.trending
+        case "favourites": return s.favourites
+        case "soonest": return s.next_airing ? s.next_airing.at : null
+        // The last episode out: the newest one seen airing, else the one before the next, else
+        // all of them for a show with none due and none just out
+        case "aired": return s.latest ? s.latest.episode : s.next_airing ? s.next_airing.episode - 1 : (s.episodes || null)
+        case "episodes": return s.episodes
+        case "start": return s.start_date
+        case "duration": return s.duration
+        default: return String(s.title).toLocaleLowerCase()
+        }
+    }
     function keepView() {
-        frame.nav.current.props = { season: page.season, filter: page.filter, hideListed: page.hideListed, hideOwned: page.hideOwned, sort: page.sort }
+        frame.nav.current.props = { season: page.season, filter: page.filter, hideListed: page.hideListed, hideOwned: page.hideOwned }
     }
     property var listed: null
     property bool refreshing: false
@@ -148,17 +187,19 @@ Item {
             if (f === 2 && !page.owned(s)) return false
             return page.kept(s)
         })
-        if (page.sort === "popular") return out
-        // A show missing the value sorts after every show that has it; ties keep popularity
-        var key = page.sort === "score" ? function(s) { return s.average_score === null || s.average_score === undefined ? null : -s.average_score }
-                : page.sort === "soonest" ? function(s) { return s.next_airing ? s.next_airing.at : null }
-                : page.sort === "episodes" ? function(s) { return s.episodes ? -s.episodes : null }
-                : function(s) { return String(s.title).toLocaleLowerCase() }
-        var rows = out.map(function(s, i) { return { s: s, k: key(s), i: i } })
+        // A show missing the value sorts after every show that has it, whichever way the order
+        // runs; ties keep AniList's popularity order
+        var key = page.sorts[page.sortAt].key
+        if (key === "popular" && page.sortAsc) return out
+        var dir = page.sortAsc ? 1 : -1
+        var rows = out.map(function(s, i) {
+            var v = page.sortValue(key, s, i)
+            return { s: s, k: v === undefined ? null : v, i: i }
+        })
         rows.sort(function(a, b) {
             if (a.k === null || b.k === null) return a.k === b.k ? a.i - b.i : a.k === null ? 1 : -1
-            if (a.k < b.k) return -1
-            if (a.k > b.k) return 1
+            if (a.k < b.k) return -dir
+            if (a.k > b.k) return dir
             return a.i - b.i
         })
         return rows.map(function(r) { return r.s })
@@ -180,6 +221,7 @@ Item {
     }
     // Out now's grid, small cards or list rows by Settings, Appearance, until All opens the rest
     readonly property real outGap: outList ? theme.space(2) : theme.space(3)
+    Settings { id: sortPref; location: Shell.settingsUrl; category: "airing"; property string sortKey: "popular"; property bool sortAsc: true }
     // Cards come columns by rows, from Settings, Appearance. The grid wins over the image: a
     // banner is cropped to its cell, and a column goes only when a cell would drop under
     // outMinCard, too small to read a title in
@@ -469,14 +511,6 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(2)
-                Dropdown {
-                    objectName: "airing-sort"
-                    prefix: "Sort"
-                    minWidth: theme.space(44)
-                    options: page.sorts.map(function(s) { return s[1] })
-                    index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
-                    onPicked: function(i) { page.sort = page.sorts[i][0]; page.keepView(); scroll.contentY = 0 }
-                }
                 ToggleChip {
                     objectName: "airing-hide-lists"
                     text: "Hide my lists"
@@ -693,7 +727,42 @@ Item {
             }
         }
 
-        // ---- The shows, most popular first
+        // ---- The season's order: sorts the grid below and nothing above it
+        Item {
+            objectName: "airing-sort-row"
+            visible: page.shows.length > 0
+            width: parent.width
+            height: theme.controlHeight
+            Row {
+                spacing: theme.space(2)
+                Dropdown {
+                    objectName: "airing-sort"
+                    prefix: "Sort"
+                    minWidth: theme.space(58)
+                    options: page.sorts.map(function(s) { return s.label })
+                    index: page.sortAt
+                    onPicked: function(i) { page.pickSort(i) }
+                }
+                Button {
+                    objectName: "airing-sort-direction"
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.max(implicitWidth, theme.space(48))
+                    flat: true
+                    icon: page.sortAsc ? "arrow-up-narrow-wide" : "arrow-down-wide-narrow"
+                    text: page.sorts[page.sortAt].words[page.sortAsc ? 0 : 1]
+                    onClicked: page.flipSort()
+                }
+            }
+            Label {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: Fmt.plural(page.shows.length, "show", "shows")
+                role: "ui"
+                color: theme.textDim
+            }
+        }
+
+        // ---- The shows, in the order above
         Flow {
             objectName: "airing-grid"
             width: parent.width

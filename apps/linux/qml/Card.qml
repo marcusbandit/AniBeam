@@ -20,7 +20,9 @@
 // Ctrl+click, asks for it to be picked (`selectToggled`), and while the page is `selecting`
 // a plain click, Return or Space picks too instead of opening. Ctrl+Space picks the focused
 // card from the keyboard. A page that also sets `ranges` takes Shift+click and Shift+Space
-// as a pick of every card from the last one picked to this one (`selectRange`). A picked card
+// as a pick of every card from the last one picked to this one (`selectRange`). Holding the
+// press paints: the page stays put and each card the pointer crosses is picked too, the edges
+// of the view scrolling it on (PageScroll.brushBegin). A picked card
 // wears a filled accent check top left and an accent edge; while selecting, the others show
 // an empty ring.
 //
@@ -142,9 +144,44 @@ Item {
             else if (root.selectable && (root.selecting || (mouse.modifiers & Qt.ControlModifier))) root.selectToggled()
             else root.opened()
         }
-        // A held press picks the card and starts picking; Qt sends no click after it
-        onPressAndHold: if (root.selectable) { tipIntent.stop(); frame.hideTip(); root.selectToggled() }
+        // A held press picks the card and starts picking; Qt sends no click after it. From
+        // then the press is a brush (#695): it keeps the pointer, so the page no longer
+        // drags with it, and every card it passes over is picked too (or unpicked, when
+        // the held card was). The page's PageScroll finds the cards and scrolls at its edges.
+        onPressAndHold: function(mouse) {
+            if (!root.selectable) return
+            tipIntent.stop(); frame.hideTip()
+            press.paint = !root.selected
+            root.selectToggled()
+            press.host = root.brushHost()
+            press.painting = true
+            if (press.host) press.host.brushBegin(press.mapToItem(null, mouse.x, mouse.y), press.paint)
+        }
+        onPositionChanged: function(mouse) {
+            if (press.painting && press.host) press.host.brushMove(press.mapToItem(null, mouse.x, mouse.y))
+        }
+        onReleased: press.endBrush()
+        onCanceled: press.endBrush()
+        preventStealing: painting
+        property bool painting: false
+        property bool paint: true
+        property var host: null
+        function endBrush() {
+            if (!press.painting) return
+            press.painting = false
+            // On a page teardown the scroller can go first
+            try { if (press.host) press.host.brushEnd() } catch (e) {}
+            press.host = null
+        }
+        Component.onDestruction: press.endBrush()
     }
+    // The scroller above this card that paints picks: a PageScroll
+    function brushHost() {
+        for (var p = root.parent; p; p = p.parent) if (p.brushBegin !== undefined) return p
+        return null
+    }
+    // Read by the scroller's hit test
+    readonly property bool brushable: selectable
 
     // ---- The pane under the poster: only while there is no poster to show. Under a decoded
     // poster its light edge showed through the poster's antialiased corners as a pale rim.
@@ -190,7 +227,8 @@ Item {
         nowMs: root.nowMs
         lift: root.lift
         focused: root.activeFocus
-        hideCode: root.selecting || root.selected
+        // The pick check takes the corner; the tag (list status, in library) sits right of it
+        leftInset: root.selecting || root.selected ? Math.round(theme.space(6)) + theme.space(1) : 0
         rightInset: dismissLoader.item && dismissLoader.item.visible ? dismissLoader.item.width + theme.space(1) : 0
     }
 
@@ -216,7 +254,7 @@ Item {
         }
     }
 
-    // ---- Picked: an accent edge, and the check top left where the episode code was; while
+    // ---- Picked: an accent edge, and the check top left, the episode code tag beside it; while
     // picking, an empty ring on the cards not picked yet. Built only while picking.
     Loader {
         anchors.fill: parent

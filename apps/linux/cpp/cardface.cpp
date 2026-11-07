@@ -168,7 +168,7 @@ FACE_SETTER(setGhost, m_ghost, bool, ghostChanged)
 FACE_SETTER(setHero, m_hero, bool, heroChanged)
 FACE_SETTER(setFocused, m_focused, bool, focusedChanged)
 FACE_SETTER(setRightInset, m_rightInset, qreal, rightInsetChanged)
-FACE_SETTER(setHideCode, m_hideCode, bool, hideCodeChanged)
+FACE_SETTER(setLeftInset, m_leftInset, qreal, leftInsetChanged)
 #undef FACE_SETTER
 
 void CardFace::setItem(const QVariantMap &v)
@@ -561,8 +561,8 @@ void CardFace::updatePolish()
     // Hidden and the ghost's AniList right, in that order from the left
     const qreal ty = p * 0.8;
     const QString code = it.value(QStringLiteral("code")).toString();
-    if (!code.isEmpty() && !m_hideCode)
-        addTag(code, st.onPoster, p * 0.8, ty, false, nullptr);
+    if (!code.isEmpty())
+        addTag(code, st.onPoster, p * 0.8 + m_leftInset, ty, false, nullptr);
     struct Tag { QString text; QColor ink; };
     std::vector<Tag> tags;
     const int downloading = it.value(QStringLiteral("downloading")).toList().size();
