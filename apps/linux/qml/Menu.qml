@@ -10,7 +10,8 @@
 //
 // A row may be split in two, `{ split: [left, right] }`, each half a row of its own with its
 // own `enabled`: Back and Forward share the top row this way. Left and Right move between
-// the halves of a highlighted split row.
+// the halves of a highlighted split row. A row with `gapBefore` starts a new group: a hairline
+// in a gap above it, which the keys step over like any space.
 import QtQuick
 
 Item {
@@ -111,10 +112,19 @@ Item {
                     readonly property bool highlighted: index === root.hi
                     readonly property bool isSplit: !!modelData.split
                     readonly property real contentWidth: isSplit ? halves.contentWidth : plain.contentWidth
+                    readonly property real sepH: modelData.gapBefore && index > 0 ? theme.space(3) : 0
                     width: root.rowWidth
-                    height: theme.controlHeight
+                    height: theme.controlHeight + sepH
+                    Rectangle {
+                        visible: rowItem.sepH > 0
+                        x: theme.space(2); width: parent.width - theme.space(4)
+                        y: Math.round(rowItem.sepH / 2) - 1
+                        height: 1
+                        color: theme.line
+                    }
                     MenuRow {
                         id: plain
+                        y: rowItem.sepH
                         visible: !rowItem.isSplit
                         width: parent.width
                         entry: rowItem.isSplit ? ({}) : rowItem.modelData
@@ -124,6 +134,7 @@ Item {
                     }
                     Row {
                         id: halves
+                        y: rowItem.sepH
                         visible: rowItem.isSplit
                         readonly property real contentWidth: left.contentWidth + right.contentWidth + theme.space(8)
                         MenuRow {

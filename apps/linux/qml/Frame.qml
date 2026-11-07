@@ -718,9 +718,21 @@ FocusScope {
     function openContextMenu(p) {
         var items = [{ split: [{ text: "Back", icon: "arrow-left", action: frame.back, enabled: nav.canBack },
                                { text: "Forward", icon: "arrow-right", action: frame.forward, enabled: nav.canForward, trailing: true }] }]
-        items = items.concat(frame.releaseItems(), frame.episodeItems(), frame.seriesCardItems())
-        if (page.item && page.item.contextItems) items = items.concat(page.item.contextItems())
-        items = items.concat(frame.seriesDeleteItems())
+        // Each kind of row is its own group, with a line between groups
+        function group(list) {
+            if (!list || !list.length) return
+            var first = {}
+            for (var k in list[0]) first[k] = list[0][k]
+            first.gapBefore = true
+            items = items.concat([first], list.slice(1))
+        }
+        group(frame.releaseItems())
+        group(frame.episodeItems())
+        var card = frame.seriesCardItems()
+        group(card.filter(function(it) { return !it.status }))
+        group(card.filter(function(it) { return !!it.status }))
+        if (page.item && page.item.contextItems) group(page.item.contextItems())
+        group(frame.seriesDeleteItems())
         frame.openMenu(p.x, p.y, items)
     }
     // From the keys: at the focused item, or the middle of the page when nothing has focus
