@@ -258,13 +258,18 @@ Item {
     // a fresh split would rebuild every card under it, dropping focus and hover. `weekKey`
     // reads the clock and changes only when a standing does; the split follows the key.
     function weekEntries() {
-        var out = [], ahead = [], later = [], seen = {}
+        var out = [], ahead = [], later = [], aired = [], seen = {}
         for (var i = 0; i < week.length; i++) {
             var day = week[i]
             for (var k = 0; k < day.cards.length; k++) {
                 var e = day.cards[k]
                 if (day.later) { later.push({ card: e.card, drop: null, state: "none", day: i }); continue }
                 var st = page.dropState(e.card, e.drop, nowMs)
+                // Yesterday's and today's episodes stay on their day once they air, saying how
+                // long ago, watched or not, so the board still answers whether something came out
+                if ((i === 1 || i === 2) && (st === "here" || st === "downloading" || st === "late"))
+                    aired.push({ card: e.card, drop: e.drop, day: i, state: st, aired: true,
+                                 watched: st === "here" && page.dropWatched(e.card, e.drop) })
                 if (st === "here" || st === "downloading" || st === "late") {
                     if (st === "here" && page.dropWatched(e.card, e.drop)) continue
                     out.push({ card: e.card, drop: e.drop, day: i, state: st })
@@ -276,7 +281,8 @@ Item {
         out = out.filter(function(o) { if (seen[o.card.id]) return false; seen[o.card.id] = true; return true })
         out.sort(function(a, b) { return a.drop.at - b.drop.at })
         ahead.sort(function(a, b) { return a.drop.at - b.drop.at })
-        return { out: out, ahead: ahead, later: later }
+        aired.sort(function(a, b) { return a.drop.at - b.drop.at })
+        return { out: out, ahead: ahead, later: later, aired: aired }
     }
     // Watched already: the tracker's progress reaches it, or with no tracker the core reads
     // the series caught up
@@ -290,17 +296,19 @@ Item {
     readonly property string weekKey: {
         var e = weekEntries()
         function entries(list) { return list.map(function(x) { return [x.card, x.drop, x.state] }) }
-        return JSON.stringify([dayKey, entries(e.out), entries(e.ahead), entries(e.later)])
+        return JSON.stringify([dayKey, entries(e.out), entries(e.ahead), entries(e.later), e.aired.map(function(x) { return [x.card.id, x.drop, x.state, x.watched] })])
     }
-    property var weekSplit: ({ out: [], ahead: [], next: null, later: [] })
+    property var weekSplit: ({ out: [], ahead: [], next: null, later: [], aired: [] })
     function splitWeek() {
         var e = weekEntries(), next = null
         for (var j = 0; j < e.ahead.length; j++) if (e.ahead[j].state === "future") { next = e.ahead.splice(j, 1)[0]; break }
-        weekSplit = { out: e.out, ahead: e.ahead, next: next, later: e.later }
+        weekSplit = { out: e.out, ahead: e.ahead, next: next, later: e.later, aired: e.aired }
     }
     onWeekKeyChanged: splitWeek()
     // The board (#352): today and the six days after as columns, each with its episodes
-    // still to come in air order, the next one first in its day. A day with nothing on it
+    // still to come in air order, the next one first in its day. Today opens with the
+    // episodes that already aired today (#715), over a Now line, and a Yesterday column
+    // leads when something aired yesterday. A day with nothing on it
     // stays as a narrow column, so the week keeps its shape and a gap reads as a gap. A
     // guessed episode past its time and not out yet sits on today, after the next one; the
     // series with no date close the board in a column of their own.
@@ -309,10 +317,17 @@ Item {
         // every standing as it was keeps the board's tiles, their focus and hover
         var cols = [], split = weekSplit, now = new Date(dayKey + "T00:00:00")
         var overdue = split.ahead.filter(function(a) { return a.state === "overdue" })
+        // Yesterday leads the board only when something aired on it
+        var yesterday = split.aired.filter(function(a) { return a.day === 1 })
+        if (yesterday.length) {
+            var yd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+            cols.push({ name: "Yesterday", short: "Yesterday", date: Qt.formatDate(yd, "ddd d MMM"), shortDate: Qt.formatDate(yd, "d MMM"),
+                        today: false, past: true, later: false, items: yesterday, next: null })
+        }
         for (var o = 0; o < 7; o++) {
             var i = o + 2   // the week's index: it starts two days back
             var items = split.ahead.filter(function(a) { return a.day === i && a.state !== "overdue" })
-            if (o === 0) items = items.concat(overdue)
+            if (o === 0) items = split.aired.filter(function(a) { return a.day === i }).concat(items, overdue)
             // A copy marked as the next, since a model hands the tiles copies, never the same object
             var next = split.next && split.next.day === i ? { card: split.next.card, drop: split.next.drop, day: i, state: split.next.state, next: true } : null
             if (next) items.unshift(next)
@@ -635,6 +650,9 @@ Item {
         readonly property var drop: entry.drop || null
         readonly property bool overdue: entry.state === "overdue"
         readonly property bool guessed: entry.state === "future" && !!drop && !!drop.predicted
+        // Out already today: it stays, counting up from when it aired
+        readonly property bool aired: entry.aired === true
+        readonly property real dim: aired && entry.watched ? 0.55 : 1
         readonly property int toWatch: page.toWatchOf(card)
         height: Math.max(theme.space(21), tileText.implicitHeight + theme.space(4))
         radius: theme.radiusMd
@@ -653,6 +671,7 @@ Item {
             height: theme.space(17); width: Math.round(height * 2 / 3)
             radius: theme.radiusSm
             color: theme.tileSunken
+            opacity: tile.dim
             fillItem: thumbImg.status === Image.Ready ? thumbImg : null
             Image {
                 id: thumbImg
@@ -670,6 +689,7 @@ Item {
             anchors.right: parent.right; anchors.rightMargin: theme.space(3)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
+            opacity: tile.dim
             Row {
                 width: parent.width
                 spacing: theme.space(1.5)
@@ -684,11 +704,13 @@ Item {
                     anchors.baseline: when.baseline
                     width: Math.min(implicitWidth, parent.width - when.width - parent.spacing)
                     elide: Text.ElideRight
-                    visible: tile.overdue || tile.guessed
-                    text: tile.overdue ? "not out yet" : "estimated"
+                    visible: tile.overdue || tile.guessed || tile.aired
+                    text: tile.aired ? (tile.entry.watched ? "watched" : tile.entry.state === "downloading" ? "downloading" : "out " + page.ago(tile.drop.at))
+                        : tile.overdue ? "not out yet" : "estimated"
                     role: "ledger"
-                    color: tile.overdue ? theme.red : theme.yellow
-                    opacity: 0.8
+                    color: tile.aired ? (tile.entry.state === "late" ? theme.red : tile.entry.state === "here" && !tile.entry.watched ? theme.accent : theme.textDim)
+                        : tile.overdue ? theme.red : theme.yellow
+                    opacity: tile.aired ? 1 : 0.8
                 }
             }
             Label {
@@ -759,7 +781,7 @@ Item {
                 text: bday.narrow && !bday.across ? bday.day.short : bday.day.name
                 role: "title"
                 font.pointSize: theme.typeNormal
-                color: bday.day.today ? theme.accent : bday.day.later ? theme.textDim : theme.text
+                color: bday.day.today ? theme.accent : bday.day.later || bday.day.past ? theme.textDim : theme.text
                 elide: Text.ElideRight
             }
             Label {
@@ -777,13 +799,32 @@ Item {
             width: bday.width - x
             spacing: theme.space(2)
             Label { visible: !(bday.day.items && bday.day.items.length); text: "Nothing"; role: "ledger"; color: theme.textFaint }
+            Repeater {
+                model: (bday.day.items || []).filter(function(e) { return e.aired })
+                BoardTile { required property var modelData; entry: modelData; width: bday.tileW }
+            }
+            // Now, between what already came out today and what is still to come
+            Item {
+                objectName: "week-now-line"
+                readonly property bool hasAired: (bday.day.items || []).some(function(e) { return e.aired })
+                visible: bday.day.today && hasAired && bday.day.items.some(function(e) { return !e.aired })
+                width: list.width
+                height: nowLabel.implicitHeight
+                Label { id: nowLabel; text: "Now " + Qt.formatTime(new Date(page.nowMs), "HH:mm"); role: "ledger"; color: theme.accent }
+                Rectangle {
+                    anchors.left: nowLabel.right; anchors.leftMargin: theme.space(2)
+                    anchors.right: parent.right
+                    anchors.verticalCenter: nowLabel.verticalCenter
+                    height: 1; color: theme.accent; opacity: 0.6
+                }
+            }
             NextTile {
                 visible: !!bday.day.next
                 entry: bday.day.next
                 width: bday.across ? Math.min(list.width, bday.tileW * 2 + list.spacing) : bday.tileW
             }
             Repeater {
-                model: (bday.day.items || []).filter(function(e) { return !e.next })
+                model: (bday.day.items || []).filter(function(e) { return !e.next && !e.aired })
                 BoardTile { required property var modelData; entry: modelData; width: bday.tileW }
             }
         }
@@ -1149,6 +1190,8 @@ Item {
             readonly property var split: page.weekSplit
             readonly property int outCount: split.out.length
             readonly property bool hasAhead: page.board.some(function(d) { return d.items.length > 0 })
+            // Still to come, leaving out what aired today and stays on Today
+            readonly property bool hasUpcoming: page.board.some(function(d) { return d.items.some(function(e) { return !e.aired }) })
             readonly property real cardW: theme.posterWidth
             Heading {
                 text: "This week"; fact: page.weekFact
@@ -1192,7 +1235,7 @@ Item {
             }
             Item { visible: weekBox.outCount > 0 && weekBox.hasAhead; width: 1; height: theme.space(3) }
             WeekLabel {
-                visible: weekBox.outCount > 0 && weekBox.hasAhead
+                visible: weekBox.outCount > 0 && weekBox.hasUpcoming
                 text: "Coming up"
                 // The heading counts them already when it has nothing more pressing to say
                 fact: { var n = weekBox.split.ahead.length + (weekBox.split.next ? 1 : 0); return n && !page.weekFactCounts ? Fmt.plural(n, "episode", "episodes") : "" }
