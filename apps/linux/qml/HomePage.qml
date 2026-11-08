@@ -185,7 +185,7 @@ Item {
         else openSeries(c)
     }
 
-    // ---- The lists. The hero's series shows only in the hero.
+    // ---- The lists. The hero's series shows in the hero and Continue, nowhere else.
     readonly property int heroId: resume ? resume.card.id : -1
     readonly property var airingIds: {
         var m = {}
@@ -904,7 +904,7 @@ Item {
                 visible: row.lead > 0
                 width: row.split ? row.leadWidth : row.width
                 text: "Continue"
-                fact: page.continueList.length > 1 ? Fmt.plural(page.continueList.length - 1, "more series", "more series") + " to go on with" : ""
+                fact: page.continueList.length ? Fmt.plural(page.continueList.length, "series", "series") + " to go on with" : ""
                 action: Button {
                     visible: !row.split && row.continueCards.length > row.lead
                     text: "See all"
@@ -1154,13 +1154,13 @@ Item {
 
         Item { width: 1; height: hero.visible ? theme.space(4) : 0 }
 
-        // ---- Continue: the other series with an episode to go on with, after the hero, and
+        // ---- Continue: every series with an episode to go on with, the hero's first (#719), and
         // On hold in what is left of the row
         ContinueRow {
             id: continueRow
             objectName: "home-continue"
             width: parent.width
-            continueCards: page.continueList.slice(1).map(function(e) { return e.card })
+            continueCards: page.continueList.map(function(e) { return e.card })
             holdCards: page.holdList
         }
         Item { width: 1; height: continueRow.visible ? theme.space(4) : 0 }
