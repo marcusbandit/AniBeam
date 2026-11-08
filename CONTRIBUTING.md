@@ -248,6 +248,8 @@ between two releases carries it as its base.
 - **Stable.** When the newest nightly has been run for a while and is good, run the Release
   workflow on main from the Actions tab. It promotes that nightly's commit, so what ships is
   a build people have already used: nightly `2.5.0-nightly.20261102.40` ships as `v2.5.0`.
+  If a workflow file changed on main since that nightly, GitHub will not let the workflow
+  tag it, so it stops and asks for a forced Nightly first.
   It builds every platform, publishes the release once every file is on it, folds the
   change files that shipped into `CHANGELOG.md` under `2.5.0`, and moves main to `2.6.0`
   with a new heading. Then update the AUR packages (`anibeam` and `anibeam-bin`, one
