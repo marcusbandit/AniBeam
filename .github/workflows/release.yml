@@ -82,6 +82,12 @@ jobs:
               echo "::error::apps/linux/CHANGELOG.md has no lines under $version at $tag, and apps/linux/changes has none waiting."
               exit 1
             fi
+            # GitHub refuses GITHUB_TOKEN a new tag whose workflow files differ from main's,
+            # and only after every platform has built, so stop here instead.
+            if ! git diff --quiet "$sha" HEAD -- .github/workflows; then
+              echo "::error::$tag (${sha::7}) has different workflow files from main, so GitHub will not let this workflow tag it. Run the Nightly workflow with force, then run this again."
+              exit 1
+            fi
             echo "Promoting $tag (${sha::7}) to v$version"
             kind=promote
           else
