@@ -155,7 +155,8 @@ jobs:
           sed -n 1p "$RUNNER_TEMP/ffmpeg-version.txt"
 
       # Some runner images already hold the pinned version with a clippy rustup does not
-      # track, and its files block the clippy component (#650): drop those two first.
+      # track, and its files block the clippy component (#650): drop every file that
+      # component owns first, the .pdb files and its docs included (#721).
       - name: Rust toolchain
         run: |
           tc="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml | tr -d '\r')-x86_64-pc-windows-msvc"
@@ -164,7 +165,8 @@ jobs:
           comps="$(rustup component list --installed --toolchain "$tc" 2>/dev/null || true)"
           if [ -d "$bin" ] && ! grep -q '^clippy' <<<"$comps"; then
             echo "Removing an untracked clippy from $tc"
-            rm -f "$bin/cargo-clippy.exe" "$bin/clippy-driver.exe"
+            rm -f "$bin"/cargo-clippy.{exe,pdb} "$bin"/clippy-driver.{exe,pdb}
+            rm -rf "$bin/../share/doc/clippy"
           fi
           rustup toolchain install
           # A runner can hold a partial toolchain without rustc (#674)
