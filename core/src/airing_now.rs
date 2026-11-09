@@ -629,7 +629,9 @@ fn write(
          ON CONFLICT(season) DO UPDATE SET fetched_at = excluded.fetched_at",
         params![key, now],
     )?;
-    if key == "NOW" && !shows.is_empty() {
+    // A read stopped at the page cap may have left shows on air unread.
+    let whole = !shows.is_empty() && shows.len() < (MAX_PAGES * 50) as usize;
+    if key == "NOW" && whole {
         prune_not_interested(tx)?;
     }
     Ok(())
@@ -639,12 +641,14 @@ fn write(
 /// full read of what is on air takes it off the list (#725). Being on air
 /// is the check: no status is asked for. A show in another season the page
 /// still holds, next season's above all, keeps its mark until it airs and
-/// then ends. An empty read is AniList failing, not every show ending, and
-/// takes nothing.
+/// then ends, and one whose finale is still in the strip keeps it until the
+/// strip lets go. An empty read is AniList failing, not every show ending,
+/// and takes nothing.
 fn prune_not_interested(tx: &Transaction) -> Result<(), CoreError> {
     tx.execute(
         "DELETE FROM not_interested
-          WHERE anilist_id NOT IN (SELECT anilist_id FROM season_shows)",
+          WHERE anilist_id NOT IN (SELECT anilist_id FROM season_shows
+                                   UNION SELECT anilist_id FROM season_aired)",
         [],
     )?;
     Ok(())

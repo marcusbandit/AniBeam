@@ -342,9 +342,11 @@ fn a_mark_with_nothing_left_to_hide_goes_at_the_next_read_of_what_is_on_air() {
     common::wait_job(&c, refresh(&core, SeasonPick::Next, true).unwrap());
     common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
 
-    // On air, next season, and a show that has ended since it was marked.
+    // On air, next season, one whose finale is still in the strip, and a
+    // show that has ended since it was marked.
     mark(&core, 235, true);
     mark(&core, 500, true);
+    mark(&core, 300, true);
     mark(&core, 777, true);
 
     // AniList failing reads as no show on air, which ends nothing.
@@ -365,18 +367,22 @@ fn a_mark_with_nothing_left_to_hide_goes_at_the_next_read_of_what_is_on_air() {
         ids.sort();
         ids
     };
-    assert_eq!(marked(&core), vec![235, 500, 777]);
+    assert_eq!(marked(&core), vec![235, 300, 500, 777]);
 
     queue_now(&http, now);
     common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
     assert_eq!(
         marked(&core),
-        vec![235, 500],
+        vec![235, 300, 500],
         "the ended show's mark is gone"
     );
     let (page, _) = airing(&core, SeasonPick::Now);
     assert_eq!(ids(&page), vec![154587, 171018]);
     assert_eq!(page.not_interested, 1);
+    assert!(
+        page.aired.iter().all(|a| a.anilist_id != 300),
+        "the finale stays hidden"
+    );
 }
 
 #[test]
