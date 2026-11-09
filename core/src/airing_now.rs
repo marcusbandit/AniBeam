@@ -629,6 +629,24 @@ fn write(
          ON CONFLICT(season) DO UPDATE SET fetched_at = excluded.fetched_at",
         params![key, now],
     )?;
+    if key == "NOW" && !shows.is_empty() {
+        prune_not_interested(tx)?;
+    }
+    Ok(())
+}
+
+/// A mark with nothing left to hide is one for a show off the air, so a
+/// full read of what is on air takes it off the list (#725). Being on air
+/// is the check: no status is asked for. A show in another season the page
+/// still holds, next season's above all, keeps its mark until it airs and
+/// then ends. An empty read is AniList failing, not every show ending, and
+/// takes nothing.
+fn prune_not_interested(tx: &Transaction) -> Result<(), CoreError> {
+    tx.execute(
+        "DELETE FROM not_interested
+          WHERE anilist_id NOT IN (SELECT anilist_id FROM season_shows)",
+        [],
+    )?;
     Ok(())
 }
 
