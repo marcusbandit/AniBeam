@@ -337,11 +337,14 @@ impl qobject::Player {
                     .map(|v| crate::json::from_qjson(&v))
                     .collect(),
             ));
-            let one = anibeam_core::playback::tracks::parse(&Value::Array(vec![
-                crate::json::from_qjson_object(track),
-            ]));
-            let r = one
-                .first()
+            // The picked track is one of the list's own entries: found there by kind and
+            // id, and not one at all when mpv has replaced the list since.
+            let picked = crate::json::from_qjson_object(track);
+            let id = picked.get("id").and_then(Value::as_i64);
+            let kind = picked.get("type").and_then(Value::as_str);
+            let r = all
+                .iter()
+                .find(|t| Some(t.id) == id && Some(t.kind.as_str()) == kind)
                 .map(|t| anibeam_core::playback::tracks::track_ref(&all, t));
             crate::json::to_qjson_object(&serde_json::to_value(r).unwrap_or(Value::Null))
         })

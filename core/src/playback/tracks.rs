@@ -107,8 +107,6 @@ fn is_dialogue(t: &Track) -> bool {
 }
 
 /// Two optional tags are the same when both are missing, or both are there and `eq` says so.
-/// The twins a ref counts among are found this way, both when it is stored and when it is
-/// looked up, so its `nth` means the same track both times.
 fn same_opt(a: Option<&str>, b: Option<&str>, eq: fn(&str, &str) -> bool) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => eq(a, b),
@@ -117,15 +115,31 @@ fn same_opt(a: Option<&str>, b: Option<&str>, eq: fn(&str, &str) -> bool) -> boo
     }
 }
 
+/// A track a ref's `nth` counts among: same place (sidecar or embedded), language, title
+/// and forced flag. Storing and looking up both go through here, so `nth` names the same
+/// track both times. The caller has already kept to one kind, audio or sub.
+fn is_twin(
+    t: &Track,
+    external: bool,
+    lang: Option<&str>,
+    title: Option<&str>,
+    forced: bool,
+) -> bool {
+    t.external == external
+        && t.forced == forced
+        && same_opt(t.lang.as_deref(), lang, same_lang)
+        && same_opt(t.title.as_deref(), title, str::eq_ignore_ascii_case)
+}
+
 /// The stored choice against what this file actually carries, loosening a step at a time:
-/// kind, language, title and the forced flag, taking the nth of those twins; then kind,
-/// language and title; then kind and language; then the language alone.
+/// the nth of its exact twins; then kind, language and title; then kind and language; then
+/// the language alone. Every loose step takes a track with the stored forced flag before
+/// one without, so a pick of the full track never lands on a signs-only one when the
+/// full one is there.
 fn by_ref<'a>(tracks: &'a [Track], kind: &str, r: &TrackRef) -> Option<&'a Track> {
     let of_kind: Vec<&Track> = tracks.iter().filter(|t| t.kind == kind).collect();
-    let kind_ok = |t: &Track| match r.kind {
-        TrackKind::Sidecar => t.external,
-        TrackKind::Embedded => !t.external,
-    };
+    let external = r.kind == TrackKind::Sidecar;
+    let kind_ok = |t: &Track| t.external == external;
     let lang_ok = |t: &Track| match &r.language {
         Some(l) => lang_matches(t, l),
         None => t.lang.is_none(),
@@ -135,77 +149,72 @@ fn by_ref<'a>(tracks: &'a [Track], kind: &str, r: &TrackRef) -> Option<&'a Track
             .as_deref()
             .is_none_or(|x| x.eq_ignore_ascii_case(t.title.as_deref().unwrap_or("")))
     };
+    let lang_alone = |t: &Track| r.language.as_deref().is_some_and(|l| lang_matches(t, l));
+    let prefer_forced = |ok: &dyn Fn(&Track) -> bool| {
+        of_kind
+            .iter()
+            .copied()
+            .find(|t| ok(t) && t.forced == r.forced)
+            .or_else(|| of_kind.iter().copied().find(|t| ok(t)))
+    };
     let twins: Vec<&Track> = of_kind
         .iter()
         .copied()
         .filter(|t| {
-            kind_ok(t)
-                && t.forced == r.forced
-                && same_opt(t.lang.as_deref(), r.language.as_deref(), same_lang)
-                && same_opt(
-                    t.title.as_deref(),
-                    r.title.as_deref(),
-                    str::eq_ignore_ascii_case,
-                )
+            is_twin(
+                t,
+                external,
+                r.language.as_deref(),
+                r.title.as_deref(),
+                r.forced,
+            )
         })
         .collect();
     twins
         .get(r.nth as usize)
         .or(twins.first())
         .copied()
-        .or_else(|| {
-            of_kind
-                .iter()
-                .copied()
-                .find(|t| kind_ok(t) && lang_ok(t) && title_ok(t))
-        })
-        .or_else(|| {
-            of_kind
-                .iter()
-                .copied()
-                .find(|t| kind_ok(t) && lang_ok(t) && t.forced == r.forced)
-        })
-        .or_else(|| of_kind.iter().copied().find(|t| kind_ok(t) && lang_ok(t)))
-        .or_else(|| {
-            r.language
-                .as_deref()
-                .and_then(|l| of_kind.iter().copied().find(|t| lang_matches(t, l)))
-        })
+        .or_else(|| prefer_forced(&|t| kind_ok(t) && lang_ok(t) && title_ok(t)))
+        .or_else(|| prefer_forced(&|t| kind_ok(t) && lang_ok(t)))
+        .or_else(|| prefer_forced(&lang_alone))
 }
 
 pub fn pick(tracks: &[Track], choice: &TrackChoice, defaults: &SubtitleDefaults) -> Pick {
     let subs: Vec<&Track> = tracks.iter().filter(|t| t.kind == "sub").collect();
     let audio: Vec<&Track> = tracks.iter().filter(|t| t.kind == "audio").collect();
 
+    // A stored track that this file still has wins outright; one it no longer has falls
+    // through to the language orders rather than leaving the file unsubbed.
+    let stored = match &choice.subtitle {
+        Some(SubtitleChoice::Track { track }) => by_ref(tracks, "sub", track),
+        _ => None,
+    };
     let sid = match &choice.subtitle {
         Some(SubtitleChoice::Off) => None,
-        // A stored track that this file still has wins outright; one it no longer has
-        // falls through to the language orders rather than leaving the file unsubbed.
-        Some(SubtitleChoice::Track { track }) if by_ref(tracks, "sub", track).is_some() => {
-            by_ref(tracks, "sub", track).map(|t| t.id)
-        }
-        _ => defaults
-            .subtitle_languages
-            .iter()
-            .find_map(|lang| {
-                let in_lang: Vec<&Track> = subs
-                    .iter()
-                    .copied()
-                    .filter(|t| lang_matches(t, lang))
-                    .collect();
-                if in_lang.is_empty() {
-                    return None;
-                }
-                in_lang
-                    .iter()
-                    .copied()
-                    .find(|t| t.external && is_dialogue(t))
-                    .or_else(|| in_lang.iter().copied().find(|t| t.external))
-                    .or_else(|| in_lang.iter().copied().find(|t| is_dialogue(t)))
-                    .or_else(|| in_lang.first().copied())
-                    .map(|t| t.id)
-            })
-            .or_else(|| subs.first().map(|t| t.id)),
+        _ => stored.map(|t| t.id).or_else(|| {
+            defaults
+                .subtitle_languages
+                .iter()
+                .find_map(|lang| {
+                    let in_lang: Vec<&Track> = subs
+                        .iter()
+                        .copied()
+                        .filter(|t| lang_matches(t, lang))
+                        .collect();
+                    if in_lang.is_empty() {
+                        return None;
+                    }
+                    in_lang
+                        .iter()
+                        .copied()
+                        .find(|t| t.external && is_dialogue(t))
+                        .or_else(|| in_lang.iter().copied().find(|t| t.external))
+                        .or_else(|| in_lang.iter().copied().find(|t| is_dialogue(t)))
+                        .or_else(|| in_lang.first().copied())
+                        .map(|t| t.id)
+                })
+                .or_else(|| subs.first().map(|t| t.id))
+        }),
     };
 
     let aid = choice
@@ -237,20 +246,18 @@ pub fn pick(tracks: &[Track], choice: &TrackChoice, defaults: &SubtitleDefaults)
 /// The ref a pick is stored as. `tracks` is the file's whole list, which places the track
 /// among its twins: the tracks of its kind with the same language, title and forced flag.
 pub fn track_ref(tracks: &[Track], t: &Track) -> TrackRef {
-    let same = |o: &Track| {
-        o.kind == t.kind
-            && o.external == t.external
-            && o.forced == t.forced
-            && same_opt(o.lang.as_deref(), t.lang.as_deref(), same_lang)
-            && same_opt(
-                o.title.as_deref(),
-                t.title.as_deref(),
-                str::eq_ignore_ascii_case,
-            )
-    };
     let nth = tracks
         .iter()
-        .filter(|o| same(o))
+        .filter(|o| {
+            o.kind == t.kind
+                && is_twin(
+                    o,
+                    t.external,
+                    t.lang.as_deref(),
+                    t.title.as_deref(),
+                    t.forced,
+                )
+        })
         .position(|o| o.id == t.id)
         .unwrap_or(0) as u32;
     TrackRef {
@@ -577,6 +584,44 @@ mod tests {
         let choice = stored(&t, 1);
         let only_full: Vec<Track> = t.into_iter().filter(|x| !x.forced).collect();
         assert_eq!(pick(&only_full, &choice, &defaults()).sid, Some(2));
+    }
+
+    #[test]
+    fn a_loose_match_takes_the_full_track_over_its_forced_twin() {
+        let untitled = TrackChoice {
+            audio: None,
+            subtitle: Some(SubtitleChoice::Track {
+                track: TrackRef {
+                    kind: TrackKind::Embedded,
+                    language: Some("en".into()),
+                    title: None,
+                    forced: false,
+                    nth: 0,
+                },
+            }),
+        };
+        assert_eq!(
+            pick(&twins(), &untitled, &defaults()).sid,
+            Some(2),
+            "a ref with no title matches any title, and still skips the forced one"
+        );
+        let sidecar = TrackChoice {
+            audio: None,
+            subtitle: Some(SubtitleChoice::Track {
+                track: TrackRef {
+                    kind: TrackKind::Sidecar,
+                    language: Some("en".into()),
+                    title: Some("ep01.en".into()),
+                    forced: false,
+                    nth: 0,
+                },
+            }),
+        };
+        assert_eq!(
+            pick(&twins(), &sidecar, &defaults()).sid,
+            Some(2),
+            "a sidecar pick on a file without one falls to the full embedded track"
+        );
     }
 
     #[test]
