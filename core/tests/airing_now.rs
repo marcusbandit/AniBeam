@@ -326,6 +326,66 @@ fn each_season_reads_once_at_a_time_and_beside_the_other() {
 }
 
 #[test]
+fn a_mark_with_nothing_left_to_hide_goes_at_the_next_read_of_what_is_on_air() {
+    let now = anibeam_core::time::now_secs();
+    let http = FakeHttp::new();
+    // Next season first, so its show is one the page holds.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": [
+            show(500, "Next Thing", None),
+        ] } } }),
+    );
+    http.push_for("500.jpg", 200, JPEG.to_vec());
+    queue_now(&http, now);
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    common::wait_job(&c, refresh(&core, SeasonPick::Next, true).unwrap());
+    common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
+
+    // On air, next season, one whose finale is still in the strip, and a
+    // show that has ended since it was marked.
+    mark(&core, 235, true);
+    mark(&core, 500, true);
+    mark(&core, 300, true);
+    mark(&core, 777, true);
+
+    // AniList failing reads as no show on air, which ends nothing.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": [] } } }),
+    );
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "airingSchedules": [] } } }),
+    );
+    common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
+    let marked = |core: &Core| -> Vec<u64> {
+        let Reply::NotInterested { shows } = core.call(Call::ListNotInterested).unwrap() else {
+            panic!()
+        };
+        let mut ids: Vec<u64> = shows.iter().map(|s| s.anilist_id).collect();
+        ids.sort();
+        ids
+    };
+    assert_eq!(marked(&core), vec![235, 300, 500, 777]);
+
+    queue_now(&http, now);
+    common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
+    assert_eq!(
+        marked(&core),
+        vec![235, 300, 500],
+        "the ended show's mark is gone"
+    );
+    let (page, _) = airing(&core, SeasonPick::Now);
+    assert_eq!(ids(&page), vec![154587, 171018]);
+    assert_eq!(page.not_interested, 1);
+    assert!(
+        page.aired.iter().all(|a| a.anilist_id != 300),
+        "the finale stays hidden"
+    );
+}
+
+#[test]
 fn next_season_is_its_own_read_with_no_strip() {
     let http = FakeHttp::new();
     http.push_json(

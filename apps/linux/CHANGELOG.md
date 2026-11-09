@@ -97,6 +97,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Pick several shows in Library with Ctrl or Shift and hide, rate or move them
 
 ### Changed
+- A show you marked not interested leaves that list once it is off the air
 - Out now on Airing shows its episodes as small cards with their wide banners
 - Library sorts and groups from two menus, with the order said in words
 - This week shows what is out to watch, then a calendar of the days ahead
