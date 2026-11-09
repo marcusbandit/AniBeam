@@ -3,10 +3,15 @@
 # Turns target/release/anibeam into <out-dir>/AniBeam.app and <out-dir>/AniBeam-<ver>-macos-arm64.dmg.
 #   ANIBEAM_BIN   the binary to bundle (default: the workspace's target/release/anibeam)
 #   DEPS_PREFIX   where deps.sh installed libmpv and MpvQt
+#   SIGN_IDENTITY a code-signing identity to sign with (default: ad hoc). An ad-hoc app is
+#                 a new app to the keychain on every build, so the stored tracker token asks
+#                 for the password again; a stable identity, even a self-signed one, keeps
+#                 one Always Allow working across builds.
 # The app carries two helpers the Downloads page starts: qbittorrent-nox beside the app's own
 # binary (DEPS_PREFIX/bin, built by deps.sh) and anirss with its own Python under
 # Resources/anirss (anirss.sh).
-# The app is ad-hoc signed: it runs on any Mac, and Gatekeeper asks once (Open Anyway).
+# The app is ad-hoc signed unless SIGN_IDENTITY names one: it runs on any Mac, and Gatekeeper
+# asks once (Open Anyway).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -82,7 +87,7 @@ echo "== signing"
 xattr -cr "$app"
 # anirss.sh signed the Python tree already; --deep does not treat Mach-O files in Resources
 # as nested code.
-codesign --force --deep --sign - --timestamp=none "$app"
+codesign --force --deep --sign "${SIGN_IDENTITY:--}" --timestamp=none "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 # Gatekeeper's verdict on an ad-hoc signed app is "rejected", and a runner may report the
 # assessment as disabled; it is logged for the record, not checked.
