@@ -73,7 +73,7 @@ pub mod qobject {
         #[qinvokable]
         fn track_label(self: &Player, track: &QJsonObject) -> QString;
         #[qinvokable]
-        fn track_ref(self: &Player, track: &QJsonObject) -> QJsonObject;
+        fn track_ref(self: &Player, track_list: &QJsonArray, track: &QJsonObject) -> QJsonObject;
         #[qinvokable]
         fn subtitle_options(self: &Player, defaults: &QJsonObject) -> QJsonArray;
         /// The subtitle defaults AniBeam ships with, for Settings' Reset.
@@ -327,13 +327,22 @@ impl qobject::Player {
         })
     }
 
-    /// One entry of `track-list` as the `TrackRef` the core stores.
-    pub fn track_ref(&self, track: &QJsonObject) -> QJsonObject {
+    /// One entry of `track-list` as the `TrackRef` the core stores, placed among the whole
+    /// list so a track that shares its name with another keeps its own place.
+    pub fn track_ref(&self, track_list: &QJsonArray, track: &QJsonObject) -> QJsonObject {
         Self::guard("trackRef", || {
-            let list = anibeam_core::playback::tracks::parse(&Value::Array(vec![
+            let all = anibeam_core::playback::tracks::parse(&Value::Array(
+                track_list
+                    .iter()
+                    .map(|v| crate::json::from_qjson(&v))
+                    .collect(),
+            ));
+            let one = anibeam_core::playback::tracks::parse(&Value::Array(vec![
                 crate::json::from_qjson_object(track),
             ]));
-            let r = list.first().map(anibeam_core::playback::tracks::track_ref);
+            let r = one
+                .first()
+                .map(|t| anibeam_core::playback::tracks::track_ref(&all, t));
             crate::json::to_qjson_object(&serde_json::to_value(r).unwrap_or(Value::Null))
         })
     }

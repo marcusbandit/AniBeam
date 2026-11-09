@@ -296,6 +296,8 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         kind: TrackKind::Embedded,
         language: Some("ja".to_string()),
         title: None,
+        forced: false,
+        nth: 0,
     };
     core.call(Call::SetTrackChoice {
         series: frieren,

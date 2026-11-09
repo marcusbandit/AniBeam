@@ -993,7 +993,7 @@ TextStyle     { font: String, colour: Colour, outline_size: f64, outline_colour:
 Colour        { r: u8, g: u8, b: u8, a: u8 }
 AutoSkip      { intro: bool, outro: bool }
 TrackChoice   { audio?: TrackRef, subtitle?: SubtitleChoice /* Off | Track(TrackRef) */ }
-TrackRef      { kind: TrackKind /* Embedded, Sidecar */, language?: String, title?: String }
+TrackRef      { kind: TrackKind /* Embedded, Sidecar */, language?: String, title?: String, forced: bool, nth: u32 /* which of the same-named twins, #727 */ }
 ImportSummary { sources_added, sources_unavailable, series_created, matches_applied, views_merged, completed_merged, resume_points_merged, accounts_imported: u64, fields_ignored: Vec<String> }
 SubscriptionsResult = Ok { feeds: Vec<Feed { name, active: bool, torrents: u64, query, save_path, url }> } | Missing | NeedsAuth | Timeout
 JobInfo       { id: u64, kind: JobKind, started_at: SystemTime, progress?: Progress { done: u64, total?: u64, label: String } }
@@ -2668,7 +2668,7 @@ On `fileLoaded` the shell reads `track-list` and picks the audio track and the s
 
 The match is on language and title rather than on mpv's track id because ids are per file, and because `aid` and `sid` report the option value outside playback and the effective selection during it, a behaviour the manual says moves between releases ([research](../../research/mpvqt-libmpv.md)).
 
-Track choice is per series, never per file, and the owner's example is the rule: change the audio or the subtitle in episode 1, and episode 2 opens with the same pick. Any pick in either picker, Off included, sends `SetTrackChoice { series, audio?: Option<TrackRef>, subtitle?: Option<SubtitleChoice> }`; the core stores it on the series and carries it back on every later `PlaybackSession` as `track_choice`. `TrackRef { kind: TrackKind /* Embedded, Sidecar */, language?: String, title?: String }`; `SubtitleChoice` is `Off` or `Track(TrackRef)`. Extras follow the same rule under their series. The full export carries track choice with the rest of the private data. A cleared or changed match leaves it alone, since it describes the files, not the match.
+Track choice is per series, never per file, and the owner's example is the rule: change the audio or the subtitle in episode 1, and episode 2 opens with the same pick. Any pick in either picker, Off included, sends `SetTrackChoice { series, audio?: Option<TrackRef>, subtitle?: Option<SubtitleChoice> }`; the core stores it on the series and carries it back on every later `PlaybackSession` as `track_choice`. `TrackRef { kind: TrackKind /* Embedded, Sidecar */, language?: String, title?: String, forced: bool, nth: u32 }`, where `nth` places the track among the file's tracks that share the rest, so two "English" tracks, one forced, or two identical "French" ones stay apart (#727); `SubtitleChoice` is `Off` or `Track(TrackRef)`. Extras follow the same rule under their series. The full export carries track choice with the rest of the private data. A cleared or changed match leaves it alone, since it describes the files, not the match.
 
 The pickers themselves are parity items: Off plus every embedded and sidecar track for subtitles, every track for audio. `C` toggles subtitles off and back to the last track, with no cycling.
 
