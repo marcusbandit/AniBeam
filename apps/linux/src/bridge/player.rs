@@ -73,7 +73,7 @@ pub mod qobject {
         #[qinvokable]
         fn track_label(self: &Player, track: &QJsonObject) -> QString;
         #[qinvokable]
-        fn track_ref(self: &Player, track: &QJsonObject) -> QJsonObject;
+        fn track_ref(self: &Player, track_list: &QJsonArray, track: &QJsonObject) -> QJsonObject;
         #[qinvokable]
         fn subtitle_options(self: &Player, defaults: &QJsonObject) -> QJsonArray;
         /// The subtitle defaults AniBeam ships with, for Settings' Reset.
@@ -327,13 +327,25 @@ impl qobject::Player {
         })
     }
 
-    /// One entry of `track-list` as the `TrackRef` the core stores.
-    pub fn track_ref(&self, track: &QJsonObject) -> QJsonObject {
+    /// One entry of `track-list` as the `TrackRef` the core stores, placed among the whole
+    /// list so a track that shares its name with another keeps its own place.
+    pub fn track_ref(&self, track_list: &QJsonArray, track: &QJsonObject) -> QJsonObject {
         Self::guard("trackRef", || {
-            let list = anibeam_core::playback::tracks::parse(&Value::Array(vec![
-                crate::json::from_qjson_object(track),
-            ]));
-            let r = list.first().map(anibeam_core::playback::tracks::track_ref);
+            let all = anibeam_core::playback::tracks::parse(&Value::Array(
+                track_list
+                    .iter()
+                    .map(|v| crate::json::from_qjson(&v))
+                    .collect(),
+            ));
+            // The picked track is one of the list's own entries: found there by kind and
+            // id, and not one at all when mpv has replaced the list since.
+            let picked = crate::json::from_qjson_object(track);
+            let id = picked.get("id").and_then(Value::as_i64);
+            let kind = picked.get("type").and_then(Value::as_str);
+            let r = all
+                .iter()
+                .find(|t| Some(t.id) == id && Some(t.kind.as_str()) == kind)
+                .map(|t| anibeam_core::playback::tracks::track_ref(&all, t));
             crate::json::to_qjson_object(&serde_json::to_value(r).unwrap_or(Value::Null))
         })
     }

@@ -819,6 +819,14 @@ pub struct TrackRef {
     pub kind: TrackKind,
     pub language: Option<String>,
     pub title: Option<String>,
+    /// The track is flagged forced, the signs-only kind that often shares its language and
+    /// title with the full one. A choice stored before this field reads as not forced.
+    #[serde(default)]
+    pub forced: bool,
+    /// Which one it was, from 0, of the file's tracks that share all of the above: two
+    /// "French" tracks in one file are told apart by their order alone.
+    #[serde(default)]
+    pub nth: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]

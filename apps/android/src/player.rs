@@ -1711,7 +1711,7 @@ impl Player {
                     return;
                 };
                 self.mpv.set("aid", &t.id.to_string());
-                let r = tracks::track_ref(&t);
+                let r = tracks::track_ref(&self.tracks, &t);
                 self.session.track_choice.audio = Some(r.clone());
                 self.store_choice();
                 self.aid = t.id;
@@ -1733,7 +1733,7 @@ impl Player {
                     };
                     self.mpv.set("sid", &t.id.to_string());
                     self.session.track_choice.subtitle = Some(SubtitleChoice::Track {
-                        track: tracks::track_ref(&t),
+                        track: tracks::track_ref(&self.tracks, &t),
                     });
                     self.sid = t.id;
                 }

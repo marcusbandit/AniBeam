@@ -355,7 +355,7 @@ FocusScope {
         var t = trackList.find(function(x) { return x.type === "audio" && x.id === id })
         if (!t) return
         video.setProperty("aid", String(id))
-        var ref = Player.trackRef(t)
+        var ref = Player.trackRef(trackList, t)
         storeChoice(ref, subtitleArg())
         session.track_choice.audio = ref
         hud.flash("Audio: " + Player.trackLabel(t))
@@ -365,7 +365,7 @@ FocusScope {
         var t = id < 0 ? null : trackList.find(function(x) { return x.type === "sub" && x.id === id })
         if (id >= 0 && !t) return
         video.setProperty("sid", id < 0 ? "no" : String(id))
-        var choice = id < 0 ? { off: true } : { Track: { track: Player.trackRef(t) } }
+        var choice = id < 0 ? { off: true } : { Track: { track: Player.trackRef(trackList, t) } }
         storeChoice(audioArg(), choice)
         session.track_choice.subtitle = id < 0 ? "Off" : choice
         hud.flash(t ? "Subtitles: " + Player.trackLabel(t) : "Subtitles off")

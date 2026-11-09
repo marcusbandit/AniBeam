@@ -615,12 +615,16 @@ fn a_track_choice_round_trips_through_open_playback() {
         kind: TrackKind::Embedded,
         language: Some("jpn".into()),
         title: None,
+        forced: false,
+        nth: 0,
     };
     let subtitle = SubtitleChoice::Track {
         track: TrackRef {
             kind: TrackKind::Sidecar,
             language: Some("eng".into()),
             title: Some("Full".into()),
+            forced: false,
+            nth: 0,
         },
     };
     let reply = core
