@@ -3,7 +3,8 @@
 mock-host.py: a dev-only fake of the AniBeam desktop's read-only JSON API.
 
 It serves the routes described in host-api/src/lib.rs (hello, snapshot and
-posters) from host-api/fixtures/snapshot.json, so the Android app can be built
+posters) from host-api/fixtures/snapshot.json, and takes download calls (logged,
+never acted on), so the Android app can be built
 and run against something without the desktop app being up. It never reads or
 writes a real library. Standard library only.
 
@@ -47,6 +48,7 @@ API_VERSION = 1
 APP = "anibeam"
 MOCK_VERSION = "2.1.0-mock"
 HELLO_PATH = "/api/v1/hello"
+CALL_PATH = "/api/v1/call"
 SNAPSHOT_PATH = "/api/v1/snapshot"
 POSTER_RE = re.compile(r"^/api/v1/posters/(\d+)$")
 
@@ -417,6 +419,7 @@ class Handler(BaseHTTPRequestHandler):
                 "version": MOCK_VERSION,
                 "host": OPTS["host_name"],
                 "now": now_s(),
+                "features": ["downloads"],
             })
         if path == SNAPSHOT_PATH:
             return self._json(200, build_snapshot(now_s()))
@@ -424,6 +427,24 @@ class Handler(BaseHTTPRequestHandler):
         if match:
             return self._poster(int(match.group(1)))
         return self._json(404, {"error": f"no route for {path}"})
+
+    def do_POST(self):
+        # Download calls (#733): logged and answered as done, never handed to anything.
+        path = urllib.parse.urlsplit(self.path).path
+        if path != CALL_PATH:
+            return self._json(404, {"error": f"no route for {path}"})
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            call = json.loads(self.rfile.read(length) or b"null")
+        except ValueError as exc:
+            return self._json(400, {"error": f"not a call: {exc}"})
+        name = call if isinstance(call, str) else next(iter(call or {}), "?")
+        if name not in ("DownloadReleasesWith", "Subscribe"):
+            return self._json(403, {"error": "only download calls are taken by the mock"})
+        body = call[name]
+        items = [i.get("title", "?") for i in body.get("items", [])]
+        sys.stderr.write(f"mock: {name} name={body.get('name')!r} series={body.get('series', (body.get('options') or {}).get('series'))} items={items}\n")
+        return self._json(200, "Ok")
 
     def send_error(self, code, message=None, explain=None):
         # Anything this server does not serve, including methods it does not

@@ -92,6 +92,7 @@ fn with_streaming_off_only_the_library_answers() {
         [
             wire::FEATURE_PEERS,
             wire::FEATURE_HISTORY,
+            wire::FEATURE_DOWNLOADS,
             wire::FEATURE_PROOF
         ],
         "only what streaming does not cover"

@@ -8,7 +8,7 @@
 import { Theme } from "theme.slint";
 import { Nav, Tile } from "data.slint";
 import { Settings } from "more.slint";
-import { Button, CardStack, Chip, ClampedText, Cubes, EmptyNote, Field, ListGroup, Pane, PageTitle, Poster, SectionHead, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
+import { Button, CardStack, Chip, ClampedText, Cubes, EmptyNote, Field, ListGroup, Pane, PageTitle, Poster, SectionHead, Segmented, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
 
 // One source in the show view: its name and what asking it gave.
 export struct SourceChip {
@@ -102,6 +102,10 @@ export global FindData {
     in-out property <bool> follow;
     in-out property <bool> replace;
     in property <bool> has-had;
+    // Where Get downloads to: this phone, then the connected computer when it takes
+    // downloads (#733). Empty when there is no computer to pick.
+    in property <[string]> targets;
+    in property <int> target;
     // The subscription that downloads into the open show's folder, and what it has taken;
     // empty when the show is not followed.
     in property <string> rule-name;
@@ -143,6 +147,23 @@ export global FindData {
     callback subscribe();
     // Stops following the open show; true deletes what it downloaded too.
     callback unfollow(bool);
+    callback set-target(int);
+}
+
+// This phone or the computer: where Get and Download put what they fetch. Shown only
+// once the computer has said it takes downloads.
+component DownloadTo inherits VerticalLayout {
+    spacing: Theme.unit * 2;
+    Text {
+        text: "Download to";
+        color: Theme.text;
+        font-family: Theme.strong-face;
+    }
+    Segmented {
+        options: FindData.targets;
+        picked: FindData.target;
+        pick(i) => { FindData.set-target(i); }
+    }
 }
 
 // The grid's cube colours, the desktop's: there to take is glass with an edge, picked is
@@ -590,6 +611,7 @@ export component ShowView inherits VerticalLayout {
                 font-size: Theme.small;
                 wrap: word-wrap;
             }
+            if FindData.targets.length > 1: DownloadTo { }
             if FindData.can-follow: HorizontalLayout {
                 spacing: Theme.gap;
                 VerticalLayout {
@@ -776,6 +798,7 @@ export component ReleaseList inherits VerticalLayout {
         text <=> FindData.narrow;
         accepted(t) => { FindData.apply-narrow(t); }
     }
+    if FindData.targets.length > 1: DownloadTo { }
     for row[i] in FindData.releases: ReleaseItem {
         data: row;
         download => { FindData.download-release(i); }

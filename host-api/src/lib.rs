@@ -34,6 +34,12 @@
 //!   its place, its history and its tracker progress on the host, as if it had
 //!   played there, and a show marked not interested is hidden on both.
 //!
+//! A host that lists [`FEATURE_DOWNLOADS`] also takes [`DOWNLOAD_CALLS`] on
+//! [`CALL`], from the owner's own devices only: a release picked on the phone
+//! downloads on the host, into its library, as its own Downloads page would
+//! put it there. The reply comes once the host's job is done, so it says
+//! whether the torrents went in.
+//!
 //! A host that lists [`FEATURE_PEERS`] answers [`PEERS`]: the other AniBeams
 //! it sees on the tailnet ([`Peers`]), for a phone, which cannot list tailnet
 //! devices itself.
@@ -102,6 +108,11 @@ pub const PLAYER_CALLS: &[&str] = &[
     "SetNotInterested",
     "ListNotInterested",
 ];
+/// In [`Hello::features`] when the host takes [`DOWNLOAD_CALLS`].
+pub const FEATURE_DOWNLOADS: &str = "downloads";
+/// The `Call` variants [`CALL`] also takes with [`FEATURE_DOWNLOADS`], from the
+/// owner's devices: the desktop's own download and subscribe.
+pub const DOWNLOAD_CALLS: &[&str] = &["DownloadReleasesWith", "Subscribe"];
 /// The heights a conversion comes in. A client asking for another gets the
 /// nearest one below it.
 pub const CONVERT_HEIGHTS: &[u32] = &[1080, 720, 480];

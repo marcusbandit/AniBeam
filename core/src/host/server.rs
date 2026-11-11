@@ -340,8 +340,9 @@ async fn hello(
     }
 }
 
-/// What this host serves past the snapshot: the list of other AniBeams
-/// and this one's history always, since neither is streaming; request
+/// What this host serves past the snapshot: the list of other AniBeams,
+/// this one's history and downloads for the owner's devices always, since
+/// none of them is streaming; request
 /// proofs while it has its key; streaming while its switch is on;
 /// converting too when ffmpeg and an encoder work here, which the first
 /// hello starts finding out rather than waits for, so hello stays quick.
@@ -349,6 +350,7 @@ fn features(streaming: bool, keyed: bool) -> Vec<String> {
     let mut out = vec![
         wire::FEATURE_PEERS.to_string(),
         wire::FEATURE_HISTORY.to_string(),
+        wire::FEATURE_DOWNLOADS.to_string(),
     ];
     if keyed {
         out.push(wire::FEATURE_PROOF.to_string());
