@@ -438,6 +438,7 @@ impl App {
     fn tick(&mut self) {
         // A new day moves the calendar's window, so the airings around it are read again.
         let changed = crate::local::take_changed();
+        crate::find::tick(changed);
         if changed
             || self
                 .read_on
@@ -923,6 +924,18 @@ impl App {
         };
         self.airing_plan_note = None;
         self.data().set_airing_menu(menu);
+    }
+
+    /// Get episodes for a show the library does not have: straight into its show view.
+    fn airing_get(&mut self, id: i32) {
+        self.data().set_airing_menu(Default::default());
+        let show = self
+            .airing
+            .as_ref()
+            .and_then(|a| a.shows.iter().find(|s| s.anilist_id == id as u64).cloned());
+        if let Some(show) = show {
+            crate::find::open_airing(&show);
+        }
     }
 
     fn airing_plan(&mut self, id: i32) {
@@ -1919,6 +1932,7 @@ pub fn run(
     data.on_airing_tap(|id| with_app(|app| app.airing_tap(id)));
     data.on_airing_close(|| with_app(|app| app.data().set_airing_menu(Default::default())));
     data.on_airing_plan(|id| with_app(|app| app.airing_plan(id)));
+    data.on_airing_get(|id| with_app(|app| app.airing_get(id)));
     data.on_airing_dismiss(|id| with_app(|app| app.airing_dismiss(id)));
     data.on_airing_take_back(|| with_app(App::airing_take_back));
     data.on_pick_cal_device(|i| {

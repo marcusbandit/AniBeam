@@ -12,21 +12,24 @@ use anibeam_core::releases::grid;
 use anibeam_core::{
     BestFit, Call, CoreError, Direction, DownloadOptions, RefineOp, Refinement, Release,
     ReleaseFacts, ReleaseGroup, ReleaseSearch, Reply, SearchResult, SeriesCard, Sort,
-    SubscriptionRule, Tab, Torrent,
+    SubscriptionRule, Tab, Torrent, WatchingEntry,
 };
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel, Weak};
 
 use crate::prefs;
 use crate::{AppWindow, FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion, Tile};
 
-const LENSES: [&str; 4] = ["Gaps", "Airing", "Following", "Downloaded"];
+const LENSES: [&str; 5] = ["Your list", "Gaps", "Airing", "Following", "Downloaded"];
 
 /// A show a lens offers, enough to open the show view.
 #[derive(Clone, Debug, Default)]
 struct Offer {
     show: grid::Show,
-    /// Its AniList id, when it came from AniList: it finds the show on the computer.
+    /// Its AniList id, when it is known: from AniList or from the list (#734). It finds
+    /// the show on the computer and on the list.
     anilist: Option<u64>,
+    /// The library series it is, for the list status of a show found in the library.
+    series: Option<u64>,
     /// A library series, not one found only on AniList.
     in_library: bool,
     poster: Option<String>,
@@ -116,6 +119,14 @@ struct Find {
     /// them again without asking AniList twice.
     answered_for: String,
     answered: Vec<Offer>,
+    /// The person's list on AniList: Watching, then Planning (#734).
+    entries: Vec<Entry>,
+    /// AniList is being asked for the list; it is read again as the core reports.
+    list_refreshing: bool,
+    /// Why the list is empty when it is not just empty: no tracker signed in.
+    list_note: Option<String>,
+    /// Shows put on Planning from here that the list has not caught up with yet.
+    planned: Vec<u64>,
     /// The connected computer, when it answered that it takes downloads (#733).
     desk: Option<crate::desk::Desk>,
     /// A hello to the computer is out. One at a time, so an older answer never lands
@@ -126,6 +137,13 @@ struct Find {
     desk_asked: Option<std::time::Instant>,
     /// Get goes to the computer: the pick in Download to, kept in prefs.
     to_desk: bool,
+}
+
+/// One show on the person's list.
+#[derive(Clone, Debug)]
+struct Entry {
+    planning: bool,
+    show: WatchingEntry,
 }
 
 thread_local! {
@@ -179,6 +197,11 @@ fn ask(call: Call, then: impl FnOnce(&mut Find, Result<Reply, CoreError>) + Send
         });
 }
 
+/// The app's tick, with whether the core reported a change since the last one.
+pub fn tick(changed: bool) {
+    with(|f| f.list_tick(changed));
+}
+
 fn model<T: Clone + 'static>(rows: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(rows))
 }
@@ -203,6 +226,10 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             suggest_for: String::new(),
             answered_for: String::new(),
             answered: Vec::new(),
+            entries: Vec::new(),
+            list_refreshing: false,
+            list_note: None,
+            planned: Vec::new(),
             desk: None,
             desk_asking: false,
             desk_asked: None,
@@ -252,7 +279,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     });
     d.on_pick_lens(|i| {
         with(|f| {
-            f.lens = usize::try_from(i).unwrap_or(0).min(3);
+            f.lens = usize::try_from(i).unwrap_or(0).min(LENSES.len() - 1);
             f.show_lens();
         })
     });
@@ -308,6 +335,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.on_download_all(|| with(Find::download_all));
     d.on_subscribe(|| with(Find::subscribe));
     d.on_unfollow(|files| with(|f| f.unfollow(files)));
+    d.on_plan_to_watch(|| with(Find::plan));
     d.on_set_target(|i| with(|f| f.set_target(i)));
 }
 
@@ -339,6 +367,8 @@ impl Find {
     fn open(&mut self, text: String) {
         self.with_data(|d| d.set_shown(true));
         self.refresh();
+        // AniList is asked only here, and the core skips it when the list is fresh.
+        self.load_list(true);
         if text.trim().is_empty() {
             self.show = None;
             self.list = None;
@@ -430,6 +460,7 @@ impl Find {
                 folder,
             },
             anilist: None,
+            series: Some(card.id),
             in_library: true,
             poster: card.poster.clone(),
             ledger: String::new(),
@@ -464,6 +495,7 @@ impl Find {
                 folder: folder.to_string(),
             },
             anilist: None,
+            series: None,
             in_library: false,
             poster: None,
             ledger: String::new(),
@@ -474,7 +506,8 @@ impl Find {
     fn show_lens(&mut self) {
         let now = anibeam_companion::now();
         let offers: Vec<Offer> = match self.lens {
-            0 => self
+            0 => self.list_offers(),
+            1 => self
                 .cards
                 .iter()
                 .filter_map(|c| {
@@ -485,7 +518,7 @@ impl Find {
                     })
                 })
                 .collect(),
-            1 => {
+            2 => {
                 let mut airing: Vec<(&SeriesCard, i64)> = self
                     .cards
                     .iter()
@@ -508,7 +541,7 @@ impl Find {
                     })
                     .collect()
             }
-            2 => self
+            3 => self
                 .rules
                 .iter()
                 .map(|r| {
@@ -551,18 +584,28 @@ impl Find {
             }
         };
         let lines = [
+            "Watching and Planning on your list. Open one to get its episodes.",
             "Aired episodes that are not on this phone. Open a show to see who has them.",
             "New episodes still to come, the soonest first.",
             "The subscriptions: new episodes download by themselves. Open one to stop it.",
             "What this phone downloaded, a show at a time.",
         ];
+        let list_empty = self.list_note.clone().unwrap_or_else(|| {
+            if self.list_refreshing {
+                "Reading your list...".into()
+            } else {
+                "Nothing on your list yet. Search a show above and add it.".into()
+            }
+        });
         let empty = [
+            list_empty.as_str(),
             "Nothing is missing: every aired episode of every show is on this phone.",
             "Nothing on this phone is airing.",
             "No subscriptions yet. Open a show and turn on Follow.",
             "Nothing downloaded yet.",
         ];
         let counts = [
+            self.entries.len(),
             self.cards
                 .iter()
                 .filter(|c| c.cubes.contains(['m', 'g']))
@@ -574,7 +617,7 @@ impl Find {
             self.rules.len(),
             offers
                 .len()
-                .max(if self.lens == 3 { offers.len() } else { 0 }),
+                .max(if self.lens == 4 { offers.len() } else { 0 }),
         ];
         let tiles: Vec<Tile> = offers
             .iter()
@@ -604,7 +647,7 @@ impl Find {
             .iter()
             .enumerate()
             .map(|(i, l)| {
-                if i == 3 {
+                if i == 4 {
                     SharedString::from(*l)
                 } else {
                     format!("{l} {}", counts[i]).into()
@@ -623,6 +666,157 @@ impl Find {
             d.set_lens_tiles(model(tiles));
         });
         self.offers = offers;
+    }
+
+    /// The list as tiles: a show the library has opens as the library's, with its
+    /// cubes; the rest open as AniList knows them, every episode still to get.
+    fn list_offers(&self) -> Vec<Offer> {
+        self.entries
+            .iter()
+            .map(|e| {
+                let w = &e.show;
+                let ledger = if e.planning {
+                    "Planning".to_string()
+                } else {
+                    match w.total {
+                        Some(t) => format!("Watching, {} of {t}", w.progress),
+                        None => format!("Watching, {} seen", w.progress),
+                    }
+                };
+                let card = w
+                    .owned
+                    .and_then(|id| self.cards.iter().find(|c| c.id == id));
+                let mut offer = match card {
+                    Some(c) => Self::offer_of(c),
+                    None => list_offer(w),
+                };
+                offer.anilist = Some(w.anilist_id);
+                offer.ledger = ledger;
+                offer.ledger_tone = i32::from(!e.planning);
+                offer
+            })
+            .collect()
+    }
+
+    /// Reads the list off the core's cache; with `ask`, has the core ask AniList first
+    /// when its copy is older than five minutes, and reads again as that lands.
+    fn load_list(&mut self, ask: bool) {
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        let _ = std::thread::Builder::new()
+            .name("list".into())
+            .spawn(move || {
+                let refreshing = ask
+                    && matches!(
+                        core.call(Call::RefreshWatching { force: false }),
+                        Ok(Reply::Started { .. })
+                    );
+                let watching = core.call(Call::ListWatching);
+                let planning = core.call(Call::ListPlanning);
+                let _ = slint::invoke_from_event_loop(move || {
+                    with(|f| f.list_read(refreshing, watching, planning))
+                });
+            });
+    }
+
+    fn list_read(
+        &mut self,
+        refreshing: bool,
+        watching: Result<Reply, CoreError>,
+        planning: Result<Reply, CoreError>,
+    ) {
+        if refreshing {
+            self.list_refreshing = true;
+        }
+        let mut entries = Vec::new();
+        self.list_note = None;
+        for (answer, planning) in [(watching, false), (planning, true)] {
+            match answer {
+                Ok(Reply::Watching { list, .. } | Reply::Planning { list }) => entries.extend(
+                    list.entries
+                        .into_iter()
+                        .map(|show| Entry { planning, show }),
+                ),
+                Ok(_) => {}
+                Err(CoreError::NotConnected { .. }) => {
+                    self.list_note = Some(
+                        "Sign in to AniList under More, Accounts, and your list shows up here."
+                            .into(),
+                    )
+                }
+                Err(e) => self.list_note = Some(format!("Your list could not be read: {e}")),
+            }
+        }
+        // A show put on Planning here stays until the list has it.
+        self.planned
+            .retain(|id| !entries.iter().any(|e| e.show.anilist_id == *id));
+        self.entries = entries;
+        self.show_lens();
+        self.draw_show();
+    }
+
+    /// Called on the app's tick: while AniList is being asked, or a show was just put
+    /// on Planning, each change the core reports reads the list again.
+    fn list_tick(&mut self, changed: bool) {
+        if !changed {
+            return;
+        }
+        if self.list_refreshing {
+            self.list_refreshing = false;
+            self.load_list(false);
+        } else if !self.planned.is_empty() {
+            let Some(core) = crate::local::core() else {
+                return;
+            };
+            // The plan job wrote AniList; the copy here is stale until it is read again.
+            if matches!(
+                core.call(Call::RefreshWatching { force: true }),
+                Ok(Reply::Started { .. })
+            ) {
+                self.list_refreshing = true;
+            }
+        }
+    }
+
+    /// Where the open show is on the list: "Watching", "Planning", or empty.
+    fn list_status(&self, offer: &Offer) -> String {
+        let found = self.entries.iter().find(|e| {
+            offer.anilist == Some(e.show.anilist_id)
+                || (offer.series.is_some() && offer.series == e.show.owned)
+        });
+        match found {
+            Some(e) if e.planning => "Planning".into(),
+            Some(_) => "Watching".into(),
+            None if offer.anilist.is_some_and(|id| self.planned.contains(&id)) => "Planning".into(),
+            None => String::new(),
+        }
+    }
+
+    /// Puts the open show on Planning, on every tracker signed in.
+    fn plan(&mut self) {
+        let Some((id, title)) = self
+            .show
+            .as_ref()
+            .and_then(|s| Some((s.offer.anilist?, s.offer.show.title.clone())))
+        else {
+            return;
+        };
+        ask(Call::PlanToWatch { anilist_id: id }, move |f, answer| {
+            match answer {
+                Ok(_) => {
+                    f.planned.push(id);
+                    f.line(&format!("{title} is on Planning."), "");
+                }
+                Err(CoreError::NotConnected { .. }) => f.line(
+                    "",
+                    "Adding to your list needs AniList or MAL. Sign in under More, Accounts.",
+                ),
+                Err(e) => f.line("", &format!("Not added to your list: {e}")),
+            }
+            f.show_lens();
+            f.draw_show();
+        });
     }
 
     fn load_posters(&self, offers: &[Offer]) {
@@ -1393,6 +1587,8 @@ impl Find {
         } else {
             "On this phone".to_string()
         };
+        let list_status = self.list_status(&state.offer);
+        let can_plan = state.offer.anilist.is_some() && list_status.is_empty();
         let active = state.active.map(|i| i as i32).unwrap_or(-1);
         let follow = state.follow;
         let replace = state.replace;
@@ -1404,6 +1600,8 @@ impl Find {
                 d.set_unfollow_ask(false);
             }
             d.set_rule_name(rule_name.into());
+            d.set_list_status(list_status.into());
+            d.set_can_plan(can_plan);
             d.set_rule_line(rule_said.into());
             d.set_show_title(show.title.clone().into());
             d.set_show_facts(facts_line.join("  ").into());
@@ -2172,6 +2370,75 @@ fn folder_name(title: &str) -> String {
 
 /// A show found on AniList, not in the library: searched by its latin names, saved under
 /// its romaji one.
+/// A list entry the library does not have, as AniList knows it.
+fn list_offer(w: &WatchingEntry) -> Offer {
+    anilist_offer(
+        w.anilist_id,
+        &w.title,
+        [w.romaji.as_ref(), w.english.as_ref()],
+        w.total,
+        w.next_airing.is_some(),
+        w.poster.clone(),
+    )
+}
+
+/// A show known only from AniList, every episode still to get. Searched by its latin
+/// titles first, whatever the page shows.
+fn anilist_offer(
+    id: u64,
+    title: &str,
+    latin: [Option<&String>; 2],
+    total: Option<u32>,
+    airing: bool,
+    poster: Option<String>,
+) -> Offer {
+    let mut queries: Vec<String> = Vec::new();
+    for name in latin.into_iter().flatten().chain([&title.to_string()]) {
+        if !name.is_empty() && !queries.contains(name) {
+            queries.push(name.clone());
+        }
+    }
+    let total = total.unwrap_or(0);
+    let title = latin[0].cloned().unwrap_or_else(|| title.to_string());
+    Offer {
+        show: grid::Show {
+            title: title.clone(),
+            queries,
+            total,
+            airing,
+            cubes: "g".repeat(total.min(400) as usize),
+            here: None,
+            folder: folder_name(&title),
+        },
+        anilist: Some(id),
+        series: None,
+        in_library: false,
+        poster,
+        ledger: String::new(),
+        ledger_tone: 0,
+    }
+}
+
+/// Get episodes for a show on Airing now that the library does not have: its show view,
+/// asking the first source at once, as a search hit opens.
+pub fn open_airing(a: &anibeam_core::AiringShow) {
+    let offer = anilist_offer(
+        a.anilist_id,
+        &a.title,
+        [a.romaji.as_ref(), a.english.as_ref()],
+        a.episodes,
+        a.next_airing.is_some(),
+        a.poster.clone(),
+    );
+    with(|f| {
+        f.with_data(|d| d.set_shown(true));
+        f.refresh();
+        f.with_data(|d| d.set_text(SharedString::new()));
+        f.clear_suggestions();
+        f.open_show(offer);
+    });
+}
+
 fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
     let queries = hit_names(h);
     let title = h
@@ -2205,6 +2472,7 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
             folder: folder_name(&title),
         },
         anilist: matches!(h.provider, anibeam_core::Provider::Anilist).then_some(h.id),
+        series: None,
         in_library: false,
         poster: (!poster.is_empty()).then_some(poster),
         ledger: facts.join(", "),

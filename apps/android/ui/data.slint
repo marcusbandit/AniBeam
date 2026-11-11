@@ -248,6 +248,8 @@ export global AppData {
     callback airing-tap(int);
     callback airing-close();
     callback airing-plan(int);
+    // Get episodes for a show the library does not have, by its AniList id.
+    callback airing-get(int);
     callback airing-dismiss(int);
     callback airing-take-back();
 

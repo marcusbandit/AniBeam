@@ -3,7 +3,7 @@
 // it, a tap asks that source, its releases as rows of episode cubes under the library's own
 // row, and a plan that says what Get and Follow will do. Return searches release names
 // instead, the release list with the desktop's refine steps. With nothing typed, four
-// lenses into what there is to get: Gaps, Airing, Following, Downloaded.
+// lenses into what there is to get: Your list, Gaps, Airing, Following, Downloaded.
 
 import { Theme } from "theme.slint";
 import { Nav, Tile } from "data.slint";
@@ -102,6 +102,10 @@ export global FindData {
     in-out property <bool> follow;
     in-out property <bool> replace;
     in property <bool> has-had;
+    // Where the open show is on the person's list: "Watching", "Planning", or empty; and
+    // whether it can be put on Planning from here (#734).
+    in property <string> list-status;
+    in property <bool> can-plan;
     // Where Get downloads to: this phone, then the connected computer when it takes
     // downloads (#733). Empty when there is no computer to pick.
     in property <[string]> targets;
@@ -149,6 +153,7 @@ export global FindData {
     callback subscribe();
     // Stops following the open show; true deletes what it downloaded too.
     callback unfollow(bool);
+    callback plan-to-watch();
     callback set-target(int);
 }
 
@@ -529,6 +534,22 @@ export component ShowView inherits VerticalLayout {
                 size: 8px;
                 spacing: 3px;
             }
+            if FindData.list-status != "": Text {
+                text: "On your list: " + FindData.list-status;
+                color: Theme.accent;
+                font-size: Theme.small;
+                font-family: Theme.strong-face;
+            }
+            if FindData.can-plan: HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: "Plan to watch";
+                    icon: @image-url("icons/check-check.svg");
+                    has-icon: true;
+                    small: true;
+                    clicked => { FindData.plan-to-watch(); }
+                }
+            }
         }
     }
 
@@ -823,7 +844,7 @@ export component ReleaseList inherits VerticalLayout {
     }
 }
 
-// What there is to get with nothing typed: four lenses.
+// What there is to get with nothing typed: five lenses.
 export component Lenses inherits VerticalLayout {
     in property <length> fit-width: self.width;
     spacing: Theme.unit * 3;
