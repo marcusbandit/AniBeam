@@ -1,25 +1,23 @@
 name: Nightly
 
-# What main is becoming, as a build of its own every few hours rather than one file replaced
-# on every merge. The schedule wakes every three hours and builds only when the app changed
-# on main since the last nightly and that nightly is at least six hours old; Run workflow
-# with `force` builds now regardless. Each nightly is versioned from the workspace version,
-# 2.5.0-nightly.20261030.12 (the day and this workflow's run number), and published as the
-# pre-release v2.5.0-nightly.20261030.12 once every platform's files are on it. An app on the
-# Nightly track hears about it; the Stable track never does. release.yml promotes the newest
-# nightly to a stable version. The ten newest nightlies are kept. CONTRIBUTING.md, under
-# Releases, has the whole line.
+# What main is becoming, as a build of its own. A nightly is the frontier channel, not a
+# daily timer: it is cut on demand, by running this workflow, when main holds something worth
+# trying. It builds only when the app changed on main since the last nightly; `force` builds
+# regardless. Each nightly is versioned from the workspace version, 2.5.0-nightly.20261030.12
+# (the day and this workflow's run number), and published as the pre-release
+# v2.5.0-nightly.20261030.12 once every platform's files are on it. An app on the Nightly
+# track hears about it; the Stable track never does. release.yml promotes the newest nightly
+# to a stable version. The ten newest nightlies are kept. CONTRIBUTING.md, under Releases,
+# has the whole line.
 on:
-  schedule:
-    - cron: '17 */3 * * *'
   workflow_dispatch:
     inputs:
       force:
-        description: Build even if the last nightly is recent or main has not changed
+        description: Build even if the app has not changed on main since the last nightly
         type: boolean
         default: false
 
-# One nightly at a time; a schedule that fires while one builds waits for it.
+# One nightly at a time; a second run waits for the first.
 concurrency:
   group: nightly
   cancel-in-progress: false
@@ -56,15 +54,11 @@ jobs:
             --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | last // empty | "\(.tagName) \(.createdAt)"')"
           build=true
           if [ -n "$last" ]; then
-            read -r tag created <<<"$last"
+            read -r tag _ <<<"$last"
             echo "previous=$tag" >> "$GITHUB_OUTPUT"
             git fetch -q origin "refs/tags/$tag:refs/tags/$tag"
-            age=$(( $(date -u +%s) - $(date -u -d "$created" +%s) ))
             if git diff --quiet "$tag" "$sha" -- core host-api apps/linux apps/cli Cargo.toml Cargo.lock; then
               echo "The app has not changed on main since $tag."
-              build=false
-            elif [ "$age" -lt 21600 ]; then
-              echo "$tag is $(( age / 60 )) minutes old; the next nightly waits for six hours."
               build=false
             fi
           fi
