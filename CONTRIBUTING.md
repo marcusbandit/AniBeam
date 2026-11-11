@@ -232,15 +232,16 @@ update track from that version:
 | Build | Version | Comes from | Who gets it |
 | --- | --- | --- | --- |
 | Stable | `2.5.0` | Release workflow, promoting a nightly | everyone; the Latest release |
-| Nightly | `2.5.0-nightly.20261102.40` | `nightly.yml`, every few hours | the Nightly track in Settings |
+| Nightly | `2.5.0-nightly.20261102.40` | `nightly.yml`, run on demand | the Nightly track in Settings |
 | PR test build | `2.5.0-pr.280.3` | `pr-build.yml`, the `test build` label | whoever the PR comment reaches |
 
 The workspace version in `Cargo.toml` is always the next stable version, and every build
 between two releases carries it as its base.
 
-- **Nightly.** `nightly.yml` builds main every few hours when the app changed and the last
-  nightly is six hours old, and publishes it as its own pre-release. The ten newest are
-  kept. Run it from the Actions tab with `force` for one now.
+- **Nightly.** The less polished, frontier build, not a daily one. Run `nightly.yml` from
+  the Actions tab when main holds something worth trying; it builds main and publishes it as
+  its own pre-release, and skips the run when the app has not changed since the last
+  nightly unless `force` is ticked. The ten newest are kept.
 - **PR test build.** Put the `test build` label on a PR to get installers for it on the
   `pr-builds` pre-release, linked from a comment on the PR. Every push rebuilds them;
   closing the PR or taking the label off removes them. Use it to have someone try a
