@@ -262,14 +262,24 @@ fn only_the_owners_devices_download_to_the_host() {
         "link": "magnet:?xt=urn:btih:0000000000000000000000000000000000000000",
     }))
     .unwrap();
-    let get = |items: Vec<Release>| Call::DownloadReleasesWith {
+    let download = |items: Vec<Release>| Call::DownloadReleasesWith {
         items,
         name: Some("Show".into()),
         options: DownloadOptions::default(),
     };
 
+    let features = |base: &str| -> Vec<String> {
+        let (_, hello) = get(&rt, &format!("{base}{}", anibeam_host_api::HELLO));
+        serde_json::from_value(hello["features"].clone()).unwrap()
+    };
     let tablet = serve_as(&rt, &core, TABLET);
-    let (status, body) = call(&rt, &tablet, &get(vec![release]));
+    assert!(
+        !features(&tablet)
+            .iter()
+            .any(|f| f == anibeam_host_api::FEATURE_DOWNLOADS),
+        "a friend's device is not offered downloads"
+    );
+    let (status, body) = call(&rt, &tablet, &download(vec![release]));
     assert_eq!(status, 403, "{body}");
     assert_eq!(
         body["error"].as_str(),
@@ -286,7 +296,12 @@ fn only_the_owners_devices_download_to_the_host() {
     assert_eq!(call(&rt, &tablet, &follow).0, 403);
 
     let phone = serve_as(&rt, &core, PHONE);
-    let (status, body) = call(&rt, &phone, &get(Vec::new()));
+    assert!(
+        features(&phone)
+            .iter()
+            .any(|f| f == anibeam_host_api::FEATURE_DOWNLOADS)
+    );
+    let (status, body) = call(&rt, &phone, &download(Vec::new()));
     assert_eq!(status, 422, "the core's own answer, not the door's: {body}");
     assert_eq!(
         body["core"]["Invalid"]["field"].as_str(),

@@ -106,6 +106,8 @@ export global FindData {
     // downloads (#733). Empty when there is no computer to pick.
     in property <[string]> targets;
     in property <int> target;
+    // Whose episodes the grid's first row shows: "On this phone", or the computer's.
+    in property <string> library-label: "On this phone";
     // The subscription that downloads into the open show's folder, and what it has taken;
     // empty when the show is not followed.
     in property <string> rule-name;
@@ -564,14 +566,12 @@ export component ShowView inherits VerticalLayout {
         title: "What it has";
         note: "Tap a row to take it all, or single episodes.";
     }
-    // What this phone has; hidden when Get goes to the computer, whose episodes the phone
-    // cannot see one by one.
-    if FindData.rows.length > 0 && FindData.library.length > 0 && FindData.target == 0: VerticalLayout {
+    if FindData.rows.length > 0 && FindData.library.length > 0: VerticalLayout {
         spacing: Theme.unit * 2;
         padding-left: Theme.unit * 4;
         padding-right: Theme.unit * 4;
         Text {
-            text: "On this phone";
+            text: FindData.library-label;
             color: Theme.faint;
             font-size: Theme.small;
         }

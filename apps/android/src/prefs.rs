@@ -33,6 +33,8 @@ pub struct Prefs {
     pub notify_offered: bool,
     /// Get sends downloads to the connected computer rather than this phone (#733).
     pub download_to_desk: bool,
+    /// The computer's name as it last answered, so Download to names it while it is off.
+    pub desk_name: String,
 }
 
 impl Default for Prefs {
@@ -48,6 +50,7 @@ impl Default for Prefs {
             notify_asked: false,
             notify_offered: false,
             download_to_desk: false,
+            desk_name: String::new(),
         }
     }
 }
