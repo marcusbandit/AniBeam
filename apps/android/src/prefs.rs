@@ -148,6 +148,8 @@ mod tests {
             cal_days: true,
             notify_asked: true,
             notify_offered: true,
+            download_to_desk: true,
+            desk_name: "computer".into(),
         };
         save(&dir, &p).unwrap();
         assert_eq!(load(&dir), p);
