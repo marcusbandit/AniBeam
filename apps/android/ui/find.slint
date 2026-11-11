@@ -564,7 +564,9 @@ export component ShowView inherits VerticalLayout {
         title: "What it has";
         note: "Tap a row to take it all, or single episodes.";
     }
-    if FindData.rows.length > 0 && FindData.library.length > 0: VerticalLayout {
+    // What this phone has; hidden when Get goes to the computer, whose episodes the phone
+    // cannot see one by one.
+    if FindData.rows.length > 0 && FindData.library.length > 0 && FindData.target == 0: VerticalLayout {
         spacing: Theme.unit * 2;
         padding-left: Theme.unit * 4;
         padding-right: Theme.unit * 4;
