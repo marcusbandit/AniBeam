@@ -31,6 +31,10 @@ pub struct Prefs {
     /// The notification was explained, in onboarding or on a first download, so the
     /// download's question does not come up again.
     pub notify_offered: bool,
+    /// Get sends downloads to the connected computer rather than this phone (#733).
+    pub download_to_desk: bool,
+    /// The computer's name as it last answered, so Download to names it while it is off.
+    pub desk_name: String,
 }
 
 impl Default for Prefs {
@@ -45,6 +49,8 @@ impl Default for Prefs {
             cal_days: false,
             notify_asked: false,
             notify_offered: false,
+            download_to_desk: false,
+            desk_name: String::new(),
         }
     }
 }
@@ -142,6 +148,8 @@ mod tests {
             cal_days: true,
             notify_asked: true,
             notify_offered: true,
+            download_to_desk: true,
+            desk_name: "computer".into(),
         };
         save(&dir, &p).unwrap();
         assert_eq!(load(&dir), p);

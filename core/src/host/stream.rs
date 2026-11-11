@@ -363,6 +363,63 @@ fn json(status: StatusCode, body: Vec<u8>) -> Response {
         .into_response()
 }
 
+/// What a device of someone else on the tailnet is told when it sends a download.
+pub const DOWNLOADS_OWNER_ONLY: &str =
+    "Only the devices of the person this computer belongs to can download to it.";
+
+/// How long a download call waits for its job, under the phone's 20 second limit on a
+/// request. Adding a torrent takes a second or two; a torrent client that is still
+/// starting can take longer. Past this the reply is the job's id, and the torrents show
+/// up in the next snapshot.
+const DOWNLOAD_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// A call that starts a job, run to the job's end: the device that sent it hears whether
+/// the torrents went in, not only that a job started. The listener is up before the call,
+/// so a job that ends at once is not missed.
+pub(crate) fn run_to_end(
+    core: &crate::Core,
+    profile: u64,
+    call: Call,
+    wait: std::time::Duration,
+) -> Result<crate::contract::Reply, CoreError> {
+    use crate::contract::{Event, EventBody, EventListener, JobPhase, Reply};
+    struct Relay(std::sync::mpsc::Sender<Event>);
+    impl EventListener for Relay {
+        fn on_event(&self, event: Event) {
+            let _ = self.0.send(event);
+        }
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let sub = crate::events::Subscription::new(core.bus.clone(), Arc::new(Relay(tx)));
+    let job = match core.call_as(profile, call) {
+        Ok(Reply::Started { job }) => job,
+        other => {
+            sub.unsubscribe();
+            return other;
+        }
+    };
+    let until = std::time::Instant::now() + wait;
+    let answer = loop {
+        let left = until.saturating_duration_since(std::time::Instant::now());
+        let Ok(event) = rx.recv_timeout(left) else {
+            break Ok(Reply::Started { job });
+        };
+        let Some(r) = event.job.as_ref().filter(|r| r.id == job) else {
+            continue;
+        };
+        match event.body {
+            EventBody::JobFailed { error } => break Err(error),
+            EventBody::JobCancelled => {
+                break Err(CoreError::internal("the download was cancelled there"));
+            }
+            _ if r.phase == JobPhase::Finished => break Ok(Reply::Ok),
+            _ => {}
+        }
+    };
+    sub.unsubscribe();
+    answer
+}
+
 /// One player call, run on this core as if its own player had made it.
 pub async fn call(
     State(st): State<Arc<Served>>,
@@ -388,17 +445,33 @@ pub async fn call(
         Err(e) => return error(StatusCode::BAD_REQUEST, &format!("not a call: {e}")),
     };
     let name = call_name(&call);
-    if !wire::PLAYER_CALLS.contains(&name.as_str()) {
-        return error(StatusCode::FORBIDDEN, "only playback calls are taken here");
+    let download = wire::DOWNLOAD_CALLS.contains(&name.as_str());
+    if !download && !wire::PLAYER_CALLS.contains(&name.as_str()) {
+        return error(
+            StatusCode::FORBIDDEN,
+            "only playback and download calls are taken here",
+        );
+    }
+    // Downloads fill this computer's disk and its torrent client, so only the
+    // person it belongs to may send them (#733).
+    if download && profile != crate::profiles::OWNER {
+        return error(StatusCode::FORBIDDEN, DOWNLOADS_OWNER_ONLY);
     }
     let Some(core) = st.core.upgrade() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
     };
     let hiding = matches!(name.as_str(), "SetNotInterested" | "ListNotInterested");
-    if !hiding && !core.host.streaming() {
+    if !hiding && !download && !core.host.streaming() {
         return error(StatusCode::FORBIDDEN, super::server::STREAMING_OFF);
     }
-    let reply = tokio::task::spawn_blocking(move || core.call_as(profile, call)).await;
+    let reply = tokio::task::spawn_blocking(move || {
+        if download {
+            run_to_end(&core, profile, call, DOWNLOAD_WAIT)
+        } else {
+            core.call_as(profile, call)
+        }
+    })
+    .await;
     match reply {
         Ok(Ok(reply)) => match serde_json::to_vec(&reply) {
             Ok(body) => json(StatusCode::OK, body),

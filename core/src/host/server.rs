@@ -312,7 +312,11 @@ fn failed(e: &CoreError) -> Response {
 async fn hello(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
+    profile: Option<axum::Extension<Profile>>,
 ) -> Response {
+    // Downloads are offered only to the owner's devices, the only ones the call route
+    // takes them from (#733).
+    let owner = profile.is_some_and(|p| p.0.0 == crate::profiles::OWNER);
     // `trusted` read the key before this route, so this only takes it.
     let key = st
         .core
@@ -329,7 +333,7 @@ async fn hello(
         version: crate::VERSION.to_string(),
         host: st.host.clone(),
         now: time::now_secs(),
-        features: features(streaming, key.is_some()),
+        features: features(streaming, key.is_some(), owner),
         key: key.map(|k| k.public()).unwrap_or_default(),
         streaming_off: !streaming,
         relayed,
@@ -340,16 +344,20 @@ async fn hello(
     }
 }
 
-/// What this host serves past the snapshot: the list of other AniBeams
-/// and this one's history always, since neither is streaming; request
+/// What this host serves past the snapshot: the list of other AniBeams and
+/// this one's history always, since neither is streaming; downloads to the
+/// owner's devices, the only ones that may send them; request
 /// proofs while it has its key; streaming while its switch is on;
 /// converting too when ffmpeg and an encoder work here, which the first
 /// hello starts finding out rather than waits for, so hello stays quick.
-fn features(streaming: bool, keyed: bool) -> Vec<String> {
+fn features(streaming: bool, keyed: bool, owner: bool) -> Vec<String> {
     let mut out = vec![
         wire::FEATURE_PEERS.to_string(),
         wire::FEATURE_HISTORY.to_string(),
     ];
+    if owner {
+        out.push(wire::FEATURE_DOWNLOADS.to_string());
+    }
     if keyed {
         out.push(wire::FEATURE_PROOF.to_string());
     }

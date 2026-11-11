@@ -10,8 +10,9 @@ use std::path::PathBuf;
 use anibeam_companion::format;
 use anibeam_core::releases::grid;
 use anibeam_core::{
-    BestFit, Call, CoreError, Direction, RefineOp, Refinement, Release, ReleaseFacts, ReleaseGroup,
-    ReleaseSearch, Reply, SearchResult, SeriesCard, Sort, SubscriptionRule, Tab, Torrent,
+    BestFit, Call, CoreError, Direction, DownloadOptions, RefineOp, Refinement, Release,
+    ReleaseFacts, ReleaseGroup, ReleaseSearch, Reply, SearchResult, SeriesCard, Sort,
+    SubscriptionRule, Tab, Torrent,
 };
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel, Weak};
 
@@ -24,6 +25,8 @@ const LENSES: [&str; 4] = ["Gaps", "Airing", "Following", "Downloaded"];
 #[derive(Clone, Debug, Default)]
 struct Offer {
     show: grid::Show,
+    /// Its AniList id, when it came from AniList: it finds the show on the computer.
+    anilist: Option<u64>,
     /// A library series, not one found only on AniList.
     in_library: bool,
     poster: Option<String>,
@@ -113,6 +116,16 @@ struct Find {
     /// them again without asking AniList twice.
     answered_for: String,
     answered: Vec<Offer>,
+    /// The connected computer, when it answered that it takes downloads (#733).
+    desk: Option<crate::desk::Desk>,
+    /// A hello to the computer is out. One at a time, so an older answer never lands
+    /// over a newer one.
+    desk_asking: bool,
+    /// When the computer last answered, or did not, so browsing shows asks it at most
+    /// once a minute.
+    desk_asked: Option<std::time::Instant>,
+    /// Get goes to the computer: the pick in Download to, kept in prefs.
+    to_desk: bool,
 }
 
 thread_local! {
@@ -171,6 +184,7 @@ fn model<T: Clone + 'static>(rows: Vec<T>) -> ModelRc<T> {
 }
 
 pub fn install(window: &AppWindow, data_dir: PathBuf) {
+    let to_desk = prefs::load(&data_dir).download_to_desk;
     FIND.with(|cell| {
         *cell.borrow_mut() = Some(Find {
             window: window.as_weak(),
@@ -189,6 +203,10 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             suggest_for: String::new(),
             answered_for: String::new(),
             answered: Vec::new(),
+            desk: None,
+            desk_asking: false,
+            desk_asked: None,
+            to_desk,
         })
     });
     let d = window.global::<FindData>();
@@ -290,6 +308,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.on_download_all(|| with(Find::download_all));
     d.on_subscribe(|| with(Find::subscribe));
     d.on_unfollow(|files| with(|f| f.unfollow(files)));
+    d.on_set_target(|i| with(|f| f.set_target(i)));
 }
 
 impl Find {
@@ -410,6 +429,7 @@ impl Find {
                 here: Some(card.episodes_here.clone()),
                 folder,
             },
+            anilist: None,
             in_library: true,
             poster: card.poster.clone(),
             ledger: String::new(),
@@ -443,6 +463,7 @@ impl Find {
                 here: None,
                 folder: folder.to_string(),
             },
+            anilist: None,
             in_library: false,
             poster: None,
             ledger: String::new(),
@@ -821,6 +842,84 @@ impl Find {
         self.draw_show();
         // The first source is asked at once, as a tap on it would.
         self.fetch(0);
+        self.probe_desk(false);
+        self.draw_targets();
+    }
+
+    /// Asks the connected computer, off the UI thread, whether it takes downloads, and
+    /// offers it in Download to once it says so. At most once a minute unless `again`.
+    fn probe_desk(&mut self, again: bool) {
+        let fresh = self
+            .desk_asked
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(60));
+        if self.desk_asking || (fresh && !again) {
+            return;
+        }
+        self.desk_asking = true;
+        let dir = self.data_dir.clone();
+        let _ = std::thread::Builder::new()
+            .name("desk".into())
+            .spawn(move || {
+                let desk = crate::desk::probe(&dir);
+                let _ = slint::invoke_from_event_loop(move || with(|f| f.desk_answered(desk)));
+            });
+    }
+
+    fn desk_answered(&mut self, desk: Option<crate::desk::Desk>) {
+        let (before, _) = self.aimed();
+        self.desk_asking = false;
+        self.desk_asked = Some(std::time::Instant::now());
+        if let Some(d) = &desk {
+            let mut p = prefs::load(&self.data_dir);
+            if p.desk_name != d.name {
+                p.desk_name = d.name.clone();
+                let _ = prefs::save(&self.data_dir, &p);
+            }
+        }
+        self.desk = desk;
+        // Picks made against what the computer had before it answered are picked again.
+        let (after, _) = self.aimed();
+        if (after.cubes, after.here) != (before.cubes, before.here) {
+            self.repick();
+        }
+        self.draw_targets();
+        self.draw_show();
+    }
+
+    /// Download to: this phone, and the computer once it answered or while it is the pick.
+    fn draw_targets(&self) {
+        let targets: Vec<SharedString> = if self.desk.is_some() || self.to_desk {
+            vec!["This phone".into(), self.desk_name().into()]
+        } else {
+            Vec::new()
+        };
+        let target = i32::from(self.to_desk);
+        self.with_data(|d| {
+            d.set_targets(model(targets));
+            d.set_target(target);
+        });
+    }
+
+    fn set_target(&mut self, i: i32) {
+        self.to_desk = i == 1;
+        let mut p = prefs::load(&self.data_dir);
+        p.download_to_desk = self.to_desk;
+        let _ = prefs::save(&self.data_dir, &p);
+        if self.to_desk && self.desk.is_none() {
+            self.probe_desk(true);
+        }
+        self.repick();
+        self.draw_targets();
+        self.draw_show();
+    }
+
+    /// The picks were made against the other target's episodes: start again from the
+    /// group that fills the most gaps there.
+    fn repick(&mut self) {
+        if let Some(s) = self.show.as_mut() {
+            s.picks = grid::Picks::default();
+        }
+        self.auto_pick();
     }
 
     fn fetch(&mut self, i: i32) {
@@ -921,6 +1020,65 @@ impl Find {
         ))
     }
 
+    /// The computer downloads go to, when it is the pick and it answered.
+    fn on_desk(&self) -> Option<&crate::desk::Desk> {
+        self.desk.as_ref().filter(|_| self.to_desk)
+    }
+
+    /// Why Get cannot go yet: the computer is the pick but has not answered. Get never
+    /// falls back to the phone on its own, since that would spend the phone's storage
+    /// and maybe its mobile data on a download meant for the computer.
+    fn desk_waiting(&self) -> Option<String> {
+        if !self.to_desk || self.desk.is_some() {
+            return None;
+        }
+        let name = self.desk_name();
+        Some(if self.desk_asking {
+            format!("Asking {name}...")
+        } else {
+            format!("{name} does not answer. Pick This phone, or try again when it is on.")
+        })
+    }
+
+    /// The computer's name as it last answered.
+    fn desk_name(&self) -> String {
+        self.desk
+            .as_ref()
+            .map(|d| d.name.clone())
+            .or_else(|| Some(prefs::load(&self.data_dir).desk_name))
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "Your computer".into())
+    }
+
+    /// The computer's own series and options for the open show.
+    fn desk_options(&self, desk: &crate::desk::Desk, provider: String) -> DownloadOptions {
+        DownloadOptions {
+            provider,
+            series: self
+                .show
+                .as_ref()
+                .and_then(|s| desk.series_for(s.offer.anilist, &s.offer.show.queries)),
+            ..Default::default()
+        }
+    }
+
+    /// The open show as the picked target sees it. On this phone: what the phone has and
+    /// is getting. On the computer: what its last snapshot says it has a file for.
+    fn aimed(&self) -> (grid::Show, BTreeMap<u32, f64>) {
+        let Some(state) = self.show.as_ref() else {
+            return Default::default();
+        };
+        if !self.to_desk {
+            return (state.offer.show.clone(), self.flight());
+        }
+        let had = self
+            .desk
+            .as_ref()
+            .map(|d| d.had(state.offer.anilist, &state.offer.show.queries))
+            .unwrap_or_default();
+        (desk_show(&state.offer.show, had), BTreeMap::new())
+    }
+
     fn flight(&self) -> BTreeMap<u32, f64> {
         let Some(state) = self.show.as_ref() else {
             return BTreeMap::new();
@@ -940,15 +1098,15 @@ impl Find {
         let Some((items, facts, _, _, provider)) = self.current() else {
             return;
         };
-        let flight = self.flight();
+        let (aimed, flight) = self.aimed();
         let Some(state) = self.show.as_mut() else {
             return;
         };
         if !state.picks.chosen.is_empty() {
             return;
         }
-        let total = grid::total(&state.offer.show, &facts, &flight);
-        let library = grid::library(&state.offer.show, total, &flight);
+        let total = grid::total(&aimed, &facts, &flight);
+        let library = grid::library(&aimed, total, &flight);
         let rows = grid::rows(&items, &facts, total, &provider);
         if let Some(best) = grid::best_row(&rows, &library, total) {
             state.picks = grid::pick_row(&rows[best], &library, total, false);
@@ -959,12 +1117,12 @@ impl Find {
         let Some((items, facts, _, _, provider)) = self.current() else {
             return;
         };
-        let flight = self.flight();
+        let (aimed, flight) = self.aimed();
         let Some(state) = self.show.as_mut() else {
             return;
         };
-        let total = grid::total(&state.offer.show, &facts, &flight);
-        let library = grid::library(&state.offer.show, total, &flight);
+        let total = grid::total(&aimed, &facts, &flight);
+        let library = grid::library(&aimed, total, &flight);
         let rows = grid::rows(&items, &facts, total, &provider);
         if let Some(row) = usize::try_from(r).ok().and_then(|r| rows.get(r)) {
             state.picks = grid::pick_row(row, &library, total, true);
@@ -976,12 +1134,12 @@ impl Find {
         let Some((items, facts, _, _, provider)) = self.current() else {
             return;
         };
-        let flight = self.flight();
+        let (aimed, flight) = self.aimed();
         let Some(state) = self.show.as_mut() else {
             return;
         };
-        let total = grid::total(&state.offer.show, &facts, &flight);
-        let library = grid::library(&state.offer.show, total, &flight);
+        let total = grid::total(&aimed, &facts, &flight);
+        let library = grid::library(&aimed, total, &flight);
         let rows = grid::rows(&items, &facts, total, &provider);
         if let (Some(row), Ok(n)) = (
             usize::try_from(r).ok().and_then(|r| rows.get(r)),
@@ -1085,9 +1243,9 @@ impl Find {
             error = e.clone();
         }
         if let Some((items, facts, dropped, query, provider)) = self.current() {
-            let flight = self.flight();
-            let total = grid::total(show, &facts, &flight);
-            let library = grid::library(show, total, &flight);
+            let (aimed, flight) = self.aimed();
+            let total = grid::total(&aimed, &facts, &flight);
+            let library = grid::library(&aimed, total, &flight);
             let rows = grid::rows(&items, &facts, total, &provider);
             library_codes = library.iter().map(|c| Self::library_code(*c)).collect();
             if dropped > 0 {
@@ -1138,7 +1296,7 @@ impl Find {
                 })
                 .collect();
             let plan = grid::plan(
-                show,
+                &aimed,
                 &query,
                 &items,
                 &facts,
@@ -1216,6 +1374,25 @@ impl Find {
                 };
             }
         }
+        let desk = self.on_desk().map(|d| d.name.clone());
+        if let Some(why) = self.desk_waiting() {
+            can_go = false;
+            plan_detail = why;
+        } else if let Some(name) = &desk
+            && can_go
+        {
+            let there = format!("They download on {name}, into its library.");
+            plan_detail = if plan_detail.is_empty() {
+                there
+            } else {
+                format!("{plan_detail} {there}")
+            };
+        }
+        let library_label = if self.to_desk {
+            format!("On {}", self.desk_name())
+        } else {
+            "On this phone".to_string()
+        };
         let active = state.active.map(|i| i as i32).unwrap_or(-1);
         let follow = state.follow;
         let replace = state.replace;
@@ -1245,6 +1422,7 @@ impl Find {
             d.set_follow(follow);
             d.set_replace(replace);
             d.set_has_had(has_had);
+            d.set_library_label(library_label.into());
             d.set_error(error.into());
         });
     }
@@ -1260,15 +1438,15 @@ impl Find {
         let Some((items, facts, _, query, provider)) = self.current() else {
             return;
         };
-        let flight = self.flight();
+        let (aimed, flight) = self.aimed();
         let Some(state) = self.show.as_ref() else {
             return;
         };
-        let total = grid::total(&state.offer.show, &facts, &flight);
-        let library = grid::library(&state.offer.show, total, &flight);
+        let total = grid::total(&aimed, &facts, &flight);
+        let library = grid::library(&aimed, total, &flight);
         let rows = grid::rows(&items, &facts, total, &provider);
         let plan = grid::plan(
-            &state.offer.show,
+            &aimed,
             &query,
             &items,
             &facts,
@@ -1282,69 +1460,52 @@ impl Find {
             && !plan.follow_query.is_empty()
             && state.offer.show.airing
             && !state.no_feed.contains(&provider);
-        let limit = self.limit();
-        self.with_data(|d| d.set_busy(true));
-        self.line("Working...", "");
-        let name = plan.name.clone();
-        let subscribe = follow.then(|| Call::PhoneSubscribe {
-            query: plan.follow_query.clone(),
-            endpoint: provider.clone(),
-            items: plan.follow_items.clone(),
-            name: Some(name.clone()),
-        });
-        let count = plan.episodes.len();
-        let download = (!plan.items.is_empty()).then_some(Call::PhoneDownload {
-            items: plan.items,
-            name: Some(name),
-            limit_bytes: limit,
-        });
-        let Some(core) = crate::local::core() else {
+        if let Some(why) = self.desk_waiting() {
+            self.line("", &why);
             return;
+        }
+        let what = count_word(plan.episodes.len(), "episode", "episodes");
+        let name = Some(plan.name.clone());
+        let download = !plan.items.is_empty();
+        let calls = match self.on_desk().cloned() {
+            Some(desk) => {
+                let options = self.desk_options(&desk, provider.clone());
+                let series = options.series;
+                Sent {
+                    download: download.then(|| Call::DownloadReleasesWith {
+                        items: plan.items,
+                        name: name.clone(),
+                        options,
+                    }),
+                    subscribe: follow.then_some(Call::Subscribe {
+                        query: plan.follow_query,
+                        endpoint: provider,
+                        items: plan.follow_items,
+                        name,
+                        wire_query: None,
+                        series,
+                    }),
+                    what,
+                    to: To::Desk(desk),
+                }
+            }
+            None => Sent {
+                download: download.then(|| Call::PhoneDownload {
+                    items: plan.items,
+                    name: name.clone(),
+                    limit_bytes: self.limit(),
+                }),
+                subscribe: follow.then_some(Call::PhoneSubscribe {
+                    query: plan.follow_query,
+                    endpoint: provider,
+                    items: plan.follow_items,
+                    name,
+                }),
+                what,
+                to: To::Phone,
+            },
         };
-        let _ = std::thread::Builder::new()
-            .name("get".into())
-            .spawn(move || {
-                let mut line = Vec::new();
-                let mut error = String::new();
-                if let Some(call) = download {
-                    match core.call(call) {
-                        Ok(_) => line.push(if count == 1 {
-                            "Getting 1 episode.".to_string()
-                        } else {
-                            format!("Getting {count} episodes.")
-                        }),
-                        Err(e) => error = words(&e),
-                    }
-                }
-                if error.is_empty()
-                    && let Some(call) = subscribe
-                {
-                    match core.call(call) {
-                        Ok(_) => {
-                            line.push("Subscribed: new episodes download by themselves.".into())
-                        }
-                        Err(e) => error = words(&e),
-                    }
-                }
-                let _ = slint::invoke_from_event_loop(move || {
-                    with(|f| {
-                        f.with_data(|d| d.set_busy(false));
-                        f.line(&line.join(" "), &error);
-                        // Something was taken: the first time, the notification is
-                        // explained before Android asks for it.
-                        if !line.is_empty() {
-                            crate::app::download_started();
-                        }
-                        if error.is_empty()
-                            && let Some(s) = f.show.as_mut()
-                        {
-                            s.picks = grid::Picks::default();
-                        }
-                        f.refresh();
-                        f.draw_show();
-                    })
-                });
-            });
+        self.send(calls);
     }
 
     // ---- The release list
@@ -1372,6 +1533,8 @@ impl Find {
         self.show = None;
         self.list_from_show = false;
         self.history.clear();
+        self.probe_desk(false);
+        self.draw_targets();
         self.with_data(|d| d.set_busy(true));
         self.line(&format!("Searching for {text}..."), "");
         ask(
@@ -1470,6 +1633,11 @@ impl Find {
             return;
         };
         let best_link = list.best_fit.item.as_ref().map(|i| i.link.clone());
+        // On the computer, on disk means a file there, by its last snapshot.
+        let desk_had = self.to_desk.then(|| {
+            let (show, _) = self.aimed();
+            show.here.unwrap_or_default()
+        });
         let rows: Vec<ReleaseRow> = list
             .items
             .iter()
@@ -1506,7 +1674,12 @@ impl Find {
                     title: r.title.clone().into(),
                     facts: facts.join("  ").into(),
                     best: best_link.as_deref() == Some(r.link.as_str()),
-                    on_disk: f.is_some_and(|f| f.on_disk),
+                    on_disk: match &desk_had {
+                        Some(had) => f.is_some_and(|f| {
+                            !f.batch && f.episode.is_some_and(|e| had.contains(&(e as u32)))
+                        }),
+                        None => f.is_some_and(|f| f.on_disk),
+                    },
                     tone: if r.seeders == Some(0) { 2 } else { 0 },
                 }
             })
@@ -1545,6 +1718,29 @@ impl Find {
             .as_ref()
             .map(|s| s.offer.show.folder.clone())
             .filter(|f| !f.is_empty());
+        if let Some(why) = self.desk_waiting() {
+            self.line("", &why);
+            return;
+        }
+        if let Some(desk) = self.on_desk().cloned() {
+            let provider = self
+                .list
+                .as_ref()
+                .map(|l| l.endpoint.clone())
+                .unwrap_or_default();
+            let options = self.desk_options(&desk, provider);
+            self.send(Sent {
+                download: Some(Call::DownloadReleasesWith {
+                    items,
+                    name,
+                    options,
+                }),
+                subscribe: None,
+                what: count_word(count, "release", "releases"),
+                to: To::Desk(desk),
+            });
+            return;
+        }
         ask(
             Call::PhoneDownload {
                 items,
@@ -1597,6 +1793,27 @@ impl Find {
             .as_ref()
             .map(|s| s.offer.show.folder.clone())
             .filter(|f| !f.is_empty());
+        if let Some(why) = self.desk_waiting() {
+            self.line("", &why);
+            return;
+        }
+        if let Some(desk) = self.on_desk().cloned() {
+            let series = self.desk_options(&desk, String::new()).series;
+            self.send(Sent {
+                download: None,
+                subscribe: Some(Call::Subscribe {
+                    query: list.query,
+                    endpoint: list.endpoint,
+                    items: list.items,
+                    name,
+                    wire_query: None,
+                    series,
+                }),
+                what: String::new(),
+                to: To::Desk(desk),
+            });
+            return;
+        }
         ask(
             Call::PhoneSubscribe {
                 query: list.query,
@@ -1671,6 +1888,135 @@ impl Find {
                 f.refresh();
             },
         );
+    }
+}
+
+/// Where Get sends its calls.
+enum To {
+    Phone,
+    Desk(crate::desk::Desk),
+}
+
+/// What Get sends: the download, the subscription once the download went in, and what
+/// it covers in words ("3 episodes").
+struct Sent {
+    download: Option<Call>,
+    subscribe: Option<Call>,
+    what: String,
+    to: To,
+}
+
+/// "1 episode", "3 episodes".
+fn count_word(n: usize, one: &str, many: &str) -> String {
+    if n == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{n} {many}")
+    }
+}
+
+/// The show as the computer has it: an episode with a file there is had, a hole before
+/// the last one it has is missing, an episode not aired yet stays so.
+fn desk_show(show: &grid::Show, had: Vec<u32>) -> grid::Show {
+    let codes: Vec<char> = show.cubes.chars().collect();
+    let last = had.iter().copied().max().unwrap_or(0);
+    let len = (codes.len() as u32).max(last);
+    let cubes = (1..=len)
+        .map(|n| {
+            if had.contains(&n) {
+                'd'
+            } else if codes.get(n as usize - 1) == Some(&'f') {
+                'f'
+            } else if n < last {
+                'm'
+            } else {
+                'g'
+            }
+        })
+        .collect();
+    grid::Show {
+        cubes,
+        here: Some(had),
+        ..show.clone()
+    }
+}
+
+impl Find {
+    /// Sends Get off the UI thread, to this phone's core or to the computer. Only the
+    /// phone's own downloads are held for Wi-Fi, capped and announced in a notification;
+    /// nothing sent to the computer lands here.
+    fn send(&mut self, sent: Sent) {
+        let core = crate::local::core();
+        if matches!(sent.to, To::Phone) && core.is_none() {
+            return;
+        }
+        self.with_data(|d| d.set_busy(true));
+        self.line(
+            &match &sent.to {
+                To::Phone => "Working...".to_string(),
+                To::Desk(d) => format!("Sending to {}...", d.name),
+            },
+            "",
+        );
+        let _ = std::thread::Builder::new()
+            .name("get".into())
+            .spawn(move || {
+                let call = |c: &Call| match (&sent.to, &core) {
+                    (To::Desk(d), _) => d.call(c),
+                    (To::Phone, Some(core)) => core.call(c.clone()),
+                    (To::Phone, None) => Err(CoreError::internal("the app is still starting")),
+                };
+                let mut line = Vec::new();
+                let mut error = String::new();
+                if let Some(c) = &sent.download {
+                    match (call(c), &sent.to) {
+                        (Ok(_), To::Phone) => line.push(format!("Getting {}.", sent.what)),
+                        (Ok(r), To::Desk(d)) => {
+                            line.push(crate::desk::sent_line(&r, &sent.what, &d.name))
+                        }
+                        (Err(e), To::Phone) => error = words(&e),
+                        (Err(e), To::Desk(d)) => {
+                            error = format!("{} did not take it: {}", d.name, words(&e))
+                        }
+                    }
+                }
+                if error.is_empty()
+                    && let Some(c) = &sent.subscribe
+                {
+                    match (call(c), &sent.to) {
+                        (Ok(_), To::Phone) => {
+                            line.push("Subscribed: new episodes download by themselves.".into())
+                        }
+                        (Ok(_), To::Desk(d)) => line.push(format!(
+                            "Subscribed on {}: new episodes download there by themselves.",
+                            d.name
+                        )),
+                        (Err(e), To::Phone) => error = words(&e),
+                        (Err(e), To::Desk(d)) => {
+                            error = format!("Not subscribed on {}: {}", d.name, words(&e))
+                        }
+                    }
+                }
+                let here = matches!(sent.to, To::Phone);
+                let _ = slint::invoke_from_event_loop(move || {
+                    with(|f| {
+                        f.with_data(|d| d.set_busy(false));
+                        f.line(&line.join(" "), &error);
+                        // Something was taken here: the first time, the notification is
+                        // explained before Android asks for it.
+                        if here && !line.is_empty() {
+                            crate::app::download_started();
+                        }
+                        if error.is_empty()
+                            && let Some(s) = f.show.as_mut()
+                        {
+                            s.picks = grid::Picks::default();
+                        }
+                        f.refresh();
+                        f.draw_show();
+                    })
+                });
+            });
     }
 }
 
@@ -1858,6 +2204,7 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
             here: None,
             folder: folder_name(&title),
         },
+        anilist: matches!(h.provider, anibeam_core::Provider::Anilist).then_some(h.id),
         in_library: false,
         poster: (!poster.is_empty()).then_some(poster),
         ledger: facts.join(", "),

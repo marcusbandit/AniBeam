@@ -247,3 +247,65 @@ fn a_device_the_host_cannot_tie_to_a_person_gets_nothing() {
         )
     );
 }
+
+/// Downloads fill the host's disk, so only the owner's devices may send them (#733): a
+/// friend's tablet is refused at the door, and the owner's phone reaches the core, which
+/// answers for itself. The owner's call carries no releases, so nothing is ever handed
+/// to a torrent client here.
+#[test]
+fn only_the_owners_devices_download_to_the_host() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (_dir, core, _c) = common::open_core();
+    core.set_tailscale_status(Some(STATUS.to_vec()));
+    let release: Release = serde_json::from_value(serde_json::json!({
+        "title": "[Group] Show - 01 (1080p).mkv",
+        "link": "magnet:?xt=urn:btih:0000000000000000000000000000000000000000",
+    }))
+    .unwrap();
+    let download = |items: Vec<Release>| Call::DownloadReleasesWith {
+        items,
+        name: Some("Show".into()),
+        options: DownloadOptions::default(),
+    };
+
+    let features = |base: &str| -> Vec<String> {
+        let (_, hello) = get(&rt, &format!("{base}{}", anibeam_host_api::HELLO));
+        serde_json::from_value(hello["features"].clone()).unwrap()
+    };
+    let tablet = serve_as(&rt, &core, TABLET);
+    assert!(
+        !features(&tablet)
+            .iter()
+            .any(|f| f == anibeam_host_api::FEATURE_DOWNLOADS),
+        "a friend's device is not offered downloads"
+    );
+    let (status, body) = call(&rt, &tablet, &download(vec![release]));
+    assert_eq!(status, 403, "{body}");
+    assert_eq!(
+        body["error"].as_str(),
+        Some(anibeam_core::host::stream::DOWNLOADS_OWNER_ONLY)
+    );
+    let follow = Call::Subscribe {
+        query: "Show".into(),
+        endpoint: "feed".into(),
+        items: Vec::new(),
+        name: None,
+        wire_query: None,
+        series: None,
+    };
+    assert_eq!(call(&rt, &tablet, &follow).0, 403);
+
+    let phone = serve_as(&rt, &core, PHONE);
+    assert!(
+        features(&phone)
+            .iter()
+            .any(|f| f == anibeam_host_api::FEATURE_DOWNLOADS)
+    );
+    let (status, body) = call(&rt, &phone, &download(Vec::new()));
+    assert_eq!(status, 422, "the core's own answer, not the door's: {body}");
+    assert_eq!(
+        body["core"]["Invalid"]["field"].as_str(),
+        Some("items"),
+        "{body}"
+    );
+}
