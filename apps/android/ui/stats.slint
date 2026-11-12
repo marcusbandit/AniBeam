@@ -1,0 +1,229 @@
+// Stats (#743): what a year of watching adds up to, the desktop's Stats page at phone scale.
+// The years to pick from, four figures, a bar per month, then the top genres, studios and
+// seasons and the shows watched most as ranked rows. The numbers are the core's GetStats.
+
+import { Theme } from "theme.slint";
+import { Figure, ListGroup, Segmented } from "widgets.slint";
+
+// One month's bar: its letter, the hours over it, how tall against the busiest month.
+export struct StatBar {
+    letter: string,
+    hours: string,
+    share: float,
+    top: bool,
+}
+
+// One ranked row: a name, its share of the leader, and its count.
+export struct StatRank {
+    name: string,
+    count: string,
+    share: float,
+    top: bool,
+}
+
+export global StatsData {
+    // The first read came back.
+    in property <bool> loaded;
+    // Nothing finished in any year yet.
+    in property <bool> empty;
+    // "What you watched in 2026".
+    in property <string> year-line;
+    in property <[string]> years;
+    in property <int> year-index;
+    in property <string> hours;
+    in property <string> episodes;
+    in property <string> episodes-caption;
+    in property <string> finished;
+    in property <string> busiest;
+    in property <[StatBar]> months;
+    in property <[StatRank]> genres;
+    in property <[StatRank]> studios;
+    in property <[StatRank]> seasons;
+    in property <[StatRank]> shows;
+    // The page opened or a year was picked: read again. -1 is this year.
+    callback read(int);
+}
+
+// A bar per month on one glass pane, the hours above each bar and the month's letter under.
+component MonthBars inherits Rectangle {
+    in property <[StatBar]> bars;
+    height: 46 * Theme.unit;
+    background: Theme.surface;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.line;
+    property <length> side: Theme.pad;
+    property <length> gap: Theme.unit;
+    property <length> cell: (self.width - 2 * self.side - 11 * self.gap) / 12;
+    // The tallest bar leaves room for its hours above it and the letter below.
+    property <length> room: self.height - 2 * Theme.pad - Theme.small * 2 - 3 * Theme.unit;
+    for bar[i] in root.bars: Rectangle {
+        x: root.side + i * (root.cell + root.gap);
+        width: root.cell;
+        height: parent.height;
+        letter := Text {
+            y: parent.height - Theme.pad - self.preferred-height;
+            width: parent.width;
+            text: bar.letter;
+            color: bar.top ? Theme.accent : Theme.faint;
+            font-size: Theme.small;
+            font-family: Theme.strong-face;
+            horizontal-alignment: center;
+        }
+        column := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: letter.y - 2 * Theme.unit - self.height;
+            width: Math.min(parent.width, 5 * Theme.unit);
+            height: bar.share > 0 ? Math.max(3px, root.room * bar.share) : 1px;
+            border-radius: Theme.radius-small / 2;
+            background: bar.top ? Theme.accent : bar.share > 0 ? Theme.faint : Theme.line;
+        }
+        if bar.hours != "": Text {
+            y: column.y - Theme.unit - self.preferred-height;
+            width: parent.width + 2 * root.gap;
+            x: -root.gap;
+            text: bar.hours;
+            color: bar.top ? Theme.text : Theme.dim;
+            font-size: Theme.small - 2px;
+            font-family: Theme.figure;
+            horizontal-alignment: center;
+            overflow: clip;
+        }
+    }
+}
+
+// A ranked list: a name, a bar for its share of the leader, and the episodes.
+component Ranked inherits VerticalLayout {
+    in property <string> heading;
+    in property <[StatRank]> rows;
+    spacing: 2 * Theme.unit;
+    Text {
+        text: root.heading;
+        color: Theme.text;
+        font-size: Theme.heading;
+        font-family: Theme.title-face;
+    }
+    if root.rows.length == 0: Text {
+        text: "Nothing yet";
+        color: Theme.faint;
+        font-size: Theme.small + 1px;
+    }
+    if root.rows.length > 0: ListGroup {
+        for row[i] in root.rows: Rectangle {
+            height: 13 * Theme.unit;
+            name := Text {
+                x: Theme.pad;
+                y: Theme.unit * 2.5;
+                width: parent.width - 2 * Theme.pad - count.preferred-width - Theme.unit * 2;
+                text: row.name;
+                color: Theme.text;
+                font-size: Theme.normal;
+                overflow: elide;
+            }
+            count := Text {
+                x: parent.width - Theme.pad - self.preferred-width;
+                y: name.y + 1px;
+                text: row.count;
+                color: Theme.dim;
+                font-size: Theme.small;
+                font-family: Theme.figure;
+            }
+            Rectangle {
+                x: Theme.pad;
+                y: parent.height - 3.5 * Theme.unit;
+                width: Math.max(2 * Theme.unit, (parent.width - 2 * Theme.pad) * row.share);
+                height: 2 * Theme.unit;
+                border-radius: self.height / 2;
+                background: row.top ? Theme.accent : Theme.line-strong;
+            }
+            if i < root.rows.length - 1: Rectangle {
+                x: Theme.pad;
+                y: parent.height - 1px;
+                width: parent.width - 2 * Theme.pad;
+                height: 1px;
+                background: Theme.line;
+            }
+        }
+    }
+}
+
+// The content of the Stats section, laid out by More's page.
+export component StatsBody inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    init => { StatsData.read(-1); }
+    if StatsData.years.length > 1: Segmented {
+        options: StatsData.years;
+        picked: StatsData.year-index;
+        pick(i) => { StatsData.read(i); }
+    }
+    if StatsData.loaded && StatsData.empty: Rectangle {
+        height: empty.preferred-height + 8 * Theme.unit;
+        empty := VerticalLayout {
+            y: 4 * Theme.unit;
+            spacing: Theme.unit * 2;
+            Text {
+                text: "Nothing watched yet";
+                color: Theme.text;
+                font-size: Theme.large;
+                font-family: Theme.display-face;
+            }
+            Text {
+                text: "Finish an episode and it counts here: hours, genres and the seasons you watched.";
+                color: Theme.dim;
+                wrap: word-wrap;
+            }
+        }
+    }
+    if StatsData.loaded && !StatsData.empty: VerticalLayout {
+        spacing: Theme.unit * 4;
+        GridLayout {
+            spacing: 5 * Theme.unit;
+            Row {
+                Figure {
+                    value: StatsData.hours;
+                    caption: "hours watched";
+                }
+                Figure {
+                    value: StatsData.episodes;
+                    caption: StatsData.episodes-caption;
+                }
+            }
+            Row {
+                Figure {
+                    value: StatsData.finished;
+                    caption: "series finished";
+                }
+                Figure {
+                    value: StatsData.busiest;
+                    caption: "busiest month";
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 2 * Theme.unit;
+            Text {
+                text: "By month";
+                color: Theme.text;
+                font-size: Theme.heading;
+                font-family: Theme.title-face;
+            }
+            MonthBars { bars: StatsData.months; }
+        }
+        Ranked {
+            heading: "Top genres";
+            rows: StatsData.genres;
+        }
+        Ranked {
+            heading: "Top studios";
+            rows: StatsData.studios;
+        }
+        Ranked {
+            heading: "Seasons watched";
+            rows: StatsData.seasons;
+        }
+        Ranked {
+            heading: "Watched most";
+            rows: StatsData.shows;
+        }
+    }
+}

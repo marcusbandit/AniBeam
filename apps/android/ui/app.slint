@@ -11,6 +11,11 @@ import { DownloadsPage } from "downloads.slint";
 import { AuthRow, EndpointRow, RepoData, RepoRow } from "repos.slint";
 import { Band, PickRow, PlayerData, PlayerPage } from "player.slint";
 import { NotesPage } from "notes.slint";
+import { StatBar, StatRank, StatsData } from "stats.slint";
+import { BackupData } from "backup.slint";
+import { ActivityData, LogRow } from "activity.slint";
+import { MoveData, MoveLine, MoveSheet } from "listmove.slint";
+import { LookData, LookTheme } from "look.slint";
 import { CalendarPage } from "calendar.slint";
 import { AiringSheet } from "airing.slint";
 import { Area, Fold } from "fold.slint";
@@ -20,7 +25,9 @@ import { ShowCard, ShowData, ShowPerson } from "show.slint";
 import { MatchData, MatchRow } from "show-match.slint";
 import { ShowSheets } from "show-sheets.slint";
 
-export { AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, Suggestion, Tile }
+export { Theme }
+export { ActivityData, LogRow, LookData, LookTheme, MoveData, MoveLine }
+export { AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -344,6 +351,10 @@ export component AppWindow inherits Window {
                 AppData.airing-close();
                 return accept;
             }
+            if (MoveData.open) {
+                MoveData.later();
+                return accept;
+            }
             if (AppData.onboarding && AppData.step > 0) {
                 AppData.step -= 1;
                 return accept;
@@ -501,6 +512,10 @@ export component AppWindow inherits Window {
         }
 
         if AppData.airing-menu.show: AiringSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if MoveData.open: MoveSheet {
             inset-bottom: root.inset-bottom;
         }
 

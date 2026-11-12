@@ -200,7 +200,7 @@ fn with_app(f: impl FnOnce(&mut App)) {
 }
 
 /// More's sections, by the index Settings.section uses.
-const SECTIONS: [&str; 8] = [
+const SECTIONS: [&str; 12] = [
     "Accounts",
     "Downloads",
     "Streaming",
@@ -209,6 +209,10 @@ const SECTIONS: [&str; 8] = [
     "Your computer",
     "About",
     "App icon",
+    "Stats",
+    "Data",
+    "Activity",
+    "Appearance",
 ];
 
 /// Every setting More's search can land on: its section, its label (the key its page lights),
@@ -273,6 +277,41 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     (6, "What's new", "changelog patch notes changes update"),
     (6, "Set up again", "onboarding first run start over"),
     (6, "Version", "build about"),
+    (
+        8,
+        "Stats",
+        "hours episodes genres studios seasons year watched recap busiest month history",
+    ),
+    (
+        9,
+        "Back up the library",
+        "backup export file save copy move computer json private sign-ins",
+    ),
+    (
+        9,
+        "Restore from a backup",
+        "restore import file load library merge",
+    ),
+    (
+        9,
+        "Image cache",
+        "images posters banners clear storage space cache",
+    ),
+    (
+        10,
+        "Activity",
+        "log events errors problems copy clear history what happened",
+    ),
+    (
+        11,
+        "Colours",
+        "appearance theme dark light mode system accent colour color",
+    ),
+    (
+        11,
+        "Text size",
+        "appearance font bigger smaller larger size words read",
+    ),
     (
         7,
         "App icon",
@@ -1603,6 +1642,8 @@ impl App {
         let started = core.call(Call::ConnectTracker { tracker });
         if let Ok(Reply::Started { job }) = &started {
             self.signing_in.insert(*job, which);
+            // Its first read list is when the list kept on this phone is offered to it.
+            crate::listmove::offer(tracker);
         }
         if let Err(e) = started {
             crate::local::log(&format!("sign-in did not start: {e}"));
@@ -2079,6 +2120,11 @@ pub fn run(
 
     crate::find::install(&window, data_dir.clone());
     crate::repos::install(&window);
+    crate::stats::install(&window);
+    crate::backup::install(&window, &data_dir);
+    crate::activity::install(&window);
+    crate::listmove::install(&window);
+    crate::look::install(&window, &data_dir);
 
     let mut app = App {
         window: window.clone_strong(),
