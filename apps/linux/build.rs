@@ -199,6 +199,7 @@ fn main() {
         "assets/icons/bug.svg",
         "assets/icons/calendar-clock.svg",
         "assets/icons/captions.svg",
+        "assets/icons/cast.svg",
         "assets/icons/case-sensitive.svg",
         "assets/icons/chart-pie.svg",
         "assets/icons/check-check.svg",

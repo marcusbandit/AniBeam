@@ -61,7 +61,12 @@ FocusScope {
     onChromeVisibleChanged: Shell.setCursorHidden(!chromeVisible)
 
     // ---- Session
+    // The device a cast carried over from the episode before, taken once: history entries
+    // never hold it, so a Forward cannot start a cast nobody asked for (#756)
+    property var carriedCast: null
     Component.onCompleted: {
+        carriedCast = frame.castCarry
+        frame.castCarry = null
         var r = Door.openPlayback(props.file)
         if (r.error) { frame.fail(r.error); Qt.callLater(frame.nav.back); return }
         session = r.reply.session
@@ -117,6 +122,8 @@ FocusScope {
         if (!session || closed) return
         closed = true
         tickTimer.stop()
+        // The TV plays on only into the next episode; any other way out stops it
+        if (castDevice && reason !== "Switched") castCall("CastStop", {})
         // The auto-next countdown is deliberately not stopped here: the end of the file
         // closes the session and the countdown is what carries us into the next episode.
         // Every other caller destroys the page, and the timer goes with it.
@@ -124,7 +131,8 @@ FocusScope {
     }
     function leave() { close("Stopped"); frame.nav.back() }
     // The speed goes along: someone watching at 1.5x wants the next episode at 1.5x too
-    function openNeighbour(file) { if (!file) return; close("Switched"); frame.nav.replace("player", { file: file, speed: heldSpeed > 0 ? heldSpeed : speed }, page.title) }
+    // A cast goes on with the next episode on the same device (#756)
+    function openNeighbour(file) { if (!file) return; frame.castCarry = castDevice; close("Switched"); frame.nav.replace("player", { file: file, speed: heldSpeed > 0 ? heldSpeed : speed }, page.title) }
     // N and P: the same neighbours, and the same rule, as the island's two buttons. An extra
     // has no place in the episode order, so it has neither.
     readonly property bool hasNext: !!(session && session.next && !session.is_extra)
@@ -154,6 +162,8 @@ FocusScope {
         video.setProperty("mute", Player.mute)
         video.setProperty("start", session.resume_from ? String(session.resume_from) : "none")
         if (props.speed && props.speed !== 1) setSpeed(props.speed)
+        // A cast that goes on with this episode plays on the TV, not here (#756)
+        if (carriedCast) video.setProperty("pause", true)
         // S saves the frame, subtitles and all, into the pictures folder
         video.setProperty("screenshot-directory", Fmt.localPath(String(StandardPaths.writableLocation(StandardPaths.PicturesLocation))) + "/AniBeam")
         video.setProperty("screenshot-template", "%F %wH.%wM.%wS")
@@ -283,6 +293,7 @@ FocusScope {
         video.setProperty("aid", p.aid >= 0 ? String(p.aid) : "no")
         video.setProperty("sid", p.sid >= 0 ? String(p.sid) : "no")
         if (p.sid >= 0) lastSid = p.sid
+        if (carriedCast) { var c = carriedCast; carriedCast = null; startCast(c, session.resume_from || 0, p.aid, p.sid, true); return }
         // Picked up where it was left: say so, with the way back to the start
         if (session.resume_from && session.resume_from > 5) {
             noticeUndo = function() { seekTo(0) }
@@ -359,6 +370,7 @@ FocusScope {
         storeChoice(ref, subtitleArg())
         session.track_choice.audio = ref
         hud.flash("Audio: " + Player.trackLabel(t))
+        recast(id, sid)
         showChrome()
     }
     function pickSubtitle(id) {
@@ -369,6 +381,7 @@ FocusScope {
         storeChoice(audioArg(), choice)
         session.track_choice.subtitle = id < 0 ? "Off" : choice
         hud.flash(t ? "Subtitles: " + Player.trackLabel(t) : "Subtitles off")
+        recast(aid, id)
         showChrome()
     }
     // C: off, then back to the track it was on. The choice is not stored, because a key
@@ -382,6 +395,7 @@ FocusScope {
         if (on >= 0) video.setProperty("sid", String(on))
         var t = subTracks.find(function(x) { return x.id === on })
         hud.flash(on < 0 ? "Subtitles off" : "Subtitles: " + (t ? t.label : "on"))
+        recast(aid, on)
         showChrome()
     }
     // ---- Delays: sub-delay (z and Z) and audio-delay (a and A), stepped from the keys or the
@@ -419,11 +433,25 @@ FocusScope {
     // ---- Transport
     // The resume the viewer asked for ends the step here rather than waiting on the pause
     // observation, which the step guard may still be swallowing.
-    function togglePause() { if (paused) endStepping(); video.setProperty("pause", !paused); showChrome() }
+    function togglePause() {
+        // The TV is the player while casting: the buttons are its remote
+        if (castDevice) { castCall(castState === "Playing" ? "CastPause" : "CastPlay", {}); showChrome(); return }
+        if (paused) endStepping()
+        video.setProperty("pause", !paused)
+        showChrome()
+    }
     // Every seek announces itself: MPRIS's Seeked is what tells a widget the position moved
     // for a reason other than playing, and a key, the bar, a skip chip and a D-Bus call are
     // all that same reason. The clamped target is what is announced, not what was asked for.
-    function seekTo(secs) { var t = Math.max(0, Math.min(duration > 0 ? duration : secs, secs)); video.command(["seek", String(t), "absolute"]); Player.mprisSeeked(t); showChrome() }
+    function seekTo(secs) {
+        var t = Math.max(0, Math.min(duration > 0 ? duration : secs, secs))
+        // The core takes the new position as its own the moment it is asked and says nothing
+        // more of it, so the page moves its own now
+        if (castDevice) { castCall("CastSeek", { to: t }); timePos = t }
+        else video.command(["seek", String(t), "absolute"])
+        Player.mprisSeeked(t)
+        showChrome()
+    }
     // The volume the page plays at. mpv gets every step at once; Player.setVolume writes
     // player.toml, so it gets the value only once the steps stop (a held Up is about 30
     // steps a second) and again when the page goes. A change from outside the page is
@@ -441,6 +469,7 @@ FocusScope {
     property real speed: 1
     function speedLine(v) { return "Speed " + Number(v.toFixed(2)) + "\u00d7" }
     function setSpeed(v) {
+        if (castDevice) { hud.flash("Not while casting"); return }
         v = Math.max(0.25, Math.min(3, Math.round(v * 4) / 4))
         speed = v
         video.setProperty("speed", v)
@@ -451,7 +480,7 @@ FocusScope {
     // setSpeed, which would bring the controls up over what is being skimmed.
     property real heldSpeed: 0
     function holdFast() {
-        if (!loaded || paused || heldSpeed > 0) return
+        if (!loaded || paused || heldSpeed > 0 || castDevice) return
         clickPause.stop()
         heldSpeed = speed
         video.setProperty("speed", 2)
@@ -646,6 +675,7 @@ FocusScope {
     // mpv does not notify this property, so there is nothing to observe after the first value.
     function readFrame() { frameNumber = Number(video.getProperty("estimated-frame-number") || 0) }
     function step(dir) {
+        if (castDevice) { hud.flash("Not while casting"); return }
         if (!paused) video.setProperty("pause", true)
         stepping = true
         stepGuard.restart()
@@ -716,17 +746,138 @@ FocusScope {
     // what the page offers its own parts is a contract rather than a reach up the context chain.
     function openAudioPicker(anchor) { audioPicker.openAt(anchor) }
     // The track picker that is up, for the keys: null when neither is
-    readonly property var openPicker: audioPicker.open ? audioPicker : subPicker.open ? subPicker : null
+    readonly property var openPicker: audioPicker.open ? audioPicker : subPicker.open ? subPicker : castPicker.open ? castPicker : null
     function openSubPicker(anchor) { subPicker.openAt(anchor) }
+    function openCastPicker(anchor) { lookForDevices(); castPicker.openAt(anchor) }
     function openDelays(anchor) { delays.openAt(anchor) }
     // The chrome closes these when its right-hand group folds or unfolds: each is anchored on
     // a button the change hides.
-    function closePopovers() { audioPicker.close(); subPicker.close(); delays.close() }
+    function closePopovers() { audioPicker.close(); subPicker.close(); castPicker.close(); delays.close() }
     function showHelp() { help.show() }
     function toggleHelp() { if (help.open) help.close(); else help.show() }
     TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }
     TrackPicker { id: subPicker; title: "Subtitles"; tracks: page.subTracks; selected: page.sid; offRow: true; onPicked: function(id) { page.pickSubtitle(id) } }
     PlayerDelays { id: delays }
+    TrackPicker { id: castPicker; objectName: "cast-picker"; title: page.castDevices.length || page.casting ? "Cast to" : "Looking for Chromecasts and TVs"
+        tracks: page.castRows; selected: page.castSelected; onPicked: function(id) { page.pickCast(id) } }
+
+    // ---- Casting (#756): the episode goes to a Chromecast or a DLNA TV, and this page is its
+    // remote, with the phone's controls. The core serves the file and reads the TV back once a
+    // second as CastChanged; mpv is paused where it was, and the page's position, pause state,
+    // skip windows and ticks follow the TV, so the rules run as they do for local playback. A
+    // cast ends back here, paused where the TV was, or goes on with the next episode.
+    property var castDevices: []
+    // The device the picture is on, or null; castState is the word the core last said for it:
+    // Connecting, Buffering, Playing, Paused, Ended, Failed or Stopped
+    property var castDevice: null
+    property string castState: ""
+    readonly property bool casting: castDevice !== null
+    // The core's calls that wait on a device run off the Qt thread
+    property var castPending: ({})
+    function castCall(name, args, done, quiet) {
+        var t = Door.callAsync(name, args)
+        if (t < 0) { if (!quiet) notice.show("Could not reach the TV"); return }
+        castPending[t] = { done: done || null, quiet: !!quiet }
+    }
+    Connections {
+        target: Door
+        function onCallDone(token, reply) {
+            if (!(token in page.castPending)) return
+            var p = page.castPending[token]
+            delete page.castPending[token]
+            if (reply.error && !p.quiet) page.castFailed(reply.error)
+            if (p.done) p.done(reply)
+        }
+        function onEvent(envelope) {
+            if (envelope.kind === "CastDevicesChanged") page.castDevices = page.asArray(envelope.body.devices)
+            else if (envelope.kind === "CastChanged") page.onCast(envelope.body.state)
+        }
+    }
+    function castFailed(e) { notice.show(errorLine(e)) }
+    // Asking starts a look around the network; what turns up arrives as CastDevicesChanged
+    function lookForDevices() {
+        castCall("CastDevices", {}, function(r) { if (r.reply && r.reply.devices) page.castDevices = page.asArray(r.reply.devices) })
+    }
+    function castKind(d) { return d.kind === "Chromecast" ? (d.model || "Chromecast") : "TV" }
+    // The picker's rows: Stop casting first while a cast is on, then the devices, by index
+    readonly property var castRows: {
+        var rows = []
+        if (casting) rows.push({ id: -2, label: "Stop casting to " + castDevice.name })
+        for (var i = 0; i < castDevices.length; i++) rows.push({ id: i, label: castDevices[i].name + "   " + castKind(castDevices[i]) })
+        return rows
+    }
+    readonly property int castSelected: {
+        if (!casting) return -1
+        for (var i = 0; i < castDevices.length; i++) if (castDevices[i].id === castDevice.id) return i
+        return -1
+    }
+    function pickCast(id) {
+        if (id === -2) { castCall("CastStop", {}); return }
+        var d = castDevices[id]
+        if (d) startCast(d, timePos, aid, sid, false)
+    }
+    // The Matroska track numbers of the audio and subtitles playing here, from mpv's list: an
+    // embedded track's number is its ffmpeg index plus one; a subtitle file beside the episode
+    // goes by its path
+    // The ids come from the caller: the page's own aid and sid follow mpv a moment after a pick
+    function castTracks(aidNow, sidNow) {
+        var a = trackList.find(function(t) { return t.type === "audio" && t.id === aidNow })
+        var s = trackList.find(function(t) { return t.type === "sub" && t.id === sidNow })
+        var audio = a && a["ff-index"] !== undefined && a["ff-index"] !== null && !a.external ? Number(a["ff-index"]) + 1 : null
+        var sub = "None"
+        if (s && s.external && s["external-filename"]) sub = { File: { path: String(s["external-filename"]) } }
+        else if (s && s["ff-index"] !== undefined && s["ff-index"] !== null) sub = { Track: { number: Number(s["ff-index"]) + 1 } }
+        return { audio: audio, subtitle: sub }
+    }
+    // Hands the episode to `device` from `at` seconds, with the given tracks. Starting a cast
+    // stops the one running, and that session's own Stopped arrives before the reply: it is not
+    // this cast ending, so terminal words are held back while the start is in flight.
+    property int castStarting: 0
+    function startCast(device, at, aidNow, sidNow, carried) {
+        if (!session) return
+        var tr = castTracks(aidNow, sidNow)
+        video.setProperty("pause", true)
+        castDevice = device
+        castState = "Connecting"
+        paused = true
+        castStarting++
+        castCall("CastStart", { device: device.id, file: session.file, start: at, audio_track: tr.audio, subtitle: tr.subtitle }, function(r) {
+            page.castStarting--
+            if (!r.error) return
+            // Refused (a file the TV cannot decode, a TV that went away): the page is local again,
+            // and a cast carried from the last episode is still playing that one, so it stops
+            if (page.castDevice && page.castDevice.id === device.id) page.castDevice = null
+            if (carried) page.castCall("CastStop", {}, null, true)
+        })
+        showChrome()
+    }
+    // A new audio or subtitle choice while casting starts the cast again with it
+    function recast(aidNow, sidNow) { if (castDevice) startCast(castDevice, timePos, aidNow, sidNow, false) }
+    readonly property var castWords: ({ Connecting: "Connecting", Buffering: "Loading", Playing: "Playing", Paused: "Paused", Ended: "Finished", Failed: "Stopped", Stopped: "Stopped" })
+    readonly property string castLine: castDevice ? (castWords[castState] || "") : ""
+    // What the TV said: its position drives the page and the ticks as local playback would; an
+    // end, a failure or a stop hands the episode back to this window
+    function onCast(st) {
+        if (!castDevice || !session || st.file !== session.file || st.device !== castDevice.name) return
+        castState = st.state
+        if (st.state === "Playing" || st.state === "Paused" || st.state === "Buffering") {
+            if (st.duration > 0) duration = st.duration
+            var nowPaused = st.state !== "Playing"
+            if (nowPaused !== paused) { paused = nowPaused; tick() }
+            timePos = st.position
+        } else if (st.state === "Ended") {
+            timePos = Math.max(timePos, st.position)
+            if (hasNext && !nextDismissed) openNeighbour(session.next)
+            else { castDevice = null; close("Ended"); replayVisible = true }
+        } else if (st.state === "Failed" || st.state === "Stopped") {
+            if (castStarting > 0) return
+            if (st.error) notice.show(st.error)
+            castDevice = null
+            // This window takes over where the TV was, paused
+            if (st.position > 0) { video.command(["seek", String(st.position), "absolute"]); timePos = st.position }
+            paused = true
+        }
+    }
 
     // ---- The HUD line: one message over the picture, gone after 1.2 s. The two delays and
     // the frame step share it, each owning the line through its own kind. A

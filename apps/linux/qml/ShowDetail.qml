@@ -63,7 +63,7 @@ Column {
         if (total > 0) parts.push(have + " of " + total + " episodes here.")
         else parts.push(Fmt.plural(have, "episode", "episodes") + " here.")
         if (airing) parts.push(Fmt.episodeSpan(show.next_airing.episode, show.next_airing.through || 0) + (show.next_airing.predicted ? (show.next_airing.through ? " are" : " is") + " predicted in " : show.next_airing.through ? " air in " : " airs in ") + Fmt.countdown(show.next_airing.at - nowMs / 1000) + ".")
-        if (finished && missing.length) parts.push((missing.length === 1 ? "Episode " : "Episodes ") + missing.slice(0, 8).join(", ") + (missing.length > 8 ? " and " + (missing.length - 8) + " more" : "") + (missing.length === 1 ? " is" : " are") + " not here.")
+        if (finished && have > 0 && missing.length) parts.push((missing.length === 1 ? "Episode " : "Episodes ") + missing.slice(0, 8).join(", ") + (missing.length > 8 ? " and " + (missing.length - 8) + " more" : "") + (missing.length === 1 ? " is" : " are") + " not here.")
         return parts.join(" ")
     }
     // Letters and digits, lower case: a torrent's name and its feed title differ in dots,
@@ -289,9 +289,12 @@ Column {
                 maxRows: 4
                 codes: {
                     if (root.show && root.show.cubes) return root.show.cubes
-                    var out = []
-                    for (var n = 1; n <= Math.min(root.total, 400); n++)
-                        out.push(root.missing.indexOf(n) < 0 ? "d" : root.finished ? "m" : "g")
+                    // Missing is a hole before an episode that is here; with none here
+                    // yet, or none after it, the rest is simply not downloaded (#735)
+                    var cap = Math.min(root.total, 400), last = 0, out = []
+                    for (var k = 1; k <= cap; k++) if (root.missing.indexOf(k) < 0) last = k
+                    for (var n = 1; n <= cap; n++)
+                        out.push(root.missing.indexOf(n) < 0 ? "d" : root.finished && n < last ? "m" : "g")
                     return out
                 }
             }

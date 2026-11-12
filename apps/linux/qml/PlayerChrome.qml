@@ -122,6 +122,8 @@ Item {
           active: () => false, run: anchor => page.openAudioPicker(anchor) },
         { name: "player-subs", glyph: () => "captions", tip: () => page.sid >= 0 ? "Subtitles" : "Subtitles off", shown: () => page.subTracks.length > 0,
           active: () => page.sid >= 0, run: anchor => page.openSubPicker(anchor) },
+        { name: "player-cast", glyph: () => "cast", tip: () => page.casting ? "Casting to " + page.castDevice.name : "Cast to a TV", label: () => page.casting ? "Casting to " + page.castDevice.name : "Cast to a TV",
+          shown: () => true, active: () => page.casting, run: anchor => page.openCastPicker(anchor) },
         { name: "player-mark", glyph: () => "check-check", tip: () => "Mark watched", shown: () => page.canMark,
           active: () => false, run: () => page.markWatched() },
         { name: "player-help", glyph: () => "keyboard", tip: () => "Keyboard shortcuts", shown: () => true,
@@ -307,6 +309,28 @@ Item {
             onClicked: page.skipAndHide(root.skipping, page.mapFromItem(null, skipHover.point.scenePosition))
             // Where the pointer is for the click, so the page knows the spot it then rests on.
             HoverHandler { id: skipHover } }
+    }
+
+    // ---- Casting (#756): the picture is on the TV, so the middle says where it went
+    Tile {
+        id: castTile
+        objectName: "player-cast-tile"
+        visible: page.casting
+        raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
+        padding: theme.space(5)
+        anchors.centerIn: parent
+        width: castCol.implicitWidth + padding * 2; height: castCol.implicitHeight + padding * 2
+        MouseArea { anchors.fill: parent; anchors.margins: -castTile.padding }
+        Column {
+            id: castCol
+            anchors.centerIn: parent
+            spacing: theme.space(2)
+            Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "cast"; size: theme.space(10) }
+            Label { anchors.horizontalCenter: parent.horizontalCenter; objectName: "player-cast-device"; role: "title"; font.pointSize: theme.typeNormal
+                text: page.casting ? "Playing on " + page.castDevice.name : "" }
+            Label { anchors.horizontalCenter: parent.horizontalCenter; objectName: "player-cast-line"; role: "ui"; color: theme.textDim; text: page.castLine }
+        }
     }
 
     // ---- Replay: the last frame is still on screen because keep-open holds it, so this sits

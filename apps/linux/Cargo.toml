@@ -13,7 +13,7 @@ name = "anibeam"
 path = "src/main.rs"
 
 [dependencies]
-anibeam-core.workspace = true
+anibeam-core = { workspace = true, features = ["cast"] }
 cxx = "1"
 cxx-qt = "=0.10.0"
 cxx-qt-lib = { version = "=0.10.0", features = ["qt_gui", "qt_qml"] }

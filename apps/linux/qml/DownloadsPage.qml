@@ -376,7 +376,7 @@ Item {
         var t = c.titles || {}
         var queries = page.queriesOf(page.namesOfCard(c), t.romaji || c.title)
         return { title: page.nameOfCard(c, typed || ""), query: queries[0], queries: queries, poster: c.poster || "", cubes: c.cubes || "", here: c.episodes_here || null, total: c.total_episodes || 0,
-                 seriesId: c.id, status: c.status || "", format: c.format || "", year: c.year || 0, nextAiring: c.next_airing || null,
+                 anilistId: c.match_info && c.match_info.anilist_id ? c.match_info.anilist_id : 0, seriesId: c.id, status: c.status || "", format: c.format || "", year: c.year || 0, nextAiring: c.next_airing || null,
                  airing: c.status === "Releasing" || !!c.next_airing, folderName: Fmt.baseName(c.path || "") }
     }
     function showFromHit(h, typed) {
@@ -385,7 +385,7 @@ Item {
         // A show not in the library is saved under its own name, but never the native one:
         // the library links folders by their latin titles
         return { title: title, saveName: title === h.native ? (h.romaji || h.english || h.title) : title, query: queries[0], queries: queries, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
-                 seriesId: -1, status: "", format: h.format || "", year: h.year || 0, nextAiring: null, airing: false, folderName: "" }
+                 anilistId: h.id || 0, seriesId: -1, status: "", format: h.format || "", year: h.year || 0, nextAiring: null, airing: false, folderName: "" }
     }
     function showFromLink(s) {
         for (var i = 0; i < libCards.length; i++) if (libCards[i].id === s.series_id) return page.showFromCard(libCards[i])
@@ -417,7 +417,9 @@ Item {
         if (t.series_id !== null && t.series_id !== undefined && page.shows[t.series_id]) page.openGet(page.showFromLink(page.shows[t.series_id]))
         else page.openGet(page.showFromTorrent(t))
     }
-    function openGet(show) {
+    // `searchAtOnce` (a list entry's click, #734) asks the first source that is on for the
+    // releases without a click on it: one source, so the shared limiter sees one search.
+    function openGet(show, searchAtOnce) {
         page.getShow = show
         page.getResults = ({})
         page.getActive = ""
@@ -429,8 +431,20 @@ Item {
         page.detail = null
         page.history = []
         scroll.contentY = 0
+        page.searchFirst = searchAtOnce === true
+        page.fetchFirst()
     }
-    function closeGet() { page.getShow = null; page.getResults = ({}); page.getActive = ""; page.getJobs = ({}) }
+    property bool searchFirst: false
+    function fetchFirst() {
+        if (!page.searchFirst || !page.getShow) return
+        var on = page.enabledEndpoints
+        if (!on.length) return
+        page.searchFirst = false
+        page.fetchGet(on[0].name)
+    }
+    // The sources may arrive after the page opens on a show: the search waits for them
+    onEnabledEndpointsChanged: fetchFirst()
+    function closeGet() { page.searchFirst = false; page.getShow = null; page.getResults = ({}); page.getActive = ""; page.getJobs = ({}) }
     function setResult(name, r) { var m = Object.assign({}, page.getResults); m[name] = r; page.getResults = m }
     function fetchGet(name) {
         if (!page.getShow || !page.sourceOn(name)) return
@@ -1083,7 +1097,15 @@ Item {
         if (st === "nofeed") return "Cannot follow"
         if (st === "complete") return "Complete"
         if (st === "airing") return r.rule_enabled === false ? "Paused" : "Airing"
-        if (st === "incomplete") return r.show.missing && r.show.missing.length ? r.show.missing.length + " missing" : "Unknown"
+        // A show with no episode here was never downloaded, so it is not missing any (#735)
+        // Missing is a hole before an episode that is here; what comes after the last one is
+        // not downloaded yet (the show's cube row says which)
+        if (st === "incomplete") {
+            var cubes = String(r.show.cubes || ""), holes = (cubes.match(/m/g) || []).length
+            if (!(r.show.episodes_on_disk > 0)) return "Not downloaded"
+            if (holes > 0) return holes + " missing"
+            return r.show.missing && r.show.missing.length ? r.show.missing.length + " not downloaded" : "Unknown"
+        }
         return ""
     }
     function ruleProgress(r) {
@@ -1677,14 +1699,14 @@ Item {
             Qt.callLater(page.runSearch)
         }
         // A series page's Get episodes (#169): straight to that show's view
-        if (props.series !== undefined && props.series !== null) page.openSeries(props.series)
+        if (props.series !== undefined && props.series !== null) page.openSeries(props.series, props.search === true)
         // Airing now's Get episodes (#202) for a show the library does not have: its view
-        else if (props.hit) page.openGet(page.showFromHit(props.hit))
+        else if (props.hit) page.openGet(page.showFromHit(props.hit), props.search === true)
     }
-    function openSeries(id) {
+    function openSeries(id, searchAtOnce) {
         var r = Door.getSeries(id)
         if (r.error || !r.reply || !r.reply.detail) { frame.toast("That show is no longer in the library"); return }
-        page.openGet(page.showFromCard(r.reply.detail.card))
+        page.openGet(page.showFromCard(r.reply.detail.card), searchAtOnce)
     }
 
     // ---- The geometry
@@ -1979,6 +2001,15 @@ Item {
                                 tipLimit: 0
                             }
                             Label { anchors.right: parent.right; text: srow.c ? "In your library" : "On AniList, not in your library"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+                            // A hit on AniList can go on the list from here, without opening it (#734)
+                            Button {
+                                objectName: "suggest-plan"
+                                visible: !!srow.h
+                                anchors.right: parent.right
+                                small: true; flat: true; takesFocus: false
+                                text: "Plan to watch"; icon: "bookmark"
+                                onClicked: frame.planToWatch(srow.h.id, page.nameOfHit(srow.h, page.query))
+                            }
                         }
                     }
                 }
