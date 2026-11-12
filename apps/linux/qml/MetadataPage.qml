@@ -98,6 +98,8 @@ Item {
         if (!isMatched(card)) return "unmatched"
         if (isAiring(card)) return "airing"
         var expected = expectedOf(d)
+        // Nothing on disk is not a shortfall to chase: no episode was ever downloaded (#735)
+        if (expected > 0 && (d.have || 0) === 0) return "empty"
         if (expected > 0 && (d.have || 0) < expected) return "incomplete"
         return "complete"
     }
@@ -105,6 +107,7 @@ Item {
         { key: "unmatched", title: "Not recognised" },
         { key: "missing", title: "Folder not found" },
         { key: "incomplete", title: "Missing episodes" },
+        { key: "empty", title: "Not downloaded" },
         { key: "airing", title: "Airing" },
         { key: "complete", title: "Complete" }
     ]
@@ -117,6 +120,7 @@ Item {
         if (k === "airing") { var aired = airedOf(d); return Math.min(have, aired) + " of " + aired + " aired" }
         var expected = expectedOf(d)
         if (k === "incomplete") return have + " of " + expected
+        if (k === "empty") return "Not downloaded"
         var extra = expected > 0 ? Math.max(0, have - expected) : 0
         return have + " of " + (expected > 0 ? expected : "?") + (extra > 0 ? " +" + extra : "")
     }
@@ -125,8 +129,11 @@ Item {
         var have = d.have || 0, k = bucketOf(d)
         if (k === "airing") {
             var aired = airedOf(d), shortBy = Math.max(0, aired - have)
+            // With no file at all it is not downloaded, not missing
+            if (have === 0 && aired > 0) return "None of the " + aired + " aired episodes are on disk"
             return Math.min(have, aired) + " of " + aired + " aired on disk" + (shortBy > 0 ? ", " + shortBy + " missing" : "")
         }
+        if (k === "empty") return "None of the " + expectedOf(d) + " episodes are on disk"
         if (k === "incomplete") { var expected = expectedOf(d); return have + " of " + expected + " on disk, " + (expected - have) + " missing" }
         return stateOf(d)
     }
@@ -268,7 +275,7 @@ Item {
     // the search, and the files on disk against the expected total. A zero is a fact here
     readonly property var figures: {
         page.revision
-        var n = { unmatched: 0, missing: 0, incomplete: 0, airing: 0, complete: 0 }, have = 0, expected = 0
+        var n = { unmatched: 0, missing: 0, incomplete: 0, empty: 0, airing: 0, complete: 0 }, have = 0, expected = 0
         for (var i = 0; i < page.allRows.length; i++) {
             var d = page.allRows[i]
             n[page.bucketOf(d)]++

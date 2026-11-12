@@ -1083,7 +1083,8 @@ Item {
         if (st === "nofeed") return "Cannot follow"
         if (st === "complete") return "Complete"
         if (st === "airing") return r.rule_enabled === false ? "Paused" : "Airing"
-        if (st === "incomplete") return r.show.missing && r.show.missing.length ? r.show.missing.length + " missing" : "Unknown"
+        // A show with no episode here was never downloaded, so it is not missing any (#735)
+        if (st === "incomplete") return !(r.show.episodes_on_disk > 0) ? "Not downloaded" : r.show.missing && r.show.missing.length ? r.show.missing.length + " missing" : "Unknown"
         return ""
     }
     function ruleProgress(r) {
