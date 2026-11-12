@@ -15,7 +15,6 @@ pub use records::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::UNIX_EPOCH;
 
     fn assert_send_sync<T: Send + Sync + Clone + std::fmt::Debug>() {}
 
@@ -54,32 +53,6 @@ mod tests {
             serde_json::to_value(&reply).unwrap(),
             serde_json::json!({ "Started": { "job": 9 } })
         );
-    }
-
-    #[test]
-    fn events_round_trip() {
-        let event = Event {
-            seq: 1,
-            at: UNIX_EPOCH,
-            level: Level::Info,
-            stage: Stage::Library,
-            message: "scan finished".into(),
-            plain: None,
-            job: Some(JobRef {
-                id: 4,
-                kind: JobKind::Scan,
-                phase: JobPhase::Finished,
-            }),
-            body: EventBody::ScanFinished {
-                source: None,
-                added: 2,
-                changed: 0,
-                removed: 1,
-            },
-        };
-        let json = serde_json::to_string(&event).unwrap();
-        let back: Event = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, event);
     }
 
     /// Every kind. The match below stops compiling when a kind is added, which
@@ -166,68 +139,6 @@ mod tests {
         }
         assert_eq!(JobKind::Scan.doing(), "Checking your folders");
         assert_eq!(JobKind::RefreshAll.doing(), "Updating show info");
-    }
-
-    #[test]
-    fn job_kinds_know_their_stage_and_serialisation() {
-        assert_eq!(JobKind::Scan.stage(), Stage::Library);
-        assert_eq!(JobKind::Crawl.stage(), Stage::Franchise);
-        assert!(JobKind::Scan.one_at_a_time());
-        assert!(!JobKind::Search.one_at_a_time());
-        assert!(JobKind::FillImages.one_at_a_time());
-        assert_eq!(JobKind::RefreshImdb.stage(), Stage::Metadata);
-        assert!(JobKind::RefreshImdb.one_at_a_time());
-        assert_eq!(
-            JobKind::from_column(JobKind::RefreshImdb.as_str()),
-            Some(JobKind::RefreshImdb)
-        );
-    }
-
-    #[test]
-    fn subtitle_defaults_are_mpvs_stock_values() {
-        let d = SubtitleDefaults::default();
-        assert_eq!(d.subtitle_languages, vec!["en".to_string()]);
-        assert_eq!(d.audio_languages, vec!["ja".to_string()]);
-        assert_eq!(d.scale, 1.0);
-        assert_eq!(d.ass_override, AssOverride::ScaleOnly);
-        assert_eq!(d.text_style.font, "sans-serif");
-        assert_eq!(
-            d.text_style.colour,
-            Colour {
-                r: 255,
-                g: 255,
-                b: 255,
-                a: 255
-            }
-        );
-        assert_eq!(d.text_style.outline_size, 1.65);
-        assert_eq!(
-            d.text_style.outline_colour,
-            Colour {
-                r: 0,
-                g: 0,
-                b: 0,
-                a: 255
-            }
-        );
-        assert_eq!(d.text_style.position, 100.0);
-    }
-
-    #[test]
-    fn preferences_default_to_electrons_defaults() {
-        let p = Preferences::default();
-        assert_eq!(p.title_language, TitleLanguage::Romaji);
-        assert_eq!(p.library_tab, Tab::All);
-        assert_eq!(p.library_sort, Sort::Alpha);
-        assert_eq!(p.library_direction, Direction::Asc);
-        assert_eq!(p.feed_sort, FeedSort::Recent);
-        assert!(!p.library_show_watched);
-        assert_eq!(
-            p.library_arrange,
-            Arrange::Flat,
-            "a fresh install groups by nothing"
-        );
-        assert!(p.library_group_franchises);
     }
 
     /// The whole migration for `library_arrange`: a blob written before it

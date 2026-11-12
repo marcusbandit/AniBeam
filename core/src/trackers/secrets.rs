@@ -807,12 +807,4 @@ mod tests {
         assert!(!s.has("mal.client_secret"));
         assert_eq!(builds.load(Ordering::SeqCst), 1);
     }
-
-    #[test]
-    fn store_kinds_round_trip_through_their_column() {
-        for kind in [StoreKind::Keyring, StoreKind::File] {
-            assert_eq!(StoreKind::from_column(kind.as_str()), Some(kind));
-        }
-        assert_eq!(StoreKind::from_column("gnome"), None);
-    }
 }

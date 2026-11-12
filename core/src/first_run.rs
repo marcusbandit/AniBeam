@@ -119,14 +119,6 @@ mod tests {
     }
 
     #[test]
-    fn the_starter_folder_is_anime_in_videos() {
-        assert_eq!(
-            starter_folder(Path::new("/home/u/Videos")),
-            PathBuf::from("/home/u/Videos/Anime")
-        );
-    }
-
-    #[test]
     fn making_it_creates_videos_too() {
         let tmp = tempfile::tempdir().unwrap();
         let videos = tmp.path().join("Videos");

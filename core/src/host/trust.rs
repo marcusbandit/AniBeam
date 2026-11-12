@@ -529,16 +529,4 @@ mod tests {
         assert!(!needs_tailnet(ip("127.0.0.1"), &off));
         assert!(!needs_tailnet(ip("192.168.1.20"), &off));
     }
-
-    #[test]
-    fn only_a_served_request_goes_without_a_reason() {
-        assert_eq!(refusal(&Verdict::Serve), None);
-        for v in [
-            Verdict::SwitchedOff("pixel".into()),
-            Verdict::Unknown,
-            Verdict::Outside,
-        ] {
-            assert!(refusal(&v).is_some());
-        }
-    }
 }

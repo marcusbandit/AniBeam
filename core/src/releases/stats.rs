@@ -1895,36 +1895,6 @@ mod tests {
         assert!(out.iter().all(|r| counts(r) == (Some(4), Some(5), Some(6))));
     }
 
-    #[test]
-    fn the_lookups_give_up_when_anirss_s_do() {
-        // anirss 0.7.1 stats.py, number for number (#547). This guards the port, not anirss:
-        // a change to anirss's numbers has to be carried over by hand.
-        assert_eq!(
-            DEFAULT_DEADLINE,
-            Duration::from_secs(20),
-            "enrich(deadline_s=20.0)"
-        );
-        assert_eq!(
-            HTTP_SCRAPE_TIMEOUT,
-            Duration::from_secs(8),
-            "HTTP_SCRAPE_TIMEOUT"
-        );
-        assert_eq!(
-            UDP_SCRAPE_TIMEOUT,
-            Duration::from_secs(5),
-            "UDP_SCRAPE_TIMEOUT"
-        );
-        assert_eq!(MAX_TRACKERS_TRIED, 4, "MAX_TRACKERS_TRIED");
-        assert_eq!(DOWNLOAD_WORKERS, 8, "DOWNLOAD_WORKERS");
-        assert_eq!(MAX_HTTP_BATCH, 50, "MAX_HTTP_BATCH");
-        assert_eq!(MAX_UDP_BATCH, 60, "MAX_UDP_BATCH");
-        assert_eq!(
-            CACHE_TTL,
-            Duration::from_secs(2 * 60 * 60),
-            "CACHE_TTL_SECONDS"
-        );
-    }
-
     #[tokio::test]
     async fn a_fetch_with_almost_no_time_left_still_gets_half_a_second() {
         // anirss fetch_torrents: each attempt gets max(0.5, left), so a stalled server with

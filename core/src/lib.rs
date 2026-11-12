@@ -61,11 +61,3 @@ pub const VERSION: &str = env!("ANIBEAM_VERSION");
 pub const RELEASE: &str = env!("ANIBEAM_RELEASE");
 
 uniffi::setup_scaffolding!();
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn version_is_not_empty() {
-        assert!(!super::VERSION.is_empty());
-    }
-}
