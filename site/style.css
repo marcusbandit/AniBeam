@@ -717,6 +717,16 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .dl-page[data-channel="nightly"] { --paper: #f3e073; --brand: var(--paper); --brand-hi: #fff3b0; --beam-a: rgba(243, 224, 115, 0.4); --beam-b: rgba(243, 224, 115, 0.25); }
 .dl-head { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; padding: 168px 0 64px; text-align: center; }
 .dl-beams { inset: -40px -40% 0; }
+/* Nightly draws its streaks as bent, dashed vector lines (download.js); the straight ones step
+   aside. The dashes crawl along the line. */
+.beams-sketch { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; opacity: 0; transition: opacity 0.3s ease; }
+.beams-sketch path { fill: none; stroke-linecap: round; transform-box: view-box; }
+.dl-page[data-channel="nightly"] .beams-sketch { opacity: 1; }
+.dl-page[data-channel="nightly"] .dl-beams i { visibility: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .beams-sketch path { animation: crawl 3.2s linear infinite; animation-play-state: var(--motion, running); }
+}
+@keyframes crawl { to { stroke-dashoffset: -100; } }
 .dl-beams i { background: linear-gradient(90deg, transparent, var(--beam-a) 35%, var(--beam-b) 70%, transparent); transition: background 0.6s ease; }
 .dl-mark { position: relative; width: 96px; height: 96px; margin-bottom: 26px; }
 .dl-mark img { position: absolute; inset: 0; border-radius: 22px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 60px -20px #000; transition: opacity 0.45s ease, transform 0.6s var(--ease); }
@@ -732,14 +742,6 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .channel button[aria-selected="true"] { color: var(--brand-ink); }
 .channel-thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--brand); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
 .dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); }
-/* Nightly's beams keep their width, glow and glint, cut into dashes along their length, the way
-   a draft line is drawn: long dashes on the wide soft beams, short ones on the sharp lines. */
-.dl-beams i { --dash: 34px; --gap: 16px; }
-.dl-beams i:nth-child(3), .dl-beams i:nth-child(4) { --dash: 18px; --gap: 11px; }
-.dl-page[data-channel="nightly"] .dl-beams i {
-  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 var(--dash), transparent var(--dash) calc(var(--dash) + var(--gap)));
-  mask-image: repeating-linear-gradient(90deg, #000 0 var(--dash), transparent var(--dash) calc(var(--dash) + var(--gap)));
-}
 
 /* On the home page the same grid sits under Get AniBeam, always Stable. */
 .dl-embed { max-width: var(--wide); padding: 0; }
@@ -776,19 +778,32 @@ a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 .dl-tile.is-featured .dl-name :is(h2, h3) { font-size: 34px; }
 .dl-tile.is-featured .dl-do { flex-direction: row; align-items: center; gap: 18px; margin: 0 0 0 auto; }
 .dl-tile.is-featured .dl-main { width: auto; min-width: 260px; }
+/* A light runs round the edge of the featured tile, and a sheen crosses its download button
+   every few seconds. */
+@property --edge { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .dl-tile.is-featured::before {
   content: "";
   position: absolute;
   inset: -1px;
   padding: 1px;
   border-radius: inherit;
-  background: linear-gradient(115deg, rgba(255, 255, 255, 0.08) 20%, var(--brand) 44%, rgba(255, 255, 255, 0.5) 49%, rgba(255, 255, 255, 0.1) 62%, rgba(255, 255, 255, 0.06) 80%);
+  background: conic-gradient(from var(--edge), rgba(255, 255, 255, 0.07) 0 52%, var(--brand) 66%, #fff 70%, var(--brand) 74%, rgba(255, 255, 255, 0.07) 88%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
   pointer-events: none;
 }
+@media (prefers-reduced-motion: no-preference) {
+  .dl-tile.is-featured::before { animation: edge-run 7s linear infinite; }
+  .dl-tile.is-featured .dl-main::after { animation: sheen 4.8s cubic-bezier(0.45, 0, 0.2, 1) 1.2s infinite; }
+}
+@keyframes edge-run { to { --edge: 360deg; } }
+.dl-tile.is-featured .dl-main::after { background-image: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.85) 47%, rgba(255, 255, 255, 0.95) 49%, rgba(255, 255, 255, 0.3) 52%, transparent 58%); background-size: 300% 100%; }
+@keyframes sheen { 0%, 72% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
+.dl-tile.is-featured .dl-main { transition: background-color var(--quick), box-shadow var(--quick), transform 0.25s var(--ease); }
+.dl-tile.is-featured .dl-main:hover { transform: translateY(-2px) scale(1.02); }
+.dl-tile.is-featured .dl-main:active { transform: translateY(0) scale(0.99); }
 
 .dl-term { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 56px; }
 .dl-term .term { width: min(100%, 620px); }
