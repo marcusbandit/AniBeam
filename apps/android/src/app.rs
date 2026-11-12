@@ -935,6 +935,17 @@ impl App {
             .and_then(|a| a.shows.iter().find(|s| s.anilist_id == id as u64).cloned());
         if let Some(show) = show {
             crate::find::open_airing(&show);
+            return;
+        }
+        // An Out now episode whose show is not in the season list: search its title.
+        let aired = self.airing.as_ref().and_then(|a| {
+            a.aired
+                .iter()
+                .find(|e| e.anilist_id == id as u64)
+                .map(|e| e.title.clone())
+        });
+        if let Some(title) = aired {
+            crate::find::search_for(&title);
         }
     }
 
