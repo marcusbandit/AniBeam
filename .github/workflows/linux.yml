@@ -164,6 +164,27 @@ jobs:
       - name: AppImage
         run: apps/linux/packaging/linux/appimage.sh dist
 
+      # The same bundle as a .deb and an .rpm for the apt and dnf repos on anibeam.app (#788).
+      # The version is the AppImage's own, so a release, a nightly and a PR build all match.
+      - name: Packages for apt and dnf
+        id: packages
+        run: |
+          image="$(ls dist/AniBeam-*-x86_64.AppImage)"
+          version="$(basename "$image" | sed -E 's/^AniBeam-(.*)-x86_64\.AppImage$/\1/')"
+          apps/linux/packaging/linux/packages.sh "$image" "$version" dist
+          ls -la dist/*.deb dist/*.rpm
+
+      # The dnf repo points at the release's own .rpm, so a nightly or a release signs it before
+      # it is uploaded. A pull request's build, `test build` ones included (2.5.0-pr.280.3), stays
+      # unsigned: it never reaches the repo, and PR code never runs next to the key.
+      - name: Sign the .rpm
+        if: inputs.version != '' && !contains(inputs.version, '-pr.')
+        env:
+          ANIBEAM_REPO_GPG_KEY: ${{ secrets.ANIBEAM_REPO_GPG_KEY }}
+        run: |
+          sudo apt-get install -y -qq rpm > /dev/null
+          apps/linux/packaging/linux/sign-rpm.sh dist/*.rpm
+
       # The host's Qt variables are scrubbed inside smoke.sh, so a plugin the bundle forgot
       # cannot hide behind the Qt that install-qt-action put on the runner.
       - name: Smoke test on the runner
@@ -220,12 +241,49 @@ jobs:
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'
 
+      # The .deb and the .rpm installed the way apt and dnf install them, then the same smoke
+      # run against what they put in /opt/anibeam (#788).
+      - name: Smoke test the .deb on Debian 13
+        if: always() && steps.packages.outcome == 'success'
+        env:
+          IMAGE: debian:trixie
+          NAME: debian-deb
+          INSTALL: >-
+            apt-get update -qq && apt-get install -y -qq ./dist/anibeam_*_amd64.deb xvfb xauth
+            libgl1-mesa-dri fonts-dejavu-core
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
+            eval "$INSTALL" > /dev/null || { echo "could not install the .deb"; exit 1; }
+            SMOKE_INSTALLED_DIR=/opt/anibeam apps/linux/packaging/linux/smoke.sh /usr/bin/anibeam "smoke/$NAME"
+            code=$?
+            chown -R '"$(id -u):$(id -g)"' smoke
+            exit $code'
+
+      - name: Smoke test the .rpm on Fedora 41
+        if: always() && steps.packages.outcome == 'success'
+        env:
+          IMAGE: fedora:41
+          NAME: fedora-rpm
+          INSTALL: >-
+            dnf install -y -q --nogpgcheck ./dist/anibeam-*.x86_64.rpm xorg-x11-server-Xvfb xauth
+            dejavu-sans-fonts
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
+            eval "$INSTALL" > /dev/null || { echo "could not install the .rpm"; exit 1; }
+            SMOKE_INSTALLED_DIR=/opt/anibeam apps/linux/packaging/linux/smoke.sh /usr/bin/anibeam "smoke/$NAME"
+            code=$?
+            chown -R '"$(id -u):$(id -g)"' smoke
+            exit $code'
+
       - name: Upload the build
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: anibeam-linux-x86_64
-          path: dist/*.AppImage
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
           if-no-files-found: ignore
 
       - name: Upload the smoke captures

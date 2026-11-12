@@ -71,8 +71,11 @@ Grab the newest version from **[Releases](https://github.com/marcusbandit/AniBea
 
 | Platform | Get it | Notes |
 | --- | --- | --- |
+| Any Linux, one line | `curl -fsSL https://anibeam.app/install.sh \| sh` | Picks the right way for your system below: the AUR on Arch, the apt or dnf repo on Ubuntu, Debian and Fedora, the AppImage anywhere else. |
 | Arch Linux | `yay -S anibeam-bin` | The release build, installed in seconds. `yay -S anibeam` compiles it instead. Either pulls in anirss and qbittorrent-nox. |
-| Any other Linux | `AniBeam-<version>-x86_64.AppImage` | glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later. |
+| Ubuntu, Debian | `sudo curl -fsSLo /etc/apt/sources.list.d/anibeam.sources https://anibeam.app/apt/anibeam.sources`<br>`sudo apt update && sudo apt install anibeam` | Ubuntu 24.04, Debian 13 and later. Updates come with `apt upgrade`. |
+| Fedora | `sudo dnf config-manager addrepo --from-repofile=https://anibeam.app/rpm/anibeam.repo`<br>`sudo dnf install anibeam` | Fedora 41 and later. Updates come with `dnf upgrade`. |
+| Any Linux | `AniBeam-<version>-x86_64.AppImage` | glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later. |
 | Windows 10 and 11 | `AniBeam-<version>-windows-x64-setup.exe` | Installs for you alone, no admin prompt. A portable `.zip` sits beside it. |
 | macOS 15 and later | `brew install --cask marcusbandit/anibeam/anibeam` | Apple silicon. Or download the `.dmg` and drag it into Applications. |
 | Android | `AniBeam-<version>.apk` | From the newest `android` release. Sideload it. |

@@ -4,6 +4,9 @@ name: Site
 # request touching it only assembles the site, so a broken build.sh shows before the merge.
 # site/build.sh adds the screenshots from docs/readme, so they live in one place.
 # The custom domain is set in the repo's Pages settings, not in a CNAME file.
+# Every deploy also signs the apt and dnf repos from the newest stable release's packages into
+# /apt and /rpm (publish-repos.sh, #788), and release.yml runs this on main right after a
+# stable release goes public, so the repos carry it without a commit.
 on:
   push:
     branches: [main]
@@ -12,6 +15,8 @@ on:
       - docs/readme/**
       - assets/icon.png
       - .github/workflows/site.yml
+      - apps/linux/packaging/linux/repos.sh
+      - apps/linux/packaging/linux/publish-repos.sh
   pull_request:
     paths:
       - site/**
@@ -44,13 +49,18 @@ jobs:
     if: github.event_name != 'pull_request'
 
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - run: site/build.sh "$RUNNER_TEMP/site"
+      - name: The apt and dnf repos
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANIBEAM_REPO_GPG_KEY: ${{ secrets.ANIBEAM_REPO_GPG_KEY }}
+        run: apps/linux/packaging/linux/publish-repos.sh "$RUNNER_TEMP/site"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ${{ runner.temp }}/site
