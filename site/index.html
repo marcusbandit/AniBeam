@@ -54,20 +54,30 @@
     <span>AniBeam</span>
   </a>
   <nav class="top-nav" aria-label="Main">
-    <a href="#install">Install</a>
+    <a href="#features">Features</a>
     <a href="https://github.com/marcusbandit/AniBeam">GitHub</a>
+    <a class="nav-dl" href="#install">Download</a>
   </nav>
 </header>
 
 <main>
 
 <section class="hero">
+  <div class="beams" aria-hidden="true">
+    <i style="--i:0;--x:2%;--y:72%;--w:88%;--h:34px;--a:.62;--b:16px"></i>
+    <i style="--i:1;--x:16%;--y:84%;--w:72%;--h:12px;--a:.7;--b:5px"></i>
+    <i style="--i:2;--x:-6%;--y:60%;--w:66%;--h:64px;--a:.24;--b:34px"></i>
+    <i style="--i:3;--x:28%;--y:95%;--w:60%;--h:3px;--a:.9;--b:1px"></i>
+    <i style="--i:4;--x:6%;--y:91%;--w:46%;--h:16px;--a:.4;--b:9px"></i>
+    <i style="--i:5;--x:38%;--y:78%;--w:52%;--h:2px;--a:.75;--b:.6px"></i>
+    <i style="--i:6;--x:46%;--y:99%;--w:40%;--h:2px;--a:.6;--b:.6px"></i>
+  </div>
   <div class="hero-copy">
     <h1>Your anime folder, as a library you can watch and track.</h1>
     <p class="lede">Point AniBeam at the folder your shows live in. It finds every series,
       matches it on AniList, plays episodes right in the window and keeps your list up to date.</p>
     <div class="cta">
-      <a class="button primary" id="dl-main" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download AniBeam</a>
+      <a class="button primary dl-auto" id="dl-main" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download AniBeam</a>
       <a class="button quiet" href="#install">Other platforms</a>
     </div>
     <p class="fine" id="dl-note">Free and open source. Linux, Windows, Mac and Android.</p>
@@ -86,39 +96,140 @@
   </figure>
 </section>
 
-<figure class="shot shot-hero">
-  <img src="img/home.webp" width="1600" height="1000" alt="AniBeam's Home page: recently downloaded shows and shows not started yet, as poster cards with episode progress">
-</figure>
-
-<section class="features" aria-labelledby="features-h">
-  <div class="features-head">
-    <h2 id="features-h">Drop files in, get a library</h2>
-    <p>New files show up on their own, matched, with posters, synopses and what airs next.
-      Nothing to import and no folder to rescan.</p>
+<section class="tour" aria-label="A look around AniBeam">
+  <div class="window">
+    <nav class="rail" aria-label="Screens of the app">
+      <img class="rail-logo" src="img/logo.svg" alt="" width="36" height="36">
+      <button type="button" data-screen="home" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span>Home</span>
+      </button>
+      <button type="button" data-screen="library" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+        <span>Library</span>
+      </button>
+      <button type="button" data-screen="airing" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
+        <span>Airing</span>
+      </button>
+      <span class="rail-gap" aria-hidden="true"></span>
+      <button type="button" data-screen="series" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="15" x="2" y="7" rx="2"/><path d="m17 2-5 5-5-5"/></svg>
+        <span>A show</span>
+      </button>
+      <button type="button" data-screen="player" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l14 9-14 9z"/></svg>
+        <span>Player</span>
+      </button>
+    </nav>
+    <div class="screen">
+      <img id="tour-img" src="img/tour/home.webp" width="1512" height="1000" alt="Home: recently downloaded shows and shows not started yet, as poster cards with episode progress">
+    </div>
   </div>
-  <dl class="feature-list">
-    <div><dt>Plays in the window</dt><dd>Built on mpv. It remembers where you stopped, offers the next episode, and every key is one <kbd>?</kbd> away.</dd></div>
-    <div><dt>Tracks for you</dt><dd>Watch most of an episode and it lands on AniList or MyAnimeList. Progress goes both ways.</dd></div>
-    <div><dt>Knows what airs</dt><dd>This season's shows, what is out now, and when the next episode lands.</dd></div>
-    <div><dt>New episodes arrive</dt><dd>Subscribe to a release once and every new episode downloads as it comes out. AniBeam ships with no sources; you add your own.</dd></div>
-    <div><dt>Franchise graph</dt><dd>Sequels, prequels and side stories on one map, so you know what to watch next.</dd></div>
-    <div><dt>Thirty-five themes</dt><dd>Catppuccin, Gruvbox, Tokyo Night and Nord among them, or the AniBeam ones.</dd></div>
-    <div><dt>Updates itself</dt><dd>Stable or Nightly, picked in Settings, with a What's new card after each update.</dd></div>
-    <div><dt>A phone app</dt><dd>Android keeps a library of its own and can stream yours from home over Tailscale.</dd></div>
-  </dl>
-  <div class="shot-pair">
-    <figure class="shot">
-      <img src="img/series.webp" width="1600" height="1000" loading="lazy" alt="A series page with its banner, episode list and watch progress">
-      <figcaption>A series page</figcaption>
-    </figure>
-    <figure class="shot">
-      <img src="img/library.webp" width="1600" height="1000" loading="lazy" alt="The Library grid with every show as a poster">
-      <figcaption>The whole library</figcaption>
-    </figure>
+  <p class="tour-caption" id="tour-caption" aria-live="polite">Home picks up where you left off and shows what just landed in your folder. Try the other screens.</p>
+</section>
+
+<section class="band rows" id="features" aria-label="What it does">
+
+  <article class="row">
+    <div class="row-text">
+      <h2>Watch it, and your list keeps up</h2>
+      <p>Watch most of an episode and AniBeam marks it on AniList or MyAnimeList. Change something on the site and the cards here follow, so the list you already keep stays the one that counts.</p>
+      <p class="aside">Tracking is optional. Everything else works without an account.</p>
+    </div>
+    <div class="vig vig-track" aria-hidden="true">
+      <div class="entry">
+        <img src="img/tour/poster-meshi.webp" alt="" width="182" height="172">
+        <div class="entry-body">
+          <b>Dungeon Meshi</b>
+          <span class="chip">Watching</span>
+          <span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <small>Episode 7 of 24</small>
+        </div>
+      </div>
+      <ul class="syncs">
+        <li><span>AniList</span><span class="num">7 / 24</span><span class="ok">Updated just now</span></li>
+        <li><span>MyAnimeList</span><span class="num">7 / 24</span><span class="ok">Updated just now</span></li>
+      </ul>
+    </div>
+  </article>
+
+  <article class="row flip">
+    <div class="row-text">
+      <h2>One click past the opening</h2>
+      <p>For most shows the player knows where the opening and ending sit, so Skip intro shows up right as they start. It remembers where you stopped, and offers the next episode when this one ends.</p>
+      <p class="aside">Built on mpv. Press <kbd>?</kbd> for every key.</p>
+    </div>
+    <div class="vig vig-player" aria-hidden="true">
+      <div class="frame"></div>
+      <span class="skip">Skip intro</span>
+      <div class="bar">
+        <span class="time">1:42</span>
+        <div class="track"><span class="intro"></span><span class="played"></span><span class="head"></span></div>
+        <span class="time">23:40</span>
+      </div>
+    </div>
+  </article>
+
+  <article class="row">
+    <div class="row-text">
+      <h2>New episodes come to you</h2>
+      <p>Subscribe to a show once and each new episode downloads as it airs, then lands in your library on its own.</p>
+      <p class="aside">AniBeam ships with no sources. It downloads nothing until you add the ones you trust.</p>
+    </div>
+    <div class="vig vig-sub" aria-hidden="true">
+      <div class="sub-head">
+        <img src="img/tour/poster-kusuriya.webp" alt="" width="182" height="172">
+        <div><b>Kusuriya no Hitorigoto</b><span class="chip">Subscribed</span></div>
+      </div>
+      <ol class="eps">
+        <li><span class="ep">Episode 9</span><span class="state later">Airs Saturday</span></li>
+        <li><span class="ep">Episode 8</span><span class="state"><span class="load"><span></span></span>64%</span></li>
+        <li><span class="ep">Episode 7</span><span class="state done">In your library</span></li>
+      </ol>
+    </div>
+  </article>
+
+  <article class="row flip">
+    <div class="row-text">
+      <h2>Thirty-five themes, one click each</h2>
+      <p>Catppuccin, Gruvbox, Tokyo Night, Nord, Kanagawa and the rest come built in. Drop your own into a folder and it shows up in the list. Try a few.</p>
+    </div>
+    <div class="vig vig-theme">
+      <div class="theme-shot"><img id="theme-img" src="img/themes/anibeam-dark.webp" width="1100" height="728" loading="lazy" alt="Home in the AniBeam Dark theme"></div>
+      <div class="theme-picks" id="theme-picks" role="group" aria-label="Themes to try"></div>
+    </div>
+  </article>
+
+  <div class="more">
+    <h2>And the rest</h2>
+    <dl>
+      <div><dt>Related shows</dt><dd>Every sequel, prequel and side story on a show&rsquo;s page, with the ones you already have marked.</dd></div>
+      <div><dt>Casts to a TV</dt><dd>Send an episode to a Chromecast or a DLNA TV from the player.</dd></div>
+      <div><dt>A phone app</dt><dd>Android keeps a library of its own and can play yours from home over Tailscale.</dd></div>
+      <div><dt>Airing</dt><dd>This season's shows, what is out now, and when the next episode lands.</dd></div>
+      <div><dt>Fix a wrong match</dt><dd>A show matched to the wrong entry gets the right one in two clicks.</dd></div>
+      <div><dt>Updates itself</dt><dd>Stable or Nightly, your pick, with a What's new card after each update.</dd></div>
+    </dl>
   </div>
 </section>
 
-<section class="install" id="install" aria-labelledby="install-h">
+<section class="band trust" aria-labelledby="trust-h">
+  <div class="trust-head">
+    <h2 id="trust-h">Your files stay on your computer</h2>
+    <p>AniBeam is a desktop app. There is no server to run and nothing to sign up for.</p>
+  </div>
+  <dl class="facts">
+    <div><dt>No server</dt><dd>It reads your folder directly. Nothing to host, nothing to transcode, no web interface to keep alive.</dd></div>
+    <div><dt>No account</dt><dd>Connect AniList or MyAnimeList if you want tracking. The rest works without either.</dd></div>
+    <div><dt>No telemetry</dt><dd>It talks to AniList and MyAnimeList, to TVmaze, Jikan and Wikidata for show details, to AniSkip for intro times, and to GitHub for updates. Nothing reports back.</dd></div>
+    <div><dt>No sources built in</dt><dd>Downloads stay off until you add an endpoint repo yourself.</dd></div>
+    <div><dt>Open source</dt><dd>GPL 3.0. Every line is <a href="https://github.com/marcusbandit/AniBeam">on GitHub</a>.</dd></div>
+  </dl>
+</section>
+
+
+<section class="band install" id="install" aria-labelledby="install-h">
   <h2 id="install-h">Install</h2>
   <p class="install-version" id="install-version">The newest version is on the <a href="https://github.com/marcusbandit/AniBeam/releases/latest">releases page</a>.</p>
   <div class="platforms">
@@ -157,7 +268,7 @@
   <p class="after">After that, AniBeam updates itself.</p>
 </section>
 
-<section class="steps" aria-labelledby="steps-h">
+<section class="band steps" aria-labelledby="steps-h">
   <h2 id="steps-h">First steps</h2>
   <ol>
     <li><h3>Add your library</h3><p>Click Add a folder on Home and pick your anime folder. One folder per show works best.</p></li>
@@ -165,6 +276,16 @@
     <li><h3>Watch</h3><p>Click a show, then an episode. Space plays and pauses.</p></li>
     <li><h3>Get new episodes</h3><p>Add an endpoint repo in Settings, Downloads, install the sources you want, then subscribe to a show. Also optional.</p></li>
   </ol>
+</section>
+
+<section class="band closer" aria-labelledby="closer-h">
+  <img src="img/logo.svg" alt="" width="64" height="64">
+  <h2 id="closer-h">Point it at your anime folder.</h2>
+  <p>Free and open source, on Linux, Windows, Mac and Android.</p>
+  <div class="cta">
+    <a class="button primary dl-auto" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download AniBeam</a>
+    <a class="button quiet" href="#install">Other platforms</a>
+  </div>
 </section>
 
 </main>
