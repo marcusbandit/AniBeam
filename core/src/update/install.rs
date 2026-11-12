@@ -12,7 +12,9 @@
 //! - Windows setup: after exit the helper runs the new setup with no questions.
 //! - Windows portable zip: after exit the helper unpacks the new zip over the folder.
 //! - A copy under /usr or /opt belongs to the system's package manager, and a build from a
-//!   checkout to whoever builds it; neither is updated here.
+//!   checkout to whoever builds it; neither is updated here. The package manager that owns
+//!   the binary is named (pacman for the AUR, dpkg for the apt repo on anibeam.app, rpm for
+//!   the dnf one), so the notice can give its command.
 //!
 //! Errors are sentences for the person, since the update notice shows them as they are.
 
@@ -41,11 +43,24 @@ pub enum Install {
     WindowsPortable {
         exe: PathBuf,
     },
-    /// Under /usr or /opt. `package` is pacman's name for it, when pacman owns the file.
+    /// Under /usr or /opt. `package` is the owning package's name and `manager` the package
+    /// manager that owns the file, when one does.
     Package {
         package: Option<String>,
+        manager: Option<Manager>,
     },
     Source,
+}
+
+/// The package manager a system install belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Manager {
+    /// pacman, with the package from the AUR.
+    Pacman,
+    /// dpkg, with the package from the apt repo on anibeam.app.
+    Apt,
+    /// rpm, with the package from the dnf repo on anibeam.app.
+    Dnf,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,8 +92,15 @@ impl Install {
             .map(PathBuf::from)
             .zip(std::env::var_os("APPDIR").map(PathBuf::from));
         match Install::classify(&exe, appimage, Os::current()) {
-            Install::Package { .. } => Install::Package {
-                package: pacman_owner(&exe),
+            Install::Package { .. } => match owner(&exe) {
+                Some((manager, package)) => Install::Package {
+                    package: Some(package),
+                    manager: Some(manager),
+                },
+                None => Install::Package {
+                    package: None,
+                    manager: None,
+                },
             },
             other => other,
         }
@@ -98,7 +120,10 @@ impl Install {
                     return Install::AppImage { path };
                 }
                 if exe.starts_with("/usr") || exe.starts_with("/opt") {
-                    return Install::Package { package: None };
+                    return Install::Package {
+                        package: None,
+                        manager: None,
+                    };
                 }
                 Install::Source
             }
@@ -176,15 +201,42 @@ fn win_arch(arch: &str) -> &str {
 }
 
 /// pacman's name for the package that owns `exe`, when pacman is there and owns it.
-fn pacman_owner(exe: &Path) -> Option<String> {
-    let out = std::process::Command::new("pacman")
-        .arg("-Qqo")
+/// The package manager that owns `exe`, and its name for the package. A system has one of
+/// the three as its own; the others are usually missing, which reads as "not this one".
+fn owner(exe: &Path) -> Option<(Manager, String)> {
+    if let Some(name) = query("pacman", &["-Qqo"], exe) {
+        return Some((Manager::Pacman, name));
+    }
+    // dpkg-query -S prints `anibeam: /opt/anibeam/usr/bin/anibeam`.
+    if let Some(line) = query("dpkg-query", &["-S"], exe) {
+        let name = line.split(':').next().unwrap_or_default().trim();
+        if !name.is_empty() {
+            return Some((Manager::Apt, name.to_string()));
+        }
+    }
+    query("rpm", &["-qf", "--queryformat", "%{NAME}"], exe).map(|name| (Manager::Dnf, name))
+}
+
+/// Runs `program args exe` and returns its trimmed output, if it succeeded with some.
+fn query(program: &str, args: &[&str], exe: &Path) -> Option<String> {
+    let out = std::process::Command::new(program)
+        .args(args)
         .arg(exe)
         .stderr(std::process::Stdio::null())
         .output()
         .ok()?;
-    let name = String::from_utf8(out.stdout).ok()?.trim().to_string();
-    (out.status.success() && !name.is_empty()).then_some(name)
+    let text = String::from_utf8(out.stdout).ok()?;
+    let line = text.lines().next().unwrap_or_default().trim().to_string();
+    (out.status.success() && !line.is_empty()).then_some(line)
+}
+
+/// The command that upgrades `package` from the apt or dnf repo on anibeam.app.
+pub fn repo_command(manager: Manager, package: &str) -> String {
+    match manager {
+        Manager::Apt => format!("sudo apt update && sudo apt install --only-upgrade {package}"),
+        Manager::Dnf => format!("sudo dnf upgrade --refresh {package}"),
+        Manager::Pacman => aur_command(package),
+    }
 }
 
 /// The command that updates `package` from the AUR, with the first AUR helper on PATH.
@@ -691,7 +743,16 @@ mod tests {
             Some("AniBeam-2.5.0-windows-x64.zip")
         );
         assert_eq!(picked(Install::Source, "x86_64"), None);
-        assert_eq!(picked(Install::Package { package: None }, "x86_64"), None);
+        assert_eq!(
+            picked(
+                Install::Package {
+                    package: None,
+                    manager: None
+                },
+                "x86_64"
+            ),
+            None
+        );
     }
 
     /// Unix paths: Windows reads `/home/...` as relative.
@@ -714,11 +775,17 @@ mod tests {
         // Started from a terminal inside some AppImage: its variables are not ours
         assert_eq!(
             Install::classify(Path::new("/usr/bin/anibeam"), runtime(), Os::Linux),
-            Install::Package { package: None }
+            Install::Package {
+                package: None,
+                manager: None
+            }
         );
         assert_eq!(
             Install::classify(Path::new("/usr/bin/anibeam"), None, Os::Linux),
-            Install::Package { package: None }
+            Install::Package {
+                package: None,
+                manager: None
+            }
         );
         assert_eq!(
             Install::classify(
@@ -895,5 +962,17 @@ mod tests {
         assert!(bundle.join("new").is_dir());
         assert!(!staged.exists());
         assert!(!dir.path().join(".AniBeam.app.update.old").exists());
+    }
+
+    #[test]
+    fn repo_installs_get_their_own_upgrade_command() {
+        assert_eq!(
+            repo_command(Manager::Apt, "anibeam"),
+            "sudo apt update && sudo apt install --only-upgrade anibeam"
+        );
+        assert_eq!(
+            repo_command(Manager::Dnf, "anibeam"),
+            "sudo dnf upgrade --refresh anibeam"
+        );
     }
 }

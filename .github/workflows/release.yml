@@ -182,6 +182,20 @@ jobs:
             --title "$(.github/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --latest="$latest"
 
+  # The apt and dnf repos on anibeam.app are signed from the newest stable release's
+  # packages each time the site deploys (#788), so deploy it now that this one is public.
+  # The Pages environment only deploys from main, so the site runs there, not on a hotfix tag.
+  site:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: The website picks up the new packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run site.yml -R "$GITHUB_REPOSITORY" --ref main
+
   next:
     needs: [resolve, publish]
     if: needs.resolve.outputs.kind == 'promote'
