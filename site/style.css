@@ -732,6 +732,14 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .channel button[aria-selected="true"] { color: var(--brand-ink); }
 .channel-thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--brand); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
 .dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); }
+/* Nightly's beams keep their width, glow and glint, cut into dashes along their length, the way
+   a draft line is drawn: long dashes on the wide soft beams, short ones on the sharp lines. */
+.dl-beams i { --dash: 34px; --gap: 16px; }
+.dl-beams i:nth-child(3), .dl-beams i:nth-child(4) { --dash: 18px; --gap: 11px; }
+.dl-page[data-channel="nightly"] .dl-beams i {
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 var(--dash), transparent var(--dash) calc(var(--dash) + var(--gap)));
+  mask-image: repeating-linear-gradient(90deg, #000 0 var(--dash), transparent var(--dash) calc(var(--dash) + var(--gap)));
+}
 
 /* On the home page the same grid sits under Get AniBeam, always Stable. */
 .dl-embed { max-width: var(--wide); padding: 0; }
