@@ -1619,6 +1619,8 @@ impl App {
         let started = core.call(Call::ConnectTracker { tracker });
         if let Ok(Reply::Started { job }) = &started {
             self.signing_in.insert(*job, which);
+            // Its first read list is when the list kept on this phone is offered to it.
+            crate::listmove::offer(tracker);
         }
         if let Err(e) = started {
             crate::local::log(&format!("sign-in did not start: {e}"));
@@ -2096,6 +2098,7 @@ pub fn run(
     crate::stats::install(&window);
     crate::backup::install(&window, &data_dir);
     crate::activity::install(&window);
+    crate::listmove::install(&window);
 
     let mut app = App {
         window: window.clone_strong(),

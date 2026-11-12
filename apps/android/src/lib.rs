@@ -20,6 +20,7 @@ mod desk;
 mod files;
 mod find;
 mod focus;
+mod listmove;
 mod local;
 mod mpv;
 mod notes;

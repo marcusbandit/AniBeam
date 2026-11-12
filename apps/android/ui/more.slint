@@ -14,6 +14,7 @@ import { NotifyRow } from "notify.slint";
 import { StatsBody, StatsData } from "stats.slint";
 import { BackupData, DataBody } from "backup.slint";
 import { ActivityBody } from "activity.slint";
+import { MoveData, MoveWaiting } from "listmove.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -471,6 +472,7 @@ export component MorePage inherits Rectangle {
         area: Fold.split ? Fold.show(0.42) : { x: 0, y: 0, width: root.width, height: root.height };
 
     if root.shown == 0: accounts := SectionPage {
+        init => { MoveData.read(); }
         title: "Accounts";
         note: Status.accounts;
         ListGroup {
@@ -504,6 +506,7 @@ export component MorePage inherits Rectangle {
             font-size: Theme.small;
             wrap: word-wrap;
         }
+        MoveWaiting { }
     }
 
     if root.shown == 1: downloads := SectionPage {
