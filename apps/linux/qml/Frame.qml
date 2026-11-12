@@ -84,7 +84,8 @@ FocusScope {
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
         home: "HomePage.qml", library: "LibraryPage.qml", airing: "AiringPage.qml", feed: "FeedPage.qml", watching: "WatchingPage.qml", stats: "StatsPage.qml", metadata: "MetadataPage.qml",
-        downloads: "DownloadsPage.qml", settings: "SettingsPage.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
+        downloads: "DownloadsPage.qml", settings: "SettingsPage.qml", series: "SeriesPage.qml", player: "PlayerPage.qml",
+        show: "ShowPage.qml", recommended: "RecommendedPage.qml"
     })
 
     // The settings page's own state: the section open, by its id and kept across launches

@@ -163,6 +163,30 @@ Item {
         if (libraryEmpty) { var src = Door.listSources(); hasFolders = !src.error && src.reply.sources.length > 0 }
         resume = pickResume()
         nowMs = Date.now()
+        loadRecommended()
+    }
+    // ---- Recommended for you (#779): the recommender's ranking held to one scope, best first.
+    // The scope is a Home preference; the core refits after every tracker refresh and says so
+    // with RecommendedRefreshed.
+    readonly property var recScopes: ["All", "InLibrary", "OnList"]
+    readonly property string recScope: Door.preferences.home_recommended || "All"
+    property var recommended: null
+    readonly property var recList: recommended ? recommended.shows : []
+    function loadRecommended() {
+        var r = Door.call("ListRecommended", { scope: page.recScope })
+        if (!r.error) page.recommended = r.reply.recommended
+    }
+    function setRecScope(scope) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.home_recommended = scope
+        var r = Door.setPreferences(p)
+        if (r && r.error) frame.fail(r.error)
+    }
+    onRecScopeChanged: loadRecommended()
+    // A show the library has opens its series; any other opens its own page
+    function openShow(s) {
+        if (s.owned) frame.go("series", { id: s.owned }, s.title)
+        else frame.go("show", { anilist: s.anilist_id }, s.title)
     }
     Timer { id: debounce; interval: 500; onTriggered: page.reload() }
     Connections {
@@ -171,8 +195,15 @@ Item {
         function onSeriesRemoved() { if (!debounce.running) debounce.start() }
         function onPreferencesChanged(p) { if (!debounce.running) debounce.start() }
         function onAiringNowRefreshed(s) { if (s === "Now" && page.libraryEmpty) { var r = Door.listAiringNow("Now"); if (!r.error) page.season = r.reply.now } }
+        function onEvent(envelope) { if (envelope.kind === "RecommendedRefreshed") page.loadRecommended() }
+        function onTrackersChanged() { page.loadRecommended() }
     }
-    Component.onCompleted: reload()
+    Component.onCompleted: {
+        reload()
+        loadRecommended()
+        // AniList only when the last fit is stale; the fit ends in RecommendedRefreshed
+        Door.call("RefreshRecommended", { force: false })
+    }
 
     function playFile(file, title) { if (file) frame.go("player", { file: file }, title) }
     function wholeFirst(d) { return d && d.episodes && d.episodes.length && (d.episodes[0].downloading === undefined || d.episodes[0].downloading === null) ? d.episodes[0].file : null }
@@ -966,6 +997,12 @@ Item {
         }
     }
 
+    RecommendedHover {
+        id: recHover
+        onOpened: function(s) { page.openShow(s) }
+    }
+    Connections { target: scroll; function onContentYChanged() { recHover.close() } }
+
     PageScroll {
         id: scroll
         anchors.fill: parent
@@ -1272,6 +1309,72 @@ Item {
             }
         }
         Item { width: 1; height: page.airingRows.length ? theme.space(4) : 0 }
+
+        // ---- Recommended for you (#779): ranked from the user's own list, best first. The
+        // switch picks what the row holds: every show still to watch, only what the library
+        // has, or only what is on a list. Holding the pointer on a tile opens its hover card.
+        Column {
+            id: recBox
+            objectName: "home-recommended"
+            width: parent.width
+            spacing: theme.space(3)
+            visible: !!page.recommended && page.recommended.counts.all > 0
+            readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (theme.posterWidth + page.gap)))
+            readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
+            readonly property var shown: page.recList.slice(0, cols)
+            readonly property var counts: page.recommended ? page.recommended.counts : ({ all: 0, in_library: 0, on_list: 0 })
+            Heading {
+                text: "Recommended for you"
+                fact: "From your own list"
+                action: Row {
+                    spacing: theme.space(3)
+                    Seg {
+                        objectName: "home-rec-scope"
+                        anchors.verticalCenter: parent.verticalCenter
+                        small: true
+                        accessibleName: "Recommended from"
+                        options: [{ text: "All", name: "all", count: recBox.counts.all },
+                                  { text: "In library", name: "library", count: recBox.counts.in_library },
+                                  { text: "On list", name: "list", count: recBox.counts.on_list }]
+                        index: Math.max(0, page.recScopes.indexOf(page.recScope))
+                        onPicked: function(i) { page.setRecScope(page.recScopes[i]) }
+                    }
+                    Button {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: page.recList.length > recBox.shown.length
+                        text: "See all"
+                        small: true
+                        flat: true
+                        onClicked: frame.go("recommended", {})
+                    }
+                }
+            }
+            Flow {
+                width: recBox.width
+                spacing: page.gap
+                visible: recBox.shown.length > 0
+                Repeater {
+                    model: recBox.shown
+                    RecommendedCard {
+                        id: recTile
+                        required property var modelData
+                        objectName: "rec-" + modelData.anilist_id
+                        rec: modelData
+                        posterWidth: recBox.cardWidth
+                        onOpened: { recHover.close(); page.openShow(modelData) }
+                        onRested: function(on) { on ? recHover.enter(recTile, modelData) : recHover.leave(recTile) }
+                    }
+                }
+            }
+            Label {
+                visible: recBox.shown.length === 0
+                text: page.recScope === "InLibrary" ? "Nothing in your library is left to recommend. All finds shows you do not have yet."
+                    : "Nothing on your lists is left to recommend. All finds shows you have not listed."
+                role: "ui"
+                color: theme.textDim
+            }
+        }
+        Item { width: 1; height: recBox.visible ? theme.space(4) : 0 }
 
         Shelf {
             objectName: "home-catch-up"

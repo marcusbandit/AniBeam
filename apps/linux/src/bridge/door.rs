@@ -1350,7 +1350,9 @@ impl qobject::Door {
             | EventBody::SubscriptionsListed { .. }
             | EventBody::ResumePointChanged { .. }
             | EventBody::Viewed { .. }
-            | EventBody::RemovalPlanned { .. } => {}
+            | EventBody::RemovalPlanned { .. }
+            | EventBody::RecommendedRefreshed
+            | EventBody::ShowPageRead { .. } => {}
             EventBody::SkipWindowsReady { .. } => self
                 .as_mut()
                 .skip_windows_ready(n("session"), arr("windows")),
