@@ -423,7 +423,7 @@ mod tests {
         assert!(palettes(true).count() >= 3 && palettes(false).count() >= 3);
         // A theme file that names one that is gone falls back to the mode's first.
         assert_eq!(palette(true, "gone").id, "graphite-dark");
-        assert!(palette(false, "graphite-dark").dark == false);
+        assert!(!palette(false, "graphite-dark").dark);
     }
 
     #[test]
