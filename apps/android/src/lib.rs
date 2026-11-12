@@ -28,6 +28,7 @@ mod prefs;
 mod remote;
 mod repos;
 mod stream;
+mod subtitles;
 mod thumbs;
 mod versions;
 mod video;

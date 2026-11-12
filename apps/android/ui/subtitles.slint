@@ -1,0 +1,321 @@
+// Subtitles in More: the desktop's Settings, Subtitles tab. A preview first, then Size and
+// place, then Style (how styled ASS files are treated, then the look plain files get: font,
+// colour, outline, shadow, the box behind the lines, bold). Every change is saved as it is
+// made and what the next episode starts with. The sections reach More as one column of
+// children, so a page there only needs `SubtitleRows { }`.
+
+import { Theme } from "theme.slint";
+import { Button, Field, ListGroup, Segmented, SectionHead, Slider, Switch } from "widgets.slint";
+
+export global SubtitleData {
+    in property <float> scale: 1;
+    in property <float> position: 100;
+    // 0 as made, 1 size only, 2 mine.
+    in property <int> ass-mode: 1;
+    in-out property <string> font;
+    in property <bool> bold;
+    in-out property <string> colour;
+    in-out property <string> outline-size;
+    in-out property <string> outline-colour;
+    in-out property <string> shadow;
+    in property <float> box-opacity;
+    // The two sizes as numbers, in mpv's units: pixels on a 720 line frame.
+    in property <float> outline-num: 1.65;
+    in property <float> shadow-num: 0;
+    // The colours as the preview paints them; a hex that does not parse paints as before.
+    in property <color> colour-paint: #ffffff;
+    in property <color> outline-paint: #000000;
+    // A field holding what cannot be saved says so in red and nothing is written.
+    in property <bool> bad-font;
+    in property <bool> bad-colour;
+    in property <bool> bad-outline;
+    in property <bool> bad-outline-colour;
+    in property <bool> bad-shadow;
+    // The one line of the status in More's index.
+    in property <string> line: "Size 1×, plain files take your style";
+    callback opened();
+    callback set-scale(float);
+    callback set-position(float);
+    callback set-ass-mode(int);
+    callback set-font(string);
+    callback set-bold(bool);
+    callback set-colour(string);
+    callback set-outline-size(string);
+    callback set-outline-colour(string);
+    callback set-shadow(string);
+    callback set-box-opacity(float);
+    callback reset();
+}
+
+// The sample frame. The desktop renders this through mpv on a real frame; here the app draws
+// the same line with the same size, colour, outline, shadow, box and place, which is what the
+// settings change. The size is a share of the picture's height, as mpv's is.
+component Preview inherits Rectangle {
+    height: self.width * 9 / 16;
+    border-radius: Theme.radius;
+    background: #000000;
+    clip: true;
+    Rectangle {
+        background: @linear-gradient(160deg, #26303a 0%, #11161b 55%, #1d1a26 100%);
+    }
+    property <length> line-size: self.height * 0.075 * SubtitleData.scale;
+    // sub-pos 100 puts the last line on the bottom edge; lower numbers lift it.
+    property <length> base: self.height * SubtitleData.position / 100;
+    box := Rectangle {
+        width: line.preferred-width + 2 * root.line-size * 0.35;
+        height: line.preferred-height + 2 * root.line-size * 0.1;
+        x: (parent.width - self.width) / 2;
+        y: Math.clamp(root.base - self.height - root.line-size * 0.3, 0px, parent.height - self.height);
+        Rectangle {
+            background: #000000;
+            opacity: SubtitleData.box-opacity;
+        }
+        if SubtitleData.shadow-num > 0: Text {
+            x: line.x + SubtitleData.shadow-num * root.height / 720;
+            y: line.y + SubtitleData.shadow-num * root.height / 720;
+            text: line.text;
+            font-family: line.font-family;
+            font-size: line.font-size;
+            font-weight: line.font-weight;
+            color: #00000099;
+        }
+        line := Text {
+            x: root.line-size * 0.35;
+            y: root.line-size * 0.1;
+            text: "Where did you hide it?";
+            font-family: SubtitleData.font;
+            font-size: root.line-size;
+            font-weight: SubtitleData.bold ? 700 : 400;
+            color: SubtitleData.colour-paint;
+            stroke: SubtitleData.outline-num > 0 ? SubtitleData.outline-paint : transparent;
+            stroke-width: SubtitleData.outline-num * root.height / 720;
+            stroke-style: outside;
+        }
+    }
+}
+
+// One setting: its name and its value on the first line, a helper under it, the control
+// under that, closed by a hairline.
+component SubRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <string> helper;
+    in property <bool> warn;
+    in property <bool> last;
+    height: col.preferred-height;
+    col := VerticalLayout {
+        padding: Theme.pad;
+        padding-top: Theme.unit * 3;
+        padding-bottom: Theme.unit * 3;
+        spacing: Theme.unit * 2;
+        HorizontalLayout {
+            spacing: Theme.unit * 2;
+            Text {
+                text: root.label;
+                color: Theme.text;
+                font-family: Theme.strong-face;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            if root.value != "": Text {
+                text: root.value;
+                color: Theme.dim;
+                font-family: Theme.figure;
+                font-size: Theme.small;
+            }
+        }
+        if root.helper != "": Text {
+            text: root.helper;
+            color: root.warn ? Theme.bad : Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        @children
+    }
+    if !root.last: Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// A colour or a number typed in a field, with a swatch of the colour when it is one.
+component TypedField inherits Rectangle {
+    in property <bool> invalid;
+    in property <string> placeholder;
+    in property <color> swatch;
+    in property <bool> has-swatch;
+    in-out property <string> text;
+    callback edited(string);
+    height: 12 * Theme.unit;
+    HorizontalLayout {
+        spacing: Theme.unit * 2;
+        if root.has-swatch: Rectangle {
+            width: 9 * Theme.unit;
+            height: self.width;
+            y: (parent.height - self.height) / 2;
+            border-radius: self.width / 2;
+            background: root.swatch;
+            border-width: 1px;
+            border-color: Theme.line-strong;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            Field {
+                width: parent.width;
+                height: parent.height;
+                text <=> root.text;
+                placeholder: root.placeholder;
+                figure: true;
+                edited(t) => { root.edited(t); }
+            }
+            if root.invalid: Rectangle {
+                border-radius: Theme.radius-row + 4px;
+                border-width: 1px;
+                border-color: Theme.bad-edge;
+            }
+        }
+    }
+}
+
+export component SubtitleRows inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    init => { SubtitleData.opened(); }
+    Preview { }
+    SectionHead {
+        title: "Size and place";
+        note: "";
+    }
+    ListGroup {
+        SubRow {
+            label: "Size";
+            value: Math.round(SubtitleData.scale * 100) / 100 + "×";
+            Slider {
+                minimum: 0.5;
+                maximum: 2;
+                value: SubtitleData.scale;
+                moved(v) => { SubtitleData.set-scale(Math.round(v * 20) / 20); }
+            }
+        }
+        SubRow {
+            label: "Position";
+            value: Math.round(SubtitleData.position) + "%";
+            helper: "100 sits on the bottom edge. Lower numbers lift the lines up the frame.";
+            last: true;
+            Slider {
+                minimum: 0;
+                maximum: 150;
+                value: SubtitleData.position;
+                moved(v) => { SubtitleData.set-position(Math.round(v)); }
+            }
+        }
+    }
+    SectionHead {
+        title: "Style";
+        note: "";
+    }
+    ListGroup {
+        SubRow {
+            label: "Styled subtitles";
+            helper: SubtitleData.ass-mode == 0 ? "Styled (ASS) files look exactly as their makers set them."
+                : SubtitleData.ass-mode == 2 ? "Your style below goes on every file. Signs and karaoke can break."
+                : "Styled subtitle files keep their look and take your size. Plain files take your style.";
+            Segmented {
+                options: ["As made", "Size only", "Mine"];
+                picked: SubtitleData.ass-mode;
+                pick(i) => { SubtitleData.set-ass-mode(i); }
+            }
+        }
+        SubRow {
+            label: "Font";
+            helper: SubtitleData.bad-font ? "Type a font name, such as Noto Sans." : "";
+            warn: true;
+            TypedField {
+                text <=> SubtitleData.font;
+                invalid: SubtitleData.bad-font;
+                edited(t) => { SubtitleData.set-font(t); }
+            }
+        }
+        SubRow {
+            label: "Bold";
+            HorizontalLayout {
+                alignment: start;
+                Switch {
+                    on: SubtitleData.bold;
+                    toggled => { SubtitleData.set-bold(!SubtitleData.bold); }
+                }
+            }
+        }
+        SubRow {
+            label: "Text colour";
+            helper: SubtitleData.bad-colour ? "Type a colour like #ffcc00." : "";
+            warn: true;
+            TypedField {
+                has-swatch: true;
+                swatch: SubtitleData.colour-paint;
+                text <=> SubtitleData.colour;
+                invalid: SubtitleData.bad-colour;
+                edited(t) => { SubtitleData.set-colour(t); }
+            }
+        }
+        SubRow {
+            label: "Outline";
+            helper: SubtitleData.bad-outline ? "The width is a number, 0 or more."
+                : SubtitleData.bad-outline-colour ? "Type the colour like #000000."
+                : "Its width, then its colour.";
+            warn: SubtitleData.bad-outline || SubtitleData.bad-outline-colour;
+            HorizontalLayout {
+                spacing: Theme.unit * 2;
+                TypedField {
+                    width: 30 * Theme.unit;
+                    text <=> SubtitleData.outline-size;
+                    invalid: SubtitleData.bad-outline;
+                    edited(t) => { SubtitleData.set-outline-size(t); }
+                }
+                TypedField {
+                    horizontal-stretch: 1;
+                    has-swatch: true;
+                    swatch: SubtitleData.outline-paint;
+                    text <=> SubtitleData.outline-colour;
+                    invalid: SubtitleData.bad-outline-colour;
+                    edited(t) => { SubtitleData.set-outline-colour(t); }
+                }
+            }
+        }
+        SubRow {
+            label: "Shadow";
+            helper: SubtitleData.bad-shadow ? "A number, 0 or more. 0 means no shadow." : "How far the shadow falls, 0 for none.";
+            warn: SubtitleData.bad-shadow;
+            TypedField {
+                text <=> SubtitleData.shadow;
+                invalid: SubtitleData.bad-shadow;
+                edited(t) => { SubtitleData.set-shadow(t); }
+            }
+        }
+        SubRow {
+            label: "Background box";
+            value: Math.round(SubtitleData.box-opacity * 100) / 100 + "";
+            helper: "A dark box behind the lines. 0 leaves it out.";
+            Slider {
+                minimum: 0;
+                maximum: 1;
+                value: SubtitleData.box-opacity;
+                moved(v) => { SubtitleData.set-box-opacity(Math.round(v * 20) / 20); }
+            }
+        }
+        SubRow {
+            label: "Start over";
+            helper: "Puts the size, font, colours, outline, box and position back to how they came.";
+            last: true;
+            Button {
+                small: true;
+                has-icon: true;
+                icon: @image-url("icons/rotate-ccw.svg");
+                text: "Reset";
+                clicked => { SubtitleData.reset(); }
+            }
+        }
+    }
+}

@@ -209,6 +209,7 @@ const SECTIONS: [&str; 8] = [
     "Your computer",
     "About",
     "App icon",
+    "Subtitles",
 ];
 
 /// Every setting More's search can land on: its section, its label (the key its page lights),
@@ -277,6 +278,16 @@ const SETTINGS: &[(i32, &str, &str)] = &[
         7,
         "App icon",
         "icon launcher home screen logo dark line art themed material you",
+    ),
+    (
+        8,
+        "Subtitle size and place",
+        "subtitles captions size scale position lift bottom",
+    ),
+    (
+        8,
+        "Subtitle style",
+        "subtitles captions font colour color outline shadow box bold ass styled reset",
     ),
 ];
 
@@ -1867,6 +1878,7 @@ pub fn run(
 
     let window = AppWindow::new()?;
     crate::player::install(&window);
+    crate::subtitles::install(&window);
     let data = window.global::<AppData>();
     data.set_version(
         format!(

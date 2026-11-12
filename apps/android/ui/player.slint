@@ -52,7 +52,13 @@ export global PlayerData {
     in property <float> speed: 1;
     in property <string> notice;
     in property <string> notice-action;
-    // 0 none, 1 audio, 2 subtitles, 3 speed.
+    // The subtitle and audio delay mpv reports, in seconds, and whether the file's has moved.
+    // The text is the desktop's delayText, written in Rust.
+    in property <string> sub-delay-text: "0.0 s";
+    in property <string> audio-delay-text: "0.0 s";
+    in property <bool> sub-delay-set;
+    in property <bool> audio-delay-set;
+    // 0 none, 1 audio, 2 subtitles, 3 speed, 4 cast, 5 delays.
     in property <int> picker;
     in property <string> picker-title;
     in property <[PickRow]> picker-rows;
@@ -96,6 +102,9 @@ export global PlayerData {
     callback stay();
     callback replay-clicked();
     callback open-picker(int);
+    // A delay stepped (0 subtitles, 1 audio, by seconds) or put back to 0.
+    callback nudge-delay(int, float);
+    callback reset-delay(int);
     callback pick(int);
     callback close-picker();
     callback mark();
@@ -292,6 +301,97 @@ component Picker inherits Rectangle {
                     }
                     row-touch := TouchArea { clicked => { PlayerData.pick(i); } }
                 }
+            }
+        }
+    }
+}
+
+// One delay in the sheet: its name, a step down, the value mpv reports, a step up and a
+// reset to 0, the desktop's row.
+component DelayRow inherits Rectangle {
+    in property <string> label;
+    in property <int> kind;
+    in property <string> text;
+    in property <bool> set;
+    height: 14 * Theme.unit;
+    HorizontalLayout {
+        spacing: Theme.unit;
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-family: Theme.strong-face;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        PlayerButton {
+            icon: @image-url("icons/minus.svg");
+            clicked => { PlayerData.nudge-delay(root.kind, -0.1); }
+        }
+        Text {
+            width: 18 * Theme.unit;
+            text: root.text;
+            color: root.set ? Theme.accent : Theme.text;
+            font-family: Theme.figure;
+            font-size: Theme.normal;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        PlayerButton {
+            icon: @image-url("icons/plus.svg");
+            clicked => { PlayerData.nudge-delay(root.kind, 0.1); }
+        }
+        PlayerButton {
+            icon: @image-url("icons/rotate-ccw.svg");
+            interactive: root.set;
+            clicked => { PlayerData.reset-delay(root.kind); }
+        }
+    }
+}
+
+// The delays sheet: subtitles and audio, each stepped 0.1 s at a time. Both go back to 0
+// with the next file, as on the desktop.
+component Delays inherits Rectangle {
+    in property <length> top;
+    background: #00000080;
+    TouchArea { clicked => { PlayerData.close-picker(); } }
+    sheet := Rectangle {
+        width: Math.min(parent.width - 2 * Theme.grout, 110 * Theme.unit);
+        height: Math.min(parent.height - root.top - 2 * Theme.grout, body.preferred-height);
+        x: (parent.width - self.width) / 2;
+        y: root.top + (parent.height - root.top - self.height) / 2;
+        background: Theme.float;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        clip: true;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            spacing: Theme.unit;
+            Text {
+                text: "Delay";
+                color: Theme.text;
+                font-size: Theme.large;
+                font-family: Theme.display-face;
+            }
+            Text {
+                text: "Each tap moves it 0.1 s. Until the next file.";
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            Rectangle { height: Theme.unit; }
+            DelayRow {
+                label: "Subtitles";
+                kind: 0;
+                text: PlayerData.sub-delay-text;
+                set: PlayerData.sub-delay-set;
+            }
+            DelayRow {
+                label: "Audio";
+                kind: 1;
+                text: PlayerData.audio-delay-text;
+                set: PlayerData.audio-delay-set;
             }
         }
     }
@@ -730,6 +830,11 @@ export component PlayerPage inherits Rectangle {
                     }
                 }
                 Rectangle { horizontal-stretch: 1; }
+                PlayerButton {
+                    icon: @image-url("icons/clock.svg");
+                    active: PlayerData.sub-delay-set || PlayerData.audio-delay-set;
+                    clicked => { PlayerData.open-picker(5); }
+                }
                 if PlayerData.audio-choice: PlayerButton {
                     icon: @image-url("icons/audio-lines.svg");
                     clicked => { PlayerData.open-picker(1); }
@@ -927,7 +1032,8 @@ export component PlayerPage inherits Rectangle {
         }
     }
 
-    if PlayerData.picker != 0: Picker { top: root.desk-y; }
+    if PlayerData.picker != 0 && PlayerData.picker != 5: Picker { top: root.desk-y; }
+    if PlayerData.picker == 5: Delays { top: root.desk-y; }
 
     // ---- Locked: nothing under this takes a touch, the replay, the notice and the
     // pickers included; a tap shows Unlock for a moment. It is last, so it lies on top.
