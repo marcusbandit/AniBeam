@@ -711,8 +711,8 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 }
 
 /* The download page. The visitor's system gets the wide tile on top; the rest sit below it.
-   Yellow is the finished thing. Nightly is a draft of it, sketched on graph paper: the owner's
-   hand-drawn logo, pale paper yellow instead of the brand's, dashed lines and a squared grid. */
+   Nightly keeps the same page and changes only what says "not finished": the owner's
+   hand-drawn logo, and the pale paper yellow of that drawing in place of the brand yellow. */
 .dl-page { --beam-a: rgba(253, 201, 1, 0.55); --beam-b: rgba(255, 226, 120, 0.55); max-width: 1040px; margin: 0 auto; padding: 0 var(--gutter); }
 .dl-page[data-channel="nightly"] { --paper: #f3e073; --brand: var(--paper); --brand-hi: #fff3b0; --beam-a: rgba(243, 224, 115, 0.4); --beam-b: rgba(243, 224, 115, 0.25); }
 .dl-head { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; padding: 168px 0 64px; text-align: center; }
@@ -720,49 +720,18 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .dl-beams i { background: linear-gradient(90deg, transparent, var(--beam-a) 35%, var(--beam-b) 70%, transparent); transition: background 0.6s ease; }
 .dl-mark { position: relative; width: 96px; height: 96px; margin-bottom: 26px; }
 .dl-mark img { position: absolute; inset: 0; border-radius: 22px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 60px -20px #000; transition: opacity 0.45s ease, transform 0.6s var(--ease); }
-/* The switch: the sketch draws in with a diagonal pen pass over the finished logo, which fades. */
-.mark-nightly { opacity: 1; clip-path: polygon(0 0, 0 0, 0 0); transform: rotate(-3deg); box-shadow: none !important; border-radius: 0 !important; transition: clip-path 0.7s cubic-bezier(0.65, 0, 0.35, 1); }
-.dl-page[data-channel="nightly"] .mark-stable { opacity: 0; transform: scale(0.96); transition: opacity 0.5s ease 0.15s, transform 0.6s var(--ease); }
-.dl-page[data-channel="nightly"] .mark-nightly { clip-path: polygon(0 0, 220% 0, 0 220%); }
-@media (prefers-reduced-motion: reduce) { .mark-nightly, .dl-page[data-channel="nightly"] .mark-stable { transition: none; } }
+/* The switch is a plain crossfade between the two logos. */
+.dl-mark img { transition: opacity 0.35s ease; }
+.mark-nightly { opacity: 0; box-shadow: none !important; border-radius: 0 !important; }
+.dl-page[data-channel="nightly"] .mark-stable { opacity: 0; }
+.dl-page[data-channel="nightly"] .mark-nightly { opacity: 1; }
 .dl-head h1 { font-size: clamp(36px, 5.4vw, 64px); letter-spacing: -0.04em; font-weight: 640; }
 .channel { position: relative; display: inline-flex; margin-top: 30px; padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair-2); }
 .channel button { position: relative; z-index: 1; width: 104px; padding: 9px 0; border: 0; border-radius: 999px; background: none; color: var(--fg-3); font: 600 14px/1 var(--sans); cursor: pointer; transition: color 0.25s ease; }
 .channel button:hover { color: #fff; }
 .channel button[aria-selected="true"] { color: var(--brand-ink); }
 .channel-thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--brand); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
-.dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); background: transparent; box-shadow: inset 0 0 0 1.5px var(--paper); }
-.dl-page[data-channel="nightly"] .channel { box-shadow: none; outline: 1.5px dashed rgba(243, 224, 115, 0.35); outline-offset: -1px; }
-.dl-page[data-channel="nightly"] .channel button[aria-selected="true"] { color: var(--paper); }
-
-/* Nightly, sketched: every edge a dashed pencil line, tiles ruled like a notepad page, buttons
-   drawn in outline. The beam behind the title becomes faint pencil strokes. */
-.dl-page[data-channel="nightly"] .dl-tile {
-  border: 1.5px dashed rgba(243, 224, 115, 0.32);
-  background:
-    repeating-linear-gradient(transparent 0 27px, rgba(243, 224, 115, 0.05) 27px 28px),
-    repeating-linear-gradient(90deg, transparent 0 27px, rgba(243, 224, 115, 0.05) 27px 28px),
-    #0b0c0e;
-  box-shadow: none;
-}
-.dl-page[data-channel="nightly"] .dl-tile.is-featured::before { display: none; }
-.dl-page[data-channel="nightly"] .dl-tile.is-featured { border-color: rgba(243, 224, 115, 0.6); }
-.dl-page[data-channel="nightly"] .btn-primary,
-.dl-page[data-channel="nightly"] .btn-ghost {
-  background: transparent;
-  color: var(--paper);
-  box-shadow: none;
-  outline: 1.5px dashed rgba(243, 224, 115, 0.55);
-  outline-offset: -1.5px;
-}
-.dl-page[data-channel="nightly"] .btn-primary { outline-style: solid; outline-color: var(--paper); }
-.dl-page[data-channel="nightly"] .btn:hover { background: rgba(243, 224, 115, 0.08); }
-.dl-page[data-channel="nightly"] .btn::after { display: none; }
-.dl-page[data-channel="nightly"] .dl-chip { background: transparent; box-shadow: none; outline: 1px dashed rgba(243, 224, 115, 0.3); outline-offset: -1px; }
-.dl-page[data-channel="nightly"] .term { background: #0b0c0e; box-shadow: none; outline: 1.5px dashed rgba(243, 224, 115, 0.3); outline-offset: -1.5px; }
-.dl-page[data-channel="nightly"] .dl-beams i { filter: none; height: 1.5px !important; background: repeating-linear-gradient(90deg, var(--beam-a) 0 14px, transparent 14px 20px); }
-.dl-page[data-channel="nightly"] .dl-beams i::after { display: none; }
-.dl-page .dl-tile, .dl-page .btn, .dl-page .term, .dl-page .dl-chip { transition: border-color 0.45s ease, background-color 0.45s ease, outline-color 0.45s ease, color 0.3s ease, transform var(--quick); }
+.dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); }
 
 /* On the home page the same grid sits under Get AniBeam, always Stable. */
 .dl-embed { max-width: var(--wide); padding: 0; }

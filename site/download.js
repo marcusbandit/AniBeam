@@ -31,16 +31,7 @@
     return { desktop: channel === "nightly" ? nightly || stable : stable, phone: live.find((r) => r.tag_name.startsWith("android-v")) };
   }
 
-  // Switching channel redraws the grid in the other style; a short soften and settle covers the
-  // swap from solid to dashed edges, which CSS cannot animate.
-  const grid = document.getElementById("dl-grid");
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-
   function show(channel) {
-    if (page.dataset.channel !== channel && grid && !still) {
-      grid.animate([{ opacity: 0.25, filter: "blur(3px)", transform: "translateY(6px)" }, { opacity: 1, filter: "blur(0)", transform: "none" }],
-        { duration: 520, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
-    }
     page.dataset.channel = channel;
     if (toggle) toggle.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.channel === channel)));
     const { desktop, phone } = pick(channel);
