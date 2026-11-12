@@ -1185,7 +1185,10 @@ impl Player {
         });
         // Picked up where it was left: say so, with the way back to the start.
         if let Some(at) = self.session.resume_from.filter(|r| *r > 5.0) {
-            self.flash(&format!("Resumed at {}", clock(at)), Some(Undo::StartOver));
+            self.flash(
+                &format!("Resumed at {}", crate::phone::clock(at)),
+                Some(Undo::StartOver),
+            );
         }
         if let Some(dev) = self.cast_on_load.take() {
             self.start_cast(dev, None);
@@ -2203,17 +2206,6 @@ impl Player {
         }
         self.notice.stop();
         self.d(|d| d.set_notice("".into()));
-    }
-}
-
-/// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
-fn clock(secs: f64) -> String {
-    let t = secs.max(0.0) as u64;
-    let (h, m, s) = (t / 3600, t % 3600 / 60, t % 60);
-    if h > 0 {
-        format!("{h}:{m:02}:{s:02}")
-    } else {
-        format!("{m}:{s:02}")
     }
 }
 

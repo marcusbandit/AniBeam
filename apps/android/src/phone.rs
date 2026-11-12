@@ -619,7 +619,7 @@ pub fn series(
 }
 
 /// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
-fn clock(secs: f64) -> String {
+pub(crate) fn clock(secs: f64) -> String {
     let t = secs.max(0.0) as u64;
     let (h, m, s) = (t / 3600, t % 3600 / 60, t % 60);
     if h > 0 {

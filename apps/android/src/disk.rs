@@ -12,6 +12,9 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::{AppWindow, DiskData, HiddenRow};
 
+/// Nav.page of Downloads.
+const DOWNLOADS_PAGE: i32 = 2;
+
 #[derive(Default)]
 struct State {
     /// Every show with a file on the phone, the watched and hidden ones too.
@@ -113,7 +116,7 @@ fn read(all: &[SeriesCard]) {
 }
 
 fn show(window: &AppWindow) {
-    let (u, hidden, sheet) = STATE.with(|s| {
+    let (u, hidden, deleting) = STATE.with(|s| {
         let s = s.borrow();
         (
             usage(&s.disk),
@@ -144,7 +147,7 @@ fn show(window: &AppWindow) {
         0.0
     });
     d.set_can_delete(u.watched_bytes > 0);
-    d.set_busy(sheet);
+    d.set_busy(deleting);
     d.set_all_line(
         format!(
             "{}, {}",
@@ -174,6 +177,10 @@ fn show(window: &AppWindow) {
 pub fn tick(window: &AppWindow, changed: bool, cards: &[SeriesCard]) {
     if changed {
         STATE.with(|s| s.borrow_mut().dirty = true);
+    }
+    // Only Downloads shows these figures, so the extra reads wait until it is open.
+    if window.global::<crate::Nav>().get_page() != DOWNLOADS_PAGE {
+        return;
     }
     if STATE.with(|s| s.borrow().dirty) && crate::local::core().is_some() {
         read(cards);
@@ -270,6 +277,9 @@ pub fn install(window: &AppWindow) {
     d.on_confirm({
         let window = window.as_weak();
         move || {
+            let Some(core) = crate::local::core() else {
+                return;
+            };
             let (finished, busy) = STATE.with(|s| {
                 let mut s = s.borrow_mut();
                 let busy = s.deleting;
@@ -284,9 +294,6 @@ pub fn install(window: &AppWindow) {
                 d.set_busy(true);
                 d.set_line("".into());
             }
-            let Some(core) = crate::local::core() else {
-                return;
-            };
             let window = window.clone();
             let _ = std::thread::Builder::new()
                 .name("delete-watched".into())

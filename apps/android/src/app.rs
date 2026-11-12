@@ -782,7 +782,8 @@ impl App {
 
     /// Airing now on another season: the page empties and reads it.
     fn set_airing_season(&mut self, to: SeasonPick) {
-        if to == self.airing_season {
+        // The page already shows it: nothing to do, unless the read failed or is not there.
+        if to == self.airing_season && self.airing.is_some() && self.airing_note.is_none() {
             return;
         }
         self.airing_season = to;
@@ -838,6 +839,11 @@ impl App {
         pick.set_this_year(at.0);
         pick.set_this_quarter(at.1 as i32);
         pick.set_focus_year(crate::seasons::year_of(self.airing_season, at));
+        // The list reaches a year past this one, so it moves on with the calendar.
+        let years = crate::seasons::years(at);
+        if pick.get_years().row_data(0) != years.first().copied() {
+            pick.set_years(ModelRc::new(VecModel::from(years)));
+        }
         let picked: Vec<&&AiringShow> = shows
             .iter()
             .filter(|s| match self.airing_filter {
@@ -1974,9 +1980,6 @@ pub fn run(
     });
     {
         let pick = window.global::<crate::AiringPick>();
-        pick.set_years(ModelRc::new(VecModel::from(crate::seasons::years(
-            crate::seasons::now(),
-        ))));
         pick.on_picked(|quarter, year| {
             with_app(|app| {
                 let to = crate::seasons::pick(

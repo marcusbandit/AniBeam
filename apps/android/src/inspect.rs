@@ -11,6 +11,11 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::{AppWindow, FindData};
 
+/// How many file lists one drawn list asks for. A search can return dozens of batches, and
+/// a burst of that many torrent fetches is what an indexer drops; the rest are asked as the
+/// list is drawn again.
+const MOST_AT_ONCE: usize = 6;
+
 enum Answer {
     Asking,
     Done(Vec<u32>),
@@ -90,19 +95,27 @@ pub fn install(window: &AppWindow) {
 /// The release list was drawn: each row's link and whether it is a batch that names no
 /// range. The ones not asked before are asked now.
 pub fn track(rows: Vec<(String, bool)>) {
+    let core = crate::local::core();
     let ask: Vec<String> = NOTES.with(|n| {
         let mut n = n.borrow_mut();
-        n.links = rows.iter().map(|(l, _)| l.clone()).collect();
+        // The core trims a link and echoes it trimmed, so a link is kept that way here.
+        n.links = rows.iter().map(|(l, _)| l.trim().to_string()).collect();
         let mut ask = Vec::new();
-        for (link, batch) in &rows {
-            if *batch && !link.is_empty() && !n.answers.contains_key(link) {
-                n.answers.insert(link.clone(), Answer::Asking);
-                ask.push(link.clone());
+        // Without a core nothing is marked asked, so the next draw asks.
+        for (link, batch) in rows.iter().map(|(l, b)| (l.trim(), *b)) {
+            if core.is_some()
+                && batch
+                && !link.is_empty()
+                && ask.len() < MOST_AT_ONCE
+                && !n.answers.contains_key(link)
+            {
+                n.answers.insert(link.to_string(), Answer::Asking);
+                ask.push(link.to_string());
             }
         }
         ask
     });
-    if let Some(core) = crate::local::core() {
+    if let Some(core) = core {
         for link in ask {
             if let Err(e) = core.call(Call::InspectRelease { link: link.clone() }) {
                 crate::local::log(&format!("inspect: {e}"));

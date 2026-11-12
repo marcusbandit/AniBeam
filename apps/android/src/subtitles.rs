@@ -17,6 +17,9 @@ const SAVE_AFTER: Duration = Duration::from_millis(400);
 struct State {
     window: slint::Weak<AppWindow>,
     defaults: SubtitleDefaults,
+    /// The saved defaults were read from the core. Until they have been, an edit is not
+    /// taken: it would write the stock values over the saved ones, language orders included.
+    loaded: bool,
     /// An edit waits on the timer.
     dirty: bool,
     save: Timer,
@@ -99,23 +102,25 @@ fn fill_fields(d: &SubtitleData, defaults: &SubtitleDefaults) {
     d.set_shadow(number(s.shadow_offset).into());
 }
 
-fn saved() -> SubtitleDefaults {
+fn saved() -> Option<SubtitleDefaults> {
     match crate::local::core().map(|core| core.call(Call::GetSettings)) {
-        Some(Ok(Reply::Settings { settings })) => settings.subtitle_defaults,
-        _ => SubtitleDefaults::default(),
+        Some(Ok(Reply::Settings { settings })) => Some(settings.subtitle_defaults),
+        _ => None,
     }
 }
 
 fn flush() {
+    // The core is checked first: an edit made while it is not up stays waiting.
+    let Some(core) = crate::local::core() else {
+        return;
+    };
     let defaults = STATE.with(|s| {
         s.borrow_mut()
             .as_mut()
             .and_then(|s| std::mem::take(&mut s.dirty).then(|| s.defaults.clone()))
     });
     let Some(defaults) = defaults else { return };
-    if let Some(core) = crate::local::core()
-        && let Err(e) = core.call(Call::SetSubtitleDefaults { defaults })
-    {
+    if let Err(e) = core.call(Call::SetSubtitleDefaults { defaults }) {
         crate::local::log(&format!("subtitles: not saved: {e}"));
     }
 }
@@ -127,6 +132,10 @@ fn edit(field: Option<(&'static str, bool)>, f: impl FnOnce(&mut SubtitleDefault
     let shown = STATE.with(|s| {
         let mut s = s.borrow_mut();
         let s = s.as_mut()?;
+        if !s.loaded {
+            s.defaults = saved()?;
+            s.loaded = true;
+        }
         if let Some((name, ok)) = field {
             s.bad.retain(|b| *b != name);
             if !ok {
@@ -152,6 +161,7 @@ pub fn install(window: &AppWindow) {
         *s.borrow_mut() = Some(State {
             window: window.as_weak(),
             defaults: SubtitleDefaults::default(),
+            loaded: false,
             dirty: false,
             save: Timer::default(),
             bad: Vec::new(),
@@ -163,13 +173,15 @@ pub fn install(window: &AppWindow) {
         move || {
             // An edit still waiting on the timer is written before the page reads again.
             flush();
-            let defaults = saved();
+            let read = saved();
+            let defaults = read.clone().unwrap_or_default();
             let Some(window) = window.upgrade() else {
                 return;
             };
             STATE.with(|s| {
                 if let Some(s) = s.borrow_mut().as_mut() {
                     s.defaults = defaults.clone();
+                    s.loaded = read.is_some();
                     s.bad.clear();
                 }
             });

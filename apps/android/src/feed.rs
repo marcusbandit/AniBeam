@@ -13,11 +13,13 @@ use crate::phone::{cube_codes, secs};
 use crate::remote::Art;
 use crate::{AppWindow, FeedData, Tile};
 
+/// Nav.page of Home.
+const HOME_PAGE: i32 = 0;
 const WEEK: i64 = 7 * 86400;
 /// The feed is read again at least this often, so the countdowns and the "ago" lines move.
 const REBUILD_EVERY: i64 = 30;
-/// How many tiles a section shows; a longer run is cut so Home stays a page.
-const SECTION: usize = 24;
+/// How many tiles a section shows; a longer run is cut so a huge library stays light.
+const SECTION: usize = 60;
 
 struct State {
     sort: FeedSort,
@@ -221,6 +223,13 @@ pub fn tick(window: &AppWindow, changed: bool, art: &Art, now: i64) {
         let mut s = s.borrow_mut();
         let Some(s) = s.as_mut() else { return };
         let data = window.global::<FeedData>();
+        // Only Home shows the feed, so the reads wait until it is open.
+        if window.global::<crate::Nav>().get_page() != HOME_PAGE {
+            if changed {
+                s.dirty = true;
+            }
+            return;
+        }
         if !s.sort_read
             && let Some(sort) = read_sort()
         {
