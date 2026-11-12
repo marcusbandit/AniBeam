@@ -2,26 +2,35 @@ use serde::{Deserialize, Serialize};
 
 /// `as_str` and `from_column` for an enum whose variants each stand for one
 /// stored string. Each pair is written once, so the two directions cannot
-/// drift apart.
+/// drift apart, and a string given to two variants fails the build.
 macro_rules! column_strings {
-    ($(#[$doc:meta])* $name:ident { $($variant:ident => $col:literal),+ $(,)? }) => {
+    ($(#[doc = $doc:literal])* $name:ident { $($variant:ident => $col:literal),+ $(,)? }) => {
         impl $name {
-            $(#[$doc])*
+            $(#[doc = $doc])*
             pub fn as_str(self) -> &'static str {
                 match self {
                     $(Self::$variant => $col,)+
                 }
             }
 
+            #[deny(unreachable_patterns)]
             pub fn from_column(s: &str) -> Option<Self> {
                 match s {
                     $($col => Some(Self::$variant),)+
                     _ => None,
                 }
             }
+
+            /// Every variant reads back from the string it writes.
+            #[cfg(test)]
+            fn assert_columns_round_trip() {
+                $(assert_eq!(Self::from_column(Self::$variant.as_str()), Some(Self::$variant));)+
+                assert_eq!(Self::from_column("not a column value"), None);
+            }
         }
     };
 }
+pub(crate) use column_strings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum Provider {
@@ -642,3 +651,28 @@ column_strings!(
         ScheduleAgent => "ScheduleAgent",
     }
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_column_enum_round_trips() {
+        Tracker::assert_columns_round_trip();
+        Provider::assert_columns_round_trip();
+        SeriesKind::assert_columns_round_trip();
+        TmdbKind::assert_columns_round_trip();
+        ListStatus::assert_columns_round_trip();
+        Tab::assert_columns_round_trip();
+        Sort::assert_columns_round_trip();
+        Direction::assert_columns_round_trip();
+        FeedSort::assert_columns_round_trip();
+        ExtraKind::assert_columns_round_trip();
+        SkipSource::assert_columns_round_trip();
+        TitleLanguage::assert_columns_round_trip();
+        Level::assert_columns_round_trip();
+        Stage::assert_columns_round_trip();
+        JobPhase::assert_columns_round_trip();
+        JobKind::assert_columns_round_trip();
+    }
+}
