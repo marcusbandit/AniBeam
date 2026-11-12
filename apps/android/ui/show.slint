@@ -62,6 +62,9 @@ export global ShowData {
     // The franchise as the crawl has it so far, the page's Related; filling while it walks.
     in property <[ShowCard]> related;
     in property <bool> related-filling;
+    // How many related entries there are, when the page lists only the first dozen.
+    in property <int> related-total;
+    callback show-all-related();
     // AniList's recommendations, as poster tiles keyed by AniList id.
     in property <[Tile]> recs;
     in property <[ShowPerson]> people;

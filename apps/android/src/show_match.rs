@@ -68,10 +68,14 @@ pub fn core_event(event: &Event) {
     {
         let mut stash = STASH.lock().unwrap_or_else(|e| e.into_inner());
         let map = stash.get_or_insert_with(HashMap::new);
-        if map.len() > 32 {
-            map.clear();
-        }
         map.insert(job.id, outcome);
+        // Job ids only grow, so the oldest answers are the ones nobody is waiting for.
+        while map.len() > 32 {
+            let Some(oldest) = map.keys().min().copied() else {
+                break;
+            };
+            map.remove(&oldest);
+        }
     }
     let _ = slint::invoke_from_event_loop(deliver);
 }
@@ -367,9 +371,17 @@ pub fn install(window: &AppWindow) {
             return;
         }
         let Some(core) = crate::local::core() else {
+            with_window(|w| {
+                w.global::<MatchData>()
+                    .set_note("AniBeam is still starting. Try again in a moment.".into())
+            });
             return;
         };
-        with_window(|w| w.global::<MatchData>().set_found("".into()));
+        with_window(|w| {
+            let data = w.global::<MatchData>();
+            data.set_found("".into());
+            data.set_note("Looking it up.".into());
+        });
         let _ = std::thread::Builder::new()
             .name("match-link".into())
             .spawn(move || {
@@ -399,21 +411,24 @@ pub fn install(window: &AppWindow) {
             crate::show::run(
                 Call::RefreshSeries { series },
                 format!("Refreshing {title}."),
+                format!("Refreshing {title}."),
             );
             with_window(|w| w.global::<ShowData>().invoke_close());
         }
     });
     data.on_clear(|| {
         if let Some(series) = with_state(|s| s.open.as_ref().map(|o| o.series)) {
-            crate::show::run(Call::ClearMatch { series }, "Match cleared.".to_string());
+            crate::show::run(
+                Call::ClearMatch { series },
+                "Clearing the match.".to_string(),
+                "Match cleared.".to_string(),
+            );
             with_window(|w| w.global::<ShowData>().invoke_close());
         }
     });
     data.on_auto_match(|| {
-        crate::show::run(
-            Call::AutoMatch,
-            "Looking up the folders AniBeam does not know yet.".to_string(),
-        );
+        let said = "Looking up the folders AniBeam does not know yet.".to_string();
+        crate::show::run(Call::AutoMatch, said.clone(), said);
         with_window(|w| w.global::<ShowData>().invoke_close());
     });
 }
@@ -423,7 +438,11 @@ fn with_state<T>(f: impl FnOnce(&State) -> Option<T>) -> Option<T> {
 }
 
 fn apply(series: u64, target: MatchTarget, said: String) {
-    crate::show::run(Call::ApplyMatch { series, target }, said);
+    crate::show::run(
+        Call::ApplyMatch { series, target },
+        "Applying the match.".to_string(),
+        said,
+    );
     with_window(|w| w.global::<ShowData>().invoke_close());
 }
 

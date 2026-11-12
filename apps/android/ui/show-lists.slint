@@ -47,7 +47,7 @@ export component ScoreSheet inherits ShowSheet {
     line: ShowData.home;
     dismissed => { ShowData.close(); }
     Text {
-        text: (ShowData.draft / 10) + "." + Math.mod(ShowData.draft, 10);
+        text: Math.floor(ShowData.draft / 10) + "." + Math.mod(ShowData.draft, 10);
         color: Theme.text;
         font-size: Theme.page;
         font-family: Theme.figure;

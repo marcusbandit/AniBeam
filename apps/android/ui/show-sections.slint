@@ -2,7 +2,7 @@
 // the related entries and AniList's recommendations, each sized for a phone.
 
 import { Theme } from "theme.slint";
-import { Poster, SectionHead, TileRow } from "widgets.slint";
+import { Button, Poster, SectionHead, TileRow } from "widgets.slint";
 import { ShowCard, ShowData, ShowPerson } from "show.slint";
 
 // A character: round portrait, the name in two lines at most and the role under it.
@@ -130,11 +130,20 @@ export component ShowSections inherits VerticalLayout {
         spacing: Theme.unit * 3;
         SectionHead {
             title: "Related";
-            note: "" + ShowData.related.length;
+            note: "" + Math.max(ShowData.related.length, ShowData.related-total);
         }
+        // A big franchise shows its first dozen; the rest are one tap away.
         for card in ShowData.related: RelationRow {
             card: card;
             tapped => { ShowData.pick-related(card.id); }
+        }
+        if ShowData.related-total > ShowData.related.length: HorizontalLayout {
+            alignment: start;
+            Button {
+                text: "Show all " + ShowData.related-total;
+                small: true;
+                clicked => { ShowData.show-all-related(); }
+            }
         }
         if ShowData.related-filling: Text {
             text: "Still filling in from AniList.";

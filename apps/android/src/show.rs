@@ -22,10 +22,14 @@ const PERSON_ART: u64 = 1 << 49;
 
 /// How often a franchise the crawl has not finished is read again.
 const GRAPH_EVERY: Duration = Duration::from_secs(4);
+/// And a finished one, so its rows follow what the library and the lists hold now.
+const GRAPH_DONE_EVERY: Duration = Duration::from_secs(20);
 
 /// The franchise graph of the open series, read off the UI thread.
 #[derive(Default)]
 struct Graph {
+    /// Every related row is listed, not the first dozen.
+    all: bool,
     series: Option<u64>,
     /// The AniList id the show is matched to: a new match is a new franchise.
     matched: Option<u64>,
@@ -43,7 +47,12 @@ struct Models {
     entries: Vec<ShowCard>,
 }
 
+/// How many related rows the page lists until Show all.
+const RELATED_SHOWN: usize = 12;
+
 thread_local! {
+    /// What the sections were last built from, so a tick that changes nothing builds nothing.
+    static SIG: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
     static NOTE: RefCell<Option<(String, Instant)>> = const { RefCell::new(None) };
     static GRAPH: RefCell<Graph> = RefCell::new(Graph::default());
     static MODELS: RefCell<Option<Models>> = const { RefCell::new(None) };
@@ -140,7 +149,9 @@ pub fn sync(
         show.set_series_id(-1);
         show.set_sheet(0);
         GRAPH.with(|g| *g.borrow_mut() = Graph::default());
+        SIG.with(|s| s.set(None));
         sections(&[], &[], &[]);
+        show.set_related_total(0);
         show.set_related_filling(false);
         return Vec::new();
     };
@@ -185,7 +196,44 @@ pub fn sync(
         card.match_info.as_ref().and_then(|m| m.anilist_id),
         detail.has_graph,
     );
-    let layout = GRAPH.with(|g| g.borrow().layout.clone());
+    let (layout, all) = GRAPH.with(|g| {
+        let g = g.borrow();
+        (g.layout.clone(), g.all)
+    });
+    // The page changes when what it lists, or a poster it draws, does; not once a second.
+    let sig = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (card.id, art.posters.len(), all).hash(&mut h);
+        if let Some(l) = &layout {
+            l.complete.hash(&mut h);
+            for n in &l.nodes {
+                (
+                    n.anilist_id,
+                    n.owned,
+                    n.list_status,
+                    n.current,
+                    n.released,
+                    &n.title,
+                    &n.relation,
+                    &n.format,
+                    n.year,
+                    (n.x.to_bits(), n.y.to_bits()),
+                )
+                    .hash(&mut h);
+            }
+        }
+        for r in &detail.recommendations {
+            (r.anilist_id, r.owned, r.list_status, &r.title).hash(&mut h);
+        }
+        for p in &detail.characters {
+            (p.anilist_id, &p.name, &p.role).hash(&mut h);
+        }
+        h.finish()
+    };
+    if SIG.with(|s| s.replace(Some(sig))) == Some(sig) {
+        return Vec::new();
+    }
     let mut asks = Vec::new();
     let mut want = |key: u64, path: &Option<String>| {
         if let Some(path) = path
@@ -275,6 +323,12 @@ pub fn sync(
         .collect();
     let filling = layout.as_ref().is_some_and(|l| !l.complete);
     show.set_related_filling(filling);
+    show.set_related_total(i32::try_from(related.len()).unwrap_or(0));
+    let related = if all {
+        related
+    } else {
+        related.into_iter().take(RELATED_SHOWN).collect()
+    };
     sections(&related, &recs, &people);
     asks
 }
@@ -380,7 +434,14 @@ fn graph(series: u64, matched: Option<u64>, has_graph: bool) {
         }
         let due = match (&g.layout, g.read_at) {
             (None, None) => true,
-            (Some(l), Some(at)) => !l.complete && at.elapsed() > GRAPH_EVERY,
+            (Some(l), Some(at)) => {
+                at.elapsed()
+                    > if l.complete {
+                        GRAPH_DONE_EVERY
+                    } else {
+                        GRAPH_EVERY
+                    }
+            }
             (None, Some(at)) => at.elapsed() > GRAPH_EVERY,
             _ => false,
         };
@@ -467,6 +528,11 @@ pub fn install(window: &AppWindow) {
             });
         }
     });
+    show.on_show_all_related(|| {
+        GRAPH.with(|g| g.borrow_mut().all = true);
+        SIG.with(|s| s.set(None));
+        crate::local::touch();
+    });
     show.on_pick_person(|id| {
         crate::android::open_url(&format!("https://anilist.co/character/{id}"));
     });
@@ -531,10 +597,11 @@ pub fn install(window: &AppWindow) {
     });
 }
 
-/// Runs a core call off the UI thread and puts `said` under the buttons when it went through,
-/// the core's own words when it did not.
-pub fn run(call_: Call, said: String) {
-    call(call_, move |_| said);
+/// Runs a core call off the UI thread and puts a line under the buttons when it went through:
+/// `working` when the core started a job that is still under way, `done` when it answered at
+/// once. The core's own words when it refused.
+pub fn run(call_: Call, working: String, done: String) {
+    call(call_, move |started| if started { working } else { done });
 }
 
 /// Runs a core call off the UI thread and puts what it said under the buttons. `done` gets
