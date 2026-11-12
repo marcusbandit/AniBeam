@@ -945,6 +945,17 @@ FocusScope {
         frame.toast(r.reply && r.reply.job !== undefined ? "Moving to " + label : "Moved to " + label)
         return true
     }
+    // Plan to watch (#734): Planning on every connected tracker, from a search hit or a Get
+    // view. A show already on a list keeps its place there (the core never moves an entry).
+    // True when the call went through, whether it started a write or found the show listed.
+    function planToWatch(anilistId, title) {
+        var t = Door.trackers
+        if (!(t && ((t.anilist && t.anilist.connected) || (t.mal && t.mal.connected)))) { openConnect("Anilist"); return false }
+        var r = Door.planToWatch(anilistId)
+        if (r.error) { fail(r.error); return false }
+        toast(r.reply && r.reply.job !== undefined ? title + " goes on your Planning list" : title + " is on your list already")
+        return true
+    }
     // Text onto the clipboard, and a word that it went
     function copyText(text, what) {
         copyQuiet(text)

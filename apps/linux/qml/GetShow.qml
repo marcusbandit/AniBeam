@@ -61,6 +61,9 @@ Item {
     readonly property real colGap: theme.space(6)
     readonly property bool wide: width > theme.space(220)
     readonly property bool inLibrary: !!show && show.seriesId >= 0
+    // Plan to watch (#734): the show has an AniList id, and the tracker has not taken it yet
+    readonly property bool canPlan: !!show && show.anilistId > 0
+    property bool planned: false
 
     // ---- The library's row and the episode count the grid runs to
     readonly property var libCodes: show && show.cubes ? String(show.cubes).split("") : []
@@ -282,7 +285,7 @@ Item {
     property bool confirming: false
     function clearPicks() { picks = ({}); chosen = ""; replaceOn = false; confirming = false; rollChoice = null }
     onActiveChanged: clearPicks()
-    onShowChanged: { clearPicks(); sequential = false; follow = !!show && !!show.airing }
+    onShowChanged: { clearPicks(); sequential = false; planned = false; follow = !!show && !!show.airing }
     // When the action went through, the picks are spent
     onActionLineChanged: if (actionLine !== "") clearPicks()
     onPicksChanged: confirming = false
@@ -536,18 +539,34 @@ Item {
             }
             // The title and its facts at the poster's top; where the show stands, and its
             // episodes, at its foot
-            // The series' own page: everything about it, and where its episodes play
-            Button {
+            // The series' own page: everything about it, and where its episodes play; Plan to
+            // watch beside it for a show with an AniList id (#734)
+            Row {
                 id: seriesButton
-                objectName: "get-open-series"
-                visible: root.inLibrary
                 anchors.right: parent.right
                 anchors.top: poster.top
-                height: theme.space(11.75)
-                text: "Open series"
-                icon: "arrow-up-right"
-                onClicked: frame.go("series", { id: root.show.seriesId }, root.show.title)
-                Tooltip { text: "The series page: its details, episodes and playing" }
+                spacing: theme.space(2)
+                visible: root.inLibrary || root.canPlan
+                Button {
+                    id: planButton
+                    objectName: "get-plan-to-watch"
+                    visible: root.canPlan
+                    height: theme.space(11.75)
+                    text: root.planned ? "On your list" : "Plan to watch"
+                    icon: root.planned ? "check" : "bookmark"
+                    enabled: !root.planned
+                    onClicked: root.planned = frame.planToWatch(root.show.anilistId, root.show.title)
+                    Tooltip { text: root.planned ? "It is on your list" : "Put it on your Planning list" }
+                }
+                Button {
+                    objectName: "get-open-series"
+                    visible: root.inLibrary
+                    height: theme.space(11.75)
+                    text: "Open series"
+                    icon: "arrow-up-right"
+                    onClicked: frame.go("series", { id: root.show.seriesId }, root.show.title)
+                    Tooltip { text: "The series page: its details, episodes and playing" }
+                }
             }
             Column {
                 id: bandText

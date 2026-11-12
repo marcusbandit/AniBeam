@@ -9,10 +9,14 @@
 // finished run), Up to date, and Not in the library (the ghosts). Without AniList the
 // page is one empty state with the connect button.
 //
+// A click on any card, on either tab, opens Get for that show and asks the first source at
+// once (#734): the library's own show by its series, an AniList-only one by its AniList entry.
+// The card's other actions (Start watching, Play next, Open series, AniList) are its right-click
+// menu.
+//
 // Planning (#210), the second tab: the entries on AniList's Planning list, off the same
-// refresh (ListPlanning reads the cache). On disk first, then the rest. A card opens its
-// actions: Start watching moves it to Watching on every connected tracker and plays the
-// first episode; one not in the library offers Get episodes, which opens Downloads on it.
+// refresh (ListPlanning reads the cache). On disk first, then the rest. Start watching, in the
+// card's menu, moves a show to Watching on every connected tracker and plays the first episode.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -169,27 +173,33 @@ Item {
     function startWatching(e) {
         if (frame.setListStatus(e.owned, "Watching", "Watching")) frame.playNext(e.owned, e.title)
     }
-    // Downloads searches by the latin titles, so each goes over as AniList has it
+    // Downloads searches by the latin titles, so each goes over as AniList has it. The search
+    // starts at once on the first source that is on (#734).
     function getEpisodes(e) {
-        frame.go("downloads", { hit: { id: e.anilist_id, title: e.title, romaji: e.romaji || "", english: e.english || "",
+        if (page.owned(e)) { frame.go("downloads", { series: e.owned, search: true }, "Downloads"); return }
+        frame.go("downloads", { search: true, hit: { id: e.anilist_id, title: e.title, romaji: e.romaji || "", english: e.english || "",
                                        native: e.native || "", cover_url: e.poster || "", episodes: e.total || 0,
                                        format: "", year: 0 } }, "Downloads")
     }
-    function planningActions(x) {
+    // What a right-click on a card offers: the actions a click used to take, now that a click
+    // opens Get on either tab
+    function actionsOf(x) {
         var e = x.raw, items = []
         if (page.owned(e)) {
-            items.push({ text: "Start watching", icon: "play", action: function() { page.startWatching(e) } })
+            if (x.planning) items.push({ text: "Start watching", icon: "play", action: function() { page.startWatching(e) } })
+            else items.push({ text: "Play next", icon: "play", action: function() { page.playSeries(e.owned, e.title) } })
             items.push({ text: "Open series", icon: "layers", action: function() { frame.go("series", { id: e.owned }, e.title) } })
-        } else {
-            items.push({ text: "Get episodes", icon: "download", action: function() { page.getEpisodes(e) } })
         }
         items.push({ text: "Open on AniList", icon: "external-link", action: function() { frame.openLink(e.site_url || "https://anilist.co/anime/" + e.anilist_id) } })
         return items
     }
-    function openPlanning(x, card) {
-        var p = card.mapToItem(frame, card.width / 2, card.height / 2)
-        frame.openMenu(p.x, p.y, page.planningActions(x))
+    property var hoverEntry: null
+    property Item hoverItem: null
+    function hoverOn(item, x, on) {
+        if (on) { page.hoverItem = item; page.hoverEntry = x }
+        else if (page.hoverItem === item) { page.hoverItem = null; page.hoverEntry = null }
     }
+    function contextItems() { return page.hoverEntry ? page.actionsOf(page.hoverEntry) : [] }
     // To AniList: `force` from Refresh, else only when the cache is stale. The core
     // answers Ok without a fetch when no account is connected, so the page always asks.
     property int refreshAsked: 0   // for a --drive eval: the open asked once
@@ -204,10 +214,6 @@ Item {
         var d = !r.error ? r.reply.detail : null
         if (d && d.next_up) frame.go("player", { file: d.next_up }, title)
         else frame.go("series", { id: id }, title)
-    }
-    function open(x) {
-        if (!x.ghost) frame.go("series", { id: x.raw.owned }, x.raw.title)
-        else frame.openLink(x.item.site_url)
     }
     // Tracker events come in bursts (connect, then the state push): one read for them
     Timer { id: debounce; interval: 400; onTriggered: page.reload() }
@@ -333,11 +339,14 @@ Item {
                                 ghost: tile.modelData.ghost
                                 posterWidth: page.cardWidth
                                 nowMs: page.nowMs
-                                onOpened: tile.modelData.planning ? page.openPlanning(tile.modelData, watchCard) : page.open(tile.modelData)
-                                // A show the library does not have has nothing to play: Space opens it.
-                                // On Planning, Space is Start watching, or Get episodes off disk
-                                onPlayed: tile.modelData.planning ? (tile.modelData.ghost ? page.getEpisodes(tile.modelData.raw) : page.startWatching(tile.modelData.raw))
-                                          : tile.modelData.ghost ? page.open(tile.modelData) : page.playSeries(tile.modelData.raw.owned, tile.modelData.raw.title)
+                                onOpened: page.getEpisodes(tile.modelData.raw)
+                                // Space plays what the library has; on Planning it starts watching
+                                // the show, and a show the library does not have has nothing to play
+                                onPlayed: tile.modelData.ghost ? page.getEpisodes(tile.modelData.raw)
+                                          : tile.modelData.planning ? page.startWatching(tile.modelData.raw)
+                                          : page.playSeries(tile.modelData.raw.owned, tile.modelData.raw.title)
+                                HoverHandler { onHoveredChanged: page.hoverOn(watchCard, tile.modelData, hovered) }
+                                Component.onDestruction: page.hoverOn(watchCard, null, false)
                             }
                         }
                     }
