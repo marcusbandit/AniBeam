@@ -169,6 +169,17 @@ motionGate(document.querySelector(".cast-scene"));
 // Each section plays its one action the first time it is mostly on screen.
 onceInView([...document.querySelectorAll("#match, .feat")], 0.4);
 
+// The player card is drawn at the app's own 960 x 540 and scaled to fit, so every size matches.
+(() => {
+  const player = document.querySelector(".player");
+  const stage = player && player.querySelector(".pl-stage");
+  if (!stage) return;
+  const fit = () => stage.style.setProperty("--k", (player.clientWidth / 960).toFixed(4));
+  fit();
+  if ("ResizeObserver" in window) new ResizeObserver(fit).observe(player);
+  else addEventListener("resize", fit);
+})();
+
 // Linux: pick a distribution, get its install command.
 (() => {
   const box = document.querySelector(".distros");

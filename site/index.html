@@ -42,7 +42,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=B612+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="style.css">
 <script src="app.js" defer></script>
 </head>
@@ -91,8 +91,7 @@
       <span class="rise" style="--d:.09s">as a library you can</span>
       <span class="rise" style="--d:.18s">watch and track.</span>
     </h1>
-    <p class="hero-sub rise" style="--d:.3s">AniBeam finds every show in the folder, matches it on AniList and plays it right in the window.</p>
-    <div class="hero-actions rise" style="--d:.4s">
+    <div class="hero-actions rise" style="--d:.32s">
       <a class="btn btn-primary btn-lg dl-auto" id="dl-main" href="https://github.com/marcusbandit/AniBeam/releases/latest">
         <svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
         <span>Download AniBeam</span>
@@ -127,23 +126,7 @@
 </section>
 
 <section class="section library" aria-labelledby="library-h">
-  <div class="split">
-    <div class="split-text">
-      <h2 id="library-h">Drop files in.<br>Get a library.</h2>
-      <p>Point AniBeam at a folder and every show in it turns up matched, with its poster, its synopsis and what airs next. New files appear on their own.</p>
-    </div>
-    <figure class="match card" id="match" aria-label="Files in an anime folder, each matched to its show">
-      <figcaption class="match-root">~/Anime</figcaption>
-      <ol class="match-rows">
-        <li style="--i:0"><code><span>Frieren/</span>Sousou no Frieren - 12.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Frieren: Beyond Journey's End</b><small>28 episodes</small></span></li>
-        <li style="--i:1"><code><span>Jujutsu Kaisen/</span>Jujutsu Kaisen - 07.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Jujutsu Kaisen</b><small>24 episodes</small></span></li>
-        <li style="--i:2"><code><span>Cowboy Bebop/</span>Cowboy Bebop - 05.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Cowboy Bebop</b><small>26 episodes</small></span></li>
-        <li style="--i:3"><code><span>Chainsaw Man/</span>Chainsaw Man - 04.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Chainsaw Man</b><small>12 episodes</small></span></li>
-        <li style="--i:4"><code><span>Films/</span>Your Name (2016).mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Your Name.</b><small>Film, 2016</small></span></li>
-        <li style="--i:5"><code><span>Films/</span>Ghost in the Shell (1995).mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Ghost in the Shell</b><small>Film, 1995</small></span></li>
-      </ol>
-    </figure>
-  </div>
+  <h2 id="library-h">Drop files in.<br>Get a library.</h2>
 
   <div class="marquee" id="marquee" aria-hidden="true">
     <div class="marquee-row"><div class="marquee-track" data-row="a"></div></div>
@@ -158,30 +141,35 @@
     <article class="feat card feat-player">
       <h3>Plays your own files</h3>
       <div class="player" aria-hidden="true">
-        <div class="player-frame"><span class="player-bars"></span></div>
-        <div class="player-top"><b>Your Name.</b><span>Film, 1h 46m</span></div>
-        <div class="tracks">
-          <span class="tracks-h">Audio</span>
-          <span class="tr is-on">Japanese</span>
-          <span class="tr">English</span>
-          <span class="tracks-h">Subtitles</span>
-          <span class="tr is-on">English, full</span>
-          <span class="tr">English, signs only</span>
-          <span class="tr">Off</span>
-        </div>
-        <div class="player-bar">
-          <div class="pb-track"><span class="pb-buf"></span><span class="pb-played"></span><i style="--at:12%"></i><i style="--at:48%"></i><i style="--at:91%"></i><span class="pb-head"></span></div>
-          <div class="pb-row">
-            <span class="pb-btns">
-              <svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
-              <svg viewBox="0 0 24 24"><path d="M5 5l10 7-10 7zM17 5h2v14h-2z"/></svg>
-              <span class="pb-time">1:12:40 / 1:46:12</span>
-            </span>
-            <span class="pb-btns right">
-              <svg viewBox="0 0 24 24" class="is-lit"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 13h4M13 13h4M7 16h10" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-              <svg viewBox="0 0 24 24"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6M2 12a9 9 0 0 1 8 8M2 16a5 5 0 0 1 4 4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-              <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-            </span>
+        <div class="pl-stage">
+          <div class="pl-video"></div>
+          <div class="pl-glass pl-head">
+            <span class="pl-btn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></span>
+            <div class="pl-titles"><b>City the Animation</b><span>Episode 4</span><em>EP 4</em></div>
+          </div>
+          <div class="tracks">
+            <span class="tracks-h">Audio</span>
+            <span class="tr is-on">Japanese</span>
+            <span class="tr">English</span>
+            <span class="tracks-h">Subtitles</span>
+            <span class="tr is-on">English, full</span>
+            <span class="tr">English, signs only</span>
+            <span class="tr">Off</span>
+          </div>
+          <div class="pl-glass pl-ctl">
+            <div class="pl-times"><span>8:12</span><span class="dim">23:40</span></div>
+            <div class="pl-seek">
+              <span class="pl-track"></span>
+              <span class="pl-skip intro"></span>
+              <span class="pl-skip outro"></span>
+              <span class="pl-fill"></span>
+              <i style="--at:38%"></i><i style="--at:71%"></i>
+              <span class="pl-knob"></span>
+            </div>
+            <div class="pl-row">
+              <span class="pl-group"><span class="pl-btn dim"><svg viewBox="0 0 24 24"><path d="M19 20 9 12l10-8z"/><path d="M5 19V5"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="m5 4 10 8-10 8z"/><path d="M19 5v14"/></svg></span><span class="pl-gap"></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></svg></span><span class="pl-vol"><i></i></span><span class="pl-readout">100</span></span>
+              <span class="pl-group"><span class="pl-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3"/></svg></span><span class="pl-btn lit open"><svg viewBox="0 0 24 24"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M2 12a9 9 0 0 1 8 8"/><path d="M2 16a5 5 0 0 1 4 4"/><path d="M2 20h.01"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M10 8h.01M12 12h.01M14 8h.01M16 12h.01M18 8h.01M6 8h.01M7 16h10M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></span></span>
+            </div>
           </div>
         </div>
       </div>
@@ -190,45 +178,56 @@
     <article class="feat card feat-sync">
       <h3>Syncs with AniList</h3>
       <div class="sync" aria-hidden="true">
-        <div class="sync-entry">
-          <img src="img/posters/frieren.webp" alt="" loading="lazy">
-          <div>
-            <b>Frieren</b>
-            <span class="sync-ep"><span class="old">Episode 12 of 28</span><span class="new">Episode 13 of 28</span></span>
-            <span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-          </div>
+        <div class="sync-watch">
+          <span class="sw-label">Episode 13</span>
+          <span class="sw-bar"><i></i></span>
+          <span class="sw-check"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
         </div>
-        <div class="sync-row">
-          <svg class="al" viewBox="0 0 24 24"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg>
-          <span>AniList</span>
-          <span class="ok">Updated</span>
+        <span class="sync-streak"><i></i></span>
+        <div class="al-card">
+          <div class="al-head">
+            <svg viewBox="0 0 24 24"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg>
+            <span>AniList</span>
+            <span class="al-synced"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Synced</span>
+          </div>
+          <div class="al-entry">
+            <img src="img/posters/frieren.webp" alt="" loading="lazy">
+            <div class="al-meta">
+              <b>Frieren: Beyond Journey's End</b>
+              <span class="al-status">Watching</span>
+            </div>
+            <div class="al-num"><span class="n"><span class="old">12</span><span class="new">13</span></span><span class="of">/ 28</span></div>
+          </div>
+          <div class="al-track"><i></i></div>
         </div>
       </div>
     </article>
 
     <article class="feat card feat-resume">
       <h3>Pick up where you left off</h3>
-      <div class="resume" aria-hidden="true">
-        <div class="resume-row">
-          <div class="rc is-next"><img src="img/posters/frieren.webp" alt="" loading="lazy"><span class="rc-bar" style="--p:62%"></span></div>
-          <div class="rc"><img src="img/posters/jjk.webp" alt="" loading="lazy"><span class="rc-bar" style="--p:30%"></span></div>
-          <div class="rc"><img src="img/posters/csm.webp" alt="" loading="lazy"><span class="rc-bar" style="--p:80%"></span></div>
-          <div class="rc"><img src="img/posters/spyfamily.webp" alt="" loading="lazy"><span class="rc-bar" style="--p:10%"></span></div>
+      <div class="pickup" aria-hidden="true">
+        <div class="pickup-art"></div>
+        <img class="pickup-poster" src="img/posters/frieren.webp" alt="" loading="lazy">
+        <div class="pickup-text">
+          <span class="pickup-kicker">Pick up where you stopped</span>
+          <b>Sousou no Frieren</b>
+          <span class="pickup-ep">Episode 13</span>
+          <span class="cubes"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="half"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="pickup-btns"><span class="pk-resume"><svg viewBox="0 0 24 24"><path d="M6 3l14 9-14 9z"/></svg>Resume episode 13</span><span class="pk-open">Open series</span></span>
         </div>
-        <span class="resume-btn"><svg viewBox="0 0 24 24"><path d="M6 3l14 9-14 9z"/></svg>Resume Frieren, episode 13</span>
       </div>
     </article>
 
     <article class="feat card feat-chain">
-      <h3>Finds every sequel, in order</h3>
-      <ol class="chain" aria-hidden="true">
-        <li class="link owned" style="--i:0"><img src="img/posters/aot-16498.webp" alt="" loading="lazy"><b>Attack on Titan</b><span>In your library</span></li>
-        <li class="link owned" style="--i:1"><img src="img/posters/aot-20958.webp" alt="" loading="lazy"><b>Season 2</b><span>In your library</span></li>
-        <li class="link next" style="--i:2"><img src="img/posters/aot-99147.webp" alt="" loading="lazy"><b>Season 3</b><span>Up next</span></li>
-        <li class="link " style="--i:3"><img src="img/posters/aot-104578.webp" alt="" loading="lazy"><b>Season 3 Part 2</b><span>2019</span></li>
-        <li class="link " style="--i:4"><img src="img/posters/aot-110277.webp" alt="" loading="lazy"><b>The Final Season</b><span>2021</span></li>
-        <li class="link " style="--i:5"><img src="img/posters/aot-131681.webp" alt="" loading="lazy"><b>Final Season Part 2</b><span>2022</span></li>
-      </ol>
+      <h3>Finds every sequel</h3>
+      <div class="related" aria-hidden="true">
+        <div class="stone owned" style="--i:0"><img src="img/posters/aot-20958.webp" alt="" loading="lazy"><div><b>Attack on Titan Season 2</b><span>Sequel, TV, 2017</span><em>In your library</em></div></div>
+        <div class="stone owned" style="--i:1"><img src="img/posters/aot-99147.webp" alt="" loading="lazy"><div><b>Attack on Titan Season 3</b><span>Sequel, TV, 2018</span><em>In your library</em></div></div>
+        <div class="stone" style="--i:2"><img src="img/posters/aot-104578.webp" alt="" loading="lazy"><div><b>Season 3 Part 2</b><span>Sequel, TV, 2019</span><em>On AniList</em></div></div>
+        <div class="stone" style="--i:3"><img src="img/posters/aot-110277.webp" alt="" loading="lazy"><div><b>The Final Season</b><span>Sequel, TV, 2021</span><em>On AniList</em></div></div>
+        <div class="stone" style="--i:4"><img src="img/posters/aot-131681.webp" alt="" loading="lazy"><div><b>Final Season Part 2</b><span>Sequel, TV, 2022</span><em>On AniList</em></div></div>
+        <div class="stone" style="--i:5"><img src="img/posters/aot-146984.webp" alt="" loading="lazy"><div><b>The Final Chapters</b><span>Sequel, special, 2023</span><em>On AniList</em></div></div>
+      </div>
     </article>
 
   </div>
@@ -237,13 +236,18 @@
 <section class="section cast-section" id="cast" aria-labelledby="cast-h">
   <div class="cast-copy">
     <h2 id="cast-h">Throw it on<br>the big screen.</h2>
-    <p>Send what you are watching to a Chromecast or any DLNA TV, right from the player. The episode keeps its subtitles, and the computer stays the remote.</p>
   </div>
   <div class="cast-scene" aria-hidden="true">
     <div class="tv">
       <div class="tv-screen">
-        <img src="img/art/frieren.webp" alt="" loading="lazy">
-        <span class="tv-pill"><svg viewBox="0 0 24 24"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6M2 12a9 9 0 0 1 8 8M2 16a5 5 0 0 1 4 4M2 20h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Living room TV</span>
+        <img src="img/art/tv.webp" alt="" loading="lazy">
+        <div class="rx">
+          <img class="rx-logo" src="img/logo.svg" alt="">
+          <div class="rx-text"><b>City the Animation</b><span>Episode 1</span></div>
+          <span class="rx-time">8:12</span>
+          <span class="rx-bar"><i></i></span>
+          <span class="rx-time">23:40</span>
+        </div>
       </div>
       <span class="tv-stand"></span>
     </div>
@@ -253,13 +257,16 @@
       <circle class="arc-dot" r="4"><animateMotion dur="2.4s" repeatCount="indefinite" rotate="auto"><mpath href="#arc"/></animateMotion></circle>
     </svg>
     <div class="remote card">
-      <div class="remote-art"><img src="img/posters/frieren.webp" alt="" loading="lazy"></div>
-      <div class="remote-text"><b>Frieren</b><span>Episode 13, on Living room TV</span></div>
-      <div class="remote-btns">
-        <svg viewBox="0 0 24 24"><path d="M19 5L9 12l10 7zM5 5h2v14H5z"/></svg>
-        <span class="remote-play"><svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg></span>
-        <svg viewBox="0 0 24 24"><path d="M5 5l10 7-10 7zM17 5h2v14h-2z"/></svg>
+      <div class="remote-head">
+        <svg class="cast-on" viewBox="0 0 24 24"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="6" y="7.5" width="12.5" height="9" rx="1" fill="currentColor"/><path d="M2 12a9 9 0 0 1 8 8M2 16a5 5 0 0 1 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="2.6" cy="20" r="1.2" fill="currentColor"/></svg>
+        <span>Living room TV</span>
       </div>
+      <div class="remote-now">
+        <img src="img/art/tv-thumb.webp" alt="" loading="lazy">
+        <div class="remote-text"><b>City the Animation</b><span>Episode 1</span></div>
+        <span class="remote-play"><svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg></span>
+      </div>
+      <span class="remote-bar"><i></i></span>
     </div>
   </div>
 </section>
@@ -267,27 +274,24 @@
 <section class="section trust" aria-labelledby="trust-h">
   <div class="trust-inner">
     <h2 id="trust-h">Your files stay yours.</h2>
-    <p class="trust-lede">AniBeam is a program on your computer, not a service. It reads your folder, plays your files, and that is the whole deal.</p>
     <div class="trust-grid">
       <div class="tcell">
         <svg viewBox="0 0 24 24"><path d="M5 12H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h12M22 8v3a1 1 0 0 1-1 1h-7M7 8h.01M3 16v3a1 1 0 0 0 1 1h12m4-4a1 1 0 0 1 1 1v2M7 16h.01M2 2l20 20"/></svg>
         <h3>No server</h3>
-        <p>Nothing to host, nothing to keep running. It opens the folder directly.</p>
       </div>
       <div class="tcell">
         <svg viewBox="0 0 24 24"><path d="M2 21a8 8 0 0 1 10.82-7.48M10 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM17 17l5 5M22 17l-5 5"/></svg>
         <h3>No account</h3>
-        <p>Use it without signing up. Connect AniList only if you want tracking.</p>
       </div>
       <div class="tcell">
         <svg viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61M2 2l20 20"/></svg>
         <h3>No telemetry</h3>
-        <p>It talks to AniList, a few show-info sites and GitHub for updates. Nothing reports back.</p>
       </div>
-      <div class="tcell">
+      <div class="tcell tcell-os">
         <svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
         <h3>Open source</h3>
-        <p>GPL 3.0. Every line is on <a href="https://github.com/marcusbandit/AniBeam">GitHub</a>, so anyone can check.</p>
+        <span class="lic">GPL 3.0</span>
+        <a class="gh" href="https://github.com/marcusbandit/AniBeam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>marcusbandit/AniBeam</a>
       </div>
     </div>
   </div>
@@ -315,7 +319,6 @@
       <div class="plat-actions">
         <a class="btn btn-ghost btn-lg" data-asset="dmg" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the dmg</a>
         <div class="term"><span class="prompt">$</span><code>brew install --cask marcusbandit/anibeam/anibeam</code><button type="button" class="copy" data-copy="brew install --cask marcusbandit/anibeam/anibeam">Copy</button></div>
-        <p class="plat-note">Apple silicon, macOS 15 and newer.</p>
       </div>
     </div>
     <div class="plat card" data-os="windows">
@@ -324,7 +327,6 @@
       <div class="plat-actions">
         <a class="btn btn-ghost btn-lg" data-asset="setup" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the installer</a>
         <a class="btn btn-quiet btn-lg" data-asset="zip" href="https://github.com/marcusbandit/AniBeam/releases/latest">Portable zip</a>
-        <p class="plat-note">Windows 10 and 11, no admin prompt.</p>
       </div>
     </div>
   </div>
@@ -332,12 +334,12 @@
   <div class="phones">
     <div class="phone card" data-os="android">
       <svg class="plat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4395 5.5586c-.675 1.1664-1.352 2.3318-2.0274 3.498-.0366-.0155-.0742-.0286-.1113-.043-1.8249-.6957-3.484-.8-4.42-.787-1.8551.0185-3.3544.4643-4.2597.8203-.084-.1494-1.7526-3.021-2.0215-3.4864a1.1451 1.1451 0 0 0-.1406-.1914c-.3312-.364-.9054-.4859-1.379-.203-.475.282-.7136.9361-.3886 1.5019 1.9466 3.3696-.0966-.2158 1.9473 3.3593.0172.031-.4946.2642-1.3926 1.0177C2.8987 12.176.452 14.772 0 18.9902h24c-.119-1.1108-.3686-2.099-.7461-3.0683-.7438-1.9118-1.8435-3.2928-2.7402-4.1836a12.1048 12.1048 0 0 0-2.1309-1.6875c.6594-1.122 1.312-2.2559 1.9649-3.3848.2077-.3615.1886-.7956-.0079-1.1191a1.1001 1.1001 0 0 0-.8515-.5332c-.5225-.0536-.9392.3128-1.0488.5449zm-.0391 8.461c.3944.5926.324 1.3306-.1563 1.6503-.4799.3197-1.188.0985-1.582-.4941-.3944-.5927-.324-1.3307.1563-1.6504.4727-.315 1.1812-.1086 1.582.4941zM7.207 13.5273c.4803.3197.5506 1.0577.1563 1.6504-.394.5926-1.1038.8138-1.584.4941-.48-.3197-.5503-1.0577-.1563-1.6504.4008-.6021 1.1087-.8106 1.584-.4941z"/></svg>
-      <div class="phone-text"><h3>Android</h3><p>Its own library, tracked to the same AniList account.</p></div>
+      <div class="phone-text"><h3>Android</h3></div>
       <a class="btn btn-ghost btn-lg" data-asset="apk" href="https://github.com/marcusbandit/AniBeam/releases?q=android&amp;expanded=true">Download the APK</a>
     </div>
     <div class="phone card is-soon" aria-disabled="true">
       <svg class="plat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
-      <div class="phone-text"><h3>iPhone and iPad</h3><p>On the way.</p></div>
+      <div class="phone-text"><h3>iPhone and iPad</h3></div>
       <span class="soon">Coming soon</span>
     </div>
   </div>
