@@ -3,9 +3,10 @@
 // releases page, so nothing here is required.
 (() => {
   const repo = "marcusbandit/AniBeam";
-  const page = document.getElementById("dl-page");
+  const page = document.querySelector(".dl-page");
+  if (!page) return;
   const meta = document.getElementById("dl-meta");
-  const toggle = document.querySelector(".channel");
+  const toggle = document.querySelector(".channel"); // only on the download page
   const match = {
     appimage: (n) => n.endsWith(".AppImage"),
     deb: (n) => n.endsWith("_amd64.deb"),
@@ -32,7 +33,7 @@
 
   function show(channel) {
     page.dataset.channel = channel;
-    toggle.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.channel === channel)));
+    if (toggle) toggle.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.channel === channel)));
     const { desktop, phone } = pick(channel);
     for (const card of document.querySelectorAll("#dl-grid [data-asset]")) {
       const key = card.dataset.asset;
@@ -40,7 +41,7 @@
       const asset = release && release.assets.find((a) => match[key](a.name));
       card.href = asset ? asset.browser_download_url : (release ? release.html_url : `https://github.com/${repo}/releases`);
     }
-    if (desktop) {
+    if (desktop && meta) {
       const version = desktop.tag_name.replace(/^v/, "");
       const when = new Date(desktop.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
       meta.textContent = `${version}, ${when}. `;
@@ -51,7 +52,7 @@
     }
   }
 
-  toggle.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => show(b.dataset.channel)));
+  if (toggle) toggle.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => show(b.dataset.channel)));
   fetch(`https://api.github.com/repos/${repo}/releases?per_page=100`, { headers: { Accept: "application/vnd.github+json" } })
     .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
     .then((list) => { releases = list; show(page.dataset.channel); })
@@ -70,6 +71,7 @@
     main.classList.add("btn-primary");
   }
 
+  if (!toggle) return; // app.js wires the copy buttons on the home page
   document.querySelectorAll(".copy").forEach((b) => {
     b.addEventListener("click", async () => {
       try {

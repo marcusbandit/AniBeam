@@ -711,24 +711,59 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 }
 
 /* The download page. The visitor's system gets the wide tile on top; the rest sit below it.
-   On Nightly the page takes the app's teal: the logo, the buttons, the beam and the toggle. */
+   Yellow is the finished thing. Nightly is a draft of it, so it looks sketched: pencil grey
+   on paper, dashed lines, faint notepad ruling, and the logo drawn by hand and tilted. */
 .dl-page { --beam-a: rgba(253, 201, 1, 0.55); --beam-b: rgba(255, 226, 120, 0.55); max-width: 1040px; margin: 0 auto; padding: 0 var(--gutter); }
-.dl-page[data-channel="nightly"] { --brand: #46e0c4; --brand-hi: #74f0d9; --beam-a: rgba(70, 224, 196, 0.6); --beam-b: rgba(124, 188, 245, 0.55); }
+.dl-page[data-channel="nightly"] { --paper: #e7e1d0; --brand: var(--paper); --brand-hi: #fff; --beam-a: rgba(231, 225, 208, 0.35); --beam-b: rgba(231, 225, 208, 0.22); }
 .dl-head { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; padding: 168px 0 64px; text-align: center; }
 .dl-beams { inset: -40px -40% 0; }
 .dl-beams i { background: linear-gradient(90deg, transparent, var(--beam-a) 35%, var(--beam-b) 70%, transparent); transition: background 0.6s ease; }
 .dl-mark { position: relative; width: 96px; height: 96px; margin-bottom: 26px; }
 .dl-mark img { position: absolute; inset: 0; border-radius: 22px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 60px -20px #000; transition: opacity 0.45s ease, transform 0.6s var(--ease); }
-.mark-nightly { opacity: 0; transform: rotate(-12deg) scale(0.9); }
-.dl-page[data-channel="nightly"] .mark-stable { opacity: 0; transform: rotate(12deg) scale(0.9); }
-.dl-page[data-channel="nightly"] .mark-nightly { opacity: 1; transform: none; }
+.mark-nightly { opacity: 0; transform: rotate(-12deg) scale(0.9); box-shadow: none !important; }
+.dl-page[data-channel="nightly"] .mark-stable { opacity: 0; transform: rotate(8deg) scale(0.9); }
+.dl-page[data-channel="nightly"] .mark-nightly { opacity: 1; transform: rotate(-4deg); }
 .dl-head h1 { font-size: clamp(36px, 5.4vw, 64px); letter-spacing: -0.04em; font-weight: 640; }
 .channel { position: relative; display: inline-flex; margin-top: 30px; padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair-2); }
 .channel button { position: relative; z-index: 1; width: 104px; padding: 9px 0; border: 0; border-radius: 999px; background: none; color: var(--fg-3); font: 600 14px/1 var(--sans); cursor: pointer; transition: color 0.25s ease; }
 .channel button:hover { color: #fff; }
 .channel button[aria-selected="true"] { color: var(--brand-ink); }
 .channel-thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--brand); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
-.dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); }
+.dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); background: transparent; box-shadow: inset 0 0 0 1.5px var(--paper); }
+.dl-page[data-channel="nightly"] .channel { box-shadow: none; outline: 1.5px dashed rgba(231, 225, 208, 0.35); outline-offset: -1px; }
+.dl-page[data-channel="nightly"] .channel button[aria-selected="true"] { color: var(--paper); }
+
+/* Nightly, sketched: every edge a dashed pencil line, tiles ruled like a notepad page, buttons
+   drawn in outline. The beam behind the title becomes faint pencil strokes. */
+.dl-page[data-channel="nightly"] .dl-tile {
+  border: 1.5px dashed rgba(231, 225, 208, 0.32);
+  background:
+    repeating-linear-gradient(transparent 0 27px, rgba(231, 225, 208, 0.045) 27px 28px),
+    #0b0c0e;
+  box-shadow: none;
+}
+.dl-page[data-channel="nightly"] .dl-tile.is-featured::before { display: none; }
+.dl-page[data-channel="nightly"] .dl-tile.is-featured { border-color: rgba(231, 225, 208, 0.6); }
+.dl-page[data-channel="nightly"] .btn-primary,
+.dl-page[data-channel="nightly"] .btn-ghost {
+  background: transparent;
+  color: var(--paper);
+  box-shadow: none;
+  outline: 1.5px dashed rgba(231, 225, 208, 0.55);
+  outline-offset: -1.5px;
+}
+.dl-page[data-channel="nightly"] .btn-primary { outline-style: solid; outline-color: var(--paper); }
+.dl-page[data-channel="nightly"] .btn:hover { background: rgba(231, 225, 208, 0.08); }
+.dl-page[data-channel="nightly"] .btn::after { display: none; }
+.dl-page[data-channel="nightly"] .dl-chip { background: transparent; box-shadow: none; outline: 1px dashed rgba(231, 225, 208, 0.3); outline-offset: -1px; }
+.dl-page[data-channel="nightly"] .term { background: #0b0c0e; box-shadow: none; outline: 1.5px dashed rgba(231, 225, 208, 0.3); outline-offset: -1.5px; }
+.dl-page[data-channel="nightly"] .dl-beams i { filter: none; height: 1.5px !important; background: repeating-linear-gradient(90deg, var(--beam-a) 0 14px, transparent 14px 20px); }
+.dl-page[data-channel="nightly"] .dl-beams i::after { display: none; }
+.dl-page .dl-tile, .dl-page .btn, .dl-page .term, .dl-page .dl-chip { transition: border-color 0.45s ease, background-color 0.45s ease, outline-color 0.45s ease, color 0.3s ease, transform var(--quick); }
+
+/* On the home page the same grid sits under Get AniBeam, always Stable. */
+.dl-embed { max-width: var(--wide); padding: 0; }
+.dl-embed .dl-all { margin-top: 40px; }
 .dl-meta { min-height: 1.4em; margin: 20px 0 0; color: var(--fg-3); font-size: 14.5px; }
 .dl-meta a { color: var(--fg-2); }
 
@@ -746,7 +781,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 }
 .dl-name { display: flex; align-items: center; gap: 12px; }
 .dl-name svg { width: 26px; height: 26px; fill: var(--fg); transition: fill 0.45s ease; }
-.dl-name h2 { font-size: 22px; letter-spacing: -0.02em; }
+.dl-name :is(h2, h3) { font-size: 22px; letter-spacing: -0.02em; }
 .dl-do { display: flex; flex-direction: column; gap: 14px; margin-top: auto; }
 .dl-main { width: 100%; }
 .dl-chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -758,7 +793,7 @@ a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 /* The featured tile: the visitor's system, wide, with its download in the brand colour. */
 .dl-tile.is-featured { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 40px; padding: 34px 38px; }
 .dl-tile.is-featured .dl-name svg { width: 44px; height: 44px; fill: var(--brand); }
-.dl-tile.is-featured .dl-name h2 { font-size: 34px; }
+.dl-tile.is-featured .dl-name :is(h2, h3) { font-size: 34px; }
 .dl-tile.is-featured .dl-do { flex-direction: row; align-items: center; gap: 18px; margin: 0 0 0 auto; }
 .dl-tile.is-featured .dl-main { width: auto; min-width: 260px; }
 .dl-tile.is-featured::before {
