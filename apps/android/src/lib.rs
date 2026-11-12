@@ -15,6 +15,7 @@ mod android;
 mod app;
 mod crease;
 mod desk;
+mod feed;
 mod find;
 mod focus;
 mod local;

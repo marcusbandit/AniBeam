@@ -53,20 +53,20 @@ fn list<T: Clone + 'static>() -> Rc<VecModel<T>> {
 }
 
 /// Shelves whose tiles keep one model per shelf title for the life of the app.
-struct Shelves {
-    shelves: Rc<VecModel<Shelf>>,
+pub(crate) struct Shelves {
+    pub(crate) shelves: Rc<VecModel<Shelf>>,
     tiles: HashMap<&'static str, Rc<VecModel<Tile>>>,
 }
 
 impl Shelves {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Shelves {
             shelves: list(),
             tiles: HashMap::new(),
         }
     }
 
-    fn set(&mut self, rows: Vec<(&'static str, Vec<Tile>)>) {
+    pub(crate) fn set(&mut self, rows: Vec<(&'static str, Vec<Tile>)>) {
         let shelves = rows
             .into_iter()
             .filter(|(_, tiles)| !tiles.is_empty())
@@ -484,6 +484,7 @@ impl App {
             ("Recently watched", home.watched),
             ("Recently downloaded", home.downloaded),
         ]);
+        crate::feed::tick(&window, changed, &self.art, now);
         data.set_phone_shows(self.cards.len() as i32);
         data.set_home_note(
             match self.cards.len() {
@@ -1901,6 +1902,7 @@ pub fn run(
     let window = AppWindow::new()?;
     crate::player::install(&window);
     crate::subtitles::install(&window);
+    crate::feed::install(&window);
     let data = window.global::<AppData>();
     data.set_version(
         format!(
