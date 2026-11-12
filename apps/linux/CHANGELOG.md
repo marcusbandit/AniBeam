@@ -14,6 +14,8 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.5.0 · 2026-11-12
+
 ## 2.4.0 · Quality of life · 2026-10-30
 
 ### New
@@ -95,6 +97,38 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Airing times of your shows can go to a calendar app, set in Settings
 - Change a show's list status from its status pill or right-click menu
 - Pick several shows in Library with Ctrl or Shift and hide, rate or move them
+- A first-run setup walks you through your folder, your list and downloads
+- No anime folder yet? Setup makes one for you
+- Run setup again from Settings, under About
+- Home shows what is out now and popular this season before you add a folder
+- A first scan ends with what it found, and walks you through what did not match
+- Watching has a Planning tab: start a planned show or get its episodes
+- Starting and finishing a show dates it on AniList and MyAnimeList
+- Finishing a completed show again counts a rewatch
+- Write notes on a show's list entry from its page
+- A followed show's feed is read the moment a new episode airs
+- The activity log says when a followed episode has not turned up after three days
+- A Stats page shows hours watched, genres and seasons, and a year recap
+- Screen readers can name every button, switch, field and card
+- Change the text size in Settings, under Appearance, from smaller to largest
+- Help in Settings answers common questions, each with a button to the fix
+- Ask Claude Code to look a show's episode dates up, under Episodes and dates
+- Errors say what to do next, with a button for it and details a click away
+- Settings, Downloads picks whether AniBeam or anirss runs searches
+- Switch off any device on your tailnet in Settings, Phone app
+- Stream episodes has its own switch in Settings, Phone app
+- Watch history, resume points and matches merge between your computers
+- A notification says when an episode of a show you watch is out
+- Set a status and a score with no AniList or MyAnimeList account
+- Export carries the lists kept on this device
+- Connecting AniList or MyAnimeList offers to move the list kept on this computer
+- Each person on your tailnet sees their own progress from this computer
+- Airing sorts the season by score, trending, start date and more
+- Home's Coming up can hide the days with nothing on
+- Your phone can send downloads to this computer, into its library
+- Click a show on Watching or Planning to search its episodes at once
+- Plan to watch from a Downloads search result or a show's Get page
+- Cast the playing episode to a Chromecast or DLNA TV from the player
 
 ### Changed
 - A show you marked not interested leaves that list once it is off the air
@@ -145,6 +179,27 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Settings and errors use plain words instead of anirss terms
 - The activity log speaks plain words and leaves out background chores
 - Library, Airing and Feed open two to four times faster and use less memory
+- Plain words replace jargon: Metadata is Show info, endpoints are sources
+- On disk marks the release a file was downloaded from, even when it was renamed
+- Downloads errors say what to do next, with a button that does it
+- Settings errors say what to do next, with a button that does it
+- Empty and failed pages say why, with the button that fills them
+- With AniBeam's own engine, best fit follows the preferences saved in anirss
+- On AniBeam's own engine, Downloads lists your sources and needs no helper
+- Downloads search and follow on AniBeam itself, unless you picked the helper
+- Sources set only in the helper's own config need adding again in AniBeam
+- A source added by hand needs {query} where the search goes
+- Get show names each source by the kind of search it runs
+- Best fit prefers the release groups your sources list as trusted
+- Some sources need their update under Endpoints to keep their show feeds
+- The Metadata page opens faster on a large library
+- Downloads: folders and feeds without a show are full-size cards in the grid
+- The Next up card puts the poster on the right, fading into the show's colour
+- A series page reads synopsis, characters, related, tags, then recommendations
+- Recommendations sit as an even 4x2 grid, or one row of eight when wide
+- Library groups by Nothing first, set apart from the other groupings
+- The right-click menu puts a line between its groups of actions
+- Continue on Home includes the Up next series too
 
 ### Fixed
 - A show's synopsis shows symbols like & instead of their codes, in paragraphs
@@ -197,6 +252,35 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - A feed error names only the feed's host, never a login in its address
 - A qBittorrent at a name like this computer's no longer counts as this computer
 - A show titled with a word like Trailer or Special no longer reads as extras
+- Downloads says plainly why it cannot start, with one button that fixes it
+- An episode titled with a word like Special or Trailer stays an episode
+- Two releases of one extra, like SP01 and SP01v2, are one row with one history
+- On a narrow window the player's buttons no longer cover the volume
+- A torrent link written with backslashes downloads instead of being refused
+- A tracker written with backslashes shows its host, not its passkey
+- A source behind an anirss you run says to add it to that anirss's config
+- Subscribing to a show you already have saves only into its own folder
+- Following a show on a source with no feed says so, instead of never matching
+- The activity log keeps no source's login or API key, older lines included
+- On a very narrow window the player's right-hand buttons fold into a menu
+- Downloads no longer show the old anirss after switching to another one
+- A subscription on a source with no feed says it cannot fetch new episodes
+- A source with an empty category or filter searches every upload
+- A source whose address carries its own parameters searches correctly
+- A poster asked for twice at once is saved whole
+- Stats counts a rewatch in the year you watched it again
+- Episodes marked watched by hand no longer add hours to Stats
+- Out now fills the full width in your chosen grid and shows the last 24 hours
+- Downloads grids fill the page width, four across on the show tabs
+- Recommendation posters round their corners like every other card
+- Hovering a selected menu entry now brightens it instead of dimming it
+- Library posters now reach the same right edge as the search bar
+- Holding a card to pick no longer scrolls the page; drag to paint more picks
+- Picking cards keeps each show's list and library tag
+- On a very wide window, grids fill the width instead of dropping a column
+- This week keeps episodes that aired today or yesterday, with how long ago
+- A show reopens on the subtitles you picked, not a signs-only twin of them
+- A show with nothing downloaded says not downloaded, not missing
 
 ## 2.3.0 · 2026-10-27
 
