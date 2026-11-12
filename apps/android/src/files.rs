@@ -41,6 +41,10 @@ thread_local! {
 /// What the result file says, if it says anything yet.
 fn read(result: &Path) -> Option<Outcome> {
     let word = std::fs::read_to_string(result).ok()?;
+    // The picker creates the file before it writes the word: empty is not yet.
+    if word.trim().is_empty() {
+        return None;
+    }
     Some(match word.trim() {
         "ok" => Outcome::Done,
         "cancel" => Outcome::Cancelled,
@@ -52,13 +56,13 @@ fn read(result: &Path) -> Option<Outcome> {
 /// time; a second while one is open is refused.
 pub fn pick(kind: Pick, path: &Path, name: &str, done: impl FnOnce(Outcome) + 'static) {
     if WAITING.with(|w| w.borrow().is_some()) {
-        done(Outcome::Failed("A file is already being picked.".into()));
+        fail_later(done, "A file is already being picked.".into());
         return;
     }
     let result = path.with_extension("result");
     let _ = std::fs::remove_file(&result);
     if let Err(e) = launch(kind, path, name, &result) {
-        done(Outcome::Failed(e));
+        fail_later(done, e);
         return;
     }
     let timer = slint::Timer::default();
@@ -71,6 +75,12 @@ pub fn pick(kind: Pick, path: &Path, name: &str, done: impl FnOnce(Outcome) + 's
             timer,
         })
     });
+}
+
+/// A pick that could not start says so on the next turn of the event loop, never inside the
+/// call that asked: that call may hold the page's state.
+fn fail_later(done: impl FnOnce(Outcome) + 'static, why: String) {
+    slint::Timer::single_shot(Duration::from_millis(0), move || done(Outcome::Failed(why)));
 }
 
 /// One look at the result file. Nothing comes back from the picker but this file, so the
@@ -102,7 +112,7 @@ fn launch(kind: Pick, path: &Path, name: &str, result: &Path) -> Result<(), Stri
         let vm = unsafe { JavaVM::from_raw(ctx.vm().cast())? };
         let mut env = vm.attach_current_thread()?;
         let app = unsafe { JObject::from_raw(ctx.context().cast()) };
-        env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
+        let started = env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
             let intent = env.new_object("android/content/Intent", "()V", &[])?;
             let pkg = env.new_string("com.marcusrosado.anibeam")?;
             let class = env.new_string("com.marcusrosado.anibeam.PickActivity")?;
@@ -150,12 +160,14 @@ fn launch(kind: Pick, path: &Path, name: &str, result: &Path) -> Result<(), Stri
                 &[JValue::Object(&intent)],
             )?;
             Ok(())
-        })?;
+        });
+        // A Java exception left pending would fail the next call on this thread, so it is
+        // cleared whether or not the frame got to its end.
         if env.exception_check().unwrap_or(false) {
             let _ = env.exception_clear();
             return Err("Java threw".into());
         }
-        Ok(())
+        started
     };
     go().map_err(|e| format!("The file picker did not open: {e}"))
 }
@@ -177,6 +189,9 @@ mod tests {
         assert_eq!(read(&file), None);
         std::fs::write(&file, "ok").unwrap();
         assert_eq!(read(&file), Some(Outcome::Done));
+        // Created and not written yet.
+        std::fs::write(&file, "").unwrap();
+        assert_eq!(read(&file), None);
         std::fs::write(&file, "cancel").unwrap();
         assert_eq!(read(&file), Some(Outcome::Cancelled));
         std::fs::write(&file, "error: no room").unwrap();
