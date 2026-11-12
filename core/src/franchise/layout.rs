@@ -29,11 +29,6 @@ pub const SPINE_X_GAP: f64 = 320.0;
 /// The step from one row to the next.
 pub const V_GAP: f64 = 500.0;
 
-/// The narrowest slot a node may be given. Electron measured subtrees with
-/// it; the row grid here never goes below one column, so it is carried as
-/// the shell's minimum rather than used in the arithmetic.
-pub const H_GAP: f64 = 240.0;
-
 /// A node's place on the grid: the column, then the row. Both count from
 /// nought, and the positions a caller sees are these times the two gaps.
 pub type Cell = (i64, i64);
@@ -674,12 +669,6 @@ pub(crate) struct Plan {
     pub labels: HashMap<u64, String>,
 }
 
-/// Where every node of the closure goes: `(id, x, y)` per node, sorted by
-/// id, each node placed exactly once.
-pub fn layout(closure: &Closure, current: u64) -> Vec<(u64, f64, f64)> {
-    plan(closure, current).positions
-}
-
 pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
     let by_id: HashMap<u64, &Node> = closure.nodes.iter().map(|n| (n.anilist_id, n)).collect();
     let edges = canonical_edges(&closure.edges, &by_id);
@@ -1052,7 +1041,6 @@ mod tests {
             nodes,
             edges,
             members,
-            boundary,
             complete: true,
             owed: Vec::new(),
         }
@@ -1071,7 +1059,7 @@ mod tests {
             vec![e(1, 2, "SEQUEL"), e(2, 3, "SEQUEL"), e(1, 50, "CHARACTER")],
             &[50],
         );
-        let mut placed = layout(&closure, 1);
+        let mut placed = plan(&closure, 1).positions;
         placed.sort_by_key(|(id, _, _)| *id);
         assert_eq!(
             placed,
@@ -1106,7 +1094,7 @@ mod tests {
             ],
             &[],
         );
-        let placed = layout(&closure, 1);
+        let placed = plan(&closure, 1).positions;
 
         let mut ids: Vec<u64> = placed.iter().map(|(id, _, _)| *id).collect();
         ids.sort_unstable();

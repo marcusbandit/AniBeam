@@ -44,7 +44,6 @@ pub fn is_traversable(relation: &str) -> bool {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Node {
     pub anilist_id: u64,
-    pub mal_id: Option<u64>,
     pub media_type: Option<String>,
     pub format: Option<String>,
     pub status: Option<String>,
@@ -83,9 +82,6 @@ pub struct Closure {
     /// The seed and everything reached across a traversable edge from an
     /// expanded member.
     pub members: HashSet<u64>,
-    /// Everything else in `nodes`: reached only across a CHARACTER or an
-    /// OTHER edge, drawn so the connection shows, never expanded.
-    pub boundary: HashSet<u64>,
     /// Nothing owed and the cap never hit.
     pub complete: bool,
     /// The members whose edges are not in the table yet, in the order the
@@ -157,11 +153,6 @@ pub fn close(conn: &Connection, seed: u64, cap: usize, now: i64) -> Result<Closu
         }
     }
 
-    let boundary: HashSet<u64> = nodes
-        .keys()
-        .filter(|id| !members.contains(id))
-        .copied()
-        .collect();
     let root = members.iter().copied().min().unwrap_or(seed);
     let complete = !hit_cap && owed.is_empty();
     let nodes: Vec<Node> = order.iter().map(|id| nodes[id].clone()).collect();
@@ -170,7 +161,6 @@ pub fn close(conn: &Connection, seed: u64, cap: usize, now: i64) -> Result<Closu
         nodes,
         edges,
         members,
-        boundary,
         complete,
         owed,
     })
@@ -181,24 +171,23 @@ pub fn close(conn: &Connection, seed: u64, cap: usize, now: i64) -> Result<Closu
 fn load(conn: &Connection, id: u64, now: i64) -> Result<Node, CoreError> {
     let row = conn
         .query_row(
-            "SELECT mal_id, media_type, format, status, year, site_url, title_romaji, title_english, cover_url,
+            "SELECT media_type, format, status, year, site_url, title_romaji, title_english, cover_url,
                     relations_fetched_at, crawl_deferred_until
              FROM anilist_media WHERE id = ?1",
             params![as_i64(id)],
             |r| {
                 Ok(Node {
                     anilist_id: id,
-                    mal_id: r.get::<_, Option<i64>>(0)?.map(as_u64),
-                    media_type: r.get(1)?,
-                    format: r.get(2)?,
-                    status: r.get(3)?,
-                    year: r.get::<_, Option<i64>>(4)?.and_then(|v| u32::try_from(v).ok()),
-                    site_url: r.get(5)?,
-                    title_romaji: r.get(6)?,
-                    title_english: r.get(7)?,
-                    cover_url: r.get(8)?,
-                    relations_fetched: r.get::<_, Option<i64>>(9)?.is_some(),
-                    deferred_until: r.get::<_, Option<i64>>(10)?.filter(|until| *until > now),
+                    media_type: r.get(0)?,
+                    format: r.get(1)?,
+                    status: r.get(2)?,
+                    year: r.get::<_, Option<i64>>(3)?.and_then(|v| u32::try_from(v).ok()),
+                    site_url: r.get(4)?,
+                    title_romaji: r.get(5)?,
+                    title_english: r.get(6)?,
+                    cover_url: r.get(7)?,
+                    relations_fetched: r.get::<_, Option<i64>>(8)?.is_some(),
+                    deferred_until: r.get::<_, Option<i64>>(9)?.filter(|until| *until > now),
                 })
             },
         )
@@ -217,6 +206,19 @@ mod tests {
     /// The nodes a closure drew, smallest id first.
     fn ids(closure: &Closure) -> Vec<u64> {
         let mut v: Vec<u64> = closure.nodes.iter().map(|n| n.anilist_id).collect();
+        v.sort_unstable();
+        v
+    }
+
+    /// The nodes drawn but never expanded: reached only across a CHARACTER or an
+    /// OTHER edge, so not members.
+    fn boundary(closure: &Closure) -> Vec<u64> {
+        let mut v: Vec<u64> = closure
+            .nodes
+            .iter()
+            .map(|n| n.anilist_id)
+            .filter(|id| !closure.members.contains(id))
+            .collect();
         v.sort_unstable();
         v
     }
@@ -265,7 +267,7 @@ mod tests {
         let g = close(&c, 1, CAP, 0).unwrap();
         assert_eq!(ids(&g), vec![1, 2, 3]);
         assert_eq!(sorted(&g.members), vec![1, 2]);
-        assert_eq!(sorted(&g.boundary), vec![3]);
+        assert_eq!(boundary(&g), vec![3]);
         assert_eq!(g.root, 1);
         assert!(g.complete);
         assert!(g.owed.is_empty(), "a boundary node is never owed");
@@ -289,7 +291,7 @@ mod tests {
             g.root, 10,
             "the root is the smallest member, not the smaller boundary id"
         );
-        assert_eq!(sorted(&g.boundary), vec![5]);
+        assert_eq!(boundary(&g), vec![5]);
     }
 
     #[test]
@@ -304,7 +306,7 @@ mod tests {
         let g = close(&c, 100, CAP, 0).unwrap();
         assert_eq!(ids(&g), vec![2, 100, 101]);
         assert_eq!(g.root, 100);
-        assert_eq!(sorted(&g.boundary), vec![2]);
+        assert_eq!(boundary(&g), vec![2]);
     }
 
     #[test]
@@ -318,7 +320,7 @@ mod tests {
 
         let g = close(&c, 1, CAP, 0).unwrap();
         assert_eq!(ids(&g), vec![1, 2, 3]);
-        assert!(g.boundary.is_empty());
+        assert!(boundary(&g).is_empty());
         assert!(g.complete);
     }
 
@@ -379,7 +381,7 @@ mod tests {
         assert_eq!(g.owed, vec![2]);
         assert!(!g.complete);
         assert_eq!(
-            sorted(&g.boundary),
+            boundary(&g),
             vec![3],
             "the boundary node owes nothing: it is never expanded"
         );
@@ -441,7 +443,7 @@ mod tests {
         let c = conn();
         media(&c, 1, true);
         c.execute(
-            "UPDATE anilist_media SET mal_id = 77, format = 'TV', status = 'FINISHED', year = 2020,
+            "UPDATE anilist_media SET format = 'TV', status = 'FINISHED', year = 2020,
                     site_url = 'https://anilist.co/anime/1', title_english = 'One', cover_url = 'https://img/1.jpg'
              WHERE id = 1",
             [],
@@ -453,7 +455,6 @@ mod tests {
             g.nodes[0],
             Node {
                 anilist_id: 1,
-                mal_id: Some(77),
                 media_type: Some("ANIME".to_string()),
                 format: Some("TV".to_string()),
                 status: Some("FINISHED".to_string()),

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use super::fmp4;
-use super::mkv::{self, AudioCodec, AudioTrack, Mkv, Probe, Scan, SubCodec, VideoCodec};
+use super::mkv::{self, AudioCodec, AudioTrack, Mkv, Probe, Scan, VideoCodec};
 use super::vtt::{self, Cue};
 
 /// What kind of receiver the episode is going to.
@@ -49,11 +49,7 @@ pub fn plan(keyframes: &[u64], end_ms: u64) -> Vec<Segment> {
 /// Why a file cannot go to a receiver, in words for the page. HEVC is let through: which
 /// Chromecasts decode it cannot be told from what they announce, so the device decides, and
 /// a refusal names HEVC as the likely reason.
-pub fn verdict(
-    probe: &Probe,
-    audio: Option<&AudioTrack>,
-    _receiver: Receiver,
-) -> Result<(), String> {
+pub fn verdict(probe: &Probe, audio: Option<&AudioTrack>) -> Result<(), String> {
     let video = probe.video.as_ref().ok_or("This file has no video.")?;
     match &video.codec {
         VideoCodec::H264 { profile, .. } if *profile >= 110 => {
@@ -98,12 +94,11 @@ impl Prepared {
         path: &Path,
         audio_track: Option<u64>,
         subs: Option<Subs>,
-        receiver: Receiver,
     ) -> Result<Prepared, String> {
         let mut reader = mkv::open(path)?;
         let probe = mkv::probe(&reader);
         let audio = probe.audio_track(audio_track).cloned();
-        verdict(&probe, audio.as_ref(), receiver)?;
+        verdict(&probe, audio.as_ref())?;
         let video = probe.video.clone().ok_or("This file has no video.")?;
         let first = match &audio {
             Some(a) if matches!(a.codec, AudioCodec::Ac3 | AudioCodec::Eac3) => {
@@ -141,11 +136,6 @@ impl Prepared {
 
     pub fn duration_ms(&self) -> u64 {
         self.segments.last().map(|s| s.end).unwrap_or(0)
-    }
-
-    /// The decode-order shift every timestamp carries; positions read back subtract it.
-    pub fn offset_ms(&self) -> u64 {
-        self.scan.reorder_ms
     }
 
     /// Segment `i` as a movie fragment.
@@ -260,24 +250,6 @@ impl Prepared {
     /// The subtitles as SRT, which the DLNA TVs that show subtitles at all read.
     pub fn srt(&self) -> String {
         vtt::render_srt(self.cues.as_deref().unwrap_or_default())
-    }
-
-    /// Which text tracks the file has, for the page's picker.
-    pub fn text_tracks(probe: &Probe) -> Vec<(u64, String)> {
-        probe
-            .subs
-            .iter()
-            .filter(|s| !matches!(s.codec, SubCodec::Other(_)))
-            .map(|s| {
-                (
-                    s.number,
-                    s.name
-                        .clone()
-                        .or(s.language.clone())
-                        .unwrap_or_else(|| format!("Track {}", s.number)),
-                )
-            })
-            .collect()
     }
 }
 

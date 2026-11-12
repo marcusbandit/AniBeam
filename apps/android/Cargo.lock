@@ -129,7 +129,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-core"
-version = "2.4.0"
+version = "2.5.0"
 dependencies = [
  "anibeam-host-api",
  "apple-native-keyring-store",
@@ -176,7 +176,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-host-api"
-version = "2.4.0"
+version = "2.5.0"
 dependencies = [
  "ed25519-dalek",
  "serde",

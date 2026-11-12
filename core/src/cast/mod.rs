@@ -800,10 +800,9 @@ mod imp {
         let prepared = if mkv && (receiver == Receiver::Cast || subs.is_some()) {
             let p = path.clone();
             let s = subs.clone();
-            let prepared =
-                tokio::task::spawn_blocking(move || Prepared::new(&p, audio_track, s, receiver))
-                    .await
-                    .map_err(|e| e.to_string())??;
+            let prepared = tokio::task::spawn_blocking(move || Prepared::new(&p, audio_track, s))
+                .await
+                .map_err(|e| e.to_string())??;
             Some(Arc::new(prepared))
         } else {
             None
@@ -899,7 +898,7 @@ mod imp {
                             None => {
                                 let pp = path.clone();
                                 let p = tokio::task::spawn_blocking(move || {
-                                    Prepared::new(&pp, audio_track, None, receiver)
+                                    Prepared::new(&pp, audio_track, None)
                                 })
                                 .await
                                 .map_err(|e| e.to_string())??;

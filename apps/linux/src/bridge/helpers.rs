@@ -63,9 +63,6 @@ pub mod ffi {
             modifiers: i32,
             text: &QString,
         );
-        /// A poster's average colour, saturation-weighted, decoded at 8x12 and cached per
-        /// path; invalid for a file that cannot be read.
-        fn poster_tone(path: &QString) -> QColor;
         /// The pointer hidden (or shown) over every window: an application override cursor.
         fn set_cursor_hidden(hidden: bool);
         /// Dev only: loads the shell's QML files from `dir` instead of the compiled resources.

@@ -43,7 +43,6 @@ fn main() {
             .qml_file("qml/SliderRow.qml")
             .qml_file("qml/SettingRow.qml")
             .qml_file("qml/Panel.qml")
-            .qml_file("qml/FillRows.qml")
             .qml_file("qml/Frame.qml")
             .qml_file("qml/Nav.qml")
             .qml_file("qml/Menu.qml")
@@ -55,7 +54,6 @@ fn main() {
             .qml_file("qml/UpdateNotice.qml")
             .qml_file("qml/EmptyState.qml")
             .qml_file("qml/ErrorLine.qml")
-            .qml_file("qml/SectionHeader.qml")
             .qml_file("qml/PagePlaceholder.qml")
             .qml_file("qml/ThinScrollBar.qml")
             .qml_file("qml/GridKeys.qml")
@@ -63,13 +61,10 @@ fn main() {
             .qml_file("qml/Rail.qml")
             .qml_file("qml/StatusStrip.qml")
             .qml_file("qml/SearchField.qml")
-            .qml_file("qml/Pager.qml")
             .qml_file("qml/Card.qml")
-            .qml_file("qml/LibraryRow.qml")
             .qml_file("qml/LibraryPage.qml")
             .qml_file("qml/HomePage.qml")
             .qml_file("qml/PosterTone.qml")
-            .qml_file("qml/StoneFact.qml")
             .qml_file("qml/FeedPage.qml")
             .qml_file("qml/WatchingPage.qml")
             .qml_file("qml/StatsPage.qml")
@@ -150,7 +145,6 @@ fn main() {
         "src/bridge/door.rs",
         "src/bridge/fmt.rs",
         "src/bridge/helpers.rs",
-        "src/bridge/model.rs",
         "src/bridge/player.rs",
         "src/bridge/shell.rs",
         "src/bridge/theme.rs",

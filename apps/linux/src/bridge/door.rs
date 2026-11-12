@@ -3,13 +3,10 @@
 //! CxxQtThread::queue, and the state QML shares (preferences, settings, trackers, running
 //! jobs, the latest line, unseen errors) is kept current here from those events.
 //!
-//! Two names had to move to fit Qt's one namespace per object. The `about` invokable is
-//! `getAbout()`, because QML cannot reach both a property and a method called `about`; it
-//! now reads like its neighbours `getPreferences`, `getSettings` and `getTrackers`. Those
-//! three, and `setPreferences`, are free because the four JSON state properties name their
-//! own accessors the Qt way (`preferences()`, not `getPreferences()`) and carry the event
-//! signal as their NOTIFY, which is why `preferences`, `settings` and `trackers` have no
-//! generated setter and go through `put_*` below.
+//! The JSON state properties name their own accessors the Qt way (`preferences()`, not
+//! `getPreferences()`), which leaves `getTrackers` and `setPreferences` free for the
+//! invokables. They carry the event signal as their NOTIFY, which is why `preferences`,
+//! `settings` and `trackers` have no generated setter and go through `put_*` below.
 
 use core::pin::Pin;
 use std::cell::RefCell;
@@ -20,8 +17,8 @@ use anibeam_core::events::Subscription;
 use anibeam_core::{
     Call, Chapter, CloseReason, CoreError, Direction, DownloadOptions, DownloadSettings, Event,
     EventBody, EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences,
-    Provider, RefineOp, Release, SeasonName, SeasonPick, Sort, SubscriptionsResult, SubtitleChoice,
-    SubtitleDefaults, Tab, TorrentAction, TrackRef, Tracker,
+    Provider, RefineOp, Release, SeasonName, SeasonPick, Sort, SubtitleChoice, SubtitleDefaults,
+    Tab, TorrentAction, TrackRef, Tracker,
 };
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QJsonArray, QJsonObject, QString};
@@ -61,8 +58,8 @@ pub mod qobject {
         type Door = super::DoorRust;
 
         // The four state properties read through these rather than through a generated
-        // `getX`, which leaves `getPreferences`, `getSettings`, `getTrackers` and
-        // `getAbout` to the invokables. Not invokable themselves, so QML sees one name.
+        // `getX`, which leaves `getTrackers` to its invokable. Not invokable themselves, so
+        // QML sees one name.
         fn preferences(self: &Door) -> QJsonObject;
         fn settings(self: &Door) -> QJsonObject;
         fn trackers(self: &Door) -> QJsonObject;
@@ -96,8 +93,6 @@ pub mod qobject {
             direction: &QString,
             reveal_hidden: bool,
         ) -> QJsonObject;
-        #[qinvokable]
-        fn list_airing(self: &Door, offset: f64, limit: f64) -> QJsonObject;
         /// The library page in one read: `{ series, airing, counts: { all, series,
         /// movies, watched, hidden } }`, off one snapshot. Every card, here and in
         /// listSeries, carries `franchise: { id, title, size }` when other library
@@ -129,12 +124,7 @@ pub mod qobject {
             query: &QString,
             reveal_hidden: bool,
         ) -> QJsonObject;
-        #[qinvokable]
-        fn list_subscriptions(self: &Door) -> QJsonObject;
         // Metadata
-        /// AniList's search, kept for the panel as it stands.
-        #[qinvokable]
-        fn search_provider(self: &Door, query: &QString, limit: i32) -> QJsonObject;
         /// The search on one named provider: `Anilist` or `Tvmaze`.
         #[qinvokable]
         fn search_on(self: &Door, provider: &QString, query: &QString, limit: i32) -> QJsonObject;
@@ -235,15 +225,8 @@ pub mod qobject {
             subtitle: &QJsonObject,
         ) -> QJsonObject;
         // Store
-        /// The `About` call. Named `getAbout` so the `about` property keeps its own name.
-        #[qinvokable]
-        fn get_about(self: &Door) -> QJsonObject;
-        #[qinvokable]
-        fn get_preferences(self: &Door) -> QJsonObject;
         #[qinvokable]
         fn set_preferences(self: &Door, preferences: &QJsonObject) -> QJsonObject;
-        #[qinvokable]
-        fn get_settings(self: &Door) -> QJsonObject;
         #[qinvokable]
         fn set_subtitle_defaults(self: &Door, defaults: &QJsonObject) -> QJsonObject;
         #[qinvokable]
@@ -260,8 +243,6 @@ pub mod qobject {
         fn recent_events(self: &Door, limit: f64) -> QJsonObject;
         #[qinvokable]
         fn clear_events(self: &Door) -> QJsonObject;
-        #[qinvokable]
-        fn list_jobs(self: &Door) -> QJsonObject;
         #[qinvokable]
         fn cancel_job(self: &Door, job: f64) -> QJsonObject;
         // Downloads (anirss and the torrent client). Every item list crosses as anirss's
@@ -339,20 +320,6 @@ pub mod qobject {
         fn read_rule(self: &Door, name: &QString) -> QJsonObject;
         #[qinvokable]
         fn repair_subscription(self: &Door, name: &QString) -> QJsonObject;
-        #[qinvokable]
-        fn plan_remove_subscription(
-            self: &Door,
-            name: &QString,
-            torrents: bool,
-            files: bool,
-        ) -> QJsonObject;
-        #[qinvokable]
-        fn remove_subscription(
-            self: &Door,
-            name: &QString,
-            torrents: bool,
-            files: bool,
-        ) -> QJsonObject;
         /// `action` is `Stop`, `Start` or `Delete`; `files` only matters to `Delete`.
         #[qinvokable]
         fn control_torrents(
@@ -413,10 +380,6 @@ pub mod qobject {
         #[cxx_name = "ready"]
         fn ready_signal(self: Pin<&mut Door>);
         #[qsignal]
-        fn notice(self: Pin<&mut Door>);
-        #[qsignal]
-        fn job_started(self: Pin<&mut Door>, job: f64, kind: QString);
-        #[qsignal]
         fn job_progress(
             self: Pin<&mut Door>,
             job: f64,
@@ -439,8 +402,6 @@ pub mod qobject {
         fn series_removed(self: Pin<&mut Door>, ids: QJsonArray);
         #[qsignal]
         fn scan_finished(self: Pin<&mut Door>, source: f64, added: f64, changed: f64, removed: f64);
-        #[qsignal]
-        fn subscriptions_listed(self: Pin<&mut Door>, result: QJsonObject);
         #[qsignal]
         fn search_finished(self: Pin<&mut Door>, job: f64, results: QJsonArray);
         #[qsignal]
@@ -506,10 +467,6 @@ pub mod qobject {
         #[qsignal]
         fn skip_windows_ready(self: Pin<&mut Door>, session: f64, windows: QJsonArray);
         #[qsignal]
-        fn resume_point_changed(self: Pin<&mut Door>, file: f64, position: f64);
-        #[qsignal]
-        fn viewed(self: Pin<&mut Door>, series: f64, episode: QString);
-        #[qsignal]
         fn preferences_changed(self: Pin<&mut Door>, preferences: QJsonObject);
         #[qsignal]
         fn settings_changed(self: Pin<&mut Door>);
@@ -568,8 +525,6 @@ pub mod qobject {
         );
         #[qsignal]
         fn downloads_unavailable(self: Pin<&mut Door>, what: QString, error: QJsonObject);
-        #[qsignal]
-        fn removal_planned(self: Pin<&mut Door>, job: f64, plans: QJsonArray);
         #[qsignal]
         fn subscription_removed(self: Pin<&mut Door>, name: QString);
         #[qsignal]
@@ -1311,8 +1266,6 @@ impl qobject::Door {
         let obj = |k: &str| to_qjson_object(&body[k]);
         match &event.body {
             EventBody::Ready => self.as_mut().ready_signal(),
-            EventBody::Notice => self.as_mut().notice(),
-            EventBody::JobStarted { .. } => self.as_mut().job_started(job_id, job_kind()),
             EventBody::JobProgress { .. } => {
                 self.as_mut()
                     .job_progress(job_id, job_kind(), n("done"), n("total"), s("label"))
@@ -1330,20 +1283,6 @@ impl qobject::Door {
             EventBody::ScanFinished { .. } => {
                 self.as_mut()
                     .scan_finished(n("source"), n("added"), n("changed"), n("removed"))
-            }
-            EventBody::SubscriptionsListed { result } => {
-                let flat = match result {
-                    SubscriptionsResult::Ok { .. } => {
-                        json!({ "kind": "Ok", "feeds": body["result"]["Ok"]["feeds"] })
-                    }
-                    other => json!({
-                        "kind": serde_json::to_value(other)
-                            .ok()
-                            .and_then(|v| v.as_str().map(String::from))
-                            .unwrap_or_default(),
-                    }),
-                };
-                self.as_mut().subscriptions_listed(to_qjson_object(&flat))
             }
             EventBody::SearchFinished { .. } => {
                 self.as_mut().search_finished(job_id, arr("results"))
@@ -1402,15 +1341,19 @@ impl qobject::Door {
             EventBody::CrawlFinished { .. } => {
                 self.as_mut().crawl_finished(n("fetched"), n("deferred"))
             }
-            // The player page reads casts off the generic `event` signal, which carries them.
-            EventBody::CastDevicesChanged { .. } | EventBody::CastChanged { .. } => {}
+            // No page listens for these by name; the generic `event` signal carries them, and
+            // the player page reads casts off it.
+            EventBody::CastDevicesChanged { .. }
+            | EventBody::CastChanged { .. }
+            | EventBody::Notice
+            | EventBody::JobStarted { .. }
+            | EventBody::SubscriptionsListed { .. }
+            | EventBody::ResumePointChanged { .. }
+            | EventBody::Viewed { .. }
+            | EventBody::RemovalPlanned { .. } => {}
             EventBody::SkipWindowsReady { .. } => self
                 .as_mut()
                 .skip_windows_ready(n("session"), arr("windows")),
-            EventBody::ResumePointChanged { .. } => {
-                self.as_mut().resume_point_changed(n("file"), n("position"))
-            }
-            EventBody::Viewed { .. } => self.as_mut().viewed(n("series"), s("episode")),
             EventBody::PreferencesChanged { .. } => {
                 self.as_mut().put_preferences(obj("preferences"))
             }
@@ -1463,7 +1406,6 @@ impl qobject::Door {
             EventBody::DownloadsUnavailable { error, .. } => self
                 .as_mut()
                 .downloads_unavailable(s("what"), to_qjson_object(&json::error_json(error))),
-            EventBody::RemovalPlanned { .. } => self.as_mut().removal_planned(job_id, arr("plans")),
             EventBody::SubscriptionRemoved { .. } => self.as_mut().subscription_removed(s("name")),
             EventBody::ShowRemoved { rule, .. } => self.as_mut().show_removed(
                 job_id,
@@ -1554,12 +1496,6 @@ impl qobject::Door {
             .cloned()
             .unwrap_or_default();
         to_qjson_object(&crate::scan_summary::summarise(&series, &path.to_string()))
-    }
-    pub fn list_airing(&self, offset: f64, limit: f64) -> QJsonObject {
-        self.dispatch(Ok(Call::ListAiring {
-            offset: id(offset),
-            limit: id(limit),
-        }))
     }
     pub fn list_library(
         &self,
@@ -1693,27 +1629,7 @@ impl qobject::Door {
             }),
         )
     }
-    pub fn list_subscriptions(&self) -> QJsonObject {
-        self.dispatch(Ok(Call::ListSubscriptions))
-    }
     // Metadata
-    pub fn search_provider(&self, query: &QString, limit: i32) -> QJsonObject {
-        // A limit of zero is a caller's mistake, not a request for one result; it comes
-        // back as the same Invalid every other bad argument does.
-        let call = if limit < 1 {
-            Err(CoreError::invalid(
-                "limit",
-                format!("must be at least 1, got {limit}"),
-            ))
-        } else {
-            Ok(Call::SearchProvider {
-                provider: Provider::Anilist,
-                query: query.to_string(),
-                limit: limit as u32,
-            })
-        };
-        self.dispatch(call)
-    }
     pub fn search_on(&self, provider: &QString, query: &QString, limit: i32) -> QJsonObject {
         let call = if limit < 1 {
             Err(CoreError::invalid(
@@ -1928,20 +1844,11 @@ impl qobject::Door {
         })())
     }
     // Store
-    pub fn get_about(&self) -> QJsonObject {
-        self.dispatch(Ok(Call::About))
-    }
-    pub fn get_preferences(&self) -> QJsonObject {
-        self.dispatch(Ok(Call::GetPreferences))
-    }
     pub fn set_preferences(&self, preferences: &QJsonObject) -> QJsonObject {
         self.dispatch(
             parse_object::<Preferences>("preferences", preferences)
                 .map(|preferences| Call::SetPreferences { preferences }),
         )
-    }
-    pub fn get_settings(&self) -> QJsonObject {
-        self.dispatch(Ok(Call::GetSettings))
     }
     pub fn set_subtitle_defaults(&self, defaults: &QJsonObject) -> QJsonObject {
         self.dispatch(
@@ -1975,9 +1882,6 @@ impl qobject::Door {
     }
     pub fn clear_events(&self) -> QJsonObject {
         self.dispatch(Ok(Call::ClearEvents))
-    }
-    pub fn list_jobs(&self) -> QJsonObject {
-        self.dispatch(Ok(Call::ListJobs))
     }
     pub fn cancel_job(&self, job: f64) -> QJsonObject {
         self.dispatch(Ok(Call::CancelJob { job: id(job) }))
@@ -2091,25 +1995,6 @@ impl qobject::Door {
         self.dispatch(Ok(Call::ReadFeed {
             url: url.to_string(),
             tag: tag.to_string(),
-        }))
-    }
-    pub fn plan_remove_subscription(
-        &self,
-        name: &QString,
-        torrents: bool,
-        files: bool,
-    ) -> QJsonObject {
-        self.dispatch(Ok(Call::PlanRemoveSubscription {
-            name: name.to_string(),
-            torrents,
-            files,
-        }))
-    }
-    pub fn remove_subscription(&self, name: &QString, torrents: bool, files: bool) -> QJsonObject {
-        self.dispatch(Ok(Call::RemoveSubscription {
-            name: name.to_string(),
-            torrents,
-            files,
         }))
     }
     pub fn control_torrents(
