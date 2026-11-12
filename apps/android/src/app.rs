@@ -485,6 +485,7 @@ impl App {
             ("Recently downloaded", home.downloaded),
         ]);
         crate::feed::tick(&window, changed, &self.art, now);
+        crate::disk::tick(&window, changed, &self.cards);
         data.set_phone_shows(self.cards.len() as i32);
         data.set_home_note(
             match self.cards.len() {
@@ -1903,6 +1904,8 @@ pub fn run(
     crate::player::install(&window);
     crate::subtitles::install(&window);
     crate::feed::install(&window);
+    crate::disk::install(&window);
+    crate::inspect::install(&window);
     let data = window.global::<AppData>();
     data.set_version(
         format!(

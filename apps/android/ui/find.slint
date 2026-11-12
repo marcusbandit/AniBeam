@@ -121,6 +121,8 @@ export global FindData {
 
     // The release list.
     in property <[ReleaseRow]> releases;
+    // Under each release row: what a batch holds, once the core has read its file list.
+    in property <[string]> release-notes;
     in property <[GroupChip]> groups;
     in property <bool> best-fit;
     in property <string> best-fit-line;
@@ -711,6 +713,7 @@ export component ShowView inherits VerticalLayout {
 // One release: tags for best fit and on disk, the name, its facts, and Download.
 component ReleaseItem inherits Rectangle {
     in property <ReleaseRow> data;
+    in property <string> note;
     callback download();
     height: column.preferred-height + 7 * Theme.unit;
     border-radius: Theme.radius;
@@ -740,6 +743,12 @@ component ReleaseItem inherits Rectangle {
             text: root.data.title;
             color: Theme.text;
             font-size: Theme.small + 1px;
+            wrap: word-wrap;
+        }
+        if root.note != "": Text {
+            text: root.note;
+            color: Theme.ok;
+            font-size: Theme.small - 0.5px;
             wrap: word-wrap;
         }
         HorizontalLayout {
@@ -824,6 +833,7 @@ export component ReleaseList inherits VerticalLayout {
     if FindData.targets.length > 1: DownloadTo { }
     for row[i] in FindData.releases: ReleaseItem {
         data: row;
+        note: FindData.release-notes[i];
         download => { FindData.download-release(i); }
     }
     if FindData.releases.length > 0: HorizontalLayout {

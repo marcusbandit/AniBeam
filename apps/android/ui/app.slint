@@ -6,6 +6,7 @@ import { LibraryPage } from "library.slint";
 import { Ask, MorePage, SettingHit, Settings } from "more.slint";
 import { SubtitleData } from "subtitles.slint";
 import { FeedData } from "feed.slint";
+import { DiskData, DiskSheet, HiddenRow } from "disk.slint";
 import { SeriesPage } from "series.slint";
 import { Onboarding } from "onboarding.slint";
 import { FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion } from "find.slint";
@@ -19,7 +20,7 @@ import { Area, Fold } from "fold.slint";
 import { NotifyQuestion } from "notify.slint";
 import { Sheet } from "sheet.slint";
 
-export { FeedData, AiringPick, SubtitleData, AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
+export { DiskData, HiddenRow, FeedData, AiringPick, SubtitleData, AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -152,6 +153,13 @@ component ShowMenu inherits Rectangle {
                     FindData.find-series(Ask.menu-id);
                     Ask.menu-id = -1;
                     Nav.page = 2;
+                }
+            }
+            Button {
+                text: "Hide";
+                clicked => {
+                    DiskData.hide(Ask.menu-id);
+                    Ask.menu-id = -1;
                 }
             }
             Button {
@@ -343,6 +351,10 @@ export component AppWindow inherits Window {
                 AiringPick.open = false;
                 return accept;
             }
+            if (DiskData.sheet != 0) {
+                DiskData.sheet = 0;
+                return accept;
+            }
             if (AppData.onboarding && AppData.step > 0) {
                 AppData.step -= 1;
                 return accept;
@@ -500,6 +512,10 @@ export component AppWindow inherits Window {
         }
 
         if AiringPick.open: SeasonSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if DiskData.sheet != 0: DiskSheet {
             inset-bottom: root.inset-bottom;
         }
 
