@@ -271,6 +271,41 @@ pub enum Call {
     PlanToWatch {
         anilist_id: u64,
     },
+    // Recommended for you
+    /// The ranked shows as last fitted, held to `scope` and to what the user
+    /// has not watched, best first, and the id of a fit already running.
+    /// Reads only; `RefreshRecommended` goes to AniList.
+    ListRecommended {
+        scope: RecommendedScope,
+    },
+    /// Starts the job that reads what the recommender is missing from
+    /// AniList and fits it again, when the last fit is older than twelve
+    /// hours or `force` says so. `Started` with the job (the running one if
+    /// any), or `Ok` when the fit is fresh. The job ends in
+    /// `RecommendedRefreshed`.
+    RefreshRecommended {
+        force: bool,
+    },
+    /// The page for one AniList show, in the library or not, off what the
+    /// core holds, and the id of the read it started for what the page adds
+    /// (relations, AniList's own recommendations, the trailer) when that
+    /// read was never made or is a week old. The read ends in
+    /// `ShowPageRead`.
+    GetShowPage {
+        anilist_id: u64,
+    },
+    /// A list status for a show the library does not have, on every
+    /// connected tracker. `Started` with the job.
+    SetShowListStatus {
+        anilist_id: u64,
+        status: ListStatus,
+    },
+    /// A score out of 10 for a show the library does not have, on every
+    /// connected tracker; nought clears it. `Started` with the job.
+    SetShowScore {
+        anilist_id: u64,
+        score: f64,
+    },
     // Franchise
     GetFranchiseGraph {
         series: u64,
@@ -819,6 +854,14 @@ pub enum Reply {
     },
     NotInterested {
         shows: Vec<NotInterestedShow>,
+    },
+    Recommended {
+        recommended: Recommended,
+        refreshing: Option<u64>,
+    },
+    ShowPage {
+        page: Box<ShowPage>,
+        reading: Option<u64>,
     },
     Graph {
         layout: Option<FranchiseLayout>,

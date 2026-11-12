@@ -297,6 +297,47 @@ column_strings!(FeedSort {
     Upcoming => "upcoming",
 });
 
+/// Which recommended shows Home's row holds (#779). `All` is every show the
+/// recommender ranks that the user has not watched; `InLibrary` only those
+/// the library has files for; `OnList` only those on a tracker list, Planning
+/// or barely started, whether the library has them or not.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
+)]
+pub enum RecommendedScope {
+    #[default]
+    All,
+    InLibrary,
+    OnList,
+}
+
+column_strings!(RecommendedScope {
+    All => "All",
+    InLibrary => "InLibrary",
+    OnList => "OnList",
+});
+
+/// Where the recommender stands, which is what an empty row says. `Ready`
+/// is a fit to read; `NeverFitted` has not run yet; `NoList` found no list
+/// to learn from; `NoScores` found a list with nothing rated on it.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
+)]
+pub enum RecommendedState {
+    #[default]
+    NeverFitted,
+    Ready,
+    NoList,
+    NoScores,
+}
+
+column_strings!(RecommendedState {
+    NeverFitted => "NeverFitted",
+    Ready => "Ready",
+    NoList => "NoList",
+    NoScores => "NoScores",
+});
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum MetadataFilter {
     All,
@@ -470,6 +511,10 @@ pub enum JobKind {
     RefreshWatching,
     /// Airing now's read of one season from AniList.
     RefreshAiringNow,
+    /// The recommender's read of what it is missing from AniList, and its fit (#779).
+    RefreshRecommended,
+    /// The show page's one read of a show the library does not have (#779).
+    ReadShowPage,
     /// The sweep that moves Watching entries left untouched to On hold.
     OnHold,
     /// One series' entries to a list status, as a play does to a series on
@@ -507,7 +552,7 @@ impl JobKind {
             Scan | Subscriptions => Stage::Library,
             AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
             | RefreshAiring | RefreshImdb | ClearImages | FillImages | RefreshAiringNow
-            | ScheduleAgent => Stage::Metadata,
+            | RefreshRecommended | ReadShowPage | ScheduleAgent => Stage::Metadata,
             ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
             | OnHold | SetStatus | MoveLists | Notes => Stage::Trackers,
             Crawl => Stage::Franchise,
@@ -542,6 +587,8 @@ impl JobKind {
             RefreshProgress => "Reading your list progress",
             RefreshWatching => "Reading your Watching list",
             RefreshAiringNow => "Checking this season",
+            RefreshRecommended => "Finding shows for you",
+            ReadShowPage => "Reading a show",
             OnHold => "Moving idle shows to On hold",
             SetStatus => "Changing a list status",
             MoveLists => "Moving your list to your tracker",
@@ -574,8 +621,8 @@ impl JobKind {
         use JobKind::*;
         match self {
             RefreshAiring | RefreshImdb | FillImages | RefreshProgress | RefreshWatching
-            | RefreshAiringNow | OnHold | Crawl | SkipWindows | Subscriptions
-            | ConnectDownloads | CheckEndpoints => true,
+            | RefreshAiringNow | RefreshRecommended | ReadShowPage | OnHold | Crawl
+            | SkipWindows | Subscriptions | ConnectDownloads | CheckEndpoints => true,
             Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
             | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | MoveLists
             | Notes | Export | Import | SearchReleases | RefineReleases | Subscribe | Download
@@ -595,6 +642,7 @@ impl JobKind {
                 | Crawl
                 | RefreshProgress
                 | RefreshWatching
+                | RefreshRecommended
                 | OnHold
                 | FillImages
                 | Subscriptions
@@ -627,6 +675,8 @@ column_strings!(
         RefreshProgress => "RefreshProgress",
         RefreshWatching => "RefreshWatching",
         RefreshAiringNow => "RefreshAiringNow",
+        RefreshRecommended => "RefreshRecommended",
+        ReadShowPage => "ReadShowPage",
         OnHold => "OnHold",
         SetStatus => "SetStatus",
         MoveLists => "MoveLists",
@@ -667,6 +717,8 @@ mod tests {
         Sort::assert_columns_round_trip();
         Direction::assert_columns_round_trip();
         FeedSort::assert_columns_round_trip();
+        RecommendedScope::assert_columns_round_trip();
+        RecommendedState::assert_columns_round_trip();
         ExtraKind::assert_columns_round_trip();
         SkipSource::assert_columns_round_trip();
         TitleLanguage::assert_columns_round_trip();

@@ -27,6 +27,7 @@ use crate::paths::CorePaths;
 use crate::playback::session::{self, Sessions};
 use crate::playback::skip;
 use crate::prefs;
+use crate::recommended;
 use crate::store::Store;
 use crate::subscriptions;
 use crate::sync::recover;
@@ -72,6 +73,14 @@ pub struct Core {
     /// Airing now's read in flight per season, so a second ask for the same
     /// season joins it and the other season's read runs beside it.
     pub(crate) airing_reads: Mutex<HashMap<String, u64>>,
+    /// The show page reads running, by AniList id, so a page opened twice
+    /// joins the read the first opening started (#779).
+    pub(crate) show_reads: Mutex<HashMap<u64, u64>>,
+    /// The least time, in milliseconds, between two of the recommender's
+    /// requests to AniList, on top of the shared limiter: its first read is
+    /// some seventy requests, and AniList's limit while degraded is thirty
+    /// a minute (#732). A test shortens it.
+    pub(crate) recommender_gap_ms: AtomicU64,
     /// Taken out and shut down exactly once, in `shutdown`. `None` after
     /// that: a plain `tokio::runtime::Runtime` panics if dropped from
     /// inside its own worker threads, so ownership lives behind a mutex
@@ -270,6 +279,8 @@ impl Core {
             calendar: crate::calendar::Calendar::default(),
             aired: crate::aired::Aired::default(),
             airing_reads: Mutex::new(HashMap::new()),
+            show_reads: Mutex::new(HashMap::new()),
+            recommender_gap_ms: AtomicU64::new(crate::recommended::GAP_MS),
             runtime: Mutex::new(Some(runtime)),
             handle,
             secrets,
@@ -411,6 +422,14 @@ impl Core {
     #[doc(hidden)]
     pub fn set_oauth_port(&self, port: u16) {
         self.oauth_port.store(port, Ordering::SeqCst);
+    }
+
+    /// Shortens the recommender's own wait between two AniList requests, so
+    /// a test of its whole read takes no minutes. Not part of the contract.
+    #[doc(hidden)]
+    pub fn set_recommender_gap(&self, gap: std::time::Duration) {
+        self.recommender_gap_ms
+            .store(gap.as_millis() as u64, Ordering::SeqCst);
     }
 
     /// Shortens how long the browser's callback is held for a sign-in to
@@ -758,6 +777,18 @@ impl Core {
                 return Err(CoreError::invalid(
                     "not_interested",
                     "Not interested on that computer is its owner's list, so this device changes nothing there",
+                ));
+            }
+            Call::SetShowListStatus { .. } | Call::SetShowScore { .. } => {
+                return Err(CoreError::invalid(
+                    "tracker",
+                    "the tracker accounts on that computer are its owner's, so this device marks nothing there",
+                ));
+            }
+            Call::ListRecommended { .. } | Call::RefreshRecommended { .. } => {
+                return Err(CoreError::invalid(
+                    "recommended",
+                    "the recommendations on that computer are learnt from its owner's list",
                 ));
             }
             _ => {}
@@ -1117,6 +1148,19 @@ impl Core {
             } => airing_now::set_not_interested(self, anilist_id, not_interested),
             Call::ListNotInterested => airing_now::list_not_interested(self),
             Call::PlanToWatch { anilist_id } => airing_now::plan_to_watch(self, anilist_id),
+            // Recommended for you keeps its own tables too, and so does the
+            // page it opens for a show the library does not have.
+            Call::ListRecommended { scope } => recommended::list_call(self, scope),
+            Call::RefreshRecommended { force } => recommended::refresh_call(self, force),
+            Call::GetShowPage { anilist_id } => recommended::page::get_call(self, anilist_id),
+            Call::SetShowListStatus { anilist_id, status } => {
+                writes::set_show_list_status(self, anilist_id, status)
+                    .map(|job| job.map_or(Reply::Ok, |job| Reply::Started { job }))
+            }
+            Call::SetShowScore { anilist_id, score } => {
+                writes::set_show_score(self, anilist_id, score)
+                    .map(|job| job.map_or(Reply::Ok, |job| Reply::Started { job }))
+            }
             // The graph is drawn off the tables as they stand, and the
             // crawl behind it fills in whatever the walk found missing.
             Call::GetFranchiseGraph { series } => {

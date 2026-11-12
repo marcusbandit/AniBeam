@@ -158,6 +158,22 @@ _Avoid_: seasonal, schedule, calendar, discover
 The user saying one AniList entry should stay off Airing now. It covers that entry and nothing related to it, so the next season of the same show is a new entry and appears again. Settings, Library lists every one with a way back.
 _Avoid_: hidden, ignored, blocked, dismissed
 
+**Recommended**:
+The shows ranked for the user from their own list, best first: Home's Recommended for you row and its See all page. A show is in it while the user has yet to watch it, which is on no list, on Planning, or on Watching or On hold with a first episode or two seen. All holds every such show; In library only those the library has files for; On list only those on one of the user's lists, whether the library has them or not. Not interested keeps a show off it too. The ranking is learnt again after every tracker refresh, from a cache of AniList reads that stays apart from the library's tables, the way Airing now's does.
+_Avoid_: suggestions, picks, discover, for you feed
+
+**Forecast**:
+The percentage on a recommended show: the share of the user's rated shows it is predicted to beat. 84% means the predicted score sits above 84% of what they rated.
+_Avoid_: match, match score, compatibility, rating
+
+**Hidden tag**:
+A tag AniList marks as a spoiler. It counts toward the ranking like any other, and nothing names it: the app only says how many the user loves are behind a show, as "A hidden tag you love".
+_Avoid_: spoiler tag (in the interface), secret tag
+
+**Show page**:
+The page for one AniList show the library does not have: what the core holds for it, the user's list entry, and Get episodes. Once files for the show land in the library it becomes that series' page.
+_Avoid_: external series page, ghost page, AniList page
+
 **Episode out**:
 The moment an episode of a show on the Watching list airs, said once by the core from the schedule it keeps, with no polling. The desktop shows it as a notification unless Settings turned that off.
 _Avoid_: new episode alert, release notification, reminder

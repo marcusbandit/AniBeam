@@ -79,6 +79,8 @@ mod tests {
             RefreshProgress,
             RefreshWatching,
             RefreshAiringNow,
+            RefreshRecommended,
+            ReadShowPage,
             OnHold,
             SetStatus,
             MoveLists,
@@ -107,11 +109,12 @@ mod tests {
                 Scan | AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
                 | RefreshAiring | RefreshImdb | ClearImages | FillImages | ConnectTracker
                 | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
-                | RefreshAiringNow | OnHold | SetStatus | Notes | Crawl | SkipWindows | Export
-                | Import | Subscriptions | ConnectDownloads | SearchReleases | RefineReleases
-                | Subscribe | Download | RemoveSubscription | ControlTorrents
-                | TestTorrentClient | RemoveShow | RepairSubscription | CheckEndpoints
-                | StartEndpoint | ScheduleAgent | MoveLists => {}
+                | RefreshAiringNow | RefreshRecommended | ReadShowPage | OnHold | SetStatus
+                | Notes | Crawl | SkipWindows | Export | Import | Subscriptions
+                | ConnectDownloads | SearchReleases | RefineReleases | Subscribe | Download
+                | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
+                | RepairSubscription | CheckEndpoints | StartEndpoint | ScheduleAgent
+                | MoveLists => {}
             }
         }
         all

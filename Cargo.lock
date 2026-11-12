@@ -93,6 +93,7 @@ name = "anibeam-core"
 version = "2.5.0"
 dependencies = [
  "anibeam-host-api",
+ "anibeam-recs",
  "apple-native-keyring-store",
  "axum",
  "backon",

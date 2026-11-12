@@ -241,6 +241,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 calendar_feed: false,
                 episode_notifications: true,
                 home_hide_empty_days: false,
+                home_recommended: RecommendedScope::All,
             }
         ),
         other => panic!("{other:?}"),
@@ -319,6 +320,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         calendar_feed: false,
         episode_notifications: true,
         home_hide_empty_days: false,
+        home_recommended: RecommendedScope::All,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

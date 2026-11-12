@@ -467,6 +467,111 @@ pub fn set_list_status(
     start(core, JobKind::SetStatus, target, Action::Status { status }).map(Some)
 }
 
+/// The library's metadata for a show: its MAL id, episode count and three titles.
+type LibraryMedia = (
+    Option<i64>,
+    Option<i64>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// The write targets for a show the library does not have (#779): the
+/// AniList id, the MAL id and episode count the core holds for it, and its
+/// title for the log. `series` is nought, which no series carries, so no
+/// card follows the write. A show the library has goes through its series.
+fn show_targets(conn: &Connection, anilist_id: u64) -> Result<Targets, CoreError> {
+    let lang = prefs::load_preferences(conn)?.title_language;
+    let media: Option<serde_json::Value> = conn
+        .query_row(
+            "SELECT media FROM rec_shows WHERE anilist_id = ?1 AND media IS NOT NULL",
+            params![anilist_id as i64],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+        .and_then(|t| serde_json::from_str(&t).ok());
+    let library: Option<LibraryMedia> = conn
+        .query_row(
+            "SELECT mal_id, episodes, title_romaji, title_english, title_native FROM anilist_media
+              WHERE id = ?1",
+            params![anilist_id as i64],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .optional()?;
+    let m = media.unwrap_or_default();
+    let (lib_mal, lib_eps, romaji, english, native) = library.unwrap_or_default();
+    let text = |v: &serde_json::Value| v.as_str().map(str::to_string);
+    let folder_name = crate::library::titles::resolve(
+        lang,
+        text(&m["title"]["romaji"]).or(romaji).as_deref(),
+        text(&m["title"]["english"]).or(english).as_deref(),
+        text(&m["title"]["native"]).or(native).as_deref(),
+        &format!("AniList {anilist_id}"),
+    );
+    Ok(Targets {
+        series: 0,
+        anilist: Some(anilist_id),
+        mal: m["idMal"].as_u64().or(lib_mal.map(|id| id as u64)),
+        total: m["episodes"]
+            .as_u64()
+            .or(lib_eps.map(|e| e as u64))
+            .and_then(|e| u32::try_from(e).ok())
+            .filter(|total| *total > 0),
+        folder_name,
+    })
+}
+
+/// The series the library has for an AniList id, when it has one.
+fn series_of(core: &Core, anilist_id: u64) -> Result<Option<u64>, CoreError> {
+    core.store.read(|c| {
+        Ok(c.query_row(
+            "SELECT MIN(id) FROM series WHERE anilist_id = ?1 AND missing_since IS NULL",
+            params![anilist_id as i64],
+            |r| r.get::<_, Option<i64>>(0),
+        )?
+        .map(|id| id as u64))
+    })
+}
+
+/// A list status for a show the library does not have, on every connected
+/// tracker (#779). With no tracker there is nowhere to keep it: the list on
+/// this device is kept by series.
+pub fn set_show_list_status(
+    core: &Core,
+    anilist_id: u64,
+    status: ListStatus,
+) -> Result<Option<u64>, CoreError> {
+    if let Some(series) = series_of(core, anilist_id)? {
+        return set_list_status(core, series, status);
+    }
+    if status == ListStatus::Repeating {
+        return Err(CoreError::invalid(
+            "status",
+            "a rewatch is not a status to set by hand",
+        ));
+    }
+    let target = core.store.read(|c| show_targets(c, anilist_id))?;
+    guard(core, &target)?;
+    start(core, JobKind::SetStatus, target, Action::Status { status }).map(Some)
+}
+
+/// A score out of 10 for a show the library does not have, on every
+/// connected tracker; nought clears it.
+pub fn set_show_score(core: &Core, anilist_id: u64, score: f64) -> Result<Option<u64>, CoreError> {
+    if let Some(series) = series_of(core, anilist_id)? {
+        return set_score(core, series, Some(score));
+    }
+    if !(0.0..=10.0).contains(&score) {
+        return Err(CoreError::invalid(
+            "score",
+            format!("{score} is outside 0 to 10"),
+        ));
+    }
+    let target = core.store.read(|c| show_targets(c, anilist_id))?;
+    guard(core, &target)?;
+    start(core, JobKind::Score, target, Action::Score { score }).map(Some)
+}
+
 /// Whether a status or a score stays on this device: the series has no
 /// tracker match, or no account is connected behind the ids it has. A
 /// hidden series is still refused, since hiding is about its tracker sync
