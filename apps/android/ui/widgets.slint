@@ -188,8 +188,8 @@ export component Button inherits Rectangle {
     min-width: Math.min(row.preferred-width + (root.small ? 7 : 10) * Theme.unit, root.widest);
     border-radius: self.height / 2;
     opacity: root.enabled ? 1 : 0.45;
-    background: root.primary ? (touch.pressed ? #c9cdd2 : Theme.accent)
-        : root.danger ? (touch.pressed ? #ff7a4d40 : Theme.bad-soft)
+    background: root.primary ? (touch.pressed ? Theme.accent-pressed : Theme.accent)
+        : root.danger ? (touch.pressed ? Theme.bad-edge : Theme.bad-soft)
         : (touch.pressed ? Theme.pressed : Theme.raised);
     border-width: root.primary ? 0 : 1px;
     border-color: root.danger ? Theme.bad-edge : Theme.line;
@@ -289,7 +289,7 @@ export component IconButton inherits Rectangle {
     width: Theme.touch;
     height: self.width;
     border-radius: self.width / 2;
-    background: root.primary ? (touch.pressed ? #c9cdd2 : Theme.accent)
+    background: root.primary ? (touch.pressed ? Theme.accent-pressed : Theme.accent)
         : root.danger ? Theme.bad-soft
         : touch.pressed ? Theme.pressed : Theme.raised;
     border-width: root.primary ? 0 : 1px;
@@ -319,7 +319,7 @@ export component CardStack inherits Rectangle {
         width: parent.width - edge * 5 * Theme.unit;
         height: root.card-height;
         border-radius: Theme.radius;
-        background: edge == 1 ? #16181c : #121418;
+        background: edge == 1 ? Theme.ground.mix(Theme.ink, 0.92) : Theme.ground.mix(Theme.ink, 0.96);
         border-width: 1px;
         border-color: Theme.line-strong;
     }

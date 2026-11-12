@@ -15,6 +15,7 @@ import { StatsBody, StatsData } from "stats.slint";
 import { BackupData, DataBody } from "backup.slint";
 import { ActivityBody } from "activity.slint";
 import { MoveData, MoveWaiting } from "listmove.slint";
+import { LookBody, LookData } from "look.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -43,7 +44,7 @@ export struct SettingHit {
 // Where More is: the index or one section, and the search over every setting.
 export global Settings {
     // The open section, -1 for the index. 0 Accounts, 1 Downloads, 2 Streaming, 3 Search
-    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon, 8 Stats, 9 Data, 10 Activity.
+    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon, 8 Stats, 9 Data, 10 Activity, 11 Appearance.
     in-out property <int> section: -1;
     in-out property <string> query;
     in property <[SettingHit]> hits;
@@ -73,6 +74,7 @@ global Status {
     out property <string> icon: ["Default", "Dark", "Line art"][AppData.app-icon];
     out property <string> data: BackupData.busy ? "Working..." : "Back up, restore, image cache";
     out property <string> activity: "What AniBeam did, newest first";
+    out property <string> look: ["Dark", "Light", "Follows the phone"][LookData.mode];
     out property <string> stats: StatsData.loaded && !StatsData.empty ? StatsData.hours + " hours watched in " + StatsData.years[StatsData.year-index] : "A year of watching";
 }
 
@@ -419,6 +421,13 @@ component IndexPage inherits Rectangle {
                     name: "Data";
                     status: Status.data;
                     clicked => { Settings.open(9, ""); }
+                }
+                IndexRow {
+                    section: 11;
+                    icon: @image-url("icons/sliders.svg");
+                    name: "Appearance";
+                    status: Status.look;
+                    clicked => { Settings.open(11, ""); }
                 }
                 IndexRow {
                     section: 10;
@@ -818,6 +827,12 @@ export component MorePage inherits Rectangle {
         title: "Activity";
         note: Status.activity;
         ActivityBody { }
+    }
+
+    if root.shown == 11: look := SectionPage {
+        title: "Appearance";
+        note: Status.look;
+        LookBody { }
     }
 
     if root.shown == 6: about := SectionPage {

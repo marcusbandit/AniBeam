@@ -22,6 +22,7 @@ mod find;
 mod focus;
 mod listmove;
 mod local;
+mod look;
 mod mpv;
 mod notes;
 mod notify;
@@ -58,6 +59,10 @@ fn android_main(android: slint::android::AndroidApp) {
     slint::android::init_with_event_listener(android, move |event| {
         if let PollEvent::Main(MainEvent::Resume { .. }) = event {
             let _ = on_resume.send(worker::Command::Sync);
+        }
+        // The phone's light or dark setting changed: Appearance's System mode follows it.
+        if let PollEvent::Main(MainEvent::ConfigChanged { .. }) = event {
+            let _ = slint::invoke_from_event_loop(look::system_changed);
         }
     })
     .expect("the Slint Android backend starts");
