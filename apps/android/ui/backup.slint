@@ -1,0 +1,139 @@
+// Data (#748): back up the library to one file, restore one, and clear the image cache. The
+// desktop's Storage and backup tab at phone scale, the same words. The file goes through
+// Android's own picker, so it can be saved anywhere or shared from there.
+
+import { Theme } from "theme.slint";
+import { Button, ListGroup, ListRow, SectionHead } from "widgets.slint";
+
+export global BackupData {
+    // A backup or a restore is under way.
+    in property <bool> busy;
+    // Adds sign-ins, watch history and preferences to the backup.
+    in-out property <bool> include-private;
+    // How the last backup went, and what the last restore did.
+    in property <string> last;
+    in property <string> summary;
+    in property <string> failed;
+    // "12.3 MB in 340 images", "No images cached", or that it could not be measured.
+    in property <string> images-line;
+    in property <bool> images-failed;
+    in property <bool> can-clear;
+    // The Clear button asked "Remove 340 images?"
+    in-out property <bool> confirming;
+    in property <string> images-question;
+    in property <string> images-note;
+    callback back-up();
+    callback restore();
+    callback clear-images();
+    // The page opened: measure the cache.
+    callback read();
+}
+
+export component DataBody inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    init => { BackupData.read(); }
+    SectionHead {
+        title: "Backup";
+        note: BackupData.busy ? "Working..." : "";
+    }
+    ListGroup {
+        ListRow {
+            label: "Back up the library";
+            helper: "One file with your folders, matches and what you have watched.";
+            tappable: !BackupData.busy;
+            chevron: !BackupData.busy;
+            clicked => { BackupData.back-up(); }
+        }
+        ListRow {
+            label: "Include private data";
+            helper: "Adds AniList and MyAnimeList sign-ins, watch history and preferences. Sign-ins are written as plain text, so keep the file to yourself.";
+            switch: true;
+            on: BackupData.include-private;
+            toggled => { BackupData.include-private = !BackupData.include-private; }
+        }
+        ListRow {
+            label: "Restore from a backup";
+            helper: "Reads a backup into this library. What is on disk wins; the file fills in the rest.";
+            tappable: !BackupData.busy;
+            chevron: !BackupData.busy;
+            last: true;
+            clicked => { BackupData.restore(); }
+        }
+    }
+    if BackupData.last != "": Text {
+        text: BackupData.last;
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    if BackupData.summary != "": Text {
+        text: BackupData.summary;
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    if BackupData.failed != "": Text {
+        text: BackupData.failed;
+        color: Theme.bad;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    SectionHead {
+        title: "Image cache";
+        note: "";
+    }
+    Text {
+        text: "Posters, banners and portraits are kept on the phone so the library works offline. Cleared images download again as pages need them.";
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    ListGroup {
+        ListRow {
+            label: BackupData.images-line;
+            helper: BackupData.images-note;
+            value: BackupData.confirming ? "" : BackupData.images-failed ? "Try again" : BackupData.can-clear ? "Clear" : "";
+            tappable: !BackupData.confirming && (BackupData.images-failed || BackupData.can-clear);
+            last: !BackupData.confirming;
+            clicked => {
+                if (BackupData.images-failed) {
+                    BackupData.read();
+                } else {
+                    BackupData.confirming = true;
+                }
+            }
+        }
+        if BackupData.confirming: Rectangle {
+            height: ask.preferred-height + 6 * Theme.unit;
+            ask := VerticalLayout {
+                x: Theme.pad;
+                y: 3 * Theme.unit;
+                width: parent.width - 2 * Theme.pad;
+                spacing: Theme.unit * 2;
+                Text {
+                    text: BackupData.images-question;
+                    color: Theme.text;
+                    font-family: Theme.strong-face;
+                }
+                HorizontalLayout {
+                    spacing: Theme.gap;
+                    alignment: start;
+                    Button {
+                        text: "Clear";
+                        small: true;
+                        danger: true;
+                        clicked => {
+                            BackupData.confirming = false;
+                            BackupData.clear-images();
+                        }
+                    }
+                    Button {
+                        text: "Keep";
+                        small: true;
+                        clicked => { BackupData.confirming = false; }
+                    }
+                }
+            }
+        }
+    }
+}

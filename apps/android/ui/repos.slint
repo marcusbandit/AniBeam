@@ -31,6 +31,9 @@ export struct EndpointRow {
     editable: bool,
     // The note is something to fix, not a hint.
     warn: bool,
+    // How the last check of the sites found it: "Answered in 240 ms", or why it did not.
+    health: string,
+    health-ok: bool,
 }
 
 // One value an install asks for.
@@ -57,6 +60,9 @@ export global RepoData {
     in property <[EndpointRow]> endpoints;
     // Installed and switched on: the sites a search asks.
     in property <int> on-count;
+    // The sites are being asked whether they answer.
+    in property <bool> checking;
+    callback check();
     // An install or update asking for values, in the row of `asking-index`.
     in property <bool> asking;
     in property <int> asking-index: -1;
@@ -457,6 +463,23 @@ export component EndpointItem inherits Rectangle {
                     font-family: Theme.ledger-face;
                     overflow: elide;
                 }
+                if root.endpoint.health != "": HorizontalLayout {
+                    spacing: Theme.unit * 2;
+                    Rectangle {
+                        y: (parent.height - self.height) / 2;
+                        width: 2 * Theme.unit;
+                        height: self.width;
+                        border-radius: self.width / 2;
+                        background: root.endpoint.health-ok ? Theme.ok : Theme.bad;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.endpoint.health;
+                        color: Theme.dim;
+                        font-size: Theme.small - 0.5px;
+                        wrap: word-wrap;
+                    }
+                }
             }
             if root.endpoint.installed: Switch {
                 y: (parent.height - self.height) / 2;
@@ -556,17 +579,26 @@ export component RepoPanes inherits VerticalLayout {
     callback reveal(length);
     spacing: Theme.unit * 4;
     // Each repo's list is read again, for sites it added or changed.
-    if RepoData.repos.length > 0: Lit {
-        on: root.lit == "Check repos for new sites";
+    if RepoData.repos.length > 0 || RepoData.on-count > 0: Lit {
+        on: root.lit == "Check repos for new sites" || root.lit == "Check the sites";
         reveal(y) => { root.reveal(y); }
         HorizontalLayout {
             alignment: start;
-            Button {
+            spacing: Theme.gap;
+            if RepoData.repos.length > 0: Button {
                 text: "Check repos for new sites";
                 icon: @image-url("icons/refresh-cw.svg");
                 has-icon: true;
                 small: true;
                 clicked => { RepoData.refresh(); }
+            }
+            if RepoData.on-count > 0: Button {
+                text: RepoData.checking ? "Checking..." : "Check the sites";
+                icon: @image-url("icons/wifi.svg");
+                has-icon: true;
+                small: true;
+                enabled: !RepoData.checking;
+                clicked => { RepoData.check(); }
             }
         }
     }

@@ -85,6 +85,12 @@
             android:name="com.marcusrosado.anibeam.TorrentService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <!-- Android's file picker for More's backup and restore (PickActivity.java). -->
+        <activity
+            android:name="com.marcusrosado.anibeam.PickActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
         <!-- Where the fold's crease runs, as the phone reports it (Crease.java). Optional:
              a phone without the library installs and runs, and the layout guesses. -->
         <uses-library android:name="androidx.window.extensions" android:required="false" />

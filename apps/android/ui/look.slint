@@ -1,0 +1,234 @@
+// Appearance (#754): the theme, the accent and the text size, the desktop's Appearance tab
+// within what a phone needs. Every pick is applied at once to the Theme global, so this very
+// page shows what it chose. Density, poster size and the theme files of the desktop stay
+// there; a phone has one screen size to fit.
+
+import { Theme } from "theme.slint";
+import { ListGroup, ListRow, Segmented, SectionHead } from "widgets.slint";
+
+// A theme in a list: its name and the three colours that tell it apart.
+export struct LookTheme {
+    name: string,
+    ground: color,
+    text: color,
+    accent: color,
+}
+
+export global LookData {
+    // 0 dark, 1 light, 2 follow the phone.
+    in property <int> mode;
+    // What the phone itself is set to, for the System line.
+    in property <string> system-line;
+    in property <[LookTheme]> dark-themes;
+    in property <[LookTheme]> light-themes;
+    in property <int> dark-pick;
+    in property <int> light-pick;
+    // The six hues of the picked theme, and the accent now: -1 for the theme's own.
+    in property <[color]> swatches;
+    in property <color> theme-accent;
+    in property <int> accent;
+    // 0 Smaller, 1 Normal, 2 Large, 3 Larger, 4 Largest.
+    in property <int> size;
+    callback pick-mode(int);
+    // True for the dark list, the row in it.
+    callback pick-theme(bool, int);
+    callback pick-accent(int);
+    callback pick-size(int);
+    // The page opened: read what the phone is set to.
+    callback read();
+}
+
+// One theme: three dots in its colours, its name, and a mark on the one in use.
+component ThemeRow inherits Rectangle {
+    in property <LookTheme> theme;
+    in property <bool> picked;
+    in property <bool> last;
+    callback clicked();
+    height: 14 * Theme.unit;
+    background: touch.pressed ? Theme.raised : transparent;
+    touch := TouchArea { clicked => { root.clicked(); } }
+    // The theme's ground with its text and accent on it, as a sample of the page.
+    Rectangle {
+        x: Theme.pad;
+        y: (parent.height - self.height) / 2;
+        width: 13 * Theme.unit;
+        height: 8 * Theme.unit;
+        border-radius: Theme.radius-small;
+        background: root.theme.ground;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        Rectangle {
+            x: 2 * Theme.unit;
+            y: 2.5 * Theme.unit;
+            width: 4 * Theme.unit;
+            height: 1.5 * Theme.unit;
+            border-radius: self.height / 2;
+            background: root.theme.text;
+        }
+        Rectangle {
+            x: 2 * Theme.unit;
+            y: 5 * Theme.unit;
+            width: 7 * Theme.unit;
+            height: 1.5 * Theme.unit;
+            border-radius: self.height / 2;
+            background: root.theme.accent;
+        }
+    }
+    Text {
+        x: Theme.pad + 17 * Theme.unit;
+        width: parent.width - self.x - Theme.pad - 8 * Theme.unit;
+        height: parent.height;
+        text: root.theme.name;
+        color: Theme.text;
+        font-family: root.picked ? Theme.strong-face : Theme.face;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    if root.picked: Rectangle {
+        x: parent.width - Theme.pad - self.width;
+        y: (parent.height - self.height) / 2;
+        width: 3 * Theme.unit;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.accent;
+    }
+    if !root.last: Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// A round swatch with a ring round the one in use.
+component Swatch inherits Rectangle {
+    in property <color> fill;
+    in property <bool> picked;
+    callback clicked();
+    width: 11 * Theme.unit;
+    height: self.width;
+    border-radius: self.width / 2;
+    border-width: 2px;
+    border-color: root.picked ? Theme.text : transparent;
+    Rectangle {
+        width: parent.width - 2 * Theme.unit;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: root.fill;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+export component LookBody inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    init => { LookData.read(); }
+    SectionHead {
+        title: "Colours";
+        note: "";
+    }
+    ListGroup {
+        VerticalLayout {
+            padding: Theme.unit * 3;
+            spacing: Theme.unit * 2;
+            Text {
+                text: "Mode";
+                color: Theme.text;
+                font-family: Theme.strong-face;
+            }
+            Segmented {
+                options: ["Dark", "Light", "System"];
+                picked: LookData.mode;
+                pick(i) => { LookData.pick-mode(i); }
+            }
+            Text {
+                text: LookData.mode == 2 ? "Follows the phone's own setting: " + LookData.system-line + "." : "Changes show at once, here and on every page.";
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+        }
+    }
+    Text {
+        text: "Dark theme";
+        color: Theme.text;
+        font-size: Theme.heading;
+        font-family: Theme.title-face;
+    }
+    ListGroup {
+        for t[i] in LookData.dark-themes: ThemeRow {
+            theme: t;
+            picked: i == LookData.dark-pick;
+            last: i == LookData.dark-themes.length - 1;
+            clicked => { LookData.pick-theme(true, i); }
+        }
+    }
+    Text {
+        text: "Light theme";
+        color: Theme.text;
+        font-size: Theme.heading;
+        font-family: Theme.title-face;
+    }
+    ListGroup {
+        for t[i] in LookData.light-themes: ThemeRow {
+            theme: t;
+            picked: i == LookData.light-pick;
+            last: i == LookData.light-themes.length - 1;
+            clicked => { LookData.pick-theme(false, i); }
+        }
+    }
+    Text {
+        text: "Accent";
+        color: Theme.text;
+        font-size: Theme.heading;
+        font-family: Theme.title-face;
+    }
+    Text {
+        text: "Marks what is selected, playing or new.";
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        spacing: Theme.unit * 2;
+        alignment: start;
+        Swatch {
+            fill: LookData.theme-accent;
+            picked: LookData.accent < 0;
+            clicked => { LookData.pick-accent(-1); }
+        }
+        for c[i] in LookData.swatches: Swatch {
+            fill: c;
+            picked: LookData.accent == i;
+            clicked => { LookData.pick-accent(i); }
+        }
+    }
+    SectionHead {
+        title: "Size";
+        note: "";
+    }
+    ListGroup {
+        VerticalLayout {
+            padding: Theme.unit * 3;
+            spacing: Theme.unit * 2;
+            Text {
+                text: "Text size";
+                color: Theme.text;
+                font-family: Theme.strong-face;
+            }
+            Segmented {
+                options: ["Smaller", "Normal", "Large", "Larger", "Largest"];
+                picked: LookData.size;
+                pick(i) => { LookData.pick-size(i); }
+            }
+            Text {
+                text: "How big the words are everywhere in AniBeam, on top of your phone's own size.";
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+        }
+    }
+}

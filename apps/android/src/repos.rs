@@ -3,6 +3,7 @@
 //! call that may fetch runs on its own thread and lands back on the UI thread.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 use anibeam_core::{
     Call, CoreError, EndpointCatalog, EndpointCredential, EndpointRepoPreview, Reply,
@@ -40,6 +41,8 @@ struct Asking {
 struct Repos {
     window: Weak<AppWindow>,
     catalog: Option<EndpointCatalog>,
+    /// What the last check found, by host: whether it answered and the line to show.
+    health: HashMap<String, (bool, String)>,
     preview: Option<EndpointRepoPreview>,
     rows: Vec<Row>,
     /// The endpoint list, kept and updated row by row: a row that did not change keeps its
@@ -84,6 +87,7 @@ pub fn install(window: &AppWindow) {
         *cell.borrow_mut() = Some(Repos {
             window: window.as_weak(),
             catalog: None,
+            health: HashMap::new(),
             preview: None,
             rows: Vec::new(),
             lines: std::rc::Rc::new(VecModel::default()),
@@ -112,6 +116,7 @@ pub fn install(window: &AppWindow) {
     });
     d.on_remove_repo(|i| with(|r| r.remove_repo(i)));
     d.on_refresh(|| with(Repos::refresh));
+    d.on_check(|| with(Repos::check));
     d.on_save_edit(|| with(Repos::save_edit));
     d.on_close_edit(|| with(Repos::close_edit));
     d.on_change_values(|| with(Repos::change_values));
@@ -255,6 +260,11 @@ impl Repos {
             } else {
                 (String::new(), false)
             };
+            let health = self
+                .health
+                .get(&host_key(&i.host))
+                .map(|(ok, text)| (text.clone(), *ok))
+                .unwrap_or_default();
             lines.push(EndpointRow {
                 name: i.name.clone().into(),
                 line: if i.custom {
@@ -267,6 +277,8 @@ impl Repos {
                 enabled: i.enabled,
                 nsfw: i.nsfw,
                 note: note.into(),
+                health: health.0.into(),
+                health_ok: health.1,
                 update: match i.update {
                     Some(v) => format!("Update to v{v}"),
                     None if !i.missing.is_empty() => "Add its value".into(),
@@ -299,6 +311,8 @@ impl Repos {
                 update: "".into(),
                 editable: false,
                 warn: !o.auth.is_empty(),
+                health: "".into(),
+                health_ok: false,
             });
             rows.push(Row::Offered {
                 repo: o.repo_url.clone(),
@@ -543,6 +557,28 @@ impl Repos {
         };
         spawn(Call::RemoveEndpointRepo { url }, |r, answer| {
             r.answer(answer);
+        });
+    }
+
+    /// Asks each site this phone searches whether it answers, with the connection check's
+    /// steps, and writes what it found under each installed site.
+    fn check(&mut self) {
+        if self
+            .window
+            .upgrade()
+            .is_some_and(|w| w.global::<RepoData>().get_checking())
+        {
+            return;
+        }
+        self.data(|d| d.set_checking(true));
+        spawn(Call::PhoneNetCheck, |r, answer| {
+            r.data(|d| d.set_checking(false));
+            if let Ok(Reply::PhoneNetCheck { checks }) = answer {
+                r.health = health_of(&checks);
+                if let Some(catalog) = r.catalog.clone() {
+                    r.show(catalog);
+                }
+            }
         });
     }
 
@@ -803,5 +839,88 @@ impl Repos {
                 r.answer(answer);
             },
         );
+    }
+}
+/// A host as the check names it, without its port and in lower case.
+fn host_key(host: &str) -> String {
+    host.rsplit_once(':')
+        .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()) && !port.is_empty())
+        .map_or(host, |(h, _)| h)
+        .to_lowercase()
+}
+
+/// What the connection check found for each host: the last step, a whole request, when
+/// every step went through, else the first step that failed and why.
+fn health_of(checks: &[anibeam_core::NetCheck]) -> HashMap<String, (bool, String)> {
+    let mut out: HashMap<String, (bool, String)> = HashMap::new();
+    for c in checks {
+        let Some((label, step)) = c.name.split_once(": ") else {
+            continue;
+        };
+        let key = host_key(label);
+        let entry = out.entry(key).or_insert((true, String::new()));
+        if !c.ok {
+            if entry.0 {
+                *entry = (false, format!("Did not answer. {step}: {}", c.detail));
+            }
+        } else if entry.0 && (step == "HTTPS" || step == "HTTP") {
+            *entry = (true, format!("Answered in {} ms", c.ms));
+        }
+    }
+    out.retain(|_, (_, text)| !text.is_empty());
+    out
+}
+
+#[cfg(test)]
+mod health_tests {
+    use super::*;
+    use anibeam_core::NetCheck;
+
+    fn check(name: &str, ok: bool, detail: &str, ms: u64) -> NetCheck {
+        NetCheck {
+            name: name.into(),
+            ok,
+            detail: detail.into(),
+            ms,
+        }
+    }
+
+    #[test]
+    fn a_host_that_went_through_answers_in_the_time_of_its_request() {
+        let checks = [
+            check("site.example: finding its address", true, "1.2.3.4", 12),
+            check("site.example: HTTPS", true, "HTTP 200, 10 bytes", 240),
+            check("example.com: HTTPS", true, "HTTP 200, 10 bytes", 90),
+        ];
+        let h = health_of(&checks);
+        assert_eq!(h["site.example"], (true, "Answered in 240 ms".into()));
+    }
+
+    #[test]
+    fn a_host_that_failed_says_the_first_step_that_did() {
+        let checks = [
+            check("site.example: finding its address", true, "1.2.3.4", 12),
+            check(
+                "site.example: reaching 1.2.3.4",
+                false,
+                "no answer (dropped)",
+                6000,
+            ),
+            check("site.example: HTTPS", false, "timed out", 6000),
+        ];
+        let h = health_of(&checks);
+        assert_eq!(
+            h["site.example"],
+            (
+                false,
+                "Did not answer. reaching 1.2.3.4: no answer (dropped)".into()
+            )
+        );
+    }
+
+    #[test]
+    fn a_port_is_not_part_of_the_host() {
+        assert_eq!(host_key("Site.Example:9696"), "site.example");
+        assert_eq!(host_key("site.example"), "site.example");
     }
 }
