@@ -27,6 +27,7 @@ mod posters;
 mod prefs;
 mod remote;
 mod repos;
+mod stats;
 mod stream;
 mod thumbs;
 mod versions;
