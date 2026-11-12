@@ -10,6 +10,8 @@
 
 **Your anime folder, as a library you can watch and track.**
 
+**[anibeam.app](https://anibeam.app)**
+
 <br>
 
 [![stable](https://img.shields.io/github/v/release/marcusbandit/AniBeam?filter=v*&style=for-the-badge&label=stable&labelColor=0D0E11&color=FDC901)](https://github.com/marcusbandit/AniBeam/releases/latest)
