@@ -238,6 +238,13 @@ update track from that version:
 The workspace version in `Cargo.toml` is always the next stable version, and every build
 between two releases carries it as its base.
 
+Every nightly and stable release that brings something new also gets its page on the website:
+[anibeam.app/whats-new](https://anibeam.app/whats-new/) lists every version, newest first, with
+a page each, and shows what has merged since the last stable release as Coming next. The site
+builds them from the patch notes below (`site/whats-new.py`), and `nightly.yml` and the Release
+workflow deploy the site once their release is public, so writing the change files is all a
+release needs. Nobody writes these pages by hand.
+
 - **Nightly.** The less polished, frontier build, not a daily one. Run `nightly.yml` from
   the Actions tab when main holds something worth trying; it builds main and publishes it as
   its own pre-release, and skips the run when the app has not changed since the last

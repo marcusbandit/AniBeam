@@ -34,7 +34,7 @@
     page.dataset.channel = channel;
     toggle.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.channel === channel)));
     const { desktop, phone } = pick(channel);
-    for (const card of document.querySelectorAll(".dl-card[data-asset]")) {
+    for (const card of document.querySelectorAll("#dl-grid [data-asset]")) {
       const key = card.dataset.asset;
       const release = key === "apk" ? phone : desktop;
       const asset = release && release.assets.find((a) => match[key](a.name));
@@ -57,11 +57,18 @@
     .then((list) => { releases = list; show(page.dataset.channel); })
     .catch(() => {});
 
-  // The visitor's own system goes first.
+  // The visitor's own system gets the wide tile on top and the brand-coloured button; one we
+  // cannot place gets Linux there.
   const ua = navigator.userAgent;
-  const os = /android/i.test(ua) ? "android" : /windows/i.test(ua) ? "windows" : /mac os x/i.test(ua) && navigator.maxTouchPoints < 2 ? "mac" : /linux|x11/i.test(ua) ? "linux" : null;
-  const mine = os && document.querySelector(`.dl-sec[data-os="${os}"]`);
-  if (mine) { mine.classList.add("is-yours"); mine.parentElement.prepend(mine); }
+  const os = /android/i.test(ua) ? "android" : /windows/i.test(ua) ? "windows" : /mac os x/i.test(ua) && navigator.maxTouchPoints < 2 ? "mac" : "linux";
+  const mine = document.querySelector(`.dl-tile[data-os="${os}"]`);
+  if (mine) {
+    mine.classList.add("is-featured");
+    mine.parentElement.prepend(mine);
+    const main = mine.querySelector(".dl-main");
+    main.classList.remove("btn-ghost");
+    main.classList.add("btn-primary");
+  }
 
   document.querySelectorAll(".copy").forEach((b) => {
     b.addEventListener("click", async () => {

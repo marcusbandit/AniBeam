@@ -710,51 +710,133 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   .foot nav { margin-left: 0; }
 }
 
-/* The download page: one section per system, a card per file, the channel picked on top. On
-   Nightly the beam behind the title turns the app's own teal. */
-.dl-page { max-width: 980px; margin: 0 auto; padding: 0 var(--gutter); }
-.dl-head { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; padding: 176px 0 56px; text-align: center; }
+/* The download page. The visitor's system gets the wide tile on top; the rest sit below it.
+   On Nightly the page takes the app's teal: the logo, the buttons, the beam and the toggle. */
+.dl-page { --beam-a: rgba(253, 201, 1, 0.55); --beam-b: rgba(255, 226, 120, 0.55); max-width: 1040px; margin: 0 auto; padding: 0 var(--gutter); }
+.dl-page[data-channel="nightly"] { --brand: #46e0c4; --brand-hi: #74f0d9; --beam-a: rgba(70, 224, 196, 0.6); --beam-b: rgba(124, 188, 245, 0.55); }
+.dl-head { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; padding: 168px 0 64px; text-align: center; }
 .dl-beams { inset: -40px -40% 0; }
 .dl-beams i { background: linear-gradient(90deg, transparent, var(--beam-a) 35%, var(--beam-b) 70%, transparent); transition: background 0.6s ease; }
-.dl-page { --beam-a: rgba(253, 201, 1, 0.55); --beam-b: rgba(255, 226, 120, 0.55); }
-.dl-page[data-channel="nightly"] { --beam-a: rgba(70, 224, 196, 0.6); --beam-b: rgba(124, 188, 245, 0.55); }
-.dl-title { display: flex; align-items: center; gap: 18px; }
-.dl-title img { border-radius: 16px; }
-.dl-title h1 { font-size: clamp(32px, 5vw, 52px); letter-spacing: -0.035em; font-weight: 600; }
-.channel { position: relative; display: inline-flex; margin-top: 28px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair-2); }
-.channel button { position: relative; z-index: 1; width: 96px; padding: 8px 0; border: 0; border-radius: 999px; background: none; color: var(--fg-3); font: 500 14px/1 var(--sans); cursor: pointer; transition: color 0.25s ease; }
-.channel button:hover, .channel button[aria-selected="true"] { color: #fff; }
-.channel-thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); border-radius: 999px; background: rgba(255, 255, 255, 0.12); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
-.dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); background: rgba(70, 224, 196, 0.2); }
-.dl-meta { min-height: 1.4em; margin: 18px 0 0; color: var(--fg-3); font-size: 14px; }
+.dl-mark { position: relative; width: 96px; height: 96px; margin-bottom: 26px; }
+.dl-mark img { position: absolute; inset: 0; border-radius: 22px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 60px -20px #000; transition: opacity 0.45s ease, transform 0.6s var(--ease); }
+.mark-nightly { opacity: 0; transform: rotate(-12deg) scale(0.9); }
+.dl-page[data-channel="nightly"] .mark-stable { opacity: 0; transform: rotate(12deg) scale(0.9); }
+.dl-page[data-channel="nightly"] .mark-nightly { opacity: 1; transform: none; }
+.dl-head h1 { font-size: clamp(36px, 5.4vw, 64px); letter-spacing: -0.04em; font-weight: 640; }
+.channel { position: relative; display: inline-flex; margin-top: 30px; padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.channel button { position: relative; z-index: 1; width: 104px; padding: 9px 0; border: 0; border-radius: 999px; background: none; color: var(--fg-3); font: 600 14px/1 var(--sans); cursor: pointer; transition: color 0.25s ease; }
+.channel button:hover { color: #fff; }
+.channel button[aria-selected="true"] { color: var(--brand-ink); }
+.channel-thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--brand); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
+.dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); }
+.dl-meta { min-height: 1.4em; margin: 20px 0 0; color: var(--fg-3); font-size: 14.5px; }
 .dl-meta a { color: var(--fg-2); }
-.dl-sections { display: grid; gap: 44px; }
-.dl-sec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.dl-sec-head svg { width: 22px; height: 22px; fill: var(--fg); }
-.dl-sec.is-yours .dl-sec-head svg { fill: var(--brand); }
-.dl-sec-head h2 { font-size: 22px; letter-spacing: -0.02em; }
-.dl-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
-.dl-card {
+
+.dl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.dl-tile {
   position: relative;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  padding: 0 18px;
+  flex-direction: column;
+  gap: 22px;
+  padding: 26px;
   border: 1px solid var(--hair);
-  border-radius: 16px;
+  border-radius: 22px;
   background: linear-gradient(137deg, var(--card-a) 5%, var(--card-b) 76%);
   box-shadow: inset 0 1px var(--hi);
-  color: var(--fg);
-  text-decoration: none;
-  transition: border-color var(--quick), transform var(--quick);
 }
-a.dl-card:hover { border-color: var(--hair-2); color: #fff; transform: translateY(-1px); }
-.dl-what { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
-.dl-what svg { width: 18px; height: 18px; fill: var(--fg-2); }
-.dl-fmt { padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); color: var(--fg-2); font: 500 12.5px/1 var(--mono); }
-.dl-card.is-soon { opacity: 0.6; }
-.dl-term-sec .term { max-width: 640px; }
+.dl-name { display: flex; align-items: center; gap: 12px; }
+.dl-name svg { width: 26px; height: 26px; fill: var(--fg); transition: fill 0.45s ease; }
+.dl-name h2 { font-size: 22px; letter-spacing: -0.02em; }
+.dl-do { display: flex; flex-direction: column; gap: 14px; margin-top: auto; }
+.dl-main { width: 100%; }
+.dl-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.dl-chip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--hair); color: var(--fg-2); font: 500 13px/1 var(--mono); text-decoration: none; transition: color var(--quick), background-color var(--quick); }
+.dl-chip svg { width: 14px; height: 14px; fill: currentColor; }
+a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.dl-chip.is-soon { opacity: 0.6; font-family: var(--sans); }
+
+/* The featured tile: the visitor's system, wide, with its download in the brand colour. */
+.dl-tile.is-featured { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 40px; padding: 34px 38px; }
+.dl-tile.is-featured .dl-name svg { width: 44px; height: 44px; fill: var(--brand); }
+.dl-tile.is-featured .dl-name h2 { font-size: 34px; }
+.dl-tile.is-featured .dl-do { flex-direction: row; align-items: center; gap: 18px; margin: 0 0 0 auto; }
+.dl-tile.is-featured .dl-main { width: auto; min-width: 260px; }
+.dl-tile.is-featured::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.08) 20%, var(--brand) 44%, rgba(255, 255, 255, 0.5) 49%, rgba(255, 255, 255, 0.1) 62%, rgba(255, 255, 255, 0.06) 80%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.dl-term { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 56px; }
+.dl-term .term { width: min(100%, 620px); }
+.dl-term-for { color: var(--fg-3); font-size: 13.5px; }
 .dl-all { margin: 56px 0 0; color: var(--fg-3); font-size: 14.5px; text-align: center; }
 .dl-page + .foot { margin-top: 120px; }
+@media (max-width: 860px) {
+  .dl-grid { grid-template-columns: minmax(0, 1fr); }
+  .dl-tile.is-featured { flex-direction: column; align-items: stretch; gap: 22px; padding: 26px; }
+  .dl-tile.is-featured .dl-do { flex-direction: column; align-items: stretch; margin: 0; }
+  .dl-tile.is-featured .dl-main { min-width: 0; width: 100%; }
+}
+
+/* The nav: the language, GitHub, and the way to the downloads */
+.nav-lang, .nav-gh { display: inline-flex; align-items: center; gap: 7px; }
+.nav-lang { padding: 8px 12px; color: var(--fg-3); font-size: 14px; font-weight: 500; cursor: default; }
+.nav-lang svg, .nav-gh svg { width: 15px; height: 15px; }
+.nav-lang svg { fill: none; stroke: currentColor; stroke-width: 2; }
+.nav-gh svg { fill: currentColor; }
+.more-platforms { display: flex; justify-content: center; margin: 28px auto 0 !important; }
+
+/* What's new: the apps' patch notes, a version per entry, newest first. A version is a row: its
+   number and date on the left, its notes on the right. Sections are tinted by kind. */
+.wn-page { max-width: 1040px; margin: 0 auto; padding: 0 var(--gutter); }
+.wn-hero { padding: 168px 0 56px; }
+.wn-hero h1 { font-size: clamp(40px, 6vw, 72px); letter-spacing: -0.045em; font-weight: 640; }
+.wn-back { color: var(--fg-3); font-size: 15px; text-decoration: none; }
+.wn-back::before { content: "\2190  "; }
+.wn-back:hover { color: #fff; }
+.wn-list { display: grid; }
+.wn-entry { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px 48px; padding: 44px 0; border-top: 1px solid var(--hair); }
+.wn-head { grid-row: 1 / span 3; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; align-self: start; position: sticky; top: 96px; }
+.wn-ver { margin: 0; font: 600 34px/1 var(--sans); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+h1.wn-ver { font-size: clamp(44px, 6vw, 64px); }
+.wn-ver a { color: var(--fg); text-decoration: none; }
+.wn-ver a:hover { color: var(--brand); }
+.wn-title { color: var(--brand); font-size: 16px; font-weight: 600; }
+.wn-head time { color: var(--fg-3); font-size: 14px; }
+.wn-app { grid-column: 2; }
+.wn-app + .wn-app { margin-top: 18px; padding-top: 22px; border-top: 1px dashed var(--hair-2); }
+.wn-app h3 { margin-bottom: 14px; color: var(--fg-3); font-size: 14px; font-weight: 600; letter-spacing: 0; }
+.wn-sec { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 16px; padding: 6px 0; }
+.wn-tag { align-self: start; justify-self: start; padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+.wn-new .wn-tag { background: rgba(70, 224, 196, 0.12); color: var(--done); }
+.wn-changed .wn-tag { background: rgba(124, 188, 245, 0.12); color: #7cbcf5; }
+.wn-fixed .wn-tag { background: rgba(253, 201, 1, 0.12); color: var(--brand); }
+.wn-removed .wn-tag { background: rgba(240, 113, 138, 0.12); color: #f0718a; }
+.wn-sec ul { margin: 0; padding: 0; list-style: none; }
+.wn-sec li { padding: 3px 0; color: var(--fg-2); font-size: 16px; line-height: 1.5; }
+.wn-sec li code { padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.06); color: var(--fg); font: 0.86em var(--mono); }
+.wn-dl { grid-column: 2; justify-self: start; margin-top: 18px; color: var(--fg-2); font-size: 14.5px; font-weight: 600; text-decoration: none; }
+.wn-dl:hover { color: var(--brand); }
+.wn-coming { position: relative; margin-bottom: 8px; padding: 36px 32px; border: 1px solid rgba(70, 224, 196, 0.25); border-radius: 24px; background: linear-gradient(137deg, rgba(70, 224, 196, 0.06), transparent 60%), var(--card-b); }
+.wn-coming .wn-ver { font-size: 22px; color: var(--done); }
+.wn-try { color: var(--fg-2); font-size: 14px; font-weight: 600; }
+.wn-pager { display: flex; justify-content: space-between; padding: 32px 0 0; border-top: 1px solid var(--hair); }
+.wn-pager a { color: var(--fg-2); font-weight: 600; text-decoration: none; }
+.wn-pager a:hover { color: #fff; }
+.wn-page + .foot { margin-top: 120px; }
+@media (max-width: 760px) {
+  .wn-entry { grid-template-columns: minmax(0, 1fr); }
+  .wn-head { grid-row: auto; position: static; flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+  .wn-app, .wn-dl { grid-column: 1; }
+  .wn-sec { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .wn-coming { padding: 26px 20px; }
+}
