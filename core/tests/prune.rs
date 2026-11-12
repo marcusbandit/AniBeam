@@ -68,7 +68,11 @@ fn series(core: &Core, source: u64, id: u64, status: &str, last_aired_days_ago: 
         &format!("/lib/{name}"),
         &name,
     );
-    fixtures::insert_media(core, id, Some(&name), None, Some(2), status, "TV", Some(80));
+    fixtures::media(id, &name)
+        .episodes(2)
+        .status(status)
+        .score(80)
+        .insert(core);
     fixtures::match_series(core, s, Some(id), Some(1000 + id));
     if let Some(days) = last_aired_days_ago {
         let now = time::now_secs();

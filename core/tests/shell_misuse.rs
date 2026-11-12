@@ -127,19 +127,7 @@ fn a_listener_that_writes_from_on_event_is_served_not_a_panic() {
     common::wait_job(&c, again);
 
     // And the hide really landed.
-    let visible = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series.len(),
-        other => panic!("{other:?}"),
-    };
+    let visible = common::cards(&core, Tab::All, false).len();
     assert_eq!(visible, 0);
     core.shutdown();
 }

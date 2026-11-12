@@ -12,17 +12,9 @@ fn show(core: &Core, src: u64, name: &str, anilist: Option<u64>) -> u64 {
     let now = anibeam_core::time::now_secs();
     let path = format!("/lib/{name}");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, &path, name);
-    fixtures::insert_file(
-        core,
-        series,
-        &format!("{path}/01.mkv"),
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(core, series, &format!("{path}/01.mkv"), 1.0, now);
     if let Some(id) = anilist {
-        fixtures::insert_media(core, id, Some(name), None, Some(12), "FINISHED", "TV", None);
+        fixtures::media(id, name).episodes(12).insert(core);
         fixtures::match_series(core, series, Some(id), None);
     }
     series

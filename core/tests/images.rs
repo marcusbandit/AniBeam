@@ -10,17 +10,7 @@ use std::time::Duration;
 use anibeam_core::*;
 
 fn list(core: &Core) -> Vec<SeriesCard> {
-    let call = Call::ListSeries {
-        tab: Tab::All,
-        query: String::new(),
-        sort: Sort::Alpha,
-        direction: Direction::Asc,
-        reveal_hidden: false,
-    };
-    match core.call(call).unwrap() {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    }
+    common::cards(core, Tab::All, false)
 }
 
 #[test]
@@ -30,7 +20,7 @@ fn ensure_fetches_once_and_clear_images_empties_everything() {
     let (dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
     let s = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/A", "A");
-    fixtures::insert_file(&core, s, "/lib/A/01.mkv", 1.0, None, "episode", 1);
+    fixtures::insert_episode_file(&core, s, "/lib/A/01.mkv", 1.0, 1);
     fixtures::insert_media_with_cover(&core, 1, "https://img/xl.jpg", None);
     fixtures::match_series(&core, s, Some(1), None);
 

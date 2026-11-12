@@ -4,17 +4,11 @@
 //! rather than through a flow, so these tests are about the writes alone.
 
 mod common;
+use common::job_of;
 mod fixtures;
 
 use anibeam_core::net::{Body, FakeHttp, Method};
 use anibeam_core::*;
-
-fn started(reply: Reply) -> u64 {
-    match reply {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
 
 /// One matched series, both ids carried, twelve episodes published, and the
 /// file it needs to be listed at all.
@@ -22,17 +16,11 @@ fn library(core: &Core) -> u64 {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
-    fixtures::insert_file(core, series, "/lib/Bebop/01.mkv", 1.0, None, "episode", now);
-    fixtures::insert_media(
-        core,
-        1,
-        Some("Cowboy Bebop"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        Some(86),
-    );
+    fixtures::insert_episode_file(core, series, "/lib/Bebop/01.mkv", 1.0, now);
+    fixtures::media(1, "Cowboy Bebop")
+        .episodes(12)
+        .score(86)
+        .insert(core);
     fixtures::match_series(core, series, Some(1), Some(21));
     series
 }
@@ -40,19 +28,7 @@ fn library(core: &Core) -> u64 {
 /// One series' card, off the list every page reads. Completing a series
 /// files it into the Watched tab by default, so both places are looked in.
 fn card(core: &Core, series: u64) -> SeriesCard {
-    let cards = |tab: Tab| match core
-        .call(Call::ListSeries {
-            tab,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series: cards } => cards,
-        other => panic!("{other:?}"),
-    };
+    let cards = |tab: Tab| common::cards(core, tab, false);
     cards(Tab::All)
         .into_iter()
         .find(|c| c.id == series)
@@ -118,7 +94,7 @@ fn a_mark_writes_to_both_trackers_and_the_card_follows() {
     http.push_for("myanimelist", 404, r#"{"error":"not_found"}"#);
     http.push_for("myanimelist", 200, "{}");
 
-    let job = started(
+    let job = job_of(
         core.call(Call::MarkEpisode {
             series,
             episode: 12.5,
@@ -468,7 +444,7 @@ fn setting_progress_to_nought_plans_the_series() {
         r#"{"data":{"SaveMediaListEntry":{"id":9,"progress":0,"status":"PLANNING"}}}"#,
     );
 
-    let job = started(
+    let job = job_of(
         core.call(Call::SetProgress {
             series,
             progress: 0,
@@ -535,7 +511,7 @@ fn a_score_goes_to_both_trackers_and_completes_a_finished_list() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = started(
+    let job = job_of(
         core.call(Call::SetScore {
             series,
             score: Some(8.7),
@@ -592,7 +568,7 @@ fn a_score_goes_to_both_trackers_and_completes_a_finished_list() {
         r#"{"my_list_status":{"num_episodes_watched":3}}"#,
     );
     http.push_for("myanimelist", 200, "{}");
-    let job = started(
+    let job = job_of(
         core.call(Call::SetScore {
             series,
             score: Some(5.0),
@@ -641,7 +617,7 @@ fn a_status_goes_to_both_trackers_and_the_card_follows() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = started(
+    let job = job_of(
         core.call(Call::SetListStatus {
             series,
             status: ListStatus::Dropped,
@@ -710,7 +686,7 @@ fn completed_fills_the_list_to_the_total() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = started(
+    let job = job_of(
         core.call(Call::SetListStatus {
             series,
             status: ListStatus::Completed,
@@ -778,7 +754,7 @@ fn an_exhausted_rate_limit_is_one_sanitised_outcome() {
         );
     }
 
-    let job = started(
+    let job = job_of(
         core.call(Call::MarkEpisode {
             series,
             episode: 5.0,
@@ -859,7 +835,7 @@ fn the_first_episode_sets_the_start_date_on_both_trackers() {
     http.push_for("myanimelist", 404, r#"{"error":"not_found"}"#);
     http.push_for("myanimelist", 200, "{}");
 
-    let job = started(
+    let job = job_of(
         core.call(Call::MarkEpisode {
             series,
             episode: 1.0,
@@ -917,7 +893,7 @@ fn completing_sets_the_finish_date_only_where_there_is_none() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = started(
+    let job = job_of(
         core.call(Call::MarkEpisode {
             series,
             episode: 12.0,
@@ -968,7 +944,7 @@ fn the_status_menu_dates_watching_and_completed() {
             200,
             format!(r#"{{"data":{{"SaveMediaListEntry":{{"id":9,"status":"{reply}"}}}}}}"#),
         );
-        let job = started(core.call(Call::SetListStatus { series, status }).unwrap());
+        let job = job_of(core.call(Call::SetListStatus { series, status }).unwrap());
         common::wait_job(&c, job);
     }
     let vars = graphql_variables(&http, "SaveMediaListEntry");
@@ -1013,7 +989,7 @@ fn finishing_a_completed_show_again_counts_a_rewatch() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = started(
+    let job = job_of(
         core.call(Call::MarkEpisode {
             series,
             episode: 12.0,
@@ -1058,13 +1034,11 @@ fn the_last_episode_alone_again_is_not_a_rewatch() {
     let http = FakeHttp::new();
     let (_dir, core, _c) = common::open_core_with_http(http.clone());
     let series = library(&core);
-    fixtures::insert_file(
+    fixtures::insert_episode_file(
         &core,
         series,
         "/lib/Bebop/12.mkv",
         12.0,
-        None,
-        "episode",
         anibeam_core::time::now_secs(),
     );
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
@@ -1111,7 +1085,7 @@ fn a_rewatch_under_way_keeps_repeating_and_its_end_counts() {
             200,
             r#"{"data":{"SaveMediaListEntry":{"id":9}}}"#,
         );
-        let job = started(
+        let job = job_of(
             core.call(Call::MarkEpisode {
                 series,
                 episode: to,
@@ -1159,7 +1133,7 @@ fn notes_are_written_to_both_trackers_and_read_back() {
         http.push_for("myanimelist", 200, "{}");
     }
 
-    let job = started(
+    let job = job_of(
         core.call(Call::SetSeriesNotes {
             series,
             notes: "  Watch the dub next time  ".into(),
@@ -1197,7 +1171,7 @@ fn notes_are_written_to_both_trackers_and_read_back() {
         Some("Watch the dub next time")
     );
 
-    let job = started(
+    let job = job_of(
         core.call(Call::SetSeriesNotes {
             series,
             notes: "   ".into(),
@@ -1257,7 +1231,7 @@ fn completed_from_the_menu_ends_a_rewatch_without_counting_one() {
         r#"{"my_list_status":{"status":"watching","num_episodes_watched":12,"is_rewatching":true,"num_times_rewatched":2,"start_date":"2025-01-01","finish_date":"2025-02-01"}}"#,
     );
     http.push_for("myanimelist", 200, "{}");
-    let job = started(
+    let job = job_of(
         core.call(Call::SetListStatus {
             series,
             status: ListStatus::Completed,
@@ -1286,15 +1260,7 @@ fn finishing_after_completing_by_hand_is_not_a_rewatch() {
     let (_dir, core, _c) = common::open_core_with_http(http.clone());
     let series = library(&core);
     let now = anibeam_core::time::now_secs();
-    fixtures::insert_file(
-        &core,
-        series,
-        "/lib/Bebop/11.mkv",
-        11.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, series, "/lib/Bebop/11.mkv", 11.0, now);
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
     fixtures::insert_tracker_entry(&core, "anilist", 1, 12, "completed", None);
     age_entry(&core, "anilist", 1, 30 * 86_400);
@@ -1332,17 +1298,11 @@ fn a_film_counts_again_only_once_the_list_has_stood_still() {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(&core, "/lib");
     let film = fixtures::insert_series(&core, src, SeriesKind::Movie, "/lib/Film.mkv", "Film");
-    fixtures::insert_file(&core, film, "/lib/Film.mkv", 1.0, None, "episode", now);
-    fixtures::insert_media(
-        &core,
-        5,
-        Some("Film"),
-        None,
-        Some(1),
-        "FINISHED",
-        "MOVIE",
-        None,
-    );
+    fixtures::insert_episode_file(&core, film, "/lib/Film.mkv", 1.0, now);
+    fixtures::media(5, "Film")
+        .episodes(1)
+        .format("MOVIE")
+        .insert(&core);
     fixtures::match_series(&core, film, Some(5), None);
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
     fixtures::insert_tracker_entry(&core, "anilist", 5, 1, "completed", None);
@@ -1366,7 +1326,7 @@ fn a_film_counts_again_only_once_the_list_has_stood_still() {
         200,
         r#"{"data":{"SaveMediaListEntry":{"id":9}}}"#,
     );
-    let job = started(mark(&core).unwrap());
+    let job = job_of(mark(&core).unwrap());
     common::wait_job(&c, job);
     assert_eq!(
         graphql_variables(&http, "SaveMediaListEntry"),
@@ -1393,7 +1353,7 @@ fn notes_on_a_show_not_on_the_list_write_nothing() {
         404,
         r#"{"errors":[{"message":"Not Found.","status":404}],"data":{"MediaList":null}}"#,
     );
-    let job = started(
+    let job = job_of(
         core.call(Call::SetSeriesNotes {
             series,
             notes: "later".into(),

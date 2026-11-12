@@ -59,16 +59,10 @@ fn a_year_adds_up_by_month_genre_studio_and_season() {
     let src = fixtures::insert_source(&core, "/lib");
     // Bebop: 3 of 3 episodes, finished in March. 24 minutes each.
     let bebop = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
-    fixtures::insert_media(
-        &core,
-        1,
-        Some("Cowboy Bebop"),
-        None,
-        Some(3),
-        "FINISHED",
-        "TV",
-        Some(86),
-    );
+    fixtures::media(1, "Cowboy Bebop")
+        .episodes(3)
+        .score(86)
+        .insert(&core);
     fixtures::match_series(&core, bebop, Some(1), None);
     genres(
         &core,
@@ -85,16 +79,10 @@ fn a_year_adds_up_by_month_genre_studio_and_season() {
     // Mushishi: 2 of 26 in March, one last December, 30 minutes each.
     let mushishi =
         fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Mushishi", "Mushishi");
-    fixtures::insert_media(
-        &core,
-        2,
-        Some("Mushishi"),
-        None,
-        Some(26),
-        "FINISHED",
-        "TV",
-        Some(85),
-    );
+    fixtures::media(2, "Mushishi")
+        .episodes(26)
+        .score(85)
+        .insert(&core);
     fixtures::match_series(&core, mushishi, Some(2), None);
     genres(
         &core,
@@ -170,16 +158,7 @@ fn a_stale_count_or_an_extra_episode_does_not_finish_a_series() {
     let src = fixtures::insert_source(&core, "/lib");
     // AniList says 24; a hand-set 12 left over must not finish it at 12.
     let long = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Long", "Long");
-    fixtures::insert_media(
-        &core,
-        1,
-        Some("Long"),
-        None,
-        Some(24),
-        "FINISHED",
-        "TV",
-        None,
-    );
+    fixtures::media(1, "Long").episodes(24).insert(&core);
     fixtures::match_series(&core, long, Some(1), None);
     core.store()
         .write(move |c| {
@@ -195,16 +174,7 @@ fn a_stale_count_or_an_extra_episode_does_not_finish_a_series() {
     }
     // Two of three, plus an OVA and an episode 0: still not finished.
     let short = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Short", "Short");
-    fixtures::insert_media(
-        &core,
-        2,
-        Some("Short"),
-        None,
-        Some(3),
-        "FINISHED",
-        "TV",
-        None,
-    );
+    fixtures::media(2, "Short").episodes(3).insert(&core);
     fixtures::match_series(&core, short, Some(2), None);
     for key in ["1", "2", "0", "S00E01"] {
         fixtures::insert_completed(&core, short, key, day(5, 1));
@@ -247,16 +217,7 @@ fn a_rewatch_counts_in_its_own_year_and_the_series_stays_finished_where_it_was()
     let (_dir, core, _c) = common::open_core();
     let src = fixtures::insert_source(&core, "/lib");
     let bebop = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
-    fixtures::insert_media(
-        &core,
-        1,
-        Some("Cowboy Bebop"),
-        None,
-        Some(3),
-        "FINISHED",
-        "TV",
-        None,
-    );
+    fixtures::media(1, "Cowboy Bebop").episodes(3).insert(&core);
     fixtures::match_series(&core, bebop, Some(1), None);
     // Finished in December 2025, episode 1 watched again in May 2026.
     let december = day(1, 1) - 20 * 86_400;
@@ -291,13 +252,11 @@ fn progress_set_by_hand_stays_out_of_the_hours() {
     let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
     let now = anibeam_core::time::now_secs();
     for n in 1..=3 {
-        fixtures::insert_file(
+        fixtures::insert_episode_file(
             &core,
             loose,
             &format!("/lib/Loose/Episode {n}.mkv"),
             f64::from(n),
-            None,
-            "episode",
             now,
         );
     }
@@ -374,13 +333,11 @@ fn each_finish_of_an_episode_is_kept() {
     let (_dir, core, _c) = common::open_core();
     let src = fixtures::insert_source(&core, "/lib");
     let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
-    let file = fixtures::insert_file(
+    let file = fixtures::insert_episode_file(
         &core,
         loose,
         "/lib/Loose/Episode 1.mkv",
         1.0,
-        None,
-        "episode",
         anibeam_core::time::now_secs(),
     );
     for _ in 0..2 {
@@ -433,13 +390,11 @@ fn a_run_that_never_played_is_no_finish() {
     let (_dir, core, _c) = common::open_core();
     let src = fixtures::insert_source(&core, "/lib");
     let loose = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Loose", "Loose");
-    let file = fixtures::insert_file(
+    let file = fixtures::insert_episode_file(
         &core,
         loose,
         "/lib/Loose/Episode 1.mkv",
         1.0,
-        None,
-        "episode",
         anibeam_core::time::now_secs(),
     );
     let session = match core.call(Call::OpenPlayback { file }).unwrap() {
@@ -481,16 +436,7 @@ fn a_series_finished_partly_by_hand_counts_no_finish() {
     let (_dir, core, _c) = common::open_core();
     let src = fixtures::insert_source(&core, "/lib");
     let show = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Show", "Show");
-    fixtures::insert_media(
-        &core,
-        1,
-        Some("Show"),
-        None,
-        Some(3),
-        "FINISHED",
-        "TV",
-        None,
-    );
+    fixtures::media(1, "Show").episodes(3).insert(&core);
     fixtures::match_series(&core, show, Some(1), None);
     fixtures::insert_completed(&core, show, "1", day(2, 1));
     core.store()

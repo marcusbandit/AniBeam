@@ -23,46 +23,23 @@ fn outs(c: &anibeam_core::events::Collector) -> Vec<EpisodeOut> {
 fn shows(core: &Core, at: i64) -> u64 {
     let src = fixtures::insert_source(core, "/lib");
     let frieren = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Frieren", "Frieren");
-    fixtures::insert_file(
-        core,
-        frieren,
-        "/lib/Frieren/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
-    fixtures::insert_media(
-        core,
-        1,
-        Some("Frieren"),
-        None,
-        Some(28),
-        "RELEASING",
-        "TV",
-        Some(90),
-    );
+    fixtures::insert_episode_file(core, frieren, "/lib/Frieren/01.mkv", 1.0, 1);
+    fixtures::media(1, "Frieren")
+        .episodes(28)
+        .status("RELEASING")
+        .score(90)
+        .insert(core);
     fixtures::match_series(core, frieren, Some(1), None);
-    fixtures::insert_media(
-        core,
-        2,
-        Some("Dandadan"),
-        None,
-        Some(12),
-        "RELEASING",
-        "TV",
-        Some(85),
-    );
-    fixtures::insert_media(
-        core,
-        3,
-        Some("Not Followed"),
-        None,
-        Some(12),
-        "RELEASING",
-        "TV",
-        Some(70),
-    );
+    fixtures::media(2, "Dandadan")
+        .episodes(12)
+        .status("RELEASING")
+        .score(85)
+        .insert(core);
+    fixtures::media(3, "Not Followed")
+        .episodes(12)
+        .status("RELEASING")
+        .score(70)
+        .insert(core);
     fixtures::insert_tracker_entry(core, "anilist", 1, 6, "watching", None);
     fixtures::insert_tracker_entry(core, "anilist", 2, 3, "watching", None);
     fixtures::insert_tracker_entry(core, "anilist", 3, 0, "planning", None);

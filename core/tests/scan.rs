@@ -1,5 +1,6 @@
 mod common;
 use anibeam_core::*;
+use common::job_of;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -64,13 +65,6 @@ fn source_changes(c: &events::Collector) -> usize {
         .iter()
         .filter(|b| matches!(b, EventBody::SourceChanged { .. }))
         .count()
-}
-
-fn started(reply: Reply) -> u64 {
-    match reply {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
 }
 
 #[test]
@@ -138,19 +132,7 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
         }
         other => panic!("{other:?}"),
     }
-    let cards = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let cards = common::cards(&core, Tab::All, false);
     let show = cards.iter().find(|s| s.kind == SeriesKind::Show).unwrap();
     assert_eq!((show.title.as_str(), show.episodes_on_disk), ("Show A", 3));
     let film = cards.iter().find(|s| s.kind == SeriesKind::Movie).unwrap();
@@ -161,7 +143,7 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
     // A fourth file lands, one is deleted: a rescan is "changed", not "added".
     touch(&lib.join("Show A").join("Show A - 04.mkv"));
     fs::remove_file(lib.join("Show A").join("Show A - 01.mkv")).unwrap();
-    let job = started(
+    let job = job_of(
         core.call(Call::Scan {
             source: Some(source),
         })
@@ -179,7 +161,7 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
 
     // The folder goes away: the series is missing, its history stays, Forget removes it.
     fs::remove_dir_all(lib.join("Show A")).unwrap();
-    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
     assert!(matches!(
         common::wait_job(&c, job).body,
         EventBody::ScanFinished {
@@ -199,19 +181,7 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
         "{:?}",
         c.bodies()
     );
-    let all = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let all = common::cards(&core, Tab::All, false);
     assert_eq!(all.len(), 1);
     let missing = match core
         .call(Call::ListMetadata {
@@ -248,7 +218,7 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
     for n in 2..=4 {
         touch(&lib.join("Show B").join(format!("Show B - {n:02}.mkv")));
     }
-    let job = started(core.call(Call::RescanSeries { series: film }).unwrap());
+    let job = job_of(core.call(Call::RescanSeries { series: film }).unwrap());
     assert!(matches!(
         common::wait_job(&c, job).body,
         EventBody::ScanFinished {
@@ -258,7 +228,7 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
             ..
         }
     ));
-    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
     assert!(matches!(
         common::wait_job(&c, job).body,
         EventBody::ScanFinished { added: 1, .. }
@@ -333,7 +303,7 @@ fn a_reclassified_file_changes_series_without_colliding_on_its_path() {
                 .join(format!("Show A - S02E{n:02}.mkv")),
         );
     }
-    let job = started(
+    let job = job_of(
         core.call(Call::Scan {
             source: Some(source),
         })
@@ -353,19 +323,7 @@ fn a_reclassified_file_changes_series_without_colliding_on_its_path() {
         "{done:?}"
     );
 
-    let cards = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let cards = common::cards(&core, Tab::All, false);
     let mut on_disk: Vec<u64> = cards.iter().map(|s| s.episodes_on_disk).collect();
     on_disk.sort_unstable();
     assert_eq!(on_disk, vec![2, 3], "{cards:?}");
@@ -451,7 +409,7 @@ fn an_overlapping_source_is_refused_at_the_door() {
         Reply::Source { .. }
     ));
 
-    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
     let done = common::wait_job(&c, job);
     assert!(
         matches!(done.body, EventBody::ScanFinished { .. }),
@@ -531,7 +489,7 @@ fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
         return;
     }
 
-    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
     let done = common::wait_job(&c, job);
     assert!(
         matches!(done.body, EventBody::ScanFinished { removed: 0, .. }),
@@ -556,7 +514,7 @@ fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
     // and again after it off the read, so a drive that never came back was
     // announced as back and then gone again, every pass.
     let quiet = source_changes(&c);
-    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
     common::wait_job(&c, job);
     assert_eq!(
         source_changes(&c),
@@ -565,26 +523,14 @@ fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
     );
 
     fs::set_permissions(&lib, fs::Permissions::from_mode(0o755)).unwrap();
-    let both = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let both = common::cards(&core, Tab::All, false);
     assert_eq!(both.len(), 2);
     assert!(both.iter().all(|s| !s.missing), "{both:?}");
 
     // Readable again: the pass finds both series where it left them, and
     // says the source is back exactly once.
     let before = source_changes(&c);
-    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
     let done = common::wait_job(&c, job);
     assert_eq!(source_changes(&c), before + 1);
     assert!(
@@ -624,7 +570,7 @@ fn a_root_that_reads_as_empty_while_it_holds_series_is_unavailable() {
     common::wait_job(&c, first_scan(&c));
 
     fs::remove_dir_all(lib.join("Show A")).unwrap();
-    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
     let done = common::wait_job(&c, job);
     assert!(
         matches!(done.body, EventBody::ScanFinished { removed: 0, .. }),
@@ -637,19 +583,7 @@ fn a_root_that_reads_as_empty_while_it_holds_series_is_unavailable() {
         "{:#?}",
         c.events()
     );
-    let cards = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let cards = common::cards(&core, Tab::All, false);
     assert_eq!(cards.len(), 1);
     assert!(!cards[0].missing);
     core.shutdown();
@@ -771,7 +705,7 @@ fn a_scope_asked_for_during_a_running_scan_is_not_lost() {
         source: second,
         fired: AtomicBool::new(false),
     }));
-    let job = started(
+    let job = job_of(
         core.call(Call::Scan {
             source: Some(first),
         })

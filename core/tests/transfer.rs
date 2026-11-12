@@ -1,4 +1,5 @@
 mod common;
+use common::job_of;
 
 use std::fs;
 use std::path::Path;
@@ -9,13 +10,6 @@ use anibeam_core::*;
 
 /// The spec's own example document, version 1 as Electron wrote it.
 const FIXTURE: &str = include_str!("fixtures/anibeam-export-v1.json");
-
-fn started(reply: Reply) -> u64 {
-    match reply {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
 
 fn summary_of(event: Event) -> ImportSummary {
     match event.body {
@@ -112,7 +106,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
     let (dir, core, c) = common::open_core();
     let path = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
 
-    let job = started(core.call(Call::Import { path: path.clone() }).unwrap());
+    let job = job_of(core.call(Call::Import { path: path.clone() }).unwrap());
     let done = common::wait_job(&c, job);
     assert_eq!(done.level, Level::Info);
     assert_eq!(
@@ -254,7 +248,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
 
     // Merge, file wins, nothing deleted: the same file again is no change
     // at all, and it says so.
-    let job = started(core.call(Call::Import { path }).unwrap());
+    let job = job_of(core.call(Call::Import { path }).unwrap());
     let again = summary_of(common::wait_job(&c, job));
     assert_eq!(again.sources_added, 0);
     assert_eq!(again.sources_unavailable, 0);
@@ -281,7 +275,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
 fn a_private_export_round_trips_into_a_fresh_core() {
     let (dir, core, c) = common::open_core();
     let path = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
-    let job = started(core.call(Call::Import { path }).unwrap());
+    let job = job_of(core.call(Call::Import { path }).unwrap());
     common::wait_job(&c, job);
 
     // The two things version 2 added: a track choice, which describes the
@@ -338,7 +332,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
 
     let out = dir.path().join("anibeam-export-full.json");
     let out_path = out.to_string_lossy().into_owned();
-    let job = started(
+    let job = job_of(
         core.call(Call::Export {
             path: out_path.clone(),
             private: true,
@@ -394,7 +388,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
     // The checkbox is the only guard there is, so the unticked export has
     // to carry none of it.
     let library = dir.path().join("anibeam-export-library.json");
-    let job = started(
+    let job = job_of(
         core.call(Call::Export {
             path: library.to_string_lossy().into_owned(),
             private: false,
@@ -413,7 +407,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
     );
 
     let (_dir2, fresh, c2) = common::open_core();
-    let job = started(fresh.call(Call::Import { path: out_path }).unwrap());
+    let job = job_of(fresh.call(Call::Import { path: out_path }).unwrap());
     let summary = summary_of(common::wait_job(&c2, job));
     assert_eq!(summary.sources_added, 1);
     assert_eq!(summary.series_created, 3);
@@ -460,7 +454,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
 fn an_extra_round_trips_by_its_file() {
     let (dir, core, c) = common::open_core();
     let path = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
-    let job = started(core.call(Call::Import { path }).unwrap());
+    let job = job_of(core.call(Call::Import { path }).unwrap());
     common::wait_job(&c, job);
     core.store()
         .write(|c| {
@@ -478,7 +472,7 @@ fn an_extra_round_trips_by_its_file() {
 
     let out = dir.path().join("anibeam-export-full.json");
     let out_path = out.to_string_lossy().into_owned();
-    let job = started(
+    let job = job_of(
         core.call(Call::Export {
             path: out_path.clone(),
             private: true,
@@ -488,7 +482,7 @@ fn an_extra_round_trips_by_its_file() {
     common::wait_job(&c, job);
 
     let (_dir2, fresh, c2) = common::open_core();
-    let job = started(fresh.call(Call::Import { path: out_path }).unwrap());
+    let job = job_of(fresh.call(Call::Import { path: out_path }).unwrap());
     let summary = summary_of(common::wait_job(&c2, job));
     assert_eq!(summary.views_merged, 1);
     assert!(
@@ -525,9 +519,9 @@ fn file_column(core: &Core, column: &str, tail: &str) -> Option<f64> {
 fn a_quick_fix_round_trips_beside_its_series() {
     let (dir, core, c) = common::open_core();
     let path = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
-    let job = started(core.call(Call::Import { path }).unwrap());
+    let job = job_of(core.call(Call::Import { path }).unwrap());
     common::wait_job(&c, job);
-    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
     common::wait_job(&c, job);
 
     let frieren = metadata(&core)
@@ -551,7 +545,7 @@ fn a_quick_fix_round_trips_beside_its_series() {
 
     let out = dir.path().join("anibeam-export-library.json");
     let out_path = out.to_string_lossy().into_owned();
-    let job = started(
+    let job = job_of(
         core.call(Call::Export {
             path: out_path.clone(),
             private: false,
@@ -592,7 +586,7 @@ fn a_quick_fix_round_trips_beside_its_series() {
     );
 
     let (_dir2, fresh, c2) = common::open_core();
-    let job = started(fresh.call(Call::Import { path: out_path }).unwrap());
+    let job = job_of(fresh.call(Call::Import { path: out_path }).unwrap());
     let summary = summary_of(common::wait_job(&c2, job));
     assert!(
         summary.fields_ignored.is_empty(),
@@ -650,14 +644,14 @@ fn complete_frieren(core: &Core, key: &str) {
 fn an_import_applies_its_fixes_to_files_already_there() {
     let (dir, core, c) = common::open_core();
     let staged = write_document(dir.path(), "anibeam-export.json", &stage(dir.path()));
-    let job = started(
+    let job = job_of(
         core.call(Call::Import {
             path: staged.clone(),
         })
         .unwrap(),
     );
     common::wait_job(&c, job);
-    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
     common::wait_job(&c, job);
     let frieren = metadata(&core)
         .into_iter()
@@ -681,7 +675,7 @@ fn an_import_applies_its_fixes_to_files_already_there() {
     complete_frieren(&core, "13");
     let out = dir.path().join("anibeam-export-library.json");
     let out_path = out.to_string_lossy().into_owned();
-    let job = started(
+    let job = job_of(
         core.call(Call::Export {
             path: out_path.clone(),
             private: false,
@@ -692,7 +686,7 @@ fn an_import_applies_its_fixes_to_files_already_there() {
 
     // The same files, read as episode 1, with history on that key.
     let (_dir2, target, c2) = common::open_core();
-    let job = started(
+    let job = job_of(
         target
             .call(Call::Import {
                 path: staged.clone(),
@@ -700,7 +694,7 @@ fn an_import_applies_its_fixes_to_files_already_there() {
             .unwrap(),
     );
     common::wait_job(&c2, job);
-    let job = started(target.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(target.call(Call::Scan { source: None }).unwrap());
     common::wait_job(&c2, job);
     assert_eq!(
         file_column(&target, "number", "Sousou no Frieren - 01.mkv"),
@@ -708,7 +702,7 @@ fn an_import_applies_its_fixes_to_files_already_there() {
     );
     complete_frieren(&target, "1");
 
-    let job = started(
+    let job = job_of(
         target
             .call(Call::Import {
                 path: out_path.clone(),
@@ -737,7 +731,7 @@ fn an_import_applies_its_fixes_to_files_already_there() {
             .any(|e| e.job.as_ref().is_some_and(|j| j.kind == JobKind::Scan))
     );
 
-    let job = started(
+    let job = job_of(
         target
             .call(Call::Import {
                 path: out_path.clone(),
@@ -759,11 +753,11 @@ fn an_import_applies_its_fixes_to_files_already_there() {
     }
     let wasless = write_document(dir.path(), "wasless.json", &doc.to_string());
     let (_dir3, third, c3) = common::open_core();
-    let job = started(third.call(Call::Import { path: staged }).unwrap());
+    let job = job_of(third.call(Call::Import { path: staged }).unwrap());
     common::wait_job(&c3, job);
-    let job = started(third.call(Call::Scan { source: None }).unwrap());
+    let job = job_of(third.call(Call::Scan { source: None }).unwrap());
     common::wait_job(&c3, job);
-    let job = started(third.call(Call::Import { path: wasless }).unwrap());
+    let job = job_of(third.call(Call::Import { path: wasless }).unwrap());
     assert_eq!(summary_of(common::wait_job(&c3, job)).fixes_applied, 1);
     let stored = rows(&third, "SELECT reading, was FROM file_fixes");
     assert_eq!(stored.len(), 1, "{stored:?}");

@@ -104,19 +104,7 @@ fn a_file_landing_in_a_watched_source_is_ingested_once_written() {
         },
         Duration::from_secs(10),
     );
-    let listed = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let listed = common::cards(&core, Tab::All, false);
     assert!(!listed.iter().any(|s| s.title == "Other"), "{listed:?}");
     let missing = match core
         .call(Call::ListMetadata {

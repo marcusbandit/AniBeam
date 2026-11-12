@@ -50,25 +50,11 @@ fn the_refresh_keeps_planning_entries_apart_from_watching() {
     let src = fixtures::insert_source(&core, "/lib");
     let mushishi =
         fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Mushishi", "Mushishi");
-    fixtures::insert_file(
-        &core,
-        mushishi,
-        "/lib/Mushishi/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
-    fixtures::insert_media(
-        &core,
-        2,
-        Some("Mushishi"),
-        None,
-        Some(26),
-        "FINISHED",
-        "TV",
-        Some(86),
-    );
+    fixtures::insert_episode_file(&core, mushishi, "/lib/Mushishi/01.mkv", 1.0, 1);
+    fixtures::media(2, "Mushishi")
+        .episodes(26)
+        .score(86)
+        .insert(&core);
     fixtures::match_series(&core, mushishi, Some(2), None);
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "tok");
 
@@ -128,25 +114,11 @@ fn a_planned_show_moved_to_watching_leaves_the_planning_list() {
     let src = fixtures::insert_source(&core, "/lib");
     let mushishi =
         fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Mushishi", "Mushishi");
-    fixtures::insert_file(
-        &core,
-        mushishi,
-        "/lib/Mushishi/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
-    fixtures::insert_media(
-        &core,
-        2,
-        Some("Mushishi"),
-        None,
-        Some(26),
-        "FINISHED",
-        "TV",
-        Some(86),
-    );
+    fixtures::insert_episode_file(&core, mushishi, "/lib/Mushishi/01.mkv", 1.0, 1);
+    fixtures::media(2, "Mushishi")
+        .episodes(26)
+        .score(86)
+        .insert(&core);
     fixtures::match_series(&core, mushishi, Some(2), None);
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "tok");
     let job = match core.call(Call::RefreshWatching { force: true }).unwrap() {
@@ -187,16 +159,10 @@ fn a_hidden_series_keeps_its_entry_off_the_planning_list() {
     let (_dir, core, _c) = common::open_core();
     let src = fixtures::insert_source(&core, "/lib");
     let s = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Mushishi", "Mushishi");
-    fixtures::insert_media(
-        &core,
-        2,
-        Some("Mushishi"),
-        None,
-        Some(26),
-        "FINISHED",
-        "TV",
-        Some(86),
-    );
+    fixtures::media(2, "Mushishi")
+        .episodes(26)
+        .score(86)
+        .insert(&core);
     fixtures::match_series(&core, s, Some(2), None);
     fixtures::insert_tracker_entry(&core, "anilist", 2, 0, "planning", None);
     assert_eq!(planning(&core).entries.len(), 1);

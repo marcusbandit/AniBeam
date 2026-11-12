@@ -3,17 +3,11 @@
 //! for the whole selection rather than one per series.
 
 mod common;
+use common::job_of;
 mod fixtures;
 
 use anibeam_core::net::FakeHttp;
 use anibeam_core::*;
-
-fn started(reply: Reply) -> u64 {
-    match reply {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
 
 /// Matched series, each with one file, its own AniList id and twelve episodes.
 fn matched_shows(core: &Core, titles: &[&str]) -> Vec<u64> {
@@ -26,25 +20,11 @@ fn matched_shows(core: &Core, titles: &[&str]) -> Vec<u64> {
             let id = i as u64 + 1;
             let path = format!("/lib/{title}");
             let series = fixtures::insert_series(core, src, SeriesKind::Show, &path, title);
-            fixtures::insert_file(
-                core,
-                series,
-                &format!("{path}/01.mkv"),
-                1.0,
-                None,
-                "episode",
-                now,
-            );
-            fixtures::insert_media(
-                core,
-                id,
-                Some(title),
-                None,
-                Some(12),
-                "FINISHED",
-                "TV",
-                Some(80),
-            );
+            fixtures::insert_episode_file(core, series, &format!("{path}/01.mkv"), 1.0, now);
+            fixtures::media(id, title)
+                .episodes(12)
+                .score(80)
+                .insert(core);
             fixtures::match_series(core, series, Some(id), None);
             series
         })
@@ -52,19 +32,7 @@ fn matched_shows(core: &Core, titles: &[&str]) -> Vec<u64> {
 }
 
 fn cards(core: &Core, tab: Tab) -> Vec<SeriesCard> {
-    match core
-        .call(Call::ListSeries {
-            tab,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: true,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    }
+    common::cards(core, tab, true)
 }
 
 fn card(core: &Core, series: u64) -> SeriesCard {
@@ -166,7 +134,7 @@ fn a_list_status_goes_to_every_pick_in_one_job_and_one_line() {
     anilist_write(&http);
     anilist_write(&http);
 
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: ids.clone(),
             action: SeriesAction::ListStatus {
@@ -196,7 +164,7 @@ fn a_pick_with_nowhere_to_write_is_left_out_and_counted() {
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
     anilist_write(&http);
 
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: vec![ids[0], loose],
             action: SeriesAction::ListStatus {
@@ -280,7 +248,7 @@ fn a_failed_write_is_counted_in_the_one_line_not_said_per_series() {
     anilist_write(&http);
     http.push_for("anilist", 500, r#"{"errors":[{"message":"boom"}]}"#);
 
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: ids,
             action: SeriesAction::Score { score: Some(8.0) },
@@ -305,7 +273,7 @@ fn every_write_failing_reads_as_a_warning() {
     http.push_for("anilist", 500, r#"{"errors":[{"message":"boom"}]}"#);
     http.push_for("anilist", 500, r#"{"errors":[{"message":"boom"}]}"#);
 
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: ids,
             action: SeriesAction::Score { score: None },
@@ -335,15 +303,7 @@ fn find_a_match_searches_only_the_picks_without_one() {
         "/other/Zzz Unknown",
         "Zzz Unknown",
     );
-    fixtures::insert_file(
-        &core,
-        loose,
-        "/other/Zzz Unknown/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, loose, "/other/Zzz Unknown/01.mkv", 1.0, 1);
     // A match the user cleared stays out of the automatic run, but asking is
     // asking: the pick is searched all the same.
     core.call(Call::ClearMatch { series: loose }).unwrap();
@@ -353,7 +313,7 @@ fn find_a_match_searches_only_the_picks_without_one() {
     );
     http.push_for("api.tvmaze.com/search/shows", 200, "[]");
 
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: vec![ids[0], loose],
             action: SeriesAction::FindMatch,
@@ -397,7 +357,7 @@ fn a_rescan_of_several_is_one_scan() {
     for show in ["Bebop", "Trigun"] {
         std::fs::write(lib.join(show).join("Show - 02.mkv"), b"x").unwrap();
     }
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: ids,
             action: SeriesAction::Rescan,
@@ -440,15 +400,7 @@ fn a_cleared_match_that_still_finds_nothing_stays_cleared() {
         "/lib/Zzz Unknown",
         "Zzz Unknown",
     );
-    fixtures::insert_file(
-        &core,
-        loose,
-        "/lib/Zzz Unknown/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, loose, "/lib/Zzz Unknown/01.mkv", 1.0, 1);
     core.call(Call::ClearMatch { series: loose }).unwrap();
     http.push_json(
         200,
@@ -456,7 +408,7 @@ fn a_cleared_match_that_still_finds_nothing_stays_cleared() {
     );
     http.push_for("api.tvmaze.com/search/shows", 200, "[]");
 
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: vec![loose],
             action: SeriesAction::FindMatch,
@@ -484,15 +436,7 @@ fn a_search_that_fails_is_said_as_one_to_try_again_not_a_miss() {
         "/lib/Zzz Unknown",
         "Zzz Unknown",
     );
-    fixtures::insert_file(
-        &core,
-        loose,
-        "/lib/Zzz Unknown/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, loose, "/lib/Zzz Unknown/01.mkv", 1.0, 1);
     // A reply that does not parse: the provider answered, wrongly. (An error
     // reply reads as the provider gone, which ends the job the way the
     // automatic run ends.)
@@ -501,7 +445,7 @@ fn a_search_that_fails_is_said_as_one_to_try_again_not_a_miss() {
         serde_json::json!({ "data": { "Page": { "media": [ { "id": "not a number" } ] } } }),
     );
 
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: vec![loose],
             action: SeriesAction::FindMatch,
@@ -526,7 +470,7 @@ fn a_pick_gone_from_disk_is_not_counted_as_matched() {
     fixtures::mark_missing(&core, gone);
     let ids = matched_shows(&core, &["Bebop"]);
 
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: vec![gone, ids[0]],
             action: SeriesAction::FindMatch,
@@ -553,7 +497,7 @@ fn a_hidden_pick_is_named_as_hidden_not_as_unmatched() {
     .unwrap();
     anilist_write(&http);
 
-    let job = started(
+    let job = job_of(
         core.call(Call::ActOnSeries {
             series: ids,
             action: SeriesAction::ListStatus {

@@ -1,4 +1,5 @@
 mod common;
+use common::started;
 mod fixtures;
 use anibeam_core::*;
 use rusqlite::params;
@@ -42,26 +43,7 @@ fn media_json_as(
 }
 
 fn list_cards(core: &Core) -> Vec<SeriesCard> {
-    match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    }
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
+    common::cards(core, Tab::All, false)
 }
 
 fn attempted_at(core: &Core, series: u64) -> Option<i64> {
@@ -88,15 +70,7 @@ fn auto_match_matches_once_at_the_gate_and_never_rehammers() {
         "/lib/Sousou no Frieren",
         "Sousou no Frieren",
     );
-    fixtures::insert_file(
-        &core,
-        hit,
-        "/lib/Sousou no Frieren/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, hit, "/lib/Sousou no Frieren/01.mkv", 1.0, 1);
     let miss = fixtures::insert_series(
         &core,
         src,
@@ -104,15 +78,7 @@ fn auto_match_matches_once_at_the_gate_and_never_rehammers() {
         "/lib/Zzz Unknown",
         "Zzz Unknown",
     );
-    fixtures::insert_file(
-        &core,
-        miss,
-        "/lib/Zzz Unknown/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, miss, "/lib/Zzz Unknown/01.mkv", 1.0, 1);
     let no_files = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Empty", "Empty");
 
     // Search for the hit, enrichment, schedule, Jikan; then the search for the miss.
@@ -252,15 +218,7 @@ fn an_exhausted_rate_limit_fails_the_job_and_stamps_nothing() {
         "/lib/Sousou no Frieren",
         "Sousou no Frieren",
     );
-    fixtures::insert_file(
-        &core,
-        series,
-        "/lib/Sousou no Frieren/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, series, "/lib/Sousou no Frieren/01.mkv", 1.0, 1);
 
     // The first request plus the limiter's six retries. `Retry-After: 0` is
     // what keeps the test to the pacing gap rather than the 1, 2, 4, 8, 16,
@@ -304,9 +262,9 @@ fn a_transport_failure_fails_the_job_and_stamps_nothing() {
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
     let first = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Aaa", "Aaa");
-    fixtures::insert_file(&core, first, "/lib/Aaa/01.mkv", 1.0, None, "episode", 1);
+    fixtures::insert_episode_file(&core, first, "/lib/Aaa/01.mkv", 1.0, 1);
     let second = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Bbb", "Bbb");
-    fixtures::insert_file(&core, second, "/lib/Bbb/01.mkv", 1.0, None, "episode", 1);
+    fixtures::insert_episode_file(&core, second, "/lib/Bbb/01.mkv", 1.0, 1);
 
     // A connection that never opened. The limiter does not retry one, so
     // this is a single request and the walk never reaches the second
@@ -350,9 +308,9 @@ fn a_reply_that_does_not_parse_ends_the_turn_unstamped_and_the_walk_carries_on()
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
     let broken = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Aaa", "Aaa");
-    fixtures::insert_file(&core, broken, "/lib/Aaa/01.mkv", 1.0, None, "episode", 1);
+    fixtures::insert_episode_file(&core, broken, "/lib/Aaa/01.mkv", 1.0, 1);
     let after = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Bbb", "Bbb");
-    fixtures::insert_file(&core, after, "/lib/Bbb/01.mkv", 1.0, None, "episode", 1);
+    fixtures::insert_episode_file(&core, after, "/lib/Bbb/01.mkv", 1.0, 1);
 
     // An id that is a string where the schema promises a number: nothing a
     // default can rescue, so the whole reply fails to parse.
@@ -415,7 +373,7 @@ fn an_error_from_the_last_provider_leaves_the_series_unstamped() {
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
     let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Aaa", "Aaa");
-    fixtures::insert_file(&core, series, "/lib/Aaa/01.mkv", 1.0, None, "episode", 1);
+    fixtures::insert_episode_file(&core, series, "/lib/Aaa/01.mkv", 1.0, 1);
     http.push_json(
         200,
         serde_json::json!({ "data": { "Page": { "media": [] } } }),
@@ -448,15 +406,7 @@ fn a_film_folder_matches_kimi_no_na_wa_and_not_the_suntory_short() {
         "/lib/Kimi no Na wa",
         "Kimi no Na wa",
     );
-    fixtures::insert_file(
-        &core,
-        film,
-        "/lib/Kimi no Na wa/Kimi no Na wa.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, film, "/lib/Kimi no Na wa/Kimi no Na wa.mkv", 1.0, 1);
 
     // The search, the short first; then the film's enrichment, schedule,
     // Jikan and poster.
@@ -524,13 +474,11 @@ fn a_first_film_folder_is_searched_again_without_its_number() {
         "/lib/Seitokai Yakuindomo/Movies/Seitokai Yakuindomo Movie 1.mkv",
         "Seitokai Yakuindomo Movie 1",
     );
-    fixtures::insert_file(
+    fixtures::insert_episode_file(
         &core,
         film,
         "/lib/Seitokai Yakuindomo/Movies/Seitokai Yakuindomo Movie 1.mkv",
         1.0,
-        None,
-        "episode",
         1,
     );
 

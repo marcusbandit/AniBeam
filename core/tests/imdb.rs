@@ -103,16 +103,10 @@ fn library(core: &Core) -> Library {
     };
     let anilist = |name: &str, anilist_id: u64, mal_id: Option<u64>| {
         let id = series(name);
-        fixtures::insert_media(
-            core,
-            anilist_id,
-            Some(name),
-            None,
-            Some(12),
-            "FINISHED",
-            "TV",
-            Some(80),
-        );
+        fixtures::media(anilist_id, name)
+            .episodes(12)
+            .score(80)
+            .insert(core);
         fixtures::match_series(core, id, Some(anilist_id), mal_id);
         id
     };
@@ -338,19 +332,7 @@ fn a_first_run_fills_both_tables_stamps_them_and_resolves_every_card() {
     );
 
     // The library read carries the same fields the job's cards did.
-    let listed = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let listed = common::cards(&core, Tab::All, false);
     let bebop = listed.iter().find(|s| s.id == lib.bebop).unwrap();
     assert_eq!(bebop.imdb_id.as_deref(), Some("tt0213338"));
     assert_eq!(bebop.imdb_score, Some(8.9));
