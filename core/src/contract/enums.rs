@@ -1,5 +1,28 @@
 use serde::{Deserialize, Serialize};
 
+/// `as_str` and `from_column` for an enum whose variants each stand for one
+/// stored string. Each pair is written once, so the two directions cannot
+/// drift apart.
+macro_rules! column_strings {
+    ($(#[$doc:meta])* $name:ident { $($variant:ident => $col:literal),+ $(,)? }) => {
+        impl $name {
+            $(#[$doc])*
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $col,)+
+                }
+            }
+
+            pub fn from_column(s: &str) -> Option<Self> {
+                match s {
+                    $($col => Some(Self::$variant),)+
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum Provider {
     Anilist,
@@ -15,22 +38,6 @@ pub enum Tracker {
 }
 
 impl Tracker {
-    /// The value every `tracker` column holds.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Tracker::Anilist => "anilist",
-            Tracker::Mal => "mal",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<Tracker> {
-        match s {
-            "anilist" => Some(Tracker::Anilist),
-            "mal" => Some(Tracker::Mal),
-            _ => None,
-        }
-    }
-
     /// The label a user reads: AniList or MAL.
     pub fn label(self) -> &'static str {
         match self {
@@ -40,26 +47,15 @@ impl Tracker {
     }
 }
 
+column_strings!(
+    /// The value every `tracker` column holds.
+    Tracker {
+        Anilist => "anilist",
+        Mal => "mal",
+    }
+);
+
 impl Provider {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Provider::Anilist => "anilist",
-            Provider::Mal => "mal",
-            Provider::Tmdb => "tmdb",
-            Provider::Tvmaze => "tvmaze",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<Provider> {
-        match s {
-            "anilist" => Some(Provider::Anilist),
-            "mal" => Some(Provider::Mal),
-            "tmdb" => Some(Provider::Tmdb),
-            "tvmaze" => Some(Provider::Tvmaze),
-            _ => None,
-        }
-    }
-
     /// The name a user reads: AniList, MAL, TMDB or TVmaze.
     pub fn label(self) -> &'static str {
         match self {
@@ -70,6 +66,13 @@ impl Provider {
         }
     }
 }
+
+column_strings!(Provider {
+    Anilist => "anilist",
+    Mal => "mal",
+    Tmdb => "tmdb",
+    Tvmaze => "tvmaze",
+});
 
 /// The providers a series can be matched against, in the default order the
 /// auto-match tries them. MAL is a tracker and TMDB has no client on the
@@ -83,22 +86,10 @@ pub enum SeriesKind {
     Movie,
 }
 
-impl SeriesKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            SeriesKind::Show => "show",
-            SeriesKind::Movie => "movie",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<SeriesKind> {
-        match s {
-            "show" => Some(SeriesKind::Show),
-            "movie" => Some(SeriesKind::Movie),
-            _ => None,
-        }
-    }
-}
+column_strings!(SeriesKind {
+    Show => "show",
+    Movie => "movie",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum TmdbKind {
@@ -106,22 +97,10 @@ pub enum TmdbKind {
     Movie,
 }
 
-impl TmdbKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            TmdbKind::Tv => "tv",
-            TmdbKind::Movie => "movie",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<TmdbKind> {
-        match s {
-            "tv" => Some(TmdbKind::Tv),
-            "movie" => Some(TmdbKind::Movie),
-            _ => None,
-        }
-    }
-}
+column_strings!(TmdbKind {
+    Tv => "tv",
+    Movie => "movie",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum AiringStatus {
@@ -199,30 +178,14 @@ pub enum ListStatus {
     Repeating,
 }
 
-impl ListStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ListStatus::Watching => "watching",
-            ListStatus::Planning => "planning",
-            ListStatus::Completed => "completed",
-            ListStatus::Paused => "paused",
-            ListStatus::Dropped => "dropped",
-            ListStatus::Repeating => "repeating",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<ListStatus> {
-        match s {
-            "watching" => Some(ListStatus::Watching),
-            "planning" => Some(ListStatus::Planning),
-            "completed" => Some(ListStatus::Completed),
-            "paused" => Some(ListStatus::Paused),
-            "dropped" => Some(ListStatus::Dropped),
-            "repeating" => Some(ListStatus::Repeating),
-            _ => None,
-        }
-    }
-}
+column_strings!(ListStatus {
+    Watching => "watching",
+    Planning => "planning",
+    Completed => "completed",
+    Paused => "paused",
+    Dropped => "dropped",
+    Repeating => "repeating",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum Tab {
@@ -233,28 +196,13 @@ pub enum Tab {
     Hidden,
 }
 
-impl Tab {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Tab::All => "all",
-            Tab::Series => "series",
-            Tab::Movies => "movies",
-            Tab::Watched => "watched",
-            Tab::Hidden => "hidden",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<Tab> {
-        match s {
-            "all" => Some(Tab::All),
-            "series" => Some(Tab::Series),
-            "movies" => Some(Tab::Movies),
-            "watched" => Some(Tab::Watched),
-            "hidden" => Some(Tab::Hidden),
-            _ => None,
-        }
-    }
-}
+column_strings!(Tab {
+    All => "all",
+    Series => "series",
+    Movies => "movies",
+    Watched => "watched",
+    Hidden => "hidden",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum Sort {
@@ -267,31 +215,17 @@ pub enum Sort {
     Downloaded,
 }
 
-impl Sort {
+column_strings!(
     /// The export's own keys, camel cased.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Sort::Alpha => "alpha",
-            Sort::LastViewed => "lastViewed",
-            Sort::Progress => "progress",
-            Sort::CommunityScore => "communityScore",
-            Sort::MyScore => "myScore",
-            Sort::Downloaded => "downloaded",
-        }
+    Sort {
+        Alpha => "alpha",
+        LastViewed => "lastViewed",
+        Progress => "progress",
+        CommunityScore => "communityScore",
+        MyScore => "myScore",
+        Downloaded => "downloaded",
     }
-
-    pub fn from_column(s: &str) -> Option<Sort> {
-        match s {
-            "alpha" => Some(Sort::Alpha),
-            "lastViewed" => Some(Sort::LastViewed),
-            "progress" => Some(Sort::Progress),
-            "communityScore" => Some(Sort::CommunityScore),
-            "myScore" => Some(Sort::MyScore),
-            "downloaded" => Some(Sort::Downloaded),
-            _ => None,
-        }
-    }
-}
+);
 
 /// How the library page arranges its cards: one box per franchise (the
 /// default), by type, by genre, by watch state, or a flat grid. `Flat` is
@@ -318,22 +252,10 @@ pub enum Direction {
     Desc,
 }
 
-impl Direction {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Direction::Asc => "asc",
-            Direction::Desc => "desc",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<Direction> {
-        match s {
-            "asc" => Some(Direction::Asc),
-            "desc" => Some(Direction::Desc),
-            _ => None,
-        }
-    }
-}
+column_strings!(Direction {
+    Asc => "asc",
+    Desc => "desc",
+});
 
 /// Which shows Airing now lists: everything on air today, whatever season
 /// it started in, the season after the current one, or any season by name
@@ -361,22 +283,10 @@ pub enum FeedSort {
     Upcoming,
 }
 
-impl FeedSort {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            FeedSort::Recent => "recent",
-            FeedSort::Upcoming => "upcoming",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<FeedSort> {
-        match s {
-            "recent" => Some(FeedSort::Recent),
-            "upcoming" => Some(FeedSort::Upcoming),
-            _ => None,
-        }
-    }
-}
+column_strings!(FeedSort {
+    Recent => "recent",
+    Upcoming => "upcoming",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum MetadataFilter {
@@ -395,28 +305,13 @@ pub enum ExtraKind {
     Other,
 }
 
-impl ExtraKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ExtraKind::Op => "op",
-            ExtraKind::Ed => "ed",
-            ExtraKind::Pv => "pv",
-            ExtraKind::Sp => "sp",
-            ExtraKind::Other => "other",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<ExtraKind> {
-        match s {
-            "op" => Some(ExtraKind::Op),
-            "ed" => Some(ExtraKind::Ed),
-            "pv" => Some(ExtraKind::Pv),
-            "sp" => Some(ExtraKind::Sp),
-            "other" => Some(ExtraKind::Other),
-            _ => None,
-        }
-    }
-}
+column_strings!(ExtraKind {
+    Op => "op",
+    Ed => "ed",
+    Pv => "pv",
+    Sp => "sp",
+    Other => "other",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum SkipKind {
@@ -430,22 +325,10 @@ pub enum SkipSource {
     AniSkip,
 }
 
-impl SkipSource {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            SkipSource::Chapters => "chapters",
-            SkipSource::AniSkip => "aniskip",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<SkipSource> {
-        match s {
-            "chapters" => Some(SkipSource::Chapters),
-            "aniskip" => Some(SkipSource::AniSkip),
-            _ => None,
-        }
-    }
-}
+column_strings!(SkipSource {
+    Chapters => "chapters",
+    AniSkip => "aniskip",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum TitleLanguage {
@@ -455,24 +338,11 @@ pub enum TitleLanguage {
     Native,
 }
 
-impl TitleLanguage {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            TitleLanguage::Romaji => "romaji",
-            TitleLanguage::English => "english",
-            TitleLanguage::Native => "native",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<TitleLanguage> {
-        match s {
-            "romaji" => Some(TitleLanguage::Romaji),
-            "english" => Some(TitleLanguage::English),
-            "native" => Some(TitleLanguage::Native),
-            _ => None,
-        }
-    }
-}
+column_strings!(TitleLanguage {
+    Romaji => "romaji",
+    English => "english",
+    Native => "native",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum AssOverride {
@@ -527,26 +397,12 @@ pub enum Level {
     Error,
 }
 
-impl Level {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Level::Debug => "debug",
-            Level::Info => "info",
-            Level::Warn => "warn",
-            Level::Error => "error",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<Level> {
-        match s {
-            "debug" => Some(Level::Debug),
-            "info" => Some(Level::Info),
-            "warn" => Some(Level::Warn),
-            "error" => Some(Level::Error),
-            _ => None,
-        }
-    }
-}
+column_strings!(Level {
+    Debug => "debug",
+    Info => "info",
+    Warn => "warn",
+    Error => "error",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum Stage {
@@ -560,34 +416,16 @@ pub enum Stage {
     Downloads,
 }
 
-impl Stage {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Stage::Library => "library",
-            Stage::Metadata => "metadata",
-            Stage::Trackers => "trackers",
-            Stage::Franchise => "franchise",
-            Stage::Playback => "playback",
-            Stage::Store => "store",
-            Stage::System => "system",
-            Stage::Downloads => "downloads",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<Stage> {
-        match s {
-            "library" => Some(Stage::Library),
-            "metadata" => Some(Stage::Metadata),
-            "trackers" => Some(Stage::Trackers),
-            "franchise" => Some(Stage::Franchise),
-            "playback" => Some(Stage::Playback),
-            "store" => Some(Stage::Store),
-            "system" => Some(Stage::System),
-            "downloads" => Some(Stage::Downloads),
-            _ => None,
-        }
-    }
-}
+column_strings!(Stage {
+    Library => "library",
+    Metadata => "metadata",
+    Trackers => "trackers",
+    Franchise => "franchise",
+    Playback => "playback",
+    Store => "store",
+    System => "system",
+    Downloads => "downloads",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum JobPhase {
@@ -596,24 +434,11 @@ pub enum JobPhase {
     Finished,
 }
 
-impl JobPhase {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            JobPhase::Started => "Started",
-            JobPhase::Running => "Running",
-            JobPhase::Finished => "Finished",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<JobPhase> {
-        match s {
-            "Started" => Some(JobPhase::Started),
-            "Running" => Some(JobPhase::Running),
-            "Finished" => Some(JobPhase::Finished),
-            _ => None,
-        }
-    }
-}
+column_strings!(JobPhase {
+    Started => "Started",
+    Running => "Running",
+    Finished => "Finished",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum JobKind {
@@ -770,98 +595,50 @@ impl JobKind {
                 | StartEndpoint
         )
     }
-
-    /// The variant name, verbatim.
-    pub fn as_str(self) -> &'static str {
-        use JobKind::*;
-        match self {
-            Scan => "Scan",
-            AutoMatch => "AutoMatch",
-            Search => "Search",
-            ResolveLink => "ResolveLink",
-            ApplyMatch => "ApplyMatch",
-            Refresh => "Refresh",
-            RefreshAll => "RefreshAll",
-            RefreshAiring => "RefreshAiring",
-            RefreshImdb => "RefreshImdb",
-            ClearImages => "ClearImages",
-            FillImages => "FillImages",
-            ConnectTracker => "ConnectTracker",
-            Mark => "Mark",
-            SetProgress => "SetProgress",
-            Score => "Score",
-            RefreshProgress => "RefreshProgress",
-            RefreshWatching => "RefreshWatching",
-            RefreshAiringNow => "RefreshAiringNow",
-            OnHold => "OnHold",
-            SetStatus => "SetStatus",
-            MoveLists => "MoveLists",
-            Notes => "Notes",
-            Crawl => "Crawl",
-            SkipWindows => "SkipWindows",
-            Export => "Export",
-            Import => "Import",
-            Subscriptions => "Subscriptions",
-            ConnectDownloads => "ConnectDownloads",
-            SearchReleases => "SearchReleases",
-            RefineReleases => "RefineReleases",
-            Subscribe => "Subscribe",
-            Download => "Download",
-            RemoveSubscription => "RemoveSubscription",
-            ControlTorrents => "ControlTorrents",
-            TestTorrentClient => "TestTorrentClient",
-            RemoveShow => "RemoveShow",
-            RepairSubscription => "RepairSubscription",
-            CheckEndpoints => "CheckEndpoints",
-            StartEndpoint => "StartEndpoint",
-            ScheduleAgent => "ScheduleAgent",
-        }
-    }
-
-    pub fn from_column(s: &str) -> Option<JobKind> {
-        use JobKind::*;
-        match s {
-            "Scan" => Some(Scan),
-            "AutoMatch" => Some(AutoMatch),
-            "Search" => Some(Search),
-            "ResolveLink" => Some(ResolveLink),
-            "ApplyMatch" => Some(ApplyMatch),
-            "Refresh" => Some(Refresh),
-            "RefreshAll" => Some(RefreshAll),
-            "RefreshAiring" => Some(RefreshAiring),
-            "RefreshImdb" => Some(RefreshImdb),
-            "ClearImages" => Some(ClearImages),
-            "FillImages" => Some(FillImages),
-            "ConnectTracker" => Some(ConnectTracker),
-            "Mark" => Some(Mark),
-            "SetProgress" => Some(SetProgress),
-            "Score" => Some(Score),
-            "RefreshProgress" => Some(RefreshProgress),
-            "RefreshWatching" => Some(RefreshWatching),
-            "RefreshAiringNow" => Some(RefreshAiringNow),
-            "OnHold" => Some(OnHold),
-            "SetStatus" => Some(SetStatus),
-            "MoveLists" => Some(MoveLists),
-            "Notes" => Some(Notes),
-            "Crawl" => Some(Crawl),
-            "SkipWindows" => Some(SkipWindows),
-            "Export" => Some(Export),
-            "Import" => Some(Import),
-            "Subscriptions" => Some(Subscriptions),
-            "ConnectDownloads" => Some(ConnectDownloads),
-            "SearchReleases" => Some(SearchReleases),
-            "RefineReleases" => Some(RefineReleases),
-            "Subscribe" => Some(Subscribe),
-            "Download" => Some(Download),
-            "RemoveSubscription" => Some(RemoveSubscription),
-            "ControlTorrents" => Some(ControlTorrents),
-            "TestTorrentClient" => Some(TestTorrentClient),
-            "RemoveShow" => Some(RemoveShow),
-            "RepairSubscription" => Some(RepairSubscription),
-            "CheckEndpoints" => Some(CheckEndpoints),
-            "StartEndpoint" => Some(StartEndpoint),
-            "ScheduleAgent" => Some(ScheduleAgent),
-            _ => None,
-        }
-    }
 }
+
+column_strings!(
+    /// The variant name, verbatim.
+    JobKind {
+        Scan => "Scan",
+        AutoMatch => "AutoMatch",
+        Search => "Search",
+        ResolveLink => "ResolveLink",
+        ApplyMatch => "ApplyMatch",
+        Refresh => "Refresh",
+        RefreshAll => "RefreshAll",
+        RefreshAiring => "RefreshAiring",
+        RefreshImdb => "RefreshImdb",
+        ClearImages => "ClearImages",
+        FillImages => "FillImages",
+        ConnectTracker => "ConnectTracker",
+        Mark => "Mark",
+        SetProgress => "SetProgress",
+        Score => "Score",
+        RefreshProgress => "RefreshProgress",
+        RefreshWatching => "RefreshWatching",
+        RefreshAiringNow => "RefreshAiringNow",
+        OnHold => "OnHold",
+        SetStatus => "SetStatus",
+        MoveLists => "MoveLists",
+        Notes => "Notes",
+        Crawl => "Crawl",
+        SkipWindows => "SkipWindows",
+        Export => "Export",
+        Import => "Import",
+        Subscriptions => "Subscriptions",
+        ConnectDownloads => "ConnectDownloads",
+        SearchReleases => "SearchReleases",
+        RefineReleases => "RefineReleases",
+        Subscribe => "Subscribe",
+        Download => "Download",
+        RemoveSubscription => "RemoveSubscription",
+        ControlTorrents => "ControlTorrents",
+        TestTorrentClient => "TestTorrentClient",
+        RemoveShow => "RemoveShow",
+        RepairSubscription => "RepairSubscription",
+        CheckEndpoints => "CheckEndpoints",
+        StartEndpoint => "StartEndpoint",
+        ScheduleAgent => "ScheduleAgent",
+    }
+);
