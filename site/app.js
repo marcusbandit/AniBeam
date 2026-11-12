@@ -4,7 +4,8 @@ document.documentElement.classList.add("js");
 const t = (s, vars = {}) => ((window.I18N || {})[s] || s).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 const locale = () => (window.I18N && window.I18N._locale) || "en-GB";
 // Paths the script builds start from the site root; a translated page sits one folder down.
-const ROOT = (window.I18N && window.I18N._root) || "";
+// Read each time, since switching language changes it (lang.js).
+const root = () => (window.I18N && window.I18N._root) || "";
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // Pauses infinite motion (the marquee, the beams) while it is off screen.
@@ -57,13 +58,16 @@ const onceInView = (els, threshold = 0.45) => {
   const urls = {};
   const aim = () => { if (os && urls[mainAsset[os]]) mains.forEach((m) => { m.href = urls[mainAsset[os]]; }); };
 
+  function label() {
+    if (!os) return;
+    for (const m of mains) m.querySelector("span").textContent = os === "android" ? t("Get the Android app") : t("Download for {os}", { os: names[os] });
+  }
+  document.addEventListener("langchange", label);
   function pick(chosen) {
     os = chosen;
     if (!os) return;
-    for (const m of mains) {
-      m.querySelector("span").textContent = os === "android" ? t("Get the Android app") : t("Download for {os}", { os: names[os] });
-      if (os === "android") m.href = `https://github.com/${repo}/releases?q=android&expanded=true`;
-    }
+    label();
+    for (const m of mains) if (os === "android") m.href = `https://github.com/${repo}/releases?q=android&expanded=true`;
     aim();
     // The visitor's card lights up, and its download for their system gets the yellow button.
     const card = document.querySelector(`.plat[data-os~="${os}"], .phone[data-os="${os}"]`);
@@ -116,7 +120,7 @@ const onceInView = (els, threshold = 0.45) => {
     series: "A show's page with its banner, episodes and characters",
   };
   const buttons = [...document.querySelectorAll(".rail button")];
-  const warm = () => Object.keys(alts).forEach((k) => { new Image().src = `${ROOT}img/tour/${k}.webp`; });
+  const warm = () => Object.keys(alts).forEach((k) => { new Image().src = `${root()}img/tour/${k}.webp`; });
   if ("requestIdleCallback" in window) requestIdleCallback(warm, { timeout: 3000 });
   else setTimeout(warm, 1500);
 
@@ -125,7 +129,7 @@ const onceInView = (els, threshold = 0.45) => {
     img.classList.add("swap");
     const next = new Image();
     next.onload = () => { img.src = next.src; img.alt = alts[key]; img.classList.remove("swap"); };
-    next.src = `${ROOT}img/tour/${key}.webp`;
+    next.src = `${root()}img/tour/${key}.webp`;
     if (focus) buttons.find((b) => b.dataset.screen === key).focus();
   }
   buttons.forEach((b, i) => {
@@ -170,7 +174,7 @@ motionGate(document.querySelector(".cast-scene"));
     b: ["deathnote", "violet", "steinsgate", "sololeveling", "hxh", "bocchi", "naruto", "kaguya", "onepiece", "madeinabyss", "dbz", "edgerunners", "sailormoon", "haikyuu", "mha", "opm", "yourname", "mob", "vinland", "champloo", "geass", "gurren"],
   };
   for (const track of box.querySelectorAll(".marquee-track")) {
-    const html = rows[track.dataset.row].map((s) => `<span class="poster"><img src="${ROOT}img/posters/${s}.webp" alt="" loading="lazy" width="160" height="240"></span>`).join("");
+    const html = rows[track.dataset.row].map((s) => `<span class="poster"><img src="${root()}img/posters/${s}.webp" alt="" loading="lazy" width="160" height="240"></span>`).join("");
     track.innerHTML = html + html;
   }
   motionGate(box);

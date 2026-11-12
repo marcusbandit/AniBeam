@@ -58,6 +58,8 @@ const locale = () => (window.I18N && window.I18N._locale) || "en-GB";
   }
 
   if (toggle) toggle.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => show(b.dataset.channel)));
+  // A new language redraws the date and the What's new link in its words.
+  document.addEventListener("langchange", () => show(page.dataset.channel));
   fetch(`https://api.github.com/repos/${repo}/releases?per_page=100`, { headers: { Accept: "application/vnd.github+json" } })
     .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
     .then((list) => { releases = list; show(page.dataset.channel); })

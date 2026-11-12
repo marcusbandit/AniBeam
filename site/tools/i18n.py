@@ -172,6 +172,7 @@ def build(site):
                 to_root = "../" + depth
             page = NAV_LANG.sub(lambda m: menu(langs, code, page_name, to_root), page, count=1)
             page = page.replace("</head>", alternates(langs, page_name) + "\n</head>", 1)
+            page = page.replace("</head>", f'<script src="{to_root}lang.js" defer></script>\n</head>', 1)
             out = site / page_name if code == "en" else site / code / page_name
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(page)
