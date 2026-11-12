@@ -180,31 +180,6 @@ onceInView([...document.querySelectorAll("#match, .feat")], 0.4);
   else addEventListener("resize", fit);
 })();
 
-// Linux: pick a distribution, get its install command.
-(() => {
-  const box = document.querySelector(".distros");
-  const cmd = document.getElementById("distro-cmd");
-  const copy = document.getElementById("distro-copy");
-  if (!box || !cmd) return;
-  const appimage = "chmod +x AniBeam-*.AppImage && ./AniBeam-*.AppImage";
-  const commands = {
-    arch: "yay -S anibeam-bin",
-    debian: `sudo apt install libfuse2t64 && ${appimage}`,
-    fedora: `sudo dnf install fuse-libs && ${appimage}`,
-  };
-  const buttons = [...box.querySelectorAll("button")];
-  function choose(key) {
-    buttons.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.distro === key)));
-    cmd.textContent = commands[key];
-    copy.dataset.copy = commands[key];
-  }
-  buttons.forEach((b) => b.addEventListener("click", () => choose(b.dataset.distro)));
-  // Some browsers name the distribution in their user agent.
-  const ua = navigator.userAgent;
-  if (/ubuntu|debian|mint|pop/i.test(ua)) choose("debian");
-  else if (/fedora/i.test(ua)) choose("fedora");
-})();
-
 // Copy buttons on the install commands.
 document.querySelectorAll(".copy").forEach((b) => {
   b.addEventListener("click", async () => {
