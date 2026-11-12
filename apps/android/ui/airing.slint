@@ -196,9 +196,7 @@ export component AiringSheet inherits Rectangle {
                     if (AppData.airing-menu.owned >= 0) {
                         FindData.find-series(AppData.airing-menu.owned);
                     } else {
-                        FindData.open("");
-                        FindData.text = AppData.airing-menu.title;
-                        FindData.suggest(AppData.airing-menu.title);
+                        AppData.airing-get(AppData.airing-menu.id);
                     }
                     AppData.airing-close();
                     Nav.page = 2;

@@ -569,11 +569,13 @@ pub fn series(
                     .map(|t| date(secs(t), now))
                     .unwrap_or_default()
                     .into(),
-                // Watched somewhere else: tracked, but no file on this phone.
-                note: if matches!(a.cube.as_str(), "w" | "l") {
-                    "Not on this phone"
-                } else {
-                    "Missing"
+                // Watched somewhere else: tracked, but no file on this phone. Missing is only
+                // a hole before an episode that is here; past the last one it is not
+                // downloaded, so a show with nothing here never reads as missing (#735).
+                note: match a.cube.as_str() {
+                    "w" | "l" => "Not on this phone",
+                    "m" => "Missing",
+                    _ => "Not downloaded",
                 }
                 .into(),
                 cube: a.cube.chars().next().map(cube_code).unwrap_or(3),
