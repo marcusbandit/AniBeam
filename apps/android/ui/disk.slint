@@ -118,12 +118,14 @@ export component DiskBlock inherits VerticalLayout {
                 clicked => { DiskData.ask(0); }
             }
         }
-        if DiskData.line != "": Text {
-            text: DiskData.line;
-            color: Theme.dim;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
+    }
+    // Outside the usage block: when the last watched episode goes, the block does too, and
+    // the line saying what went stays.
+    if DiskData.line != "": Text {
+        text: DiskData.line;
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
     }
     if DiskData.hidden.length > 0: ListGroup {
         ListRow {
@@ -202,19 +204,39 @@ export component DiskSheet inherits Sheet {
         wrap: word-wrap;
     }
     Rectangle { height: Theme.unit; }
-    if DiskData.sheet == 1: Button {
-        text: "Every watched episode: " + DiskData.all-line;
-        icon: @image-url("icons/x.svg");
-        has-icon: true;
-        danger: true;
-        clicked => { DiskData.ask(1); }
+    if DiskData.sheet == 1: VerticalLayout {
+        spacing: Theme.unit * 2;
+        Button {
+            text: "Every watched episode";
+            icon: @image-url("icons/x.svg");
+            has-icon: true;
+            danger: true;
+            clicked => { DiskData.ask(1); }
+        }
+        Text {
+            text: DiskData.all-line;
+            color: Theme.dim;
+            font-size: Theme.small;
+            font-family: Theme.figure;
+            horizontal-alignment: center;
+        }
     }
-    if DiskData.sheet == 1: Button {
-        text: "Every finished show you watched: " + DiskData.finished-line;
-        icon: @image-url("icons/x.svg");
-        has-icon: true;
-        danger: true;
-        clicked => { DiskData.ask(2); }
+    if DiskData.sheet == 1: VerticalLayout {
+        spacing: Theme.unit * 2;
+        Button {
+            text: "Every finished show you watched";
+            icon: @image-url("icons/x.svg");
+            has-icon: true;
+            danger: true;
+            clicked => { DiskData.ask(2); }
+        }
+        Text {
+            text: DiskData.finished-line;
+            color: Theme.dim;
+            font-size: Theme.small;
+            font-family: Theme.figure;
+            horizontal-alignment: center;
+        }
     }
     if DiskData.sheet != 1: Button {
         text: "Delete";
