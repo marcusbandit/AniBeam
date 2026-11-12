@@ -1,0 +1,39 @@
+name: Site
+
+# Publishes the website in site/ on GitHub Pages whenever it changes on main (#768).
+# site/build.sh adds the screenshots from docs/readme, so they live in one place.
+# The custom domain is set in the repo's Pages settings, not in a CNAME file.
+on:
+  push:
+    branches: [main]
+    paths:
+      - site/**
+      - docs/readme/**
+      - assets/icon.png
+      - .github/workflows/site.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: site/build.sh "$RUNNER_TEMP/site"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+      - id: deploy
+        uses: actions/deploy-pages@v4

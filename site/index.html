@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AniBeam: an anime library and player for your own files</title>
+<meta name="description" content="AniBeam turns the folder your anime lives in into a library. It matches every show on AniList, plays episodes in the window and syncs your progress to AniList or MyAnimeList. Free for Linux, Windows, Mac and Android.">
+<link rel="canonical" href="https://anibeam.app/">
+<meta name="theme-color" content="#07090f">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="img/icon.png">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="AniBeam">
+<meta property="og:title" content="AniBeam: your anime folder, as a library you can watch and track">
+<meta property="og:description" content="Matches every show on AniList, plays in the window, syncs to AniList and MyAnimeList. Free for Linux, Windows, Mac and Android.">
+<meta property="og:url" content="https://anibeam.app/">
+<meta property="og:image" content="https://anibeam.app/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "AniBeam",
+  "url": "https://anibeam.app/",
+  "description": "An anime library and player for your own files. Matches every show on AniList, plays episodes in the window and syncs progress to AniList and MyAnimeList.",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "Linux, Windows, macOS, Android",
+  "image": "https://anibeam.app/img/og.jpg",
+  "screenshot": "https://anibeam.app/img/home.webp",
+  "downloadUrl": "https://github.com/marcusbandit/AniBeam/releases/latest",
+  "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "sameAs": ["https://github.com/marcusbandit/AniBeam", "https://aur.archlinux.org/packages/anibeam-bin"]
+}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=B612+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="./" aria-label="AniBeam home">
+    <img src="img/logo.svg" alt="" width="32" height="32">
+    <span>AniBeam</span>
+  </a>
+  <nav class="top-nav" aria-label="Main">
+    <a href="#install">Install</a>
+    <a href="https://github.com/marcusbandit/AniBeam">GitHub</a>
+  </nav>
+</header>
+
+<main>
+
+<section class="hero">
+  <div class="hero-copy">
+    <h1>Your anime folder, as a library you can watch and track.</h1>
+    <p class="lede">Point AniBeam at the folder your shows live in. It finds every series,
+      matches it on AniList, plays episodes right in the window and keeps your list up to date.</p>
+    <div class="cta">
+      <a class="button primary" id="dl-main" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download AniBeam</a>
+      <a class="button quiet" href="#install">Other platforms</a>
+    </div>
+    <p class="fine" id="dl-note">Free and open source. Linux, Windows, Mac and Android.</p>
+  </div>
+
+  <figure class="match" aria-label="Files in an anime folder, each matched to its show">
+    <figcaption class="match-root">~/Anime</figcaption>
+    <ol class="match-rows">
+      <li style="--i:0"><code><span>Sousou no Frieren/</span>Frieren - 01.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Sousou no Frieren</b><small>28 episodes</small></span></li>
+      <li style="--i:1"><code><span>Dungeon Meshi/</span>Dungeon Meshi - 07.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Dungeon Meshi</b><small>24 episodes</small></span></li>
+      <li style="--i:2"><code><span>Bocchi the Rock/</span>Bocchi - 12.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Bocchi the Rock!</b><small>12 episodes</small></span></li>
+      <li style="--i:3"><code><span>Kusuriya/</span>Kusuriya no Hitorigoto - 03.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Kusuriya no Hitorigoto</b><small>24 episodes</small></span></li>
+      <li style="--i:4"><code><span>Vinland Saga S2/</span>Vinland Saga - 18.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>VINLAND SAGA Season 2</b><small>24 episodes</small></span></li>
+      <li style="--i:5"><code><span>Movies/</span>Suzume (2022).mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Suzume no Tojimari</b><small>Film</small></span></li>
+    </ol>
+  </figure>
+</section>
+
+<figure class="shot shot-hero">
+  <img src="img/home.webp" width="1600" height="1000" alt="AniBeam's Home page: recently downloaded shows and shows not started yet, as poster cards with episode progress">
+</figure>
+
+<section class="features" aria-labelledby="features-h">
+  <div class="features-head">
+    <h2 id="features-h">Drop files in, get a library</h2>
+    <p>New files show up on their own, matched, with posters, synopses and what airs next.
+      Nothing to import and no folder to rescan.</p>
+  </div>
+  <dl class="feature-list">
+    <div><dt>Plays in the window</dt><dd>Built on mpv. It remembers where you stopped, offers the next episode, and every key is one <kbd>?</kbd> away.</dd></div>
+    <div><dt>Tracks for you</dt><dd>Watch most of an episode and it lands on AniList or MyAnimeList. Progress goes both ways.</dd></div>
+    <div><dt>Knows what airs</dt><dd>This season's shows, what is out now, and when the next episode lands.</dd></div>
+    <div><dt>New episodes arrive</dt><dd>Subscribe to a release once and every new episode downloads as it comes out. AniBeam ships with no sources; you add your own.</dd></div>
+    <div><dt>Franchise graph</dt><dd>Sequels, prequels and side stories on one map, so you know what to watch next.</dd></div>
+    <div><dt>Thirty-five themes</dt><dd>Catppuccin, Gruvbox, Tokyo Night and Nord among them, or the AniBeam ones.</dd></div>
+    <div><dt>Updates itself</dt><dd>Stable or Nightly, picked in Settings, with a What's new card after each update.</dd></div>
+    <div><dt>A phone app</dt><dd>Android keeps a library of its own and can stream yours from home over Tailscale.</dd></div>
+  </dl>
+  <div class="shot-pair">
+    <figure class="shot">
+      <img src="img/series.webp" width="1600" height="1000" loading="lazy" alt="A series page with its banner, episode list and watch progress">
+      <figcaption>A series page</figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="img/library.webp" width="1600" height="1000" loading="lazy" alt="The Library grid with every show as a poster">
+      <figcaption>The whole library</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="install" id="install" aria-labelledby="install-h">
+  <h2 id="install-h">Install</h2>
+  <p class="install-version" id="install-version">The newest version is on the <a href="https://github.com/marcusbandit/AniBeam/releases/latest">releases page</a>.</p>
+  <div class="platforms">
+    <div class="platform" data-os="linux">
+      <h3>Linux</h3>
+      <div class="get">
+        <a class="button" data-asset="appimage" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the AppImage</a>
+        <p>On Arch: <code class="cmd">yay -S anibeam-bin</code></p>
+      </div>
+      <p class="note">The AppImage runs on Ubuntu 24.04, Debian 13, Fedora 40 and later. Make it executable, then open it.</p>
+    </div>
+    <div class="platform" data-os="windows">
+      <h3>Windows</h3>
+      <div class="get">
+        <a class="button" data-asset="setup" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the installer</a>
+        <p>Or the <a data-asset="zip" href="https://github.com/marcusbandit/AniBeam/releases/latest">portable zip</a></p>
+      </div>
+      <p class="note">Windows 10 and 11. Installs for you alone, no admin prompt. If SmartScreen stops it, click More info, then Run anyway.</p>
+    </div>
+    <div class="platform" data-os="mac">
+      <h3>Mac</h3>
+      <div class="get">
+        <a class="button" data-asset="dmg" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the dmg</a>
+        <p>With Homebrew: <code class="cmd">brew install --cask marcusbandit/anibeam/anibeam</code></p>
+      </div>
+      <p class="note">macOS 15 and later, Apple silicon. The first launch asks once: System Settings, Privacy &amp; Security, Open Anyway.</p>
+    </div>
+    <div class="platform" data-os="android">
+      <h3>Android</h3>
+      <div class="get">
+        <a class="button" data-asset="apk" href="https://github.com/marcusbandit/AniBeam/releases?q=android&amp;expanded=true">Download the APK</a>
+      </div>
+      <p class="note">Sideload it. It tracks to the same AniList or MyAnimeList account as your computer.</p>
+    </div>
+  </div>
+  <p class="after">After that, AniBeam updates itself.</p>
+</section>
+
+<section class="steps" aria-labelledby="steps-h">
+  <h2 id="steps-h">First steps</h2>
+  <ol>
+    <li><h3>Add your library</h3><p>Click Add a folder on Home and pick your anime folder. One folder per show works best.</p></li>
+    <li><h3>Connect a tracker</h3><p>Settings, Library, Trackers, Connect. Approve AniBeam in the browser and your list comes along. You can skip this.</p></li>
+    <li><h3>Watch</h3><p>Click a show, then an episode. Space plays and pauses.</p></li>
+    <li><h3>Get new episodes</h3><p>Add an endpoint repo in Settings, Downloads, install the sources you want, then subscribe to a show. Also optional.</p></li>
+  </ol>
+</section>
+
+</main>
+
+<footer class="foot">
+  <img src="img/logo.svg" alt="" width="40" height="40">
+  <p>AniBeam is free software under the GPL 3.0. This is its only website; the source lives on GitHub.</p>
+  <nav aria-label="Elsewhere">
+    <a href="https://github.com/marcusbandit/AniBeam">Source</a>
+    <a href="https://github.com/marcusbandit/AniBeam/issues/new/choose">Report a problem</a>
+    <a href="https://ko-fi.com/marcusbandit">Buy me a coffee</a>
+  </nav>
+</footer>
+
+</body>
+</html>
