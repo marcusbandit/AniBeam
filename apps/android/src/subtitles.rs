@@ -179,7 +179,11 @@ pub fn install(window: &AppWindow) {
         }
     });
     d.on_set_scale(|v| edit(None, |d| d.scale = (v as f64).clamp(0.5, 2.0)));
-    d.on_set_position(|v| edit(None, |d| d.text_style.position = (v as f64).clamp(0.0, 150.0)));
+    d.on_set_position(|v| {
+        edit(None, |d| {
+            d.text_style.position = (v as f64).clamp(0.0, 150.0)
+        })
+    });
     d.on_set_ass_mode(|i| {
         edit(None, |d| {
             d.ass_override = match i {
@@ -226,7 +230,11 @@ pub fn install(window: &AppWindow) {
             }
         });
     });
-    d.on_set_box_opacity(|v| edit(None, |d| d.text_style.box_opacity = (v as f64).clamp(0.0, 1.0)));
+    d.on_set_box_opacity(|v| {
+        edit(None, |d| {
+            d.text_style.box_opacity = (v as f64).clamp(0.0, 1.0)
+        })
+    });
     // Back to the look AniBeam ships with; the language orders stay as they are.
     d.on_reset({
         let window = window.as_weak();
@@ -234,7 +242,7 @@ pub fn install(window: &AppWindow) {
             let stock = SubtitleDefaults::default();
             edit(None, |d| {
                 d.scale = stock.scale;
-                d.ass_override = stock.ass_override.clone();
+                d.ass_override = stock.ass_override;
                 d.text_style = stock.text_style.clone();
             });
             STATE.with(|s| {
@@ -245,7 +253,13 @@ pub fn install(window: &AppWindow) {
             if let Some(window) = window.upgrade() {
                 let d = window.global::<SubtitleData>();
                 fill_fields(&d, &stock);
-                show(&d, &STATE.with(|s| s.borrow().as_ref().map(|s| s.defaults.clone())).unwrap_or(stock), &[]);
+                show(
+                    &d,
+                    &STATE
+                        .with(|s| s.borrow().as_ref().map(|s| s.defaults.clone()))
+                        .unwrap_or(stock),
+                    &[],
+                );
             }
         }
     });

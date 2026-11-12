@@ -267,7 +267,10 @@ const LOOK_FOR: Duration = Duration::from_secs(10);
 
 /// What the notice's action does.
 enum Undo {
-    Skip { to: f64, kind: SkipKind },
+    Skip {
+        to: f64,
+        kind: SkipKind,
+    },
     /// "Resumed at 12:04": the way back to the start.
     StartOver,
 }
@@ -2112,7 +2115,11 @@ impl Player {
 
     /// Shows one delay on the page: its text and whether it has moved off 0.
     fn show_delay(&self, sub: bool) {
-        let v = if sub { self.sub_delay } else { self.audio_delay };
+        let v = if sub {
+            self.sub_delay
+        } else {
+            self.audio_delay
+        };
         let text = delay_text(v);
         let set = (v * 100.0).round() != 0.0;
         self.d(|d| {
@@ -2128,7 +2135,11 @@ impl Player {
 
     /// A delay stepped from the sheet: kind 0 is the subtitles' and 1 the audio's.
     fn nudge_delay(&mut self, kind: i32, step: f64) {
-        let now = if kind == 0 { self.sub_delay } else { self.audio_delay };
+        let now = if kind == 0 {
+            self.sub_delay
+        } else {
+            self.audio_delay
+        };
         self.set_delay(kind, now + step);
     }
 
@@ -2171,15 +2182,14 @@ impl Player {
             d.set_notice_action(action.into());
         });
         let session = self.session.session;
-        self.notice
-            .start(TimerMode::SingleShot, secs, move || {
-                with_player(|p| {
-                    if p.session.session == session {
-                        p.undo = None;
-                        p.d(|d| d.set_notice("".into()));
-                    }
-                })
-            });
+        self.notice.start(TimerMode::SingleShot, secs, move || {
+            with_player(|p| {
+                if p.session.session == session {
+                    p.undo = None;
+                    p.d(|d| d.set_notice("".into()));
+                }
+            })
+        });
     }
 
     fn notice_clicked(&mut self) {

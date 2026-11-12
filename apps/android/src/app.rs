@@ -200,7 +200,7 @@ fn with_app(f: impl FnOnce(&mut App)) {
 }
 
 /// More's sections, by the index Settings.section uses.
-const SECTIONS: [&str; 8] = [
+const SECTIONS: [&str; 9] = [
     "Accounts",
     "Downloads",
     "Streaming",
