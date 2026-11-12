@@ -144,6 +144,9 @@ const motionGate = (el) => {
   hero.addEventListener("pointerleave", () => { field.style.setProperty("--px", "0px"); field.style.setProperty("--py", "0px"); });
 })();
 
+const beams = document.querySelector(".beams");
+if (beams) motionGate(beams);
+
 // Files resolve into shows the first time the panel is mostly on screen.
 (() => {
   const panel = document.getElementById("match");
@@ -170,75 +173,59 @@ const motionGate = (el) => {
   motionGate(box);
 })();
 
-// The wall: a sentence of what it does. The picked phrase lights up and the stage shows it; it
-// steps on by itself every 5 s while at least a fifth of it is on screen, and a click resets it.
+// Features: tabs over one stage. The picked tab fills like a progress bar and steps on every
+// 5 s while at least a fifth of the section is on screen; a click picks one and restarts the clock.
 (() => {
-  const wall = document.getElementById("wall");
+  const list = document.getElementById("feat-tabs");
   const stage = document.getElementById("stage");
-  const bar = document.getElementById("wall-bar");
-  if (!wall || !stage) return;
-  const phrases = [...wall.querySelectorAll(".ph")];
+  if (!list || !stage) return;
+  const tabs = [...list.querySelectorAll(".chip-tab")];
   const items = [...stage.querySelectorAll(".stage-item")];
   const STEP = 5000;
   let i = 0, timer = 0, visible = false, run = null;
 
-  function select(n) {
-    i = (n + phrases.length) % phrases.length;
-    const key = phrases[i].dataset.stage;
-    phrases.forEach((p, k) => p.setAttribute("aria-pressed", String(k === i)));
+  function select(n, focus) {
+    i = (n + tabs.length) % tabs.length;
+    const key = tabs[i].dataset.stage;
+    tabs.forEach((t, k) => { t.setAttribute("aria-selected", String(k === i)); t.tabIndex = k === i ? 0 : -1; });
     items.forEach((it) => it.classList.toggle("is-on", it.dataset.stage === key));
+    if (focus) tabs[i].focus();
     restart();
   }
   function restart() {
     clearTimeout(timer);
     if (run) run.cancel();
+    tabs.forEach((t) => { t.querySelector(".chip-fill").style.transform = "scaleX(0)"; });
     if (!visible || reduced) return;
-    run = bar.animate([{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], { duration: STEP, easing: "linear", fill: "forwards" });
+    run = tabs[i].querySelector(".chip-fill").animate([{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], { duration: STEP, easing: "linear", fill: "forwards" });
     timer = setTimeout(() => select(i + 1), STEP);
   }
-  phrases.forEach((p, k) => {
-    p.addEventListener("click", () => select(k));
-    p.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(k); } });
+  tabs.forEach((t, k) => {
+    t.addEventListener("click", () => select(k));
+    t.addEventListener("keydown", (e) => {
+      const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (step) { e.preventDefault(); select(k + step, true); }
+    });
   });
   if ("IntersectionObserver" in window) {
-    new IntersectionObserver(([e]) => { visible = e.isIntersecting; restart(); }, { threshold: 0.2 }).observe(wall.parentElement);
+    new IntersectionObserver(([e]) => { visible = e.isIntersecting; restart(); }, { threshold: 0.2 }).observe(stage);
   }
   motionGate(stage);
   select(0);
 })();
 
-// Install: tabs with a pill that slides under the picked one. Opens on the visitor's system.
+// Install: the card for the visitor's own system lights up and gets the yellow button.
 (() => {
-  const tabs = document.getElementById("tabs");
-  if (!tabs) return;
-  const buttons = [...tabs.querySelectorAll("[role=tab]")];
-  function place(b) {
-    tabs.style.setProperty("--x", `${b.offsetLeft}px`);
-    tabs.style.setProperty("--w", `${b.offsetWidth}px`);
+  function mark(os) {
+    const card = document.querySelector(`.plat[data-os="${os}"], .phone[data-os="${os}"]`);
+    if (!card) return;
+    document.querySelectorAll(".is-yours").forEach((c) => c.classList.remove("is-yours"));
+    card.classList.add("is-yours");
+    const btn = card.querySelector(".btn");
+    if (btn) { btn.classList.remove("btn-ghost"); btn.classList.add("btn-primary"); }
   }
-  function choose(b, focus) {
-    buttons.forEach((t) => {
-      const on = t === b;
-      t.setAttribute("aria-selected", String(on));
-      t.tabIndex = on ? 0 : -1;
-      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
-    });
-    place(b);
-    if (focus) b.focus();
-  }
-  buttons.forEach((b, k) => {
-    b.addEventListener("click", () => choose(b));
-    b.addEventListener("keydown", (e) => {
-      const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-      if (step) { e.preventDefault(); choose(buttons[(k + step + buttons.length) % buttons.length], true); }
-    });
-  });
-  const start = () => place(buttons.find((b) => b.getAttribute("aria-selected") === "true"));
-  document.fonts ? document.fonts.ready.then(start) : start();
-  addEventListener("resize", start);
-  const follow = (os) => { const b = buttons.find((t) => t.dataset.os === os); if (b) choose(b); };
-  if (document.documentElement.dataset.os) follow(document.documentElement.dataset.os);
-  document.addEventListener("os", (e) => follow(e.detail));
+  if (document.documentElement.dataset.os) mark(document.documentElement.dataset.os);
+  document.addEventListener("os", (e) => mark(e.detail));
 })();
 
 // Copy buttons on the install commands.
