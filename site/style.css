@@ -605,6 +605,12 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .term .prompt { padding-top: 6px; color: var(--brand); user-select: none; }
 .term code { flex: 1; min-width: 0; padding-top: 6px; color: var(--fg); font: inherit; white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
 .term code::-webkit-scrollbar { display: none; }
+/* Shell colours, kept quiet: commands bright, flags dim, the address a muted gold, the pipe faint. */
+.sh-cmd { color: #f4f5f7; }
+.sh-flag { color: #8a8d95; }
+.sh-url { color: #c9b46a; }
+.sh-op { color: #55585f; }
+.dl-page[data-channel="nightly"] .sh-url { color: #d8cb8a; }
 .copy { flex: 0 0 auto; height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: rgba(255, 255, 255, 0.06); color: var(--fg-2); font: 600 13px/1 var(--sans); cursor: pointer; transition: background-color var(--quick), color var(--quick); }
 .copy:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
 .copy.done { color: var(--done); }
