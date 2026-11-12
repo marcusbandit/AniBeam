@@ -154,7 +154,7 @@ Corner {
         root.error = ""
         root.sent = root.changes
         root.applyToken = frame.applyFixes(root.seriesId, root.sent, root.report, root.agent)
-        if (root.applyToken < 0) root.error = "Could not apply the fixes."
+        if (root.applyToken < 0) root.error = "AniBeam could not start the fixes. Press Apply to try again."
     }
     // The frame owns what follows a reply (the toast, the issue); the sheet closes, or says
     // why not and stays
@@ -163,7 +163,8 @@ Corner {
         function onCallDone(token, reply) {
             if (token !== root.applyToken) return
             root.applyToken = -1
-            if (reply.error) { root.error = frame.errorText(reply.error); return }
+            // The bridge's plain words and what to do; Apply is the retry
+            if (reply.error) { root.error = reply.error.plain ? reply.error.plain + (reply.error.next ? " " + reply.error.next : "") : frame.errorText(reply.error); return }
             root.shut()
         }
     }
@@ -217,7 +218,7 @@ Corner {
                 objectName: "fix-rescan"
                 anchors.right: closeBtn.left; anchors.rightMargin: theme.space(2); anchors.top: parent.top
                 small: true; flat: true; icon: "refresh-cw"; text: "Rescan folder"
-                onClicked: { var r = Door.rescanSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Reading the folder again") }
+                onClicked: { var r = Door.rescanSeries(root.seriesId); r.error ? frame.fail(r.error, clicked) : frame.toast("Reading the folder again") }
             }
             Button {
                 id: closeBtn

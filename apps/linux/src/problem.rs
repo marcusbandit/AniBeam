@@ -237,6 +237,12 @@ pub fn plain(e: &CoreError) -> Problem {
         CoreError::Internal { .. } => {
             problem("Something went wrong inside AniBeam.", REPORT, Fix::Retry)
         }
+        // The safety net behind Play: the core says which episode and how far along, for people
+        CoreError::Service { code, message, .. } if code == "downloading" => problem(
+            as_sentence(message),
+            "It plays once the download finishes.",
+            Fix::None,
+        ),
         CoreError::Service { service, code, .. } => service_problem(service, code),
     }
 }
@@ -503,6 +509,19 @@ mod tests {
         assert_eq!(p.said, "Some Feed did not answer.");
         assert!(!p.next.contains("running"), "{}", p.next);
         assert_eq!(p.fix, Fix::Retry);
+    }
+
+    #[test]
+    fn an_episode_still_downloading_says_how_far_along_and_offers_no_retry() {
+        let e = CoreError::Service {
+            service: "qBittorrent".into(),
+            code: "downloading".into(),
+            message: "episode 3 is still downloading, 40% done".into(),
+        };
+        let p = plain(&e);
+        assert_eq!(p.said, "Episode 3 is still downloading, 40% done.");
+        assert_eq!(p.next, "It plays once the download finishes.");
+        assert_eq!(p.fix, Fix::None);
     }
 
     #[test]
