@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://anibeam.app/sitemap.xml
