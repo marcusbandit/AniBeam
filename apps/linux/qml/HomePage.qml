@@ -163,7 +163,6 @@ Item {
         if (libraryEmpty) { var src = Door.listSources(); hasFolders = !src.error && src.reply.sources.length > 0 }
         resume = pickResume()
         nowMs = Date.now()
-        loadRecommended()
     }
     // ---- Recommended for you (#779): the recommender's ranking held to one scope, best first.
     // The scope is a Home preference; the core refits after every tracker refresh and says so
@@ -172,10 +171,10 @@ Item {
     readonly property string recScope: Door.preferences.home_recommended || "All"
     property var recommended: null
     readonly property var recList: recommended ? recommended.shows : []
-    function loadRecommended() {
-        var r = Door.call("ListRecommended", { scope: page.recScope })
-        if (!r.error) page.recommended = r.reply.recommended
-    }
+    // Read off the Qt thread: the read parses the whole ranking
+    property int recToken: -1
+    function loadRecommended() { page.recToken = Door.callAsync("ListRecommended", { scope: page.recScope }) }
+    Timer { id: recDebounce; interval: 500; onTriggered: page.loadRecommended() }
     function setRecScope(scope) {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.home_recommended = scope
@@ -191,12 +190,17 @@ Item {
     Timer { id: debounce; interval: 500; onTriggered: page.reload() }
     Connections {
         target: Door
-        function onSeriesChanged() { if (!debounce.running) debounce.start() }
-        function onSeriesRemoved() { if (!debounce.running) debounce.start() }
+        function onSeriesChanged() { if (!debounce.running) debounce.start(); recDebounce.restart() }
+        function onSeriesRemoved() { if (!debounce.running) debounce.start(); recDebounce.restart() }
         function onPreferencesChanged(p) { if (!debounce.running) debounce.start() }
         function onAiringNowRefreshed(s) { if (s === "Now" && page.libraryEmpty) { var r = Door.listAiringNow("Now"); if (!r.error) page.season = r.reply.now } }
         function onEvent(envelope) { if (envelope.kind === "RecommendedRefreshed") page.loadRecommended() }
-        function onTrackersChanged() { page.loadRecommended() }
+        function onTrackersChanged() { recDebounce.restart() }
+        function onCallDone(token, reply) {
+            if (token !== page.recToken) return
+            page.recToken = -1
+            if (!reply.error) page.recommended = reply.reply.recommended
+        }
     }
     Component.onCompleted: {
         reload()

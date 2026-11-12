@@ -56,6 +56,7 @@ CREATE TABLE rec_state (
     pool          TEXT NOT NULL DEFAULT '[]',    -- the candidates beyond the list and library
     trusted       TEXT NOT NULL DEFAULT '[]',    -- AniList's recommendations of favourites
     fitted_at     INTEGER,
+    read_at       INTEGER,                       -- the last run that read everything it set out to
     rated         INTEGER NOT NULL DEFAULT 0,    -- how many rated shows the fit learnt from
     state         TEXT NOT NULL DEFAULT 'NeverFitted'
 );

@@ -132,6 +132,7 @@ name = "anibeam-core"
 version = "2.5.0"
 dependencies = [
  "anibeam-host-api",
+ "anibeam-recs",
  "apple-native-keyring-store",
  "axum",
  "backon",
@@ -179,6 +180,13 @@ name = "anibeam-host-api"
 version = "2.5.0"
 dependencies = [
  "ed25519-dalek",
+ "serde",
+]
+
+[[package]]
+name = "anibeam-recs"
+version = "2.5.0"
+dependencies = [
  "serde",
 ]
 

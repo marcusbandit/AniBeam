@@ -38,11 +38,14 @@ Item {
             if (envelope.kind === "ShowPageRead" && envelope.body.anilist_id === page.anilistId) { page.reading = null; page.load() }
             if (envelope.kind === "RecommendedRefreshed") page.load()
         }
-        function onSeriesChanged() { page.load() }
+        // Only to see the show land in the library; the core never reads AniList twice in a row for it
+        function onSeriesChanged() { seriesDebounce.restart() }
         function onJobFinished(job) { if (page.writing !== null && job === page.writing) { page.writing = null; page.load() } }
         function onJobFailed(job) { if (job === page.reading) page.reading = null; if (job === page.writing) page.writing = null }
+        function onJobCancelled(job) { if (job === page.reading) page.reading = null; if (job === page.writing) page.writing = null }
     }
     property var writing: null
+    Timer { id: seriesDebounce; interval: 500; onTriggered: page.load() }
 
     readonly property var s: show || ({})
     function formatLabel(f) {

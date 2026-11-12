@@ -325,3 +325,54 @@ fn a_rewatch_is_not_a_status_to_set_on_a_show() {
         .unwrap_err();
     assert!(matches!(e, CoreError::Invalid { .. }), "{e:?}");
 }
+
+#[test]
+fn an_anilist_outage_stops_the_read_and_the_next_ask_goes_back_for_the_rest() {
+    let http = FakeHttp::new();
+    // My shows and the two batches of raters land; then AniList is down.
+    let mut mine: Vec<Value> = (1..=20).map(my_show).collect();
+    for id in [50, 51, 52, 60] {
+        mine.push(media(id, json!({})));
+    }
+    http.push_json(200, json!({ "data": { "Page": { "media": mine } } }));
+    let raters: serde_json::Map<String, Value> = (1..=20)
+        .map(|id| {
+            (
+                format!("m{id}"),
+                json!({ "mediaList": [{ "userId": 100, "score": 80 }] }),
+            )
+        })
+        .collect();
+    for _ in 0..2 {
+        http.push_json(200, json!({ "data": raters }));
+    }
+    http.push(503, "Service Unavailable");
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_recommender_gap(Duration::ZERO);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "tok");
+    for id in 1..=20 {
+        fixtures::insert_tracker_entry(&core, "anilist", id, 12, "completed", Some(my_score(id)));
+    }
+    fixtures::insert_tracker_entry(&core, "anilist", 50, 0, "planning", None);
+
+    run(&core, &c, false);
+    assert_eq!(
+        anilist_posts(&http),
+        4,
+        "a 503 stops the read; it is not halved into one request per user"
+    );
+    let r = listed(&core, RecommendedScope::All);
+    assert_eq!(
+        r.state,
+        RecommendedState::Ready,
+        "the fit runs on what was read"
+    );
+    assert!(
+        matches!(
+            core.call(Call::RefreshRecommended { force: false })
+                .unwrap(),
+            Reply::Started { .. }
+        ),
+        "a read AniList stopped short is never fresh"
+    );
+}

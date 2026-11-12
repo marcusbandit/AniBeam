@@ -59,7 +59,8 @@ pub enum Halt {
 
 impl From<CoreError> for Halt {
     fn from(e: CoreError) -> Halt {
-        if is_rate_limited(&e) || provider_unreachable(&e) {
+        let down = matches!(e, CoreError::Provider { status: Some(s), .. } if s >= 500);
+        if is_rate_limited(&e) || provider_unreachable(&e) || down {
             Halt::Stop(e.to_string())
         } else {
             Halt::Fail(e)
@@ -107,10 +108,31 @@ impl Net {
 }
 
 /// An AniList reply refusing the query itself, such as one too complex to
-/// run, rather than AniList being away or saying stop: halving the batch is
-/// worth a try.
+/// run or naming a show it no longer has, rather than AniList being away or
+/// saying stop: halving the batch is worth a try. A 5xx is AniList being
+/// away, which `Halt::from` reads as a stop.
 fn refused(halt: &Halt) -> bool {
-    matches!(halt, Halt::Fail(CoreError::Provider { status, .. }) if *status != Some(429))
+    matches!(halt, Halt::Fail(CoreError::Provider { status: Some(s), .. })
+        if (400..500).contains(s) && *s != 429)
+}
+
+/// One batch of aliased lookups. A batch AniList refuses is halved until the
+/// id it will not answer stands alone; that one reads as empty, so it is
+/// written as such and not asked for again until its time is up.
+async fn aliased(net: &mut Net, chunk: &[u64], query: fn(&[u64]) -> String) -> Result<Value, Halt> {
+    match net.send(&query(chunk), Value::Null).await {
+        Err(halt) if refused(&halt) && chunk.len() > 1 => {
+            let (a, b) = chunk.split_at(chunk.len() / 2);
+            let mut left = Box::pin(aliased(net, a, query)).await?;
+            let right = Box::pin(aliased(net, b, query)).await?;
+            if let (Value::Object(l), Value::Object(r)) = (&mut left, right) {
+                l.extend(r);
+            }
+            Ok(left)
+        }
+        Err(halt) if refused(&halt) => Ok(json!({})),
+        other => other,
+    }
 }
 
 // The cache -------------------------------------------------------------------
@@ -293,7 +315,7 @@ async fn fetch_raters(net: &mut Net, favourites: &[u64]) -> Result<(), Halt> {
     let total = todo.len().div_ceil(RATERS_PER_REQUEST) as u64;
     for (i, chunk) in todo.chunks(RATERS_PER_REQUEST).enumerate() {
         net.label(i as u64, total, "Finding people with your taste");
-        let v = net.send(&queries::raters(chunk), Value::Null).await?;
+        let v = aliased(net, chunk, queries::raters).await?;
         let chunk = chunk.to_vec();
         let now = time::now_secs();
         net.core
@@ -341,18 +363,8 @@ async fn fetch_users(net: &mut Net, ids: &[u64]) -> Result<(), Halt> {
 }
 
 async fn fetch_user_chunk(net: &mut Net, chunk: &[u64]) -> Result<(), Halt> {
-    let v = match net.send(&queries::user_lists(chunk), Value::Null).await {
-        // One account AniList will not show sinks the whole batch, so the
-        // batch is halved until that one stands alone, and it reads as
-        // private.
-        Err(halt) if refused(&halt) && chunk.len() > 1 => {
-            let (a, b) = chunk.split_at(chunk.len() / 2);
-            Box::pin(fetch_user_chunk(net, a)).await?;
-            return Box::pin(fetch_user_chunk(net, b)).await;
-        }
-        Err(halt) if refused(&halt) => json!({}),
-        other => other?,
-    };
+    // An account AniList will not show reads as private.
+    let v = aliased(net, chunk, queries::user_lists).await?;
     let chunk = chunk.to_vec();
     let now = time::now_secs();
     net.core
@@ -382,7 +394,7 @@ async fn fetch_similar(net: &mut Net, ids: &[u64]) -> Result<(), Halt> {
         PEOPLE_TTL,
     )?;
     for chunk in todo.chunks(SIMILAR_PER_REQUEST) {
-        let v = net.send(&queries::similar(chunk), Value::Null).await?;
+        let v = aliased(net, chunk, queries::similar).await?;
         let chunk = chunk.to_vec();
         let now = time::now_secs();
         net.core

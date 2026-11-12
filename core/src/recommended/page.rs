@@ -151,11 +151,16 @@ fn relation_order(kind: &str) -> u8 {
     }
 }
 
-/// The page off the database: no request and no waiting.
-pub fn read(conn: &Connection, images_dir: &Path, id: u64) -> Result<ShowPage, CoreError> {
+/// The page off the database, no request and no waiting, and when the
+/// page's own read was last made.
+pub fn read(
+    conn: &Connection,
+    images_dir: &Path,
+    id: u64,
+) -> Result<(ShowPage, Option<i64>), CoreError> {
     let lang = prefs::load_preferences(conn)?.title_language;
     let mine = Mine::read(conn)?;
-    let (media, page, _) = held(conn, id)?;
+    let (media, page, read_at) = held(conn, id)?;
     let known = media.is_some();
     let media = media.unwrap_or_else(|| json!({ "id": id }));
     let d = Display { media: &media };
@@ -246,75 +251,80 @@ pub fn read(conn: &Connection, images_dir: &Path, id: u64) -> Result<ShowPage, C
         names.dedup();
         names
     };
-    Ok(ShowPage {
-        anilist_id: id,
-        mal_id: media["idMal"].as_u64(),
-        title: d.title(lang, id),
-        romaji,
-        english,
-        native,
-        poster: match poster(conn, images_dir, big_cover(&media).as_deref())? {
-            Some(p) => Some(p),
-            None => poster(conn, images_dir, d.cover_url().as_deref())?,
+    Ok((
+        ShowPage {
+            anilist_id: id,
+            mal_id: media["idMal"].as_u64(),
+            title: d.title(lang, id),
+            romaji,
+            english,
+            native,
+            poster: match poster(conn, images_dir, big_cover(&media).as_deref())? {
+                Some(p) => Some(p),
+                None => poster(conn, images_dir, d.cover_url().as_deref())?,
+            },
+            banner: poster(conn, images_dir, media["bannerImage"].as_str())?,
+            color: media["coverImage"]["color"].as_str().map(str::to_string),
+            synopsis: media["description"]
+                .as_str()
+                .map(text::story)
+                .filter(|s| !s.is_empty()),
+            format: d.string("format"),
+            status: d.string("status"),
+            year: media["seasonYear"].as_i64().map(|y| y as i32),
+            episodes: d.u32("episodes"),
+            duration: d.u32("duration"),
+            average_score: d.u32("averageScore"),
+            genres: parse::strings(&media["genres"]),
+            tags: d
+                .tags()
+                .into_iter()
+                .map(|(name, rank)| Tag {
+                    name,
+                    rank,
+                    spoiler: false,
+                    adult: false,
+                })
+                .collect(),
+            studios,
+            trailer: trailer(&page),
+            relations: relations.into_iter().map(|(_, r)| r).collect(),
+            recommendations,
+            site_url: d
+                .string("siteUrl")
+                .or_else(|| Some(format!("https://anilist.co/anime/{id}"))),
+            owned: mine.owned.get(&id).copied(),
+            list_status: listed.map(|l| l.status),
+            score: listed.and_then(|l| l.score),
+            progress: listed.map_or(0, |l| l.progress),
+            forecast: ranked.map(|(f, _)| f.clamp(0, 100) as u32),
+            hidden_loved: why.as_ref().map_or(0, |w| w.hidden),
+            because: match &why {
+                Some(w) => because(conn, images_dir, lang, &mine, w)?,
+                None => Vec::new(),
+            },
+            known,
         },
-        banner: poster(conn, images_dir, media["bannerImage"].as_str())?,
-        color: media["coverImage"]["color"].as_str().map(str::to_string),
-        synopsis: media["description"]
-            .as_str()
-            .map(text::story)
-            .filter(|s| !s.is_empty()),
-        format: d.string("format"),
-        status: d.string("status"),
-        year: media["seasonYear"].as_i64().map(|y| y as i32),
-        episodes: d.u32("episodes"),
-        duration: d.u32("duration"),
-        average_score: d.u32("averageScore"),
-        genres: parse::strings(&media["genres"]),
-        tags: d
-            .tags()
-            .into_iter()
-            .map(|(name, rank)| Tag {
-                name,
-                rank,
-                spoiler: false,
-                adult: false,
-            })
-            .collect(),
-        studios,
-        trailer: trailer(&page),
-        relations: relations.into_iter().map(|(_, r)| r).collect(),
-        recommendations,
-        site_url: d
-            .string("siteUrl")
-            .or_else(|| Some(format!("https://anilist.co/anime/{id}"))),
-        owned: mine.owned.get(&id).copied(),
-        list_status: listed.map(|l| l.status),
-        score: listed.and_then(|l| l.score),
-        progress: listed.map_or(0, |l| l.progress),
-        forecast: ranked.map(|(f, _)| f.clamp(0, 100) as u32),
-        hidden_loved: why.as_ref().map_or(0, |w| w.hidden),
-        because: match &why {
-            Some(w) => because(conn, images_dir, lang, &mine, w)?,
-            None => Vec::new(),
-        },
-        known,
-    })
+        read_at,
+    ))
 }
+
+/// How long after a page read started another may start for the same show:
+/// a read that failed is not asked again on every redraw.
+const RETRY_SECS: i64 = 10 * 60;
 
 /// The `GetShowPage` call: the page as the core holds it, and the read it
 /// started when the page's own read is missing or a week old. One read runs
-/// per show; a second opening joins the first one's.
+/// per show; a second opening joins the first one's, and one that failed is
+/// tried again ten minutes on at the soonest.
 pub fn get_call(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
     let images_dir = core.paths.images_dir();
-    let page = core.store.read(|c| read(c, &images_dir, anilist_id))?;
-    let at = core
-        .store
-        .read(|c| held(c, anilist_id).map(|(_, _, at)| at))?;
+    let (page, read_at) = core.store.read(|c| read(c, &images_dir, anilist_id))?;
     let now = time::now_secs();
-    let reading = if at.is_some_and(|at| now - at < PAGE_TTL) {
+    let reading = if read_at.is_some_and(|at| now - at < PAGE_TTL) {
         None
     } else {
-        Some(start_read(core, anilist_id)?)
+        start_read(core, anilist_id, now)?
     };
     Ok(Reply::ShowPage {
         page: Box::new(page),
@@ -322,12 +332,15 @@ pub fn get_call(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
     })
 }
 
-fn start_read(core: &Core, anilist_id: u64) -> Result<u64, CoreError> {
+fn start_read(core: &Core, anilist_id: u64, now: i64) -> Result<Option<u64>, CoreError> {
+    let running: std::collections::HashSet<u64> =
+        core.jobs.list().into_iter().map(|j| j.id).collect();
     let mut reads = core.show_reads.lock().unwrap();
-    if let Some(id) = reads.get(&anilist_id).copied()
-        && core.jobs.list().into_iter().any(|j| j.id == id)
-    {
-        return Ok(id);
+    // A read that ended and is past the retry gap is forgotten, so the map
+    // only ever holds the reads of the last few minutes.
+    reads.retain(|_, (job, at)| running.contains(job) || now - *at < RETRY_SECS);
+    if let Some((job, _)) = reads.get(&anilist_id) {
+        return Ok(running.contains(job).then_some(*job));
     }
     let owner = core.owner()?;
     let job = core
@@ -336,8 +349,8 @@ fn start_read(core: &Core, anilist_id: u64) -> Result<u64, CoreError> {
         .start(JobKind::ReadShowPage, move |_| async move {
             read_page(owner, anilist_id).await
         });
-    reads.insert(anilist_id, job);
-    Ok(job)
+    reads.insert(anilist_id, (job, now));
+    Ok(Some(job))
 }
 
 async fn read_page(core: Arc<Core>, id: u64) -> Result<Finished, CoreError> {

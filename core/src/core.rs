@@ -73,9 +73,10 @@ pub struct Core {
     /// Airing now's read in flight per season, so a second ask for the same
     /// season joins it and the other season's read runs beside it.
     pub(crate) airing_reads: Mutex<HashMap<String, u64>>,
-    /// The show page reads running, by AniList id, so a page opened twice
-    /// joins the read the first opening started (#779).
-    pub(crate) show_reads: Mutex<HashMap<u64, u64>>,
+    /// The show page reads of the last few minutes, by AniList id: the job
+    /// and when it started. A page opened twice joins the first opening's
+    /// read, and a read that failed waits before it is tried again (#779).
+    pub(crate) show_reads: Mutex<HashMap<u64, (u64, i64)>>,
     /// The least time, in milliseconds, between two of the recommender's
     /// requests to AniList, on top of the shared limiter: its first read is
     /// some seventy requests, and AniList's limit while degraded is thirty

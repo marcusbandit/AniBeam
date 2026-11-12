@@ -310,13 +310,21 @@ pub fn list_call(core: &Core, scope: RecommendedScope) -> Result<Reply, CoreErro
     })
 }
 
-/// The `RefreshRecommended` call: the job when the last fit is older than
-/// `STALE_AFTER_SECS` (or there never was one) or `force` says so, `Ok`
-/// when it is fresh. One runs at a time; a second ask joins it.
+/// The `RefreshRecommended` call: the job when the last whole read is older
+/// than `STALE_AFTER_SECS` (or there never was one) or `force` says so, `Ok`
+/// when it is fresh. A run AniList stopped short is never fresh. One runs at a time; a second ask joins it.
 pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
-    let (_, fitted_at) = core.store.read(state_of)?;
+    let read_at: Option<i64> = core.store.read(|c| {
+        Ok(
+            c.query_row("SELECT read_at FROM rec_state WHERE id = 1", [], |r| {
+                r.get(0)
+            })
+            .optional()?
+            .flatten(),
+        )
+    })?;
     let now = time::now_secs();
-    if !force && fitted_at.is_some_and(|at| now - at < STALE_AFTER_SECS) {
+    if !force && read_at.is_some_and(|at| now - at < STALE_AFTER_SECS) {
         return Ok(Reply::Ok);
     }
     Ok(Reply::Started {
@@ -336,25 +344,31 @@ pub fn start(core: &Arc<Core>) -> u64 {
 
 // The job -----------------------------------------------------------------------
 
+/// What a run leaves behind. `whole` says the read got through everything it
+/// set out to; a run AniList stopped short still saves its fit, but only a
+/// whole read moves `read_at`, so the next ask goes back for the rest.
 fn save_state(
     tx: &rusqlite::Transaction,
     state: RecommendedState,
     found: Option<&sync::Found>,
     rated: usize,
+    whole: bool,
     now: i64,
 ) -> Result<(), CoreError> {
     let found = found.cloned().unwrap_or_default();
     tx.execute(
-        "INSERT INTO rec_state (id, people, pool, trusted, fitted_at, rated, state)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
+        "INSERT INTO rec_state (id, people, pool, trusted, fitted_at, read_at, rated, state)
+         VALUES (1, ?1, ?2, ?3, ?4, CASE WHEN ?5 THEN ?4 END, ?6, ?7)
          ON CONFLICT(id) DO UPDATE SET people = excluded.people, pool = excluded.pool,
-            trusted = excluded.trusted, fitted_at = excluded.fitted_at, rated = excluded.rated,
-            state = excluded.state",
+            trusted = excluded.trusted, fitted_at = excluded.fitted_at,
+            read_at = CASE WHEN ?5 THEN ?4 ELSE rec_state.read_at END,
+            rated = excluded.rated, state = excluded.state",
         params![
             serde_json::json!(found.people).to_string(),
             serde_json::json!(found.pool).to_string(),
             serde_json::json!(found.trusted).to_string(),
             now,
+            whole,
             rated as i64,
             state.as_str(),
         ],
@@ -377,7 +391,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
     let empty = |state: RecommendedState| {
         move |tx: &rusqlite::Transaction| {
             tx.execute("DELETE FROM rec_ranked", [])?;
-            save_state(tx, state, None, 0, now)
+            save_state(tx, state, None, 0, true, now)
         }
     };
     if mine.entries.is_empty() {
@@ -396,11 +410,13 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
     };
 
     let mut net = sync::Net::new(core.clone(), ctx.clone());
+    let mut whole = true;
     let found = match sync::read(&mut net, &mine, &signals, mean).await {
         Ok(found) => found,
         // Read what could be read; the fit runs on the cache, with the
         // people and candidates the last full run found.
         Err(sync::Halt::Stop(why)) => {
+            whole = false;
             ctx.emit(
                 Level::Debug,
                 format!("Recommended for you stopped reading AniList: {why}"),
@@ -451,7 +467,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
                     serde_json::to_string(&r.why).unwrap_or_default(),
                 ])?;
             }
-            save_state(tx, RecommendedState::Ready, Some(&saved), rated, now)
+            save_state(tx, RecommendedState::Ready, Some(&saved), rated, whole, now)
         })
         .await?;
 

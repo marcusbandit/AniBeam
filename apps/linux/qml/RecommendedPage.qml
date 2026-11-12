@@ -20,12 +20,10 @@ Item {
     property var refreshing: null
     readonly property var list: recommended ? recommended.shows : []
     readonly property var counts: recommended ? recommended.counts : ({ all: 0, in_library: 0, on_list: 0 })
-    function load() {
-        var r = Door.call("ListRecommended", { scope: page.scope })
-        if (r.error) { frame.fail(r.error, page.load); return }
-        page.recommended = r.reply.recommended
-        page.refreshing = r.reply.refreshing
-    }
+    // Read off the Qt thread: the read parses the whole ranking
+    property int token: -1
+    function load() { page.token = Door.callAsync("ListRecommended", { scope: page.scope }) }
+    Timer { id: debounce; interval: 500; onTriggered: page.load() }
     function setScope(s) {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.home_recommended = s
@@ -46,8 +44,18 @@ Item {
     Connections {
         target: Door
         function onEvent(envelope) { if (envelope.kind === "RecommendedRefreshed") { page.refreshing = null; page.load() } }
-        function onSeriesChanged() { page.load() }
-        function onTrackersChanged() { page.load() }
+        function onSeriesChanged() { debounce.restart() }
+        function onTrackersChanged() { debounce.restart() }
+        // A fit that failed or was stopped says nothing else; Rank again comes back
+        function onJobFailed(job) { if (job === page.refreshing) page.refreshing = null }
+        function onJobCancelled(job) { if (job === page.refreshing) page.refreshing = null }
+        function onCallDone(token, reply) {
+            if (token !== page.token) return
+            page.token = -1
+            if (reply.error) { frame.fail(reply.error, page.load); return }
+            page.recommended = reply.reply.recommended
+            page.refreshing = reply.reply.refreshing === undefined ? null : reply.reply.refreshing
+        }
     }
     readonly property string fittedFact: {
         if (!recommended || !recommended.fitted_at) return ""

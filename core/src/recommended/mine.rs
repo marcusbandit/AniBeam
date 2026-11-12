@@ -61,9 +61,17 @@ impl Mine {
                   WHERE tracker = 'anilist' AND profile_id = 1",
             )
         } else if mal.is_some() {
+            // A MAL id maps to AniList through the library's metadata, else
+            // through the recommender's own copy of the show, so a show
+            // written to MAL from its show page reads back here too.
             Some(
-                "SELECT m.id, t.status, t.score, t.repeat, t.progress FROM tracker_entries t
-                   JOIN anilist_media m ON m.mal_id = t.media_id
+                "SELECT COALESCE(
+                          (SELECT m.id FROM anilist_media m WHERE m.mal_id = t.media_id LIMIT 1),
+                          (SELECT r.anilist_id FROM rec_shows r
+                            WHERE r.media IS NOT NULL
+                              AND json_extract(r.media, '$.idMal') = t.media_id LIMIT 1)),
+                        t.status, t.score, t.repeat, t.progress
+                   FROM tracker_entries t
                   WHERE t.tracker = 'mal' AND t.profile_id = 1",
             )
         } else {
@@ -99,7 +107,7 @@ impl Mine {
             let mut stmt = conn.prepare(sql)?;
             let rows = stmt.query_map([], |r| {
                 Ok((
-                    r.get::<_, i64>(0)?,
+                    r.get::<_, Option<i64>>(0)?,
                     r.get::<_, Option<String>>(1)?,
                     r.get::<_, Option<f64>>(2)?,
                     r.get::<_, i64>(3)?,
@@ -107,12 +115,18 @@ impl Mine {
                 ))
             })?;
             for row in rows {
-                let (id, status, score, repeat, progress) = row?;
-                push(id, status, score, repeat, progress);
+                // A MAL entry nothing maps to AniList stays out.
+                if let (Some(id), status, score, repeat, progress) = row? {
+                    push(id, status, score, repeat, progress);
+                }
             }
         }
+        // The list kept on this device has no progress of its own; the
+        // episodes finished here stand in for it.
         let mut stmt = conn.prepare(
-            "SELECT s.anilist_id, l.status, l.score FROM local_entries l
+            "SELECT s.anilist_id, l.status, l.score,
+                    (SELECT COUNT(*) FROM completed c WHERE c.series_id = s.id AND c.profile_id = 1)
+               FROM local_entries l
                JOIN series s ON s.id = l.series_id
               WHERE s.anilist_id IS NOT NULL",
         )?;
@@ -121,11 +135,12 @@ impl Mine {
                 r.get::<_, i64>(0)?,
                 r.get::<_, Option<String>>(1)?,
                 r.get::<_, Option<f64>>(2)?,
+                r.get::<_, i64>(3)?,
             ))
         })?;
         for row in rows {
-            let (id, status, score) = row?;
-            push(id, status, score, 0, 0);
+            let (id, status, score, finished) = row?;
+            push(id, status, score, 0, finished);
         }
         let mut stmt = conn.prepare(
             "SELECT anilist_id, MIN(id), MAX(hidden) FROM series
