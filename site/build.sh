@@ -22,6 +22,6 @@ cp -r "$root/site/." "$out/"
 rm -f "$out/build.sh"
 cp "$root/assets/icon.png" "$out/img/icon.png"
 # What's new: a page per version, from the apps' own patch notes.
-python3 "$root/site/whats-new.py" "$root" "$out"
-rm -f "$out/whats-new.py"
+PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/whats-new.py" "$root" "$out"
+rm -rf "$out/whats-new.py" "$out/__pycache__"
 echo "site assembled in $out"
