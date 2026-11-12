@@ -43,11 +43,10 @@ pub enum Install {
     WindowsPortable {
         exe: PathBuf,
     },
-    /// Under /usr or /opt. `package` is the owning package's name and `manager` the package
-    /// manager that owns the file, when one does.
+    /// Under /usr or /opt. `owner` is the package manager that owns the file and its name for
+    /// the package, when one does and its updates come from a source AniBeam knows.
     Package {
-        package: Option<String>,
-        manager: Option<Manager>,
+        owner: Option<(Manager, String)>,
     },
     Source,
 }
@@ -92,16 +91,7 @@ impl Install {
             .map(PathBuf::from)
             .zip(std::env::var_os("APPDIR").map(PathBuf::from));
         match Install::classify(&exe, appimage, Os::current()) {
-            Install::Package { .. } => match owner(&exe) {
-                Some((manager, package)) => Install::Package {
-                    package: Some(package),
-                    manager: Some(manager),
-                },
-                None => Install::Package {
-                    package: None,
-                    manager: None,
-                },
-            },
+            Install::Package { .. } => Install::Package { owner: owner(&exe) },
             other => other,
         }
     }
@@ -120,10 +110,7 @@ impl Install {
                     return Install::AppImage { path };
                 }
                 if exe.starts_with("/usr") || exe.starts_with("/opt") {
-                    return Install::Package {
-                        package: None,
-                        manager: None,
-                    };
+                    return Install::Package { owner: None };
                 }
                 Install::Source
             }
@@ -201,8 +188,15 @@ fn win_arch(arch: &str) -> &str {
 }
 
 /// pacman's name for the package that owns `exe`, when pacman is there and owns it.
+/// Where the apt and dnf repos on anibeam.app are set up; a package installed from a file
+/// without them has no source that brings updates.
+const APT_SOURCE: &str = "/etc/apt/sources.list.d/anibeam.sources";
+const DNF_REPO: &str = "/etc/yum.repos.d/anibeam.repo";
+
 /// The package manager that owns `exe`, and its name for the package. A system has one of
-/// the three as its own; the others are usually missing, which reads as "not this one".
+/// the three as its own; the others are usually missing, which reads as "not this one". A
+/// dpkg or rpm owner counts only with the anibeam.app repo set up, since that is where its
+/// updates come from.
 fn owner(exe: &Path) -> Option<(Manager, String)> {
     if let Some(name) = query("pacman", &["-Qqo"], exe) {
         return Some((Manager::Pacman, name));
@@ -210,11 +204,12 @@ fn owner(exe: &Path) -> Option<(Manager, String)> {
     // dpkg-query -S prints `anibeam: /opt/anibeam/usr/bin/anibeam`.
     if let Some(line) = query("dpkg-query", &["-S"], exe) {
         let name = line.split(':').next().unwrap_or_default().trim();
-        if !name.is_empty() {
-            return Some((Manager::Apt, name.to_string()));
-        }
+        return (!name.is_empty() && Path::new(APT_SOURCE).is_file())
+            .then(|| (Manager::Apt, name.to_string()));
     }
-    query("rpm", &["-qf", "--queryformat", "%{NAME}"], exe).map(|name| (Manager::Dnf, name))
+    query("rpm", &["-qf", "--queryformat", "%{NAME}"], exe)
+        .filter(|_| Path::new(DNF_REPO).is_file())
+        .map(|name| (Manager::Dnf, name))
 }
 
 /// Runs `program args exe` and returns its trimmed output, if it succeeded with some.
@@ -230,12 +225,15 @@ fn query(program: &str, args: &[&str], exe: &Path) -> Option<String> {
     (out.status.success() && !line.is_empty()).then_some(line)
 }
 
-/// The command that upgrades `package` from the apt or dnf repo on anibeam.app.
-pub fn repo_command(manager: Manager, package: &str) -> String {
+/// The command that upgrades `package` from the apt or dnf repo on anibeam.app; the AUR's
+/// is `aur_command`.
+pub fn repo_command(manager: Manager, package: &str) -> Option<String> {
     match manager {
-        Manager::Apt => format!("sudo apt update && sudo apt install --only-upgrade {package}"),
-        Manager::Dnf => format!("sudo dnf upgrade --refresh {package}"),
-        Manager::Pacman => aur_command(package),
+        Manager::Apt => Some(format!(
+            "sudo apt update && sudo apt install --only-upgrade {package}"
+        )),
+        Manager::Dnf => Some(format!("sudo dnf upgrade --refresh {package}")),
+        Manager::Pacman => None,
     }
 }
 
@@ -743,16 +741,7 @@ mod tests {
             Some("AniBeam-2.5.0-windows-x64.zip")
         );
         assert_eq!(picked(Install::Source, "x86_64"), None);
-        assert_eq!(
-            picked(
-                Install::Package {
-                    package: None,
-                    manager: None
-                },
-                "x86_64"
-            ),
-            None
-        );
+        assert_eq!(picked(Install::Package { owner: None }, "x86_64"), None);
     }
 
     /// Unix paths: Windows reads `/home/...` as relative.
@@ -775,17 +764,11 @@ mod tests {
         // Started from a terminal inside some AppImage: its variables are not ours
         assert_eq!(
             Install::classify(Path::new("/usr/bin/anibeam"), runtime(), Os::Linux),
-            Install::Package {
-                package: None,
-                manager: None
-            }
+            Install::Package { owner: None }
         );
         assert_eq!(
             Install::classify(Path::new("/usr/bin/anibeam"), None, Os::Linux),
-            Install::Package {
-                package: None,
-                manager: None
-            }
+            Install::Package { owner: None }
         );
         assert_eq!(
             Install::classify(
@@ -967,12 +950,13 @@ mod tests {
     #[test]
     fn repo_installs_get_their_own_upgrade_command() {
         assert_eq!(
-            repo_command(Manager::Apt, "anibeam"),
-            "sudo apt update && sudo apt install --only-upgrade anibeam"
+            repo_command(Manager::Apt, "anibeam").as_deref(),
+            Some("sudo apt update && sudo apt install --only-upgrade anibeam")
         );
         assert_eq!(
-            repo_command(Manager::Dnf, "anibeam"),
-            "sudo dnf upgrade --refresh anibeam"
+            repo_command(Manager::Dnf, "anibeam").as_deref(),
+            Some("sudo dnf upgrade --refresh anibeam")
         );
+        assert_eq!(repo_command(Manager::Pacman, "anibeam-bin"), None);
     }
 }

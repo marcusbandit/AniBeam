@@ -174,9 +174,10 @@ jobs:
           ls -la dist/*.deb dist/*.rpm
 
       # The dnf repo points at the release's own .rpm, so a nightly or a release signs it before
-      # it is uploaded. A pull request's build stays unsigned; it never reaches the repo.
+      # it is uploaded. A pull request's build, `test build` ones included (2.5.0-pr.280.3), stays
+      # unsigned: it never reaches the repo, and PR code never runs next to the key.
       - name: Sign the .rpm
-        if: inputs.version != ''
+        if: inputs.version != '' && !contains(inputs.version, '-pr.')
         env:
           ANIBEAM_REPO_GPG_KEY: ${{ secrets.ANIBEAM_REPO_GPG_KEY }}
         run: |
