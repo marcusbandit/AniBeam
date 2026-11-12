@@ -1,0 +1,64 @@
+// Notes on a show's list entry: one text box, written to every connected tracker as AniList's
+// notes and MyAnimeList's comments, the desktop's notes sheet.
+
+import { Theme } from "theme.slint";
+import { Button } from "widgets.slint";
+import { ShowData, ShowSheet } from "show.slint";
+
+export component NotesSheet inherits ShowSheet {
+    // The core's one limit for both trackers.
+    property <int> max: 2000;
+    property <int> count: input.text.character-count;
+    title: "Notes";
+    line: ShowData.series-title;
+    dismissed => { ShowData.close(); }
+    Rectangle {
+        height: Math.max(36 * Theme.unit, input.preferred-height + 6 * Theme.unit);
+        border-radius: Theme.radius-row + 4px;
+        background: Theme.field;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.line-strong : Theme.line;
+        if input.text == "": Text {
+            x: Theme.unit * 3;
+            y: Theme.unit * 3;
+            width: parent.width - 6 * Theme.unit;
+            text: "Where you left off, who recommended it, which release to get";
+            color: Theme.faint;
+            wrap: word-wrap;
+        }
+        input := TextInput {
+            x: Theme.unit * 3;
+            y: Theme.unit * 3;
+            width: parent.width - 6 * Theme.unit;
+            text <=> ShowData.notes-draft;
+            color: Theme.text;
+            font-family: Theme.face;
+            wrap: word-wrap;
+            single-line: false;
+        }
+    }
+    Text {
+        text: root.count > root.max ? (root.count - root.max) + " characters over the limit"
+            : "Saved to " + (ShowData.sites != "" ? ShowData.sites : "your tracker") + ".";
+        color: root.count > root.max ? Theme.bad : Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: start;
+        Button {
+            text: "Save";
+            primary: true;
+            enabled: root.count <= root.max && ShowData.notes-draft != ShowData.notes;
+            clicked => {
+                ShowData.save-notes(ShowData.notes-draft);
+                ShowData.close();
+            }
+        }
+        Button {
+            text: "Cancel";
+            clicked => { ShowData.close(); }
+        }
+    }
+}

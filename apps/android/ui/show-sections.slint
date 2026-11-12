@@ -1,0 +1,156 @@
+// What a show's page lists below its episodes, the desktop's right column: the characters,
+// the related entries and AniList's recommendations, each sized for a phone.
+
+import { Theme } from "theme.slint";
+import { Poster, SectionHead, TileRow } from "widgets.slint";
+import { ShowCard, ShowData, ShowPerson } from "show.slint";
+
+// A character: round portrait, the name in two lines at most and the role under it.
+component PersonItem inherits Rectangle {
+    in property <ShowPerson> person;
+    width: 22 * Theme.unit;
+    height: col.preferred-height;
+    col := VerticalLayout {
+        spacing: Theme.unit;
+        Rectangle {
+            width: 16 * Theme.unit;
+            height: self.width;
+            border-radius: self.width / 2;
+            clip: true;
+            background: Theme.sunken;
+            border-width: root.person.has-image ? 0 : 1px;
+            border-color: Theme.line;
+            if root.person.has-image: Image {
+                width: parent.width;
+                height: parent.height;
+                source: root.person.image;
+                image-fit: cover;
+            }
+            if !root.person.has-image: Text {
+                text: root.person.initials;
+                color: Theme.faint;
+                font-size: Theme.heading;
+                font-family: Theme.title-face;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            text: root.person.name;
+            color: Theme.text;
+            font-size: Theme.small;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            overflow: elide;
+            max-height: self.font-size * 2.6;
+        }
+        Text {
+            text: root.person.role;
+            color: Theme.dim;
+            font-size: Theme.small - 1px;
+            font-family: Theme.ledger-face;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.person.id >= 0;
+        clicked => { ShowData.pick-person(root.person.id); }
+    }
+}
+
+// One related entry: a poster sliver, the title, the relation and year, and where it lives.
+component RelationRow inherits Rectangle {
+    in property <ShowCard> card;
+    callback tapped();
+    height: 21 * Theme.unit;
+    border-radius: Theme.radius-row + 4px;
+    background: touch.pressed ? Theme.pressed : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.line;
+    Poster {
+        x: 0;
+        y: 0;
+        width: parent.height / 1.5;
+        height: parent.height;
+        source: root.card.poster;
+        has-image: root.card.has-poster;
+        initials: root.card.initials;
+    }
+    VerticalLayout {
+        x: parent.height / 1.5 + Theme.unit * 3;
+        width: parent.width - self.x - Theme.unit * 3;
+        alignment: center;
+        spacing: Theme.unit;
+        Text {
+            text: root.card.title;
+            color: Theme.text;
+            font-family: Theme.strong-face;
+            wrap: word-wrap;
+            overflow: elide;
+            max-height: self.font-size * 2.6;
+        }
+        if root.card.line != "": Text {
+            text: root.card.line;
+            color: Theme.dim;
+            font-size: Theme.small;
+            font-family: Theme.ledger-face;
+            overflow: elide;
+        }
+        Text {
+            text: (root.card.status != "" ? root.card.status + ", " : "") + root.card.note;
+            color: root.card.owned >= 0 ? Theme.accent : Theme.dim;
+            font-size: Theme.small - 0.5px;
+            font-family: Theme.ledger-face;
+            overflow: elide;
+        }
+    }
+    touch := TouchArea { clicked => { root.tapped(); } }
+}
+
+export component ShowSections inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    if ShowData.people.length > 0: VerticalLayout {
+        spacing: Theme.unit * 3;
+        SectionHead {
+            title: "Characters";
+            note: "" + ShowData.people.length;
+        }
+        Flickable {
+            height: 40 * Theme.unit;
+            content-width: Math.max(self.width, ShowData.people.length * (22 * Theme.unit + Theme.gap) - Theme.gap);
+            interactive: self.content-width > self.width;
+            for person[i] in ShowData.people: PersonItem {
+                x: i * (22 * Theme.unit + Theme.gap);
+                person: person;
+            }
+        }
+    }
+    if ShowData.related.length > 0: VerticalLayout {
+        spacing: Theme.unit * 3;
+        SectionHead {
+            title: "Related";
+            note: "" + ShowData.related.length;
+        }
+        for card in ShowData.related: RelationRow {
+            card: card;
+            tapped => { ShowData.pick-related(card.id); }
+        }
+        if ShowData.related-filling: Text {
+            text: "Still filling in from AniList.";
+            color: Theme.faint;
+            font-size: Theme.small;
+        }
+    }
+    if ShowData.recs.length > 0: VerticalLayout {
+        spacing: Theme.unit * 3;
+        SectionHead {
+            title: "Recommendations";
+            note: "" + ShowData.recs.length;
+        }
+        TileRow {
+            tiles: ShowData.recs;
+            open(id) => { ShowData.pick-rec(id); }
+        }
+    }
+}

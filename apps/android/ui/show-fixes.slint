@@ -1,0 +1,35 @@
+// Fixes, the desktop's menu of the same name: the things a show can need put right. The match
+// and rescan are here; each other fix opens its own sheet.
+
+import { Theme } from "theme.slint";
+import { Button } from "widgets.slint";
+import { MatchData } from "show-match.slint";
+import { ShowData, ShowSheet } from "show.slint";
+
+export component FixesSheet inherits ShowSheet {
+    title: "Fixes";
+    line: ShowData.series-title;
+    dismissed => { ShowData.close(); }
+    Button {
+        text: ShowData.matched ? "Match" : "Find a match";
+        icon: @image-url("icons/search.svg");
+        has-icon: true;
+        clicked => {
+            MatchData.begin();
+            ShowData.sheet = 6;
+        }
+    }
+    Button {
+        text: "Rescan folder";
+        icon: @image-url("icons/refresh-cw.svg");
+        has-icon: true;
+        clicked => {
+            ShowData.rescan();
+            ShowData.close();
+        }
+    }
+    Button {
+        text: "Cancel";
+        clicked => { ShowData.close(); }
+    }
+}

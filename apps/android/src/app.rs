@@ -36,7 +36,7 @@ const STORAGE_EVERY: u32 = 30;
 
 /// Puts a model's rows in place, touching only the rows that changed, so a once-a-second
 /// countdown repaints the text that moved and not the whole grid.
-fn update<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+pub(crate) fn update<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
     if model.row_count() != rows.len() {
         model.set_vec(rows);
         return;
@@ -597,6 +597,18 @@ impl App {
             None => {
                 self.open = None;
                 data.set_series_open(false);
+            }
+        }
+        // The sheets on the page edit this phone's own show, never the computer's.
+        let own = matches!(self.open, Some(Open::Phone(_)));
+        for (key, path) in crate::show::sync(
+            &window,
+            self.detail.as_ref().filter(|_| own),
+            self.trackers.as_ref(),
+            &self.art,
+        ) {
+            if self.asked.insert(key) {
+                let _ = self.posters.send((key, path));
             }
         }
 
@@ -1661,7 +1673,7 @@ fn demo_notifies() -> bool {
 }
 
 /// Set on an Airing now poster's key in the art, apart from every series id.
-const AIRING_ART: u64 = 1 << 48;
+pub(crate) const AIRING_ART: u64 = 1 << 48;
 /// How long, in ticks of a second, a not interested mark can be taken back.
 const UNDO_TICKS: u32 = 6;
 
@@ -1867,6 +1879,8 @@ pub fn run(
 
     let window = AppWindow::new()?;
     crate::player::install(&window);
+    crate::show::install(&window);
+    crate::show_match::install(&window);
     let data = window.global::<AppData>();
     data.set_version(
         format!(

@@ -27,6 +27,8 @@ mod posters;
 mod prefs;
 mod remote;
 mod repos;
+mod show;
+mod show_match;
 mod stream;
 mod thumbs;
 mod versions;

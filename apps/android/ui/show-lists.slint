@@ -1,0 +1,100 @@
+// The list status and the score of a show, the desktop's status menu and score picker as
+// two foot sheets.
+
+import { Theme } from "theme.slint";
+import { Button, Slider } from "widgets.slint";
+import { ShowData, ShowSheet } from "show.slint";
+
+// One list the show can move to. The one it is on is marked and cannot be picked again.
+component ListChoice inherits Rectangle {
+    in property <string> key;
+    in property <string> label;
+    in property <image> icon;
+    Button {
+        width: parent.width;
+        text: ShowData.status-key == root.key ? root.label + ", now" : root.label;
+        icon: root.icon;
+        has-icon: true;
+        primary: ShowData.status-key == root.key;
+        enabled: ShowData.status-key != root.key;
+        clicked => {
+            ShowData.set-status(root.key);
+            ShowData.close();
+        }
+    }
+    height: Theme.control;
+}
+
+export component StatusSheet inherits ShowSheet {
+    title: ShowData.series-title;
+    line: ShowData.home;
+    dismissed => { ShowData.close(); }
+    ListChoice { key: "Watching"; label: "Watching"; icon: @image-url("icons/play.svg"); }
+    ListChoice { key: "Planning"; label: "Planning"; icon: @image-url("icons/bookmark.svg"); }
+    ListChoice { key: "Completed"; label: "Completed"; icon: @image-url("icons/circle-check.svg"); }
+    ListChoice { key: "Paused"; label: "On hold"; icon: @image-url("icons/pause.svg"); }
+    ListChoice { key: "Dropped"; label: "Dropped"; icon: @image-url("icons/ban.svg"); }
+    Button {
+        text: "Cancel";
+        clicked => { ShowData.close(); }
+    }
+}
+
+// 0.0 to 10.0 in tenths: a big readout, a slider for the point and a step each way for the
+// tenth, Save, and Clear when a score exists.
+export component ScoreSheet inherits ShowSheet {
+    title: ShowData.series-title;
+    line: ShowData.home;
+    dismissed => { ShowData.close(); }
+    Text {
+        text: (ShowData.draft / 10) + "." + Math.mod(ShowData.draft, 10);
+        color: Theme.text;
+        font-size: Theme.page;
+        font-family: Theme.figure;
+        horizontal-alignment: center;
+    }
+    Slider {
+        minimum: 0;
+        maximum: 100;
+        value: ShowData.draft;
+        moved(v) => { ShowData.draft = Math.round(v); }
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: center;
+        Button {
+            text: "-0.1";
+            enabled: ShowData.draft > 0;
+            clicked => { ShowData.draft = Math.max(0, ShowData.draft - 1); }
+        }
+        Button {
+            text: "+0.1";
+            enabled: ShowData.draft < 100;
+            clicked => { ShowData.draft = Math.min(100, ShowData.draft + 1); }
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: start;
+        Button {
+            text: "Save";
+            primary: true;
+            clicked => {
+                ShowData.set-score(ShowData.draft);
+                ShowData.close();
+            }
+        }
+        if ShowData.score >= 0: Button {
+            text: "Clear";
+            danger: true;
+            clicked => {
+                ShowData.set-score(-1);
+                ShowData.close();
+            }
+        }
+        Button {
+            text: "Cancel";
+            clicked => { ShowData.close(); }
+        }
+    }
+}

@@ -1,0 +1,208 @@
+// Fix a wrong match: search AniList or TVmaze for the show's real record, or paste a link,
+// apply it, refresh it, or clear it. The desktop's match panel as a foot sheet.
+
+import { Theme } from "theme.slint";
+import { Button, Field, SearchField, Segmented } from "widgets.slint";
+import { ShowData, ShowSheet } from "show.slint";
+
+export struct MatchRow {
+    title: string,
+    alt: string,
+    // "2024, TV, 12 episodes".
+    meta: string,
+}
+
+export global MatchData {
+    // What the show is matched to now, "Matched on AniList", or empty.
+    in property <string> current;
+    // 0 AniList, 1 TVmaze.
+    in-out property <int> provider;
+    in-out property <string> query;
+    in-out property <string> link;
+    in property <[MatchRow]> results;
+    in property <bool> searching;
+    // What stands in for the results: "Searching AniList", "No titles found on AniList."
+    in property <string> empty;
+    // Where a looked-up link points, "Found it on AniList", once there is one to apply.
+    in property <string> found;
+    // How the last write went, or why a search failed.
+    in property <string> note;
+    // Clear match asks twice.
+    in-out property <bool> armed;
+    callback begin();
+    callback search(string);
+    callback pick-provider(int);
+    callback apply(int);
+    callback look-up(string);
+    callback apply-found();
+    callback refresh();
+    callback clear();
+    callback auto-match();
+}
+
+component ResultRow inherits Rectangle {
+    in property <MatchRow> hit;
+    callback tapped();
+    height: Math.max(14 * Theme.unit, col.preferred-height + 5 * Theme.unit);
+    border-radius: Theme.radius-row + 4px;
+    background: touch.pressed ? Theme.pressed : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.line;
+    col := VerticalLayout {
+        x: Theme.unit * 4;
+        width: parent.width - 2 * Theme.unit * 4;
+        y: (parent.height - self.preferred-height) / 2;
+        height: self.preferred-height;
+        spacing: Theme.unit / 2;
+        Text {
+            text: root.hit.title;
+            color: Theme.text;
+            font-family: Theme.strong-face;
+            wrap: word-wrap;
+        }
+        if root.hit.alt != "": Text {
+            text: root.hit.alt;
+            color: Theme.dim;
+            font-size: Theme.small;
+            overflow: elide;
+        }
+        if root.hit.meta != "": Text {
+            text: root.hit.meta;
+            color: Theme.dim;
+            font-size: Theme.small - 0.5px;
+            font-family: Theme.ledger-face;
+            overflow: elide;
+        }
+    }
+    touch := TouchArea { clicked => { root.tapped(); } }
+}
+
+export component MatchSheet inherits ShowSheet {
+    title: "Match";
+    line: ShowData.series-title;
+    reach: 0.7;
+    dismissed => { ShowData.close(); }
+    debounce := Timer {
+        interval: 300ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            MatchData.search(MatchData.query);
+        }
+    }
+    disarm := Timer {
+        interval: 5s;
+        running: MatchData.armed;
+        triggered => { MatchData.armed = false; }
+    }
+    if MatchData.current != "": Text {
+        text: MatchData.current;
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+    }
+    if MatchData.current != "": HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: start;
+        Button {
+            text: "Refresh info";
+            icon: @image-url("icons/refresh-cw.svg");
+            has-icon: true;
+            small: true;
+            clicked => { MatchData.refresh(); }
+        }
+        // Two steps: it drops the tracker link and a hand-set episode count, and the show is
+        // then left alone by the automatic match.
+        Button {
+            text: MatchData.armed ? "Clear it" : "Clear match";
+            small: true;
+            danger: MatchData.armed;
+            clicked => {
+                if (!MatchData.armed) {
+                    MatchData.armed = true;
+                } else {
+                    MatchData.armed = false;
+                    MatchData.clear();
+                }
+            }
+        }
+    }
+    if MatchData.armed: Text {
+        text: "Clearing drops the tracker link and a hand-set episode count. Tap again to clear.";
+        color: Theme.bad;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    Segmented {
+        options: ["AniList", "TVmaze"];
+        picked: MatchData.provider;
+        pick(i) => { MatchData.pick-provider(i); }
+    }
+    SearchField {
+        placeholder: "Search " + (MatchData.provider == 1 ? "TVmaze" : "AniList");
+        text <=> MatchData.query;
+        edited(t) => {
+            debounce.running = false;
+            debounce.running = true;
+        }
+        accepted(t) => { MatchData.search(t); }
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        Field {
+            horizontal-stretch: 1;
+            text <=> MatchData.link;
+            placeholder: MatchData.provider == 1 ? "Paste a TVmaze or IMDb link" : "Paste an AniList or MyAnimeList link";
+            figure: true;
+            accepted(t) => { MatchData.look-up(t); }
+        }
+        Button {
+            text: "Look up";
+            small: true;
+            enabled: MatchData.link != "";
+            clicked => { MatchData.look-up(MatchData.link); }
+        }
+    }
+    if MatchData.found != "": HorizontalLayout {
+        spacing: Theme.gap;
+        Text {
+            horizontal-stretch: 1;
+            text: MatchData.found;
+            color: Theme.text;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+        Button {
+            text: "Apply";
+            small: true;
+            primary: true;
+            clicked => { MatchData.apply-found(); }
+        }
+    }
+    if MatchData.note != "": Text {
+        text: MatchData.note;
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+    if MatchData.results.length == 0: Text {
+        text: MatchData.empty;
+        color: Theme.dim;
+        wrap: word-wrap;
+    }
+    for hit[i] in MatchData.results: ResultRow {
+        hit: hit;
+        tapped => { MatchData.apply(i); }
+    }
+    TouchArea {
+        height: Theme.touch;
+        clicked => { MatchData.auto-match(); }
+        Text {
+            text: "Look up every folder AniBeam does not know yet";
+            color: Theme.dim;
+            font-size: Theme.small + 0.5px;
+            font-family: Theme.strong-face;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
