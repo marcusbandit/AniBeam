@@ -4,7 +4,7 @@
 //! alone.
 
 mod common;
-use common::job_of;
+use common::started;
 mod fixtures;
 
 use std::time::Duration;
@@ -77,7 +77,7 @@ fn the_anilist_list_fills_the_cache_and_the_five_minute_rule_holds_it() {
 
     // MAL is not connected, so a refresh of every tracker is AniList's
     // alone.
-    let job = job_of(core.call(Call::RefreshProgress { tracker: None }).unwrap());
+    let job = started(&core, Call::RefreshProgress { tracker: None });
     let done = common::wait_job(&c, job);
     assert!(
         matches!(
@@ -112,7 +112,7 @@ fn the_anilist_list_fills_the_cache_and_the_five_minute_rule_holds_it() {
     assert_eq!(finished.list_status, Some(ListStatus::Completed));
 
     // Inside the window nothing is asked for, and the job says so.
-    let again = job_of(core.call(Call::RefreshProgress { tracker: None }).unwrap());
+    let again = started(&core, Call::RefreshProgress { tracker: None });
     let notice = common::wait_job(&c, again);
     assert!(matches!(notice.body, EventBody::Notice), "{notice:?}");
     assert_eq!(notice.message, "Nothing to refresh");
@@ -131,11 +131,11 @@ fn the_anilist_list_fills_the_cache_and_the_five_minute_rule_holds_it() {
     // Past the window it fetches again, and the new numbers land.
     fixtures::age_progress(&core, Tracker::Anilist, 600);
     http.push_json(200, collection(6));
-    let third = job_of(
-        core.call(Call::RefreshProgress {
+    let third = started(
+        &core,
+        Call::RefreshProgress {
             tracker: Some(Tracker::Anilist),
-        })
-        .unwrap(),
+        },
     );
     let refreshed = common::wait_job(&c, third);
     assert!(
@@ -184,11 +184,11 @@ fn the_mal_list_pages_until_a_short_page_and_promotes_a_rewatch() {
         .to_string(),
     );
 
-    let job = job_of(
-        core.call(Call::RefreshProgress {
+    let job = started(
+        &core,
+        Call::RefreshProgress {
             tracker: Some(Tracker::Mal),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert!(
@@ -237,17 +237,17 @@ fn a_failed_fetch_keeps_the_rows_and_fails_a_job_with_nothing_else_to_do() {
     let (frieren, _) = library(&core);
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "tok");
     http.push_json(200, collection(5));
-    let job = job_of(core.call(Call::RefreshProgress { tracker: None }).unwrap());
+    let job = started(&core, Call::RefreshProgress { tracker: None });
     common::wait_job(&c, job);
     assert_eq!(card(&core, frieren).watched, Some(5));
 
     fixtures::age_progress(&core, Tracker::Anilist, 600);
     http.fail_next("connection refused");
-    let failed = job_of(
-        core.call(Call::RefreshProgress {
+    let failed = started(
+        &core,
+        Call::RefreshProgress {
             tracker: Some(Tracker::Anilist),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, failed);
     assert!(matches!(done.body, EventBody::JobFailed { .. }), "{done:?}");
@@ -270,11 +270,11 @@ fn a_disconnected_tracker_is_skipped() {
     let http = FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     library(&core);
-    let job = job_of(
-        core.call(Call::RefreshProgress {
+    let job = started(
+        &core,
+        Call::RefreshProgress {
             tracker: Some(Tracker::Mal),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_for(
         &c,
@@ -310,13 +310,13 @@ fn a_sweep_with_one_dead_token_warns_rather_than_failing_the_job() {
         200,
         serde_json::json!({ "data": [], "paging": {} }).to_string(),
     );
-    let job = job_of(core.call(Call::RefreshProgress { tracker: None }).unwrap());
+    let job = started(&core, Call::RefreshProgress { tracker: None });
     common::wait_job(&c, job);
 
     // AniList is fresh and skipped; MAL is stale and its token is dead.
     fixtures::age_progress(&core, Tracker::Mal, 600);
     http.fail_next("connection refused");
-    let job = job_of(core.call(Call::RefreshProgress { tracker: None }).unwrap());
+    let job = started(&core, Call::RefreshProgress { tracker: None });
     let done = common::wait_job(&c, job);
     assert!(matches!(done.body, EventBody::Notice), "{done:?}");
     assert_eq!(done.level, Level::Debug);
@@ -333,11 +333,11 @@ fn a_sweep_with_one_dead_token_warns_rather_than_failing_the_job() {
 
     // The same failure, asked for by name, is the job's answer.
     http.fail_next("connection refused");
-    let job = job_of(
-        core.call(Call::RefreshProgress {
+    let job = started(
+        &core,
+        Call::RefreshProgress {
             tracker: Some(Tracker::Mal),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert!(matches!(done.body, EventBody::JobFailed { .. }), "{done:?}");
@@ -367,11 +367,11 @@ fn an_exhausted_rate_limit_is_a_rate_limit_and_not_a_timeout() {
         );
     }
 
-    let job = job_of(
-        core.call(Call::RefreshProgress {
+    let job = started(
+        &core,
+        Call::RefreshProgress {
             tracker: Some(Tracker::Anilist),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert!(

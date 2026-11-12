@@ -3,7 +3,7 @@
 //! for the whole selection rather than one per series.
 
 mod common;
-use common::job_of;
+use common::started;
 mod fixtures;
 
 use anibeam_core::net::FakeHttp;
@@ -31,14 +31,10 @@ fn matched_shows(core: &Core, titles: &[&str]) -> Vec<u64> {
         .collect()
 }
 
-fn cards(core: &Core, tab: Tab) -> Vec<SeriesCard> {
-    common::cards(core, tab, true)
-}
-
 fn card(core: &Core, series: u64) -> SeriesCard {
     [Tab::All, Tab::Watched, Tab::Hidden]
         .into_iter()
-        .flat_map(|t| cards(core, t))
+        .flat_map(|t| common::cards(core, t, true))
         .find(|c| c.id == series)
         .expect("the series is listed")
 }
@@ -134,14 +130,14 @@ fn a_list_status_goes_to_every_pick_in_one_job_and_one_line() {
     anilist_write(&http);
     anilist_write(&http);
 
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: ids.clone(),
             action: SeriesAction::ListStatus {
                 status: ListStatus::Planning,
             },
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert_eq!(done.level, Level::Info, "{done:?}");
@@ -164,14 +160,14 @@ fn a_pick_with_nowhere_to_write_is_left_out_and_counted() {
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "atok");
     anilist_write(&http);
 
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: vec![ids[0], loose],
             action: SeriesAction::ListStatus {
                 status: ListStatus::Dropped,
             },
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
     assert_eq!(
@@ -248,12 +244,12 @@ fn a_failed_write_is_counted_in_the_one_line_not_said_per_series() {
     anilist_write(&http);
     http.push_for("anilist", 500, r#"{"errors":[{"message":"boom"}]}"#);
 
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: ids,
             action: SeriesAction::Score { score: Some(8.0) },
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
     let lines = plain_lines(&c);
@@ -273,12 +269,12 @@ fn every_write_failing_reads_as_a_warning() {
     http.push_for("anilist", 500, r#"{"errors":[{"message":"boom"}]}"#);
     http.push_for("anilist", 500, r#"{"errors":[{"message":"boom"}]}"#);
 
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: ids,
             action: SeriesAction::Score { score: None },
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert_eq!(done.level, Level::Warn, "{done:?}");
@@ -313,12 +309,12 @@ fn find_a_match_searches_only_the_picks_without_one() {
     );
     http.push_for("api.tvmaze.com/search/shows", 200, "[]");
 
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: vec![ids[0], loose],
             action: SeriesAction::FindMatch,
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
     assert_eq!(
@@ -352,17 +348,20 @@ fn a_rescan_of_several_is_one_scan() {
         |e| matches!(e.body, EventBody::ScanFinished { .. }),
         std::time::Duration::from_secs(10),
     );
-    let ids: Vec<u64> = cards(&core, Tab::All).iter().map(|c| c.id).collect();
+    let ids: Vec<u64> = common::cards(&core, Tab::All, true)
+        .iter()
+        .map(|c| c.id)
+        .collect();
     assert_eq!(ids.len(), 2);
     for show in ["Bebop", "Trigun"] {
         std::fs::write(lib.join(show).join("Show - 02.mkv"), b"x").unwrap();
     }
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: ids,
             action: SeriesAction::Rescan,
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert_eq!(done.job.as_ref().unwrap().kind, JobKind::Scan);
@@ -408,12 +407,12 @@ fn a_cleared_match_that_still_finds_nothing_stays_cleared() {
     );
     http.push_for("api.tvmaze.com/search/shows", 200, "[]");
 
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: vec![loose],
             action: SeriesAction::FindMatch,
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
     let (at, version) = attempt_version(&core, loose);
@@ -445,12 +444,12 @@ fn a_search_that_fails_is_said_as_one_to_try_again_not_a_miss() {
         serde_json::json!({ "data": { "Page": { "media": [ { "id": "not a number" } ] } } }),
     );
 
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: vec![loose],
             action: SeriesAction::FindMatch,
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert_eq!(done.level, Level::Warn, "{done:?}");
@@ -470,12 +469,12 @@ fn a_pick_gone_from_disk_is_not_counted_as_matched() {
     fixtures::mark_missing(&core, gone);
     let ids = matched_shows(&core, &["Bebop"]);
 
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: vec![gone, ids[0]],
             action: SeriesAction::FindMatch,
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
     assert_eq!(
@@ -497,14 +496,14 @@ fn a_hidden_pick_is_named_as_hidden_not_as_unmatched() {
     .unwrap();
     anilist_write(&http);
 
-    let job = job_of(
-        core.call(Call::ActOnSeries {
+    let job = started(
+        &core,
+        Call::ActOnSeries {
             series: ids,
             action: SeriesAction::ListStatus {
                 status: ListStatus::Planning,
             },
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
     assert_eq!(

@@ -9,10 +9,6 @@ use std::time::Duration;
 
 use anibeam_core::*;
 
-fn list(core: &Core) -> Vec<SeriesCard> {
-    common::cards(core, Tab::All, false)
-}
-
 #[test]
 fn ensure_fetches_once_and_clear_images_empties_everything() {
     let http = anibeam_core::net::FakeHttp::new();
@@ -21,13 +17,15 @@ fn ensure_fetches_once_and_clear_images_empties_everything() {
     let src = fixtures::insert_source(&core, "/lib");
     let s = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/A", "A");
     fixtures::insert_episode_file(&core, s, "/lib/A/01.mkv", 1.0, 1);
-    fixtures::insert_media_with_cover(&core, 1, "https://img/xl.jpg", None);
+    fixtures::media(1, "Media 1")
+        .cover("https://img/xl.jpg")
+        .insert(&core);
     fixtures::match_series(&core, s, Some(1), None);
 
     // The first read has a gap: the media row carries a cover url that no
     // image row answers, so the card comes back without a poster and the
     // read starts the fill.
-    let cards = list(&core);
+    let cards = common::cards(&core, Tab::All, false);
     assert!(cards[0].poster.is_none());
     let fill = common::wait_for(
         &c,
@@ -46,7 +44,7 @@ fn ensure_fetches_once_and_clear_images_empties_everything() {
     .id;
     common::wait_job(&c, fill);
 
-    let cards = list(&core);
+    let cards = common::cards(&core, Tab::All, false);
     let poster = cards[0].poster.clone().unwrap();
     assert!(
         poster.starts_with(dir.path().join("cache").join("images").to_str().unwrap()),
@@ -96,12 +94,16 @@ fn a_failed_fetch_is_reported_per_url_and_the_batch_still_finishes() {
     let src = fixtures::insert_source(&core, "/lib");
     let good = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/G", "G");
     let bad = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/B", "B");
-    fixtures::insert_media_with_cover(&core, 1, "https://img/good.jpg", None);
-    fixtures::insert_media_with_cover(&core, 2, "https://img/bad.jpg", None);
+    fixtures::media(1, "Media 1")
+        .cover("https://img/good.jpg")
+        .insert(&core);
+    fixtures::media(2, "Media 2")
+        .cover("https://img/bad.jpg")
+        .insert(&core);
     fixtures::match_series(&core, good, Some(1), None);
     fixtures::match_series(&core, bad, Some(2), None);
 
-    let _ = list(&core);
+    let _ = common::cards(&core, Tab::All, false);
     let fill = common::wait_for(
         &c,
         |e| {

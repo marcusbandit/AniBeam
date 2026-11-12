@@ -5,7 +5,7 @@
 //! by the fake client, so these tests are about On hold alone.
 
 mod common;
-use common::job_of;
+use common::started;
 mod fixtures;
 
 use std::time::Duration;
@@ -170,7 +170,7 @@ fn mal_patches(http: &FakeHttp) -> Vec<Vec<(String, String)>> {
 }
 
 fn refresh(core: &Core, c: &Collector) {
-    let job = job_of(core.call(Call::RefreshProgress { tracker: None }).unwrap());
+    let job = started(core, Call::RefreshProgress { tracker: None });
     common::wait_job(c, job);
 }
 

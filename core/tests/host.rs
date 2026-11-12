@@ -134,7 +134,9 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         7.0,
         now - 900,
     );
-    fixtures::insert_media_with_cover(&core, 154587, "https://img.test/frieren.jpg", None);
+    fixtures::media(154587, "Media 154587")
+        .cover("https://img.test/frieren.jpg")
+        .insert(&core);
     core.store()
         .write(|c| {
             c.execute(

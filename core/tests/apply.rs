@@ -50,10 +50,6 @@ fn not_found() -> serde_json::Value {
     serde_json::json!({ "data": null, "errors": [ { "message": "Not Found.", "status": 404 } ] })
 }
 
-fn list_cards(core: &Core) -> Vec<SeriesCard> {
-    common::cards(core, Tab::All, false)
-}
-
 /// The `perPage` the search actually asked AniList for.
 fn per_page(req: &anibeam_core::net::HttpRequest) -> u64 {
     match &req.body {
@@ -333,7 +329,7 @@ fn apply_match_writes_the_match_first_and_the_record_after() {
     };
     assert!(early[0].poster.is_none(), "{early:?}");
 
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     let card = cards.iter().find(|s| s.id == series).unwrap();
     assert_eq!(
         card.match_info
@@ -426,7 +422,7 @@ fn refresh_refuses_an_unmatched_series_and_refetches_a_matched_one() {
     assert_eq!(done.level, Level::Info);
     assert_eq!(http.requests().len(), 3);
 
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     assert_eq!(
         cards.iter().find(|s| s.id == matched).unwrap().title,
         "New title"
@@ -514,7 +510,7 @@ fn a_mal_target_anilist_cannot_resolve_becomes_a_mal_only_match() {
     assert_eq!(done.body, EventBody::MatchApplied { series });
     assert_eq!(http.requests().len(), 1);
 
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     let card = cards.iter().find(|s| s.id == series).unwrap();
     assert_eq!(
         card.match_info
@@ -595,7 +591,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     assert_eq!(done.message, "backfill: 1 refreshed, 0 failed");
     assert_eq!(http.requests().len(), 3);
     assert_eq!(
-        list_cards(&core)
+        common::cards(&core, Tab::All, false)
             .iter()
             .find(|s| s.id == stub)
             .unwrap()
@@ -635,7 +631,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     );
     assert_eq!(done.message, "refresh: 2 refreshed, 0 failed");
     assert_eq!(http.requests().len(), 9);
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     assert_eq!(
         cards.iter().find(|s| s.id == fetched).unwrap().title,
         "Fetched again"

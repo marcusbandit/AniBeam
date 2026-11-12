@@ -125,9 +125,11 @@ pub fn media(anilist_id: u64, romaji: &str) -> Media {
         status: "FINISHED".to_string(),
         format: "TV".to_string(),
         average_score: None,
+        cover_url: None,
     }
 }
 
+#[must_use = "a media row is written only by .insert(core)"]
 pub struct Media {
     id: u64,
     romaji: String,
@@ -136,6 +138,7 @@ pub struct Media {
     status: String,
     format: String,
     average_score: Option<u32>,
+    cover_url: Option<String>,
 }
 
 impl Media {
@@ -165,12 +168,19 @@ impl Media {
         self
     }
 
+    /// The picture a card draws, so a series matched to this row has a gap
+    /// until the image cache fills it.
+    pub fn cover(mut self, url: &str) -> Self {
+        self.cover_url = Some(url.to_string());
+        self
+    }
+
     pub fn insert(self, core: &Core) {
         core.store()
             .write(move |c| {
                 c.execute(
-                    "INSERT OR REPLACE INTO anilist_media (id, media_type, title_romaji, title_english, format, status, episodes, average_score, fetched_at)
-                     VALUES (?1, 'ANIME', ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    "INSERT OR REPLACE INTO anilist_media (id, media_type, title_romaji, title_english, format, status, episodes, average_score, cover_url, fetched_at)
+                     VALUES (?1, 'ANIME', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     params![
                         self.id as i64,
                         self.romaji,
@@ -179,6 +189,7 @@ impl Media {
                         self.status,
                         self.episodes.map(i64::from),
                         self.average_score.map(i64::from),
+                        self.cover_url,
                         time::now_secs(),
                     ],
                 )?;
@@ -186,28 +197,6 @@ impl Media {
             })
             .unwrap()
     }
-}
-
-/// A media row that names the pictures the image cache would go and get.
-/// The cover is what a card draws, so a series matched to one of these has
-/// a gap until the fill runs.
-pub fn insert_media_with_cover(
-    core: &Core,
-    anilist_id: u64,
-    cover_url: &str,
-    banner_url: Option<&str>,
-) {
-    let (cover_url, banner_url) = (cover_url.to_string(), banner_url.map(str::to_string));
-    core.store()
-        .write(move |c| {
-            c.execute(
-                "INSERT OR REPLACE INTO anilist_media (id, media_type, title_romaji, status, format, cover_url, banner_url, fetched_at)
-                 VALUES (?1, 'ANIME', ?2, 'FINISHED', 'TV', ?3, ?4, ?5)",
-                params![anilist_id as i64, format!("Media {anilist_id}"), cover_url, banner_url, time::now_secs()],
-            )?;
-            Ok(())
-        })
-        .unwrap()
 }
 
 pub fn match_series(core: &Core, series: u64, anilist_id: Option<u64>, mal_id: Option<u64>) {

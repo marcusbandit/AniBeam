@@ -42,10 +42,6 @@ fn media_json_as(
     m
 }
 
-fn list_cards(core: &Core) -> Vec<SeriesCard> {
-    common::cards(core, Tab::All, false)
-}
-
 fn attempted_at(core: &Core, series: u64) -> Option<i64> {
     core.store()
         .read(|c| {
@@ -130,7 +126,7 @@ fn auto_match_matches_once_at_the_gate_and_never_rehammers() {
         c.events()
     );
 
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     let matched = cards.iter().find(|s| s.id == hit).unwrap();
     assert_eq!(
         matched
@@ -172,7 +168,7 @@ fn auto_match_matches_once_at_the_gate_and_never_rehammers() {
         core.call(Call::ClearMatch { series: hit }).unwrap(),
         Reply::Ok
     ));
-    let cleared = list_cards(&core);
+    let cleared = common::cards(&core, Tab::All, false);
     assert!(
         cleared
             .iter()
@@ -449,7 +445,7 @@ fn a_film_folder_matches_kimi_no_na_wa_and_not_the_suntory_short() {
         "{:#?}",
         c.events()
     );
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     let matched = cards.iter().find(|s| s.id == film).unwrap();
     assert_eq!(
         matched
@@ -520,7 +516,7 @@ fn a_first_film_folder_is_searched_again_without_its_number() {
         ),
         "{done:?}"
     );
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     let matched = cards.iter().find(|s| s.id == film).unwrap();
     assert_eq!(
         matched

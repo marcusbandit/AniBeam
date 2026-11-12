@@ -1,6 +1,6 @@
 mod common;
 use anibeam_core::*;
-use common::job_of;
+use common::started;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -143,11 +143,11 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
     // A fourth file lands, one is deleted: a rescan is "changed", not "added".
     touch(&lib.join("Show A").join("Show A - 04.mkv"));
     fs::remove_file(lib.join("Show A").join("Show A - 01.mkv")).unwrap();
-    let job = job_of(
-        core.call(Call::Scan {
+    let job = started(
+        &core,
+        Call::Scan {
             source: Some(source),
-        })
-        .unwrap(),
+        },
     );
     assert!(matches!(
         common::wait_job(&c, job).body,
@@ -161,7 +161,7 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
 
     // The folder goes away: the series is missing, its history stays, Forget removes it.
     fs::remove_dir_all(lib.join("Show A")).unwrap();
-    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
+    let job = started(&core, Call::Scan { source: None });
     assert!(matches!(
         common::wait_job(&c, job).body,
         EventBody::ScanFinished {
@@ -218,7 +218,7 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
     for n in 2..=4 {
         touch(&lib.join("Show B").join(format!("Show B - {n:02}.mkv")));
     }
-    let job = job_of(core.call(Call::RescanSeries { series: film }).unwrap());
+    let job = started(&core, Call::RescanSeries { series: film });
     assert!(matches!(
         common::wait_job(&c, job).body,
         EventBody::ScanFinished {
@@ -228,7 +228,7 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
             ..
         }
     ));
-    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
+    let job = started(&core, Call::Scan { source: None });
     assert!(matches!(
         common::wait_job(&c, job).body,
         EventBody::ScanFinished { added: 1, .. }
@@ -303,11 +303,11 @@ fn a_reclassified_file_changes_series_without_colliding_on_its_path() {
                 .join(format!("Show A - S02E{n:02}.mkv")),
         );
     }
-    let job = job_of(
-        core.call(Call::Scan {
+    let job = started(
+        &core,
+        Call::Scan {
             source: Some(source),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert!(
@@ -409,7 +409,7 @@ fn an_overlapping_source_is_refused_at_the_door() {
         Reply::Source { .. }
     ));
 
-    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
+    let job = started(&core, Call::Scan { source: None });
     let done = common::wait_job(&c, job);
     assert!(
         matches!(done.body, EventBody::ScanFinished { .. }),
@@ -489,7 +489,7 @@ fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
         return;
     }
 
-    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
+    let job = started(&core, Call::Scan { source: None });
     let done = common::wait_job(&c, job);
     assert!(
         matches!(done.body, EventBody::ScanFinished { removed: 0, .. }),
@@ -514,7 +514,7 @@ fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
     // and again after it off the read, so a drive that never came back was
     // announced as back and then gone again, every pass.
     let quiet = source_changes(&c);
-    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
+    let job = started(&core, Call::Scan { source: None });
     common::wait_job(&c, job);
     assert_eq!(
         source_changes(&c),
@@ -530,7 +530,7 @@ fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
     // Readable again: the pass finds both series where it left them, and
     // says the source is back exactly once.
     let before = source_changes(&c);
-    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
+    let job = started(&core, Call::Scan { source: None });
     let done = common::wait_job(&c, job);
     assert_eq!(source_changes(&c), before + 1);
     assert!(
@@ -570,7 +570,7 @@ fn a_root_that_reads_as_empty_while_it_holds_series_is_unavailable() {
     common::wait_job(&c, first_scan(&c));
 
     fs::remove_dir_all(lib.join("Show A")).unwrap();
-    let job = job_of(core.call(Call::Scan { source: None }).unwrap());
+    let job = started(&core, Call::Scan { source: None });
     let done = common::wait_job(&c, job);
     assert!(
         matches!(done.body, EventBody::ScanFinished { removed: 0, .. }),
@@ -705,11 +705,11 @@ fn a_scope_asked_for_during_a_running_scan_is_not_lost() {
         source: second,
         fired: AtomicBool::new(false),
     }));
-    let job = job_of(
-        core.call(Call::Scan {
+    let job = started(
+        &core,
+        Call::Scan {
             source: Some(first),
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
     assert!(

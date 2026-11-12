@@ -3,7 +3,7 @@
 //! answers off `FakeHttp`.
 
 mod common;
-use common::job_of;
+use common::started;
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -90,11 +90,11 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
             { "entries": [{ "progress": 5, "status": "CURRENT", "score": 8.5, "repeat": 0, "media": { "id": 154587 } }] }
         ] } } }),
     );
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Anilist,
-        })
-        .unwrap(),
+        },
     );
     let (open_url, port) = ready_url(&c, job);
     assert_eq!(
@@ -223,11 +223,11 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
             .to_string(),
     );
 
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Mal,
-        })
-        .unwrap(),
+        },
     );
     let (open_url, port) = ready_url(&c, job);
     assert!(
@@ -250,11 +250,11 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         "{failed:?}"
     );
 
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Mal,
-        })
-        .unwrap(),
+        },
     );
     let (open_url, port) = ready_url(&c, job);
     let state = param(&open_url, "state");
@@ -368,11 +368,11 @@ fn mal_without_a_secret_signs_in_as_a_public_client() {
     );
 
     // No secret anywhere is no longer a refusal: the call starts a job.
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Mal,
-        })
-        .unwrap(),
+        },
     );
     let (open_url, port) = ready_url(&c, job);
     let state = param(&open_url, "state");
@@ -437,11 +437,11 @@ fn mal_invalid_client_without_a_secret_asks_for_the_secret() {
             .to_string(),
     );
 
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Mal,
-        })
-        .unwrap(),
+        },
     );
     let (open_url, port) = ready_url(&c, job);
     let state = param(&open_url, "state");
@@ -487,11 +487,11 @@ fn an_anilist_token_that_fails_validation_gets_the_error_page() {
         400,
         serde_json::json!({ "errors": [{ "message": "Invalid token", "status": 400 }], "data": null }),
     );
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Anilist,
-        })
-        .unwrap(),
+        },
     );
     let (_, port) = ready_url(&c, job);
     let page = http_get(port, "/callback?access_token=bogus&expires_in=60");
@@ -534,11 +534,11 @@ fn a_slow_sign_in_lets_the_tab_go_and_still_finishes() {
         200,
         serde_json::json!({ "data": { "MediaListCollection": { "lists": [] } } }),
     );
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Anilist,
-        })
-        .unwrap(),
+        },
     );
     let (_, port) = ready_url(&c, job);
     let page = http_get(port, "/callback?access_token=tok&expires_in=3600");
@@ -567,11 +567,11 @@ fn a_sign_in_cancelled_while_held_tells_the_tab() {
     .unwrap();
     // Long enough that the cancel lands while the validation waits on it.
     http.push_with_headers(429, "{}", vec![("Retry-After".into(), "5".into())]);
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Anilist,
-        })
-        .unwrap(),
+        },
     );
     let (_, port) = ready_url(&c, job);
     let browser =
@@ -611,11 +611,11 @@ fn mal_invalid_client_with_a_secret_is_passed_on() {
         401,
         serde_json::json!({ "error": "invalid_client" }).to_string(),
     );
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Mal,
-        })
-        .unwrap(),
+        },
     );
     let (open_url, port) = ready_url(&c, job);
     let state = param(&open_url, "state");
@@ -709,11 +709,11 @@ fn a_connect_waits_for_a_port_that_is_still_held() {
     })
     .unwrap();
 
-    let job = job_of(
-        core.call(Call::ConnectTracker {
+    let job = started(
+        &core,
+        Call::ConnectTracker {
             tracker: Tracker::Anilist,
-        })
-        .unwrap(),
+        },
     );
     // Long enough that the first bind has certainly been refused.
     std::thread::sleep(Duration::from_millis(300));

@@ -4,7 +4,7 @@
 //! rather than through a flow, so these tests are about the writes alone.
 
 mod common;
-use common::job_of;
+use common::{job_of, started};
 mod fixtures;
 
 use anibeam_core::net::{Body, FakeHttp, Method};
@@ -94,12 +94,12 @@ fn a_mark_writes_to_both_trackers_and_the_card_follows() {
     http.push_for("myanimelist", 404, r#"{"error":"not_found"}"#);
     http.push_for("myanimelist", 200, "{}");
 
-    let job = job_of(
-        core.call(Call::MarkEpisode {
+    let job = started(
+        &core,
+        Call::MarkEpisode {
             series,
             episode: 12.5,
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     let (episode, outcomes) = match done.body {
@@ -444,13 +444,13 @@ fn setting_progress_to_nought_plans_the_series() {
         r#"{"data":{"SaveMediaListEntry":{"id":9,"progress":0,"status":"PLANNING"}}}"#,
     );
 
-    let job = job_of(
-        core.call(Call::SetProgress {
+    let job = started(
+        &core,
+        Call::SetProgress {
             series,
             progress: 0,
             season: None,
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     let (progress, outcomes) = match done.body {
@@ -511,12 +511,12 @@ fn a_score_goes_to_both_trackers_and_completes_a_finished_list() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = job_of(
-        core.call(Call::SetScore {
+    let job = started(
+        &core,
+        Call::SetScore {
             series,
             score: Some(8.7),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     let (score, outcomes) = match done.body {
@@ -568,12 +568,12 @@ fn a_score_goes_to_both_trackers_and_completes_a_finished_list() {
         r#"{"my_list_status":{"num_episodes_watched":3}}"#,
     );
     http.push_for("myanimelist", 200, "{}");
-    let job = job_of(
-        core.call(Call::SetScore {
+    let job = started(
+        &core,
+        Call::SetScore {
             series,
             score: Some(5.0),
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
 
@@ -617,12 +617,12 @@ fn a_status_goes_to_both_trackers_and_the_card_follows() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = job_of(
-        core.call(Call::SetListStatus {
+    let job = started(
+        &core,
+        Call::SetListStatus {
             series,
             status: ListStatus::Dropped,
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert_eq!(done.level, Level::Info, "{done:?}");
@@ -686,12 +686,12 @@ fn completed_fills_the_list_to_the_total() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = job_of(
-        core.call(Call::SetListStatus {
+    let job = started(
+        &core,
+        Call::SetListStatus {
             series,
             status: ListStatus::Completed,
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert_eq!(done.level, Level::Info, "{done:?}");
@@ -754,12 +754,12 @@ fn an_exhausted_rate_limit_is_one_sanitised_outcome() {
         );
     }
 
-    let job = job_of(
-        core.call(Call::MarkEpisode {
+    let job = started(
+        &core,
+        Call::MarkEpisode {
             series,
             episode: 5.0,
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     let outcomes = match done.body {
@@ -835,12 +835,12 @@ fn the_first_episode_sets_the_start_date_on_both_trackers() {
     http.push_for("myanimelist", 404, r#"{"error":"not_found"}"#);
     http.push_for("myanimelist", 200, "{}");
 
-    let job = job_of(
-        core.call(Call::MarkEpisode {
+    let job = started(
+        &core,
+        Call::MarkEpisode {
             series,
             episode: 1.0,
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
 
@@ -893,12 +893,12 @@ fn completing_sets_the_finish_date_only_where_there_is_none() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = job_of(
-        core.call(Call::MarkEpisode {
+    let job = started(
+        &core,
+        Call::MarkEpisode {
             series,
             episode: 12.0,
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
 
@@ -944,7 +944,7 @@ fn the_status_menu_dates_watching_and_completed() {
             200,
             format!(r#"{{"data":{{"SaveMediaListEntry":{{"id":9,"status":"{reply}"}}}}}}"#),
         );
-        let job = job_of(core.call(Call::SetListStatus { series, status }).unwrap());
+        let job = started(&core, Call::SetListStatus { series, status });
         common::wait_job(&c, job);
     }
     let vars = graphql_variables(&http, "SaveMediaListEntry");
@@ -989,12 +989,12 @@ fn finishing_a_completed_show_again_counts_a_rewatch() {
     );
     http.push_for("myanimelist", 200, "{}");
 
-    let job = job_of(
-        core.call(Call::MarkEpisode {
+    let job = started(
+        &core,
+        Call::MarkEpisode {
             series,
             episode: 12.0,
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     let outcomes = match done.body {
@@ -1085,12 +1085,12 @@ fn a_rewatch_under_way_keeps_repeating_and_its_end_counts() {
             200,
             r#"{"data":{"SaveMediaListEntry":{"id":9}}}"#,
         );
-        let job = job_of(
-            core.call(Call::MarkEpisode {
+        let job = started(
+            &core,
+            Call::MarkEpisode {
                 series,
                 episode: to,
-            })
-            .unwrap(),
+            },
         );
         common::wait_job(&c, job);
     }
@@ -1133,12 +1133,12 @@ fn notes_are_written_to_both_trackers_and_read_back() {
         http.push_for("myanimelist", 200, "{}");
     }
 
-    let job = job_of(
-        core.call(Call::SetSeriesNotes {
+    let job = started(
+        &core,
+        Call::SetSeriesNotes {
             series,
             notes: "  Watch the dub next time  ".into(),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     match done.body {
@@ -1171,12 +1171,12 @@ fn notes_are_written_to_both_trackers_and_read_back() {
         Some("Watch the dub next time")
     );
 
-    let job = job_of(
-        core.call(Call::SetSeriesNotes {
+    let job = started(
+        &core,
+        Call::SetSeriesNotes {
             series,
             notes: "   ".into(),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     assert!(matches!(done.body, EventBody::NotesSet { notes: None, .. }));
@@ -1231,12 +1231,12 @@ fn completed_from_the_menu_ends_a_rewatch_without_counting_one() {
         r#"{"my_list_status":{"status":"watching","num_episodes_watched":12,"is_rewatching":true,"num_times_rewatched":2,"start_date":"2025-01-01","finish_date":"2025-02-01"}}"#,
     );
     http.push_for("myanimelist", 200, "{}");
-    let job = job_of(
-        core.call(Call::SetListStatus {
+    let job = started(
+        &core,
+        Call::SetListStatus {
             series,
             status: ListStatus::Completed,
-        })
-        .unwrap(),
+        },
     );
     common::wait_job(&c, job);
     assert_eq!(
@@ -1353,12 +1353,12 @@ fn notes_on_a_show_not_on_the_list_write_nothing() {
         404,
         r#"{"errors":[{"message":"Not Found.","status":404}],"data":{"MediaList":null}}"#,
     );
-    let job = job_of(
-        core.call(Call::SetSeriesNotes {
+    let job = started(
+        &core,
+        Call::SetSeriesNotes {
             series,
             notes: "later".into(),
-        })
-        .unwrap(),
+        },
     );
     let done = common::wait_job(&c, job);
     match done.body {
