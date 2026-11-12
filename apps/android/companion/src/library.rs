@@ -220,10 +220,19 @@ mod tests {
         serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json")).unwrap()
     }
 
+    /// The fixture's Frieren, found by title so a reordered fixture cannot swap the series
+    /// these tests are about.
+    fn frieren() -> crate::api::Series {
+        fixture()
+            .series
+            .into_iter()
+            .find(|s| s.title == "Sousou no Frieren 2nd Season")
+            .unwrap()
+    }
+
     #[test]
-    fn episodes_keep_the_hosts_order_and_fields() {
-        let snapshot = fixture();
-        let rows = episodes(&snapshot.series[0]);
+    fn episodes_keep_the_fields_the_host_sent() {
+        let rows = episodes(&frieren());
         assert_eq!(rows.len(), 7);
         assert_eq!(rows[6].code, "E07");
         assert!(!rows[6].watched);
@@ -232,21 +241,19 @@ mod tests {
 
     #[test]
     fn an_episode_kept_twice_is_one_episode() {
-        let mut snapshot = fixture();
-        let frieren = &mut snapshot.series[0];
+        let mut frieren = frieren();
         let mut copy = frieren.episodes[6].clone();
         copy.watched = true;
         frieren.episodes.push(copy);
         frieren.episodes_on_disk = 8;
-        let rows = episodes(&snapshot.series[0]);
+        let rows = episodes(&frieren);
         assert_eq!(rows.len(), 7);
         assert!(rows[6].watched, "the watched copy counts");
     }
 
     #[test]
     fn an_episode_kept_twice_carries_its_versions_once() {
-        let mut snapshot = fixture();
-        let frieren = &mut snapshot.series[0];
+        let mut frieren = frieren();
         let versions = vec![
             EpisodeVersion {
                 file: 70,
@@ -262,7 +269,7 @@ mod tests {
         let mut copy = frieren.episodes[6].clone();
         copy.file = Some(71);
         frieren.episodes.push(copy);
-        let rows = episodes(&snapshot.series[0]);
+        let rows = episodes(&frieren);
         let seventh = &rows[6];
         assert_eq!(rows.len(), 7);
         assert_eq!(seventh.file, Some(70), "the first copy plays");
@@ -272,13 +279,12 @@ mod tests {
 
     #[test]
     fn a_copy_with_no_season_and_one_in_the_first_are_one_episode() {
-        let mut snapshot = fixture();
-        let frieren = &mut snapshot.series[0];
+        let mut frieren = frieren();
         frieren.episodes[6].season = None;
         let mut copy = frieren.episodes[6].clone();
         copy.season = Some(1);
         frieren.episodes.push(copy);
-        assert_eq!(episodes(&snapshot.series[0]).len(), 7);
+        assert_eq!(episodes(&frieren).len(), 7);
     }
 
     fn cache() -> Cache {
