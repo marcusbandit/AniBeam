@@ -43,6 +43,8 @@ struct Page {
     window: Weak<AppWindow>,
     entries: Vec<Entry>,
     loaded: bool,
+    /// Lines that came while the first read was on its way.
+    early: Vec<Entry>,
     problems_only: bool,
     expanded: HashSet<u64>,
     rows: Vec<Row>,
@@ -73,6 +75,7 @@ pub fn install(window: &AppWindow) {
             window: window.as_weak(),
             entries: Vec::new(),
             loaded: false,
+            early: Vec::new(),
             problems_only: false,
             expanded: HashSet::new(),
             rows: Vec::new(),
@@ -150,6 +153,13 @@ impl Page {
                                 .filter(|e| !matches!(e.level, Level::Debug))
                                 .map(entry)
                                 .collect();
+                            // What came meanwhile and the snapshot lacks goes in front.
+                            let newest = p.entries.first().map_or(0, |e| e.seq);
+                            for e in std::mem::take(&mut p.early) {
+                                if e.seq > newest {
+                                    p.entries.insert(0, e);
+                                }
+                            }
                             p.loaded = true;
                             p.show();
                         }
@@ -163,6 +173,8 @@ impl Page {
     /// A new line while the log is open.
     fn add(&mut self, entry: Entry) {
         if !self.loaded {
+            self.early.push(entry);
+            self.early.truncate(KEPT);
             return;
         }
         if self.entries.first().is_some_and(|e| e.seq >= entry.seq) {
