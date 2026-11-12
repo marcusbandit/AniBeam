@@ -5,6 +5,7 @@
 //! groups.
 
 mod common;
+use common::started;
 
 use anibeam_core::net::FakeHttp;
 use anibeam_core::*;
@@ -58,13 +59,6 @@ fn save(core: &Core, settings: DownloadSettings) {
         })
         .unwrap();
     assert_eq!(reply, Reply::Ok);
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
 }
 
 fn stored_engine(core: &Core) -> DownloadsEngine {

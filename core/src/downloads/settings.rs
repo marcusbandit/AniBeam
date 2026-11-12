@@ -680,17 +680,6 @@ mod tests {
     }
 
     #[test]
-    fn a_save_over_a_known_engine_writes_the_one_given() {
-        let c = store();
-        let mut s = defaults();
-        s.engine = DownloadsEngine::Native;
-        save(&c, &s).unwrap();
-        s.engine = DownloadsEngine::Anirss;
-        save(&c, &s).unwrap();
-        assert_eq!(stored_engine(&c), serde_json::json!("Anirss"));
-    }
-
-    #[test]
     fn reads_qbittorrent_off_an_anirss_config() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("config.toml");

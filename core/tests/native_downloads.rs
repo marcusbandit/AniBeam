@@ -6,6 +6,7 @@
 #![cfg(unix)]
 
 mod common;
+use common::started;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -47,13 +48,6 @@ fn isolate_xdg(dir: &Path) {
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", dir);
         std::env::set_var("XDG_STATE_HOME", dir);
-    }
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
     }
 }
 

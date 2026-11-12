@@ -118,27 +118,25 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         "Sousou no Frieren",
     );
     for n in 1..=7 {
-        fixtures::insert_file(
+        fixtures::insert_episode_file(
             &core,
             frieren,
             &format!("/lib/Sousou no Frieren/{n:02}.mkv"),
             n as f64,
-            None,
-            "episode",
             now - 1000 + n,
         );
     }
     // A second release of episode 7: two versions of one episode.
-    let seventh_again = fixtures::insert_file(
+    let seventh_again = fixtures::insert_episode_file(
         &core,
         frieren,
         "/lib/Sousou no Frieren/[Group] Sousou no Frieren - 07 [1080p WEB-DL H264].mkv",
         7.0,
-        None,
-        "episode",
         now - 900,
     );
-    fixtures::insert_media_with_cover(&core, 154587, "https://img.test/frieren.jpg", None);
+    fixtures::media(154587, "Media 154587")
+        .cover("https://img.test/frieren.jpg")
+        .insert(&core);
     core.store()
         .write(|c| {
             c.execute(
@@ -177,15 +175,7 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         })
         .unwrap();
     let secret = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Secret", "Secret");
-    fixtures::insert_file(
-        &core,
-        secret,
-        "/lib/Secret/01.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, secret, "/lib/Secret/01.mkv", 1.0, now);
     core.call(Call::SetHidden {
         series: secret,
         hidden: true,
@@ -198,15 +188,7 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         "/lib/Movies/Perfect Blue (1997).mkv",
         "Perfect Blue",
     );
-    fixtures::insert_file(
-        &core,
-        film,
-        "/lib/Movies/Perfect Blue (1997).mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, film, "/lib/Movies/Perfect Blue (1997).mkv", 1.0, now);
 
     // Off until asked.
     core.set_host_bind(Some("127.0.0.1:0".to_string()));

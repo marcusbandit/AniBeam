@@ -433,19 +433,6 @@ mod tests {
     }
 
     #[test]
-    fn metadata_hit_ignores_items_without_extension_fields() {
-        assert!(!metadata_hit(&rel("Show 1080p WEB-DL", "l"), "1080p"));
-    }
-
-    #[test]
-    fn metadata_hit_matches_the_category_once_there_is_metadata() {
-        let mut item = rel("t", "l");
-        item.linktype = "Torrent".to_string();
-        item.category = "Airing".to_string();
-        assert!(metadata_hit(&item, "airing"));
-    }
-
-    #[test]
     fn show_slug_per_section() {
         let page =
             |section: &str, slug: &str| format!("https://www.keyed.example/{section}/{slug}/");

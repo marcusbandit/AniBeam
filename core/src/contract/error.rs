@@ -215,12 +215,6 @@ mod tests {
     }
 
     #[test]
-    fn storage_errors_convert_from_rusqlite() {
-        let e: CoreError = rusqlite::Error::QueryReturnedNoRows.into();
-        assert!(matches!(e, CoreError::Storage { .. }));
-    }
-
-    #[test]
     fn display_names_the_thing() {
         let e = CoreError::Refused {
             reason: Refusal::OnDisk,

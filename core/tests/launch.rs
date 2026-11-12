@@ -83,19 +83,7 @@ fn the_launch_queues_every_catch_up_job_once_the_scan_finishes() {
     }
 
     // The library the walk found: two shows and the film.
-    let cards = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    };
+    let cards = common::cards(&core, Tab::All, false);
     assert_eq!(cards.len(), 3, "{cards:?}");
 
     // A second start says nothing and starts nothing.

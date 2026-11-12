@@ -116,13 +116,11 @@ fn each_person_on_the_tailnet_sees_their_own_progress() {
     let now = anibeam_core::time::now_secs();
     let files: Vec<u64> = (1..=3)
         .map(|n| {
-            fixtures::insert_file(
+            fixtures::insert_episode_file(
                 &core,
                 series,
                 &format!("/lib/Show/Episode {n}.mkv"),
                 f64::from(n),
-                None,
-                "episode",
                 now,
             )
         })

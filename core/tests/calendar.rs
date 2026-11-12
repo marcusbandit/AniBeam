@@ -17,25 +17,12 @@ fn show(core: &Core, source: u64, name: &str, anilist_id: u64, status: Option<&s
         &format!("/lib/{name}"),
         name,
     );
-    fixtures::insert_file(
-        core,
-        series,
-        &format!("/lib/{name}/01.mkv"),
-        1.0,
-        None,
-        "episode",
-        1,
-    );
-    fixtures::insert_media(
-        core,
-        anilist_id,
-        Some(name),
-        None,
-        Some(12),
-        "RELEASING",
-        "TV",
-        Some(80),
-    );
+    fixtures::insert_episode_file(core, series, &format!("/lib/{name}/01.mkv"), 1.0, 1);
+    fixtures::media(anilist_id, name)
+        .episodes(12)
+        .status("RELEASING")
+        .score(80)
+        .insert(core);
     fixtures::match_series(core, series, Some(anilist_id), None);
     if let Some(status) = status {
         fixtures::insert_tracker_entry(core, "anilist", anilist_id, 1, status, None);

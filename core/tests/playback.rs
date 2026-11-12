@@ -25,44 +25,14 @@ fn library(core: &Core) -> Library {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
-    let ep1 = fixtures::insert_file(
-        core,
-        series,
-        "/lib/Bebop/Episode 1.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
-    let ep2 = fixtures::insert_file(
-        core,
-        series,
-        "/lib/Bebop/Episode 2.mkv",
-        2.0,
-        None,
-        "episode",
-        now,
-    );
-    let ep3 = fixtures::insert_file(
-        core,
-        series,
-        "/lib/Bebop/Episode 3.mkv",
-        3.0,
-        None,
-        "episode",
-        now,
-    );
+    let ep1 = fixtures::insert_episode_file(core, series, "/lib/Bebop/Episode 1.mkv", 1.0, now);
+    let ep2 = fixtures::insert_episode_file(core, series, "/lib/Bebop/Episode 2.mkv", 2.0, now);
+    let ep3 = fixtures::insert_episode_file(core, series, "/lib/Bebop/Episode 3.mkv", 3.0, now);
     let extra = fixtures::insert_file(core, series, "/lib/Bebop/OP1.mkv", 1.0, None, "extra", now);
-    fixtures::insert_media(
-        core,
-        1,
-        Some("Cowboy Bebop"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        Some(86),
-    );
+    fixtures::media(1, "Cowboy Bebop")
+        .episodes(12)
+        .score(86)
+        .insert(core);
     fixtures::insert_episode(core, 1, 2, Some("Stray Dog Strut"), None);
     fixtures::match_series(core, series, Some(1), Some(21));
     Library {
@@ -219,33 +189,12 @@ fn the_last_episode_and_the_neighbours_follow_the_total_and_the_disk() {
     let now = anibeam_core::time::now_secs();
     assert!(!open(&core, lib.ep3).is_last_episode);
 
-    let twelfth = fixtures::insert_file(
-        &core,
-        lib.series,
-        "/lib/Bebop/Episode 12.mkv",
-        12.0,
-        None,
-        "episode",
-        now,
-    );
-    let thirteenth = fixtures::insert_file(
-        &core,
-        lib.series,
-        "/lib/Bebop/Episode 13.mkv",
-        13.0,
-        None,
-        "episode",
-        now,
-    );
-    let recap = fixtures::insert_file(
-        &core,
-        lib.series,
-        "/lib/Bebop/Episode 12.5.mkv",
-        12.5,
-        None,
-        "episode",
-        now,
-    );
+    let twelfth =
+        fixtures::insert_episode_file(&core, lib.series, "/lib/Bebop/Episode 12.mkv", 12.0, now);
+    let thirteenth =
+        fixtures::insert_episode_file(&core, lib.series, "/lib/Bebop/Episode 13.mkv", 13.0, now);
+    let recap =
+        fixtures::insert_episode_file(&core, lib.series, "/lib/Bebop/Episode 12.5.mkv", 12.5, now);
     // Twelve of twelve published, whatever else turned up on disk.
     assert!(open(&core, twelfth).is_last_episode);
     // The recap takes the whole episodes either side of it, and is never a
@@ -259,64 +208,27 @@ fn the_last_episode_and_the_neighbours_follow_the_total_and_the_disk() {
     // No published total: the last episode is the last one on disk.
     let src = fixtures::insert_source(&core, "/other");
     let unmatched = fixtures::insert_series(&core, src, SeriesKind::Show, "/other/Show", "Show");
-    fixtures::insert_file(
-        &core,
-        unmatched,
-        "/other/Show/Episode 1.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
-    let last = fixtures::insert_file(
-        &core,
-        unmatched,
-        "/other/Show/Episode 2.mkv",
-        2.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(&core, unmatched, "/other/Show/Episode 1.mkv", 1.0, now);
+    let last =
+        fixtures::insert_episode_file(&core, unmatched, "/other/Show/Episode 2.mkv", 2.0, now);
     assert!(open(&core, last).is_last_episode);
 
     // Still airing with no count published: the newest episode on disk is
     // only the newest so far, never the last. Ranma 1/2 (2024) S3 at
     // episode 3 asked to be rated.
     let airing = fixtures::insert_series(&core, src, SeriesKind::Show, "/other/Ranma", "Ranma");
-    fixtures::insert_media(
-        &core,
-        2,
-        Some("Ranma 1/2 (2024) 3rd Season"),
-        None,
-        None,
-        "RELEASING",
-        "TV",
-        None,
-    );
+    fixtures::media(2, "Ranma 1/2 (2024) 3rd Season")
+        .status("RELEASING")
+        .insert(&core);
     fixtures::match_series(&core, airing, Some(2), None);
-    let newest = fixtures::insert_file(
-        &core,
-        airing,
-        "/other/Ranma/Episode 3.mkv",
-        3.0,
-        None,
-        "episode",
-        now,
-    );
+    let newest =
+        fixtures::insert_episode_file(&core, airing, "/other/Ranma/Episode 3.mkv", 3.0, now);
     assert!(!open(&core, newest).is_last_episode);
 
     // A film has nothing either side of it and is always its own last.
     let film_series =
         fixtures::insert_series(&core, src, SeriesKind::Movie, "/other/Film.mkv", "Film");
-    let film = fixtures::insert_file(
-        &core,
-        film_series,
-        "/other/Film.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
+    let film = fixtures::insert_episode_file(&core, film_series, "/other/Film.mkv", 1.0, now);
     let f = open(&core, film);
     assert!(f.is_last_episode);
     assert_eq!(f.prev, None);
@@ -364,16 +276,7 @@ fn next_and_previous_walk_the_seasons_in_order() {
 
     // A published total counts the first season on disk: twelve of twelve
     // ends it, and a later season ends where the disk does.
-    fixtures::insert_media(
-        &core,
-        3,
-        Some("Show"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        None,
-    );
+    fixtures::media(3, "Show").episodes(12).insert(&core);
     fixtures::match_series(&core, series, Some(3), None);
     assert!(open(&core, ep[&(1, 12)]).is_last_episode);
     assert!(!open(&core, ep[&(2, 11)]).is_last_episode);

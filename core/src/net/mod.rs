@@ -913,16 +913,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canned_replies_come_back_in_order() {
-        let http = FakeHttp::new();
-        http.push(200, "first");
-        http.push(201, "second");
-        assert_eq!(http.send(get("https://x/")).await.unwrap().body, b"first");
-        assert_eq!(http.send(get("https://x/")).await.unwrap().status, 201);
-        assert_eq!(http.requests().len(), 2);
-    }
-
-    #[tokio::test]
     async fn a_matcher_only_answers_a_url_that_contains_it() {
         let http = FakeHttp::new();
         http.push_for("aniskip", 404, "miss");

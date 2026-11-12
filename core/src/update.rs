@@ -227,6 +227,43 @@ pub fn aur_newer(info: &[u8], current: &str) -> Result<Option<String>, CoreError
     Ok(newer.then(|| version.to_string()))
 }
 
+/// What the apt and dnf repos on anibeam.app carry, written by each site deploy
+/// (publish-repos.sh): `{"version": "2.4.0", "tag": "v2.4.0"}`.
+const REPOS: &str = "https://anibeam.app/repos.json";
+
+/// The version the apt and dnf repos carry, when it is newer than `current`. An install from
+/// them is offered only what they already have, so the command it is given finds it.
+pub async fn check_repos(http: &dyn Http, current: &str) -> Result<Option<String>, CoreError> {
+    let res = http
+        .send(HttpRequest {
+            method: Method::Get,
+            url: REPOS.to_string(),
+            headers: Vec::new(),
+            body: None,
+            timeout: None,
+        })
+        .await
+        .map_err(|e| CoreError::internal(format!("repos: {}", e.message)))?;
+    if !res.is_success() {
+        return Err(CoreError::internal(format!("repos: HTTP {}", res.status)));
+    }
+    repos_newer(&res.body, current)
+}
+
+fn repos_newer(body: &[u8], current: &str) -> Result<Option<String>, CoreError> {
+    #[derive(serde::Deserialize)]
+    struct Repos {
+        version: String,
+    }
+    let repos: Repos =
+        serde_json::from_slice(body).map_err(|e| CoreError::internal(format!("repos: {e}")))?;
+    let Some(theirs) = Version::parse(&repos.version) else {
+        return Ok(None);
+    };
+    let newer = Version::parse(current).is_none_or(|run| theirs > run);
+    Ok(newer.then_some(repos.version))
+}
+
 /// Asks the AUR what version `package` is at. A failure is the caller's to drop.
 pub async fn check_aur(
     http: &dyn Http,
@@ -272,6 +309,18 @@ mod tests {
 
     fn offered(current: &str, track: Track) -> Option<String> {
         newest(&list(), current, track).unwrap().map(|u| u.url)
+    }
+
+    #[test]
+    fn the_repos_offer_only_a_newer_version_they_carry() {
+        let body = br#"{"version": "2.5.0", "tag": "v2.5.0"}"#;
+        assert_eq!(
+            repos_newer(body, "2.4.0").unwrap().as_deref(),
+            Some("2.5.0")
+        );
+        assert_eq!(repos_newer(body, "2.5.0").unwrap(), None);
+        assert_eq!(repos_newer(body, "2.6.0").unwrap(), None);
+        assert!(repos_newer(b"not json", "2.4.0").is_err());
     }
 
     #[test]

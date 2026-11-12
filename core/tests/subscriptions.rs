@@ -15,6 +15,7 @@
 #![cfg(unix)]
 
 mod common;
+use common::started;
 
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
@@ -45,13 +46,6 @@ fn write_with_mode(path: &std::path::Path, script: &str, mode: u32) {
     let mut perms = std::fs::metadata(path).unwrap().permissions();
     perms.set_mode(mode);
     std::fs::set_permissions(path, perms).unwrap();
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
 }
 
 #[test]

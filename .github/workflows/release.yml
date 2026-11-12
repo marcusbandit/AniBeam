@@ -182,6 +182,33 @@ jobs:
             --title "$(.github/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --latest="$latest"
 
+  # The apt and dnf repos on anibeam.app are signed from the newest stable release's
+  # packages each time the site deploys (#788), so deploy it now that this one is public.
+  # The Pages environment only deploys from main, so the site runs there, not on a hotfix tag.
+  site:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: write
+    steps:
+      - name: The website picks up the new packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run site.yml -R "$GITHUB_REPOSITORY" --ref main
+          # The run shows up a few seconds after the dispatch; then follow it to the end, so a
+          # deploy that fails shows here instead of leaving the repos on the old version.
+          for _ in $(seq 1 30); do
+            run="$(gh run list -R "$GITHUB_REPOSITORY" -w site.yml -e workflow_dispatch -b main \
+              --json databaseId,createdAt --jq "[.[] | select(.createdAt >= \"$since\")][0].databaseId // empty")"
+            [ -n "$run" ] && break
+            sleep 10
+          done
+          [ -n "$run" ] || { echo "::error::The site deploy never started"; exit 1; }
+          gh run watch "$run" -R "$GITHUB_REPOSITORY" --exit-status
+
   next:
     needs: [resolve, publish]
     if: needs.resolve.outputs.kind == 'promote'

@@ -1025,48 +1025,4 @@ pub(crate) mod tests {
         }
         assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
     }
-
-    /// Runs a JSON file of `{source, text, expect}` samples named by
-    /// `SCHEDULE_SAMPLES` and prints the ones read differently.
-    #[test]
-    #[ignore]
-    fn samples_from_a_file() {
-        let path = std::env::var("SCHEDULE_SAMPLES").unwrap();
-        let list: Vec<serde_json::Value> =
-            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        let mut misses = 0;
-        for (i, s) in list.iter().enumerate() {
-            let text = s["text"].as_str().unwrap_or("");
-            let want = s["expect"].as_str().unwrap_or("");
-            let (_, rows) = parse(text, NOW);
-            let got = show(&rows);
-            if got != want {
-                misses += 1;
-                println!(
-                    "--- #{i} {}\n{text}\n  want {want}\n  got  {got}",
-                    s["source"]
-                );
-            }
-        }
-        println!(
-            "SAMPLES {} of {} read as expected",
-            list.len() - misses,
-            list.len()
-        );
-    }
-
-    /// `cargo test -p anibeam-core -- --ignored print_catalogue --nocapture`
-    /// prints the catalogue as JSON, for the format page.
-    #[test]
-    #[ignore]
-    fn print_catalogue() {
-        let out: Vec<serde_json::Value> = CASES
-            .iter()
-            .map(|(name, text, _, _)| {
-                let (season, rows) = parse(text, NOW);
-                serde_json::json!({ "name": name, "text": text, "read": show(&rows), "season": season })
-            })
-            .collect();
-        println!("CATALOGUE {}", serde_json::to_string(&out).unwrap());
-    }
 }

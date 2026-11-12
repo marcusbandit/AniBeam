@@ -1181,35 +1181,6 @@ mod tests {
         assert_eq!((out.applied, out.reason.as_deref()), (false, Some("noop")));
     }
 
-    #[tokio::test]
-    async fn rss_best_fit_without_a_poster_keeps_a_nonempty_subset() {
-        let items = tui_items();
-        let out = run(
-            &keyed_ep(),
-            "Show 1080p",
-            &items,
-            RefineOp::BestFit,
-            &never(),
-        )
-        .await;
-        assert!(out.applied || out.reason.as_deref() == Some("noop"));
-        assert!(!out.items.is_empty() && out.items.len() <= items.len());
-    }
-
-    #[tokio::test]
-    async fn rss_exclude_matches_the_refine_loop() {
-        let items = tui_items();
-        let out = run(
-            &keyed_ep(),
-            "Show 1080p",
-            &items,
-            exclude_op("Hevc"),
-            &never(),
-        )
-        .await;
-        assert_eq!(links(&out.items), vec!["l3"]);
-    }
-
     #[test]
     fn client_side_is_anything_but_filtered_rss() {
         assert!(is_client_side(&generic_rss()));

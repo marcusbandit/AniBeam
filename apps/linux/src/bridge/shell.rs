@@ -408,11 +408,29 @@ impl qobject::Shell {
                 };
             // A build the system's package manager installed is updated by that package
             // manager. The AUR's is offered once the AUR has it, with the command that
-            // fetches it; one pacman does not know is left alone.
-            if let Install::Package { package } = &install {
-                let Some(package) = package else {
+            // fetches it. The apt and dnf repos on anibeam.app carry each stable release as
+            // it ships; one is offered only once the repos carry it (repos.json), so the command
+            // it is given finds the new version. A copy no package manager knows is left alone.
+            if let Install::Package { owner } = &install {
+                let Some((manager, package)) = owner else {
                     return nothing(String::new());
                 };
+                if let Some(command) = install::repo_command(*manager, package) {
+                    match anibeam_core::update::check_repos(&http, &current).await {
+                        Ok(Some(version)) => offer(
+                            &version,
+                            "",
+                            &format!(
+                                "https://github.com/marcusbandit/AniBeam/releases/tag/v{version}"
+                            ),
+                            "command",
+                            command,
+                        ),
+                        Ok(None) => nothing(String::new()),
+                        Err(e) => nothing(e.to_string()),
+                    }
+                    return;
+                }
                 match anibeam_core::update::check_aur(&http, package, &current).await {
                     Ok(Some(version)) => {
                         let name = package.clone();

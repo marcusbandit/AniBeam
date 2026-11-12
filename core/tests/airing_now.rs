@@ -170,26 +170,15 @@ fn not_interested_is_one_entry_and_nothing_related_to_it() {
     // Frieren's earlier season sits in the library's tables as a prequel of
     // the one on air. Marking that one must not touch this one, and the
     // other way round.
-    fixtures::insert_media(
-        &core,
-        154588,
-        Some("Sousou no Frieren 2"),
-        None,
-        Some(12),
-        "NOT_YET_RELEASED",
-        "TV",
-        None,
-    );
-    fixtures::insert_media(
-        &core,
-        154587,
-        Some("Sousou no Frieren"),
-        None,
-        Some(28),
-        "RELEASING",
-        "TV",
-        Some(91),
-    );
+    fixtures::media(154588, "Sousou no Frieren 2")
+        .episodes(12)
+        .status("NOT_YET_RELEASED")
+        .insert(&core);
+    fixtures::media(154587, "Sousou no Frieren")
+        .episodes(28)
+        .status("RELEASING")
+        .score(91)
+        .insert(&core);
     core.store()
         .write(|c| {
             c.execute(
@@ -245,28 +234,16 @@ fn a_show_reads_owned_and_listed_and_a_hidden_series_is_left_out() {
 
     let src = fixtures::insert_source(&core, "/lib");
     let frieren = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Frieren", "Frieren");
-    fixtures::insert_media(
-        &core,
-        154587,
-        Some("Sousou no Frieren"),
-        None,
-        Some(28),
-        "RELEASING",
-        "TV",
-        Some(91),
-    );
+    fixtures::media(154587, "Sousou no Frieren")
+        .episodes(28)
+        .status("RELEASING")
+        .score(91)
+        .insert(&core);
     fixtures::match_series(&core, frieren, Some(154587), None);
     let conan = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Conan", "Conan");
-    fixtures::insert_media(
-        &core,
-        235,
-        Some("Detective Conan"),
-        None,
-        None,
-        "RELEASING",
-        "TV",
-        None,
-    );
+    fixtures::media(235, "Detective Conan")
+        .status("RELEASING")
+        .insert(&core);
     fixtures::match_series(&core, conan, Some(235), None);
     core.call(Call::SetHidden {
         series: conan,

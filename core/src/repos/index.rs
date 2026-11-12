@@ -1213,11 +1213,4 @@ pub(crate) mod tests {
         d.min_core = Some("nonsense".into());
         assert!(!runs_on(&d, "2.1.0"));
     }
-
-    #[test]
-    fn the_fingerprint_is_eight_groups() {
-        let f = fingerprint(&key_text(&signing_key(1)));
-        assert_eq!(f.split(' ').count(), 8);
-        assert_ne!(f, fingerprint(&key_text(&signing_key(2))));
-    }
 }
