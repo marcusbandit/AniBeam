@@ -7,6 +7,7 @@
 //! the moment the test runs, so the schedule reads the same any day.
 
 mod common;
+use common::started;
 mod fixtures;
 
 use std::sync::Arc;
@@ -60,13 +61,6 @@ fn push_show(http: &FakeHttp) {
 
 fn anilist_search(media: Value) -> String {
     json!({ "data": { "Page": { "media": media } } }).to_string()
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
 }
 
 fn card(core: &Core, series: u64) -> SeriesCard {
@@ -284,15 +278,7 @@ fn with_tvmaze_first_a_tvmaze_hit_never_asks_anilist_and_a_miss_still_does() {
         "/anime/Sousou no Frieren",
         "Sousou no Frieren",
     );
-    fixtures::insert_file(
-        &core,
-        frieren,
-        "/anime/Sousou no Frieren/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, frieren, "/anime/Sousou no Frieren/01.mkv", 1.0, 1);
 
     // Avatar, the lower id, goes first: TVmaze hits.
     http.push_for("search/shows?q=Avatar%20Seven%20Havens", 200, SEARCH);
@@ -479,16 +465,10 @@ fn a_series_is_searched_linked_and_rematched_through_tvmaze() {
     let http = FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let (series, _) = avatar(&core);
-    fixtures::insert_media(
-        &core,
-        1,
-        Some("Avatar: The Last Airbender"),
-        None,
-        Some(61),
-        "FINISHED",
-        "TV",
-        Some(90),
-    );
+    fixtures::media(1, "Avatar: The Last Airbender")
+        .episodes(61)
+        .score(90)
+        .insert(&core);
     fixtures::match_series(&core, series, Some(1), Some(11));
 
     http.push_for("search/shows?q=avatar", 200, SEARCH_AVATAR);
@@ -1362,7 +1342,7 @@ fn a_cleared_match_survives_a_version_bump_and_a_v1_miss_does_not() {
 
     let src = fixtures::insert_source(&core, "/tv2");
     let missed = fixtures::insert_series(&core, src, SeriesKind::Show, "/tv2/Zzz", "Zzz");
-    fixtures::insert_file(&core, missed, "/tv2/Zzz/01.mkv", 1.0, None, "episode", 1);
+    fixtures::insert_episode_file(&core, missed, "/tv2/Zzz/01.mkv", 1.0, 1);
     core.store()
         .write(move |c| {
             c.execute(

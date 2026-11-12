@@ -109,61 +109,94 @@ pub fn insert_file(
         .unwrap()
 }
 
-/// `average_score` is AniList's own 0 to 100 integer, normalised at read.
-#[allow(clippy::too_many_arguments)]
-pub fn insert_media(
-    core: &Core,
-    anilist_id: u64,
-    romaji: Option<&str>,
-    english: Option<&str>,
-    episodes: Option<u32>,
-    status: &str,
-    format: &str,
-    average_score: Option<u32>,
-) {
-    let (romaji, english) = (romaji.map(str::to_string), english.map(str::to_string));
-    let (status, format) = (status.to_string(), format.to_string());
-    core.store()
-        .write(move |c| {
-            c.execute(
-                "INSERT OR REPLACE INTO anilist_media (id, media_type, title_romaji, title_english, format, status, episodes, average_score, fetched_at)
-                 VALUES (?1, 'ANIME', ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![
-                    anilist_id as i64,
-                    romaji,
-                    english,
-                    format,
-                    status,
-                    episodes.map(i64::from),
-                    average_score.map(i64::from),
-                    time::now_secs(),
-                ],
-            )?;
-            Ok(())
-        })
-        .unwrap()
+/// The common file row: a plain episode with no season.
+pub fn insert_episode_file(core: &Core, series: u64, path: &str, number: f64, mtime: i64) -> u64 {
+    insert_file(core, series, path, number, None, "episode", mtime)
 }
 
-/// A media row that names the pictures the image cache would go and get.
-/// The cover is what a card draws, so a series matched to one of these has
-/// a gap until the fill runs.
-pub fn insert_media_with_cover(
-    core: &Core,
-    anilist_id: u64,
-    cover_url: &str,
-    banner_url: Option<&str>,
-) {
-    let (cover_url, banner_url) = (cover_url.to_string(), banner_url.map(str::to_string));
-    core.store()
-        .write(move |c| {
-            c.execute(
-                "INSERT OR REPLACE INTO anilist_media (id, media_type, title_romaji, status, format, cover_url, banner_url, fetched_at)
-                 VALUES (?1, 'ANIME', ?2, 'FINISHED', 'TV', ?3, ?4, ?5)",
-                params![anilist_id as i64, format!("Media {anilist_id}"), cover_url, banner_url, time::now_secs()],
-            )?;
-            Ok(())
-        })
-        .unwrap()
+/// An `anilist_media` row to build up and insert: a finished TV show with
+/// no English title, episode count or score until a test says otherwise.
+pub fn media(anilist_id: u64, romaji: &str) -> Media {
+    Media {
+        id: anilist_id,
+        romaji: romaji.to_string(),
+        english: None,
+        episodes: None,
+        status: "FINISHED".to_string(),
+        format: "TV".to_string(),
+        average_score: None,
+        cover_url: None,
+    }
+}
+
+#[must_use = "a media row is written only by .insert(core)"]
+pub struct Media {
+    id: u64,
+    romaji: String,
+    english: Option<String>,
+    episodes: Option<u32>,
+    status: String,
+    format: String,
+    average_score: Option<u32>,
+    cover_url: Option<String>,
+}
+
+impl Media {
+    pub fn english(mut self, title: &str) -> Self {
+        self.english = Some(title.to_string());
+        self
+    }
+
+    pub fn episodes(mut self, n: impl Into<Option<u32>>) -> Self {
+        self.episodes = n.into();
+        self
+    }
+
+    pub fn status(mut self, status: &str) -> Self {
+        self.status = status.to_string();
+        self
+    }
+
+    pub fn format(mut self, format: &str) -> Self {
+        self.format = format.to_string();
+        self
+    }
+
+    /// AniList's own 0 to 100 integer, normalised at read.
+    pub fn score(mut self, score: impl Into<Option<u32>>) -> Self {
+        self.average_score = score.into();
+        self
+    }
+
+    /// The picture a card draws, so a series matched to this row has a gap
+    /// until the image cache fills it.
+    pub fn cover(mut self, url: &str) -> Self {
+        self.cover_url = Some(url.to_string());
+        self
+    }
+
+    pub fn insert(self, core: &Core) {
+        core.store()
+            .write(move |c| {
+                c.execute(
+                    "INSERT OR REPLACE INTO anilist_media (id, media_type, title_romaji, title_english, format, status, episodes, average_score, cover_url, fetched_at)
+                     VALUES (?1, 'ANIME', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![
+                        self.id as i64,
+                        self.romaji,
+                        self.english,
+                        self.format,
+                        self.status,
+                        self.episodes.map(i64::from),
+                        self.average_score.map(i64::from),
+                        self.cover_url,
+                        time::now_secs(),
+                    ],
+                )?;
+                Ok(())
+            })
+            .unwrap()
+    }
 }
 
 pub fn match_series(core: &Core, series: u64, anilist_id: Option<u64>, mal_id: Option<u64>) {

@@ -1,4 +1,5 @@
 mod common;
+use common::started;
 mod fixtures;
 use anibeam_core::*;
 
@@ -47,29 +48,6 @@ fn empty_schedule(id: u64) -> serde_json::Value {
 
 fn not_found() -> serde_json::Value {
     serde_json::json!({ "data": null, "errors": [ { "message": "Not Found.", "status": 404 } ] })
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
-
-fn list_cards(core: &Core) -> Vec<SeriesCard> {
-    match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: false,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series,
-        other => panic!("{other:?}"),
-    }
 }
 
 /// The `perPage` the search actually asked AniList for.
@@ -292,15 +270,7 @@ fn apply_match_writes_the_match_first_and_the_record_after() {
         "/lib/Sousou no Frieren",
         "Sousou no Frieren",
     );
-    fixtures::insert_file(
-        &core,
-        series,
-        "/lib/Sousou no Frieren/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, series, "/lib/Sousou no Frieren/01.mkv", 1.0, 1);
 
     assert!(matches!(
         core.call(Call::ApplyMatch {
@@ -359,7 +329,7 @@ fn apply_match_writes_the_match_first_and_the_record_after() {
     };
     assert!(early[0].poster.is_none(), "{early:?}");
 
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     let card = cards.iter().find(|s| s.id == series).unwrap();
     assert_eq!(
         card.match_info
@@ -400,16 +370,10 @@ fn refresh_refuses_an_unmatched_series_and_refetches_a_matched_one() {
     let src = fixtures::insert_source(&core, "/lib");
     let bare = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Unmatched", "Unmatched");
     let matched = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Matched", "Matched");
-    fixtures::insert_media(
-        &core,
-        7,
-        Some("Old title"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        Some(80),
-    );
+    fixtures::media(7, "Old title")
+        .episodes(12)
+        .score(80)
+        .insert(&core);
     fixtures::match_series(&core, matched, Some(7), None);
 
     assert!(matches!(
@@ -458,7 +422,7 @@ fn refresh_refuses_an_unmatched_series_and_refetches_a_matched_one() {
     assert_eq!(done.level, Level::Info);
     assert_eq!(http.requests().len(), 3);
 
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     assert_eq!(
         cards.iter().find(|s| s.id == matched).unwrap().title,
         "New title"
@@ -532,15 +496,7 @@ fn a_mal_target_anilist_cannot_resolve_becomes_a_mal_only_match() {
         "/lib/Obscure OVA",
         "Obscure OVA",
     );
-    fixtures::insert_file(
-        &core,
-        series,
-        "/lib/Obscure OVA/01.mkv",
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    fixtures::insert_episode_file(&core, series, "/lib/Obscure OVA/01.mkv", 1.0, 1);
 
     http.push_json(200, not_found());
     let job = started(
@@ -554,7 +510,7 @@ fn a_mal_target_anilist_cannot_resolve_becomes_a_mal_only_match() {
     assert_eq!(done.body, EventBody::MatchApplied { series });
     assert_eq!(http.requests().len(), 1);
 
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     let card = cards.iter().find(|s| s.id == series).unwrap();
     assert_eq!(
         card.match_info
@@ -601,16 +557,10 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     let src = fixtures::insert_source(&core, "/lib");
     let fetched = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Fetched", "Fetched");
     let stub = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Stub", "Stub");
-    fixtures::insert_media(
-        &core,
-        10,
-        Some("Fetched"),
-        None,
-        Some(12),
-        "FINISHED",
-        "TV",
-        Some(80),
-    );
+    fixtures::media(10, "Fetched")
+        .episodes(12)
+        .score(80)
+        .insert(&core);
     // A row known from an edge, a list or an import: an id and a title,
     // and `fetched_at` still NULL.
     core.store()
@@ -641,7 +591,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     assert_eq!(done.message, "backfill: 1 refreshed, 0 failed");
     assert_eq!(http.requests().len(), 3);
     assert_eq!(
-        list_cards(&core)
+        common::cards(&core, Tab::All, false)
             .iter()
             .find(|s| s.id == stub)
             .unwrap()
@@ -681,7 +631,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     );
     assert_eq!(done.message, "refresh: 2 refreshed, 0 failed");
     assert_eq!(http.requests().len(), 9);
-    let cards = list_cards(&core);
+    let cards = common::cards(&core, Tab::All, false);
     assert_eq!(
         cards.iter().find(|s| s.id == fetched).unwrap().title,
         "Fetched again"
@@ -706,16 +656,10 @@ fn a_transport_failure_ends_the_refresh_walk() {
     for (n, name) in [(10u64, "Aaa"), (11, "Bbb")] {
         let series =
             fixtures::insert_series(&core, src, SeriesKind::Show, &format!("/lib/{name}"), name);
-        fixtures::insert_media(
-            &core,
-            n,
-            Some(name),
-            None,
-            Some(12),
-            "FINISHED",
-            "TV",
-            Some(80),
-        );
+        fixtures::media(n, name)
+            .episodes(12)
+            .score(80)
+            .insert(&core);
         fixtures::match_series(&core, series, Some(n), None);
     }
 

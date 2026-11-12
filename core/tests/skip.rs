@@ -26,35 +26,13 @@ fn library(core: &Core) -> Library {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
-    fixtures::insert_file(
-        core,
-        series,
-        "/lib/Bebop/Episode 1.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
-    let ep2 = fixtures::insert_file(
-        core,
-        series,
-        "/lib/Bebop/Episode 2.mkv",
-        2.0,
-        None,
-        "episode",
-        now,
-    );
+    fixtures::insert_episode_file(core, series, "/lib/Bebop/Episode 1.mkv", 1.0, now);
+    let ep2 = fixtures::insert_episode_file(core, series, "/lib/Bebop/Episode 2.mkv", 2.0, now);
     let extra = fixtures::insert_file(core, series, "/lib/Bebop/OP1.mkv", 1.0, None, "extra", now);
-    fixtures::insert_media(
-        core,
-        1,
-        Some("Cowboy Bebop"),
-        None,
-        Some(26),
-        "FINISHED",
-        "TV",
-        Some(86),
-    );
+    fixtures::media(1, "Cowboy Bebop")
+        .episodes(26)
+        .score(86)
+        .insert(core);
     fixtures::match_series(core, series, Some(1), Some(21));
     Library { series, ep2, extra }
 }

@@ -12,19 +12,7 @@ use anibeam_core::*;
 fn cards(core: &Core) -> Vec<SeriesCard> {
     let mut out = Vec::new();
     for tab in [Tab::All, Tab::Watched, Tab::Hidden] {
-        match core
-            .call(Call::ListSeries {
-                tab,
-                query: String::new(),
-                sort: Sort::Alpha,
-                direction: Direction::Asc,
-                reveal_hidden: true,
-            })
-            .unwrap()
-        {
-            Reply::Series { series } => out.extend(series),
-            other => panic!("{other:?}"),
-        }
+        out.extend(common::cards(core, tab, true));
     }
     out
 }
@@ -53,12 +41,15 @@ fn show(
     let dir = lib.join(name);
     std::fs::create_dir_all(&dir).unwrap();
     let id = fixtures::insert_series(core, src, SeriesKind::Show, &dir.to_string_lossy(), name);
-    fixtures::insert_media(core, anilist, Some(name), None, total, status, "TV", None);
+    fixtures::media(anilist, name)
+        .episodes(total)
+        .status(status)
+        .insert(core);
     fixtures::match_series(core, id, Some(anilist), None);
     for n in 1..=files {
         let p = dir.join(format!("{name} - {n:02}.mkv"));
         std::fs::write(&p, vec![0u8; 100]).unwrap();
-        let f = fixtures::insert_file(core, id, &p.to_string_lossy(), n as f64, None, "episode", 0);
+        let f = fixtures::insert_episode_file(core, id, &p.to_string_lossy(), n as f64, 0);
         set_size(core, f, 100);
     }
     if let Some(w) = progress {

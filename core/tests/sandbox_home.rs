@@ -8,6 +8,7 @@
 #![cfg(unix)]
 
 mod common;
+use common::started;
 
 use std::collections::BTreeMap;
 use std::os::unix::fs::PermissionsExt;
@@ -55,13 +56,6 @@ fn captured(path: &Path) -> String {
             path.display()
         );
         std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
     }
 }
 

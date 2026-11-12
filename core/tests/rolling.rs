@@ -9,6 +9,7 @@
 //! the case waits until the earlier pass is done before queuing it.
 
 mod common;
+use common::started;
 mod fixtures;
 
 use std::path::Path;
@@ -61,13 +62,6 @@ fn save_settings(core: &Core) {
         })
         .unwrap();
     assert_eq!(reply, Reply::Ok);
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
 }
 
 fn release(title: &str, link: &str) -> Release {
@@ -478,15 +472,7 @@ fn a_watched_episode_moves_the_window_and_leaves_the_disk_once_two_later_ones_ar
         "Black Clover",
     );
     for n in 1..=4 {
-        fixtures::insert_file(
-            &core,
-            series,
-            &on_disk(n).to_string_lossy(),
-            n as f64,
-            None,
-            "episode",
-            1,
-        );
+        fixtures::insert_episode_file(&core, series, &on_disk(n).to_string_lossy(), n as f64, 1);
     }
     let key = |n: usize| classifier::number_key(None, n as f64);
     // Episodes 1 to 3 finished after the roll begins; episode 4 was seen

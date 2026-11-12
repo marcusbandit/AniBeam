@@ -102,30 +102,19 @@ fn library(core: &Core) -> u64 {
         "/lib/Frieren",
         "Sousou no Frieren",
     );
-    fixtures::insert_media(
-        core,
-        154587,
-        Some("Sousou no Frieren"),
-        None,
-        Some(28),
-        "RELEASING",
-        "TV",
-        Some(91),
-    );
+    fixtures::media(154587, "Sousou no Frieren")
+        .episodes(28)
+        .status("RELEASING")
+        .score(91)
+        .insert(core);
     fixtures::match_series(core, frieren, Some(154587), Some(52991));
     fixtures::insert_episode(core, 154587, 29, Some("Aureole"), None);
 
     let bebop = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
-    fixtures::insert_media(
-        core,
-        1,
-        Some("Cowboy Bebop"),
-        None,
-        Some(26),
-        "FINISHED",
-        "TV",
-        Some(86),
-    );
+    fixtures::media(1, "Cowboy Bebop")
+        .episodes(26)
+        .score(86)
+        .insert(core);
     fixtures::match_series(core, bebop, Some(1), Some(1));
     core.call(Call::SetHidden {
         series: bebop,
@@ -368,16 +357,12 @@ fn a_watching_entry_follows_the_title_preference_and_drops_a_missing_owner() {
         "/lib/Frieren",
         "Sousou no Frieren",
     );
-    fixtures::insert_media(
-        &core,
-        154587,
-        Some("Sousou no Frieren"),
-        Some("Frieren: Beyond Journey's End"),
-        Some(28),
-        "RELEASING",
-        "TV",
-        Some(91),
-    );
+    fixtures::media(154587, "Sousou no Frieren")
+        .english("Frieren: Beyond Journey's End")
+        .episodes(28)
+        .status("RELEASING")
+        .score(91)
+        .insert(&core);
     fixtures::match_series(&core, frieren, Some(154587), Some(52991));
     fixtures::insert_tracker_entry(&core, "anilist", 154587, 5, "watching", Some(8.5));
 

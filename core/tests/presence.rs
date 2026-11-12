@@ -124,26 +124,12 @@ fn library(core: &Core) -> Library {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Bebop");
-    let ep1 = fixtures::insert_file(
-        core,
-        series,
-        "/lib/Bebop/Episode 1.mkv",
-        1.0,
-        None,
-        "episode",
-        now,
-    );
-    let ep2 = fixtures::insert_file(
-        core,
-        series,
-        "/lib/Bebop/Episode 2.mkv",
-        2.0,
-        None,
-        "episode",
-        now,
-    );
+    let ep1 = fixtures::insert_episode_file(core, series, "/lib/Bebop/Episode 1.mkv", 1.0, now);
+    let ep2 = fixtures::insert_episode_file(core, series, "/lib/Bebop/Episode 2.mkv", 2.0, now);
     let extra = fixtures::insert_file(core, series, "/lib/Bebop/OP1.mkv", 1.0, None, "extra", now);
-    fixtures::insert_media_with_cover(core, 1, "https://img.example/bebop.jpg", None);
+    fixtures::media(1, "Media 1")
+        .cover("https://img.example/bebop.jpg")
+        .insert(core);
     fixtures::insert_episode(core, 1, 2, Some("Stray Dog Strut"), None);
     fixtures::match_series(core, series, Some(1), None);
     Library { ep1, ep2, extra }
