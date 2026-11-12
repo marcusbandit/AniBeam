@@ -1,12 +1,26 @@
 document.documentElement.classList.add("js");
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Points every download button at the file in the newest release and opens the install tab for
-// the visitor's own system. Without JavaScript, or when GitHub does not answer, every link still
-// goes to the releases page, so nothing here is required.
+// Pauses infinite motion (the marquee, the beams) while it is off screen.
+const motionGate = (el) => {
+  if (!el || !("IntersectionObserver" in window)) return;
+  new IntersectionObserver(([e]) => el.style.setProperty("--motion", e.isIntersecting ? "running" : "paused")).observe(el);
+};
+
+// Adds `in` the first time an element is mostly on screen, which plays its one action.
+const onceInView = (els, threshold = 0.45) => {
+  if (!("IntersectionObserver" in window)) { els.forEach((el) => el.classList.add("in")); return; }
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+  }, { threshold });
+  els.forEach((el) => io.observe(el));
+};
+
+// Points every download button at the file in the newest release and puts the visitor's own
+// system first. Without JavaScript, or when GitHub does not answer, every link still goes to the
+// releases page, so nothing here is required.
 (() => {
   const repo = "marcusbandit/AniBeam";
-  const api = `https://api.github.com/repos/${repo}/releases`;
   const names = { linux: "Linux", windows: "Windows", mac: "Mac", android: "Android" };
   const mainAsset = { linux: "appimage", windows: "setup", mac: "dmg", android: "apk" };
   const match = {
@@ -32,27 +46,24 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
 
   let os = detect();
-  const mains = [...document.querySelectorAll(".dl-auto")];
-  const phoneReleases = `https://github.com/${repo}/releases?q=android&expanded=true`;
+  const main = document.getElementById("dl-main");
   const urls = {};
+  const aim = () => { if (os && urls[mainAsset[os]]) main.href = urls[mainAsset[os]]; };
 
-  // The CPU check and the release lookup can finish in either order; whichever comes last points
-  // the buttons at the file.
-  function aim() {
-    if (os && urls[mainAsset[os]]) mains.forEach((b) => { if (!b.closest(".nav")) b.href = urls[mainAsset[os]]; });
-  }
   function pick(chosen) {
     os = chosen;
     if (!os) return;
-    for (const b of mains) {
-      if (b.closest(".nav")) continue;
-      const label = b.querySelector("span") || b;
-      label.textContent = os === "android" ? "Get the Android app" : `Download for ${names[os]}`;
-      if (os === "android") b.href = phoneReleases;
-    }
+    main.querySelector("span").textContent = os === "android" ? "Get the Android app" : `Download for ${names[os]}`;
+    if (os === "android") main.href = `https://github.com/${repo}/releases?q=android&expanded=true`;
     aim();
-    document.documentElement.dataset.os = os;
-    document.dispatchEvent(new CustomEvent("os", { detail: os }));
+    // The visitor's card goes first and gets the yellow button.
+    const card = document.querySelector(`.plat[data-os="${os}"], .phone[data-os="${os}"]`);
+    if (card) {
+      card.classList.add("is-yours");
+      if (card.classList.contains("plat")) card.parentElement.prepend(card);
+      const btn = card.querySelector(".btn-ghost");
+      if (btn) { btn.classList.remove("btn-ghost"); btn.classList.add("btn-primary"); }
+    }
   }
   if (os === "mac" && navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
     navigator.userAgentData.getHighEntropyValues(["architecture"])
@@ -74,7 +85,7 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
   // One call for both: the release list holds the desktop stable (v*, not a pre-release) and the
   // phone's (android-v*). Unauthenticated calls are limited to 60 an hour per address.
-  fetch(`${api}?per_page=100`, { headers: { Accept: "application/vnd.github+json" } })
+  fetch(`https://api.github.com/repos/${repo}/releases?per_page=100`, { headers: { Accept: "application/vnd.github+json" } })
     .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
     .then((list) => {
       const live = list.filter((r) => !r.draft);
@@ -85,12 +96,6 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     .catch(() => {});
 })();
 
-// Pauses infinite motion (the marquee, the cast pulse) while it is off screen.
-const motionGate = (el) => {
-  if (!("IntersectionObserver" in window)) return;
-  new IntersectionObserver(([e]) => el.style.setProperty("--motion", e.isIntersecting ? "running" : "paused")).observe(el);
-};
-
 // The tour: the rail beside the screenshot works like the app's own, one screen per icon.
 (() => {
   const img = document.getElementById("tour-img");
@@ -99,7 +104,6 @@ const motionGate = (el) => {
     home: "AniBeam's Home: shows to continue and shows not started yet, as poster cards",
     library: "The Library grid with every show as a poster",
     series: "A show's page with its banner, episodes and characters",
-    player: "An episode playing in AniBeam's window",
   };
   const buttons = [...document.querySelectorAll(".rail button")];
   const warm = () => Object.keys(alts).forEach((k) => { new Image().src = `img/tour/${k}.webp`; });
@@ -143,89 +147,51 @@ const motionGate = (el) => {
   });
   hero.addEventListener("pointerleave", () => { field.style.setProperty("--px", "0px"); field.style.setProperty("--py", "0px"); });
 })();
+motionGate(document.querySelector(".beams"));
+motionGate(document.querySelector(".cast-scene"));
 
-const beams = document.querySelector(".beams");
-if (beams) motionGate(beams);
-
-// Files resolve into shows the first time the panel is mostly on screen.
-(() => {
-  const panel = document.getElementById("match");
-  if (!panel) return;
-  if (!("IntersectionObserver" in window)) { panel.classList.add("in"); return; }
-  const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { panel.classList.add("in"); io.disconnect(); } }, { threshold: 0.45 });
-  io.observe(panel);
-})();
-
-// The shelf: two rows of posters drifting in opposite directions. Each row holds its set twice
-// so a move of half its width loops without a seam.
+// The shelf: two rows of posters drifting in opposite directions, old and new together. Each
+// row holds its set twice so a move of half its width loops without a seam.
 (() => {
   const box = document.getElementById("marquee");
   if (!box) return;
   const rows = {
-    a: ["gits", "bebop", "eva", "akira", "lain", "perfectblue", "frieren", "mononoke", "champloo", "steinsgate", "fmab", "mob", "trigun", "paprika"],
-    b: ["sac", "mushishi", "monster", "hxh", "planetes", "spirited", "yourname", "deathnote", "geass", "gurren", "flcl", "ergoproxy", "oddtaxi", "vinland"],
+    a: ["frieren", "bebop", "aot", "spirited", "jjk", "eva", "csm", "akira", "spyfamily", "gits", "demonslayer", "mononoke", "oshinoko", "fmab", "dandadan", "perfectblue"],
+    b: ["deathnote", "violet", "steinsgate", "sololeveling", "hxh", "bocchi", "naruto", "kaguya", "onepiece", "madeinabyss", "dbz", "edgerunners", "sailormoon", "haikyuu", "mha", "opm", "yourname", "mob", "vinland", "champloo", "geass", "gurren"],
   };
   for (const track of box.querySelectorAll(".marquee-track")) {
-    const set = rows[track.dataset.row];
-    const html = set.map((s) => `<span class="poster"><img src="img/posters/${s}.webp" alt="" loading="lazy" width="156" height="234"></span>`).join("");
+    const html = rows[track.dataset.row].map((s) => `<span class="poster"><img src="img/posters/${s}.webp" alt="" loading="lazy" width="160" height="240"></span>`).join("");
     track.innerHTML = html + html;
   }
   motionGate(box);
 })();
 
-// Features: tabs over one stage. The picked tab fills like a progress bar and steps on every
-// 5 s while at least a fifth of the section is on screen; a click picks one and restarts the clock.
-(() => {
-  const list = document.getElementById("feat-tabs");
-  const stage = document.getElementById("stage");
-  if (!list || !stage) return;
-  const tabs = [...list.querySelectorAll(".chip-tab")];
-  const items = [...stage.querySelectorAll(".stage-item")];
-  const STEP = 5000;
-  let i = 0, timer = 0, visible = false, run = null;
+// Each section plays its one action the first time it is mostly on screen.
+onceInView([...document.querySelectorAll("#match, .feat")], 0.4);
 
-  function select(n, focus) {
-    i = (n + tabs.length) % tabs.length;
-    const key = tabs[i].dataset.stage;
-    tabs.forEach((t, k) => { t.setAttribute("aria-selected", String(k === i)); t.tabIndex = k === i ? 0 : -1; });
-    items.forEach((it) => it.classList.toggle("is-on", it.dataset.stage === key));
-    if (focus) tabs[i].focus();
-    restart();
-  }
-  function restart() {
-    clearTimeout(timer);
-    if (run) run.cancel();
-    tabs.forEach((t) => { t.querySelector(".chip-fill").style.transform = "scaleX(0)"; });
-    if (!visible || reduced) return;
-    run = tabs[i].querySelector(".chip-fill").animate([{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], { duration: STEP, easing: "linear", fill: "forwards" });
-    timer = setTimeout(() => select(i + 1), STEP);
-  }
-  tabs.forEach((t, k) => {
-    t.addEventListener("click", () => select(k));
-    t.addEventListener("keydown", (e) => {
-      const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-      if (step) { e.preventDefault(); select(k + step, true); }
-    });
-  });
-  if ("IntersectionObserver" in window) {
-    new IntersectionObserver(([e]) => { visible = e.isIntersecting; restart(); }, { threshold: 0.2 }).observe(stage);
-  }
-  motionGate(stage);
-  select(0);
-})();
-
-// Install: the card for the visitor's own system lights up and gets the yellow button.
+// Linux: pick a distribution, get its install command.
 (() => {
-  function mark(os) {
-    const card = document.querySelector(`.plat[data-os="${os}"], .phone[data-os="${os}"]`);
-    if (!card) return;
-    document.querySelectorAll(".is-yours").forEach((c) => c.classList.remove("is-yours"));
-    card.classList.add("is-yours");
-    const btn = card.querySelector(".btn");
-    if (btn) { btn.classList.remove("btn-ghost"); btn.classList.add("btn-primary"); }
+  const box = document.querySelector(".distros");
+  const cmd = document.getElementById("distro-cmd");
+  const copy = document.getElementById("distro-copy");
+  if (!box || !cmd) return;
+  const appimage = "chmod +x AniBeam-*.AppImage && ./AniBeam-*.AppImage";
+  const commands = {
+    arch: "yay -S anibeam-bin",
+    debian: `sudo apt install libfuse2t64 && ${appimage}`,
+    fedora: `sudo dnf install fuse-libs && ${appimage}`,
+  };
+  const buttons = [...box.querySelectorAll("button")];
+  function choose(key) {
+    buttons.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.distro === key)));
+    cmd.textContent = commands[key];
+    copy.dataset.copy = commands[key];
   }
-  if (document.documentElement.dataset.os) mark(document.documentElement.dataset.os);
-  document.addEventListener("os", (e) => mark(e.detail));
+  buttons.forEach((b) => b.addEventListener("click", () => choose(b.dataset.distro)));
+  // Some browsers name the distribution in their user agent.
+  const ua = navigator.userAgent;
+  if (/ubuntu|debian|mint|pop/i.test(ua)) choose("debian");
+  else if (/fedora/i.test(ua)) choose("fedora");
 })();
 
 // Copy buttons on the install commands.
