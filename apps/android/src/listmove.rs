@@ -6,7 +6,7 @@
 
 use std::cell::RefCell;
 
-use anibeam_core::{Call, Event, EventBody, ListStatus, MoveRow, Reply, Tracker};
+use anibeam_core::{Call, Event, EventBody, JobKind, ListStatus, MoveRow, Reply, Tracker};
 use slint::{ComponentHandle, ModelRc, VecModel, Weak};
 
 use crate::{AppWindow, MoveData, MoveLine};
@@ -19,6 +19,8 @@ struct Page {
     open: Option<(Tracker, Vec<MoveRow>)>,
     /// How many shows wait for each tracker, AniList then MyAnimeList.
     waiting: [usize; 2],
+    /// A count is on its way; another waits for it.
+    counting: bool,
 }
 
 thread_local! {
@@ -52,6 +54,7 @@ pub fn install(window: &AppWindow) {
             offered: [false; 2],
             open: None,
             waiting: [0; 2],
+            counting: false,
         })
     });
     let d = window.global::<MoveData>();
@@ -89,6 +92,15 @@ pub fn core_event(event: &Event) {
                     p.count();
                 })
             });
+        }
+        // A sign-in that did not finish leaves no offer waiting for the next list read.
+        EventBody::JobFailed { .. }
+            if event
+                .job
+                .as_ref()
+                .is_some_and(|j| j.kind == JobKind::ConnectTracker) =>
+        {
+            let _ = slint::invoke_from_event_loop(|| with(|p| p.offered = [false; 2]));
         }
         EventBody::ListsMoved {
             tracker,
@@ -129,21 +141,18 @@ impl Page {
         let Some(core) = crate::local::core() else {
             return;
         };
-        let _ = offer;
         let _ = std::thread::Builder::new()
             .name("listmove".into())
             .spawn(move || {
-                let rows = match core.call(Call::PreviewListMove { tracker: to }) {
-                    Ok(Reply::ListMove { rows }) => rows,
-                    _ => Vec::new(),
-                };
+                let answer = core.call(Call::PreviewListMove { tracker: to });
                 let _ = slint::invoke_from_event_loop(move || {
-                    with(|p| {
-                        if rows.is_empty() {
-                            p.note("Nothing left to move");
-                        } else {
-                            p.show(to, rows);
-                        }
+                    with(|p| match answer {
+                        Ok(Reply::ListMove { rows }) if !rows.is_empty() => p.show(to, rows),
+                        // The offer after a sign-in stays quiet when there is nothing to move.
+                        Ok(_) if offer => {}
+                        Ok(_) => p.note("Nothing left to move"),
+                        Err(e) if !offer => p.note(&e.to_string()),
+                        Err(_) => {}
                     })
                 });
             });
@@ -219,6 +228,9 @@ impl Page {
         let Some(core) = crate::local::core() else {
             return;
         };
+        if std::mem::replace(&mut self.counting, true) {
+            return;
+        }
         let _ = std::thread::Builder::new()
             .name("listmove".into())
             .spawn(move || {
@@ -238,6 +250,7 @@ impl Page {
                 }
                 let _ = slint::invoke_from_event_loop(move || {
                     with(|p| {
+                        p.counting = false;
                         p.waiting = counts;
                         let (n, to) = if counts[0] > 0 {
                             (counts[0], Tracker::Anilist)
