@@ -1,12 +1,12 @@
 document.documentElement.classList.add("js");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Points every download button at the file in the newest release and puts the visitor's own
-// system first. Without JavaScript, or when GitHub does not answer, every link still goes to
-// the releases page, so nothing here is required.
+// Points every download button at the file in the newest release and opens the install tab for
+// the visitor's own system. Without JavaScript, or when GitHub does not answer, every link still
+// goes to the releases page, so nothing here is required.
 (() => {
   const repo = "marcusbandit/AniBeam";
   const api = `https://api.github.com/repos/${repo}/releases`;
-
   const names = { linux: "Linux", windows: "Windows", mac: "Mac", android: "Android" };
   const mainAsset = { linux: "appimage", windows: "setup", mac: "dmg", android: "apk" };
   const match = {
@@ -17,49 +17,43 @@ document.documentElement.classList.add("js");
     apk: (n) => n.endsWith(".apk"),
   };
 
-  // Only builds that exist: the dmg is Apple silicon, the AppImage x86_64. A system we
-  // cannot place gets the plain releases link rather than a file that will not run.
+  // Only builds that exist: the dmg is Apple silicon, the AppImage x86_64. A system we cannot
+  // place gets the plain releases link rather than a file that will not run.
   function detect() {
     const ua = navigator.userAgent;
     const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
     if (/android/i.test(ua)) return "android";
     if (/iphone|ipad|ipod/i.test(ua)) return null;
     if (/win/i.test(platform) || /windows/i.test(ua)) return "windows";
-    if (/mac/i.test(platform) || /mac os x/i.test(ua)) {
-      return navigator.maxTouchPoints > 1 ? null : "mac"; // an iPad asks for the desktop site as a Mac
-    }
+    if (/mac/i.test(platform) || /mac os x/i.test(ua)) return navigator.maxTouchPoints > 1 ? null : "mac";
     if (/aarch64|arm/i.test(platform)) return null;
     if (/linux|x11/i.test(platform) || /linux/i.test(ua)) return "linux";
     return null;
   }
 
   let os = detect();
-  const mains = document.querySelectorAll(".dl-auto");
+  const mains = [...document.querySelectorAll(".dl-auto")];
   const phoneReleases = `https://github.com/${repo}/releases?q=android&expanded=true`;
-
-  // The CPU check and the release lookup can finish in either order; whichever comes last
-  // points the main button at the file.
   const urls = {};
-  function aim() {
-    if (os && urls[mainAsset[os]]) mains.forEach((b) => { b.href = urls[mainAsset[os]]; });
-  }
 
+  // The CPU check and the release lookup can finish in either order; whichever comes last points
+  // the buttons at the file.
+  function aim() {
+    if (os && urls[mainAsset[os]]) mains.forEach((b) => { if (!b.closest(".nav")) b.href = urls[mainAsset[os]]; });
+  }
   function pick(chosen) {
     os = chosen;
     if (!os) return;
     for (const b of mains) {
-      b.textContent = os === "android" ? "Get the Android app" : `Download for ${names[os]}`;
+      if (b.closest(".nav")) continue;
+      const label = b.querySelector("span") || b;
+      label.textContent = os === "android" ? "Get the Android app" : `Download for ${names[os]}`;
       if (os === "android") b.href = phoneReleases;
     }
     aim();
-    const row = document.querySelector(`.platform[data-os="${os}"]`);
-    if (row) {
-      row.classList.add("yours");
-      row.parentElement.prepend(row);
-    }
+    document.documentElement.dataset.os = os;
+    document.dispatchEvent(new CustomEvent("os", { detail: os }));
   }
-
-  // Chromium can say the CPU; an Intel Mac has no build, so it gets no "Download for Mac".
   if (os === "mac" && navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
     navigator.userAgentData.getHighEntropyValues(["architecture"])
       .then((v) => pick(v.architecture === "x86" ? null : "mac"))
@@ -74,73 +68,50 @@ document.documentElement.classList.add("js");
     for (const key of keys) {
       const asset = release.assets.find((a) => match[key](a.name));
       if (!asset) continue;
-      for (const link of document.querySelectorAll(`[data-asset="${key}"]`)) {
-        link.href = asset.browser_download_url;
-      }
+      document.querySelectorAll(`[data-asset="${key}"]`).forEach((l) => { l.href = asset.browser_download_url; });
       urls[key] = asset.browser_download_url;
     }
   }
-
-  async function get(url) {
-    const res = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
-    if (!res.ok) throw new Error(`${res.status}`);
-    return res.json();
-  }
-
-  // One call for both: the release list holds the desktop stable (v*, not a pre-release) and
-  // the phone's (android-v*). Unauthenticated calls are limited to 60 an hour per address.
-  get(`${api}?per_page=100`)
+  // One call for both: the release list holds the desktop stable (v*, not a pre-release) and the
+  // phone's (android-v*). Unauthenticated calls are limited to 60 an hour per address.
+  fetch(`${api}?per_page=100`, { headers: { Accept: "application/vnd.github+json" } })
+    .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
     .then((list) => {
       const live = list.filter((r) => !r.draft);
-      const stable = live.find((r) => /^v\d/.test(r.tag_name) && !r.prerelease);
-      const phone = live.find((r) => r.tag_name.startsWith("android-v"));
-      wire(stable, ["appimage", "setup", "zip", "dmg"]);
-      wire(phone, ["apk"]);
+      wire(live.find((r) => /^v\d/.test(r.tag_name) && !r.prerelease), ["appimage", "setup", "zip", "dmg"]);
+      wire(live.find((r) => r.tag_name.startsWith("android-v")), ["apk"]);
       aim();
-      if (stable) {
-        const version = stable.tag_name.replace(/^v/, "");
-        const when = new Date(stable.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-        const note = document.getElementById("install-version");
-        note.textContent = `AniBeam ${version}, released ${when}. `;
-        const all = document.createElement("a");
-        all.href = stable.html_url;
-        all.textContent = "What's in it";
-        note.append(all);
-      }
-      const shown = os === "android" ? phone : stable;
-      if (shown) {
-        const version = shown.tag_name.replace(/^(android-)?v/, "");
-        document.getElementById("dl-note").textContent = `Version ${version}. Free and open source.`;
-      }
     })
     .catch(() => {});
 })();
 
+// Pauses infinite motion (the marquee, the cast pulse) while it is off screen.
+const motionGate = (el) => {
+  if (!("IntersectionObserver" in window)) return;
+  new IntersectionObserver(([e]) => el.style.setProperty("--motion", e.isIntersecting ? "running" : "paused")).observe(el);
+};
+
 // The tour: the rail beside the screenshot works like the app's own, one screen per icon.
 (() => {
   const img = document.getElementById("tour-img");
-  const caption = document.getElementById("tour-caption");
   if (!img) return;
-  const screens = {
-    home: ["Home picks up where you left off and shows what just landed in your folder.", "Home: recently downloaded shows and shows not started yet, as poster cards with episode progress"],
-    library: ["The library holds every show in the folder, matched and with its poster.", "The Library grid with every show as a poster"],
-    airing: ["Airing shows what is out this week and when each next episode lands.", "The Airing page: shows out in the last two days, each with time until its next episode"],
-    series: ["A show's page has its episodes, your progress and everything it connects to.", "A series page with its banner, episode list and watch progress"],
-    player: ["The player runs right in the window, with subtitles and audio a click away.", "An episode playing in the window with the subtitle menu open"],
+  const alts = {
+    home: "AniBeam's Home: shows to continue and shows not started yet, as poster cards",
+    library: "The Library grid with every show as a poster",
+    series: "A show's page with its banner, episodes and characters",
+    player: "An episode playing in AniBeam's window",
   };
   const buttons = [...document.querySelectorAll(".rail button")];
-  // Fetch the other screens once the page is idle, so a click swaps without a wait.
-  const warm = () => Object.keys(screens).forEach((k) => { const i = new Image(); i.src = `img/tour/${k}.webp`; });
+  const warm = () => Object.keys(alts).forEach((k) => { new Image().src = `img/tour/${k}.webp`; });
   if ("requestIdleCallback" in window) requestIdleCallback(warm, { timeout: 3000 });
   else setTimeout(warm, 1500);
 
   function show(key, focus) {
-    for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.screen === key));
+    buttons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.screen === key)));
     img.classList.add("swap");
     const next = new Image();
-    next.onload = () => { img.src = next.src; img.alt = screens[key][1]; img.classList.remove("swap"); };
+    next.onload = () => { img.src = next.src; img.alt = alts[key]; img.classList.remove("swap"); };
     next.src = `img/tour/${key}.webp`;
-    caption.textContent = screens[key][0];
     if (focus) buttons.find((b) => b.dataset.screen === key).focus();
   }
   buttons.forEach((b, i) => {
@@ -154,50 +125,130 @@ document.documentElement.classList.add("js");
   });
 })();
 
-// The theme row: each button shows Home in that theme, captured from the app itself.
+// The posters around the headline follow the pointer, each by its own depth. The entrance moves
+// `transform`, the parallax moves `translate`, so the two never fight.
 (() => {
-  const img = document.getElementById("theme-img");
-  const picks = document.getElementById("theme-picks");
-  if (!img || !picks) return;
-  // name, file, the theme's ground and accent for the swatch
-  const themes = [
-    ["AniBeam Dark", "anibeam-dark", "#07090f", "#46e0c4"],
-    ["Catppuccin Mocha", "catppuccin-mocha", "#1e1e2e", "#89b4fa"],
-    ["Gruvbox", "gruvbox-dark-medium", "#282828", "#83a598"],
-    ["Everforest", "everforest-dark-medium", "#2d353b", "#7fbbb3"],
-    ["Nord", "nord", "#2e3440", "#81a1c1"],
-    ["Catppuccin Latte", "catppuccin-latte", "#eff1f5", "#1e66f5"],
-  ];
-  let warmed = false;
-  function apply(i) {
-    const [name, file] = themes[i];
-    img.classList.add("swap");
-    const next = new Image();
-    next.onload = () => { img.src = next.src; img.alt = `Home in the ${name} theme`; img.classList.remove("swap"); };
-    next.src = `img/themes/${file}.webp`;
-    picks.querySelectorAll("button").forEach((b, n) => b.setAttribute("aria-pressed", String(n === i)));
-  }
-  themes.forEach(([name, file, ground, accent], i) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.setAttribute("aria-pressed", String(i === 0));
-    b.innerHTML = `<span class="sw" style="background:linear-gradient(135deg, ${ground} 55%, ${accent} 55%)"></span>${name}`;
-    b.addEventListener("click", () => apply(i));
-    b.addEventListener("pointerenter", () => {
-      if (warmed) return;
-      warmed = true;
-      themes.forEach(([, f]) => { new Image().src = `img/themes/${f}.webp`; });
+  const hero = document.querySelector(".hero");
+  const field = document.getElementById("floats");
+  if (!hero || !field || reduced || !matchMedia("(pointer: fine)").matches) return;
+  let frame = 0;
+  hero.addEventListener("pointermove", (e) => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const r = hero.getBoundingClientRect();
+      field.style.setProperty("--px", `${(((e.clientX - r.left) / r.width - 0.5) * 36).toFixed(1)}px`);
+      field.style.setProperty("--py", `${(((e.clientY - r.top) / r.height - 0.5) * 28).toFixed(1)}px`);
     });
-    picks.append(b);
   });
+  hero.addEventListener("pointerleave", () => { field.style.setProperty("--px", "0px"); field.style.setProperty("--py", "0px"); });
 })();
 
-// Each feature's small UI plays its one action the first time it is mostly on screen.
+// Files resolve into shows the first time the panel is mostly on screen.
 (() => {
-  const vigs = document.querySelectorAll(".vig");
-  if (!("IntersectionObserver" in window)) { vigs.forEach((v) => v.classList.add("in")); return; }
-  const io = new IntersectionObserver((entries) => {
-    for (const e of entries) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
-  }, { threshold: 0.55 });
-  vigs.forEach((v) => io.observe(v));
+  const panel = document.getElementById("match");
+  if (!panel) return;
+  if (!("IntersectionObserver" in window)) { panel.classList.add("in"); return; }
+  const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { panel.classList.add("in"); io.disconnect(); } }, { threshold: 0.45 });
+  io.observe(panel);
 })();
+
+// The shelf: two rows of posters drifting in opposite directions. Each row holds its set twice
+// so a move of half its width loops without a seam.
+(() => {
+  const box = document.getElementById("marquee");
+  if (!box) return;
+  const rows = {
+    a: ["gits", "bebop", "eva", "akira", "lain", "perfectblue", "frieren", "mononoke", "champloo", "steinsgate", "fmab", "mob", "trigun", "paprika"],
+    b: ["sac", "mushishi", "monster", "hxh", "planetes", "spirited", "yourname", "deathnote", "geass", "gurren", "flcl", "ergoproxy", "oddtaxi", "vinland"],
+  };
+  for (const track of box.querySelectorAll(".marquee-track")) {
+    const set = rows[track.dataset.row];
+    const html = set.map((s) => `<span class="poster"><img src="img/posters/${s}.webp" alt="" loading="lazy" width="156" height="234"></span>`).join("");
+    track.innerHTML = html + html;
+  }
+  motionGate(box);
+})();
+
+// The wall: a sentence of what it does. The picked phrase lights up and the stage shows it; it
+// steps on by itself every 5 s while at least a fifth of it is on screen, and a click resets it.
+(() => {
+  const wall = document.getElementById("wall");
+  const stage = document.getElementById("stage");
+  const bar = document.getElementById("wall-bar");
+  if (!wall || !stage) return;
+  const phrases = [...wall.querySelectorAll(".ph")];
+  const items = [...stage.querySelectorAll(".stage-item")];
+  const STEP = 5000;
+  let i = 0, timer = 0, visible = false, run = null;
+
+  function select(n) {
+    i = (n + phrases.length) % phrases.length;
+    const key = phrases[i].dataset.stage;
+    phrases.forEach((p, k) => p.setAttribute("aria-pressed", String(k === i)));
+    items.forEach((it) => it.classList.toggle("is-on", it.dataset.stage === key));
+    restart();
+  }
+  function restart() {
+    clearTimeout(timer);
+    if (run) run.cancel();
+    if (!visible || reduced) return;
+    run = bar.animate([{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], { duration: STEP, easing: "linear", fill: "forwards" });
+    timer = setTimeout(() => select(i + 1), STEP);
+  }
+  phrases.forEach((p, k) => {
+    p.addEventListener("click", () => select(k));
+    p.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(k); } });
+  });
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(([e]) => { visible = e.isIntersecting; restart(); }, { threshold: 0.2 }).observe(wall.parentElement);
+  }
+  motionGate(stage);
+  select(0);
+})();
+
+// Install: tabs with a pill that slides under the picked one. Opens on the visitor's system.
+(() => {
+  const tabs = document.getElementById("tabs");
+  if (!tabs) return;
+  const buttons = [...tabs.querySelectorAll("[role=tab]")];
+  function place(b) {
+    tabs.style.setProperty("--x", `${b.offsetLeft}px`);
+    tabs.style.setProperty("--w", `${b.offsetWidth}px`);
+  }
+  function choose(b, focus) {
+    buttons.forEach((t) => {
+      const on = t === b;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    });
+    place(b);
+    if (focus) b.focus();
+  }
+  buttons.forEach((b, k) => {
+    b.addEventListener("click", () => choose(b));
+    b.addEventListener("keydown", (e) => {
+      const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (step) { e.preventDefault(); choose(buttons[(k + step + buttons.length) % buttons.length], true); }
+    });
+  });
+  const start = () => place(buttons.find((b) => b.getAttribute("aria-selected") === "true"));
+  document.fonts ? document.fonts.ready.then(start) : start();
+  addEventListener("resize", start);
+  const follow = (os) => { const b = buttons.find((t) => t.dataset.os === os); if (b) choose(b); };
+  if (document.documentElement.dataset.os) follow(document.documentElement.dataset.os);
+  document.addEventListener("os", (e) => follow(e.detail));
+})();
+
+// Copy buttons on the install commands.
+document.querySelectorAll(".copy").forEach((b) => {
+  b.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(b.dataset.copy);
+      b.textContent = "Copied";
+      b.classList.add("done");
+      setTimeout(() => { b.textContent = "Copy"; b.classList.remove("done"); }, 1600);
+    } catch {}
+  });
+});

@@ -6,7 +6,7 @@
 <title>AniBeam: an anime library and player for your own files</title>
 <meta name="description" content="AniBeam turns the folder your anime lives in into a library. It matches every show on AniList, plays episodes in the window and syncs your progress to AniList or MyAnimeList. Free for Linux, Windows, Mac and Android.">
 <link rel="canonical" href="https://anibeam.app/">
-<meta name="theme-color" content="#07090f">
+<meta name="theme-color" content="#07080a">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="img/icon.png">
@@ -31,7 +31,7 @@
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "Linux, Windows, macOS, Android",
   "image": "https://anibeam.app/img/og.jpg",
-  "screenshot": "https://anibeam.app/img/home.webp",
+  "screenshot": "https://anibeam.app/img/tour/home.webp",
   "downloadUrl": "https://github.com/marcusbandit/AniBeam/releases/latest",
   "license": "https://www.gnu.org/licenses/gpl-3.0.html",
   "isAccessibleForFree": true,
@@ -48,255 +48,233 @@
 </head>
 <body>
 
-<header class="top">
+<header class="nav">
   <a class="brand" href="./" aria-label="AniBeam home">
-    <img src="img/logo.svg" alt="" width="32" height="32">
+    <img src="img/logo.svg" alt="" width="28" height="28">
     <span>AniBeam</span>
   </a>
-  <nav class="top-nav" aria-label="Main">
+  <nav class="nav-links" aria-label="Main">
     <a href="#features">Features</a>
+    <a href="#install">Install</a>
     <a href="https://github.com/marcusbandit/AniBeam">GitHub</a>
-    <a class="nav-dl" href="#install">Download</a>
   </nav>
+  <a class="btn btn-primary btn-sm dl-auto" href="#install">Download</a>
 </header>
 
 <main>
 
-<section class="hero">
-  <div class="beams" aria-hidden="true">
-    <i style="--i:0;--x:2%;--y:72%;--w:88%;--h:34px;--a:.62;--b:16px"></i>
-    <i style="--i:1;--x:16%;--y:84%;--w:72%;--h:12px;--a:.7;--b:5px"></i>
-    <i style="--i:2;--x:-6%;--y:60%;--w:66%;--h:64px;--a:.24;--b:34px"></i>
-    <i style="--i:3;--x:28%;--y:95%;--w:60%;--h:3px;--a:.9;--b:1px"></i>
-    <i style="--i:4;--x:6%;--y:91%;--w:46%;--h:16px;--a:.4;--b:9px"></i>
-    <i style="--i:5;--x:38%;--y:78%;--w:52%;--h:2px;--a:.75;--b:.6px"></i>
-    <i style="--i:6;--x:46%;--y:99%;--w:40%;--h:2px;--a:.6;--b:.6px"></i>
+<section class="hero" id="top">
+  <div class="hero-grid" aria-hidden="true"></div>
+
+  <div class="floats" id="floats" aria-hidden="true">
+    <span class="float" style="--x:max(-600px,-46vw);--y:170px;--w:132px;--rot:-7deg;--fx:-180px;--fy:-40px;--d:.38s;--depth:1.2"><img src="img/posters/gits.webp" alt=""></span>
+    <span class="float" style="--x:min(436px,34vw);--y:170px;--w:132px;--rot:6deg;--fx:180px;--fy:-60px;--d:.46s;--depth:1.2"><img src="img/posters/bebop.webp" alt=""></span>
+    <span class="float" style="--x:max(-560px,-47vw);--y:0px;--w:84px;--rot:5deg;--fx:-90px;--fy:-80px;--d:.54s;--depth:.6"><img src="img/posters/lain.webp" alt=""></span>
+    <span class="float" style="--x:min(512px,40vw);--y:0px;--w:84px;--rot:-5deg;--fx:100px;--fy:-90px;--d:.58s;--depth:.6"><img src="img/posters/akira.webp" alt=""></span>
+    <span class="float" style="--x:max(-500px,-40vw);--y:430px;--w:104px;--rot:8deg;--fx:-140px;--fy:90px;--d:.62s;--depth:.9"><img src="img/posters/eva.webp" alt=""></span>
+    <span class="float" style="--x:min(396px,31vw);--y:430px;--w:104px;--rot:-6deg;--fx:150px;--fy:90px;--d:.7s;--depth:.9"><img src="img/posters/frieren.webp" alt=""></span>
   </div>
+
   <div class="hero-copy">
-    <h1>Your anime folder, as a library you can watch and track.</h1>
-    <p class="lede">Point AniBeam at the folder your shows live in. It finds every series,
-      matches it on AniList, plays episodes right in the window and keeps your list up to date.</p>
-    <div class="cta">
-      <a class="button primary dl-auto" id="dl-main" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download AniBeam</a>
-      <a class="button quiet" href="#install">Other platforms</a>
-    </div>
-    <p class="fine" id="dl-note">Free and open source. Linux, Windows, Mac and Android.</p>
-  </div>
-
-  <figure class="match" aria-label="Files in an anime folder, each matched to its show">
-    <figcaption class="match-root">~/Anime</figcaption>
-    <ol class="match-rows">
-      <li style="--i:0"><code><span>Sousou no Frieren/</span>Frieren - 01.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Sousou no Frieren</b><small>28 episodes</small></span></li>
-      <li style="--i:1"><code><span>Dungeon Meshi/</span>Dungeon Meshi - 07.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Dungeon Meshi</b><small>24 episodes</small></span></li>
-      <li style="--i:2"><code><span>Bocchi the Rock/</span>Bocchi - 12.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Bocchi the Rock!</b><small>12 episodes</small></span></li>
-      <li style="--i:3"><code><span>Kusuriya/</span>Kusuriya no Hitorigoto - 03.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Kusuriya no Hitorigoto</b><small>24 episodes</small></span></li>
-      <li style="--i:4"><code><span>Vinland Saga S2/</span>Vinland Saga - 18.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>VINLAND SAGA Season 2</b><small>24 episodes</small></span></li>
-      <li style="--i:5"><code><span>Movies/</span>Suzume (2022).mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Suzume no Tojimari</b><small>Film</small></span></li>
-    </ol>
-  </figure>
-</section>
-
-<section class="tour" aria-label="A look around AniBeam">
-  <div class="window">
-    <nav class="rail" aria-label="Screens of the app">
-      <img class="rail-logo" src="img/logo.svg" alt="" width="36" height="36">
-      <button type="button" data-screen="home" aria-pressed="true">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-        <span>Home</span>
-      </button>
-      <button type="button" data-screen="library" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-        <span>Library</span>
-      </button>
-      <button type="button" data-screen="airing" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
-        <span>Airing</span>
-      </button>
-      <span class="rail-gap" aria-hidden="true"></span>
-      <button type="button" data-screen="series" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="15" x="2" y="7" rx="2"/><path d="m17 2-5 5-5-5"/></svg>
-        <span>A show</span>
-      </button>
-      <button type="button" data-screen="player" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l14 9-14 9z"/></svg>
-        <span>Player</span>
-      </button>
-    </nav>
-    <div class="screen">
-      <img id="tour-img" src="img/tour/home.webp" width="1512" height="1000" alt="Home: recently downloaded shows and shows not started yet, as poster cards with episode progress">
+    <h1>
+      <span class="rise" style="--d:0s">Your anime folder,</span>
+      <span class="rise" style="--d:.09s">as a library you can</span>
+      <span class="rise" style="--d:.18s">watch and track.</span>
+    </h1>
+    <p class="hero-sub rise" style="--d:.3s">AniBeam finds every show in the folder, matches it on AniList and plays it right in the window.</p>
+    <div class="hero-actions rise" style="--d:.4s">
+      <a class="btn btn-primary btn-lg dl-auto" id="dl-main" href="https://github.com/marcusbandit/AniBeam/releases/latest">
+        <svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
+        <span>Download AniBeam</span>
+      </a>
+      <a class="btn btn-ghost btn-lg" href="https://github.com/marcusbandit/AniBeam">Read the source</a>
     </div>
   </div>
-  <p class="tour-caption" id="tour-caption" aria-live="polite">Home picks up where you left off and shows what just landed in your folder. Try the other screens.</p>
+
+  <div class="window-wrap rise" style="--d:.52s">
+    <div class="window">
+      <nav class="rail" aria-label="Screens of the app">
+        <img class="rail-logo" src="img/logo.svg" alt="" width="36" height="36">
+        <button type="button" data-screen="home" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span>Home</span>
+        </button>
+        <button type="button" data-screen="library" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+          <span>Library</span>
+        </button>
+        <span class="rail-gap" aria-hidden="true"></span>
+        <button type="button" data-screen="series" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="15" x="2" y="7" rx="2"/><path d="m17 2-5 5-5-5"/></svg>
+          <span>A show</span>
+        </button>
+        <button type="button" data-screen="player" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l14 9-14 9z"/></svg>
+          <span>Player</span>
+        </button>
+      </nav>
+      <div class="screen">
+        <img id="tour-img" src="img/tour/home.webp" width="1512" height="1000" alt="AniBeam's Home: shows to continue and shows not started yet, as poster cards">
+      </div>
+    </div>
+  </div>
 </section>
 
-<section class="band rows" id="features" aria-label="What it does">
-
-  <article class="row">
-    <div class="row-text">
-      <h2>Watch it, and your list keeps up</h2>
-      <p>Watch most of an episode and AniBeam marks it on AniList or MyAnimeList. Change something on the site and the cards here follow, so the list you already keep stays the one that counts.</p>
-      <p class="aside">Tracking is optional. Everything else works without an account.</p>
+<section class="section library" id="features" aria-labelledby="library-h">
+  <div class="split">
+    <div class="split-text">
+      <h2 id="library-h">Drop files in.<br>Get a library.</h2>
+      <p>Point AniBeam at a folder and every show in it turns up matched, with its poster, its synopsis and what airs next. New files appear on their own.</p>
     </div>
-    <div class="vig vig-track" aria-hidden="true">
-      <div class="entry">
-        <img src="img/tour/poster-meshi.webp" alt="" width="182" height="172">
-        <div class="entry-body">
-          <b>Dungeon Meshi</b>
-          <span class="chip">Watching</span>
-          <span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-          <small>Episode 7 of 24</small>
+    <figure class="match card" id="match" aria-label="Files in an anime folder, each matched to its show">
+      <figcaption class="match-root">~/Anime</figcaption>
+      <ol class="match-rows">
+        <li style="--i:0"><code><span>Ghost in the Shell/</span>Ghost in the Shell (1995).mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Ghost in the Shell</b><small>Film, 1995</small></span></li>
+        <li style="--i:1"><code><span>Cowboy Bebop/</span>Cowboy Bebop - 05.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Cowboy Bebop</b><small>26 episodes</small></span></li>
+        <li style="--i:2"><code><span>Evangelion/</span>Neon Genesis Evangelion - 19.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Neon Genesis Evangelion</b><small>26 episodes</small></span></li>
+        <li style="--i:3"><code><span>Lain/</span>Serial Experiments Lain - 03.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Serial Experiments Lain</b><small>13 episodes</small></span></li>
+        <li style="--i:4"><code><span>Frieren/</span>Sousou no Frieren - 12.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Sousou no Frieren</b><small>28 episodes</small></span></li>
+        <li style="--i:5"><code><span>Films/</span>Akira (1988).mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Akira</b><small>Film, 1988</small></span></li>
+      </ol>
+    </figure>
+  </div>
+
+  <div class="marquee" id="marquee" aria-hidden="true">
+    <div class="marquee-row"><div class="marquee-track" data-row="a"></div></div>
+    <div class="marquee-row reverse"><div class="marquee-track" data-row="b"></div></div>
+  </div>
+</section>
+
+<section class="section wall-section" aria-labelledby="wall-h">
+  <h2 id="wall-h" class="visually-hidden">What AniBeam does</h2>
+  <div class="wall">
+    <p class="wall-text" id="wall">
+      AniBeam
+      <span class="ph" role="button" tabindex="0" data-stage="play" aria-pressed="true">plays in the window</span>,
+      <span class="ph" role="button" tabindex="0" data-stage="sync" aria-pressed="false">syncs to AniList and MyAnimeList</span>,
+      <span class="ph" role="button" tabindex="0" data-stage="resume" aria-pressed="false">remembers where you stopped</span>,
+      <span class="ph" role="button" tabindex="0" data-stage="related" aria-pressed="false">finds every sequel</span>
+      and
+      <span class="ph" role="button" tabindex="0" data-stage="cast" aria-pressed="false">casts to your TV</span>.
+    </p>
+    <div class="wall-progress" aria-hidden="true"><span id="wall-bar"></span></div>
+
+    <div class="stage card" id="stage">
+      <div class="stage-item is-on" data-stage="play">
+        <img src="img/tour/player.webp" width="1512" height="1000" loading="lazy" alt="An episode playing in AniBeam's window">
+      </div>
+      <div class="stage-item" data-stage="sync">
+        <div class="sync">
+          <div class="sync-entry">
+            <img src="img/posters/bebop.webp" alt="" width="120" height="170" loading="lazy">
+            <div>
+              <b>Cowboy Bebop</b>
+              <span class="chip">Watching</span>
+              <span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+            </div>
+          </div>
+          <ul class="sync-rows">
+            <li><span class="svc">AniList</span><span class="num"><s>4</s> 5 / 26</span><span class="ok">Updated</span></li>
+            <li><span class="svc">MyAnimeList</span><span class="num"><s>4</s> 5 / 26</span><span class="ok">Updated</span></li>
+          </ul>
         </div>
       </div>
-      <ul class="syncs">
-        <li><span>AniList</span><span class="num">7 / 24</span><span class="ok">Updated just now</span></li>
-        <li><span>MyAnimeList</span><span class="num">7 / 24</span><span class="ok">Updated just now</span></li>
-      </ul>
-    </div>
-  </article>
-
-  <article class="row flip">
-    <div class="row-text">
-      <h2>One click past the opening</h2>
-      <p>For most shows the player knows where the opening and ending sit, so Skip intro shows up right as they start. It remembers where you stopped, and offers the next episode when this one ends.</p>
-      <p class="aside">Built on mpv. Press <kbd>?</kbd> for every key.</p>
-    </div>
-    <div class="vig vig-player" aria-hidden="true">
-      <div class="frame"></div>
-      <span class="skip">Skip intro</span>
-      <div class="bar">
-        <span class="time">1:42</span>
-        <div class="track"><span class="intro"></span><span class="played"></span><span class="head"></span></div>
-        <span class="time">23:40</span>
+      <div class="stage-item" data-stage="resume">
+        <div class="resume">
+          <b class="resume-h">Continue</b>
+          <div class="resume-row">
+            <div class="rc is-next"><img src="img/posters/bebop.webp" alt="" loading="lazy"><span class="rc-bar" style="--p:62%"></span><span class="rc-t">Cowboy Bebop</span><span class="rc-m">Episode 6, 14 min left</span></div>
+            <div class="rc"><img src="img/posters/sac.webp" alt="" loading="lazy"><span class="rc-bar" style="--p:40%"></span><span class="rc-t">Stand Alone Complex</span><span class="rc-m">Episode 9</span></div>
+            <div class="rc"><img src="img/posters/steinsgate.webp" alt="" loading="lazy"><span class="rc-bar" style="--p:0%"></span><span class="rc-t">Steins;Gate</span><span class="rc-m">Episode 11</span></div>
+            <div class="rc"><img src="img/posters/eva.webp" alt="" loading="lazy"><span class="rc-bar" style="--p:0%"></span><span class="rc-t">Evangelion</span><span class="rc-m">Episode 20</span></div>
+          </div>
+          <span class="resume-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l14 9-14 9z"/></svg>Resume episode 6</span>
+        </div>
+      </div>
+      
+      <div class="stage-item" data-stage="related">
+        <img class="tall" src="img/stage/related.webp" width="744" height="1200" loading="lazy" alt="Every sequel, film and side story of Ghost in the Shell on its page">
+      </div>
+      <div class="stage-item" data-stage="cast">
+        <div class="cast">
+          <div class="cast-sheet">
+            <b>Cast to</b>
+            <ul>
+              <li class="is-live"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M2 12a9 9 0 0 1 8 8"/><path d="M2 16a5 5 0 0 1 4 4"/><path d="M2 20h.01"/></svg><span>Living room TV</span><em>Playing</em></li>
+              <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>Bedroom TV</span><em>DLNA</em></li>
+              <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg><span>This computer</span><em></em></li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
-  </article>
-
-  <article class="row">
-    <div class="row-text">
-      <h2>New episodes come to you</h2>
-      <p>Subscribe to a show once and each new episode downloads as it airs, then lands in your library on its own.</p>
-      <p class="aside">AniBeam ships with no sources. It downloads nothing until you add the ones you trust.</p>
-    </div>
-    <div class="vig vig-sub" aria-hidden="true">
-      <div class="sub-head">
-        <img src="img/tour/poster-kusuriya.webp" alt="" width="182" height="172">
-        <div><b>Kusuriya no Hitorigoto</b><span class="chip">Subscribed</span></div>
-      </div>
-      <ol class="eps">
-        <li><span class="ep">Episode 9</span><span class="state later">Airs Saturday</span></li>
-        <li><span class="ep">Episode 8</span><span class="state"><span class="load"><span></span></span>64%</span></li>
-        <li><span class="ep">Episode 7</span><span class="state done">In your library</span></li>
-      </ol>
-    </div>
-  </article>
-
-  <article class="row flip">
-    <div class="row-text">
-      <h2>Thirty-five themes, one click each</h2>
-      <p>Catppuccin, Gruvbox, Tokyo Night, Nord, Kanagawa and the rest come built in. Drop your own into a folder and it shows up in the list. Try a few.</p>
-    </div>
-    <div class="vig vig-theme">
-      <div class="theme-shot"><img id="theme-img" src="img/themes/anibeam-dark.webp" width="1100" height="728" loading="lazy" alt="Home in the AniBeam Dark theme"></div>
-      <div class="theme-picks" id="theme-picks" role="group" aria-label="Themes to try"></div>
-    </div>
-  </article>
-
-  <div class="more">
-    <h2>And the rest</h2>
-    <dl>
-      <div><dt>Related shows</dt><dd>Every sequel, prequel and side story on a show&rsquo;s page, with the ones you already have marked.</dd></div>
-      <div><dt>Casts to a TV</dt><dd>Send an episode to a Chromecast or a DLNA TV from the player.</dd></div>
-      <div><dt>A phone app</dt><dd>Android keeps a library of its own and can play yours from home over Tailscale.</dd></div>
-      <div><dt>Airing</dt><dd>This season's shows, what is out now, and when the next episode lands.</dd></div>
-      <div><dt>Fix a wrong match</dt><dd>A show matched to the wrong entry gets the right one in two clicks.</dd></div>
-      <div><dt>Updates itself</dt><dd>Stable or Nightly, your pick, with a What's new card after each update.</dd></div>
-    </dl>
   </div>
 </section>
 
-<section class="band trust" aria-labelledby="trust-h">
-  <div class="trust-head">
-    <h2 id="trust-h">Your files stay on your computer</h2>
-    <p>AniBeam is a desktop app. There is no server to run and nothing to sign up for.</p>
+<section class="section trust" aria-labelledby="trust-h">
+  <h2 id="trust-h">Your files stay yours.</h2>
+  <div class="bento">
+    <div class="cell card"><h3>No server</h3><p>It reads your folder directly. Nothing to host and nothing to keep running.</p></div>
+    <div class="cell card"><h3>No account</h3><p>Connect AniList or MyAnimeList if you want tracking. Everything else works without one.</p></div>
+    <div class="cell card"><h3>No telemetry</h3><p>It talks to AniList, MyAnimeList, a few show-info sites and GitHub for updates. Nothing reports back.</p></div>
+    <div class="cell card"><h3>Open source</h3><p>GPL 3.0, every line on <a href="https://github.com/marcusbandit/AniBeam">GitHub</a>.</p></div>
   </div>
-  <dl class="facts">
-    <div><dt>No server</dt><dd>It reads your folder directly. Nothing to host, nothing to transcode, no web interface to keep alive.</dd></div>
-    <div><dt>No account</dt><dd>Connect AniList or MyAnimeList if you want tracking. The rest works without either.</dd></div>
-    <div><dt>No telemetry</dt><dd>It talks to AniList and MyAnimeList, to TVmaze, Jikan and Wikidata for show details, to AniSkip for intro times, and to GitHub for updates. Nothing reports back.</dd></div>
-    <div><dt>No sources built in</dt><dd>Downloads stay off until you add an endpoint repo yourself.</dd></div>
-    <div><dt>Open source</dt><dd>GPL 3.0. Every line is <a href="https://github.com/marcusbandit/AniBeam">on GitHub</a>.</dd></div>
-  </dl>
 </section>
 
+<section class="section install" id="install" aria-labelledby="install-h">
+  <h2 id="install-h">Get AniBeam.</h2>
+  <div class="install-body">
+  <div class="tabs" role="tablist" aria-label="Platform" id="tabs">
+    <span class="tabs-pill" aria-hidden="true"></span>
+    <button type="button" role="tab" id="tab-linux" aria-controls="panel-linux" aria-selected="true" data-os="linux">Linux</button>
+    <button type="button" role="tab" id="tab-windows" aria-controls="panel-windows" aria-selected="false" data-os="windows">Windows</button>
+    <button type="button" role="tab" id="tab-mac" aria-controls="panel-mac" aria-selected="false" data-os="mac">Mac</button>
+    <button type="button" role="tab" id="tab-android" aria-controls="panel-android" aria-selected="false" data-os="android">Android</button>
+  </div>
 
-<section class="band install" id="install" aria-labelledby="install-h">
-  <h2 id="install-h">Install</h2>
-  <p class="install-version" id="install-version">The newest version is on the <a href="https://github.com/marcusbandit/AniBeam/releases/latest">releases page</a>.</p>
-  <div class="platforms">
-    <div class="platform" data-os="linux">
-      <h3>Linux</h3>
-      <div class="get">
-        <a class="button" data-asset="appimage" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the AppImage</a>
-        <p>On Arch: <code class="cmd">yay -S anibeam-bin</code></p>
-      </div>
-      <p class="note">The AppImage runs on Ubuntu 24.04, Debian 13, Fedora 40 and later. Make it executable, then open it.</p>
+  <div class="panels card">
+    <div class="panel" role="tabpanel" id="panel-linux" aria-labelledby="tab-linux">
+      <a class="btn btn-primary btn-lg" data-asset="appimage" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the AppImage</a>
+      <div class="term"><span class="prompt">$</span><code>yay -S anibeam-bin</code><button type="button" class="copy" data-copy="yay -S anibeam-bin">Copy</button></div>
+      <p>The AppImage runs on Ubuntu 24.04, Debian 13, Fedora 40 and newer. Arch has it in the AUR.</p>
     </div>
-    <div class="platform" data-os="windows">
-      <h3>Windows</h3>
-      <div class="get">
-        <a class="button" data-asset="setup" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the installer</a>
-        <p>Or the <a data-asset="zip" href="https://github.com/marcusbandit/AniBeam/releases/latest">portable zip</a></p>
-      </div>
-      <p class="note">Windows 10 and 11. Installs for you alone, no admin prompt. If SmartScreen stops it, click More info, then Run anyway.</p>
+    <div class="panel" role="tabpanel" id="panel-windows" aria-labelledby="tab-windows" hidden>
+      <a class="btn btn-primary btn-lg" data-asset="setup" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the installer</a>
+      <a class="btn btn-ghost btn-lg" data-asset="zip" href="https://github.com/marcusbandit/AniBeam/releases/latest">Portable zip</a>
+      <p>Windows 10 and 11. Installs for you alone, with no admin prompt. If SmartScreen stops it, click More info, then Run anyway.</p>
     </div>
-    <div class="platform" data-os="mac">
-      <h3>Mac</h3>
-      <div class="get">
-        <a class="button" data-asset="dmg" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the dmg</a>
-        <p>With Homebrew: <code class="cmd">brew install --cask marcusbandit/anibeam/anibeam</code></p>
-      </div>
-      <p class="note">macOS 15 and later, Apple silicon. The first launch asks once: System Settings, Privacy &amp; Security, Open Anyway.</p>
+    <div class="panel" role="tabpanel" id="panel-mac" aria-labelledby="tab-mac" hidden>
+      <a class="btn btn-primary btn-lg" data-asset="dmg" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the dmg</a>
+      <div class="term"><span class="prompt">$</span><code>brew install --cask marcusbandit/anibeam/anibeam</code><button type="button" class="copy" data-copy="brew install --cask marcusbandit/anibeam/anibeam">Copy</button></div>
+      <p>macOS 15 and newer on Apple silicon. The first launch asks once: System Settings, Privacy &amp; Security, Open Anyway.</p>
     </div>
-    <div class="platform" data-os="android">
-      <h3>Android</h3>
-      <div class="get">
-        <a class="button" data-asset="apk" href="https://github.com/marcusbandit/AniBeam/releases?q=android&amp;expanded=true">Download the APK</a>
-      </div>
-      <p class="note">Sideload it. It tracks to the same AniList or MyAnimeList account as your computer.</p>
+    <div class="panel" role="tabpanel" id="panel-android" aria-labelledby="tab-android" hidden>
+      <a class="btn btn-primary btn-lg" data-asset="apk" href="https://github.com/marcusbandit/AniBeam/releases?q=android&amp;expanded=true">Download the APK</a>
+      <p>The phone keeps a library of its own and tracks to the same AniList or MyAnimeList account. It can also play your computer's library from anywhere over Tailscale.</p>
     </div>
   </div>
-  <p class="after">After that, AniBeam updates itself.</p>
+  </div>
 </section>
 
-<section class="band steps" aria-labelledby="steps-h">
-  <h2 id="steps-h">First steps</h2>
-  <ol>
-    <li><h3>Add your library</h3><p>Click Add a folder on Home and pick your anime folder. One folder per show works best.</p></li>
-    <li><h3>Connect a tracker</h3><p>Settings, Library, Trackers, Connect. Approve AniBeam in the browser and your list comes along. You can skip this.</p></li>
-    <li><h3>Watch</h3><p>Click a show, then an episode. Space plays and pauses.</p></li>
-    <li><h3>Get new episodes</h3><p>Add an endpoint repo in Settings, Downloads, install the sources you want, then subscribe to a show. Also optional.</p></li>
-  </ol>
-</section>
-
-<section class="band closer" aria-labelledby="closer-h">
-  <img src="img/logo.svg" alt="" width="64" height="64">
+<section class="section closer" aria-labelledby="closer-h">
+  <img src="img/logo.svg" alt="" width="72" height="72">
   <h2 id="closer-h">Point it at your anime folder.</h2>
-  <p>Free and open source, on Linux, Windows, Mac and Android.</p>
-  <div class="cta">
-    <a class="button primary dl-auto" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download AniBeam</a>
-    <a class="button quiet" href="#install">Other platforms</a>
+  <div class="hero-actions">
+    <a class="btn btn-primary btn-lg dl-auto" href="https://github.com/marcusbandit/AniBeam/releases/latest"><span>Download AniBeam</span></a>
+    <a class="btn btn-ghost btn-lg" href="#install">Other platforms</a>
   </div>
 </section>
 
 </main>
 
 <footer class="foot">
-  <img src="img/logo.svg" alt="" width="40" height="40">
-  <p>AniBeam is free software under the GPL 3.0. This is its only website; the source lives on GitHub.</p>
+  <span class="foot-brand"><img src="img/logo.svg" alt="" width="20" height="20">AniBeam, GPL 3.0</span>
+  <span class="foot-credit">Player frame from Sintel, &copy; Blender Foundation, CC BY 3.0</span>
   <nav aria-label="Elsewhere">
-    <a href="https://github.com/marcusbandit/AniBeam">Source</a>
+    <a href="https://github.com/marcusbandit/AniBeam">GitHub</a>
+    <a href="https://github.com/marcusbandit/AniBeam/releases">Releases</a>
     <a href="https://github.com/marcusbandit/AniBeam/issues/new/choose">Report a problem</a>
-    <a href="https://ko-fi.com/marcusbandit">Buy me a coffee</a>
+    <a href="https://ko-fi.com/marcusbandit">Ko-fi</a>
   </nav>
 </footer>
 
