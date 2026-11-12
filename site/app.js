@@ -46,15 +46,18 @@ const onceInView = (els, threshold = 0.45) => {
   }
 
   let os = detect();
-  const main = document.getElementById("dl-main");
+  // the hero's download button and the one under Get AniBeam
+  const mains = [...document.querySelectorAll(".dl-auto")];
   const urls = {};
-  const aim = () => { if (os && urls[mainAsset[os]]) main.href = urls[mainAsset[os]]; };
+  const aim = () => { if (os && urls[mainAsset[os]]) mains.forEach((m) => { m.href = urls[mainAsset[os]]; }); };
 
   function pick(chosen) {
     os = chosen;
     if (!os) return;
-    main.querySelector("span").textContent = os === "android" ? "Get the Android app" : `Download for ${names[os]}`;
-    if (os === "android") main.href = `https://github.com/${repo}/releases?q=android&expanded=true`;
+    for (const m of mains) {
+      m.querySelector("span").textContent = os === "android" ? "Get the Android app" : `Download for ${names[os]}`;
+      if (os === "android") m.href = `https://github.com/${repo}/releases?q=android&expanded=true`;
+    }
     aim();
     // The visitor's card lights up, and its download for their system gets the yellow button.
     const card = document.querySelector(`.plat[data-os~="${os}"], .phone[data-os="${os}"]`);
