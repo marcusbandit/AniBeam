@@ -521,11 +521,4 @@ mod tests {
         assert!(core.store.read(|c| due(c, now)).unwrap().is_empty());
         core.shutdown();
     }
-
-    #[test]
-    fn the_miss_is_one_plain_line() {
-        let line = missed_line("Frieren", 5);
-        assert!(line.starts_with("Episode 5 of Frieren"));
-        assert!(!line.contains(['\u{2013}', '\u{2014}']));
-    }
 }

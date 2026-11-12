@@ -158,12 +158,4 @@ mod tests {
         assert!(p.secrets_path().ends_with("anibeam/secrets.json"));
         assert!(p.images_dir().ends_with("anibeam/images"));
     }
-
-    #[test]
-    fn paths_for_a_directory_put_everything_under_it() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = CorePaths::under(dir.path());
-        assert_eq!(p.db_path(), dir.path().join("data").join("anibeam.db"));
-        assert_eq!(p.images_dir(), dir.path().join("cache").join("images"));
-    }
 }

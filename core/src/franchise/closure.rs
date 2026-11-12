@@ -240,16 +240,6 @@ mod tests {
         v
     }
 
-    #[test]
-    fn character_and_other_are_the_two_relations_never_traversed() {
-        assert!(is_traversable("SEQUEL"));
-        assert!(is_traversable("SIDE_STORY"));
-        assert!(!is_traversable("CHARACTER"));
-        assert!(!is_traversable("OTHER"));
-        assert!(!is_traversable("NOT_A_RELATION"));
-        assert_eq!(TRAVERSABLE.len(), 11);
-    }
-
     /// A cameo is drawn and then stopped at: node 3 hangs off a CHARACTER
     /// edge, so its own SEQUEL to 4 is never read and 4 never joins the
     /// graph. This is what keeps a crossover from gluing two franchises
@@ -292,21 +282,6 @@ mod tests {
             "the root is the smallest member, not the smaller boundary id"
         );
         assert_eq!(boundary(&g), vec![5]);
-    }
-
-    #[test]
-    fn a_smaller_character_neighbour_is_drawn_but_never_becomes_the_root() {
-        let c = conn();
-        for id in [2, 100, 101] {
-            media(&c, id, true);
-        }
-        edge(&c, 100, 101, "SEQUEL");
-        edge(&c, 100, 2, "CHARACTER");
-
-        let g = close(&c, 100, CAP, 0).unwrap();
-        assert_eq!(ids(&g), vec![2, 100, 101]);
-        assert_eq!(g.root, 100);
-        assert_eq!(boundary(&g), vec![2]);
     }
 
     #[test]

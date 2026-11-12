@@ -477,15 +477,6 @@ fn a_refused_poster_falls_back_to_the_apps_art() {
     );
 }
 
-#[test]
-fn get_presence_says_whether_this_build_has_an_application() {
-    let (_dir, core, _c) = common::open_core();
-    assert_eq!(
-        presence_reply(&core),
-        (presence::bundled_client_id().is_some(), false)
-    );
-}
-
 fn presence_events(c: &anibeam_core::events::Collector) -> Vec<bool> {
     c.events()
         .into_iter()

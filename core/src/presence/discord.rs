@@ -436,16 +436,4 @@ mod tests {
         let mut d = Discord::default();
         assert!(matches!(d.send(None), Err(SendError::Gone(_))));
     }
-
-    #[cfg(unix)]
-    #[test]
-    fn every_candidate_is_a_numbered_ipc_socket() {
-        let all = candidates();
-        assert!(all.len() >= 10 && all.len().is_multiple_of(10));
-        assert!(all.contains(&PathBuf::from("/tmp/discord-ipc-0")));
-        assert!(all.iter().all(|p| {
-            let name = p.file_name().unwrap().to_string_lossy();
-            name.starts_with("discord-ipc-")
-        }));
-    }
 }

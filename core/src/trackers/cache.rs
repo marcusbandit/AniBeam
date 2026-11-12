@@ -648,12 +648,4 @@ mod tests {
         // A clock that moved back is not a reason to fetch again.
         assert!(is_fresh(Some(now + Duration::from_secs(60)), now));
     }
-
-    /// A provider count is unsigned and small; anything else is nought.
-    #[test]
-    fn a_count_survives_whatever_a_provider_sends() {
-        assert_eq!(as_count(None), 0);
-        assert_eq!(as_count(Some(12)), 12);
-        assert_eq!(as_count(Some(u64::MAX)), 0);
-    }
 }

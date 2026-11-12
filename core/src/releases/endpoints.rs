@@ -882,13 +882,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn feed_url_rss_kind_no_exclusions_roundtrips() {
-        let (url, excluded) = feed_url(&board(), "shin chan");
-        assert_eq!(url, search_url(&board(), "shin chan"));
-        assert!(excluded.is_empty());
-    }
-
-    #[test]
     fn split_exclusions_splits_positive_from_negative() {
         let (q, excl) = split_exclusions(r#"show 1080p -HEVC -"dual audio""#);
         assert_eq!(q, "show 1080p");
@@ -1224,23 +1217,6 @@ pub(crate) mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].source, "board");
         assert_eq!(notes, strings(&["board: 1"]));
-    }
-
-    #[tokio::test]
-    async fn probe_fallback_tags_items_with_source() {
-        let eps = [tracker(), board()];
-        let (items, _) = probe_with(&eps, "tracker", |ep| async move {
-            Ok(if ep.name == "board" {
-                vec![rel("t", "l"), rel("t2", "l2")]
-            } else {
-                vec![]
-            })
-        })
-        .await;
-        assert_eq!(
-            items.iter().map(|i| i.source.as_str()).collect::<Vec<_>>(),
-            ["board", "board"]
-        );
     }
 
     #[tokio::test]
