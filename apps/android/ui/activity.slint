@@ -1,0 +1,174 @@
+// Activity (#750): the core's own log, the desktop's activity drawer at phone scale. The
+// lines the core worded for a person, newest first, with runs of identical lines folded
+// into one row that opens on a tap. Everything or just problems, Copy, and Clear.
+
+import { Theme } from "theme.slint";
+import { Button, Segmented } from "widgets.slint";
+
+// One line of the log, or a run of identical ones. `count` over 1 is a folded run; `fold`
+// marks the first line of a run that is open, to close it again.
+export struct LogRow {
+    time: string,
+    msg: string,
+    // 0 info, 1 warning, 2 error.
+    level: int,
+    count: int,
+    fold: bool,
+}
+
+export global ActivityData {
+    in property <[LogRow]> rows;
+    // The log has been read at least once.
+    in property <bool> loaded;
+    in-out property <bool> problems-only;
+    // The last Copy went through; it reads "Copied" for a moment.
+    in-out property <bool> copied;
+    // Clear asked once and waits for a second tap.
+    in-out property <bool> clear-armed;
+    // The page opened: read the log.
+    callback read();
+    callback copy-all();
+    callback copy-line(int);
+    callback clear();
+    // A folded run opened, or an open one closed again.
+    callback expand(int);
+    callback fold(int);
+    callback filter(bool);
+}
+
+component Line inherits Rectangle {
+    in property <LogRow> entry;
+    in property <int> index;
+    in property <bool> last;
+    callback copy();
+    callback expand();
+    callback fold();
+    height: texts.preferred-height + 6 * Theme.unit;
+    background: touch.pressed ? Theme.raised : transparent;
+    touch := TouchArea { clicked => { root.copy(); } }
+    texts := VerticalLayout {
+        x: Theme.pad;
+        y: 3 * Theme.unit;
+        height: self.preferred-height;
+        width: parent.width - 2 * Theme.pad;
+        alignment: start;
+        spacing: Theme.unit;
+        HorizontalLayout {
+            spacing: Theme.unit * 2;
+            alignment: start;
+            Text {
+                text: root.entry.time;
+                color: Theme.faint;
+                font-size: Theme.small - 1px;
+                font-family: Theme.figure;
+            }
+            if root.entry.count > 1: Rectangle {
+                width: times.preferred-width + 4 * Theme.unit;
+                height: times.preferred-height + Theme.unit;
+                border-radius: self.height / 2;
+                background: Theme.raised;
+                times := Text {
+                    text: "×" + root.entry.count;
+                    color: Theme.dim;
+                    font-size: Theme.small - 1px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                TouchArea { clicked => { root.expand(); } }
+            }
+            if root.entry.fold: Rectangle {
+                width: closes.preferred-width + 4 * Theme.unit;
+                height: closes.preferred-height + Theme.unit;
+                border-radius: self.height / 2;
+                background: Theme.raised;
+                closes := Text {
+                    text: "Fold";
+                    color: Theme.dim;
+                    font-size: Theme.small - 1px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                TouchArea { clicked => { root.fold(); } }
+            }
+        }
+        Text {
+            text: root.entry.msg;
+            color: root.entry.level == 2 ? Theme.bad : root.entry.level == 1 ? Theme.warn : Theme.text;
+            font-size: Theme.small + 1px;
+            wrap: word-wrap;
+        }
+    }
+    if !root.last: Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+export component ActivityBody inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    init => { ActivityData.read(); }
+    Segmented {
+        options: ["Everything", "Problems"];
+        picked: ActivityData.problems-only ? 1 : 0;
+        pick(i) => { ActivityData.filter(i == 1); }
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: start;
+        Button {
+            text: ActivityData.copied ? "Copied" : "Copy";
+            small: true;
+            enabled: ActivityData.rows.length > 0;
+            clicked => { ActivityData.copy-all(); }
+        }
+        Button {
+            text: ActivityData.clear-armed ? "Clear every line" : "Clear";
+            small: true;
+            danger: ActivityData.clear-armed;
+            clicked => {
+                if (!ActivityData.clear-armed) {
+                    ActivityData.clear-armed = true;
+                } else {
+                    ActivityData.clear-armed = false;
+                    ActivityData.clear();
+                }
+            }
+        }
+    }
+    Timer {
+        interval: 2s;
+        running: ActivityData.copied;
+        triggered => { ActivityData.copied = false; }
+    }
+    Timer {
+        interval: 4s;
+        running: ActivityData.clear-armed;
+        triggered => { ActivityData.clear-armed = false; }
+    }
+    if ActivityData.loaded && ActivityData.rows.length == 0: Text {
+        text: ActivityData.problems-only ? "No problems. Everything worked." : "Nothing to report yet. What AniBeam does for you shows up here.";
+        color: Theme.dim;
+        wrap: word-wrap;
+    }
+    if ActivityData.rows.length > 0: Rectangle {
+        background: Theme.surface;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.line;
+        clip: true;
+        height: lines.preferred-height;
+        lines := VerticalLayout {
+            for line[i] in ActivityData.rows: Line {
+                entry: line;
+                index: i;
+                last: i == ActivityData.rows.length - 1;
+                copy => { ActivityData.copy-line(i); }
+                expand => { ActivityData.expand(i); }
+                fold => { ActivityData.fold(i); }
+            }
+        }
+    }
+}

@@ -10,6 +10,7 @@
 
 slint::include_modules!();
 
+mod activity;
 mod airing;
 mod android;
 mod app;

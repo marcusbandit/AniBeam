@@ -200,7 +200,7 @@ fn with_app(f: impl FnOnce(&mut App)) {
 }
 
 /// More's sections, by the index Settings.section uses.
-const SECTIONS: [&str; 10] = [
+const SECTIONS: [&str; 11] = [
     "Accounts",
     "Downloads",
     "Streaming",
@@ -211,6 +211,7 @@ const SECTIONS: [&str; 10] = [
     "App icon",
     "Stats",
     "Data",
+    "Activity",
 ];
 
 /// Every setting More's search can land on: its section, its label (the key its page lights),
@@ -294,6 +295,11 @@ const SETTINGS: &[(i32, &str, &str)] = &[
         9,
         "Image cache",
         "images posters banners clear storage space cache",
+    ),
+    (
+        10,
+        "Activity",
+        "log events errors problems copy clear history what happened",
     ),
     (
         7,
@@ -2089,6 +2095,7 @@ pub fn run(
     crate::repos::install(&window);
     crate::stats::install(&window);
     crate::backup::install(&window, &data_dir);
+    crate::activity::install(&window);
 
     let mut app = App {
         window: window.clone_strong(),
