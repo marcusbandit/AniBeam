@@ -11,6 +11,22 @@ import { CalendarHead } from "calhead.slint";
 import { Leaf, Scroll } from "panes.slint";
 import { Button, Chip, EmptyNote, SectionHead, Segmented, TileGrid, TileRow } from "widgets.slint";
 
+// The season picker: any season back to 1940, which the desktop's SeasonPicker lists.
+export global AiringPick {
+    in-out property <bool> open;
+    // The season showing, "Spring 2019", or "" for this one.
+    in property <string> showing;
+    // The year and quarter this moment is in; the quarter carries a dot.
+    in property <int> this-year;
+    in property <int> this-quarter;
+    // The year the list opens on: the showing season's, else this one.
+    in property <int> focus-year;
+    // The years to list, newest first.
+    in property <[int]> years;
+    // A quarter, 0 Winter to 3 Fall, of a year.
+    callback picked(int, int);
+}
+
 // One filter as a row of the side pane's list, lit when picked.
 component FilterRow inherits Rectangle {
     in property <string> text;
@@ -41,7 +57,13 @@ export component AiringControls inherits VerticalLayout {
     Segmented {
         options: AppData.airing-seasons;
         picked: AppData.airing-season;
-        pick(i) => { AppData.pick-airing-season(i); }
+        pick(i) => {
+            if (i == 2) {
+                AiringPick.open = true;
+            } else {
+                AppData.pick-airing-season(i);
+            }
+        }
     }
     if root.listed: VerticalLayout {
         spacing: Theme.unit;
@@ -211,6 +233,94 @@ export component AiringSheet inherits Rectangle {
             Button {
                 text: "Cancel";
                 clicked => { AppData.airing-close(); }
+            }
+        }
+    }
+}
+
+// Any season: a sheet of years, newest first, each a row of its four quarters. It opens on
+// the season showing, or this year, and scrolls all the way back to 1940. The season
+// showing is in the accent and the quarter this moment falls in carries a dot.
+export component SeasonSheet inherits Rectangle {
+    in property <length> inset-bottom;
+    background: #000000b0;
+    TouchArea { clicked => { AiringPick.open = false; } }
+    property <length> row-h: 12 * Theme.unit;
+    property <[string]> names: ["Winter", "Spring", "Summer", "Fall"];
+    Rectangle {
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
+        height: Math.min(parent.height - root.inset-bottom - 2 * Theme.grout - 12 * Theme.unit, 120 * Theme.unit);
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        clip: true;
+        TouchArea { }
+        VerticalLayout {
+            padding: Theme.pad;
+            spacing: Theme.unit * 2;
+            Text {
+                text: "Pick a season";
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+            }
+            Flickable {
+                content-height: years-column.preferred-height;
+                init => {
+                    // Scrolled so the season showing, else this year, is a few rows down.
+                    self.content-y = Math.min(0px, 3 * root.row-h - (AiringPick.years.length > 0 ? (AiringPick.years[0] - AiringPick.focus-year) * root.row-h : 0px));
+                }
+                years-column := VerticalLayout {
+                for year in AiringPick.years: Rectangle {
+                    height: root.row-h;
+                    HorizontalLayout {
+                        spacing: Theme.unit;
+                        Text {
+                            width: 15 * Theme.unit;
+                            text: year;
+                            color: year == AiringPick.this-year ? Theme.text : Theme.faint;
+                            font-family: Theme.figure;
+                            font-size: Theme.small + 1px;
+                            vertical-alignment: center;
+                        }
+                        for name[q] in root.names: Rectangle {
+                            property <bool> on: AiringPick.showing == name + " " + year;
+                            property <bool> here: year == AiringPick.this-year && q == AiringPick.this-quarter;
+                            height: Theme.touch;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: self.height / 2;
+                            background: on ? Theme.accent-soft : cell.pressed ? Theme.pressed : transparent;
+                            border-width: on ? 1px : 0;
+                            border-color: Theme.accent-edge;
+                            if here: Rectangle {
+                                x: 2 * Theme.unit;
+                                y: (parent.height - self.height) / 2;
+                                width: 1.5 * Theme.unit;
+                                height: self.width;
+                                border-radius: self.width / 2;
+                                background: Theme.accent;
+                            }
+                            Text {
+                                text: name;
+                                color: on ? Theme.accent : Theme.dim;
+                                font-size: Theme.small;
+                                font-family: on ? Theme.strong-face : Theme.face;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            cell := TouchArea {
+                                clicked => {
+                                    AiringPick.open = false;
+                                    AiringPick.picked(q, year);
+                                }
+                            }
+                        }
+                    }
+                }
+                }
             }
         }
     }

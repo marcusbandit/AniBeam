@@ -778,12 +778,24 @@ impl App {
             });
     }
 
+    /// Airing now on another season: the page empties and reads it.
+    fn set_airing_season(&mut self, to: SeasonPick) {
+        if to == self.airing_season {
+            return;
+        }
+        self.airing_season = to;
+        self.airing = None;
+        self.airing_note = None;
+        self.show_airing();
+        self.load_airing(true);
+    }
+
     fn show_airing(&mut self) {
         self.ask_airing_posters();
         let window = self.window.clone_strong();
         let data = window.global::<AppData>();
         let now = anibeam_companion::now();
-        data.set_airing_season(i32::from(self.airing_season == SeasonPick::Next));
+        data.set_airing_season(i32::from(self.airing_season != SeasonPick::Now));
         let Some(airing) = &self.airing else {
             data.set_airing_line(if self.airing_listing || self.airing_refreshing {
                 "Asking AniList".into()
@@ -809,11 +821,21 @@ impl App {
             ],
         );
         data.set_airing_filter(self.airing_filter);
-        let mut seasons: Vec<SharedString> = vec!["This season".into(), "Next season".into()];
-        if self.airing_season == SeasonPick::Next {
-            seasons[1] = airing.label.clone().into();
-        }
-        update(&self.airing_seasons, seasons);
+        // This season, the next one or the one picked, and the way to any other.
+        let at = crate::seasons::now();
+        let second = match self.airing_season {
+            SeasonPick::Now => "Next season".to_string(),
+            showing => crate::seasons::label(showing, at),
+        };
+        update(
+            &self.airing_seasons,
+            vec!["This season".into(), second.into(), "Other".into()],
+        );
+        let pick = window.global::<crate::AiringPick>();
+        pick.set_showing(crate::seasons::label(self.airing_season, at).into());
+        pick.set_this_year(at.0);
+        pick.set_this_quarter(at.1 as i32);
+        pick.set_focus_year(crate::seasons::year_of(self.airing_season, at));
         let picked: Vec<&&AiringShow> = shows
             .iter()
             .filter(|s| match self.airing_filter {
@@ -1935,17 +1957,32 @@ pub fn run(
     data.on_open_airing(|| with_app(App::open_airing));
     data.on_pick_airing_season(|i| {
         with_app(|app| {
-            app.airing_season = if i == 1 {
-                SeasonPick::Next
-            } else {
-                SeasonPick::Now
+            // The second cell is the next season until another is picked; then it already
+            // is the season showing, and a tap on it stays put.
+            let to = match i {
+                1 if app.airing_season == SeasonPick::Now => SeasonPick::Next,
+                1 => return,
+                _ => SeasonPick::Now,
             };
-            app.airing = None;
-            app.airing_note = None;
-            app.show_airing();
-            app.load_airing(true);
+            app.set_airing_season(to);
         })
     });
+    {
+        let pick = window.global::<crate::AiringPick>();
+        pick.set_years(ModelRc::new(VecModel::from(crate::seasons::years(
+            crate::seasons::now(),
+        ))));
+        pick.on_picked(|quarter, year| {
+            with_app(|app| {
+                let to = crate::seasons::pick(
+                    usize::try_from(quarter).unwrap_or(0),
+                    year,
+                    crate::seasons::now(),
+                );
+                app.set_airing_season(to);
+            })
+        });
+    }
     data.on_pick_airing_filter(|i| {
         with_app(|app| {
             app.airing_filter = i;

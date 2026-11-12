@@ -13,12 +13,12 @@ import { AuthRow, EndpointRow, RepoData, RepoRow } from "repos.slint";
 import { Band, PickRow, PlayerData, PlayerPage } from "player.slint";
 import { NotesPage } from "notes.slint";
 import { CalendarPage } from "calendar.slint";
-import { AiringSheet } from "airing.slint";
+import { AiringPick, AiringSheet, SeasonSheet } from "airing.slint";
 import { Area, Fold } from "fold.slint";
 import { NotifyQuestion } from "notify.slint";
 import { Sheet } from "sheet.slint";
 
-export { SubtitleData, AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
+export { AiringPick, SubtitleData, AiringMenu, AppData, AuthRow, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -338,6 +338,10 @@ export component AppWindow inherits Window {
                 AppData.airing-close();
                 return accept;
             }
+            if (AiringPick.open) {
+                AiringPick.open = false;
+                return accept;
+            }
             if (AppData.onboarding && AppData.step > 0) {
                 AppData.step -= 1;
                 return accept;
@@ -491,6 +495,10 @@ export component AppWindow inherits Window {
         }
 
         if AppData.airing-menu.show: AiringSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if AiringPick.open: SeasonSheet {
             inset-bottom: root.inset-bottom;
         }
 
