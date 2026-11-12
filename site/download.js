@@ -147,7 +147,9 @@
       p.setAttribute("d", `M${sx} ${sy} C${c1x} ${c1y} ${c2x} ${c2y} ${ex} ${ey}`);
       p.setAttribute("stroke", `url(#bs-g${i})`);
       p.setAttribute("stroke-width", Math.max(h, 1.6));
-      p.setAttribute("stroke-dasharray", h >= 8 ? "34 16" : "18 11");
+      // Both dash patterns divide the 100 px the dashes crawl per loop (style.css, crawl), so the
+      // loop never jumps: 34 + 16 is half of it, 15 + 10 a quarter.
+      p.setAttribute("stroke-dasharray", h >= 8 ? "34 16" : "15 10");
       if (blur > 0.6) p.setAttribute("filter", `url(#bs-f${i})`);
       p.style.transformOrigin = `${sx}px ${sy}px`;
       svg.append(p);
