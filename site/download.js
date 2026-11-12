@@ -1,3 +1,8 @@
+// A translated page carries its strings in window.I18N (site/tools/i18n.py); English is the
+// fallback, so a page without it reads as written here.
+const t = (s, vars = {}) => ((window.I18N || {})[s] || s).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+const locale = () => (window.I18N && window.I18N._locale) || "en-GB";
+
 // The download page: every file of the picked channel, Stable or Nightly, straight from GitHub's
 // release list. Without JavaScript, or when GitHub does not answer, the cards lead to the
 // releases page, so nothing here is required.
@@ -43,11 +48,11 @@
     }
     if (desktop && meta) {
       const version = desktop.tag_name.replace(/^v/, "");
-      const when = new Date(desktop.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+      const when = new Date(desktop.published_at).toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" });
       meta.textContent = `${version}, ${when}. `;
       const notes = document.createElement("a");
       notes.href = desktop.html_url;
-      notes.textContent = "What's new";
+      notes.textContent = t("What's new");
       meta.append(notes);
     }
   }
@@ -76,9 +81,9 @@
     b.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(b.dataset.copy);
-        b.textContent = "Copied";
+        b.textContent = t("Copied");
         b.classList.add("done");
-        setTimeout(() => { b.textContent = "Copy"; b.classList.remove("done"); }, 1600);
+        setTimeout(() => { b.textContent = t("Copy"); b.classList.remove("done"); }, 1600);
       } catch {}
     });
   });

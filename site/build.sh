@@ -21,7 +21,11 @@ mkdir -p "$out/img"
 cp -r "$root/site/." "$out/"
 rm -f "$out/build.sh"
 cp "$root/assets/icon.png" "$out/img/icon.png"
-# What's new: a page per version, from the apps' own patch notes.
+# Every language in site/i18n/ gets the home page and the download page, and every page a menu.
+PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/tools/i18n.py" build "$out"
+rm -rf "$out/i18n"
+# What's new: a page per version, from the apps' own patch notes. Its nav comes from the
+# translated download page, so it runs after.
 PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/whats-new.py" "$root" "$out"
 rm -rf "$out/whats-new.py" "$out/__pycache__" "$out/tools"
 echo "site assembled in $out"

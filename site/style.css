@@ -29,7 +29,7 @@
   --done: #46e0c4;
   --anilist: #02a9ff;
 
-  --sans: "Archivo", system-ui, sans-serif;
+  --sans: "Archivo", system-ui, "Hiragino Sans", "Noto Sans CJK JP", "Noto Sans JP", "PingFang SC", "Microsoft YaHei", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, monospace;
 
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -827,7 +827,38 @@ a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 
 /* The nav: the language, GitHub, and the way to the downloads */
 .nav-lang, .nav-gh { display: inline-flex; align-items: center; gap: 7px; }
-.nav-lang { padding: 8px 12px; color: var(--fg-3); font-size: 14px; font-weight: 500; cursor: default; }
+/* The language menu: a native <details>, so it opens with a click or the keyboard and needs no
+   script. The panel lists every language in its own name. */
+.nav-lang { position: relative; }
+.nav-lang summary { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 8px; color: var(--fg-2); font-size: 14px; font-weight: 500; list-style: none; cursor: pointer; transition: color 0.2s ease, background-color 0.2s ease; }
+.nav-lang summary::-webkit-details-marker { display: none; }
+.nav-lang summary::after { content: ""; width: 6px; height: 6px; margin-left: 2px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform 0.2s ease; }
+.nav-lang[open] summary::after { transform: translateY(1px) rotate(225deg); }
+.nav-lang summary:hover, .nav-lang[open] summary { color: #fff; background: rgba(255, 255, 255, 0.05); }
+.lang-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  gap: 2px 4px;
+  max-height: min(80vh, 560px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--hair-2);
+  border-radius: 14px;
+  background: rgba(17, 18, 20, 0.94);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px var(--hi), 0 20px 50px -18px #000;
+  animation: menu-in 0.18s var(--ease) both;
+}
+.lang-menu a { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 12px; border-radius: 9px; color: var(--fg-2); font-size: 14.5px; text-decoration: none; }
+.lang-menu a:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.lang-menu a[aria-current="true"] { color: #fff; }
+.lang-menu a[aria-current="true"]::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } }
 .nav-lang svg, .nav-gh svg { width: 15px; height: 15px; }
 .nav-lang svg { fill: none; stroke: currentColor; stroke-width: 2; }
 .nav-gh svg { fill: currentColor; }
