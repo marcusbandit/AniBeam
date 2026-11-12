@@ -42,23 +42,13 @@ pub enum StoreKind {
     File,
 }
 
-impl StoreKind {
+crate::contract::enums::column_strings!(
     /// The value every store column holds.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            StoreKind::Keyring => "keyring",
-            StoreKind::File => "file",
-        }
+    StoreKind {
+        Keyring => "keyring",
+        File => "file",
     }
-
-    pub fn from_column(s: &str) -> Option<StoreKind> {
-        match s {
-            "keyring" => Some(StoreKind::Keyring),
-            "file" => Some(StoreKind::File),
-            _ => None,
-        }
-    }
-}
+);
 
 /// The core's one way to a secret. Every method is synchronous and every
 /// method may talk to the keyring, so the caller decides which thread it
@@ -810,9 +800,6 @@ mod tests {
 
     #[test]
     fn store_kinds_round_trip_through_their_column() {
-        for kind in [StoreKind::Keyring, StoreKind::File] {
-            assert_eq!(StoreKind::from_column(kind.as_str()), Some(kind));
-        }
-        assert_eq!(StoreKind::from_column("gnome"), None);
+        StoreKind::assert_columns_round_trip();
     }
 }
