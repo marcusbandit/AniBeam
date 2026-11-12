@@ -8,6 +8,7 @@
 #![cfg(unix)]
 
 mod common;
+use common::started;
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -68,13 +69,6 @@ fn save(core: &Core, settings: DownloadSettings, token: Option<&str>, password: 
         })
         .unwrap();
     assert_eq!(reply, Reply::Ok);
-}
-
-fn started(core: &Core, call: Call) -> u64 {
-    match core.call(call).unwrap() {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
 }
 
 /// One release as anirss's feed reads give it. A `null` count is a feed
@@ -2112,22 +2106,10 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
         |e| matches!(e.body, EventBody::ScanFinished { .. }),
         Duration::from_secs(10),
     );
-    let series = match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: true,
-        })
-        .unwrap()
-    {
-        Reply::Series { series } => series
-            .into_iter()
-            .find(|s| s.path.ends_with("Sousou no Frieren"))
-            .expect("the show is in the library"),
-        other => panic!("{other:?}"),
-    };
+    let series = common::cards(&core, Tab::All, true)
+        .into_iter()
+        .find(|s| s.path.ends_with("Sousou no Frieren"))
+        .expect("the show is in the library");
     let file = match core.call(Call::GetSeries { series: series.id }).unwrap() {
         Reply::SeriesDetail { detail } => {
             detail

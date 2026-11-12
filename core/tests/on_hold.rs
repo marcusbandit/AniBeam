@@ -5,6 +5,7 @@
 //! by the fake client, so these tests are about On hold alone.
 
 mod common;
+use common::started;
 mod fixtures;
 
 use std::time::Duration;
@@ -14,13 +15,6 @@ use anibeam_core::net::{Body, FakeHttp, Method};
 use anibeam_core::*;
 
 const DAY: i64 = 86_400;
-
-fn started(reply: Reply) -> u64 {
-    match reply {
-        Reply::Started { job } => job,
-        other => panic!("{other:?}"),
-    }
-}
 
 fn ended(e: &Event, kind: JobKind) -> bool {
     e.job
@@ -54,22 +48,10 @@ fn swept(c: &Collector) -> bool {
 }
 
 fn card(core: &Core, series: u64) -> SeriesCard {
-    match core
-        .call(Call::ListSeries {
-            tab: Tab::All,
-            query: String::new(),
-            sort: Sort::Alpha,
-            direction: Direction::Asc,
-            reveal_hidden: true,
-        })
-        .unwrap()
-    {
-        Reply::Series { series: cards } => cards
-            .into_iter()
-            .find(|c| c.id == series)
-            .expect("the series is listed"),
-        other => panic!("{other:?}"),
-    }
+    common::cards(core, Tab::All, true)
+        .into_iter()
+        .find(|c| c.id == series)
+        .expect("the series is listed")
 }
 
 /// One matched show with a file, so it is listed: `episodes` published, the
@@ -80,25 +62,12 @@ fn show(core: &Core, name: &str, anilist: u64, mal: u64, episodes: u32, status: 
     let src = fixtures::insert_source(core, &format!("/lib/{name}"));
     let path = format!("/lib/{name}/{name}");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, &path, name);
-    fixtures::insert_file(
-        core,
-        series,
-        &format!("{path}/01.mkv"),
-        1.0,
-        None,
-        "episode",
-        now,
-    );
-    fixtures::insert_media(
-        core,
-        anilist,
-        Some(name),
-        None,
-        Some(episodes),
-        status,
-        "TV",
-        Some(80),
-    );
+    fixtures::insert_episode_file(core, series, &format!("{path}/01.mkv"), 1.0, now);
+    fixtures::media(anilist, name)
+        .episodes(episodes)
+        .status(status)
+        .score(80)
+        .insert(core);
     core.store()
         .write(move |c| {
             c.execute(
@@ -201,7 +170,7 @@ fn mal_patches(http: &FakeHttp) -> Vec<Vec<(String, String)>> {
 }
 
 fn refresh(core: &Core, c: &Collector) {
-    let job = started(core.call(Call::RefreshProgress { tracker: None }).unwrap());
+    let job = started(core, Call::RefreshProgress { tracker: None });
     common::wait_job(c, job);
 }
 

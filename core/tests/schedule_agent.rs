@@ -41,7 +41,7 @@ fn show(core: &Core) -> u64 {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Show", "Show");
-    fixtures::insert_file(core, series, "/lib/Show/01.mkv", 1.0, None, "episode", now);
+    fixtures::insert_episode_file(core, series, "/lib/Show/01.mkv", 1.0, now);
     series
 }
 

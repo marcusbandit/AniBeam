@@ -88,15 +88,7 @@ fn an_episode_streams_converts_and_keeps_its_place() {
     let src = fixtures::insert_source(&core, dir.path().join("lib").to_str().unwrap());
     let series =
         fixtures::insert_series(&core, src, SeriesKind::Show, lib.to_str().unwrap(), "Show");
-    let file = fixtures::insert_file(
-        &core,
-        series,
-        episode.to_str().unwrap(),
-        1.0,
-        None,
-        "episode",
-        1,
-    );
+    let file = fixtures::insert_episode_file(&core, series, episode.to_str().unwrap(), 1.0, 1);
 
     core.set_host_bind(Some("127.0.0.1:0".to_string()));
     let mut preferences = match core.call(Call::GetPreferences).unwrap() {

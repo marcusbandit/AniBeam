@@ -6,7 +6,9 @@ use std::time::Duration;
 use anibeam_core::events::{Collector, Subscription};
 use anibeam_core::net::FakeHttp;
 use anibeam_core::trackers::Secrets;
-use anibeam_core::{Core, CorePaths, Event, JobPhase};
+use anibeam_core::{
+    Call, Core, CorePaths, Direction, Event, JobPhase, Reply, SeriesCard, Sort, Tab,
+};
 
 /// Owns the test's temp directory and the subscription collecting its
 /// events, so the subscription lives exactly as long as the test's `dir`
@@ -102,4 +104,32 @@ pub fn library_show(dir: &std::path::Path, core: &Core, c: &Collector) -> String
         Duration::from_secs(10),
     );
     show.to_string_lossy().into_owned()
+}
+
+/// Runs a call that starts a job and returns the job's id.
+pub fn started(core: &Core, call: Call) -> u64 {
+    job_of(core.call(call).unwrap())
+}
+
+/// The job id out of a `Reply::Started`; any other reply fails the test.
+pub fn job_of(reply: Reply) -> u64 {
+    match reply {
+        Reply::Started { job } => job,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// The library's cards on one tab, in the default A to Z order.
+pub fn cards(core: &Core, tab: Tab, reveal_hidden: bool) -> Vec<SeriesCard> {
+    let call = Call::ListSeries {
+        tab,
+        query: String::new(),
+        sort: Sort::Alpha,
+        direction: Direction::Asc,
+        reveal_hidden,
+    };
+    match core.call(call).unwrap() {
+        Reply::Series { series } => series,
+        other => panic!("{other:?}"),
+    }
 }
