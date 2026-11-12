@@ -6,7 +6,6 @@ pub mod dev;
 pub mod door;
 pub mod fmt;
 pub mod helpers;
-pub mod model;
 // mprisUpdate carries the eight fields a media widget shows, two past clippy's argument
 // limit, and a bag would only move the names somewhere QML cannot see them. The lint lands
 // on the bridge's generated function as well, and cxx-qt allows no attribute of our own on

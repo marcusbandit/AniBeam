@@ -165,21 +165,6 @@ pub fn plural(n: u64, one: &str, many: &str) -> String {
     }
 }
 
-/// The card's top right chip: "04/12", "04/05+" when the total is an airing estimate,
-/// "04/?" when no total is known, "" when nothing is tracked.
-pub fn watched_chip(watched: Option<u32>, total: Option<u32>, estimate: bool) -> String {
-    let Some(w) = watched else {
-        return String::new();
-    };
-    match total {
-        Some(t) if t > 0 => {
-            let width = t.to_string().len().max(2);
-            format!("{w:0width$}/{t:0width$}{}", if estimate { "+" } else { "" })
-        }
-        _ => format!("{w:02}/?"),
-    }
-}
-
 /// `{x:.1}` alone ties to even at an exact half (7.25 -> "7.2"); Electron's `toFixed` ties
 /// away from zero instead. Scaling by 10 or 100 to find the tie is unreliable: `0.15 * 100.0`
 /// lands on the exact integer 15 too, even though 0.15 isn't a real binary tie, so that test
@@ -264,12 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn the_watched_chip_pads_to_the_total() {
-        assert_eq!(watched_chip(None, Some(12), false), "");
-        assert_eq!(watched_chip(Some(4), Some(12), false), "04/12");
-        assert_eq!(watched_chip(Some(4), Some(5), true), "04/05+");
-        assert_eq!(watched_chip(Some(4), None, false), "04/?");
-        assert_eq!(watched_chip(Some(120), Some(1100), false), "0120/1100");
+    fn plural_picks_the_word_by_count() {
         assert_eq!(plural(1, "file", "files"), "1 file");
         assert_eq!(plural(3, "file", "files"), "3 files");
     }

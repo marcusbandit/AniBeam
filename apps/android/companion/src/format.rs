@@ -159,58 +159,6 @@ pub fn bytes(n: u64) -> String {
     }
 }
 
-/// How a torrent row reads and how loud it is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tone {
-    /// Moving: the accent.
-    Active,
-    /// Finished or idle: plain text.
-    Quiet,
-    /// Stuck or broken: the warning hue.
-    Trouble,
-}
-
-/// qBittorrent's state word in the desktop's words.
-pub fn torrent_state(state: &str) -> (&'static str, Tone) {
-    match state {
-        "downloading" | "forcedDL" => ("Downloading", Tone::Active),
-        "metaDL" | "forcedMetaDL" => ("Fetching metadata", Tone::Active),
-        "stalledDL" => ("Stalled", Tone::Trouble),
-        "queuedDL" | "queuedUP" => ("Queued", Tone::Quiet),
-        "pausedDL" | "stoppedDL" => ("Stopped", Tone::Quiet),
-        "pausedUP" | "stoppedUP" => ("Done", Tone::Quiet),
-        "uploading" | "stalledUP" | "forcedUP" => ("Seeding", Tone::Quiet),
-        "checkingDL" | "checkingUP" | "checkingResumeData" | "moving" => ("Checking", Tone::Quiet),
-        "error" => ("Error", Tone::Trouble),
-        "missingFiles" => ("Files missing", Tone::Trouble),
-        _ => ("Unknown", Tone::Quiet),
-    }
-}
-
-/// "1.2 GB of 4.5 GB, 3.4 MB/s, 12m left", or just the size once it is done.
-pub fn torrent_facts(progress: f64, size: u64, speed: u64, eta: Option<i64>) -> String {
-    let progress = progress.clamp(0.0, 1.0);
-    if progress >= 1.0 {
-        return bytes(size);
-    }
-    let mut facts = format!(
-        "{} of {}",
-        bytes((size as f64 * progress) as u64),
-        bytes(size)
-    );
-    if speed > 0 {
-        facts.push_str(&format!(", {}/s", bytes(speed)));
-    }
-    // qBittorrent says 8640000 (100 days) for "no idea".
-    if let Some(eta) = eta.filter(|e| *e > 0 && *e < 8_640_000) {
-        facts.push_str(&format!(
-            ", {} left",
-            countdown(eta).trim_start_matches("in ")
-        ));
-    }
-    facts
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn codes_sizes_and_torrent_words() {
+    fn codes_and_sizes() {
         assert_eq!(episode_code(None, 8), "E08");
         assert_eq!(episode_code(Some(1), 8), "E08");
         assert_eq!(episode_code(Some(2), 1), "S02E01");
@@ -263,17 +211,6 @@ mod tests {
         assert_eq!(bytes(1_446_000_000), "1.4 GB");
         assert_eq!(bytes(820_000_000), "820 MB");
         assert_eq!(bytes(512), "512 B");
-        assert_eq!(torrent_state("stalledDL"), ("Stalled", Tone::Trouble));
-        assert_eq!(torrent_state("pausedUP").0, "Done");
-        assert_eq!(
-            torrent_facts(0.5, 1_400_000_000, 3_400_000, Some(240)),
-            "700 MB of 1.4 GB, 3.4 MB/s, 4m 00s left"
-        );
-        assert_eq!(torrent_facts(1.0, 1_446_000_000, 0, None), "1.4 GB");
-        assert_eq!(
-            torrent_facts(0.1, 1_000_000_000, 0, Some(8_640_000)),
-            "100 MB of 1.0 GB"
-        );
     }
 
     #[test]

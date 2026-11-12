@@ -293,7 +293,7 @@ impl Native {
             Box::pin(async move { endpoints::refetch(http.as_ref(), &ep, &q, all_uploads).await })
         });
         let outcome =
-            refinement::apply(&ep, query, items, op, &self.bestfit, fetch.as_ref(), None).await?;
+            refinement::apply(&ep, query, items, op, &self.bestfit, fetch.as_ref()).await?;
         let groups = refinement::compute_groups(&outcome.items);
         let best_fit = refinement::best_fit_info(&outcome.query, &outcome.items, &self.bestfit);
         let count = outcome.items.len() as i64;

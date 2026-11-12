@@ -38,14 +38,6 @@ void drive_wheel(QObject *window, double x, double y, int dx, int dy, int modifi
 // A key press or release; key is a Qt::Key, text what the key types (empty for none).
 void drive_key(QObject *window, bool press, int key, int modifiers, const QString &text);
 
-// A poster's tone: its average colour, decoded at 8x12 (a JPEG decodes at that size through
-// libjpeg's DCT scaling, so the cost is a fraction of a full decode), each pixel weighted by
-// how saturated and bright it is, so a mostly white or black poster with one strong colour
-// still comes back with that colour's hue. Deterministic for a given file, and cached per
-// path for the process (the cache is guarded; the GUI thread is the expected caller). An
-// unreadable or missing file is an invalid QColor, also cached.
-QColor poster_tone(const QString &path);
-
 // The pointer hidden over every window of the process (the player, once its chrome has
 // gone), or shown again. An application override, not an item's cursor shape: the item
 // under a resting pointer is not re-asked for its cursor on Wayland until the pointer moves,

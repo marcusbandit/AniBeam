@@ -1174,5 +1174,3 @@ impl Snapshot {
 pub(crate) fn season_of(f: &FileRow) -> u32 {
     f.season.unwrap_or(1)
 }
-
-impl Snapshot {}

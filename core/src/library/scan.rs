@@ -1422,7 +1422,6 @@ mod tests {
             path: path.to_string(),
             name: name.to_string(),
             season_hint: None,
-            part_hint: None,
             files,
         }
     }
@@ -1984,7 +1983,6 @@ mod tests {
             path: "/lib/GuP".into(),
             name: "GuP".into(),
             season_hint: None,
-            part_hint: None,
             files,
         }
     }
@@ -2016,7 +2014,6 @@ mod tests {
             path: "/lib/Show".into(),
             name: "Show".into(),
             season_hint: None,
-            part_hint: None,
             files,
         }
     }

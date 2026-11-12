@@ -53,12 +53,6 @@ pub fn profile_dir(data_dir: &str) -> PathBuf {
     Path::new(data_dir).join("qbittorrent")
 }
 
-/// Where finished downloads go unless anirss names a folder: the same
-/// `~/Downloads/Anime` anirss itself defaults to.
-pub fn save_dir() -> Option<PathBuf> {
-    Some(std::env::home_dir()?.join("Downloads").join("Anime"))
-}
-
 /// The Web UI port an earlier setup wrote into the profile, if there was one.
 pub fn configured_port(profile: &Path) -> Option<u16> {
     let text = std::fs::read_to_string(config_file(profile)).ok()?;

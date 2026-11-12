@@ -441,7 +441,6 @@ mod tests {
             ],
             edges: Vec::new(),
             members,
-            boundary: [50].into_iter().collect(),
             complete: false,
             owed: vec![2, 3],
         };

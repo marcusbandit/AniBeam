@@ -11,7 +11,7 @@ use cxx_qt_lib::{
 use tokio::sync::mpsc;
 
 use crate::theme::config::{
-    AppIcon, Corners, Density, ModeSetting, Poster, Source, TextSize, ThemeSettings,
+    AppIcon, Density, ModeSetting, Poster, Source, TextSize, ThemeSettings,
 };
 use crate::theme::engine::{Resolved, resolve};
 use crate::theme::{Mode, Palette, format_hue, status_hue};
@@ -66,8 +66,6 @@ pub mod qobject {
         fn pick_density(self: Pin<&mut Self>, density: &QString);
         #[qinvokable]
         fn pick_poster(self: Pin<&mut Self>, poster: &QString);
-        #[qinvokable]
-        fn pick_corners(self: Pin<&mut Self>, corners: &QString);
         #[qinvokable]
         fn pick_theme(self: Pin<&mut Self>, mode: &QString, stem: &QString);
         #[qinvokable]
@@ -281,11 +279,6 @@ impl qobject::Theme {
     pub fn pick_poster(self: Pin<&mut Self>, poster: &QString) {
         if let Some(v) = Poster::parse(&poster.to_string()) {
             self.change(|s| s.poster = v)
-        }
-    }
-    pub fn pick_corners(self: Pin<&mut Self>, corners: &QString) {
-        if let Some(v) = Corners::parse(&corners.to_string()) {
-            self.change(|s| s.corners = v)
         }
     }
     pub fn pick_theme(self: Pin<&mut Self>, mode: &QString, stem: &QString) {

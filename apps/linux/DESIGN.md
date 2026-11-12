@@ -226,7 +226,6 @@ dark, since it is a dark room either way.
 
 List statuses are quiet too: the accent for Watching and Rewatching, greys for the rest. The
 other hues stay in the palette for the accent picker and for themes, not for surfaces.
-`Fmt.posterTone` is kept but no surface uses it.
 
 Type: **Archivo**, one variable family (`wdth` 62 to 125, `wght` 100 to 900):
 

@@ -1,7 +1,7 @@
 //! The calendar: every episode that airs, aired or will air in a span of days, from the
 //! cached schedules and the episodes on disk.
 
-use chrono::{Datelike, Days, Local, NaiveDate, TimeZone};
+use chrono::{Local, NaiveDate, TimeZone};
 
 use crate::api::Airing;
 use crate::schedule::{self, season_of};
@@ -124,21 +124,6 @@ fn entry(series_id: Option<u64>, title: &str, a: &Airing, state: State, subscrib
     }
 }
 
-/// The Monday of the week `weeks` away from the one `now` falls in, in `zone`.
-pub fn week_start_in<Tz: TimeZone>(now: i64, weeks: i64, zone: &Tz) -> NaiveDate {
-    let today = zone
-        .timestamp_opt(now, 0)
-        .single()
-        .map(|t| t.date_naive())
-        .unwrap_or_default();
-    let monday = today - Days::new(u64::from(today.weekday().num_days_from_monday()));
-    if weeks >= 0 {
-        monday + Days::new(7 * weeks as u64)
-    } else {
-        monday - Days::new(7 * weeks.unsigned_abs())
-    }
-}
-
 /// Local midnight at the start of `date`, as Unix seconds. Across a DST change the
 /// earlier of two midnights counts.
 pub fn midnight_in<Tz: TimeZone>(date: NaiveDate, zone: &Tz) -> i64 {
@@ -154,10 +139,6 @@ pub fn today_in<Tz: TimeZone>(now: i64, zone: &Tz) -> NaiveDate {
         .single()
         .map(|t| t.date_naive())
         .unwrap_or_default()
-}
-
-pub fn week_start(now: i64, weeks: i64) -> NaiveDate {
-    week_start_in(now, weeks, &Local)
 }
 
 pub fn midnight(date: NaiveDate) -> i64 {
@@ -189,22 +170,10 @@ mod tests {
     }
 
     #[test]
-    fn a_week_runs_monday_to_monday_in_the_phones_zone() {
+    fn midnight_and_today_follow_the_phones_zone() {
         let cet = FixedOffset::east_opt(2 * 3600).unwrap();
         // Saturday 2026-10-17 15:40 CEST.
         let now = 1_792_244_400;
-        assert_eq!(
-            week_start_in(now, 0, &cet),
-            NaiveDate::from_ymd_opt(2026, 10, 12).unwrap()
-        );
-        assert_eq!(
-            week_start_in(now, 1, &cet),
-            NaiveDate::from_ymd_opt(2026, 10, 19).unwrap()
-        );
-        assert_eq!(
-            week_start_in(now, -1, &cet),
-            NaiveDate::from_ymd_opt(2026, 10, 5).unwrap()
-        );
         assert_eq!(
             midnight_in(NaiveDate::from_ymd_opt(2026, 10, 17).unwrap(), &cet),
             now - (15 * 3600 + 40 * 60)

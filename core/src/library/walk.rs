@@ -41,7 +41,6 @@ pub struct ScannedSeries {
     pub path: String,
     pub name: String,
     pub season_hint: Option<u32>,
-    pub part_hint: Option<u32>,
     pub files: Vec<ScannedFile>,
 }
 
@@ -66,12 +65,6 @@ static SEASON_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     vec![
         Regex::new(r"(?i)Season\s*([0-9]+)").unwrap(),
         Regex::new(r"(?i)\bS([0-9]+)\b").unwrap(),
-    ]
-});
-static PART_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
-        Regex::new(r"(?i)Part\s*([0-9]+)").unwrap(),
-        Regex::new(r"(?i)\bP([0-9]+)\b").unwrap(),
     ]
 });
 static EPISODE_RANGE: LazyLock<Regex> = LazyLock::new(|| {
@@ -106,9 +99,6 @@ fn first_number(patterns: &[Regex], s: &str) -> Option<u32> {
 
 pub fn extract_season_number(folder_name: &str) -> Option<u32> {
     first_number(&SEASON_PATTERNS, folder_name)
-}
-pub fn extract_part_number(folder_name: &str) -> Option<u32> {
-    first_number(&PART_PATTERNS, folder_name)
 }
 
 /// Release-group brackets, a trailing episode range and a trailing END gone.
@@ -541,7 +531,6 @@ fn film(state: &mut WalkState, p: &Path, use_folder_title: bool) -> ScannedSerie
         path: p.to_string_lossy().into_owned(),
         name: title,
         season_hint: None,
-        part_hint: None,
         files: vec![f],
     }
 }
@@ -674,7 +663,6 @@ fn collect(
             let context = wrapper.or(passthrough);
             let season = extract_season_number(&folder_name)
                 .or_else(|| context.as_ref().and_then(|c| c.season_hint));
-            let part = extract_part_number(&folder_name);
             let mut files = collect_videos_in_subtree(state, folder, season);
             if files.is_empty() {
                 return;
@@ -699,7 +687,6 @@ fn collect(
                 path: folder.to_string_lossy().into_owned(),
                 name,
                 season_hint: season,
-                part_hint: part,
                 files,
             });
         }
@@ -774,8 +761,6 @@ mod tests {
         assert_eq!(extract_season_number("Season 2"), Some(2));
         assert_eq!(extract_season_number("S01"), Some(1));
         assert_eq!(extract_season_number("86"), None);
-        assert_eq!(extract_part_number("Part 2"), Some(2));
-        assert_eq!(extract_part_number("P01"), Some(1));
         assert_eq!(
             clean_folder_title(
                 "[Kumo-Subs] Karakai Jouzu no Takagi-san 2 - 01 ~ 12 [1080p][Multiple Subtitle]"

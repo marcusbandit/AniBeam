@@ -40,9 +40,6 @@ pub const CACHE_TTL: Duration = Duration::from_secs(2 * 60 * 60);
 pub const HTTP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(8);
 /// For each step of the UDP connect and scrape. anirss `UDP_SCRAPE_TIMEOUT`.
 pub const UDP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(5);
-/// A single .torrent download asked for on its own. anirss `TORRENT_TIMEOUT`. An enrich
-/// does not use it: as in anirss, each of its downloads gets the time the deadline leaves.
-pub const TORRENT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Info-hashes per HTTP scrape. anirss `MAX_HTTP_BATCH`.
 pub const MAX_HTTP_BATCH: usize = 50;
 /// Keeps the datagram well under the MTU. anirss `MAX_UDP_BATCH`.
@@ -983,15 +980,6 @@ async fn enrich_with(
     apply(items, &resolved)
 }
 
-/// Top-N by downloads, clamped to the item count. Stable for ties. Unknown downloads
-/// (feeds without stats) sort last, like -1, with seeders breaking the tie.
-pub fn top_by_downloads(items: &[Release], n: usize) -> Vec<Release> {
-    let mut sorted: Vec<Release> = items.to_vec();
-    sorted.sort_by_key(|i| std::cmp::Reverse((i.downloads.unwrap_or(-1), i.seeders.unwrap_or(-1))));
-    sorted.truncate(n);
-    sorted
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1621,11 +1609,9 @@ mod tests {
     async fn fetch_torrent_encodes_the_link_and_sends_the_anirss_agent() {
         let http = FakeHttp::new();
         http.push(200, b"d4:infod1:xi1eee".to_vec());
+        let timeout = Duration::from_secs(10);
         let got = Net(http.as_ref())
-            .fetch_torrent(
-                "https://h.example/[G] a b.torrent?token=1&x=y",
-                TORRENT_TIMEOUT,
-            )
+            .fetch_torrent("https://h.example/[G] a b.torrent?token=1&x=y", timeout)
             .await;
         assert!(got.is_some());
         let req = &http.requests()[0];
@@ -1638,7 +1624,7 @@ mod tests {
                 .iter()
                 .any(|(k, v)| k == "User-Agent" && v == "anirss/1.0")
         );
-        assert_eq!(req.timeout, Some(TORRENT_TIMEOUT));
+        assert_eq!(req.timeout, Some(timeout));
     }
 
     #[tokio::test]
@@ -1647,7 +1633,7 @@ mod tests {
         http.push(404, "gone");
         assert!(
             Net(http.as_ref())
-                .fetch_torrent("http://h/a.torrent", TORRENT_TIMEOUT)
+                .fetch_torrent("http://h/a.torrent", Duration::from_secs(10))
                 .await
                 .is_none()
         );
@@ -1928,7 +1914,6 @@ mod tests {
             Duration::from_secs(5),
             "UDP_SCRAPE_TIMEOUT"
         );
-        assert_eq!(TORRENT_TIMEOUT, Duration::from_secs(10), "TORRENT_TIMEOUT");
         assert_eq!(MAX_TRACKERS_TRIED, 4, "MAX_TRACKERS_TRIED");
         assert_eq!(DOWNLOAD_WORKERS, 8, "DOWNLOAD_WORKERS");
         assert_eq!(MAX_HTTP_BATCH, 50, "MAX_HTTP_BATCH");
@@ -2027,28 +2012,5 @@ mod tests {
         let got = fetch_torrents_with(&gauge, &urls, Duration::from_secs(5)).await;
         assert_eq!(got.len(), 20);
         assert_eq!(gauge.now.lock().unwrap().1, DOWNLOAD_WORKERS);
-    }
-
-    #[test]
-    fn top_by_downloads_sorts_unknown_last_and_clamps() {
-        let mk = |link: &str, d: Option<i64>, s: Option<i64>| {
-            let mut r = rel(link);
-            r.downloads = d;
-            r.seeders = s;
-            r
-        };
-        let items = vec![
-            mk("none", None, None),
-            mk("few", Some(5), Some(1)),
-            mk("many", Some(50), Some(1)),
-            mk("tie", Some(5), Some(9)),
-            mk("noseed", None, Some(3)),
-        ];
-        let top: Vec<String> = top_by_downloads(&items, 4)
-            .into_iter()
-            .map(|r| r.link)
-            .collect();
-        assert_eq!(top, ["many", "tie", "few", "noseed"]);
-        assert_eq!(top_by_downloads(&items, 99).len(), 5);
     }
 }

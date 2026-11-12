@@ -774,10 +774,6 @@ impl AnilistClient {
         Ok(serde_json::from_value(media.clone())?)
     }
 
-    pub async fn media_by_id(&self, id: u64) -> Result<Option<Media>, CoreError> {
-        Ok(self.media_by_id_raw(id).await?.0)
-    }
-
     /// The typed reply and the JSON it was parsed from, together. A match
     /// keeps the second half verbatim in `anilist_media.raw`, so a later
     /// migration can mine a field this schema has no column for without
@@ -827,10 +823,6 @@ impl AnilistClient {
             return Ok((Schedule::default(), raw));
         }
         Ok((serde_json::from_value(raw.clone())?, raw))
-    }
-
-    pub async fn enrichment(&self, id: u64) -> Result<Option<Enrichment>, CoreError> {
-        Ok(self.enrichment_raw(id).await?.0)
     }
 
     /// The series page and the JSON behind it, for the same reason
@@ -964,7 +956,7 @@ mod tests {
                 "relations": { "edges": [ { "relationType": null, "node": null } ] }
             } } }),
         );
-        let enrichment = client(http).enrichment(2).await.unwrap().unwrap();
+        let enrichment = client(http).enrichment_raw(2).await.unwrap().0.unwrap();
         assert!(enrichment.streaming_episodes.is_empty());
         assert!(enrichment.tags.is_empty());
         assert!(enrichment.studios.unwrap().edges.is_empty());
@@ -988,7 +980,7 @@ mod tests {
     async fn graphql_errors_become_provider_errors() {
         let http = FakeHttp::new();
         http.push_json(200, serde_json::json!({ "data": null, "errors": [ { "message": "Not Found.", "status": 404 } ] }));
-        let err = client(http).media_by_id(1).await.err().unwrap();
+        let err = client(http).media_by_id_raw(1).await.err().unwrap();
         assert!(
             matches!(
                 err,
@@ -1005,7 +997,7 @@ mod tests {
     async fn a_reply_without_data_is_a_provider_error() {
         let http = FakeHttp::new();
         http.push_json(200, serde_json::json!({ "nothing": true }));
-        let err = client(http).media_by_id(1).await.err().unwrap();
+        let err = client(http).media_by_id_raw(1).await.err().unwrap();
         assert!(
             matches!(&err, CoreError::Provider { status: None, message, .. } if message == "no data"),
             "{err:?}"
@@ -1030,7 +1022,7 @@ mod tests {
         let http = FakeHttp::new();
         http.push_json(200, serde_json::json!({ "data": { "Media": null } }));
         let c = client(http.clone());
-        assert!(c.media_by_id(7).await.unwrap().is_none());
+        assert!(c.media_by_id_raw(7).await.unwrap().0.is_none());
         c.graphql(VIEWER_QUERY, serde_json::json!({}), Some("t0ken"))
             .await
             .ok();
@@ -1076,7 +1068,12 @@ mod tests {
                 "streamingEpisodes": [ { "title": "Episode 1", "thumbnail": "t", "url": "u", "site": "Crunchyroll" } ]
             } } }),
         );
-        let e = client(http).enrichment(154587).await.unwrap().unwrap();
+        let e = client(http)
+            .enrichment_raw(154587)
+            .await
+            .unwrap()
+            .0
+            .unwrap();
         assert_eq!(e.type_.as_deref(), Some("ANIME"));
         assert_eq!(e.tags[0].rank, Some(90));
         assert!(e.studios.unwrap().edges[0].is_main);
@@ -1111,7 +1108,12 @@ mod tests {
                 "relations": { "edges": [ { "relationType": null, "node": { "id": 2 } } ] }
             } } }),
         );
-        let e = client(http).enrichment(154587).await.unwrap().unwrap();
+        let e = client(http)
+            .enrichment_raw(154587)
+            .await
+            .unwrap()
+            .0
+            .unwrap();
         assert_eq!(e.id, 154587);
         assert_eq!(e.tags[0].name, "Adventure");
         assert_eq!(e.tags[0].rank, None);

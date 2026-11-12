@@ -177,19 +177,6 @@ fn list_status(conn: &Connection, anilist_id: u64) -> Result<Option<ListStatus>,
     Ok(found.flatten().as_deref().and_then(ListStatus::from_column))
 }
 
-/// Whether this media id sits on any edge at all, in either direction.
-/// The single-id form of the set Task 10's card snapshot computes in one
-/// query; a series page asks about one id, so it asks here.
-pub fn has_graph(conn: &Connection, anilist_id: u64) -> Result<bool, CoreError> {
-    let id = as_i64(anilist_id);
-    let found: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM relations WHERE from_id = ?1 OR to_id = ?1)",
-        params![id],
-        |r| r.get(0),
-    )?;
-    Ok(found)
-}
-
 #[cfg(test)]
 pub(crate) mod testing {
     use rusqlite::{Connection, params};
@@ -222,31 +209,5 @@ pub(crate) mod testing {
             params![super::as_i64(from), super::as_i64(to), relation],
         )
         .unwrap();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::testing::*;
-    use super::*;
-
-    #[test]
-    fn has_graph_answers_for_either_end_of_an_edge() {
-        let c = conn();
-        media(&c, 1, true);
-        media(&c, 2, true);
-        media(&c, 3, true);
-        edge(&c, 1, 2, "SEQUEL");
-
-        assert!(has_graph(&c, 1).unwrap());
-        assert!(
-            has_graph(&c, 2).unwrap(),
-            "the far end of an edge has a graph too"
-        );
-        assert!(!has_graph(&c, 3).unwrap());
-        assert!(
-            !has_graph(&c, 999).unwrap(),
-            "an id with no row at all has no graph"
-        );
     }
 }

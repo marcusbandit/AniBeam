@@ -1,8 +1,8 @@
 //! Refinement logic with no UI: token groups, query rebuilding, and one stateless refine
 //! step. Ported from anirss's `refinement.py`.
 //!
-//! Nothing here prints, prompts or touches a terminal. `apply` takes the refetch (and the
-//! optional enrich) as callbacks, so the caller decides how a feed is read.
+//! Nothing here prints, prompts or touches a terminal. `apply` takes the refetch as a callback,
+//! so the caller decides how a feed is read.
 
 use super::bestfit;
 use super::titles::{RES_RE, poster_of, title_tokens};
@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::future::Future;
 use std::pin::Pin;
 
-/// A boxed, sendable future, what the refetch and enrich callbacks hand back.
+/// A boxed, sendable future, what the refetch callback hands back.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Reads a feed: the endpoint and the query to ask it.
@@ -20,9 +20,6 @@ pub type FetchFn<'f> = dyn for<'a> Fn(&'a Endpoint, &'a str) -> BoxFuture<'a, Re
     + Send
     + Sync
     + 'f;
-
-/// Fills in what a feed left out (seeders and the like) on freshly fetched releases.
-pub type EnrichFn<'f> = dyn Fn(Vec<Release>) -> BoxFuture<'static, Vec<Release>> + Send + Sync + 'f;
 
 use super::endpoints::FIELD_RE;
 use super::quirks::metadata_hit;
@@ -341,28 +338,14 @@ pub struct Outcome {
     pub reason: Option<String>,
 }
 
-impl Outcome {
-    pub fn delta(&self) -> i64 {
-        self.items.len() as i64 - self.previous_count as i64
-    }
-}
-
-/// Ask the endpoint for `new_query`; None when it came back empty, else the releases,
-/// enriched when a hook is given.
+/// Ask the endpoint for `new_query`; None when it came back empty, else the releases.
 async fn refetch(
     ep: &Endpoint,
     new_query: &str,
     fetch: &FetchFn<'_>,
-    enrich: Option<&EnrichFn<'_>>,
 ) -> Result<Option<Vec<Release>>, CoreError> {
     let fetched = fetch(ep, new_query).await?;
-    if fetched.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(match enrich {
-        Some(enrich) => enrich(fetched).await,
-        None => fetched,
-    }))
+    Ok((!fetched.is_empty()).then_some(fetched))
 }
 
 /// Apply one refine action the way anirss's refine loop does.
@@ -378,7 +361,6 @@ pub async fn apply(
     op: &RefineOp,
     cfg: &BestfitConfig,
     fetch: &FetchFn<'_>,
-    enrich: Option<&EnrichFn<'_>>,
 ) -> Result<Outcome, CoreError> {
     let prev = items.len();
     let client = is_client_side(ep);
@@ -412,7 +394,7 @@ pub async fn apply(
             }
             let new_query = build_refined_query(query, &tokens, items);
             if !client {
-                return Ok(match refetch(ep, &new_query, fetch, enrich).await? {
+                return Ok(match refetch(ep, &new_query, fetch).await? {
                     None => unchanged("zero_results"),
                     Some(new_items) => changed(new_query, new_items),
                 });
@@ -438,7 +420,7 @@ pub async fn apply(
             }
             let new_query = add_term_to_query(query, term);
             if !client {
-                return Ok(match refetch(ep, &new_query, fetch, enrich).await? {
+                return Ok(match refetch(ep, &new_query, fetch).await? {
                     None => unchanged("zero_results"),
                     Some(new_items) => changed(new_query, new_items),
                 });
@@ -456,7 +438,7 @@ pub async fn apply(
                 return Ok(unchanged("empty_term"));
             }
             if !client {
-                return Ok(match refetch(ep, &new_query, fetch, enrich).await? {
+                return Ok(match refetch(ep, &new_query, fetch).await? {
                     None => unchanged("zero_results"),
                     Some(new_items) => changed(new_query, new_items),
                 });
@@ -478,7 +460,7 @@ pub async fn apply(
                 return Ok(unchanged("noop"));
             }
             if !client {
-                return Ok(match refetch(ep, &best_query, fetch, enrich).await? {
+                return Ok(match refetch(ep, &best_query, fetch).await? {
                     None => unchanged("zero_results"),
                     Some(new_items) => changed(best_query, new_items),
                 });
@@ -511,18 +493,6 @@ pub fn best_fit_info(query: &str, items: &[Release], cfg: &BestfitConfig) -> Bes
         item: best.cloned(),
         profile: best.map(bestfit::profile_parts).unwrap_or_default(),
     }
-}
-
-/// Indexes into `items` of the releases a group's tokens select.
-pub fn group_members(items: &[Release], group: &ReleaseGroup) -> Vec<u64> {
-    let Some(first) = group.tokens.first() else {
-        return Vec::new();
-    };
-    let parsed: Vec<Parsed> = items.iter().map(parse).collect();
-    members_of(items, &parsed, first)
-        .into_iter()
-        .map(|i| i as u64)
-        .collect()
 }
 
 #[cfg(test)]
@@ -622,17 +592,9 @@ mod tests {
         op: RefineOp,
         fetch: &FetchFn<'_>,
     ) -> Outcome {
-        apply(
-            ep,
-            query,
-            items,
-            &op,
-            &BestfitConfig::default(),
-            fetch,
-            None,
-        )
-        .await
-        .unwrap()
+        apply(ep, query, items, &op, &BestfitConfig::default(), fetch)
+            .await
+            .unwrap()
     }
 
     fn tokens_op(tokens: &[&str]) -> RefineOp {
@@ -778,25 +740,6 @@ mod tests {
     }
 
     #[test]
-    fn group_members_helper() {
-        let items = frieren(3, "Lumen", "1080p");
-        for g in compute_groups(&items) {
-            let mut sorted = group_members(&items, &g);
-            let again = sorted.clone();
-            sorted.sort_unstable();
-            assert_eq!(again, sorted);
-        }
-        let empty = ReleaseGroup {
-            label: String::new(),
-            tokens: vec![],
-            member_count: 0,
-            has_poster: false,
-            members: vec![],
-        };
-        assert!(group_members(&items, &empty).is_empty());
-    }
-
-    #[test]
     fn groups_use_extension_fields_for_membership() {
         let mut items = vec![
             item("Show - 01 [1080p]", "l1"),
@@ -806,14 +749,8 @@ mod tests {
         items[0].linktype = "Torrent".into();
         items[1].linktype = "Torrent".into();
         items[2].linktype = "Magnet".into();
-        let group = ReleaseGroup {
-            label: "Torrent".into(),
-            tokens: vec!["Torrent".into()],
-            member_count: 2,
-            has_poster: false,
-            members: vec![],
-        };
-        assert_eq!(group_members(&items, &group), vec![0, 1]);
+        let parsed: Vec<Parsed> = items.iter().map(parse).collect();
+        assert_eq!(members_of(&items, &parsed, "Torrent"), vec![0, 1]);
     }
 
     // query building
@@ -908,7 +845,7 @@ mod tests {
         assert!(out.applied && out.mode == "refetch" && out.reason.is_none());
         assert_eq!(out.query, "Show 1080p Hevc");
         assert_eq!(out.items, items[..2].to_vec());
-        assert_eq!((out.previous_count, out.delta()), (3, -1));
+        assert_eq!((out.previous_count, out.items.len()), (3, 2));
         assert_eq!(
             *calls.lock().unwrap(),
             vec![("tracker".to_string(), "Show 1080p Hevc".to_string())]
@@ -930,8 +867,8 @@ mod tests {
         assert!(!out.applied);
         assert_eq!(out.reason.as_deref(), Some("zero_results"));
         assert_eq!(
-            (out.query.as_str(), out.mode.as_str(), out.delta()),
-            ("Show 1080p", "refetch", 0)
+            (out.query.as_str(), out.mode.as_str(), out.items.len()),
+            ("Show 1080p", "refetch", 3)
         );
         assert_eq!(out.items, items);
     }
@@ -962,7 +899,6 @@ mod tests {
             &term_op("Hevc"),
             &BestfitConfig::default(),
             &fetch,
-            None,
         )
         .await
         .unwrap_err();
@@ -984,60 +920,6 @@ mod tests {
         assert_eq!(
             queries,
             vec!["Show \"two words\"", "Show -Hevc", "Show -\"a b\""]
-        );
-    }
-
-    #[tokio::test]
-    async fn tracker_enrich_only_applies_to_refetched_items() {
-        let items = tui_items();
-        let marked: Arc<Mutex<Vec<usize>>> = Arc::default();
-        let log = marked.clone();
-        let enrich = move |fetched: Vec<Release>| -> BoxFuture<'static, Vec<Release>> {
-            log.lock().unwrap().push(fetched.len());
-            Box::pin(async move {
-                fetched
-                    .into_iter()
-                    .map(|it| Release {
-                        seeders: Some(1),
-                        ..it
-                    })
-                    .collect()
-            })
-        };
-        let cfg = BestfitConfig::default();
-        let (_, fetch) = fetcher(Ok(items[..2].to_vec()));
-        let out = apply(
-            &tracker(),
-            "Show",
-            &items,
-            &term_op("Hevc"),
-            &cfg,
-            &fetch,
-            Some(&enrich),
-        )
-        .await
-        .unwrap();
-        assert_eq!(*marked.lock().unwrap(), vec![2]);
-        assert_eq!(
-            out.items.iter().map(|i| i.seeders).collect::<Vec<_>>(),
-            vec![Some(1), Some(1)]
-        );
-        marked.lock().unwrap().clear();
-        let (_, fetch) = fetcher(Ok(Vec::new()));
-        apply(
-            &tracker(),
-            "Show",
-            &items,
-            &term_op("Hevc"),
-            &cfg,
-            &fetch,
-            Some(&enrich),
-        )
-        .await
-        .unwrap();
-        assert!(
-            marked.lock().unwrap().is_empty(),
-            "zero results: nothing to enrich"
         );
     }
 
@@ -1125,7 +1007,6 @@ mod tests {
                 &RefineOp::Tokens { tokens },
                 &BestfitConfig::default(),
                 &never(),
-                None,
             )
             .await
             .unwrap_err();
@@ -1152,7 +1033,7 @@ mod tests {
         assert!(out.applied && out.mode == "client");
         assert_eq!(links(&out.items), vec!["l1", "l2"]);
         assert_eq!(out.query, "Show 1080p Hevc");
-        assert_eq!(out.delta(), -1);
+        assert_eq!((out.previous_count, out.items.len()), (3, 2));
     }
 
     #[tokio::test]
