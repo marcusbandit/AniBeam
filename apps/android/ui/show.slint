@@ -1,0 +1,201 @@
+// What a show's page can do beyond playing it: set its list status and score, and the sheets
+// those open. `ShowData` holds the open series' state, which `show.rs` fills from the core
+// each tick; the sheets in the other `show-*.slint` files read it and call back into Rust.
+
+import { Theme } from "theme.slint";
+import { Button, Chip } from "widgets.slint";
+import { Fold } from "fold.slint";
+import { Tile } from "data.slint";
+
+// A related show or one tapped in a sheet: the AniList id, the library series that holds it
+// (-1 when none does), and the lines the page and its sheet write.
+export struct ShowCard {
+    id: int,
+    owned: int,
+    title: string,
+    poster: image,
+    has-poster: bool,
+    initials: string,
+    // "Sequel, TV, 2024".
+    line: string,
+    // "In your library", "On AniList" or "Not yet released".
+    note: string,
+    // The list it is on, in the desktop's words, or empty.
+    status: string,
+    url: string,
+}
+
+// A character: a round portrait, the name and the role.
+export struct ShowPerson {
+    id: int,
+    name: string,
+    role: string,
+    image: image,
+    has-image: bool,
+    initials: string,
+}
+
+export global ShowData {
+    // The open series when it is this phone's own and can be edited; -1 otherwise.
+    in property <int> series-id: -1;
+    in property <string> series-title;
+    // The show can be on a list: not a hidden one, whose tracker sync is off.
+    in property <bool> lists;
+    // The show has a record from a provider.
+    in property <bool> matched;
+    // The sheet over the page: 0 none, 1 list status, 2 score, 3 a related or recommended
+    // show, 4 notes, 5 fixes, 6 match.
+    in-out property <int> sheet;
+    // The series' list status as the core names it ("Watching", "Paused"), or empty.
+    in property <string> status-key;
+    // The status as the desktop words it: "On hold", or "Add to a list".
+    in property <string> status-word;
+    // The score in tenths, 0 to 100, or -1 for none.
+    in property <int> score: -1;
+    in property <string> score-word;
+    // The score being picked, in tenths.
+    in-out property <int> draft: 80;
+    // Where a status or score goes: the trackers, or only this phone.
+    in property <string> home;
+    // What the last write said, for a few seconds.
+    in property <string> note;
+    // The franchise as the crawl has it so far, the page's Related; filling while it walks.
+    in property <[ShowCard]> related;
+    in property <bool> related-filling;
+    // How many related entries there are, when the page lists only the first dozen.
+    in property <int> related-total;
+    callback show-all-related();
+    // AniList's recommendations, as poster tiles keyed by AniList id.
+    in property <[Tile]> recs;
+    in property <[ShowPerson]> people;
+    // The related or recommended show the sheet is about.
+    in-out property <ShowCard> entry;
+    // A related row or a recommendation tapped, by AniList id: one of this library opens, the
+    // rest open the sheet.
+    callback pick-related(int);
+    callback pick-rec(int);
+    // A character tapped: its page on AniList.
+    callback pick-person(int);
+    callback open-link(string);
+    callback rescan();
+    // The notes on the list entry as the tracker holds them, the sites that keep them, and
+    // the text being written in the sheet.
+    in property <string> notes;
+    in property <string> sites;
+    in-out property <string> notes-draft;
+    callback save-notes(string);
+    callback set-status(string);
+    callback set-score(int);
+
+    public function open(which: int) {
+        ShowData.draft = ShowData.score >= 0 ? ShowData.score : 80;
+        ShowData.notes-draft = ShowData.notes;
+        ShowData.sheet = which;
+    }
+    public function close() {
+        ShowData.sheet = 0;
+    }
+}
+
+// The foot sheet every show sheet shares: dimmed page, glass panel, title, then its
+// content. A tall one scrolls inside rather than push off the screen.
+export component ShowSheet inherits Rectangle {
+    in property <length> inset-bottom;
+    in property <string> title;
+    in property <string> line;
+    // How tall the content may grow, as a share of the window.
+    in property <float> reach: 0.62;
+    callback dismissed();
+    background: #000000b0;
+    TouchArea { clicked => { root.dismissed(); } }
+    panel := Rectangle {
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        height: body.preferred-height;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
+            spacing: Theme.unit * 3;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            if root.line != "": Text {
+                text: root.line;
+                color: Theme.dim;
+                font-size: Theme.small + 1px;
+                wrap: word-wrap;
+            }
+            Flickable {
+                height: Math.min(inner.preferred-height, root.height * root.reach);
+                content-height: inner.preferred-height;
+                interactive: inner.preferred-height > self.height;
+                inner := VerticalLayout {
+                    spacing: Theme.unit * 3;
+                    @children
+                }
+            }
+        }
+    }
+}
+
+// The quiet row on a show's page: your score and the list it is on. Each opens its sheet.
+export component ShowActions inherits VerticalLayout {
+    spacing: Theme.unit * 2;
+    if ShowData.lists: HorizontalLayout {
+        spacing: Theme.unit * 2;
+        alignment: start;
+        Chip {
+            icon: @image-url("icons/star.svg");
+            has-icon: true;
+            tappable: true;
+            selected: ShowData.score >= 0;
+            text: ShowData.score-word;
+            clicked => { ShowData.open(2); }
+        }
+        Chip {
+            icon: @image-url("icons/bookmark.svg");
+            has-icon: true;
+            tappable: true;
+            selected: ShowData.status-key != "";
+            text: ShowData.status-word;
+            clicked => { ShowData.open(1); }
+        }
+    }
+    // The second row: the list entry's notes and the fixes.
+    HorizontalLayout {
+        spacing: Theme.unit * 2;
+        alignment: start;
+        Chip {
+            icon: @image-url("icons/wrench.svg");
+            has-icon: true;
+            tappable: true;
+            text: "Fixes";
+            clicked => { ShowData.open(5); }
+        }
+        // The list entry's notes: a show not on a list yet has no entry to write them on.
+        if ShowData.status-key != "": Chip {
+            icon: @image-url("icons/pencil.svg");
+            has-icon: true;
+            tappable: true;
+            selected: ShowData.notes != "";
+            text: ShowData.notes != "" ? "Your notes" : "Add notes";
+            clicked => { ShowData.open(4); }
+        }
+    }
+    if ShowData.note != "": Text {
+        text: ShowData.note;
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+}

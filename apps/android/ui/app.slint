@@ -21,10 +21,13 @@ import { AiringSheet } from "airing.slint";
 import { Area, Fold } from "fold.slint";
 import { NotifyQuestion } from "notify.slint";
 import { Sheet } from "sheet.slint";
+import { ShowCard, ShowData, ShowPerson } from "show.slint";
+import { MatchData, MatchRow } from "show-match.slint";
+import { ShowSheets } from "show-sheets.slint";
 
 export { Theme }
 export { ActivityData, LogRow, LookData, LookTheme, MoveData, MoveLine }
-export { AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile }
+export { AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -340,6 +343,10 @@ export component AppWindow inherits Window {
                 Ask.versions-open = false;
                 return accept;
             }
+            if (ShowData.sheet != 0) {
+                ShowData.close();
+                return accept;
+            }
             if (AppData.airing-menu.show) {
                 AppData.airing-close();
                 return accept;
@@ -497,6 +504,10 @@ export component AppWindow inherits Window {
         }
 
         if Ask.versions-open: VersionsMenu {
+            inset-bottom: root.inset-bottom;
+        }
+
+        ShowSheets {
             inset-bottom: root.inset-bottom;
         }
 

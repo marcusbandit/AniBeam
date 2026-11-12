@@ -57,6 +57,7 @@ impl EventListener for Logcat {
                 Some((job.id, error.to_string()));
         }
         crate::player::core_event(&event.body);
+        crate::show_match::core_event(&event);
         crate::backup::core_event(&event);
         crate::activity::core_event(&event);
         crate::listmove::core_event(&event);

@@ -32,6 +32,8 @@ mod posters;
 mod prefs;
 mod remote;
 mod repos;
+mod show;
+mod show_match;
 mod stats;
 mod stream;
 mod thumbs;
