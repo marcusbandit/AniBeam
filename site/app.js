@@ -60,6 +60,8 @@ const onceInView = (els, threshold = 0.45) => {
     const card = document.querySelector(`.plat[data-os~="${os}"], .phone[data-os="${os}"]`);
     if (card) {
       card.classList.add("is-yours");
+      const half = card.querySelector(`.os-half[data-for="${os}"]`);
+      if (half) half.classList.add("is-yours");
       const btn = card.querySelector(`.btn-ghost[data-for="${os}"]`) || card.querySelector(".btn-ghost");
       if (btn) { btn.classList.remove("btn-ghost"); btn.classList.add("btn-primary"); }
     }

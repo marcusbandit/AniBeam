@@ -505,7 +505,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .trust-inner::after { right: -12%; top: 74%; width: 60%; height: 18px; opacity: 0.25; filter: blur(10px); }
 .trust-inner > * { position: relative; max-width: var(--wide); margin-left: auto; margin-right: auto; }
 .trust h2 { font-size: clamp(48px, 7vw, 104px); letter-spacing: -0.045em; }
-.trust-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 96px !important; }
+.trust-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 96px !important; }
 .tcell { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 8px 24px; border-left: 1px solid var(--hair); }
 .tcell:first-child { border-left: 0; }
 .tcell > svg { width: 34px; height: 34px; fill: none; stroke: var(--brand); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -542,6 +542,15 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .install h2 { margin-bottom: 56px; }
 .plats { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
 .plat-icons { display: flex; gap: 14px; }
+.plat-main { gap: 26px; }
+.split-os { display: grid; grid-template-columns: 1fr 1fr; }
+.os-half { display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 0 28px; }
+.os-half:first-child { padding-left: 0; }
+.os-half + .os-half { border-left: 1px solid var(--hair-2); padding-right: 0; }
+.os-half .plat-icon { margin-bottom: 14px; }
+.os-half h3 { font-size: 24px; letter-spacing: -0.02em; }
+.os-half .btn { width: 100%; margin-top: 22px; }
+.plat.is-yours .os-half:not(.is-yours) .plat-icon { fill: var(--fg); }
 .dl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .plat-main .plat-actions { gap: 16px; }
 .term-big { min-height: 56px; padding: 9px 9px 9px 18px; font-size: 15px; }
@@ -686,7 +695,9 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   .rail button { flex: 1; font-size: 11px; }
   .rail button svg { width: 18px; }
   .poster { width: 112px; }
-  .feat-grid, .plats, .dl-pair { grid-template-columns: minmax(0, 1fr); }
+  .feat-grid, .plats, .dl-pair, .split-os { grid-template-columns: minmax(0, 1fr); }
+  .os-half { padding: 0; }
+  .os-half + .os-half { border-left: 0; border-top: 1px solid var(--hair-2); margin-top: 22px; padding-top: 22px; }
   .feat-player, .feat-chain, .feat-sync, .feat-resume { grid-column: auto; }
   .feat { padding: 22px; }
   .related { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -698,3 +709,52 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   .pb-time { display: none; }
   .foot nav { margin-left: 0; }
 }
+
+/* The download page: one section per system, a card per file, the channel picked on top. On
+   Nightly the beam behind the title turns the app's own teal. */
+.dl-page { max-width: 980px; margin: 0 auto; padding: 0 var(--gutter); }
+.dl-head { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; padding: 176px 0 56px; text-align: center; }
+.dl-beams { inset: -40px -40% 0; }
+.dl-beams i { background: linear-gradient(90deg, transparent, var(--beam-a) 35%, var(--beam-b) 70%, transparent); transition: background 0.6s ease; }
+.dl-page { --beam-a: rgba(253, 201, 1, 0.55); --beam-b: rgba(255, 226, 120, 0.55); }
+.dl-page[data-channel="nightly"] { --beam-a: rgba(70, 224, 196, 0.6); --beam-b: rgba(124, 188, 245, 0.55); }
+.dl-title { display: flex; align-items: center; gap: 18px; }
+.dl-title img { border-radius: 16px; }
+.dl-title h1 { font-size: clamp(32px, 5vw, 52px); letter-spacing: -0.035em; font-weight: 600; }
+.channel { position: relative; display: inline-flex; margin-top: 28px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.channel button { position: relative; z-index: 1; width: 96px; padding: 8px 0; border: 0; border-radius: 999px; background: none; color: var(--fg-3); font: 500 14px/1 var(--sans); cursor: pointer; transition: color 0.25s ease; }
+.channel button:hover, .channel button[aria-selected="true"] { color: #fff; }
+.channel-thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); border-radius: 999px; background: rgba(255, 255, 255, 0.12); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
+.dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); background: rgba(70, 224, 196, 0.2); }
+.dl-meta { min-height: 1.4em; margin: 18px 0 0; color: var(--fg-3); font-size: 14px; }
+.dl-meta a { color: var(--fg-2); }
+.dl-sections { display: grid; gap: 44px; }
+.dl-sec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.dl-sec-head svg { width: 22px; height: 22px; fill: var(--fg); }
+.dl-sec.is-yours .dl-sec-head svg { fill: var(--brand); }
+.dl-sec-head h2 { font-size: 22px; letter-spacing: -0.02em; }
+.dl-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.dl-card {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 0 18px;
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  background: linear-gradient(137deg, var(--card-a) 5%, var(--card-b) 76%);
+  box-shadow: inset 0 1px var(--hi);
+  color: var(--fg);
+  text-decoration: none;
+  transition: border-color var(--quick), transform var(--quick);
+}
+a.dl-card:hover { border-color: var(--hair-2); color: #fff; transform: translateY(-1px); }
+.dl-what { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
+.dl-what svg { width: 18px; height: 18px; fill: var(--fg-2); }
+.dl-fmt { padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); color: var(--fg-2); font: 500 12.5px/1 var(--mono); }
+.dl-card.is-soon { opacity: 0.6; }
+.dl-term-sec .term { max-width: 640px; }
+.dl-all { margin: 56px 0 0; color: var(--fg-3); font-size: 14.5px; text-align: center; }
+.dl-page + .foot { margin-top: 120px; }
