@@ -32,7 +32,7 @@ pub enum MpvEvent {
 
 /// What the player observes, with the format each is read in. `track-list` comes as JSON
 /// text, the same list the desktop parses.
-pub const OBSERVED: [(&str, Format); 9] = [
+pub const OBSERVED: [(&str, Format); 11] = [
     ("time-pos", Format::Double),
     ("duration", Format::Double),
     ("pause", Format::Flag),
@@ -42,6 +42,8 @@ pub const OBSERVED: [(&str, Format); 9] = [
     ("track-list", Format::Text),
     ("aid", Format::Text),
     ("sid", Format::Text),
+    ("sub-delay", Format::Double),
+    ("audio-delay", Format::Double),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]

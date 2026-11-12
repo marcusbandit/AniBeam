@@ -267,8 +267,18 @@ const LOOK_FOR: Duration = Duration::from_secs(10);
 
 /// What the notice's action does.
 enum Undo {
-    Skip { to: f64, kind: SkipKind },
+    Skip {
+        to: f64,
+        kind: SkipKind,
+    },
+    /// "Resumed at 12:04": the way back to the start.
+    StartOver,
 }
+
+/// How long a notice stays up, and how long "Resumed at" does: the desktop gives the
+/// resume line a little longer.
+const NOTICE_FOR: Duration = Duration::from_secs(4);
+const RESUME_NOTICE_FOR: Duration = Duration::from_secs(6);
 
 struct Player {
     window: slint::Weak<AppWindow>,
@@ -301,6 +311,9 @@ struct Player {
     episode_number: Option<f64>,
     sub_pos_setting: f64,
     sub_pos: f64,
+    /// The delays as mpv last reported them, in seconds.
+    sub_delay: f64,
+    audio_delay: f64,
     undo: Option<Undo>,
     tick: Timer,
     hide: Timer,
@@ -379,6 +392,8 @@ pub fn install(window: &AppWindow) {
         }
     });
     d.on_open_picker(|kind| with_player(|p| p.open_picker(kind)));
+    d.on_nudge_delay(|kind, step| with_player(|p| p.nudge_delay(kind, step as f64)));
+    d.on_reset_delay(|kind| with_player(|p| p.set_delay(kind, 0.0)));
     d.on_pick(|i| with_player(|p| p.pick(i)));
     d.on_close_picker(|| with_player(|p| p.close_picker()));
     d.on_mark(|| with_player(|p| p.mark()));
@@ -631,6 +646,10 @@ fn begin(
         d.set_speed(1.0);
         d.set_notice("".into());
         d.set_notice_action("".into());
+        d.set_sub_delay_text(delay_text(0.0).into());
+        d.set_audio_delay_text(delay_text(0.0).into());
+        d.set_sub_delay_set(false);
+        d.set_audio_delay_set(false);
         d.set_picker(0);
         d.set_chrome(true);
         d.set_preview(slint::Image::default());
@@ -662,6 +681,8 @@ fn begin(
         episode_number,
         sub_pos_setting: 100.0,
         sub_pos: 100.0,
+        sub_delay: 0.0,
+        audio_delay: 0.0,
         undo: None,
         tick: Timer::default(),
         hide: Timer::default(),
@@ -1162,6 +1183,13 @@ impl Player {
             d.set_loaded(true);
             d.set_duration(duration as f32);
         });
+        // Picked up where it was left: say so, with the way back to the start.
+        if let Some(at) = self.session.resume_from.filter(|r| *r > 5.0) {
+            self.flash(
+                &format!("Resumed at {}", crate::phone::clock(at)),
+                Some(Undo::StartOver),
+            );
+        }
         if let Some(dev) = self.cast_on_load.take() {
             self.start_cast(dev, None);
         }
@@ -1249,6 +1277,15 @@ impl Player {
                 self.tracks = parse_tracks(&j);
                 self.track_json = j;
                 self.show_tracks();
+            }
+            ("sub-delay", Value::Double(v)) | ("audio-delay", Value::Double(v)) => {
+                let sub = name == "sub-delay";
+                if sub {
+                    self.sub_delay = v;
+                } else {
+                    self.audio_delay = v;
+                }
+                self.show_delay(sub);
             }
             ("aid", v) => {
                 self.aid = track_id(&v);
@@ -2079,32 +2116,112 @@ impl Player {
         self.show_chrome();
     }
 
+    /// Shows one delay on the page: its text and whether it has moved off 0.
+    fn show_delay(&self, sub: bool) {
+        let v = if sub {
+            self.sub_delay
+        } else {
+            self.audio_delay
+        };
+        let text = delay_text(v);
+        let set = (v * 100.0).round() != 0.0;
+        self.d(|d| {
+            if sub {
+                d.set_sub_delay_text(text.clone().into());
+                d.set_sub_delay_set(set);
+            } else {
+                d.set_audio_delay_text(text.clone().into());
+                d.set_audio_delay_set(set);
+            }
+        });
+    }
+
+    /// A delay stepped from the sheet: kind 0 is the subtitles' and 1 the audio's.
+    fn nudge_delay(&mut self, kind: i32, step: f64) {
+        let now = if kind == 0 {
+            self.sub_delay
+        } else {
+            self.audio_delay
+        };
+        self.set_delay(kind, now + step);
+    }
+
+    /// The page's own value moves first, so a second tap within the round trip adds to
+    /// the first rather than repeating it; mpv's observation then writes back what it
+    /// settled on. Hundredths, so a step from a fine value in mpv.conf moves by exactly 0.1.
+    fn set_delay(&mut self, kind: i32, to: f64) {
+        let to = (to * 100.0).round() / 100.0;
+        let (prop, line) = if kind == 0 {
+            self.sub_delay = to;
+            ("sub-delay", "Subtitle delay")
+        } else {
+            self.audio_delay = to;
+            ("audio-delay", "Audio delay")
+        };
+        self.mpv.set(prop, &to.to_string());
+        self.show_delay(kind == 0);
+        self.flash(&format!("{line} {}", delay_text(to)), None);
+        self.show_chrome();
+    }
+
     fn flash(&mut self, line: &str, undo: Option<Undo>) {
-        let action = if undo.is_some() { "Undo" } else { "" };
+        let secs = if matches!(undo, Some(Undo::StartOver)) {
+            RESUME_NOTICE_FOR
+        } else {
+            NOTICE_FOR
+        };
+        self.flash_for(line, undo, secs);
+    }
+
+    fn flash_for(&mut self, line: &str, undo: Option<Undo>, secs: Duration) {
+        let action = match undo {
+            Some(Undo::Skip { .. }) => "Undo",
+            Some(Undo::StartOver) => "Start over",
+            None => "",
+        };
         self.undo = undo;
         self.d(|d| {
             d.set_notice(line.into());
             d.set_notice_action(action.into());
         });
         let session = self.session.session;
-        self.notice
-            .start(TimerMode::SingleShot, Duration::from_secs(4), move || {
-                with_player(|p| {
-                    if p.session.session == session {
-                        p.undo = None;
-                        p.d(|d| d.set_notice("".into()));
-                    }
-                })
-            });
+        self.notice.start(TimerMode::SingleShot, secs, move || {
+            with_player(|p| {
+                if p.session.session == session {
+                    p.undo = None;
+                    p.d(|d| d.set_notice("".into()));
+                }
+            })
+        });
     }
 
     fn notice_clicked(&mut self) {
-        if let Some(Undo::Skip { to, kind }) = self.undo.take() {
-            self.rules.disarm(&kind);
-            self.seek(to);
+        match self.undo.take() {
+            Some(Undo::Skip { to, kind }) => {
+                self.rules.disarm(&kind);
+                self.seek(to);
+            }
+            Some(Undo::StartOver) => self.seek(0.0),
+            None => {}
         }
         self.notice.stop();
         self.d(|d| d.set_notice("".into()));
+    }
+}
+
+/// A delay as the desktop's delayText writes it: tenths of a second, hundredths when the
+/// value is finer, so -0.04 never shows as -0.0.
+fn delay_text(v: f64) -> String {
+    let r = (v * 100.0).round() / 100.0;
+    if r == 0.0 {
+        return "0.0 s".into();
+    }
+    let fine = (r * 10.0 - (r * 10.0).round()).abs() > 1e-6;
+    let sign = if r > 0.0 { "+" } else { "" };
+    if fine {
+        format!("{sign}{r:.2} s")
+    } else {
+        format!("{sign}{r:.1} s")
     }
 }
 
@@ -2125,6 +2242,17 @@ fn track_id(v: &Value) -> i64 {
 mod tests {
     use super::*;
     use anibeam_core::SkipSource;
+
+    #[test]
+    fn delays_read_the_way_the_desktop_writes_them() {
+        assert_eq!(delay_text(0.0), "0.0 s");
+        assert_eq!(delay_text(-0.004), "0.0 s");
+        assert_eq!(delay_text(0.1), "+0.1 s");
+        assert_eq!(delay_text(-1.5), "-1.5 s");
+        assert_eq!(delay_text(0.30000000000000004), "+0.3 s");
+        assert_eq!(delay_text(-0.04), "-0.04 s");
+        assert_eq!(delay_text(2.0), "+2.0 s");
+    }
 
     fn w(kind: SkipKind, start: f64, end: f64) -> SkipWindow {
         SkipWindow {

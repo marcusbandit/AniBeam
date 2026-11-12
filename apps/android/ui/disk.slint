@@ -1,0 +1,255 @@
+// What the phone's episodes take, and what can leave: the desktop's Downloads usage line
+// (watched against not watched, and Delete watched), and the shows hidden from the lists with
+// the way to bring them back. Hide itself is on a poster's held menu.
+
+import { Theme } from "theme.slint";
+import { Button, ListGroup, ListRow, SectionHead } from "widgets.slint";
+import { Sheet } from "sheet.slint";
+
+export struct HiddenRow {
+    id: int,
+    title: string,
+    ledger: string,
+}
+
+export global DiskData {
+    // Something is on the disk to count.
+    in property <bool> show;
+    in property <string> total-text;
+    in property <string> watched-text;
+    in property <string> unwatched-text;
+    // The watched share of the bytes, 0 to 1.
+    in property <float> watched-share;
+    in property <bool> can-delete;
+    in property <bool> busy;
+    // What the last delete took, or why nothing went.
+    in property <string> line;
+    in property <[HiddenRow]> hidden;
+    in-out property <bool> hidden-open;
+    // 0 closed, 1 the two choices, 2 confirm every watched episode, 3 confirm finished shows.
+    in-out property <int> sheet;
+    in property <string> all-line;
+    in property <string> finished-line;
+    in property <string> sheet-title;
+    in property <string> sheet-body;
+    callback ask(int);
+    callback confirm();
+    callback unhide(int);
+    callback hide(int);
+}
+
+// The usage bar: watched in green, not watched in the accent.
+component UsageBar inherits Rectangle {
+    height: 3 * Theme.unit;
+    border-radius: self.height / 2;
+    background: Theme.sunken;
+    clip: true;
+    Rectangle {
+        x: 0;
+        width: parent.width * DiskData.watched-share;
+        background: Theme.ok;
+    }
+    Rectangle {
+        x: parent.width * DiskData.watched-share;
+        width: parent.width - self.x;
+        background: Theme.accent;
+    }
+}
+
+component Key inherits HorizontalLayout {
+    in property <color> ink;
+    in property <string> label;
+    in property <string> value;
+    spacing: Theme.unit * 2;
+    Rectangle {
+        width: 2.5 * Theme.unit;
+        height: self.width;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: root.ink;
+    }
+    Text {
+        text: root.label;
+        color: Theme.dim;
+        font-size: Theme.small;
+        vertical-alignment: center;
+    }
+    Text {
+        text: root.value;
+        color: Theme.text;
+        font-size: Theme.small;
+        font-family: Theme.figure;
+        vertical-alignment: center;
+    }
+}
+
+export component DiskBlock inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    if DiskData.show: VerticalLayout {
+        spacing: Theme.unit * 3;
+        SectionHead {
+            title: "On this phone";
+            note: DiskData.total-text;
+        }
+        UsageBar { }
+        HorizontalLayout {
+            spacing: Theme.unit * 5;
+            alignment: start;
+            Key {
+                ink: Theme.ok;
+                label: "Watched";
+                value: DiskData.watched-text;
+            }
+            Key {
+                ink: Theme.accent;
+                label: "Not watched";
+                value: DiskData.unwatched-text;
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.unit * 3;
+            alignment: start;
+            Button {
+                text: DiskData.busy ? "Deleting" : "Delete watched";
+                icon: @image-url("icons/x.svg");
+                has-icon: true;
+                small: true;
+                enabled: !DiskData.busy && DiskData.can-delete;
+                clicked => { DiskData.ask(0); }
+            }
+        }
+    }
+    // Outside the usage block: when the last watched episode goes, the block does too, and
+    // the line saying what went stays.
+    if DiskData.line != "": Text {
+        text: DiskData.line;
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    if DiskData.hidden.length > 0: ListGroup {
+        ListRow {
+            label: "Hidden shows";
+            helper: "Out of Home and the library until you bring them back.";
+            value: "" + DiskData.hidden.length;
+            tappable: true;
+            chevron: true;
+            last: !DiskData.hidden-open;
+            clicked => { DiskData.hidden-open = !DiskData.hidden-open; }
+        }
+        if DiskData.hidden-open: VerticalLayout {
+            for row[i] in DiskData.hidden: Rectangle {
+                height: 15 * Theme.unit;
+                HorizontalLayout {
+                    padding-left: Theme.pad;
+                    padding-right: Theme.pad;
+                    spacing: Theme.unit * 3;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        Text {
+                            text: row.title;
+                            color: Theme.text;
+                            font-family: Theme.strong-face;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: row.ledger;
+                            color: Theme.dim;
+                            font-size: Theme.small;
+                            overflow: elide;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Button {
+                            text: "Unhide";
+                            small: true;
+                            clicked => { DiskData.unhide(row.id); }
+                        }
+                    }
+                }
+                if i < DiskData.hidden.length - 1: Rectangle {
+                    x: Theme.pad;
+                    y: parent.height - 1px;
+                    width: parent.width - 2 * Theme.pad;
+                    height: 1px;
+                    background: Theme.line;
+                }
+            }
+        }
+    }
+}
+
+// Delete watched: the two choices, then the confirmation with what goes.
+export component DiskSheet inherits Sheet {
+    dismissed => { DiskData.sheet = 0; }
+    Text {
+        text: DiskData.sheet == 1 ? "Delete watched" : DiskData.sheet-title;
+        color: Theme.text;
+        font-size: Theme.section;
+        font-family: Theme.display-face;
+        wrap: word-wrap;
+    }
+    if DiskData.sheet == 1: Text {
+        text: "Files and subtitles are deleted from this phone for good.";
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+    if DiskData.sheet != 1: Text {
+        text: DiskData.sheet-body;
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+    Rectangle { height: Theme.unit; }
+    if DiskData.sheet == 1: VerticalLayout {
+        spacing: Theme.unit * 2;
+        Button {
+            text: "Every watched episode";
+            icon: @image-url("icons/x.svg");
+            has-icon: true;
+            danger: true;
+            clicked => { DiskData.ask(1); }
+        }
+        Text {
+            text: DiskData.all-line;
+            color: Theme.dim;
+            font-size: Theme.small;
+            font-family: Theme.figure;
+            horizontal-alignment: center;
+        }
+    }
+    if DiskData.sheet == 1: VerticalLayout {
+        spacing: Theme.unit * 2;
+        Button {
+            text: "Every finished show you watched";
+            icon: @image-url("icons/x.svg");
+            has-icon: true;
+            danger: true;
+            clicked => { DiskData.ask(2); }
+        }
+        Text {
+            text: DiskData.finished-line;
+            color: Theme.dim;
+            font-size: Theme.small;
+            font-family: Theme.figure;
+            horizontal-alignment: center;
+        }
+    }
+    if DiskData.sheet != 1: Button {
+        text: "Delete";
+        icon: @image-url("icons/x.svg");
+        has-icon: true;
+        danger: true;
+        clicked => {
+            DiskData.sheet = 0;
+            DiskData.confirm();
+        }
+    }
+    Button {
+        text: "Cancel";
+        clicked => { DiskData.sheet = 0; }
+    }
+}

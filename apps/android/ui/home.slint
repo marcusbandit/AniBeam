@@ -4,6 +4,7 @@ import { AppData, Nav } from "data.slint";
 import { Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
 import { CalRow } from "calendar.slint";
+import { FeedBlock } from "feed.slint";
 import { Button, ClampedText, EmptyNote, PageTitle, Poster, SectionHead, TileRow } from "widgets.slint";
 
 // The next episode to air, set like the head of the desktop's show view: the poster, the
@@ -114,6 +115,7 @@ component Showcase inherits VerticalLayout {
             }
         }
     }
+    FeedBlock { }
     if AppData.ready && !AppData.hero.show && AppData.home-shelves.length == 0: EmptyNote {
         title: "Nothing on this phone yet";
         body: "Shows you download here, and what airs for them, show up on Home. Find one in Downloads.";

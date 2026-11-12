@@ -1910,6 +1910,19 @@ impl Find {
             String::new()
         };
         let can_undo = !self.history.is_empty();
+        crate::inspect::track(
+            list.items
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    let batch = list
+                        .facts
+                        .get(i)
+                        .is_some_and(|f| f.batch && f.first_episode.is_none());
+                    (r.link.clone(), batch)
+                })
+                .collect(),
+        );
         self.with_data(|d| {
             d.set_releases(model(rows));
             d.set_groups(model(groups));

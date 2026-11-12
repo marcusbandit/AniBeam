@@ -4,6 +4,9 @@ import { Button, NavItem, Pane } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
 import { Ask, MorePage, SettingHit, Settings } from "more.slint";
+import { SubtitleData } from "subtitles.slint";
+import { FeedData } from "feed.slint";
+import { DiskData, DiskSheet, HiddenRow } from "disk.slint";
 import { SeriesPage } from "series.slint";
 import { Onboarding } from "onboarding.slint";
 import { FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion } from "find.slint";
@@ -17,7 +20,7 @@ import { ActivityData, LogRow } from "activity.slint";
 import { MoveData, MoveLine, MoveSheet } from "listmove.slint";
 import { LookData, LookTheme } from "look.slint";
 import { CalendarPage } from "calendar.slint";
-import { AiringSheet } from "airing.slint";
+import { AiringPick, AiringSheet, SeasonSheet } from "airing.slint";
 import { Area, Fold } from "fold.slint";
 import { NotifyQuestion } from "notify.slint";
 import { Sheet } from "sheet.slint";
@@ -27,7 +30,7 @@ import { ShowSheets } from "show-sheets.slint";
 
 export { Theme }
 export { ActivityData, LogRow, LookData, LookTheme, MoveData, MoveLine }
-export { AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile }
+export { Nav, DiskData, HiddenRow, FeedData, AiringPick, SubtitleData, AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -160,6 +163,13 @@ component ShowMenu inherits Rectangle {
                     FindData.find-series(Ask.menu-id);
                     Ask.menu-id = -1;
                     Nav.page = 2;
+                }
+            }
+            Button {
+                text: "Hide";
+                clicked => {
+                    DiskData.hide(Ask.menu-id);
+                    Ask.menu-id = -1;
                 }
             }
             Button {
@@ -351,6 +361,14 @@ export component AppWindow inherits Window {
                 AppData.airing-close();
                 return accept;
             }
+            if (AiringPick.open) {
+                AiringPick.open = false;
+                return accept;
+            }
+            if (DiskData.sheet != 0) {
+                DiskData.sheet = 0;
+                return accept;
+            }
             if (MoveData.open) {
                 MoveData.later();
                 return accept;
@@ -512,6 +530,14 @@ export component AppWindow inherits Window {
         }
 
         if AppData.airing-menu.show: AiringSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if AiringPick.open: SeasonSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if DiskData.sheet != 0: DiskSheet {
             inset-bottom: root.inset-bottom;
         }
 

@@ -11,6 +11,7 @@ import { RepoData, RepoPanes } from "repos.slint";
 import { Area, Fold } from "fold.slint";
 import { Leaf } from "panes.slint";
 import { NotifyRow } from "notify.slint";
+import { SubtitleRows } from "subtitles.slint";
 import { StatsBody, StatsData } from "stats.slint";
 import { BackupData, DataBody } from "backup.slint";
 import { ActivityBody } from "activity.slint";
@@ -44,7 +45,8 @@ export struct SettingHit {
 // Where More is: the index or one section, and the search over every setting.
 export global Settings {
     // The open section, -1 for the index. 0 Accounts, 1 Downloads, 2 Streaming, 3 Search
-    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon, 8 Stats, 9 Data, 10 Activity, 11 Appearance.
+    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon, 8 Stats, 9 Data, 10 Activity, 11 Appearance,
+    // 12 Subtitles.
     in-out property <int> section: -1;
     in-out property <string> query;
     in property <[SettingHit]> hits;
@@ -72,6 +74,7 @@ global Status {
     out property <bool> computer-warn: AppData.host-tone == 1;
     out property <string> about: AppData.version;
     out property <string> icon: ["Default", "Dark", "Line art"][AppData.app-icon];
+    out property <string> subtitles: "Size, place, font, colours and box";
     out property <string> data: BackupData.busy ? "Working..." : "Back up, restore, image cache";
     out property <string> activity: "What AniBeam did, newest first";
     out property <string> look: ["Dark", "Light", "Follows the phone"][LookData.mode];
@@ -376,6 +379,13 @@ component IndexPage inherits Rectangle {
                     name: "Streaming";
                     status: Status.streaming;
                     clicked => { Settings.open(2, ""); }
+                }
+                IndexRow {
+                    section: 12;
+                    icon: @image-url("icons/captions.svg");
+                    name: "Subtitles";
+                    status: Status.subtitles;
+                    clicked => { Settings.open(12, ""); }
                 }
                 IndexRow {
                     section: 3;
@@ -755,6 +765,18 @@ export component MorePage inherits Rectangle {
             ListGroup {
                 HostRow { }
             }
+        }
+    }
+
+    if root.shown == 12: subtitles := SectionPage {
+        title: "Subtitles";
+        note: Status.subtitles;
+        SubtitleRows { }
+        Text {
+            text: "What every episode on this phone starts with. One streamed from your computer starts with that computer's settings.";
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
         }
     }
 

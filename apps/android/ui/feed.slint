@@ -1,0 +1,50 @@
+// The feed on Home: what landed and what lands next, as shelves of the shows on this phone.
+// The core builds the cards and sorts them (ListFeed); the sort is the desktop's, Recently
+// released or Coming soon, kept in the same preference. The calendar stays the day-by-day
+// view of what airs; the feed is the show-by-show one.
+
+import { Theme } from "theme.slint";
+import { AppData, Shelf } from "data.slint";
+import { Ask } from "more.slint";
+import { SectionHead, Segmented, TileRow } from "widgets.slint";
+
+export global FeedData {
+    // 0 Recently released, 1 Coming soon.
+    in property <int> sort;
+    // This sort's one line: what is new this week, or what airs next.
+    in property <string> summary;
+    in property <[Shelf]> shelves;
+    callback pick-sort(int);
+}
+
+export component FeedBlock inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    if FeedData.shelves.length > 0: VerticalLayout {
+        spacing: Theme.unit * 3;
+        SectionHead {
+            title: "Feed";
+            note: FeedData.summary;
+        }
+        Segmented {
+            options: ["Recently released", "Coming soon"];
+            picked: FeedData.sort;
+            pick(i) => { FeedData.pick-sort(i); }
+        }
+        for shelf in FeedData.shelves: VerticalLayout {
+            spacing: Theme.unit * 3;
+            SectionHead {
+                title: shelf.title;
+                note: shelf.count;
+            }
+            TileRow {
+                tiles: shelf.tiles;
+                holdable: true;
+                open(id) => { AppData.open-series(id); }
+                held(id, title) => {
+                    Ask.menu-id = id;
+                    Ask.menu-title = title;
+                }
+            }
+        }
+    }
+}

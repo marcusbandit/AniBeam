@@ -11,6 +11,7 @@ import { NotifyPointer } from "notify.slint";
 import { Button, CardStack, Chip, ClampedText, Cubes, Figure, IconButton, PageTitle, Poster, ProgressLine, SearchField, SectionHead } from "widgets.slint";
 import { Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
+import { DiskBlock } from "disk.slint";
 
 // The colour of a download's state dot: moving, paused, waiting, trouble, done.
 component StateDot inherits Rectangle {
@@ -324,6 +325,7 @@ component Queue inherits VerticalLayout {
             if row.done: FinishedRow { data: row; }
         }
     }
+    DiskBlock { }
 }
 
 // The show view's plan, kept in view at the foot of its pane while the grid scrolls, as the
