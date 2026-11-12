@@ -1,0 +1,10 @@
+[package]
+name = "anibeam-recs"
+description = "The recommender behind Recommended for you: pure functions over a list, a catalogue and neighbours. No network, no disk."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true

@@ -146,6 +146,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "anibeam-recs"
+version = "2.5.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
