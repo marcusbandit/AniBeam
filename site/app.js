@@ -56,12 +56,11 @@ const onceInView = (els, threshold = 0.45) => {
     main.querySelector("span").textContent = os === "android" ? "Get the Android app" : `Download for ${names[os]}`;
     if (os === "android") main.href = `https://github.com/${repo}/releases?q=android&expanded=true`;
     aim();
-    // The visitor's card goes first and gets the yellow button.
-    const card = document.querySelector(`.plat[data-os="${os}"], .phone[data-os="${os}"]`);
+    // The visitor's card lights up, and its download for their system gets the yellow button.
+    const card = document.querySelector(`.plat[data-os~="${os}"], .phone[data-os="${os}"]`);
     if (card) {
       card.classList.add("is-yours");
-      if (card.classList.contains("plat")) card.parentElement.prepend(card);
-      const btn = card.querySelector(".btn-ghost");
+      const btn = card.querySelector(`.btn-ghost[data-for="${os}"]`) || card.querySelector(".btn-ghost");
       if (btn) { btn.classList.remove("btn-ghost"); btn.classList.add("btn-primary"); }
     }
   }
