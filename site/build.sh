@@ -7,6 +7,15 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="${1:-$root/target/site}"
 
+# It replaces the output folder, so it only takes a new folder or one it built before, and
+# never one inside site/ itself.
+case "$(realpath -m "$out")/" in
+  "$root/site/"*) echo "build.sh: the output can't be inside site/" >&2; exit 1 ;;
+esac
+if [ -e "$out" ] && ! { [ -f "$out/index.html" ] && [ -f "$out/app.js" ]; }; then
+  echo "build.sh: $out exists and isn't an earlier site build; pick a new folder" >&2
+  exit 1
+fi
 rm -rf "$out"
 mkdir -p "$out/img"
 cp -r "$root/site/." "$out/"

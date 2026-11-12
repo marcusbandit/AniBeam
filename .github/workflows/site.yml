@@ -1,11 +1,18 @@
 name: Site
 
-# Publishes the website in site/ on GitHub Pages whenever it changes on main (#768).
+# Publishes the website in site/ on GitHub Pages whenever it changes on main (#768). A pull
+# request touching it only assembles the site, so a broken build.sh shows before the merge.
 # site/build.sh adds the screenshots from docs/readme, so they live in one place.
 # The custom domain is set in the repo's Pages settings, not in a CNAME file.
 on:
   push:
     branches: [main]
+    paths:
+      - site/**
+      - docs/readme/**
+      - assets/icon.png
+      - .github/workflows/site.yml
+  pull_request:
     paths:
       - site/**
       - docs/readme/**
@@ -20,10 +27,22 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: site/build.sh "$RUNNER_TEMP/site"
+
   deploy:
+    if: github.event_name != 'pull_request'
+
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment:
