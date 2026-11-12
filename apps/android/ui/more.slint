@@ -12,6 +12,7 @@ import { Area, Fold } from "fold.slint";
 import { Leaf } from "panes.slint";
 import { NotifyRow } from "notify.slint";
 import { StatsBody, StatsData } from "stats.slint";
+import { BackupData, DataBody } from "backup.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -40,7 +41,7 @@ export struct SettingHit {
 // Where More is: the index or one section, and the search over every setting.
 export global Settings {
     // The open section, -1 for the index. 0 Accounts, 1 Downloads, 2 Streaming, 3 Search
-    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon, 8 Stats.
+    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon, 8 Stats, 9 Data.
     in-out property <int> section: -1;
     in-out property <string> query;
     in property <[SettingHit]> hits;
@@ -68,6 +69,7 @@ global Status {
     out property <bool> computer-warn: AppData.host-tone == 1;
     out property <string> about: AppData.version;
     out property <string> icon: ["Default", "Dark", "Line art"][AppData.app-icon];
+    out property <string> data: BackupData.busy ? "Working..." : "Back up, restore, image cache";
     out property <string> stats: StatsData.loaded && !StatsData.empty ? StatsData.hours + " hours watched in " + StatsData.years[StatsData.year-index] : "A year of watching";
 }
 
@@ -407,6 +409,13 @@ component IndexPage inherits Rectangle {
                     name: "Stats";
                     status: Status.stats;
                     clicked => { Settings.open(8, ""); }
+                }
+                IndexRow {
+                    section: 9;
+                    icon: @image-url("icons/archive.svg");
+                    name: "Data";
+                    status: Status.data;
+                    clicked => { Settings.open(9, ""); }
                 }
                 IndexRow {
                     section: 6;
@@ -785,6 +794,12 @@ export component MorePage inherits Rectangle {
         title: "Stats";
         note: StatsData.loaded ? StatsData.year-line : "A year of watching";
         StatsBody { }
+    }
+
+    if root.shown == 9: data := SectionPage {
+        title: "Data";
+        note: Status.data;
+        DataBody { }
     }
 
     if root.shown == 6: about := SectionPage {
