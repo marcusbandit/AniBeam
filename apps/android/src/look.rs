@@ -242,6 +242,7 @@ pub fn install(window: &AppWindow, data_dir: &Path) {
 }
 
 /// The phone's own light or dark setting changed; only System follows it.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn system_changed() {
     with(|p| {
         if p.choice.mode == 2 {
