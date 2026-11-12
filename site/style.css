@@ -501,7 +501,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   transform: rotate(-12deg);
   pointer-events: none;
 }
-.trust-inner::before { left: -10%; top: 62%; width: 70%; filter: blur(0.5px); }
+.trust-inner::before { left: -10%; top: 49%; width: 70%; filter: blur(0.5px); }
 .trust-inner::after { right: -12%; top: 74%; width: 60%; height: 18px; opacity: 0.25; filter: blur(10px); }
 .trust-inner > * { position: relative; max-width: var(--wide); margin-left: auto; margin-right: auto; }
 .trust h2 { font-size: clamp(48px, 7vw, 104px); letter-spacing: -0.045em; }
@@ -510,7 +510,6 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .tcell:first-child { border-left: 0; }
 .tcell svg { width: 34px; height: 34px; fill: none; stroke: var(--brand); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .tcell h3 { font-size: 24px; }
-.tcell-os { position: relative; }
 .lic { margin-top: -10px; color: var(--fg-3); font: 500 13px/1 var(--mono); }
 .gh {
   position: absolute;
@@ -533,7 +532,10 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   transition: opacity 0.18s ease, translate 0.18s var(--ease);
 }
 .gh svg { width: 15px; height: 15px; fill: currentColor; }
-.tcell-os:hover .gh, .gh:focus-visible { opacity: 1; translate: -50% 10px; pointer-events: auto; }
+.tcell-hover { position: relative; }
+.tcell-hover:hover .gh, .gh:focus-visible { opacity: 1; translate: -50% 10px; pointer-events: auto; }
+.hint { font-family: var(--sans); font-size: 13.5px; font-weight: 600; }
+.hint svg { fill: #02a9ff; }
 .gh:hover { color: #fff; }
 
 /* Install: three cards of one height, the phones in their own row */
