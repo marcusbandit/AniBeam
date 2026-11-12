@@ -1098,7 +1098,14 @@ Item {
         if (st === "complete") return "Complete"
         if (st === "airing") return r.rule_enabled === false ? "Paused" : "Airing"
         // A show with no episode here was never downloaded, so it is not missing any (#735)
-        if (st === "incomplete") return !(r.show.episodes_on_disk > 0) ? "Not downloaded" : r.show.missing && r.show.missing.length ? r.show.missing.length + " missing" : "Unknown"
+        // Missing is a hole before an episode that is here; what comes after the last one is
+        // not downloaded yet (the show's cube row says which)
+        if (st === "incomplete") {
+            var cubes = String(r.show.cubes || ""), holes = (cubes.match(/m/g) || []).length
+            if (!(r.show.episodes_on_disk > 0)) return "Not downloaded"
+            if (holes > 0) return holes + " missing"
+            return r.show.missing && r.show.missing.length ? r.show.missing.length + " not downloaded" : "Unknown"
+        }
         return ""
     }
     function ruleProgress(r) {

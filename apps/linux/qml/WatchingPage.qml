@@ -345,7 +345,9 @@ Item {
                                 onPlayed: tile.modelData.ghost ? page.getEpisodes(tile.modelData.raw)
                                           : tile.modelData.planning ? page.startWatching(tile.modelData.raw)
                                           : page.playSeries(tile.modelData.raw.owned, tile.modelData.raw.title)
-                                HoverHandler { onHoveredChanged: page.hoverOn(watchCard, tile.modelData, hovered) }
+                                // Under the pointer or holding the keyboard: the menu key reaches the same actions
+                                HoverHandler { id: hoverTrack; onHoveredChanged: page.hoverOn(watchCard, tile.modelData, hovered || watchCard.activeFocus) }
+                                onActiveFocusChanged: page.hoverOn(watchCard, tile.modelData, activeFocus || hoverTrack.hovered)
                                 Component.onDestruction: page.hoverOn(watchCard, null, false)
                             }
                         }

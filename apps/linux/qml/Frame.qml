@@ -945,6 +945,8 @@ FocusScope {
         frame.toast(r.reply && r.reply.job !== undefined ? "Moving to " + label : "Moved to " + label)
         return true
     }
+    // The TV a cast carries from one episode's player page to the next's, taken once (#756)
+    property var castCarry: null
     // Plan to watch (#734): Planning on every connected tracker, from a search hit or a Get
     // view. A show already on a list keeps its place there (the core never moves an entry).
     // True when the call went through, whether it started a write or found the show listed.
