@@ -1402,7 +1402,7 @@ impl qobject::Door {
             EventBody::CrawlFinished { .. } => {
                 self.as_mut().crawl_finished(n("fetched"), n("deferred"))
             }
-            // The desktop does not cast yet; the phone does.
+            // The player page reads casts off the generic `event` signal, which carries them.
             EventBody::CastDevicesChanged { .. } | EventBody::CastChanged { .. } => {}
             EventBody::SkipWindowsReady { .. } => self
                 .as_mut()
