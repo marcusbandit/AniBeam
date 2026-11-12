@@ -140,10 +140,13 @@ impl Page {
 /// The offset of `year`'s January, and the thirteen local midnights that open each month
 /// and the next January, so a month keeps its edges across a clock change.
 fn month_edges(year: i32) -> (i32, Vec<i64>) {
+    // A midnight that a clock change skipped is the first hour that exists after it.
     let midnight = |y: i32, m: u32| {
-        NaiveDate::from_ymd_opt(y, m, 1)
-            .and_then(|d| d.and_hms_opt(0, 0, 0))
-            .and_then(|t| Local.from_local_datetime(&t).earliest())
+        let day = NaiveDate::from_ymd_opt(y, m, 1)?;
+        (0..3).find_map(|h| {
+            let t = day.and_hms_opt(h, 0, 0)?;
+            Local.from_local_datetime(&t).earliest()
+        })
     };
     let offset = midnight(year, 1)
         .map(|t| t.offset().fix().local_minus_utc())
