@@ -1,0 +1,30 @@
+// Every sheet a show's page opens, in one place for the window to draw.
+
+import { ShowData } from "show.slint";
+import { EntrySheet } from "show-entry.slint";
+import { FixesSheet } from "show-fixes.slint";
+import { MatchSheet } from "show-match.slint";
+import { NotesSheet } from "show-notes.slint";
+import { ScoreSheet, StatusSheet } from "show-lists.slint";
+
+export component ShowSheets inherits Rectangle {
+    in property <length> inset-bottom;
+    if ShowData.sheet == 1: StatusSheet {
+        inset-bottom: root.inset-bottom;
+    }
+    if ShowData.sheet == 2: ScoreSheet {
+        inset-bottom: root.inset-bottom;
+    }
+    if ShowData.sheet == 3: EntrySheet {
+        inset-bottom: root.inset-bottom;
+    }
+    if ShowData.sheet == 4: NotesSheet {
+        inset-bottom: root.inset-bottom;
+    }
+    if ShowData.sheet == 5: FixesSheet {
+        inset-bottom: root.inset-bottom;
+    }
+    if ShowData.sheet == 6: MatchSheet {
+        inset-bottom: root.inset-bottom;
+    }
+}

@@ -58,6 +58,10 @@ impl EventListener for Logcat {
         }
         crate::player::core_event(&event.body);
         crate::inspect::core_event(&event.body);
+        crate::show_match::core_event(&event);
+        crate::backup::core_event(&event);
+        crate::activity::core_event(&event);
+        crate::listmove::core_event(&event);
         // Debug events are progress chatter; the state changes the pages show come as Info
         // and above, so only those make the UI read the core again.
         if !matches!(event.level, Level::Debug) {

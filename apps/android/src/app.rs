@@ -36,7 +36,7 @@ const STORAGE_EVERY: u32 = 30;
 
 /// Puts a model's rows in place, touching only the rows that changed, so a once-a-second
 /// countdown repaints the text that moved and not the whole grid.
-fn update<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+pub(crate) fn update<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
     if model.row_count() != rows.len() {
         model.set_vec(rows);
         return;
@@ -200,7 +200,7 @@ fn with_app(f: impl FnOnce(&mut App)) {
 }
 
 /// More's sections, by the index Settings.section uses.
-const SECTIONS: [&str; 9] = [
+const SECTIONS: [&str; 13] = [
     "Accounts",
     "Downloads",
     "Streaming",
@@ -209,6 +209,10 @@ const SECTIONS: [&str; 9] = [
     "Your computer",
     "About",
     "App icon",
+    "Stats",
+    "Data",
+    "Activity",
+    "Appearance",
     "Subtitles",
 ];
 
@@ -275,17 +279,52 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     (6, "Set up again", "onboarding first run start over"),
     (6, "Version", "build about"),
     (
+        8,
+        "Stats",
+        "hours episodes genres studios seasons year watched recap busiest month history",
+    ),
+    (
+        9,
+        "Back up the library",
+        "backup export file save copy move computer json private sign-ins",
+    ),
+    (
+        9,
+        "Restore from a backup",
+        "restore import file load library merge",
+    ),
+    (
+        9,
+        "Image cache",
+        "images posters banners clear storage space cache",
+    ),
+    (
+        10,
+        "Activity",
+        "log events errors problems copy clear history what happened",
+    ),
+    (
+        11,
+        "Colours",
+        "appearance theme dark light mode system accent colour color",
+    ),
+    (
+        11,
+        "Text size",
+        "appearance font bigger smaller larger size words read",
+    ),
+    (
         7,
         "App icon",
         "icon launcher home screen logo dark line art themed material you",
     ),
     (
-        8,
+        12,
         "Subtitle size and place",
         "subtitles captions size scale position lift bottom",
     ),
     (
-        8,
+        12,
         "Subtitle style",
         "subtitles captions font colour color outline shadow box bold ass styled reset",
     ),
@@ -610,6 +649,18 @@ impl App {
             None => {
                 self.open = None;
                 data.set_series_open(false);
+            }
+        }
+        // The sheets on the page edit this phone's own show, never the computer's.
+        let own = matches!(self.open, Some(Open::Phone(_)));
+        for (key, path) in crate::show::sync(
+            &window,
+            self.detail.as_ref().filter(|_| own),
+            self.trackers.as_ref(),
+            &self.art,
+        ) {
+            if self.asked.insert(key) {
+                let _ = self.posters.send((key, path));
             }
         }
 
@@ -1632,6 +1683,8 @@ impl App {
         let started = core.call(Call::ConnectTracker { tracker });
         if let Ok(Reply::Started { job }) = &started {
             self.signing_in.insert(*job, which);
+            // Its first read list is when the list kept on this phone is offered to it.
+            crate::listmove::offer(tracker);
         }
         if let Err(e) = started {
             crate::local::log(&format!("sign-in did not start: {e}"));
@@ -1702,7 +1755,7 @@ fn demo_notifies() -> bool {
 }
 
 /// Set on an Airing now poster's key in the art, apart from every series id.
-const AIRING_ART: u64 = 1 << 48;
+pub(crate) const AIRING_ART: u64 = 1 << 48;
 /// How long, in ticks of a second, a not interested mark can be taken back.
 const UNDO_TICKS: u32 = 6;
 
@@ -1912,6 +1965,8 @@ pub fn run(
     crate::feed::install(&window);
     crate::disk::install(&window);
     crate::inspect::install(&window);
+    crate::show::install(&window);
+    crate::show_match::install(&window);
     let data = window.global::<AppData>();
     data.set_version(
         format!(
@@ -2122,6 +2177,11 @@ pub fn run(
 
     crate::find::install(&window, data_dir.clone());
     crate::repos::install(&window);
+    crate::stats::install(&window);
+    crate::backup::install(&window, &data_dir);
+    crate::activity::install(&window);
+    crate::listmove::install(&window);
+    crate::look::install(&window, &data_dir);
 
     let mut app = App {
         window: window.clone_strong(),

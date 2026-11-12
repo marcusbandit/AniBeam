@@ -731,3 +731,17 @@ pub fn line_colours() -> Option<(u32, u32)> {
     }
     None
 }
+
+/// Paints the window and the system bars for a page whose ground is `argb`: the bars' icons
+/// turn dark over a light ground, so they stay readable.
+pub fn bars(argb: u32) {
+    #[cfg(target_os = "android")]
+    java_call(
+        "Bars",
+        "ground",
+        "(Landroid/app/Activity;I)V",
+        Some(jni::objects::JValue::Int(argb as i32)),
+    );
+    #[cfg(not(target_os = "android"))]
+    let _ = argb;
+}

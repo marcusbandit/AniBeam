@@ -183,9 +183,9 @@ component GridCube inherits Rectangle {
     in property <bool> library;
     border-radius: Math.max(2px, Math.min(8px, self.width / 4));
     background: root.library ? (root.code == 5 ? transparent : Theme.cube(root.code))
-        : root.code == 2 ? Theme.accent : root.code == 1 ? #ffffff1a : root.code == 3 ? #ffffff0d : root.code == 4 ? Theme.purple : transparent;
+        : root.code == 2 ? Theme.accent : root.code == 1 ? Theme.ink.with-alpha(0.1) : root.code == 3 ? Theme.ink.with-alpha(0.05) : root.code == 4 ? Theme.purple : transparent;
     border-width: root.library ? (root.code == 5 ? 1px : 0) : root.code == 1 ? 1px : 0;
-    border-color: root.library ? Theme.line-strong : #ffffff52;
+    border-color: root.library ? Theme.line-strong : Theme.ink.with-alpha(0.32);
 }
 
 // Episode cells: a row of the grid to tap, or the phone's own row above it. The cells
