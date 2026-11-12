@@ -511,9 +511,8 @@ impl Find {
                 .cards
                 .iter()
                 .filter_map(|c| {
-                    let missing = c.cubes.chars().filter(|x| matches!(x, 'm' | 'g')).count();
-                    (missing > 0).then(|| Offer {
-                        ledger: format!("{missing} missing"),
+                    gap_ledger(&c.cubes).map(|ledger| Offer {
+                        ledger,
                         ..Self::offer_of(c)
                     })
                 })
@@ -599,7 +598,7 @@ impl Find {
         });
         let empty = [
             list_empty.as_str(),
-            "Nothing is missing: every aired episode of every show is on this phone.",
+            "No gaps: every show you have started has its aired episodes here.",
             "Nothing on this phone is airing.",
             "No subscriptions yet. Open a show and turn on Follow.",
             "Nothing downloaded yet.",
@@ -2113,6 +2112,22 @@ fn count_word(n: usize, one: &str, many: &str) -> String {
     }
 }
 
+/// What the Gaps lens says about a show, the desktop's rule (`hasGap`): a hole before an
+/// episode that is here is missing, and an aired one past the last is not downloaded, but
+/// only once the show has something on this phone. A show with nothing here has no gap.
+fn gap_ledger(cubes: &str) -> Option<String> {
+    let count = |c: char| cubes.chars().filter(|x| *x == c).count();
+    let (missing, not_got) = (count('m'), count('g'));
+    let has_some = cubes.chars().any(|x| matches!(x, 'd' | 'l' | 'w'));
+    let not_got = if has_some { not_got } else { 0 };
+    let parts: Vec<String> = [(missing, "missing"), (not_got, "not downloaded")]
+        .iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, word)| format!("{n} {word}"))
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
 /// The show as the computer has it: an episode with a file there is had, a hole before
 /// the last one it has is missing, an episode not aired yet stays so.
 fn desk_show(show: &grid::Show, had: Vec<u32>) -> grid::Show {
@@ -2483,6 +2498,18 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_show_with_nothing_here_has_no_gap() {
+        assert_eq!(gap_ledger("gggg"), None);
+        assert_eq!(gap_ledger("ggff"), None);
+        assert_eq!(gap_ledger("ddgg").as_deref(), Some("2 not downloaded"));
+        assert_eq!(
+            gap_ledger("dmdg").as_deref(),
+            Some("1 missing, 1 not downloaded")
+        );
+        assert_eq!(gap_ledger("wwdd"), None);
+    }
 
     fn rule(name: &str, save_path: &str, torrents: u64, files: u64) -> SubscriptionRule {
         serde_json::from_value(serde_json::json!({
