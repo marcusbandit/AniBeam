@@ -25,6 +25,7 @@ fn preferences_and_settings_round_trip_with_events() {
         calendar_feed: false,
         episode_notifications: true,
         home_hide_empty_days: true,
+        home_recommended: RecommendedScope::OnList,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {

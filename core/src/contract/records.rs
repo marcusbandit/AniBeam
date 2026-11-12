@@ -729,6 +729,129 @@ pub struct NotInterestedShow {
     pub marked_at: SystemTime,
 }
 
+/// Home's Recommended for you row (#779): the shows the recommender ranks,
+/// best first, held to one scope. `counts` says how many each scope holds, so
+/// the switch above the row can name them without a read per scope.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct Recommended {
+    pub scope: RecommendedScope,
+    pub state: RecommendedState,
+    pub shows: Vec<RecommendedShow>,
+    pub counts: RecommendedCounts,
+    pub fitted_at: Option<SystemTime>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct RecommendedCounts {
+    pub all: u32,
+    pub in_library: u32,
+    pub on_list: u32,
+}
+
+/// One recommended show. `forecast` is the share of the user's rated shows it
+/// is predicted to beat, 0 to 100. `genres` and `tags` never carry a spoiler
+/// tag; `hidden_loved` only counts the spoiler tags the user loves that sit
+/// behind the pick, and nothing names them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct RecommendedShow {
+    pub anilist_id: u64,
+    pub mal_id: Option<u64>,
+    pub title: String,
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
+    pub poster: Option<String>,
+    /// AniList's accent colour for the cover, "#e4a15d".
+    pub color: Option<String>,
+    pub format: Option<String>,
+    pub year: Option<i32>,
+    pub episodes: Option<u32>,
+    /// Minutes an episode runs.
+    pub duration: Option<u32>,
+    /// AniList's 0 to 100, as it came.
+    pub average_score: Option<u32>,
+    pub genres: Vec<String>,
+    pub tags: Vec<String>,
+    /// The first sentence of the description, source notes cut.
+    pub line: String,
+    pub forecast: u32,
+    pub hidden_loved: u32,
+    /// The user's own shows this one is most like, closest first.
+    pub because: Vec<BecauseShow>,
+    pub owned: Option<u64>,
+    pub list_status: Option<ListStatus>,
+    pub site_url: Option<String>,
+}
+
+/// One of the user's shows, as the evidence for a recommendation: its
+/// poster, and the score they gave it out of 10.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct BecauseShow {
+    pub anilist_id: u64,
+    pub title: String,
+    pub poster: Option<String>,
+    pub score: Option<f64>,
+    pub owned: Option<u64>,
+}
+
+/// The page for one AniList show the library may not have (#779): what the
+/// core holds for it, the user's list entry, and the recommender's word on it
+/// when it ranked it. `tags` never carry a spoiler tag.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct ShowPage {
+    pub anilist_id: u64,
+    pub mal_id: Option<u64>,
+    pub title: String,
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
+    pub poster: Option<String>,
+    pub banner: Option<String>,
+    pub color: Option<String>,
+    pub synopsis: Option<String>,
+    pub format: Option<String>,
+    /// AniList's airing state: "FINISHED", "RELEASING", "NOT_YET_RELEASED".
+    pub status: Option<String>,
+    pub year: Option<i32>,
+    pub episodes: Option<u32>,
+    pub duration: Option<u32>,
+    /// AniList's 0 to 100, as it came.
+    pub average_score: Option<u32>,
+    pub genres: Vec<String>,
+    pub tags: Vec<Tag>,
+    pub studios: Vec<String>,
+    /// A link to the trailer, when AniList names one on a site it can link.
+    pub trailer: Option<String>,
+    pub relations: Vec<ShowRelation>,
+    pub recommendations: Vec<Recommendation>,
+    pub site_url: Option<String>,
+    /// The library series that carries it. The page is that series' own
+    /// page once this is set.
+    pub owned: Option<u64>,
+    pub list_status: Option<ListStatus>,
+    /// The user's score out of 10.
+    pub score: Option<f64>,
+    pub progress: u32,
+    pub forecast: Option<u32>,
+    pub hidden_loved: u32,
+    pub because: Vec<BecauseShow>,
+    /// Whether anything is known about the show at all. A page for an id the
+    /// core never saw is blank until its read lands.
+    pub known: bool,
+}
+
+/// A show related to the one on a show page: a prequel, a sequel, a side
+/// story. `relation` is AniList's own word, "SEQUEL".
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct ShowRelation {
+    pub anilist_id: u64,
+    pub title: String,
+    pub poster: Option<String>,
+    pub relation: String,
+    pub format: Option<String>,
+    pub owned: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct GraphNode {
     pub anilist_id: u64,
@@ -980,6 +1103,9 @@ pub struct Preferences {
     /// `serde(default)` because older blobs predate it.
     #[serde(default)]
     pub home_hide_empty_days: bool,
+    /// Which shows Home's Recommended for you row holds (#779).
+    #[serde(default, deserialize_with = "lenient::recommended")]
+    pub home_recommended: RecommendedScope,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1030,6 +1156,9 @@ mod lenient {
     }
     pub fn arrange<'de, D: Deserializer<'de>>(d: D) -> Result<Arrange, D::Error> {
         or(d, Preferences::default().library_arrange)
+    }
+    pub fn recommended<'de, D: Deserializer<'de>>(d: D) -> Result<RecommendedScope, D::Error> {
+        or(d, Preferences::default().home_recommended)
     }
 }
 
@@ -1156,6 +1285,7 @@ impl Default for Preferences {
             calendar_feed: false,
             episode_notifications: true,
             home_hide_empty_days: false,
+            home_recommended: RecommendedScope::All,
         }
     }
 }

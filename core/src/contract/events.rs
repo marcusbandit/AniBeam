@@ -161,6 +161,13 @@ pub enum EventBody {
     AiringNowRefreshed {
         season: SeasonPick,
     },
+    /// The recommender read AniList and fitted again; `ListRecommended`
+    /// has it.
+    RecommendedRefreshed,
+    /// The show page's read of one show landed; `GetShowPage` has it.
+    ShowPageRead {
+        anilist_id: u64,
+    },
     GraphChanged {
         root: u64,
     },

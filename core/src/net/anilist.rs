@@ -675,7 +675,7 @@ impl AnilistClient {
     /// and `data` back. The tracker calls pass their bearer token.
     pub async fn graphql(
         &self,
-        query: &'static str,
+        query: &str,
         variables: serde_json::Value,
         token: Option<&str>,
     ) -> Result<serde_json::Value, CoreError> {
@@ -688,7 +688,7 @@ impl AnilistClient {
     /// schedule underneath keeps its own bounds.
     pub async fn graphql_within(
         &self,
-        query: &'static str,
+        query: &str,
         variables: serde_json::Value,
         token: Option<&str>,
         timeout: std::time::Duration,
@@ -699,7 +699,7 @@ impl AnilistClient {
 
     async fn post_query(
         &self,
-        query: &'static str,
+        query: &str,
         variables: serde_json::Value,
         token: Option<&str>,
         timeout: Option<std::time::Duration>,

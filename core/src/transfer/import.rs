@@ -990,6 +990,8 @@ async fn import_preferences(
                 episode_notifications: current.episode_notifications,
                 // And how its Home board draws the week.
                 home_hide_empty_days: current.home_hide_empty_days,
+                // And which recommendations its Home row holds.
+                home_recommended: current.home_recommended,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

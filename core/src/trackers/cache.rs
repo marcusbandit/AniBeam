@@ -478,6 +478,11 @@ async fn run(
     if !refreshed.is_empty() || fresh {
         on_hold::after_refresh(&core).await;
     }
+    // The list the recommender learns from just changed, so it fits again,
+    // off the UI thread, reading AniList only for what it is missing.
+    if !refreshed.is_empty() {
+        crate::recommended::after_tracker_refresh(&core);
+    }
     match pending {
         Some((t, count)) => Ok(Finished {
             plain: None,
