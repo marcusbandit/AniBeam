@@ -355,35 +355,6 @@ fn gone(name: &str) -> String {
     crate::i18n::tr("core-releases-endpoint-gone", &[("name", name.into())])
 }
 
-/// Query parameters that hold a secret, with the label a person reads for each. A source
-/// added by hand has these lifted out of its address, a listed address has them masked, and
-/// the tailnet snapshot leaves them out. Names match case-insensitively.
-pub const SECRET_PARAMS: [(&str, &str); 15] = [
-    ("apikey", "API key"),
-    ("api_key", "API key"),
-    ("jackett_apikey", "API key"),
-    ("token", "Token"),
-    ("passkey", "Passkey"),
-    ("torrent_pass", "Passkey"),
-    ("rsskey", "RSS key"),
-    ("authkey", "Auth key"),
-    ("auth", "Auth key"),
-    ("key", "Key"),
-    ("secret", "Secret"),
-    ("sig", "Signature"),
-    ("pass", "Password"),
-    ("password", "Password"),
-    ("uid", "User id"),
-];
-
-/// The label of a query parameter that holds a secret; None for any other.
-pub fn secret_param(name: &str) -> Option<&'static str> {
-    SECRET_PARAMS
-        .iter()
-        .find(|(p, _)| p.eq_ignore_ascii_case(name))
-        .map(|(_, label)| *label)
-}
-
 /// A URL with any key in it cut short, for a list a person reads: the value of each secret
 /// query parameter, and the password of a `user:password@` login.
 pub fn mask(url: &str) -> String {
@@ -408,7 +379,7 @@ pub fn mask(url: &str) -> String {
         let pairs: Vec<String> = query
             .split('&')
             .map(|pair| match pair.split_once('=') {
-                Some((k, v)) if secret_param(k).is_some() && !v.starts_with('{') => {
+                Some((k, v)) if crate::redact::secret_param(k).is_some() && !v.starts_with('{') => {
                     format!("{k}=...")
                 }
                 _ => pair.to_string(),
