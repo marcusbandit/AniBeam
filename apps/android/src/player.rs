@@ -547,7 +547,7 @@ fn open_remote_at(file: u64, speed: f64) {
     failed(&window, String::new());
     data(&window, |d| d.set_title(tr!("player-connecting").into()));
     let quality = crate::stream::quality();
-    let unmetered = crate::android::unmetered().unwrap_or(false);
+    let unmetered = crate::platform::unmetered().unwrap_or(false);
     let ticket = OPENING.with(|o| {
         o.set(o.get() + 1);
         o.get()
@@ -699,7 +699,7 @@ fn begin(
         d.set_holding(false);
         d.set_level_kind(0);
     });
-    crate::android::player_screen(true);
+    crate::platform::player_screen(true);
 
     let mut player = Player {
         window,
@@ -811,7 +811,7 @@ fn failed(window: &slint::Weak<AppWindow>, reason: String) {
         d.set_picker(0);
         d.set_chrome(true);
     });
-    crate::android::player_screen(true);
+    crate::platform::player_screen(true);
 }
 
 /// Closes the page: the session with its reason, mpv, and the landscape hold. A switch to
@@ -830,18 +830,18 @@ pub fn close_page(reason: CloseReason) {
             .name("mpv-close".into())
             .spawn(move || {
                 // Off the phone Video is a stub with nothing to let go of.
-                #[cfg_attr(not(target_os = "android"), allow(clippy::drop_non_drop))]
+                #[cfg_attr(not(libmpv), allow(clippy::drop_non_drop))]
                 drop(video);
                 drop(mpv);
             });
     }
     if !switching {
         give_focus();
-        crate::android::player_awake(false);
-        crate::android::player_screen(false);
+        crate::platform::player_awake(false);
+        crate::platform::player_screen(false);
         // A swipe's brightness was for the episode; the phone's own comes back with the page,
         // and so does a phone that is not locked. The lock holds across episodes.
-        crate::android::set_brightness(-1.0);
+        crate::platform::set_brightness(-1.0);
         WINDOW.with(|w| {
             if let Some(w) = w.borrow().as_ref() {
                 data(w, |d| d.set_locked(false));
@@ -915,8 +915,7 @@ fn neighbour(forward: bool) {
 /// Android moved the audio focus: a call pauses the episode and its end plays it again,
 /// another app taking over for good pauses it. A cast plays on the TV and gave the focus
 /// back as it started, so a change then leaves it alone. Called on the UI loop.
-// Only Android's focus listener calls it.
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+// The platform's focus listener calls it, through `crate::audio_focus`.
 pub fn audio_focus(code: i32) {
     let Some(change) = Change::from_code(code) else {
         return;
@@ -946,7 +945,7 @@ pub fn audio_focus(code: i32) {
 /// Gives the audio focus back: the page closed, or a cast took the sound to the TV.
 fn give_focus() {
     FOCUS.with(|f| *f.borrow_mut() = Focus::default());
-    crate::android::give_audio_focus();
+    crate::platform::give_audio_focus();
     crate::local::log("player: audio focus given back");
 }
 
@@ -1260,7 +1259,7 @@ impl Player {
                     }
                 })
             });
-        crate::android::player_awake(true);
+        crate::platform::player_awake(true);
         // The file starts playing unpaused, so the pause watch never sees it begin.
         if !self.paused && self.cast.is_none() {
             self.take_focus();
@@ -1288,7 +1287,7 @@ impl Player {
                 self.d(|d| d.set_paused(p));
                 if was != p {
                     self.send_tick();
-                    crate::android::player_awake(!p && self.rules.loaded);
+                    crate::platform::player_awake(!p && self.rules.loaded);
                     if !p && self.cast.is_none() {
                         self.take_focus();
                     }
@@ -1327,7 +1326,7 @@ impl Player {
                 // The last frame stays up; Replay sits on it unless the countdown runs.
                 let counting = self.rules.next_counting;
                 self.d(|d| d.set_replay(!counting));
-                crate::android::player_awake(false);
+                crate::platform::player_awake(false);
             }
             ("track-list", Value::Text(j)) => {
                 self.tracks = parse_tracks(&j);
@@ -1395,7 +1394,7 @@ impl Player {
         self.closed = true;
         self.tick.stop();
         self.look.stop();
-        crate::android::multicast(false);
+        crate::platform::multicast(false);
         let carried = PENDING_CAST.with(|c| c.borrow().is_some());
         if self.cast.is_some()
             && !(reason == CloseReason::Switched && carried)
@@ -1438,18 +1437,18 @@ impl Player {
         if !ask {
             return;
         }
-        match crate::android::take_audio_focus() {
-            crate::android::FocusAsk::Granted => {
+        match crate::platform::take_audio_focus() {
+            crate::platform::FocusAsk::Granted => {
                 FOCUS.with(|f| f.borrow_mut().held = true);
                 crate::local::log("player: audio focus taken");
             }
             // Android says not to play, as during a call; Play asks again.
-            crate::android::FocusAsk::Refused => {
+            crate::platform::FocusAsk::Refused => {
                 crate::local::log("player: audio focus refused, pausing");
                 self.mpv.set("pause", "yes");
             }
             // No way to hear of a call, so the episode plays without focus.
-            crate::android::FocusAsk::Unavailable => {
+            crate::platform::FocusAsk::Unavailable => {
                 crate::local::log("player: audio focus unavailable")
             }
         }
@@ -1564,9 +1563,9 @@ impl Player {
 
     fn adjust_start(&mut self, kind: i32) {
         let base = if kind == 1 {
-            crate::android::brightness()
+            crate::platform::brightness()
         } else {
-            crate::android::volume()
+            crate::platform::volume()
         };
         self.adjusting = Some((kind, base, base));
         self.level_hide.stop();
@@ -1588,9 +1587,9 @@ impl Player {
         }
         self.adjusting = Some((kind, base, level));
         if kind == 1 {
-            crate::android::set_brightness(level);
+            crate::platform::set_brightness(level);
         } else {
-            crate::android::set_volume(level);
+            crate::platform::set_volume(level);
         }
     }
 
@@ -1872,14 +1871,14 @@ impl Player {
     /// Looks around the network while the Cast to sheet is up, holding Wi-Fi multicast open
     /// for that long.
     fn look_for_devices(&mut self) {
-        crate::android::multicast(true);
+        crate::platform::multicast(true);
         if let Some(core) = crate::local::core()
             && let Ok(Reply::CastDevices { devices }) = core.call(Call::CastDevices)
         {
             DEVICES.with(|d| *d.borrow_mut() = devices);
         }
         self.look.start(TimerMode::SingleShot, LOOK_FOR, || {
-            crate::android::multicast(false)
+            crate::platform::multicast(false)
         });
     }
 

@@ -61,7 +61,7 @@ pub fn pick(kind: Pick, path: &Path, name: &str, done: impl FnOnce(Outcome) + 's
     }
     let result = path.with_extension("result");
     let _ = std::fs::remove_file(&result);
-    if let Err(e) = launch(kind, path, name, &result) {
+    if let Err(e) = crate::platform::pick_file(kind, path, name, &result) {
         fail_later(done, e);
         return;
     }
@@ -101,80 +101,6 @@ fn look() {
         let _ = std::fs::remove_file(&waiting.result);
         (waiting.done)(outcome);
     }
-}
-
-#[cfg(target_os = "android")]
-fn launch(kind: Pick, path: &Path, name: &str, result: &Path) -> Result<(), String> {
-    use jni::JavaVM;
-    use jni::objects::{JObject, JValue};
-    let go = || -> Result<(), Box<dyn std::error::Error>> {
-        let ctx = ndk_context::android_context();
-        let vm = unsafe { JavaVM::from_raw(ctx.vm().cast())? };
-        let mut env = vm.attach_current_thread()?;
-        let app = unsafe { JObject::from_raw(ctx.context().cast()) };
-        let started = env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
-            let intent = env.new_object("android/content/Intent", "()V", &[])?;
-            let pkg = env.new_string("com.marcusrosado.anibeam")?;
-            let class = env.new_string("com.marcusrosado.anibeam.PickActivity")?;
-            env.call_method(
-                &intent,
-                "setClassName",
-                "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-                &[JValue::Object(&pkg), JValue::Object(&class)],
-            )?;
-            for (key, value) in [
-                ("path", path.to_string_lossy().into_owned()),
-                ("name", name.to_string()),
-                ("result", result.to_string_lossy().into_owned()),
-            ] {
-                let key = env.new_string(key)?;
-                let value = env.new_string(value)?;
-                env.call_method(
-                    &intent,
-                    "putExtra",
-                    "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-                    &[JValue::Object(&key), JValue::Object(&value)],
-                )?;
-            }
-            let key = env.new_string("mode")?;
-            env.call_method(
-                &intent,
-                "putExtra",
-                "(Ljava/lang/String;I)Landroid/content/Intent;",
-                &[
-                    JValue::Object(&key),
-                    JValue::Int(i32::from(kind == Pick::Open)),
-                ],
-            )?;
-            // FLAG_ACTIVITY_NEW_TASK: the context is the Application.
-            env.call_method(
-                &intent,
-                "addFlags",
-                "(I)Landroid/content/Intent;",
-                &[JValue::Int(0x1000_0000)],
-            )?;
-            env.call_method(
-                &app,
-                "startActivity",
-                "(Landroid/content/Intent;)V",
-                &[JValue::Object(&intent)],
-            )?;
-            Ok(())
-        });
-        // A Java exception left pending would fail the next call on this thread, so it is
-        // cleared whether or not the frame got to its end.
-        if env.exception_check().unwrap_or(false) {
-            let _ = env.exception_clear();
-            return Err("Java threw".into());
-        }
-        started
-    };
-    go().map_err(|e| tr!("files-did-not-open", error = e.to_string()))
-}
-
-#[cfg(not(target_os = "android"))]
-fn launch(_kind: Pick, _path: &Path, _name: &str, _result: &Path) -> Result<(), String> {
-    Err(tr!("files-none-here"))
 }
 
 #[cfg(test)]

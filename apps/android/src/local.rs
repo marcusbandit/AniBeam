@@ -48,7 +48,7 @@ struct Logcat;
 impl EventListener for Logcat {
     fn on_event(&self, event: Event) {
         if let EventBody::AuthUrlReady { open_url, .. } = &event.body {
-            crate::android::open_url(open_url);
+            crate::platform::open_url(open_url);
         }
         if let (EventBody::JobFailed { error }, Some(job)) = (&event.body, &event.job)
             && job.kind == anibeam_core::JobKind::ConnectTracker
@@ -75,23 +75,7 @@ impl EventListener for Logcat {
 }
 
 pub fn log(line: &str) {
-    #[cfg(target_os = "android")]
-    {
-        use std::ffi::CString;
-        unsafe extern "C" {
-            fn __android_log_write(
-                prio: i32,
-                tag: *const std::ffi::c_char,
-                text: *const std::ffi::c_char,
-            ) -> i32;
-        }
-        let tag = CString::new("AniBeamCore").unwrap();
-        let text = CString::new(line.replace('\0', " ")).unwrap();
-        // Priority 4 is INFO.
-        unsafe { __android_log_write(4, tag.as_ptr(), text.as_ptr()) };
-    }
-    #[cfg(not(target_os = "android"))]
-    eprintln!("AniBeamCore: {line}");
+    crate::platform::log(line);
 }
 
 /// The process's one core and the logcat listener on it. Android may destroy and recreate

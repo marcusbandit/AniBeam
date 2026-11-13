@@ -20,8 +20,6 @@ pub struct Crease {
 
 /// What the phone said about its crease.
 #[derive(Clone, Copy, Debug, PartialEq)]
-// Off the phone nothing is ever reported, so only Silent is made there.
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub enum Reading {
     /// The phone has no window extensions, so it never will say: lay out by the guess.
     Silent,
@@ -30,13 +28,15 @@ pub enum Reading {
     Fold(Crease),
 }
 
+/// `Crease.at`'s answer on a phone without the window extensions: it never will say.
+pub const SILENT: i64 = -2;
+
 /// Unpacks `Crease.at`'s answer: -2 for a phone without extensions, -1 for no fold, and
 /// otherwise bit 40 for across, bit 41 for half open, bits 20 to 39 the start and bits 0
 /// to 19 the end.
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn decode(packed: i64) -> Reading {
     match packed {
-        -2 => Reading::Silent,
+        SILENT => Reading::Silent,
         p if p < 0 => Reading::None,
         p => Reading::Fold(Crease {
             across: p & (1 << 40) != 0,

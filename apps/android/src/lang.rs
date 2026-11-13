@@ -71,54 +71,8 @@ fn with(f: impl FnOnce(&mut Page)) {
     });
 }
 
-/// The phone's language as Android reports it: `da-DK`, `pt-BR`, `zh-Hans-CN`.
-fn system_locale() -> String {
-    #[cfg(target_os = "android")]
-    {
-        use jni::JavaVM;
-        use jni::objects::{JObject, JString};
-        let read = || -> Result<String, Box<dyn std::error::Error>> {
-            let ctx = ndk_context::android_context();
-            let vm = unsafe { JavaVM::from_raw(ctx.vm().cast())? };
-            let mut env = vm.attach_current_thread()?;
-            let app = unsafe { JObject::from_raw(ctx.context().cast()) };
-            env.with_local_frame(8, |env| -> Result<String, Box<dyn std::error::Error>> {
-                let res = env
-                    .call_method(
-                        &app,
-                        "getResources",
-                        "()Landroid/content/res/Resources;",
-                        &[],
-                    )?
-                    .l()?;
-                let cfg = env
-                    .call_method(
-                        &res,
-                        "getConfiguration",
-                        "()Landroid/content/res/Configuration;",
-                        &[],
-                    )?
-                    .l()?;
-                let list = env
-                    .call_method(&cfg, "getLocales", "()Landroid/os/LocaleList;", &[])?
-                    .l()?;
-                let first = env
-                    .call_method(&list, "get", "(I)Ljava/util/Locale;", &[0.into()])?
-                    .l()?;
-                let tag = env
-                    .call_method(&first, "toLanguageTag", "()Ljava/lang/String;", &[])?
-                    .l()?;
-                Ok(env.get_string(&JString::from(tag))?.into())
-            })
-        };
-        read().unwrap_or_default()
-    }
-    #[cfg(not(target_os = "android"))]
-    std::env::var("LANG").unwrap_or_default()
-}
-
 fn phone_lang() -> Lang {
-    Lang::from_locale(&system_locale())
+    Lang::from_locale(&crate::platform::system_locale())
 }
 
 /// Reads the saved pick and sets the catalog's language, before the first frame.
@@ -150,7 +104,6 @@ pub fn install(window: &AppWindow, data_dir: &Path) {
 }
 
 /// The phone's own language changed; only a phone-following choice follows it.
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn system_changed() {
     // A picked language stays, but the "Same as the phone" row names the phone's new one.
     // apply re-words the pages only when the language in use changed.

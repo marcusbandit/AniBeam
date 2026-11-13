@@ -16,8 +16,12 @@ fn main() {
     }
     // The player links libmpv out of vendor/mpv/<abi>, which scripts/fetch-mpv.sh fills.
     // Its ffmpeg libraries load by name from the APK beside it; libavcodec is linked too
-    // because the app hands it the Java VM before mpv starts.
+    // because the app hands it the Java VM before mpv starts. `cfg(libmpv)` tells mpv.rs,
+    // video.rs and thumbs.rs that libmpv, EGL and GLES are there; without it they stand in
+    // for a player that never opens.
+    println!("cargo::rustc-check-cfg=cfg(libmpv)");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
+        println!("cargo::rustc-cfg=libmpv");
         let abi = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
             Ok("aarch64") => "arm64-v8a",
             Ok("x86_64") => "x86_64",
