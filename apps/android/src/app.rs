@@ -535,6 +535,10 @@ impl App {
             .into(),
         );
 
+        data.set_host_person(
+            format::progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref())).into(),
+        );
+
         // Library: this phone, or the device picked above it.
         let mut devices: Vec<SharedString> = vec!["This phone".into()];
         if let Some(name) = self.host_name() {
@@ -581,7 +585,13 @@ impl App {
                     .as_ref()
                     .map(|c| format::ago(now - c.synced_at))
                     .unwrap_or_default();
-                format!("{}, synced {at}", devices[device])
+                let whose =
+                    format::progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref()));
+                if whose.is_empty() {
+                    format!("{}, synced {at}", devices[device])
+                } else {
+                    format!("{}, {whose}, synced {at}", devices[device])
+                }
             }
             .into(),
         );

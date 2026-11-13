@@ -57,6 +57,7 @@ impl Syncer {
             peers: carried(self.store.cache(), &address.display(), offers_peers),
             host: hello.host,
             host_version: hello.version,
+            profile: hello.profile,
             synced_at: now,
             snapshot,
         };

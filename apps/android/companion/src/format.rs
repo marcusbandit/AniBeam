@@ -34,6 +34,15 @@ pub fn countdown_full(seconds: i64) -> String {
     }
 }
 
+/// "Alex Doe's progress": whose watch history a computer shows this phone, by the name
+/// in its hello. Empty with no name, so a screen says nothing rather than a guess.
+pub fn progress_of(profile: Option<&crate::api::Profile>) -> String {
+    match profile.map(|p| p.name.trim()) {
+        Some(name) if !name.is_empty() => format!("{name}'s progress"),
+        _ => String::new(),
+    }
+}
+
 /// "17:56" in the phone's zone.
 pub fn clock(at: i64) -> String {
     Local
@@ -163,6 +172,17 @@ pub fn bytes(n: u64) -> String {
 mod tests {
     use super::*;
     use chrono::FixedOffset;
+
+    #[test]
+    fn whose_progress_is_said_only_with_a_name() {
+        let named = |name: &str| crate::api::Profile {
+            name: name.into(),
+            ..Default::default()
+        };
+        assert_eq!(progress_of(Some(&named("Alex Doe"))), "Alex Doe's progress");
+        assert_eq!(progress_of(Some(&named("  "))), "");
+        assert_eq!(progress_of(None), "");
+    }
 
     #[test]
     fn countdowns_lose_precision_with_distance() {

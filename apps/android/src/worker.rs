@@ -99,7 +99,17 @@ impl<F: Fn(Event)> Worker<F> {
         let result = self
             .syncer
             .test(address)
-            .map(|hello| format!("Reached {}, AniBeam {}.", hello.host, hello.version))
+            .map(|hello| {
+                let whose = anibeam_companion::format::progress_of(hello.profile.as_ref());
+                if whose.is_empty() {
+                    format!("Reached {}, AniBeam {}.", hello.host, hello.version)
+                } else {
+                    format!(
+                        "Reached {}, AniBeam {}, {whose}.",
+                        hello.host, hello.version
+                    )
+                }
+            })
             .map_err(|e| e.to_string());
         (self.deliver)(Event::TestDone(result));
     }

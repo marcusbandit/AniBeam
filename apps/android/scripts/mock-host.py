@@ -9,11 +9,12 @@ and run against something without the desktop app being up. It never reads or
 writes a real library. Standard library only.
 
 Usage:
-    python3 scripts/mock-host.py [--port 8790] [--bind 127.0.0.1] [--demo] [--aired] [--host-name banditbox]
+    python3 scripts/mock-host.py [--port 8790] [--bind 127.0.0.1] [--demo] [--aired] [--host-name banditbox] [--profile NAME]
 
 --demo       adds six currently airing AniList shows (ids 100 to 105), their
              subscriptions and torrents. Needs the network once; the AniList
              reply is cached in apps/android/build/mock/demo.json.
+--profile    names whose progress the hello says it answers with.
 --aired      makes Frieren (id 12) episode 8 air two hours ago, as if the
              snapshot was taken just before it aired.
 
@@ -71,7 +72,7 @@ CONTENT_TYPES = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 # Filled in by main() from the command line and the demo fetch.
-OPTS = {"host_name": "banditbox", "aired": False}
+OPTS = {"host_name": "banditbox", "aired": False, "profile": ""}
 DEMO = {"media": None, "covers": {}}
 POSTER_LOCK = threading.Lock()
 
@@ -413,14 +414,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlsplit(self.path).path
         if path == HELLO_PATH:
-            return self._json(200, {
+            hello = {
                 "app": APP,
                 "api": API_VERSION,
                 "version": MOCK_VERSION,
                 "host": OPTS["host_name"],
                 "now": now_s(),
                 "features": ["downloads"],
-            })
+            }
+            if OPTS["profile"]:
+                hello["profile"] = {"name": OPTS["profile"], "owner": True}
+            return self._json(200, hello)
         if path == SNAPSHOT_PATH:
             return self._json(200, build_snapshot(now_s()))
         match = POSTER_RE.match(path)
@@ -491,9 +495,11 @@ def main(argv=None):
     ap.add_argument("--demo", action="store_true", help="add six live AniList shows, subscriptions and torrents")
     ap.add_argument("--aired", action="store_true", help="make Frieren episode 8 air two hours ago")
     ap.add_argument("--host-name", default="banditbox", help="the machine name the host reports")
+    ap.add_argument("--profile", default="", help="whose progress the hello says it answers with")
     args = ap.parse_args(argv)
 
     OPTS["host_name"] = args.host_name
+    OPTS["profile"] = args.profile
     OPTS["aired"] = args.aired
     if args.demo:
         media = load_demo_media()

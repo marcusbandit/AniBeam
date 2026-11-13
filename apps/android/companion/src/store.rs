@@ -40,6 +40,10 @@ pub struct Cache {
     /// from a host older than the list.
     #[serde(default)]
     pub peers: Vec<crate::api::PeerHost>,
+    /// Whose progress the host answered with, from its hello. None from a host
+    /// older than profiles, and from one that could not name the person.
+    #[serde(default)]
+    pub profile: Option<crate::api::Profile>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -251,6 +255,11 @@ mod tests {
                 url: "http://100.80.3.4:8790".into(),
                 version: "2.4.0".into(),
             }],
+            profile: Some(crate::api::Profile {
+                name: "Alex Doe".into(),
+                login: "alex@example.com".into(),
+                owner: true,
+            }),
         };
         store.save_cache(&cache).unwrap();
         assert_eq!(store.cache().unwrap(), cache);

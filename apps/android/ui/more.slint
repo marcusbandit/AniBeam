@@ -103,6 +103,12 @@ component HostRow inherits Rectangle {
             figure: true;
             placeholder: "banditbox:8790";
         }
+        if AppData.host-person != "": Text {
+            text: AppData.host-person;
+            color: Theme.text;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
         if AppData.host-result != "": HorizontalLayout {
             spacing: Theme.unit * 2;
             Rectangle {
