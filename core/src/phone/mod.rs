@@ -771,11 +771,44 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
 pub fn torrents(core: &Core) -> Result<Reply, CoreError> {
     core.handle.block_on(async {
         let engine = engine(core).await?;
+        let torrents = engine.list().await;
+        // Which torrent each library file came from, as the desktop records it from
+        // qBittorrent (#620), off this call's path so the list never waits on the store.
+        record_origins(core, torrents.clone(), "on a list read");
         Ok(Reply::PhoneTorrents {
-            torrents: engine.list().await,
+            torrents,
             held: engine.held(),
         })
     })
+}
+
+/// After a scan brought files in: the origins of the new files, from the engine's list,
+/// only when the engine is already open, so a scan never starts it (#620).
+#[cfg(feature = "phone")]
+pub(crate) fn after_scan(core: &Core) {
+    if core.phone.engine.get().is_none() {
+        return;
+    }
+    let Ok(owner) = core.owner() else { return };
+    core.handle.spawn(async move {
+        let Some(engine) = owner.phone.engine.get() else {
+            return;
+        };
+        let torrents = engine.list().await;
+        let recorded = crate::downloads::origins::record_from(&owner, None, &torrents).await;
+        crate::downloads::origins::logged(recorded, "after a scan");
+    });
+}
+
+/// Records the origins of `torrents` in a task of its own; a failure is a debug line and
+/// the files stay unrecorded until the next read.
+#[cfg(feature = "phone")]
+fn record_origins(core: &Core, torrents: Vec<Torrent>, when: &'static str) {
+    let Ok(owner) = core.owner() else { return };
+    core.handle.spawn(async move {
+        let recorded = crate::downloads::origins::record_from(&owner, None, &torrents).await;
+        crate::downloads::origins::logged(recorded, when);
+    });
 }
 
 #[cfg(feature = "phone")]
@@ -843,6 +876,27 @@ pub fn control(_: &Core, _: Vec<String>, _: PhoneAction) -> Result<Reply, CoreEr
 #[cfg(not(feature = "phone"))]
 pub fn set_held(_: &Core, _: bool) -> Result<Reply, CoreError> {
     Err(unsupported())
+}
+
+#[cfg(all(test, feature = "phone"))]
+mod origin_tests {
+    use super::*;
+
+    /// A scan reads origins only through an engine already open (#620): it never opens one.
+    #[test]
+    fn a_scan_does_not_open_the_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::CorePaths::under(dir.path());
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            crate::net::FakeHttp::new(),
+            crate::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        crate::downloads::origins::after_scan(&core);
+        assert!(core.phone.engine.get().is_none());
+        core.shutdown();
+    }
 }
 
 #[cfg(test)]

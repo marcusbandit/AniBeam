@@ -5,6 +5,7 @@ import { Button, Chip, ClampedText, Cubes, PageTitle, Poster, SectionHead } from
 import { Ask } from "more.slint";
 import { ShowActions, ShowData } from "show.slint";
 import { ShowSections } from "show-sections.slint";
+import { UndoBar } from "airing.slint";
 
 // An episode code's type, shared by the rows and the probe that sizes their column.
 component CodeText inherits Text {
@@ -25,7 +26,7 @@ component EpisodeItem inherits Rectangle {
     property <bool> versioned: root.data.versions.length > 1 && !AppData.deleting;
     height: Math.max(Theme.unit * 13, texts.preferred-height + 4 * Theme.unit);
     border-radius: Theme.radius-row + 4px;
-    background: touch.pressed && root.data.file != 0 ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
+    background: touch.pressed && (root.data.file != 0 || root.holdable) ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
     border-width: root.next ? 1px : 0;
     border-color: Theme.line-strong;
     if !AppData.deleting || root.data.file == 0: Rectangle {
@@ -89,13 +90,47 @@ component EpisodeItem inherits Rectangle {
     // An aired episode this phone's show lacks opens Downloads on the show. Upcoming ones
     // carry no note, and the other device's show is got on that device.
     property <bool> gettable: root.data.file == 0 && root.data.note != "" && !AppData.series-remote;
+    // Held, an episode offers its mark, as the desktop's cube does at a click.
+    property <bool> holdable: root.data.markable && !AppData.deleting;
+    property <bool> was-held;
+    hold := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.was-held = true;
+            Ask.mark-title = root.data.code + "  " + root.data.title;
+            Ask.mark-number = root.data.number;
+            Ask.mark-season = root.data.season;
+            Ask.mark-watched = root.data.watched;
+            Ask.mark-open = true;
+        }
+    }
     touch := TouchArea {
-        enabled: root.data.file != 0 || (root.gettable && !AppData.deleting);
+        enabled: root.data.file != 0 || (root.gettable && !AppData.deleting) || root.holdable;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.was-held = false;
+                hold.running = root.holdable;
+            } else if (e.kind != PointerEventKind.move) {
+                hold.running = false;
+            }
+        }
+        // A finger that moves is a scroll, not a hold.
+        moved => {
+            if (Math.abs(self.mouse-x - self.pressed-x) > 3 * Theme.unit || Math.abs(self.mouse-y - self.pressed-y) > 3 * Theme.unit) {
+                hold.running = false;
+            }
+        }
         clicked => {
-            if (root.data.file == 0) {
-                FindData.find-series(AppData.series.id);
-                AppData.close-series();
-                Nav.page = 2;
+            if (root.was-held) {
+                // The hold opened the mark; the lift is not a tap.
+            } else if (root.data.file == 0) {
+                if (root.gettable && !AppData.deleting) {
+                    FindData.find-series(AppData.series.id);
+                    AppData.close-series();
+                    Nav.page = 2;
+                }
             } else if (root.data.remote) {
                 AppData.play-remote(root.data.file);
             } else if (AppData.deleting) {
@@ -207,6 +242,14 @@ component SeriesHeadView inherits VerticalLayout {
                 font-size: Theme.small;
                 wrap: word-wrap;
             }
+            // The desktop's quiet row: the average score, IMDb's, the rewatches. It wraps,
+            // so a folded phone keeps all of it.
+            if AppData.series.scores != "": Text {
+                text: AppData.series.scores;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
         }
     }
     if AppData.series.next != "": Text {
@@ -249,7 +292,8 @@ export component SeriesPage inherits Rectangle {
             padding-left: Theme.grout + Theme.unit;
             padding-right: Theme.grout + Theme.unit;
             padding-top: Theme.unit * 4;
-            padding-bottom: Theme.pad * 2;
+            // Room under the last rows while the mark's line covers the foot of the page.
+            padding-bottom: Theme.pad * 2 + (AppData.mark-line != "" ? 20 * Theme.unit : 0);
             spacing: Theme.unit * 4;
             PageTitle {
                 back: Nav.page == 0 ? "Home" : Nav.page == 1 ? "Library" : Nav.page == 2 ? "Downloads" : Nav.page == 4 ? "Calendar" : "Back";
@@ -330,5 +374,14 @@ export component SeriesPage inherits Rectangle {
             // The characters, related entries and recommendations of a show of this phone's.
             if ShowData.series-id >= 0: ShowSections { }
         }
+    }
+    // What the last mark did, with Undo when it moved more than one episode.
+    if AppData.mark-line != "": UndoBar {
+        text: AppData.mark-line;
+        can-undo: AppData.mark-undo;
+        undo => { AppData.mark-take-back(); }
+        x: Theme.grout + Theme.unit;
+        width: parent.width - 2 * self.x;
+        y: parent.height - self.height - Theme.grout - Theme.unit;
     }
 }
