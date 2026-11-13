@@ -235,7 +235,7 @@ core-playback-region-spain = Spain
 core-playback-region-simplified = Simplified
 core-playback-region-traditional = Traditional
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 # What a job is doing, for a status line while it runs. .stopped is the line when it
 # ended in a problem.

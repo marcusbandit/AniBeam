@@ -2,7 +2,10 @@ use serde::{Deserialize, Serialize};
 
 /// `as_str` and `from_column` for an enum whose variants each stand for one
 /// stored string. Each pair is written once, so the two directions cannot
-/// drift apart, and a string given to two variants fails the build.
+/// drift apart, and a string given to two variants fails the build. Exported for the
+/// core's own column enums; not part of what a shell uses.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! column_strings {
     ($(#[doc = $doc:literal])* $name:ident { $($variant:ident => $col:literal),+ $(,)? }) => {
         impl $name {
@@ -30,7 +33,6 @@ macro_rules! column_strings {
         }
     };
 }
-pub(crate) use column_strings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum Provider {

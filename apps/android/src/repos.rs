@@ -202,7 +202,7 @@ pub fn install(window: &AppWindow) {
     });
     d.on_confirm(|| with(Repos::confirm));
     d.on_dismiss(|| with(Repos::dismiss));
-    d.on_open_link(|url| crate::android::open_url(&url));
+    d.on_open_link(|url| crate::platform::open_url(&url));
     d.on_add_custom(|name, url| with(|r| r.add_custom(name.to_string(), url.to_string())));
 }
 

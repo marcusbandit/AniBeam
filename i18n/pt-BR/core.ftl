@@ -213,7 +213,7 @@ core-playback-region-spain = Espanha
 core-playback-region-simplified = Simplificado
 core-playback-region-traditional = Tradicional
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Verificando suas pastas
     .stopped = A verificação das pastas parou com um problema.

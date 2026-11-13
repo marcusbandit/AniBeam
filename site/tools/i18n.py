@@ -26,7 +26,9 @@ JS_STRINGS = ["Download for {os}", "Get the Android app", "Copy", "Copied", "Wha
               "Coming to iPhone soon", "No nightly newer than {version} yet.", "Selected. Press Ctrl+C to copy.",
               # the tour's screenshots, swapped by app.js
               "Anibeam's Home: shows to continue and shows not started yet, as poster cards",
-              "The Library grid with every show as a poster", "A show's page with its banner, episodes and characters"]
+              "The Library grid with every show as a poster", "A show's page with its banner, episodes and characters",
+              # the card a poster in the wall opens (app.js)
+              "Close", "{n} episodes", "Movie"]
 # A folder name is the short code; hreflang and lang take the full tag where the script matters.
 TAG = {"zh": "zh-Hans"}
 SKIP = {"Anibeam", "GitHub", "Ko-fi", "Linux", "Mac", "Windows", "AUR", ".deb", ".rpm", "Homebrew",

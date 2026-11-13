@@ -216,7 +216,7 @@ core-playback-region-spain = Spanje
 core-playback-region-simplified = vereenvoudigd
 core-playback-region-traditional = traditioneel
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Je mappen controleren
     .stopped = Mappen controleren stopte door een probleem.

@@ -356,7 +356,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
   mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
 }
-.marquee-row { overflow: hidden; }
+.marquee-row { overflow: clip; }
 .marquee-track { display: flex; gap: 20px; width: max-content; animation: marquee var(--dur, 110s) linear infinite; animation-play-state: var(--motion, running); }
 .marquee-row.reverse .marquee-track { animation-direction: reverse; --dur: 120s; }
 .marquee:hover .marquee-track { animation-play-state: paused; }
@@ -365,6 +365,95 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .poster:hover img { filter: none; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3); }
 @keyframes marquee { to { transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
+.marquee.holding .marquee-track, .marquee:has(.poster:focus-visible) .marquee-track { animation-play-state: paused; }
+.poster[role="button"], .poster[aria-hidden] { cursor: pointer; border-radius: 12px; }
+.poster[role="button"]:focus-visible { outline-offset: 3px; }
+.marquee.holding .poster:not(.is-open) img { filter: saturate(0.8) brightness(0.62); }
+.poster.is-open img { filter: none; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3); }
+
+/* The card a poster opens: the nav bar's glass, as tall as the poster, sliding out from behind
+   it. .show-pop starts at the poster's edge and clips, so the card is hidden until it is out. A
+   card opened while another leaves comes later in .show-layer, so it lands on top. */
+.show-pop { position: absolute; z-index: 40; overflow: hidden; pointer-events: none; }
+.show-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 360px;
+  padding: 14px 16px;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: rgba(17, 18, 20, 0.78);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: inset 0 1px var(--hi), 0 12px 32px -16px rgba(0, 0, 0, 0.65);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(var(--tuck, 0)) scale(0.96);
+  transition: transform 0.56s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.36s ease;
+}
+/* Out: a long, soft glide that settles. Back: quicker, easing in, fading as it goes under. */
+.show-card.in { opacity: 1; transform: none; }
+.show-card.out { pointer-events: none; transition: transform 0.46s cubic-bezier(0.5, 0, 0.75, 0.3), opacity 0.34s ease-in 0.12s; }
+.show-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-3);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.show-x:hover { background: rgba(255, 255, 255, 0.05); color: #fff; }
+.show-card h3 { display: -webkit-box; overflow: hidden; margin: 0; padding-right: 28px; color: var(--fg); font: 680 16.5px/1.25 var(--sans); letter-spacing: -0.015em; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.show-meta { display: flex; flex-wrap: wrap; gap: 2px 7px; margin: 0; color: var(--fg-3); font-size: 12.5px; font-weight: 500; letter-spacing: 0.01em; line-height: 1.4; }
+.show-meta b { color: var(--fg-4); font-weight: 400; }
+.show-meta .show-score { color: var(--brand); font-family: var(--mono); font-weight: 500; }
+.show-text { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; color: var(--fg-2); font-size: 13.5px; line-height: 1.55; scrollbar-width: thin; scrollbar-color: var(--fg-4) transparent; }
+.show-text.more { -webkit-mask-image: linear-gradient(#000 calc(100% - 36px), transparent); mask-image: linear-gradient(#000 calc(100% - 36px), transparent); }
+.show-text p { margin: 0; }
+.show-text p + p { margin-top: 0.7em; }
+.show-links { display: flex; gap: 8px; }
+.show-link {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 34px;
+  border-radius: 9px;
+  color: #fff;
+  font: 650 13.5px/1 var(--sans);
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  transition: background-color var(--quick), box-shadow var(--quick);
+}
+.show-link:hover { color: #fff; }
+.show-link svg { fill: currentColor; }
+.to-anilist { background: #152232; box-shadow: inset 0 0 0 1px rgba(2, 169, 255, 0.22), inset 0 1px rgba(255, 255, 255, 0.06); }
+.to-anilist:hover { background: #1a2c40; box-shadow: inset 0 0 0 1px rgba(2, 169, 255, 0.45), inset 0 1px rgba(255, 255, 255, 0.08); }
+.to-anilist svg { width: 15px; height: 15px; fill: var(--anilist); }
+.to-mal { background: #2e51a2; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), inset 0 1px rgba(255, 255, 255, 0.18); }
+.to-mal:hover { background: #3760bd; }
+.to-mal svg { width: 40px; height: 18px; }
+/* A phone or a narrow window gets the card as a sheet along the bottom, sliding up from below */
+@media (max-width: 940px) {
+  .show-pop { position: fixed; inset: auto 0 0 0; overflow: visible; }
+  .show-card { position: relative; width: auto; max-height: 72vh; gap: 12px; padding: 18px 18px max(18px, env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 20px 20px 0 0; background: rgba(17, 18, 20, 0.9); transform: translateY(105%); }
+  .show-card h3 { font-size: 19px; }
+  .show-meta { font-size: 13.5px; }
+  .show-text { font-size: 15px; }
+  .show-link { height: 40px; font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .show-card, .show-card.out { transform: none; transition: opacity 0.2s ease; } }
 
 /* Features: a bento of small, real pieces of the app */
 .feats h2 { margin-bottom: 64px; text-align: center; }

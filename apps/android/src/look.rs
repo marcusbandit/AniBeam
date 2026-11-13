@@ -242,7 +242,6 @@ pub fn install(window: &AppWindow, data_dir: &Path) {
 }
 
 /// The phone's own light or dark setting changed; only System follows it.
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn system_changed() {
     with(|p| {
         if p.choice.mode == 2 {
@@ -288,45 +287,6 @@ fn luma(rgb: u32) -> f32 {
     0.2126 * c(16) + 0.7152 * c(8) + 0.0722 * c(0)
 }
 
-/// What a dark phone looks like: whether the phone is set to dark.
-fn system_dark() -> bool {
-    #[cfg(target_os = "android")]
-    {
-        use jni::JavaVM;
-        use jni::objects::JObject;
-        let read = || -> Result<bool, Box<dyn std::error::Error>> {
-            let ctx = ndk_context::android_context();
-            let vm = unsafe { JavaVM::from_raw(ctx.vm().cast())? };
-            let mut env = vm.attach_current_thread()?;
-            let app = unsafe { JObject::from_raw(ctx.context().cast()) };
-            env.with_local_frame(8, |env| -> Result<bool, Box<dyn std::error::Error>> {
-                let res = env
-                    .call_method(
-                        &app,
-                        "getResources",
-                        "()Landroid/content/res/Resources;",
-                        &[],
-                    )?
-                    .l()?;
-                let cfg = env
-                    .call_method(
-                        &res,
-                        "getConfiguration",
-                        "()Landroid/content/res/Configuration;",
-                        &[],
-                    )?
-                    .l()?;
-                let ui = env.get_field(&cfg, "uiMode", "I")?.i()?;
-                // UI_MODE_NIGHT_MASK is 0x30 and UI_MODE_NIGHT_YES 0x20.
-                Ok(ui & 0x30 == 0x20)
-            })
-        };
-        read().unwrap_or(true)
-    }
-    #[cfg(not(target_os = "android"))]
-    true
-}
-
 impl Page {
     fn keep(&mut self) {
         save(&self.data_dir, &self.choice);
@@ -336,7 +296,7 @@ impl Page {
     fn dark(&self) -> bool {
         match self.choice.mode {
             1 => false,
-            2 => system_dark(),
+            2 => crate::platform::system_dark(),
             _ => true,
         }
     }
@@ -381,7 +341,7 @@ impl Page {
         t.set_cyan(color(pal.hues[4]));
         t.set_purple(color(pal.purple));
         t.set_text_scale(SIZES[self.choice.size.clamp(0, SIZES.len() as i32 - 1) as usize]);
-        crate::android::bars(0xff00_0000 | pal.ground);
+        crate::platform::bars(0xff00_0000 | pal.ground);
 
         let theme_row = |p: &Palette| LookTheme {
             name: p.name.into(),
@@ -393,7 +353,7 @@ impl Page {
             |dark: bool, id: &str| palettes(dark).position(|p| p.id == id).unwrap_or(0) as i32;
         let d = window.global::<LookData>();
         d.set_mode(self.choice.mode);
-        d.set_system_dark(system_dark());
+        d.set_system_dark(crate::platform::system_dark());
         d.set_dark_themes(ModelRc::new(VecModel::from(
             palettes(true).map(theme_row).collect::<Vec<_>>(),
         )));

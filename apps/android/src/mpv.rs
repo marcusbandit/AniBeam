@@ -1,12 +1,14 @@
 //! libmpv, the desktop's player, over its C API: one core per open episode, its events on a
 //! thread of their own, and the picture drawn through the render API by `video.rs`.
 //!
-//! The libraries come from mpv-android's releases (`scripts/fetch-mpv.sh`). Off Android
-//! there is no libmpv to link, so the same type opens nothing and every call is a no-op;
-//! the rest of the app, and its tests, build on the desktop all the same.
+//! The libraries come from mpv-android's releases (`scripts/fetch-mpv.sh`). Where build.rs
+//! links no libmpv (`cfg(libmpv)` unset: every target but Android today), the same type
+//! opens nothing and every call is a no-op; the rest of the app, and its tests, build on the
+//! desktop all the same. What the platform has to do before mpv starts is
+//! `crate::platform::prepare_mpv`'s.
 
-// Off Android the types stand in for a player that never opens.
-#![cfg_attr(not(target_os = "android"), allow(dead_code))]
+// Without libmpv the types stand in for a player that never opens.
+#![cfg_attr(not(libmpv), allow(dead_code))]
 
 use std::sync::Arc;
 
@@ -68,14 +70,14 @@ pub const BOOT_OPTIONS: [(&str, &str); 7] = [
     ("terminal", "no"),
 ];
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(libmpv))]
 pub use host::Mpv;
-#[cfg(target_os = "android")]
+#[cfg(libmpv)]
 pub use imp::Mpv;
 
 pub type Listener = Box<dyn Fn(MpvEvent) + Send + 'static>;
 
-#[cfg(target_os = "android")]
+#[cfg(libmpv)]
 pub(crate) mod ffi {
     #![allow(non_camel_case_types, dead_code)]
     use std::ffi::{c_char, c_int, c_void};
@@ -215,17 +217,13 @@ pub(crate) mod ffi {
         ) -> c_int;
         pub fn mpv_render_context_report_swap(ctx: *mut mpv_render_context);
         pub fn mpv_render_context_free(ctx: *mut mpv_render_context);
-
-        /// libavcodec's: MediaCodec and AudioTrack reach Java through the VM it is given.
-        pub fn av_jni_set_java_vm(vm: *mut c_void, log_ctx: *mut c_void) -> c_int;
     }
 }
 
-#[cfg(target_os = "android")]
+#[cfg(libmpv)]
 mod imp {
     use super::*;
     use std::ffi::{CStr, CString, c_char};
-    use std::sync::Once;
 
     use ffi::*;
 
@@ -242,17 +240,6 @@ mod imp {
         CString::new(s.replace('\0', "")).unwrap()
     }
 
-    /// Whether this is the Android emulator rather than a phone.
-    fn emulator() -> bool {
-        unsafe extern "C" {
-            fn __system_property_get(name: *const c_char, value: *mut c_char) -> i32;
-        }
-        let mut value = [0 as c_char; 92];
-        let n = unsafe { __system_property_get(c"ro.hardware".as_ptr(), value.as_mut_ptr()) };
-        let hw = unsafe { CStr::from_ptr(value.as_ptr()) }.to_string_lossy();
-        n > 0 && (hw == "ranchu" || hw == "goldfish")
-    }
-
     fn error(code: i32) -> String {
         unsafe { CStr::from_ptr(mpv_error_string(code)) }
             .to_string_lossy()
@@ -261,10 +248,7 @@ mod imp {
 
     impl Mpv {
         pub fn new(listener: Listener) -> Result<Arc<Mpv>, String> {
-            static VM: Once = Once::new();
-            VM.call_once(|| unsafe {
-                av_jni_set_java_vm(ndk_context::android_context().vm(), std::ptr::null_mut());
-            });
+            crate::platform::prepare_mpv();
             let handle = unsafe { mpv_create() };
             if handle.is_null() {
                 return Err(tr!("player-mpv-no-start"));
@@ -272,7 +256,11 @@ mod imp {
             for (k, v) in BOOT_OPTIONS {
                 // The emulator's MediaCodec H.264 decoder (c2.goldfish) streaks the picture
                 // with black lines through the copy; software decoding there is clean.
-                let v = if k == "hwdec" && emulator() { "no" } else { v };
+                let v = if k == "hwdec" && crate::platform::emulator() {
+                    "no"
+                } else {
+                    v
+                };
                 let (k, v) = (c(k), c(v));
                 unsafe { mpv_set_option_string(handle, k.as_ptr(), v.as_ptr()) };
             }
@@ -422,11 +410,11 @@ mod imp {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(libmpv))]
 mod host {
     use super::*;
 
-    /// No libmpv off Android: nothing opens, so nothing plays.
+    /// No libmpv linked: nothing opens, so nothing plays.
     pub struct Mpv;
 
     impl Mpv {

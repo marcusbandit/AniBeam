@@ -205,7 +205,7 @@ core-playback-region-spain = 西班牙
 core-playback-region-simplified = 简体
 core-playback-region-traditional = 繁体
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = 正在检查文件夹
     .stopped = 检查文件夹时出现问题，已停止。

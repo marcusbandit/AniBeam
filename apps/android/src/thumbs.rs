@@ -3,7 +3,7 @@
 //! over the seek bar. It lives on a thread of its own and only ever works on the newest
 //! spot, so a fast drag never queues a backlog.
 
-#![cfg_attr(not(target_os = "android"), allow(dead_code))]
+#![cfg_attr(not(libmpv), allow(dead_code))]
 
 use std::sync::mpsc::{Receiver, Sender, channel};
 
@@ -49,7 +49,7 @@ fn newest(rx: &Receiver<f64>) -> Option<f64> {
 /// The width the preview frames are scaled to before they leave mpv.
 const WIDTH: u32 = 320;
 
-#[cfg(target_os = "android")]
+#[cfg(libmpv)]
 mod imp {
     use super::*;
     use crate::mpv::ffi::*;
@@ -265,11 +265,11 @@ mod imp {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(libmpv))]
 mod imp {
     use super::*;
 
-    /// No libmpv off Android: the asks are drained and nothing comes back.
+    /// No libmpv linked: the asks are drained and nothing comes back.
     pub fn run(_path: &str, rx: Receiver<f64>, _on_shot: impl Fn(Shot)) {
         while newest(&rx).is_some() {}
     }
