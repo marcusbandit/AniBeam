@@ -8,15 +8,15 @@ import com.marcusrosado.AniBeam
 
 SettingsTab {
     id: tab
-    title: "Subtitles"
-    lead: "What every episode starts with. Changes show on the frame below as you make them."
+    title: words.t("settings-subtitles-title")
+    lead: words.t("settings-subtitles-lead")
     readonly property var defaults: frame.subtitleDefaults
     property var preview: ({ path: "", subtitle: "", startAt: 0 })
     // Back to the look AniBeam ships with; the language orders stay as they are
     function resetStyle() {
         var stock = Player.stockSubtitleDefaults()
         tab.edit(function(d) { d.scale = stock.scale; d.ass_override = stock.ass_override; d.text_style = stock.text_style })
-        frame.toast("Subtitles look as they did at first")
+        frame.toast(words.t("settings-subtitles-reset-done"))
     }
     // A value a field cannot take: the field says so in red and nothing is saved
     property var bad: ({})
@@ -29,6 +29,8 @@ SettingsTab {
     function colourOf(hex) { return { r: parseInt(hex.substr(1, 2), 16), g: parseInt(hex.substr(3, 2), 16), b: parseInt(hex.substr(5, 2), 16), a: 255 } }
     readonly property var ts: defaults.text_style || null
     readonly property string assMode: defaults.ass_override || "ScaleOnly"
+    // The core's ASS override modes, in the order the switch shows them
+    readonly property var assModes: ["AsScripted", "ScaleOnly", "Force"] // i18n: none
     Component.onCompleted: {
         // The episode watched last, at its resume point; else the sample source. The
         // Watched list rides along: the episode seen last is often watched out, and the two
@@ -74,37 +76,37 @@ SettingsTab {
         }
     }
     Panel {
-        title: "Size and place"
-        SettingRow { label: "Size"
+        title: words.t("settings-subtitles-size-place")
+        SettingRow { label: words.t("settings-subtitles-size")
             SliderRow { from: 0.5; to: 2.0; stepSize: 0.05; decimals: 2; unit: "\u00d7"; value: tab.defaults.scale || 1; onMoved: function(v) { tab.edit(function(d) { d.scale = v }) } } }
-        SettingRow { label: "Position"; helper: "100 sits on the bottom edge. Lower numbers lift the lines up the frame."
+        SettingRow { label: words.t("settings-subtitles-position"); helper: words.t("settings-subtitles-position-helper")
             SliderRow { from: 0; to: 150; stepSize: 1; unit: "%"; value: tab.ts ? tab.ts.position : 100; onMoved: function(v) { tab.edit(function(d) { d.text_style.position = v }) } } }
     }
     Panel {
-        title: "Style"
-        SettingRow { label: "Styled subtitles"
-            helper: tab.assMode === "AsScripted" ? "Styled (ASS) files look exactly as their makers set them."
-                  : tab.assMode === "Force" ? "Your style below goes on every file. Signs and karaoke can break."
-                  : "Styled subtitle files keep their look and take your size. Plain files take your style."
-            Seg { options: ["As made", "Size only", "Mine"]; index: ["AsScripted", "ScaleOnly", "Force"].indexOf(tab.assMode); onPicked: function(i) { tab.edit(function(d) { d.ass_override = ["AsScripted", "ScaleOnly", "Force"][i] }) } } }
-        SettingRow { label: "Font"; helper: tab.bad.font ? "Type a font name, such as Noto Sans." : ""
+        title: words.t("settings-subtitles-style")
+        SettingRow { label: words.t("settings-subtitles-styled")
+            helper: tab.assMode === "AsScripted" ? words.t("settings-subtitles-as-made-helper")
+                  : tab.assMode === "Force" ? words.t("settings-subtitles-mine-helper")
+                  : words.t("settings-subtitles-size-only-helper")
+            Seg { options: [words.t("settings-subtitles-as-made"), words.t("settings-subtitles-size-only"), words.t("settings-subtitles-mine")]; index: tab.assModes.indexOf(tab.assMode); onPicked: function(i) { tab.edit(function(d) { d.ass_override = tab.assModes[i] }) } } }
+        SettingRow { label: words.t("settings-subtitles-font"); helper: tab.bad.font ? words.t("settings-subtitles-font-invalid") : ""
             Field { text: tab.ts ? tab.ts.font : ""; width: theme.space(40); invalid: !!tab.bad.font; onEdited: function(t) { if (tab.flag("font", t.trim() !== "")) tab.edit(function(d) { d.text_style.font = t.trim() }) } } }
-        SettingRow { label: "Bold"
+        SettingRow { label: words.t("settings-subtitles-bold")
             Switch { checked: !!(tab.ts && tab.ts.bold); onToggled: function(on) { tab.edit(function(d) { d.text_style.bold = on }) } } }
-        SettingRow { label: "Text colour"; helper: tab.bad.colour ? "Type a colour like #ffcc00." : ""
+        SettingRow { label: words.t("settings-subtitles-text-colour"); helper: tab.bad.colour ? words.t("settings-subtitles-colour-invalid") : ""
             Row { spacing: theme.space(2)
                 Corner { anchors.verticalCenter: parent.verticalCenter; width: theme.space(7); height: width; radius: width / 2; color: tab.ts ? tab.hexOf(tab.ts.colour) : "#ffffff"; borderColor: theme.lineStrong; borderWidth: 1 }
                 Field { text: tab.ts ? tab.hexOf(tab.ts.colour) : ""; mono: true; width: theme.space(28); invalid: !!tab.bad.colour; onEdited: function(t) { if (tab.flag("colour", tab.isHex(t))) tab.edit(function(d) { d.text_style.colour = tab.colourOf(t) }) } } } }
-        SettingRow { label: "Outline"; helper: tab.bad.outline ? "The width is a number, 0 or more." : tab.bad.outlineColour ? "Type the colour like #000000." : "Its width, then its colour."
+        SettingRow { label: words.t("settings-subtitles-outline"); helper: tab.bad.outline ? words.t("settings-subtitles-outline-invalid") : tab.bad.outlineColour ? words.t("settings-subtitles-outline-colour-invalid") : words.t("settings-subtitles-outline-helper")
             Row { spacing: theme.space(2)
                 Field { text: tab.ts ? String(tab.ts.outline_size) : ""; mono: true; width: theme.space(16); invalid: !!tab.bad.outline; onEdited: function(t) { var v = Number(t); if (tab.flag("outline", t.trim() !== "" && v >= 0)) tab.edit(function(d) { d.text_style.outline_size = v }) } }
                 Corner { anchors.verticalCenter: parent.verticalCenter; width: theme.space(7); height: width; radius: width / 2; color: tab.ts ? tab.hexOf(tab.ts.outline_colour) : "#000000"; borderColor: theme.lineStrong; borderWidth: 1 }
                 Field { text: tab.ts ? tab.hexOf(tab.ts.outline_colour) : ""; mono: true; width: theme.space(28); invalid: !!tab.bad.outlineColour; onEdited: function(t) { if (tab.flag("outlineColour", tab.isHex(t))) tab.edit(function(d) { d.text_style.outline_colour = tab.colourOf(t) }) } } } }
-        SettingRow { label: "Shadow"; helper: tab.bad.shadow ? "A number, 0 or more. 0 means no shadow." : "How far the shadow falls, 0 for none."
+        SettingRow { label: words.t("settings-subtitles-shadow"); helper: tab.bad.shadow ? words.t("settings-subtitles-shadow-invalid") : words.t("settings-subtitles-shadow-helper")
             Field { text: tab.ts ? String(tab.ts.shadow_offset) : ""; mono: true; width: theme.space(16); invalid: !!tab.bad.shadow; onEdited: function(t) { var v = Number(t); if (tab.flag("shadow", t.trim() !== "" && v >= 0)) tab.edit(function(d) { d.text_style.shadow_offset = v }) } } }
-        SettingRow { label: "Background box"; helper: "A dark box behind the lines. 0 leaves it out."
+        SettingRow { label: words.t("settings-subtitles-box"); helper: words.t("settings-subtitles-box-helper")
             SliderRow { from: 0; to: 1; stepSize: 0.05; decimals: 2; value: tab.ts ? tab.ts.box_opacity : 0; onMoved: function(v) { tab.edit(function(d) { d.text_style.box_opacity = v }) } } }
-        SettingRow { label: "Start over"; helper: "Puts the size, font, colours, outline, box and position back to how they came."
-            Button { objectName: "subtitle-reset"; text: "Reset"; icon: "rotate-ccw"; flat: true; onClicked: tab.resetStyle() } }
+        SettingRow { label: words.t("settings-subtitles-start-over"); helper: words.t("settings-subtitles-start-over-helper")
+            Button { objectName: "subtitle-reset"; msg: "settings-subtitles-reset"; icon: "rotate-ccw"; flat: true; onClicked: tab.resetStyle() } }
     }
 }

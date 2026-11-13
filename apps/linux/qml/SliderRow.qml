@@ -29,7 +29,7 @@ Row {
     property string accessibleName: ""
     QC.Slider {
         id: s
-        Accessible.name: theme.spokenName(root.accessibleName, "", root, "") + (/^[A-Za-z]{2,}/.test(root.unit) ? ", in " + root.unit : "")
+        Accessible.name: /^[A-Za-z]{2,}/.test(root.unit) ? words.t("slider-row-spoken-unit", { name: theme.spokenName(root.accessibleName, "", root, ""), unit: root.unit }) : theme.spokenName(root.accessibleName, "", root, "")
         width: root.trackWidth
         visible: root.trackShown
         height: theme.controlHeight
@@ -59,7 +59,7 @@ Row {
         anchors.verticalCenter: parent.verticalCenter
         width: root.unit !== "" ? implicitWidth : theme.space(9)
         role: "ledger"
-        text: Number(s.value).toFixed(root.decimals) + (root.unit !== "" ? " " + root.unit : "")
+        text: root.unit !== "" ? words.t("slider-row-readout", { value: Number(s.value).toFixed(root.decimals), unit: root.unit }) : Number(s.value).toFixed(root.decimals)
         color: theme.textDim
     }
 }

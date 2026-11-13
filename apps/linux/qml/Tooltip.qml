@@ -17,7 +17,10 @@ import QtQuick
 
 Item {
     id: root
-    property string text: ""
+    // The words by message ID (#792), `msgArgs` filled in; `text` set directly wins
+    property string msg: ""
+    property var msgArgs: ({})
+    property string text: msg ? words.t(msg, msgArgs) : ""
     // Read by theme.tipOf, so the item this tip describes can name itself to a screen reader
     readonly property bool isTooltip: true
     readonly property bool hovered: hh.hovered

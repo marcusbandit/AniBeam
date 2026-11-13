@@ -76,7 +76,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             visible: root.unseenErrors > 0
             width: visible ? implicitWidth : 0
-            text: root.unseenErrors + (root.unseenErrors === 1 ? " error" : " errors")
+            msg: "status-strip-errors"
+            msgArgs: ({ count: root.unseenErrors })
             icon: "circle-alert"
             small: true
             color: theme.redSoft

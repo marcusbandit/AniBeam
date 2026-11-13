@@ -30,7 +30,7 @@ Corner {
     property string agent: ""
     property real applyToken: -1
     readonly property bool applying: applyToken >= 0
-    readonly property var kinds: ["Episode", "Opening", "Ending", "Preview", "Special", "Other"]
+    readonly property var kinds: [words.t("fix-kind-episode"), words.t("fix-kind-opening"), words.t("fix-kind-ending"), words.t("fix-kind-preview"), words.t("fix-kind-special"), words.t("fix-kind-other")]
     readonly property var extraKinds: ["", "Op", "Ed", "Pv", "Sp", "Other"]
 
     function kindOf(reading) {
@@ -46,10 +46,12 @@ Corner {
     function describe(reading) {
         if (reading.Episode) {
             var s = reading.Episode.season
-            return (s !== null && s !== undefined && s !== 1 ? "Season " + s + " episode " : "Episode ") + reading.Episode.number
+            return s !== null && s !== undefined && s !== 1
+                ? words.t("fix-reads-season-episode", { season: s, number: reading.Episode.number })
+                : words.t("episode-number", { number: reading.Episode.number })
         }
         var i = reading.Extra.index
-        return kinds[kindOf(reading)] + (i === null || i === undefined ? "" : " " + i)
+        return i === null || i === undefined ? kinds[kindOf(reading)] : words.t("fix-reads-extra", { kind: kinds[kindOf(reading)], index: i })
     }
     function seasonOf(reading) {
         var s = reading && reading.Episode ? reading.Episode.season : null
@@ -154,7 +156,7 @@ Corner {
         root.error = ""
         root.sent = root.changes
         root.applyToken = frame.applyFixes(root.seriesId, root.sent, root.report, root.agent)
-        if (root.applyToken < 0) root.error = "Could not apply the fixes."
+        if (root.applyToken < 0) root.error = words.t("fix-apply-failed")
     }
     // The frame owns what follows a reply (the toast, the issue); the sheet closes, or says
     // why not and stays
@@ -207,8 +209,8 @@ Corner {
                 Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "wrench"; size: theme.space(5); color: theme.accent }
                 Column {
                     width: parent.width - theme.space(8)
-                    Label { text: "Fix how files are read"; role: "title" }
-                    Label { width: parent.width; text: root.seriesTitle + ". Say what each file really is; every scan after this keeps it."; role: "ui"; color: theme.textDim; elide: Text.ElideRight }
+                    Label { msg: "fix-title"; role: "title" }
+                    Label { width: parent.width; msg: "fix-lede"; msgArgs: ({ title: root.seriesTitle }); role: "ui"; color: theme.textDim; elide: Text.ElideRight }
                 }
             }
             // Files is one place for what is on disk (#432): read the folder again from here
@@ -216,14 +218,14 @@ Corner {
                 id: rescanBtn
                 objectName: "fix-rescan"
                 anchors.right: closeBtn.left; anchors.rightMargin: theme.space(2); anchors.top: parent.top
-                small: true; flat: true; icon: "refresh-cw"; text: "Rescan folder"
-                onClicked: { var r = Door.rescanSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Reading the folder again") }
+                small: true; flat: true; icon: "refresh-cw"; msg: "fix-rescan"
+                onClicked: { var r = Door.rescanSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast(words.t("fix-rescan-started")) }
             }
             Button {
                 id: closeBtn
                 objectName: "fix-close"
                 anchors.right: parent.right; anchors.top: parent.top
-                small: true; icon: "x"; text: "Close"
+                small: true; icon: "x"; msg: "action-close"
                 onClicked: root.close()
             }
         }
@@ -254,7 +256,7 @@ Corner {
                     objectName: "fix-fill"
                     anchors.verticalCenter: parent.verticalCenter
                     small: true
-                    text: root.suggestionUsed ? "Filled in" : "Fill in"
+                    text: root.suggestionUsed ? words.t("fix-filled-in") : words.t("fix-fill-in")
                     icon: root.suggestionUsed ? "check" : "sparkles"
                     flat: root.suggestionUsed
                     onClicked: root.useSuggestion()
@@ -285,9 +287,9 @@ Corner {
                 anchors.fill: parent
                 anchors.leftMargin: theme.space(3)
                 spacing: theme.space(3)
-                Caption { width: list.width - root.readWidth - root.kindWidth - root.numberWidth - root.undoWidth - theme.space(3) * 5; text: "File" }
-                Caption { width: root.readWidth; text: "Reads as" }
-                Caption { width: root.kindWidth + root.numberWidth + theme.space(3); text: "Should be" }
+                Caption { width: list.width - root.readWidth - root.kindWidth - root.numberWidth - root.undoWidth - theme.space(3) * 5; msg: "fix-column-file" }
+                Caption { width: root.readWidth; msg: "fix-column-reads-as" }
+                Caption { width: root.kindWidth + root.numberWidth + theme.space(3); msg: "fix-column-should-be" }
             }
         }
         delegate: Corner {
@@ -322,7 +324,7 @@ Corner {
                     width: root.readWidth
                     spacing: theme.space(2)
                     Label { anchors.verticalCenter: parent.verticalCenter; text: root.describe(line.modelData.reading); role: "ui"; color: theme.textDim; elide: Text.ElideRight }
-                    Label { visible: line.modelData.fixed; anchors.verticalCenter: parent.verticalCenter; text: "Fixed"; role: "ledger"; color: theme.accent }
+                    Label { visible: line.modelData.fixed; anchors.verticalCenter: parent.verticalCenter; msg: "fix-fixed"; role: "ledger"; color: theme.accent }
                 }
                 Dropdown {
                     objectName: "fix-kind-" + line.index
@@ -341,7 +343,7 @@ Corner {
                     anchors.verticalCenter: parent.verticalCenter
                     width: root.numberWidth
                     mono: true
-                    placeholder: line.st.kind === 0 ? "No." : "None"
+                    placeholder: line.st.kind === 0 ? words.t("fix-number-placeholder") : words.t("fix-index-placeholder")
                     text: line.st.number
                     enabled: !line.st.undo && !root.applying
                     opacity: line.st.undo ? 0.4 : 1
@@ -370,7 +372,7 @@ Corner {
                         icon: parent.edited ? "x" : "rotate-ccw"
                         text: ""
                         onClicked: if (parent.edited) root.clearEdit(line.modelData); else root.setEdit(line.modelData, { undo: true })
-                        Tooltip { text: line.st.undo ? "Keep the fix" : parent.parent.edited ? "Leave this file as it reads" : "Read this file by its name again" }
+                        Tooltip { text: line.st.undo ? words.t("fix-keep") : parent.parent.edited ? words.t("fix-leave-as-read") : words.t("fix-read-by-name") }
                     }
                 }
             }
@@ -398,7 +400,7 @@ Corner {
             objectName: "fix-report"
             anchors.top: parent.top
             width: parent.width - buttons.width - theme.space(6)
-            height: Math.max(box.height, words.implicitHeight)
+            height: Math.max(box.height, reportText.implicitHeight)
             Rectangle {
                 id: box
                 y: theme.space(0.25)
@@ -410,16 +412,16 @@ Corner {
                 Icon { visible: root.report; anchors.centerIn: parent; glyph: "check"; size: theme.space(3); color: theme.contrast(theme.accent, Qt.rgba(1, 1, 1, 1)) >= 4.5 ? "#ffffff" : "#0d0e11" }
             }
             Column {
-                id: words
+                id: reportText
                 anchors.left: box.right
                 anchors.leftMargin: theme.space(2)
                 anchors.right: parent.right
                 spacing: theme.space(0.5)
-                Label { width: parent.width; text: "File an issue on GitHub"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.text }
+                Label { width: parent.width; msg: "fix-report"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.text }
                 Label {
                     width: parent.width
                     visible: root.report
-                    text: "Opens a filled in issue for you to send. It is public and names these files." + (root.agent !== "" ? " " + root.agent + " looks into it first." : "")
+                    text: root.agent !== "" ? words.t("fix-report-body-agent", { agent: root.agent }) : words.t("fix-report-body")
                     role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
                 }
             }
@@ -434,13 +436,13 @@ Corner {
             Label {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.confirmingClose || (root.anyInvalid && root.changes.length > 0)
-                text: root.confirmingClose ? "Close without applying " + Fmt.plural(root.changes.length, "fix", "fixes") + "?"
-                    : "A number in red needs fixing first"
+                text: root.confirmingClose ? words.t("fix-close-unapplied", { count: root.changes.length })
+                    : words.t("fix-number-invalid")
                 role: "ui"; color: root.confirmingClose ? theme.text : theme.red
             }
-            Button { visible: root.confirmingClose; objectName: "fix-close-anyway"; text: "Close anyway"; danger: true; onClicked: root.shut() }
-            Button { visible: root.confirmingClose; text: "Keep editing"; flat: true; onClicked: root.confirmingClose = false }
-            Button { visible: !root.confirmingClose; objectName: "fix-cancel"; text: "Cancel"; flat: true; onClicked: root.close() }
+            Button { visible: root.confirmingClose; objectName: "fix-close-anyway"; msg: "fix-close-anyway"; danger: true; onClicked: root.shut() }
+            Button { visible: root.confirmingClose; msg: "fix-keep-editing"; flat: true; onClicked: root.confirmingClose = false }
+            Button { visible: !root.confirmingClose; objectName: "fix-cancel"; msg: "action-cancel"; flat: true; onClicked: root.close() }
             Button {
                 visible: !root.confirmingClose
                 objectName: "fix-apply"
@@ -448,7 +450,7 @@ Corner {
                 icon: "wrench"
                 busy: root.applying
                 enabled: root.changes.length > 0 && !root.anyInvalid && !root.applying
-                text: root.changes.length === 0 ? "Apply" : root.changes.length === 1 ? "Apply 1 fix" : "Apply " + root.changes.length + " fixes"
+                text: root.changes.length === 0 ? words.t("action-apply") : words.t("fix-apply-count", { count: root.changes.length })
                 onClicked: root.apply()
             }
         }

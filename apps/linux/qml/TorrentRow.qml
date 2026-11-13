@@ -17,35 +17,36 @@ Item {
     readonly property bool done: (t.progress || 0) >= 1
     readonly property bool stopped: state.indexOf("paused") === 0 || state.indexOf("stopped") === 0
     readonly property bool erred: state === "error" || state === "missingFiles"
-    readonly property string words: {
+    // Named stateText, not words, so the global `words` stays reachable in this file
+    readonly property string stateText: {
         var s = root.state
-        if (s === "downloading" || s === "forcedDL") return "Downloading"
-        if (s === "stalledDL") return "Stalled"
-        if (s === "metaDL" || s === "forcedMetaDL") return "Fetching metadata"
-        if (s === "queuedDL" || s === "queuedUP") return "Queued"
-        if (s === "pausedDL" || s === "stoppedDL") return "Stopped"
-        if (s === "pausedUP" || s === "stoppedUP") return "Done"
-        if (s === "uploading" || s === "stalledUP" || s === "forcedUP") return "Seeding"
-        if (s.indexOf("checking") === 0) return "Checking"
-        if (s === "moving") return "Moving"
-        if (s === "error") return "Error"
-        if (s === "missingFiles") return "Files missing"
-        if (s === "allocating") return "Making room"
-        if (s === "metaDL" || s === "forcedMetaDL") return "Finding peers"
-        if (s === "forcedDL") return "Downloading"
+        if (s === "downloading" || s === "forcedDL") return words.t("torrent-row-state-downloading")
+        if (s === "stalledDL") return words.t("torrent-row-state-stalled")
+        if (s === "metaDL" || s === "forcedMetaDL") return words.t("torrent-row-state-metadata")
+        if (s === "queuedDL" || s === "queuedUP") return words.t("torrent-row-state-queued")
+        if (s === "pausedDL" || s === "stoppedDL") return words.t("torrent-row-state-stopped")
+        if (s === "pausedUP" || s === "stoppedUP") return words.t("torrent-row-state-done")
+        if (s === "uploading" || s === "stalledUP" || s === "forcedUP") return words.t("torrent-row-state-seeding")
+        if (s.indexOf("checking") === 0) return words.t("torrent-row-state-checking")
+        if (s === "moving") return words.t("torrent-row-state-moving")
+        if (s === "error") return words.t("torrent-row-state-error")
+        if (s === "missingFiles") return words.t("torrent-row-state-files-missing")
+        if (s === "allocating") return words.t("torrent-row-state-making-room")
+        if (s === "metaDL" || s === "forcedMetaDL") return words.t("torrent-row-state-finding-peers")
+        if (s === "forcedDL") return words.t("torrent-row-state-downloading")
         // A state this list does not know yet still reads as a word, never the client's code
-        return "Waiting"
+        return words.t("torrent-row-state-waiting")
     }
     readonly property string facts: {
         var parts = []
         var size = root.t.size || 0
         if (root.done) parts.push(Fmt.bytes(size))
-        else parts.push(Fmt.bytes(Math.round(size * (root.t.progress || 0))) + " of " + Fmt.bytes(size))
-        if ((root.t.dlspeed || 0) > 0) parts.push(Fmt.bytes(root.t.dlspeed) + "/s down")
-        if ((root.t.upspeed || 0) > 0) parts.push(Fmt.bytes(root.t.upspeed) + "/s up")
-        if (!root.done && (root.t.dlspeed || 0) > 0 && root.t.eta > 0 && root.t.eta < 8640000) parts.push(Fmt.countdown(root.t.eta) + " left")
-        if (!root.done) parts.push(Fmt.plural(root.t.num_seeds || 0, "seeder", "seeders"))
-        if (root.t.roll) parts.push("rolling, episodes " + root.t.roll.next + " to " + root.t.roll.through + " of " + root.t.roll.total)
+        else parts.push(words.t("torrent-row-done-of-size", { done: Fmt.bytes(Math.round(size * (root.t.progress || 0))), size: Fmt.bytes(size) }))
+        if ((root.t.dlspeed || 0) > 0) parts.push(words.t("torrent-row-speed-down", { speed: Fmt.bytes(root.t.dlspeed) }))
+        if ((root.t.upspeed || 0) > 0) parts.push(words.t("torrent-row-speed-up", { speed: Fmt.bytes(root.t.upspeed) }))
+        if (!root.done && (root.t.dlspeed || 0) > 0 && root.t.eta > 0 && root.t.eta < 8640000) parts.push(words.t("torrent-row-time-left", { time: words.countdown(root.t.eta) }))
+        if (!root.done) parts.push(words.t("torrent-row-seeders", { count: root.t.num_seeds || 0 }))
+        if (root.t.roll) parts.push(words.t("torrent-row-rolling", { next: root.t.roll.next, through: root.t.roll.through, total: root.t.roll.total }))
         return parts.join(", ")
     }
 
@@ -75,7 +76,7 @@ Item {
             Label {
                 id: stateLabel
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.words
+                text: root.stateText
                 role: "ledger"
                 color: root.erred ? theme.red : root.done ? theme.caughtUp : root.stopped ? theme.textFaint : theme.accent
             }
@@ -96,7 +97,7 @@ Item {
         spacing: theme.space(1.5)
         Button {
             visible: !root.erred
-            text: root.stopped ? "Start" : "Stop"
+            text: root.stopped ? words.t("action-start") : words.t("torrent-row-stop")
             icon: root.stopped ? "play" : "pause"
             flat: true
             small: true
@@ -105,7 +106,7 @@ Item {
         Button {
             id: removeButton
             objectName: "torrent-remove"
-            text: "Remove"
+            msg: "action-remove"
             icon: "x"
             flat: true
             small: true

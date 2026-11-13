@@ -25,7 +25,7 @@ Corner {
     Accessible.role: Accessible.Button
     // "Episode 3, The title", without saying the number twice when the title is only that
     Accessible.name: {
-        var n = episode.number !== undefined && episode.number !== null ? "Episode " + episode.number : ""
+        var n = episode.number !== undefined && episode.number !== null ? words.t("episode-number", { number: episode.number }) : ""
         return !title || title === n ? n : n ? n + ", " + title : title
     }
     Accessible.onPressAction: play()
@@ -59,7 +59,7 @@ Corner {
     borderColor: activeFocus ? theme.focusRing : "transparent"
     borderWidth: activeFocus ? 2 : 0
     width: parent ? parent.width : implicitWidth
-    height: Math.max(theme.space(10), words.implicitHeight + theme.space(3))
+    height: Math.max(theme.space(10), wordsCol.implicitHeight + theme.space(3))
     radius: theme.radiusMd
     smoothing: theme.cornerSmoothing
     color: picked ? theme.redSoft
@@ -96,9 +96,9 @@ Corner {
     readonly property color downloadColor: theme.cubeState("t").fill
     readonly property real resumeFraction: episode.resume && episode.resume.duration > 0 ? episode.resume.position / episode.resume.duration : 0
     readonly property string dateText: !episode.air_date ? ""
-        : upcoming && !predicted ? Qt.formatDateTime(new Date(episode.air_date * 1000), "ddd d MMM, HH:mm")
-        : upcoming ? Qt.formatDate(new Date(episode.air_date * 1000), "ddd d MMM")
-        : Qt.formatDate(new Date(episode.air_date * 1000), "d MMM yyyy")
+        : upcoming && !predicted ? Qt.formatDateTime(new Date(episode.air_date * 1000), words.t("episode-row-date-time-format"))
+        : upcoming ? Qt.formatDate(new Date(episode.air_date * 1000), words.t("episode-row-date-upcoming-format"))
+        : Qt.formatDate(new Date(episode.air_date * 1000), words.t("episode-row-date-format"))
 
     MouseArea {
         id: hover
@@ -156,7 +156,7 @@ Corner {
                     else if (root.trackable) root.marker()
                 }
             }
-            Tooltip { text: root.picking ? "" : root.cubeState.label + (root.trackable ? (root.watched ? ". Click to mark unwatched from here" : ". Click to mark watched up to here") : "") }
+            Tooltip { text: root.picking ? "" : !root.trackable ? root.cubeState.label : words.t(root.watched ? "episode-row-mark-unwatched-tip" : "episode-row-mark-watched-tip", { state: root.cubeState.label }) }
         }
         Label {
             id: code
@@ -168,7 +168,7 @@ Corner {
             elide: Text.ElideRight
         }
         Column {
-            id: words
+            id: wordsCol
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - mark.width - code.width - (date.visible ? date.width + parent.spacing : 0) - parent.spacing * 2
             Row {
@@ -189,7 +189,7 @@ Corner {
                     id: tags
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(2)
-                    Label { visible: root.nextUp; anchors.verticalCenter: parent.verticalCenter; text: "Next up"; role: "ledger"; color: theme.accent }
+                    Label { visible: root.nextUp; anchors.verticalCenter: parent.verticalCenter; msg: "episode-row-next-up"; role: "ledger"; color: theme.accent }
                     Chip {
                         id: versionsChip
                         objectName: "episode-versions"
@@ -198,15 +198,15 @@ Corner {
                         small: true
                         clickable: true
                         icon: "layers"
-                        text: root.versions.length + " versions"
+                        text: words.t("episode-row-versions", { count: root.versions.length })
                         onClicked: root.openVersions(versionsChip)
-                        Tooltip { text: "The same episode from " + root.versions.length + " releases. Click to pick which plays" }
+                        Tooltip { text: words.t("episode-row-versions-tip", { count: root.versions.length }) }
                     }
                     Label {
                         objectName: "episode-downloading"
                         visible: root.downloading
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Downloading " + Math.floor(root.downloadFraction * 100) + "%"
+                        text: words.t("episode-row-downloading", { percent: Math.floor(root.downloadFraction * 100) })
                         role: "ledger"
                         color: root.downloadColor
                     }
@@ -214,7 +214,7 @@ Corner {
                         objectName: "episode-absent"
                         visible: root.absent && (!root.watched || (root.getting && hover.containsMouse))
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.getting && hover.containsMouse ? "Get episode" : root.cubeState.label
+                        text: root.getting && hover.containsMouse ? words.t("episode-row-get") : root.cubeState.label
                         role: "ledger"
                         color: root.getting && hover.containsMouse ? theme.accent : root.cube === "m" ? root.cubeState.fill : theme.textFaint
                     }
@@ -222,15 +222,15 @@ Corner {
                         objectName: "episode-predicted"
                         visible: root.predicted
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Predicted"
+                        msg: "episode-row-predicted"
                         role: "ledger"
                         color: theme.textDim
                     }
-                    Label { visible: root.extra; anchors.verticalCenter: parent.verticalCenter; text: "Extra"; role: "ledger"; color: theme.textFaint }
+                    Label { visible: root.extra; anchors.verticalCenter: parent.verticalCenter; msg: "episode-row-extra"; role: "ledger"; color: theme.textFaint }
                     Label {
                         visible: root.resumeFraction > 0 && root.resumeFraction < 0.97 && !root.downloading
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.episode.resume ? "Resume at " + Fmt.clock(root.episode.resume.position) : ""
+                        text: root.episode.resume ? words.t("episode-row-resume", { time: Fmt.clock(root.episode.resume.position) }) : ""
                         role: "ledger"
                         color: theme.textDim
                     }

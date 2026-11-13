@@ -8,8 +8,8 @@ import com.marcusrosado.AniBeam
 
 SettingsTab {
     id: tab
-    title: "Storage and backup"
-    lead: "Move your library to another computer, keep a copy safe, or free the space images take."
+    title: words.t("settings-data-title")
+    lead: words.t("settings-data-lead")
     property bool includePrivate: false
     property string lastExport: ""
     property var importSummary: null
@@ -25,9 +25,9 @@ SettingsTab {
     Component.onCompleted: loadStorage()
     Connections {
         target: Door
-        function onExportFinished(p) { tab.lastExport = p; frame.toast("Backed up to " + p) }
-        function onImportFinished(summary) { tab.importSummary = summary; frame.toast("Restore finished") }
-        function onImagesCleared(removed) { tab.loadStorage(); frame.toast("Removed " + Fmt.plural(removed, "image", "images")) }
+        function onExportFinished(p) { tab.lastExport = p; frame.toast(words.t("settings-data-backed-up", { path: p })) }
+        function onImportFinished(summary) { tab.importSummary = summary; frame.toast(words.t("settings-data-restore-finished")) }
+        function onImagesCleared(removed) { tab.loadStorage(); frame.toast(words.t("settings-data-images-removed", { count: removed })) }
         function onJobFailed(job, kind, error) {
             if (kind === "Export") frame.fail(error, exportDialog.open)
             else if (kind === "Import") frame.fail(error, importDialog.open)
@@ -36,48 +36,48 @@ SettingsTab {
     }
     function summaryLine(s) {
         if (!s) return ""
-        var parts = [Fmt.plural(s.sources_added, "folder", "folders") + " added",
-                     Fmt.plural(s.series_created, "series", "series") + " created",
-                     Fmt.plural(s.matches_applied, "match", "matches") + " applied",
-                     Fmt.plural(s.views_merged, "view", "views") + " and " + Fmt.plural(s.completed_merged, "finished episode", "finished episodes") + " merged",
-                     Fmt.plural(s.resume_points_merged, "resume point", "resume points") + " merged",
-                     Fmt.plural(s.accounts_imported, "list account", "list accounts") + " brought in"]
-        var out = parts.join(", ") + "."
-        if (s.fixes_applied > 0) out += " " + Fmt.plural(s.fixes_applied, "file takes", "files take") + " a fix you made."
-        if (s.sources_unavailable > 0) out += " " + Fmt.plural(s.sources_unavailable, "folder was", "folders were") + " not found on this computer."
-        if (s.fields_ignored && s.fields_ignored.length) out += " Left out: " + s.fields_ignored.join(", ") + "."
-        return out
+        var parts = [words.t("settings-data-summary-folders", { count: s.sources_added }),
+                     words.t("settings-data-summary-series", { count: s.series_created }),
+                     words.t("settings-data-summary-matches", { count: s.matches_applied }),
+                     words.t("settings-data-summary-views", { views: s.views_merged, episodes: s.completed_merged }),
+                     words.t("settings-data-summary-resume-points", { count: s.resume_points_merged }),
+                     words.t("settings-data-summary-accounts", { count: s.accounts_imported })]
+        var out = [words.t("settings-data-summary", { parts: parts.join(", ") })]
+        if (s.fixes_applied > 0) out.push(words.t("settings-data-summary-fixes", { count: s.fixes_applied }))
+        if (s.sources_unavailable > 0) out.push(words.t("settings-data-summary-unavailable", { count: s.sources_unavailable }))
+        if (s.fields_ignored && s.fields_ignored.length) out.push(words.t("settings-data-summary-left-out", { fields: s.fields_ignored.join(", ") }))
+        return out.join(" ")
     }
 
     Panel {
-        title: "Backup"
-        SettingRow { label: "Back up the library"; helper: "One file with your folders, matches and what you have watched."
-            line: tab.lastExport !== "" ? "Last written to " + tab.lastExport : ""
+        title: words.t("settings-data-backup")
+        SettingRow { label: words.t("settings-data-back-up-library"); helper: words.t("settings-data-back-up-helper")
+            line: tab.lastExport !== "" ? words.t("settings-data-last-written", { path: tab.lastExport }) : ""
             Row { spacing: theme.space(2)
-                Button { visible: tab.lastExport !== ""; text: "Open folder"; icon: "folder-open"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.dir(tab.lastExport))) }
-                Button { objectName: "data-export"; text: "Back up"; icon: "file-up"; primary: true; onClicked: exportDialog.open() } } }
-        SettingRow { label: "Include private data"; helper: "Adds AniList and MyAnimeList sign-ins, watch history and preferences. Sign-ins are written as plain text, so keep the file to yourself."
+                Button { visible: tab.lastExport !== ""; msg: "settings-data-open-folder"; icon: "folder-open"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.dir(tab.lastExport))) }
+                Button { objectName: "data-export"; msg: "settings-data-back-up"; icon: "file-up"; primary: true; onClicked: exportDialog.open() } } }
+        SettingRow { label: words.t("settings-data-private"); helper: words.t("settings-data-private-helper")
             Switch { objectName: "data-private"; checked: tab.includePrivate; onToggled: function(on) { tab.includePrivate = on } } }
-        SettingRow { label: "Restore from a backup"; helper: "Reads a backup into this library. What is on disk wins; the file fills in the rest."
+        SettingRow { label: words.t("settings-data-restore-from"); helper: words.t("settings-data-restore-helper")
             status: tab.summaryLine(tab.importSummary)
-            Button { objectName: "data-import"; text: "Restore"; icon: "file-down"; flat: true; onClicked: importDialog.open() } }
+            Button { objectName: "data-import"; msg: "settings-data-restore"; icon: "file-down"; flat: true; onClicked: importDialog.open() } }
     }
     Panel {
         objectName: "data-images"
-        title: "Image cache"
-        helper: "Posters, banners and portraits are kept on disk so the library works offline. Cleared images download again as pages need them."
+        title: words.t("settings-data-image-cache")
+        helper: words.t("settings-data-image-cache-helper")
         SettingRow {
-            label: tab.storageFailed ? "The image cache could not be measured" : tab.storage.image_count ? Fmt.bytes(tab.storage.image_bytes || 0) + " in " + Fmt.plural(tab.storage.image_count, "image", "images") : "No images cached"
-            helper: tab.storageFailed ? "Try again in a moment. The images themselves are fine." : ""
+            label: tab.storageFailed ? words.t("settings-data-cache-unmeasured") : tab.storage.image_count ? words.t("settings-data-cache-size", { size: Fmt.bytes(tab.storage.image_bytes || 0), count: tab.storage.image_count }) : words.t("settings-data-cache-empty")
+            helper: tab.storageFailed ? words.t("settings-data-cache-unmeasured-helper") : ""
             Item {
                 width: tab.confirmingClear ? confirm.implicitWidth : clearBtn.width
                 height: tab.confirmingClear ? confirm.implicitHeight : clearBtn.height
-                Button { id: clearBtn; objectName: "data-clear-images"; visible: !tab.confirmingClear; text: tab.storageFailed ? "Try again" : "Clear"; icon: tab.storageFailed ? "refresh-cw" : "trash-2"; flat: true; enabled: tab.storageFailed || tab.storage.image_count > 0; onClicked: tab.storageFailed ? tab.loadStorage() : tab.confirmingClear = true }
+                Button { id: clearBtn; objectName: "data-clear-images"; visible: !tab.confirmingClear; text: tab.storageFailed ? words.t("action-try-again") : words.t("action-clear"); icon: tab.storageFailed ? "refresh-cw" : "trash-2"; flat: true; enabled: tab.storageFailed || tab.storage.image_count > 0; onClicked: tab.storageFailed ? tab.loadStorage() : tab.confirmingClear = true }
                 InlineConfirm {
                     id: confirm
                     visible: tab.confirmingClear
-                    question: "Remove " + Fmt.plural(tab.storage.image_count, "image", "images") + "?"
-                    confirmText: "Clear"
+                    question: words.t("settings-data-remove-images", { count: tab.storage.image_count })
+                    confirmText: words.t("action-clear")
                     onAccepted: { tab.confirmingClear = false; tab.clearImages() }
                     onKept: tab.confirmingClear = false
                 }
@@ -85,30 +85,30 @@ SettingsTab {
         }
     }
     Panel {
-        title: "Where AniBeam keeps its files"
+        title: words.t("settings-data-files")
         Repeater {
-            model: [["Library database", "db_path", true], ["Data", "data_dir", false], ["Settings", "config_dir", false], ["Cache", "cache_dir", false]]
+            model: [["settings-data-files-database", "db_path", true], ["settings-data-files-data", "data_dir", false], ["settings-data-files-settings", "config_dir", false], ["settings-data-files-cache", "cache_dir", false]]
             SettingRow {
                 required property var modelData
-                label: modelData[0]
+                label: words.t(modelData[0])
                 status: tab.about[modelData[1]] || ""
-                Button { text: "Open"; icon: "folder-open"; flat: true; small: true; onClicked: frame.openLink(Fmt.fileUrl(modelData[2] ? tab.dir(tab.about[modelData[1]]) : tab.about[modelData[1]])) }
+                Button { msg: "action-open"; icon: "folder-open"; flat: true; small: true; onClicked: frame.openLink(Fmt.fileUrl(modelData[2] ? tab.dir(tab.about[modelData[1]]) : tab.about[modelData[1]])) }
             }
         }
     }
     FileDialog {
         id: exportDialog
-        title: "Back up the library"
+        title: words.t("settings-data-back-up-library")
         fileMode: FileDialog.SaveFile
         defaultSuffix: "json"
         currentFile: Fmt.fileUrl((tab.about.data_dir ? tab.dir(tab.about.data_dir) : "") + "/anibeam-export.json")
-        nameFilters: ["AniBeam backup (*.json)"]
-        onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); r.error ? frame.fail(r.error, exportDialog.open) : frame.toast("Backing up") }
+        nameFilters: [words.t("settings-data-backup-filter")]
+        onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); r.error ? frame.fail(r.error, exportDialog.open) : frame.toast(words.t("settings-data-backing-up")) }
     }
     FileDialog {
         id: importDialog
-        title: "Restore from a backup"
-        nameFilters: ["AniBeam backup (*.json)", "All files (*)"]
-        onAccepted: { var r = Door.importLibrary(tab.path(selectedFile)); r.error ? frame.fail(r.error, importDialog.open) : frame.toast("Restoring") }
+        title: words.t("settings-data-restore-from")
+        nameFilters: [words.t("settings-data-backup-filter"), words.t("settings-data-all-files-filter")]
+        onAccepted: { var r = Door.importLibrary(tab.path(selectedFile)); r.error ? frame.fail(r.error, importDialog.open) : frame.toast(words.t("settings-data-restoring")) }
     }
 }

@@ -248,7 +248,7 @@ Item {
     }
     MouseArea {
         Accessible.role: Accessible.StaticText
-        Accessible.name: root.list.length === 1 ? "One episode" : root.list.length + " episodes, " + root.first + " to " + (root.first + root.list.length - 1)
+        Accessible.name: root.list.length === 1 ? words.t("episode-cubes-one") : words.t("episode-cubes-range", { count: root.list.length, first: root.first, last: root.first + root.list.length - 1 })
         y: root.gridY
         width: parent.width
         height: Math.max(0, parent.height - root.gridY)
@@ -270,7 +270,7 @@ Item {
     // handler below, not by a binding, so a warm handover never shows the cube before's
     function tipTextOf(i) {
         if (i < 0 || count > tipLimit || fold !== 1) return ""
-        return tipFor ? tipFor(i, cells[i] || "g") : "Episode " + (first + i) + ": " + theme.cubeState(cells[i] || "g").label.toLowerCase()
+        return tipFor ? tipFor(i, cells[i] || "g") : words.t("episode-cubes-tip", { number: first + i, state: words.t(theme.cubeState(cells[i] || "g").id + ".inline") })
     }
     Item {
         id: probe

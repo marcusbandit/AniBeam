@@ -92,7 +92,6 @@ Item {
     // Rate and a list both need a pick a connected tracker carries
     readonly property bool pickedTracked: pickedCards.some(function(c) { return frame.canSetListStatus(c) })
     readonly property bool pickedUnmatched: pickedCards.some(function(c) { return !c.match_info })
-    function pickedNoun(n) { return Fmt.plural(n, "show", "shows") }
     // One call for every pick. A refusal (nothing reachable, a folder that is away) is the toast
     function act(action, said) {
         var ids = page.pickedIds()
@@ -108,17 +107,17 @@ Item {
         var tracked = page.pickedCards.some(function(c) { return !!(c.match_info && (c.match_info.anilist_id || c.match_info.mal_id)) })
         var ids = page.act({ Hide: { hidden: hide } }, "")
         if (!ids) return
-        frame.toast(hide ? (page.pickedNoun(n) + " hidden" + (tracked ? ", and their tracker sync stops" : ""))
-                         : (page.pickedNoun(n) + " back, and syncing again"),
-                    6, "Undo", function() {
+        frame.toast(hide ? words.t(tracked ? "library-hidden-sync-stops" : "library-hidden", { count: n })
+                         : words.t("library-unhidden", { count: n }),
+                    6, words.t("library-undo"), function() {
                         var u = Door.call("ActOnSeries", { series: ids, action: { Hide: { hidden: !hide } } })
                         if (u.error) frame.fail(u.error)
                     })
     }
     function ratePicked(score) {
         var n = page.pickedCount
-        page.act({ Score: { score: score } }, score === null ? "Clearing the score of " + page.pickedNoun(n)
-                                                             : "Rating " + page.pickedNoun(n) + " " + Fmt.score(score))
+        page.act({ Score: { score: score } }, score === null ? words.t("library-clearing-score", { count: n })
+                                                             : words.t("library-rating", { count: n, score: Fmt.score(score) }))
     }
     function listPicked(anchor) {
         var lists = frame.listStatusItems(-1, "")
@@ -127,30 +126,32 @@ Item {
         frame.openMenu(p.x, p.y - lists.length * theme.controlHeight - theme.space(8), lists.map(function(l) {
             return { text: l.text, icon: l.icon, action: function() {
                 var n = page.pickedCount
-                page.act({ ListStatus: { status: l.status } }, "Moving " + page.pickedNoun(n) + " to " + l.text)
+                page.act({ ListStatus: { status: l.status } }, words.t("library-moving", { count: n, list: l.text }))
             } }
         }))
     }
-    function rescanPicked() { var n = page.pickedCount; page.act("Rescan", "Rescanning " + page.pickedNoun(n)) }
+    function rescanPicked() { var n = page.pickedCount; page.act("Rescan", words.t("library-rescanning", { count: n })) }
     function matchPicked() {
         var n = page.pickedCards.filter(function(c) { return !c.match_info }).length
-        page.act("FindMatch", "Looking for a match for " + page.pickedNoun(n))
+        page.act("FindMatch", words.t("library-finding-matches", { count: n }))
     }
 
     readonly property var tabs: ["All", "Series", "Movies"]
-    readonly property var sorts: [["LastViewed", "Recently watched"], ["Downloaded", "Recently downloaded"], ["Alpha", "Title"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]
+    // Each order as the core names it, with its words by message ID
+    readonly property var sorts: [["LastViewed", "library-sort-last-viewed"], ["Downloaded", "library-sort-downloaded"], ["Alpha", "library-sort-title"],
+                                  ["Progress", "library-sort-progress"], ["CommunityScore", "library-sort-average-score"], ["MyScore", "library-sort-my-score"]]
     // The direction in the words of the order it flips: a title runs A to Z, a date newest
     // first, a score highest first
     function directionWords(key, dir) {
         var asc = dir === "Asc"
-        if (key === "Alpha") return asc ? "A to Z" : "Z to A"
-        if (key === "LastViewed" || key === "Downloaded") return asc ? "Oldest first" : "Newest first"
-        if (key === "Progress") return asc ? "Least watched first" : "Most watched first"
-        return asc ? "Lowest first" : "Highest first"
+        if (key === "Alpha") return words.t(asc ? "library-dir-a-to-z" : "library-dir-z-to-a")
+        if (key === "LastViewed" || key === "Downloaded") return words.t(asc ? "library-dir-oldest" : "library-dir-newest")
+        if (key === "Progress") return words.t(asc ? "library-dir-least-watched" : "library-dir-most-watched")
+        return words.t(asc ? "library-dir-lowest" : "library-dir-highest")
     }
     // The cuts. A stored "Related" (the cut before the franchise toggle) reads as Season
     // with the toggle on, which is what it was.
-    readonly property var arrangements: [["None", "Nothing"], ["Season", "Season"], ["Type", "Type"], ["Genre", "Genre"], ["WatchState", "Watch state"]]
+    readonly property var arrangements: [["None", "library-group-none"], ["Season", "library-group-season"], ["Type", "library-group-type"], ["Genre", "library-group-genre"], ["WatchState", "library-group-watch-state"]]
     function cutOf(key) { return key === "Related" ? "Season" : key }
     // Loaded-with copies, not bindings on Door.preferences: seeded once in
     // Component.onCompleted, ordinary state from then on, so the preferences-changed
@@ -175,10 +176,10 @@ Item {
     // A read that failed says so with Try again, never as an empty library
     property bool loadFailed: false
     function showAll() { tab = "All"; persist(); reload() }
-    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast("Scan started") }
+    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast(words.t("library-scan-started")) }
     property real nowMs: Date.now()
 
-    function clearGenre() { genre = ""; frame.nav.current.props = { q: page.query }; frame.nav.relabel("Library"); reload() }
+    function clearGenre() { genre = ""; frame.nav.current.props = { q: page.query }; frame.nav.relabel(""); reload() }
     function persist() {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.library_tab = tab === "Hidden" ? p.library_tab : tab
@@ -216,14 +217,15 @@ Item {
     property var tabCounts: ({})
     readonly property var tabOptions: tabNames.map(function(t) {
         var k = { All: "all", Series: "series", Movies: "movies", Watched: "watched", Hidden: "hidden" }[t]
-        return { text: t, name: t.toLowerCase(), count: page.tabCounts[k] }
+        var said = { All: "library-tab-all", Series: "library-tab-series", Movies: "library-tab-movies", Watched: "library-tab-watched", Hidden: "library-tab-hidden" }[t]
+        return { text: words.t(said), name: t.toLowerCase(), count: page.tabCounts[k] }
     })
     // What the count under the title counts, by tab
     function countLine(n) {
-        if (tab === "Movies") return Fmt.plural(n, "movie", "movies")
-        if (tab === "Watched") return n + " watched"
-        if (tab === "Hidden") return n + " hidden"
-        return Fmt.plural(n, "series", "series")
+        if (tab === "Movies") return words.t("library-count-movies", { count: n })
+        if (tab === "Watched") return words.t("library-count-watched", { count: n })
+        if (tab === "Hidden") return words.t("library-count-hidden", { count: n })
+        return words.t("library-count-series", { count: n })
     }
 
     // The season now, which the Season cut (library_view.rs) keeps airing series out of
@@ -367,7 +369,7 @@ Item {
                 id: titleLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: page.genre !== "" ? page.genre : "Library"
+                text: page.genre !== "" ? page.genre : words.t("library-title")
                 role: "display"
                 font.pointSize: theme.typePage
             }
@@ -380,7 +382,7 @@ Item {
                 small: true
                 flat: true
                 icon: "x"
-                text: "All genres"
+                msg: "library-all-genres"
                 onClicked: page.clearGenre()
             }
             Label {
@@ -398,7 +400,7 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(theme.space(100), Math.max(theme.space(40), parent.width * 0.38))
-                placeholder: "Search titles or folders"
+                placeholder: words.t("library-search-placeholder")
                 onTextChanged: queryDebounce.restart()
                 onCleared: { queryDebounce.stop(); page.query = ""; frame.nav.current.props = page.genre !== "" ? { genre: page.genre } : {}; page.reload() }
             }
@@ -437,9 +439,9 @@ Item {
                     spacing: theme.space(2)
                     Dropdown {
                         objectName: "sort-menu"
-                        prefix: "Sort"
+                        prefix: words.t("library-sort")
                         minWidth: theme.space(58)
-                        options: page.sorts.map(function(s) { return s[1] })
+                        options: page.sorts.map(function(s) { return words.t(s[1]) })
                         index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
                         onPicked: function(i) { page.pickSort(page.sorts[i][0]) }
                     }
@@ -458,10 +460,10 @@ Item {
                     spacing: theme.space(2)
                     Dropdown {
                         objectName: "arrange-menu"
-                        prefix: "Group"
+                        prefix: words.t("library-group")
                         minWidth: theme.space(42)
                         dividerAfter: 0
-                        options: page.arrangements.map(function(a) { return a[1] })
+                        options: page.arrangements.map(function(a) { return words.t(a[1]) })
                         index: Math.max(0, page.arrangements.findIndex(function(a) { return a[0] === page.arrange }))
                         onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }
                     }
@@ -471,7 +473,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         interactive: page.arrange !== "None"
                         checked: page.groupFranchises
-                        text: "Franchises together"
+                        msg: "library-franchises-together"
                         onToggled: function(on) { page.pickGroupFranchises(on) }
                     }
                     ToggleChip {
@@ -479,7 +481,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         interactive: page.tab !== "Watched" && page.tab !== "Hidden"
                         checked: page.showWatched
-                        text: "Watched shows"
+                        msg: "library-watched-shows"
                         onToggled: function(on) { page.pickShowWatched(on) }
                     }
                 }
@@ -572,23 +574,24 @@ Item {
             visible: page.view.count === 0 && !page.libraryEmpty
             width: parent.width
             height: visible ? theme.space(60) : 0
-            readonly property string what: page.tab === "Series" ? "series" : page.tab === "Movies" ? "films" : page.tab === "Watched" ? "watched shows" : page.tab === "Hidden" ? "hidden shows" : "shows"
+            // What the tab holds, as the messages below pick their words by it
+            readonly property string what: ({ Series: "series", Movies: "films", Watched: "watched", Hidden: "hidden" })[page.tab] || "shows"
             EmptyState {
                 objectName: "library-nothing-here"
                 icon: page.loadFailed ? "circle-alert" : "search"
-                title: page.loadFailed ? "The library did not load"
-                     : page.query !== "" ? "No matches for \"" + page.query + "\""
-                     : page.genre !== "" ? "No " + page.genre + " " + parent.what + " here"
-                     : "No " + parent.what + " here"
-                body: page.loadFailed ? "AniBeam could not read the library just now. Try again in a moment."
-                    : page.query !== "" ? "Check the spelling, or search the whole library from All."
-                    : page.genre !== "" ? "Nothing in this view has that genre. All genres shows the rest."
-                    : page.tab !== "All" ? "Your library has none of these yet. All shows everything in it."
-                    : "Everything in your library is filtered out of this view."
-                Button { visible: page.loadFailed; text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
-                Button { visible: !page.loadFailed && page.query !== ""; text: "Clear search"; icon: "x"; onClicked: { search.text = ""; queryDebounce.stop(); page.query = ""; frame.nav.current.props = page.genre !== "" ? { genre: page.genre } : {}; page.reload() } }
-                Button { visible: !page.loadFailed && page.query === "" && page.genre !== ""; text: "All genres"; icon: "x"; onClicked: page.clearGenre() }
-                Button { visible: !page.loadFailed && page.query === "" && page.genre === "" && page.tab !== "All"; text: "Show all"; icon: "layout-grid"; onClicked: page.showAll() }
+                title: page.loadFailed ? words.t("library-load-failed-title")
+                     : page.query !== "" ? words.t("library-no-matches", { query: page.query })
+                     : page.genre !== "" ? words.t("library-none-in-genre", { genre: page.genre, what: parent.what })
+                     : words.t("library-none-here", { what: parent.what })
+                body: page.loadFailed ? words.t("library-load-failed-body")
+                    : page.query !== "" ? words.t("library-no-matches-body")
+                    : page.genre !== "" ? words.t("library-none-in-genre-body")
+                    : page.tab !== "All" ? words.t("library-none-in-tab-body")
+                    : words.t("library-all-filtered-body")
+                Button { visible: page.loadFailed; msg: "action-try-again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
+                Button { visible: !page.loadFailed && page.query !== ""; msg: "library-clear-search"; icon: "x"; onClicked: { search.text = ""; queryDebounce.stop(); page.query = ""; frame.nav.current.props = page.genre !== "" ? { genre: page.genre } : {}; page.reload() } }
+                Button { visible: !page.loadFailed && page.query === "" && page.genre !== ""; msg: "library-all-genres"; icon: "x"; onClicked: page.clearGenre() }
+                Button { visible: !page.loadFailed && page.query === "" && page.genre === "" && page.tab !== "All"; msg: "library-show-all"; icon: "layout-grid"; onClicked: page.showAll() }
             }
         }
     }
@@ -616,21 +619,21 @@ Item {
             Label {
                 objectName: "library-picked-count"
                 anchors.verticalCenter: parent.verticalCenter
-                text: page.pickedCount + " picked"
+                msg: "library-picked"; msgArgs: ({ count: page.pickedCount })
                 role: "ui"
             }
             Button {
                 objectName: "library-picked-all"
                 small: true; flat: true
                 visible: page.pickedCount < page.shownIds().length
-                text: "All"; icon: "check-check"
+                msg: "library-pick-all"; icon: "check-check"
                 onClicked: page.pickAll()
-                Tooltip { text: "Pick every card shown (Ctrl+A)" }
+                Tooltip { msg: "library-pick-all-tip" }
             }
             Button {
                 objectName: "library-picked-hide"
                 small: true
-                text: page.tab === "Hidden" ? "Unhide" : "Hide"
+                text: page.tab === "Hidden" ? words.t("library-unhide") : words.t("library-hide")
                 icon: page.tab === "Hidden" ? "eye" : "eye-off"
                 onClicked: page.hidePicked()
             }
@@ -639,23 +642,23 @@ Item {
                 objectName: "library-picked-rate"
                 small: true
                 enabled: page.pickedTracked
-                text: "Rate"; icon: "star"
+                msg: "library-rate"; icon: "star"
                 onClicked: pickScore.openAt(rateButton, -1)
-                Tooltip { text: rateButton.enabled ? "One score for every pick, on every connected tracker" : "Needs a connected tracker and a matched show" }
+                Tooltip { text: rateButton.enabled ? words.t("library-rate-tip") : words.t("library-needs-tracker") }
             }
             Button {
                 id: listButton
                 objectName: "library-picked-list"
                 small: true
                 enabled: page.pickedTracked
-                text: "Move to list"; icon: "bookmark"
+                msg: "library-move-to-list"; icon: "bookmark"
                 onClicked: page.listPicked(listButton)
-                Tooltip { text: listButton.enabled ? "" : "Needs a connected tracker and a matched show" }
+                Tooltip { text: listButton.enabled ? "" : words.t("library-needs-tracker") }
             }
             Button {
                 objectName: "library-picked-rescan"
                 small: true
-                text: "Rescan"; icon: "refresh-cw"
+                msg: "library-rescan"; icon: "refresh-cw"
                 onClicked: page.rescanPicked()
             }
             Button {
@@ -663,11 +666,11 @@ Item {
                 objectName: "library-picked-match"
                 small: true
                 enabled: page.pickedUnmatched
-                text: "Find a match"; icon: "link"
+                msg: "library-find-match"; icon: "link"
                 onClicked: page.matchPicked()
-                Tooltip { text: matchButton.enabled ? "Search for each pick without a match" : "Every pick has a match" }
+                Tooltip { text: matchButton.enabled ? words.t("library-find-match-tip") : words.t("library-all-matched") }
             }
-            Button { objectName: "library-picked-cancel"; small: true; flat: true; text: "Cancel"; onClicked: page.clearPicks() }
+            Button { objectName: "library-picked-cancel"; small: true; flat: true; msg: "action-cancel"; onClicked: page.clearPicks() }
         }
     }
     ScorePicker {
@@ -682,18 +685,17 @@ Item {
         objectName: "library-empty"
         visible: page.libraryEmpty
         icon: page.hasFolders ? "folder-search" : "tv"
-        title: page.hasFolders ? "Nothing found in your folders yet" : "Your library is empty"
-        body: page.hasFolders ? "AniBeam found no series or films in the folders it watches. Scan them again, or check the folders in Settings."
-            : "Add the folder your anime lives in and the library fills itself, or import an AniBeam export."
-        Button { visible: page.hasFolders; text: "Scan all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
-        Button { visible: !page.hasFolders; text: "Add a folder"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
-        Button { visible: page.hasFolders; text: "Library settings"; icon: "settings"; flat: true; onClicked: frame.go("settings", { tab: "library" }) }
-        Button { visible: !page.hasFolders; text: "Import"; icon: "download"; flat: true; onClicked: importDialog.open() }
+        title: page.hasFolders ? words.t("library-empty-scanned-title") : words.t("library-empty-title")
+        body: page.hasFolders ? words.t("library-empty-scanned-body") : words.t("library-empty-body")
+        Button { visible: page.hasFolders; msg: "library-scan-all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
+        Button { visible: !page.hasFolders; msg: "library-add-folder"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
+        Button { visible: page.hasFolders; msg: "library-settings"; icon: "settings"; flat: true; onClicked: frame.go("settings", { tab: "library" }) }
+        Button { visible: !page.hasFolders; msg: "library-import"; icon: "download"; flat: true; onClicked: importDialog.open() }
     }
     FileDialog {
         id: importDialog
-        title: "Import an AniBeam export"
-        nameFilters: ["AniBeam export (*.json)", "All files (*)"]
-        onAccepted: { var r = Door.importLibrary(Fmt.localPath(String(selectedFile))); if (r.error) frame.fail(r.error); else frame.toast("Import started") }
+        title: words.t("library-import-title")
+        nameFilters: [words.t("library-import-filter-export"), words.t("library-import-filter-all")]
+        onAccepted: { var r = Door.importLibrary(Fmt.localPath(String(selectedFile))); if (r.error) frame.fail(r.error); else frame.toast(words.t("library-import-started")) }
     }
 }

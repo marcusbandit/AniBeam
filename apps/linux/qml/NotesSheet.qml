@@ -21,7 +21,7 @@ Corner {
         root.seriesId = id
         root.seriesTitle = title
         root.saved = notes || ""
-        root.sites = sites || "your tracker"
+        root.sites = sites || ""
         input.text = root.saved
         visible = true
         frame.escapeStack.push("popover", root)
@@ -64,7 +64,7 @@ Corner {
             Column {
                 id: heading
                 width: parent.width - closeButton.width - theme.space(4)
-                Label { text: "Notes"; role: "title" }
+                Label { msg: "notes-title"; role: "title" }
                 Label {
                     width: parent.width
                     text: root.seriesTitle
@@ -122,7 +122,7 @@ Corner {
                     Keys.onEscapePressed: root.close()
                     Text {
                         visible: !input.text
-                        text: "Where you left off, who recommended it, which release to get"
+                        text: words.t("notes-placeholder")
                         color: theme.textFaint
                         font: input.font
                     }
@@ -139,8 +139,8 @@ Corner {
                 width: parent.width - actions.width - theme.space(4)
                 elide: Text.ElideRight
                 text: root.count > root.maxChars
-                      ? (root.count - root.maxChars) + " characters over the limit"
-                      : "Saved to " + root.sites
+                      ? words.t("notes-over-limit", { count: root.count - root.maxChars })
+                      : words.t("notes-saved-to", { sites: root.sites || words.t("notes-your-tracker") })
                 role: "ui"
                 color: root.count > root.maxChars ? theme.red : theme.textDim
             }
@@ -148,11 +148,11 @@ Corner {
                 id: actions
                 anchors.right: parent.right
                 spacing: theme.space(2)
-                Button { flat: true; text: "Cancel"; onClicked: root.close() }
+                Button { flat: true; msg: "action-cancel"; onClicked: root.close() }
                 Button {
                     objectName: "notes-save"
                     primary: true
-                    text: "Save"
+                    msg: "action-save"
                     enabled: input.text.trim() !== root.saved.trim() && root.count <= root.maxChars
                     onClicked: root.save()
                 }

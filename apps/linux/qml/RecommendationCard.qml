@@ -55,7 +55,7 @@ Item {
         radius: theme.radiusSm; antialiasing: true
         color: Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.62)
         border.color: Qt.rgba(1, 1, 1, 0.14); border.width: 1
-        Label { id: tag; anchors.centerIn: parent; role: "ledger"; text: rec.owned ? "Available" : "AniList"; color: rec.owned ? theme.accentOnPoster : theme.onPosterDim }
+        Label { id: tag; anchors.centerIn: parent; role: "ledger"; text: rec.owned ? words.t("recommendation-card-available") : "AniList"; color: rec.owned ? theme.accentOnPoster : theme.onPosterDim }
     }
     Label {
         id: title
@@ -78,5 +78,5 @@ Item {
     }
     MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.opened(); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
         Accessible.onPressAction: root.opened() }
-    Tooltip { text: rec.owned ? "Open " + rec.title + " in your library" : "Open " + rec.title + " on AniList" }
+    Tooltip { text: words.t(rec.owned ? "recommendation-card-open-library" : "recommendation-card-open-anilist", { title: rec.title }) }
 }

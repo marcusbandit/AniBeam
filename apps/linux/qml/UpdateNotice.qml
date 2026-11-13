@@ -26,8 +26,8 @@ Frost {
     // One width for every state, wider only when the words need it, so the island does not
     // jump about as the update moves along
     readonly property real pad: theme.space(4)
-    width: Math.max(theme.space(116), words.implicitWidth + actions.implicitWidth + pad * 2 + theme.space(6))
-    height: Math.max(words.implicitHeight, actions.implicitHeight) + theme.space(6)
+    width: Math.max(theme.space(116), lines.implicitWidth + actions.implicitWidth + pad * 2 + theme.space(6))
+    height: Math.max(lines.implicitHeight, actions.implicitHeight) + theme.space(6)
 
     property bool shown: false
     // An update is offered for this track, whether or not the island shows it
@@ -98,8 +98,8 @@ Frost {
             if (!error && !root.busy) { root.pending = false; root.shown = false; root.phase = "offer" }
             if (!root.asked) return
             root.asked = false
-            if (error) frame.toast("AniBeam could not check for updates. Check your internet connection, then try again.", 8, "Try again", root.checkNow, String(error))
-            else frame.toast("AniBeam is up to date")
+            if (error) frame.toast(words.t("update-notice-check-failed"), 8, words.t("action-try-again"), root.checkNow, String(error))
+            else frame.toast(words.t("update-notice-up-to-date"))
         }
         function onUpdateProgress(got, total) {
             if (root.phase !== "downloading") return
@@ -163,32 +163,32 @@ Frost {
     }
 
     // The words on the island's buttons, which About's own buttons use too
-    readonly property string copyText: copied ? "Copied" : "Copy"
-    readonly property string restartText: "Restart"
-    readonly property string retryText: "Retry"
-    readonly property string cancelText: "Cancel"
-    readonly property string pageText: "Release page"
+    readonly property string copyText: copied ? words.t("update-notice-copied") : words.t("update-notice-copy")
+    readonly property string restartText: words.t("update-notice-restart")
+    readonly property string retryText: words.t("update-notice-retry")
+    readonly property string cancelText: words.t("action-cancel")
+    readonly property string pageText: words.t("update-notice-release-page")
 
     function mb(bytes) { return Math.round(bytes / 1048576) }
     readonly property string headline: {
-        if (phase === "downloading") return "Downloading AniBeam " + version
-        if (phase === "ready") return "AniBeam " + version + " is ready"
-        if (phase === "failed") return "The update failed"
-        if (how === "command") return "AniBeam " + version + " is on the AUR"
-        return "AniBeam " + version + (title ? " \u201c" + title + "\u201d" : "") + " is out"
+        if (phase === "downloading") return words.t("update-notice-downloading", { version: version })
+        if (phase === "ready") return words.t("update-notice-ready", { version: version })
+        if (phase === "failed") return words.t("update-notice-failed")
+        if (how === "command") return words.t("update-notice-on-aur", { version: version })
+        return title ? words.t("update-notice-out-titled", { version: version, title: title }) : words.t("update-notice-out", { version: version })
     }
     readonly property string detail: {
-        if (phase === "downloading") return Math.floor(progress * 100) + "%  ·  " + mb(got) + " of " + mb(total) + " MB"
-        if (phase === "ready") return "Restart now, or it opens next time"
+        if (phase === "downloading") return words.t("update-notice-progress", { percent: Math.floor(progress * 100), got: mb(got), total: mb(total) })
+        if (phase === "ready") return words.t("update-notice-restart-hint")
         if (phase === "failed") return failure
         if (how === "command") return command
-        if (how === "source") return "This copy is built from source: pull and rebuild"
-        if (how === "page") return "No download here for this computer"
-        return "Update installs it and restarts AniBeam"
+        if (how === "source") return words.t("update-notice-from-source")
+        if (how === "page") return words.t("update-notice-no-download")
+        return words.t("update-notice-install-hint")
     }
 
     Column {
-        id: words
+        id: lines
         anchors.left: parent.left; anchors.leftMargin: root.pad
         anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(1)
@@ -217,7 +217,7 @@ Frost {
         Button {
             objectName: "update-install"
             visible: (root.phase === "offer" && root.how === "install") || root.phase === "failed"
-            text: root.phase === "failed" ? root.retryText : "Update"
+            text: root.phase === "failed" ? root.retryText : words.t("update-notice-update")
             icon: root.phase === "failed" ? "rotate-cw" : "download"
             primary: true; small: true
             onClicked: root.install()
@@ -250,7 +250,7 @@ Frost {
         Button {
             objectName: "update-later"
             visible: root.phase !== "downloading"
-            text: "Later"; icon: "clock"; small: true
+            msg: "update-notice-later"; icon: "clock"; small: true
             onClicked: root.later()
         }
     }

@@ -37,7 +37,7 @@ Item {
         }
         Label {
             width: parent.width
-            text: root.person.name || "Unknown"
+            text: root.person.name || words.t("person-card-unknown")
             role: "ui"
             color: link.containsMouse ? theme.accent : theme.text
             font.underline: link.containsMouse
@@ -47,7 +47,12 @@ Item {
         }
         Label {
             width: parent.width
-            text: (function(r) { r = String(r || "").toLowerCase(); return r.charAt(0).toUpperCase() + r.slice(1) })(root.person.role)
+            text: {
+                var id = ({ MAIN: "person-card-role-main", SUPPORTING: "person-card-role-supporting", BACKGROUND: "person-card-role-background" })[root.person.role]
+                if (id) return words.t(id)
+                var r = String(root.person.role || "").toLowerCase()
+                return r.charAt(0).toUpperCase() + r.slice(1)
+            }
             role: "ledger"
             color: theme.textDim
             horizontalAlignment: Text.AlignHCenter
@@ -65,5 +70,5 @@ Item {
         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
         onClicked: frame.openLink("https://anilist.co/character/" + root.person.anilist_id)
     }
-    Tooltip { text: root.linked ? "Open " + (root.person.name || "the character") + " on AniList" : "" }
+    Tooltip { text: root.linked ? words.t("person-card-open", { name: root.person.name || words.t("person-card-the-character") }) : "" }
 }
