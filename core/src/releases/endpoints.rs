@@ -1,9 +1,8 @@
-//! Search endpoints: validation, URL building, fetch dispatch and the fallback probe.
-//! Ported from anirss `endpoints.py`. The configured-list state (`EndpointState`) and the
-//! on-demand start and stop commands stay out: every endpoint counts as usable here, so
-//! the "off" note of `probe_fallback` never appears.
+//! Search endpoints: validation, URL building and fetch dispatch. Ported from anirss
+//! `endpoints.py`. The configured-list state (`EndpointState`) and the on-demand start and
+//! stop commands stay out: every endpoint counts as usable here. The fallback to another
+//! endpoint lives in `native.rs`.
 
-use std::future::Future;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -14,7 +13,7 @@ use super::fetch::{self, DEFAULT_TIMEOUT};
 use super::kinds::{FILTERED_RSS, JSON_FEED};
 use super::quirks;
 use crate::contract::{CoreError, Release, SubscriptionSpec};
-use crate::net::{BoxFuture, Http};
+use crate::net::Http;
 
 /// The kinds an endpoint can be, each named for the shape it reads (`kinds.rs`).
 /// `filtered-rss` and `rss` are anirss's kinds under shape names. `json-feed` is AniBeam's
@@ -595,68 +594,6 @@ async fn fetch_exact(
     Ok(items)
 }
 
-/// After the active endpoint came up empty or unreachable, try the other endpoints in
-/// priority order. The first hit wins: its items come back tagged with its name in
-/// `source`, so the winner is `items[0].source`. Returns (items, per-endpoint notes); empty
-/// items means nothing anywhere.
-pub async fn probe_fallback(
-    http: &dyn Http,
-    endpoints: &[Endpoint],
-    active: &str,
-    query: &str,
-) -> (Vec<Release>, Vec<String>) {
-    probe_with(
-        endpoints,
-        active,
-        |ep| -> BoxFuture<'_, Result<Vec<Release>, CoreError>> {
-            Box::pin(fetch_items(http, ep, query))
-        },
-    )
-    .await
-}
-
-/// `probe_fallback` with the fetch injected, as anirss's `fetch=` argument is.
-pub(crate) async fn probe_with<'a, F, Fut>(
-    endpoints: &'a [Endpoint],
-    active: &str,
-    fetch: F,
-) -> (Vec<Release>, Vec<String>)
-where
-    F: Fn(&'a Endpoint) -> Fut,
-    Fut: Future<Output = Result<Vec<Release>, CoreError>>,
-{
-    let mut notes = Vec::new();
-    for ep in endpoints {
-        if ep.name == active {
-            continue;
-        }
-        let items = match fetch(ep).await {
-            Ok(items) => items,
-            Err(_) => {
-                notes.push(format!("{}: unreachable", ep.name));
-                continue;
-            }
-        };
-        if !items.is_empty() {
-            notes.push(format!("{}: {}", ep.name, items.len()));
-            // Tag where these came from so the results list can render a source header
-            // above them: the search did not ask for this endpoint, it fell back to it.
-            let tagged = items
-                .into_iter()
-                .map(|mut it| {
-                    if it.source.is_empty() {
-                        it.source = ep.name.clone();
-                    }
-                    it
-                })
-                .collect();
-            return (tagged, notes);
-        }
-        notes.push(format!("{}: 0", ep.name));
-    }
-    (Vec::new(), notes)
-}
-
 /// The configured endpoint whose feed `url` is, if any: of those whose address the feed
 /// starts with, the longest such, then the one whose template past `{query}` the feed also
 /// ends with, then the first listed. Two sources on one host told apart only by a parameter
@@ -1234,49 +1171,6 @@ pub(crate) mod tests {
             }
             other => panic!("{other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn probe_fallback_switches_to_first_hit() {
-        let eps = [tracker(), board()];
-        let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
-            Ok(if ep.name == "board" {
-                vec![rel("t", "l")]
-            } else {
-                vec![]
-            })
-        })
-        .await;
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].source, "board");
-        assert_eq!(notes, strings(&["board: 1"]));
-    }
-
-    #[tokio::test]
-    async fn probe_fallback_all_fail_returns_nothing() {
-        let third = Endpoint::new("feed", "rss", "https://x/?q={query}");
-        let eps = [tracker(), board(), third];
-        let (items, notes) = probe_with(&eps, "tracker", |ep| async move {
-            if ep.name == "board" {
-                Err(CoreError::internal("can't reach board: boom"))
-            } else {
-                Ok(vec![])
-            }
-        })
-        .await;
-        assert!(items.is_empty());
-        assert_eq!(notes, strings(&["board: unreachable", "feed: 0"]));
-    }
-
-    #[tokio::test]
-    async fn probe_fallback_over_http_skips_the_active_endpoint() {
-        let eps = [tracker(), board()];
-        let http = FakeHttp::new();
-        http.push_for("board.example", 200, feed(&[("Show", "l")]));
-        let (items, notes) = probe_fallback(http.as_ref(), &eps, "tracker", "show").await;
-        assert_eq!(items[0].source, "board");
-        assert_eq!(notes, strings(&["board: 1"]));
-        assert_eq!(http.requests().len(), 1);
     }
 
     #[test]

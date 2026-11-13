@@ -29,7 +29,6 @@ use crate::playback::skip;
 use crate::prefs;
 use crate::recommended;
 use crate::store::Store;
-use crate::subscriptions;
 use crate::sync::recover;
 use crate::time;
 use crate::trackers::accounts;
@@ -1190,9 +1189,6 @@ impl Core {
                     layout: franchise::graph(&core, series)?,
                 })
             }
-            Call::ListSubscriptions => Ok(Reply::Started {
-                job: subscriptions::start(self)?,
-            }),
             // Downloads: the status is a read off the state, the rest are
             // jobs over anirss or the torrent client, except the two list
             // reads the page polls, which answer through events and never
@@ -1260,20 +1256,6 @@ impl Core {
                 series,
             } => Ok(Reply::Started {
                 job: downloads::remove_show(self, title, rule, hashes, torrents, files, series)?,
-            }),
-            Call::PlanRemoveSubscription {
-                name,
-                torrents,
-                files,
-            } => Ok(Reply::Started {
-                job: downloads::plan_remove(self, name, torrents, files)?,
-            }),
-            Call::RemoveSubscription {
-                name,
-                torrents,
-                files,
-            } => Ok(Reply::Started {
-                job: downloads::remove(self, name, torrents, files)?,
             }),
             Call::ControlTorrents { hashes, action } => Ok(Reply::Started {
                 job: downloads::control(self, hashes, action)?,

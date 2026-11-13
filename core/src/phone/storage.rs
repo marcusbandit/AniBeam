@@ -43,10 +43,6 @@ impl Files {
         }
     }
 
-    pub fn folder(&self) -> &Path {
-        &self.folder
-    }
-
     /// Changes which files the torrent fetches. A file wanted again moves its part file
     /// into place on its next write.
     pub fn set_wanted(&self, wanted: Option<HashSet<usize>>) {

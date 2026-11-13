@@ -2124,67 +2124,6 @@ pub fn movie(core: &Core, link: String) -> Result<u64, CoreError> {
         }))
 }
 
-pub fn plan_remove(
-    core: &Core,
-    name: String,
-    torrents: bool,
-    files: bool,
-) -> Result<u64, CoreError> {
-    let owner = core.owner()?;
-    Ok(owner
-        .jobs
-        .clone()
-        .start(JobKind::RemoveSubscription, move |_| async move {
-            let backend = DownloadsBackend::open(&owner).await?;
-            let plans = backend
-                .remove(std::slice::from_ref(&name), torrents, files, true)
-                .await?;
-            Ok(Finished {
-                plain: None,
-                level: Level::Debug,
-                message: format!("Planned the removal of {name}"),
-                body: EventBody::RemovalPlanned { plans },
-            })
-        }))
-}
-
-pub fn remove(core: &Core, name: String, torrents: bool, files: bool) -> Result<u64, CoreError> {
-    let owner = core.owner()?;
-    Ok(owner
-        .jobs
-        .clone()
-        .start(JobKind::RemoveSubscription, move |_| async move {
-            let backend = DownloadsBackend::open(&owner).await?;
-            // anirss judges the folder by its own rules: the library's are checked here first.
-            if files && matches!(backend, DownloadsBackend::Anirss(_)) {
-                let here = settings::files_here(&load_settings(&owner).await?);
-                let plans = backend
-                    .remove(std::slice::from_ref(&name), torrents, files, true)
-                    .await?;
-                if here {
-                    for p in &plans {
-                        not_a_library_show(&owner, &p.save_path)?;
-                    }
-                }
-            }
-            backend
-                .remove(std::slice::from_ref(&name), torrents, files, false)
-                .await?;
-            let extra = match (torrents, files) {
-                (true, true) => " with its torrents and files",
-                (true, false) => " with its torrents",
-                (false, true) => " with its files",
-                (false, false) => "",
-            };
-            Ok(Finished {
-                plain: Some(crate::words!("core-downloads-unsubscribed", name = &name)),
-                level: Level::Info,
-                message: format!("Removed the subscription {name}{extra}"),
-                body: EventBody::SubscriptionRemoved { name },
-            })
-        }))
-}
-
 /// Refuses `folder` for a removal with files when it is a library show's own folder: a
 /// subscription made from a show's page saves there (#267), beside episodes it never
 /// downloaded, so its files go only with the show, from the show's page.

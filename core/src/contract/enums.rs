@@ -546,12 +546,16 @@ pub enum JobKind {
     SkipWindows,
     Export,
     Import,
+    /// No call starts it any more (#851); kept so the activity log still reads
+    /// the jobs it logged before.
     Subscriptions,
     ConnectDownloads,
     SearchReleases,
     RefineReleases,
     Subscribe,
     Download,
+    /// No call starts it any more (#851); kept so the activity log still reads
+    /// the jobs it logged before.
     RemoveSubscription,
     ControlTorrents,
     TestTorrentClient,

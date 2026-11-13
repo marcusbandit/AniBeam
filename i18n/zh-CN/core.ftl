@@ -1078,13 +1078,6 @@ core-releases-group-batch = { $group } 的合集
 core-releases-episodes-phrase = 第 { $list } 集
 core-releases-episode-range = { $from } 至 { $to }
 
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = 此平台上的 anirss
-core-subscriptions-unreadable = 无法读取它的响应（{ $message }）
-core-subscriptions-stopped = 它停止了，没有说明原因
-core-subscriptions-stopped-said = 它停止了：{ $said }
-
 ## Names that stay the same in every language
 
 -app-name = AniBeam

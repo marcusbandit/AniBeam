@@ -1523,16 +1523,6 @@ core-releases-episodes-phrase =
 # A run of episode numbers
 core-releases-episode-range = { $from } do { $to }
 
-## core/src/subscriptions.rs
-
-# Fills core-error-unsupported: "anirss on this platform is not supported yet."
-core-subscriptions-platform = anirss na tej platformie
-# After "anirss: "; $message is why its answer did not parse
-core-subscriptions-unreadable = nie udało się odczytać odpowiedzi ({ $message })
-core-subscriptions-stopped = zatrzymał się bez podania powodu
-# $said is what anirss printed
-core-subscriptions-stopped-said = zatrzymał się: { $said }
-
 ## Names that stay the same in every language
 
 -app-name = AniBeam

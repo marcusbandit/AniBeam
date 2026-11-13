@@ -1271,13 +1271,6 @@ core-releases-episodes-phrase =
     }
 core-releases-episode-range = da { $from } a { $to }
 
-## core/src/subscriptions.rs
-
-core-subscriptions-platform = anirss su questa piattaforma
-core-subscriptions-unreadable = impossibile leggere la sua risposta ({ $message })
-core-subscriptions-stopped = si è fermato senza dire perché
-core-subscriptions-stopped-said = si è fermato: { $said }
-
 ## Names that stay the same in every language
 
 -app-name = AniBeam

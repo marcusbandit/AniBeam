@@ -1454,13 +1454,3 @@ core-releases-episodes-phrase =
     }
 # A run of episode numbers
 core-releases-episode-range = { $from } to { $to }
-
-## core/src/subscriptions.rs
-
-# Fills core-error-unsupported: "anirss on this platform is not supported yet."
-core-subscriptions-platform = anirss on this platform
-# After "anirss: "; $message is why its answer did not parse
-core-subscriptions-unreadable = its answer could not be read ({ $message })
-core-subscriptions-stopped = it stopped without saying why
-# $said is what anirss printed
-core-subscriptions-stopped-said = it stopped: { $said }
