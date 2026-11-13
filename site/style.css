@@ -819,6 +819,7 @@ a.dl-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 
 .dl-term { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 56px; }
 .dl-term .term { width: min(100%, 620px); }
+.dl-term .term.nightly-only { width: min(100%, 780px); }
 .dl-term-for { color: var(--fg-3); font-size: 13.5px; }
 .dl-all { margin: 56px 0 0; color: var(--fg-3); font-size: 14.5px; text-align: center; }
 .dl-page + .foot { margin-top: 120px; }
@@ -921,6 +922,7 @@ h1.wn-ver { font-size: clamp(44px, 6vw, 64px); }
 
 /* The download page's channel and the chips only a release has */
 .dl-page[data-channel="nightly"] .stable-only { display: none; }
+.dl-page:not([data-channel="nightly"]) .nightly-only { display: none; }
 .dl-chip.is-note { font-family: var(--sans); color: var(--fg-3); background: none; box-shadow: none; padding-inline: 4px; }
 .dl-auto.is-soon { cursor: default; pointer-events: none; }
 .dl-auto.is-soon .os-icon { display: none; }
