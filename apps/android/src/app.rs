@@ -1802,6 +1802,13 @@ impl App {
     }
 
     fn save_host(&mut self, text: &str) {
+        if text.trim().is_empty() {
+            self.data().set_host_address("".into());
+            self.data().set_host_tone(2);
+            self.data().set_host_result(tr!("host-none").into());
+            let _ = self.commands.send(Command::Forget);
+            return;
+        }
         match HostAddress::parse(text) {
             Ok(address) => {
                 self.data().set_host_address(address.display().into());
@@ -2113,9 +2120,7 @@ pub fn run(
     crate::airing::start(&data_dir);
     crate::stream::init(data_dir.clone());
     let store = Store::open(&data_dir)?;
-    let address = HostAddress::parse(&store.settings().address).unwrap_or_else(|_| {
-        HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap()
-    });
+    let address = store.settings().host();
 
     let window = AppWindow::new()?;
     // First, so everything below that words a line already speaks the picked language.
@@ -2129,7 +2134,7 @@ pub fn run(
     crate::show_match::install(&window);
     crate::schedule::install(&window);
     let data = window.global::<AppData>();
-    data.set_host_address(address.display().into());
+    data.set_host_address(address.map(|a| a.display()).unwrap_or_default().into());
 
     let home_shelves = Shelves::new();
     let (calendar, coming, library, episodes) = (list(), list(), list(), list());

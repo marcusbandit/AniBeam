@@ -65,10 +65,10 @@ fn a_sync_stores_the_snapshot_and_the_posters() {
     let syncer = Syncer::new(Store::open(scratch("sync")).unwrap());
 
     let hello = syncer.test(&address).unwrap();
-    assert_eq!(hello.host, "banditbox");
+    assert_eq!(hello.host, "desktop");
 
     let cache = syncer.fetch_snapshot(&address, 1_000).unwrap();
-    assert_eq!(cache.host, "banditbox");
+    assert_eq!(cache.host, "desktop");
     assert_eq!(syncer.store().cache().unwrap(), cache);
 
     let mut fetched = Vec::new();

@@ -284,7 +284,7 @@ impl HostClient {
     }
 
     /// The host's address with the name looked up, for a player that resolves names on
-    /// its own and may not ask the tailnet's DNS: `http://100.94.40.21:8790`.
+    /// its own and may not ask the tailnet's DNS: `http://100.64.0.1:8790`.
     pub fn stream_base(&self) -> Result<String, HostError> {
         use std::net::ToSocketAddrs;
         let host = self
@@ -431,7 +431,7 @@ mod proof_tests {
 
     fn hello(features: &[&str], key: &str, now: i64) -> String {
         serde_json::json!({
-            "app": "anibeam", "api": 1, "version": "2.5.0", "host": "banditbox",
+            "app": "anibeam", "api": 1, "version": "2.5.0", "host": "desktop",
             "now": now, "features": features, "key": key,
         })
         .to_string()
