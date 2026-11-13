@@ -256,20 +256,6 @@ pub fn chapters(json: &str) -> Vec<Chapter> {
         .unwrap_or_default()
 }
 
-/// Where the seek bar notches the groove, as fractions of the file: every chapter start but
-/// one in the first or last second, which would only sit on the groove's ends, as on the
-/// desktop's SeekBar.
-fn notches(chapters: &[Chapter], duration: f64) -> Vec<f32> {
-    if duration <= 0.0 {
-        return Vec::new();
-    }
-    chapters
-        .iter()
-        .filter(|c| c.start > 1.0 && c.start < duration - 1.0)
-        .map(|c| (c.start / duration) as f32)
-        .collect()
-}
-
 /// A cast in progress from this page: the device has the picture, the page is the remote.
 struct Casting {
     device: CastDevice,
@@ -767,6 +753,8 @@ fn failed(window: &slint::Weak<AppWindow>, reason: String) {
         d.set_duration(0.0);
         d.set_position(0.0);
         d.set_skip_label("".into());
+        d.set_bands(ModelRc::default());
+        d.set_chapters(ModelRc::default());
         d.set_next_visible(false);
         d.set_replay(false);
         d.set_audio_choice(false);
@@ -1140,14 +1128,15 @@ impl Player {
             .and_then(|d| d.parse().ok())
             .unwrap_or(0.0);
         self.rules.duration = duration;
+        let chapters = self
+            .mpv
+            .get("chapter-list")
+            .map(|j| chapters(&j))
+            .unwrap_or_default();
+        // In seconds: the seek bar places them against the duration it has now.
+        let starts: Vec<f32> = chapters.iter().map(|c| c.start as f32).collect();
+        self.d(|d| d.set_chapters(ModelRc::new(VecModel::from(starts))));
         if duration > 0.0 {
-            let chapters = self
-                .mpv
-                .get("chapter-list")
-                .map(|j| chapters(&j))
-                .unwrap_or_default();
-            let notches = notches(&chapters, duration);
-            self.d(|d| d.set_chapters(ModelRc::new(VecModel::from(notches))));
             send(
                 &self.host,
                 Call::ReportChapters {
@@ -2381,17 +2370,6 @@ mod tests {
             outcome_line(&[refused]),
             "Not tracked: MyAnimeList: the tracker is already past this episode"
         );
-    }
-
-    #[test]
-    fn notches_leave_out_the_ends() {
-        let at = |start: f64| Chapter {
-            title: String::new(),
-            start,
-        };
-        let n = notches(&[at(0.0), at(20.0), at(70.0), at(119.5)], 120.0);
-        assert_eq!(n, vec![(20.0f64 / 120.0) as f32, (70.0f64 / 120.0) as f32]);
-        assert!(notches(&[at(20.0)], 0.0).is_empty());
     }
 
     #[test]
