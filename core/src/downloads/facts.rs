@@ -55,9 +55,11 @@ static VERSION: LazyLock<Regex> =
 /// The CRC32 a fansub group tags its file with: `[80977B2B]`. An all-digit tag
 /// is read as a date (`[20241005]`), not a CRC.
 static CRC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([0-9A-Fa-f]{8})\]").unwrap());
-static SIZE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^\s*([\d.,]+)\s*(B|KB|KIB|MB|MIB|GB|GIB|TB|TIB)\s*$").unwrap()
-});
+/// A size anywhere in the text, so "Size: 1.4 GiB" reads, but never the tail of a longer
+/// number: a size right after a digit, a sign or a mark ("1 234 MiB", "-1 GiB") reads as
+/// none rather than as its last group.
+static SIZE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?:^|[^\d\s.,+-])\s*([\d.,]*\d)\s*([KMGT])?i?B\b").unwrap());
 
 /// The facts of a bare name, a file's or a torrent's, read as a release
 /// title is; a path counts by its last part.
@@ -230,22 +232,52 @@ fn span(title: &str) -> Option<(u32, u32)> {
     })
 }
 
-/// "1.4 GiB", "700 MB", "1,234.5 MiB" as bytes; a decimal unit is read as
-/// the binary one, since every feed that writes "GB" means GiB.
-pub fn size_bytes(text: &str) -> Option<u64> {
+/// "1.4 GiB", "6,2 GiB", "700 MB", "1,234.5 MiB" as bytes, unrounded; a
+/// decimal unit is read as the binary one, since every feed that writes "GB"
+/// means GiB. The one reading of a feed's size: the downloads list, the JSON
+/// kind and the best-fit pick all go through it.
+pub fn size_in_bytes(text: &str) -> Option<f64> {
     let c = SIZE.captures(text)?;
-    let n: f64 = c[1].replace(',', "").parse().ok()?;
-    let unit = c[2].to_ascii_uppercase();
-    let scale: f64 = match unit.trim_end_matches('B').trim_end_matches('I') {
-        "" => 1.0,
-        "K" => 1024.0,
-        "M" => 1024.0 * 1024.0,
-        "G" => 1024.0 * 1024.0 * 1024.0,
-        "T" => 1024.0_f64.powi(4),
-        _ => return None,
+    let n = size_number(&c[1])?;
+    let scale: f64 = match c.get(2).map(|u| u.as_str().to_ascii_uppercase()) {
+        None => 1.0,
+        Some(u) => match u.as_str() {
+            "K" => 1024.0,
+            "M" => 1024.0 * 1024.0,
+            "G" => 1024.0 * 1024.0 * 1024.0,
+            "T" => 1024.0_f64.powi(4),
+            _ => return None,
+        },
     };
-    let b = (n * scale).round();
+    Some(n * scale)
+}
+
+/// [`size_in_bytes`] rounded to a whole byte.
+pub fn size_bytes(text: &str) -> Option<u64> {
+    let b = size_in_bytes(text)?.round();
     (b.is_finite() && b < u64::MAX as f64).then_some(b as u64)
+}
+
+/// A size's number, with '.' or ',' as its decimal mark. With both, the last one is
+/// the decimal mark and the other separates thousands: "1,024.5" and "1.024,5" are both
+/// 1024.5. A lone ',' separates thousands only when three digits follow it: "1,024" is
+/// 1024.0, "6,2" is 6.2.
+fn size_number(raw: &str) -> Option<f64> {
+    let text = raw.trim();
+    let text = if text.contains('.') && text.contains(',') {
+        if text.rfind(',') > text.rfind('.') {
+            text.replace('.', "").replace(',', ".")
+        } else {
+            text.replace(',', "")
+        }
+    } else if text.contains(',') {
+        let (head, tail) = text.rsplit_once(',').unwrap_or(("", text));
+        let joiner = if tail.chars().count() == 3 { "" } else { "." };
+        format!("{}{joiner}{tail}", head.replace(',', ""))
+    } else {
+        text.to_string()
+    };
+    text.parse::<f64>().ok()
 }
 
 #[cfg(test)]
@@ -351,6 +383,31 @@ mod tests {
         assert_eq!(size_bytes("12 B"), Some(12));
         assert_eq!(size_bytes(""), None);
         assert_eq!(size_bytes("big"), None);
+    }
+
+    #[test]
+    fn a_comma_is_a_decimal_mark_unless_three_digits_follow() {
+        // "6,2 GiB" is six point two, never sixty-two (#853).
+        assert_eq!(size_in_bytes("6,2 GiB"), size_in_bytes("6.2 GiB"));
+        assert_eq!(size_bytes("6,2 GiB"), Some(6_657_199_309));
+        assert_eq!(size_bytes("1,234 MiB"), Some(1234 * 1024 * 1024));
+        assert_eq!(size_in_bytes("301.4 MiB"), Some(301.4 * 1024.0 * 1024.0));
+        assert_eq!(size_number("1,024"), Some(1024.0));
+        assert_eq!(size_number("6,2"), Some(6.2));
+        assert_eq!(size_number("1,024.5"), Some(1024.5));
+        assert_eq!(size_number("6.2"), Some(6.2));
+        assert_eq!(size_number("1,234,567"), Some(1234567.0));
+        assert_eq!(size_number("1.2.3"), None);
+        assert_eq!(size_number("1.234,5"), Some(1234.5));
+    }
+
+    #[test]
+    fn a_size_is_never_the_tail_of_a_longer_number() {
+        assert_eq!(size_in_bytes(".5 GiB"), size_in_bytes("0.5 GiB"));
+        assert_eq!(size_bytes("Size: 1.5 KiB"), Some(1536));
+        assert_eq!(size_bytes("1 234 MiB"), None);
+        assert_eq!(size_bytes("-1 GiB"), None);
+        assert_eq!(size_bytes("1.234,5 MiB"), size_bytes("1234.5 MiB"));
     }
 
     #[test]
