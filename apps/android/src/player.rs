@@ -653,6 +653,7 @@ fn begin(
         d.set_next_count_ms(NEXT_COUNT.as_millis() as i32);
         d.set_skip_label("".into());
         d.set_bands(ModelRc::default());
+        d.set_chapters(ModelRc::default());
         d.set_audio_choice(false);
         d.set_subs_available(false);
         d.set_subs_on(false);
@@ -770,6 +771,8 @@ fn failed(window: &slint::Weak<AppWindow>, reason: String) {
         d.set_duration(0.0);
         d.set_position(0.0);
         d.set_skip_label("".into());
+        d.set_bands(ModelRc::default());
+        d.set_chapters(ModelRc::default());
         d.set_next_visible(false);
         d.set_replay(false);
         d.set_audio_choice(false);
@@ -1147,12 +1150,15 @@ impl Player {
             .and_then(|d| d.parse().ok())
             .unwrap_or(0.0);
         self.rules.duration = duration;
+        let chapters = self
+            .mpv
+            .get("chapter-list")
+            .map(|j| chapters(&j))
+            .unwrap_or_default();
+        // In seconds: the seek bar places them against the duration it has now.
+        let starts: Vec<f32> = chapters.iter().map(|c| c.start as f32).collect();
+        self.d(|d| d.set_chapters(ModelRc::new(VecModel::from(starts))));
         if duration > 0.0 {
-            let chapters = self
-                .mpv
-                .get("chapter-list")
-                .map(|j| chapters(&j))
-                .unwrap_or_default();
             send(
                 &self.host,
                 Call::ReportChapters {
