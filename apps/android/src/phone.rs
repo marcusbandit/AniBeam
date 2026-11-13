@@ -732,7 +732,10 @@ fn thousands(n: u64) -> String {
 fn runtime(minutes: u32) -> String {
     tr(
         "series-runtime",
-        &[("hours", (minutes / 60).into()), ("minutes", (minutes % 60).into())],
+        &[
+            ("hours", (minutes / 60).into()),
+            ("minutes", (minutes % 60).into()),
+        ],
     )
 }
 
