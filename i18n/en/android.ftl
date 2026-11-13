@@ -34,3 +34,8 @@ series-rewatched =
 
 about-ratings = Ratings
 about-ratings-credit = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
+
+## The player
+
+# The speed picker while the episode plays on a TV, which keeps its own speed.
+player-speed-not-while-casting = Not while casting
