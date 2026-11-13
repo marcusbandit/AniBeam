@@ -18,6 +18,10 @@ Item {
     property string settingsNote: ""
     signal picked(int index)
     signal versionClicked()
+    // Watch together (#846): lit while in a room or while its panel is up
+    property bool inRoom: false
+    property bool roomOpen: false
+    signal roomClicked()
 
     readonly property var primary: [
         { index: 0, key: "home", msg: "rail-home", icon: "house" }, { index: 1, key: "library", msg: "rail-library", icon: "layers" },
@@ -111,6 +115,34 @@ Item {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: theme.space(4)
         spacing: theme.space(1.5)
+
+        // Watch together: not a page, so not in the list below; the same round glyph button
+        Rectangle {
+            id: roomEntry
+            objectName: "rail-room"
+            readonly property bool on: root.inRoom || root.roomOpen
+            Accessible.role: Accessible.Button
+            Accessible.name: words.t("rail-room")
+            Accessible.onPressAction: root.roomClicked()
+            x: (root.itemWidth - width) / 2
+            width: theme.space(11); height: width
+            radius: width / 2
+            color: on ? theme.accentSoft : rm.containsMouse ? theme.raised : "transparent"
+            border.color: roomEntry.activeFocus ? theme.focusRing : "transparent"
+            border.width: 1
+            scale: theme.reducedMotion ? 1 : (rm.pressed ? 0.95 : 1)
+            activeFocusOnTab: true
+            Keys.onReturnPressed: root.roomClicked()
+            Keys.onSpacePressed: root.roomClicked()
+            Icon {
+                anchors.centerIn: parent
+                glyph: "users"
+                size: theme.space(5)
+                color: roomEntry.on ? theme.accent : (rm.containsMouse ? theme.text : theme.textFaint)
+            }
+            MouseArea { id: rm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.roomClicked() }
+            Tooltip { text: root.inRoom ? words.t("rail-room-in") : words.t("rail-room") }
+        }
 
         Repeater {
             model: root.secondary

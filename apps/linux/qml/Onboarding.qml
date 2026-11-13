@@ -1,7 +1,7 @@
-// The first run: a fresh install opens here instead of on an empty library. Five steps, one
+// The first run: a fresh install opens here instead of on an empty library. Six steps, one
 // idea each: what AniBeam is, the folder the anime lives in, the tracker, how Downloads gets
-// its torrent client, and a closing screen that says what got set up and offers each skipped
-// step again. It takes the whole window, the rail included, as two panes of the mosaic: the
+// its torrent client, watch together and the name a room shows (#846), and a closing screen
+// that says what got set up and offers each skipped step again. It takes the whole window, the rail included, as two panes of the mosaic: the
 // steps at the left, the step itself at the right.
 //
 // Every step can be skipped, and so can the whole thing. It shows once: `done` lives in
@@ -48,6 +48,7 @@ Item {
         { key: "library", label: words.t("onboarding-step-library"), icon: "folder-open" },
         { key: "lists", label: words.t("onboarding-step-lists"), icon: "user-check" },
         { key: "downloads", label: words.t("onboarding-step-downloads"), icon: "download" },
+        { key: "together", label: words.t("onboarding-step-together"), icon: "users" },
         { key: "ready", label: words.t("onboarding-step-ready"), icon: "circle-check" }
     ]
     property int step: 0
@@ -128,8 +129,18 @@ Item {
         else if (sources.length > 0 && !starterOnly) frame.go("library")
         frame.focusPage(root)
     }
-    function next() { if (step < steps.length - 1) step++; else finish() }
+    function next() {
+        // The name typed on the watch together step is kept as Continue leaves it
+        if (step === 4 && typedName.trim() !== "" && typedName.trim() !== roomName && !frame.room.setName(typedName)) { frame.toast(frame.room.error); return }
+        if (step < steps.length - 1) step++; else finish()
+    }
+    // Watch together: the name a room shows, as it stands and as typed on the step
+    readonly property string roomName: String(Door.preferences.room_name || "").trim()
+    property string typedName: ""
+    onStepChanged: if (step === 4) typedName = roomName !== "" ? roomName : frame.room.suggestedName
     function skip() {
+        // A skipped name stays unset: the room panel asks for it the first time
+        if (steps[step].key === "together") typedName = ""
         var s = Object.assign({}, skipped)
         s[steps[step].key] = true
         skipped = s
@@ -338,6 +349,7 @@ Item {
                                 words.t("onboarding-title-library"),
                                 words.t("onboarding-title-lists"),
                                 words.t("onboarding-title-downloads"),
+                                words.t("onboarding-title-together"),
                                 root.laterCount === 0 ? words.t("onboarding-title-ready") : words.t("onboarding-title-later", { count: root.laterCount })
                             ][root.step]
                             role: "display"
@@ -351,6 +363,7 @@ Item {
                                 words.t("onboarding-body-library"),
                                 words.t("onboarding-body-lists"),
                                 words.t("onboarding-body-downloads"),
+                                words.t("onboarding-body-together"),
                                 words.t("onboarding-body-ready")
                             ][root.step]
                             role: "ui"
@@ -364,7 +377,7 @@ Item {
                         id: pane
                         width: parent.width
                         height: body.fills ? stage.height - head.height - block.spacing : (item ? item.implicitHeight : 0)
-                        sourceComponent: [welcomePane, libraryPane, listsPane, downloadsPane, readyPane][root.step]
+                        sourceComponent: [welcomePane, libraryPane, listsPane, downloadsPane, togetherPane, readyPane][root.step]
                     }
                 }
             }
@@ -400,9 +413,9 @@ Item {
         }
     }
     // Skip stands beside Continue only where the step asks for something not yet given
-    readonly property bool skippable: (step === 1 && sources.length === 0) || (step === 2 && !tracked)
+    readonly property bool skippable: (step === 1 && sources.length === 0) || (step === 2 && !tracked) || (step === 4 && roomName === "")
     readonly property bool downloadsReady: torrentMode !== "Existing" && endpointCount > 0
-    readonly property int laterCount: (sources.length === 0 ? 1 : 0) + (tracked ? 0 : 1) + (downloadsReady ? 0 : 1)
+    readonly property int laterCount: (sources.length === 0 ? 1 : 0) + (tracked ? 0 : 1) + (downloadsReady ? 0 : 1) + (roomName === "" ? 1 : 0)
     // Leaves the walkthrough for a Settings section, for a thing it cannot finish itself
     function finishAt(tab) {
         kept.done = true
@@ -803,14 +816,114 @@ Item {
         }
     }
 
+    // ---- Watch together (#846): what a room looks like first, with the name being typed in
+    // it, then the name. Skipping leaves it empty; the room panel asks the first time.
+    Component {
+        id: togetherPane
+        Column {
+            id: together
+            spacing: theme.grout
+            readonly property string shown: root.typedName.trim() !== "" ? root.typedName.trim() : words.t("onboarding-together-you")
+            // The payoff: a room as the panel shows it, three people and the episode in step
+            Tile {
+                objectName: "onboarding-room-preview"
+                width: parent.width
+                height: previewRow.implicitHeight + padding * 2
+                padding: theme.space(7)
+                Row {
+                    id: previewRow
+                    width: parent.width
+                    spacing: theme.space(8)
+                    Column {
+                        spacing: theme.space(3)
+                        Label { msg: "onboarding-together-code"; color: theme.textDim; font.pointSize: theme.typeSmall }
+                        Label { text: "K7QM2X"; role: "ledger"; font.pointSize: theme.typeHeading; font.weight: 600; font.letterSpacing: theme.space(1) } // i18n: none
+                        Rectangle {
+                            width: theme.space(36); height: width
+                            radius: theme.radiusMd
+                            color: "#ffffff"
+                            Image {
+                                anchors.fill: parent; anchors.margins: theme.space(1)
+                                source: Shell.qrCode(String(Door.preferences.room_relay || "https://rooms.anibeam.app") + "/K7QM2X") // i18n: none
+                                sourceSize: Qt.size(width * 2, height * 2)
+                                smooth: false
+                            }
+                        }
+                    }
+                    Column {
+                        width: previewRow.width - x
+                        spacing: theme.space(2)
+                        Label { width: parent.width; msg: "onboarding-together-episode"; role: "title"; font.pointSize: theme.typeLarge; elide: Text.ElideRight }
+                        Label { msg: "room-panel-people"; msgArgs: ({ count: 3 }); color: theme.textDim; font.pointSize: theme.typeSmall }
+                        Repeater {
+                            model: [
+                                { name: words.t("onboarding-together-friend-1"), host: true, me: false, ready: true },
+                                { name: together.shown, host: false, me: true, ready: true },
+                                { name: words.t("onboarding-together-friend-2"), host: false, me: false, ready: false }
+                            ]
+                            Item {
+                                id: person
+                                required property var modelData
+                                width: parent.width
+                                height: theme.space(10)
+                                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
+                                Row {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: theme.space(2)
+                                    Label { anchors.verticalCenter: parent.verticalCenter; text: person.modelData.name; font.weight: person.modelData.me ? 600 : 450 }
+                                    Chip { anchors.verticalCenter: parent.verticalCenter; visible: person.modelData.host; small: true; mono: false; msg: "room-panel-host" }
+                                    Chip { anchors.verticalCenter: parent.verticalCenter; visible: person.modelData.me; small: true; mono: false; msg: "room-panel-you" }
+                                }
+                                Chip {
+                                    anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                    small: true; mono: false
+                                    icon: person.modelData.ready ? "circle-check" : "loader-circle"
+                                    textColor: person.modelData.ready ? theme.green : theme.textDim
+                                    msg: person.modelData.ready ? "room-panel-ready" : "room-panel-opening"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // The ask: the one thing a room needs from this person
+            Tile {
+                objectName: "onboarding-room-name"
+                width: parent.width
+                height: nameWords.implicitHeight + padding * 2
+                padding: theme.space(7)
+                Badge { id: nameMark; anchors.verticalCenter: nameWords.verticalCenter; glyph: root.roomName !== "" ? "check" : "user-check"; on: root.roomName !== "" }
+                Column {
+                    id: nameWords
+                    anchors.left: nameMark.right; anchors.leftMargin: theme.space(5)
+                    anchors.right: parent.right
+                    spacing: theme.space(2)
+                    Label { msg: "onboarding-together-name"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
+                    Field {
+                        objectName: "onboarding-room-name-field"
+                        width: Math.min(parent.width, theme.space(90))
+                        text: root.typedName
+                        placeholder: words.t("room-panel-name-placeholder")
+                        accessibleName: words.t("onboarding-together-name")
+                        onTextChanged: root.typedName = text
+                        Keys.onReturnPressed: { root.typedName = text; root.next() }
+                        Keys.onEnterPressed: { root.typedName = text; root.next() }
+                    }
+                }
+            }
+        }
+    }
+
     // ---- Ready: what got set up, and a way straight back to each thing left for later
     Component {
         id: readyPane
-        Row {
+        // Four across where they fit, else two by two
+        Grid {
             id: summary
             spacing: theme.grout
-            readonly property real cell: (width - spacing * 2) / 3
-            readonly property real tallest: Math.max(t0 ? t0.contentH : 0, t1 ? t1.contentH : 0, t2 ? t2.contentH : 0)
+            columns: width >= theme.space(250) ? 4 : 2
+            readonly property real cell: (width - spacing * (columns - 1)) / columns
+            readonly property real tallest: Math.max(t0 ? t0.contentH : 0, t1 ? t1.contentH : 0, t2 ? t2.contentH : 0, t3 ? t3.contentH : 0)
             Repeater {
                 id: tiles
                 model: [
@@ -825,26 +938,31 @@ Item {
                           : words.t("onboarding-ready-lists-none") },
                     { ok: root.downloadsReady, icon: "download", title: words.t("onboarding-ready-downloads"), step: 3,
                       line: words.t("onboarding-ready-downloads-line", { sources: root.endpointCount, client: root.torrentMode === "Existing" ? "own" : "bundled",
-                          next: root.downloadsReady ? "ready" : root.wantsSources || root.torrentMode === "Existing" ? "opens" : "both" }) }
+                          next: root.downloadsReady ? "ready" : root.wantsSources || root.torrentMode === "Existing" ? "opens" : "both" }) },
+                    { ok: root.roomName !== "", icon: "users", title: words.t("onboarding-ready-together"), step: 4,
+                      line: root.roomName !== "" ? words.t("onboarding-ready-together-as", { name: root.roomName }) : words.t("onboarding-ready-together-none") }
                 ]
                 Tile {
                     id: tile
                     required property var modelData
                     required property int index
-                    readonly property real contentH: rc.y + rc.height
+                    // Two by two, the mark sits beside the words, so the four fit the stage's height
+                    readonly property bool beside: summary.columns < 4
+                    readonly property real contentH: beside ? Math.max(mark.height, rc.height) : rc.y + rc.height
                     // Downloads opens Settings next by itself when asked to; no button then
                     readonly property bool offers: !modelData.ok && (modelData.step !== 3 || !(root.wantsSources || root.torrentMode === "Existing"))
                     width: summary.cell
                     height: summary.tallest + padding * 2
-                    padding: theme.space(7)
-                    Component.onCompleted: { if (index === 0) summary.t0 = tile; else if (index === 1) summary.t1 = tile; else summary.t2 = tile }
+                    padding: beside ? theme.space(6) : theme.space(7)
+                    Component.onCompleted: { if (index === 0) summary.t0 = tile; else if (index === 1) summary.t1 = tile; else if (index === 2) summary.t2 = tile; else summary.t3 = tile }
                     Badge { id: mark; glyph: modelData.ok ? "check" : modelData.icon; on: modelData.ok }
                     Column {
                         id: rc
-                        anchors.top: mark.bottom; anchors.topMargin: theme.space(5)
-                        width: parent.width
+                        y: tile.beside ? 0 : mark.height + theme.space(5)
+                        x: tile.beside ? mark.width + theme.space(5) : 0
+                        width: parent.width - x
                         spacing: theme.space(2)
-                        Label { text: modelData.title; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
+                        Label { width: parent.width; text: modelData.title; role: "title"; font.pointSize: theme.typeLarge * 1.2; elide: Text.ElideRight }
                         Label { width: parent.width; text: modelData.line; color: theme.textDim; wrapMode: Text.Wrap; lineHeight: 1.1 }
                         Item { visible: tile.offers; width: 1; height: theme.space(2) }
                         Button {
@@ -859,6 +977,7 @@ Item {
             property Item t0: null
             property Item t1: null
             property Item t2: null
+            property Item t3: null
         }
     }
 }

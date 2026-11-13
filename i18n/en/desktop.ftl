@@ -397,6 +397,7 @@ onboarding-step-welcome = Welcome
 onboarding-step-library = Your library
 onboarding-step-lists = Your list
 onboarding-step-downloads = Downloads
+onboarding-step-together = Watch together
 onboarding-step-ready = Ready
 onboarding-scan-reading = Reading the folder
 onboarding-scan-found = Found { $count } series. Go on whenever you like; the rest fills in by itself.
@@ -417,6 +418,7 @@ onboarding-title-welcome = Welcome to AniBeam
 onboarding-title-library = Where is your anime?
 onboarding-title-lists = Connect your anime list
 onboarding-title-downloads = How downloads work
+onboarding-title-together = Watch with friends
 onboarding-title-ready = You're all set
 onboarding-title-later = { $count ->
     [1] Ready, one thing for later
@@ -427,6 +429,7 @@ onboarding-body-welcome = AniBeam keeps your anime in one place. It finds the sh
 onboarding-body-library = Pick the folder you keep your shows in. Every folder inside it becomes a series, with its poster, its episodes and where you left off. AniBeam only reads the folder. It never moves or renames a file.
 onboarding-body-lists = Sign in once, and every episode you finish here is marked on your list, with nothing to type. The sign-in happens in your browser, so AniBeam never sees your password.
 onboarding-body-downloads = Follow a show on the Downloads page and each new episode lands in your library as it airs. Two things make that work: somewhere to search, and a torrent client to fetch with.
+onboarding-body-together = Start a room from the player and send its code. Everyone plays their own copy of the episode, and play, pause and seek stay in step for all of you.
 onboarding-body-ready = Everything here can be changed later in Settings, and Settings, About runs this setup again.
 onboarding-skip-step = Skip for now
 onboarding-get-started = Get started
@@ -496,6 +499,15 @@ onboarding-ready-downloads-line = { $sources ->
     [opens] Settings, Downloads opens next.
    *[both] Both live in Settings, Downloads.
 }
+onboarding-ready-together = Watch together
+onboarding-ready-together-as = Rooms show you as { $name }.
+onboarding-ready-together-none = No name yet. The room panel asks the first time.
+onboarding-together-you = You
+onboarding-together-code = Room code
+onboarding-together-episode = Frieren · Episode 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Your name in rooms
 onboarding-ready-open-downloads = Open Settings, Downloads
 onboarding-ready-set-up = Set up now
 
@@ -520,6 +532,8 @@ rail-title-language-tip = Title language: Romaji, English or Japanese
 rail-whats-new-in = What's new in { $release }
 rail-whats-new = What's new
 rail-settings-note = Settings: { $note }
+rail-room = Watch together (Ctrl+J)
+rail-room-in = In a watch together room (Ctrl+J)
 
 ## FixSheet.qml
 
@@ -2123,6 +2137,63 @@ player-chrome-skip-intro = Skip intro
 player-chrome-skip-outro = Skip outro
 player-chrome-playing-on = Playing on { $device }
 player-chrome-replay = Replay
+player-chrome-watch-together = Watch together
+player-chrome-room = Room { $code } · { $count ->
+    [one] 1 person
+   *[other] { $count } people
+}
+
+## Room.qml
+
+room-name-empty = Type the name others in the room will see.
+room-name-bad = That name does not work. Use 1 to 32 characters.
+room-error-not-found = No room has that code. Check it with whoever sent it; the room may have closed.
+room-error-full = That room is full. Rooms take 10 people.
+room-error-unreachable = Could not reach the room server. Check your connection and try again.
+room-error-refused = The room server turned this down. Try again in a minute.
+room-error-proto = That room runs on a newer version of rooms. Update { -app-name } to join it.
+room-error-not-in-room = You are no longer in that room. Start or join one again.
+room-error-bad-code = A room code is 6 letters and digits, like K7QM2X.
+room-error-bad-relay = The room server in Settings, Playback is not a web address. Fix it there and try again.
+
+## RoomPanel.qml
+
+room-panel-title = Watch together
+room-panel-close = Close
+room-panel-connected = Connected
+room-panel-reconnecting = Reconnecting
+room-panel-name-label = Your name in rooms
+room-panel-name-placeholder = Your name
+room-panel-name-start = Start the room
+room-panel-name-join = Join the room
+room-panel-start = Start a room
+room-panel-or-join = Or join one with its code
+room-panel-join-label = Room code
+room-panel-join = Join
+room-panel-you-are = You show as { $name }
+room-panel-change-name = Change
+room-panel-code-label = Room code
+room-panel-copy = Copy link
+room-panel-link-copied = Room link copied
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = This episode is not in your library, so you can't play along yet.
+room-panel-open-episode = Open the episode
+room-panel-people = { $count ->
+    [one] 1 person
+   *[other] { $count } people
+}
+room-panel-host = Host
+room-panel-you = You
+room-panel-ready = Ready
+room-panel-opening = Opening
+room-panel-missing = Doesn't have it
+room-panel-offset = Your offset
+room-panel-offset-earlier = Half a second earlier
+room-panel-offset-later = Half a second later
+room-panel-seconds = { $value } s
+room-panel-suggested = The openings suggest { $offset }
+room-panel-use-suggested = Use it
+room-panel-leave = Leave the room
 
 ## PlayerPage.qml
 
@@ -2146,6 +2217,7 @@ player-subtitle-delay = Subtitle delay { $value }
 player-volume = Volume { $volume }
 player-speed = Speed { $speed }×
 player-not-while-casting = Not while casting
+player-room-speed = Speed stays with the room
 player-hold-fast = 2× while held
 player-no-chapters = This file has no chapters
 player-last-chapter = This is the last chapter
@@ -2505,6 +2577,10 @@ settings-find-subtitle-languages =
     .words = language track subs
 settings-find-audio-languages =
     .words = language track dub japanese
+settings-find-room-name =
+    .words = watch together room name friends
+settings-find-room-relay =
+    .words = watch together room relay server
 settings-find-start-over =
     .words = reset default subtitle style
 settings-find-size =
@@ -2803,6 +2879,7 @@ key-help-key-ctrl-space = Ctrl+Space
 key-help-key-shift-space = Shift+Space
 key-help-key-ctrl-a = Ctrl+A
 key-help-key-ctrl-l = Ctrl+L
+key-help-key-ctrl-j = Ctrl+J
 key-help-key-ctrl-comma = Ctrl+,
 key-help-key-ctrl-q = Ctrl+Q
 key-help-play-pause = Play or pause
@@ -2828,6 +2905,7 @@ key-help-toggle-list = Show or hide this list
 key-help-library-search = Library and search
 key-help-search-page = Search this page
 key-help-activity = Activity
+key-help-room = Watch together
 key-help-settings = Settings
 key-help-quit = Quit
 key-help-forward = Forward
@@ -2891,6 +2969,11 @@ settings-playback-discord-unavailable = This build has no Discord application.
 settings-playback-discord-connected = Connected to Discord
 settings-playback-discord-not-connected = Not connected. AniBeam connects while an episode plays and Discord is open
 settings-playback-advanced = Advanced
+settings-playback-together = Watch together
+settings-playback-room-name = Your name in watch together rooms
+settings-playback-room-name-placeholder = Your name
+settings-playback-room-relay = Room server
+settings-playback-room-relay-helper = Rooms are made here. Change it only for a server you run yourself.
 settings-playback-my-mpv = Use my mpv settings
 settings-playback-my-mpv-helper = Reads your mpv.conf. Options that only work at startup are skipped, and scripts never load.
 settings-playback-no-mpv-conf = No mpv settings file found. Put your options in mpv.conf, then turn this on.

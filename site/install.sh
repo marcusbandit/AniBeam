@@ -181,11 +181,14 @@ appimage() {
 Type=Application
 Name=AniBeam
 Comment=Your anime folder, as a library you can watch and track
-Exec=env APPIMAGELAUNCHER_DISABLE=1 "$bin/anibeam" %U
+Exec=env APPIMAGELAUNCHER_DISABLE=1 "$bin/anibeam" %u
 Icon=com.marcusrosado.AniBeam
 Categories=AudioVideo;Video;Player;
 Terminal=false
+MimeType=x-scheme-handler/anibeam;
 EOF
+  # Room links (anibeam://room/<code>) open in AniBeam
+  update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
   case ":$PATH:" in *":$bin:"*) ;; *) say "Add $bin to your PATH to start it as anibeam" ;; esac
   say "The AppImage updates itself from Settings > About"
 }

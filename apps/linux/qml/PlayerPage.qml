@@ -71,6 +71,7 @@ FocusScope {
         if (r.error) { frame.fail(r.error); Qt.callLater(frame.nav.back); return }
         session = r.reply.session
         readSeries()
+        frame.room.playerOpened(page)
         if (video.isReady) start()
         showChrome()
         forceActiveFocus()
@@ -109,6 +110,7 @@ FocusScope {
         return frame.prefs.nextNamesEpisode && nextEpisode.title ? name + " \u00b7 " + nextEpisode.title : name
     }
     Component.onDestruction: {
+        frame.room.playerClosed(page)
         Shell.setCursorHidden(false)
         flushVolume()
         close("Stopped")
@@ -132,7 +134,8 @@ FocusScope {
     function leave() { close("Stopped"); frame.nav.back() }
     // The speed goes along: someone watching at 1.5x wants the next episode at 1.5x too
     // A cast goes on with the next episode on the same device (#756)
-    function openNeighbour(file) { if (!file) return; frame.castCarry = castDevice; close("Switched"); frame.nav.replace("player", { file: file, speed: heldSpeed > 0 ? heldSpeed : speed }, page.title) }
+    // In a room the speed is the room's, so the next episode starts at 1x
+    function openNeighbour(file) { if (!file) return; frame.castCarry = castDevice; close("Switched"); frame.nav.replace("player", { file: file, speed: roomed ? 1 : heldSpeed > 0 ? heldSpeed : speed }, page.title) }
     // N and P: the same neighbours, and the same rule, as the island's two buttons. An extra
     // has no place in the episode order, so it has neither.
     readonly property bool hasNext: !!(session && session.next && !session.is_extra)
@@ -255,6 +258,8 @@ FocusScope {
                 if (rc.error) console.warn("anibeam: chapters:", rc.error.message)
             }
             page.onFileLoaded()
+            // What the room asked for before the file was there
+            if (page.pendingApply) { var a = page.pendingApply; page.pendingApply = null; page.applyRoom(a.playing, a.seek, a.to, a.speed) }
             tickTimer.start()
         }
         onChanged: function(name, value) {
@@ -295,7 +300,8 @@ FocusScope {
         if (p.sid >= 0) lastSid = p.sid
         if (carriedCast) { var c = carriedCast; carriedCast = null; startCast(c, session.resume_from || 0, p.aid, p.sid, true); return }
         // Picked up where it was left: say so, with the way back to the start
-        if (session.resume_from && session.resume_from > 5) {
+        // Not in a room: where the room is wins, and Start over would move everyone
+        if (session.resume_from && session.resume_from > 5 && !roomed && !pendingApply) {
             noticeUndo = function() { seekTo(0) }
             notice.show(words.t("player-resumed-at", { time: Fmt.clock(session.resume_from) }), words.t("player-start-over"), 6)
         }
@@ -330,6 +336,7 @@ FocusScope {
         closed = false
         replayVisible = false
         session = r.reply.session
+        frame.room.playerOpened(page)
         tickTimer.start()
     }
     property var chapters: []
@@ -438,6 +445,8 @@ FocusScope {
         if (castDevice) { castCall(castState === "Playing" ? "CastPause" : "CastPlay", {}); showChrome(); return }
         if (paused) endStepping()
         video.setProperty("pause", !paused)
+        // The observation has not landed yet, so `paused` is still the state being left
+        if (roomed) frame.room.command(paused ? "Play" : "Pause", timePos)
         showChrome()
     }
     // Every seek announces itself: MPRIS's Seeked is what tells a widget the position moved
@@ -449,6 +458,7 @@ FocusScope {
         // more of it, so the page moves its own now
         if (castDevice) { castCall("CastSeek", { to: t }); timePos = t }
         else video.command(["seek", String(t), "absolute"])
+        if (roomed && !castDevice) frame.room.command("Seek", t)
         Player.mprisSeeked(t)
         showChrome()
     }
@@ -470,6 +480,7 @@ FocusScope {
     function speedLine(v) { return words.t("player-speed", { speed: String(Number(v.toFixed(2))) }) }
     function setSpeed(v) {
         if (castDevice) { hud.flash(words.t("player-not-while-casting")); return }
+        if (roomed) { if (v !== 1) hud.flash(words.t("player-room-speed")); return }
         v = Math.max(0.25, Math.min(3, Math.round(v * 4) / 4))
         speed = v
         video.setProperty("speed", v)
@@ -480,7 +491,7 @@ FocusScope {
     // setSpeed, which would bring the controls up over what is being skimmed.
     property real heldSpeed: 0
     function holdFast() {
-        if (!loaded || paused || heldSpeed > 0 || castDevice) return
+        if (!loaded || paused || heldSpeed > 0 || castDevice || roomed) return
         clickPause.stop()
         heldSpeed = speed
         video.setProperty("speed", 2)
@@ -681,7 +692,7 @@ FocusScope {
     function readFrame() { frameNumber = Number(video.getProperty("estimated-frame-number") || 0) }
     function step(dir) {
         if (castDevice) { hud.flash(words.t("player-not-while-casting")); return }
-        if (!paused) video.setProperty("pause", true)
+        if (!paused) { video.setProperty("pause", true); if (roomed) frame.room.command("Pause", timePos) }
         stepping = true
         stepGuard.restart()
         readFrame()
@@ -884,6 +895,35 @@ FocusScope {
             paused = true
         }
     }
+
+    // ---- Watch together (#846). The room drives this player once its session is attached:
+    // the person's own play, pause and seek go to the room as well (togglePause, seekTo,
+    // step), and what the room says comes back as RoomApply, set on mpv directly so nothing
+    // goes back. Speed is the room's while in one: the keys and hold-for-2x stand down, and
+    // the core's small 1.05 and 0.95 corrections never show as a speed.
+    readonly property bool roomed: frame.room.drivesPlayer
+    property var pendingApply: null
+    function applyRoom(playing, seek, to, speedNow) {
+        if (!loaded) { pendingApply = { playing: playing, seek: seek, to: to, speed: speedNow }; return }
+        if (playing && paused) endStepping()
+        if (seek) { var t = Math.max(0, to); video.command(["seek", String(t), "absolute"]); Player.mprisSeeked(t) }
+        video.setProperty("pause", !playing)
+        video.setProperty("speed", speedNow)
+        roomCheck.restart()
+    }
+    // A pause and a seek from the room can land inside the core's one correction a second, and
+    // a paused player sends no ticks of its own, so it would stay where the first one left it.
+    // One tick after the core's gap lets it see where this player ended up.
+    Timer { id: roomCheck; interval: 1200; onTriggered: if (page.roomed && page.paused) page.tick() }
+    Connections {
+        target: Door
+        function onRoomApply(session, playing, seek, to, speedNow) {
+            if (page.session && session === page.session.session) page.applyRoom(playing, seek, to, speedNow)
+        }
+    }
+    function openRoomPanel() { roomPanel.openAt(chrome.roomAnchor) }
+    function toggleRoomPanel() { if (roomPanel.open) roomPanel.close(); else openRoomPanel() }
+    RoomPanel { id: roomPanel; player: page }
 
     // ---- The HUD line: one message over the picture, gone after 1.2 s. The two delays and
     // the frame step share it, each owning the line through its own kind. A

@@ -61,6 +61,7 @@ name = "anibeam"
 version = "2.5.0"
 dependencies = [
  "anibeam-core",
+ "base64 0.23.1",
  "cxx",
  "cxx-qt",
  "cxx-qt-build",
@@ -71,6 +72,7 @@ dependencies = [
  "notify",
  "notify-debouncer-full",
  "percent-encoding",
+ "qrcode",
  "serde",
  "serde_json",
  "tempfile",
@@ -3589,6 +3591,12 @@ name = "pure-rust-locales"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "869675ad2d7541aea90c6d88c81f46a7f4ea9af8cd0395d38f11a95126998a0d"
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
 
 [[package]]
 name = "qt-build-utils"
