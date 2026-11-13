@@ -696,7 +696,11 @@ fn scores(
     }
     if let Some(i) = imdb {
         parts.push(match votes {
-            Some(v) => format!("IMDb {} from {} votes", crate::listmove::score(i), thousands(v)),
+            Some(v) => format!(
+                "IMDb {} from {} votes",
+                crate::listmove::score(i),
+                thousands(v)
+            ),
             None => format!("IMDb {}", crate::listmove::score(i)),
         });
     }
