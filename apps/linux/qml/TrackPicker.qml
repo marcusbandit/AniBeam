@@ -14,7 +14,7 @@ Item {
     signal picked(int id)
     // The row the keys are on: Up and Down move it, Return or Space picks it (PlayerKeys)
     property int cursor: 0
-    readonly property var rows: (offRow ? [{ id: -1, label: "Off" }] : []).concat(tracks)
+    readonly property var rows: (offRow ? [{ id: -1, label: words.t("track-picker-off") }] : []).concat(tracks)
     function move(d) { cursor = Math.max(0, Math.min(rows.length - 1, cursor + d)); revealRow(cursor) }
     function choose() { if (cursor >= 0 && cursor < rows.length) { picked(rows[cursor].id); close() } }
     anchors.fill: parent

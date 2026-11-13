@@ -23,7 +23,7 @@ Item {
     readonly property real labelHeight: theme.space(2) + labelProbe.implicitHeight
     readonly property real paneNatural: rep.count && rep.itemAt(0) ? rep.itemAt(0).pane.naturalHeight : 0
     implicitHeight: columns > 1 ? labelHeight + paneNatural : (labelHeight + paneNatural) * modes.length + gap * (modes.length - 1)
-    Text { id: labelProbe; visible: false; text: "Dark"; font.family: theme.fontUi; font.pointSize: theme.typeSmall; font.weight: Font.DemiBold }
+    Text { id: labelProbe; visible: false; text: words.t("look-preview-dark"); font.family: theme.fontUi; font.pointSize: theme.typeSmall; font.weight: Font.DemiBold }
 
     property var samples: []
     function reload() {
@@ -59,7 +59,7 @@ Item {
             width: root.paneWidth
             spacing: theme.space(2)
             Text {
-                text: modelData === "dark" ? "Dark" : "Light"
+                text: modelData === "dark" ? words.t("look-preview-dark") : words.t("look-preview-light")
                 color: theme.textDim
                 font.family: theme.fontUi
                 font.pointSize: theme.typeSmall

@@ -193,6 +193,15 @@ an ID a language lacks shows in English. All of a language's files load as one, 
   in code.
 - The code asks for the ID: `anibeam_core::i18n::tr("player-skip-intro", &[])` in Rust, and
   through the shell's own lookup in QML and Slint. No shell writes a word of its own.
+- In QML, `words.t("library-empty", { count: n })` gives the words, and a binding that calls it
+  follows a language switch. `Label`, `Button`, `Chip`, `Tooltip`, `Notice` and `ErrorLine`
+  take the ID itself: `Button { msg: "action-cancel" }`, with `msgArgs: ({ count: n })`. An ID
+  starts with its file's name: `library-` in `LibraryPage.qml`, `settings-playback-` in
+  `SettingsPlaybackTab.qml`. Words every screen shares, such as `action-cancel` and
+  `status-watching`, live in `core.ftl`.
+- One message per sentence, its numbers and names as arguments. A sentence glued together in
+  code cannot be translated, and a count picks its plural in the message, never in code.
+- Never give an element `id: words`: it hides the global lookup from everything inside it.
 - A new message goes in English in the same PR. A translation can follow later.
 
 `.github/strings-check.py` runs on every pull request. It fails a raw string added to a

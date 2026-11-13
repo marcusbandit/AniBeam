@@ -98,8 +98,8 @@ Item {
             id: buttons
             anchors.bottom: parent.bottom; anchors.right: parent.right; anchors.margins: theme.space(2)
             spacing: theme.space(2)
-            Button { visible: root.current >= 0; text: "Clear"; danger: true; small: true; onClicked: { root.close(); root.cleared() } }
-            Button { text: "Save"; primary: true; small: true; onClicked: root.save() }
+            Button { visible: root.current >= 0; msg: "action-clear"; danger: true; small: true; onClicked: { root.close(); root.cleared() } }
+            Button { msg: "action-save"; primary: true; small: true; onClicked: root.save() }
         }
     }
 }

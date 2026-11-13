@@ -15,7 +15,7 @@ Item {
     id: page
     objectName: "show-page"
     property var props: ({})
-    property string title: show ? show.title : "Show"
+    property string title: show ? show.title : words.t("show-title")
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
     Keys.onPressed: function(event) { scroll.keyPressed(event) }
@@ -49,10 +49,14 @@ Item {
 
     readonly property var s: show || ({})
     function formatLabel(f) {
-        return ({ TV: "TV", TV_SHORT: "TV short", MOVIE: "Film", SPECIAL: "Special", OVA: "OVA", ONA: "ONA", MUSIC: "Music" })[f] || ""
+        var id = ({ TV: "show-format-tv", TV_SHORT: "show-format-tv-short", MOVIE: "show-format-film", SPECIAL: "show-format-special", OVA: "show-format-ova",
+                   ONA: "show-format-ona", MUSIC: "show-format-music" })[f]
+        return id ? words.t(id) : ""
     }
     function statusLabel(st) {
-        return ({ FINISHED: "Finished", RELEASING: "Airing", NOT_YET_RELEASED: "Not yet aired", CANCELLED: "Cancelled", HIATUS: "On hiatus" })[st] || ""
+        var id = ({ FINISHED: "show-status-finished", RELEASING: "show-status-airing", NOT_YET_RELEASED: "show-status-not-yet-aired", CANCELLED: "show-status-cancelled",
+                   HIATUS: "show-status-hiatus" })[st]
+        return id ? words.t(id) : ""
     }
     readonly property string factsLine: {
         var f = []
@@ -61,8 +65,8 @@ Item {
         if (s.studios && s.studios.length) f.push(s.studios[0])
         if (s.format === "MOVIE" && s.duration) f.push(Fmt.runtime(s.duration))
         else {
-            if (s.episodes) f.push(Fmt.plural(s.episodes, "episode", "episodes"))
-            if (s.duration) f.push(Fmt.runtime(s.duration) + " each")
+            if (s.episodes) f.push(words.t("count-episodes", { count: s.episodes }))
+            if (s.duration) f.push(words.t("show-runtime-each", { runtime: Fmt.runtime(s.duration) }))
         }
         if (statusLabel(s.status)) f.push(statusLabel(s.status))
         return f.join("  ")
@@ -77,23 +81,28 @@ Item {
                                                       || (!!Door.trackers.mal && Door.trackers.mal.connected === true))
     readonly property bool hasScore: s.score !== null && s.score !== undefined
     function listIcon(st) { return { Watching: "play", Repeating: "rotate-ccw", Completed: "circle-check", Paused: "pause", Dropped: "ban", Planning: "bookmark" }[st] || "bookmark" }
-    function listText(st) { return { Watching: "Watching", Repeating: "Rewatching", Completed: "Completed", Paused: "On hold", Dropped: "Dropped", Planning: "Planning" }[st] || "Add to list" }
+    function listText(st) {
+        var id = { Watching: "status-watching", Repeating: "status-rewatching", Completed: "status-completed", Paused: "status-on-hold",
+                   Dropped: "status-dropped", Planning: "status-planning" }[st]
+        return words.t(id || "show-add-to-list")
+    }
 
     function setStatus(status, label) {
         var r = Door.call("SetShowListStatus", { anilist_id: page.anilistId, status: status })
         if (r.error) { frame.fail(r.error); return }
-        if (r.reply && r.reply.job !== undefined) { page.writing = r.reply.job; frame.toast("Moving to " + label) }
-        else { frame.toast("Moved to " + label); page.load() }
+        if (r.reply && r.reply.job !== undefined) { page.writing = r.reply.job; frame.toast(words.t("show-moving-to", { list: label })) }
+        else { frame.toast(words.t("show-moved-to", { list: label })); page.load() }
     }
     function statusItems() {
-        var lists = [{ status: "Watching", text: "Watching", icon: "play" },
-                     { status: "Planning", text: "Planning", icon: "bookmark" },
-                     { status: "Completed", text: "Completed", icon: "circle-check" },
-                     { status: "Paused", text: "On hold", icon: "pause" },
-                     { status: "Dropped", text: "Dropped", icon: "ban" }]
+        var lists = [{ status: "Watching", msg: "status-watching", icon: "play" },
+                     { status: "Planning", msg: "status-planning", icon: "bookmark" },
+                     { status: "Completed", msg: "status-completed", icon: "circle-check" },
+                     { status: "Paused", msg: "status-on-hold", icon: "pause" },
+                     { status: "Dropped", msg: "status-dropped", icon: "ban" }]
         return lists.map(function(l) {
-            return { text: l.text, icon: l.icon, enabled: l.status !== page.s.list_status,
-                     action: function() { page.setStatus(l.status, l.text) } }
+            var text = words.t(l.msg)
+            return { text: text, icon: l.icon, enabled: l.status !== page.s.list_status,
+                     action: function() { page.setStatus(l.status, text) } }
         })
     }
     function setScore(v) {
@@ -104,15 +113,17 @@ Item {
     }
     function getEpisodes() {
         frame.go("downloads", { hit: { id: page.anilistId, title: s.title, romaji: s.romaji || "", english: s.english || "", native: s.native || "",
-                                       cover_url: s.poster || "", episodes: s.episodes || 0, format: s.format || "", year: s.year || 0 } }, "Downloads")
+                                       cover_url: s.poster || "", episodes: s.episodes || 0, format: s.format || "", year: s.year || 0 } }, words.t("show-downloads-title"))
     }
     function open(x) {
         if (x.owned) frame.go("series", { id: x.owned }, x.title)
         else frame.go("show", { anilist: x.anilist_id }, x.title)
     }
     function relationLabel(k) {
-        return ({ PREQUEL: "Prequel", SEQUEL: "Sequel", PARENT: "Parent story", SIDE_STORY: "Side story", SPIN_OFF: "Spin-off",
-                  ALTERNATIVE: "Alternative", SUMMARY: "Summary", COMPILATION: "Compilation", SOURCE: "Source", ADAPTATION: "Adaptation" })[k] || "Related"
+        var id = ({ PREQUEL: "show-relation-prequel", SEQUEL: "show-relation-sequel", PARENT: "show-relation-parent", SIDE_STORY: "show-relation-side-story",
+                   SPIN_OFF: "show-relation-spin-off", ALTERNATIVE: "show-relation-alternative", SUMMARY: "show-relation-summary",
+                   COMPILATION: "show-relation-compilation", SOURCE: "show-relation-source", ADAPTATION: "show-relation-adaptation" })[k]
+        return words.t(id || "show-relation-related")
     }
 
     // ---- The band's colour, the way the Series page reads it off the poster
@@ -219,7 +230,7 @@ Item {
             width: parent.width
             readonly property real pad: theme.space(8)
             readonly property real posterH: theme.space(72)
-            height: Math.max(posterH, words.implicitHeight) + pad * 2
+            height: Math.max(posterH, bandText.implicitHeight) + pad * 2
 
             Rectangle { anchors.fill: parent; radius: theme.radiusXl; color: page.bandBase; antialiasing: true }
             Item {
@@ -270,11 +281,11 @@ Item {
                     sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
                     fillMode: Image.PreserveAspectCrop; asynchronous: true
                 }
-                Label { visible: !page.s.poster; anchors.centerIn: parent; text: "No poster"; color: page.inkDim; role: "ui"; font.pointSize: theme.typeSmall }
+                Label { visible: !page.s.poster; anchors.centerIn: parent; msg: "show-no-poster"; color: page.inkDim; role: "ui"; font.pointSize: theme.typeSmall }
             }
 
             Column {
-                id: words
+                id: bandText
                 anchors.left: posterBox.right
                 anchors.leftMargin: theme.space(8)
                 anchors.right: parent.right
@@ -284,7 +295,7 @@ Item {
 
                 Label {
                     width: parent.width
-                    text: page.s.title || (page.s.known === false ? "Reading AniList" : "")
+                    text: page.s.title || (page.s.known === false ? words.t("show-reading-anilist") : "")
                     role: "display"
                     color: page.ink
                     wrapMode: Text.Wrap
@@ -314,7 +325,7 @@ Item {
                     objectName: "show-not-in-library"
                     spacing: theme.space(3)
                     Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "hard-drive"; color: page.inkAccent; size: theme.space(4) }
-                    Label { anchors.verticalCenter: parent.verticalCenter; text: "Not in your library"; role: "ui"; color: page.ink }
+                    Label { anchors.verticalCenter: parent.verticalCenter; msg: "show-not-in-library"; role: "ui"; color: page.ink }
                 }
                 Flow {
                     width: parent.width
@@ -323,7 +334,7 @@ Item {
                         objectName: "show-get"
                         primary: true
                         icon: "download"
-                        text: "Get episodes"
+                        msg: "show-get-episodes"
                         onClicked: page.getEpisodes()
                     }
                     Button {
@@ -331,7 +342,7 @@ Item {
                         visible: !!page.s.trailer
                         ghost: true
                         icon: "clapperboard"
-                        text: "Trailer"
+                        msg: "show-trailer"
                         onClicked: frame.openLink(page.s.trailer)
                     }
                     Button {
@@ -363,7 +374,7 @@ Item {
                         id: rateFact
                         objectName: "show-score"
                         icon: "star"
-                        text: page.hasScore ? "Your score " + Number(page.s.score).toFixed(1) : "Rate it"
+                        text: page.hasScore ? words.t("show-your-score", { score: Number(page.s.score).toFixed(1) }) : words.t("show-rate-it")
                         clickable: true
                         onClicked: {
                             if (!page.tracked) { frame.openConnect("Anilist"); return }
@@ -372,13 +383,13 @@ Item {
                     }
                     Fact {
                         visible: page.s.average_score !== null && page.s.average_score !== undefined
-                        text: "AniList " + (page.s.average_score / 10).toFixed(1)
+                        text: words.t("show-anilist-score", { score: (page.s.average_score / 10).toFixed(1) })
                     }
                     Fact {
                         objectName: "show-forecast"
                         visible: page.s.forecast !== null && page.s.forecast !== undefined
                         icon: "sparkles"
-                        text: page.s.forecast + "% for you"
+                        text: words.t("show-forecast", { percent: String(page.s.forecast) })
                     }
                 }
             }
@@ -392,7 +403,7 @@ Item {
             width: parent.width
             spacing: theme.space(3)
             visible: (page.s.because || []).length > 0 || (page.s.hidden_loved || 0) > 0
-            Heading { text: "Because you watched"; fact: (page.s.hidden_loved || 0) > 0 ? (page.s.hidden_loved > 1 ? page.s.hidden_loved + " hidden tags you love are behind it" : "A hidden tag you love is behind it") : "" }
+            Heading { text: words.t("show-because-you-watched"); fact: (page.s.hidden_loved || 0) > 0 ? words.t("show-hidden-loved", { count: page.s.hidden_loved }) : "" }
             Flow {
                 width: parent.width
                 spacing: theme.space(4)
@@ -407,7 +418,7 @@ Item {
                             onOpened: page.open(modelData)
                         }
                         Label {
-                            text: modelData.score !== null && modelData.score !== undefined ? "You gave it " + Number(modelData.score).toFixed(1) : ""
+                            text: modelData.score !== null && modelData.score !== undefined ? words.t("show-you-gave-it", { score: Number(modelData.score).toFixed(1) }) : ""
                             role: "ledger"; color: theme.textDim
                         }
                     }
@@ -421,7 +432,7 @@ Item {
             width: parent.width
             spacing: theme.space(3)
             visible: !!page.s.synopsis
-            Heading { text: "Story" }
+            Heading { text: words.t("show-story") }
             Label {
                 width: Math.min(parent.width, theme.space(220))
                 text: page.s.synopsis || ""
@@ -437,7 +448,7 @@ Item {
             width: parent.width
             spacing: theme.space(3)
             visible: (page.s.genres || []).length + (page.s.tags || []).length > 0
-            Heading { text: "Genres and tags" }
+            Heading { text: words.t("show-genres-tags") }
             Flow {
                 width: parent.width
                 spacing: theme.space(1.5)
@@ -446,7 +457,7 @@ Item {
             }
             Label {
                 visible: (page.s.studios || []).length > 0
-                text: "Studios  " + (page.s.studios || []).join(", ")
+                text: words.t("show-studios", { studios: (page.s.studios || []).join(", ") })
                 role: "ui"; color: theme.textDim
             }
             Item { width: 1; height: theme.space(2) }
@@ -458,7 +469,7 @@ Item {
             width: parent.width
             spacing: theme.space(3)
             visible: (page.s.relations || []).length > 0
-            Heading { text: "Related" }
+            Heading { text: words.t("show-related") }
             PosterRow { items: page.s.relations || []; labelled: true }
             Item { width: 1; height: theme.space(2) }
         }
@@ -469,13 +480,13 @@ Item {
             width: parent.width
             spacing: theme.space(3)
             visible: (page.s.recommendations || []).length > 0
-            Heading { text: "Recommendations"; fact: "From AniList" }
+            Heading { text: words.t("show-recommendations"); fact: words.t("show-from-anilist") }
             PosterRow { items: page.s.recommendations || [] }
         }
 
         Label {
             visible: page.reading !== null
-            text: "Reading the rest from AniList"
+            text: words.t("show-reading-rest")
             role: "ui"; color: theme.textFaint
         }
     }

@@ -20,7 +20,7 @@ FocusScope {
     property var props: ({})
     readonly property bool fullWindow: true
     property var session: null
-    property string title: session ? session.series_title : "Player"
+    property string title: session ? session.series_title : words.t("player-title")
     property real scrollY: 0
     readonly property alias video: video
     // For the drive script: the rating prompt, which otherwise needs a tracked last episode.
@@ -104,7 +104,7 @@ FocusScope {
     // number only, its title
     property var nextEpisode: null
     readonly property string nextLine: {
-        if (!nextEpisode) return "Next"
+        if (!nextEpisode) return words.t("player-next")
         var name = Fmt.episodeName("", nextEpisode.number)
         return frame.prefs.nextNamesEpisode && nextEpisode.title ? name + " \u00b7 " + nextEpisode.title : name
     }
@@ -140,11 +140,11 @@ FocusScope {
     // A key that can do nothing says why on the video, where the buttons say it in their tips
     function openNext() {
         if (hasNext) openNeighbour(session.next)
-        else hud.flash(session && session.is_extra ? "An extra has no next episode" : "This is the last episode")
+        else hud.flash(session && session.is_extra ? words.t("player-extra-no-next") : words.t("player-last-episode"))
     }
     function openPrevious() {
         if (hasPrevious) openNeighbour(session.prev)
-        else hud.flash(session && session.is_extra ? "An extra has no previous episode" : "This is the first episode")
+        else hud.flash(session && session.is_extra ? words.t("player-extra-no-previous") : words.t("player-first-episode"))
     }
     // Named escapePressed, not escape: the QML compiler reserves "escape" as a member name
     // on any object, and the frame calls this one by that name.
@@ -166,7 +166,7 @@ FocusScope {
         if (carriedCast) video.setProperty("pause", true)
         // S saves the frame, subtitles and all, into the pictures folder
         video.setProperty("screenshot-directory", Fmt.localPath(String(StandardPaths.writableLocation(StandardPaths.PicturesLocation))) + "/AniBeam")
-        video.setProperty("screenshot-template", "%F %wH.%wM.%wS")
+        video.setProperty("screenshot-template", "%F %wH.%wM.%wS") // i18n: none
         video.command(["loadfile", session.path])
     }
     // Spec 4.4's subtitle table as mpv options. These are set before the file, so they are
@@ -297,7 +297,7 @@ FocusScope {
         // Picked up where it was left: say so, with the way back to the start
         if (session.resume_from && session.resume_from > 5) {
             noticeUndo = function() { seekTo(0) }
-            notice.show("Resumed at " + Fmt.clock(session.resume_from), "Start over", 6)
+            notice.show(words.t("player-resumed-at", { time: Fmt.clock(session.resume_from) }), words.t("player-start-over"), 6)
         }
     }
     function onObserved(name, value) {
@@ -369,7 +369,7 @@ FocusScope {
         var ref = Player.trackRef(trackList, t)
         storeChoice(ref, subtitleArg())
         session.track_choice.audio = ref
-        hud.flash("Audio: " + Player.trackLabel(t))
+        hud.flash(words.t("player-audio-track", { track: Player.trackLabel(t) }))
         recast(id, sid)
         showChrome()
     }
@@ -380,7 +380,7 @@ FocusScope {
         var choice = id < 0 ? { off: true } : { Track: { track: Player.trackRef(trackList, t) } }
         storeChoice(audioArg(), choice)
         session.track_choice.subtitle = id < 0 ? "Off" : choice
-        hud.flash(t ? "Subtitles: " + Player.trackLabel(t) : "Subtitles off")
+        hud.flash(t ? words.t("player-subtitles-track", { track: Player.trackLabel(t) }) : words.t("player-subtitles-off"))
         recast(aid, id)
         showChrome()
     }
@@ -391,10 +391,10 @@ FocusScope {
         if (sid >= 0) video.setProperty("sid", "no")
         else if (lastSid >= 0) on = lastSid
         else if (subTracks.length) on = subTracks[0].id
-        else { hud.flash("This file has no subtitles"); return }
+        else { hud.flash(words.t("player-no-subtitles")); return }
         if (on >= 0) video.setProperty("sid", String(on))
         var t = subTracks.find(function(x) { return x.id === on })
-        hud.flash(on < 0 ? "Subtitles off" : "Subtitles: " + (t ? t.label : "on"))
+        hud.flash(on < 0 ? words.t("player-subtitles-off") : t ? words.t("player-subtitles-track", { track: t.label }) : words.t("player-subtitles-on"))
         recast(aid, on)
         showChrome()
     }
@@ -408,11 +408,11 @@ FocusScope {
     // Tenths, or hundredths for a finer value from mpv.conf, so -0.04 never shows as -0.0.
     function delayText(v) {
         var r = Math.round(v * 100) / 100
-        if (r === 0) return "0.0 s"
+        if (r === 0) return words.t("player-delay-seconds", { value: "0.0" })
         var fine = Math.abs(r * 10 - Math.round(r * 10)) > 1e-6
-        return (r > 0 ? "+" : "") + r.toFixed(fine ? 2 : 1) + " s"
+        return words.t("player-delay-seconds", { value: (r > 0 ? "+" : "") + r.toFixed(fine ? 2 : 1) })
     }
-    function delayLine(prop, v) { return (prop === "audio-delay" ? "Audio delay " : "Subtitle delay ") + delayText(v) }
+    function delayLine(prop, v) { return words.t(prop === "audio-delay" ? "player-audio-delay" : "player-subtitle-delay", { value: delayText(v) }) }
     function setDelay(prop, v) {
         // Hundredths, so a step from a fine mpv.conf value moves by exactly 0.1
         v = Math.round(v * 100) / 100
@@ -459,7 +459,7 @@ FocusScope {
     property real volume: Player.volume
     Timer { id: volumeSave; interval: 500; onTriggered: Player.setVolume(page.volume) }
     function flushVolume() { if (volumeSave.running) { volumeSave.stop(); Player.setVolume(volume) } }
-    function setVolume(v) { v = Math.max(0, Math.min(100, v)); volume = v; video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); volumeSave.restart(); showChrome(); if (!chrome.volumeShown) hud.flash("Volume " + Math.round(v)) }
+    function setVolume(v) { v = Math.max(0, Math.min(100, v)); volume = v; video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); volumeSave.restart(); showChrome(); if (!chrome.volumeShown) hud.flash(words.t("player-volume", { volume: Math.round(v) })) }
     function setMute(m) { video.setProperty("mute", m); Player.setMute(m); showChrome() }
     // Playback speed, [ and ] in quarter steps between 0.25 and 3, Backspace back to 1. The
     // page's value moves first so presses inside the round trip add up; the observation then
@@ -467,9 +467,9 @@ FocusScope {
     // key brings up, never as a line over the video, where top-placed signs would be. Each
     // page is its own mpv core, so the next episode gets the speed through openNeighbour.
     property real speed: 1
-    function speedLine(v) { return "Speed " + Number(v.toFixed(2)) + "\u00d7" }
+    function speedLine(v) { return words.t("player-speed", { speed: String(Number(v.toFixed(2))) }) }
     function setSpeed(v) {
-        if (castDevice) { hud.flash("Not while casting"); return }
+        if (castDevice) { hud.flash(words.t("player-not-while-casting")); return }
         v = Math.max(0.25, Math.min(3, Math.round(v * 4) / 4))
         speed = v
         video.setProperty("speed", v)
@@ -484,7 +484,7 @@ FocusScope {
         clickPause.stop()
         heldSpeed = speed
         video.setProperty("speed", 2)
-        hud.hold("2\u00d7 while held", "hold")
+        hud.hold(words.t("player-hold-fast"), "hold")
     }
     function letGoFast() {
         if (heldSpeed <= 0) return
@@ -495,14 +495,14 @@ FocusScope {
     // ---- Chapters: PageDown to the next one's start, PageUp to the start of this one, or
     // the one before when this one has only just begun
     function chapterJump(dir) {
-        if (!chapters.length) { hud.flash("This file has no chapters"); return }
+        if (!chapters.length) { hud.flash(words.t("player-no-chapters")); return }
         var target = null
         if (dir > 0) target = chapters.find(function(c) { return c.start > timePos + 0.5 })
         else for (var i = chapters.length - 1; i >= 0; i--) if (chapters[i].start < timePos - 2) { target = chapters[i]; break }
-        if (!target) { if (dir < 0) seekTo(0); else hud.flash("This is the last chapter"); return }
+        if (!target) { if (dir < 0) seekTo(0); else hud.flash(words.t("player-last-chapter")); return }
         seekTo(target.start)
         var n = chapters.indexOf(target) + 1
-        hud.flash("Chapter " + n + (target.title ? ": " + target.title : ""))
+        hud.flash(target.title ? words.t("player-chapter-titled", { number: n, title: target.title }) : words.t("player-chapter", { number: n }))
     }
     // Home and End: the start, and the outro's start when one is known
     function seekHome() { seekTo(0) }
@@ -510,7 +510,7 @@ FocusScope {
     function screenshot() {
         if (!loaded) return
         video.command(["screenshot", "subtitles"])
-        hud.flash("Saved to Pictures/AniBeam")
+        hud.flash(words.t("player-screenshot-saved"))
     }
     function toggleFullscreen() { frame.hostWindow.visibility = frame.hostWindow.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen }
 
@@ -564,7 +564,7 @@ FocusScope {
         armed[w.kind] = false
         skipWindow(w)
         noticeUndo = function() { seekTo(w.start); armed[w.kind] = false }
-        notice.show(w.kind === "Intro" ? "Skipped intro" : "Skipped outro", "Undo")
+        notice.show(w.kind === "Intro" ? words.t("player-skipped-intro") : words.t("player-skipped-outro"), words.t("player-undo"))
     }
     onTimePosChanged: {
         if (ended && duration > 0 && duration - timePos > 1.5) reopen()
@@ -615,31 +615,36 @@ FocusScope {
     // sentence and the line it lands in does not say error. The bare enum name is what the
     // core sends and is not for anyone to read.
     readonly property var refusalWords: ({
-        Hidden: "the show is hidden",
-        NoMatch: "the show is not matched yet; match it on Show info",
-        NotNewer: "your list is already past this episode",
-        Extra: "this is an extra",
-        Unmatched: "the file is not matched to an episode",
-        OnDisk: "the file is only on disk"
+        Hidden: "player-refusal-hidden",
+        NoMatch: "player-refusal-no-match",
+        NotNewer: "player-refusal-not-newer",
+        Extra: "player-refusal-extra",
+        Unmatched: "player-refusal-unmatched",
+        OnDisk: "player-refusal-on-disk"
     })
-    function refusalWord(r) { return refusalWords[r] || String(r) }
-    function errorLine(e) { return e.kind === "Refused" ? "Not tracked: " + refusalWord(e.reason) + "." : e.message }
+    function refusalWord(r) { return refusalWords[r] ? words.t(refusalWords[r]) : String(r) }
+    function errorLine(e) { return e.kind === "Refused" ? words.t("player-not-tracked-because", { reason: refusalWord(e.reason) }) : e.message }
     function markWatched() {
         if (!canMark) return
         var r = Door.markEpisode(session.series, episodeNumber)
         if (r.error) notice.show(errorLine(r.error))
     }
     function outcomeText(o) {
-        if (o.reason) return trackerName(o.tracker) + ": " + refusalWord(o.reason)
-        return o.message ? trackerName(o.tracker) + ": " + o.message : trackerName(o.tracker) + " could not be updated"
+        if (o.reason) return words.t("player-outcome-said", { tracker: trackerName(o.tracker), words: refusalWord(o.reason) })
+        return o.message ? words.t("player-outcome-said", { tracker: trackerName(o.tracker), words: o.message }) : words.t("player-outcome-failed", { tracker: trackerName(o.tracker) })
     }
     function outcomeLine(outcomes) {
-        var ok = outcomes.filter(function(o) { return o.ok }).map(function(o) { return trackerName(o.tracker) + " " + (o.progress === null || o.progress === undefined ? "ok" : "at " + o.progress) })
+        var ok = outcomes.filter(function(o) { return o.ok }).map(function(o) {
+            return o.progress === null || o.progress === undefined ? words.t("player-outcome-ok", { tracker: trackerName(o.tracker) })
+                 : words.t("player-outcome-at", { tracker: trackerName(o.tracker), progress: o.progress })
+        })
         var bad = outcomes.filter(function(o) { return !o.ok })
-        var head = ok.length ? "Tracked" : (bad.every(function(o) { return !!o.reason }) ? "Not tracked" : "Could not update your list")
+        var head = ok.length ? "tracked" : (bad.every(function(o) { return !!o.reason }) ? "not-tracked" : "failed")
         var all = ok.concat(bad.map(outcomeText))
         // "Tracked: AniList at 12; MyAnimeList at 12", not a list joined by double spaces.
-        return all.length ? head + ": " + all.join("; ") : head
+        var ids = all.length ? { tracked: "player-outcome-tracked-list", "not-tracked": "player-outcome-not-tracked-list", failed: "player-outcome-failed-list" }
+                             : { tracked: "player-outcome-tracked", "not-tracked": "player-outcome-not-tracked", failed: "player-outcome-could-not-update" }
+        return words.t(ids[head], { list: all.join("; ") })
     }
     function markOutcome(outcomes) {
         var list = asArray(outcomes)
@@ -651,7 +656,7 @@ FocusScope {
         function onMarked(series, episode, outcomes) { if (page.session && series === page.session.series) page.markOutcome(outcomes) }
         function onScored(series, score, outcomes) {
             if (!page.session || series !== page.session.series) return
-            notice.show(page.asArray(outcomes).every(function(o) { return o.ok }) ? "Rated " + Fmt.score(score) : "Could not save the score")
+            notice.show(page.asArray(outcomes).every(function(o) { return o.ok }) ? words.t("player-rated", { score: Fmt.score(score) }) : words.t("player-score-failed"))
         }
     }
 
@@ -670,12 +675,12 @@ FocusScope {
     // cleared.
     Timer { id: stepGuard; interval: 300; onTriggered: if (!page.paused) page.endStepping() }
     function endStepping() { stepping = false; if (hud.kind === "frame") hud.clear() }
-    function frameLine() { return "Frame " + frameNumber + " at " + Fmt.clockMs(timePos) }
+    function frameLine() { return words.t("player-frame", { number: frameNumber, time: Fmt.clockMs(timePos) }) }
     // One read per key press and one per landed step, both on an event, never on a timer:
     // mpv does not notify this property, so there is nothing to observe after the first value.
     function readFrame() { frameNumber = Number(video.getProperty("estimated-frame-number") || 0) }
     function step(dir) {
-        if (castDevice) { hud.flash("Not while casting"); return }
+        if (castDevice) { hud.flash(words.t("player-not-while-casting")); return }
         if (!paused) video.setProperty("pause", true)
         stepping = true
         stepGuard.restart()
@@ -755,10 +760,10 @@ FocusScope {
     function closePopovers() { audioPicker.close(); subPicker.close(); castPicker.close(); delays.close() }
     function showHelp() { help.show() }
     function toggleHelp() { if (help.open) help.close(); else help.show() }
-    TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }
-    TrackPicker { id: subPicker; title: "Subtitles"; tracks: page.subTracks; selected: page.sid; offRow: true; onPicked: function(id) { page.pickSubtitle(id) } }
+    TrackPicker { id: audioPicker; title: words.t("player-audio-title"); tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }
+    TrackPicker { id: subPicker; title: words.t("player-subtitles-title"); tracks: page.subTracks; selected: page.sid; offRow: true; onPicked: function(id) { page.pickSubtitle(id) } }
     PlayerDelays { id: delays }
-    TrackPicker { id: castPicker; objectName: "cast-picker"; title: page.castDevices.length || page.casting ? "Cast to" : "Looking for Chromecasts and TVs"
+    TrackPicker { id: castPicker; objectName: "cast-picker"; title: page.castDevices.length || page.casting ? words.t("player-cast-to") : words.t("player-cast-looking")
         tracks: page.castRows; selected: page.castSelected; onPicked: function(id) { page.pickCast(id) } }
 
     // ---- Casting (#756): the episode goes to a Chromecast or a DLNA TV, and this page is its
@@ -776,7 +781,7 @@ FocusScope {
     property var castPending: ({})
     function castCall(name, args, done, quiet) {
         var t = Door.callAsync(name, args)
-        if (t < 0) { if (!quiet) notice.show("Could not reach the TV"); return }
+        if (t < 0) { if (!quiet) notice.show(words.t("player-cast-unreachable")); return }
         castPending[t] = { done: done || null, quiet: !!quiet }
     }
     Connections {
@@ -798,11 +803,11 @@ FocusScope {
     function lookForDevices() {
         castCall("CastDevices", {}, function(r) { if (r.reply && r.reply.devices) page.castDevices = page.asArray(r.reply.devices) })
     }
-    function castKind(d) { return d.kind === "Chromecast" ? (d.model || "Chromecast") : "TV" }
+    function castKind(d) { return d.kind === "Chromecast" ? (d.model || "Chromecast") : words.t("player-cast-tv") }
     // The picker's rows: Stop casting first while a cast is on, then the devices, by index
     readonly property var castRows: {
         var rows = []
-        if (casting) rows.push({ id: -2, label: "Stop casting to " + castDevice.name })
+        if (casting) rows.push({ id: -2, label: words.t("player-cast-stop", { device: castDevice.name }) })
         for (var i = 0; i < castDevices.length; i++) rows.push({ id: i, label: castDevices[i].name + "   " + castKind(castDevices[i]) })
         return rows
     }
@@ -853,8 +858,9 @@ FocusScope {
     }
     // A new audio or subtitle choice while casting starts the cast again with it
     function recast(aidNow, sidNow) { if (castDevice) startCast(castDevice, timePos, aidNow, sidNow, false) }
-    readonly property var castWords: ({ Connecting: "Connecting", Buffering: "Loading", Playing: "Playing", Paused: "Paused", Ended: "Finished", Failed: "Stopped", Stopped: "Stopped" })
-    readonly property string castLine: castDevice ? (castWords[castState] || "") : ""
+    readonly property var castWords: ({ Connecting: "player-cast-connecting", Buffering: "player-cast-loading", Playing: "player-cast-playing", Paused: "player-cast-paused",
+                                       Ended: "player-cast-finished", Failed: "player-cast-stopped", Stopped: "player-cast-stopped" })
+    readonly property string castLine: castDevice && castWords[castState] ? words.t(castWords[castState]) : ""
     // What the TV said: its position drives the page and the ticks as local playback would; an
     // end, a failure or a stop hands the episode back to this window
     function onCast(st) {
@@ -934,9 +940,9 @@ FocusScope {
             id: ratingRow
             anchors.centerIn: parent; spacing: theme.space(3)
             Icon { glyph: "check-check"; size: theme.space(4); anchors.verticalCenter: parent.verticalCenter }
-            Label { anchors.verticalCenter: parent.verticalCenter; role: "ui"; text: "Tracked the final episode. Rate this show?" }
-            Button { id: rateBtn; objectName: "player-rate"; anchors.verticalCenter: parent.verticalCenter; text: "Rate"; primary: true; small: true; takesFocus: false; onClicked: ratingPicker.openAt(rateBtn, -1) }
-            Button { anchors.verticalCenter: parent.verticalCenter; text: "Not now"; flat: true; small: true; takesFocus: false; onClicked: rating.visible = false }
+            Label { anchors.verticalCenter: parent.verticalCenter; role: "ui"; msg: "player-rate-prompt" }
+            Button { id: rateBtn; objectName: "player-rate"; anchors.verticalCenter: parent.verticalCenter; msg: "player-rate"; primary: true; small: true; takesFocus: false; onClicked: ratingPicker.openAt(rateBtn, -1) }
+            Button { anchors.verticalCenter: parent.verticalCenter; msg: "player-not-now"; flat: true; small: true; takesFocus: false; onClicked: rating.visible = false }
         }
     }
     // ScorePicker pushes itself on the frame's escape stack and pops on destruction, but it

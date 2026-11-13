@@ -20,10 +20,10 @@ Corner {
     readonly property real pad: theme.space(5)
     // Shown when the library holds nothing with a poster yet, so the pane is never blank.
     readonly property var fallback: ({
-        title: "Sample series",
-        titles: { folder: "Sample series" },
+        title: words.t("look-pane-sample-series"),
+        titles: { folder: words.t("look-pane-sample-series") },
         poster: null,
-        code: "Ep 12",
+        code: words.t("look-pane-episode-code", { number: 12 }),
         watched: 8,
         watched_state: "Behind",
         total_episodes: 12,
@@ -60,7 +60,7 @@ Corner {
             spacing: theme.space(3)
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Library"
+                text: words.t("look-pane-library")
                 color: theme.text
                 font.family: theme.fontDisplay
                 font.pointSize: theme.typeLarge
@@ -68,7 +68,7 @@ Corner {
             }
             Chip {
                 anchors.verticalCenter: parent.verticalCenter
-                text: pane.samples.length + " series"
+                text: words.t("look-pane-series-count", { count: pane.samples.length })
                 small: true
                 color: theme.tile
                 textColor: theme.textDim
@@ -90,7 +90,7 @@ Corner {
                 anchors.right: hint.left
                 anchors.rightMargin: theme.space(2)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Search titles or folders"
+                text: words.t("look-pane-search")
                 color: theme.textFaint
                 elide: Text.ElideRight
                 font.family: theme.fontSans
@@ -101,14 +101,14 @@ Corner {
                 anchors.right: parent.right
                 anchors.rightMargin: theme.space(2)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "/ or Ctrl+K"
+                msg: "look-pane-search-hint"
                 small: true
                 color: theme.tile
                 textColor: theme.textFaint
             }
         }
 
-        Seg { options: ["All", "Series", "Movies"]; index: 0 }
+        Seg { options: [words.t("look-pane-all"), words.t("look-pane-series"), words.t("look-pane-movies")]; index: 0 }
 
     }
 
@@ -150,15 +150,15 @@ Corner {
         Flow {
             width: parent.width
             spacing: theme.space(2)
-            Chip { text: "Plain"; mono: false; color: theme.surface; textColor: theme.textDim }
-            Chip { text: "Selected"; mono: false; selected: true }
-            Chip { text: "Ep 12"; small: true; color: theme.tile }
-            Chip { text: "2 errors"; icon: "circle-alert"; small: true; color: theme.redSoft; textColor: theme.red }
+            Chip { msg: "look-pane-plain"; mono: false; color: theme.surface; textColor: theme.textDim }
+            Chip { msg: "look-pane-selected"; mono: false; selected: true }
+            Chip { msg: "look-pane-episode-code"; msgArgs: ({ number: 12 }); small: true; color: theme.tile }
+            Chip { msg: "look-pane-errors"; msgArgs: ({ count: 2 }); icon: "circle-alert"; small: true; color: theme.redSoft; textColor: theme.red }
         }
 
         Text {
             width: parent.width
-            text: "Large"
+            text: words.t("look-pane-type-large")
             color: theme.text
             wrapMode: Text.Wrap
             font.family: theme.fontDisplay
@@ -167,7 +167,7 @@ Corner {
         }
         Text {
             width: parent.width
-            text: "Normal"
+            text: words.t("look-pane-type-normal")
             color: theme.text
             wrapMode: Text.Wrap
             font.family: theme.fontSans
@@ -175,7 +175,7 @@ Corner {
         }
         Text {
             width: parent.width
-            text: "Small, dim"
+            text: words.t("look-pane-type-small")
             color: theme.textDim
             wrapMode: Text.Wrap
             font.family: theme.fontSans
@@ -184,9 +184,9 @@ Corner {
 
         Row {
             spacing: theme.space(3)
-            Switch { anchors.verticalCenter: parent.verticalCenter; checked: true; accessibleName: "Sample switch" }
-            Button { anchors.verticalCenter: parent.verticalCenter; text: "Button" }
-            Button { anchors.verticalCenter: parent.verticalCenter; text: "Remove"; icon: "trash-2"; danger: true }
+            Switch { anchors.verticalCenter: parent.verticalCenter; checked: true; accessibleName: words.t("look-pane-sample-switch") }
+            Button { anchors.verticalCenter: parent.verticalCenter; msg: "look-pane-button" }
+            Button { anchors.verticalCenter: parent.verticalCenter; msg: "action-remove"; icon: "trash-2"; danger: true }
         }
 
         // The status strip, one line of it
@@ -206,11 +206,11 @@ Corner {
                 anchors.rightMargin: theme.space(3)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(2)
-                Chip { id: stripStage; anchors.verticalCenter: parent.verticalCenter; text: "Scan"; small: true; color: theme.surface; textColor: theme.textDim }
+                Chip { id: stripStage; anchors.verticalCenter: parent.verticalCenter; msg: "look-pane-scan"; small: true; color: theme.surface; textColor: theme.textDim }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(0, Math.min(implicitWidth, stripLine.width - stripStage.width - stripStamp.width - stripLine.spacing * 2))
-                    text: "3 new episodes in Frieren"
+                    text: words.t("look-pane-sample-status", { count: 3, title: "Frieren" }) // i18n: none
                     color: theme.text
                     elide: Text.ElideRight
                     font.family: theme.fontSans
@@ -223,7 +223,8 @@ Corner {
                 anchors.right: parent.right
                 anchors.rightMargin: theme.space(3)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "2 errors"
+                msg: "look-pane-errors"
+                msgArgs: ({ count: 2 })
                 icon: "circle-alert"
                 small: true
                 color: theme.redSoft

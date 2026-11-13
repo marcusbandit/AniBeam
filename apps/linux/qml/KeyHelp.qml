@@ -20,57 +20,57 @@ Item {
 
     readonly property var groups: player ? playerGroups : appGroups
     readonly property var playerGroups: [
-        { name: "Playback", keys: [
-            ["Space / K", "Play or pause"],
-            ["Left / Right", "Seek 5 s"],
-            ["J / L", "Seek 10 s"],
-            ["Ctrl+Right", "Skip the intro or outro, else 90 s"],
-            [", / .", "One frame back or forward"],
-            ["[ / ]", "Slower or faster, in steps of 0.25"],
-            ["Backspace", "Normal speed"],
-            ["Up / Down", "Volume up or down by 5"],
-            ["M", "Mute"],
-            ["C", "Subtitles off and back"],
-            ["z / Z", "Subtitle delay 100 ms earlier or later"],
-            ["a / A", "Audio delay 100 ms earlier or later"],
-            ["Hold the video", "2\u00d7 speed while held"],
-            ["S", "Save a screenshot to Pictures"]
+        { name: words.t("key-help-group-playback"), keys: [
+            [words.t("key-help-key-space"), words.t("key-help-play-pause")],
+            [words.t("key-help-key-left-right"), words.t("key-help-seek-5")],
+            ["J / L", words.t("key-help-seek-10")],
+            [words.t("key-help-key-ctrl-right"), words.t("key-help-skip")],
+            [", / .", words.t("key-help-frame-step")],
+            ["[ / ]", words.t("key-help-speed")],
+            [words.t("key-help-key-backspace"), words.t("key-help-normal-speed")],
+            [words.t("key-help-key-up-down"), words.t("key-help-volume")],
+            ["M", words.t("key-help-mute")],
+            ["C", words.t("key-help-subtitles-toggle")],
+            ["z / Z", words.t("key-help-subtitle-delay")],
+            ["a / A", words.t("key-help-audio-delay")],
+            [words.t("key-help-key-hold"), words.t("key-help-hold-speed")],
+            ["S", words.t("key-help-screenshot")]
         ] },
-        { name: "Navigation", keys: [
-            ["N / P", "Next or previous episode"],
-            ["Page Up / Down", "Previous or next chapter"],
-            ["Home / End", "The start, or the outro"],
-            ["F / F11", "Fullscreen"],
-            ["Escape", "Close what is open, else leave fullscreen, else leave the player"],
-            ["Alt+Left", "Back"],
-            ["?", "Show or hide this list"]
+        { name: words.t("key-help-group-navigation"), keys: [
+            ["N / P", words.t("key-help-episode")],
+            [words.t("key-help-key-page"), words.t("key-help-chapter")],
+            [words.t("key-help-key-home-end"), words.t("key-help-start-end")],
+            ["F / F11", words.t("key-help-fullscreen")],
+            [words.t("key-help-key-escape"), words.t("key-help-escape-player")],
+            [words.t("key-help-key-alt-left"), words.t("action-back")],
+            ["?", words.t("key-help-toggle-list")]
         ] },
-        { name: "Library", keys: [
-            ["Ctrl+K", "Library and search"],
-            ["/ or Ctrl+F", "Search this page"],
-            ["Ctrl+L", "Activity"],
-            ["Ctrl+,", "Settings"],
-            ["Ctrl+Q", "Quit"]
+        { name: words.t("key-help-group-library"), keys: [
+            [words.t("key-help-key-ctrl-k"), words.t("key-help-library-search")],
+            [words.t("key-help-key-search"), words.t("key-help-search-page")],
+            [words.t("key-help-key-ctrl-l"), words.t("key-help-activity")],
+            [words.t("key-help-key-ctrl-comma"), words.t("key-help-settings")],
+            [words.t("key-help-key-ctrl-q"), words.t("key-help-quit")]
         ] }
     ]
     readonly property var appGroups: [
-        { name: "Navigation", keys: [
-            ["Alt+Left", "Back"],
-            ["Alt+Right", "Forward"],
-            ["Escape", "Close what is open, else back"],
-            ["Shift+F10", "The right-click menu"],
-            ["F11", "Fullscreen"],
-            ["?", "Show or hide this list"]
+        { name: words.t("key-help-group-navigation"), keys: [
+            [words.t("key-help-key-alt-left"), words.t("action-back")],
+            [words.t("key-help-key-alt-right"), words.t("key-help-forward")],
+            [words.t("key-help-key-escape"), words.t("key-help-escape-app")],
+            [words.t("key-help-key-shift-f10"), words.t("key-help-context-menu")],
+            ["F11", words.t("key-help-fullscreen")],
+            ["?", words.t("key-help-toggle-list")]
         ] },
-        { name: "Library", keys: [
-            ["Ctrl+K", "Library and search"],
-            ["/ or Ctrl+F", "Search this page"],
-            ["Ctrl+Space", "Pick a card, to act on several"],
-            ["Shift+Space", "Pick every card up to this one"],
-            ["Ctrl+A", "Pick every card shown"],
-            ["Ctrl+L", "Activity"],
-            ["Ctrl+,", "Settings"],
-            ["Ctrl+Q", "Quit"]
+        { name: words.t("key-help-group-library"), keys: [
+            [words.t("key-help-key-ctrl-k"), words.t("key-help-library-search")],
+            [words.t("key-help-key-search"), words.t("key-help-search-page")],
+            [words.t("key-help-key-ctrl-space"), words.t("key-help-pick-card")],
+            [words.t("key-help-key-shift-space"), words.t("key-help-pick-range")],
+            [words.t("key-help-key-ctrl-a"), words.t("key-help-pick-all")],
+            [words.t("key-help-key-ctrl-l"), words.t("key-help-activity")],
+            [words.t("key-help-key-ctrl-comma"), words.t("key-help-settings")],
+            [words.t("key-help-key-ctrl-q"), words.t("key-help-quit")]
         ] }
     ]
 
@@ -117,7 +117,7 @@ Item {
             Column {
                 id: column
                 spacing: theme.space(5)
-                Label { role: "title"; font.pointSize: theme.typeLarge; text: "Keyboard shortcuts" }
+                Label { role: "title"; font.pointSize: theme.typeLarge; msg: "key-help-title" }
                 Grid {
                     id: groupsGrid
                     columns: root.wide ? root.groups.length : 1

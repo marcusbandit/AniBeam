@@ -30,7 +30,7 @@ Item {
     property var sourceOn: function(name) { return true }
     property bool acting: false
     // The torrent client by name, for what Get says while it sends
-    property string clientName: "the torrent client"
+    property string clientName: words.t("get-show-the-client")
     // Set when a Get went through; it clears the picks and is not drawn
     property string actionLine: ""
     property string actionError: ""
@@ -399,20 +399,21 @@ Item {
     readonly property var followRow: followOf(chosenRow)
     readonly property var pickGroups: {
         var seen = {}, out = []
-        for (var k = 0; k < pickItems.length; k++) { var f = current && current.facts[pickItems[k]]; var g = (f && f.group ? f.group : root.active) + (f && f.batch ? "'s batch" : ""); if (!seen[g]) { seen[g] = true; out.push(g) } }
+        for (var k = 0; k < pickItems.length; k++) { var f = current && current.facts[pickItems[k]]; var gname = f && f.group ? f.group : root.active; var g = f && f.batch ? words.t("get-show-group-batch", { group: gname }) : gname; if (!seen[g]) { seen[g] = true; out.push(g) } }
         return out
     }
-    function episodesPhrase(list) {
+    // "Episodes 1 to 4, 7", or with `inline` the form for the middle of a sentence
+    function episodesPhrase(list, inline) {
         var ns = list.map(function(p) { return p.n })
         if (!ns.length) return ""
         // Runs: 1 to 4, 7, 9 to 12
         var parts = [], a = ns[0], b = ns[0]
         for (var i = 1; i <= ns.length; i++) {
             if (i < ns.length && ns[i] === b + 1) { b = ns[i]; continue }
-            parts.push(a === b ? String(a) : a + " to " + b)
+            parts.push(a === b ? String(a) : words.t("get-show-run", { first: a, last: b }))
             if (i < ns.length) { a = ns[i]; b = ns[i] }
         }
-        return (ns.length === 1 ? "Episode " : "Episodes ") + parts.join(", ")
+        return words.t(inline ? "get-show-episodes-inline" : "get-show-episodes", { count: ns.length, list: parts.join(", ") })
     }
     // The unfinished torrents of this show that carry an episode being replaced; the core
     // decides, file by file, whether each goes whole or only loses those files
@@ -459,42 +460,41 @@ Item {
     }
     readonly property string goText: {
         var n = planList.length
-        if (acting) return "Sending to " + clientName
-        var swap = replacing ? " and replace" : ""
-        if (n && follow && followRow) return "Get " + Fmt.plural(n, "episode", "episodes") + swap + " and subscribe"
-        if (n) return "Get " + Fmt.plural(n, "episode", "episodes") + swap
-        if (follow && followRow) return "Subscribe for new episodes"
-        return pickList.length ? "Nothing new to get" : "Pick an episode"
+        if (acting) return words.t("get-show-sending-to", { client: clientName })
+        if (n && follow && followRow) return words.t(replacing ? "get-show-go-replace-subscribe" : "get-show-go-subscribe", { count: n })
+        if (n) return words.t(replacing ? "get-show-go-replace" : "get-show-go", { count: n })
+        if (follow && followRow) return words.t("get-show-subscribe")
+        return pickList.length ? words.t("get-show-nothing-new") : words.t("get-show-pick-episode")
     }
-    function epsWords(list) { var w = episodesPhrase(list); return w.charAt(0).toLowerCase() + w.slice(1) }
+    function epsWords(list) { return episodesPhrase(list, true) }
     // The line under the Replace switch: what it does now, on or off
     readonly property string replaceWords: {
         if (!hadPicked.length) return ""
         var eps = epsWords(hadPicked)
-        if (!replaceOn) return "Off. The picks for " + eps + " are left out, since the library has them. Turn it on to swap them."
-        var out = "The files you have for " + eps + " go to the trash once the new ones finish."
-        if (hadOnTheWay.length) out += " " + episodesPhrase(hadOnTheWay) + (hadOnTheWay.length === 1 ? " is" : " are") + " downloading now: that download is cancelled and what it wrote goes to the trash."
+        if (!replaceOn) return words.t("get-show-replace-off", { episodes: eps })
+        var out = words.t("get-show-replace-on", { episodes: eps })
+        if (hadOnTheWay.length) out = [out, words.t("get-show-replace-on-the-way", { count: hadOnTheWay.length, episodes: episodesPhrase(hadOnTheWay) })].join(" ")
         return out
     }
 
     // ---- Provider words
     function kindWords(e) {
-        if (e.on_demand) return "Started when a search needs it"
-        if (e.kind === "filtered-rss") return "RSS search"
-        if (e.kind === "rss") return "RSS feed"
-        if (e.kind === "json-feed" || e.kind === "json") return "JSON search"
-        if (e.kind === "torznab") return "Indexer search"
+        if (e.on_demand) return words.t("get-show-kind-on-demand")
+        if (e.kind === "filtered-rss") return words.t("get-show-kind-rss-search")
+        if (e.kind === "rss") return words.t("get-show-kind-rss-feed")
+        if (e.kind === "json-feed" || e.kind === "json") return words.t("get-show-kind-json-search")
+        if (e.kind === "torznab") return words.t("get-show-kind-indexer-search")
         return e.kind
     }
     function readyWords(e) {
-        if (!e.on_demand) return "Ready"
-        return e.running === true ? "Running" : "Not running"
+        if (!e.on_demand) return words.t("get-show-ready")
+        return e.running === true ? words.t("get-show-running") : words.t("get-show-not-running")
     }
     function resultWords(e) {
-        if (!root.sourceOn(e.name)) return e.on_demand && e.running !== true ? "Not running. Click its source above to start it." : "Switched off"
+        if (!root.sourceOn(e.name)) return e.on_demand && e.running !== true ? words.t("get-show-not-running-start") : words.t("get-show-switched-off")
         var r = ofShow(results[e.name])
-        if (!r || r.state === "idle") return "Click to see what it has for this show"
-        if (r.state === "searching") return (r.label || "Searching") + ", " + Math.floor(r.elapsed || 0) + " s"
+        if (!r || r.state === "idle") return words.t("get-show-click-to-see")
+        if (r.state === "searching") return words.t("get-show-searching-elapsed", { label: r.label || words.t("get-show-searching"), seconds: Math.floor(r.elapsed || 0) })
         if (r.state === "error") return r.error
         // Each release marks what it holds; a batch by its range, its counted files, or the show
         var has = {}
@@ -508,7 +508,7 @@ Item {
         }
         var cover = 0
         for (var k in has) if (Number(k) <= total) cover++
-        return Fmt.plural(r.items.length, "release", "releases") + (total ? ", " + cover + " of " + total + " episodes covered" : "")
+        return total ? words.t("get-show-releases-covered", { count: r.items.length, cover: cover, total: total }) : words.t("get-show-releases", { count: r.items.length })
     }
 
     Column {
@@ -552,20 +552,20 @@ Item {
                     objectName: "get-plan-to-watch"
                     visible: root.canPlan
                     height: theme.space(11.75)
-                    text: root.planned ? "On your list" : "Plan to watch"
+                    text: root.planned ? words.t("get-show-on-your-list") : words.t("get-show-plan-to-watch")
                     icon: root.planned ? "check" : "bookmark"
                     enabled: !root.planned
                     onClicked: root.planned = frame.planToWatch(root.show.anilistId, root.show.title)
-                    Tooltip { text: root.planned ? "It is on your list" : "Put it on your Planning list" }
+                    Tooltip { text: root.planned ? words.t("get-show-on-your-list-tip") : words.t("get-show-plan-to-watch-tip") }
                 }
                 Button {
                     objectName: "get-open-series"
                     visible: root.inLibrary
                     height: theme.space(11.75)
-                    text: "Open series"
+                    msg: "action-open-series"
                     icon: "arrow-up-right"
                     onClicked: frame.go("series", { id: root.show.seriesId }, root.show.title)
-                    Tooltip { text: "The series page: its details, episodes and playing" }
+                    Tooltip { msg: "get-show-open-series-tip" }
                 }
             }
             Column {
@@ -595,9 +595,9 @@ Item {
                             if (!s) return out
                             if (s.format) out.push(s.format)
                             if (s.year) out.push(String(s.year))
-                            if (s.airing) out.push(s.nextAiring ? "Episode " + s.nextAiring.episode + " in " + Fmt.countdown(s.nextAiring.at - root.nowMs / 1000) : "Airing")
-                            else if (s.status === "Finished") out.push("Finished")
-                            if (s.total > 0) out.push(s.total + " episodes")
+                            if (s.airing) out.push(s.nextAiring ? words.t("get-show-next-in", { number: s.nextAiring.episode, wait: Fmt.countdown(s.nextAiring.at - root.nowMs / 1000) }) : words.t("get-show-airing"))
+                            else if (s.status === "Finished") out.push(words.t("get-show-finished"))
+                            if (s.total > 0) out.push(words.t("get-show-total-episodes", { count: s.total }))
                             return out
                         }
                         Label { required property string modelData; text: modelData; role: "ui"; font.pointSize: theme.typeNormal * 1.1; color: theme.textDim }
@@ -613,9 +613,9 @@ Item {
                 spacing: theme.space(3)
                 Label {
                     objectName: "get-standing"
-                    text: root.downloading ? "Downloading " + Fmt.plural(root.downloadingCount, "episode", "episodes")
-                        : root.activeTorrents.length ? "Downloading " + Fmt.plural(root.activeTorrents.length, "torrent", "torrents")
-                        : root.inLibrary ? "In your library" : "Not in your library"
+                    text: root.downloading ? words.t("get-show-downloading-episodes", { count: root.downloadingCount })
+                        : root.activeTorrents.length ? words.t("get-show-downloading-torrents", { count: root.activeTorrents.length })
+                        : root.inLibrary ? words.t("get-show-in-library") : words.t("get-show-not-in-library")
                     role: "ui"; font.pointSize: theme.typeNormal * 1.1; color: theme.textDim
                 }
                 EpisodeCubes {
@@ -641,7 +641,7 @@ Item {
             Item {
                 width: parent.width
                 height: theme.space(14)
-                Label { id: dlTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); text: "Downloading"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
+                Label { id: dlTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); msg: "get-show-downloading"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
                 // Every torrent at once, when there is more than one
                 Row {
                     visible: root.activeTorrents.length > 1
@@ -655,20 +655,20 @@ Item {
                         readonly property var targets: stopping ? root.runningTorrents : root.activeTorrents
                         busy: targets.some(function(t) { var w = root.busyOf(t.hash); return w === "Stop" || w === "Start" })
                         primary: !stopping && !busy
-                        text: stopping ? "Stop all" : "Start all"
+                        text: stopping ? words.t("get-show-stop-all") : words.t("get-show-start-all")
                         icon: stopping ? "pause" : "play"
                         onClicked: root.controlAll(targets.map(function(t) { return t.hash }), stopping ? "Stop" : "Start")
-                        Tooltip { text: parent.stopping ? "Stop every download of this show; what they have stays" : "Start every download of this show again" }
+                        Tooltip { text: parent.stopping ? words.t("get-show-stop-all-tip") : words.t("get-show-start-all-tip") }
                     }
                     Button {
                         id: cancelAllButton
                         objectName: "get-all-cancel"
                         danger: true
                         busy: root.activeTorrents.some(function(t) { return root.busyOf(t.hash) === "Cancel" })
-                        text: "Cancel all"
+                        msg: "get-show-cancel-all"
                         icon: "x"
                         onClicked: root.cancelAll(cancelAllButton, root.activeTorrents)
-                        Tooltip { text: "Cancel every download of this show and move what they wrote to the trash" }
+                        Tooltip { msg: "get-show-cancel-all-tip" }
                     }
                 }
             }
@@ -691,8 +691,8 @@ Item {
                 Item {
                     width: parent.width
                     height: theme.space(12)
-                    Label { id: whereTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); text: "Available sources"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
-                    Button { id: checkButton; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); text: "Check again"; icon: "refresh-cw"; flat: true; small: true; onClicked: root.checkSources(); Tooltip { text: "Asks each on-demand provider whether it is running. Starts nothing." } }
+                    Label { id: whereTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); msg: "get-show-sources"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
+                    Button { id: checkButton; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); msg: "get-show-check-again"; icon: "refresh-cw"; flat: true; small: true; onClicked: root.checkSources(); Tooltip { msg: "get-show-check-again-tip" } }
                 }
 
                 Tile {
@@ -770,7 +770,7 @@ Item {
                                     Label { anchors.verticalCenter: parent.verticalCenter; text: root.readyWords(prow.modelData); role: "ui"; color: !prow.modelData.on_demand || prow.modelData.running === true ? theme.text : theme.textFaint }
                                     Switch {
                                         objectName: "provider-switch-" + prow.modelData.name
-                                        accessibleName: "Search " + prow.modelData.name
+                                        accessibleName: words.t("get-show-search-source", { name: prow.modelData.name })
                                         anchors.verticalCenter: parent.verticalCenter
                                         checked: prow.on
                                         onToggled: function(on) { root.sourceToggled(prow.modelData.name, on) }
@@ -795,17 +795,17 @@ Item {
                         width: parent.width
                         height: theme.space(14)
                         Label { id: gridTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); text: root.active; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
-                        Button { id: listButton; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); text: "Every release as a list"; icon: "list"; flat: true; small: true; onClicked: root.openList(root.active) }
+                        Button { id: listButton; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); msg: "get-show-release-list"; icon: "list"; flat: true; small: true; onClicked: root.openList(root.active) }
                     }
                     // The library's own row first, so the gaps line up
                     GridRow {
-                        title: "Your library"
+                        title: words.t("get-show-your-library")
                         line: {
                             var have = root.library.filter(function(c) { return c === "d" || c === "l" || c === "w" }).length
                             var parts = []
-                            if (have > 0) parts.push(have + " of " + root.total + " on disk")
-                            if (root.downloadingCount > 0) parts.push(root.downloadingCount + " downloading")
-                            return parts.length ? parts.join(", ") : "Nothing yet"
+                            if (have > 0) parts.push(words.t("get-show-library-on-disk", { have: have, total: root.total }))
+                            if (root.downloadingCount > 0) parts.push(words.t("get-show-library-downloading", { count: root.downloadingCount }))
+                            return parts.length ? parts.join(", ") : words.t("get-show-library-nothing")
                         }
                         codes: root.library
                         fills: root.libraryFills
@@ -815,10 +815,17 @@ Item {
                         model: root.rows.filter(function(r) { return r.count > 0 })
                         GridRow {
                             required property var modelData
-                            title: modelData.batch ? modelData.group + ", batch" : modelData.group
-                            line: (modelData.resolution ? modelData.resolution + ", " : "")
-                                + (modelData.batch ? (modelData.state === "counting" ? "counting its episodes" : modelData.state === "unknown" ? "episodes not listed, the whole show by its title" : Fmt.plural(modelData.count, "episode", "episodes")) + ", one torrent" : Fmt.plural(modelData.count, "episode", "episodes"))
-                                + (modelData.size > 0 ? ", " + Fmt.bytes(modelData.size) : "")
+                            title: modelData.batch ? words.t("get-show-row-batch", { group: modelData.group }) : modelData.group
+                            line: {
+                                var d = modelData, parts = []
+                                if (d.resolution) parts.push(d.resolution)
+                                parts.push(!d.batch ? words.t("count-episodes", { count: d.count })
+                                    : d.state === "counting" ? words.t("get-show-batch-counting")
+                                    : d.state === "unknown" ? words.t("get-show-batch-unlisted")
+                                    : words.t("get-show-batch-episodes", { count: d.count }))
+                                if (d.size > 0) parts.push(Fmt.bytes(d.size))
+                                return parts.join(", ")
+                            }
                             codes: root.codesOf(modelData)
                             chosen: root.chosen === modelData.key
                             clickable: true
@@ -854,7 +861,7 @@ Item {
                 Label {
                     visible: !!root.current && root.current.state !== "done" && root.current.state !== "idle"
                     width: parent.width
-                    text: root.current ? (root.current.state === "error" ? root.current.error : (root.current.label || "Searching " + root.active) + ", " + Math.floor(root.current.elapsed || 0) + " s") : ""
+                    text: root.current ? (root.current.state === "error" ? root.current.error : words.t("get-show-searching-elapsed", { label: root.current.label || words.t("get-show-searching-source", { name: root.active }), seconds: Math.floor(root.current.elapsed || 0) })) : ""
                     role: "ui"
                     font.pointSize: theme.typeLarge
                     color: root.current && root.current.state === "error" ? theme.red : theme.textDim
@@ -879,15 +886,18 @@ Item {
                     spacing: theme.space(4)
                     Label {
                         width: parent.width
-                        text: root.planList.length ? "Get " + Fmt.plural(root.planList.length, "episode", "episodes") : root.pickList.length ? "Nothing new picked" : root.current && root.current.state === "done" ? "Nothing picked" : "Pick a provider"
+                        text: root.planList.length ? words.t("get-show-go", { count: root.planList.length }) : root.pickList.length ? words.t("get-show-nothing-new-picked") : root.current && root.current.state === "done" ? words.t("get-show-nothing-picked") : words.t("get-show-pick-provider")
                         role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 })
                         wrapMode: Text.Wrap
                     }
                     Label {
                         width: parent.width
                         text: {
-                            if (root.planList.length) return root.episodesPhrase(root.planList) + " from " + root.pickGroups.join(" and ") + " on " + root.active + "."
-                            if (root.pickList.length) return "The library has " + root.epsWords(root.pickList) + ". Turn on Replace current episodes below to swap " + (root.pickList.length === 1 ? "it" : "them") + "."
+                            if (root.planList.length) return words.t("get-show-plan-line", {
+                                episodes: root.episodesPhrase(root.planList),
+                                groups: root.pickGroups.reduce(function(a, b) { return words.t("get-show-and", { first: a, second: b }) }),
+                                source: root.active })
+                            if (root.pickList.length) return words.t("get-show-library-has", { count: root.pickList.length, episodes: root.epsWords(root.pickList) })
                             return ""
                         }
                         visible: text !== ""
@@ -898,9 +908,9 @@ Item {
                         width: parent.width
                         spacing: theme.space(6)
                         Column { Label { text: Fmt.bytes(root.pickBytes); role: "figure"; font.pointSize: theme.typeLarge }
-                            Label { text: "together"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
+                            Label { msg: "get-show-together"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
                         Column { Label { text: String(root.pickItems.length); role: "figure"; font.pointSize: theme.typeLarge }
-                            Label { text: root.pickItems.length === 1 ? "torrent" : "torrents"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
+                            Label { text: words.t("get-show-torrents-unit", { count: root.pickItems.length }); role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
                     }
                     Rectangle { width: parent.width; height: 1; color: theme.line }
                     // The picks include episodes the library has: say what replacing them does
@@ -910,7 +920,7 @@ Item {
                         height: visible ? Math.max(replaceSwitch.height, replaceText.implicitHeight) : 0
                         Switch {
                             id: replaceSwitch
-                            accessibleName: "Replace current episodes"
+                            accessibleName: words.t("get-show-replace")
                             objectName: "get-replace"
                             checked: root.replaceOn
                             onToggled: function(on) { root.replaceOn = on }
@@ -921,37 +931,36 @@ Item {
                             anchors.leftMargin: theme.space(4)
                             anchors.right: parent.right
                             spacing: theme.space(1)
-                            Label { text: "Replace current episodes"; role: "title"; font.pointSize: theme.typeNormal }
+                            Label { msg: "get-show-replace"; role: "title"; font.pointSize: theme.typeNormal }
                             Label { objectName: "get-replace-words"; width: parent.width; text: root.replaceWords; role: "ui"; font.pointSize: theme.typeSmall; color: root.replaceOn ? theme.text : theme.textDim; wrapMode: Text.Wrap }
                         }
                     }
                     OptionRow {
                         objectName: "get-sequential"
-                        title: "Download in order"
+                        title: words.t("get-show-sequential")
                         checked: root.sequential
                         onToggled: function(on) { root.sequential = on }
-                        tip: root.sequential ? "On: each new torrent fetches its pieces from the start, so the first episodes finish first and you can watch while the rest comes. A little slower overall."
-                            : "Off: the client fetches pieces in whatever order the swarm offers them."
+                        tip: root.sequential ? words.t("get-show-sequential-on") : words.t("get-show-sequential-off")
                     }
                     OptionRow {
                         objectName: "get-rolling"
                         visible: !root.replacing
-                        title: "Keep the next few ready"
+                        title: words.t("get-show-rolling")
                         checked: root.rolling
                         onToggled: function(on) { root.rollChoice = on }
-                        tip: root.rolling ? "On: " + root.rollDefaults.ahead + " episodes download now, and each one you finish starts the next" + (root.rollDefaults.delete_watched !== false ? ". Watched episodes leave the disk." : ".")
-                            : "Off: every picked episode downloads at once."
+                        tip: root.rolling ? words.t(root.rollDefaults.delete_watched !== false ? "get-show-rolling-on-delete" : "get-show-rolling-on", { count: root.rollDefaults.ahead })
+                            : words.t("get-show-rolling-off")
                     }
                     OptionRow {
                         objectName: "get-follow"
-                        title: "Subscribe for new episodes"
+                        title: words.t("get-show-subscribe")
                         checked: root.follow
                         onToggled: function(on) { root.follow = on }
-                        tip: !root.follow ? "Off: new episodes show up here as gaps, and nothing downloads by itself."
-                            : !root.activeFollowable ? root.active + " has no feed to follow, so new episodes cannot download by themselves from it."
-                            : !root.chosenRow ? "Pick a group first: a subscription follows one group and quality."
-                            : !root.followRow ? root.chosenRow.group + " has only the batch here, so there is no feed of single episodes to subscribe to."
-                            : "On: a feed for " + root.followRow.group + (root.followRow.resolution ? " " + root.followRow.resolution : "") + " on " + root.active + ". Each new episode downloads as it appears."
+                        tip: !root.follow ? words.t("get-show-follow-off")
+                            : !root.activeFollowable ? words.t("get-show-follow-no-feed", { source: root.active })
+                            : !root.chosenRow ? words.t("get-show-follow-pick-group")
+                            : !root.followRow ? words.t("get-show-follow-batch-only", { group: root.chosenRow.group })
+                            : words.t("get-show-follow-on", { feed: [root.followRow.group, root.followRow.resolution].filter(Boolean).join(" "), source: root.active })
                     }
                     // Cancelling a download is asked for here, once, before it goes
                     Column {
@@ -961,11 +970,11 @@ Item {
                         Label {
                             objectName: "get-confirm-words"
                             width: parent.width
-                            text: root.episodesPhrase(root.hadOnTheWay) + (root.hadOnTheWay.length === 1 ? " is" : " are") + " downloading now. Replacing " + (root.hadOnTheWay.length === 1 ? "it" : "them") + " cancels that download and moves what it wrote to the trash."
+                            text: words.t("get-show-confirm", { count: root.hadOnTheWay.length, episodes: root.episodesPhrase(root.hadOnTheWay) })
                             role: "ui"; wrapMode: Text.Wrap
                         }
-                        Button { objectName: "get-confirm"; width: parent.width; text: "Cancel it and replace"; icon: "trash-2"; primary: true; onClicked: root.go() }
-                        Button { objectName: "get-confirm-back"; width: parent.width; text: "Back"; flat: true; onClicked: root.confirming = false }
+                        Button { objectName: "get-confirm"; width: parent.width; msg: "get-show-confirm-go"; icon: "trash-2"; primary: true; onClicked: root.go() }
+                        Button { objectName: "get-confirm-back"; width: parent.width; msg: "action-back"; flat: true; onClicked: root.confirming = false }
                     }
                     Button {
                         objectName: "get-go"
@@ -1036,17 +1045,17 @@ Item {
     // One word for what the client says a torrent is doing
     function stateWords(t) {
         var st = String(t.state || "")
-        if (st === "error") return "Error"
-        if (st === "missingFiles") return "Files missing"
-        if (stoppedState(t)) return "Stopped"
-        if (st === "stalledDL") return "Waiting for peers"
-        if (st === "metaDL" || st === "forcedMetaDL") return "Fetching metadata"
-        if (st === "queuedDL") return "Queued"
-        if (st === "checkingDL" || st === "checkingResumeData" || st === "checkingUP") return "Checking files"
-        if (st === "allocating") return "Allocating"
-        if (st === "moving") return "Moving files"
-        if (st === "downloading" || st === "forcedDL") return "Downloading"
-        return st === "" ? "Waiting" : st
+        if (st === "error") return words.t("get-show-state-error")
+        if (st === "missingFiles") return words.t("get-show-state-files-missing")
+        if (stoppedState(t)) return words.t("get-show-state-stopped")
+        if (st === "stalledDL") return words.t("get-show-state-waiting-peers")
+        if (st === "metaDL" || st === "forcedMetaDL") return words.t("get-show-state-metadata")
+        if (st === "queuedDL") return words.t("get-show-state-queued")
+        if (st === "checkingDL" || st === "checkingResumeData" || st === "checkingUP") return words.t("get-show-state-checking")
+        if (st === "allocating") return words.t("get-show-state-allocating")
+        if (st === "moving") return words.t("get-show-state-moving")
+        if (st === "downloading" || st === "forcedDL") return words.t("get-show-downloading")
+        return st === "" ? words.t("get-show-state-waiting") : st
     }
     // One torrent of this show: its name, where it comes from and goes, how far along, the
     // episodes as cubes, and the controls
@@ -1071,15 +1080,15 @@ Item {
         // The episodes in words: "Episodes 1 to 12", or the one a single file carries
         readonly property string episodeWords: {
             if (live.length > 1) return root.episodesPhrase(live)
-            if (live.length === 1) return "Episode " + live[0].n
-            if (t.episode !== null && t.episode !== undefined) return "Episode " + t.episode
-            return t.batch ? "A batch" : ""
+            if (live.length === 1) return words.t("episode-number", { number: live[0].n })
+            if (t.episode !== null && t.episode !== undefined) return words.t("episode-number", { number: t.episode })
+            return t.batch ? words.t("get-show-a-batch") : ""
         }
         readonly property string release: {
             var bits = []
             if (t.group) bits.push(t.group)
             if (t.resolution) bits.push(t.resolution)
-            return bits.length ? bits.join(", ") : "Group not in the name"
+            return bits.length ? bits.join(", ") : words.t("get-show-no-group")
         }
         // The endpoint AniBeam picked it on, when it did; else the one whose name the release
         // group carries (a group that runs its own source), said to be a guess
@@ -1092,9 +1101,9 @@ Item {
         readonly property string source: {
             var bits = []
             if (t.provider) bits.push(t.provider)
-            else if (guess !== "") bits.push("likely " + guess)
-            if (t.tracker) bits.push("tracker " + t.tracker)
-            return bits.length ? bits.join(", ") : "Not known yet"
+            else if (guess !== "") bits.push(words.t("get-show-likely", { source: guess }))
+            if (t.tracker) bits.push(words.t("get-show-tracker", { tracker: t.tracker }))
+            return bits.length ? bits.join(", ") : words.t("get-show-not-known")
         }
         width: parent ? parent.width : 0
         implicitHeight: cardBody.implicitHeight + padding * 2
@@ -1138,9 +1147,9 @@ Item {
                             wrapMode: Text.Wrap
                             text: {
                                 var t = card.t, bits = []
-                                bits.push(Fmt.bytes(Math.round((t.size || 0) * (t.progress || 0))) + " of " + Fmt.bytes(t.size || 0))
-                                if ((t.dlspeed || 0) > 0) bits.push(Fmt.bytes(t.dlspeed) + "/s down")
-                                if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(Fmt.countdown(t.eta) + " left")
+                                bits.push(words.t("get-show-bytes-of", { done: Fmt.bytes(Math.round((t.size || 0) * (t.progress || 0))), size: Fmt.bytes(t.size || 0) }))
+                                if ((t.dlspeed || 0) > 0) bits.push(words.t("get-show-speed-down", { speed: Fmt.bytes(t.dlspeed) }))
+                                if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(words.t("get-show-time-left", { wait: Fmt.countdown(t.eta) }))
                                 return bits.join(", ")
                             }
                             role: "figure"; font.pointSize: theme.typeLarge; color: theme.textDim
@@ -1161,30 +1170,30 @@ Item {
                             readonly property string waiting: root.busyOf(card.t.hash)
                             busy: waiting === "Stop" || waiting === "Start"
                             primary: card.stopped && !busy
-                            text: waiting === "Stop" ? "Stopping" : waiting === "Start" ? "Starting" : card.stopped ? "Start" : "Stop"
+                            text: waiting === "Stop" ? words.t("get-show-stopping") : waiting === "Start" ? words.t("get-show-starting") : card.stopped ? words.t("action-start") : words.t("get-show-stop")
                             icon: card.stopped ? "play" : "pause"
                             onClicked: root.control(card.t.hash, card.stopped ? "Start" : "Stop")
-                            Tooltip { text: card.stopped ? "Start downloading again" : "Stop downloading; what it has stays" }
+                            Tooltip { text: card.stopped ? words.t("get-show-start-tip") : words.t("get-show-stop-tip") }
                         }
                         Button {
                             id: cancelButton
                             objectName: "get-torrent-cancel"
                             danger: true
                             busy: root.busyOf(card.t.hash) === "Cancel"
-                            text: busy ? "Cancelling" : "Cancel"
+                            text: busy ? words.t("get-show-cancelling") : words.t("action-cancel")
                             icon: "x"
                             onClicked: root.cancelTorrent(cancelButton, card.t)
-                            Tooltip { text: "Cancel this download and move what it wrote to the trash" }
+                            Tooltip { msg: "get-show-cancel-tip" }
                         }
                     }
                     // The client's own option, per torrent
                     Row {
                         anchors.right: parent.right
                         spacing: theme.space(3)
-                        Label { anchors.verticalCenter: parent.verticalCenter; text: "Download in episode order"; role: "title"; font.pointSize: theme.typeNormal }
+                        Label { anchors.verticalCenter: parent.verticalCenter; msg: "get-show-episode-order"; role: "title"; font.pointSize: theme.typeNormal }
                         Switch {
                             id: seqSwitch
-                            accessibleName: "Download in episode order"
+                            accessibleName: words.t("get-show-episode-order")
                             objectName: "get-torrent-sequential"
                             anchors.verticalCenter: parent.verticalCenter
                             checked: card.seq
@@ -1193,7 +1202,7 @@ Item {
                             // take, the switch goes back to what the client says
                             Binding { target: seqSwitch; property: "checked"; value: card.seq }
                             Timer { id: settle; interval: 4000; onTriggered: seqSwitch.checked = card.seq }
-                            Tooltip { text: card.seq ? "On: pieces come from the start of each file, so the first episodes finish first." : "Off: the client fetches pieces in whatever order the swarm offers them." }
+                            Tooltip { text: card.seq ? words.t("get-show-episode-order-on") : words.t("get-show-sequential-off") }
                         }
                     }
                 }
@@ -1215,7 +1224,7 @@ Item {
                     return best
                 }
                 badgeText: badgeIndex >= 0 ? Math.floor(card.eps[badgeIndex].p * 100) + "%" : ""
-                tipFor: function(i, code) { var e = card.eps[i]; return "Episode " + e.n + ": " + (e.skip ? "skipped" : e.p >= 1 ? "done" : Math.floor(e.p * 100) + "%") }
+                tipFor: function(i, code) { var e = card.eps[i]; return e.skip ? words.t("get-show-cube-skipped", { number: e.n }) : e.p >= 1 ? words.t("get-show-cube-done", { number: e.n }) : words.t("get-show-cube-percent", { number: e.n, percent: Math.floor(e.p * 100) }) }
             }
             EpisodeCubes {
                 visible: card.eps.length <= 1
@@ -1231,10 +1240,10 @@ Item {
             Column {
                 width: parent.width
                 spacing: theme.space(1.5)
-                Fact { objectName: "get-torrent-name"; key: "Torrent"; value: card.t.name || "" }
-                Fact { key: "Release"; value: card.release }
-                Fact { key: "From"; value: card.source }
-                Fact { key: "Saving to"; value: card.t.save_path || card.t.content_path || ""; folder: true }
+                Fact { objectName: "get-torrent-name"; key: words.t("get-show-fact-torrent"); value: card.t.name || "" }
+                Fact { key: words.t("get-show-fact-release"); value: card.release }
+                Fact { key: words.t("get-show-fact-from"); value: card.source }
+                Fact { key: words.t("get-show-fact-saving-to"); value: card.t.save_path || card.t.content_path || ""; folder: true }
             }
         }
     }
@@ -1250,7 +1259,7 @@ Item {
         // A folder opens from its line
         property bool folder: false
         Button { id: openBtn; visible: parent.folder && parent.value !== ""; anchors.right: parent.right; anchors.verticalCenter: valueLabel.verticalCenter
-            small: true; flat: true; icon: "folder-open"; text: "Open"; onClicked: frame.openLink(Fmt.fileUrl(parent.value)) }
+            small: true; flat: true; icon: "folder-open"; msg: "action-open"; onClicked: frame.openLink(Fmt.fileUrl(parent.value)) }
     }
 
     // One row of the grid: who, one line, and the cubes; a click on the name picks the row
@@ -1314,17 +1323,17 @@ Item {
             clickable: gr.clickable
             spanFirst: gr.rowData && gr.rowData.batch ? gr.rowData.first : 0
             spanLast: gr.rowData && gr.rowData.batch ? gr.rowData.last : 0
-            spanLabel: !gr.rowData || !gr.rowData.batch ? "" : gr.rowData.state === "counting" ? "Counting" : gr.rowData.state === "unknown" ? gr.rowData.label + "?" : "Episodes " + gr.rowData.label
+            spanLabel: !gr.rowData || !gr.rowData.batch ? "" : gr.rowData.state === "counting" ? words.t("get-show-span-counting") : gr.rowData.state === "unknown" ? words.t("get-show-span-unknown", { runs: gr.rowData.label }) : words.t("get-show-span-episodes", { runs: gr.rowData.label })
             spanChosen: gr.chosen
             tipFor: gr.rowData ? function(i, code) {
                 var idx = gr.rowData.eps[i + 1]
-                if (idx === undefined) return "Episode " + (i + 1) + ": no release from " + gr.rowData.group
+                if (idx === undefined) return words.t("get-show-cube-no-release", { number: i + 1, group: gr.rowData.group })
                 var it = root.current.items[idx], f = root.current.facts[idx]
                 var bits = [it.title]
-                if (it.seeders !== null && it.seeders !== undefined) bits.push(it.seeders + " seeders")
+                if (it.seeders !== null && it.seeders !== undefined) bits.push(words.t("get-show-seeders", { count: it.seeders }))
                 if (f && f.size_bytes) bits.push(Fmt.bytes(f.size_bytes))
-                if (code === "o") bits.push("already on disk, click to replace it")
-                if (code === "t") bits.push("downloading now, click to replace it")
+                if (code === "o") bits.push(words.t("get-show-cube-on-disk"))
+                if (code === "t") bits.push(words.t("get-show-cube-downloading"))
                 return bits.join("\n")
             } : null
             onCubeClicked: function(i, mods) { gr.cubePicked(i, mods) }

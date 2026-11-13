@@ -15,23 +15,23 @@ FocusScope {
     id: page
     objectName: "settings-page"
     property var props: ({})
-    property string title: "Settings"
+    property string title: words.t("settings-title")
     property real scrollY: 0
 
     // ---- The sections, in index order; `run` starts a new run of the index
     readonly property var sections: [
-        { id: "library", name: "Library", icon: "folder", run: 0 },
-        { id: "accounts", name: "Accounts", icon: "user-check", run: 0 },
-        { id: "appearance", name: "Appearance", icon: "palette", run: 1 },
-        { id: "playback", name: "Playback", icon: "play", run: 1 },
-        { id: "subtitles", name: "Subtitles", icon: "captions", run: 1 },
-        { id: "keys", name: "Keyboard", icon: "keyboard", run: 1 },
-        { id: "downloads", name: "Downloads", icon: "download", run: 2 },
-        { id: "phone", name: "Phone app", icon: "radio", run: 2 },
-        { id: "storage", name: "Storage and backup", icon: "hard-drive", run: 3 },
-        { id: "help", name: "Help", icon: "circle-question-mark", run: 3 },
-        { id: "about", name: "About", icon: "info", run: 3 }
-    ].concat(frame.devOn ? [{ id: "developer", name: "Developer", icon: "bug", run: 3 }] : [])
+        { id: "library", name: words.t("settings-section-library"), icon: "folder", run: 0 },
+        { id: "accounts", name: words.t("settings-section-accounts"), icon: "user-check", run: 0 },
+        { id: "appearance", name: words.t("settings-section-appearance"), icon: "palette", run: 1 },
+        { id: "playback", name: words.t("settings-section-playback"), icon: "play", run: 1 },
+        { id: "subtitles", name: words.t("settings-section-subtitles"), icon: "captions", run: 1 },
+        { id: "keys", name: words.t("settings-section-keys"), icon: "keyboard", run: 1 },
+        { id: "downloads", name: words.t("settings-section-downloads"), icon: "download", run: 2 },
+        { id: "phone", name: words.t("settings-section-phone"), icon: "radio", run: 2 },
+        { id: "storage", name: words.t("settings-section-storage"), icon: "hard-drive", run: 3 },
+        { id: "help", name: words.t("settings-section-help"), icon: "circle-question-mark", run: 3 },
+        { id: "about", name: words.t("settings-section-about"), icon: "info", run: 3 }
+    ].concat(frame.devOn ? [{ id: "developer", name: words.t("settings-section-developer"), icon: "bug", run: 3 }] : [])
     // Old tab names still open the section that took their place
     readonly property var aliases: ({ data: "storage", trackers: "accounts" })
     function sectionIndex(id) { for (var i = 0; i < sections.length; i++) if (sections[i].id === id) return i; return -1 }
@@ -60,7 +60,7 @@ FocusScope {
         want = aliases[want] || want
         // The focus first: when `tab` names the section already loaded, nothing reloads and
         // the reveal has to be started here
-        if (props.focus) pendingFocus = props.focus === "not-interested" ? "Hidden from Airing now" : props.focus
+        if (props.focus) pendingFocus = props.focus === "not-interested" ? words.t("settings-library-hidden-from-airing") : props.focus
         if (sectionIndex(want) >= 0) current = want
         if (pendingFocus !== "") focusLater.restart()
         forceActiveFocus()
@@ -95,45 +95,43 @@ FocusScope {
         if (id === "library") {
             var n = 0, gone = 0
             srcs.forEach(function(s) { n += s.series_count || 0; if (s.available === false) gone++ })
-            if (!srcs.length) return "No folders yet"
-            return (gone ? Fmt.plural(gone, "folder", "folders") + " not found, " : "")
-                   + Fmt.plural(n, "series", "series") + " in " + Fmt.plural(srcs.length, "folder", "folders")
+            if (!srcs.length) return words.t("settings-status-library-empty")
+            return gone ? words.t("settings-status-library-missing", { gone: gone, count: n, folders: srcs.length })
+                        : words.t("settings-status-library", { count: n, folders: srcs.length })
         }
         if (id === "accounts") {
-            var on = []
-            if (tracked("anilist")) on.push("AniList")
-            if (tracked("mal")) on.push("MyAnimeList")
-            return on.length ? "Syncing to " + on.join(" and ") : "No list connected"
+            var al = tracked("anilist"), mal = tracked("mal")
+            return words.t(al && mal ? "settings-status-accounts-both" : al ? "settings-status-accounts-anilist" : mal ? "settings-status-accounts-mal" : "settings-status-accounts-none")
         }
         if (id === "appearance") {
-            var mode = Theme.mode === "system" ? "Follows the system" : Theme.mode === "light" ? "Light" : "Dark"
-            return mode + ", " + (Theme.source === "theme" ? "theme colours" : "desktop colours")
+            return words.t("settings-status-appearance", { mode: Theme.mode === "system" || Theme.mode === "light" ? Theme.mode : "dark",
+                                                           source: Theme.source === "theme" ? "theme" : "desktop" })
         }
         if (id === "playback") {
             var sk = Door.settings.auto_skip || {}
             var langs = (Door.settings.subtitle_defaults || {}).audio_languages || []
-            return (sk.intro && sk.outro ? "Skips intros and outros" : sk.intro ? "Skips intros" : sk.outro ? "Skips outros" : "Plays everything through")
-                   + (langs.length ? ", audio " + langs.join(", ") : "")
+            var skip = sk.intro && sk.outro ? "both" : sk.intro ? "intro" : sk.outro ? "outro" : "none"
+            return langs.length ? words.t("settings-status-playback-audio", { skip: skip, languages: langs.join(", ") })
+                                : words.t("settings-status-playback", { skip: skip })
         }
         if (id === "subtitles") {
             var sd = Door.settings.subtitle_defaults || {}
-            var mode = ({ AsScripted: "styled files as made", ScaleOnly: "styled files keep their look", Force: "your style on every file" })[sd.ass_override || "ScaleOnly"]
-            return "Size " + Math.round((sd.scale || 1) * 100) + " percent, " + mode
+            return words.t("settings-status-subtitles", { percent: Math.round((sd.scale || 1) * 100), override: sd.ass_override || "ScaleOnly" })
         }
-        if (id === "keys") return "Every key AniBeam answers to"
+        if (id === "keys") return words.t("settings-status-keys")
         if (id === "downloads") {
-            if (!downloads) return "Not read yet"
+            if (!downloads) return words.t("settings-status-downloads-unread")
             var t = downloads.torrent || {}
-            if (t.connected) return "qBittorrent answered"
+            if (t.connected) return words.t("settings-status-downloads-answered")
             var a = downloads.anirss || {}
-            if (a.state === "Missing") return "Search helper not installed"
-            return "Not connected yet"
+            if (a.state === "Missing") return words.t("settings-status-downloads-missing")
+            return words.t("settings-status-downloads-unconnected")
         }
-        if (id === "phone") return Door.preferences.share_over_tailscale ? "Shared on your tailnet" : "Not shared"
-        if (id === "storage") return storage ? Fmt.bytes(storage.image_bytes || 0) + " of images cached" : "Images, export and import"
-        if (id === "help") return "Answers to what people ask most"
-        if (id === "about") return frame.updatePanel.phase === "offer" && frame.updatePanel.shown ? "Version " + frame.updatePanel.version + " is out" : Shell.build
-        if (id === "developer") return frame.devRecorder.last ? frame.devRecorder.last.label + " built in " + Math.round(frame.devRecorder.last.built) + " ms" : "Timing every page"
+        if (id === "phone") return Door.preferences.share_over_tailscale ? words.t("settings-status-phone-shared") : words.t("settings-status-phone-off")
+        if (id === "storage") return storage ? words.t("settings-status-storage", { size: Fmt.bytes(storage.image_bytes || 0) }) : words.t("settings-status-storage-unread")
+        if (id === "help") return words.t("settings-status-help")
+        if (id === "about") return frame.updatePanel.phase === "offer" && frame.updatePanel.shown ? words.t("settings-status-about-update", { version: frame.updatePanel.version }) : Shell.build
+        if (id === "developer") return frame.devRecorder.last ? words.t("settings-status-developer-last", { page: frame.devRecorder.last.label, ms: Math.round(frame.devRecorder.last.built) }) : words.t("settings-status-developer")
         return ""
     }
     // An entry that wants attention: a folder gone, downloads not set up
@@ -146,79 +144,79 @@ FocusScope {
     // ---- The search: every row and group, by its name and the words a person might type
     // for it. `label` is the row's own label (or the group's title), so reveal finds it.
     readonly property var searchIndex: [
-        ["library", "Folders", "add folder scan rescan remove source path collection"],
-        ["library", "Matching", "metadata show info provider anilist tvmaze order match"],
-        ["library", "Show hidden shows", "hidden reveal"],
-        ["library", "Hidden from Airing now", "not interested airing show again"],
-        ["library", "Airing times in a calendar", "calendar ics ical airing schedule subscribe"],
-        ["accounts", "Your anime lists", "anilist myanimelist mal sign in connect login account disconnect tracker"],
-        ["accounts", "Main list", "progress cards primary tracker", "Your anime lists"],
-        ["accounts", "Sync now", "refresh progress lists tracker", "Your anime lists"],
-        ["accounts", "Move to On hold", "on hold paused inactive untouched days", "Your anime lists"],
-        ["appearance", "Mode", "dark light system theme night"],
-        ["appearance", "Colours from", "terminal desktop system theme source kitty"],
-        ["appearance", "Dark theme", "colour scheme base16", "Colours from"],
-        ["appearance", "Light theme", "colour scheme base16", "Colours from"],
-        ["appearance", "Accent", "colour highlight"],
-        ["appearance", "Text size", "font type words bigger smaller larger zoom scale read accessibility"],
-        ["appearance", "Density", "compact comfortable spacing size"],
-        ["appearance", "Poster size", "cards small medium large"],
-        ["appearance", "Out now on Airing", "airing out now cards list rows style banner posters"],
-        ["appearance", "Out now cards", "airing out now grid columns rows layout", "Out now on Airing"],
-        ["appearance", "Reduce motion", "animation accessibility"],
-        ["appearance", "App icon", "logo launcher dock taskbar window dark"],
-        ["playback", "Skip intros", "opening op auto skip aniskip chapters"],
-        ["playback", "Skip outros", "ending ed credits auto skip aniskip"],
-        ["playback", "Use my mpv settings", "mpv.conf config advanced"],
-        ["playback", "Show what you watch on Discord", "discord rich presence status profile"],
-        ["playback", "Name the next episode", "next button title autoplay end"],
-        ["playback", "Subtitle languages", "language track subs"],
-        ["playback", "Audio languages", "language track dub japanese"],
-        ["subtitles", "Start over", "reset default subtitle style"],
-        ["subtitles", "Size", "scale subtitle"],
-        ["subtitles", "Position", "height margin subtitle"],
-        ["subtitles", "Styled subtitles", "ass override force"],
-        ["subtitles", "Font", "typeface"],
-        ["subtitles", "Text colour", "color"],
-        ["subtitles", "Outline", "border stroke"],
-        ["subtitles", "Shadow", ""],
-        ["subtitles", "Background box", "box opacity"],
-        ["subtitles", "Bold", "weight"],
-        ["keys", "In the player", "keyboard shortcuts keys hotkeys"],
-        ["keys", "Getting around the player", "keyboard shortcuts fullscreen next previous episode back"],
-        ["keys", "Getting around", "keyboard shortcuts back forward right-click menu fullscreen"],
-        ["keys", "Anywhere", "keyboard shortcuts keys hotkeys settings quit"],
-        ["downloads", "Torrent client", "qbittorrent password username address webui seedbox"],
-        ["downloads", "Search helper", "anirss rss feeds token command server advanced"],
-        ["downloads", "Keep the next few ready", "rolling roll episodes ahead delete watched keep disk space"],
-        ["downloads", "Unsubscribe from finished shows", "prune feeds finished"],
-        ["downloads", "Keep the last search", "downloads query remember"],
-        ["downloads", "Search sources", "endpoints feeds config anirss"],
-        ["downloads", "Source lists", "repo repos endpoint signed endpoints jackett prowlarr"],
-        ["phone", "Share over Tailscale", "phone android tailnet remote host"],
-        ["phone", "Stream episodes", "stream play cast episodes phone files"],
-        ["phone", "Devices on your tailnet", "trust trusted switch off block device tailscale"],
-        ["storage", "Back up the library", "export backup file json"],
-        ["storage", "Restore from a backup", "import restore file json"],
-        ["storage", "Image cache", "posters clear images disk cache"],
-        ["storage", "Where AniBeam keeps its files", "database data config cache folder path"],
-        ["help", "How should my folders look?", "help folder layout naming episodes seasons movies files structure"],
-        ["help", "Why didn't my show get recognised?", "help match wrong show not found unmatched recognised"],
-        ["help", "How do I connect AniList?", "help anilist myanimelist mal sign in connect login tracker"],
-        ["help", "Why is Downloads empty?", "help downloads empty sources nothing torrent qbittorrent"],
-        ["help", "Where is my data?", "help data files backup database privacy"],
-        ["help", "Something else?", "help setup onboarding walkthrough report bug problem issue"],
-        ["about", "Version", "build what's new changelog"],
-        ["about", "Setup", "first run walkthrough onboarding run setup again"],
-        ["about", "Updates", "stable nightly channel check"],
-        ["about", "Developer options", "debug timing", "", "unforced"],
-        ["about", "Ratings", "imdb credit"]
+        ["library", words.t("settings-library-folders"), words.t("settings-find-folders.words")],
+        ["library", words.t("settings-library-matching"), words.t("settings-find-matching.words")],
+        ["library", words.t("settings-library-show-hidden"), words.t("settings-find-hidden-shows.words")],
+        ["library", words.t("settings-library-hidden-from-airing"), words.t("settings-find-hidden-airing.words")],
+        ["library", words.t("settings-library-calendar-feed"), words.t("settings-find-calendar.words")],
+        ["accounts", words.t("settings-accounts-lists"), words.t("settings-find-anime-lists.words")],
+        ["accounts", words.t("settings-accounts-main-list"), words.t("settings-find-main-list.words"), words.t("settings-accounts-lists")],
+        ["accounts", words.t("settings-accounts-sync-now"), words.t("settings-find-sync-now.words"), words.t("settings-accounts-lists")],
+        ["accounts", words.t("settings-accounts-move-on-hold"), words.t("settings-find-on-hold.words"), words.t("settings-accounts-lists")],
+        ["appearance", words.t("settings-appearance-mode"), words.t("settings-find-mode.words")],
+        ["appearance", words.t("settings-appearance-colours-from"), words.t("settings-find-colours-from.words")],
+        ["appearance", words.t("settings-appearance-dark-theme"), words.t("settings-find-dark-theme.words"), words.t("settings-appearance-colours-from")],
+        ["appearance", words.t("settings-appearance-light-theme"), words.t("settings-find-light-theme.words"), words.t("settings-appearance-colours-from")],
+        ["appearance", words.t("settings-appearance-accent"), words.t("settings-find-accent.words")],
+        ["appearance", words.t("settings-appearance-text-size"), words.t("settings-find-text-size.words")],
+        ["appearance", words.t("settings-appearance-density"), words.t("settings-find-density.words")],
+        ["appearance", words.t("settings-appearance-poster-size"), words.t("settings-find-poster-size.words")],
+        ["appearance", words.t("settings-appearance-out-now"), words.t("settings-find-out-now.words")],
+        ["appearance", words.t("settings-appearance-out-now-grid"), words.t("settings-find-out-now-cards.words"), words.t("settings-appearance-out-now")],
+        ["appearance", words.t("settings-appearance-reduce-motion"), words.t("settings-find-reduce-motion.words")],
+        ["appearance", words.t("settings-appearance-app-icon"), words.t("settings-find-app-icon.words")],
+        ["playback", words.t("settings-playback-skip-intros"), words.t("settings-find-skip-intros.words")],
+        ["playback", words.t("settings-playback-skip-outros"), words.t("settings-find-skip-outros.words")],
+        ["playback", words.t("settings-playback-my-mpv"), words.t("settings-find-mpv-settings.words")],
+        ["playback", words.t("settings-playback-discord"), words.t("settings-find-discord.words")],
+        ["playback", words.t("settings-playback-name-next"), words.t("settings-find-next-episode.words")],
+        ["playback", words.t("settings-playback-subtitle-languages"), words.t("settings-find-subtitle-languages.words")],
+        ["playback", words.t("settings-playback-audio-languages"), words.t("settings-find-audio-languages.words")],
+        ["subtitles", words.t("settings-subtitles-start-over"), words.t("settings-find-start-over.words")],
+        ["subtitles", words.t("settings-subtitles-size"), words.t("settings-find-size.words")],
+        ["subtitles", words.t("settings-subtitles-position"), words.t("settings-find-position.words")],
+        ["subtitles", words.t("settings-subtitles-styled"), words.t("settings-find-styled.words")],
+        ["subtitles", words.t("settings-subtitles-font"), words.t("settings-find-font.words")],
+        ["subtitles", words.t("settings-subtitles-text-colour"), words.t("settings-find-text-colour.words")],
+        ["subtitles", words.t("settings-subtitles-outline"), words.t("settings-find-outline.words")],
+        ["subtitles", words.t("settings-subtitles-shadow"), ""],
+        ["subtitles", words.t("settings-subtitles-box"), words.t("settings-find-background.words")],
+        ["subtitles", words.t("settings-subtitles-bold"), words.t("settings-find-bold.words")],
+        ["keys", words.t("settings-keys-player"), words.t("settings-find-keys-player.words")],
+        ["keys", words.t("settings-keys-player-around"), words.t("settings-find-keys-player-around.words")],
+        ["keys", words.t("settings-keys-around"), words.t("settings-find-keys-around.words")],
+        ["keys", words.t("settings-keys-anywhere"), words.t("settings-find-keys-anywhere.words")],
+        ["downloads", words.t("settings-downloads-torrent-title"), words.t("settings-find-torrent-client.words")],
+        ["downloads", words.t("settings-downloads-search-helper"), words.t("settings-find-search-helper.words")],
+        ["downloads", words.t("settings-downloads-roll-title"), words.t("settings-find-next-few.words")],
+        ["downloads", words.t("settings-downloads-prune"), words.t("settings-find-unsubscribe.words")],
+        ["downloads", words.t("settings-downloads-last-search"), words.t("settings-find-last-search.words")],
+        ["downloads", words.t("settings-downloads-sources-title"), words.t("settings-find-search-sources.words")],
+        ["downloads", words.t("endpoint-repos-panel-title"), words.t("settings-find-source-lists.words")],
+        ["phone", words.t("settings-phone-share"), words.t("settings-find-share-tailscale.words")],
+        ["phone", words.t("settings-phone-stream"), words.t("settings-find-stream.words")],
+        ["phone", words.t("settings-phone-devices"), words.t("settings-find-devices.words")],
+        ["storage", words.t("settings-data-back-up-library"), words.t("settings-find-back-up.words")],
+        ["storage", words.t("settings-data-restore-from"), words.t("settings-find-restore.words")],
+        ["storage", words.t("settings-data-image-cache"), words.t("settings-find-image-cache.words")],
+        ["storage", words.t("settings-data-files"), words.t("settings-find-files.words")],
+        ["help", words.t("settings-help-folders"), words.t("settings-find-help-folders.words")],
+        ["help", words.t("settings-help-match"), words.t("settings-find-help-recognised.words")],
+        ["help", words.t("settings-help-connect"), words.t("settings-find-help-anilist.words")],
+        ["help", words.t("settings-help-downloads"), words.t("settings-find-help-downloads.words")],
+        ["help", words.t("settings-help-data"), words.t("settings-find-help-data.words")],
+        ["help", words.t("settings-help-more"), words.t("settings-find-help-else.words")],
+        ["about", words.t("settings-about-version"), words.t("settings-find-version.words")],
+        ["about", words.t("settings-about-setup"), words.t("settings-find-setup.words")],
+        ["about", words.t("settings-about-updates"), words.t("settings-find-updates.words")],
+        ["about", words.t("settings-about-developer"), words.t("settings-find-developer-options.words"), "", "unforced"],
+        ["about", words.t("settings-about-ratings"), words.t("settings-find-ratings.words")]
     ]
     property string query: ""
     readonly property var results: {
         var q = query.trim().toLowerCase()
         if (q === "") return []
-        var words = q.split(/\s+/)
+        var terms = q.split(/\s+/)
         var out = []
         searchIndex.forEach(function(e) {
             if (sectionIndex(e[0]) < 0) return
@@ -226,7 +224,7 @@ FocusScope {
             if (e[4] === "unforced" && Dev.forced) return
             var hay = (e[1] + " " + e[2] + " " + sections[sectionIndex(e[0])].name).toLowerCase()
             var named = e[1].toLowerCase().indexOf(q) >= 0
-            if (words.every(function(w) { return hay.indexOf(w) >= 0 })) out.push({ section: e[0], label: e[1], named: named, fallback: e[3] || "" })
+            if (terms.every(function(w) { return hay.indexOf(w) >= 0 })) out.push({ section: e[0], label: e[1], named: named, fallback: e[3] || "" })
         })
         out.sort(function(a, b) { return (b.named ? 1 : 0) - (a.named ? 1 : 0) })
         return out
@@ -248,7 +246,7 @@ FocusScope {
         Label {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Settings"
+            msg: "settings-title"
             role: "display"
             font.pointSize: theme.typePage
         }
@@ -272,7 +270,7 @@ FocusScope {
                 id: search
                 objectName: "settings-search"
                 width: parent.width
-                placeholder: "Search settings"
+                placeholder: words.t("settings-search-placeholder")
                 hint: "/"
                 onTextChanged: page.query = text
                 onAccepted: if (page.results.length) page.openResult(page.results[0])
@@ -401,13 +399,13 @@ FocusScope {
                 width: Math.min(found.width - theme.space(6), theme.space(210))
                 spacing: theme.space(2)
                 Label {
-                    text: page.results.length ? Fmt.plural(page.results.length, "setting", "settings") + " match" + (page.results.length === 1 ? "es" : "") : "Nothing matches"
+                    text: page.results.length ? words.t("settings-results", { count: page.results.length }) : words.t("settings-results-none")
                     role: "display"
                     font.pointSize: theme.typeHeading
                 }
                 Label {
                     width: parent.width
-                    text: page.results.length ? "Return opens the first one." : "Try a plainer word: theme, subtitles, tracker, password, folder."
+                    text: page.results.length ? words.t("settings-results-hint") : words.t("settings-results-none-hint")
                     color: theme.textDim
                     role: "ui"
                     bottomPadding: theme.space(6)

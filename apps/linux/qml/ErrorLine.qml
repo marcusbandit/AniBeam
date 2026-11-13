@@ -24,7 +24,7 @@ Column {
         width: parent.width
         spacing: theme.space(2)
         Label {
-            id: words
+            id: message
             text: root.text
             role: "ui"
             font.pointSize: theme.typeSmall
@@ -44,20 +44,20 @@ Column {
         Button {
             objectName: "error-line-details"
             visible: root.hasDetail
-            text: root.detailOpen ? "Hide details" : "Details"
+            text: root.detailOpen ? words.t("error-line-hide-details") : words.t("error-line-details")
             small: true
             flat: true
             onClicked: {
                 root.detailOpen = !root.detailOpen
                 if (root.detailOpen) frame.copyQuiet(root.detail)
             }
-            Tooltip { text: root.detailOpen ? "" : "Show what went wrong, word for word, and copy it" }
+            Tooltip { text: root.detailOpen ? "" : words.t("error-line-details-tip") }
         }
     }
     Label {
         visible: root.detailOpen
         width: parent.width
-        text: root.detail + "\nCopied."
+        text: root.detail + "\n" + words.t("error-line-copied")
         role: "ui"
         font.pointSize: theme.typeSmall
         color: theme.textDim

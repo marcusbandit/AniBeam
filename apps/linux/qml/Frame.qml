@@ -23,7 +23,7 @@ FocusScope {
     readonly property alias tipShown: tip.visible
     readonly property Item pageItem: page.item
     readonly property bool fullWindow: page.item ? (page.item.fullWindow === true) : false
-    readonly property string windowTitle: (page.item && page.item.title ? page.item.title : nav.current.label) + " - AniBeam"
+    readonly property string windowTitle: words.t("frame-window-title", { page: page.item && page.item.title ? page.item.title : nav.current.label })
 
     Nav { id: nav }
     QtObject {
@@ -173,7 +173,7 @@ FocusScope {
         id: firstPaint
         target: frame.hostWindow
         enabled: false
-        function onFrameSwapped() { firstPaint.enabled = false; Dev.mark("first page painted") }
+        function onFrameSwapped() { firstPaint.enabled = false; Dev.mark("first page painted") } // i18n: none
     }
     Component.onCompleted: { frame.devApply(); frame.loadPage() }
     // A hovered item destroyed by the navigation never fires its own exit handler, so a
@@ -223,7 +223,7 @@ FocusScope {
             focus: true
             asynchronous: false
             onLoaded: {
-                if (!frame.firstPageMarked) { frame.firstPageMarked = true; Dev.mark("first page built: " + nav.current.page); firstPaint.enabled = true }
+                if (!frame.firstPageMarked) { frame.firstPageMarked = true; Dev.mark("first page built: " + nav.current.page); firstPaint.enabled = true } // i18n: none
                 if (nav.pendingScroll > 0 && item.scrollY !== undefined) Qt.callLater(function() { if (page.item) page.item.scrollY = nav.pendingScroll })
                 item.forceActiveFocus()
                 frame.startNotes()
@@ -256,15 +256,16 @@ FocusScope {
             readonly property var line: frame.devOn ? Door.latestLine : Door.latestPlain
             // A kind or stage as words: "ConnectTracker" reads "Connect tracker", "metadata"
             // reads "Metadata"
-            function words(k) {
+            function wordsOf(k) {
                 var w = String(k).replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase()
                 return w.charAt(0).toUpperCase() + w.slice(1)
             }
             // Nothing has happened yet this run: it says so, rather than a bare stage chip
-            stage: frame.devOn ? (job ? words(job.kind) : (line && line.stage ? words(line.stage) : "Ready")) : ""
-            message: job ? (frame.devOn ? (job.label || words(job.kind)) : (job.doing || words(job.kind))) + (job.total > 0 ? ", " + job.done + " of " + job.total : "")
-                         : (line ? (frame.devOn ? line.message : line.plain) || "Nothing is running" : "Nothing is running")
-            time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), "hh:mm")
+            stage: frame.devOn ? (job ? wordsOf(job.kind) : (line && line.stage ? wordsOf(line.stage) : words.t("frame-strip-ready"))) : ""
+            readonly property string doing: job ? (frame.devOn ? (job.label || wordsOf(job.kind)) : (job.doing || wordsOf(job.kind))) : ""
+            message: job ? (job.total > 0 ? words.t("frame-strip-progress", { doing: doing, done: job.done, total: job.total }) : doing)
+                         : (line ? (frame.devOn ? line.message : line.plain) || words.t("frame-strip-idle") : words.t("frame-strip-idle"))
+            time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), words.t("frame-strip-time-format"))
             running: job !== null
             fraction: job && job.total > 0 ? job.done / job.total : 0
             unseenErrors: Door.unseenErrors
@@ -335,7 +336,7 @@ FocusScope {
     }
     function blockedTip(t) {
         var other = connectBlockedBy(t)
-        return other === "" ? "" : "Finish the " + trackerName(other) + " sign-in first"
+        return other === "" ? "" : words.t("frame-finish-sign-in", { tracker: trackerName(other) })
     }
     function withKey(map, key, value) {
         var out = {}
@@ -349,7 +350,7 @@ FocusScope {
     function errorText(e) {
         var m = String(e && e.message ? e.message : "")
         m = m.replace(/^(AniList|MyAnimeList|TMDB|Anilist|Mal|Jikan|Tmdb)( did not respond)?: /, "").replace(/^(io|internal|[Ii]nvalid [a-z_ ]+): /, "")
-        return m === "" ? "That did not work." : m.charAt(0).toUpperCase() + m.slice(1)
+        return m === "" ? words.t("frame-did-not-work") : m.charAt(0).toUpperCase() + m.slice(1)
     }
     // A call error on one line of a page: the bridge's plain words and what to do next, else
     // the core's message trimmed for a person
@@ -363,10 +364,10 @@ FocusScope {
     function fail(e, retry) {
         if (!e) return
         var fix = String(e.fix || ""), label = "", act = null
-        if (fix === "retry" && retry) { label = "Try again"; act = retry }
+        if (fix === "retry" && retry) { label = words.t("action-try-again"); act = retry }
         else if (fix.indexOf("settings:") === 0) {
             var tab = fix.slice(9)
-            label = "Open settings"; act = function() { frame.go("settings", { tab: tab }) }
+            label = words.t("action-open-settings"); act = function() { frame.go("settings", { tab: tab }) }
         }
         var said = e.plain ? e.plain + (e.next ? " " + e.next : "") : errorText(e), raw = String(e.message || "")
         frame.toast(said, 8, label, act, raw !== "" && raw !== said ? raw : "")
@@ -401,7 +402,7 @@ FocusScope {
     function openLink(url) {
         var u = String(url || "")
         if (u === "") return
-        if (!Shell.openUrl(u)) frame.toast("AniBeam could not open that. Copy it and open it yourself.", 8, "Copy", function() { frame.copyText(u, "Copied") }, u)
+        if (!Shell.openUrl(u)) frame.toast(words.t("frame-could-not-open"), 8, words.t("frame-copy"), function() { frame.copyText(u, words.t("frame-copied")) }, u)
     }
     function reopenSignIn(t) { if (signInUrls[t]) frame.openLink(signInUrls[t]) }
     // One click: with credentials the browser opens at once and the sheet only says where
@@ -418,7 +419,8 @@ FocusScope {
         function onListStatusSet(series, status, outcomes) {
             var names = { Anilist: "AniList", Mal: "MyAnimeList" }
             var failed = outcomes.filter(function(o) { return !o.ok }).map(function(o) {
-                return (names[o.tracker] || o.tracker) + " did not take it" + (o.message ? ": " + o.message : "")
+                var tracker = names[o.tracker] || o.tracker
+                return o.message ? words.t("frame-status-refused-why", { tracker: tracker, why: o.message }) : words.t("frame-status-refused", { tracker: tracker })
             })
             if (failed.length) frame.toast(failed.join("; "))
         }
@@ -432,17 +434,18 @@ FocusScope {
             moveListsSheet.openFor(key)
         }
         function onListsMoved(t, moved, failed) {
-            if (failed > 0) frame.toast(frame.trackerName(t) + " did not take " + (failed === 1 ? "1 show" : failed + " shows") + "; see the activity log")
-            else if (moved > 0) frame.toast("Moved " + (moved === 1 ? "1 show" : moved + " shows") + " to " + frame.trackerName(t))
+            if (failed > 0) frame.toast(words.t("frame-lists-refused", { tracker: frame.trackerName(t), count: failed }))
+            else if (moved > 0) frame.toast(words.t("frame-lists-moved", { tracker: frame.trackerName(t), count: moved }))
         }
         // Notes a tracker refused say so the same way; saved ones say where they went
         function onNotesSet(series, outcomes) {
             var names = { Anilist: "AniList", Mal: "MyAnimeList" }
             var failed = outcomes.filter(function(o) { return !o.ok }).map(function(o) {
-                return (names[o.tracker] || o.tracker) + " did not take your notes" + (o.message ? ": " + o.message : "")
+                var tracker = names[o.tracker] || o.tracker
+                return o.message ? words.t("frame-notes-refused-why", { tracker: tracker, why: o.message }) : words.t("frame-notes-refused", { tracker: tracker })
             })
             if (failed.length) frame.toast(failed.join("; "))
-            else if (outcomes.length) frame.toast("Notes saved")
+            else if (outcomes.length) frame.toast(words.t("frame-notes-saved"))
         }
         // Only the url of the job this tracker is waiting on: one from a flow since replaced
         // would open a sign-in page whose listener is already gone.
@@ -465,7 +468,7 @@ FocusScope {
         // The toast, the receipt and the raise; the bookkeeping is onJobFinished's.
         function onTrackerConnected(t, username) {
             frame.connectedAs = frame.withKey(frame.connectedAs, t, username || frame.trackerName(t))
-            frame.toast("Connected to " + frame.trackerName(t) + " as " + (username || "?"))
+            frame.toast(words.t("frame-connected", { tracker: frame.trackerName(t), user: username || "?" }))
             // The user is in the browser tab that just closed; bring them back to the app.
             if (frame.hostWindow) Shell.raiseWindow(frame.hostWindow, "")
         }
@@ -496,7 +499,7 @@ FocusScope {
             frame.jobTrackers = frame.withKey(frame.jobTrackers, job)
             var asked = frame.expectedCancels[job] === true
             frame.expectedCancels = frame.withKey(frame.expectedCancels, job)
-            if (!asked && frame.latestJob[t] === job) frame.toast("The " + frame.trackerName(t) + " sign-in stopped before it finished.", 8, "Try again", function() { frame.connectTracker(t) })
+            if (!asked && frame.latestJob[t] === job) frame.toast(words.t("frame-sign-in-stopped", { tracker: frame.trackerName(t) }), 8, words.t("action-try-again"), function() { frame.connectTracker(t) })
         }
     }
 
@@ -585,13 +588,13 @@ FocusScope {
                     objectName: "frame-toast-details"
                     anchors.verticalCenter: parent.verticalCenter
                     visible: toastBox.detail !== ""
-                    text: toastBox.detailOpen ? "Hide details" : "Details"
+                    text: toastBox.detailOpen ? words.t("frame-toast-hide-details") : words.t("frame-toast-details")
                     small: true; flat: true; takesFocus: false
                     onClicked: {
                         toastBox.detailOpen = !toastBox.detailOpen
                         if (toastBox.detailOpen) frame.copyQuiet(toastBox.detail)
                     }
-                    Tooltip { text: toastBox.detailOpen ? "" : "Show what went wrong, word for word, and copy it" }
+                    Tooltip { text: toastBox.detailOpen ? "" : words.t("frame-toast-details-tip") }
                 }
                 Button {
                     objectName: "frame-toast-close"
@@ -599,7 +602,7 @@ FocusScope {
                     small: true; flat: true; takesFocus: false
                     icon: "x"
                     onClicked: toastBox.visible = false
-                    Tooltip { text: "Close" }
+                    Tooltip { msg: "action-close" }
                 }
             }
                 // The raw text, copied on open, so a report can carry it word for word
@@ -717,8 +720,8 @@ FocusScope {
     // The right-click menu at a point: Back and Forward, then what is under the pointer (an
     // episode, a card), the page's own rows, and deleting a card's files last
     function openContextMenu(p) {
-        var items = [{ split: [{ text: "Back", icon: "arrow-left", action: frame.back, enabled: nav.canBack },
-                               { text: "Forward", icon: "arrow-right", action: frame.forward, enabled: nav.canForward, trailing: true }] }]
+        var items = [{ split: [{ text: words.t("action-back"), icon: "arrow-left", action: frame.back, enabled: nav.canBack },
+                               { text: words.t("frame-forward"), icon: "arrow-right", action: frame.forward, enabled: nav.canForward, trailing: true }] }]
         // Each kind of row is its own group, with a line between groups
         function group(list) {
             if (!list || !list.length) return
@@ -845,7 +848,8 @@ FocusScope {
         else if (hoverSeriesItem === item) { hoverSeriesItem = null; hoverSeries = null }
     }
     // The menu rows come off the card alone; the files are read only once a row is picked
-    function seriesNoun(c) { return c.kind === "Movie" ? ["film", "films"] : ["episode", "episodes"] }
+    // The kind of file a series holds, for the delete rows' words to pick by
+    function seriesNoun(c) { return c.kind === "Movie" ? "film" : "episode" }
     // The episode row under the pointer, for its own rows in the right-click menu
     property var hoverEpisodeRow: null
     function hoverEpisode(row, on) {
@@ -862,8 +866,8 @@ FocusScope {
         var r = hoverReleaseItem
         if (!r || !r.link) return []
         var magnet = String(r.link).indexOf("magnet:") === 0
-        var out = [{ text: magnet ? "Copy magnet" : "Copy torrent link", icon: "link", action: function() { frame.copyText(r.link, magnet ? "Magnet copied" : "Link copied") } }]
-        if (r.page) out.push({ text: "Open release page", icon: "external-link", action: function() { frame.openLink(r.page) } })
+        var out = [{ text: magnet ? words.t("frame-copy-magnet") : words.t("frame-copy-link"), icon: "link", action: function() { frame.copyText(r.link, magnet ? words.t("frame-magnet-copied") : words.t("frame-link-copied")) } }]
+        if (r.page) out.push({ text: words.t("frame-open-release-page"), icon: "external-link", action: function() { frame.openLink(r.page) } })
         return out
     }
     function episodeItems() {
@@ -871,10 +875,10 @@ FocusScope {
         if (!row || !row.episode || !row.episode.path) return []
         var path = row.episode.path
         var out = []
-        if (row.playable && !row.picking) out.push({ text: "Play", icon: "play", action: function() { row.play() } })
-        out.push({ text: "Open folder", icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(path.replace(/[\\/][^\\/]*$/, ""))) } })
-        out.push({ text: "Copy path", icon: "copy", action: function() { frame.copyText(path, "Path copied") } })
-        if (row.trackable && !row.picking) out.push({ text: row.watched ? "Mark unwatched from here" : "Mark watched up to here", icon: "check-check", action: function() { row.marker() } })
+        if (row.playable && !row.picking) out.push({ text: words.t("action-play"), icon: "play", action: function() { row.play() } })
+        out.push({ text: words.t("frame-open-folder"), icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(path.replace(/[\\/][^\\/]*$/, ""))) } })
+        out.push({ text: words.t("frame-copy-path"), icon: "copy", action: function() { frame.copyText(path, words.t("frame-path-copied")) } })
+        if (row.trackable && !row.picking) out.push({ text: row.watched ? words.t("frame-mark-unwatched") : words.t("frame-mark-watched"), icon: "check-check", action: function() { row.marker() } })
         return out
     }
     // A card's own rows, above the delete ones: open it, its folder, its title, its page
@@ -882,11 +886,11 @@ FocusScope {
         var c = hoverSeries
         // A card with no folder is not the library's (Airing, a Watching ghost): its id is not ours
         if (!c || !c.path || c.id === undefined || c.id === null) return []
-        var out = [{ text: "Open", icon: "layers", action: function() { frame.go("series", { id: c.id }, c.title) } },
-                   { text: "Open folder", icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(c.path)) } }]
-        out.push({ text: "Copy title", icon: "copy", action: function() { frame.copyText(c.title) } })
+        var out = [{ text: words.t("action-open"), icon: "layers", action: function() { frame.go("series", { id: c.id }, c.title) } },
+                   { text: words.t("frame-open-folder"), icon: "folder-open", action: function() { frame.openLink(Fmt.fileUrl(c.path)) } }]
+        out.push({ text: words.t("frame-copy-title"), icon: "copy", action: function() { frame.copyText(c.title) } })
         var site = c.site_url || (c.match_info && c.match_info.anilist_id ? "https://anilist.co/anime/" + c.match_info.anilist_id : "")
-        if (site) out.push({ text: "Open on AniList", icon: "external-link", action: function() { frame.openLink(site) } })
+        if (site) out.push({ text: words.t("frame-open-on-anilist"), icon: "external-link", action: function() { frame.openLink(site) } })
         if (frame.canSetListStatus(c)) {
             // The lists are a group of their own in the menu
             var lists = frame.listStatusItems(c.id, c.list_status)
@@ -919,20 +923,19 @@ FocusScope {
     }
     // Where a series' status and score go, in a line for a tooltip
     function listHome(c) {
-        if (frame.listsOnline(c)) return "Change it on each list that is connected"
+        if (frame.listsOnline(c)) return words.t("frame-list-home-online")
         var m = c && c.match_info
-        if (!m || (!m.anilist_id && !m.mal_id)) return "Kept on this device: no tracker carries this show"
-        if (frame.trackerOn("anilist") || frame.trackerOn("mal")) return "Kept on this device: your tracker does not carry this show"
-        return "Kept on this device until you connect AniList or MyAnimeList"
+        if (!m || (!m.anilist_id && !m.mal_id)) return words.t("frame-list-home-unmatched")
+        if (frame.trackerOn("anilist") || frame.trackerOn("mal")) return words.t("frame-list-home-not-carried")
+        return words.t("frame-list-home-offline")
     }
     // The five lists a status pill or a card's right-click moves a series to, the one it is on
     // already greyed out. The core writes it to every connected tracker.
     function listStatusItems(id, current) {
-        var lists = [{ status: "Watching", text: "Watching", icon: "play" },
-                     { status: "Planning", text: "Planning", icon: "bookmark" },
-                     { status: "Completed", text: "Completed", icon: "circle-check" },
-                     { status: "Paused", text: "On hold", icon: "pause" },
-                     { status: "Dropped", text: "Dropped", icon: "ban" }]
+        // The core's status code, in menu order, to its words and its icon
+        var ids = { Watching: "status-watching", Planning: "status-planning", Completed: "status-completed", Paused: "status-on-hold", Dropped: "status-dropped" }
+        var icons = { Watching: "play", Planning: "bookmark", Completed: "circle-check", Paused: "pause", Dropped: "ban" }
+        var lists = Object.keys(ids).map(function(code) { return { status: code, text: words.t(ids[code]), icon: icons[code] } })
         return lists.map(function(l) {
             return { text: l.text, icon: l.icon, status: l.status, enabled: l.status !== current,
                      action: function() { frame.setListStatus(id, l.status, l.text) } }
@@ -943,7 +946,7 @@ FocusScope {
         var r = Door.call("SetListStatus", { series: id, status: status })
         if (r.error) { frame.fail(r.error); return false }
         // No job is the list kept on this device, already moved
-        frame.toast(r.reply && r.reply.job !== undefined ? "Moving to " + label : "Moved to " + label)
+        frame.toast(r.reply && r.reply.job !== undefined ? words.t("frame-moving-to", { list: label }) : words.t("frame-moved-to", { list: label }))
         return true
     }
     // The TV a cast carries from one episode's player page to the next's, taken once (#756)
@@ -956,13 +959,13 @@ FocusScope {
         if (!(t && ((t.anilist && t.anilist.connected) || (t.mal && t.mal.connected)))) { openConnect("Anilist"); return false }
         var r = Door.planToWatch(anilistId)
         if (r.error) { fail(r.error); return false }
-        toast(r.reply && r.reply.job !== undefined ? title + " goes on your Planning list" : title + " is on your list already")
+        toast(r.reply && r.reply.job !== undefined ? words.t("frame-plan-added", { title: title }) : words.t("frame-plan-listed", { title: title }))
         return true
     }
     // Text onto the clipboard, and a word that it went
     function copyText(text, what) {
         copyQuiet(text)
-        frame.toast(what || "Copied")
+        frame.toast(what || words.t("frame-copied"))
     }
     // Text onto the clipboard with no toast, for a caller that shows its own sign
     function copyQuiet(text) {
@@ -1013,7 +1016,7 @@ FocusScope {
                 // Downloads searches by the latin titles, so each goes over as AniList has it
                 var ep = frame.episodesOut[anilistId] || {}
                 frame.go("downloads", { hit: { id: anilistId, title: title, romaji: ep.romaji || title, english: ep.english || "",
-                                               native: ep.native || "", cover_url: "", episodes: 0, format: "", year: 0 } }, "Downloads")
+                                               native: ep.native || "", cover_url: "", episodes: 0, format: "", year: 0 } }, words.t("nav-downloads"))
             }
         }
     }
@@ -1041,33 +1044,34 @@ FocusScope {
         var noun = seriesNoun(c), n = c.episodes_on_disk
         var out = []
         if ((c.watched || 0) > 0 && c.kind !== "Movie")
-            out.push({ text: "Delete watched " + noun[1], icon: "trash-2", action: function() { frame.askDeleteFiles(anchor, c, true) } })
-        out.push({ text: n === 1 ? "Delete the " + noun[0] : "Delete all " + n + " " + noun[1], icon: "trash-2",
+            out.push({ text: words.t("frame-delete-watched", { kind: noun }), icon: "trash-2", action: function() { frame.askDeleteFiles(anchor, c, true) } })
+        out.push({ text: words.t("frame-delete-all", { count: n, kind: noun }), icon: "trash-2",
                    action: function() { frame.askDeleteFiles(anchor, c, false) } })
         return out
     }
-    property var deleteCalls: ({})   // token -> what the toast names
+    property var deleteCalls: ({})   // token -> what the toast names, { what, title }
     // `whole` (Downloads' On disk, #266) takes the extras too, so the series leaves the disk
     function askDeleteFiles(anchor, c, watchedOnly, whole) {
         var r = Door.getSeries(c.id)
-        if (r.error || !r.reply.detail) { r.error ? frame.fail(r.error) : frame.toast("That series is gone"); return }
+        if (r.error || !r.reply.detail) { r.error ? frame.fail(r.error) : frame.toast(words.t("frame-series-gone")); return }
         // An episode a torrent is still writing is not offered
         var files = (r.reply.detail.episodes || [])
             .filter(function(e) { return (e.downloading === undefined || e.downloading === null) && (!watchedOnly || e.watched) })
             .map(function(e) { return e.file })
         var extras = whole ? (r.reply.detail.extras || []).map(function(x) { return x.file }) : []
-        if (!files.length && !extras.length) { frame.toast((watchedOnly ? "No watched episodes of " : "Nothing of ") + c.title + " on disk"); return }
-        var noun = seriesNoun(c), which = watchedOnly ? "watched " : ""
-        var words = files.length ? Fmt.plural(files.length, which + noun[0], which + noun[1]) : ""
-        if (extras.length) words += (words ? " and " : "") + Fmt.plural(extras.length, "extra", "extras")
+        if (!files.length && !extras.length) { frame.toast(watchedOnly ? words.t("frame-delete-none-watched", { title: c.title }) : words.t("frame-delete-none", { title: c.title })); return }
+        var noun = seriesNoun(c)
+        var named = files.length ? words.t("frame-delete-files", { count: files.length, kind: noun, watched: watchedOnly ? "yes" : "no" }) : ""
+        var extrasNamed = extras.length ? words.t("frame-delete-extras", { count: extras.length }) : ""
+        var what = named && extrasNamed ? words.t("frame-delete-and", { first: named, second: extrasNamed }) : named || extrasNamed
         files = files.concat(extras)
         removeSheet.openAt(anchor, {
-            heading: "Delete " + words + " of " + c.title + "?",
-            base: "The files and their subtitles go to the trash, so you can get them back from there. Their torrents leave the torrent client, so they can be downloaded again.",
-            rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
+            heading: words.t("frame-delete-heading", { what: what, title: c.title }),
+            base: words.t("frame-delete-base"),
+            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("frame-delete-confirm")
         }, function() {
             var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files })
-            var m = Object.assign({}, frame.deleteCalls); m[t] = words + " of " + c.title; frame.deleteCalls = m
+            var m = Object.assign({}, frame.deleteCalls); m[t] = { what: what, title: c.title }; frame.deleteCalls = m
         })
     }
     // Delete watched across the library (#266): the frame keeps the reply, so its toast still
@@ -1084,14 +1088,14 @@ FocusScope {
                 frame.deleteWatchedToken = -1
                 var d = reply.reply || {}
                 frame.toast(reply.error ? frame.errorText(reply.error)
-                    : d.episodes > 0 || d.series > 0 ? Fmt.plural(d.episodes, "episode", "episodes") + ", " + Fmt.bytes(d.bytes) + ", moved to the trash"
-                    : "Nothing to delete")
+                    : d.episodes > 0 || d.series > 0 ? words.t("frame-delete-watched-done", { count: d.episodes, size: Fmt.bytes(d.bytes) })
+                    : words.t("frame-delete-nothing"))
                 return
             }
-            var words = frame.deleteCalls[token]
-            if (words === undefined) return
+            var call = frame.deleteCalls[token]
+            if (call === undefined) return
             var m = Object.assign({}, frame.deleteCalls); delete m[token]; frame.deleteCalls = m
-            reply.error ? frame.fail(reply.error) : frame.toast(words + " moved to the trash")
+            reply.error ? frame.fail(reply.error) : frame.toast(words.t("frame-delete-done", call))
         }
     }
 
@@ -1114,11 +1118,11 @@ FocusScope {
     property var fixReports: ({})
     function reportFix(series, files, agent) {
         var token = Door.callAsync("ReportFix", { series: series, files: files, app: Shell.release })
-        if (token < 0) { frame.toast("Fixed. The issue could not be drafted"); return }
+        if (token < 0) { frame.toast(words.t("frame-fix-not-drafted")); return }
         var next = Object.assign({}, frame.fixReports)
         next[token] = agent || ""
         frame.fixReports = next
-        frame.toast(agent ? "Fixed. " + agent + " is looking into it, and the issue opens when it is done" : "Fixed. Opening the issue", agent ? 8 : 4)
+        frame.toast(agent ? words.t("frame-fix-agent", { agent: agent }) : words.t("frame-fix-opening"), agent ? 8 : 4)
     }
     Connections {
         target: Door
@@ -1129,21 +1133,21 @@ FocusScope {
                 delete rest[token]
                 frame.fixApplies = rest
                 // The sheet says why when it is still up; the toast says it when it is not
-                if (reply.error) { frame.toast("The fix did not save: " + frame.errorText(reply.error), 8); return }
+                if (reply.error) { frame.toast(words.t("frame-fix-not-saved", { error: frame.errorText(reply.error) }), 8); return }
                 if (applied.report) frame.reportFix(applied.series, applied.fixed, applied.agent)
-                else if (applied.undone === applied.n) frame.toast(Fmt.plural(applied.n, "file", "files") + " read by name again")
-                else frame.toast("Fixed how " + Fmt.plural(applied.n, "file", "files") + " read")
+                else if (applied.undone === applied.n) frame.toast(words.t("frame-fix-undone", { count: applied.n }))
+                else frame.toast(words.t("frame-fix-done", { count: applied.n }))
                 return
             }
             if (frame.fixReports[token] === undefined) return
             var next = Object.assign({}, frame.fixReports)
             delete next[token]
             frame.fixReports = next
-            if (reply.error) { frame.toast("The issue could not be drafted: " + frame.errorText(reply.error), 8); return }
+            if (reply.error) { frame.toast(words.t("frame-report-failed", { error: frame.errorText(reply.error) }), 8); return }
             var report = reply.reply.report
             frame.openLink(report.url)
-            frame.toast(report.triage_error ? "The issue is open in your browser, without a triage. " + report.triage_error
-                        : "The issue is open in your browser, ready to send", 8)
+            frame.toast(report.triage_error ? words.t("frame-report-untriaged", { error: report.triage_error })
+                        : words.t("frame-report-open"), 8)
         }
     }
 
@@ -1182,7 +1186,7 @@ FocusScope {
         function onDownloadsUnavailable(what, error) {
             if (what !== "subscriptions") return
             frame.downloadsRulesRead = true
-            frame.downloadsRulesError = error && error.message ? error.message : "Not read."
+            frame.downloadsRulesError = error && error.message ? error.message : words.t("frame-downloads-not-read")
         }
         // A run of removals (Remove RSS for all) asks once, after the last
         function onSubscriptionRemoved(name) { downloadsReread.restart() }

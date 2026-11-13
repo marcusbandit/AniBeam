@@ -22,7 +22,7 @@ Item {
     property string cubes: ""
     property string progressCode: "d"
     property color progressColor: hasPoster ? theme.accentOnPoster : theme.accent
-    property string actionText: "Remove"
+    property string actionText: words.t("action-remove")
     property string actionIcon: "x"
     property string glyph: "rss"
     property bool compact: false

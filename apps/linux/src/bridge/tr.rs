@@ -83,7 +83,10 @@ impl qobject::Tr {
         let mut out = QJsonArray::default();
         for lang in Lang::ALL {
             let mut entry = QJsonObject::default();
-            entry.insert(&QString::from("code"), &QJsonValue::from(&QString::from(lang.code())));
+            entry.insert(
+                &QString::from("code"),
+                &QJsonValue::from(&QString::from(lang.code())),
+            );
             entry.insert(
                 &QString::from("name"),
                 &QJsonValue::from(&QString::from(lang.native_name())),

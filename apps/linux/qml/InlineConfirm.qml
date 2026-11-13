@@ -5,7 +5,7 @@ import QtQuick
 Row {
     id: root
     property string question: ""
-    property string confirmText: "Remove"
+    property string confirmText: words.t("action-remove")
     property string confirmIcon: "trash-2"
     signal accepted()
     signal kept()
@@ -18,5 +18,5 @@ Row {
     Component.onDestruction: frame.escapeStack.pop(root)
     Text { anchors.verticalCenter: parent.verticalCenter; text: root.question; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
     Button { objectName: root.objectName !== "" ? root.objectName + "-ok" : ""; text: root.confirmText; icon: root.confirmIcon; danger: true; onClicked: root.accepted() }
-    Button { text: "Keep"; flat: true; onClicked: root.kept() }
+    Button { msg: "inline-confirm-keep"; flat: true; onClicked: root.kept() }
 }

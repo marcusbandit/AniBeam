@@ -16,14 +16,15 @@ QtObject {
     property var remembered: ({})
     readonly property bool canBack: trail.length > 0 || current.page !== "home"
     readonly property bool canForward: ahead.length > 0
-    property var current: ({ page: "home", props: {}, label: "Home" })
+    property var current: ({ page: "home", props: {}, label: words.t("nav-home") })
     property real pendingScroll: -1
     signal changed()
 
-    readonly property var labels: ({ home: "Home", library: "Library", airing: "Airing now", feed: "Feed", watching: "Watching", stats: "Stats", metadata: "Show info", downloads: "Downloads",
-                                     settings: "Settings", series: "Series", player: "Player", show: "Show", recommended: "Recommended" })
+    // Each page's name by message ID; a page given its own label (a series title) keeps it
+    readonly property var labels: ({ home: "nav-home", library: "nav-library", airing: "nav-airing", feed: "nav-feed", watching: "nav-watching", stats: "nav-stats", metadata: "nav-metadata", downloads: "nav-downloads",
+                                     settings: "nav-settings", series: "nav-series", player: "nav-player", show: "nav-show", recommended: "nav-recommended" })
     readonly property var railPages: ["home", "library", "airing", "feed", "watching", "metadata", "downloads", "settings", "stats"]
-    readonly property string backLabel: trail.length ? trail[trail.length - 1].label : "Home"
+    readonly property string backLabel: trail.length ? trail[trail.length - 1].label : words.t("nav-home")
     readonly property int railIndex: {
         var i = railPages.indexOf(current.page)
         if (i >= 0) return i
@@ -32,7 +33,29 @@ QtObject {
     }
 
     function key(e) { return e.page + ":" + JSON.stringify(e.props || {}) }
-    function labelOf(page, label) { return label || labels[page] || "Back" }
+    function labelOf(page, label) { return label || words.t(labels[page] || "action-back") }
+    // A page's own label (a series title) is kept as it came; a name from the catalog is
+    // looked up again when the language changes, across the trail and Forward too. `named`
+    // holds the names in the language the entries were made in, to tell the two apart.
+    property var named: ({})
+    Component.onCompleted: named = names()
+    function names() {
+        var m = { "": words.t("action-back") }
+        for (var page in labels) m[page] = words.t(labels[page])
+        return m
+    }
+    readonly property string lang: words.lang
+    onLangChanged: {
+        var was = named
+        function again(e) {
+            var own = e.label !== (was[e.page] !== undefined ? was[e.page] : was[""])
+            return own ? e : Object.assign({}, e, { label: labelOf(e.page, "") })
+        }
+        named = names()
+        trail = trail.map(again)
+        ahead = ahead.map(again)
+        current = again(current)
+    }
 
     function remember(scrollY) {
         if (railPages.indexOf(current.page) < 0) return
@@ -70,7 +93,7 @@ QtObject {
         if (!trail.length) {
             if (current.page === "home") return
             ahead = ahead.concat([here])
-            current = { page: "home", props: {}, label: "Home" }
+            current = { page: "home", props: {}, label: words.t("nav-home") }
             pendingScroll = 0
             changed()
             return

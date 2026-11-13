@@ -29,10 +29,11 @@ Item {
     readonly property string error: frame.connectErrors[tracker] || ""
     readonly property bool needsSecret: tracker === "Mal" && !connected && !waiting && /client secret/i.test(error)
     readonly property string line: connected
-        ? "Connected as " + (account.username || "?") + ", synced " + (account.last_sync ? Fmt.relative(account.last_sync, Date.now() / 1000) : "never")
-        : waiting ? "Waiting for you to approve in the browser"
+        ? words.t("tracker-row-connected", { user: account.username || words.t("tracker-row-unknown-user"),
+                                             when: account.last_sync ? Fmt.relative(account.last_sync, Date.now() / 1000) : words.t("tracker-row-never") })
+        : waiting ? words.t("tracker-row-waiting")
         : error !== "" ? frame.connectWords(tracker)
-        : "Not connected"
+        : words.t("tracker-row-not-connected")
 
     width: parent ? parent.width : theme.space(100)
     // A secret is saved and nothing is asking for one: offered for removal, for the app
@@ -46,7 +47,7 @@ Item {
     Item {
         id: top
         width: parent.width
-        height: Math.max(theme.space(12), Math.max(avatar.height, words.implicitHeight, slot.height) + theme.space(2) * 2)
+        height: Math.max(theme.space(12), Math.max(avatar.height, lineColumn.implicitHeight, slot.height) + theme.space(2) * 2)
 
         Corner {
             id: avatar
@@ -69,7 +70,7 @@ Item {
             }
         }
         Column {
-            id: words
+            id: lineColumn
             anchors.left: avatar.right
             anchors.leftMargin: theme.space(3)
             anchors.right: slot.left
@@ -108,23 +109,23 @@ Item {
         Row {
             spacing: theme.space(2)
             Button {
-                text: "Open again"; icon: "external-link"; flat: true
+                msg: "tracker-row-open-again"; icon: "external-link"; flat: true
                 enabled: (frame.signInUrls[root.tracker] || "") !== ""
                 onClicked: frame.reopenSignIn(root.tracker)
-                Tooltip { text: "Open the sign-in page again" }
+                Tooltip { msg: "tracker-row-open-again-tip" }
             }
-            Button { text: "Cancel"; flat: true; onClicked: frame.cancelConnect(root.tracker) }
+            Button { msg: "action-cancel"; flat: true; onClicked: frame.cancelConnect(root.tracker) }
         }
     }
     Component {
         id: disconnectButton
-        Button { objectName: root.tracker + "-disconnect"; text: "Disconnect"; icon: "log-out"; onClicked: root.confirming = true }
+        Button { objectName: root.tracker + "-disconnect"; msg: "tracker-row-disconnect"; icon: "log-out"; onClicked: root.confirming = true }
     }
     Component {
         id: disconnectConfirm
         InlineConfirm {
-            question: "Disconnect " + root.name + "? Your sign-in will be removed."
-            confirmText: "Disconnect"
+            question: words.t("tracker-row-disconnect-question", { name: root.name })
+            confirmText: words.t("tracker-row-disconnect")
             confirmIcon: "log-out"
             onAccepted: { root.confirming = false; root.disconnect() }
             onKept: root.confirming = false
@@ -132,7 +133,7 @@ Item {
     }
     Component {
         id: connectButton
-        ConnectButton { objectName: "tracker-" + root.tracker + "-connect"; tracker: root.tracker; text: "Connect"; icon: "log-in"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
+        ConnectButton { objectName: "tracker-" + root.tracker + "-connect"; tracker: root.tracker; text: words.t("action-connect"); icon: "log-in"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
     }
 
     Row {
@@ -145,17 +146,17 @@ Item {
         spacing: theme.space(2)
         Label {
             anchors.verticalCenter: parent.verticalCenter
-            text: "A client secret is saved for this app."
+            msg: "tracker-row-secret-saved"
             role: "ui"
             color: theme.textDim
             font.pointSize: theme.typeSmall
         }
         // An empty secret is the contract's "remove"; an absent one would keep it.
         Button {
-            text: "Remove it"; icon: "trash-2"; flat: true; small: true
+            msg: "tracker-row-remove-secret"; icon: "trash-2"; flat: true; small: true
             onClicked: {
                 var r = Door.call("SetTrackerCredentials", { tracker: root.tracker, client_id: root.account.client_id || "", client_secret: "" })
-                r.error ? frame.fail(r.error, clicked) : frame.toast("Client secret removed")
+                r.error ? frame.fail(r.error, clicked) : frame.toast(words.t("tracker-row-secret-removed"))
             }
         }
     }
@@ -175,17 +176,17 @@ Item {
         Button {
             objectName: "tracker-" + root.tracker + "-add-secret"
             visible: !root.addingSecret
-            text: "Add client secret"; icon: "plus"; primary: true
+            msg: "tracker-row-add-secret"; icon: "plus"; primary: true
             onClicked: { root.addingSecret = true; Qt.callLater(secret.focusInput) }
         }
-        Note { visible: root.addingSecret; text: "It is the long string under \"Client Secret\" on the app's page at myanimelist.net/apiconfig." }
-        Field { id: secret; visible: root.addingSecret; width: parent.width; placeholder: "Client secret"; mono: true }
+        Note { visible: root.addingSecret; text: words.t("tracker-row-secret-where") }
+        Field { id: secret; visible: root.addingSecret; width: parent.width; placeholder: words.t("tracker-row-secret-placeholder"); mono: true }
         Row {
             visible: root.addingSecret
             spacing: theme.space(2)
             ConnectButton {
                 tracker: root.tracker
-                text: "Save and connect"; icon: "log-in"; primary: true
+                text: words.t("tracker-row-save-connect"); icon: "log-in"; primary: true
                 enabled: secret.text.trim() !== ""
                 onClicked: {
                     var r = Door.setTrackerCredentials(root.tracker, root.account.client_id || "", secret.text.trim())
@@ -194,7 +195,7 @@ Item {
                     frame.connectTracker(root.tracker)
                 }
             }
-            Button { text: "Cancel"; flat: true; onClicked: root.addingSecret = false }
+            Button { msg: "action-cancel"; flat: true; onClicked: root.addingSecret = false }
         }
     }
 }
