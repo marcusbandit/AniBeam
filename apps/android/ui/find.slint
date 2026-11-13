@@ -39,8 +39,8 @@ export struct ReleaseRow {
     facts: string,
     best: bool,
     on-disk: bool,
-    // The library has this episode from another release.
-    other-on-disk: bool,
+    // The chip's words when the library has this episode from another release, else empty.
+    other-on-disk: string,
     // 0 plain, 2 no seeders.
     tone: int,
 }
@@ -727,7 +727,7 @@ component ReleaseItem inherits Rectangle {
         y: Theme.unit * 3.5;
         width: parent.width - Theme.unit * 8;
         spacing: Theme.unit * 2;
-        if root.data.best || root.data.on-disk || root.data.other-on-disk: HorizontalLayout {
+        if root.data.best || root.data.on-disk || root.data.other-on-disk != "": HorizontalLayout {
             spacing: Theme.unit * 1.5;
             alignment: start;
             if root.data.best: Chip {
@@ -740,8 +740,8 @@ component ReleaseItem inherits Rectangle {
                 small: true;
                 dot: Theme.ok;
             }
-            if root.data.other-on-disk: Chip {
-                text: "Other release on disk";
+            if root.data.other-on-disk != "": Chip {
+                text: root.data.other-on-disk;
                 small: true;
                 dot: Theme.faint;
             }

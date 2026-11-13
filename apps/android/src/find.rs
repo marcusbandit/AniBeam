@@ -1893,7 +1893,11 @@ impl Find {
                     },
                     // The desktop's own library is not read for its releases (#733), only
                     // its episodes, so this is the phone's alone.
-                    other_on_disk: desk_had.is_none() && f.is_some_and(|f| f.other_on_disk),
+                    other_on_disk: if desk_had.is_none() && f.is_some_and(|f| f.other_on_disk) {
+                        anibeam_core::i18n::tr("downloads-other-release-on-disk", &[]).into()
+                    } else {
+                        Default::default()
+                    },
                     tone: if r.seeders == Some(0) { 2 } else { 0 },
                 }
             })
