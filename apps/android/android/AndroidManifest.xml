@@ -35,7 +35,7 @@
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:enableOnBackInvokedCallback="false"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density">
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|locale|layoutDirection">
             <meta-data android:name="android.app.lib_name" android:value="anibeam" />
         </activity>
         <!-- The launcher icons, one alias each over the activity. More's App icon turns one

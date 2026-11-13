@@ -10,6 +10,7 @@ import { Leaf, Scroll } from "panes.slint";
 import { CalendarHead } from "calhead.slint";
 import { AiringPage } from "airing.slint";
 import { Button, ClampedText, EmptyNote, PageTitle, Poster, SectionHead, Segmented } from "widgets.slint";
+import { Tr } from "tr.slint";
 
 // The colour of an episode's state: to come is the ink, here is the cube's cyan, out and
 // not here the cube's amber.
@@ -55,7 +56,7 @@ export component CalRow inherits Rectangle {
                 font-family: Theme.figure;
             }
             if root.item.soonest: Text {
-                text: "Next";
+                text: Tr.t("cal-next");
                 color: Theme.accent;
                 font-size: Theme.small - 1px;
                 font-family: Theme.strong-face;
@@ -106,7 +107,7 @@ export component CalRow inherits Rectangle {
         if root.item.state == 2 && !root.item.remote: VerticalLayout {
             alignment: center;
             Button {
-                text: "Get";
+                text: Tr.t("cal-get");
                 small: true;
                 clicked => {
                     FindData.find-series(root.item.id);
@@ -124,7 +125,7 @@ export component DayAgenda inherits VerticalLayout {
     spacing: Theme.unit * 2.5;
     SectionHead {
         title: root.day.title;
-        note: root.day.count == 0 ? root.day.full : root.day.full + ", " + (root.day.count == 1 ? "1 episode" : root.day.count + " episodes");
+        note: root.day.count == 0 ? root.day.full : Tr.s2("cal-day-note", "date", root.day.full, "count", Tr.n("common-episodes", "count", root.day.count));
     }
     for item in root.day.items: CalRow {
         item: item;
@@ -139,14 +140,14 @@ export component DayAgenda inherits VerticalLayout {
             y: parent.height - self.height - 5 * Theme.unit;
             x: (parent.width - self.width) / 2;
             width: self.min-width;
-            text: "Next airing: " + AppData.calendar[root.day.next].title;
+            text: Tr.s("cal-next-airing", "title", AppData.calendar[root.day.next].title);
             widest: parent.width - 8 * Theme.unit;
             small: true;
             clicked => { AppData.cal-day = root.day.next; }
         }
         Text {
             y: root.day.next >= 0 ? 7 * Theme.unit : (parent.height - self.height) / 2;
-            text: root.day.past ? "Nothing aired " + (root.day.title == "Yesterday" ? "yesterday." : "that day.") : root.day.today ? "Nothing airs today." : "Nothing airs " + (root.day.title == "Tomorrow" ? "tomorrow." : "that day.");
+            text: root.day.past ? (root.day.offset == -1 ? Tr.t("cal-nothing-aired-yesterday") : Tr.t("cal-nothing-aired-that-day")) : root.day.today ? Tr.t("cal-nothing-today") : (root.day.offset == 1 ? Tr.t("cal-nothing-tomorrow") : Tr.t("cal-nothing-that-day"));
             color: Theme.faint;
             font-size: Theme.small + 1px;
         }
@@ -167,7 +168,7 @@ component DayPill inherits Rectangle {
         alignment: center;
         spacing: Theme.unit * 1.5;
         Text {
-            text: root.day.today ? "Today" : root.day.weekday;
+            text: root.day.today ? Tr.t("cal-today") : root.day.weekday;
             color: root.picked ? Theme.accent : root.day.today ? Theme.text : Theme.dim;
             font-size: Theme.small - 1px;
             font-family: root.day.today ? Theme.strong-face : Theme.face;
@@ -252,7 +253,7 @@ component DayLine inherits Rectangle {
                 overflow: elide;
             }
             Text {
-                text: root.day.count == 0 ? "Nothing" : root.day.count == 1 ? "1 episode" : root.day.count + " episodes";
+                text: root.day.count == 0 ? Tr.t("cal-nothing") : Tr.n("common-episodes", "count", root.day.count);
                 color: Theme.faint;
                 font-size: Theme.small;
             }
@@ -393,7 +394,7 @@ component WeekBoard inherits Rectangle {
                             overflow: elide;
                         }
                         Text {
-                            text: day.count == 0 ? "Nothing" : day.count == 1 ? "1 episode" : day.count + " episodes";
+                            text: day.count == 0 ? Tr.t("cal-nothing") : Tr.n("common-episodes", "count", day.count);
                             color: Theme.faint;
                             font-size: Theme.small - 1px;
                         }
@@ -428,8 +429,8 @@ component Schedule inherits Rectangle {
         DayStrip { }
         if !root.empty: DayAgenda { day: root.picked; }
         if root.empty: EmptyNote {
-            title: "No shows on this phone yet";
-            body: "Episodes of the shows you keep here show up on their day, two days back and a week ahead.";
+            title: Tr.t("cal-empty-title");
+            body: Tr.t("cal-empty-body");
         }
     }
 
@@ -493,8 +494,8 @@ component Schedule inherits Rectangle {
             DayStrip { }
             if !root.empty: DayAgenda { day: root.picked; }
             if root.empty: EmptyNote {
-                title: "No shows on this phone yet";
-                body: "Episodes of the shows you keep here show up on their day, two days back and a week ahead.";
+                title: Tr.t("cal-empty-title");
+                body: Tr.t("cal-empty-body");
             }
         }
     }

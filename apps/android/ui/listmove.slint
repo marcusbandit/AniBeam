@@ -6,6 +6,7 @@
 import { Theme } from "theme.slint";
 import { Button, ListGroup, ListRow } from "widgets.slint";
 import { Sheet } from "sheet.slint";
+import { Tr } from "tr.slint";
 
 export struct MoveLine {
     title: string,
@@ -41,7 +42,7 @@ export component MoveWaiting inherits VerticalLayout {
     spacing: Theme.unit * 3;
     if MoveData.waiting > 0: ListGroup {
         ListRow {
-            label: "Lists on this phone";
+            label: Tr.t("move-lists-label");
             helper: MoveData.waiting-line;
             tappable: true;
             chevron: true;
@@ -60,7 +61,7 @@ export component MoveWaiting inherits VerticalLayout {
 export component MoveSheet inherits Sheet {
     dismissed => { MoveData.later(); }
     Text {
-        text: "Move your list to " + MoveData.site;
+        text: Tr.s("move-title", "site", MoveData.site);
         color: Theme.text;
         font-size: Theme.section;
         font-family: Theme.display-face;
@@ -94,13 +95,13 @@ export component MoveSheet inherits Sheet {
                             overflow: elide;
                         }
                         Text {
-                            text: "On this phone: " + row.here;
+                            text: Tr.s("move-here", "list", row.here);
                             color: Theme.text;
                             font-size: Theme.small;
                             overflow: elide;
                         }
                         Text {
-                            text: "On " + MoveData.site + " now: " + row.there;
+                            text: Tr.s2("move-there", "site", MoveData.site, "list", row.there);
                             color: Theme.dim;
                             font-size: Theme.small;
                             overflow: elide;
@@ -116,7 +117,7 @@ export component MoveSheet inherits Sheet {
         }
     }
     Text {
-        text: "Later: More, Accounts";
+        text: Tr.t("move-later-hint");
         color: Theme.faint;
         font-size: Theme.small;
     }
@@ -126,7 +127,7 @@ export component MoveSheet inherits Sheet {
         clicked => { MoveData.move(); }
     }
     Button {
-        text: "Not now";
+        text: Tr.t("move-not-now");
         clicked => { MoveData.later(); }
     }
 }

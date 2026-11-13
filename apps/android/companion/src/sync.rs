@@ -61,7 +61,7 @@ impl Syncer {
             snapshot,
         };
         if let Err(e) = self.store.save_cache(&cache) {
-            return Err(HostError::Bad(format!("Could not save the snapshot: {e}")));
+            return Err(HostError::Bad(tr!("sync-save-failed", why = e.to_string())));
         }
         Ok(cache)
     }

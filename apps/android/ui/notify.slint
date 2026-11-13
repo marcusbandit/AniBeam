@@ -6,6 +6,7 @@ import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
 import { Button, ListRow, ProgressLine, TextButton } from "widgets.slint";
 import { Sheet } from "sheet.slint";
+import { Tr } from "tr.slint";
 
 // One notification as the shade draws it, in the app's glass.
 component NotifyCard inherits Rectangle {
@@ -39,7 +40,7 @@ component NotifyCard inherits Rectangle {
             spacing: Theme.unit;
             alignment: center;
             Text {
-                text: "AniBeam · now";
+                text: Tr.t("notify-card-head");
                 color: Theme.dim;
                 font-size: Theme.small;
             }
@@ -69,12 +70,12 @@ component NotifyCard inherits Rectangle {
 // The notifications as the phone's shade shows them: the payoff, drawn before the ask. The
 // ongoing one while an episode downloads, with its bar and the numbers Downloads shows, and
 // below it the one a finished episode posts. The words follow `notify.rs` (`ongoing`,
-// `ready_title`, `READY_TEXT`); change them there and here together.
+// `ready_title`, `ready_text`) through the same `notify-*` messages.
 export component NotifyPreview inherits VerticalLayout {
-    in property <string> title: "Downloading Frieren episode 7";
-    in property <string> text: "30%, 420 MB of 1.4 GB, 3.2 MB/s, 5m left";
+    in property <string> title: Tr.s("notify-downloading", "called", Tr.t("notify-sample-called"));
+    in property <string> text: Tr.s2("notify-progress", "percent", "30", "facts", Tr.t("notify-sample-facts"));
     in property <float> progress: 0.3;
-    in property <string> ready: "Frieren episode 6 is ready";
+    in property <string> ready: Tr.s("notify-ready", "called", Tr.t("notify-sample-called-ready"));
     spacing: Theme.unit * 2;
     NotifyCard {
         icon: @image-url("icons/download.svg");
@@ -86,7 +87,7 @@ export component NotifyPreview inherits VerticalLayout {
     NotifyCard {
         icon: @image-url("icons/check-check.svg");
         title: root.ready;
-        text: "Downloaded to this phone. Tap to open AniBeam.";
+        text: Tr.t("notify-ready-text");
     }
 }
 
@@ -95,10 +96,10 @@ export component NotifyPreview inherits VerticalLayout {
 export component NotifyRow inherits ListRow {
     // On More itself the row cannot point at More.
     in property <bool> in-more;
-    label: AppData.notify == 0 ? "Notifications" : AppData.notify == 1 ? "Allow notifications" : "Open notification settings";
-    helper: AppData.notify == 0 ? "On. Downloads show in your notifications while they run."
-        : AppData.notify == 1 ? (root.in-more ? "Android asks next." : "Android asks next. You can change your mind later in More.")
-        : "Off. Turn on notifications for AniBeam there.";
+    label: AppData.notify == 0 ? Tr.t("notify-row-on") : AppData.notify == 1 ? Tr.t("notify-row-allow") : Tr.t("notify-row-open-settings");
+    helper: AppData.notify == 0 ? Tr.t("notify-helper-on")
+        : AppData.notify == 1 ? (root.in-more ? Tr.t("notify-helper-asks-next") : Tr.t("notify-helper-asks-next-later"))
+        : Tr.t("notify-helper-off");
     tappable: AppData.notify != 0;
     chevron: AppData.notify != 0;
     clicked => { AppData.allow-notifications(); }
@@ -109,14 +110,14 @@ export component NotifyRow inherits ListRow {
 export component NotifyQuestion inherits Sheet {
     dismissed => { AppData.notify-ask = false; }
     Text {
-        text: "See downloads in your notifications?";
+        text: Tr.t("notify-question-title");
         color: Theme.text;
         font-size: Theme.section;
         font-family: Theme.display-face;
         wrap: word-wrap;
     }
     Text {
-        text: "While episodes download, a notification shows how far along they are, and another says when one is ready. They download either way; this only decides whether you see it.";
+        text: Tr.t("notify-question-body");
         color: Theme.dim;
         font-size: Theme.small + 1px;
         wrap: word-wrap;
@@ -124,7 +125,7 @@ export component NotifyQuestion inherits Sheet {
     NotifyPreview { }
     Rectangle { height: Theme.unit; }
     Button {
-        text: "Allow";
+        text: Tr.t("notify-allow");
         primary: true;
         clicked => {
             AppData.notify-ask = false;
@@ -132,7 +133,7 @@ export component NotifyQuestion inherits Sheet {
         }
     }
     Button {
-        text: "Not now";
+        text: Tr.t("notify-not-now");
         clicked => { AppData.notify-ask = false; }
     }
 }
@@ -142,7 +143,7 @@ export component NotifyQuestion inherits Sheet {
 export component NotifyPointer inherits VerticalLayout {
     alignment: start;
     Text {
-        text: "Downloads don't show in your notifications.";
+        text: Tr.t("notify-pointer");
         color: Theme.dim;
         font-size: Theme.small;
         wrap: word-wrap;
@@ -150,7 +151,7 @@ export component NotifyPointer inherits VerticalLayout {
     HorizontalLayout {
         alignment: start;
         TextButton {
-            text: "Turn on";
+            text: Tr.t("notify-turn-on");
             ink: Theme.accent;
             clicked => { AppData.allow-notifications(); }
         }

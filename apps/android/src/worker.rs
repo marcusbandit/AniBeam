@@ -104,7 +104,13 @@ impl<F: Fn(Event)> Worker<F> {
         let result = self
             .syncer
             .test(address)
-            .map(|hello| format!("Reached {}, AniBeam {}.", hello.host, hello.version))
+            .map(|hello| {
+                tr!(
+                    "host-reached",
+                    host = hello.host.as_str(),
+                    version = hello.version.as_str()
+                )
+            })
             .map_err(|e| e.to_string());
         (self.deliver)(Event::TestDone(result));
     }

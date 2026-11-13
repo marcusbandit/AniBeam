@@ -19,25 +19,22 @@ impl HostAddress {
             }
         }
         if rest.starts_with("https://") {
-            return Err(
-                "Your computer's AniBeam answers on plain http over Tailscale; drop the https://."
-                    .into(),
-            );
+            return Err(tr!("address-https"));
         }
         let rest = rest.split('/').next().unwrap_or("");
         if rest.is_empty() {
-            return Err("Type the host's name or address, for example my-computer:8790.".into());
+            return Err(tr!("address-empty"));
         }
 
         let (host, port) = if let Some(inner) = rest.strip_prefix('[') {
             // [v6]:port
             let (addr, after) = inner
                 .split_once(']')
-                .ok_or_else(|| "An IPv6 address needs its closing ].".to_string())?;
+                .ok_or_else(|| tr!("address-ipv6-close"))?;
             let port = match after.strip_prefix(':') {
                 Some(p) => Some(p),
                 None if after.is_empty() => None,
-                None => return Err("Put the port after the ], as [fd7a::1]:8790.".into()),
+                None => return Err(tr!("address-ipv6-port")),
             };
             (format!("[{addr}]"), port)
         } else {
@@ -48,7 +45,7 @@ impl HostAddress {
         };
 
         if host.is_empty() || host.contains(char::is_whitespace) {
-            return Err(format!("\"{}\" is not a host name.", text.trim()));
+            return Err(tr!("address-bad-host", text = text.trim()));
         }
         let port = match port {
             None => DEFAULT_PORT,
@@ -56,7 +53,7 @@ impl HostAddress {
                 .parse::<u16>()
                 .ok()
                 .filter(|p| *p > 0)
-                .ok_or_else(|| format!("\"{p}\" is not a port."))?,
+                .ok_or_else(|| tr!("address-bad-port", port = p))?,
         };
         Ok(HostAddress { host, port })
     }

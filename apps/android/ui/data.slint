@@ -1,5 +1,7 @@
 // Everything the pages show, set from Rust, and the actions they send back.
 
+import { Tr } from "tr.slint";
+
 // One poster in a grid: Home's shelves, the calendar's day and the library all use it.
 export struct Tile {
     // The series it opens; -1 for none.
@@ -71,6 +73,8 @@ export struct CalDay {
     date: string,
     // "Today", "Tomorrow", "Yesterday", "Thursday".
     title: string,
+    // Days from today: -1 yesterday, 1 tomorrow.
+    offset: int,
     // "Thursday 5 November".
     full: string,
     today: bool,
@@ -123,6 +127,8 @@ export struct EpisodeLine {
     date: string,
     // "Next up", "Missing", "Downloading 34%", or empty.
     note: string,
+    // The note's kind, for its colour: 1 next up, 2 missing, 0 any other.
+    note-kind: int,
     // Theme.cube's code.
     cube: int,
     // The file a tap plays; zero for an episode that is not whole on the phone.
@@ -236,8 +242,8 @@ export global AppData {
     // next season's, with the ones marked not interested left out.
     in-out property <bool> airing-view;
     // The Calendar's switch: the devices, then Airing now.
-    in property <[string]> cal-views: ["This phone", "Airing now"];
-    in property <[string]> airing-seasons: ["This season", "Next season"];
+    in property <[string]> cal-views: [Tr.t("lib-this-phone"), Tr.t("cal-view-airing")];
+    in property <[string]> airing-seasons: [Tr.t("airing-this-season"), Tr.t("airing-next-season")];
     in property <int> airing-season;
     // "Everything 48", "On my lists 6", "In my library 3".
     in property <[string]> airing-filters;
@@ -287,7 +293,7 @@ export global AppData {
     in-out property <float> limit-gb: 18;
     in property <float> disk-gb: 128;
     // "18 GB", "31.5 GB".
-    in property <string> limit-label: "18 GB";
+    in property <string> limit-label;
     in property <string> storage-line;
     // The same as figures: what AniBeam's episodes take, and what the phone has free.
     in property <string> used-figure;
@@ -321,8 +327,8 @@ export global AppData {
     in property <[DownloadRow]> downloads;
     in property <string> downloads-note;
     // The rates across every download, "3.2 MB/s".
-    in property <string> rate-down: "0 B/s";
-    in property <string> rate-up: "0 B/s";
+    in property <string> rate-down;
+    in property <string> rate-up;
     // Not finished, whatever their state; and of those, the ones actually moving.
     in property <int> downloading-count;
     in property <int> moving-count;

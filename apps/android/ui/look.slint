@@ -5,6 +5,7 @@
 
 import { Theme } from "theme.slint";
 import { ListGroup, ListRow, Segmented, SectionHead } from "widgets.slint";
+import { Tr } from "tr.slint";
 
 // A theme in a list: its name and the three colours that tell it apart.
 export struct LookTheme {
@@ -18,7 +19,7 @@ export global LookData {
     // 0 dark, 1 light, 2 follow the phone.
     in property <int> mode;
     // What the phone itself is set to, for the System line.
-    in property <string> system-line;
+    in property <bool> system-dark;
     in property <[LookTheme]> dark-themes;
     in property <[LookTheme]> light-themes;
     in property <int> dark-pick;
@@ -126,7 +127,7 @@ export component LookBody inherits VerticalLayout {
     spacing: Theme.unit * 4;
     init => { LookData.read(); }
     SectionHead {
-        title: "Colours";
+        title: Tr.t("look-colours");
         note: "";
     }
     ListGroup {
@@ -134,17 +135,17 @@ export component LookBody inherits VerticalLayout {
             padding: Theme.unit * 3;
             spacing: Theme.unit * 2;
             Text {
-                text: "Mode";
+                text: Tr.t("look-mode");
                 color: Theme.text;
                 font-family: Theme.strong-face;
             }
             Segmented {
-                options: ["Dark", "Light", "System"];
+                options: [Tr.t("look-dark"), Tr.t("look-light"), Tr.t("look-system")];
                 picked: LookData.mode;
                 pick(i) => { LookData.pick-mode(i); }
             }
             Text {
-                text: LookData.mode == 2 ? "Follows the phone's own setting: " + LookData.system-line + "." : "Changes show at once, here and on every page.";
+                text: LookData.mode == 2 ? (LookData.system-dark ? Tr.t("look-follows-phone-dark") : Tr.t("look-follows-phone-light")) : Tr.t("look-changes-at-once");
                 color: Theme.dim;
                 font-size: Theme.small;
                 wrap: word-wrap;
@@ -152,7 +153,7 @@ export component LookBody inherits VerticalLayout {
         }
     }
     Text {
-        text: "Dark theme";
+        text: Tr.t("look-dark-theme");
         color: Theme.text;
         font-size: Theme.heading;
         font-family: Theme.title-face;
@@ -166,7 +167,7 @@ export component LookBody inherits VerticalLayout {
         }
     }
     Text {
-        text: "Light theme";
+        text: Tr.t("look-light-theme");
         color: Theme.text;
         font-size: Theme.heading;
         font-family: Theme.title-face;
@@ -180,13 +181,13 @@ export component LookBody inherits VerticalLayout {
         }
     }
     Text {
-        text: "Accent";
+        text: Tr.t("look-accent");
         color: Theme.text;
         font-size: Theme.heading;
         font-family: Theme.title-face;
     }
     Text {
-        text: "Marks what is selected, playing or new.";
+        text: Tr.t("look-accent-note");
         color: Theme.dim;
         font-size: Theme.small;
         wrap: word-wrap;
@@ -206,7 +207,7 @@ export component LookBody inherits VerticalLayout {
         }
     }
     SectionHead {
-        title: "Size";
+        title: Tr.t("look-size");
         note: "";
     }
     ListGroup {
@@ -214,17 +215,17 @@ export component LookBody inherits VerticalLayout {
             padding: Theme.unit * 3;
             spacing: Theme.unit * 2;
             Text {
-                text: "Text size";
+                text: Tr.t("look-text-size");
                 color: Theme.text;
                 font-family: Theme.strong-face;
             }
             Segmented {
-                options: ["Smaller", "Normal", "Large", "Larger", "Largest"];
+                options: [Tr.t("look-size-smaller"), Tr.t("look-size-normal"), Tr.t("look-size-large"), Tr.t("look-size-larger"), Tr.t("look-size-largest")];
                 picked: LookData.size;
                 pick(i) => { LookData.pick-size(i); }
             }
             Text {
-                text: "How big the words are everywhere in AniBeam, on top of your phone's own size.";
+                text: Tr.t("look-text-size-note");
                 color: Theme.dim;
                 font-size: Theme.small;
                 wrap: word-wrap;

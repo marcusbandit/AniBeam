@@ -31,7 +31,8 @@ pub fn agent() -> ureq::Agent {
 pub enum HostError {
     /// Nothing answered: off, asleep, not sharing, or the tailnet is down.
     Unreachable(String),
-    /// Something answered, but it is not AniBeam.
+    /// Something answered, but it is not AniBeam. Holds the whole sentence, worded in the
+    /// language the app spoke when it happened.
     NotAniBeam(String),
     /// An AniBeam that speaks a newer API than this app reads.
     TooNew(u32),
@@ -43,14 +44,16 @@ impl std::fmt::Display for HostError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             HostError::Unreachable(why) => write!(f, "{why}"),
-            HostError::NotAniBeam(what) => {
-                write!(f, "Something answered, but not AniBeam ({what})")
-            }
+            HostError::NotAniBeam(what) => write!(f, "{what}"),
             HostError::TooNew(api) => {
                 write!(
                     f,
-                    "The host speaks API {api}; this app reads {}. Update the app.",
-                    api::API_VERSION
+                    "{}",
+                    tr!(
+                        "client-too-new",
+                        host_api = *api,
+                        app_api = api::API_VERSION
+                    )
                 )
             }
             HostError::Bad(why) => write!(f, "{why}"),
@@ -61,32 +64,20 @@ impl std::fmt::Display for HostError {
 /// Plain words for a failed request.
 pub fn describe(error: &ureq::Error, host: &str) -> String {
     match error {
-        ureq::Error::HostNotFound => {
-            format!("{host} is not a name the phone can find. Is Tailscale connected?")
-        }
-        ureq::Error::Timeout(_) => {
-            format!("{host} did not answer. Is it on, and is Tailscale connected on both?")
-        }
-        ureq::Error::ConnectionFailed => {
-            format!("Could not reach {host}. Is it on, and is Tailscale connected on both?")
-        }
+        ureq::Error::HostNotFound => tr!("client-not-found", host = host),
+        ureq::Error::Timeout(_) => tr!("client-timeout", host = host),
+        ureq::Error::ConnectionFailed => tr!("client-connect-failed", host = host),
         ureq::Error::Io(io) => match io.kind() {
-            std::io::ErrorKind::ConnectionRefused => {
-                format!(
-                    "{host} is on, but AniBeam there is closed or not sharing. Open AniBeam on it and switch on Share over Tailscale in Settings, Phone app."
-                )
-            }
-            std::io::ErrorKind::TimedOut => {
-                format!("{host} did not answer. Is it on, and is Tailscale connected on both?")
-            }
+            std::io::ErrorKind::ConnectionRefused => tr!("client-refused", host = host),
+            std::io::ErrorKind::TimedOut => tr!("client-timeout", host = host),
             std::io::ErrorKind::NetworkUnreachable | std::io::ErrorKind::HostUnreachable => {
-                format!("No route to {host}. Is Tailscale connected?")
+                tr!("client-no-route", host = host)
             }
             // What connect() says on Android for an address it will not even try.
-            std::io::ErrorKind::InvalidInput => format!("Could not connect to {host}"),
-            _ => format!("Could not reach {host}: {io}"),
+            std::io::ErrorKind::InvalidInput => tr!("client-invalid-input", host = host),
+            _ => tr!("client-unreachable", host = host, why = io.to_string()),
         },
-        other => format!("Could not reach {host}: {other}"),
+        other => tr!("client-unreachable", host = host, why = other.to_string()),
     }
 }
 
@@ -155,7 +146,8 @@ impl HostClient {
         &self.address
     }
 
-    fn get(&self, path: &str, limit: u64) -> Result<(Vec<u8>, Option<String>), HostError> {
+    /// One `GET`, whatever status came back: the status, the body and the content type.
+    fn fetch(&self, path: &str, limit: u64) -> Result<(u16, Vec<u8>, Option<String>), HostError> {
         let url = format!("{}{}", self.address.base_url(), path);
         // A connection that drops before the answer gets one more try: every route is a
         // GET that changes nothing.
@@ -189,18 +181,27 @@ impl HostClient {
             .limit(limit)
             .read_to_vec()
             .map_err(|e| {
-                HostError::Bad(format!(
-                    "The answer from {} broke off: {e}",
-                    self.address.display()
+                HostError::Bad(tr!(
+                    "client-broke-off",
+                    host = self.address.display(),
+                    why = e.to_string()
                 ))
             })?;
+        Ok((status, body, kind))
+    }
+
+    /// The answer to a `GET` that came back 200.
+    fn get(&self, path: &str, limit: u64) -> Result<(Vec<u8>, Option<String>), HostError> {
+        let (status, body, kind) = self.fetch(path, limit)?;
         if status != 200 {
             if let Some(why) = refusal(status, &body) {
                 return Err(HostError::Bad(why));
             }
-            return Err(HostError::Bad(format!(
-                "{} answered {status} for {path}",
-                self.address.display()
+            return Err(HostError::Bad(tr!(
+                "client-answered",
+                host = self.address.display(),
+                status = status.to_string(),
+                path = path
             )));
         }
         Ok((body, kind))
@@ -220,9 +221,9 @@ impl HostClient {
             .map(|mut all| all.next().is_some());
         match found {
             Ok(true) => Ok(()),
-            _ => Err(HostError::Unreachable(format!(
-                "The phone cannot find {}. Is Tailscale connected?",
-                self.address.host
+            _ => Err(HostError::Unreachable(tr!(
+                "client-cannot-find",
+                host = self.address.host.as_str()
             ))),
         }
     }
@@ -230,17 +231,26 @@ impl HostClient {
     /// Asks who is there. Cheap, and the first thing every sync does.
     pub fn hello(&self) -> Result<Hello, HostError> {
         self.resolve()?;
-        let (body, _) = self.get(api::HELLO, 64 * 1024).map_err(|e| match e {
-            // A 404 on the hello route is a web server that is not AniBeam.
-            HostError::Bad(why) if why.contains(" answered ") => HostError::NotAniBeam(why),
-            other => other,
-        })?;
+        let (status, body, _) = self.fetch(api::HELLO, 64 * 1024)?;
+        if status != 200 {
+            // A refusal is the computer's own word; any other status on the hello route is
+            // a web server that is not AniBeam.
+            return Err(match refusal(status, &body) {
+                Some(why) => HostError::Bad(why),
+                None => HostError::NotAniBeam(tr!(
+                    "client-not-anibeam-status",
+                    host = self.address.display(),
+                    status = status.to_string(),
+                    path = api::HELLO
+                )),
+            });
+        }
         let hello: Hello = serde_json::from_slice(&body)
-            .map_err(|_| HostError::NotAniBeam("its answer is not AniBeam's hello".into()))?;
+            .map_err(|_| HostError::NotAniBeam(tr!("client-not-anibeam-hello")))?;
         if hello.app != api::APP {
-            return Err(HostError::NotAniBeam(format!(
-                "it calls itself {}",
-                hello.app
+            return Err(HostError::NotAniBeam(tr!(
+                "client-not-anibeam-name",
+                name = hello.app.as_str()
             )));
         }
         if hello.api > api::API_VERSION {
@@ -258,7 +268,7 @@ impl HostClient {
     pub fn snapshot(&self) -> Result<Snapshot, HostError> {
         let (body, _) = self.get(api::SNAPSHOT, SNAPSHOT_LIMIT)?;
         serde_json::from_slice(&body)
-            .map_err(|e| HostError::Bad(format!("The snapshot did not read: {e}")))
+            .map_err(|e| HostError::Bad(tr!("client-snapshot-unreadable", why = e.to_string())))
     }
 
     /// The body of any `GET` on the host, up to 1 MB.
@@ -270,7 +280,7 @@ impl HostClient {
     pub fn probe(&self, file: u64) -> Result<api::Probe, HostError> {
         let (body, _) = self.get(&api::probe_path(file), 1024 * 1024)?;
         serde_json::from_slice(&body)
-            .map_err(|e| HostError::Bad(format!("The file's details did not read: {e}")))
+            .map_err(|e| HostError::Bad(tr!("client-probe-unreadable", why = e.to_string())))
     }
 
     /// The host's address with the name looked up, for a player that resolves names on
@@ -289,9 +299,9 @@ impl HostClient {
         match found {
             Some(std::net::SocketAddr::V4(a)) => Ok(format!("http://{}:{}", a.ip(), a.port())),
             Some(std::net::SocketAddr::V6(a)) => Ok(format!("http://[{}]:{}", a.ip(), a.port())),
-            None => Err(HostError::Unreachable(format!(
-                "The phone cannot find {}. Is Tailscale connected?",
-                self.address.host
+            None => Err(HostError::Unreachable(tr!(
+                "client-cannot-find",
+                host = self.address.host.as_str()
             ))),
         }
     }
@@ -316,9 +326,10 @@ impl HostClient {
             .limit(4 * 1024 * 1024)
             .read_to_vec()
             .map_err(|e| {
-                HostError::Bad(format!(
-                    "The answer from {} broke off: {e}",
-                    self.address.display()
+                HostError::Bad(tr!(
+                    "client-broke-off",
+                    host = self.address.display(),
+                    why = e.to_string()
                 ))
             })?;
         Ok((status, body))
@@ -329,7 +340,7 @@ impl HostClient {
         let (body, _) = self.get(api::PEERS, 256 * 1024)?;
         serde_json::from_slice::<api::Peers>(&body)
             .map(|p| p.hosts)
-            .map_err(|e| HostError::Bad(format!("The list of AniBeams did not read: {e}")))
+            .map_err(|e| HostError::Bad(tr!("client-peers-unreadable", why = e.to_string())))
     }
 
     /// The image bytes and their content type.

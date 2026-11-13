@@ -152,6 +152,12 @@ impl From<String> for Arg<'_> {
     }
 }
 
+impl<'a> From<&'a String> for Arg<'a> {
+    fn from(s: &'a String) -> Self {
+        Arg::Str(Cow::Borrowed(s.as_str()))
+    }
+}
+
 macro_rules! num_arg {
     ($($t:ty),*) => {$(
         impl From<$t> for Arg<'_> {

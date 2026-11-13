@@ -35,7 +35,7 @@ const onceInView = (els, threshold = 0.45) => {
   // Rewritten whole each time, so a Mac found to be Intel goes back to the plain words, and a
   // new language gets them in its own.
   function label() {
-    let text = t("Download AniBeam");
+    let text = t("Download Anibeam");
     if (os === "ios") text = t("Coming to iPhone soon");
     else if (os === "android") text = t("Get the Android app");
     else if (want && !(os === "mac" && chip === false)) text = t("Download for {os}", { os: names[os] });
@@ -70,7 +70,7 @@ const onceInView = (els, threshold = 0.45) => {
   const img = document.getElementById("tour-img");
   if (!img) return;
   const alts = {
-    home: "AniBeam's Home: shows to continue and shows not started yet, as poster cards",
+    home: "Anibeam's Home: shows to continue and shows not started yet, as poster cards",
     library: "The Library grid with every show as a poster",
     series: "A show's page with its banner, episodes and characters",
   };

@@ -56,7 +56,7 @@ fn read(result: &Path) -> Option<Outcome> {
 /// time; a second while one is open is refused.
 pub fn pick(kind: Pick, path: &Path, name: &str, done: impl FnOnce(Outcome) + 'static) {
     if WAITING.with(|w| w.borrow().is_some()) {
-        fail_later(done, "A file is already being picked.".into());
+        fail_later(done, tr!("files-already-picking"));
         return;
     }
     let result = path.with_extension("result");
@@ -91,7 +91,7 @@ fn look() {
         let waiting = w.as_ref()?;
         read(&waiting.result).or_else(|| {
             (waiting.since.elapsed() > PATIENCE)
-                .then(|| Outcome::Failed("The file picker took too long.".into()))
+                .then(|| Outcome::Failed(tr!("files-took-too-long")))
         })
     });
     if let Some(outcome) = ended
@@ -169,12 +169,12 @@ fn launch(kind: Pick, path: &Path, name: &str, result: &Path) -> Result<(), Stri
         }
         started
     };
-    go().map_err(|e| format!("The file picker did not open: {e}"))
+    go().map_err(|e| tr!("files-did-not-open", error = e.to_string()))
 }
 
 #[cfg(not(target_os = "android"))]
 fn launch(_kind: Pick, _path: &Path, _name: &str, _result: &Path) -> Result<(), String> {
-    Err("There is no file picker here.".into())
+    Err(tr!("files-none-here"))
 }
 
 #[cfg(test)]
