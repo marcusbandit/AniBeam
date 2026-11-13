@@ -5,7 +5,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use anibeam_companion::address::HostAddress;
 use anibeam_companion::api;
 use anibeam_companion::client::{self, HostClient};
 use anibeam_companion::store::Store;
@@ -122,6 +121,7 @@ pub fn sent_line(reply: &Reply, what: &str, name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anibeam_companion::address::HostAddress;
 
     fn desk() -> Desk {
         let series = |id, anilist, names: &[&str], had: &[u32]| Series {
