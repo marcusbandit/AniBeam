@@ -194,6 +194,8 @@ def build(site):
         for code, _ in langs:
             urls.append(f'  <url><loc>https://anibeam.app/{"" if code == "en" else code + "/"}{sub}</loc>{alts}</url>')
     urls.append("  <url><loc>https://anibeam.app/whats-new/</loc></url>")
+    urls.append("  <url><loc>https://anibeam.app/privacy/</loc></url>")
+    urls.append("  <url><loc>https://anibeam.app/terms/</loc></url>")
     (site / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n' + "\n".join(urls) + "\n</urlset>\n")
     print(f"i18n: {len(langs)} languages, {len(PAGES)} pages each")
 
