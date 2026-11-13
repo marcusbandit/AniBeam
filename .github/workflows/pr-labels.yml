@@ -1,0 +1,115 @@
+name: PR labels
+
+# Every PR carries one category label from the moment it opens: bug, enhancement,
+# documentation or question (#860). The type in the title or branch decides, in any case:
+#
+#   fix                                   -> bug
+#   feat, perf, refactor, chore, ci, test -> enhancement
+#   docs                                  -> documentation
+#
+# A label someone picked by hand stays. A label this workflow added follows the type, so a PR
+# retitled from feat to fix moves from enhancement to bug.
+#
+# A PR with no type goes to Haiku once, when it opens or reopens, never on an edit, so a PR
+# cannot spend the token by saving its body over and over. Haiku reads the title, branch and
+# the start of the body with no tools, and only one of the four labels is accepted back. Only
+# that step sees CLAUDE_CODE_OAUTH_TOKEN, and it is skipped while the secret is unset.
+#
+# pull_request_target, because a PR from a fork gets a read-only token under pull_request.
+# This job never checks out the PR's code, and PR text is read through the API, never
+# expanded into the script.
+on:
+  pull_request_target:
+    types: [opened, reopened, edited]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to label
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pr-labels-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  label:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+      ACTION: ${{ github.event.action || 'dispatch' }}
+    steps:
+      - name: Label from the type
+        id: type
+        run: |
+          set -euo pipefail
+          pr="$(gh pr view "$PR" --json title,headRefName,labels)"
+          title="$(jq -r .title <<<"$pr")"
+          branch="$(jq -r .headRefName <<<"$pr")"
+          have="$(jq -r '[.labels[].name | select(IN("bug", "enhancement", "documentation", "question"))] | first // ""' <<<"$pr")"
+          by_type() {
+            case "${1,,}" in
+              fix) echo bug ;;
+              feat|perf|refactor|chore|ci|test) echo enhancement ;;
+              docs) echo documentation ;;
+            esac
+          }
+          type="$(sed -nE 's/^([A-Za-z]+)(\([^)]*\))?!?:.*/\1/p' <<<"$title")"
+          pick="$(by_type "$type")"
+          [ -n "$pick" ] || pick="$(by_type "${branch%%/*}")"
+          # Who added the label it has: a person, or this workflow.
+          auto=false
+          if [ -n "$have" ]; then
+            actor="$(gh api --paginate "repos/$GH_REPO/issues/$PR/events" \
+              --jq ".[] | select(.event == \"labeled\" and .label.name == \"$have\") | .actor.login" | tail -n 1)"
+            [ "$actor" = "github-actions[bot]" ] && auto=true
+          fi
+          if [ -n "$have" ] && { [ "$auto" = false ] || [ -z "$pick" ] || [ "$have" = "$pick" ]; }; then
+            echo "#$PR keeps $have."
+            exit 0
+          fi
+          if [ -n "$pick" ]; then
+            [ -n "$have" ] && gh api --silent -X DELETE "repos/$GH_REPO/issues/$PR/labels/$have"
+            gh api --silent "repos/$GH_REPO/issues/$PR/labels" -f "labels[]=$pick"
+            echo "#$PR gets $pick from its type${have:+, replacing $have}."
+            exit 0
+          fi
+          case "$ACTION" in
+            opened|reopened|dispatch) echo "haiku=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "#$PR has no type in its title or branch; Haiku only reads a PR when it opens." ;;
+          esac
+
+      - name: Label from Haiku
+        if: steps.type.outputs.haiku == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "::notice::#$PR has no type in its title or branch, and CLAUDE_CODE_OAUTH_TOKEN is unset; no label added."
+            exit 0
+          fi
+          npm install --global --silent @anthropic-ai/claude-code@2.1.312
+          # The native binary comes from a postinstall script that npm can skip.
+          claude --version >/dev/null 2>&1 || node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs"
+          pr="$(gh pr view "$PR" --json title,headRefName,body)"
+          prompt="$(jq -r '"Pick the one GitHub label that fits this pull request: bug (fixes something broken), enhancement (new or better behaviour, refactors, tooling), documentation (docs only) or question. Answer with the label only, nothing else.\n\nBranch: \(.headRefName)\nTitle: \(.title)\n\n<pr_body>\n\(.body // "" | .[0:1500])\n</pr_body>"' <<<"$pr")"
+          if ! answer="$(timeout 90 claude -p --model haiku --effort medium --tools "" \
+              --strict-mcp-config --no-session-persistence <<<"$prompt" 2>haiku.err)"; then
+            echo "::warning::Haiku failed for #$PR: $(tail -n 3 haiku.err | tr '\n' ' ')"
+            exit 0
+          fi
+          answer="$(tr -d '[:space:]`.' <<<"$answer" | tr '[:upper:]' '[:lower:]')"
+          case "$answer" in
+            bug|enhancement|documentation|question)
+              gh api --silent "repos/$GH_REPO/issues/$PR/labels" -f "labels[]=$answer"
+              echo "#$PR gets $answer from Haiku." ;;
+            *) echo "::warning::Haiku answered '${answer:0:40}' for #$PR, not one of the four; no label added." ;;
+          esac
