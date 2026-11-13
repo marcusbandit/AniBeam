@@ -142,6 +142,22 @@ nightly or a release, and stops when the newest heading in `CHANGELOG.md` is not
 version. Builds for people come from CI, never from a checkout: CONTRIBUTING.md, under
 Releases.
 
+### iOS
+
+The same app builds for the iPhone, without video for now. Slint draws through winit
+there, and `src/main.rs` is the executable that `ios/cargo.sh`, the Xcode project's build
+step, puts in the bundle. You need a Mac with Xcode, xcodegen (`brew install xcodegen`)
+and the simulator target (`rustup target add aarch64-apple-ios-sim`).
+
+```sh
+scripts/build-ios.sh                       # build/ios/Build/Products/Debug-iphonesimulator/AniBeam.app
+xcrun simctl install booted build/ios/Build/Products/Debug-iphonesimulator/AniBeam.app
+xcrun simctl launch --console-pty booted com.marcusrosado.anibeam
+```
+
+Until `librqbit-dualstack-sockets` releases its iOS fix (its pull request #7), cargo
+stops in that crate when it builds for iOS.
+
 ## The emulator loop
 
 ```sh
@@ -200,7 +216,11 @@ src/                the app: the UI thread (app.rs), the phone's core (local.rs,
                     the other device (remote.rs, worker.rs), the phone's settings (prefs.rs)
 src/platform/       everything that differs by platform: android.rs holds android_main and
                     the JNI for the browser, the service, the network and the screen;
-                    other.rs stands in on every other target
+                    ios.rs holds ios_main and the hinge; other.rs stands in on every
+                    other target
+src/main.rs         the iPhone's executable
+ios/                the iPhone's Xcode project (project.yml for xcodegen), Info.plist
+                    and cargo.sh, the build step that runs cargo
 ui/                 the Slint screens; theme.slint is the one token file, fonts/ holds
                     Archivo and B612 as on the desktop
 scripts/            the build and emulator loop, and the mock host

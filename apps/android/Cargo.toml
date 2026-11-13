@@ -14,12 +14,18 @@ resolver = "3"
 
 [lib]
 name = "anibeam"
-crate-type = ["cdylib"]
+# The cdylib is what Android's NativeActivity loads; the rlib is what the iPhone's
+# executable (src/main.rs) links.
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "anibeam-ios"
+path = "src/main.rs"
 
 [dependencies]
 anibeam-companion = { path = "companion" }
 anibeam-core = { path = "../../core", features = ["phone", "cast"] }
-slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06", "renderer-skia"] }
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-skia"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde = { version = "1", features = ["derive"] }
@@ -27,8 +33,16 @@ serde_json = "1"
 rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
+slint = { version = "1.18", default-features = false, features = ["backend-android-activity-06"] }
 jni = "0.21"
 ndk-context = "0.1"
+
+# The iPhone draws through winit, and reads the hinge from UIKit (platform/ios.rs).
+[target.'cfg(target_os = "ios")'.dependencies]
+slint = { version = "1.18", default-features = false, features = ["backend-winit"] }
+objc2 = "0.6"
+objc2-core-foundation = "0.3"
+block2 = "0.6"
 
 [build-dependencies]
 slint-build = "1.18"

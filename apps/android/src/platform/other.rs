@@ -99,12 +99,14 @@ pub fn copy_text(label: &str, text: &str) -> bool {
 }
 
 /// No hinge.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn fold() -> (Option<f32>, bool) {
     (None, false)
 }
 
 /// The crease is never reported: the answer `Crease.at` gives on a phone without the window
 /// extensions.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn crease() -> crate::crease::Reading {
     crate::crease::decode(crate::crease::SILENT)
 }

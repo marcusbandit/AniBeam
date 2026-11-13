@@ -1,0 +1,33 @@
+# The iPhone app's Xcode project, which scripts/build-ios.sh generates with xcodegen. The
+# app has no Swift or Objective-C: its executable is the Rust bin `anibeam-ios`, which
+# cargo.sh builds into the bundle after Xcode's own (empty) compile step.
+name: AniBeam
+options:
+  bundleIdPrefix: com.marcusrosado
+settings:
+  ENABLE_USER_SCRIPT_SANDBOXING: NO
+targets:
+  AniBeam:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Info.plist
+        buildPhase: none
+    settings:
+      INFOPLIST_FILE: Info.plist
+      PRODUCT_NAME: AniBeam
+      # The Android app's applicationId.
+      PRODUCT_BUNDLE_IDENTIFIER: com.marcusrosado.anibeam
+      MARKETING_VERSION: "0"
+      CURRENT_PROJECT_VERSION: "1"
+      TARGETED_DEVICE_FAMILY: "1"
+      ARCHS: arm64
+      CODE_SIGN_STYLE: Automatic
+    postCompileScripts:
+      - name: Build the app with cargo
+        script: '"$PROJECT_DIR/cargo.sh"'
+        basedOnDependencyAnalysis: false
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)
+    scheme: {}

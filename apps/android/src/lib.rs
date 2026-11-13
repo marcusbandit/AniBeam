@@ -1,7 +1,8 @@
 //! AniBeam for Android: the Slint screens and the thread that syncs behind them.
 //!
-//! The entry point is the platform's (`platform/android.rs`'s `android_main` on the phone),
-//! which hands `run` the data directory and calls back in through the functions below.
+//! The entry point is the platform's (`platform/android.rs`'s `android_main` on the phone,
+//! `platform/ios.rs`'s `ios_main` on the iPhone, which `main.rs` calls), which hands `run`
+//! the data directory and calls back in through the functions below.
 //! Everything that differs by platform goes through `platform`.
 
 // Clippy asks for `const` on thread_local initialisers that already have it on targets
@@ -53,6 +54,8 @@ mod video;
 mod worker;
 
 pub use app::run;
+#[cfg(target_os = "ios")]
+pub use platform::ios_main;
 
 // The calls a platform makes into the app. Public, so a target whose platform never makes
 // them still keeps them.
