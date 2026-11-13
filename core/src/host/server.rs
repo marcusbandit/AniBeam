@@ -122,6 +122,11 @@ type SnapshotSlot = tokio::sync::Mutex<Option<(Instant, Bytes)>>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Profile(pub u64);
 
+/// The person a request is answered as, as the tailnet names them right now, set beside
+/// [`Profile`] (#633). None when the tailnet does not say, as on a tagged machine.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Person(pub Option<trust::TailnetUser>);
+
 /// The sentence a phone shows when it asks for an episode here while
 /// streaming is off.
 pub const STREAMING_OFF: &str =
@@ -196,6 +201,13 @@ async fn trusted(
             ),
             _ => core.host.asker(from.ip()),
         };
+        // Who it is, as the tailnet names them now, for the hello (#633). The profile
+        // id below is cached for the launch; the name is read fresh with every request.
+        let who = match &asker {
+            trust::Asker::Owner => me.clone(),
+            trust::Asker::Person(user) => Some(user.clone()),
+            trust::Asker::Unknown => None,
+        };
         let key = match &asker {
             trust::Asker::Owner => String::new(),
             trust::Asker::Person(user) => user.id.clone(),
@@ -208,7 +220,7 @@ async fn trusted(
             .get(&key)
             .copied();
         if let Some(id) = known {
-            return Ok((verdict, proof, None, Some(id)));
+            return Ok((verdict, proof, None, Some((id, who))));
         }
         let now = time::now_secs();
         let learned = me.is_some();
@@ -226,7 +238,7 @@ async fn trusted(
                 .unwrap_or_else(|e| e.into_inner())
                 .insert(key, id);
         }
-        Ok::<_, CoreError>((verdict, proof, None, profile))
+        Ok::<_, CoreError>((verdict, proof, None, profile.map(|id| (id, who))))
     })
     .await;
     let (verdict, proof, refused, profile) = match judged {
@@ -243,12 +255,13 @@ async fn trusted(
         tracing::debug!("host refused {from}: {verdict:?}, {proof:?}");
         return error(StatusCode::FORBIDDEN, why);
     }
-    let Some(profile) = profile else {
+    let Some((profile, who)) = profile else {
         tracing::debug!("host refused {from}: no person for it on the tailnet");
         return error(StatusCode::FORBIDDEN, trust::UNKNOWN_PERSON);
     };
     let mut request = request;
     request.extensions_mut().insert(Profile(profile));
+    request.extensions_mut().insert(Person(who));
     next.run(request).await
 }
 
@@ -313,10 +326,13 @@ async fn hello(
     State(st): State<Arc<Served>>,
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
     profile: Option<axum::Extension<Profile>>,
+    person: Option<axum::Extension<Person>>,
 ) -> Response {
     // Downloads are offered only to the owner's devices, the only ones the call route
     // takes them from (#733).
-    let owner = profile.is_some_and(|p| p.0.0 == crate::profiles::OWNER);
+    let owner = profile
+        .as_ref()
+        .is_some_and(|p| p.0.0 == crate::profiles::OWNER);
     // `trusted` read the key before this route, so this only takes it.
     let key = st
         .core
@@ -327,6 +343,24 @@ async fn hello(
         .core
         .upgrade()
         .is_some_and(|core| super::relayed(&core, from.ip()));
+    // Whose progress this device gets (#633): named as the tailnet names them now, or as
+    // the profile was last seen when the tailnet does not say.
+    let id = profile.map(|p| p.0.0);
+    let fresh = person
+        .and_then(|p| p.0.0)
+        .zip(id)
+        .and_then(|(user, id)| crate::profiles::shown(&user, id));
+    let named = match (fresh, st.core.upgrade(), id) {
+        (Some(named), _, _) => Some(named),
+        (None, Some(core), Some(id)) => {
+            tokio::task::spawn_blocking(move || core.store.read(|c| crate::profiles::named(c, id)))
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .flatten()
+        }
+        _ => None,
+    };
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
@@ -337,6 +371,7 @@ async fn hello(
         key: key.map(|k| k.public()).unwrap_or_default(),
         streaming_off: !streaming,
         relayed,
+        profile: named,
     };
     match serde_json::to_vec(&hello) {
         Ok(body) => json(Bytes::from(body)),

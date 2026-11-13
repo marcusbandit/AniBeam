@@ -2964,6 +2964,25 @@ settings-phone-service-off-helper = Run the command once and your devices reach 
 settings-phone-service-on-helper = Your devices reach AniBeam with no window open. While this window is open, it shares in the service's place.
 settings-phone-copy-command = Copy command
 settings-phone-command-copied = Command copied
+# Tailscale ties the device to no person, so this computer cannot tell whose it is.
+settings-phone-nobody = Gets nothing: Tailscale names no person for it
+# The people whose devices this computer serves, its own person first.
+settings-phone-people = People
+# The chip on the person this computer belongs to.
+settings-phone-own-profile = This computer's profile
+# The owner's line: this computer plus how many of their other devices it serves.
+settings-phone-person-own-devices =
+    { $count ->
+        [0] This computer
+        [one] This computer and { $count } device
+       *[other] This computer and { $count } devices
+    }
+# Anyone else's line: how many of their devices this computer serves.
+settings-phone-person-devices =
+    { $count ->
+        [one] { $count } device
+       *[other] { $count } devices
+    }
 settings-phone-devices = Devices on your tailnet
 settings-phone-devices-helper = Every device on your tailnet can reach this computer while sharing is on. Switch one off and it gets nothing from here.
 settings-phone-addresses = Addresses

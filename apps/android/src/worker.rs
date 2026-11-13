@@ -21,7 +21,7 @@ pub enum Command {
 
 pub enum Event {
     SyncStarted,
-    Snapshot(Cache),
+    Snapshot(Box<Cache>),
     Poster(u64, crate::posters::Decoded),
     AniList(AniListCache),
     /// The sync ended; `None` when the host answered.
@@ -104,13 +104,21 @@ impl<F: Fn(Event)> Worker<F> {
         let result = self
             .syncer
             .test(address)
-            .map(|hello| {
-                tr!(
-                    "host-reached",
-                    host = hello.host.as_str(),
-                    version = hello.version.as_str()
-                )
-            })
+            .map(
+                |hello| match crate::app::person_name(hello.profile.as_ref()) {
+                    Some(name) => tr!(
+                        "host-reached-for",
+                        host = hello.host.as_str(),
+                        version = hello.version.as_str(),
+                        name = name
+                    ),
+                    None => tr!(
+                        "host-reached",
+                        host = hello.host.as_str(),
+                        version = hello.version.as_str()
+                    ),
+                },
+            )
             .map_err(|e| e.to_string());
         (self.deliver)(Event::TestDone(result));
     }
@@ -139,12 +147,12 @@ impl<F: Fn(Event)> Worker<F> {
                     cache.snapshot.series.len(),
                     cache.snapshot.subscriptions.len()
                 );
-                (self.deliver)(Event::Snapshot(cache.clone()));
+                (self.deliver)(Event::Snapshot(Box::new(cache.clone())));
                 self.syncer
                     .fetch_posters(&address, &cache, |id| self.send_poster(id));
                 // Last, so a host slow to ask its tailnet never holds up the screens.
                 if let Some(cache) = self.syncer.fetch_peers(&address, &cache) {
-                    (self.deliver)(Event::Snapshot(cache));
+                    (self.deliver)(Event::Snapshot(Box::new(cache)));
                 }
                 crate::airing::sync(&address);
                 (self.deliver)(Event::SyncDone {

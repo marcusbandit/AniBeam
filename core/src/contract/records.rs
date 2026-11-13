@@ -1311,6 +1311,31 @@ pub struct TailnetDevice {
     pub online: bool,
     /// Whether the host answers it: true unless the person switched it off.
     pub trusted: bool,
+    /// The person whose profile the host answers it with, as Tailscale names them
+    /// (#633). Empty when the tailnet does not say.
+    #[serde(default)]
+    pub person: String,
+    /// Tailscale ties it to no person while the host tells people apart, so the host
+    /// refuses it whatever the switch says.
+    #[serde(default)]
+    pub nobody: bool,
+}
+
+/// A person whose devices the tailnet host serves, for Settings (#633): the Tailscale
+/// user, each answered with their own profile.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct TailnetPerson {
+    /// Tailscale's stable user id.
+    pub id: String,
+    /// The name Tailscale shows for them, or their login when it shows none.
+    pub name: String,
+    /// "someone@example.com", or a GitHub login. May be empty.
+    pub login: String,
+    /// The person this computer belongs to: their devices see its own history.
+    pub owner: bool,
+    /// How many of their devices the host serves: on the tailnet and not switched
+    /// off, this computer left out.
+    pub devices: u32,
 }
 
 /// What the tailnet host is doing, for the Settings page: whether the

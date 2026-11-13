@@ -93,6 +93,7 @@ mod tests {
             synced_at: snapshot.generated_at + 5,
             snapshot,
             peers: Vec::new(),
+            profile: None,
         }
     }
 

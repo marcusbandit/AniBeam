@@ -9,6 +9,11 @@
 -anilist = AniList
 -mal = MyAnimeList
 
+## The tailnet host
+
+# A person on the tailnet whom Tailscale gives neither a name nor a login.
+tailnet-person-no-name = No name in Tailscale
+
 ## Counts
 
 count-episodes =

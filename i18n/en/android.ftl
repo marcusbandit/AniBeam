@@ -244,6 +244,8 @@ host-synced = Synced { $when }.
 host-last-try = Last try { $when }: { $error }
 host-asking = Asking...
 host-reached = Reached { $host }, AniBeam { $version }.
+# The same, naming whose watch history that computer shows this phone.
+host-reached-for = Reached { $host }, AniBeam { $version }, { $name }'s progress.
 host-saved = Saved. Syncing...
 host-none = No computer. This phone keeps to its own library.
 acct-signed-in-as = Signed in as { $name }
@@ -267,6 +269,8 @@ lib-note-phone = { $count ->
 }
 # Device is the computer's name; when is how long ago, such as "3h ago".
 lib-note-remote = { $device }, synced { $when }
+# The same, naming whose watch history that computer shows this phone.
+lib-note-remote-for = { $device }, { $name }'s progress, synced { $when }
 lib-empty-search = Nothing matches "{ $query }".
 lib-empty-phone = Nothing on this phone yet.
 lib-empty-remote = That device has nothing in its library.
@@ -1721,6 +1725,11 @@ series-not-tracked-on-phone =
         [one] Not tracked, { $count } episode on this phone
        *[other] Not tracked, { $count } episodes on this phone
     }
+
+## Your computer
+
+# Whose watch history the computer shows this phone, by the person's Tailscale name.
+host-progress = { $name }'s progress
 
 ## The player
 

@@ -341,18 +341,18 @@ pub fn sync(core: &Core) {
     core.host.follow(core, on);
 }
 
-/// The devices on the tailnet for Settings, each with whether it is trusted,
-/// as last read. It never waits: a fresh read runs on a worker and arrives as
-/// `TailnetDevicesChanged`.
-pub fn devices(core: &Core) -> Vec<TailnetDevice> {
+/// The devices on the tailnet for Settings, each with whether it is trusted and
+/// whose profile it gets, and the people they belong to, as last read. It never
+/// waits: a fresh read runs on a worker and arrives as `TailnetDevicesChanged`.
+pub fn devices(core: &Core) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
     if let Some(arc) = core.arc() {
         core.handle.spawn_blocking(move || {
             arc.host.tailnet(true);
-            let devices = listed(&arc);
+            let (devices, people) = listed(&arc);
             arc.bus.debug(
                 Stage::System,
                 "tailnet devices",
-                EventBody::TailnetDevicesChanged { devices },
+                EventBody::TailnetDevicesChanged { devices, people },
             );
         });
     }
@@ -380,23 +380,80 @@ pub fn relayed(core: &Core, from: std::net::IpAddr) -> bool {
         .unwrap_or(false)
 }
 
-fn listed(core: &Core) -> Vec<TailnetDevice> {
+fn listed(core: &Core) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
     let off = recover(&core.host.off).clone();
     core.host
         .tailnet_now()
-        .map(|t| {
-            t.peers
-                .iter()
-                .map(|p| TailnetDevice {
-                    id: p.id.clone(),
-                    name: p.name.clone(),
-                    os: p.os.clone(),
-                    online: p.online,
-                    trusted: !off.contains(&p.id),
-                })
-                .collect()
-        })
+        .map(|t| listing(&t, &off))
         .unwrap_or_default()
+}
+
+/// Every device with whose profile it gets, and every person the host answers with a
+/// profile of their own (#633): the owner first, then the rest by name. A tagged device
+/// is the owner's, as it is answered; one the tailnet ties to nobody is refused, and says
+/// so. A person's count is of the devices the host serves, switched-off ones left out. A
+/// tailnet that names no person for this machine lists no people, since the host then
+/// cannot tell anyone apart.
+fn listing(t: &trust::Tailnet, off: &[String]) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
+    // The owner, also when the status has no entry for their user.
+    let owner = t.me_user.as_deref().map(|id| {
+        t.user(id).cloned().unwrap_or_else(|| trust::TailnetUser {
+            id: id.to_string(),
+            ..trust::TailnetUser::default()
+        })
+    });
+    let mut people: Vec<TailnetPerson> = owner.iter().map(|me| person(me, true)).collect();
+    let devices = t
+        .peers
+        .iter()
+        .map(|p| {
+            let asker = trust::whose(t, Some(p));
+            let at = match &asker {
+                trust::Asker::Owner if owner.is_some() => Some(0),
+                trust::Asker::Person(user) => {
+                    Some(match people.iter().position(|q| q.id == user.id) {
+                        Some(i) => i,
+                        None => {
+                            people.push(person(user, false));
+                            people.len() - 1
+                        }
+                    })
+                }
+                _ => None,
+            };
+            let trusted = !off.contains(&p.id);
+            if let Some(i) = at
+                && trusted
+            {
+                people[i].devices += 1;
+            }
+            TailnetDevice {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                os: p.os.clone(),
+                online: p.online,
+                trusted,
+                person: at.map(|i| people[i].name.clone()).unwrap_or_default(),
+                nobody: asker == trust::Asker::Unknown,
+            }
+        })
+        .collect();
+    let first = usize::from(owner.is_some());
+    people[first..].sort_by_key(|p| p.name.to_lowercase());
+    (devices, people)
+}
+
+fn person(user: &trust::TailnetUser, owner: bool) -> TailnetPerson {
+    TailnetPerson {
+        id: user.id.clone(),
+        name: user.shown().map_or_else(
+            || crate::i18n::tr("tailnet-person-no-name", &[]),
+            str::to_string,
+        ),
+        login: user.login.clone(),
+        owner,
+        devices: 0,
+    }
 }
 
 /// `tailscale status --json`, from the file `STATUS_ENV` names when it is
@@ -671,6 +728,98 @@ fn dns_name_of(json: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The owner has this machine, a phone and a tagged server's worth of trust; Sam has
+    /// a tablet and a laptop, Alex a phone with no name in Tailscale, and one device
+    /// names nobody.
+    const STATUS: &[u8] = br#"{
+        "Self": {"ID": "nSelf", "HostName": "desk", "UserID": 1, "TailscaleIPs": ["100.64.0.1"]},
+        "Peer": {
+            "a": {"ID": "nPhone", "HostName": "phone", "UserID": 1, "TailscaleIPs": ["100.64.0.2"]},
+            "b": {"ID": "nTab", "HostName": "tab", "UserID": 3, "TailscaleIPs": ["100.64.0.3"]},
+            "c": {"ID": "nLap", "HostName": "lap", "UserID": 3, "TailscaleIPs": ["100.64.0.4"]},
+            "d": {"ID": "nAlex", "HostName": "alexphone", "UserID": 2, "TailscaleIPs": ["100.64.0.5"]},
+            "e": {"ID": "nNas", "HostName": "nas", "UserID": 9, "Tags": ["tag:server"], "TailscaleIPs": ["100.64.0.6"]},
+            "f": {"ID": "nOdd", "HostName": "odd", "TailscaleIPs": ["100.64.0.7"]}
+        },
+        "User": {
+            "1": {"ID": 1, "LoginName": "owner@example.com", "DisplayName": "Owner"},
+            "2": {"ID": 2, "LoginName": "alex@example.com", "DisplayName": ""},
+            "3": {"ID": 3, "LoginName": "sam@example.com", "DisplayName": "Sam"},
+            "9": {"ID": 9, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices"}
+        }
+    }"#;
+
+    #[test]
+    fn each_device_is_listed_under_the_person_whose_profile_it_gets() {
+        let t = trust::read_status(STATUS).unwrap();
+        let (devices, people) = listing(&t, &["nLap".to_string()]);
+        let whose: Vec<(&str, &str, bool, bool)> = devices
+            .iter()
+            .map(|d| (d.name.as_str(), d.person.as_str(), d.trusted, d.nobody))
+            .collect();
+        assert_eq!(
+            whose,
+            [
+                ("alexphone", "alex@example.com", true, false),
+                ("lap", "Sam", false, false),
+                ("nas", "Owner", true, false),
+                ("odd", "", true, true),
+                ("phone", "Owner", true, false),
+                ("tab", "Sam", true, false),
+            ]
+        );
+        let listed: Vec<(&str, bool, u32)> = people
+            .iter()
+            .map(|p| (p.name.as_str(), p.owner, p.devices))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("Owner", true, 2),
+                ("alex@example.com", false, 1),
+                ("Sam", false, 1),
+            ],
+            "the owner first, then the rest by name, each counting the devices served"
+        );
+    }
+
+    #[test]
+    fn the_owner_is_listed_without_an_entry_and_nobody_shows_a_bare_id() {
+        // The status names this machine's user and the tablet's, but has no entry for
+        // either: the owner is still first, and the friend is not called "3".
+        let bare = String::from_utf8(STATUS.to_vec())
+            .unwrap()
+            .replace(r#""1": {"ID": 1"#, r#""101": {"ID": 101"#)
+            .replace(r#""3": {"ID": 3"#, r#""103": {"ID": 103"#);
+        let t = trust::read_status(bare.as_bytes()).unwrap();
+        let (devices, people) = listing(&t, &[]);
+        let no_name = crate::i18n::tr("tailnet-person-no-name", &[]);
+        let listed: Vec<(&str, bool)> = people.iter().map(|p| (p.name.as_str(), p.owner)).collect();
+        assert_eq!(
+            listed,
+            [
+                (no_name.as_str(), true),
+                ("alex@example.com", false),
+                (no_name.as_str(), false),
+            ]
+        );
+        let phone = devices.iter().find(|d| d.name == "phone").unwrap();
+        assert_eq!(phone.person, no_name);
+    }
+
+    #[test]
+    fn a_tailnet_that_names_nobody_for_this_machine_lists_no_people() {
+        let tagged = String::from_utf8(STATUS.to_vec()).unwrap().replace(
+            r#""UserID": 1, "TailscaleIPs": ["100.64.0.1"]"#,
+            r#""Tags": ["tag:desk"], "TailscaleIPs": ["100.64.0.1"]"#,
+        );
+        let t = trust::read_status(tagged.as_bytes()).unwrap();
+        assert_eq!(t.me_user, None);
+        let (devices, people) = listing(&t, &[]);
+        assert!(people.is_empty());
+        assert!(devices.iter().all(|d| d.person.is_empty()));
+    }
 
     #[test]
     fn preferences_that_cannot_be_read_leave_streaming_as_it_was() {

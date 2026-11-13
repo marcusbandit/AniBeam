@@ -307,3 +307,28 @@ fn only_the_owners_devices_download_to_the_host() {
         "{body}"
     );
 }
+
+/// Each device's hello says whose progress it gets (#633): the owner's phone names the
+/// owner as the computer's own person, the friend's tablet names the friend.
+#[test]
+fn each_hello_names_whose_progress_it_answers_with() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (_dir, core, _c) = common::open_core();
+    core.set_tailscale_status(Some(STATUS.to_vec()));
+    let profile = |base: &str| -> Option<anibeam_host_api::Profile> {
+        let (status, hello) = get(&rt, &format!("{base}{}", anibeam_host_api::HELLO));
+        assert_eq!(status, 200, "{hello}");
+        let hello: anibeam_host_api::Hello = serde_json::from_value(hello).unwrap();
+        hello.profile
+    };
+    let phone = profile(&serve_as(&rt, &core, PHONE)).expect("the owner is named");
+    assert_eq!(
+        (phone.name.as_str(), phone.login.as_str(), phone.owner),
+        ("Owner", "owner@example.com", true)
+    );
+    let tablet = profile(&serve_as(&rt, &core, TABLET)).expect("the friend is named");
+    assert_eq!(
+        (tablet.name.as_str(), tablet.login.as_str(), tablet.owner),
+        ("Friend", "friend@example.com", false)
+    );
+}

@@ -60,7 +60,7 @@ fn get(rt: &tokio::runtime::Runtime, url: &str) -> (u16, String) {
 
 fn devices_now(core: &Core) -> Vec<TailnetDevice> {
     match core.call(Call::ListTailnetDevices).unwrap() {
-        Reply::TailnetDevices { devices } => devices,
+        Reply::TailnetDevices { devices, .. } => devices,
         other => panic!("{other:?}"),
     }
 }

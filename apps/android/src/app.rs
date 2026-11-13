@@ -324,6 +324,19 @@ fn account_line(a: &TrackerAccount) -> String {
     }
 }
 
+/// The name of the person whose watch history the computer shows this phone, from its
+/// hello. None with no name, so a screen says nothing rather than a guess.
+pub(crate) fn person_name(profile: Option<&anibeam_companion::api::Profile>) -> Option<&str> {
+    profile.map(|p| p.name.trim()).filter(|n| !n.is_empty())
+}
+
+/// "Alex Doe's progress", or empty with no name.
+pub(crate) fn progress_of(profile: Option<&anibeam_companion::api::Profile>) -> String {
+    person_name(profile).map_or_else(String::new, |name| {
+        tr("host-progress", &[("name", name.into())])
+    })
+}
+
 impl App {
     fn data(&self) -> AppData<'_> {
         self.window.global::<AppData>()
@@ -349,7 +362,7 @@ impl App {
             }
             Event::Snapshot(cache) => {
                 crate::player::set_remote_numbers(remote_numbers(&cache));
-                self.cache = Some(cache);
+                self.cache = Some(*cache);
             }
             Event::Poster(id, decoded) => {
                 self.remote_art
@@ -499,6 +512,15 @@ impl App {
             .into(),
         );
 
+        // Whose progress the last sync showed, said only beside the address it came from,
+        // so a newly typed address never sits under the last computer's person.
+        let whose = progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref()));
+        let synced_here = self
+            .cache
+            .as_ref()
+            .is_some_and(|c| c.address.trim() == data.get_host_address().trim());
+        data.set_host_person(if synced_here { whose.as_str() } else { "" }.into());
+
         // Library: this phone, or the device picked above it.
         let mut devices: Vec<SharedString> = vec![tr!("lib-this-phone").into()];
         if let Some(name) = self.host_name() {
@@ -538,11 +560,19 @@ impl App {
                     .as_ref()
                     .map(|c| format::ago(now - c.synced_at))
                     .unwrap_or_default();
-                tr!(
-                    "lib-note-remote",
-                    device = devices[device].as_str(),
-                    when = at
-                )
+                match person_name(self.cache.as_ref().and_then(|c| c.profile.as_ref())) {
+                    Some(name) => tr!(
+                        "lib-note-remote-for",
+                        device = devices[device].as_str(),
+                        name = name,
+                        when = at
+                    ),
+                    None => tr!(
+                        "lib-note-remote",
+                        device = devices[device].as_str(),
+                        when = at
+                    ),
+                }
             }
             .into(),
         );

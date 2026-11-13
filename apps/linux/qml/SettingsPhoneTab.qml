@@ -2,8 +2,10 @@
 // themselves on this computer's Tailscale addresses while sharing is on. The page says what
 // the phone gets before the switch, then whether the headless host service keeps it
 // reachable with this window closed, then the addresses the phone app should be given, one
-// row each, with Copy. Below them, every device on the tailnet with a switch: all are
-// trusted until the person switches one off, and one switched off gets nothing.
+// row each, with Copy. Below them, the people whose devices it serves, the computer's own
+// person first, each keeping their own progress here (#633), then every device on the
+// tailnet with a switch and whose it is: all are trusted until the person switches one
+// off, and one switched off gets nothing.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -30,7 +32,13 @@ SettingsTab {
     // "serving", "waiting" while this window has the library, or empty with no service.
     property string service: ""
     property var devices: []
-    function reloadDevices() { var r = Door.call("ListTailnetDevices", {}); if (!r.error) devices = r.reply.devices }
+    property var people: []
+    function reloadDevices() {
+        var r = Door.call("ListTailnetDevices", {})
+        if (r.error) return
+        devices = r.reply.devices
+        people = r.reply.people || []
+    }
     function setTrusted(device, on) {
         var r = Door.call("SetTailnetDeviceTrust", { device: device, trusted: on })
         if (r.error) frame.fail(r.error, function() { tab.setTrusted(device, on) })
@@ -43,11 +51,19 @@ SettingsTab {
         var parts = []
         if (os !== "") parts.push(os)
         parts.push(d.online ? words.t("settings-phone-online") : words.t("settings-phone-offline"))
-        if (!d.trusted) parts.push(words.t("settings-phone-untrusted"))
+        if (d.person) parts.push(d.person)
+        if (d.nobody) parts.push(words.t("settings-phone-nobody"))
+        else if (!d.trusted) parts.push(words.t("settings-phone-untrusted"))
+        return parts.join(" · ")
+    }
+    function personLine(p) {
+        var parts = []
+        if (p.login && p.login !== p.name) parts.push(p.login)
+        parts.push(words.t(p.owner ? "settings-phone-person-own-devices" : "settings-phone-person-devices", { count: p.devices }))
         return parts.join(" · ")
     }
     Component.onCompleted: { reloadHost(); reloadDevices(); service = Shell.hostService() }
-    Connections { target: Door; function onTailnetDevicesChanged(devices) { tab.devices = devices } }
+    Connections { target: Door; function onTailnetDevicesChanged(devices, people) { tab.devices = devices; tab.people = people } }
     Connections { target: Door; function onHostChanged(status) { tab.host = status } }
     readonly property bool on: !!Door.preferences.share_over_tailscale
 
@@ -88,6 +104,26 @@ SettingsTab {
                 visible: tab.service === ""
                 msg: "settings-phone-copy-command"; icon: "copy"; flat: true; small: true
                 onClicked: frame.copyText(tab.enableCommand, words.t("settings-phone-command-copied"))
+            }
+        }
+    }
+    Panel {
+        objectName: "settings-tailnet-people"
+        visible: tab.people.length > 0
+        title: words.t("settings-phone-people")
+        Repeater {
+            model: tab.people
+            SettingRow {
+                required property var modelData
+                label: modelData.name
+                line: tab.personLine(modelData)
+                Chip {
+                    visible: modelData.owner
+                    text: words.t("settings-phone-own-profile")
+                    mono: false
+                    small: true
+                    color: theme.raised
+                }
             }
         }
     }
