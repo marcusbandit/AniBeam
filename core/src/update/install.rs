@@ -523,17 +523,9 @@ impl Prepared {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
         if let Prepared::AppImage { .. } = self {
-            // The AppImage runtime pointed these at the old copy's mount, which goes when
-            // this process does; the new copy's runtime sets them again.
             let appdir = std::env::var("APPDIR").ok().filter(|d| !d.is_empty());
             for (name, value) in std::env::vars_os() {
-                let mounted = appdir
-                    .as_deref()
-                    .is_some_and(|d| value.to_string_lossy().contains(d));
-                let runtime = ["APPIMAGE", "APPDIR", "ARGV0", "OWD"]
-                    .iter()
-                    .any(|n| name == *n);
-                if mounted || runtime {
+                if from_old_mount(&name, &value, appdir.as_deref()) {
                     cmd.env_remove(name);
                 }
             }
@@ -648,6 +640,19 @@ if [ "$4" = reopen ]; then app="$2"; shift 4; exec open "$app" --args "$@"; fi"#
             }
         }
     }
+}
+
+/// Whether a variable in this run's environment is left out of an AppImage's restart. The
+/// AppImage runtime pointed these at the old copy's mount, which goes when this process does;
+/// the new copy's runtime sets them again. Everything else carries over, such as the
+/// `APPIMAGELAUNCHER_DISABLE=1` the installer's menu entry sets, which keeps AppImageLauncher
+/// from offering to move the new file.
+fn from_old_mount(name: &std::ffi::OsStr, value: &std::ffi::OsStr, appdir: Option<&str>) -> bool {
+    let mounted = appdir.is_some_and(|d| value.to_string_lossy().contains(d));
+    let runtime = ["APPIMAGE", "APPDIR", "ARGV0", "OWD"]
+        .iter()
+        .any(|n| name == *n);
+    mounted || runtime
 }
 
 /// A PowerShell single-quoted string: nothing inside is expanded, and a quote is doubled.
@@ -838,6 +843,21 @@ mod tests {
         assert_eq!(h.args[3], "42");
         assert_eq!(h.args[4], "/home/a/AniBeam.AppImage");
         assert_eq!(h.args[5..], ["--root", "/tmp/s"]);
+    }
+
+    #[test]
+    fn an_appimage_restart_drops_the_old_mount_and_keeps_the_rest() {
+        let drops = |name: &str, value: &str| {
+            from_old_mount(name.as_ref(), value.as_ref(), Some("/tmp/.mount_AniBeaXYZ"))
+        };
+        assert!(drops("APPIMAGE", "/opt/AniBeam.AppImage"));
+        assert!(drops("APPDIR", "/tmp/.mount_AniBeaXYZ"));
+        assert!(drops("ARGV0", "anibeam"));
+        assert!(drops("OWD", "/srv"));
+        assert!(drops("QT_PLUGIN_PATH", "/tmp/.mount_AniBeaXYZ/usr/plugins"));
+        assert!(!drops("APPIMAGELAUNCHER_DISABLE", "1"));
+        assert!(!drops("PATH", "/usr/bin:/bin"));
+        assert!(!from_old_mount("PATH".as_ref(), "/usr/bin".as_ref(), None));
     }
 
     #[test]

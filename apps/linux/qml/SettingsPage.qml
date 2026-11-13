@@ -132,14 +132,14 @@ FocusScope {
         if (id === "phone") return Door.preferences.share_over_tailscale ? "Shared on your tailnet" : "Not shared"
         if (id === "storage") return storage ? Fmt.bytes(storage.image_bytes || 0) + " of images cached" : "Images, export and import"
         if (id === "help") return "Answers to what people ask most"
-        if (id === "about") return frame.updatePanel.phase === "offer" && frame.updatePanel.shown ? "Version " + frame.updatePanel.version + " is out" : Shell.build
+        if (id === "about") return frame.updatePanel.pending ? "Version " + frame.updatePanel.version + " is out" : Shell.build
         if (id === "developer") return frame.devRecorder.last ? frame.devRecorder.last.label + " built in " + Math.round(frame.devRecorder.last.built) + " ms" : "Timing every page"
         return ""
     }
     // An entry that wants attention: a folder gone, downloads not set up
     function warns(id) {
         if (id === "library") return srcs.some(function(s) { return s.available === false })
-        if (id === "about") return frame.updatePanel.phase === "offer" && frame.updatePanel.shown
+        if (id === "about") return frame.updatePanel.pending
         return false
     }
 

@@ -9,13 +9,14 @@ SettingsTab {
     title: "About"
     lead: "Which AniBeam this is, and how it hears about the next one."
     readonly property var upd: frame.updatePanel
-    readonly property bool offered: upd.phase === "offer" && upd.shown
-    // Only a build that can replace itself installs from here; the others say where to get it
-    readonly property bool installs: offered && upd.how === "install"
+    // An update waits for this track, put away or not; About keeps the way to take it until
+    // it is installed or the track changes
+    readonly property bool offered: upd.pending && upd.phase === "offer"
     readonly property string offerLine: upd.phase === "failed" ? "The update did not finish. Try again, or get it from the release page."
+        : upd.pending && (upd.phase === "downloading" || upd.phase === "ready") ? upd.headline + "  \u00b7  " + upd.detail
         : !offered ? ""
         : upd.how === "install" ? upd.version + " is ready to install."
-        : upd.how === "command" ? upd.version + " is on the AUR: " + upd.command
+        : upd.how === "command" ? upd.version + " is out. Update it with " + upd.command
         : upd.how === "source" ? upd.version + " is out. This copy is built from source: pull and rebuild."
         : upd.version + " is out, with no download here for this computer."
 
@@ -25,9 +26,12 @@ SettingsTab {
             helper: tab.offerLine
             Row { spacing: theme.space(2)
                 Button { objectName: "data-whats-new"; text: "What's new"; icon: "sparkles"; flat: true; onClicked: frame.openWhatsNew() }
-                Button { visible: tab.installs; text: "Install " + tab.upd.version; icon: "download"; primary: true; onClicked: tab.upd.install() }
-                Button { visible: tab.upd.phase === "failed"; text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: tab.upd.install() }
-                Button { visible: (tab.upd.phase === "failed" || (tab.offered && tab.upd.how === "page")) && tab.upd.url !== ""; text: "Release page"; icon: "external-link"; flat: true; onClicked: frame.openLink(tab.upd.url) } } }
+                Button { objectName: "about-update-install"; visible: tab.offered && tab.upd.how === "install"; text: "Install " + tab.upd.version; icon: "download"; primary: true; onClicked: tab.upd.install() }
+                Button { objectName: "about-update-copy"; visible: tab.offered && tab.upd.how === "command"; text: tab.upd.copyText; icon: tab.upd.copied ? "check" : "copy"; primary: true; onClicked: tab.upd.copyCommand() }
+                Button { objectName: "about-update-restart"; visible: tab.upd.phase === "ready"; text: tab.upd.restartText; icon: "refresh-cw"; primary: true; onClicked: tab.upd.restart() }
+                Button { objectName: "about-update-retry"; visible: tab.upd.phase === "failed"; text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: tab.upd.install() }
+                Button { objectName: "about-update-page"; visible: (tab.upd.phase === "failed" || (tab.offered && (tab.upd.how === "page" || tab.upd.how === "source"))) && tab.upd.url !== ""
+                         text: tab.upd.pageText; icon: "external-link"; primary: tab.upd.how === "page" && tab.upd.phase !== "failed"; flat: !primary; onClicked: frame.openLink(tab.upd.url) } } }
         SettingRow { label: "Setup"; helper: "The walkthrough a new install opens with: your folder, your list and downloads."
             Button { objectName: "about-run-setup"; text: "Run setup again"; icon: "rotate-ccw"; flat: true; onClicked: frame.openOnboarding(0) } }
         SettingRow { label: "Updates"

@@ -82,7 +82,7 @@
 4 apps/linux/qml/SearchField.qml
 12 apps/linux/qml/SearchProgress.qml
 134 apps/linux/qml/SeriesPage.qml
-24 apps/linux/qml/SettingsAboutTab.qml
+22 apps/linux/qml/SettingsAboutTab.qml
 24 apps/linux/qml/SettingsAccountsTab.qml
 45 apps/linux/qml/SettingsAppearanceTab.qml
 51 apps/linux/qml/SettingsDataTab.qml

@@ -12,6 +12,8 @@
 // own; a nightly's sticks. Later hides it until a newer version than this one comes out;
 // the version passed over and the track live in shell.conf. It steps aside while the player
 // has the window or a sheet is open (`covered`), and comes back once they close.
+// Put away or not, an offer stays `pending` until it is installed or the track changes:
+// the rail's Settings icon and the About row badge it, and About keeps the way to take it.
 import QtQuick
 import QtCore
 import com.marcusrosado.AniBeam
@@ -28,6 +30,8 @@ Frost {
     height: Math.max(words.implicitHeight, actions.implicitHeight) + theme.space(6)
 
     property bool shown: false
+    // An update is offered for this track, whether or not the island shows it
+    property bool pending: false
     property bool covered: false
     property string version: ""
     // The release's own name, "Quality of life"; empty for one known by its number
@@ -68,6 +72,7 @@ Frost {
         // An update already on its way is not dropped for a change of track
         if (busy) return
         shown = false
+        pending = false
         check()
     }
 
@@ -78,7 +83,10 @@ Frost {
             if (track === root.track && !root.busy) root.show(version, title, url, how, command)
         }
         function onUpdateCurrent(track, error) {
-            if (track !== root.track || !root.asked) return
+            if (track !== root.track) return
+            // Nothing newer on this track: an offer from an earlier check is gone
+            if (!error && !root.busy) root.pending = false
+            if (!root.asked) return
             root.asked = false
             if (error) frame.toast("AniBeam could not check for updates. Check your internet connection, then try again.", 8, "Try again", root.checkNow, String(error))
             else frame.toast("AniBeam is up to date")
@@ -105,7 +113,6 @@ Frost {
     property string laterFor: ""
     function show(version, title, url, how, command) {
         asked = false
-        if (version === laterFor) return
         root.version = version
         root.title = title
         root.url = url
@@ -113,7 +120,9 @@ Frost {
         root.command = command
         root.phase = "offer"
         root.copied = false
-        shown = true
+        root.pending = true
+        // Put off with Later: About and the badges still have it, the island stays away
+        if (version !== laterFor) shown = true
     }
     function later() {
         // A readied update still lands when the app quits; only an offer is passed over
@@ -138,6 +147,11 @@ Frost {
         frame.copyQuiet(root.command)
         root.copied = true
     }
+
+    // The words on the island's buttons, which About's own buttons use too
+    readonly property string copyText: copied ? "Copied" : "Copy"
+    readonly property string restartText: "Restart"
+    readonly property string pageText: "Release page"
 
     function mb(bytes) { return Math.round(bytes / 1048576) }
     readonly property string headline: {
@@ -195,20 +209,20 @@ Frost {
         Button {
             objectName: "update-restart"
             visible: root.phase === "ready"
-            text: "Restart"; icon: "refresh-cw"; primary: true; small: true
+            text: root.restartText; icon: "refresh-cw"; primary: true; small: true
             onClicked: root.restart()
         }
         Button {
             objectName: "update-copy"
             visible: root.phase === "offer" && root.how === "command"
-            text: root.copied ? "Copied" : "Copy"; icon: root.copied ? "check" : "copy"
+            text: root.copyText; icon: root.copied ? "check" : "copy"
             primary: true; small: true
             onClicked: root.copyCommand()
         }
         Button {
             objectName: "update-page"
             visible: root.phase === "offer" && root.how === "page"
-            text: "Release page"; icon: "external-link"; primary: true; small: true
+            text: root.pageText; icon: "external-link"; primary: true; small: true
             onClicked: { root.shown = false; frame.openLink(root.url) }
         }
         Button {
