@@ -6,6 +6,7 @@
 import { Theme } from "theme.slint";
 import { AppData, NoteLine } from "data.slint";
 import { Button, PageTitle } from "widgets.slint";
+import { Tr } from "tr.slint";
 
 // A version: its number in the display cut, the day it was made beside it on the number's
 // baseline, the way a section head carries its note.
@@ -133,7 +134,7 @@ export component NotesPage inherits Rectangle {
             padding-top: Theme.unit * 4;
             padding-bottom: Theme.pad * 2;
             PageTitle {
-                title: "What's new";
+                title: Tr.t("notes-title");
                 note: AppData.notes-note;
             }
             for row in AppData.notes: VerticalLayout {
@@ -164,7 +165,7 @@ export component NotesPage inherits Rectangle {
             x: root.inset-left + root.side;
             y: Theme.grout;
             width: root.width - root.inset-left - root.inset-right - 2 * root.side;
-            text: "Got it";
+            text: Tr.t("notes-got-it");
             icon: @image-url("icons/thumbs-up.svg");
             has-icon: true;
             primary: true;

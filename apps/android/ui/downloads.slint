@@ -12,6 +12,7 @@ import { Button, CardStack, Chip, ClampedText, Cubes, Figure, IconButton, PageTi
 import { Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
 import { DiskBlock } from "disk.slint";
+import { Tr } from "tr.slint";
 
 // The colour of a download's state dot: moving, paused, waiting, trouble, done.
 component StateDot inherits Rectangle {
@@ -29,7 +30,8 @@ component StateDot inherits Rectangle {
 component DownloadCard inherits Rectangle {
     in property <DownloadRow> data;
     property <color> fill: root.data.tone == 0 ? Theme.purple : root.data.tone == 2 ? Theme.yellow : root.data.tone == 3 ? Theme.bad : Theme.dim;
-    property <bool> failed: root.data.state == "Stopped by an error";
+    // The state's words are translated, so the tone says which it is: 3 is trouble.
+    property <bool> failed: root.data.tone == 3;
     property <length> card-height: Math.max(row.preferred-height, 20 * Theme.unit);
     height: self.card-height + (root.data.batch ? 3 * Theme.unit : 0);
     if root.data.batch: CardStack { card-height: root.card-height; }
@@ -70,7 +72,7 @@ component DownloadCard inherits Rectangle {
             if root.data.batch: HorizontalLayout {
                 alignment: start;
                 Chip {
-                    text: root.data.cubes.length > 1 ? "Batch, " + root.data.cubes.length + " files" : "Batch";
+                    text: root.data.cubes.length > 1 ? Tr.n("dl-batch-files", "count", root.data.cubes.length) : Tr.t("dl-batch-tag");
                     small: true;
                     selected: true;
                     has-icon: true;
@@ -93,7 +95,7 @@ component DownloadCard inherits Rectangle {
                 }
                 Text {
                     horizontal-stretch: 1;
-                    text: root.data.state == "Downloading" ? root.data.what : root.data.what != "" ? root.data.state + ", " + root.data.what : root.data.state;
+                    text: root.data.tone == 0 ? root.data.what : root.data.what != "" ? Tr.s2("dl-joined", "first", root.data.state, "second", root.data.what) : root.data.state;
                     color: Theme.dim;
                     font-size: Theme.small + 0.5px;
                     overflow: elide;
@@ -118,7 +120,7 @@ component DownloadCard inherits Rectangle {
                 overflow: elide;
             }
             Text {
-                text: root.data.release != "" ? root.data.amount + ", " + root.data.release : root.data.amount;
+                text: root.data.release != "" ? Tr.s2("dl-joined", "first", root.data.amount, "second", root.data.release) : root.data.amount;
                 color: Theme.faint;
                 font-size: Theme.small - 0.5px;
                 overflow: elide;
@@ -128,7 +130,7 @@ component DownloadCard inherits Rectangle {
             alignment: center;
             spacing: Theme.unit * 2;
             // Held for Wi-Fi, nothing restarts it, so there is nothing to press.
-            if root.data.state != "Waiting for Wi-Fi": IconButton {
+            if root.data.tone != 2: IconButton {
                 icon: root.failed ? @image-url("icons/refresh-cw.svg") : root.data.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
                 primary: root.data.paused || root.failed;
                 clicked => { AppData.torrent-action(root.data.hash, root.data.paused || root.failed ? 1 : 0); }
@@ -184,7 +186,7 @@ component FinishedRow inherits Rectangle {
                 }
                 Text {
                     horizontal-stretch: 1;
-                    text: (root.data.show != "" && root.data.what != "" ? root.data.what + ", " : "") + root.data.amount;
+                    text: root.data.show != "" && root.data.what != "" ? Tr.s2("dl-joined", "first", root.data.what, "second", root.data.amount) : root.data.amount;
                     color: Theme.dim;
                     font-size: Theme.small;
                     overflow: elide;
@@ -194,7 +196,7 @@ component FinishedRow inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Button {
-                text: "Clear";
+                text: Tr.t("common-clear");
                 clicked => { AppData.torrent-action(root.data.hash, 3); }
             }
         }
@@ -211,19 +213,19 @@ component FinishedRow inherits Rectangle {
 component Head inherits VerticalLayout {
     spacing: Theme.unit * 4;
     PageTitle {
-        title: "Downloads";
-        note: AppData.wifi-only ? "Wi-Fi only" : "Wi-Fi and mobile data";
+        title: Tr.t("dl-title");
+        note: AppData.wifi-only ? Tr.t("dl-wifi-only") : Tr.t("dl-wifi-and-mobile");
     }
     HorizontalLayout {
         spacing: Theme.unit * 8;
         alignment: start;
         if AppData.moving-count > 0: Figure {
             value: AppData.rate-down;
-            caption: AppData.moving-count == 1 ? "1 downloading" : AppData.moving-count + " downloading";
+            caption: Tr.n("dl-downloading-count", "count", AppData.moving-count);
         }
         Figure {
             value: AppData.free-figure;
-            caption: "free on the phone";
+            caption: Tr.t("dl-free-on-phone");
         }
     }
 }
@@ -260,7 +262,7 @@ component Finder inherits VerticalLayout {
     callback accepted(string);
     spacing: Theme.unit * 4;
     SearchField {
-        placeholder: "A show, or a release name";
+        placeholder: Tr.t("dl-search-placeholder");
         text <=> FindData.text;
         edited(t) => { root.typed(t); }
         accepted(t) => { root.accepted(t); }
@@ -274,7 +276,7 @@ component Finder inherits VerticalLayout {
                 spacing: Theme.unit * 1.5;
                 alignment: start;
                 Text {
-                    text: "Sources";
+                    text: Tr.t("dl-sources");
                     color: Theme.dim;
                     font-size: Theme.small + 0.5px;
                     vertical-alignment: center;
@@ -304,8 +306,8 @@ component Queue inherits VerticalLayout {
     if AppData.downloading-count > 0: VerticalLayout {
         spacing: 0;
         SectionHead {
-            title: "Downloading";
-            note: AppData.downloads-note != "" ? AppData.downloads-note : AppData.downloading-count == 1 ? "1 episode" : AppData.downloading-count + " downloads";
+            title: Tr.t("dl-downloading");
+            note: AppData.downloads-note != "" ? AppData.downloads-note : Tr.n("dl-queue-note", "count", AppData.downloading-count);
         }
         if AppData.notify != 0: NotifyPointer { }
         Rectangle { height: Theme.unit * 3; }
@@ -317,8 +319,8 @@ component Queue inherits VerticalLayout {
     if AppData.finished-count > 0: VerticalLayout {
         spacing: 0;
         SectionHead {
-            title: "Finished";
-            note: AppData.finished-count == 1 ? "1 download, in your library" : AppData.finished-count + " downloads, in your library";
+            title: Tr.t("dl-finished");
+            note: Tr.n("dl-finished-note", "count", AppData.finished-count);
         }
         Rectangle { height: Theme.unit; }
         for row in AppData.downloads: VerticalLayout {
@@ -352,7 +354,7 @@ component PlanBar inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Button {
-                text: FindData.can-go ? "Get" : "Pick";
+                text: FindData.can-go ? Tr.t("dl-get") : Tr.t("dl-pick");
                 icon: @image-url("icons/download.svg");
                 has-icon: true;
                 primary: true;

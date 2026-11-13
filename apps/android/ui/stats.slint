@@ -3,6 +3,7 @@
 // seasons and the shows watched most as ranked rows. The numbers are the core's GetStats.
 
 import { Theme } from "theme.slint";
+import { Tr } from "tr.slint";
 import { Figure, ListGroup, Segmented } from "widgets.slint";
 
 // One month's bar: its letter, the hours over it, how tall against the busiest month.
@@ -104,7 +105,7 @@ component Ranked inherits VerticalLayout {
         font-family: Theme.title-face;
     }
     if root.rows.length == 0: Text {
-        text: "Nothing yet";
+        text: Tr.t("stats-nothing-yet");
         color: Theme.faint;
         font-size: Theme.small + 1px;
     }
@@ -162,13 +163,13 @@ export component StatsBody inherits VerticalLayout {
             y: 4 * Theme.unit;
             spacing: Theme.unit * 2;
             Text {
-                text: "Nothing watched yet";
+                text: Tr.t("stats-empty-title");
                 color: Theme.text;
                 font-size: Theme.large;
                 font-family: Theme.display-face;
             }
             Text {
-                text: "Finish an episode and it counts here: hours, genres and the seasons you watched.";
+                text: Tr.t("stats-empty-body");
                 color: Theme.dim;
                 wrap: word-wrap;
             }
@@ -181,7 +182,7 @@ export component StatsBody inherits VerticalLayout {
             Row {
                 Figure {
                     value: StatsData.hours;
-                    caption: "hours watched";
+                    caption: Tr.t("stats-hours-caption");
                 }
                 Figure {
                     value: StatsData.episodes;
@@ -191,18 +192,18 @@ export component StatsBody inherits VerticalLayout {
             Row {
                 Figure {
                     value: StatsData.finished;
-                    caption: "series finished";
+                    caption: Tr.t("stats-finished-caption");
                 }
                 Figure {
                     value: StatsData.busiest;
-                    caption: "busiest month";
+                    caption: Tr.t("stats-busiest-caption");
                 }
             }
         }
         VerticalLayout {
             spacing: 2 * Theme.unit;
             Text {
-                text: "By month";
+                text: Tr.t("stats-by-month");
                 color: Theme.text;
                 font-size: Theme.heading;
                 font-family: Theme.title-face;
@@ -210,19 +211,19 @@ export component StatsBody inherits VerticalLayout {
             MonthBars { bars: StatsData.months; }
         }
         Ranked {
-            heading: "Top genres";
+            heading: Tr.t("stats-top-genres");
             rows: StatsData.genres;
         }
         Ranked {
-            heading: "Top studios";
+            heading: Tr.t("stats-top-studios");
             rows: StatsData.studios;
         }
         Ranked {
-            heading: "Seasons watched";
+            heading: Tr.t("stats-seasons");
             rows: StatsData.seasons;
         }
         Ranked {
-            heading: "Watched most";
+            heading: Tr.t("stats-watched-most");
             rows: StatsData.shows;
         }
     }

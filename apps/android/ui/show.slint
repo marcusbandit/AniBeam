@@ -7,6 +7,7 @@ import { Tr } from "tr.slint";
 import { Button, Chip } from "widgets.slint";
 import { Fold } from "fold.slint";
 import { Tile } from "data.slint";
+import { Tr } from "tr.slint";
 
 // A related show or one tapped in a sheet: the AniList id, the library series that holds it
 // (-1 when none does), and the lines the page and its sheet write.
@@ -47,8 +48,9 @@ export global ShowData {
     // The sheet over the page: 0 none, 1 list status, 2 score, 3 a related or recommended
     // show, 4 notes, 5 fixes, 6 match, 7 episodes and dates.
     in-out property <int> sheet;
-    // The series' list status as the core names it ("Watching", "Paused"), or empty.
-    in property <string> status-key;
+    // The series' list status as an index into the core's statuses (0 Watching, 1 Planning,
+    // 2 Completed, 3 Paused, 4 Dropped, 5 Repeating), or -1 when it is on no list.
+    in property <int> status-index: -1;
     // The status as the desktop words it: "On hold", or "Add to a list".
     in property <string> status-word;
     // The score in tenths, 0 to 100, or -1 for none.
@@ -91,7 +93,7 @@ export global ShowData {
     in property <string> sites;
     in-out property <string> notes-draft;
     callback save-notes(string);
-    callback set-status(string);
+    callback set-status(int);
     callback set-score(int);
 
     public function open(which: int) {
@@ -173,7 +175,7 @@ export component ShowActions inherits VerticalLayout {
             icon: @image-url("icons/bookmark.svg");
             has-icon: true;
             tappable: true;
-            selected: ShowData.status-key != "";
+            selected: ShowData.status-index >= 0;
             text: ShowData.status-word;
             clicked => { ShowData.open(1); }
         }
@@ -186,16 +188,16 @@ export component ShowActions inherits VerticalLayout {
             icon: @image-url("icons/wrench.svg");
             has-icon: true;
             tappable: true;
-            text: "Fixes";
+            text: Tr.t("show-fixes");
             clicked => { ShowData.open(5); }
         }
         // The list entry's notes: a show not on a list yet has no entry to write them on.
-        if ShowData.status-key != "": Chip {
+        if ShowData.status-index >= 0: Chip {
             icon: @image-url("icons/pencil.svg");
             has-icon: true;
             tappable: true;
             selected: ShowData.notes != "";
-            text: ShowData.notes != "" ? "Your notes" : "Add notes";
+            text: ShowData.notes != "" ? Tr.t("show-your-notes") : Tr.t("show-add-notes");
             clicked => { ShowData.open(4); }
         }
     }

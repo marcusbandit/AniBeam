@@ -1,4 +1,6 @@
 import { Theme } from "theme.slint";
+import { Tr } from "tr.slint";
+import { LangChoice, LangData } from "lang.slint";
 import { AiringMenu, AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, EpisodeVersionLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
 import { Button, NavItem, Pane } from "widgets.slint";
 import { HomePage } from "home.slint";
@@ -30,7 +32,7 @@ import { DateTile, ScheduleData } from "show-dates.slint";
 import { Tr } from "tr.slint";
 import { ShowSheets } from "show-sheets.slint";
 
-export { Theme }
+export { Theme, Tr, LangChoice, LangData }
 export { ActivityData, LogRow, LookData, LookTheme, MoveData, MoveLine }
 export { Nav, DiskData, HiddenRow, FeedData, AiringPick, SubtitleData, AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, DateTile, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, ScheduleData, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile, Tr }
 
@@ -39,26 +41,26 @@ export { Nav, DiskData, HiddenRow, FeedData, AiringPick, SubtitleData, AiringMen
 component MobileDataQuestion inherits Sheet {
     dismissed => { Ask.mobile = false; }
     Text {
-        text: "Download over mobile data?";
+        text: Tr.t("app-mobile-title");
         color: Theme.text;
         font-size: Theme.section;
         font-family: Theme.display-face;
         wrap: word-wrap;
     }
     Text {
-        text: "One episode is often 1 to 2 GB. On a capped plan that can use up a month of data in an evening.";
+        text: Tr.t("app-mobile-note");
         color: Theme.dim;
         font-size: Theme.small + 1px;
         wrap: word-wrap;
     }
     Rectangle { height: Theme.unit; }
     Button {
-        text: "Keep Wi-Fi only";
+        text: Tr.t("app-mobile-keep");
         primary: true;
         clicked => { Ask.mobile = false; }
     }
     Button {
-        text: "Use mobile data too";
+        text: Tr.t("app-mobile-use");
         clicked => {
             Ask.mobile = false;
             AppData.set-wifi-only(false);
@@ -93,7 +95,7 @@ component VersionsMenu inherits Rectangle {
                 wrap: word-wrap;
             }
             Text {
-                text: "The same episode from " + Ask.versions.length + " releases. Pick the one to play.";
+                text: Tr.n("app-versions-note", "count", Ask.versions.length);
                 color: Theme.dim;
                 font-size: Theme.small + 1px;
                 wrap: word-wrap;
@@ -108,7 +110,7 @@ component VersionsMenu inherits Rectangle {
                     spacing: Theme.unit * 3;
                     // The release the row plays now is the primary one.
                     for v in Ask.versions: Button {
-                        text: v.file == Ask.versions-current ? v.label + ", plays now" : v.label;
+                        text: v.file == Ask.versions-current ? Tr.s("app-versions-plays-now", "release", v.label) : v.label;
                         primary: v.file == Ask.versions-current;
                         clicked => {
                             Ask.versions-open = false;
@@ -122,7 +124,7 @@ component VersionsMenu inherits Rectangle {
                 }
             }
             Button {
-                text: "Cancel";
+                text: Tr.t("common-cancel");
                 clicked => { Ask.versions-open = false; }
             }
         }
@@ -157,7 +159,7 @@ component ShowMenu inherits Rectangle {
             }
             Rectangle { height: Theme.unit; }
             Button {
-                text: "Get episodes";
+                text: Tr.t("app-menu-get");
                 icon: @image-url("icons/download.svg");
                 has-icon: true;
                 primary: true;
@@ -168,14 +170,14 @@ component ShowMenu inherits Rectangle {
                 }
             }
             Button {
-                text: "Hide";
+                text: Tr.t("common-hide");
                 clicked => {
                     DiskData.hide(Ask.menu-id);
                     Ask.menu-id = -1;
                 }
             }
             Button {
-                text: "Delete episodes";
+                text: Tr.t("app-menu-delete");
                 danger: true;
                 clicked => {
                     AppData.open-series(Ask.menu-id);
@@ -184,7 +186,7 @@ component ShowMenu inherits Rectangle {
                 }
             }
             Button {
-                text: "Cancel";
+                text: Tr.t("common-cancel");
                 clicked => { Ask.menu-id = -1; }
             }
         }
@@ -237,7 +239,7 @@ component MarkMenu inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: "AniBeam";
+    title: Tr.t("app-name");
     background: Theme.ground;
     default-font-size: Theme.normal;
     default-font-family: Theme.face;
@@ -246,11 +248,11 @@ export component AppWindow inherits Window {
 
     // Each tab, in the order the bar shows them, with the page it opens.
     property <[{icon: image, label: string, page: int}]> destinations: [
-        { icon: @image-url("icons/house.svg"), label: "Home", page: 0 },
-        { icon: @image-url("icons/calendar-days.svg"), label: "Calendar", page: 4 },
-        { icon: @image-url("icons/layers.svg"), label: "Library", page: 1 },
-        { icon: @image-url("icons/download.svg"), label: "Downloads", page: 2 },
-        { icon: @image-url("icons/ellipsis.svg"), label: "More", page: 3 },
+        { icon: @image-url("icons/house.svg"), label: Tr.t("nav-home"), page: 0 },
+        { icon: @image-url("icons/calendar-days.svg"), label: Tr.t("nav-calendar"), page: 4 },
+        { icon: @image-url("icons/layers.svg"), label: Tr.t("nav-library"), page: 1 },
+        { icon: @image-url("icons/download.svg"), label: Tr.t("nav-downloads"), page: 2 },
+        { icon: @image-url("icons/ellipsis.svg"), label: Tr.t("nav-more"), page: 3 },
     ];
 
     // The system bars draw over the window; keep touch targets out from under them.

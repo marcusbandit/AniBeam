@@ -15,4 +15,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # rustls with the bundled Mozilla roots: the Android trust store is only reachable from Java.
 ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# unstable-locales: month and weekday names in the language the app speaks (#792).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "unstable-locales"] }
+# Stand-in for anibeam_core::i18n until #792 lands; src/i18n.rs goes with them.
+fluent-bundle = "0.16"
+unic-langid = "0.9"

@@ -48,13 +48,13 @@ impl Quality {
         Quality::P480,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Quality::Auto => "Auto",
-            Quality::Original => "Original",
-            Quality::P1080 => "1080p",
-            Quality::P720 => "720p",
-            Quality::P480 => "480p",
+            Quality::Auto => tr!("stream-quality-auto"),
+            Quality::Original => tr!("stream-quality-original"),
+            Quality::P1080 => "1080p".into(),
+            Quality::P720 => "720p".into(),
+            Quality::P480 => "480p".into(),
         }
     }
 }
@@ -111,21 +111,19 @@ pub struct Host {
 impl Host {
     /// Reaches the device set in More, checks it streams, and looks its name up.
     pub fn connect() -> Result<Host, String> {
-        let dir = DATA_DIR.get().ok_or("The app is still starting")?;
+        let dir = DATA_DIR.get().ok_or_else(|| tr!("stream-app-starting"))?;
         let store = Store::open(dir).map_err(|e| e.to_string())?;
         let address = HostAddress::parse(&store.settings().address)?;
         let client = HostClient::new(client::agent(), address);
         let hello = client.hello().map_err(|e| e.to_string())?;
         if hello.streaming_off {
-            return Err(format!(
-                "Streaming is off on {}. Turn on Stream episodes there, under Settings, Phone app.",
-                hello.host
-            ));
+            return Err(tr!("stream-off-on-host", host = hello.host.as_str()));
         }
         if !hello.features.iter().any(|f| f == api::FEATURE_STREAM) {
-            return Err(format!(
-                "{} runs AniBeam {}, which cannot stream yet. Update it there.",
-                hello.host, hello.version
+            return Err(tr!(
+                "stream-cannot-stream",
+                host = hello.host.as_str(),
+                version = hello.version.as_str()
             ));
         }
         let base = client.stream_base().map_err(|e| e.to_string())?;
@@ -184,8 +182,9 @@ pub(crate) fn call_on(client: &HostClient, name: &str, call: &Call) -> Result<Re
         .post(api::CALL, &body)
         .map_err(|e| CoreError::internal(e.to_string()))?;
     if status == 200 {
-        return serde_json::from_slice(&answer)
-            .map_err(|e| CoreError::internal(format!("The answer did not read: {e}")));
+        return serde_json::from_slice(&answer).map_err(|e| {
+            CoreError::internal(tr!("stream-answer-unreadable", why = e.to_string()))
+        });
     }
     #[derive(Deserialize)]
     struct Refused {
@@ -196,7 +195,11 @@ pub(crate) fn call_on(client: &HostClient, name: &str, call: &Call) -> Result<Re
     match serde_json::from_slice::<Refused>(&answer) {
         Ok(Refused { core: Some(e), .. }) => Err(e),
         Ok(Refused { error, .. }) => Err(CoreError::internal(error)),
-        Err(_) => Err(CoreError::internal(format!("{name} answered {status}"))),
+        Err(_) => Err(CoreError::internal(tr!(
+            "stream-answered-status",
+            name = name,
+            status = u32::from(status)
+        ))),
     }
 }
 
@@ -237,7 +240,7 @@ pub fn open(file: u64, quality: Quality, unmetered: bool) -> Result<Opened, Stri
     let host = Arc::new(Host::connect()?);
     let mut session = match host.call(&Call::OpenPlayback { file }) {
         Ok(Reply::Playback { session }) => *session,
-        Ok(_) => return Err("The other device gave no session".into()),
+        Ok(_) => return Err(tr!("stream-no-session")),
         Err(e) => return Err(e.to_string()),
     };
     let probe = host.can_convert.then(|| host.probe(file)).flatten();

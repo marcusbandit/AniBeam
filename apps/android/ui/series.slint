@@ -6,6 +6,7 @@ import { Ask } from "more.slint";
 import { ShowActions, ShowData } from "show.slint";
 import { ShowSections } from "show-sections.slint";
 import { UndoBar } from "airing.slint";
+import { Tr } from "tr.slint";
 
 // An episode code's type, shared by the rows and the probe that sizes their column.
 component CodeText inherits Text {
@@ -21,7 +22,7 @@ component EpisodeItem inherits Rectangle {
     in property <length> code-width: Theme.unit * 10;
     // Episodes still to air are quieter.
     property <bool> later: root.data.cube == 5;
-    property <bool> next: root.data.note == "Next up";
+    property <bool> next: root.data.note-kind == 1;
     // Kept in more than one release: the row plays one, and its chip offers the rest.
     property <bool> versioned: root.data.versions.length > 1 && !AppData.deleting;
     height: Math.max(Theme.unit * 13, texts.preferred-height + 4 * Theme.unit);
@@ -72,7 +73,7 @@ component EpisodeItem inherits Rectangle {
         }
         if root.data.note != "": Text {
             text: root.data.note;
-            color: root.next ? Theme.accent : root.data.note == "Missing" ? Theme.yellow : Theme.purple;
+            color: root.next ? Theme.accent : root.data.note-kind == 2 ? Theme.yellow : Theme.purple;
             font-size: Theme.small - 0.5px;
         }
     }
@@ -147,7 +148,7 @@ component EpisodeItem inherits Rectangle {
         small: true;
         tappable: root.versioned;
         ink: Theme.dim;
-        text: root.data.versions.length + " versions";
+        text: Tr.n("series-versions", "count", root.data.versions.length);
         clicked => {
             Ask.versions = root.data.versions;
             Ask.versions-title = root.data.code + "  " + root.data.title;
@@ -172,13 +173,13 @@ component DeleteBar inherits Rectangle {
         height: self.preferred-height;
         spacing: Theme.unit * 3;
         Text {
-            text: AppData.delete-count == 0 ? "Tap the episodes to delete."
-                : AppData.delete-count == 1 ? "1 episode picked." : AppData.delete-count + " episodes picked.";
+            text: AppData.delete-count == 0 ? Tr.t("series-delete-tap")
+                : Tr.n("series-delete-picked", "count", AppData.delete-count);
             color: Theme.text;
             font-family: Theme.strong-face;
         }
         Text {
-            text: "Their files are deleted from this phone. What you watched stays tracked.";
+            text: Tr.t("series-delete-note");
             color: Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;
@@ -193,14 +194,14 @@ component DeleteBar inherits Rectangle {
             spacing: Theme.gap;
             alignment: start;
             Button {
-                text: AppData.delete-count == 1 ? "Delete 1 episode" : "Delete " + AppData.delete-count + " episodes";
+                text: Tr.n("series-delete-button", "count", AppData.delete-count);
                 small: true;
                 danger: true;
                 enabled: AppData.delete-count > 0 && !AppData.delete-busy;
                 clicked => { AppData.confirm-delete(); }
             }
             Button {
-                text: "Cancel";
+                text: Tr.t("common-cancel");
                 small: true;
                 clicked => { AppData.cancel-delete(); }
             }
@@ -296,7 +297,7 @@ export component SeriesPage inherits Rectangle {
             padding-bottom: Theme.pad * 2 + (AppData.mark-line != "" ? 20 * Theme.unit : 0);
             spacing: Theme.unit * 4;
             PageTitle {
-                back: Nav.page == 0 ? "Home" : Nav.page == 1 ? "Library" : Nav.page == 2 ? "Downloads" : Nav.page == 4 ? "Calendar" : "Back";
+                back: Nav.page == 0 ? Tr.t("series-back-home") : Nav.page == 1 ? Tr.t("series-back-library") : Nav.page == 2 ? Tr.t("series-back-downloads") : Nav.page == 4 ? Tr.t("series-back-calendar") : Tr.t("common-back");
                 title: "";
                 go-back => { AppData.close-series(); }
             }
@@ -324,7 +325,7 @@ export component SeriesPage inherits Rectangle {
                     clicked => { AppData.play(AppData.series.play-file); }
                 }
                 Button {
-                    text: "Get episodes";
+                    text: Tr.t("series-get-episodes");
                     icon: @image-url("icons/download.svg");
                     has-icon: true;
                     primary: AppData.series.play-file == 0;
@@ -345,14 +346,14 @@ export component SeriesPage inherits Rectangle {
                 leading: 1.4;
             }
             SectionHead {
-                title: "Episodes";
+                title: Tr.t("series-episodes");
                 note: AppData.episodes.length > 0 ? "" + AppData.episodes.length : "";
             }
             // Deleting: off, a button to start; on, what it will do and the two ways out.
             if !AppData.series-remote && !AppData.deleting && AppData.series-has-files: HorizontalLayout {
                 alignment: start;
                 Button {
-                    text: "Delete episodes";
+                    text: Tr.t("series-delete-episodes");
                     small: true;
                     danger: true;
                     clicked => { AppData.start-delete(); }
@@ -367,7 +368,7 @@ export component SeriesPage inherits Rectangle {
                 }
             }
             if AppData.episodes.length == 0: Text {
-                text: "No episodes on this phone and none scheduled.";
+                text: Tr.t("series-no-episodes");
                 color: Theme.dim;
                 font-size: Theme.small;
             }

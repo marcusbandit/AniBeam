@@ -6,6 +6,7 @@ import { Leaf, Scroll } from "panes.slint";
 import { CalRow } from "calendar.slint";
 import { FeedBlock } from "feed.slint";
 import { Button, ClampedText, EmptyNote, PageTitle, Poster, SectionHead, TileRow } from "widgets.slint";
+import { Tr } from "tr.slint";
 
 // The next episode to air, set like the head of the desktop's show view: the poster, the
 // title in the display cut, the episode, and the countdown as a figure in the poster's ink.
@@ -29,7 +30,7 @@ component NextUp inherits Rectangle {
             alignment: center;
             spacing: Theme.unit * 2;
             Text {
-                text: "Next to air";
+                text: Tr.t("home-next-to-air");
                 color: Theme.dim;
                 font-size: Theme.small;
             }
@@ -67,13 +68,13 @@ component ComingUp inherits VerticalLayout {
         spacing: Theme.unit * 3;
         SectionHead {
             horizontal-stretch: 1;
-            title: AppData.hero.show ? "After that" : "Coming up";
-            note: AppData.coming.length == 0 ? "Nothing in the next week." : "";
+            title: AppData.hero.show ? Tr.t("home-after-that") : Tr.t("home-coming-up");
+            note: AppData.coming.length == 0 ? Tr.t("home-nothing-week") : "";
         }
         VerticalLayout {
             alignment: end;
             Button {
-                text: "Calendar";
+                text: Tr.t("cal-title");
                 icon: @image-url("icons/calendar-days.svg");
                 has-icon: true;
                 small: true;
@@ -95,7 +96,7 @@ component Showcase inherits VerticalLayout {
     in property <bool> titled: true;
     spacing: Theme.unit * 4;
     if root.titled: PageTitle {
-        title: "Home";
+        title: Tr.t("home-title");
         note: AppData.home-note;
     }
     if AppData.hero.show: NextUp { }
@@ -117,8 +118,8 @@ component Showcase inherits VerticalLayout {
     }
     FeedBlock { }
     if AppData.ready && !AppData.hero.show && AppData.home-shelves.length == 0: EmptyNote {
-        title: "Nothing on this phone yet";
-        body: "Shows you download here, and what airs for them, show up on Home. Find one in Downloads.";
+        title: Tr.t("home-empty-title");
+        body: Tr.t("home-empty-body");
     }
 }
 

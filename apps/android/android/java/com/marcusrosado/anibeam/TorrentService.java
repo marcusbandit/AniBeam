@@ -19,14 +19,24 @@ import android.os.IBinder;
  * notification so Android does not cut its network when the screen goes off. The app sends
  * what to show as the "title", "text" and "progress" extras, and stops the service when
  * nothing is downloading. A finished episode gets a notification of its own, `ready`.
+ * The words Java shows itself, the two channel names and the title it falls back to, come
+ * from Rust in the app's language: as extras on the start, and through `words` when the
+ * language changes. The English below is only for a call that carries none.
  */
 public class TorrentService extends Service {
     private static final String CHANNEL = "downloads";
     /** Finished episodes: a channel of its own, so it can go quiet and the ongoing one stays. */
     private static final String READY = "ready";
+    private static String downloadsName = "Downloads";
+    private static String readyName = "Episodes ready";
+    private static String fallbackTitle = "Downloading";
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null) {
+            takeWords(intent.getStringExtra("channel_downloads"), intent.getStringExtra("channel_ready"),
+                    intent.getStringExtra("fallback_title"));
+        }
         channels(this);
         String title = intent != null ? intent.getStringExtra("title") : null;
         String text = intent != null ? intent.getStringExtra("text") : null;
@@ -41,6 +51,27 @@ public class TorrentService extends Service {
         return START_NOT_STICKY;
     }
 
+    /** Keeps the words that arrived; one that is missing or empty leaves the one held. */
+    private static void takeWords(String downloads, String ready, String fallback) {
+        if (downloads != null && !downloads.isEmpty()) downloadsName = downloads;
+        if (ready != null && !ready.isEmpty()) readyName = ready;
+        if (fallback != null && !fallback.isEmpty()) fallbackTitle = fallback;
+    }
+
+    /**
+     * The app's words in its language, from Rust: before an episode is ready, and when the
+     * language changes. A channel that already exists is renamed in place, so the phone's
+     * notification settings follow the language; none is made that was not there.
+     */
+    public static void words(Context context, String downloads, String ready, String fallback) {
+        takeWords(downloads, ready, fallback);
+        NotificationManager nm = context.getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        if (nm.getNotificationChannel(CHANNEL) != null || nm.getNotificationChannel(READY) != null) {
+            channels(context);
+        }
+    }
+
     /**
      * Both channels, made as the service starts, so Episodes ready is in the app's
      * notification settings to turn off before the first episode finishes.
@@ -49,14 +80,14 @@ public class TorrentService extends Service {
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null) return;
         nm.createNotificationChannel(
-                new NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW));
+                new NotificationChannel(CHANNEL, downloadsName, NotificationManager.IMPORTANCE_LOW));
         nm.createNotificationChannel(
-                new NotificationChannel(READY, "Episodes ready", NotificationManager.IMPORTANCE_DEFAULT));
+                new NotificationChannel(READY, readyName, NotificationManager.IMPORTANCE_DEFAULT));
     }
 
     private static Notification ongoing(Context context, String title, String text, int progress) {
         Notification.Builder b = new Notification.Builder(context, CHANNEL)
-                .setContentTitle(title != null ? title : "Downloading")
+                .setContentTitle(title != null ? title : fallbackTitle)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)

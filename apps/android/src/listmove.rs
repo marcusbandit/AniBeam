@@ -47,6 +47,12 @@ fn site(t: Tracker) -> &'static str {
     }
 }
 
+/// The language changed: the open sheet and Accounts' row are worded again. A note under the
+/// row is a few seconds old and stays as it was.
+pub fn relocalize() {
+    with(|p| p.refill());
+}
+
 pub fn install(window: &AppWindow) {
     PAGE.with(|cell| {
         *cell.borrow_mut() = Some(Page {
@@ -150,7 +156,7 @@ impl Page {
                         Ok(Reply::ListMove { rows }) if !rows.is_empty() => p.show(to, rows),
                         // The offer after a sign-in stays quiet when there is nothing to move.
                         Ok(_) if offer => {}
-                        Ok(_) => p.note("Nothing left to move"),
+                        Ok(_) => p.note(&tr!("move-nothing-left")),
                         Err(e) if !offer => p.note(&e.to_string()),
                         Err(_) => {}
                     })
@@ -159,12 +165,21 @@ impl Page {
     }
 
     fn show(&mut self, to: Tracker, rows: Vec<MoveRow>) {
+        self.fill(to, &rows);
+        self.data(|d| d.set_open(true));
+        self.open = Some((to, rows));
+    }
+
+    /// Puts the sheet's words and rows in place.
+    fn fill(&self, to: Tracker, rows: &[MoveRow]) {
+        let nothing = tr!("move-nothing");
+        let absent = tr!("move-not-on-list");
         let lines: Vec<MoveLine> = rows
             .iter()
             .map(|r| MoveLine {
                 title: r.title.as_str().into(),
-                here: side(r.status, r.score, "Nothing").into(),
-                there: side(r.tracker_status, r.tracker_score, "Not on your list").into(),
+                here: side(r.status, r.score, &nothing).into(),
+                there: side(r.tracker_status, r.tracker_score, &absent).into(),
             })
             .collect();
         let n = rows.len();
@@ -173,9 +188,20 @@ impl Page {
             d.set_lead(lead(n, site(to)).into());
             d.set_move_label(move_label(n).into());
             d.set_rows(ModelRc::new(VecModel::from(lines)));
-            d.set_open(true);
         });
-        self.open = Some((to, rows));
+    }
+
+    /// Words what is up again: the open sheet, and Accounts' row from the counts it has.
+    fn refill(&self) {
+        if let Some((to, rows)) = &self.open {
+            self.fill(*to, rows);
+        }
+        let (n, to) = if self.waiting[0] > 0 {
+            (self.waiting[0], Tracker::Anilist)
+        } else {
+            (self.waiting[1], Tracker::Mal)
+        };
+        self.data(|d| d.set_waiting_line(waiting_line(n, site(to)).into()));
     }
 
     fn close(&mut self) {
@@ -197,15 +223,7 @@ impl Page {
             tracker,
             series: ids,
         }) {
-            Ok(_) => self.note(&format!(
-                "Moving {} to {}",
-                if n == 1 {
-                    "1 show".to_string()
-                } else {
-                    format!("{n} shows")
-                },
-                site(tracker)
-            )),
+            Ok(_) => self.note(&tr!("move-moving", count = n, site = site(tracker))),
             Err(e) => self.note(&e.to_string()),
         }
     }
@@ -267,17 +285,6 @@ impl Page {
     }
 }
 
-fn status_word(s: ListStatus) -> &'static str {
-    match s {
-        ListStatus::Watching => "Watching",
-        ListStatus::Planning => "Planning",
-        ListStatus::Completed => "Completed",
-        ListStatus::Paused => "On hold",
-        ListStatus::Dropped => "Dropped",
-        ListStatus::Repeating => "Rewatching",
-    }
-}
-
 /// A score as the desktop writes it: one decimal, a quarter point rounded away from even.
 pub(crate) fn score(x: f64) -> String {
     let quarters = x * 4.0;
@@ -290,66 +297,35 @@ pub(crate) fn score(x: f64) -> String {
 
 /// One side of a row: the status and the score, or `empty` for neither.
 fn side(status: Option<ListStatus>, score_of: Option<f64>, empty: &str) -> String {
-    let mut bits = Vec::new();
-    if let Some(s) = status {
-        bits.push(status_word(s).to_string());
-    }
-    if let Some(x) = score_of {
-        bits.push(format!("score {}", score(x)));
-    }
-    if bits.is_empty() {
-        empty.to_string()
-    } else {
-        bits.join(", ")
+    match (status, score_of) {
+        (Some(s), Some(x)) => tr!(
+            "move-side-status-score",
+            status = crate::show::status_word(s),
+            score = score(x)
+        ),
+        (Some(s), None) => crate::show::status_word(s),
+        (None, Some(x)) => tr!("move-side-score", score = score(x)),
+        (None, None) => empty.to_string(),
     }
 }
 
 fn lead(n: usize, site: &str) -> String {
-    format!(
-        "{} a status or a score only on this phone. Moving them puts them on your {site} list, where your computer and your profile see them. For these shows, what {site} has now is replaced. Nothing is sent until you press Move.",
-        if n == 1 {
-            "One show has".to_string()
-        } else {
-            format!("{n} shows have")
-        }
-    )
+    tr!("move-lead", count = n, site = site)
 }
 
 fn move_label(n: usize) -> String {
-    if n == 1 {
-        "Move 1 show".into()
-    } else {
-        format!("Move {n} shows")
-    }
+    tr!("move-label", count = n)
 }
 
 fn waiting_line(n: usize, site: &str) -> String {
-    format!(
-        "{} a status or a score only here. Move them to {site} to see them on your computer and your profile.",
-        if n == 1 {
-            "One show has".to_string()
-        } else {
-            format!("{n} shows have")
-        }
-    )
+    tr!("move-waiting", count = n, site = site)
 }
 
 fn moved_line(t: Tracker, moved: u32, failed: u32) -> String {
-    let shows = |n: u32| {
-        if n == 1 {
-            "1 show".to_string()
-        } else {
-            format!("{n} shows")
-        }
-    };
     if failed > 0 {
-        format!(
-            "{} did not take {}; see the activity log",
-            site(t),
-            shows(failed)
-        )
+        tr!("move-failed", count = failed, site = site(t))
     } else if moved > 0 {
-        format!("Moved {} to {}", shows(moved), site(t))
+        tr!("move-moved", count = moved, site = site(t))
     } else {
         String::new()
     }

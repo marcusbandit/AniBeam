@@ -112,6 +112,61 @@ fn service_intent<'a>(
     Ok(intent)
 }
 
+/// The words the download service shows through Android, which Java cannot read from the
+/// catalog: the two channel names and the title it falls back to. They go to the service
+/// translated; its English is only for a call that carries none.
+#[cfg(target_os = "android")]
+fn service_words() -> [(&'static str, String); 3] {
+    [
+        ("channel_downloads", tr!("notify-channel-downloads")),
+        ("channel_ready", tr!("notify-channel-ready")),
+        ("fallback_title", tr!("notify-fallback-title")),
+    ]
+}
+
+/// Hands `TorrentService.words` the service's words in the app's language, so the channels
+/// in the phone's notification settings are named in it too.
+#[cfg(target_os = "android")]
+fn set_service_words(
+    env: &mut jni::JNIEnv,
+    app: &jni::objects::JObject,
+    class: &jni::objects::JClass,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use jni::objects::JValue;
+    let words = service_words();
+    let downloads = env.new_string(&words[0].1)?;
+    let ready = env.new_string(&words[1].1)?;
+    let fallback = env.new_string(&words[2].1)?;
+    env.call_static_method(
+        class,
+        "words",
+        "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+        &[
+            JValue::Object(app),
+            JValue::Object(&downloads),
+            JValue::Object(&ready),
+            JValue::Object(&fallback),
+        ],
+    )?;
+    Ok(())
+}
+
+/// The language changed: the service's channel names and fallback title are sent again.
+pub fn relocalize() {
+    #[cfg(target_os = "android")]
+    {
+        let r = with_env(|env, app| {
+            env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
+                let class = app_class(env, app, "TorrentService")?;
+                set_service_words(env, app, &class)
+            })
+        });
+        if let Err(e) = r {
+            crate::local::log(&format!("the notification channels were not renamed: {e}"));
+        }
+    }
+}
+
 /// Starts the download service with `shown` as its notification. False when Android
 /// refused, as it does for an app in the background on Android 12 and later; the caller
 /// tries again on its next look. A running service's notification changes through
@@ -124,7 +179,11 @@ pub fn start_service(shown: &crate::notify::Ongoing) -> bool {
             env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
                 use jni::objects::JValue;
                 let intent = service_intent(env)?;
-                for (key, value) in [("title", &shown.title), ("text", &shown.text)] {
+                let words = service_words();
+                let mut extras: Vec<(&str, &String)> =
+                    vec![("title", &shown.title), ("text", &shown.text)];
+                extras.extend(words.iter().map(|(key, value)| (*key, value)));
+                for (key, value) in extras {
                     let key = env.new_string(key)?;
                     let value = env.new_string(value)?;
                     env.call_method(
@@ -208,10 +267,13 @@ pub fn episode_ready(id: i32, title: &str, text: &str) {
     {
         let r = with_env(|env, app| {
             use jni::objects::JValue;
-            env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+            env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
                 // The Application's class loader sees the app's own classes, as the
                 // activity's does.
                 let class = app_class(env, app, "TorrentService")?;
+                // The channel it posts on is made in the app's language, in a process
+                // that has not started the service yet too.
+                set_service_words(env, app, &class)?;
                 let title = env.new_string(title)?;
                 let text = env.new_string(text)?;
                 env.call_static_method(

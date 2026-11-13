@@ -6,9 +6,10 @@ import { Tr } from "tr.slint";
 import { Button } from "widgets.slint";
 import { MatchData } from "show-match.slint";
 import { ShowData, ShowSheet } from "show.slint";
+import { Tr } from "tr.slint";
 
 export component FixesSheet inherits ShowSheet {
-    title: "Fixes";
+    title: Tr.t("show-fixes");
     line: ShowData.series-title;
     dismissed => { ShowData.close(); }
     if !ShowData.movie: Button {
@@ -18,7 +19,7 @@ export component FixesSheet inherits ShowSheet {
         clicked => { ShowData.open-dates(); }
     }
     Button {
-        text: ShowData.matched ? "Match" : "Find a match";
+        text: ShowData.matched ? Tr.t("show-fix-match") : Tr.t("show-fix-find-match");
         icon: @image-url("icons/search.svg");
         has-icon: true;
         clicked => {
@@ -27,7 +28,7 @@ export component FixesSheet inherits ShowSheet {
         }
     }
     Button {
-        text: "Rescan folder";
+        text: Tr.t("show-fix-rescan");
         icon: @image-url("icons/refresh-cw.svg");
         has-icon: true;
         clicked => {
@@ -36,7 +37,7 @@ export component FixesSheet inherits ShowSheet {
         }
     }
     Button {
-        text: "Cancel";
+        text: Tr.t("common-cancel");
         clicked => { ShowData.close(); }
     }
 }

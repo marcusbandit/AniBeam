@@ -4,22 +4,25 @@ import { Ask } from "more.slint";
 import { Button, Figure, ListGroup, ListRow, Slider, TextButton } from "widgets.slint";
 import { RepoPanes } from "repos.slint";
 import { NotifyPreview, NotifyRow } from "notify.slint";
+import { LangList } from "lang.slint";
+import { Tr } from "tr.slint";
 
-// The first run, one question a step: who you are on AniList and MAL, Wi-Fi or mobile data,
+// The first run, one question a step: the language, who you are on AniList and MAL, Wi-Fi or mobile data,
 // how much room the phone gives AniBeam, whether downloads show in the notifications, and
 // which endpoint repo it searches. Shown once; More can run it again. Each step
 // is a page in the desktop's idiom: the step's title in the display cut, a dim line, the
 // one pane it asks about, and the buttons at the foot where a thumb is.
 export component Onboarding inherits Rectangle {
     background: Theme.ground;
-    property <int> steps: 6;
+    property <int> steps: 7;
     property <[{title: string, note: string}]> pages: [
-        { title: "AniBeam", note: "Your anime on this phone. Find a show, see who has it, download it, and keep your lists in step." },
-        { title: "Your lists", note: "Sign in so what you watch here counts on AniList or MyAnimeList. You can do this later in More." },
-        { title: "Wi-Fi only", note: "Episodes are big. AniBeam downloads on Wi-Fi unless you say otherwise." },
-        { title: "Storage", note: "A cap on how much AniBeam may download. It reserves nothing: the space stays free until episodes fill it." },
-        { title: "Notifications", note: "While episodes download, a notification shows how far along they are, and another says when one is ready to watch. Downloads run either way." },
-        { title: "Search sites", note: "AniBeam comes with nothing to search. A repo is a signed list of sites to search. Paste a repo's address, check its key, then install the sites you want. You can do this later in More." },
+        { title: Tr.t("onb-welcome-title"), note: Tr.t("onb-welcome-note") },
+        { title: Tr.t("onb-language-title"), note: Tr.t("onb-language-note") },
+        { title: Tr.t("onb-lists-title"), note: Tr.t("onb-lists-note") },
+        { title: Tr.t("onb-wifi-title"), note: Tr.t("onb-wifi-note") },
+        { title: Tr.t("onb-storage-title"), note: Tr.t("onb-storage-note") },
+        { title: Tr.t("onb-notify-title"), note: Tr.t("onb-notify-note") },
+        { title: Tr.t("onb-sites-title"), note: Tr.t("onb-sites-note") },
     ];
 
     TouchArea { }
@@ -69,16 +72,18 @@ export component Onboarding inherits Rectangle {
             }
             Rectangle { height: Theme.unit * 2; }
 
-            if AppData.step == 1: ListGroup {
+            if AppData.step == 1: LangList { }
+
+            if AppData.step == 2: ListGroup {
                 ListRow {
-                    label: "AniList";
+                    label: Tr.t("tracker-anilist");
                     helper: AppData.anilist-state;
                     tappable: true;
                     chevron: true;
                     clicked => { AppData.connect-tracker(0); }
                 }
                 ListRow {
-                    label: "MyAnimeList";
+                    label: Tr.t("tracker-mal");
                     helper: AppData.mal-state;
                     tappable: true;
                     chevron: true;
@@ -87,10 +92,10 @@ export component Onboarding inherits Rectangle {
                 }
             }
 
-            if AppData.step == 2: ListGroup {
+            if AppData.step == 3: ListGroup {
                 ListRow {
-                    label: "Only on Wi-Fi";
-                    helper: AppData.wifi-only ? "On. Mobile data asks first." : "Off. Downloads use mobile data too.";
+                    label: Tr.t("onb-wifi-only");
+                    helper: AppData.wifi-only ? Tr.t("onb-wifi-on") : Tr.t("onb-wifi-off");
                     last: true;
                     switch: true;
                     on: AppData.wifi-only;
@@ -104,11 +109,11 @@ export component Onboarding inherits Rectangle {
                 }
             }
 
-            if AppData.step == 3: VerticalLayout {
+            if AppData.step == 4: VerticalLayout {
                 spacing: Theme.unit * 4;
                 Figure {
                     value: AppData.limit-label;
-                    caption: "18 GB is about 12 episodes. Slide it anywhere up to the phone's whole storage.";
+                    caption: Tr.t("onb-storage-caption");
                 }
                 Slider {
                     minimum: 1;
@@ -124,10 +129,10 @@ export component Onboarding inherits Rectangle {
                 }
                 ListGroup {
                     ListRow {
-                        label: "Use this cap";
+                        label: Tr.t("onb-use-cap");
                         helper: AppData.limit-on
-                            ? "On. At " + AppData.limit-label + ", AniBeam downloads nothing more until you delete episodes."
-                            : "Off. AniBeam downloads until the phone is full.";
+                            ? Tr.s("onb-cap-on", "cap", AppData.limit-label)
+                            : Tr.t("onb-cap-off");
                         last: true;
                         switch: true;
                         on: AppData.limit-on;
@@ -136,7 +141,7 @@ export component Onboarding inherits Rectangle {
                 }
             }
 
-            if AppData.step == 4: VerticalLayout {
+            if AppData.step == 5: VerticalLayout {
                 spacing: Theme.unit * 4;
                 NotifyPreview { }
                 ListGroup {
@@ -144,7 +149,7 @@ export component Onboarding inherits Rectangle {
                 }
             }
 
-            if AppData.step == 5: VerticalLayout {
+            if AppData.step == 6: VerticalLayout {
                 spacing: Theme.unit * 4;
                 RepoPanes { }
             }
@@ -158,7 +163,7 @@ export component Onboarding inherits Rectangle {
         padding-bottom: Theme.pad;
         spacing: Theme.unit;
         Button {
-            text: AppData.step == root.steps - 1 ? "Start" : "Continue";
+            text: AppData.step == root.steps - 1 ? Tr.t("onb-start") : Tr.t("onb-continue");
             primary: true;
             clicked => {
                 if (AppData.step >= root.steps - 1) {
@@ -169,7 +174,7 @@ export component Onboarding inherits Rectangle {
             }
         }
         TextButton {
-            text: AppData.step > 0 ? "Back" : "";
+            text: AppData.step > 0 ? Tr.t("onb-back") : "";
             clicked => {
                 if (AppData.step > 0) {
                     AppData.step -= 1;

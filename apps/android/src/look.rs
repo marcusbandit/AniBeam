@@ -393,7 +393,7 @@ impl Page {
             |dark: bool, id: &str| palettes(dark).position(|p| p.id == id).unwrap_or(0) as i32;
         let d = window.global::<LookData>();
         d.set_mode(self.choice.mode);
-        d.set_system_line(if system_dark() { "dark" } else { "light" }.into());
+        d.set_system_dark(system_dark());
         d.set_dark_themes(ModelRc::new(VecModel::from(
             palettes(true).map(theme_row).collect::<Vec<_>>(),
         )));

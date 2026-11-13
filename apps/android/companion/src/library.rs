@@ -140,6 +140,8 @@ pub struct Detail {
     pub alt_title: Option<String>,
     /// "TV", "2026", "Fall 2026", "Airing", "12 episodes".
     pub facts: Vec<String>,
+    /// A film, so its page says Watched or Not watched yet instead of listing episodes.
+    pub movie: bool,
     /// Still to air, soonest first.
     pub upcoming: Vec<Airing>,
     pub watched: u32,
@@ -148,21 +150,21 @@ pub struct Detail {
     pub subscription: Option<SubscriptionInfo>,
 }
 
-fn status_word(status: &str) -> &str {
+fn status_word(status: &str) -> String {
     match status {
-        "Releasing" => "Airing",
-        "NotYetReleased" => "Not yet aired",
-        other => other,
+        "Releasing" => tr!("clib-status-airing"),
+        "NotYetReleased" => tr!("clib-status-not-yet"),
+        other => other.to_string(),
     }
 }
 
 fn format_word(format: &str) -> String {
     match format {
         "TV" | "OVA" | "ONA" => format.to_string(),
-        "TV_SHORT" => "TV short".to_string(),
-        "MOVIE" => "Movie".to_string(),
-        "SPECIAL" => "Special".to_string(),
-        "MUSIC" => "Music".to_string(),
+        "TV_SHORT" => tr!("clib-format-tv-short"),
+        "MOVIE" => tr!("clib-format-movie"),
+        "SPECIAL" => tr!("clib-format-special"),
+        "MUSIC" => tr!("clib-format-music"),
         other => other.to_string(),
     }
 }
@@ -174,9 +176,9 @@ pub fn detail(cache: &Cache, anilist: &AniListCache, id: u64, now: i64) -> Optio
     let mut facts = Vec::new();
     facts.extend(s.format.as_deref().map(format_word));
     facts.extend(s.season.clone().or_else(|| s.year.map(|y| y.to_string())));
-    facts.extend(s.status.as_deref().map(|st| status_word(st).to_string()));
+    facts.extend(s.status.as_deref().map(status_word));
     if let Some(total) = s.total_episodes.filter(|t| *t > 1) {
-        facts.push(format!("{total} episodes"));
+        facts.push(tr!("common-episodes", count = total));
     }
     let alt_title = s
         .titles
@@ -200,6 +202,7 @@ pub fn detail(cache: &Cache, anilist: &AniListCache, id: u64, now: i64) -> Optio
         title: s.title.clone(),
         alt_title,
         facts,
+        movie: s.format.as_deref() == Some("MOVIE"),
         upcoming: schedule::schedule_for(s, cache.synced_at, anilist)
             .into_iter()
             .filter(|a| a.at > now)
@@ -313,6 +316,7 @@ mod tests {
 
     #[test]
     fn a_series_page_has_facts_episodes_and_its_rule() {
+        crate::i18n::set_lang(crate::i18n::Lang::En);
         let cache = cache();
         let page = detail(&cache, &AniListCache::default(), 12, cache.synced_at + 60).unwrap();
         assert_eq!(page.facts, vec!["TV", "Fall 2026", "Airing", "12 episodes"]);

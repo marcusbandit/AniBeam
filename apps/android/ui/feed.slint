@@ -7,12 +7,14 @@ import { Theme } from "theme.slint";
 import { AppData, Shelf } from "data.slint";
 import { Ask } from "more.slint";
 import { SectionHead, Segmented, TileRow } from "widgets.slint";
+import { Tr } from "tr.slint";
 
 export global FeedData {
     // 0 Recently released, 1 Coming soon.
     in property <int> sort;
     // This sort's one line: what is new this week, or what airs next.
     in property <string> summary;
+    // Each shelf's title is looked up by its ID in Rust, so it follows the language.
     in property <[Shelf]> shelves;
     callback pick-sort(int);
 }
@@ -22,11 +24,11 @@ export component FeedBlock inherits VerticalLayout {
     if FeedData.shelves.length > 0: VerticalLayout {
         spacing: Theme.unit * 3;
         SectionHead {
-            title: "Feed";
+            title: Tr.t("feed-title");
             note: FeedData.summary;
         }
         Segmented {
-            options: ["Recently released", "Coming soon"];
+            options: [Tr.t("feed-recently-released"), Tr.t("feed-coming-soon")];
             picked: FeedData.sort;
             pick(i) => { FeedData.pick-sort(i); }
         }

@@ -76,7 +76,7 @@ impl Shelves {
                 let count = tiles.len();
                 update(&model, tiles);
                 Shelf {
-                    title: title.into(),
+                    title: tr!(title).into(),
                     count: count.to_string().into(),
                     tiles: model.into(),
                 }
@@ -208,137 +208,60 @@ fn with_app(f: impl FnOnce(&mut App)) {
     });
 }
 
-/// More's sections, by the index Settings.section uses.
-const SECTIONS: [&str; 13] = [
-    "Accounts",
-    "Downloads",
-    "Streaming",
-    "Search sites",
-    "Connection",
-    "Your computer",
-    "About",
-    "App icon",
-    "Stats",
-    "Data",
-    "Activity",
-    "Appearance",
-    "Subtitles",
+/// More's sections' names, by the index Settings.section uses.
+const SECTIONS: [&str; 14] = [
+    "more-accounts",
+    "nav-downloads",
+    "more-streaming",
+    "onb-sites-title",
+    "more-connection",
+    "more-computer",
+    "more-about",
+    "more-icon",
+    "more-stats",
+    "more-data",
+    "more-activity",
+    "more-appearance",
+    "more-subtitles",
+    "more-language",
 ];
 
-/// Every setting More's search can land on: its section, its label (the key its page lights),
-/// and the words a person might type for it.
+/// Every setting More's search can land on: its section, its label's message ID (the label is
+/// the key its page lights), and the ID of the words a person might type for it. The search
+/// reads the words in the language the app speaks and in English, so an English word still
+/// finds its setting.
 const SETTINGS: &[(i32, &str, &str)] = &[
-    (
-        0,
-        "AniList",
-        "anilist tracker sign in login account connect list progress",
-    ),
-    (
-        0,
-        "MyAnimeList",
-        "mal myanimelist tracker sign in login account connect list progress",
-    ),
-    (
-        1,
-        "Storage cap",
-        "space disk limit gb full storage delete size",
-    ),
-    (
-        1,
-        "Only on Wi-Fi",
-        "wifi wi-fi mobile data cellular network",
-    ),
-    (
-        1,
-        "Notifications",
-        "notification notify alert progress permission shade allow",
-    ),
-    (
-        2,
-        "Stream quality",
-        "auto original 1080p 720p 480p convert data computer play",
-    ),
-    (
-        3,
-        "Check repos for new sites",
-        "refresh update repo endpoint",
-    ),
-    (
-        3,
-        "Add a repo",
-        "repo endpoint trust fingerprint address url",
-    ),
-    (
-        3,
-        "Add a site by hand",
-        "custom endpoint feed rss torznab jackett prowlarr address",
-    ),
-    (3, "Your own feeds", "feed rss source remove"),
-    (
-        4,
-        "Check the connection",
-        "network dns test https secure reach internet",
-    ),
-    (
-        5,
-        "Your computer's AniBeam",
-        "tailscale tailnet host address desktop library stream test save device",
-    ),
-    (6, "What's new", "changelog patch notes changes update"),
-    (6, "Set up again", "onboarding first run start over"),
-    (6, "Ratings", "imdb credit scores"),
-    (6, "Version", "build about"),
-    (
-        8,
-        "Stats",
-        "hours episodes genres studios seasons year watched recap busiest month history",
-    ),
-    (
-        9,
-        "Back up the library",
-        "backup export file save copy move computer json private sign-ins",
-    ),
-    (
-        9,
-        "Restore from a backup",
-        "restore import file load library merge",
-    ),
-    (
-        9,
-        "Image cache",
-        "images posters banners clear storage space cache",
-    ),
-    (
-        10,
-        "Activity",
-        "log events errors problems copy clear history what happened",
-    ),
-    (
-        11,
-        "Colours",
-        "appearance theme dark light mode system accent colour color",
-    ),
-    (
-        11,
-        "Text size",
-        "appearance font bigger smaller larger size words read",
-    ),
-    (
-        7,
-        "App icon",
-        "icon launcher home screen logo dark line art themed material you",
-    ),
-    (
-        12,
-        "Subtitle size and place",
-        "subtitles captions size scale position lift bottom",
-    ),
-    (
-        12,
-        "Subtitle style",
-        "subtitles captions font colour color outline shadow box bold ass styled reset",
-    ),
+    (0, "tracker-anilist", "more-words-anilist"),
+    (0, "tracker-mal", "more-words-mal"),
+    (1, "more-set-storage-cap", "more-words-storage-cap"),
+    (1, "onb-wifi-only", "more-words-wifi"),
+    (1, "onb-notify-title", "more-words-notifications"),
+    (2, "more-set-stream-quality", "more-words-stream-quality"),
+    (3, REPOS_CHECK, "more-words-check-repos"),
+    (3, "repos-add-title", "more-words-add-repo"),
+    (3, "repos-add-site-label", "more-words-add-site"),
+    (3, FEEDS, "more-words-feeds"),
+    (4, "more-set-check", "more-words-check"),
+    (5, "more-set-computer", "more-words-computer"),
+    (6, "more-set-whats-new", "more-words-whats-new"),
+    (6, "more-set-onboarding", "more-words-onboarding"),
+    (6, "about-ratings", "more-words-ratings"),
+    (6, "more-set-version", "more-words-version"),
+    (8, "more-stats", "more-words-stats"),
+    (9, "backup-export", "more-words-backup"),
+    (9, "backup-restore", "more-words-restore"),
+    (9, "backup-images-title", "more-words-cache"),
+    (10, "more-activity", "more-words-activity"),
+    (11, "look-colours", "more-words-colours"),
+    (11, "look-text-size", "more-words-text-size"),
+    (7, "more-icon", "more-words-icon"),
+    (12, "more-set-subs-size", "more-words-subs-size"),
+    (12, "more-set-subs-style", "more-words-subs-style"),
+    (13, "more-language", "more-words-language"),
 ];
+
+const FEEDS: &str = "more-set-feeds";
+const REPOS_CHECK: &str = "repos-check-repos";
 
 /// The settings a search names: each word in the label, the words or the section's name, the
 /// ones whose label holds the whole search first.
@@ -350,11 +273,13 @@ fn find_settings(query: &str, has_feeds: bool, has_repos: bool) -> Vec<SettingHi
     }
     let mut hits: Vec<(bool, SettingHit)> = SETTINGS
         .iter()
-        .filter(|(_, label, _)| has_feeds || *label != "Your own feeds")
-        .filter(|(_, label, _)| has_repos || *label != "Check repos for new sites")
-        .filter_map(|&(section, label, words)| {
-            let place = SECTIONS[section as usize];
-            let hay = format!("{label} {words} {place}").to_lowercase();
+        .filter(|(_, label, _)| has_feeds || *label != FEEDS)
+        .filter(|(_, label, _)| has_repos || *label != REPOS_CHECK)
+        .filter_map(|&(section, label_id, words_id)| {
+            let label = tr!(label_id);
+            let place = tr!(SECTIONS[section as usize]);
+            let english = english_words(&[label_id, words_id, SECTIONS[section as usize]]);
+            let hay = format!("{label} {} {place} {english}", tr!(words_id)).to_lowercase();
             q.split_whitespace().all(|w| hay.contains(w)).then(|| {
                 (
                     label.to_lowercase().contains(&q),
@@ -371,14 +296,28 @@ fn find_settings(query: &str, has_feeds: bool, has_repos: bool) -> Vec<SettingHi
     hits.into_iter().map(|(_, hit)| hit).collect()
 }
 
+/// The English of some messages, so a word typed in English still finds a setting when the app
+/// speaks another language.
+fn english_words(ids: &[&str]) -> String {
+    use crate::tr::Lang;
+    let now = crate::tr::lang();
+    if now == Lang::En {
+        return String::new();
+    }
+    ids.iter()
+        .map(|id| crate::tr::tr_in(Lang::En, id, &[]))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn account_line(a: &TrackerAccount) -> String {
     match (a.connected, &a.username) {
-        (true, Some(name)) => format!("Signed in as {name}"),
-        (true, None) => "Signed in".to_string(),
+        (true, Some(name)) => tr!("acct-signed-in-as", name = name.as_str()),
+        (true, None) => tr!("acct-signed-in"),
         (false, _) if a.client_id.is_empty() && !a.bundled_credentials => {
-            "Not available in this build".to_string()
+            tr!("acct-not-in-build")
         }
-        (false, _) => "Not signed in. Tap to sign in.".to_string(),
+        (false, _) => tr!("acct-tap-to-sign-in"),
     }
 }
 
@@ -403,8 +342,15 @@ impl App {
             Event::SyncStarted => {}
             Event::SyncDone { at, error } => {
                 let (tone, text) = match error {
-                    None => (0, format!("Synced {}.", format::stamp(at))),
-                    Some(e) => (1, format!("Last try {}: {e}", format::stamp(at))),
+                    None => (0, tr!("host-synced", when = format::stamp(at))),
+                    Some(e) => (
+                        1,
+                        tr!(
+                            "host-last-try",
+                            when = format::stamp(at),
+                            error = e.to_string()
+                        ),
+                    ),
                 };
                 self.data().set_host_tone(tone);
                 self.data().set_host_result(text.into());
@@ -422,7 +368,7 @@ impl App {
             Event::AniList(anilist) => self.anilist = anilist,
             Event::TestStarted => {
                 self.data().set_host_tone(2);
-                self.data().set_host_result("Asking...".into());
+                self.data().set_host_result(tr!("host-asking").into());
             }
             Event::TestDone(result) => {
                 let (tone, text) = match result {
@@ -530,23 +476,22 @@ impl App {
         self.show_calendar(calendar);
         update(&self.coming, home.coming);
         self.home_shelves.set(vec![
-            ("Recently watched", home.watched),
-            ("Recently downloaded", home.downloaded),
+            ("home-recently-watched", home.watched),
+            ("home-recently-downloaded", home.downloaded),
         ]);
         crate::feed::tick(&window, changed, &self.art, now);
         crate::disk::tick(&window, changed, &self.cards);
         data.set_phone_shows(self.cards.len() as i32);
         data.set_home_note(
             match self.cards.len() {
-                0 => "On this phone".to_string(),
-                1 => "On this phone, 1 show".to_string(),
-                n => format!("On this phone, {n} shows"),
+                0 => tr!("home-note-empty"),
+                n => tr!("home-note", count = n),
             }
             .into(),
         );
 
         // Library: this phone, or the device picked above it.
-        let mut devices: Vec<SharedString> = vec!["This phone".into()];
+        let mut devices: Vec<SharedString> = vec![tr!("lib-this-phone").into()];
         if let Some(name) = self.host_name() {
             devices.push(name.into());
         }
@@ -575,33 +520,30 @@ impl App {
                 &query,
             )
         };
-        let shows = |n: usize| {
-            if n == 1 {
-                "1 show".to_string()
-            } else {
-                format!("{n} shows")
-            }
-        };
         data.set_library_note(
             if device == 0 {
-                format!("This phone, {}", shows(self.cards.len()))
+                tr!("lib-note-phone", count = self.cards.len())
             } else {
                 let at = self
                     .cache
                     .as_ref()
                     .map(|c| format::ago(now - c.synced_at))
                     .unwrap_or_default();
-                format!("{}, synced {at}", devices[device])
+                tr!(
+                    "lib-note-remote",
+                    device = devices[device].as_str(),
+                    when = at
+                )
             }
             .into(),
         );
         data.set_library_empty(
             if !query.trim().is_empty() {
-                format!("Nothing matches \"{}\".", query.trim())
+                tr!("lib-empty-search", query = query.trim())
             } else if device == 0 {
-                "Nothing on this phone yet.".to_string()
+                tr!("lib-empty-phone")
             } else {
-                "That device has nothing in its library.".to_string()
+                tr!("lib-empty-remote")
             }
             .into(),
         );
@@ -609,7 +551,7 @@ impl App {
         if devices != self.devices {
             data.set_devices(ModelRc::new(VecModel::from(devices.clone())));
             let mut views = devices.clone();
-            views.push("Airing now".into());
+            views.push(tr!("cal-view-airing").into());
             data.set_cal_views(ModelRc::new(VecModel::from(views)));
             self.devices = devices;
         }
@@ -678,7 +620,7 @@ impl App {
         if let Some((job, why)) = crate::local::sign_in_failed()
             && let Some(which) = self.signing_in.remove(&job)
         {
-            self.sign_in_error = Some((which, format!("Sign-in failed: {why}. Tap to try again.")));
+            self.sign_in_error = Some((which, tr!("acct-sign-in-failed", why = why)));
         }
         if let Some((anilist, mal)) = &self.trackers {
             let line = |which: i32, a: &TrackerAccount| match &self.sign_in_error {
@@ -690,16 +632,15 @@ impl App {
             // The warn dot shows only while a row says its sign-in failed.
             let failed = |which: i32, a: &TrackerAccount| matches!(&self.sign_in_error, Some((w, _)) if *w == which && !a.connected);
             data.set_sign_in_failed(failed(0, anilist) || failed(1, mal));
-            let signed: Vec<&str> = [("AniList", anilist), ("MAL", mal)]
-                .iter()
-                .filter(|(_, a)| a.connected)
-                .map(|(n, _)| *n)
-                .collect();
-            data.set_trackers_line(if signed.is_empty() {
-                "Not signed in".into()
-            } else {
-                signed.join(" and ").into()
-            });
+            data.set_trackers_line(
+                match (anilist.connected, mal.connected) {
+                    (false, false) => tr!("more-accounts-none"),
+                    (true, true) => tr!("more-accounts-syncing-both"),
+                    (true, false) => tr!("more-accounts-syncing", tracker = "AniList"),
+                    (false, true) => tr!("more-accounts-syncing", tracker = "MAL"),
+                }
+                .into(),
+            );
         }
         if self.ticks.is_multiple_of(2) {
             self.poll_torrents();
@@ -757,9 +698,8 @@ impl App {
             .sum();
         data.set_cal_note(
             match total {
-                0 => "Nothing airs this week".to_string(),
-                1 => "1 episode in the next 7 days".to_string(),
-                n => format!("{n} episodes in the next 7 days"),
+                0 => tr!("cal-note-none"),
+                n => tr!("cal-note", count = n),
             }
             .into(),
         );
@@ -876,7 +816,7 @@ impl App {
         data.set_airing_season(i32::from(self.airing_season != SeasonPick::Now));
         let Some(airing) = &self.airing else {
             data.set_airing_line(if self.airing_listing || self.airing_refreshing {
-                "Asking AniList".into()
+                tr!("airing-asking").into()
             } else {
                 "".into()
             });
@@ -893,21 +833,25 @@ impl App {
         update(
             &self.airing_filters,
             vec![
-                format!("Everything {}", shows.len()).into(),
-                format!("On my lists {listed}").into(),
-                format!("On this phone {owned}").into(),
+                tr!("airing-filter-all", count = shows.len()).into(),
+                tr!("airing-filter-listed", count = listed).into(),
+                tr!("airing-filter-owned", count = owned).into(),
             ],
         );
         data.set_airing_filter(self.airing_filter);
         // This season, the next one or the one picked, and the way to any other.
         let at = crate::seasons::now();
         let second = match self.airing_season {
-            SeasonPick::Now => "Next season".to_string(),
+            SeasonPick::Now => tr!("airing-next-season"),
             showing => crate::seasons::label(showing, at),
         };
         update(
             &self.airing_seasons,
-            vec!["This season".into(), second.into(), "Other".into()],
+            vec![
+                tr!("airing-this-season").into(),
+                second.into(),
+                tr!("airing-other-season").into(),
+            ],
         );
         let pick = window.global::<crate::AiringPick>();
         pick.set_showing(crate::seasons::label(self.airing_season, at).into());
@@ -979,9 +923,9 @@ impl App {
             self.airing_refreshing,
         ) {
             (Some(note), _) => note.clone(),
-            (None, true) => "Asking AniList for the newest".to_string(),
+            (None, true) => tr!("airing-asking-newest"),
             (None, false) if airing.not_interested > 0 => {
-                format!("{} hidden as not interested", airing.not_interested)
+                tr!("airing-hidden", count = airing.not_interested)
             }
             _ => String::new(),
         };
@@ -1076,11 +1020,10 @@ impl App {
             .spawn(move || {
                 let note = match core.call(Call::PlanToWatch { anilist_id }) {
                     Ok(_) => None,
-                    Err(anibeam_core::CoreError::NotConnected { .. }) => Some(
-                        "Plan to watch needs AniList or MAL. Sign in under More, Accounts."
-                            .to_string(),
-                    ),
-                    Err(e) => Some(format!("Plan to watch did not go through: {e}")),
+                    Err(anibeam_core::CoreError::NotConnected { .. }) => {
+                        Some(tr!("airing-plan-needs-tracker"))
+                    }
+                    Err(e) => Some(tr!("airing-plan-failed", error = e.to_string())),
                 };
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| {
@@ -1233,38 +1176,56 @@ impl App {
         };
         self.data().set_checking(true);
         self.data().set_check_summary("".into());
-        let _ = std::thread::Builder::new().name("check".into()).spawn(move || {
-            let answer = core.call(Call::PhoneNetCheck);
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app| {
-                    let window = app.window.clone_strong();
-                    let data = window.global::<AppData>();
-                    data.set_checking(false);
-                    let Ok(Reply::PhoneNetCheck { checks }) = answer else { return };
-                    app.check_text = std::iter::once(format!("AniBeam {} connection check", env!("ANIBEAM_PHONE_VERSION")))
+        let _ = std::thread::Builder::new()
+            .name("check".into())
+            .spawn(move || {
+                let answer = core.call(Call::PhoneNetCheck);
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        let window = app.window.clone_strong();
+                        let data = window.global::<AppData>();
+                        data.set_checking(false);
+                        let Ok(Reply::PhoneNetCheck { checks }) = answer else {
+                            return;
+                        };
+                        app.check_text = std::iter::once(format!(
+                            "AniBeam {} connection check",
+                            env!("ANIBEAM_PHONE_VERSION")
+                        ))
                         .chain(checks.iter().map(|c| {
-                            format!("{} {}: {} ({} ms)", if c.ok { "OK  " } else { "FAIL" }, c.name, c.detail, c.ms)
+                            format!(
+                                "{} {}: {} ({} ms)",
+                                if c.ok { "OK  " } else { "FAIL" },
+                                c.name,
+                                c.detail,
+                                c.ms
+                            )
                         }))
                         .collect::<Vec<_>>()
                         .join("\n");
-                    let failed = checks.iter().filter(|c| !c.ok).count();
-                    data.set_check_failed(failed as i32);
-                    data.set_check_summary(
-                        if failed == 0 { "Every step went through.".to_string() } else { format!("{failed} of {} steps failed. A screenshot of this list says where.", checks.len()) }
+                        let failed = checks.iter().filter(|c| !c.ok).count();
+                        data.set_check_failed(failed as i32);
+                        data.set_check_summary(
+                            if failed == 0 {
+                                tr!("more-check-all-ok")
+                            } else {
+                                tr!("more-check-failed", failed = failed, total = checks.len())
+                            }
                             .into(),
-                    );
-                    let rows: Vec<CheckRow> = checks
-                        .iter()
-                        .map(|c| CheckRow {
-                            name: format!("{}  {} ms", c.name, c.ms).into(),
-                            detail: c.detail.clone().into(),
-                            ok: c.ok,
-                        })
-                        .collect();
-                    data.set_checks(ModelRc::new(VecModel::from(rows)));
-                })
+                        );
+                        let rows: Vec<CheckRow> = checks
+                            .iter()
+                            .map(|c| CheckRow {
+                                name: tr!("more-check-row", step = c.name.as_str(), ms = c.ms)
+                                    .into(),
+                                detail: c.detail.clone().into(),
+                                ok: c.ok,
+                            })
+                            .collect();
+                        data.set_checks(ModelRc::new(VecModel::from(rows)));
+                    })
+                });
             });
-        });
     }
 
     /// Asks the engine for its torrents on a thread, one ask at a time.
@@ -1336,7 +1297,7 @@ impl App {
                     && matches!(t.state.as_str(), "downloading" | "checkingDL")
             })
             .map(|(t, row)| notify::Moving {
-                called: notify::called(&row.show, &row.what, &t.name),
+                called: notify::called(&row.show, &notify::what_of(t), &t.name),
                 facts: row.facts.to_string(),
                 progress: t.progress,
                 size: t.size,
@@ -1353,27 +1314,27 @@ impl App {
             if let Some((t, row)) = torrents.iter().zip(&rows).find(|(t, _)| t.hash == hash) {
                 crate::android::episode_ready(
                     notify::ready_id(&hash),
-                    &notify::ready_title(&row.show, &row.what, &t.name),
-                    notify::READY_TEXT,
+                    &notify::ready_title(&row.show, &notify::what_of(t), &t.name),
+                    &notify::ready_text(),
                 );
             }
         }
         update(&self.downloads, rows);
         let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
-            "Waiting for Wi-Fi. Downloads go on by themselves when the phone is on Wi-Fi."
+            tr!("dl-note-waiting")
         } else if torrents.is_empty() {
-            "Nothing downloading."
+            tr!("dl-note-nothing")
         } else {
-            ""
+            String::new()
         };
         self.data().set_downloads_note(note.into());
         let (down, up) = torrents
             .iter()
             .fold((0u64, 0u64), |(d, u), t| (d + t.dlspeed, u + t.upspeed));
         self.data()
-            .set_rate_down(format!("{}/s", format::bytes(down)).into());
+            .set_rate_down(tr!("dl-speed", rate = format::bytes(down)).into());
         self.data()
-            .set_rate_up(format!("{}/s", format::bytes(up)).into());
+            .set_rate_up(tr!("dl-speed", rate = format::bytes(up)).into());
         let finished = torrents.iter().filter(|t| t.progress >= 1.0).count();
         self.data().set_finished_count(finished as i32);
         self.data()
@@ -1464,28 +1425,26 @@ impl App {
                 });
             }
         }
-        let free_text = free
-            .map(|f| format!("{} free", format::bytes(f)))
-            .unwrap_or_default();
         data.set_used_figure(format::bytes(used).into());
         data.set_free_figure(free.map(format::bytes).unwrap_or_default().into());
         data.set_storage_line(
-            format!(
-                "{} used{}{}",
-                format::bytes(used),
-                if free_text.is_empty() { "" } else { ", " },
-                free_text
-            )
+            match free {
+                Some(f) => tr!(
+                    "disk-storage-line-free",
+                    used = format::bytes(used),
+                    free = format::bytes(f)
+                ),
+                None => tr!("disk-storage-line", used = format::bytes(used)),
+            }
             .into(),
         );
         let limit = (self.prefs.limit_gb * 1e9) as u64;
-        let below = "less than the cap: the phone fills up before AniBeam stops";
         data.set_free_line(
             free.map(|f| {
                 if f < limit {
-                    format!("This phone has {} free, {below}.", format::bytes(f))
+                    tr!("disk-free-below-cap", free = format::bytes(f))
                 } else {
-                    format!("This phone has {} free.", format::bytes(f))
+                    tr!("disk-free", free = format::bytes(f))
                 }
             })
             .unwrap_or_default()
@@ -1495,6 +1454,21 @@ impl App {
 
     fn show_prefs(&self) {
         let data = self.data();
+        data.set_version(
+            tr!(
+                "more-version",
+                version = env!("ANIBEAM_PHONE_VERSION"),
+                build = env!("ANIBEAM_VERSION_CODE")
+            )
+            .into(),
+        );
+        data.set_ratings_label(tr!("about-ratings").into());
+        data.set_ratings_credit(tr!("about-ratings-credit").into());
+        let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL
+            .iter()
+            .map(|q| q.label().into())
+            .collect();
+        data.set_stream_qualities(ModelRc::new(VecModel::from(qualities)));
         data.set_onboarding(!self.prefs.onboarded);
         data.set_wifi_only(self.prefs.wifi_only);
         let quality = crate::stream::Quality::ALL
@@ -1787,7 +1761,7 @@ impl App {
         };
         self.sign_in_error = None;
         let Some(core) = crate::local::core() else {
-            let line: SharedString = "AniBeam is still starting. Try again in a moment.".into();
+            let line: SharedString = tr!("acct-still-starting").into();
             if which == 0 {
                 self.data().set_anilist_state(line);
             } else {
@@ -1805,7 +1779,7 @@ impl App {
             crate::local::log(&format!("sign-in did not start: {e}"));
             self.sign_in_error = Some((
                 which,
-                format!("Sign-in did not start: {e}. Tap to try again."),
+                tr!("acct-sign-in-not-started", error = e.to_string()),
             ));
             self.tick();
         }
@@ -1815,7 +1789,7 @@ impl App {
         match HostAddress::parse(text) {
             Ok(address) => {
                 self.data().set_host_address(address.display().into());
-                self.data().set_host_result("Saved. Syncing...".into());
+                self.data().set_host_result(tr!("host-saved").into());
                 self.data().set_host_tone(2);
                 let _ = self.commands.send(Command::SaveAndSync(address));
             }
@@ -1891,16 +1865,16 @@ fn mark_line(target: u32, before: Option<u32>) -> Option<String> {
 }
 
 /// A list status as a poster's flag says it.
-fn list_word(status: anibeam_core::ListStatus) -> &'static str {
+fn list_word(status: anibeam_core::ListStatus) -> String {
     use anibeam_core::ListStatus::*;
-    match status {
-        Watching => "Watching",
-        Planning => "Planning",
-        Completed => "Completed",
-        Paused => "On hold",
-        Dropped => "Dropped",
-        Repeating => "Rewatching",
-    }
+    tr!(match status {
+        Watching => "list-watching",
+        Planning => "list-planning",
+        Completed => "list-completed",
+        Paused => "list-paused",
+        Dropped => "list-dropped",
+        Repeating => "list-repeating",
+    })
 }
 
 fn is_demo(hash: &str) -> bool {
@@ -1919,41 +1893,45 @@ fn plain(text: &str) -> String {
 fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -> DownloadRow {
     let done = t.progress >= 1.0;
     let paused = t.state.starts_with("paused") && !done;
+    // The state's message ID; the tone below goes by it too.
     let state = match t.state.as_str() {
-        _ if done => "Done",
+        _ if done => "dl-state-done",
         // Held off mobile data, nothing restarts it, a retry included, until Wi-Fi.
-        "pausedDL" | "error" if held => "Waiting for Wi-Fi",
-        "pausedDL" => "Paused",
-        "stalledDL" => "Looking for peers",
-        "checkingDL" => "Checking",
-        "error" => "Stopped by an error",
-        _ => "Downloading",
+        "pausedDL" | "error" if held => "dl-state-waiting",
+        "pausedDL" => "dl-state-paused",
+        "stalledDL" => "dl-state-peers",
+        "checkingDL" => "dl-state-checking",
+        "error" => "dl-state-error",
+        _ => "dl-state-downloading",
     };
     let amount = if done {
         format::bytes(t.size)
     } else {
-        format!(
-            "{} of {}",
-            format::bytes((t.progress * t.size as f64) as u64),
-            format::bytes(t.size)
+        tr!(
+            "dl-amount",
+            got = format::bytes((t.progress * t.size as f64) as u64),
+            size = format::bytes(t.size)
         )
     };
     let mut speed = Vec::new();
     if !done && t.dlspeed > 0 {
-        speed.push(format!("{}/s", format::bytes(t.dlspeed)));
+        speed.push(tr!("dl-speed", rate = format::bytes(t.dlspeed)));
     }
     if !done && t.eta > 0 && t.eta < 8_640_000 {
-        speed.push(format!(
-            "{} left",
-            format::countdown(t.eta).trim_start_matches("in ")
-        ));
+        speed.push(tr!("dl-left", span = format::span(t.eta)));
     }
-    let speed = speed.join(", ");
-    let facts = if speed.is_empty() {
-        amount.clone()
-    } else {
-        format!("{amount}, {speed}")
+    let join = |parts: Vec<String>| {
+        parts
+            .into_iter()
+            .reduce(|a, b| tr!("common-join-comma", a = a, b = b))
+            .unwrap_or_default()
     };
+    let facts = join(
+        std::iter::once(amount.clone())
+            .chain(speed.clone())
+            .collect(),
+    );
+    let speed = join(speed);
     // Only the files picked to download: a skipped one has no cube and is not coming.
     let mut episodes: Vec<f64> = t
         .files
@@ -1963,10 +1941,16 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
         .collect();
     episodes.sort_by(f64::total_cmp);
     let what = match (t.episode, episodes.first(), episodes.last()) {
-        (Some(e), _, _) if !t.batch => format!("Episode {e}"),
-        (_, Some(a), Some(b)) if a != b => format!("Episodes {a} to {b}"),
-        (_, Some(a), _) => format!("Episode {a}"),
-        _ if t.batch => "A batch".to_string(),
+        (Some(e), _, _) if !t.batch => tr!("common-episode-n", n = e.to_string()),
+        (_, Some(a), Some(b)) if a != b => {
+            tr!(
+                "dl-episodes-range",
+                from = a.to_string(),
+                to = b.to_string()
+            )
+        }
+        (_, Some(a), _) => tr!("common-episode-n", n = a.to_string()),
+        _ if t.batch => tr!("dl-batch"),
         _ => String::new(),
     };
     let release = [t.group.as_str(), t.resolution.as_str()]
@@ -1998,16 +1982,16 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
     };
     let (poster, has_poster) = show.map(|c| art.poster(Some(c.id))).unwrap_or_default();
     let tone = match state {
-        "Done" => 4,
-        "Waiting for Wi-Fi" => 2,
-        "Stopped by an error" => 3,
+        "dl-state-done" => 4,
+        "dl-state-waiting" => 2,
+        "dl-state-error" => 3,
         _ if paused => 1,
         _ => 0,
     };
     DownloadRow {
         hash: t.hash.clone().into(),
         name: t.name.clone().into(),
-        state: state.into(),
+        state: tr!(state).into(),
         facts: facts.into(),
         progress: t.progress as f32,
         paused,
@@ -2072,6 +2056,32 @@ fn remote_numbers(cache: &Cache) -> HashMap<u64, f64> {
 
 /// Builds the window, starts the core, the sync thread and the clocks, and runs until the
 /// activity goes away.
+/// The language changed: every line Rust wrote is written again in the new one. The Slint
+/// pages re-word themselves through `Tr.rev`.
+pub fn relocalize() {
+    with_app(|app| {
+        app.show_prefs();
+        app.storage();
+        app.show_airing();
+        // The computer's line is worded when a sync ends; one now words it again.
+        let _ = app.commands.send(Command::Sync);
+        app.tick();
+    });
+    crate::player::relocalize();
+    crate::find::relocalize();
+    crate::show::relocalize();
+    crate::show_match::relocalize();
+    crate::listmove::relocalize();
+    crate::inspect::relocalize();
+    crate::stats::relocalize();
+    crate::backup::relocalize();
+    crate::activity::relocalize();
+    crate::repos::relocalize();
+    crate::disk::relocalize();
+    crate::feed::relocalize();
+    crate::android::relocalize();
+}
+
 pub fn run(
     data_dir: PathBuf,
     commands: Commands,
@@ -2091,6 +2101,8 @@ pub fn run(
     });
 
     let window = AppWindow::new()?;
+    // First, so everything below that words a line already speaks the picked language.
+    crate::lang::install(&window, &data_dir);
     crate::player::install(&window);
     crate::subtitles::install(&window);
     crate::feed::install(&window);
@@ -2099,18 +2111,7 @@ pub fn run(
     crate::show::install(&window);
     crate::show_match::install(&window);
     crate::schedule::install(&window);
-    crate::tr::install(&window);
     let data = window.global::<AppData>();
-    data.set_version(
-        format!(
-            "AniBeam for Android {} (build {})",
-            env!("ANIBEAM_PHONE_VERSION"),
-            env!("ANIBEAM_VERSION_CODE")
-        )
-        .into(),
-    );
-    data.set_ratings_label(tr("about-ratings", &[]).into());
-    data.set_ratings_credit(tr("about-ratings-credit", &[]).into());
     data.set_host_address(address.display().into());
 
     let home_shelves = Shelves::new();
@@ -2139,11 +2140,6 @@ pub fn run(
     data.set_mark_unwatched_label(tr("mark-menu-unwatched", &[]).into());
     data.set_mark_cancel_label(tr("mark-menu-cancel", &[]).into());
     data.on_play_remote(|file| crate::player::open_remote(file as u64));
-    let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL
-        .iter()
-        .map(|q| q.label().into())
-        .collect();
-    data.set_stream_qualities(ModelRc::new(VecModel::from(qualities)));
     data.on_set_stream_quality(|i| {
         with_app(|app| {
             if let Some(q) = usize::try_from(i)
@@ -2302,7 +2298,7 @@ pub fn run(
         with_app(|app| {
             let copied = crate::android::copy_text("AniBeam connection check", &app.check_text);
             app.data().set_check_summary(if copied {
-                "Copied. Paste it in a message.".into()
+                tr!("more-check-copied").into()
             } else {
                 "Could not copy.".into()
             });
