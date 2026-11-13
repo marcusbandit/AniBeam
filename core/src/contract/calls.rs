@@ -745,7 +745,7 @@ pub enum Call {
     /// Adds an endpoint by hand, outside any repo: a name, and an address with `{query}`
     /// where the search goes. A secret in the address (a
     /// `user:password@` login, or a key such as `apikey=`, `token=`, `passkey=`, `rsskey=`;
-    /// the full list is `releases::native::SECRET_PARAMS`) moves to the secret store; other
+    /// the full list is `redact::SECRET_PARAMS`) moves to the secret store; other
     /// placeholders take their value from `credentials`.
     AddCustomEndpoint {
         name: String,
