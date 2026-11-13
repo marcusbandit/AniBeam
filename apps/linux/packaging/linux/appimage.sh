@@ -2,7 +2,7 @@
 # usage: appimage.sh <out-dir>
 # Turns target/release/anibeam into <out-dir>/AniBeam-<pkgver>-x86_64.AppImage.
 #   ANIBEAM_BIN   the binary to bundle (default: the workspace's target/release/anibeam)
-#   DEPS_PREFIX   where deps.sh installed libva, libmpv and MpvQt
+#   DEPS_PREFIX   where deps.sh installed libva, FFmpeg, libmpv and MpvQt
 #   QMAKE         the qmake of the Qt the binary was built against
 # Two helpers ride along, each pinned by version and sha256 below:
 #   usr/share/anibeam/anirss/    Python 3.13 (python-build-standalone) and anirss, which needs 3.11
@@ -138,6 +138,13 @@ for name in "${leftout[@]}"; do
     done
     exit 1
   fi
+done
+# The same check at the root: every FFmpeg library in the image is the one deps.sh built.
+# linuxdeploy rewrites each library's rpath, so the files differ; their build IDs do not.
+build_id() { readelf -n "$1" 2>/dev/null | awk '/Build ID/ {print $3}'; }
+for lib in "$appdir"/usr/lib/lib{avcodec,avformat,avfilter,avutil,swresample,swscale}.so.*; do
+  [ -n "$(build_id "$lib")" ] && [ "$(build_id "$lib")" = "$(build_id "$deps/lib/$(basename "$lib")")" ] \
+    || { echo "$(basename "$lib") in the image is not the one deps.sh built in $deps" >&2; exit 1; }
 done
 icus=("$appdir"/usr/lib/libicuuc.so.*)
 [ "${#icus[@]}" -le 1 ] || { echo "the image carries more than one ICU: ${icus[*]}" >&2; exit 1; }

@@ -21,7 +21,10 @@
 #     Left out on purpose: every outside encoder, the filters that need an outside library
 #     (mpv draws subtitles with its own libass and never asks lavfi for them), libxml2, which
 #     only the DASH demuxer wants, libavdevice and libpostproc, which mpv here does not
-#     link, and VDPAU, which mpv here is built without.
+#     link, and VDPAU, which mpv here is built without. A few outside decoders go with them,
+#     ones FFmpeg has no version of its own for: libzvbi's DVB teletext subtitles, speex,
+#     codec2, game music (gme) and tracker modules (openmpt), and lzma-packed TIFF. Xlib is
+#     off too: mpv hands FFmpeg the VA-API display it opened itself, on X11 and Wayland alike.
 #   libmpv 0.41.0, lean: the OpenGL render API, VA-API, ALSA and PulseAudio, libass, and
 #     none of Lua, JavaScript, VapourSynth, Vulkan or libarchive. It builds against the
 #     FFmpeg above and noble's libplacebo 6.338.2.
@@ -67,7 +70,7 @@ mkdir -p "$work/ffmpeg-build"
     --enable-shared --disable-static --enable-pic --disable-debug \
     --disable-programs --disable-doc --disable-avdevice --disable-postproc \
     --disable-autodetect \
-    --enable-zlib --enable-bzlib --enable-iconv --enable-xlib \
+    --enable-zlib --enable-bzlib --enable-iconv \
     --enable-vaapi --enable-libdrm \
     --enable-ffnvcodec --enable-cuda --enable-cuvid --enable-nvdec \
     --enable-libdav1d --enable-gnutls --enable-libwebp )
@@ -114,7 +117,7 @@ cmake --install "$work/mpvqt-build"
 
 echo "== installed"
 ls -la "$prefix/lib" "$prefix/include"
-ldd "$prefix/lib/libmpv.so" | grep -E "va|drm|wayland|X11|GL|EGL|placebo|ass|avcodec"
+LD_LIBRARY_PATH="$prefix/lib" ldd "$prefix/lib/libmpv.so" | grep -E "va|drm|wayland|X11|GL|EGL|placebo|ass|avcodec"
 echo "== what FFmpeg links"
 for lib in avcodec avformat avfilter avutil; do
   echo "lib$lib: $(readelf -d "$prefix/lib/lib$lib.so" | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p' | tr '\n' ' ')"

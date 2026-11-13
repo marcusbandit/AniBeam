@@ -63,7 +63,7 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0 # git describe names the version
 
-      # FFmpeg is built by deps.sh, lean, from the libraries named on the third line; noble's
+      # FFmpeg is built by deps.sh, lean, from the libraries on the line after the tools; noble's
       # own FFmpeg drags 125 MB of encoders and speech libraries into the image (#850). The
       # ffmpeg program stays: smoke.sh encodes its test clip with it, and nothing links it.
       - name: apt packages
@@ -106,7 +106,7 @@ jobs:
         id: depkey
         run: |
           key="$( { cat apps/linux/packaging/linux/deps.sh
-                    dpkg-query -W nasm libdav1d-dev libgnutls28-dev libwebp-dev libffmpeg-nvenc-dev \
+                    dpkg-query -W nasm libdav1d-dev libgnutls28-dev libwebp-dev libbz2-dev zlib1g-dev libffmpeg-nvenc-dev \
                       libplacebo-dev libass-dev liblcms2-dev libuchardet-dev libzimg-dev libdrm-dev libwayland-dev
                     "$QT_ROOT_DIR/bin/qmake" -query QT_VERSION
                   } | sha256sum | cut -c1-16)"
