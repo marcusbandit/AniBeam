@@ -1013,6 +1013,9 @@ async fn import_preferences(
                 home_hide_empty_days: current.home_hide_empty_days,
                 // And which recommendations its Home row holds.
                 home_recommended: current.home_recommended,
+                // And the name and relay its rooms use.
+                room_name: current.room_name.clone(),
+                room_relay: current.room_relay.clone(),
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

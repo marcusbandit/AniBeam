@@ -145,6 +145,8 @@ pub struct Core {
     pub(crate) phone: crate::phone::Phone,
     /// Repo indexes fetched for a preview and not trusted yet.
     pub(crate) repos: crate::repos::Pending,
+    /// The watch together room this core is in, if any (`Room*` calls).
+    pub(crate) rooms: crate::room::Rooms,
     /// Casting to Chromecasts and DLNA TVs (`Cast*` calls).
     #[cfg_attr(not(feature = "cast"), allow(dead_code))]
     pub(crate) cast: crate::cast::Cast,
@@ -300,6 +302,7 @@ impl Core {
             phone: crate::phone::Phone::default(),
             repos: crate::repos::Pending::default(),
             cast: crate::cast::Cast::default(),
+            rooms: crate::room::Rooms::default(),
             host,
             presence,
             me: me.clone(),
@@ -407,6 +410,20 @@ impl Core {
         paused: bool,
     ) {
         crate::presence::tick(self, session, activity, position, paused);
+    }
+
+    /// Corrects a watch together player at most once per `gap` instead of once a
+    /// second. Not part of the contract.
+    #[doc(hidden)]
+    pub fn set_room_correction_gap(&self, gap: std::time::Duration) {
+        self.rooms.set_correction_gap(gap);
+    }
+
+    /// Drops the room's connection without a goodbye, as a lost network would.
+    /// Not part of the contract.
+    #[doc(hidden)]
+    pub fn room_drop_connection(&self) {
+        self.rooms.drop_connection();
     }
 
     /// Returns once every Discord presence send asked for so far has been
@@ -1361,6 +1378,13 @@ impl Core {
             | Call::CastSeek { .. }
             | Call::CastStop
             | Call::CastStatus) => crate::cast::call(self, c),
+            c @ (Call::RoomCreate { .. }
+            | Call::RoomJoin { .. }
+            | Call::RoomAttach { .. }
+            | Call::RoomCommand { .. }
+            | Call::RoomSetOffset { .. }
+            | Call::RoomLeave
+            | Call::RoomStatus) => crate::room::call(self, c),
             Call::PhoneNetCheck => Ok(Reply::PhoneNetCheck {
                 checks: self.handle.block_on(crate::phone::check::run(self)),
             }),
@@ -1530,6 +1554,8 @@ impl Core {
         // Discord drops the activity when the socket closes anyway; this
         // clears it first and ends the worker.
         crate::presence::shutdown(self);
+        // A room says goodbye, so the others see this member leave at once.
+        crate::room::shutdown(self);
         self.jobs.cancel_all();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the

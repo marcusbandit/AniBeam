@@ -133,7 +133,11 @@ Contract additions:
   `RoomCommand { action: RoomAction, position }` (local seconds), `RoomSetOffset { offset }`,
   `RoomLeave`, `RoomStatus`. Replies: `Reply::Room { room: Option<RoomInfo> }`.
 - `RoomInfo { code, link, you, host: bool, members, episode, offset, suggested_offset?,
-  connected: bool }`. `link` is `<relay>/<code>`.
+  session?, connected: bool }`. `link` is `<relay>/<code>`. `session` is the playback session
+  `RoomAttach` named, so the shell can tell whether the room drives the player it shows.
+- Room errors are `CoreError::Service` with a fixed `code` the shell branches on: `not_found`,
+  `full`, `unreachable`, `refused`, `proto`, `not_in_room`. A bad code or a missing name is
+  `Invalid` on `code` or `room_name`.
 - Events: `RoomChanged { room: Option<RoomInfo> }`, `RoomEpisode { episode, series?, file? }`
   (what a joiner should open; `file` is `None` when this library lacks it),
   `RoomApply { session, playing, seek_to: Option<f64>, speed: f64 }` (debug level, never in the
@@ -143,20 +147,26 @@ Contract additions:
 
 Behaviour:
 
-- One room at a time. A background task on `core.handle` owns the socket (tokio-tungstenite,
-  rustls, matching reqwest's TLS setup). Reconnects with backoff 1, 2, 4 ... 30 s for 2 minutes
+- One room at a time. A background task on `core.handle` owns the socket. The WebSocket is an
+  HTTP/1.1 upgrade made by a reqwest client (`net::room_client`), so it is the same TLS stack
+  and roots as every other request; tokio-tungstenite only frames the upgraded stream.
+  `RoomCreate` and `RoomJoin` wait for the first welcome, so their errors come back as the
+  call's error. Reconnects with backoff 1, 2, 4 ... 30 s for 2 minutes
   using `rejoin_key`, then gives up with `RoomChanged { room: None }`.
 - Clock: five pings on connect, keep the offset from the lowest round trip; one ping a minute
   after that (also keeps NATs open).
 - Joiner's episode: match a local series by AniList, then MAL, then TVmaze id, then the file by
-  `episode_key`. Emit `RoomEpisode`.
+  `episode_key`. Emit `RoomEpisode`. When the host moves the room, a member's attached player
+  gets a pause (`RoomApply` with no seek) and is let go before the new `RoomEpisode`.
 - Offset: stored per file. With none stored, when both the host's `opening_start` and this
   file's opening start are known and differ by under 30 s, suggest and apply `mine - host`.
 - Sync: target local position = `position + (server_now - at_ms)/1000 * rate` (only while
   playing) `+ offset`. `session::tick` hands each tick to the room. On a new `state`, emit
   `RoomApply` with `playing` and a `seek_to` when off by more than 0.5 s. On ticks, off by
   under 0.25 s: nothing (and speed back to 1.0 once under 0.1 s); 0.25 to 2 s: speed 1.05 or
-  0.95; over 2 s: seek. Never emit more than one correction a second.
+  0.95; over 2 s: seek. Never emit more than one correction a second. A tick only corrects
+  while the player and the room agree on playing; a paused room only seeks, past 0.5 s. A
+  member's own command is taken as done when sent, so its echo applies nothing.
 - Activity log, with words: room created, joined, left, someone joined or left, room closed,
   connection lost and back. Never sync ticks or corrections.
 - Integration tests in `core/tests/room.rs` run `anibeam_relay::serve` in-process with two or

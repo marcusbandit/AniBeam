@@ -989,6 +989,60 @@ pub enum CastSubtitle {
     },
 }
 
+/// A watch together room as this member sees it (#846). Everyone plays their own copy;
+/// the room carries the episode's identity, the play state and who is in it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct RoomInfo {
+    /// The 6 character code, uppercase: what a person types to join.
+    pub code: String,
+    /// `<relay>/<code>`, the join page a shared link opens.
+    pub link: String,
+    /// This member's id in the room, 0 before the relay has said it.
+    pub you: u32,
+    /// Whether this member is the host, who moves the room to another episode.
+    pub host: bool,
+    /// Who is connected now, in the order they joined.
+    pub members: Vec<RoomMember>,
+    pub episode: EpisodeRef,
+    /// Seconds this member's file is from the host's: local position is the room's
+    /// position plus the offset.
+    pub offset: f64,
+    /// The offset the openings suggest, when both openings are known and under 30
+    /// seconds apart.
+    pub suggested_offset: Option<f64>,
+    /// The playback session the room drives, None until `RoomAttach` names one.
+    pub session: Option<u64>,
+    /// False while the connection to the relay is down and being tried again.
+    pub connected: bool,
+}
+
+/// One person in a room.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct RoomMember {
+    pub id: u32,
+    pub name: String,
+    pub host: bool,
+    pub ready: RoomReady,
+}
+
+/// Which episode a room watches: its identity and nothing that leads to the video.
+/// Positions in the room are on the host's file, whose length and opening are here.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EpisodeRef {
+    pub anilist_id: Option<u64>,
+    pub mal_id: Option<u64>,
+    pub tvmaze_id: Option<u64>,
+    /// The history key: the number for an episode, the file name for an extra.
+    pub episode_key: String,
+    pub number: Option<f64>,
+    pub series_title: String,
+    pub episode_title: Option<String>,
+    /// The host's file length, in seconds.
+    pub duration: Option<f64>,
+    /// Where the opening starts in the host's file, in seconds.
+    pub opening_start: Option<f64>,
+}
+
 /// What a cast session is doing. Positions are seconds into the episode.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct CastState {
@@ -1106,6 +1160,13 @@ pub struct Preferences {
     /// Which shows Home's Recommended for you row holds (#779).
     #[serde(default, deserialize_with = "lenient::recommended")]
     pub home_recommended: RecommendedScope,
+    /// The name others in a watch together room see (#846). Empty until the person
+    /// gives one: the shell asks before the first room. Per machine.
+    #[serde(default)]
+    pub room_name: String,
+    /// The relay rooms are made on, `ROOM_RELAY` by default. Per machine.
+    #[serde(default = "default_room_relay")]
+    pub room_relay: String,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1122,6 +1183,13 @@ fn arrange_before_the_key() -> Arrange {
 
 fn default_on_hold_days() -> u32 {
     ON_HOLD_DAYS
+}
+
+/// The relay the app makes rooms on unless the person picks another.
+pub const ROOM_RELAY: &str = "https://rooms.anibeam.app";
+
+fn default_room_relay() -> String {
+    ROOM_RELAY.to_string()
 }
 
 /// Preferences fields that fall back to `Preferences::default()`'s value
@@ -1286,6 +1354,8 @@ impl Default for Preferences {
             episode_notifications: true,
             home_hide_empty_days: false,
             home_recommended: RecommendedScope::All,
+            room_name: String::new(),
+            room_relay: ROOM_RELAY.to_string(),
         }
     }
 }

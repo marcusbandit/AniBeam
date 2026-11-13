@@ -1356,7 +1356,11 @@ impl qobject::Door {
             | EventBody::Viewed { .. }
             | EventBody::RemovalPlanned { .. }
             | EventBody::RecommendedRefreshed
-            | EventBody::ShowPageRead { .. } => {}
+            | EventBody::ShowPageRead { .. }
+            // Watch together (#846): the player's room panel comes in a later step.
+            | EventBody::RoomChanged { .. }
+            | EventBody::RoomEpisode { .. }
+            | EventBody::RoomApply { .. } => {}
             EventBody::SkipWindowsReady { .. } => self
                 .as_mut()
                 .skip_windows_ready(n("session"), arr("windows")),

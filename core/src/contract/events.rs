@@ -186,6 +186,27 @@ pub enum EventBody {
     CastChanged {
         state: CastState,
     },
+    /// The watch together room changed: someone joined or left, a ready state, the
+    /// offset, the connection. None once this member is out of it (#846).
+    RoomChanged {
+        room: Option<RoomInfo>,
+    },
+    /// The episode the room watches, for a member to open: `file` is this library's copy,
+    /// None when it lacks one, and `series` the matching series when there is one.
+    RoomEpisode {
+        episode: EpisodeRef,
+        series: Option<u64>,
+        file: Option<u64>,
+    },
+    /// What the player of `session` does to keep up with the room: pause or play, seek
+    /// when `seek_to` is set, and play at `speed`. The shell applies it without sending
+    /// anything back.
+    RoomApply {
+        session: u64,
+        playing: bool,
+        seek_to: Option<f64>,
+        speed: f64,
+    },
     SkipWindowsReady {
         session: u64,
         windows: Vec<SkipWindow>,
