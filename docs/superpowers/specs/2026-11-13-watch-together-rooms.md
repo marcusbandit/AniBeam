@@ -92,11 +92,26 @@ Worker can persist it):
 - Bad JSON or an unknown `t` gets `bad_message`, not a close. 20 messages a second per member
   at most; past that `rate_limited` and the message is dropped.
 
-API shape: `Room::new(code, host_key, episode, now_ms)`,
+- `bye` leaves for good at once: the rejoin key stops working, the place frees up, and a host
+  who says `bye` hands over right away. The relay answers `closed { reason: "bye" }`.
+- A `rejoin_key` arriving on a new socket while the old one still looks connected moves the
+  member over and sends the old socket `closed { reason: "replaced" }`.
+- Fatal codes, after which the relay closes the socket: `full`, `not_found`, `proto` (a message
+  before `hello`, or another protocol version). `bad_name` is not fatal, so the client can send
+  another `hello`. A member in their 120 s grace still holds a place toward `max`.
+
+API shape: `Room::new(code, host_key, episode, now_ms, secret: [u8; 16])`,
 `Room::handle(&mut self, conn: ConnId, msg: ClientMsg, now_ms) -> Vec<Out>`,
-`Room::disconnect(&mut self, conn, now_ms) -> Vec<Out>`, `Room::tick(now_ms) -> Vec<Out>`
-for the 120 s and 10 min timers, `Out { to: To::{One(ConnId), All, AllBut(ConnId)}, msg }`.
-`ConnId` is the transport's handle (a socket); `MemberId` is what the protocol shows.
+`Room::handle_text(&mut self, conn, text: &str, now_ms) -> Vec<Out>` (parses, and answers
+`bad_message` itself), `Room::disconnect(&mut self, conn, now_ms) -> Vec<Out>`,
+`Room::tick(now_ms) -> Vec<Out>` for the 120 s and 10 min timers, `Room::is_closed()` once the
+relay should drop it, `Out { to: To::{One(ConnId), All, AllBut(ConnId)}, msg }`, and
+`Room::targets(&To) -> Vec<ConnId>`, which the relay calls right after each call to turn `All`
+into the connected members' sockets. A message whose `ServerMsg::ends_connection()` is true
+closes its socket after sending. `ConnId` is the transport's handle (a socket); `MemberId` is
+what the protocol shows. `secret` is 16 random bytes the room keys its rejoin keys with
+(SipHash-2-4): the crate has no randomness of its own, so it builds for wasm32 unchanged, and
+deriving the keys from `host_key` instead would let the host forge everyone's.
 
 ## Relays
 
