@@ -88,9 +88,23 @@ jobs:
       ref: ${{ github.event.pull_request.head.sha }}
       version: ${{ needs.gate.outputs.version }}
 
+  # The phone's unsigned IPA, for AltStore and LiveContainer to sign. PR builds only.
+  ios:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/ios-ipa.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+      version: ${{ needs.gate.outputs.version }}
+
   publish:
-    needs: [gate, macos, linux, windows]
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: [gate, macos, linux, windows, ios]
+    # The IPA is optional: a phone build that fails still lets the desktop installers out.
+    if: >-
+      !cancelled() && github.event.pull_request.head.repo.full_name == github.repository
+      && needs.macos.result == 'success' && needs.linux.result == 'success'
+      && needs.windows.result == 'success'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -103,6 +117,16 @@ jobs:
           pattern: anibeam-*
           merge-multiple: true
           path: dist
+
+      - uses: actions/download-artifact@v4
+        if: needs.ios.result == 'success'
+        with:
+          name: phone-ipa
+          path: ipa
+
+      - name: Name the IPA for this build
+        if: needs.ios.result == 'success'
+        run: mv ipa/AniBeam.ipa "dist/AniBeam-$VERSION.ipa"
 
       - name: Replace this PR's files on pr-builds
         run: |

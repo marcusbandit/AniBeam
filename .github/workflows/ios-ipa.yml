@@ -1,0 +1,70 @@
+name: iOS IPA
+
+# Builds the phone's unsigned IPA for an iPhone (arm64, no signature) as the version it
+# ships as, and uploads it as the phone-ipa artifact. AltStore and LiveContainer sign it
+# themselves when they install it, so it needs no certificate or provisioning profile. It is
+# PR-only for now: pr-build.yml calls it and puts the IPA on the pr-builds release, while
+# nightly.yml and release.yml leave it out until the iPhone app is ready for users.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+      version:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The version the IPA ships as, 2.4.3 or 2.4.3-nightly.20261113.41; empty builds Cargo.toml's.
+  ANIBEAM_RELEASE_VERSION: ${{ inputs.version }}
+  # The project's AniList and MAL registrations, so the phone signs in with one tap.
+  ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
+  ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
+          rustup target add aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/android
+          key: ipa
+
+      # The macos-26 image's newest Xcode with a path it names. The hinge code looks
+      # UIHingeInteraction up at run time (src/platform/ios.rs), so an SDK older than
+      # iOS 27.1 builds it and the app finds no hinge class.
+      - name: Xcode and xcodegen
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          brew install xcodegen
+
+      - name: Build
+        run: |
+          scripts/build-ios.sh ipa
+          ls -la build/ios/AniBeam.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-ipa
+          path: apps/android/build/ios/AniBeam.ipa
+          if-no-files-found: error

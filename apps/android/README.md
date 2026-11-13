@@ -155,6 +155,9 @@ xcrun simctl install booted build/ios/Build/Products/Debug-iphonesimulator/AniBe
 xcrun simctl launch --console-pty booted com.marcusrosado.anibeam
 ```
 
+`scripts/build-ios.sh ipa` builds `build/ios/AniBeam.ipa` for a device, unsigned: AltStore and
+LiveContainer sign it themselves when they install it. It needs the `aarch64-apple-ios` target.
+
 `librqbit-dualstack-sockets` 0.7.0 does not build for iOS, so Cargo.toml pins the fix
 from its pull request #7 under `[patch.crates-io]`. Drop the pin once a release has it.
 
