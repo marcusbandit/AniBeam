@@ -451,7 +451,15 @@ pub fn series(
     let extra_versions =
         (detail.episodes.len() - one_per_episode(&detail.episodes, false).len()) as u64;
     let on_disk = detail.progress.on_disk.saturating_sub(extra_versions);
+    // No tracker count behind the show: the desktop says so rather than a count of nothing,
+    // since its marks live on the episodes here.
+    let tracked_count = detail.progress.watched.is_some();
     let progress_text = match (movie, detail.progress.total) {
+        (true, _) if !tracked_count => "Not tracked".to_string(),
+        (false, _) if !tracked_count => format!(
+            "Not tracked, {on_disk} {} on this phone",
+            if on_disk == 1 { "episode" } else { "episodes" }
+        ),
         (true, _) => if watched > 0 {
             "Watched"
         } else {
