@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Assembles the website into one folder: the pages in site/ plus the app screenshots the
-# README already keeps in docs/readme, so the images live in one place. The Pages workflow
-# runs this; run it yourself to look at the site locally:
+# Assembles the website into one folder: the pages in site/, their translations, the release
+# links and What's new. The Pages workflow runs this; run it yourself to look at the site:
 #   site/build.sh /some/dir && open /some/dir/index.html
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,6 +19,14 @@ rm -rf "$out"
 mkdir -p "$out/img"
 cp -r "$root/site/." "$out/"
 rm -f "$out/build.sh"
-cp "$root"/docs/readme/{home,series,library}.webp "$out/img/"
 cp "$root/assets/icon.png" "$out/img/icon.png"
+# Every language in site/i18n/ gets the home page and the download page, and every page a menu.
+PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/tools/i18n.py" build "$out"
+rm -rf "$out/i18n"
+# The release links the download buttons, the download page, install.sh and What's new read.
+PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/tools/releases.py" "$out"
+# What's new: a page per version, from the apps' own patch notes. Its nav comes from the
+# translated download page, so it runs after.
+PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/whats-new.py" "$root" "$out"
+rm -rf "$out/whats-new.py" "$out/__pycache__" "$out/tools"
 echo "site assembled in $out"

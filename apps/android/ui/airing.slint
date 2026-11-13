@@ -142,8 +142,12 @@ export component AiringGrid inherits VerticalLayout {
     }
 }
 
-// Taken back for a few seconds after a show is marked not interested.
+// A line that can be taken back for a few seconds: a show marked not interested, an
+// episode mark. Undo shows while `can-undo` is set.
 export component UndoBar inherits Rectangle {
+    in property <string> text;
+    in property <bool> can-undo: true;
+    callback undo();
     height: row.preferred-height;
     background: Theme.float;
     border-radius: Theme.radius;
@@ -156,20 +160,20 @@ export component UndoBar inherits Rectangle {
         spacing: Theme.unit * 3;
         Text {
             horizontal-stretch: 1;
-            text: AppData.airing-undo + " is marked not interested.";
+            text: root.text;
             color: Theme.text;
             font-size: Theme.small + 0.5px;
             wrap: word-wrap;
             vertical-alignment: center;
         }
-        VerticalLayout {
+        if root.can-undo: VerticalLayout {
             alignment: center;
             Button {
                 text: "Undo";
                 icon: @image-url("icons/rotate-ccw.svg");
                 has-icon: true;
                 small: true;
-                clicked => { AppData.airing-take-back(); }
+                clicked => { root.undo(); }
             }
         }
     }
@@ -355,6 +359,8 @@ export component AiringPage inherits Rectangle {
         }
     }
     if AppData.airing-undo != "": UndoBar {
+        text: AppData.airing-undo + " is marked not interested.";
+        undo => { AppData.airing-take-back(); }
         property <Area> area: Fold.show(0.38);
         x: self.area.x + Theme.grout;
         width: self.area.width - 2 * Theme.grout;

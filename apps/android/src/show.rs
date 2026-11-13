@@ -379,7 +379,7 @@ fn sentence(text: &str) -> String {
 }
 
 /// An AniList format as the desktop words it.
-fn format_label(format: Option<&str>) -> String {
+pub(crate) fn format_label(format: Option<&str>) -> String {
     match format {
         None => "Series".to_string(),
         Some("TV") => "TV".to_string(),
