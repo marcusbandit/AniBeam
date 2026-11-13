@@ -612,10 +612,10 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .tcell-hover:focus-visible { outline: 2px solid var(--brand); outline-offset: 6px; border-radius: 8px; }
 /* A touch screen has no hover, so the hints sit in the cell for good. */
 @media (hover: none) {
-  .gh { position: static; opacity: 1; translate: none; pointer-events: auto; margin-top: -4px; }
+  .gh, .tcell-hover:hover .gh, .tcell-hover:focus-within .gh { position: static; opacity: 1; translate: none; pointer-events: auto; margin-top: -4px; }
 }
 .hint { font-family: var(--sans); font-size: 13.5px; font-weight: 600; }
-.hint svg { fill: #02a9ff; }
+.hint-anilist svg { fill: #02a9ff; }
 .gh:hover { color: #fff; }
 
 /* Install: the download button and the command line */
@@ -714,8 +714,23 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   .feat-player, .feat-chain, .feat-sync, .feat-resume { grid-column: auto; }
   .feat { padding: 22px; }
   .related { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .trust-grid { grid-template-columns: minmax(0, 1fr); }
-  .tcell { border-left: 0; }
+  /* The five promises are five matching cards that zigzag down the screen, left then right.
+     A note (AniList, the licence and repo) sits inside its card, never in a pop-out. */
+  .trust-grid { display: flex; flex-direction: column; gap: 10px; margin-top: 48px !important; max-width: 420px; }
+  .tcell { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; row-gap: 4px; align-items: center; align-self: flex-start; width: 78%; padding: 14px 16px; border: 0; border-radius: 16px; background: #0e0f12; box-shadow: inset 0 0 0 1px var(--hair); text-align: left; }
+  .tcell:nth-child(even) { align-self: flex-end; }
+  .tcell > svg { width: 22px; height: 22px; stroke-width: 1.8; }
+  .tcell h3 { font-size: 18px; letter-spacing: -0.01em; }
+  .tcell .lic, .tcell .gh { grid-column: 2; margin: 0; }
+  .tcell .lic { font-size: 12px; }
+  .tcell .gh, .tcell-hover:hover .gh, .tcell-hover:focus-within .gh {
+    position: static; opacity: 1; translate: none; pointer-events: auto; padding: 0; background: none; box-shadow: none;
+    border-radius: 0; color: var(--fg-3); font-size: 12.5px; gap: 6px; white-space: normal; transition: none;
+  }
+  .tcell .gh svg { width: 13px; height: 13px; }
+  .tcell .gh { font-family: var(--sans); font-weight: 500; }
+  .tcell .gh svg { opacity: 0.8; }
+  .tcell .lic { display: none; }
 
   .foot nav { margin-left: 0; }
 }
@@ -934,6 +949,14 @@ html[data-device="phone"] .get-term,
 html[data-device="phone"] .channel,
 html[data-device="phone"] .dl-other,
 html[data-device="phone"] .dl-all { display: none; }
+
+/* An iPhone: no app yet, so the note says it is coming and the Mac's download stands in. */
+.ios-mac, .ios-soon { display: none; }
+html[data-os="ios"] .ios-mac { display: inline-flex; }
+html[data-os="ios"] .dl-tile[data-os="mac"] { display: flex; }
+html[data-os="ios"] .dl-tile[data-os="android"] { display: none; }
+html[data-os="ios"] .ios-soon { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 8px 16px; border-radius: 999px; background: #16171b; box-shadow: 0 0 0 1px var(--hair-2); color: var(--fg-2); font-weight: 600; }
+.ios-soon svg { width: 16px; height: 16px; fill: currentColor; }
 
 /* A narrow screen that is no phone wraps a long command instead of cutting it off. */
 @media (max-width: 560px) {

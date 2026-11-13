@@ -84,5 +84,9 @@
  "No nightly newer than {version} yet.": "Ingen Nightly nyere end {version} endnu.",
  "Selected. Press Ctrl+C to copy.": "Markeret. Tryk Ctrl+C for at kopiere.",
  "The Library grid with every show as a poster": "Biblioteket som et gitter med hver serie som plakat",
- "A show's page with its banner, episodes and characters": "En series side med banner, afsnit og figurer"
+ "A show's page with its banner, episodes and characters": "En series side med banner, afsnit og figurer",
+ "Get it for Mac": "Hent den til Mac",
+ "Unless you want to donate": "Medmindre du vil donere",
+ "But feedback would be lovely": "Men feedback ville være dejligt",
+ "But we support Tailscale": "Men vi understøtter Tailscale"
 }
