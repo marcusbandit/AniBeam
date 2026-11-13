@@ -42,10 +42,14 @@ export component Onboarding inherits Rectangle {
         }
     }
 
-    Flickable {
+    scroller := Flickable {
         y: Theme.pad + 3px;
         height: foot.y - self.y;
+        // Only ever as wide as the screen, as a page's Scroll is: a step never scrolls
+        // sideways, and its rows fit the width they are given (#874).
+        content-width: self.width;
         VerticalLayout {
+            width: scroller.width;
             alignment: start;
             padding-left: Theme.pad;
             padding-right: Theme.pad;

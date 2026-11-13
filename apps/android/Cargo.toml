@@ -30,6 +30,10 @@ rustix = { version = "1", features = ["fs"] }
 jni = "0.21"
 ndk-context = "0.1"
 
+# Lays the Slint pages out headless in tests, to measure them at a narrow width.
+[dev-dependencies]
+i-slint-backend-testing = "=1.18.1"
+
 [build-dependencies]
 slint-build = "1.18"
 

@@ -3,7 +3,7 @@
 // use these pieces.
 
 import { Theme } from "theme.slint";
-import { Button, Field, GlassTag, Lit, Switch, TextButton } from "widgets.slint";
+import { Button, ButtonRow, Field, GlassTag, Lit, Switch, TextButton } from "widgets.slint";
 import { Tr } from "tr.slint";
 
 // A trusted repo.
@@ -238,9 +238,7 @@ component RepoPreview inherits Rectangle {
             font-size: Theme.small;
             wrap: word-wrap;
         }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
+        ButtonRow {
             Button {
                 text: Tr.t("repos-trust");
                 small: true;
@@ -360,6 +358,8 @@ component AskField inherits Rectangle {
             alignment: start;
             TextButton {
                 text: Tr.s("repos-open-link", "url", root.field.help-url);
+                // A long address is cut short rather than running off the pane.
+                widest: root.width;
                 ink: Theme.accent;
                 clicked => { RepoData.open-link(root.field.help-url); }
             }
@@ -393,9 +393,7 @@ component AskValues inherits Rectangle {
             font-size: Theme.small;
             wrap: word-wrap;
         }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
+        ButtonRow {
             Button {
                 text: RepoData.busy ? Tr.t("repos-saving") : RepoData.asking-kind == 0 ? Tr.t("repos-install") : RepoData.asking-kind == 1 ? Tr.t("repos-update") : Tr.t("common-save");
                 small: true;
@@ -526,9 +524,7 @@ export component EndpointItem inherits Rectangle {
                 font-size: Theme.small;
                 wrap: word-wrap;
             }
-            HorizontalLayout {
-                spacing: Theme.gap;
-                alignment: start;
+            ButtonRow {
                 Button {
                     text: Tr.t("common-save");
                     small: true;
@@ -547,9 +543,7 @@ export component EndpointItem inherits Rectangle {
                 }
             }
         }
-        if root.endpoint.installed && !root.asking && !root.editing: HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
+        if root.endpoint.installed && !root.asking && !root.editing: ButtonRow {
             if root.endpoint.update != "": Button {
                 text: root.endpoint.update;
                 small: true;
@@ -586,9 +580,7 @@ export component RepoPanes inherits VerticalLayout {
     if RepoData.repos.length > 0 || RepoData.on-count > 0: Lit {
         on: root.lit == Tr.t("repos-check-repos") || root.lit == Tr.t("repos-check-sites");
         reveal(y) => { root.reveal(y); }
-        HorizontalLayout {
-            alignment: start;
-            spacing: Theme.gap;
+        ButtonRow {
             if RepoData.repos.length > 0: Button {
                 text: Tr.t("repos-check-repos");
                 icon: @image-url("icons/refresh-cw.svg");

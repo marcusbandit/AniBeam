@@ -105,6 +105,7 @@ dependencies = [
  "anibeam-companion",
  "anibeam-core",
  "chrono",
+ "i-slint-backend-testing",
  "image",
  "jni 0.21.1",
  "ndk-context",
