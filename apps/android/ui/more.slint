@@ -88,7 +88,7 @@ export component HostField inherits VerticalLayout {
     Field {
         text <=> AppData.host-address;
         figure: true;
-        placeholder: "desktop:8790";
+        placeholder: "my-computer:8790";
     }
     if AppData.host-result != "": HorizontalLayout {
         spacing: Theme.unit * 2;
@@ -135,7 +135,7 @@ component HostRow inherits Rectangle {
             font-family: Theme.strong-face;
         }
         Text {
-            text: "Its library shows in Library, and its episodes play here. Its Tailscale name and port, like desktop:8790, or an address like 100.64.0.1:8790.";
+            text: "Its library shows in Library, and its episodes play here. Its Tailscale name and port, like my-computer:8790, or an address like 100.64.0.1:8790.";
             color: Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;

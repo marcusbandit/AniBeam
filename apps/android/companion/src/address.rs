@@ -26,7 +26,7 @@ impl HostAddress {
         }
         let rest = rest.split('/').next().unwrap_or("");
         if rest.is_empty() {
-            return Err("Type the host's name or address, for example desktop:8790.".into());
+            return Err("Type the host's name or address, for example my-computer:8790.".into());
         }
 
         let (host, port) = if let Some(inner) = rest.strip_prefix('[') {

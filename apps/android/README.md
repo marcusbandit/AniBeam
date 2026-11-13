@@ -93,8 +93,8 @@ too, so its library still shows when it is off.
    ```
 
 4. Open AniBeam. Onboarding's last step asks for your computer: its MagicDNS name and port,
-   such as `desktop:8790`. If the phone cannot resolve the short name, use the full one,
-   `desktop.example.ts.net:8790`, or the machine's `100.x.y.z` address. **Test**
+   such as `my-computer:8790`. If the phone cannot resolve the short name, use the full one,
+   `my-computer.example.ts.net:8790`, or the machine's `100.x.y.z` address. **Test**
    says whether AniBeam answered and which version it is.
 
 The APK is signed with the debug key in `~/.android/debug.keystore`. Android only installs
