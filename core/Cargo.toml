@@ -13,7 +13,8 @@ name = "anibeam_core"
 crate-type = ["lib"]
 
 [dependencies]
-uniffi = "=0.32.0"
+uniffi.workspace = true
+anibeam-contract = { workspace = true, features = ["sqlite"] }
 anibeam-recs.workspace = true
 anibeam-room.workspace = true
 serde.workspace = true
@@ -21,8 +22,8 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
-rusqlite = { version = "0.40", features = ["bundled", "serde_json", "backup"] }
-rusqlite_migration = "2.6"
+rusqlite = { workspace = true, features = ["bundled", "serde_json", "backup"] }
+rusqlite_migration.workspace = true
 directories = "6"
 notify = "8.2"
 notify-debouncer-full = "0.7"
@@ -41,12 +42,6 @@ base64 = "0.23"
 # Endpoint repos (#143): the ed25519 check on a repo's signed index.
 ed25519-dalek = "2"
 tracing = "0.1"
-# The catalog (#792): every string a person reads, looked up by message ID in i18n/.
-fluent-bundle = "0.16"
-fluent-syntax = "0.12"
-unic-langid = "0.9"
-# Month and weekday names in the chosen language, for the dates the shells format.
-chrono = { version = "0.4", default-features = false, features = ["clock", "std", "unstable-locales"] }
 flate2 = "1"
 toml = "1"
 roxmltree = "0.20"

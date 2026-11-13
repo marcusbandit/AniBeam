@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
+members = ["contract", "core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
 
 [workspace.package]
 version = "2.5.0"
@@ -10,6 +10,7 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/marcusbandit/AniBeam"
 
 [workspace.dependencies]
+anibeam-contract = { path = "contract" }
 anibeam-core = { path = "core" }
 anibeam-host-api = { path = "host-api" }
 anibeam-recs = { path = "recs" }
@@ -20,6 +21,11 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "process", "macros", "fs"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 clap = { version = "4", features = ["derive"] }
+# Pinned once: the contract and the core must agree on these, or uniffi's derives and the
+# core's export disagree, and two libsqlite3-sys cannot link into one build.
+uniffi = "=0.32.0"
+rusqlite = "0.40"
+rusqlite_migration = "2.6"
 
 [profile.release]
 debug = 1

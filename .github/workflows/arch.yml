@@ -10,6 +10,7 @@ name: Arch
 on:
   pull_request:
     paths:
+      - 'contract/**'
       - 'core/**'
       - 'host-api/**'
       - 'apps/linux/**'

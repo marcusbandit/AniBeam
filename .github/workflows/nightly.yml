@@ -64,7 +64,7 @@ jobs:
             read -r tag _ <<<"$last"
             echo "previous=$tag" >> "$GITHUB_OUTPUT"
             git fetch -q origin "refs/tags/$tag:refs/tags/$tag"
-            if git diff --quiet "$tag" "$sha" -- core host-api apps/linux apps/cli Cargo.toml Cargo.lock; then
+            if git diff --quiet "$tag" "$sha" -- contract core host-api apps/linux apps/cli Cargo.toml Cargo.lock; then
               echo "The app has not changed on main since $tag."
               build=false
             fi
@@ -85,7 +85,7 @@ jobs:
           if [ -n "$last" ]; then
             echo "phone_previous=$last" >> "$GITHUB_OUTPUT"
             git fetch -q origin "refs/tags/$last:refs/tags/$last"
-            if git diff --quiet "$last" "$sha" -- apps/android core host-api recs Cargo.toml Cargo.lock rust-toolchain.toml; then
+            if git diff --quiet "$last" "$sha" -- apps/android contract core host-api recs Cargo.toml Cargo.lock rust-toolchain.toml; then
               echo "The phone has not changed on main since $last."
               phone=false
             fi

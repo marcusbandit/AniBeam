@@ -91,9 +91,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "anibeam-contract"
+version = "2.5.0"
+dependencies = [
+ "chrono",
+ "fluent-bundle",
+ "fluent-syntax",
+ "rusqlite",
+ "rusqlite_migration",
+ "serde",
+ "serde_json",
+ "tracing",
+ "unic-langid",
+ "uniffi",
+]
+
+[[package]]
 name = "anibeam-core"
 version = "2.5.0"
 dependencies = [
+ "anibeam-contract",
  "anibeam-host-api",
  "anibeam-recs",
  "anibeam-relay",
@@ -103,13 +120,10 @@ dependencies = [
  "axum",
  "backon",
  "base64 0.23.1",
- "chrono",
  "directories",
  "ed25519-dalek",
  "fancy-regex",
  "flate2",
- "fluent-bundle",
- "fluent-syntax",
  "futures-core",
  "futures-util",
  "governor",
@@ -140,7 +154,6 @@ dependencies = [
  "toml",
  "tracing",
  "trash",
- "unic-langid",
  "uniffi",
  "walkdir",
  "webpki-root-certs",

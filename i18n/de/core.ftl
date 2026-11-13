@@ -215,7 +215,7 @@ core-playback-region-spain = Spanien
 core-playback-region-simplified = Vereinfacht
 core-playback-region-traditional = Traditionell
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Prüfe deine Ordner
     .stopped = Prüfen deiner Ordner wegen eines Problems gestoppt.

@@ -40,6 +40,7 @@ DEV_ONLY = {
 
 # The files whose ID uses are checked against the English catalog.
 CODE = UI + [
+    "contract/src/**/*.rs",
     "core/src/**/*.rs",
     "apps/linux/src/**/*.rs",
     "apps/cli/src/**/*.rs",
