@@ -78,5 +78,9 @@
   "Get the Android app": "Pobierz na Android",
   "Copied": "Skopiowano",
   "_name": "Polski",
-  "_locale": "pl-PL"
+  "_locale": "pl-PL",
+  "Apple silicon": "Czip Apple",
+  "Coming to iPhone soon": "Wkrótce na iPhone",
+  "No nightly newer than {version} yet.": "Nie ma jeszcze Nightly nowszej niż {version}.",
+  "Selected. Press Ctrl+C to copy.": "Zaznaczono. Naciśnij Ctrl+C, aby skopiować."
 }

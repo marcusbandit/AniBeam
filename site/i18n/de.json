@@ -78,5 +78,9 @@
   "Get the Android app": "Android-App laden",
   "Copied": "Kopiert",
   "_name": "Deutsch",
-  "_locale": "de-DE"
+  "_locale": "de-DE",
+  "Apple silicon": "Apple Chip",
+  "Coming to iPhone soon": "Bald für iPhone",
+  "No nightly newer than {version} yet.": "Noch kein Nightly neuer als {version}.",
+  "Selected. Press Ctrl+C to copy.": "Markiert. Mit Strg+C kopieren."
 }

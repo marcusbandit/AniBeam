@@ -40,10 +40,8 @@
 }
 </script>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="style.css">
+<script src="common.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -87,11 +85,11 @@
       <span class="rise" style="--d:.09s">on your drive.</span>
     </h1>
     <div class="hero-actions rise" style="--d:.24s">
-      <a class="btn btn-primary btn-lg dl-auto" id="dl-main" href="https://github.com/marcusbandit/AniBeam/releases/latest">
+      <a class="btn btn-primary btn-lg dl-auto" id="dl-main" href="download/">
         <svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
         <span>Download AniBeam</span>
       </a>
-      <a class="btn btn-ghost btn-lg" href="download/">Other platforms</a>
+      <a class="btn btn-ghost btn-lg dl-other" href="download/">Other platforms</a>
     </div>
   </div>
 
@@ -114,7 +112,7 @@
         </button>
       </nav>
       <div class="screen">
-        <img id="tour-img" src="img/tour/home.webp" width="2268" height="1500" alt="AniBeam's Home: shows to continue and shows not started yet, as poster cards">
+        <img id="tour-img" src="img/tour/home.webp" srcset="img/tour/home-1134.webp 1134w, img/tour/home.webp 2268w" sizes="(min-width: 1240px) 1100px, 92vw" width="2268" height="1500" alt="AniBeam's Home: shows to continue and shows not started yet, as poster cards">
       </div>
     </div>
   </div>
@@ -124,8 +122,8 @@
   <h2 id="library-h">Drop files in.<br>Get a library.</h2>
 
   <div class="marquee" id="marquee" aria-hidden="true">
-    <div class="marquee-row"><div class="marquee-track" data-row="a"></div></div>
-    <div class="marquee-row reverse"><div class="marquee-track" data-row="b"></div></div>
+    <div class="marquee-row"><div class="marquee-track"><span class="poster"><img src="img/posters/frieren.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/aot.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spirited.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/jjk.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/eva.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/csm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/akira.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spyfamily.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gits.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/demonslayer.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mononoke.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/oshinoko.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/fmab.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dandadan.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/perfectblue.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/frieren.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/aot.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spirited.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/jjk.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/eva.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/csm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/akira.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spyfamily.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gits.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/demonslayer.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mononoke.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/oshinoko.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/fmab.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dandadan.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/perfectblue.webp" alt="" loading="lazy" width="160" height="240"></span></div></div>
+    <div class="marquee-row reverse"><div class="marquee-track"><span class="poster"><img src="img/posters/deathnote.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/violet.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/steinsgate.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sololeveling.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/hxh.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bocchi.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/naruto.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/kaguya.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/onepiece.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/madeinabyss.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dbz.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/edgerunners.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sailormoon.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/haikyuu.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mha.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/opm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/yourname.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mob.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/vinland.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/champloo.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/geass.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gurren.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/deathnote.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/violet.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/steinsgate.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sololeveling.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/hxh.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bocchi.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/naruto.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/kaguya.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/onepiece.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/madeinabyss.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dbz.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/edgerunners.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sailormoon.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/haikyuu.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mha.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/opm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/yourname.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mob.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/vinland.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/champloo.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/geass.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gurren.webp" alt="" loading="lazy" width="160" height="240"></span></div></div>
   </div>
 </section>
 
@@ -188,7 +186,7 @@
           <div class="al-entry">
             <img src="img/posters/frieren.webp" alt="" loading="lazy">
             <div class="al-meta">
-              <b>Frieren: Beyond Journey's End</b>
+              <b>Sousou no Frieren</b>
               <span class="al-status">Watching</span>
             </div>
             <div class="al-num"><span class="n"><span class="old">12</span><span class="new">13</span></span><span class="of">/ 28</span></div>
@@ -204,7 +202,6 @@
         <div class="pickup-art"></div>
         <img class="pickup-poster" src="img/posters/frieren.webp" alt="" loading="lazy">
         <div class="pickup-text">
-          <span class="pickup-kicker">Pick up where you stopped</span>
           <b>Sousou no Frieren</b>
           <span class="pickup-ep">Episode 13</span>
           <span class="cubes"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="half"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
@@ -278,7 +275,7 @@
         <svg viewBox="0 0 24 24"><path d="M5 12H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h12M22 8v3a1 1 0 0 1-1 1h-7M7 8h.01M3 16v3a1 1 0 0 0 1 1h12m4-4a1 1 0 0 1 1 1v2M7 16h.01M2 2l20 20"/></svg>
         <h3>No server</h3>
       </div>
-      <div class="tcell tcell-hover">
+      <div class="tcell tcell-hover" tabindex="0">
         <svg viewBox="0 0 24 24"><path d="M2 21a8 8 0 0 1 10.82-7.48M10 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM17 17l5 5M22 17l-5 5"/></svg>
         <h3>No account</h3>
         <span class="gh hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg>But you can connect to AniList</span>
@@ -300,11 +297,11 @@
 <section class="section install" id="install" aria-labelledby="install-h">
   <h2 id="install-h">Get AniBeam.</h2>
   <div class="hero-actions get-actions">
-    <a class="btn btn-primary btn-lg dl-auto" href="https://github.com/marcusbandit/AniBeam/releases/latest">
+    <a class="btn btn-primary btn-lg dl-auto" href="download/">
       <svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
       <span>Download AniBeam</span>
     </a>
-    <a class="btn btn-ghost btn-lg" href="download/">Other platforms</a>
+    <a class="btn btn-ghost btn-lg dl-other" href="download/">Other platforms</a>
   </div>
   <div class="get-term">
     <div class="term term-big"><span class="prompt">$</span><code><span class="sh-cmd">curl</span> <span class="sh-flag">-fsSL</span> <span class="sh-url">https://anibeam.app/install.sh</span> <span class="sh-op">|</span> <span class="sh-cmd">sh</span></code><button type="button" class="copy" data-copy="curl -fsSL https://anibeam.app/install.sh | sh">Copy</button></div>

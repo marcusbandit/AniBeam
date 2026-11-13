@@ -78,5 +78,9 @@
   "GitHub releases page": "GitHub 发布页",
   "Download for {os}": "下载 {os} 版",
   "Get the Android app": "下载 Android 版",
-  "Copied": "已复制"
+  "Copied": "已复制",
+  "Apple silicon": "Apple 芯片",
+  "Coming to iPhone soon": "iPhone 版即将推出",
+  "No nightly newer than {version} yet.": "暂无比 {version} 更新的 Nightly。",
+  "Selected. Press Ctrl+C to copy.": "已选中，按 Ctrl+C 复制。"
 }

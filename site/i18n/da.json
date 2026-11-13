@@ -3,7 +3,7 @@
  "_locale": "da-DK",
  "AniBeam: your anime, on your drive": "AniBeam: din anime, på din disk",
  "AniBeam turns the folder your anime lives in into a library. It matches every show on AniList, plays episodes in the window and syncs your progress to AniList. Free for Linux, Windows, Mac and Android.": "AniBeam gør din animemappe til et bibliotek. Finder hver serie på AniList, afspiller afsnit i vinduet og synkroniserer din fremgang med AniList. Gratis til Linux, Windows, Mac og Android.",
- "Matches every show on AniList, plays in the window and syncs your progress. Free for Linux, Windows, Mac and Android.": "Finder serier på AniList, afspiller i vinduet og synker din fremgang. Gratis til Linux, Windows, Mac og Android.",
+ "Matches every show on AniList, plays in the window and syncs your progress. Free for Linux, Windows, Mac and Android.": "Finder serier på AniList, afspiller i vinduet og synkroniserer din fremgang. Gratis til Linux, Windows, Mac og Android.",
  "AniBeam home": "AniBeam forside",
  "Main": "Hovedmenu",
  "Screens of the app": "Skærmbilleder",
@@ -78,5 +78,9 @@
  "GitHub releases page": "GitHub Releases",
  "Download for {os}": "Download til {os}",
  "Get the Android app": "Download Android-appen",
- "Copied": "Kopieret"
+ "Copied": "Kopieret",
+ "Apple silicon": "Apple-chip",
+ "Coming to iPhone soon": "Kommer snart til iPhone",
+ "No nightly newer than {version} yet.": "Ingen Nightly nyere end {version} endnu.",
+ "Selected. Press Ctrl+C to copy.": "Markeret. Tryk Ctrl+C for at kopiere."
 }

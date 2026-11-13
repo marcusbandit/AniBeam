@@ -22,7 +22,10 @@ from pathlib import Path
 I18N = Path(__file__).resolve().parent.parent / "i18n"  # site/i18n
 PAGES = ["index.html", "download/index.html"]
 # Strings the scripts put on the page (app.js, download.js), so the page carries them translated.
-JS_STRINGS = ["Download for {os}", "Get the Android app", "Copy", "Copied", "What's new", "Download AniBeam"]
+JS_STRINGS = ["Download for {os}", "Get the Android app", "Copy", "Copied", "What's new", "Download AniBeam",
+              "Coming to iPhone soon", "No nightly newer than {version} yet.", "Selected. Press Ctrl+C to copy."]
+# A folder name is the short code; hreflang and lang take the full tag where the script matters.
+TAG = {"zh": "zh-Hans"}
 SKIP = {"AniBeam", "GitHub", "Ko-fi", "Linux", "Mac", "Windows", "AUR", ".deb", ".rpm", "Homebrew",
         "$", "|", "English", "AniList", "marcusbandit/AniBeam", "GPL 3.0", "AniBeam, GPL 3.0",
         # show titles in the mock app screens are names, not text
@@ -106,6 +109,7 @@ def translate(page, table):
 
 
 ASSET = re.compile(r'\b(href|src)="(?!https?:|#|/|mailto:|data:)([^"]+)"')
+SRCSET = re.compile(r'\bsrcset="([^"]+)"')
 
 
 def deeper(page):
@@ -118,6 +122,8 @@ def deeper(page):
         if is_page and "whats-new" not in url:
             return m.group(0)
         return f'{attr}="../{url}"'
+    page = SRCSET.sub(lambda m: 'srcset="' + ", ".join(
+        c if re.match(r"(https?:|/)", c) else "../" + c for c in (x.strip() for x in m.group(1).split(","))) + '"', page)
     return ASSET.sub(fix, page)
 
 
@@ -130,12 +136,13 @@ def menu(langs, here_code, page_name, depth_to_root):
         if not target:
             target = "./"
         current = ' aria-current="true"' if code == here_code else ""
-        items.append(f'<a href="{target}" hreflang="{code}" lang="{code}"{current}>{html.escape(data["_name"])}</a>')
+        tag = TAG.get(code, code)
+        items.append(f'<a href="{target}" hreflang="{tag}" lang="{tag}"{current}>{html.escape(data["_name"])}</a>')
     name = dict(langs)[here_code]["_name"]
     globe = ('<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/>'
              '<path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>')
     return (f'<details class="nav-lang"><summary>{globe}<span>{html.escape(name)}</span></summary>'
-            f'<div class="lang-menu" role="menu">{"".join(items)}</div></details>')
+            f'<div class="lang-menu">{"".join(items)}</div></details>')
 
 
 NAV_LANG = re.compile(r'<(span|details) class="nav-lang".*?</\1>', re.S)
@@ -143,7 +150,7 @@ NAV_LANG = re.compile(r'<(span|details) class="nav-lang".*?</\1>', re.S)
 
 def alternates(langs, page_name):
     sub = "" if page_name == "index.html" else page_name.replace("index.html", "")
-    links = [f'<link rel="alternate" hreflang="{"en" if c == "en" else c}" href="https://anibeam.app/{"" if c == "en" else c + "/"}{sub}">'
+    links = [f'<link rel="alternate" hreflang="{TAG.get(c, c)}" href="https://anibeam.app/{"" if c == "en" else c + "/"}{sub}">'
              for c, _ in langs]
     links.append(f'<link rel="alternate" hreflang="x-default" href="https://anibeam.app/{sub}">')
     return "\n".join(links)
@@ -161,10 +168,12 @@ def build(site):
                 to_root = depth
             else:
                 page = deeper(translate(src, data))
-                page = page.replace('<html lang="en">', f'<html lang="{code}">')
+                page = page.replace('<html lang="en">', f'<html lang="{TAG.get(code, code)}">')
                 sub = "" if page_name == "index.html" else page_name.replace("index.html", "")
                 page = re.sub(r'<link rel="canonical" href="[^"]*">',
                               f'<link rel="canonical" href="https://anibeam.app/{code}/{sub}">', page)
+                page = re.sub(r'<meta property="og:url" content="[^"]*">',
+                              f'<meta property="og:url" content="https://anibeam.app/{code}/{sub}">', page)
                 strings = {k: data[k] for k in JS_STRINGS if k in data}
                 strings["_locale"] = data.get("_locale", code)
                 strings["_root"] = "../"
@@ -180,7 +189,7 @@ def build(site):
     urls = []
     for page_name in PAGES:
         sub = "" if page_name == "index.html" else page_name.replace("index.html", "")
-        alts = "".join(f'<xhtml:link rel="alternate" hreflang="{c}" href="https://anibeam.app/{"" if c == "en" else c + "/"}{sub}"/>' for c, _ in langs)
+        alts = "".join(f'<xhtml:link rel="alternate" hreflang="{TAG.get(c, c)}" href="https://anibeam.app/{"" if c == "en" else c + "/"}{sub}"/>' for c, _ in langs)
         for code, _ in langs:
             urls.append(f'  <url><loc>https://anibeam.app/{"" if code == "en" else code + "/"}{sub}</loc>{alts}</url>')
     urls.append("  <url><loc>https://anibeam.app/whats-new/</loc></url>")

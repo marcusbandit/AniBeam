@@ -78,5 +78,9 @@
   "GitHub releases page": "GitHub のリリースページ",
   "Download for {os}": "{os} 版をダウンロード",
   "Get the Android app": "Android 版を入手",
-  "Copied": "コピー済み"
+  "Copied": "コピー済み",
+  "Apple silicon": "Appleシリコン",
+  "Coming to iPhone soon": "iPhone 版は近日公開",
+  "No nightly newer than {version} yet.": "{version} より新しい Nightly はまだありません。",
+  "Selected. Press Ctrl+C to copy.": "選択しました。Ctrl+C でコピーできます。"
 }

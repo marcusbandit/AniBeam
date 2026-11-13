@@ -32,7 +32,7 @@
     return map;
   };
   const texts = (el) => [...el.childNodes].filter((n) => n.nodeType === 3);
-  const ATTRS = ["href", "src", "alt", "aria-label", "title", "placeholder"];
+  const ATTRS = ["href", "src", "srcset", "alt", "aria-label", "title", "placeholder"];
 
   // The page's own kind, without the language: "" for home, "download/" for downloads.
   const kind = (url) => new URL(url, location.href).pathname.replace(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?/, "");
@@ -63,7 +63,7 @@
     // The head, the menu and the strings the scripts use.
     document.documentElement.lang = next.documentElement.lang;
     document.title = next.title;
-    for (const sel of ['meta[name="description"]', 'meta[property="og:title"]', 'meta[property="og:description"]', 'link[rel="canonical"]']) {
+    for (const sel of ['meta[name="description"]', 'meta[property="og:title"]', 'meta[property="og:description"]', 'meta[property="og:url"]', 'link[rel="canonical"]']) {
       const a = document.head.querySelector(sel), b = next.head.querySelector(sel);
       if (a && b) a.replaceWith(b.cloneNode(true));
     }
@@ -91,5 +91,16 @@
       e.target.querySelectorAll(".lang-menu a").forEach((a) => { if (kind(a.href) === kind(location.href)) page(a.href).catch(() => {}); });
     }
   }, true);
+  // The menu closes on a click outside it and on Escape, which hands focus back to its button.
+  document.addEventListener("click", (e) => {
+    const open = document.querySelector(".nav-lang[open]");
+    if (open && !open.contains(e.target)) open.open = false;
+  });
+  document.addEventListener("keydown", (e) => {
+    const open = document.querySelector(".nav-lang[open]");
+    if (e.key !== "Escape" || !open) return;
+    open.open = false;
+    open.querySelector("summary").focus();
+  });
   addEventListener("popstate", () => { go(location.href, false).catch(() => location.reload()); });
 })();

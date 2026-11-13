@@ -78,5 +78,9 @@
  "GitHub releases page": "releases do GitHub",
  "Download for {os}": "Baixar para {os}",
  "Get the Android app": "App para Android",
- "Copied": "Copiado"
+ "Copied": "Copiado",
+ "Apple silicon": "Chip da Apple",
+ "Coming to iPhone soon": "Em breve no iPhone",
+ "No nightly newer than {version} yet.": "Ainda não há Nightly mais nova que a {version}.",
+ "Selected. Press Ctrl+C to copy.": "Selecionado. Pressione Ctrl+C para copiar."
 }

@@ -69,6 +69,7 @@ jobs:
       - run: site/build.sh "$RUNNER_TEMP/site"
         env:
           ANIBEAM_NIGHTLY: ${{ inputs.nightly }}
+          GH_TOKEN: ${{ github.token }}
       - name: The apt and dnf repos
         env:
           GH_TOKEN: ${{ github.token }}

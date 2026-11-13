@@ -24,6 +24,8 @@ cp "$root/assets/icon.png" "$out/img/icon.png"
 # Every language in site/i18n/ gets the home page and the download page, and every page a menu.
 PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/tools/i18n.py" build "$out"
 rm -rf "$out/i18n"
+# The release links the download buttons, the download page, install.sh and What's new read.
+PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/tools/releases.py" "$out"
 # What's new: a page per version, from the apps' own patch notes. Its nav comes from the
 # translated download page, so it runs after.
 PYTHONDONTWRITEBYTECODE=1 python3 "$root/site/whats-new.py" "$root" "$out"

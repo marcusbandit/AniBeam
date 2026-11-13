@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Builds the website's What's new pages from the apps' own patch notes (#777):
 
-  <out>/whats-new/index.html            every version, newest first
-  <out>/whats-new/<version>/index.html  one page per version
+  <out>/whats-new/index.html                  every release, newest first
+  <out>/whats-new/<version>/index.html        one page per desktop release
+  <out>/whats-new/android-<version>/index.html  one page per phone release
 
 The desktop's apps/linux/CHANGELOG.md and the phone's apps/android/CHANGELOG.md hold the shipped
 versions. The change files in apps/*/changes/ hold what has merged since the last stable release
@@ -13,6 +14,7 @@ nightly starts, so nothing here is written by hand.
 usage: whats-new.py <repo-root> <out-dir>
 """
 import html
+import json
 import os
 import re
 import sys
@@ -72,36 +74,44 @@ def nice_date(iso):
     return f"{int(d)} {months[int(m) - 1]} {y}"
 
 
-# Collect: one entry per version number, holding each app's notes for it.
-by_version = {}
+# Collect: one entry per release. The desktop and the phone count their versions apart (the
+# first number is shared, the rest each app's own), so desktop 2.0.0 and Android 2.0.0 are two
+# releases with two entries.
+versions = []
 for key, name, path in APPS:
     for v in parse((path / "CHANGELOG.md").read_text()):
         if not any(v["sections"].values()):
             continue
-        e = by_version.setdefault(v["version"], {"version": v["version"], "title": "", "date": v["date"], "apps": {}})
-        e["title"] = e["title"] or (v["title"] if key == "desktop" else "")
-        e["date"] = max(e["date"], v["date"])
-        e["apps"][key] = v["sections"]
+        slug = v["version"] if key == "desktop" else f"android-{v['version']}"
+        tag = f"v{v['version']}" if key == "desktop" else f"android-v{v['version']}"
+        versions.append({"version": v["version"], "slug": slug, "tag": tag, "app": key, "app_name": name,
+                         "title": v["title"] if key == "desktop" else "", "date": v["date"], "apps": {key: v["sections"]}})
 
 
 def vkey(v):
     return tuple(int(x) for x in v.split("."))
 
 
-versions = sorted(by_version.values(), key=lambda e: (vkey(e["version"]), e["date"]), reverse=True)
+versions.sort(key=lambda e: (e["date"], e["app"] == "desktop", vkey(e["version"])), reverse=True)
+# The tags that exist on GitHub (tools/releases.py, run just before). A version with notes but
+# no published release gets no download link; without the list every version keeps its link.
+try:
+    TAGS = set(json.loads((out / "releases.json").read_text())["tags"])
+except (OSError, ValueError, KeyError):
+    TAGS = None
 coming = {key: pending(path / "changes") for key, _, path in APPS}
 coming = {k: v for k, v in coming.items() if any(v.values())}
 # site.yml passes the newest nightly when nightly.yml starts the deploy.
 nightly_version = os.environ.get("ANIBEAM_NIGHTLY", "")
 
 
-def notes_html(apps):
+def notes_html(apps, named=True):
     parts = []
     for key, name, _ in APPS:
         sections = apps.get(key)
         if not sections:
             continue
-        parts.append(f'<div class="wn-app"><h3>{name}</h3>')
+        parts.append(f'<div class="wn-app"><h3>{name}</h3>' if named else '<div class="wn-app">')
         for s in SECTIONS + [x for x in sections if x not in SECTIONS]:
             lines = sections.get(s)
             if not lines:
@@ -119,30 +129,40 @@ NAV = re.search(r'<header class="nav">.*?</header>', _dl, re.S).group(0)
 FOOT = re.search(r'<footer class="foot">.*?</footer>', _dl, re.S).group(0)
 
 
+# The notes are English only, so the language menu here leads to each language's home page.
+NAV = re.sub(r'(<a href=")[^"]*(" hreflang="([\w-]+)")',
+             lambda m: f'{m.group(1)}../{"" if m.group(3) == "en" else m.group(3) + "/"}{m.group(2)}', NAV)
+
+
 def chrome(fragment, prefix):
     if prefix == "../":
         return fragment
     return re.sub(r'(href|src)="\.\./', lambda m: f'{m.group(1)}="{prefix}', fragment)
 
 
-def page(title, prefix, body, canonical):
+def page(title, prefix, body, canonical, description):
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)}</title>
+<meta name="description" content="{html.escape(description)}">
 <link rel="canonical" href="https://anibeam.app/{canonical}">
 <meta name="theme-color" content="#07080a">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="{prefix}img/logo.svg" type="image/svg+xml">
 <meta property="og:site_name" content="AniBeam">
+<meta property="og:type" content="website">
 <meta property="og:title" content="{html.escape(title)}">
+<meta property="og:description" content="{html.escape(description)}">
+<meta property="og:url" content="https://anibeam.app/{canonical}">
 <meta property="og:image" content="https://anibeam.app/img/og.jpg">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;500&display=swap">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="{prefix}style.css">
+<script src="{prefix}lang.js" defer></script>
 </head>
 <body>
 {chrome(NAV, prefix)}
@@ -156,15 +176,15 @@ def page(title, prefix, body, canonical):
 
 
 def entry(e, prefix, link=True, level="h2"):
-    v = e["version"]
-    # A version only the phone shipped lives on its android-v release.
-    tag = f"v{v}" if "desktop" in e["apps"] else f"android-v{v}"
+    v, slug = e["version"], e["slug"]
     title = f'<span class="wn-title">{html.escape(e["title"])}</span>' if e["title"] else ""
-    name = f'<a href="{prefix}whats-new/{v}/">{v}</a>' if link else v
-    return f"""<article class="wn-entry" id="v{v}">
-  <header class="wn-head"><{level} class="wn-ver">{name}</{level}>{title}<time datetime="{e['date']}">{nice_date(e['date'])}</time></header>
-  {notes_html(e['apps'])}
-  <a class="wn-dl" href="https://github.com/marcusbandit/AniBeam/releases/tag/{tag}">Download {v}</a>
+    name = f'<a href="{prefix}whats-new/{slug}/">{v}</a>' if link else v
+    dl = (f'\n  <a class="wn-dl" href="https://github.com/marcusbandit/AniBeam/releases/tag/{e["tag"]}">Download {v}</a>'
+          if TAGS is None or e["tag"] in TAGS else "")
+    anchor = f"v{v}" if e["app"] == "desktop" else slug
+    return f"""<article class="wn-entry" id="{anchor}">
+  <header class="wn-head"><{level} class="wn-ver">{name}</{level}><span class="wn-app-tag">{e['app_name']}</span>{title}<time datetime="{e['date']}">{nice_date(e['date'])}</time></header>
+  {notes_html(e['apps'], named=False)}{dl}
 </article>"""
 
 
@@ -176,31 +196,52 @@ if coming:
   <header class="wn-head"><h2 class="wn-ver">{html.escape(label)}</h2><a class="wn-try" href="../download/#nightly">Try the nightly</a></header>
   {notes_html(coming)}
 </article>""")
-blocks += [entry(e, "../") for e in versions]
+# The newest few stay open; the rest fold under one line so the page does not run on for ever.
+OPEN = 6
+blocks += [entry(e, "../") for e in versions[:OPEN]]
+if len(versions) > OPEN:
+    blocks.append('<details class="wn-older"><summary>Older releases</summary>\n'
+                  + "\n".join(entry(e, "../") for e in versions[OPEN:]) + "\n</details>")
 index = f"""<section class="wn-hero"><h1>What's new</h1></section>
 <div class="wn-list">
 {chr(10).join(blocks)}
 </div>"""
 (out / "whats-new").mkdir(parents=True, exist_ok=True)
-(out / "whats-new/index.html").write_text(page("What's new in AniBeam", "../", index, "whats-new/"))
+(out / "whats-new/index.html").write_text(page("What's new in AniBeam", "../", index, "whats-new/",
+                                              "Every AniBeam release for desktop and Android, newest first."))
 
 # One page per version
 for i, e in enumerate(versions):
-    v = e["version"]
-    newer = versions[i - 1]["version"] if i > 0 else None
-    older = versions[i + 1]["version"] if i + 1 < len(versions) else None
+    v, slug = e["version"], e["slug"]
+    label = lambda o: f'{o["app_name"]} {o["version"]}'
+    newer = versions[i - 1] if i > 0 else None
+    older = versions[i + 1] if i + 1 < len(versions) else None
     nav = '<nav class="wn-pager">'
-    nav += f'<a href="../{older}/">{older}</a>' if older else "<span></span>"
-    nav += '<a href="../">All versions</a>'
-    nav += f'<a href="../{newer}/">{newer}</a>' if newer else "<span></span>"
+    nav += f'<a href="../{older["slug"]}/">{label(older)}</a>' if older else "<span></span>"
+    nav += '<a href="../">All releases</a>'
+    nav += f'<a href="../{newer["slug"]}/">{label(newer)}</a>' if newer else "<span></span>"
     nav += "</nav>"
     body = f"""<section class="wn-hero"><a class="wn-back" href="../">What's new</a></section>
 <div class="wn-list">
 {entry(e, "../../", link=False, level="h1")}
 </div>
 {nav}"""
-    title = f"AniBeam {v}" + (f": {e['title']}" if e["title"] else "")
-    (out / "whats-new" / v).mkdir(parents=True, exist_ok=True)
-    (out / "whats-new" / v / "index.html").write_text(page(title, "../../", body, f"whats-new/{v}/"))
+    title = f"AniBeam {'' if e['app'] == 'desktop' else 'for Android '}{v}" + (f": {e['title']}" if e["title"] else "")
+    (out / "whats-new" / slug).mkdir(parents=True, exist_ok=True)
+    (out / "whats-new" / slug / "index.html").write_text(
+        page(title, "../../", body, f"whats-new/{slug}/", f"What changed in {e['app_name']} {v}, released {nice_date(e['date'])}."))
 
-print(f"whats-new: {len(versions)} versions, coming next: {'yes' if coming else 'no'}")
+# The page GitHub Pages serves for an address that leads nowhere. It can be served at any depth,
+# so its links start from the site root.
+lost = """<section class="wn-hero"><h1>Nothing here.</h1></section>
+<p class="lost"><a class="btn btn-primary btn-lg" href="/">AniBeam home</a></p>"""
+(out / "404.html").write_text(page("Not found: AniBeam", "/", lost, "404.html", "This page does not exist.")
+                              .replace("<head>", '<head>\n<meta name="robots" content="noindex">', 1))
+
+# Every release page goes in the sitemap next to the pages i18n.py listed.
+sitemap = out / "sitemap.xml"
+if sitemap.exists():
+    extra = "".join(f"  <url><loc>https://anibeam.app/whats-new/{e['slug']}/</loc></url>\n" for e in versions)
+    sitemap.write_text(sitemap.read_text().replace("</urlset>", extra + "</urlset>"))
+
+print(f"whats-new: {len(versions)} releases, coming next: {'yes' if coming else 'no'}")

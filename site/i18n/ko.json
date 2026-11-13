@@ -78,5 +78,9 @@
   "GitHub releases page": "GitHub 릴리스 페이지",
   "Download for {os}": "{os}용 다운로드",
   "Get the Android app": "Android용 다운로드",
-  "Copied": "복사됨"
+  "Copied": "복사됨",
+  "Apple silicon": "Apple 실리콘",
+  "Coming to iPhone soon": "iPhone 버전 곧 출시",
+  "No nightly newer than {version} yet.": "아직 {version}보다 새로운 Nightly가 없습니다.",
+  "Selected. Press Ctrl+C to copy.": "선택했습니다. Ctrl+C를 눌러 복사하세요."
 }
