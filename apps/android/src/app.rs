@@ -4,6 +4,7 @@
 //! AniBeam on the tailnet, synced by the worker thread, only fills Library when it is picked
 //! there, and its episodes stream from it.
 
+use anibeam_core::i18n::tr;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -85,6 +86,10 @@ impl Shelves {
     }
 }
 
+/// What the last episode mark said, how to put it back (the series, the count before it and
+/// the season, when Undo can), and the tick it said it on.
+type MarkNote = (String, Option<(u64, u32, u32)>, u32);
+
 /// Which series page is open: one of this phone's, or one of the other device's.
 #[derive(Clone, Copy, PartialEq)]
 enum Open {
@@ -145,6 +150,10 @@ struct App {
     /// What Plan to watch said, kept apart from the list's own note.
     airing_plan_note: Option<String>,
     airing_undo: Option<(u64, String, u32)>,
+    /// What the last episode mark said; see `MarkNote`.
+    mark_note: Option<MarkNote>,
+    /// A mark is on its way to the core; the next waits for it, so two never cross.
+    mark_busy: bool,
     /// Shows marked not interested here and not yet gone from the core's list.
     airing_hidden: HashSet<u64>,
     /// A read asked for while one was out: run it, asking AniList or not, when that lands.
@@ -277,6 +286,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     ),
     (6, "What's new", "changelog patch notes changes update"),
     (6, "Set up again", "onboarding first run start over"),
+    (6, "Ratings", "imdb credit scores"),
     (6, "Version", "build about"),
     (
         8,
@@ -711,12 +721,26 @@ impl App {
             self.airing_undo = None;
             data.set_airing_undo("".into());
         }
+        if self
+            .mark_note
+            .as_ref()
+            .is_some_and(|(_, _, at)| self.ticks.wrapping_sub(*at) > MARK_TICKS)
+        {
+            self.mark_note = None;
+            self.show_mark();
+        }
         if self.ticks.is_multiple_of(5) {
             self.hold_for_network();
         }
         if self.ticks.is_multiple_of(STORAGE_EVERY) {
             self.storage();
         }
+    }
+
+    /// The clock's second: the pages, then the count the timed lines and polls go by. Only
+    /// the clock moves the count; a tick asked for by a tap or a reply redraws and no more.
+    fn second(&mut self) {
+        self.tick();
         self.ticks = self.ticks.wrapping_add(1);
     }
 
@@ -1604,6 +1628,9 @@ impl App {
         } else {
             Open::Phone(id)
         });
+        // A mark's line and its Undo belong to the page they were made on.
+        self.mark_note = None;
+        self.show_mark();
         self.detail = None;
         self.reload_open();
         self.tick();
@@ -1646,6 +1673,92 @@ impl App {
             });
     }
 
+    /// An episode's mark, the desktop's cube click: a watched one marks it and every one after
+    /// it unwatched, any other marks it and every one before it watched. The season goes
+    /// along, since a show with no tracker keeps its marks per season.
+    fn mark(&mut self, number: f32, season: i32, watched: bool) {
+        let (Some(Open::Phone(series)), Some(core)) = (self.open, crate::local::core()) else {
+            return;
+        };
+        let whole = number.max(0.0).floor() as u32;
+        let target = if watched {
+            whole.saturating_sub(1)
+        } else {
+            whole
+        };
+        let season = u32::try_from(season).unwrap_or(1).max(1);
+        let before = self.detail.as_ref().and_then(|d| d.card.watched);
+        self.set_progress(core, series, target, season, before);
+    }
+
+    fn set_progress(
+        &mut self,
+        core: std::sync::Arc<anibeam_core::Core>,
+        series: u64,
+        target: u32,
+        season: u32,
+        before: Option<u32>,
+    ) {
+        if self.mark_busy {
+            return;
+        }
+        self.mark_busy = true;
+        let _ = std::thread::Builder::new()
+            .name("mark".into())
+            .spawn(move || {
+                let answer = core.call(Call::SetProgress {
+                    series,
+                    progress: target,
+                    season: Some(season),
+                });
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        app.mark_busy = false;
+                        // Gone from the page it was made on: its line and Undo go with it.
+                        if app.open != Some(Open::Phone(series)) {
+                            return;
+                        }
+                        app.mark_note = match answer {
+                            // A tracker's show with no account behind it: the way to one.
+                            Err(e @ anibeam_core::CoreError::NotConnected { .. }) => Some((
+                                tr("mark-not-connected", &[("reason", e.to_string().into())]),
+                                None,
+                                app.ticks,
+                            )),
+                            Err(e) => Some((e.to_string(), None, app.ticks)),
+                            Ok(_) => mark_line(target, before)
+                                .map(|line| (line, before.map(|b| (series, b, season)), app.ticks)),
+                        };
+                        app.show_mark();
+                        app.reload_open();
+                        app.tick();
+                    })
+                });
+            });
+    }
+
+    fn mark_take_back(&mut self) {
+        if self.mark_busy {
+            return;
+        }
+        let Some((_, Some((series, before, season)), _)) = self.mark_note.take() else {
+            return;
+        };
+        self.show_mark();
+        if let Some(core) = crate::local::core() {
+            self.set_progress(core, series, before, season, None);
+        }
+    }
+
+    fn show_mark(&self) {
+        let (line, undo) = self
+            .mark_note
+            .as_ref()
+            .map_or((String::new(), false), |(l, u, _)| (l.clone(), u.is_some()));
+        self.data().set_mark_line(line.into());
+        self.data().set_mark_undo(undo);
+    }
+
     fn reload_open(&mut self) {
         if let (Some(Open::Phone(id)), Some(core)) = (self.open, crate::local::core()) {
             self.detail = match core.call(Call::GetSeries { series: id }) {
@@ -1656,6 +1769,8 @@ impl App {
     }
 
     fn close_series(&mut self) {
+        self.mark_note = None;
+        self.show_mark();
         self.deleting = false;
         self.picked.clear();
         self.open = None;
@@ -1758,6 +1873,22 @@ fn demo_notifies() -> bool {
 pub(crate) const AIRING_ART: u64 = 1 << 48;
 /// How long, in ticks of a second, a not interested mark can be taken back.
 const UNDO_TICKS: u32 = 6;
+/// How long an episode mark's line stays, the desktop toast's eight seconds.
+const MARK_TICKS: u32 = 8;
+
+/// What a mark that moves more than one episode says, as the desktop's toast does; one
+/// that moves a single episode shows on its cube and says nothing.
+fn mark_line(target: u32, before: Option<u32>) -> Option<String> {
+    let before = before?;
+    if target.abs_diff(before) <= 1 {
+        return None;
+    }
+    Some(if target > before {
+        tr("mark-watched-up-to", &[("episode", target.into())])
+    } else {
+        tr("mark-unwatched-from", &[("episode", (target + 1).into())])
+    })
+}
 
 /// A list status as a poster's flag says it.
 fn list_word(status: anibeam_core::ListStatus) -> &'static str {
@@ -1976,6 +2107,8 @@ pub fn run(
         )
         .into(),
     );
+    data.set_ratings_label(tr("about-ratings", &[]).into());
+    data.set_ratings_credit(tr("about-ratings-credit", &[]).into());
     data.set_host_address(address.display().into());
 
     let home_shelves = Shelves::new();
@@ -1998,6 +2131,11 @@ pub fn run(
     data.on_open_remote(|id| with_app(|app| app.open_series(id, true)));
     data.on_close_series(|| with_app(App::close_series));
     data.on_play(|file| crate::player::open(file as u64));
+    data.on_mark(|number, season, watched| with_app(|app| app.mark(number, season, watched)));
+    data.on_mark_take_back(|| with_app(App::mark_take_back));
+    data.set_mark_watched_label(tr("mark-menu-watched", &[]).into());
+    data.set_mark_unwatched_label(tr("mark-menu-unwatched", &[]).into());
+    data.set_mark_cancel_label(tr("mark-menu-cancel", &[]).into());
     data.on_play_remote(|file| crate::player::open_remote(file as u64));
     let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL
         .iter()
@@ -2225,6 +2363,8 @@ pub fn run(
         airing_note: None,
         airing_plan_note: None,
         airing_undo: None,
+        mark_note: None,
+        mark_busy: false,
         airing_hidden: HashSet::new(),
         airing_again: None,
         airing_filters,
@@ -2258,7 +2398,7 @@ pub fn run(
 
     let clock = Timer::default();
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || {
-        with_app(App::tick)
+        with_app(App::second)
     });
     // The hinge and the crease, for the layout: a bend shows in a fifth of a second. A phone
     // with neither a hinge sensor nor window extensions stops the timer; one that has the
@@ -2331,4 +2471,23 @@ pub fn run(
     APP.with(|cell| cell.borrow_mut().take());
     ran?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mark_line;
+
+    #[test]
+    fn a_mark_says_so_only_when_it_moves_more_than_one_episode() {
+        assert_eq!(
+            mark_line(5, Some(1)).as_deref(),
+            Some("Watched up to Episode 5")
+        );
+        assert_eq!(
+            mark_line(2, Some(8)).as_deref(),
+            Some("Unwatched from Episode 3")
+        );
+        assert_eq!(mark_line(4, Some(3)), None);
+        assert_eq!(mark_line(4, None), None);
+    }
 }
