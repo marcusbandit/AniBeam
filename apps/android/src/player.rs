@@ -443,6 +443,11 @@ pub fn install(window: &AppWindow) {
 /// Opens `file` in the player. A file the core will not open, one still downloading, say,
 /// leaves the page shut and says why on the series page's log.
 pub fn open(file: u64) {
+    open_at(file, 1.0);
+}
+
+/// `open` at `speed`: the next or previous episode goes on at the speed the last one played.
+fn open_at(file: u64, speed: f64) {
     OPENING.with(|o| o.set(o.get() + 1));
     let Some(window) = WINDOW.with(|w| w.borrow().clone()) else {
         return;
@@ -480,7 +485,7 @@ pub fn open(file: u64) {
         ),
         _ => (None, false),
     };
-    begin(window, session, None, episode_number, tracked, None);
+    begin(window, session, None, episode_number, tracked, None, speed);
 }
 
 thread_local! {
@@ -502,6 +507,11 @@ pub fn set_remote_numbers(numbers: std::collections::HashMap<u64, f64>) {
 /// Opens `file` of the other device: the session opens there, off this thread, and the page
 /// says it is connecting meanwhile.
 pub fn open_remote(file: u64) {
+    open_remote_at(file, 1.0);
+}
+
+/// `open_remote` at `speed`, as `open_at`.
+fn open_remote_at(file: u64, speed: f64) {
     let Some(window) = WINDOW.with(|w| w.borrow().clone()) else {
         return;
     };
@@ -547,6 +557,7 @@ pub fn open_remote(file: u64) {
                         number,
                         number.is_some(),
                         note,
+                        speed,
                     );
                 }
                 Err(e) => failed(&window, e),
@@ -563,6 +574,7 @@ fn begin(
     episode_number: Option<f64>,
     tracked: bool,
     note: Option<String>,
+    speed: f64,
 ) {
     if PLAYER.with(|p| p.borrow().is_some()) {
         close_page(CloseReason::Switched);
@@ -698,6 +710,11 @@ fn begin(
         held_from: None,
     };
     player.start();
+    // The speed goes along to the next episode, as on the desktop; a cast plays it on the TV.
+    if (speed - 1.0).abs() > 0.01 && player.cast_on_load.is_none() {
+        player.mpv.set("speed", &speed.to_string());
+        player.d(|d| d.set_speed(speed as f32));
+    }
     player.show_cast();
     if let Some(note) = note {
         player.flash(&note, None);
@@ -829,12 +846,16 @@ pub fn app_ending() {
     }
 }
 
-/// Next or previous: the same neighbours, and the same rule, as the desktop's buttons.
+/// Next or previous: the same neighbours, and the same rule, as the desktop's buttons. The
+/// speed goes along: someone watching at 1.5x wants the next episode at 1.5x too. A held 2x
+/// is not the speed; the one under it is, and the picker's value is that one.
 fn neighbour(forward: bool) {
     let mut target = None;
     let mut remote = false;
+    let mut speed = 1.0;
     with_player(|p| {
         remote = p.host.is_some();
+        p.d(|d| speed = f64::from(d.get_speed()));
         if !p.session.is_extra {
             target = if forward {
                 p.session.next
@@ -852,9 +873,9 @@ fn neighbour(forward: bool) {
     if let Some(file) = target {
         close_page(CloseReason::Switched);
         if remote {
-            open_remote(file)
+            open_remote_at(file, speed)
         } else {
-            open(file)
+            open_at(file, speed)
         }
     }
 }
@@ -1731,7 +1752,7 @@ impl Player {
     }
 
     /// A row of the open picker. The choice of track is stored for the series, as on the
-    /// desktop; the speed lasts for this file only.
+    /// desktop; the speed lasts for this file and the episodes Next and Previous open from it.
     fn pick(&mut self, i: i32) {
         let mut kind = 0;
         self.d(|d| kind = d.get_picker());
