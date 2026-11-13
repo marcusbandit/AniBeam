@@ -135,3 +135,9 @@ player-speed-not-while-casting = Not while casting
 
 # A release in the find list for an episode the phone has from another release.
 downloads-other-release-on-disk = Other release on disk
+
+## Onboarding
+
+# The step that asks which computer's AniBeam the phone reaches, if any.
+onboarding-computer-title = Your computer
+onboarding-computer-note = AniBeam on a computer can share its library with this phone over Tailscale: its shows appear in Library and their episodes play here. Type its Tailscale name and port, then Test. No computer? Leave it empty and start; More has it later.

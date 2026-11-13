@@ -1,5 +1,6 @@
 import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
+import { Tr } from "tr.slint";
 import { Ask, HostField } from "more.slint";
 import { Button, Figure, ListGroup, ListRow, Slider, TextButton } from "widgets.slint";
 import { RepoPanes } from "repos.slint";
@@ -20,7 +21,7 @@ export component Onboarding inherits Rectangle {
         { title: "Storage", note: "A cap on how much AniBeam may download. It reserves nothing: the space stays free until episodes fill it." },
         { title: "Notifications", note: "While episodes download, a notification shows how far along they are, and another says when one is ready to watch. Downloads run either way." },
         { title: "Search sites", note: "AniBeam comes with nothing to search. A repo is a signed list of sites to search. Paste a repo's address, check its key, then install the sites you want. You can do this later in More." },
-        { title: "Your computer", note: "AniBeam on a computer can share its library with this phone over Tailscale: its shows appear in Library and their episodes play here. Type its Tailscale name and port, then Test. No computer? Leave it empty and start; More has it later." },
+        { title: Tr.t("onboarding-computer-title"), note: Tr.t("onboarding-computer-note") },
     ];
 
     TouchArea { }
