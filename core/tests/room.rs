@@ -535,3 +535,200 @@ fn joining_needs_a_name_and_a_real_code() {
         "{err:?}"
     );
 }
+
+/// Ann hosts episode 1 and Ben joins and opens his copy: both players are
+/// attached, paused at the start.
+fn two_attached(relay: &Relay) -> (Person, u64, Person, u64, RoomInfo) {
+    let ann = person(relay, "Ann", &[1.0, 2.0], true);
+    let ben = person(relay, "Ben", &[1.0, 2.0], true);
+    let ann_s = open(&ann, ann.files[0]);
+    let made = room(ann.core.call(Call::RoomCreate { session: ann_s })).unwrap();
+    room(ben.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }));
+    let ben_s = open(&ben, ben.files[0]);
+    room(ben.core.call(Call::RoomAttach { session: ben_s }));
+    applied(&ben.c, ben_s, |playing, _, _| !playing);
+    (ann, ann_s, ben, ben_s, made)
+}
+
+fn applies(c: &Collector, session: u64) -> Vec<(bool, Option<f64>)> {
+    c.events()
+        .iter()
+        .filter_map(|e| match &e.body {
+            EventBody::RoomApply {
+                session: s,
+                playing,
+                seek_to,
+                ..
+            } if *s == session => Some((*playing, *seek_to)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_tick_puts_right_a_player_that_disagrees_on_playing() {
+    let relay = relay();
+    let (ann, _, ben, ben_s, _) = two_attached(&relay);
+
+    // The room is paused at 40, and Ben's player keeps playing.
+    ann.core
+        .call(Call::RoomCommand {
+            action: RoomAction::Pause,
+            position: 40.0,
+        })
+        .unwrap();
+    applied(&ben.c, ben_s, |playing, seek, _| {
+        !playing && seek == Some(40.0)
+    });
+    ben.core
+        .call(Call::Tick {
+            session: ben_s,
+            position: 41.0,
+            paused: false,
+        })
+        .unwrap();
+    wait_count(&ben.c, 2, |e| {
+        matches!(&e.body, EventBody::RoomApply { session, playing: false, seek_to: Some(t), .. }
+            if *session == ben_s && *t == 40.0)
+    });
+
+    // The room plays, and Ben's player sits paused.
+    ann.core
+        .call(Call::RoomCommand {
+            action: RoomAction::Play,
+            position: 50.0,
+        })
+        .unwrap();
+    applied(&ben.c, ben_s, |playing, _, _| playing);
+    let before = applies(&ben.c, ben_s).len();
+    ben.core
+        .call(Call::Tick {
+            session: ben_s,
+            position: 50.0,
+            paused: true,
+        })
+        .unwrap();
+    wait_count(
+        &ben.c,
+        before + 1,
+        |e| matches!(&e.body, EventBody::RoomApply { session, .. } if *session == ben_s),
+    );
+    assert!(applies(&ben.c, ben_s).last().unwrap().0, "told to play");
+}
+
+#[test]
+fn a_held_arrow_key_reaches_the_room_with_its_last_seek() {
+    let relay = relay();
+    let (ann, ann_s, ben, ben_s, _) = two_attached(&relay);
+    let before = applies(&ben.c, ben_s).len();
+
+    // Forty seeks as fast as a held key can make them: well past the relay's
+    // twenty messages a second.
+    for i in 0..40 {
+        ann.core
+            .call(Call::RoomCommand {
+                action: RoomAction::Seek,
+                position: 100.0 + f64::from(i) * 5.0,
+            })
+            .unwrap();
+    }
+    // Ben gets the last one, not whichever came before the relay's limit.
+    applied(&ben.c, ben_s, |_, seek, _| seek == Some(295.0));
+    let seeks = applies(&ben.c, ben_s).len() - before;
+    assert!(seeks <= 5, "{seeks} seeks reached Ben");
+    // Ann's own player is never pulled back to one of her earlier seeks.
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        applies(&ann.c, ann_s)
+            .iter()
+            .all(|(_, seek)| seek.is_none_or(|t| t == 0.0)),
+        "{:?}",
+        applies(&ann.c, ann_s)
+    );
+}
+
+#[test]
+fn the_hosts_move_while_the_connection_is_down_is_made_again() {
+    let relay = relay();
+    let (ann, _, ben, ben_1, _) = two_attached(&relay);
+
+    // Ann's connection drops, and before it is back her player moves to
+    // episode 2.
+    ann.core.room_drop_connection();
+    common::wait_for(&ann.c, |e| said(e, "core-room-lost"), WAIT);
+    let ann_2 = open(&ann, ann.files[1]);
+    let moved = room(ann.core.call(Call::RoomAttach { session: ann_2 })).unwrap();
+    assert_eq!(moved.episode.episode_key, "2");
+    common::wait_for(&ann.c, |e| said(e, "core-room-back"), WAIT);
+
+    // Back, she stays on episode 2 and the room follows her there.
+    applied(&ann.c, ann_2, |playing, seek, _| {
+        !playing && seek == Some(0.0)
+    });
+    applied(&ben.c, ben_1, |playing, seek, _| !playing && seek.is_none());
+    common::wait_for(
+        &ben.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomEpisode { file, episode, .. }
+                if *file == Some(ben.files[1]) && episode.episode_key == "2")
+        },
+        WAIT,
+    );
+    let ann_room = status(&ann).unwrap();
+    assert_eq!(ann_room.episode.episode_key, "2");
+    assert_eq!(ann_room.session, Some(ann_2));
+    assert!(
+        !ann.c
+            .events()
+            .iter()
+            .any(|e| matches!(&e.body, EventBody::RoomEpisode { .. })),
+        "Ann is never sent back to episode 1"
+    );
+}
+
+#[test]
+fn a_new_host_keeps_the_offset_stored_for_their_file() {
+    let relay = relay();
+    let (ann, ann_s, ben, ben_s, _) = two_attached(&relay);
+
+    // Ben's copy runs 3 seconds later than Ann's, set by hand and kept.
+    let set = room(ben.core.call(Call::RoomSetOffset { offset: 3.0 })).unwrap();
+    assert_eq!(set.offset, 3.0);
+
+    // Ann, the host, may set one too; her file is the room's timeline, so it
+    // starts at nought and is not stored for later rooms.
+    let ann_set = room(ann.core.call(Call::RoomSetOffset { offset: 1.0 })).unwrap();
+    assert_eq!(ann_set.offset, 1.0);
+    ann.core
+        .call(Call::ClosePlayback {
+            session: ann_s,
+            position: 5.0,
+            reason: CloseReason::Stopped,
+        })
+        .unwrap();
+    let ann_again = open(&ann, ann.files[0]);
+    let back = room(ann.core.call(Call::RoomAttach { session: ann_again })).unwrap();
+    assert_eq!(back.offset, 1.0, "the timeline's offset lasts the room");
+
+    // Ann leaves: Ben is the host now, on Ann's timeline still.
+    room(ann.core.call(Call::RoomLeave));
+    common::wait_for(
+        &ben.c,
+        |e| matches!(&e.body, EventBody::RoomChanged { room: Some(r) } if r.host),
+        WAIT,
+    );
+    ben.core
+        .call(Call::ClosePlayback {
+            session: ben_s,
+            position: 5.0,
+            reason: CloseReason::Stopped,
+        })
+        .unwrap();
+    let ben_again = open(&ben, ben.files[0]);
+    let kept = room(ben.core.call(Call::RoomAttach { session: ben_again })).unwrap();
+    assert!(kept.host);
+    assert_eq!(kept.episode.episode_key, "1", "the room stays put");
+    assert_eq!(kept.offset, 3.0, "the stored offset is kept");
+}

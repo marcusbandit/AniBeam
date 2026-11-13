@@ -81,7 +81,10 @@ Worker can persist it):
 - `hello` must be the first message. Names are trimmed, 1 to 32 characters, no control
   characters. A `host_key` matching the room's makes that member the host. A `rejoin_key` from
   an earlier `welcome` within 120 s of leaving gets the same id and host flag back.
-- At most 10 members (`max`). The 11th gets `full`.
+- At most 10 members (`max`), counting the people connected, as the view shows them. The 11th
+  gets `full`. A member in their 120 s grace who comes back with their `rejoin_key` gets in
+  even when that takes the room past `max`, since their place was kept. Places in grace and
+  connected together are capped at twice `max`, so churn cannot grow a room without bound.
 - `cmd` from any member: `play` and `pause` set `playing` and `position`; `seek` sets `position`
   and keeps `playing`. `at_ms = now`, `rev += 1`, broadcast `state` to everyone, sender included.
   Positions must be finite, from 0 to 86400.
@@ -90,7 +93,9 @@ Worker can persist it):
 - Leaving or a dropped socket broadcasts `members`. When the host leaves for good (120 s), the
   longest-present member becomes host. An empty room is dropped after 10 minutes.
 - Bad JSON or an unknown `t` gets `bad_message`, not a close. 20 messages a second per member
-  at most; past that `rate_limited` and the message is dropped.
+  at most; past that `rate_limited` and the message is dropped. The relays hold every socket to
+  the same rate before the room sees a message, member or not (`anibeam_room::limit::Window`),
+  and close a socket that has not said hello within 10 s (`limit::HELLO_MS`) with `proto`.
 
 - `bye` leaves for good at once: the rejoin key stops working, the place frees up, and a host
   who says `bye` hands over right away. The relay answers `closed { reason: "bye" }`.
@@ -98,7 +103,7 @@ Worker can persist it):
   member over and sends the old socket `closed { reason: "replaced" }`.
 - Fatal codes, after which the relay closes the socket: `full`, `not_found`, `proto` (a message
   before `hello`, or another protocol version). `bad_name` is not fatal, so the client can send
-  another `hello`. A member in their 120 s grace still holds a place toward `max`.
+  another `hello`.
 
 API shape: `Room::new(code, host_key, episode, now_ms, secret: [u8; 16])`,
 `Room::handle(&mut self, conn: ConnId, msg: ClientMsg, now_ms) -> Vec<Out>`,
@@ -116,14 +121,20 @@ deriving the keys from `host_key` instead would let the host forge everyone's.
 ## Relays
 
 Native (`apps/relay`): axum with the `ws` feature, rooms in memory, `anibeam_relay::serve(listener)`
-for tests, `anibeam-relay --listen 0.0.0.0:8795` as a binary. Per-IP limit of 10 room creations
-and 30 WebSocket opens a minute.
+for tests (`serve_with` for a shorter hello wait), `anibeam-relay --listen 0.0.0.0:8795` as a
+binary. Per-IP limit of 10 room creations, 30 WebSocket opens and 60 join pages a minute, an
+IPv6 address counted by its /64 (`anibeam_room::limit::limit_key`, shared by both relays).
 
 Worker (`relay/worker`): one SQLite-backed Durable Object per room, named by code, using the
 WebSocket Hibernation API (`accept_websocket`, `websocket_message`, `websocket_close`). The room
 is persisted to Durable Object storage after every change, because a hibernated object loses
 its memory; each socket's `ConnId` rides in its attachment or tag. Same routes, the join page
-included. Free plan only: no paid features. `wrangler.toml` uses `new_sqlite_classes`.
+included, and the same limits through three rate limiting bindings (`CREATE_LIMIT`,
+`OPEN_LIMIT`, `PAGE_LIMIT`). The join page only wakes a room object for a path that
+`code::normalize` takes and that is within the limit. Each socket carries the time it opened
+as a second tag: every message checks the hello deadline against it, and an alarm set 10 s
+after each open sweeps sockets that never sent anything. Per socket message counts live in
+memory only. Free plan only: no paid features. `wrangler.toml` uses `new_sqlite_classes`.
 
 ## Core client (`core/src/room/`)
 
@@ -160,13 +171,30 @@ Behaviour:
   gets a pause (`RoomApply` with no seek) and is let go before the new `RoomEpisode`.
 - Offset: stored per file. With none stored, when both the host's `opening_start` and this
   file's opening start are known and differ by under 30 s, suggest and apply `mine - host`.
+  The file that set the room's timeline (the host's, when they made the room or moved it to an
+  episode) plays at nought unless its member sets one by hand, and that one is kept in memory
+  for the room only, since stored offsets are measured against someone else's file. A host
+  change never resets anything: a new host's file keeps its stored offset, because the timeline
+  is still the old host's file until the new host moves the room.
+- A host whose own move to another episode was lost with the connection makes it again after
+  the welcome, rather than following the room back to the episode they left.
 - Sync: target local position = `position + (server_now - at_ms)/1000 * rate` (only while
   playing) `+ offset`. `session::tick` hands each tick to the room. On a new `state`, emit
   `RoomApply` with `playing` and a `seek_to` when off by more than 0.5 s. On ticks, off by
   under 0.25 s: nothing (and speed back to 1.0 once under 0.1 s); 0.25 to 2 s: speed 1.05 or
   0.95; over 2 s: seek. Never emit more than one correction a second. A tick only corrects
-  while the player and the room agree on playing; a paused room only seeks, past 0.5 s. A
-  member's own command is taken as done when sent, so its echo applies nothing.
+  while the player and the room agree on playing; a paused room only seeks, past 0.5 s. A tick
+  that disagrees with the room on playing gets a `RoomApply` with the room's playing (and a
+  seek past 0.5 s), unless this member's own command is still unanswered.
+- The relay's order is the room's. A member's own command is taken as done when sent, so the
+  player moves at once. While own commands are unanswered, others' states are not applied: the
+  relay put them first, and the echo of this member's last command carries the room as it ended
+  up. That echo applies nothing when nothing came between and the player agrees on playing;
+  otherwise it is applied. An own command unanswered for 5 s is taken as lost, and the relay's
+  last state wins.
+- Seeks go to the relay at most every 150 ms (`SEEK_GAP`). One inside the gap is held and the
+  last held one is sent when the gap is up; a play or pause sends a held seek first. A held
+  arrow key repeats 25 to 33 times a second, past the relay's 20 messages.
 - Activity log, with words: room created, joined, left, someone joined or left, room closed,
   connection lost and back. Never sync ticks or corrections.
 - Integration tests in `core/tests/room.rs` run `anibeam_relay::serve` in-process with two or
@@ -177,12 +205,17 @@ Behaviour:
 - Player chrome: a "Watch together" button opens the room panel. Not in a room: "Start a room"
   and a code field to join. In a room: the code large, the link with Copy, a QR code (from the
   `qrcode` crate as SVG), people with ready state, the offset with -0.5 / +0.5 and the
-  suggestion, Leave.
+  suggestion (for everyone, the host included), Leave.
 - Outside the player: "Join a room" reachable from the frame (and `Ctrl+J`), the same code field.
 - Joining with nothing open: on `RoomEpisode` with a file, open the player on it and call
   `RoomAttach`; without one, say the episode is missing from this library.
 - In a room, the user's play, pause and seek also send `RoomCommand`; `RoomApply` sets mpv's
   `pause`, seeks and `speed` directly without sending anything back. Hold-for-2x is off in a room.
+- Auto-skip in a room: only the host's player auto-skips, and its skip is a seek for the whole
+  room. Everyone else's setting is ignored while in a room, so one setting moves everyone once
+  and two members with different openings never send competing seeks. A skip that stayed local
+  is not an option: the next tick would see the player over 2 s off and seek it back. Pressing
+  Skip intro (or Ctrl+Right) is anyone's own seek and goes to the room like any other.
 - The host's player moving to the next episode sends the new `EpisodeRef` (host only); the
   others follow through `RoomEpisode`.
 - Links: `anibeam://room/<code>` registered in the .desktop file (`x-scheme-handler/anibeam`),

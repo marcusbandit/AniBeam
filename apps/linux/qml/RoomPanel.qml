@@ -351,7 +351,7 @@ Item {
                         // The offset: how far this copy is from the host's, set by ear or by the openings
                         Column {
                             objectName: "room-panel-offset"
-                            visible: root.inPlayer && room.drivesPlayer && !room.host
+                            visible: root.inPlayer && room.drivesPlayer
                             width: parent.width
                             spacing: theme.space(1)
                             Rectangle { width: parent.width; height: 1; color: theme.line }

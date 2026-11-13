@@ -265,7 +265,15 @@ FocusScope {
         onChanged: function(name, value) {
             if (name === "time-pos") { if (value !== null && value !== undefined) page.timePos = value }
             else if (name === "duration") { if (value) page.duration = value }
-            else if (name === "pause") { var was = page.paused; page.paused = !!value; if (was !== page.paused) page.tick() }
+            else if (name === "pause") {
+                var was = page.paused; page.paused = !!value
+                if (was !== page.paused) {
+                    page.tick()
+                    // A paused player sends no ticks of its own: one more after the core's
+                    // correction gap lets the room put right a pause it disagrees with
+                    if (page.roomed && page.paused) roomCheck.restart()
+                }
+            }
             else if (name === "seeking") { var wasSeeking = page.seeking; page.seeking = !!value; if (wasSeeking && !page.seeking) page.tick() }
             else if (name === "eof-reached") { if (value && !page.ended) { page.ended = true; page.onEnded() } }
             else if (name === "hwdec-current") page.hwdec = value ? String(value) : ""
@@ -568,10 +576,14 @@ FocusScope {
     property var noticeUndo: null
     // Entering a window by playback or by the session's opening resume point fires the
     // auto-skip; a seek into it does not, and does not fire on the frame after either.
+    // In a room only the host's player auto-skips, and its skip is a seek for the whole
+    // room: one person's setting moves everyone once, and nobody's skip fights another's.
+    // A press on Skip intro is anyone's own seek, as every other seek is.
     function autoSkipWindow(w, on, jumped) {
         if (!inside(w, timePos)) { if (w) landed[w.kind] = false; return }
         if (jumped) { landed[w.kind] = true; return }
         if (!on || !armed[w.kind] || landed[w.kind]) return
+        if (roomed && !frame.room.host) return
         armed[w.kind] = false
         skipWindow(w)
         noticeUndo = function() { seekTo(w.start); armed[w.kind] = false }
