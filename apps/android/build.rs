@@ -4,7 +4,10 @@ fn main() {
     // nightly) and its versionCode; the app shows both in More. A plain cargo run, the tests
     // say, has neither and shows the crate's version.
     for (key, fallback) in [
-        ("ANIBEAM_PHONE_VERSION", std::env::var("CARGO_PKG_VERSION").unwrap()),
+        (
+            "ANIBEAM_PHONE_VERSION",
+            std::env::var("CARGO_PKG_VERSION").unwrap(),
+        ),
         ("ANIBEAM_VERSION_CODE", "0".to_string()),
     ] {
         println!("cargo:rerun-if-env-changed={key}");
