@@ -1,4 +1,4 @@
-//! A subscription's search, read back from its feed URL.
+//! A feed's search, read back from its feed URL.
 
 use crate::percent;
 

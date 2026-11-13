@@ -1298,7 +1298,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = ссылка на фильм должна быть magnet или адресом http(s)
 core-downloads-added-movie = Фильм добавлен в загрузки.
-core-downloads-unsubscribed = Подписка на «{ $name }» отменена.
 # $folder is a path, $name the library show that lives there
 core-downloads-library-folder = { $folder } это папка библиотеки сериала «{ $name }», и в ней есть серии, скачанные не этой подпиской: удалите подписку без файлов или удалите «{ $name }» на его странице
 core-downloads-no-torrents-named = не указаны торренты

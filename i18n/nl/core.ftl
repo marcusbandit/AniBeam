@@ -1086,7 +1086,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = een filmlink moet een magnet of een http(s)-URL zijn
 core-downloads-added-movie = Een film aan je downloads toegevoegd.
-core-downloads-unsubscribed = Abonnement op { $name } opgezegd.
 core-downloads-library-folder = { $folder } is de bibliotheekmap van { $name }, met afleveringen die dit abonnement niet downloadde: haal het abonnement weg zonder de bestanden, of haal { $name } weg vanaf de pagina ervan
 core-downloads-no-torrents-named = geen torrents genoemd
 core-downloads-paused =

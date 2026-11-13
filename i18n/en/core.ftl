@@ -1239,7 +1239,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = a movie link must be a magnet or an http(s) URL
 core-downloads-added-movie = Added a movie to your downloads.
-core-downloads-unsubscribed = Unsubscribed from { $name }.
 # $folder is a path, $name the library show that lives there
 core-downloads-library-folder = { $folder } is the library folder of { $name }, with episodes this subscription did not download: remove the subscription without its files, or remove { $name } from its page
 core-downloads-no-torrents-named = no torrents named

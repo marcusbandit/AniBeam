@@ -1297,7 +1297,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = link do filmu musi być magnetem lub adresem http(s)
 core-downloads-added-movie = Dodano film do pobrań.
-core-downloads-unsubscribed = Anulowano subskrypcję { $name }.
 # $folder is a path, $name the library show that lives there
 core-downloads-library-folder = { $folder } to folder biblioteki serialu { $name }, z odcinkami, których ta subskrypcja nie pobrała: usuń subskrypcję bez jej plików albo usuń { $name } z jego strony
 core-downloads-no-torrents-named = nie podano nazw torrentów

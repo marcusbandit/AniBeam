@@ -705,7 +705,7 @@ fn remove_plan_matches_remove() {
     r.http.push_for("rss/removeRule", 200, "");
     let done = remove_call(&r, false, true, false);
     assert!(
-        matches!(&done, Ok(plans) if plans[0].name == "Show"),
+        matches!(&done, Ok(plans) if plans.first().is_some_and(|p| p.name == "Show")),
         "{done:?}"
     );
     assert_eq!(

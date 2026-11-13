@@ -1085,7 +1085,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = ein Filmlink muss ein Magnet oder eine http(s)-URL sein
 core-downloads-added-movie = Einen Film zu den Downloads hinzugefügt.
-core-downloads-unsubscribed = Abo von { $name } beendet.
 core-downloads-library-folder = { $folder } ist der Bibliotheksordner von { $name }, mit Folgen, die dieses Abo nicht geladen hat: Entferne das Abo ohne seine Dateien, oder entferne { $name } auf seiner Seite
 core-downloads-no-torrents-named = keine Torrents genannt
 core-downloads-paused =

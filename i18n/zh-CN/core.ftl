@@ -922,7 +922,6 @@ core-downloads-nothing-selected = 没有选择要下载的内容
 core-downloads-added = 已添加 { $count } 个下载。
 core-downloads-movie-link = 电影链接必须是磁力链接或 http(s) 网址
 core-downloads-added-movie = 已把一部电影加入下载。
-core-downloads-unsubscribed = 已取消订阅《{ $name }》。
 core-downloads-library-folder = { $folder } 是《{ $name }》的媒体库文件夹，其中有不是此订阅下载的剧集：请移除订阅但保留文件，或在《{ $name }》的页面中移除它
 core-downloads-no-torrents-named = 没有指定种子
 core-downloads-paused = 已暂停 { $count } 个下载。

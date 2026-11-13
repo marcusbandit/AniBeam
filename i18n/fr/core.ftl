@@ -1097,7 +1097,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = le lien d'un film doit être un magnet ou une URL http(s)
 core-downloads-added-movie = Film ajouté à vos téléchargements.
-core-downloads-unsubscribed = Désabonné de { $name }.
 core-downloads-library-folder = { $folder } est le dossier de bibliothèque de { $name }, avec des épisodes que cet abonnement n'a pas téléchargés : retirez l'abonnement sans ses fichiers, ou retirez { $name } depuis sa page
 core-downloads-no-torrents-named = aucun torrent indiqué
 core-downloads-paused =

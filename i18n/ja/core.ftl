@@ -1032,7 +1032,6 @@ core-downloads-nothing-selected = ダウンロードするものが選ばれて�
 core-downloads-added = ダウンロードに{ $count }件追加しました。
 core-downloads-movie-link = 映画のリンクはmagnetかhttp(s)のURLにしてください
 core-downloads-added-movie = ダウンロードに映画を追加しました。
-core-downloads-unsubscribed = { $name }の購読を解除しました。
 # $folder is a path, $name the library show that lives there
 core-downloads-library-folder = { $folder }は{ $name }のライブラリフォルダで、この購読がダウンロードしていないエピソードがあります。ファイルを残して購読を削除するか、作品ページから{ $name }を削除してください
 core-downloads-no-torrents-named = トレントが指定されていません

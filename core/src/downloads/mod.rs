@@ -30,6 +30,7 @@ pub mod origins;
 pub mod paths;
 pub mod prune;
 pub mod qbt;
+pub mod query;
 pub mod replace;
 pub mod rewire;
 pub mod rolling;

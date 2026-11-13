@@ -1085,7 +1085,6 @@ core-downloads-added =
     }
 core-downloads-movie-link = et filmlink skal være et magnet- eller http(s)-link
 core-downloads-added-movie = Føjede en film til dine downloads.
-core-downloads-unsubscribed = Afmeldte abonnementet på { $name }.
 core-downloads-library-folder = { $folder } er biblioteksmappen for { $name } med afsnit, som dette abonnement ikke downloadede: fjern abonnementet uden dets filer, eller fjern { $name } fra dens side
 core-downloads-no-torrents-named = ingen torrents angivet
 core-downloads-paused =
