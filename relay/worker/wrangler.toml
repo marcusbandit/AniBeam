@@ -1,0 +1,27 @@
+name = "anibeam-rooms"
+main = "build/index.js"
+compatibility_date = "2026-11-01"
+
+[build]
+command = "worker-build --release"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RoomObject"
+
+# SQLite-backed, the only kind the free plan has.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomObject"]
+
+# Per address, per Cloudflare location, approximate. The namespace ids only
+# have to be unique within the account.
+[[ratelimits]]
+name = "CREATE_LIMIT"
+namespace_id = "8461"
+simple = { limit = 10, period = 60 }
+
+[[ratelimits]]
+name = "OPEN_LIMIT"
+namespace_id = "8462"
+simple = { limit = 30, period = 60 }
