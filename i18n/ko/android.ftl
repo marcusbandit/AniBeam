@@ -101,7 +101,7 @@ look-text-size-note = AniBeam 전체의 글자 크기예요. 휴대전화의 글
 
 ## The window: tabs and the sheets over every page
 
-app-name = AniBeam
+app-title = AniBeam
 nav-home = 홈
 nav-calendar = 캘린더
 nav-library = 라이브러리
@@ -1273,3 +1273,101 @@ remote-missing = 누락
 remote-on-computer = 내 컴퓨터
 remote-out = { $ago } 공개
 remote-season-episode = 시즌 { $season }, { $n }화
+
+## More's search: the words a person might type for each setting
+
+more-words-ratings = imdb 크레딧 점수 평점 별점
+
+## A show's characters, related shows and recommendations
+
+show-format-series = 시리즈
+
+## Episodes and dates: a season's episode count and air dates, set by hand
+
+dates-title = 에피소드와 날짜
+dates-season-line = { $title } · 시즌 { $season }
+dates-paste-open = 목록 붙여넣기
+dates-paste-done = 붙여넣기 끝
+dates-paste-hint = 방영 목록, 표, 게시글 붙여넣기
+dates-paste-note = AniBeam이 읽은 내용은 아래 에피소드에 표시돼요.
+dates-tap-hint = 에피소드를 눌러 날짜를 지정하세요.
+dates-run = 범위 선택
+dates-field-hint = 1월 7일, 2027년 3월, 2027년
+dates-set = 날짜 지정
+dates-no-date = 날짜 없음
+dates-weekly = 매주
+dates-last = 마지막 화
+dates-not-last = 마지막 아님
+dates-clear = 날짜 지우기
+dates-save = 저장
+dates-saving = 저장 중
+dates-cancel = 취소
+dates-change = 변경
+dates-picked-one = { $episode }화:
+dates-picked-many = 에피소드 { $count }개:
+dates-saved = 저장됨
+dates-cleared = 방영 일정 메모를 지웠어요.
+dates-starting = AniBeam을 시작하는 중이에요. 잠시 후 다시 시도하세요.
+dates-tile-out = 공개
+dates-tile-last = 마지막
+dates-tile-none = 날짜 없음
+dates-tile-guess = ≈ { $date }
+dates-summary-none = 지정한 것 없음
+dates-summary-ends = { $episode }화에서 완결
+dates-summary-record = { $count }화는 { $site } 날짜
+dates-summary-record-unnamed = { $count }화는 기록상 날짜
+dates-summary-set = { $count }화는 직접 지정
+dates-summary-guessed = { $count }화는 매주로 추정
+dates-told-one = { $episode }화
+dates-told-many = { $first }화부터 { $last }화까지
+dates-told-undated = { $episodes } 날짜 미정
+dates-told-due = { $episodes } { $when } 후 공개
+dates-told-ends = { $episode }화에서 완결
+dates-told-season-ends = 시즌 { $season }: { $episode }화에서 완결
+dates-told-by-you = { $told }, 직접 지정
+dates-told-gave-way = 직접 지정한 { $count }화는 더 이상 적용되지 않아요
+
+## The series page
+
+series-runtime =
+    { $hours ->
+        [0] { $minutes }분
+       *[other] { $minutes ->
+            [0] { $hours }시간
+           *[other] { $hours }시간 { $minutes }분
+        }
+    }
+series-runtime-each = 화당 { $runtime }
+series-status-airing = 방영 중
+series-status-finished = 완결
+series-status-upcoming = 방영 예정
+series-status-cancelled = 취소됨
+series-status-hiatus = 휴재 중
+series-average-score = 평균 점수 { $score }
+series-imdb = IMDb { $score }
+series-imdb-votes = IMDb { $score } (투표 { $votes }건)
+series-rewatched = { $count }회 다시 봄
+
+## More, About
+
+about-ratings = 평점
+about-ratings-credit = 정보 제공: IMDb (https://www.imdb.com). 허가를 받아 사용해요.
+
+## Marking episodes on the series page
+
+mark-menu-watched = 여기까지 시청함으로 표시
+mark-menu-unwatched = 여기부터 시청 안 함으로 표시
+mark-menu-cancel = 취소
+mark-watched-up-to = { $episode }화까지 시청함
+mark-unwatched-from = { $episode }화부터 시청 안 함
+mark-not-connected = { $reason } 더보기, 계정에서 로그인하세요.
+series-not-tracked = 추적 안 함
+series-not-tracked-on-phone = 추적 안 함, 이 휴대전화에 { $count }화
+
+## The player
+
+player-speed-not-while-casting = 캐스트 중 불가
+
+## Downloads
+
+downloads-other-release-on-disk = 다른 릴리스 저장됨

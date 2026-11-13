@@ -106,7 +106,7 @@ look-text-size-note = Размер текста везде в AniBeam, пове�
 
 ## Окно: вкладки и панели поверх страниц
 
-app-name = AniBeam
+app-title = AniBeam
 nav-home = Главная
 nav-calendar = Календарь
 nav-library = Библиотека
@@ -1448,3 +1448,149 @@ remote-missing = Нет
 remote-on-computer = На вашем компьютере
 remote-out = Вышла { $ago }
 remote-season-episode = Сезон { $season }, серия { $n }
+
+## Поиск в разделе Ещё: слова, которые человек мог бы набрать для каждой настройки
+
+more-words-ratings = imdb авторы оценки рейтинги
+
+## Персонажи, связанные сериалы и рекомендации
+
+show-format-series = Сериал
+
+## Серии и даты: число серий и даты выхода сезона, заданные вручную
+
+dates-title = Серии и даты
+dates-season-line = { $title } · Сезон { $season }
+dates-paste-open = Вставить список
+dates-paste-done = Готово
+dates-paste-hint = Вставьте список релизов, таблицу или пост
+dates-paste-note = Что AniBeam прочтёт, появится у серий ниже.
+dates-tap-hint = Нажмите на серию, чтобы задать дату.
+dates-run = Выбрать диапазон
+dates-field-hint = 7 янв, март 2027, 2027
+dates-set = Задать дату
+dates-no-date = Даты пока нет
+dates-weekly = Еженедельно
+dates-last = Последняя серия
+dates-not-last = Не последняя
+dates-clear = Сбросить дату
+dates-save = Сохранить
+dates-saving = Сохранение
+dates-cancel = Отмена
+dates-change = Изменить
+dates-picked-one = Серия { $episode }:
+dates-picked-many =
+    { $count ->
+        [one] { $count } серия:
+        [few] { $count } серии:
+        [many] { $count } серий:
+       *[other] { $count } серии:
+    }
+dates-saved = Сохранено.
+dates-cleared = Заметки о графике сброшены.
+dates-starting = AniBeam ещё запускается. Повторите через минуту.
+dates-tile-out = Вышло
+dates-tile-last = Финал
+dates-tile-none = Нет даты
+dates-tile-guess = ≈ { $date }
+dates-summary-none = Ничего не задано
+dates-summary-ends = Заканчивается на серии { $episode }
+dates-summary-record =
+    { $count ->
+        [one] { $count }: даты из { $site }
+        [few] { $count }: даты из { $site }
+        [many] { $count }: даты из { $site }
+       *[other] { $count }: даты из { $site }
+    }
+dates-summary-record-unnamed =
+    { $count ->
+        [one] { $count }: даты из базы
+        [few] { $count }: даты из базы
+        [many] { $count }: даты из базы
+       *[other] { $count }: даты из базы
+    }
+dates-summary-set =
+    { $count ->
+        [one] Вручную: { $count }
+        [few] Вручную: { $count }
+        [many] Вручную: { $count }
+       *[other] Вручную: { $count }
+    }
+dates-summary-guessed =
+    { $count ->
+        [one] Раз в неделю: { $count }
+        [few] Раз в неделю: { $count }
+        [many] Раз в неделю: { $count }
+       *[other] Раз в неделю: { $count }
+    }
+dates-told-one = Серия { $episode }
+dates-told-many = Серии с { $first } по { $last }
+dates-told-undated = { $episodes }: без даты
+dates-told-due = { $episodes }: через { $when }
+dates-told-ends = Заканчивается на серии { $episode }
+dates-told-season-ends = Сезон { $season } заканчивается на серии { $episode }
+dates-told-by-you = { $told }, задано вами
+dates-told-gave-way =
+    { $count ->
+        [one] Вы задали { $count } серию; это больше не действует
+        [few] Вы задали { $count } серии; это больше не действует
+        [many] Вы задали { $count } серий; это больше не действует
+       *[other] Вы задали { $count } серии; это больше не действует
+    }
+
+## Страница сериала
+
+series-runtime =
+    { $hours ->
+        [0] { $minutes } мин
+       *[other] { $minutes ->
+            [0] { $hours } ч
+           *[other] { $hours } ч { $minutes } мин
+        }
+    }
+series-runtime-each = по { $runtime }
+series-status-airing = В эфире
+series-status-finished = Завершён
+series-status-upcoming = Анонс
+series-status-cancelled = Отменён
+series-status-hiatus = Перерыв
+series-average-score = Средняя оценка { $score }
+series-imdb = IMDb { $score }
+series-imdb-votes = IMDb { $score }, голосов: { $votes }
+series-rewatched =
+    { $count ->
+        [one] Пересмотрено { $count } раз
+        [few] Пересмотрено { $count } раза
+        [many] Пересмотрено { $count } раз
+       *[other] Пересмотрено { $count } раза
+    }
+series-not-tracked = Не учтено
+series-not-tracked-on-phone =
+    { $count ->
+        [one] Не учтено, { $count } серия на телефоне
+        [few] Не учтено, { $count } серии на телефоне
+        [many] Не учтено, { $count } серий на телефоне
+       *[other] Не учтено, { $count } серии на телефоне
+    }
+
+## Ещё, О приложении
+
+about-ratings = Рейтинги
+about-ratings-credit = Информация предоставлена IMDb (https://www.imdb.com). Используется с разрешения.
+
+## Отметки серий на странице сериала
+
+mark-menu-watched = Отметить просмотренным до этой серии
+mark-menu-unwatched = Отметить непросмотренным с этой серии
+mark-menu-cancel = Отмена
+mark-watched-up-to = Просмотрено до серии { $episode }
+mark-unwatched-from = Не просмотрено с серии { $episode }
+mark-not-connected = { $reason } Войдите: Ещё, Аккаунты.
+
+## Плеер
+
+player-speed-not-while-casting = Нельзя при трансляции
+
+## Загрузки
+
+downloads-other-release-on-disk = Другой релиз на диске

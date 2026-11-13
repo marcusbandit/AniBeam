@@ -106,7 +106,7 @@ look-text-size-note = Jak duży jest tekst w całym AniBeam, dodatkowo do rozmia
 
 ## The window: tabs and the sheets over every page
 
-app-name = AniBeam
+app-title = AniBeam
 nav-home = Start
 nav-calendar = Kalendarz
 nav-library = Biblioteka
@@ -1460,3 +1460,149 @@ remote-missing = Brakuje
 remote-on-computer = Na Twoim komputerze
 remote-out = Wyszło { $ago }
 remote-season-episode = Sezon { $season }, odcinek { $n }
+
+## Wyszukiwarka w Więcej: słowa, które ktoś mógłby wpisać dla każdego ustawienia
+
+more-words-ratings = imdb autorzy oceny ocena notowania
+
+## Postacie, powiązane seriale i polecenia serialu
+
+show-format-series = Serial
+
+## Odcinki i daty: liczba odcinków i daty emisji sezonu, ustawiane ręcznie
+
+dates-title = Odcinki i daty
+dates-season-line = { $title } · Sezon { $season }
+dates-paste-open = Wklej listę
+dates-paste-done = Gotowe
+dates-paste-hint = Wklej listę premier, tabelę lub wpis
+dates-paste-note = To, co AniBeam odczyta, pojawi się przy odcinkach poniżej.
+dates-tap-hint = Dotknij odcinka, aby ustawić datę.
+dates-run = Wybierz zakres
+dates-field-hint = 7 sty, marzec 2027, 2027
+dates-set = Ustaw datę
+dates-no-date = Bez daty
+dates-weekly = Co tydzień
+dates-last = Ostatni odcinek
+dates-not-last = Nie ostatni
+dates-clear = Wyczyść datę
+dates-save = Zapisz
+dates-saving = Zapisywanie
+dates-cancel = Anuluj
+dates-change = Zmień
+dates-picked-one = Odcinek { $episode }:
+dates-picked-many =
+    { $count ->
+        [one] { $count } odcinek:
+        [few] { $count } odcinki:
+        [many] { $count } odcinków:
+       *[other] { $count } odcinków:
+    }
+dates-saved = Zapisano.
+dates-cleared = Notatki wyczyszczone.
+dates-starting = AniBeam jeszcze się uruchamia. Spróbuj za chwilę.
+dates-tile-out = Wyszło
+dates-tile-last = Ostatni
+dates-tile-none = Brak daty
+dates-tile-guess = ≈ { $date }
+dates-summary-none = Nic nie ustawiono
+dates-summary-ends = Kończy się na odcinku { $episode }
+dates-summary-record =
+    { $count ->
+        [one] { $count }: daty z { $site }
+        [few] { $count }: daty z { $site }
+        [many] { $count }: daty z { $site }
+       *[other] { $count }: daty z { $site }
+    }
+dates-summary-record-unnamed =
+    { $count ->
+        [one] { $count }: daty z bazy
+        [few] { $count }: daty z bazy
+        [many] { $count }: daty z bazy
+       *[other] { $count }: daty z bazy
+    }
+dates-summary-set =
+    { $count ->
+        [one] Ręcznie: { $count }
+        [few] Ręcznie: { $count }
+        [many] Ręcznie: { $count }
+       *[other] Ręcznie: { $count }
+    }
+dates-summary-guessed =
+    { $count ->
+        [one] Szacunek co tydzień: { $count }
+        [few] Szacunek co tydzień: { $count }
+        [many] Szacunek co tydzień: { $count }
+       *[other] Szacunek co tydzień: { $count }
+    }
+dates-told-one = Odcinek { $episode }
+dates-told-many = Odcinki od { $first } do { $last }
+dates-told-undated = { $episodes }: jeszcze bez daty
+dates-told-due = { $episodes }: za { $when }
+dates-told-ends = Kończy się na odcinku { $episode }
+dates-told-season-ends = Sezon { $season } kończy się na odcinku { $episode }
+dates-told-by-you = { $told }, ustawiono ręcznie
+dates-told-gave-way =
+    { $count ->
+        [one] Ręcznie ustawiono { $count } odcinek; to już nie obowiązuje
+        [few] Ręcznie ustawiono { $count } odcinki; to już nie obowiązuje
+        [many] Ręcznie ustawiono { $count } odcinków; to już nie obowiązuje
+       *[other] Ręcznie ustawiono { $count } odcinka; to już nie obowiązuje
+    }
+
+## Strona serialu
+
+series-runtime =
+    { $hours ->
+        [0] { $minutes } min
+       *[other] { $minutes ->
+            [0] { $hours } h
+           *[other] { $hours } h { $minutes } min
+        }
+    }
+series-runtime-each = po { $runtime }
+series-status-airing = Emitowane
+series-status-finished = Zakończone
+series-status-upcoming = Wkrótce
+series-status-cancelled = Anulowane
+series-status-hiatus = Na przerwie
+series-average-score = Średnia ocena { $score }
+series-imdb = IMDb { $score }
+series-imdb-votes = IMDb { $score }, głosów: { $votes }
+series-rewatched =
+    { $count ->
+        [one] Obejrzano ponownie { $count } raz
+        [few] Obejrzano ponownie { $count } razy
+        [many] Obejrzano ponownie { $count } razy
+       *[other] Obejrzano ponownie { $count } raza
+    }
+series-not-tracked = Nie zapisano
+series-not-tracked-on-phone =
+    { $count ->
+        [one] Nie zapisano, { $count } odcinek w telefonie
+        [few] Nie zapisano, { $count } odcinki w telefonie
+        [many] Nie zapisano, { $count } odcinków w telefonie
+       *[other] Nie zapisano, { $count } odcinka w telefonie
+    }
+
+## Więcej, Info
+
+about-ratings = Oceny
+about-ratings-credit = Informacje dzięki uprzejmości IMDb (https://www.imdb.com). Użyte za zgodą.
+
+## Oznaczanie odcinków na stronie serialu
+
+mark-menu-watched = Oznacz jako obejrzane do tego miejsca
+mark-menu-unwatched = Oznacz jako nieobejrzane od tego miejsca
+mark-menu-cancel = Anuluj
+mark-watched-up-to = Obejrzano do odcinka { $episode }
+mark-unwatched-from = Nieobejrzane od odcinka { $episode }
+mark-not-connected = { $reason } Zaloguj się w Więcej, Konta.
+
+## Odtwarzacz
+
+player-speed-not-while-casting = Nie przy przesyłaniu
+
+## Pobrane
+
+downloads-other-release-on-disk = Inne wydanie na dysku

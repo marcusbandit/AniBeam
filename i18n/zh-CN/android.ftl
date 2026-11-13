@@ -101,7 +101,7 @@ look-text-size-note = AniBeam 内所有文字的大小，叠加在手机自身�
 
 ## The window: tabs and the sheets over every page
 
-app-name = AniBeam
+app-title = AniBeam
 nav-home = 首页
 nav-calendar = 日历
 nav-library = 媒体库
@@ -1181,3 +1181,101 @@ remote-missing = 缺失
 remote-on-computer = 在你的电脑上
 remote-out = { $ago }播出
 remote-season-episode = 第{ $season }季，第{ $n }集
+
+## More's search: the words a person might type for each setting
+
+more-words-ratings = imdb 版权 评分 评价 打分
+
+## A show's characters, related shows and recommendations
+
+show-format-series = 剧集
+
+## Episodes and dates: a season's episode count and air dates, set by hand
+
+dates-title = 集数与日期
+dates-season-line = { $title } · 第{ $season }季
+dates-paste-open = 粘贴列表
+dates-paste-done = 粘贴完成
+dates-paste-hint = 粘贴发布列表、表格或帖子
+dates-paste-note = AniBeam 读取的内容会显示在下方剧集上。
+dates-tap-hint = 点按某一集来设置日期。
+dates-run = 选择范围
+dates-field-hint = 1月7日、2027年3月、2027年
+dates-set = 设置日期
+dates-no-date = 暂无日期
+dates-weekly = 每周
+dates-last = 最后一集
+dates-not-last = 非最后一集
+dates-clear = 清除日期
+dates-save = 保存
+dates-saving = 正在保存
+dates-cancel = 取消
+dates-change = 更改
+dates-picked-one = 第{ $episode }集：
+dates-picked-many = 已选 { $count } 集：
+dates-saved = 已保存。
+dates-cleared = 已清除排期备注。
+dates-starting = AniBeam 仍在启动，请稍后再试。
+dates-tile-out = 已播出
+dates-tile-last = 最后
+dates-tile-none = 无日期
+dates-tile-guess = ≈ { $date }
+dates-summary-none = 尚未设置
+dates-summary-ends = 第{ $episode }集完结
+dates-summary-record = { $count } 集日期来自 { $site }
+dates-summary-record-unnamed = { $count } 集日期来自记录
+dates-summary-set = { $count } 集由你设置
+dates-summary-guessed = { $count } 集按每周推算
+dates-told-one = 第{ $episode }集
+dates-told-many = 第{ $first }至{ $last }集
+dates-told-undated = { $episodes }暂无日期
+dates-told-due = { $episodes }将在{ $when }后播出
+dates-told-ends = 第{ $episode }集完结
+dates-told-season-ends = 第{ $season }季到第{ $episode }集完结
+dates-told-by-you = { $told }，由你设置
+dates-told-gave-way = 你设置的 { $count } 集已不再适用
+
+## The series page
+
+series-runtime =
+    { $hours ->
+        [0] { $minutes }分钟
+       *[other] { $minutes ->
+            [0] { $hours }小时
+           *[other] { $hours }小时{ $minutes }分钟
+        }
+    }
+series-runtime-each = 每集 { $runtime }
+series-status-airing = 播出中
+series-status-finished = 已完结
+series-status-upcoming = 即将播出
+series-status-cancelled = 已取消
+series-status-hiatus = 暂停播出
+series-average-score = 平均评分 { $score }
+series-imdb = IMDb { $score }
+series-imdb-votes = IMDb { $score }（{ $votes } 人评分）
+series-rewatched = 重看 { $count } 次
+
+## More, About
+
+about-ratings = 评分
+about-ratings-credit = 信息由 IMDb（https://www.imdb.com）提供，经授权使用。
+
+## Marking episodes on the series page
+
+mark-menu-watched = 标为已看到此处
+mark-menu-unwatched = 从此处标为未看
+mark-menu-cancel = 取消
+mark-watched-up-to = 已看到第{ $episode }集
+mark-unwatched-from = 从第{ $episode }集起标为未看
+mark-not-connected = { $reason }请在“更多”的“账号”中登录。
+series-not-tracked = 未追踪
+series-not-tracked-on-phone = 未追踪，这部手机上有 { $count } 集
+
+## The player
+
+player-speed-not-while-casting = 投放时不可用
+
+## Downloads
+
+downloads-other-release-on-disk = 已有其他发布版本

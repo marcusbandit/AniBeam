@@ -104,7 +104,7 @@ look-text-size-note = El tamaño del texto en todo AniBeam, además del tamaño 
 
 ## The window: tabs and the sheets over every page
 
-app-name = AniBeam
+app-title = AniBeam
 nav-home = Inicio
 nav-calendar = Calendario
 nav-library = Biblioteca
@@ -1345,3 +1345,127 @@ remote-missing = Falta
 remote-on-computer = En tu ordenador
 remote-out = Salió { $ago }
 remote-season-episode = Temporada { $season }, episodio { $n }
+
+## Episodes and dates: a season's episode count and air dates, set by hand
+
+more-words-ratings = imdb créditos puntuaciones valoraciones notas
+show-format-series = Serie
+dates-title = Episodios y fechas
+dates-season-line = { $title } · Temporada { $season }
+dates-paste-open = Pegar una lista
+dates-paste-done = Hecho
+dates-paste-hint = Pega una lista de estrenos, una tabla o una publicación
+dates-paste-note = Lo que AniBeam lee aparece en los episodios de abajo.
+dates-tap-hint = Toca un episodio para ponerle fecha.
+dates-run = Elige un tramo
+dates-field-hint = 7 ene, marzo 2027, 2027
+dates-set = Fijar fecha
+dates-no-date = Sin fecha aún
+dates-weekly = Semanal
+dates-last = Último
+dates-not-last = No es el último
+dates-clear = Quitar fecha
+dates-save = Guardar
+dates-saving = Guardando
+dates-cancel = Cancelar
+dates-change = Cambiar
+dates-picked-one = Episodio { $episode }:
+dates-picked-many =
+    { $count ->
+        [one] { $count } episodio:
+       *[other] { $count } episodios:
+    }
+dates-saved = Guardado.
+dates-cleared = Notas del calendario borradas.
+dates-starting = AniBeam aún está arrancando. Inténtalo de nuevo en un momento.
+dates-tile-out = Salió
+dates-tile-last = Último
+dates-tile-none = Sin fecha
+dates-tile-guess = ≈ { $date }
+dates-summary-none = Nada fijado aún
+dates-summary-ends = Termina en el episodio { $episode }
+dates-summary-record =
+    { $count ->
+        [one] { $count } con fecha de { $site }
+       *[other] { $count } con fecha de { $site }
+    }
+dates-summary-record-unnamed =
+    { $count ->
+        [one] { $count } con fecha del registro
+       *[other] { $count } con fecha del registro
+    }
+dates-summary-set =
+    { $count ->
+        [one] { $count } fijado por ti
+       *[other] { $count } fijados por ti
+    }
+dates-summary-guessed =
+    { $count ->
+        [one] { $count } estimado semanal
+       *[other] { $count } estimados semanales
+    }
+dates-told-one = Episodio { $episode }
+dates-told-many = Episodios { $first } a { $last }
+dates-told-undated = { $episodes } sin fecha aún
+dates-told-due = { $episodes } en { $when }
+dates-told-ends = Termina en el episodio { $episode }
+dates-told-season-ends = La temporada { $season } termina en el episodio { $episode }
+dates-told-by-you = { $told }, fijado por ti
+dates-told-gave-way =
+    { $count ->
+        [one] Fijaste { $count } episodio; ya no se aplica
+       *[other] Fijaste { $count } episodios; ya no se aplica
+    }
+
+## The series page
+
+series-runtime =
+    { $hours ->
+        [0] { $minutes } min
+       *[other] { $minutes ->
+            [0] { $hours } h
+           *[other] { $hours } h { $minutes } min
+        }
+    }
+series-runtime-each = { $runtime } cada uno
+series-status-airing = En emisión
+series-status-finished = Finalizada
+series-status-upcoming = Próximamente
+series-status-cancelled = Cancelada
+series-status-hiatus = En pausa
+series-average-score = Nota media { $score }
+series-imdb = IMDb { $score }
+series-imdb-votes = IMDb { $score } de { $votes } votos
+series-rewatched =
+    { $count ->
+        [one] Vuelta a ver { $count } vez
+       *[other] Vuelta a ver { $count } veces
+    }
+series-not-tracked = Sin seguimiento
+series-not-tracked-on-phone =
+    { $count ->
+        [one] Sin seguimiento, { $count } episodio en este móvil
+       *[other] Sin seguimiento, { $count } episodios en este móvil
+    }
+
+## More, About
+
+about-ratings = Notas
+about-ratings-credit = Información cortesía de IMDb (https://www.imdb.com). Usada con permiso.
+
+## Marking episodes on the series page
+
+mark-menu-watched = Marcar como visto hasta aquí
+mark-menu-unwatched = Marcar como no visto desde aquí
+mark-menu-cancel = Cancelar
+mark-watched-up-to = Visto hasta el episodio { $episode }
+mark-unwatched-from = Sin ver desde el episodio { $episode }
+mark-not-connected = { $reason } Inicia sesión en Más, Cuentas.
+
+## The player
+
+player-speed-not-while-casting = No al enviar
+
+## Downloads
+
+downloads-other-release-on-disk = Otra versión en disco

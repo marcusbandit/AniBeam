@@ -109,7 +109,7 @@ look-text-size-note = How big the words are everywhere in AniBeam, on top of you
 
 ## The window: tabs and the sheets over every page
 
-app-name = AniBeam
+app-title = AniBeam
 nav-home = Home
 nav-calendar = Calendar
 nav-library = Library

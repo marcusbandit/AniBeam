@@ -169,7 +169,7 @@ fn lookup(id: &str, args: &slint::ModelRc<SharedString>) -> String {
         .iter()
         .map(|[k, v]| match k.strip_prefix('#') {
             Some(name) => (name, tr::Arg::Num(v.parse().unwrap_or(0.0))),
-            None => (k.as_str(), tr::Arg::Str(v.to_string())),
+            None => (k.as_str(), tr::Arg::from(v.to_string())),
         })
         .collect();
     tr::tr(id, &pairs)

@@ -104,7 +104,7 @@ look-text-size-note = Hoe groot de tekst overal in AniBeam is, bovenop de groott
 
 ## Het venster: tabs en de sheets boven elke pagina
 
-app-name = AniBeam
+app-title = AniBeam
 nav-home = Start
 nav-calendar = Agenda
 nav-library = Bibliotheek
@@ -1345,3 +1345,125 @@ remote-missing = Ontbreekt
 remote-on-computer = Op je computer
 remote-out = Uit { $ago }
 remote-season-episode = Seizoen { $season }, aflevering { $n }
+
+## Beoordelingswoorden in zoeken
+more-words-ratings = imdb credits scores beoordelingen cijfers
+
+## Formaat
+show-format-series = Serie
+
+## Afleveringen en data
+dates-title = Afleveringen en data
+dates-season-line = { $title } · Seizoen { $season }
+dates-paste-open = Plak een lijst
+dates-paste-done = Klaar
+dates-paste-hint = Plak een uitzendlijst, een tabel of een bericht
+dates-paste-note = Wat AniBeam leest, zie je bij de afleveringen hieronder.
+dates-tap-hint = Tik op een aflevering om die een datum te geven.
+dates-run = Kies een reeks
+dates-field-hint = 7 jan, maart 2027, 2027
+dates-set = Datum zetten
+dates-no-date = Nog geen datum
+dates-weekly = Wekelijks
+dates-last = Laatste afl.
+dates-not-last = Niet de laatste
+dates-clear = Datum wissen
+dates-save = Opslaan
+dates-saving = Opslaan...
+dates-cancel = Annuleren
+dates-change = Wijzigen
+dates-picked-one = Aflevering { $episode }:
+dates-picked-many =
+    { $count ->
+        [one] { $count } aflevering:
+       *[other] { $count } afleveringen:
+    }
+dates-saved = Opgeslagen.
+dates-cleared = Datumnotities gewist.
+dates-starting = AniBeam is nog aan het starten. Probeer het zo opnieuw.
+dates-tile-out = Uit
+dates-tile-last = Laatste
+dates-tile-none = Geen datum
+dates-tile-guess = ≈ { $date }
+dates-summary-none = Nog niets ingesteld
+dates-summary-ends = Eindigt bij aflevering { $episode }
+dates-summary-record =
+    { $count ->
+        [one] { $count } gedateerd door { $site }
+       *[other] { $count } gedateerd door { $site }
+    }
+dates-summary-record-unnamed =
+    { $count ->
+        [one] { $count } gedateerd door de bron
+       *[other] { $count } gedateerd door de bron
+    }
+dates-summary-set =
+    { $count ->
+        [one] { $count } zelf gezet
+       *[other] { $count } zelf gezet
+    }
+dates-summary-guessed =
+    { $count ->
+        [one] { $count } wekelijks geschat
+       *[other] { $count } wekelijks geschat
+    }
+dates-told-one = Aflevering { $episode }
+dates-told-many = Afleveringen { $first } tot { $last }
+dates-told-undated = { $episodes } nog zonder datum
+dates-told-due = { $episodes } verwacht over { $when }
+dates-told-ends = Eindigt bij aflevering { $episode }
+dates-told-season-ends = Seizoen { $season } eindigt bij aflevering { $episode }
+dates-told-by-you = { $told }, zelf gezet
+dates-told-gave-way =
+    { $count ->
+        [one] Je stelde { $count } aflevering in; die geldt niet meer
+       *[other] Je stelde { $count } afleveringen in; die gelden niet meer
+    }
+
+## Seriegegevens
+series-runtime =
+    { $hours ->
+        [0] { $minutes } min
+       *[other] { $minutes ->
+            [0] { $hours } u
+           *[other] { $hours } u { $minutes } min
+        }
+    }
+series-runtime-each = { $runtime } per afl.
+series-status-airing = Lopend
+series-status-finished = Afgelopen
+series-status-upcoming = Binnenkort
+series-status-cancelled = Stopgezet
+series-status-hiatus = Op pauze
+series-average-score = Gemiddeld { $score }
+series-imdb = IMDb { $score }
+series-imdb-votes = IMDb { $score } uit { $votes } stemmen
+series-rewatched =
+    { $count ->
+        [one] { $count } keer opnieuw gekeken
+       *[other] { $count } keer opnieuw gekeken
+    }
+
+## Over, beoordelingen
+about-ratings = Scores
+about-ratings-credit = Informatie met dank aan IMDb (https://www.imdb.com). Gebruikt met toestemming.
+
+## Afleveringen markeren op de seriepagina
+mark-menu-watched = Markeer gekeken tot hier
+mark-menu-unwatched = Markeer ongekeken vanaf hier
+mark-menu-cancel = Annuleren
+mark-watched-up-to = Gekeken tot aflevering { $episode }
+mark-unwatched-from = Niet gekeken vanaf aflevering { $episode }
+mark-not-connected = { $reason } Log in onder Meer, Accounts.
+series-not-tracked = Niet getrackt
+series-not-tracked-on-phone =
+    { $count ->
+        [one] Niet getrackt, { $count } aflevering op deze telefoon
+       *[other] Niet getrackt, { $count } afleveringen op deze telefoon
+    }
+
+## Speler
+player-speed-not-while-casting = Niet tijdens casten
+
+## Downloads
+downloads-other-release-on-disk = Andere release op schijf

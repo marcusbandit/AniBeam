@@ -23,7 +23,8 @@ pub mod anilist;
 pub mod calendar;
 pub mod client;
 pub mod format;
-pub mod i18n;
+/// The core's catalog lookup, so the screens' words and dates come from one place.
+pub use anibeam_core::i18n;
 pub mod library;
 pub mod schedule;
 pub mod store;

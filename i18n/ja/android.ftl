@@ -101,7 +101,7 @@ look-text-size-note = AniBeam全体の文字の大きさです。端末のフォ
 
 ## The window: tabs and the sheets over every page
 
-app-name = AniBeam
+app-title = AniBeam
 nav-home = ホーム
 nav-calendar = カレンダー
 nav-library = ライブラリ
@@ -1181,3 +1181,101 @@ remote-missing = 未入手
 remote-on-computer = パソコン内
 remote-out = { $ago }に公開
 remote-season-episode = シーズン{ $season } 第{ $n }話
+
+## More's search: the words a person might type for each setting
+
+more-words-ratings = imdb クレジット スコア 評価 レーティング
+
+## A show's characters, related shows and recommendations
+
+show-format-series = シリーズ
+
+## Episodes and dates: a season's episode count and air dates, set by hand
+
+dates-title = エピソードと日付
+dates-season-line = { $title } · シーズン{ $season }
+dates-paste-open = リストを貼り付け
+dates-paste-done = 貼り付け完了
+dates-paste-hint = リリースリスト、表、投稿を貼り付け
+dates-paste-note = AniBeamが読み取った内容は下のエピソードに表示されます。
+dates-tap-hint = エピソードをタップして日付を設定します。
+dates-run = 範囲を選択
+dates-field-hint = 1月7日、2027年3月、2027年
+dates-set = 日付を設定
+dates-no-date = 日付未設定
+dates-weekly = 毎週
+dates-last = 最終話
+dates-not-last = 最終話ではない
+dates-clear = 日付を消去
+dates-save = 保存
+dates-saving = 保存中
+dates-cancel = キャンセル
+dates-change = 変更
+dates-picked-one = 第{ $episode }話:
+dates-picked-many = { $count }話:
+dates-saved = 保存済み
+dates-cleared = 放送予定のメモを消去しました。
+dates-starting = AniBeamを起動中です。少し待ってからもう一度お試しください。
+dates-tile-out = 公開
+dates-tile-last = 最終
+dates-tile-none = 日付なし
+dates-tile-guess = ≈ { $date }
+dates-summary-none = 未設定
+dates-summary-ends = 第{ $episode }話で完結
+dates-summary-record = { $count }話は{ $site }の日付
+dates-summary-record-unnamed = { $count }話は記録の日付
+dates-summary-set = { $count }話は手動で設定
+dates-summary-guessed = { $count }話は毎週と推定
+dates-told-one = 第{ $episode }話
+dates-told-many = 第{ $first }話から第{ $last }話
+dates-told-undated = { $episodes }は日付未定
+dates-told-due = { $episodes }は{ $when }後に公開
+dates-told-ends = 第{ $episode }話で完結
+dates-told-season-ends = シーズン{ $season }は第{ $episode }話で完結
+dates-told-by-you = { $told }（手動で設定）
+dates-told-gave-way = 手動で設定した{ $count }話は、現在は適用されません
+
+## The series page
+
+series-runtime =
+    { $hours ->
+        [0] { $minutes }分
+       *[other] { $minutes ->
+            [0] { $hours }時間
+           *[other] { $hours }時間{ $minutes }分
+        }
+    }
+series-runtime-each = 各話{ $runtime }
+series-status-airing = 放送中
+series-status-finished = 完結
+series-status-upcoming = 放送予定
+series-status-cancelled = 中止
+series-status-hiatus = 休止中
+series-average-score = 平均スコア { $score }
+series-imdb = IMDb { $score }
+series-imdb-votes = IMDb { $score }（{ $votes }票）
+series-rewatched = 再視聴 { $count }回
+
+## More, About
+
+about-ratings = 評価
+about-ratings-credit = 情報提供: IMDb (https://www.imdb.com)。許可を得て使用しています。
+
+## Marking episodes on the series page
+
+mark-menu-watched = ここまで視聴済みにする
+mark-menu-unwatched = ここから未視聴にする
+mark-menu-cancel = キャンセル
+mark-watched-up-to = 第{ $episode }話まで視聴済み
+mark-unwatched-from = 第{ $episode }話から未視聴
+mark-not-connected = { $reason }「その他」の「アカウント」からログインしてください。
+series-not-tracked = 未トラッキング
+series-not-tracked-on-phone = 未トラッキング、この端末に{ $count }話
+
+## The player
+
+player-speed-not-while-casting = キャスト中は変更不可
+
+## Downloads
+
+downloads-other-release-on-disk = 別のリリースが保存済み

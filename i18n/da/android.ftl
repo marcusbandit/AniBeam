@@ -104,7 +104,7 @@ look-text-size-note = Hvor stor teksten er overalt i AniBeam, oven i telefonens 
 
 ## Vinduet: faner og ark over alle sider
 
-app-name = AniBeam
+app-title = AniBeam
 nav-home = Hjem
 nav-calendar = Kalender
 nav-library = Bibliotek
@@ -1348,3 +1348,125 @@ remote-missing = Mangler
 remote-on-computer = På din computer
 remote-out = Udkom { $ago }
 remote-season-episode = Sæson { $season }, afsnit { $n }
+
+## Rating-ord i søgning
+more-words-ratings = imdb kreditter score bedømmelser karakter
+
+## Format
+show-format-series = Serie
+
+## Afsnit og datoer
+dates-title = Afsnit og datoer
+dates-season-line = { $title } · Sæson { $season }
+dates-paste-open = Indsæt en liste
+dates-paste-done = Færdig
+dates-paste-hint = Indsæt en udgivelsesliste, en tabel eller et opslag
+dates-paste-note = Det AniBeam læser, vises på afsnittene nedenfor.
+dates-tap-hint = Tryk på et afsnit for at give det en dato.
+dates-run = Vælg en række
+dates-field-hint = 7. jan., marts 2027, 2027
+dates-set = Sæt dato
+dates-no-date = Ingen dato
+dates-weekly = Ugentligt
+dates-last = Sidste afsnit
+dates-not-last = Ikke sidste
+dates-clear = Ryd dato
+dates-save = Gem
+dates-saving = Gemmer
+dates-cancel = Annuller
+dates-change = Ændre
+dates-picked-one = Afsnit { $episode }:
+dates-picked-many =
+    { $count ->
+        [one] { $count } afsnit:
+       *[other] { $count } afsnit:
+    }
+dates-saved = Gemt.
+dates-cleared = Datonoter ryddet.
+dates-starting = AniBeam starter stadig. Prøv igen om lidt.
+dates-tile-out = Udkom
+dates-tile-last = Sidste
+dates-tile-none = Ingen dato
+dates-tile-guess = ≈ { $date }
+dates-summary-none = Intet sat endnu
+dates-summary-ends = Slutter ved afsnit { $episode }
+dates-summary-record =
+    { $count ->
+        [one] { $count } dateret af { $site }
+       *[other] { $count } dateret af { $site }
+    }
+dates-summary-record-unnamed =
+    { $count ->
+        [one] { $count } dateret af kilden
+       *[other] { $count } dateret af kilden
+    }
+dates-summary-set =
+    { $count ->
+        [one] { $count } sat af dig
+       *[other] { $count } sat af dig
+    }
+dates-summary-guessed =
+    { $count ->
+        [one] { $count } gættet ugentligt
+       *[other] { $count } gættet ugentligt
+    }
+dates-told-one = Afsnit { $episode }
+dates-told-many = Afsnit { $first } til { $last }
+dates-told-undated = { $episodes } har ingen dato endnu
+dates-told-due = { $episodes } forventes om { $when }
+dates-told-ends = Slutter ved afsnit { $episode }
+dates-told-season-ends = Sæson { $season } slutter ved afsnit { $episode }
+dates-told-by-you = { $told }, sat af dig
+dates-told-gave-way =
+    { $count ->
+        [one] Du satte { $count } afsnit; det gælder ikke længere
+       *[other] Du satte { $count } afsnit; de gælder ikke længere
+    }
+
+## Seriens fakta
+series-runtime =
+    { $hours ->
+        [0] { $minutes } min
+       *[other] { $minutes ->
+            [0] { $hours } t
+           *[other] { $hours } t { $minutes } min
+        }
+    }
+series-runtime-each = { $runtime } hver
+series-status-airing = Sendes
+series-status-finished = Afsluttet
+series-status-upcoming = Kommer
+series-status-cancelled = Aflyst
+series-status-hiatus = På pause
+series-average-score = Gennemsnit { $score }
+series-imdb = IMDb { $score }
+series-imdb-votes = IMDb { $score } fra { $votes } stemmer
+series-rewatched =
+    { $count ->
+        [one] Set igen { $count } gang
+       *[other] Set igen { $count } gange
+    }
+
+## Om, bedømmelser
+about-ratings = Bedømmelser
+about-ratings-credit = Oplysninger stillet til rådighed af IMDb (https://www.imdb.com). Brugt med tilladelse.
+
+## Markér afsnit på seriesiden
+mark-menu-watched = Markér som set indtil her
+mark-menu-unwatched = Markér som uset herfra
+mark-menu-cancel = Annuller
+mark-watched-up-to = Set til og med afsnit { $episode }
+mark-unwatched-from = Uset fra afsnit { $episode }
+mark-not-connected = { $reason } Log ind under Mere, Konti.
+series-not-tracked = Ikke tracket
+series-not-tracked-on-phone =
+    { $count ->
+        [one] Ikke tracket, { $count } afsnit på denne telefon
+       *[other] Ikke tracket, { $count } afsnit på denne telefon
+    }
+
+## Afspiller
+player-speed-not-while-casting = Ikke under cast
+
+## Downloads
+downloads-other-release-on-disk = Anden udgivelse på disk
