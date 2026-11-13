@@ -48,7 +48,14 @@ pub mod qobject {
         #[qproperty(QString, drive)]
         #[qproperty(QString, drive_out)]
         #[qproperty(QString, settings_url)]
+        /// The watch together room code this run was started with, from an
+        /// `anibeam://room/<code>` link; empty when there was none (#846).
+        #[qproperty(QString, room_link)]
         type Shell = super::ShellRust;
+
+        /// A second launch handed over an `anibeam://room/<code>` link: join that room.
+        #[qsignal]
+        fn room_link_opened(self: Pin<&mut Self>, code: QString);
 
         /// A second launch, or MPRIS Raise, asked for the window; the token is the launcher's.
         #[qsignal]
@@ -186,6 +193,10 @@ pub mod qobject {
         /// The next exit opens the readied update; QML quits the app right after.
         #[qinvokable]
         fn restart_for_update(self: &Self);
+        /// `text` as a QR code: an SVG data URL an Image shows, black modules on white with
+        /// the quiet zone, or empty when the text is too long for one (#846).
+        #[qinvokable]
+        fn qr_code(self: &Self, text: &QString) -> QString;
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -205,6 +216,7 @@ pub struct ShellRust {
     drive: QString,
     drive_out: QString,
     settings_url: QString,
+    room_link: QString,
 }
 
 impl Default for ShellRust {
@@ -245,6 +257,13 @@ impl Default for ShellRust {
             drive: QString::from(drive.as_str()),
             drive_out: QString::from(drive_out.as_str()),
             settings_url: settings_url(&crate::runtime::paths().config_dir()),
+            room_link: QString::from(
+                a.link
+                    .as_deref()
+                    .and_then(crate::args::room_code)
+                    .unwrap_or_default()
+                    .as_str(),
+            ),
         }
     }
 }
@@ -267,7 +286,30 @@ const NOTES: &str = include_str!("../../CHANGELOG.md");
 /// The notes in changes/ that have not shipped yet, which show under the newest heading.
 const CHANGES: &[&str] = include!(concat!(env!("OUT_DIR"), "/changes.rs"));
 
+/// `text` as an SVG QR code in a data URL, or empty when it does not fit in one.
+pub fn qr_data_url(text: &str) -> String {
+    use base64::Engine;
+    let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else {
+        return String::new();
+    };
+    let svg = code
+        .render::<qrcode::render::svg::Color>()
+        .min_dimensions(256, 256)
+        .dark_color(qrcode::render::svg::Color("#000000"))
+        .light_color(qrcode::render::svg::Color("#ffffff"))
+        .quiet_zone(true)
+        .build();
+    format!(
+        "data:image/svg+xml;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(svg)
+    )
+}
+
 impl qobject::Shell {
+    pub fn qr_code(&self, text: &QString) -> QString {
+        QString::from(qr_data_url(&text.to_string()).as_str())
+    }
+
     pub fn first_run(
         &self,
         done: bool,
@@ -676,6 +718,27 @@ impl qobject::Shell {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_room_link_becomes_an_svg_qr_code() {
+        use base64::Engine;
+        let url = super::qr_data_url("https://rooms.example.com/K7QM2X");
+        let b64 = url
+            .strip_prefix("data:image/svg+xml;base64,")
+            .expect("an SVG data URL");
+        let svg = String::from_utf8(
+            base64::engine::general_purpose::STANDARD
+                .decode(b64)
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(svg.contains("<svg") && svg.contains("#000000"), "{svg}");
+        assert_eq!(
+            super::qr_data_url(&"x".repeat(8000)),
+            "",
+            "too long for a code"
+        );
+    }
+
     /// The url is absolute whatever the root was given as, and the characters a url
     /// would read as delimiters are escaped into the path.
     #[test]

@@ -30,6 +30,9 @@ notify-debouncer-full = "0.7"
 material-colors = { version = "=0.4.2", default-features = false, features = ["std"] }
 toml_edit = "0.25"
 percent-encoding = "2"
+# The watch together room's QR code, drawn as SVG and nothing else (#846)
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+base64 = "0.23"
 
 [build-dependencies]
 cxx-qt-build = "=0.10.0"

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "recs", "host-api", "apps/cli", "apps/linux"]
+members = ["core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
 
 [workspace.package]
 version = "2.5.0"
@@ -13,6 +13,7 @@ repository = "https://github.com/marcusbandit/AniBeam"
 anibeam-core = { path = "core" }
 anibeam-host-api = { path = "host-api" }
 anibeam-recs = { path = "recs" }
+anibeam-room = { path = "room" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

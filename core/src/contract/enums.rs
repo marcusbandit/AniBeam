@@ -369,6 +369,24 @@ pub enum SkipKind {
     Outro,
 }
 
+/// What a member of a watch together room does to everyone's player (#846): `Play` and
+/// `Pause` carry the position too, `Seek` keeps whether the room plays.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+pub enum RoomAction {
+    Play,
+    Pause,
+    Seek,
+}
+
+/// Whether a member of a room has the episode open: `Ready` once their player is
+/// attached, `Missing` when their library lacks it, `Loading` in between.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+pub enum RoomReady {
+    Ready,
+    Missing,
+    Loading,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum SkipSource {
     Chapters,

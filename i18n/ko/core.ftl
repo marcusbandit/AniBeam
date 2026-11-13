@@ -1180,3 +1180,25 @@ core-subscriptions-stopped-said = 멈췄어요: { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = 이름은 1~{ $max }자이고 제어 문자는 쓸 수 없어요
+core-prefs-room-relay = 릴레이 주소는 https:// 또는 http://로 시작해야 해요
+core-room-service = 함께 보기
+core-room-not-found = 그 코드의 방이 없어요. 닫혔을 수 있어요.
+core-room-full = 방이 꽉 찼어요.
+core-room-proto = 그 릴레이는 다른 버전의 방을 써요. 참여하려면 { -app-name }을(를) 업데이트하세요.
+core-room-unreachable = 릴레이에 연결하지 못했어요: { $message }
+core-room-refused = 릴레이가 거부했어요: { $message }
+core-room-not-in = 방에 있지 않아요.
+core-room-no-name = 방에서 다른 사람에게 보일 이름을 정하세요
+core-room-bad-code = 방 코드는 영문자와 숫자 6자예요
+core-room-created = 함께 보기 방을 만들었어요. 코드는 { $code }예요.
+core-room-joined = 함께 보기 방 { $code }에 참여했어요.
+core-room-left = 함께 보기 방에서 나왔어요.
+core-room-member-joined = { $name }님이 방에 들어왔어요.
+core-room-member-left = { $name }님이 방에서 나갔어요.
+core-room-closed = 함께 보기 방이 닫혔어요.
+core-room-lost = 함께 보기 방과 연결이 끊겼어요. 다시 시도하는 중이에요.
+core-room-back = 함께 보기 방에 다시 연결됐어요.

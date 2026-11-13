@@ -476,6 +476,8 @@ core-prefs-provider-count = { $provider } appears { $count } times; every provid
 # A setting out of its bounds: $value is outside $low to $high.
 core-prefs-outside = { $value } is outside { $low } to { $high }
 core-prefs-empty = empty
+core-prefs-room-name = a name is 1 to { $max } characters, with no control characters
+core-prefs-room-relay = the relay address must start with https:// or http://
 
 ## core/src/recommended/mod.rs
 
@@ -560,6 +562,28 @@ core-paths-no-home = no home directory
 ## core/src/first_run.rs
 
 core-first-run-not-absolute = the videos folder must be an absolute path
+
+## core/src/room/mod.rs
+
+# The service named in a watch together error: "Watch together: That room is full."
+core-room-service = Watch together
+core-room-not-found = No room has that code. It may have closed.
+core-room-full = That room is full.
+core-room-proto = That relay runs another version of rooms. Update { -app-name } to join it.
+# $message is the network's own words.
+core-room-unreachable = Could not reach the relay: { $message }
+core-room-refused = The relay said no: { $message }
+core-room-not-in = You are not in a room.
+core-room-no-name = choose the name others in the room see you by
+core-room-bad-code = a room code is 6 letters and digits
+core-room-created = Started a watch together room. Its code is { $code }.
+core-room-joined = Joined the watch together room { $code }.
+core-room-left = Left the watch together room.
+core-room-member-joined = { $name } joined the room.
+core-room-member-left = { $name } left the room.
+core-room-closed = The watch together room closed.
+core-room-lost = Lost the connection to the watch together room. Trying again.
+core-room-back = Back in the watch together room.
 
 ## core/src/presence/mod.rs
 

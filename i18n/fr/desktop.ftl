@@ -3702,3 +3702,83 @@ door-not-a-torrent-action = { $value } n'est pas une action torrent
 
 shell-starter-folder-failed = Impossible de créer { $folder } : { $error }
 shell-update-gone = { -app-name } { $version } n'est plus proposé
+
+## Watch together (#846)
+
+onboarding-step-together = Regarder ensemble
+onboarding-title-together = Regarder entre amis
+onboarding-body-together = Ouvrez un salon depuis le lecteur et envoyez son code. Chacun lit sa propre copie de l'épisode, et lecture, pause et déplacements restent synchronisés pour tous.
+onboarding-ready-together = Regarder ensemble
+onboarding-ready-together-as = Dans les salons, vous apparaissez comme { $name }.
+onboarding-ready-together-none = Pas encore de nom. Le panneau du salon le demande la première fois.
+onboarding-together-you = Vous
+onboarding-together-code = Code du salon
+onboarding-together-episode = Frieren · Épisode 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Votre nom dans les salons
+rail-room = Regarder ensemble (Ctrl+J)
+rail-room-in = Dans un salon de visionnage (Ctrl+J)
+player-chrome-watch-together = Regarder ensemble
+player-chrome-room = Salon { $code } · { $count ->
+    [one] { $count } personne
+   *[other] { $count } personnes
+}
+room-name-empty = Saisissez le nom que les autres verront dans le salon.
+room-name-bad = Ce nom ne convient pas. Utilisez de 1 à 32 caractères.
+room-error-not-found = Aucun salon n'a ce code. Vérifiez-le auprès de qui vous l'a envoyé ; le salon est peut-être fermé.
+room-error-full = Ce salon est plein. Un salon accueille 10 personnes.
+room-error-unreachable = Impossible de joindre le serveur des salons. Vérifiez votre connexion, puis réessayez.
+room-error-refused = Le serveur des salons a refusé. Réessayez dans une minute.
+room-error-proto = Ce salon utilise une version plus récente des salons. Mettez à jour { -app-name } pour le rejoindre.
+room-error-not-in-room = Vous n'êtes plus dans ce salon. Ouvrez-en ou rejoignez-en un autre.
+room-error-bad-code = Un code de salon fait 6 lettres et chiffres, comme K7QM2X.
+room-error-bad-relay = Le serveur des salons dans Réglages, Lecture n'est pas une adresse web. Corrigez-le là, puis réessayez.
+room-panel-title = Regarder ensemble
+room-panel-close = Fermer
+room-panel-connected = Connecté
+room-panel-reconnecting = Reconnexion
+room-panel-name-label = Votre nom dans les salons
+room-panel-name-placeholder = Votre nom
+room-panel-name-start = Ouvrir le salon
+room-panel-name-join = Rejoindre le salon
+room-panel-start = Ouvrir un salon
+room-panel-or-join = Ou rejoignez-en un avec son code
+room-panel-join-label = Code du salon
+room-panel-join = Rejoindre
+room-panel-you-are = Vous apparaissez comme { $name }
+room-panel-change-name = Modifier
+room-panel-code-label = Code du salon
+room-panel-copy = Copier le lien
+room-panel-link-copied = Lien du salon copié
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = Cet épisode n'est pas dans votre bibliothèque, vous ne pouvez donc pas encore suivre.
+room-panel-open-episode = Ouvrir l'épisode
+room-panel-people = { $count ->
+    [one] { $count } personne
+   *[other] { $count } personnes
+}
+room-panel-host = Hôte
+room-panel-you = Vous
+room-panel-ready = Prêt
+room-panel-opening = Ouverture
+room-panel-missing = Ne l'a pas
+room-panel-offset = Votre décalage
+room-panel-offset-earlier = Une demi-seconde plus tôt
+room-panel-offset-later = Une demi-seconde plus tard
+room-panel-seconds = { $value } s
+room-panel-suggested = Les intros suggèrent { $offset }
+room-panel-use-suggested = L'utiliser
+room-panel-leave = Quitter le salon
+player-room-speed = La vitesse suit le salon
+settings-find-room-name =
+    .words = regarder ensemble salon nom amis
+settings-find-room-relay =
+    .words = regarder ensemble salon relais serveur
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = Regarder ensemble
+settings-playback-together = Regarder ensemble
+settings-playback-room-name = Votre nom dans les salons
+settings-playback-room-name-placeholder = Votre nom
+settings-playback-room-relay = Serveur des salons
+settings-playback-room-relay-helper = Les salons sont créés ici. Ne le changez que pour un serveur que vous gérez vous-même.

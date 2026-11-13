@@ -3705,3 +3705,83 @@ door-not-a-torrent-action = { $value } não é uma ação de torrent
 shell-starter-folder-failed = Não foi possível criar { $folder }: { $error }
 shell-update-gone = O { -app-name } { $version } não está mais disponível
 
+
+## Watch together (#846)
+
+onboarding-step-together = Assistir juntos
+onboarding-title-together = Assista com amigos
+onboarding-body-together = Crie uma sala no player e envie o código. Cada um reproduz a própria cópia do episódio, e reproduzir, pausar e pular ficam sincronizados para todos.
+onboarding-ready-together = Assistir juntos
+onboarding-ready-together-as = Nas salas você aparece como { $name }.
+onboarding-ready-together-none = Ainda sem nome. O painel da sala pergunta na primeira vez.
+onboarding-together-you = Você
+onboarding-together-code = Código da sala
+onboarding-together-episode = Frieren · Episódio 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Seu nome nas salas
+rail-room = Assistir juntos (Ctrl+J)
+rail-room-in = Em uma sala de assistir juntos (Ctrl+J)
+player-chrome-watch-together = Assistir juntos
+player-chrome-room = Sala { $code } · { $count ->
+    [one] 1 pessoa
+   *[other] { $count } pessoas
+}
+room-name-empty = Digite o nome que os outros na sala vão ver.
+room-name-bad = Esse nome não funciona. Use de 1 a 32 caracteres.
+room-error-not-found = Nenhuma sala tem esse código. Confira com quem enviou; a sala pode ter sido fechada.
+room-error-full = Essa sala está cheia. As salas comportam 10 pessoas.
+room-error-unreachable = Não foi possível alcançar o servidor de salas. Confira sua conexão e tente de novo.
+room-error-refused = O servidor de salas recusou. Tente de novo em um minuto.
+room-error-proto = Essa sala roda em uma versão mais nova das salas. Atualize o { -app-name } para entrar.
+room-error-not-in-room = Você não está mais nessa sala. Crie ou entre em uma de novo.
+room-error-bad-code = Um código de sala tem 6 letras e dígitos, como K7QM2X.
+room-error-bad-relay = O servidor de salas em Configurações, Reprodução não é um endereço web. Corrija lá e tente de novo.
+room-panel-title = Assistir juntos
+room-panel-close = Fechar
+room-panel-connected = Conectado
+room-panel-reconnecting = Reconectando
+room-panel-name-label = Seu nome nas salas
+room-panel-name-placeholder = Seu nome
+room-panel-name-start = Criar a sala
+room-panel-name-join = Entrar na sala
+room-panel-start = Criar uma sala
+room-panel-or-join = Ou entre em uma com o código
+room-panel-join-label = Código da sala
+room-panel-join = Entrar
+room-panel-you-are = Você aparece como { $name }
+room-panel-change-name = Mudar
+room-panel-code-label = Código da sala
+room-panel-copy = Copiar link
+room-panel-link-copied = Link da sala copiado
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = Este episódio não está na sua biblioteca, então você ainda não pode acompanhar.
+room-panel-open-episode = Abrir o episódio
+room-panel-people = { $count ->
+    [one] 1 pessoa
+   *[other] { $count } pessoas
+}
+room-panel-host = Anfitrião
+room-panel-you = Você
+room-panel-ready = Pronto
+room-panel-opening = Abrindo
+room-panel-missing = Não tem
+room-panel-offset = Seu ajuste
+room-panel-offset-earlier = Meio segundo antes
+room-panel-offset-later = Meio segundo depois
+room-panel-seconds = { $value } s
+room-panel-suggested = As aberturas sugerem { $offset }
+room-panel-use-suggested = Usar
+room-panel-leave = Sair da sala
+player-room-speed = A velocidade segue a sala
+settings-find-room-name =
+    .words = assistir juntos sala nome amigos
+settings-find-room-relay =
+    .words = assistir juntos sala relay servidor
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = Assistir juntos
+settings-playback-together = Assistir juntos
+settings-playback-room-name = Seu nome nas salas de assistir juntos
+settings-playback-room-name-placeholder = Seu nome
+settings-playback-room-relay = Servidor de salas
+settings-playback-room-relay-helper = As salas são criadas aqui. Mude só para um servidor que você mesmo roda.

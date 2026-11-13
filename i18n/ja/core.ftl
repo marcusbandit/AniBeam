@@ -1243,3 +1243,25 @@ core-subscriptions-stopped-said = 停止しました: { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = 名前は1〜{ $max }文字で、制御文字は使えません
+core-prefs-room-relay = リレーのアドレスはhttps://またはhttp://で始めてください
+core-room-service = 一緒に見る
+core-room-not-found = そのコードのルームはありません。終了した可能性があります。
+core-room-full = そのルームは満員です。
+core-room-proto = そのリレーは別のバージョンのルームを使っています。参加するには{ -app-name }を更新してください。
+core-room-unreachable = リレーに接続できませんでした: { $message }
+core-room-refused = リレーに拒否されました: { $message }
+core-room-not-in = ルームに参加していません。
+core-room-no-name = ルームで表示される名前を決めてください
+core-room-bad-code = ルームコードは英数字6文字です
+core-room-created = 一緒に見るルームを作りました。コードは{ $code }です。
+core-room-joined = 一緒に見るルーム{ $code }に参加しました。
+core-room-left = 一緒に見るルームから退出しました。
+core-room-member-joined = { $name }がルームに参加しました。
+core-room-member-left = { $name }がルームから退出しました。
+core-room-closed = 一緒に見るルームが終了しました。
+core-room-lost = 一緒に見るルームとの接続が切れました。再接続しています。
+core-room-back = 一緒に見るルームに戻りました。

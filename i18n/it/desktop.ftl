@@ -3702,3 +3702,83 @@ door-not-a-torrent-action = { $value } non è un'azione torrent
 
 shell-starter-folder-failed = Impossibile creare { $folder }: { $error }
 shell-update-gone = { -app-name } { $version } non è più disponibile
+
+## Watch together (#846)
+
+onboarding-step-together = Guarda insieme
+onboarding-title-together = Guarda con gli amici
+onboarding-body-together = Avvia una stanza dal player e invia il suo codice. Ognuno riproduce la propria copia dell'episodio, e play, pausa e salti restano sincronizzati per tutti.
+onboarding-ready-together = Guarda insieme
+onboarding-ready-together-as = Nelle stanze appari come { $name }.
+onboarding-ready-together-none = Ancora nessun nome. Il pannello della stanza lo chiede la prima volta.
+onboarding-together-you = Tu
+onboarding-together-code = Codice stanza
+onboarding-together-episode = Frieren · Episodio 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Il tuo nome nelle stanze
+rail-room = Guarda insieme (Ctrl+J)
+rail-room-in = In una stanza Guarda insieme (Ctrl+J)
+player-chrome-watch-together = Guarda insieme
+player-chrome-room = Stanza { $code } · { $count ->
+    [one] 1 persona
+   *[other] { $count } persone
+}
+room-name-empty = Scrivi il nome che vedranno gli altri nella stanza.
+room-name-bad = Quel nome non va bene. Usa da 1 a 32 caratteri.
+room-error-not-found = Nessuna stanza ha quel codice. Controllalo con chi te l'ha mandato; la stanza potrebbe essere stata chiusa.
+room-error-full = Quella stanza è piena. Le stanze accolgono 10 persone.
+room-error-unreachable = Impossibile raggiungere il server delle stanze. Controlla la connessione e riprova.
+room-error-refused = Il server delle stanze ha rifiutato. Riprova tra un minuto.
+room-error-proto = Quella stanza usa una versione più recente delle stanze. Aggiorna { -app-name } per entrare.
+room-error-not-in-room = Non sei più in quella stanza. Avviane o raggiungine un'altra.
+room-error-bad-code = Un codice stanza ha 6 tra lettere e cifre, come K7QM2X.
+room-error-bad-relay = Il server delle stanze in Impostazioni, Riproduzione non è un indirizzo web. Correggilo lì e riprova.
+room-panel-title = Guarda insieme
+room-panel-close = Chiudi
+room-panel-connected = Collegato
+room-panel-reconnecting = Riconnessione
+room-panel-name-label = Il tuo nome nelle stanze
+room-panel-name-placeholder = Il tuo nome
+room-panel-name-start = Avvia la stanza
+room-panel-name-join = Entra nella stanza
+room-panel-start = Avvia una stanza
+room-panel-or-join = Oppure entra in una con il codice
+room-panel-join-label = Codice stanza
+room-panel-join = Entra
+room-panel-you-are = Appari come { $name }
+room-panel-change-name = Cambia
+room-panel-code-label = Codice stanza
+room-panel-copy = Copia link
+room-panel-link-copied = Link della stanza copiato
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = Questo episodio non è nella tua libreria, quindi non puoi ancora guardare insieme.
+room-panel-open-episode = Apri l'episodio
+room-panel-people = { $count ->
+    [one] 1 persona
+   *[other] { $count } persone
+}
+room-panel-host = Host
+room-panel-you = Tu
+room-panel-ready = Pronto
+room-panel-opening = Apertura
+room-panel-missing = Non ce l'ha
+room-panel-offset = Il tuo scarto
+room-panel-offset-earlier = Mezzo secondo prima
+room-panel-offset-later = Mezzo secondo dopo
+room-panel-seconds = { $value } s
+room-panel-suggested = Le intro suggeriscono { $offset }
+room-panel-use-suggested = Usalo
+room-panel-leave = Esci dalla stanza
+player-room-speed = La velocità segue la stanza
+settings-find-room-name =
+    .words = guarda insieme stanza nome amici
+settings-find-room-relay =
+    .words = guarda insieme stanza relay server
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = Guarda insieme
+settings-playback-together = Guarda insieme
+settings-playback-room-name = Il tuo nome nelle stanze Guarda insieme
+settings-playback-room-name-placeholder = Il tuo nome
+settings-playback-room-relay = Server delle stanze
+settings-playback-room-relay-helper = Le stanze nascono qui. Cambialo solo per un server che gestisci tu.

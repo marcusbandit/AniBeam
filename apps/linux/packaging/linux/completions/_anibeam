@@ -4,7 +4,7 @@
 _anibeam() {
   if (( CURRENT == 2 )) && [[ $words[2] != -* ]]; then
     _alternatives \
-      'commands:command:((serve\:"run the library and the tailnet host with no window"))' \
+      'commands:command:((serve\:"run the library and the tailnet host with no window" anibeam\://room/\:"join a watch together room by its link"))' \
       'options:option:_anibeam_options'
     return
   fi
@@ -28,7 +28,7 @@ _anibeam_options() {
     '--action[forward an action to the running window]:action:' \
     '--drive[run a JSON drive script offscreen]:script:_files -g "*.json"' \
     '--out[where a drive writes its shots]:directory:_files -/' \
-    '1: :((serve\:"run the library and the tailnet host with no window"))'
+    '1: :((serve\:"run the library and the tailnet host with no window" anibeam\://room/\:"join a watch together room by its link"))'
 }
 
 _anibeam "$@"

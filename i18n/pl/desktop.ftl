@@ -4105,3 +4105,87 @@ door-not-a-torrent-action = { $value } to nie akcja torrenta
 # $folder is a path, $error the system's own reason.
 shell-starter-folder-failed = Nie udało się utworzyć { $folder }: { $error }
 shell-update-gone = { -app-name } { $version } nie jest już dostępny
+
+## Watch together (#846)
+
+onboarding-step-together = Wspólne oglądanie
+onboarding-title-together = Oglądaj ze znajomymi
+onboarding-body-together = Utwórz pokój w odtwarzaczu i wyślij jego kod. Każdy odtwarza własną kopię odcinka, a odtwarzanie, pauza i przewijanie pozostają u wszystkich zgrane.
+onboarding-ready-together = Wspólne oglądanie
+onboarding-ready-together-as = W pokojach widać Cię jako { $name }.
+onboarding-ready-together-none = Jeszcze bez nazwy. Panel pokoju zapyta o nią za pierwszym razem.
+onboarding-together-you = Ty
+onboarding-together-code = Kod pokoju
+onboarding-together-episode = Frieren · Odcinek 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Twoja nazwa w pokojach
+rail-room = Wspólne oglądanie (Ctrl+J)
+rail-room-in = W pokoju wspólnego oglądania (Ctrl+J)
+player-chrome-watch-together = Oglądaj razem
+player-chrome-room = Pokój { $code } · { $count ->
+    [one] 1 osoba
+    [few] { $count } osoby
+    [many] { $count } osób
+   *[other] { $count } osoby
+}
+room-name-empty = Wpisz nazwę, którą zobaczą inni w pokoju.
+room-name-bad = Ta nazwa nie działa. Użyj od 1 do 32 znaków.
+room-error-not-found = Nie ma pokoju o tym kodzie. Sprawdź go z osobą, która go wysłała; pokój mógł zostać zamknięty.
+room-error-full = Ten pokój jest pełny. Pokój mieści 10 osób.
+room-error-unreachable = Nie udało się połączyć z serwerem pokojów. Sprawdź połączenie i spróbuj ponownie.
+room-error-refused = Serwer pokojów odrzucił prośbę. Spróbuj ponownie za minutę.
+room-error-proto = Ten pokój działa na nowszej wersji pokojów. Zaktualizuj { -app-name }, aby dołączyć.
+room-error-not-in-room = Nie jesteś już w tym pokoju. Utwórz pokój lub dołącz do niego ponownie.
+room-error-bad-code = Kod pokoju to 6 liter i cyfr, na przykład K7QM2X.
+room-error-bad-relay = Serwer pokojów w Ustawieniach, Odtwarzanie nie jest adresem internetowym. Popraw go tam i spróbuj ponownie.
+room-panel-title = Wspólne oglądanie
+room-panel-close = Zamknij
+room-panel-connected = Połączono
+room-panel-reconnecting = Ponowne łączenie
+room-panel-name-label = Twoja nazwa w pokojach
+room-panel-name-placeholder = Twoja nazwa
+room-panel-name-start = Utwórz pokój
+room-panel-name-join = Dołącz do pokoju
+room-panel-start = Utwórz pokój
+room-panel-or-join = Lub dołącz przez kod
+room-panel-join-label = Kod pokoju
+room-panel-join = Dołącz
+room-panel-you-are = Widać Cię jako { $name }
+room-panel-change-name = Zmień
+room-panel-code-label = Kod pokoju
+room-panel-copy = Kopiuj link
+room-panel-link-copied = Skopiowano link do pokoju
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = Tego odcinka nie ma w Twojej bibliotece, więc nie możesz jeszcze oglądać razem.
+room-panel-open-episode = Otwórz odcinek
+room-panel-people = { $count ->
+    [one] 1 osoba
+    [few] { $count } osoby
+    [many] { $count } osób
+   *[other] { $count } osoby
+}
+room-panel-host = Gospodarz
+room-panel-you = Ty
+room-panel-ready = Gotowe
+room-panel-opening = Otwieranie
+room-panel-missing = Nie ma odcinka
+room-panel-offset = Twoje przesunięcie
+room-panel-offset-earlier = Pół sekundy wcześniej
+room-panel-offset-later = Pół sekundy później
+room-panel-seconds = { $value } s
+room-panel-suggested = Czołówki sugerują { $offset }
+room-panel-use-suggested = Użyj
+room-panel-leave = Opuść pokój
+player-room-speed = Prędkość ustala pokój
+settings-find-room-name =
+    .words = wspólne oglądanie razem pokój nazwa znajomi
+settings-find-room-relay =
+    .words = wspólne oglądanie razem pokój przekaźnik serwer
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = Wspólne oglądanie
+settings-playback-together = Wspólne oglądanie
+settings-playback-room-name = Twoja nazwa w pokojach wspólnego oglądania
+settings-playback-room-name-placeholder = Twoja nazwa
+settings-playback-room-relay = Serwer pokojów
+settings-playback-room-relay-helper = Tu powstają pokoje. Zmieniaj go tylko dla własnego serwera.

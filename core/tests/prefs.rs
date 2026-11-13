@@ -26,6 +26,8 @@ fn preferences_and_settings_round_trip_with_events() {
         episode_notifications: true,
         home_hide_empty_days: true,
         home_recommended: RecommendedScope::OnList,
+        room_name: "Ann".into(),
+        room_relay: "http://127.0.0.1:8795".into(),
     };
     assert!(matches!(
         core.call(Call::SetPreferences {
