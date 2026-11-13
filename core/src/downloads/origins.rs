@@ -10,6 +10,7 @@
 //! listed, or one from before this, has no origin, and On disk reads its
 //! name the way it always has.
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
@@ -124,8 +125,8 @@ pub async fn record_from(
         if unknown.is_empty() {
             continue;
         }
-        let files = if !t.files.is_empty() {
-            t.files.clone()
+        let files: Cow<[TorrentFile]> = if !t.files.is_empty() {
+            Cow::Borrowed(&t.files)
         } else {
             let content = local.path(&t.content_path);
             if unknown.contains(&content) {
@@ -140,7 +141,7 @@ pub async fn record_from(
                 continue;
             }
             match client.files(&t.hash).await {
-                Ok(files) => files,
+                Ok(files) => Cow::Owned(files),
                 Err(e) => {
                     tracing::debug!("files of {} not read for origins: {e}", t.name);
                     seen().remove(&hash);
@@ -149,7 +150,7 @@ pub async fn record_from(
             }
         };
         let base = local.path(&t.save_path);
-        for f in files {
+        for f in files.iter() {
             let path = format!("{}/{}", base.trim_end_matches('/'), slashes(&f.name));
             if unknown.contains(&path) && taken.insert(path.clone()) {
                 found.push((path, hash.clone(), t.name.clone()));
@@ -201,12 +202,21 @@ pub fn after_scan(core: &Core) {
                 return;
             }
         };
-        match record_from(&owner, Some(&client), &torrents).await {
-            Ok(0) => {}
-            Ok(n) => tracing::debug!("recorded the torrent of {n} files"),
-            Err(e) => tracing::debug!("origins after a scan not recorded: {e}"),
-        }
+        logged(
+            record_from(&owner, Some(&client), &torrents).await,
+            "after a scan",
+        );
     });
+}
+
+/// The debug line a read of origins off the caller's path leaves: nothing
+/// when no file was new, else how many, or why none were.
+pub(crate) fn logged(recorded: Result<u64, CoreError>, when: &str) {
+    match recorded {
+        Ok(0) => {}
+        Ok(n) => tracing::debug!("recorded the torrent of {n} files {when}"),
+        Err(e) => tracing::debug!("origins {when} not recorded: {e}"),
+    }
 }
 
 /// A client's path as the library writes it: forward slashes on Windows,
@@ -460,16 +470,20 @@ mod tests {
             priority: 1,
             episode: None,
         };
-        let mut batch = torrent("EEE", "Show Batch", "/lib/Show/Show Batch");
-        batch.files = vec![file("Batch/Show - 02.mkv"), file("Batch/Show - 03.mkv")];
+        // librqbit writes a batch's files straight into its save path, with no root
+        // folder, so the content path the engine reports holds none of them.
+        let mut batch = torrent("EEE", "Show Batch", "/lib/Show/Batch/Show Batch");
+        batch.save_path = "/lib/Show/Batch".into();
+        batch.files = vec![file("Show - 02.mkv"), file("Show - 03.mkv")];
         let mut one = torrent(
             "FFF",
             "[Grp] Show - 01 [1080p].mkv",
             "/lib/Show/[Grp] Show - 01 [1080p].mkv",
         );
         one.files = vec![file("[Grp] Show - 01 [1080p].mkv")];
-        // Without a list of its own and no client, a batch records nothing.
-        let unlisted = torrent("GGG", "Other", "/lib/Show/Other");
+        // Without a list of its own and no client, a batch records nothing, even one
+        // whose folder holds a file with no origin.
+        let unlisted = torrent("GGG", "Batch", "/lib/Show/Batch");
         let n = core
             .handle
             .block_on(record_from(&core, None, &[batch, one, unlisted]))
