@@ -1665,7 +1665,11 @@ impl App {
             return;
         };
         let whole = number.max(0.0).floor() as u32;
-        let target = if watched { whole.saturating_sub(1) } else { whole };
+        let target = if watched {
+            whole.saturating_sub(1)
+        } else {
+            whole
+        };
         let season = u32::try_from(season).unwrap_or(1).max(1);
         let before = self.detail.as_ref().and_then(|d| d.card.watched);
         self.set_progress(core, series, target, season, before);
