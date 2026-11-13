@@ -565,7 +565,7 @@ pub fn series(
                 remote: false,
                 versions: version_lines(e, &downloading),
                 // On the phone, so it can be marked with a tracker or without one.
-                markable: true,
+                markable: countable(e.number, e.season),
                 watched: e.watched,
                 number: e.number as f32,
                 season: e.season.unwrap_or(1) as i32,
@@ -602,7 +602,7 @@ pub fn series(
                 remote: false,
                 versions: Default::default(),
                 // Not on the phone: only a tracker keeps the mark.
-                markable: tracked,
+                markable: tracked && countable(f64::from(a.number), a.season),
                 watched: matches!(a.cube.as_str(), "w" | "l"),
                 number: a.number as f32,
                 season: a.season.unwrap_or(1) as i32,
@@ -642,6 +642,12 @@ pub fn series(
     (head, lines.into_iter().map(|(_, l)| l).collect())
 }
 
+/// Whether a mark can count up to an episode: an episode 0 would mark nothing and clear the
+/// season, and a special (season 0) is not in any count, so neither offers one.
+fn countable(number: f64, season: Option<u32>) -> bool {
+    number >= 1.0 && season != Some(0)
+}
+
 /// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
 pub(crate) fn clock(secs: f64) -> String {
     let t = secs.max(0.0) as u64;
@@ -656,6 +662,15 @@ pub(crate) fn clock(secs: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn episode_0_and_specials_take_no_mark() {
+        assert!(countable(1.0, None));
+        assert!(countable(12.5, Some(2)));
+        assert!(!countable(0.0, Some(1)));
+        assert!(!countable(0.5, None));
+        assert!(!countable(3.0, Some(0)));
+    }
 
     #[test]
     fn every_core_cube_letter_has_a_colour_code() {

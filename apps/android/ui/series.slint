@@ -5,6 +5,7 @@ import { Button, Chip, ClampedText, Cubes, PageTitle, Poster, SectionHead } from
 import { Ask } from "more.slint";
 import { ShowActions, ShowData } from "show.slint";
 import { ShowSections } from "show-sections.slint";
+import { UndoBar } from "airing.slint";
 
 // An episode code's type, shared by the rows and the probe that sizes their column.
 component CodeText inherits Text {
@@ -157,39 +158,6 @@ component EpisodeItem inherits Rectangle {
     }
 }
 
-// What the last mark did, with Undo when it moved more than one episode.
-component MarkBar inherits Rectangle {
-    height: row.preferred-height;
-    background: Theme.float;
-    border-radius: Theme.radius;
-    border-width: 1px;
-    border-color: Theme.line-strong;
-    TouchArea { }
-    row := HorizontalLayout {
-        padding: Theme.unit * 3;
-        padding-left: Theme.unit * 4;
-        spacing: Theme.unit * 3;
-        Text {
-            horizontal-stretch: 1;
-            text: AppData.mark-line;
-            color: Theme.text;
-            font-size: Theme.small + 0.5px;
-            wrap: word-wrap;
-            vertical-alignment: center;
-        }
-        if AppData.mark-undo: VerticalLayout {
-            alignment: center;
-            Button {
-                text: "Undo";
-                icon: @image-url("icons/rotate-ccw.svg");
-                has-icon: true;
-                small: true;
-                clicked => { AppData.mark-take-back(); }
-            }
-        }
-    }
-}
-
 // While deleting: how many are picked, what deleting does, and Delete or Cancel.
 component DeleteBar inherits Rectangle {
     height: col.preferred-height + 7 * Theme.unit;
@@ -316,7 +284,8 @@ export component SeriesPage inherits Rectangle {
             padding-left: Theme.grout + Theme.unit;
             padding-right: Theme.grout + Theme.unit;
             padding-top: Theme.unit * 4;
-            padding-bottom: Theme.pad * 2;
+            // Room under the last rows while the mark's line covers the foot of the page.
+            padding-bottom: Theme.pad * 2 + (AppData.mark-line != "" ? 20 * Theme.unit : 0);
             spacing: Theme.unit * 4;
             PageTitle {
                 back: Nav.page == 0 ? "Home" : Nav.page == 1 ? "Library" : Nav.page == 2 ? "Downloads" : Nav.page == 4 ? "Calendar" : "Back";
@@ -398,7 +367,11 @@ export component SeriesPage inherits Rectangle {
             if ShowData.series-id >= 0: ShowSections { }
         }
     }
-    if AppData.mark-line != "": MarkBar {
+    // What the last mark did, with Undo when it moved more than one episode.
+    if AppData.mark-line != "": UndoBar {
+        text: AppData.mark-line;
+        can-undo: AppData.mark-undo;
+        undo => { AppData.mark-take-back(); }
         x: Theme.grout + Theme.unit;
         width: parent.width - 2 * self.x;
         y: parent.height - self.height - Theme.grout - Theme.unit;

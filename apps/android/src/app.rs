@@ -148,6 +148,8 @@ struct App {
     /// What the last episode mark said, the tick it said it on, and how to put it back: the
     /// series, the count before it and the season.
     mark_note: Option<(String, Option<(u64, u32, u32)>, u32)>,
+    /// A mark is on its way to the core; the next waits for it, so two never cross.
+    mark_busy: bool,
     /// Shows marked not interested here and not yet gone from the core's list.
     airing_hidden: HashSet<u64>,
     /// A read asked for while one was out: run it, asking AniList or not, when that lands.
@@ -728,6 +730,12 @@ impl App {
         if self.ticks.is_multiple_of(STORAGE_EVERY) {
             self.storage();
         }
+    }
+
+    /// The clock's second: the pages, then the count the timed lines and polls go by. Only
+    /// the clock moves the count; a tick asked for by a tap or a reply redraws and no more.
+    fn second(&mut self) {
+        self.tick();
         self.ticks = self.ticks.wrapping_add(1);
     }
 
@@ -1615,6 +1623,9 @@ impl App {
         } else {
             Open::Phone(id)
         });
+        // A mark's line and its Undo belong to the page they were made on.
+        self.mark_note = None;
+        self.show_mark();
         self.detail = None;
         self.reload_open();
         self.tick();
@@ -1683,6 +1694,10 @@ impl App {
         season: u32,
         before: Option<u32>,
     ) {
+        if self.mark_busy {
+            return;
+        }
+        self.mark_busy = true;
         let _ = std::thread::Builder::new()
             .name("mark".into())
             .spawn(move || {
@@ -1693,6 +1708,11 @@ impl App {
                 });
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| {
+                        app.mark_busy = false;
+                        // Gone from the page it was made on: its line and Undo go with it.
+                        if app.open != Some(Open::Phone(series)) {
+                            return;
+                        }
                         app.mark_note = match answer {
                             // A tracker's show with no account behind it: the way to one.
                             Err(e @ anibeam_core::CoreError::NotConnected { .. }) => Some((
@@ -1713,6 +1733,9 @@ impl App {
     }
 
     fn mark_take_back(&mut self) {
+        if self.mark_busy {
+            return;
+        }
         let Some((_, Some((series, before, season)), _)) = self.mark_note.take() else {
             return;
         };
@@ -2331,6 +2354,7 @@ pub fn run(
         airing_plan_note: None,
         airing_undo: None,
         mark_note: None,
+        mark_busy: false,
         airing_hidden: HashSet::new(),
         airing_again: None,
         airing_filters,
@@ -2364,7 +2388,7 @@ pub fn run(
 
     let clock = Timer::default();
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || {
-        with_app(App::tick)
+        with_app(App::second)
     });
     // The hinge and the crease, for the layout: a bend shows in a fifth of a second. A phone
     // with neither a hinge sensor nor window extensions stops the timer; one that has the
