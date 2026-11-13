@@ -217,7 +217,7 @@ component MarkMenu inherits Rectangle {
             }
             Rectangle { height: Theme.unit; }
             Button {
-                text: Ask.mark-watched ? "Mark unwatched from here" : "Mark watched up to here";
+                text: Ask.mark-watched ? AppData.mark-unwatched-label : AppData.mark-watched-label;
                 icon: @image-url("icons/check-check.svg");
                 has-icon: true;
                 primary: true;
@@ -227,7 +227,7 @@ component MarkMenu inherits Rectangle {
                 }
             }
             Button {
-                text: "Cancel";
+                text: AppData.mark-cancel-label;
                 clicked => { Ask.mark-open = false; }
             }
         }

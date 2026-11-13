@@ -4,6 +4,7 @@
 //! AniBeam on the tailnet, synced by the worker thread, only fills Library when it is picked
 //! there, and its episodes stream from it.
 
+use anibeam_core::i18n::tr;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -1716,7 +1717,7 @@ impl App {
                         app.mark_note = match answer {
                             // A tracker's show with no account behind it: the way to one.
                             Err(e @ anibeam_core::CoreError::NotConnected { .. }) => Some((
-                                format!("{e} Sign in under More, Accounts."),
+                                tr("mark-not-connected", &[("reason", e.to_string().into())]),
                                 None,
                                 app.ticks,
                             )),
@@ -1879,9 +1880,9 @@ fn mark_line(target: u32, before: Option<u32>) -> Option<String> {
         return None;
     }
     Some(if target > before {
-        format!("Watched up to Episode {target}")
+        tr("mark-watched-up-to", &[("episode", target.into())])
     } else {
-        format!("Unwatched from Episode {}", target + 1)
+        tr("mark-unwatched-from", &[("episode", (target + 1).into())])
     })
 }
 
@@ -2126,6 +2127,9 @@ pub fn run(
     data.on_play(|file| crate::player::open(file as u64));
     data.on_mark(|number, season, watched| with_app(|app| app.mark(number, season, watched)));
     data.on_mark_take_back(|| with_app(App::mark_take_back));
+    data.set_mark_watched_label(tr("mark-menu-watched", &[]).into());
+    data.set_mark_unwatched_label(tr("mark-menu-unwatched", &[]).into());
+    data.set_mark_cancel_label(tr("mark-menu-cancel", &[]).into());
     data.on_play_remote(|file| crate::player::open_remote(file as u64));
     let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL
         .iter()

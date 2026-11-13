@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anibeam_companion::calendar;
 use anibeam_companion::format;
+use anibeam_core::i18n::tr;
 use anibeam_core::{Episode, SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
 use chrono::{Datelike, Days, NaiveDate};
 
@@ -455,11 +456,10 @@ pub fn series(
     // since its marks live on the episodes here.
     let tracked_count = detail.progress.watched.is_some();
     let progress_text = match (movie, detail.progress.total) {
-        (true, _) if !tracked_count => "Not tracked".to_string(),
-        (false, _) if !tracked_count => format!(
-            "Not tracked, {on_disk} {} on this phone",
-            if on_disk == 1 { "episode" } else { "episodes" }
-        ),
+        (true, _) if !tracked_count => tr("series-not-tracked", &[]),
+        (false, _) if !tracked_count => {
+            tr("series-not-tracked-on-phone", &[("count", on_disk.into())])
+        }
         (true, _) => if watched > 0 {
             "Watched"
         } else {

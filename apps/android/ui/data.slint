@@ -371,6 +371,10 @@ export global AppData {
     // An episode's mark: its number, its season, and whether it is watched now, so the mark
     // takes it and those before it, or it and those after it, the other way.
     callback mark(float, int, bool);
+    // The mark menu's buttons, from the catalog.
+    in property <string> mark-watched-label;
+    in property <string> mark-unwatched-label;
+    in property <string> mark-cancel-label;
     // What the last mark did, "Watched up to Episode 5", for a few seconds, and whether
     // Undo can put it back.
     in property <string> mark-line;
