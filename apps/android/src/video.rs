@@ -10,8 +10,9 @@
 //! the renderer is tied to the context it was started against; `app.rs` starts a fresh one
 //! when the context changes.
 
-// Off Android the types stand in for a player that never opens.
-#![cfg_attr(not(target_os = "android"), allow(dead_code))]
+// Without libmpv (and the EGL and GLES that build.rs links beside it) the types stand in for
+// a player that never opens.
+#![cfg_attr(not(libmpv), allow(dead_code))]
 
 use std::sync::Arc;
 
@@ -38,13 +39,13 @@ pub struct Share {
     config: usize,
 }
 
-#[cfg(target_os = "android")]
+#[cfg(libmpv)]
 pub use imp::{Video, current_share};
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(libmpv))]
 pub struct Video;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(libmpv))]
 impl Video {
     pub fn start(
         _mpv: &Arc<Mpv>,
@@ -65,12 +66,12 @@ impl Video {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(libmpv))]
 pub fn current_share() -> Option<Share> {
     None
 }
 
-#[cfg(target_os = "android")]
+#[cfg(libmpv)]
 mod imp {
     #![allow(non_snake_case)]
     use super::*;

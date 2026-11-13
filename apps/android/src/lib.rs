@@ -1,12 +1,13 @@
 //! AniBeam for Android: the Slint screens and the thread that syncs behind them.
 //!
-//! `android_main` is the whole entry point. The stock NativeActivity loads this library
-//! and calls it; Java only holds the download service's notification and turns the screen
-//! for the player.
+//! The entry point is the platform's (`platform/android.rs`'s `android_main` on the phone),
+//! which hands `run` the data directory and calls back in through the functions below.
+//! Everything that differs by platform goes through `platform`.
 
 // Clippy asks for `const` on thread_local initialisers that already have it on targets
-// without `#[thread_local]`, Android among them (rust-lang/rust-clippy#17566).
-#![cfg_attr(target_os = "android", allow(clippy::missing_const_for_thread_local))]
+// without `#[thread_local]`, Android among them (rust-lang/rust-clippy#17566). Allowed on
+// every target, so no file outside `platform` names one.
+#![allow(clippy::missing_const_for_thread_local)]
 
 slint::include_modules!();
 
@@ -15,7 +16,6 @@ slint::include_modules!();
 mod lang;
 mod activity;
 mod airing;
-mod android;
 mod app;
 mod backup;
 mod crease;
@@ -33,6 +33,7 @@ mod mpv;
 mod notes;
 mod notify;
 mod phone;
+mod platform;
 mod player;
 mod posters;
 mod prefs;
@@ -53,37 +54,18 @@ mod worker;
 
 pub use app::run;
 
-#[cfg(target_os = "android")]
-#[unsafe(no_mangle)]
-fn android_main(android: slint::android::AndroidApp) {
-    use slint::android::android_activity::{MainEvent, PollEvent};
+// The calls a platform makes into the app. Public, so a target whose platform never makes
+// them still keeps them.
 
-    let data_dir = android
-        .internal_data_path()
-        .unwrap_or_else(|| "/data/data/com.marcusrosado.anibeam/files".into());
-    // The activity itself, for the calls only an Activity answers; ndk_context holds the
-    // Application. The reference lives as long as `android`, which outlives `run`.
-    android::set_activity(android.activity_as_ptr());
-    let (commands, inbox) = std::sync::mpsc::channel();
+/// The device's light or dark setting or its language changed: Appearance's System mode
+/// and a language left to follow the device follow it. Called on the UI loop.
+pub fn system_changed() {
+    look::system_changed();
+    lang::system_changed();
+}
 
-    // Coming back to the app is a good moment to look at the host again.
-    let on_resume = commands.clone();
-    slint::android::init_with_event_listener(android, move |event| {
-        if let PollEvent::Main(MainEvent::Resume { .. }) = event {
-            let _ = on_resume.send(worker::Command::Sync);
-        }
-        // The phone's light or dark setting or its language changed: Appearance's System mode
-        // and a language left to follow the phone follow it.
-        if let PollEvent::Main(MainEvent::ConfigChanged { .. }) = event {
-            let _ = slint::invoke_from_event_loop(|| {
-                look::system_changed();
-                lang::system_changed();
-            });
-        }
-    })
-    .expect("the Slint Android backend starts");
-
-    if let Err(e) = run(data_dir, commands, inbox) {
-        eprintln!("AniBeam stopped: {e}");
-    }
+/// The platform moved the audio focus; `code` is Android's `AudioManager` change. Called on
+/// the UI loop.
+pub fn audio_focus(code: i32) {
+    player::audio_focus(code);
 }

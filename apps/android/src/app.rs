@@ -1450,7 +1450,7 @@ impl App {
             .collect();
         for hash in notify::finished(&mut self.unfinished, &now) {
             if let Some((t, row)) = torrents.iter().zip(&rows).find(|(t, _)| t.hash == hash) {
-                crate::android::episode_ready(
+                crate::platform::episode_ready(
                     notify::ready_id(&hash),
                     &notify::ready_title(&row.show, &notify::what_of(t), &t.name),
                     &notify::ready_text(),
@@ -1486,23 +1486,23 @@ impl App {
             let done = match (&text, &self.service) {
                 // Running: the notification changes in place. Starting the service again
                 // on every look would be refused once the app is in the background.
-                (Some(t), Some(_)) => crate::android::update_service(t),
-                (Some(t), None) => crate::android::start_service(t),
+                (Some(t), Some(_)) => crate::platform::update_service(t),
+                (Some(t), None) => crate::platform::start_service(t),
                 (None, _) => {
-                    crate::android::stop_service();
+                    crate::platform::stop_service();
                     true
                 }
             };
             if done {
-                self.service_shown = text.is_some() && crate::android::notifications_allowed();
+                self.service_shown = text.is_some() && crate::platform::notifications_allowed();
                 self.service = text;
             }
         } else if let Some(t) = &self.service
             && !self.service_shown
-            && crate::android::notifications_allowed()
+            && crate::platform::notifications_allowed()
         {
             // Allowed since it went up: post it again, so it shows.
-            self.service_shown = crate::android::start_service(t);
+            self.service_shown = crate::platform::start_service(t);
         }
     }
 
@@ -1512,7 +1512,7 @@ impl App {
         let Some(core) = crate::local::core() else {
             return;
         };
-        let held = self.prefs.wifi_only && crate::android::unmetered() != Some(true);
+        let held = self.prefs.wifi_only && crate::platform::unmetered() != Some(true);
         if self.held == Some(held) {
             return;
         }
@@ -1536,8 +1536,8 @@ impl App {
         let _ = std::thread::Builder::new()
             .name("storage".into())
             .spawn(move || {
-                let used = crate::android::used(&library);
-                let space = crate::android::space(&data_dir);
+                let used = crate::platform::used(&library);
+                let space = crate::platform::space(&data_dir);
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| app.show_storage(used, space))
                 });
@@ -1629,8 +1629,8 @@ impl App {
     /// preview.
     fn show_app_icon(&self) {
         let data = self.data();
-        data.set_app_icon(crate::android::app_icon());
-        if let Some((ground, ink)) = crate::android::line_colours() {
+        data.set_app_icon(crate::platform::app_icon());
+        if let Some((ground, ink)) = crate::platform::line_colours() {
             data.set_line_ground(slint::Color::from_argb_encoded(ground));
             data.set_line_ink(slint::Color::from_argb_encoded(ink));
         }
@@ -1638,7 +1638,7 @@ impl App {
 
     fn notify(&self) -> Notify {
         Notify::new(
-            crate::android::notifications_allowed(),
+            crate::platform::notifications_allowed(),
             self.prefs.notify_asked,
         )
     }
@@ -1666,13 +1666,13 @@ impl App {
         match self.notify() {
             Notify::Unasked => {
                 // Noted only once the ask went out, so one that failed is tried again.
-                if crate::android::ask_notifications() {
+                if crate::platform::ask_notifications() {
                     self.asked_at = Some(std::time::Instant::now());
                     self.prefs.notify_asked = true;
                     self.save_prefs();
                 }
             }
-            Notify::Denied => crate::android::notification_settings(),
+            Notify::Denied => crate::platform::notification_settings(),
             Notify::On => {}
         }
         self.show_notify();
@@ -2257,7 +2257,7 @@ pub fn relocalize() {
     crate::repos::relocalize();
     crate::disk::relocalize();
     crate::feed::relocalize();
-    crate::android::relocalize();
+    crate::platform::relocalize();
 }
 
 pub fn run(
@@ -2326,7 +2326,7 @@ pub fn run(
     });
     data.on_read_app_icon(|| with_app(|app| app.show_app_icon()));
     data.on_set_app_icon(|i| {
-        crate::android::set_app_icon(i);
+        crate::platform::set_app_icon(i);
         with_app(|app| app.show_app_icon());
     });
     data.on_open_airing(|| with_app(App::open_airing));
@@ -2492,7 +2492,7 @@ pub fn run(
     data.on_run_check(|| with_app(App::run_check));
     data.on_copy_check(|| {
         with_app(|app| {
-            let copied = crate::android::copy_text("AniBeam connection check", &app.check_text);
+            let copied = crate::platform::copy_text("AniBeam connection check", &app.check_text);
             app.data().set_check_summary(if copied {
                 tr!("more-check-copied").into()
             } else {
@@ -2612,8 +2612,8 @@ pub fn run(
             flat_ticks += 1;
             return;
         }
-        let (angle, rotated) = crate::android::fold();
-        let reading = crate::android::crease();
+        let (angle, rotated) = crate::platform::fold();
+        let reading = crate::platform::crease();
         // No hinge and no window extensions: nothing will ever say, so the timer stops.
         if angle.is_none() && reading == crate::crease::Reading::Silent {
             if let Some(t) = stop.upgrade() {

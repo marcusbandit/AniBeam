@@ -196,10 +196,11 @@ android/            AndroidManifest.xml (package, version, NativeActivity), icon
                     java/ with the one download service
 companion/          the logic, no UI: client, store, AniList, Next up rows, On disk rows,
                     sync. Tests run on the desktop; tests/mock_host.rs syncs with the mock.
-src/                the app: android_main, the UI thread (app.rs), the phone's core
-                    (local.rs, phone.rs), the other device (remote.rs, worker.rs), the
-                    phone's settings (prefs.rs), JNI for the browser, the service and the network
-                    (android.rs)
+src/                the app: the UI thread (app.rs), the phone's core (local.rs, phone.rs),
+                    the other device (remote.rs, worker.rs), the phone's settings (prefs.rs)
+src/platform/       everything that differs by platform: android.rs holds android_main and
+                    the JNI for the browser, the service, the network and the screen;
+                    other.rs stands in on every other target
 ui/                 the Slint screens; theme.slint is the one token file, fonts/ holds
                     Archivo and B612 as on the desktop
 scripts/            the build and emulator loop, and the mock host
