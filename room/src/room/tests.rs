@@ -238,20 +238,76 @@ fn the_eleventh_member_gets_full() {
 }
 
 #[test]
-fn a_member_in_grace_holds_their_place_and_a_bye_frees_it() {
+fn only_connected_members_count_toward_full() {
     let mut r = room();
     for conn in 1..=10 {
         join(&mut r, conn, &format!("P{conn}"), None, 0);
     }
+    // P10 drops: the room shows nine, so a tenth person gets in.
     r.disconnect(ConnId(10), 5);
-    let outs = r.handle(ConnId(11), hello("Late", None, None), 10);
+    assert_eq!(r.members().len(), 9);
+    join(&mut r, 11, "Late", None, 10);
+    assert_eq!(r.members().len(), 10);
+    // The room shows ten now, so the next one is refused.
+    let outs = r.handle(ConnId(12), hello("Later", None, None), 20);
     assert_eq!(error_code(&outs), Some(ErrorCode::Full));
+}
+
+#[test]
+fn a_member_in_grace_comes_back_to_a_full_room() {
+    let mut r = room();
+    let mut keys = Vec::new();
+    for conn in 1..=10 {
+        keys.push(join(&mut r, conn, &format!("P{conn}"), None, 0));
+    }
+    r.disconnect(ConnId(10), 5);
+    join(&mut r, 11, "Late", None, 10);
+    // P10's place was kept: the rejoin key lets them in past ten.
+    let (id, key) = keys[9].clone();
+    let outs = r.handle(ConnId(20), hello("P10", None, Some(&key)), 30);
+    assert_eq!(welcome(&outs, 20).0, id);
+    assert_eq!(r.members().len(), 11);
+    // A stranger still finds it full.
+    let outs = r.handle(ConnId(21), hello("Other", None, None), 40);
+    assert_eq!(error_code(&outs), Some(ErrorCode::Full));
+}
+
+#[test]
+fn places_in_grace_are_bounded() {
+    let mut r = room();
+    // Ten join and drop, ten more join and drop: twenty places in grace.
+    for conn in 1..=20 {
+        join(&mut r, conn, &format!("P{conn}"), None, conn);
+        r.disconnect(ConnId(conn), conn);
+    }
+    let outs = r.handle(ConnId(30), hello("Late", None, None), 40);
+    assert_eq!(error_code(&outs), Some(ErrorCode::Full));
+    // Once the grace has run out, the places are free again.
+    r.tick(20 + GRACE_MS);
+    join(&mut r, 31, "Later", None, 20 + GRACE_MS);
+}
+
+#[test]
+fn a_bye_frees_a_place_at_once() {
+    let mut r = room();
+    for conn in 1..=10 {
+        join(&mut r, conn, &format!("P{conn}"), None, 0);
+    }
     r.handle(ConnId(9), ClientMsg::Bye, 20);
     join(&mut r, 11, "Late", None, 30);
-    // Once the grace has run out, the place is free too.
-    r.tick(5 + GRACE_MS);
-    join(&mut r, 12, "Later", None, 5 + GRACE_MS);
     assert_eq!(r.members().len(), 10);
+}
+
+#[test]
+fn is_member_after_hello_only() {
+    let mut r = room();
+    assert!(!r.is_member(ConnId(1)));
+    r.handle(ConnId(1), hello("", None, None), 0);
+    assert!(!r.is_member(ConnId(1)), "a refused name is no member");
+    join(&mut r, 1, "Ann", None, 0);
+    assert!(r.is_member(ConnId(1)));
+    r.disconnect(ConnId(1), 5);
+    assert!(!r.is_member(ConnId(1)));
 }
 
 // Commands

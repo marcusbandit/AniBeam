@@ -9,7 +9,9 @@
 //             the host's rejoin key still gives the same member
 //   timers    the host drops and, after the 120 s grace, the other member
 //             becomes host (the Durable Object alarm); takes about two minutes
-//   limits    the 11th room creation in a minute gets 429
+//   limits    the 11th room creation in a minute gets 429, a socket is held to
+//             the rate before hello and closed after 10 s without one, and the
+//             61st join page in a minute gets 429
 //   close     a room nobody joins closes after 10 minutes (the alarm)
 //   gone      after a restart that room is still gone: its storage was deleted
 
@@ -263,9 +265,34 @@ async function timers() {
 }
 
 async function limits() {
+  const made = await createRoom();
+  check(made.status === 201, `a room for the limit checks (got ${made.status})`);
+  const { code } = made.body;
+
   const statuses = [];
   for (let i = 0; i < 12; i++) statuses.push((await createRoom()).status);
   check(statuses.includes(429), `room creations past 10 a minute get 429 (${statuses.join(" ")})`);
+
+  // A socket that has not said hello is held to the rate all the same.
+  const junk = await new Client("junk").open(code);
+  for (let i = 0; i < 25; i++) junk.send("junk");
+  const limited = await junk.next((f) => f.t === "error" && f.code === "rate_limited");
+  check(!!limited && !junk.closed, "a socket before hello gets rate_limited past 20 a second, and stays");
+  junk.close();
+
+  // One that never says hello is closed after 10 s.
+  const silent = await new Client("silent").open(code);
+  const started = Date.now();
+  const late = await silent.next((f) => f.t === "error" && f.code === "proto", 15_000);
+  const shut = await silent.waitClosed(5_000);
+  const secs = Math.round((Date.now() - started) / 1000);
+  check(!!late && shut && secs >= 9, `a socket that never says hello is closed (${secs} s)`);
+
+  const pages = [];
+  for (let i = 0; i < 62; i++) pages.push((await fetch(`${base}/${code}`)).status);
+  check(pages.includes(429), `join pages past 60 a minute get 429 (${pages.filter((s) => s === 429).length} refused)`);
+  const nonsense = await fetch(`${base}/not-a-code`);
+  check(nonsense.status === 404, `a page for a malformed code is still 404 (got ${nonsense.status})`);
 }
 
 async function close() {

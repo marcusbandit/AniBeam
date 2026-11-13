@@ -39,15 +39,23 @@ root never builds it. It only builds for `wasm32-unknown-unknown`.
   protocol's `ping` carries the client's clock while `pong` carries the
   relay's. Each ping therefore wakes the object and costs one twentieth of a
   request.
-- Per address limits use the Workers rate limiting binding: 10 room creations
-  and 30 WebSocket opens a minute, as on the native relay, an IPv6 address
-  counted by its /64. These limits are approximate and count per Cloudflare
-  location. They are checked in the Worker before any Durable Object is
-  touched, so a refused request costs no Durable Object request.
+- Per address limits use the Workers rate limiting binding: 10 room creations,
+  30 WebSocket opens and 60 join pages a minute, as on the native relay, an
+  IPv6 address counted by its /64 (`anibeam_room::limit::limit_key`). These
+  limits are approximate and count per Cloudflare location. They are checked
+  in the Worker before any Durable Object is touched, so a refused request
+  costs no Durable Object request. A join page path that is not a code is a
+  404 before the limit and never reaches an object.
+- Each socket may send 20 messages a second, member or not; the counts live in
+  the object's memory only, which is lost on eviction, and an object is only
+  evicted once its sockets are quiet. A socket that has not said hello within
+  10 s gets `proto` and is closed: each socket carries when it opened as a
+  second tag (`o<ms>`), every message checks it, and each open sets the alarm
+  10 s on to sweep sockets that never sent anything. That alarm is one more
+  request and one more row per socket opened.
 - TODO: the native relay also caps open rooms at 10,000. The Worker has no
   global count; the 32^6 code space and the free plan's daily caps stand in
-  for it. The join page (`GET /{code}`) has no per address limit either, the
-  same as the native relay, and each one costs a Durable Object request.
+  for it.
 
 ## Free plan numbers this relies on
 
@@ -88,7 +96,8 @@ No Cloudflare account or login is needed. Point a client at
 (node 22 or later, no packages): it makes a room, joins two members, checks
 play, seek, ping, the error paths and the join page, restarts the relay to
 check the room reloads from storage, waits out the 120 s grace to check the
-alarm hands the host role over, and checks the creation limit. `SMOKE_QUICK=1`
+alarm hands the host role over, and checks the creation limit, the join page
+limit and the hello deadline. `SMOKE_QUICK=1`
 skips the two minute timer phase. `SMOKE_CLOSE=1` also waits out the 10 minute
 close of an empty room and restarts once more to check its storage is gone.
 

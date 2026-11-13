@@ -12,6 +12,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::code::hex;
+use crate::limit::{self, Verdict};
 use crate::proto::{
     Action, ClientMsg, EpisodeRef, ErrorCode, MAX_MEMBERS, MAX_POSITION, Member, MemberId, PROTO,
     PlayState, Ready, RoomView, ServerMsg,
@@ -24,8 +25,7 @@ pub const GRACE_MS: u64 = 120_000;
 /// How long a room with nobody in it lives, in ms.
 pub const EMPTY_MS: u64 = 600_000;
 
-/// The most messages one member may send in a second.
-pub const RATE_PER_SEC: u32 = 20;
+pub use crate::limit::RATE_PER_SEC;
 
 /// The longest name, in characters.
 pub const NAME_MAX: usize = 32;
@@ -144,6 +144,11 @@ impl Room {
     /// The host, while they are connected.
     pub fn host(&self) -> Option<MemberId> {
         self.host.filter(|h| self.is_connected(*h))
+    }
+
+    /// Whether `conn` has said hello and is a member now.
+    pub fn is_member(&self, conn: ConnId) -> bool {
+        self.slot_of(conn).is_some()
     }
 
     /// The members connected now, in the order they first joined.
@@ -374,7 +379,14 @@ impl Room {
                 i
             }
             None => {
-                if self.slots.len() >= self.max as usize {
+                // Only the people connected count toward `max`, as the view
+                // shows only them. A member in their grace comes back with the
+                // rejoin key above even when that takes the room past `max`:
+                // their place was kept. Twice `max` places in all bounds the
+                // room however its members come and go.
+                if self.connected() >= self.max as usize
+                    || self.slots.len() >= 2 * self.max as usize
+                {
                     return vec![error(conn, ErrorCode::Full, "the room is full")];
                 }
                 let id = MemberId(self.next_id);
@@ -466,21 +478,10 @@ impl Room {
     /// `rate_limited` per second at most).
     fn over_limit(&mut self, i: usize, conn: ConnId, now_ms: u64) -> Option<Vec<Out>> {
         let slot = &mut self.slots[i];
-        if now_ms >= slot.window_ms + 1_000 || now_ms < slot.window_ms {
-            slot.window_ms = now_ms;
-            slot.window_count = 0;
-        }
-        slot.window_count += 1;
-        if slot.window_count <= RATE_PER_SEC {
-            None
-        } else if slot.window_count == RATE_PER_SEC + 1 {
-            Some(vec![error(
-                conn,
-                ErrorCode::RateLimited,
-                format!("at most {RATE_PER_SEC} messages a second"),
-            )])
-        } else {
-            Some(Vec::new())
+        match limit::count(&mut slot.window_ms, &mut slot.window_count, now_ms) {
+            Verdict::Pass => None,
+            Verdict::Refuse => Some(vec![one(conn, limit::refusal())]),
+            Verdict::Drop => Some(Vec::new()),
         }
     }
 
@@ -535,8 +536,8 @@ impl Room {
 }
 
 /// A name trimmed, or `None` when it is empty, too long or has a control
-/// character in it.
-fn clean_name(name: &str) -> Option<String> {
+/// character in it. The core checks a name with this before it says hello.
+pub fn clean_name(name: &str) -> Option<String> {
     let name = name.trim();
     let len = name.chars().count();
     if len == 0 || len > NAME_MAX || name.chars().any(char::is_control) {

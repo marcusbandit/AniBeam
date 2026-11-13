@@ -373,3 +373,70 @@ async fn ten_creations_a_minute_per_address() {
     let (status, _) = http(&addr, "POST", "/rooms", &body).await;
     assert_eq!(status, 429);
 }
+
+#[tokio::test]
+async fn sixty_join_pages_a_minute_per_address() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    for _ in 0..anibeam_relay::PAGES_PER_MINUTE {
+        let (status, _) = http(&addr, "GET", &format!("/{}", room.code), "").await;
+        assert_eq!(status, 200);
+    }
+    let (status, _) = http(&addr, "GET", &format!("/{}", room.code), "").await;
+    assert_eq!(status, 429);
+}
+
+/// A relay that waits `hello_wait` for a hello.
+async fn start_with(hello_wait: Duration) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(anibeam_relay::serve_with(
+        listener,
+        anibeam_relay::Options { hello_wait },
+    ));
+    addr.to_string()
+}
+
+#[tokio::test]
+async fn a_socket_that_never_says_hello_is_closed() {
+    let addr = start_with(Duration::from_millis(300)).await;
+    let room = create(&addr).await;
+    let mut silent = connect(&addr, &room.code).await;
+    let (mut ann, _) = join(&addr, &room.code, "Ann", None).await;
+    match recv(&mut silent).await {
+        ServerMsg::Error { code, .. } => assert_eq!(code, ErrorCode::Proto),
+        other => panic!("{other:?}"),
+    }
+    assert!(closed(&mut silent).await);
+    // A member who said hello in time stays.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    send(&mut ann, &ClientMsg::Ping { c: 7 }).await;
+    assert!(matches!(recv(&mut ann).await, ServerMsg::Pong { c: 7, .. }));
+}
+
+#[tokio::test]
+async fn a_socket_before_hello_is_held_to_the_rate() {
+    let addr = start().await;
+    let room = create(&addr).await;
+    let mut ws = connect(&addr, &room.code).await;
+    // Junk keeps the socket open with bad_message, twenty times a second.
+    for _ in 0..anibeam_room::limit::RATE_PER_SEC + 5 {
+        ws.send(Message::text("junk")).await.unwrap();
+    }
+    let mut codes = Vec::new();
+    for _ in 0..=anibeam_room::limit::RATE_PER_SEC {
+        match recv(&mut ws).await {
+            ServerMsg::Error { code, .. } => codes.push(code),
+            other => panic!("{other:?}"),
+        }
+    }
+    let bad = codes
+        .iter()
+        .filter(|c| **c == ErrorCode::BadMessage)
+        .count();
+    assert_eq!(bad, anibeam_room::limit::RATE_PER_SEC as usize, "{codes:?}");
+    assert_eq!(codes.last(), Some(&ErrorCode::RateLimited));
+    // Past the refusal, nothing more comes back this second.
+    let more = tokio::time::timeout(Duration::from_millis(300), ws.next()).await;
+    assert!(more.is_err(), "{more:?}");
+}

@@ -28,3 +28,8 @@ simple = { limit = 10, period = 60 }
 name = "OPEN_LIMIT"
 namespace_id = "8462"
 simple = { limit = 30, period = 60 }
+
+[[ratelimits]]
+name = "PAGE_LIMIT"
+namespace_id = "8463"
+simple = { limit = 60, period = 60 }

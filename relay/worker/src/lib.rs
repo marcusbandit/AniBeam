@@ -15,11 +15,18 @@
 //! others see, and each socket carries its [`ConnId`] as a tag. The room's
 //! timers (the 120 s grace and the 10 minute empty close) run on a Durable
 //! Object alarm that is only set while one of them is pending.
+//!
+//! Each socket may send 20 messages a second, member or not; its counts live in
+//! memory only, since an object is evicted only when its sockets are quiet. A
+//! socket that has not said hello within 10 s is closed: each socket carries
+//! when it opened as a second tag, every message checks it, and the alarm
+//! sweeps the ones that never send anything.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv6Addr};
+use std::net::IpAddr;
 
+use anibeam_room::limit::{self, HELLO_MS, Verdict, Window};
 use anibeam_room::proto::{CreateRoom, CreatedRoom, EpisodeRef, RoomView};
 use anibeam_room::room::{EMPTY_MS, GRACE_MS};
 use anibeam_room::{ConnId, Out, Room, To, code, page};
@@ -34,10 +41,12 @@ use worker::{
 /// The Durable Object namespace binding in `wrangler.toml`.
 const ROOMS: &str = "ROOMS";
 
-/// Rate limit bindings: room creations and WebSocket opens per address a minute
-/// (10 and 30, set in `wrangler.toml`, as on the native relay).
+/// Rate limit bindings: room creations, WebSocket opens and join pages per
+/// address a minute (10, 30 and 60, set in `wrangler.toml`, as on the native
+/// relay).
 const CREATE_LIMIT: &str = "CREATE_LIMIT";
 const OPEN_LIMIT: &str = "OPEN_LIMIT";
+const PAGE_LIMIT: &str = "PAGE_LIMIT";
 
 /// The largest `POST /rooms` body and the largest WebSocket message.
 const MAX_BODY: usize = 16 * 1024;
@@ -103,7 +112,7 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     }
     if let Some(raw) = path.strip_prefix('/').filter(|raw| !raw.contains('/')) {
         return match method {
-            Method::Get | Method::Head => join_page(&env, raw).await,
+            Method::Get | Method::Head => join_page(req, &env, raw).await,
             _ => text(405, "method not allowed"),
         };
     }
@@ -122,23 +131,16 @@ async fn allowed(env: &Env, binding: &str, req: &Request) -> bool {
         .ok()
         .flatten()
         .unwrap_or_default();
+    // An IPv6 address counts by its /64, as on the native relay.
+    let key = match ip.parse::<IpAddr>() {
+        Ok(ip) => limit::limit_key(ip).to_string(),
+        Err(_) => ip,
+    };
     limiter
-        .limit(limit_key(&ip))
+        .limit(key)
         .await
         .map(|outcome| outcome.success)
         .unwrap_or(true)
-}
-
-/// An IPv6 address counts by its /64, which one machine usually has whole.
-fn limit_key(ip: &str) -> String {
-    match ip.parse::<IpAddr>().map(|ip| ip.to_canonical()) {
-        Ok(IpAddr::V6(v6)) => {
-            let s = v6.segments();
-            Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0).to_string()
-        }
-        Ok(v4) => v4.to_string(),
-        Err(_) => ip.to_owned(),
-    }
 }
 
 /// What the Worker hands a room object to set it up.
@@ -209,10 +211,15 @@ async fn join(req: Request, env: &Env, raw: &str) -> Result<Response> {
     stub.fetch_with_request(req).await
 }
 
-async fn join_page(env: &Env, raw: &str) -> Result<Response> {
+async fn join_page(req: Request, env: &Env, raw: &str) -> Result<Response> {
+    // Only a path that reads as a code reaches the limiter, and only one within
+    // the limit wakes a room object.
     let Some(room_code) = code::normalize(raw) else {
         return text(404, "not found");
     };
+    if !allowed(env, PAGE_LIMIT, &req).await {
+        return text(429, "too many pages, try again in a minute");
+    }
     let stub = env
         .durable_object(ROOMS)?
         .id_from_name(&room_code)?
@@ -258,6 +265,9 @@ struct Cache {
     loaded: bool,
     /// `None` for a code with no room.
     stored: Option<Stored>,
+    /// Each socket's message counts. Memory only: an object is evicted only
+    /// once its sockets are quiet, and a fresh count then is harmless.
+    windows: HashMap<ConnId, Window>,
 }
 
 /// One room. Its memory is a cache of what storage holds.
@@ -294,6 +304,22 @@ impl DurableObject for RoomObject {
             let _ = ws.close(Some(1011), Some("unknown socket"));
             return Ok(());
         };
+        let now = now_ms();
+        let verdict = self
+            .cache
+            .borrow_mut()
+            .windows
+            .entry(conn)
+            .or_insert_with(|| Window::new(now))
+            .hit(now);
+        match verdict {
+            Verdict::Pass => {}
+            Verdict::Refuse => {
+                let _ = ws.send_with_str(&limit::refusal().to_json());
+                return Ok(());
+            }
+            Verdict::Drop => return Ok(()),
+        }
         // The protocol is text only; anything else gets bad_message.
         let text = match message {
             WebSocketIncomingMessage::String(text) => text,
@@ -304,7 +330,6 @@ impl DurableObject for RoomObject {
             return Ok(());
         }
         self.load().await?;
-        let now = now_ms();
         let changed = {
             let mut cache = self.cache.borrow_mut();
             let Some(stored) = cache.stored.as_mut() else {
@@ -312,6 +337,11 @@ impl DurableObject for RoomObject {
                 let _ = ws.close(Some(1000), Some("closed"));
                 return Ok(());
             };
+            if !stored.room.is_member(conn) && hello_overdue(&self.state, &ws, now) {
+                drop(cache);
+                refuse_late(&ws);
+                return Ok(());
+            }
             let before = stored.connected();
             let outs = stored.room.handle_text(conn, &text, now);
             if before > 0 && stored.connected() == 0 {
@@ -357,6 +387,17 @@ impl DurableObject for RoomObject {
             // The alarm just fired, so none is set now.
             stored.alarm = None;
             self.send(&stored.room, outs);
+            // Sockets that never said hello, and never sent anything that
+            // would have caught it.
+            for ws in self.state.get_websockets() {
+                let late = self
+                    .conn_of(&ws)
+                    .is_some_and(|conn| !stored.room.is_member(conn))
+                    && hello_overdue(&self.state, &ws, now);
+                if late {
+                    refuse_late(&ws);
+                }
+            }
         }
         self.save().await?;
         Response::ok("")
@@ -487,9 +528,16 @@ impl RoomObject {
             }
         };
         let pair = WebSocketPair::new()?;
+        let now = now_ms();
         let tag = tag(ConnId(conn));
+        let opened = format!("{OPENED}{now}");
         self.state
-            .accept_websocket_with_tags(&pair.server, &[tag.as_str()]);
+            .accept_websocket_with_tags(&pair.server, &[tag.as_str(), opened.as_str()]);
+        // The alarm closes the socket if it never says hello.
+        if let Some(stored) = self.cache.borrow_mut().stored.as_mut() {
+            stored.add_deadline(now + HELLO_MS);
+        }
+        self.save().await?;
         Response::from_websocket(pair.client)
     }
 
@@ -500,6 +548,7 @@ impl RoomObject {
         let Some(conn) = self.conn_of(&ws) else {
             return Ok(());
         };
+        self.cache.borrow_mut().windows.remove(&conn);
         self.load().await?;
         let now = now_ms();
         let changed = {
@@ -564,4 +613,23 @@ impl RoomObject {
 
 fn tag(conn: ConnId) -> String {
     format!("c{}", conn.0)
+}
+
+/// The prefix of the tag that says when a socket opened, in ms.
+const OPENED: &str = "o";
+
+/// Whether `ws` has been open past the hello deadline at `now`. A socket with
+/// no open tag (from before the tag existed) counts as overdue.
+fn hello_overdue(state: &State, ws: &WebSocket, now: u64) -> bool {
+    let opened = state
+        .get_tags(ws)
+        .iter()
+        .find_map(|t| t.strip_prefix(OPENED).and_then(|n| n.parse::<u64>().ok()));
+    opened.is_none_or(|at| now >= at + HELLO_MS)
+}
+
+/// Tells a socket it was too slow to say hello, and closes it.
+fn refuse_late(ws: &WebSocket) {
+    let _ = ws.send_with_str(&limit::no_hello().to_json());
+    let _ = ws.close(Some(1008), Some("hello must come first"));
 }

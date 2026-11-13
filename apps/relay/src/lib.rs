@@ -9,15 +9,18 @@
 //! - `GET /{code}` is the join page a shared link opens.
 //! - `GET /health` answers `ok`.
 //!
-//! Each address gets 10 room creations and 30 WebSocket opens a minute (an IPv6
-//! address counts by its /64). Behind a reverse proxy every client has the
-//! proxy's address, so they all share one limit.
+//! Each address gets 10 room creations, 30 WebSocket opens and 60 join pages a
+//! minute (an IPv6 address counts by its /64). Behind a reverse proxy every
+//! client has the proxy's address, so they all share one limit. Each socket
+//! may send 20 messages a second, and one that has not said hello within 10 s
+//! is closed.
 
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use anibeam_room::limit::{self, HELLO_MS, Verdict, Window, limit_key};
 use anibeam_room::proto::{CreateRoom, CreatedRoom};
 use anibeam_room::{ConnId, Out, Room, code, page};
 use axum::Router;
@@ -37,6 +40,9 @@ pub const CREATES_PER_MINUTE: u32 = 10;
 /// WebSocket opens one address may make a minute.
 pub const OPENS_PER_MINUTE: u32 = 30;
 
+/// Join pages one address may load a minute.
+pub const PAGES_PER_MINUTE: u32 = 60;
+
 /// The most rooms open at once.
 const MAX_ROOMS: usize = 10_000;
 
@@ -46,10 +52,31 @@ const MAX_BODY: usize = 16 * 1024;
 /// Frames waiting for one socket; a client that falls this far behind is dropped.
 const QUEUE: usize = 256;
 
+/// What a relay may be set up with.
+#[derive(Clone, Copy, Debug)]
+pub struct Options {
+    /// How long a socket may stay open without saying hello.
+    pub hello_wait: Duration,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            hello_wait: Duration::from_millis(HELLO_MS),
+        }
+    }
+}
+
 /// Serves the relay on `listener` until the process ends. Tests bind
 /// `127.0.0.1:0` and spawn this.
 pub async fn serve(listener: TcpListener) -> std::io::Result<()> {
+    serve_with(listener, Options::default()).await
+}
+
+/// [`serve`] with options other than the defaults.
+pub async fn serve_with(listener: TcpListener, options: Options) -> std::io::Result<()> {
     let relay = Relay::default();
+    relay.lock().options = options;
     tokio::spawn(tick_loop(Arc::downgrade(&relay.0)));
     let app = Router::new()
         .route("/health", get(health))
@@ -73,6 +100,7 @@ struct Inner {
     rooms: HashMap<String, Entry>,
     limits: HashMap<IpAddr, Limit>,
     next_conn: u64,
+    options: Options,
 }
 
 /// A room and the sockets in it, member or not yet.
@@ -87,16 +115,19 @@ enum Frame {
 }
 
 /// One address's counts for the minute that started at `start_ms`.
+#[derive(Default)]
 struct Limit {
     start_ms: u64,
     creates: u32,
     opens: u32,
+    pages: u32,
 }
 
 #[derive(Clone, Copy)]
 enum Kind {
     Create,
     Open,
+    Page,
 }
 
 impl Relay {
@@ -116,19 +147,18 @@ impl Inner {
     fn allow(&mut self, ip: IpAddr, kind: Kind, now_ms: u64) -> bool {
         let limit = self.limits.entry(limit_key(ip)).or_insert(Limit {
             start_ms: now_ms,
-            creates: 0,
-            opens: 0,
+            ..Limit::default()
         });
         if now_ms >= limit.start_ms + 60_000 {
             *limit = Limit {
                 start_ms: now_ms,
-                creates: 0,
-                opens: 0,
+                ..Limit::default()
             };
         }
         let (count, max) = match kind {
             Kind::Create => (&mut limit.creates, CREATES_PER_MINUTE),
             Kind::Open => (&mut limit.opens, OPENS_PER_MINUTE),
+            Kind::Page => (&mut limit.pages, PAGES_PER_MINUTE),
         };
         if *count >= max {
             return false;
@@ -161,17 +191,6 @@ impl Entry {
             // Too far behind, or gone: dropping the sender ends its socket.
             self.sockets.remove(&conn);
         }
-    }
-}
-
-/// An IPv6 address counts by its /64, which one machine usually has whole.
-fn limit_key(ip: IpAddr) -> IpAddr {
-    match ip.to_canonical() {
-        IpAddr::V6(v6) => {
-            let s = v6.segments();
-            IpAddr::V6(Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0))
-        }
-        v4 => v4,
     }
 }
 
@@ -281,11 +300,21 @@ async fn join(
     }
 }
 
-async fn join_page(State(relay): State<Relay>, Path(raw): Path<String>) -> Response {
+async fn join_page(
+    State(relay): State<Relay>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Path(raw): Path<String>,
+) -> Response {
     let Some(room_code) = code::normalize(&raw) else {
         return (StatusCode::NOT_FOUND, "not found").into_response();
     };
-    let view = relay.lock().rooms.get(&room_code).map(|e| e.room.view());
+    let view = {
+        let mut inner = relay.lock();
+        if !inner.allow(addr.ip(), Kind::Page, now_ms()) {
+            return (StatusCode::TOO_MANY_REQUESTS, "too many pages").into_response();
+        }
+        inner.rooms.get(&room_code).map(|e| e.room.view())
+    };
     let status = if view.is_some() {
         StatusCode::OK
     } else {
@@ -295,25 +324,40 @@ async fn join_page(State(relay): State<Relay>, Path(raw): Path<String>) -> Respo
 }
 
 /// One socket's life: frames in go to the room, frames out come from the queue
-/// the room's messages are pushed onto.
+/// the room's messages are pushed onto. Each socket has its own rate, member or
+/// not, and one that has not said hello by the deadline is closed.
 async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
     let (tx, mut rx) = mpsc::channel(QUEUE);
-    let conn = {
+    let (conn, hello_wait) = {
         let mut inner = relay.lock();
         let conn = ConnId(inner.next_conn);
         inner.next_conn += 1;
-        inner.rooms.get_mut(&room_code).map(|entry| {
+        let hello_wait = inner.options.hello_wait;
+        let conn = inner.rooms.get_mut(&room_code).map(|entry| {
             entry.sockets.insert(conn, tx);
             conn
-        })
+        });
+        (conn, hello_wait)
     };
     let Some(conn) = conn else {
         // The room closed between the upgrade and now.
         let _ = socket.send(Message::Close(None)).await;
         return;
     };
+    let mut window = Window::new(now_ms());
+    let deadline = tokio::time::sleep(hello_wait);
+    tokio::pin!(deadline);
+    let mut awaiting_hello = true;
     loop {
         tokio::select! {
+            _ = &mut deadline, if awaiting_hello => {
+                awaiting_hello = false;
+                if !relay.is_member(&room_code, conn) {
+                    let _ = socket.send(Message::Text(limit::no_hello().to_json().into())).await;
+                    let _ = socket.send(Message::Close(None)).await;
+                    break;
+                }
+            }
             frame = rx.recv() => match frame {
                 Some(Frame::Text(text)) => {
                     if socket.send(Message::Text(text.into())).await.is_err() {
@@ -325,19 +369,38 @@ async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
                     break;
                 }
             },
-            incoming = socket.recv() => match incoming {
-                Some(Ok(Message::Text(text))) => relay.on_text(&room_code, conn, text.as_str()),
-                // The protocol is text only; anything else gets bad_message.
-                Some(Ok(Message::Binary(_))) => relay.on_text(&room_code, conn, ""),
-                Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                Some(Ok(Message::Close(_)) | Err(_)) | None => break,
-            },
+            incoming = socket.recv() => {
+                let text = match incoming {
+                    Some(Ok(Message::Text(text))) => text,
+                    // The protocol is text only; anything else gets bad_message.
+                    Some(Ok(Message::Binary(_))) => Default::default(),
+                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
+                    Some(Ok(Message::Close(_)) | Err(_)) | None => break,
+                };
+                match window.hit(now_ms()) {
+                    Verdict::Pass => relay.on_text(&room_code, conn, text.as_str()),
+                    Verdict::Refuse => {
+                        let refusal = limit::refusal().to_json();
+                        if socket.send(Message::Text(refusal.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Verdict::Drop => {}
+                }
+            }
         }
     }
     relay.on_close(&room_code, conn);
 }
 
 impl Relay {
+    fn is_member(&self, room_code: &str, conn: ConnId) -> bool {
+        self.lock()
+            .rooms
+            .get(room_code)
+            .is_some_and(|entry| entry.room.is_member(conn))
+    }
+
     fn on_text(&self, room_code: &str, conn: ConnId, text: &str) {
         let now = now_ms();
         let mut inner = self.lock();
@@ -384,17 +447,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_ipv6_address_counts_by_its_64() {
-        let a: IpAddr = "2001:db8:1:2:aaaa::1".parse().unwrap();
-        let b: IpAddr = "2001:db8:1:2:bbbb::9".parse().unwrap();
-        let c: IpAddr = "2001:db8:1:3::1".parse().unwrap();
-        assert_eq!(limit_key(a), limit_key(b));
-        assert_ne!(limit_key(a), limit_key(c));
-        let mapped: IpAddr = "::ffff:198.51.100.7".parse().unwrap();
-        assert_eq!(limit_key(mapped), "198.51.100.7".parse::<IpAddr>().unwrap());
-    }
-
-    #[test]
     fn limits_count_per_kind_and_reset_each_minute() {
         let mut inner = Inner::default();
         let ip: IpAddr = "198.51.100.7".parse().unwrap();
@@ -406,6 +458,10 @@ mod tests {
             assert!(inner.allow(ip, Kind::Open, 2_000));
         }
         assert!(!inner.allow(ip, Kind::Open, 2_000));
+        for _ in 0..PAGES_PER_MINUTE {
+            assert!(inner.allow(ip, Kind::Page, 3_000));
+        }
+        assert!(!inner.allow(ip, Kind::Page, 3_000));
         let other: IpAddr = "203.0.113.9".parse().unwrap();
         assert!(inner.allow(other, Kind::Create, 2_000));
         assert!(inner.allow(ip, Kind::Create, 61_000));
