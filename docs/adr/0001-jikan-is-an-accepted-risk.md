@@ -1,6 +1,6 @@
 # Jikan is an accepted risk for episode data
 
-Status: accepted, 2026-11-13 (#840)
+Status: accepted, 2026-11-13 (#843)
 
 ## Context
 
