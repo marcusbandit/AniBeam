@@ -2,7 +2,7 @@
 # usage: appimage.sh <out-dir>
 # Turns target/release/anibeam into <out-dir>/AniBeam-<pkgver>-x86_64.AppImage.
 #   ANIBEAM_BIN   the binary to bundle (default: the workspace's target/release/anibeam)
-#   DEPS_PREFIX   where deps.sh installed libva, libmpv and MpvQt
+#   DEPS_PREFIX   where deps.sh installed libva, FFmpeg, libmpv and MpvQt
 #   QMAKE         the qmake of the Qt the binary was built against
 # Two helpers ride along, each pinned by version and sha256 below:
 #   usr/share/anibeam/anirss/    Python 3.13 (python-build-standalone) and anirss, which needs 3.11
@@ -113,6 +113,48 @@ cd "$out"
 opengl="$(ldconfig -p | awk '$1 == "libOpenGL.so.0" && /x86-64/ {print $NF; exit}')"
 [ -n "$opengl" ] || { echo "no libOpenGL.so.0 on this machine to bundle" >&2; exit 1; }
 cp -L "$opengl" "$appdir/usr/lib/libOpenGL.so.0"
+
+# linuxdeploy-plugin-qt copies every Qt Quick Controls style, since QtQuick.Controls names
+# them as optional imports. The QML imports QtQuick.Controls.Basic and nothing else, so four
+# of them are 17 MB nobody loads (#850). Fusion stays: Qt's own fallback file and folder
+# dialogs, which a desktop without a portal gets, import plain QtQuick.Controls, and on
+# Linux that resolves to Fusion.
+for style in FluentWinUI3 Imagine Material Universal; do
+  rm -rf "$appdir/usr/qml/QtQuick/Controls/$style"
+  rm -f "$appdir"/usr/lib/libQt6QuickControls2"$style"*.so*
+done
+
+# What deps.sh's lean FFmpeg leaves out stays out (#850). Each of these only ever came in
+# because a library linked it: an encoder, the speech filters' chain, libxml2 and the second
+# ICU it brings. One showing up here means something in the bundle links it again, the
+# likeliest being noble's own libavcodec slipping in ahead of the one in DEPS_PREFIX.
+leftout=(libx264 libx265 libSvtAv1Enc librav1e libaom libvpx libjxl libcodec2 librsvg-2
+  libflite libpocketsphinx libsphinxbase liblapack libblas libgfortran libfftw3 libxml2)
+for name in "${leftout[@]}"; do
+  if compgen -G "$appdir/usr/lib/$name*" > /dev/null; then
+    echo "the image carries $name again, which #850 left out; what links it:" >&2
+    for lib in "$appdir"/usr/lib/*.so*; do
+      readelf -d "$lib" 2>/dev/null | grep -q "NEEDED.*\[$name" && echo "  $(basename "$lib")" >&2
+    done
+    exit 1
+  fi
+done
+# The same check at the root: every FFmpeg library in the image is the one deps.sh built.
+# linuxdeploy rewrites each library's rpath, so the files differ; their build IDs do not.
+build_id() { readelf -n "$1" 2>/dev/null | awk '/Build ID/ {print $3}'; }
+for lib in "$appdir"/usr/lib/lib{avcodec,avformat,avfilter,avutil,swresample,swscale}.so.*; do
+  [ -n "$(build_id "$lib")" ] && [ "$(build_id "$lib")" = "$(build_id "$deps/lib/$(basename "$lib")")" ] \
+    || { echo "$(basename "$lib") in the image is not the one deps.sh built in $deps" >&2; exit 1; }
+done
+icus=("$appdir"/usr/lib/libicuuc.so.*)
+[ "${#icus[@]}" -le 1 ] || { echo "the image carries more than one ICU: ${icus[*]}" >&2; exit 1; }
+# Nothing left may link a style that was taken out. readelf exits non-zero on any file that
+# is not ELF, so its output is read whole rather than through a pipe pipefail would judge.
+needed="$(find "$appdir/usr" -name '*.so*' -type f -exec readelf -d {} + 2>/dev/null || true)"
+if grep -E 'NEEDED.*libQt6QuickControls2(FluentWinUI3|Imagine|Material|Universal)' <<<"$needed"; then
+  echo "a library in the image still links a Qt Quick Controls style that was taken out" >&2
+  exit 1
+fi
 
 echo "== qbittorrent-nox $QBT_TAG"
 fetch "https://github.com/userdocs/qbittorrent-nox-static/releases/download/$QBT_TAG/x86_64-qbittorrent-nox" \
