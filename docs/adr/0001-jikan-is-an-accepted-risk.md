@@ -23,26 +23,33 @@ never a match or playback, and the alternatives cost more than that:
 MyAnimeList's official API gives an episode count but no per-episode titles
 or dates, and AniList's own data is what Jikan already fills in.
 
-The core keeps Jikan a soft dependency:
+What the core does when Jikan fails:
 
 - A Jikan error reads as an empty episode list. The match or refresh it is
   part of still succeeds.
 - `merge_episodes` (`core/src/metadata/record.rs`) builds rows from AniList's
   schedule first, then Jikan, then AniList's streaming titles, so AniList
   alone still yields the scheduled episodes.
-- A refresh never replaces a stored title (`keep_titles`), so an outage after
-  a good fetch loses nothing already in the table.
+- A stored title survives a fetch that brings none: both episode upserts in
+  `write_episodes` coalesce the title, and the airing refresh (`keep_titles`)
+  never replaces one at all.
 - `Core::report_jikan_outage` warns in the activity log at most once per
-  `OUTAGE_WINDOW` (10 minutes).
-- Every call goes through the shared limiter in `core/src/net/limiter.rs`.
+  `OUTAGE_WINDOW` (10 minutes). The window limits the warning, not the calls.
+- Every call goes through the shared limiter in `core/src/net/limiter.rs`,
+  which retries a 429 on its 1 to 32 second backoff.
 
 ## Consequences
 
 While Jikan is down, newly matched series lack the episode titles, air dates
 and rows that AniList has no schedule for. Older finished shows feel it most.
 
-New code that reads Jikan keeps it soft: no call may fail, block a match or
-hide a series because Jikan did not answer.
+An outage costs more than the missing detail today. Each series still asks
+Jikan and waits out its failure before its match is written, so a match can
+take up to a minute when Jikan answers 429, and a refresh can delete a future
+row only Jikan had supplied. Containing that is tracked in #842.
+
+New code that reads Jikan keeps it soft: a Jikan failure may cost episode
+detail, never a match, a series or a stored title.
 
 Revisit this when Jikan stays down or changes shape for more than a few days,
 or when AniList or MyAnimeList offers full episode lists without a per-user
