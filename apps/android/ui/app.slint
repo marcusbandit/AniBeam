@@ -189,6 +189,51 @@ component ShowMenu inherits Rectangle {
     }
 }
 
+// An episode held down: its mark, the desktop's words for the cube's click.
+component MarkMenu inherits Rectangle {
+    in property <length> inset-bottom;
+    background: #000000b0;
+    TouchArea { clicked => { Ask.mark-open = false; } }
+    Rectangle {
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        height: body.preferred-height;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
+            spacing: Theme.unit * 3;
+            Text {
+                text: Ask.mark-title;
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            Rectangle { height: Theme.unit; }
+            Button {
+                text: Ask.mark-watched ? AppData.mark-unwatched-label : AppData.mark-watched-label;
+                icon: @image-url("icons/check-check.svg");
+                has-icon: true;
+                primary: true;
+                clicked => {
+                    AppData.mark(Ask.mark-number, Ask.mark-season, Ask.mark-watched);
+                    Ask.mark-open = false;
+                }
+            }
+            Button {
+                text: AppData.mark-cancel-label;
+                clicked => { Ask.mark-open = false; }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "AniBeam";
     background: Theme.ground;
@@ -347,6 +392,10 @@ export component AppWindow inherits Window {
             }
             if (Ask.menu-id >= 0) {
                 Ask.menu-id = -1;
+                return accept;
+            }
+            if (Ask.mark-open) {
+                Ask.mark-open = false;
                 return accept;
             }
             if (Ask.versions-open) {
@@ -518,6 +567,10 @@ export component AppWindow inherits Window {
         }
 
         if Ask.menu-id >= 0: ShowMenu {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if Ask.mark-open: MarkMenu {
             inset-bottom: root.inset-bottom;
         }
 

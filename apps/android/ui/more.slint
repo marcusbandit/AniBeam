@@ -33,6 +33,12 @@ export global Ask {
     in-out property <bool> versions-remote;
     // The file the row plays now, marked in the list.
     in-out property <int> versions-current;
+    // An episode row held down: its code and title, and what marking it needs.
+    in-out property <bool> mark-open;
+    in-out property <string> mark-title;
+    in-out property <float> mark-number;
+    in-out property <int> mark-season;
+    in-out property <bool> mark-watched;
 }
 
 // A setting the search found: the section it lives in, its label, and the section's name.

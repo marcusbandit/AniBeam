@@ -458,7 +458,14 @@ pub fn series(
     let extra_versions =
         (detail.episodes.len() - one_per_episode(&detail.episodes, false).len()) as u64;
     let on_disk = detail.progress.on_disk.saturating_sub(extra_versions);
+    // No tracker count behind the show: the desktop says so rather than a count of nothing,
+    // since its marks live on the episodes here.
+    let tracked_count = detail.progress.watched.is_some();
     let progress_text = match (movie, detail.progress.total) {
+        (true, _) if !tracked_count => tr("series-not-tracked", &[]),
+        (false, _) if !tracked_count => {
+            tr("series-not-tracked-on-phone", &[("count", on_disk.into())])
+        }
         (true, _) => if watched > 0 {
             "Watched"
         } else {
@@ -513,6 +520,11 @@ pub fn series(
             .into(),
     };
 
+    // A tracker keeps marks for any aired episode; without one only the files here take one.
+    let tracked = card
+        .match_info
+        .as_ref()
+        .is_some_and(|m| m.anilist_id.is_some() || m.mal_id.is_some());
     // Sorted by season, then number: a show with S1 and S2 lists each season in order.
     let mut lines: Vec<((u32, f64), EpisodeLine)> = Vec::new();
     let downloading: HashSet<u64> = detail
@@ -559,6 +571,11 @@ pub fn series(
                 picked: false,
                 remote: false,
                 versions: version_lines(e, &downloading),
+                // On the phone, so it can be marked with a tracker or without one.
+                markable: countable(e.number, e.season),
+                watched: e.watched,
+                number: e.number as f32,
+                season: e.season.unwrap_or(1) as i32,
             },
         ));
     }
@@ -591,6 +608,11 @@ pub fn series(
                 picked: false,
                 remote: false,
                 versions: Default::default(),
+                // Not on the phone: only a tracker keeps the mark.
+                markable: tracked && countable(f64::from(a.number), a.season),
+                watched: matches!(a.cube.as_str(), "w" | "l"),
+                number: a.number as f32,
+                season: a.season.unwrap_or(1) as i32,
             },
         ));
     }
@@ -619,6 +641,7 @@ pub fn series(
                 picked: false,
                 remote: false,
                 versions: Default::default(),
+                ..Default::default()
             },
         ));
     }
@@ -753,6 +776,12 @@ fn airing_word(status: AiringStatus) -> String {
     )
 }
 
+/// Whether a mark can count up to an episode: an episode 0 would mark nothing and clear the
+/// season, and a special (season 0) is not in any count, so neither offers one.
+fn countable(number: f64, season: Option<u32>) -> bool {
+    number >= 1.0 && season != Some(0)
+}
+
 /// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
 pub(crate) fn clock(secs: f64) -> String {
     let t = secs.max(0.0) as u64;
@@ -837,6 +866,15 @@ mod tests {
         assert_eq!(runtime(120), "2 h");
         assert_eq!(airing_word(AiringStatus::Hiatus), "On hiatus");
         assert_eq!(airing_word(AiringStatus::Releasing), "Airing");
+    }
+
+    #[test]
+    fn episode_0_and_specials_take_no_mark() {
+        assert!(countable(1.0, None));
+        assert!(countable(12.5, Some(2)));
+        assert!(!countable(0.0, Some(1)));
+        assert!(!countable(0.5, None));
+        assert!(!countable(3.0, Some(0)));
     }
 
     #[test]
