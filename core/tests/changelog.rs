@@ -216,17 +216,12 @@ fn the_phone_notes_are_whole_and_name_its_version() {
         .lines()
         .find_map(|l| l.strip_prefix("version = \"")?.strip_suffix('"'))
         .expect("a version in apps/android/Cargo.toml");
-    // The APK's own version is the manifest's; build.sh checks the two agree, and so does
-    // this, since CI never runs build.sh.
+    // The APK takes its version from Cargo.toml alone (build.sh); the manifest names none,
+    // so nothing can drift from it.
     let manifest = read("apps/android/android/AndroidManifest.xml");
-    let name = manifest
-        .split("android:versionName=\"")
-        .nth(1)
-        .and_then(|rest| rest.split('"').next())
-        .expect("a versionName in the manifest");
-    assert_eq!(
-        name, version,
-        "the manifest's versionName and Cargo.toml's version differ"
+    assert!(
+        !manifest.contains("android:versionName") && !manifest.contains("android:versionCode"),
+        "the manifest names a version; build.sh writes it from Cargo.toml"
     );
     check("apps/android", version);
 }

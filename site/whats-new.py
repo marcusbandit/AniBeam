@@ -266,7 +266,8 @@ lost = """<section class="wn-hero"><h1>Nothing here.</h1></section>
 # hotfix, a version whose notes are empty) links the list instead.
 if RELEASES:
     slugs = {e["slug"] for e in versions}
-    for key, slug in (("stable", lambda v: v), ("nightly", lambda v: None), ("phone", lambda v: f"android-{v}")):
+    for key, slug in (("stable", lambda v: v), ("nightly", lambda v: None), ("phone", lambda v: f"android-{v}"),
+                      ("phone_nightly", lambda v: None)):
         r = RELEASES.get(key)
         if r:
             page_slug = slug(r["version"])
