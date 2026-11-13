@@ -86,6 +86,10 @@ impl Shelves {
     }
 }
 
+/// What the last episode mark said, how to put it back (the series, the count before it and
+/// the season, when Undo can), and the tick it said it on.
+type MarkNote = (String, Option<(u64, u32, u32)>, u32);
+
 /// Which series page is open: one of this phone's, or one of the other device's.
 #[derive(Clone, Copy, PartialEq)]
 enum Open {
@@ -146,9 +150,8 @@ struct App {
     /// What Plan to watch said, kept apart from the list's own note.
     airing_plan_note: Option<String>,
     airing_undo: Option<(u64, String, u32)>,
-    /// What the last episode mark said, the tick it said it on, and how to put it back: the
-    /// series, the count before it and the season.
-    mark_note: Option<(String, Option<(u64, u32, u32)>, u32)>,
+    /// What the last episode mark said; see `MarkNote`.
+    mark_note: Option<MarkNote>,
     /// A mark is on its way to the core; the next waits for it, so two never cross.
     mark_busy: bool,
     /// Shows marked not interested here and not yet gone from the core's list.
