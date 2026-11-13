@@ -769,13 +769,41 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
 
 #[cfg(feature = "phone")]
 pub fn torrents(core: &Core) -> Result<Reply, CoreError> {
+    let owner = core.owner()?;
     core.handle.block_on(async {
         let engine = engine(core).await?;
+        let torrents = engine.list().await;
+        // Which torrent each library file came from, as the desktop records it from
+        // qBittorrent (#620); a failure only leaves them for the next read.
+        if let Err(e) = crate::downloads::origins::record_from(&owner, None, &torrents).await {
+            tracing::debug!("origins not recorded: {e}");
+        }
         Ok(Reply::PhoneTorrents {
-            torrents: engine.list().await,
+            torrents,
             held: engine.held(),
         })
     })
+}
+
+/// After a scan brought files in: the origins of the new files, from the engine's list,
+/// only when the engine is already open, so a scan never starts it (#620).
+#[cfg(feature = "phone")]
+pub(crate) fn after_scan(core: &Core) {
+    if core.phone.engine.get().is_none() {
+        return;
+    }
+    let Ok(owner) = core.owner() else { return };
+    core.handle.spawn(async move {
+        let Some(engine) = owner.phone.engine.get() else {
+            return;
+        };
+        let torrents = engine.list().await;
+        match crate::downloads::origins::record_from(&owner, None, &torrents).await {
+            Ok(0) => {}
+            Ok(n) => tracing::debug!("recorded the torrent of {n} files"),
+            Err(e) => tracing::debug!("origins after a scan not recorded: {e}"),
+        }
+    });
 }
 
 #[cfg(feature = "phone")]

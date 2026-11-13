@@ -1891,6 +1891,9 @@ impl Find {
                         }),
                         None => f.is_some_and(|f| f.on_disk),
                     },
+                    // The desktop's own library is not read for its releases (#733), only
+                    // its episodes, so this is the phone's alone.
+                    other_on_disk: desk_had.is_none() && f.is_some_and(|f| f.other_on_disk),
                     tone: if r.seeders == Some(0) { 2 } else { 0 },
                 }
             })

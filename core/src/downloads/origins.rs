@@ -75,14 +75,16 @@ fn seen() -> std::sync::MutexGuard<'static, HashSet<String>> {
 }
 
 /// Records which finished torrent holds each library file whose origin is
-/// unknown, or older than the file. A one-file torrent is its content path;
-/// a batch is read file by file. A torrent still downloading is left for a
-/// later read, and a finished one is read once until the library gains
-/// files again, so a client full of done torrents costs no request at all.
-/// Two torrents holding one path (a cross-seed) leave the first one read.
+/// unknown, or older than the file. A torrent that lists its own files (the
+/// phone's engine, #620) is read from that list; otherwise a one-file
+/// torrent is its content path and a batch is asked of `client` file by
+/// file. A torrent still downloading is left for a later read, and a
+/// finished one is read once until the library gains files again, so a
+/// client full of done torrents costs no request at all. Two torrents
+/// holding one path (a cross-seed) leave the first one read.
 pub async fn record_from(
     core: &Arc<Core>,
-    client: &QbtClient,
+    client: Option<&QbtClient>,
     torrents: &[Torrent],
 ) -> Result<u64, CoreError> {
     let fresh: Vec<&Torrent> = {
@@ -122,23 +124,28 @@ pub async fn record_from(
         if unknown.is_empty() {
             continue;
         }
-        let content = local.path(&t.content_path);
-        if unknown.contains(&content) {
-            if taken.insert(content.clone()) {
-                found.push((content, hash, t.name.clone()));
-            }
-            continue;
-        }
-        let folder = format!("{}/", content.trim_end_matches('/'));
-        if !unknown.iter().any(|p| p.starts_with(&folder)) {
-            continue;
-        }
-        let files = match client.files(&t.hash).await {
-            Ok(files) => files,
-            Err(e) => {
-                tracing::debug!("files of {} not read for origins: {e}", t.name);
-                seen().remove(&hash);
+        let files = if !t.files.is_empty() {
+            t.files.clone()
+        } else {
+            let content = local.path(&t.content_path);
+            if unknown.contains(&content) {
+                if taken.insert(content.clone()) {
+                    found.push((content, hash, t.name.clone()));
+                }
                 continue;
+            }
+            let folder = format!("{}/", content.trim_end_matches('/'));
+            let Some(client) = client else { continue };
+            if !unknown.iter().any(|p| p.starts_with(&folder)) {
+                continue;
+            }
+            match client.files(&t.hash).await {
+                Ok(files) => files,
+                Err(e) => {
+                    tracing::debug!("files of {} not read for origins: {e}", t.name);
+                    seen().remove(&hash);
+                    continue;
+                }
             }
         };
         let base = local.path(&t.save_path);
@@ -180,6 +187,8 @@ pub async fn record_from(
 /// unrecorded until the next read.
 pub fn after_scan(core: &Core) {
     seen().clear();
+    #[cfg(feature = "phone")]
+    crate::phone::after_scan(core);
     let Some(client) = core.downloads.state().qbt.clone() else {
         return;
     };
@@ -192,7 +201,7 @@ pub fn after_scan(core: &Core) {
                 return;
             }
         };
-        match record_from(&owner, &client, &torrents).await {
+        match record_from(&owner, Some(&client), &torrents).await {
             Ok(0) => {}
             Ok(n) => tracing::debug!("recorded the torrent of {n} files"),
             Err(e) => tracing::debug!("origins after a scan not recorded: {e}"),
@@ -364,7 +373,7 @@ mod tests {
         ];
         let n = core
             .handle
-            .block_on(record_from(&core, &client, &torrents))
+            .block_on(record_from(&core, Some(&client), &torrents))
             .unwrap();
         assert_eq!(n, 2);
         let known = core
@@ -391,7 +400,7 @@ mod tests {
         let asked = http.requests().len();
         let again = core
             .handle
-            .block_on(record_from(&core, &client, &torrents))
+            .block_on(record_from(&core, Some(&client), &torrents))
             .unwrap();
         assert_eq!(again, 0);
         assert_eq!(http.requests().len(), asked);
@@ -417,7 +426,7 @@ mod tests {
             "/lib/Show/[Grp] Show - 01 [1080p].mkv",
         )];
         core.handle
-            .block_on(record_from(&core, &client, &over))
+            .block_on(record_from(&core, Some(&client), &over))
             .unwrap();
         let known = core
             .store
@@ -433,6 +442,60 @@ mod tests {
             .unwrap();
         assert_eq!(known.len(), 1, "{known:?}");
         assert_eq!(known["/lib/Show/[Grp] Show - 01 [1080p].mkv"].hash, "r1ddd");
+        core.shutdown();
+    }
+
+    /// The phone's engine lists each torrent's files with it and has no
+    /// client to ask (#620): a batch written straight into the show folder
+    /// is read from that list, without a request.
+    #[test]
+    fn a_torrent_that_lists_its_files_is_read_from_them() {
+        let http = FakeHttp::new();
+        let (_dir, core) = core_with(http.clone());
+        library(&core);
+        let file = |name: &str| TorrentFile {
+            name: name.into(),
+            size: 1,
+            progress: 1.0,
+            priority: 1,
+            episode: None,
+        };
+        let mut batch = torrent("EEE", "Show Batch", "/lib/Show/Show Batch");
+        batch.files = vec![file("Batch/Show - 02.mkv"), file("Batch/Show - 03.mkv")];
+        let mut one = torrent(
+            "FFF",
+            "[Grp] Show - 01 [1080p].mkv",
+            "/lib/Show/[Grp] Show - 01 [1080p].mkv",
+        );
+        one.files = vec![file("[Grp] Show - 01 [1080p].mkv")];
+        // Without a list of its own and no client, a batch records nothing.
+        let unlisted = torrent("GGG", "Other", "/lib/Show/Other");
+        let n = core
+            .handle
+            .block_on(record_from(&core, None, &[batch, one, unlisted]))
+            .unwrap();
+        assert_eq!(n, 2);
+        assert!(http.requests().is_empty());
+        let known = core
+            .store
+            .read(|c| {
+                of(
+                    c,
+                    &[
+                        "/lib/Show/[Grp] Show - 01 [1080p].mkv",
+                        "/lib/Show/Batch/Show - 02.mkv",
+                    ],
+                )
+            })
+            .unwrap();
+        assert_eq!(
+            known["/lib/Show/Batch/Show - 02.mkv"],
+            origin("eee", "Show Batch")
+        );
+        assert_eq!(
+            known["/lib/Show/[Grp] Show - 01 [1080p].mkv"],
+            origin("fff", "[Grp] Show - 01 [1080p].mkv")
+        );
         core.shutdown();
     }
 

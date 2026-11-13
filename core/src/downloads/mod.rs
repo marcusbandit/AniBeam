@@ -2431,7 +2431,7 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
             let mut torrents = client.torrents().await?;
             // Which torrent each library file came from (#241); a failure
             // only leaves them for the next read
-            if let Err(e) = origins::record_from(&owner, &client, &torrents).await {
+            if let Err(e) = origins::record_from(&owner, Some(&client), &torrents).await {
                 tracing::debug!("origins not recorded: {e}");
             }
             // The files of each unfinished torrent, so a batch shows each
