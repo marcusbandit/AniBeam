@@ -10,3 +10,5 @@ pub mod instance;
 pub mod mpris;
 #[cfg(not(any(target_os = "macos", windows)))]
 pub mod notify;
+#[cfg(not(any(target_os = "macos", windows)))]
+pub mod wake;

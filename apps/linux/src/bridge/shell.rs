@@ -639,6 +639,14 @@ impl cxx_qt::Initialize for qobject::Shell {
         });
         #[cfg(target_os = "macos")]
         crate::runtime::runtime().spawn(crate::dbus::instance::start(shell));
+        // After a suspend the core sets its stopped timers again, so an episode that aired
+        // meanwhile is said at once (#594). Windows and macOS have their own wake signals.
+        #[cfg(not(any(target_os = "macos", windows)))]
+        crate::runtime::runtime().spawn(crate::dbus::wake::start(|| {
+            if let Err(e) = crate::runtime::core().call(anibeam_core::Call::Resumed) {
+                eprintln!("anibeam: after a suspend: {e}");
+            }
+        }));
     }
 }
 

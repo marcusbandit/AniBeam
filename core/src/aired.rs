@@ -5,9 +5,11 @@
 //! Nothing here polls. The schedule the core already keeps (`anilist_episodes`)
 //! says when the next followed episode airs, and one alarm is set for that
 //! moment; it is set again after any change that can move the schedule or the
-//! list, the way the calendar file is rewritten. An alarm never sleeps longer
-//! than `LONGEST_SLEEP`, because a sleeping laptop stops the monotonic clock the
-//! alarm runs on, and a wake must not miss an episode that aired meanwhile:
+//! list, the way the calendar file is rewritten. A suspend stops the monotonic
+//! clock the alarm runs on, so a shell that hears the machine wake calls
+//! `Resumed` and the alarm is set again at once (#594); the Linux desktop does,
+//! through logind. Until every shell does, an alarm also never sleeps longer
+//! than `LONGEST_SLEEP`, so a wake no shell reports misses nothing for long:
 //! waking early only reads the schedule again, it asks no provider anything.
 //!
 //! What has been said is kept as a mark in the settings table, so a restart
@@ -202,6 +204,17 @@ pub(crate) fn listen(core: &Arc<Core>) {
     *recover(&core.aired.listener) = Some(core.subscribe(listener));
     let owner = core.clone();
     core.handle.spawn_blocking(move || arm(&owner));
+}
+
+/// After a suspend: the alarm slept on a clock that stopped, so it is set again now, which
+/// says whatever aired meanwhile. Only on a started core, where `listen` set one.
+pub(crate) fn resumed(core: &Core) {
+    if recover(&core.aired.listener).is_none() {
+        return;
+    }
+    let Some(core) = core.arc() else { return };
+    let handle = core.handle.clone();
+    handle.spawn_blocking(move || arm(&core));
 }
 
 pub(crate) fn stop(core: &Core) {
