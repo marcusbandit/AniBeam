@@ -49,9 +49,9 @@
   AB.releases().then((r) => { rel = r; show(page.dataset.channel); });
 
   // The visitor's own system gets the wide tile on top and the brand-coloured button. A phone gets
-  // the phone tile, and the page shows nothing else (style.css, data-device); an iPhone gets the
-  // Mac's, under a note that the iPhone app is coming. A system we build
-  // nothing for gets no tile picked, and neither does a Mac the browser says is Intel.
+  // the phone tile and the page shows nothing else (style.css, data-device); an iPhone gets the
+  // Mac's, under a note that the iPhone app is coming. A system we build nothing for gets no tile
+  // picked, and neither does a Mac the browser says is Intel.
   function feature(want) {
     const mine = want && document.querySelector(`.dl-tile[data-os="${want}"]`);
     if (!mine) return;
@@ -61,7 +61,7 @@
     if (AB.os !== "ios") { main.classList.remove("btn-ghost"); main.classList.add("btn-primary"); }
   }
   if (AB.os === "mac") AB.macChip.then((chip) => feature(chip === false ? null : "mac"));
-  else feature(AB.os === "ios" ? "mac" : AB.phone ? "android" : AB.os);
+  else feature(AB.os === "ios" ? "mac" : AB.os);
 })();
 
 // The streaks. Each switch of channel plays their entrance again, the same extension the page
