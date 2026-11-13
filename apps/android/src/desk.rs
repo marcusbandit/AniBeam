@@ -5,7 +5,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use anibeam_companion::address::HostAddress;
 use anibeam_companion::api;
 use anibeam_companion::client::{self, HostClient};
 use anibeam_companion::store::Store;
@@ -14,7 +13,7 @@ use anibeam_core::{Call, CoreError, Reply};
 /// The connected computer, when it takes downloads.
 #[derive(Clone)]
 pub struct Desk {
-    /// Its own name, from its hello ("banditbox").
+    /// Its own name, from its hello ("desktop").
     pub name: String,
     client: Arc<HostClient>,
     /// Its library from the last snapshot, when that snapshot came from this computer.
@@ -36,8 +35,8 @@ struct Series {
 /// is off costs the connect timeout, so call it off the UI thread.
 pub fn probe(data_dir: &Path) -> Option<Desk> {
     let store = Store::open(data_dir).ok()?;
-    let typed = store.settings().address;
-    let address = HostAddress::parse(&typed).ok()?;
+    let settings = store.settings();
+    let address = settings.host()?;
     let client = HostClient::new(client::agent(), address);
     let hello = client.hello().ok()?;
     if hello.app != api::APP || !hello.features.iter().any(|f| f == api::FEATURE_DOWNLOADS) {
@@ -47,7 +46,7 @@ pub fn probe(data_dir: &Path) -> Option<Desk> {
     // here: a download sent with one would land in whichever show has that id.
     let series = store
         .cache()
-        .filter(|c| c.address == typed)
+        .filter(|c| c.address == settings.address)
         .map(|c| c.snapshot.series.into_iter().map(series_of).collect())
         .unwrap_or_default();
     Some(Desk {
@@ -122,6 +121,7 @@ pub fn sent_line(reply: &Reply, what: &str, name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anibeam_companion::address::HostAddress;
 
     fn desk() -> Desk {
         let series = |id, anilist, names: &[&str], had: &[u32]| Series {

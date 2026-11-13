@@ -92,7 +92,55 @@ global Status {
     out property <string> stats: StatsData.loaded && !StatsData.empty ? Tr.ns2("more-stats-status", "count", StatsData.hours.to-float(), "hours", StatsData.hours, "year", StatsData.years[StatsData.year-index]) : Tr.t("more-stats-status-empty");
 }
 
-// The other device's address, editable in place, with its last test underneath.
+// The computer's address, editable in place, with its last test underneath. More shows it under
+// its heading; onboarding asks for it on a step of its own (#736).
+export component HostField inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    Field {
+        text <=> AppData.host-address;
+        figure: true;
+        placeholder: Tr.t("more-computer-placeholder");
+    }
+    if AppData.host-person != "": Text {
+        text: AppData.host-person;
+        color: Theme.text;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    if AppData.host-result != "": HorizontalLayout {
+        spacing: Theme.unit * 2;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 2.5 * Theme.unit;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: AppData.host-tone == 0 ? Theme.ok : AppData.host-tone == 1 ? Theme.bad : Theme.dim;
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: AppData.host-result;
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: start;
+        Button {
+            text: Tr.t("common-test");
+            small: true;
+            clicked => { AppData.test-host(AppData.host-address); }
+        }
+        Button {
+            text: Tr.t("common-save");
+            small: true;
+            primary: true;
+            clicked => { AppData.save-host(AppData.host-address); }
+        }
+    }
+}
+
 component HostRow inherits Rectangle {
     height: column.preferred-height;
     column := VerticalLayout {
@@ -109,49 +157,7 @@ component HostRow inherits Rectangle {
             font-size: Theme.small;
             wrap: word-wrap;
         }
-        Field {
-            text <=> AppData.host-address;
-            figure: true;
-            placeholder: Tr.t("more-computer-placeholder");
-        }
-        if AppData.host-person != "": Text {
-            text: AppData.host-person;
-            color: Theme.text;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        if AppData.host-result != "": HorizontalLayout {
-            spacing: Theme.unit * 2;
-            Rectangle {
-                y: (parent.height - self.height) / 2;
-                width: 2.5 * Theme.unit;
-                height: self.width;
-                border-radius: self.width / 2;
-                background: AppData.host-tone == 0 ? Theme.ok : AppData.host-tone == 1 ? Theme.bad : Theme.dim;
-            }
-            Text {
-                horizontal-stretch: 1;
-                text: AppData.host-result;
-                color: Theme.dim;
-                font-size: Theme.small;
-                wrap: word-wrap;
-            }
-        }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
-            Button {
-                text: Tr.t("common-test");
-                small: true;
-                clicked => { AppData.test-host(AppData.host-address); }
-            }
-            Button {
-                text: Tr.t("common-save");
-                small: true;
-                primary: true;
-                clicked => { AppData.save-host(AppData.host-address); }
-            }
-        }
+        HostField { }
     }
 }
 

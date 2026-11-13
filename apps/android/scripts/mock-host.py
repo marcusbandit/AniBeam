@@ -9,7 +9,7 @@ and run against something without the desktop app being up. It never reads or
 writes a real library. Standard library only.
 
 Usage:
-    python3 scripts/mock-host.py [--port 8790] [--bind 127.0.0.1] [--demo] [--aired] [--host-name banditbox] [--profile NAME [--guest]]
+    python3 scripts/mock-host.py [--port 8790] [--bind 127.0.0.1] [--demo] [--aired] [--host-name desktop] [--profile NAME [--guest]]
 
 --demo       adds six currently airing AniList shows (ids 100 to 105), their
              subscriptions and torrents. Needs the network once; the AniList
@@ -73,7 +73,7 @@ CONTENT_TYPES = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 # Filled in by main() from the command line and the demo fetch.
-OPTS = {"host_name": "banditbox", "aired": False, "profile": "", "guest": False}
+OPTS = {"host_name": "desktop", "aired": False, "profile": "", "guest": False}
 DEMO = {"media": None, "covers": {}}
 POSTER_LOCK = threading.Lock()
 
@@ -495,7 +495,7 @@ def main(argv=None):
     ap.add_argument("--bind", default="127.0.0.1")
     ap.add_argument("--demo", action="store_true", help="add six live AniList shows, subscriptions and torrents")
     ap.add_argument("--aired", action="store_true", help="make Frieren episode 8 air two hours ago")
-    ap.add_argument("--host-name", default="banditbox", help="the machine name the host reports")
+    ap.add_argument("--host-name", default="desktop", help="the machine name the host reports")
     ap.add_argument("--profile", default="", help="whose progress the hello says it answers with")
     ap.add_argument("--guest", action="store_true", help="that person is a guest, not the computer's owner")
     args = ap.parse_args(argv)
