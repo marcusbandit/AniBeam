@@ -85,5 +85,8 @@
   "Get it for Mac": "Mac版を入手",
   "Unless you want to donate": "寄付したいなら別ですが",
   "But feedback would be lovely": "でもフィードバックは大歓迎です",
-  "But we support Tailscale": "でも Tailscale に対応しています"
+  "But we support Tailscale": "でも Tailscale に対応しています",
+  "Close": "閉じる",
+  "{n} episodes": "全{n}話",
+  "Movie": "映画"
 }
