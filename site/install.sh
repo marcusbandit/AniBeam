@@ -10,6 +10,7 @@
 #   anything else          the AppImage in ~/.local/bin, with a menu entry
 # On Linux it asks for sudo only for the system's own package manager; on a Mac it needs none. Read it first if you like:
 # https://anibeam.app/install.sh
+# Everything runs from main at the very end, so a download cut off half way runs nothing.
 #   ANIBEAM_BASE      where the repos live (default https://anibeam.app), for testing
 #   ANIBEAM_APPIMAGE  set to 1 to take the AppImage route on any system
 set -eu
@@ -21,24 +22,34 @@ say() { printf '\033[1;33m==>\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" > /dev/null 2>&1; }
 
-have curl || fail "curl is needed"
+# The newest stable release's file of one kind (appimage, dmg), from the release links the site
+# keeps (tools/releases.py). When that file cannot be had, GitHub's newest release.
+asset() {
+  url="$(curl -fsSL "$base/releases.json" 2> /dev/null | sed -n '/"stable":/,/"nightly":/p' \
+    | grep -o "\"$1\": *\"[^\"]*\"" | head -n 1 | sed 's/.*"\(https[^"]*\)"/\1/')" || url=""
+  [ -n "$url" ] && return
+  url="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+    | grep -o "\"browser_download_url\": *\"[^\"]*$2\"" | head -n 1 | sed 's/.*"\(https[^"]*\)"/\1/')" || url=""
+}
 
 # The dmg's app, not notarized: macOS would stop its first launch, so the quarantine flag that
 # a browser or Homebrew sets on it is taken off, as the README tells people to do by hand.
-unquarantine() { xattr -dr com.apple.quarantine "$1" 2> /dev/null || true; }
+unquarantine() {
+  say "Clearing the quarantine flag on $1: the app is not notarized, so macOS would block its first launch"
+  xattr -dr com.apple.quarantine "$1" 2> /dev/null || true
+}
 
 mac() {
   [ "$(uname -m)" = arm64 ] || fail "AniBeam for Mac is built for Apple silicon only."
   if have brew; then
     say "Installing AniBeam with Homebrew"
-    brew tap marcusbandit/anibeam "https://github.com/$repo"
-    brew install --cask marcusbandit/anibeam/anibeam
+    brew tap marcusbandit/anibeam "https://github.com/$repo" < /dev/null
+    brew install --cask marcusbandit/anibeam/anibeam < /dev/null
     unquarantine /Applications/AniBeam.app
     return
   fi
   say "Finding the newest dmg"
-  url="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
-    | grep -o '"browser_download_url": *"[^"]*macos-arm64\.dmg"' | head -n 1 | sed 's/.*"\(https[^"]*\)"/\1/')"
+  asset dmg 'macos-arm64\.dmg'
   [ -n "$url" ] || fail "Could not find the dmg on the newest release: https://github.com/$repo/releases/latest"
   work="$(mktemp -d)"
   say "Downloading $(basename "$url")"
@@ -53,14 +64,6 @@ mac() {
   unquarantine "$apps/AniBeam.app"
   say "AniBeam is in $apps. It updates itself from Settings > About"
 }
-
-if [ "$(uname -s)" = Darwin ]; then
-  mac
-  say "AniBeam is installed. Open it from Launchpad or Applications"
-  exit 0
-fi
-[ "$(uname -s)" = Linux ] || fail "This installer is for Linux and Mac. Windows: $base/#install"
-[ "$(uname -m)" = x86_64 ] || fail "AniBeam is built for x86_64 Linux only for now."
 
 # Only the system package managers need root; the AppImage goes in the home folder.
 sudo=""
@@ -80,21 +83,15 @@ put() {
 }
 
 id="" like=""
-if [ -r /etc/os-release ]; then
-  # shellcheck disable=SC1091
-  . /etc/os-release
-  id="${ID:-}"
-  like="${ID_LIKE:-}"
-fi
 family() { case " $id $like " in *" $1 "*) return 0 ;; esac; return 1; }
 
 # `curl | sh` hands the script to sh on stdin, so nothing here may stop and read an answer
-# from it: the helpers run with --noconfirm.
+# from it, nor eat the rest of it: every package manager runs non-interactive with stdin closed.
 arch() {
   for helper in paru yay; do
     if have "$helper"; then
       say "Installing anibeam-bin from the AUR with $helper"
-      "$helper" -S --needed --noconfirm anibeam-bin
+      "$helper" -S --needed --noconfirm anibeam-bin < /dev/null
       return
     fi
   done
@@ -108,9 +105,9 @@ debian() {
   say "Adding the AniBeam apt repo"
   $sudo install -d -m 755 /etc/apt/sources.list.d
   put "$base/apt/anibeam.sources" /etc/apt/sources.list.d/anibeam.sources
-  $sudo apt-get update
+  $sudo apt-get update < /dev/null
   say "Installing AniBeam"
-  $sudo apt-get install -y anibeam
+  $sudo apt-get install -y anibeam < /dev/null
 }
 
 fedora() {
@@ -118,13 +115,12 @@ fedora() {
   say "Adding the AniBeam dnf repo"
   put "$base/rpm/anibeam.repo" /etc/yum.repos.d/anibeam.repo
   say "Installing AniBeam"
-  $sudo dnf install -y anibeam
+  $sudo dnf install -y anibeam < /dev/null
 }
 
 appimage() {
   say "Finding the newest AppImage"
-  url="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
-    | grep -o '"browser_download_url": *"[^"]*x86_64\.AppImage"' | head -n 1 | sed 's/.*"\(https[^"]*\)"/\1/')"
+  asset appimage 'x86_64\.AppImage'
   [ -n "$url" ] || fail "Could not find the AppImage on the newest release: https://github.com/$repo/releases/latest"
   bin="$HOME/.local/bin"
   mkdir -p "$bin" "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/512x512/apps"
@@ -147,16 +143,33 @@ EOF
   say "The AppImage updates itself from Settings > About"
 }
 
-if [ "${ANIBEAM_APPIMAGE:-}" = 1 ]; then
-  appimage
-elif family arch && have pacman; then
-  arch
-elif family debian && have apt-get; then
-  debian
-elif { family fedora || [ "$id" = fedora ]; } && have dnf; then
-  fedora
-else
-  appimage
-fi
+main() {
+  have curl || fail "curl is needed"
+  if [ "$(uname -s)" = Darwin ]; then
+    mac
+    say "AniBeam is installed. Open it from Launchpad or Applications"
+    return
+  fi
+  [ "$(uname -s)" = Linux ] || fail "This installer is for Linux and Mac. Windows: $base/download/"
+  [ "$(uname -m)" = x86_64 ] || fail "AniBeam is built for x86_64 Linux only for now."
+  if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    id="${ID:-}"
+    like="${ID_LIKE:-}"
+  fi
+  if [ "${ANIBEAM_APPIMAGE:-}" = 1 ]; then
+    appimage
+  elif family arch && have pacman; then
+    arch
+  elif family debian && have apt-get; then
+    debian
+  elif { family fedora || [ "$id" = fedora ]; } && have dnf; then
+    fedora
+  else
+    appimage
+  fi
+  say "AniBeam is installed. Open it from your app menu, or run anibeam"
+}
 
-say "AniBeam is installed. Open it from your app menu, or run anibeam"
+main "$@"
