@@ -19,3 +19,8 @@ series-not-tracked-on-phone =
         [one] Not tracked, { $count } episode on this phone
        *[other] Not tracked, { $count } episodes on this phone
     }
+
+## The player
+
+# The speed picker while the episode plays on a TV, which keeps its own speed.
+player-speed-not-while-casting = Not while casting
