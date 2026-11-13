@@ -30,7 +30,15 @@
 //                                                              and grabs <out>/<shot>.png; "until": "js"
 //                                                              adds a readiness condition on top
 //   {"pages": [{"page": "name", "props": {...}, "shot": "file"}, ...]}
-//                                                              the same, for each entry in turn
+//                                                              the same, for each entry in turn;
+//                                                              "texts": "name" in an entry also
+//                                                              measures its words, as below
+//   {"texts": "name"}                                          prints "DRIVE TEXTS <name> <json>":
+//                                                              every visible piece of text, its
+//                                                              place in the item tree, its words,
+//                                                              its line count and whether it is
+//                                                              cut off. The layout check (#792)
+//                                                              compares these across languages.
 // An objectName target is the first visible item with that name, depth first from the
 // window's content item, which holds the Controls overlay and so every open Popup too.
 import QtQuick
@@ -280,6 +288,33 @@ QtObject {
         }
     }
 
+    // Every visible Text under the window: its place in the item tree (child indices, the
+    // objectName where there is one), so the same label is found again in another language;
+    // its words, cut short; its line count; and whether it is cut off: elided, or wider than
+    // its box with nothing to wrap or elide it.
+    function textsAction(name, tag) {
+        if (typeof name !== "string" || name === "") throw new Error(tag + "texts takes a name")
+        return function() {
+            var found = []
+            function walk(item, path) {
+                if (!item || !item.visible || item.opacity === 0) return
+                if (item.lineCount !== undefined && item.truncated !== undefined && item.text !== undefined
+                        && String(item.text).trim() !== "" && item.width > 0) {
+                    var over = item.wrapMode === Text.NoWrap && item.elide === Text.ElideNone
+                               && item.implicitWidth > item.width + 1
+                    found.push({ p: path, t: String(item.text).slice(0, 60), l: item.lineCount,
+                                 cut: item.truncated || over, w: Math.round(item.width) })
+                }
+                var kids = item.children
+                for (var i = 0; i < kids.length; i++)
+                    walk(kids[i], path + "/" + (kids[i].objectName ? kids[i].objectName : i))
+            }
+            walk(hostWindow.contentItem, "")
+            log("DRIVE TEXTS " + name + " " + JSON.stringify(found))
+            return 0
+        }
+    }
+
     // A page step: opens the page. With "shot" or "until" it then waits for the page to be
     // built (the frame shows this page and a new page item stands in it) and for the
     // optional condition (which honours "expect" and "as" like a plain until), settles, and
@@ -287,7 +322,7 @@ QtObject {
     // `entry` is the index inside a "pages" list; errors name it.
     function pageActions(step, out, entry) {
         var tag = entry === undefined ? "" : "pages[" + entry + "] ", n0 = at
-        var waits = step.shot !== undefined || step.until !== undefined
+        var waits = step.shot !== undefined || step.until !== undefined || step.texts !== undefined
         if (!waits) {
             var plain = String(step.page), plainProps = step.props || {}
             out.push(function() {
@@ -320,6 +355,7 @@ QtObject {
         })
         out.push(function() { return settleMs })
         if (step.shot !== undefined) out.push(shotAction(step.shot, tag))
+        if (step.texts !== undefined) out.push(textsAction(step.texts, tag))
     }
 
     function expand(step) {
@@ -422,6 +458,8 @@ QtObject {
             out.push(function() { return settle })
         } else if (step.shot !== undefined) {
             out.push(shotAction(step.shot, ""))
+        } else if (step.texts !== undefined) {
+            out.push(textsAction(step.texts, ""))
         } else if (step.log !== undefined) {
             // the step line above is the marker
         } else if (step.eval !== undefined) {

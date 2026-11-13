@@ -1124,7 +1124,7 @@ FocusScope {
                 frame.deleteWatchedToken = -1
                 var d = reply.reply || {}
                 frame.toast(reply.error ? frame.errorText(reply.error)
-                    : d.episodes > 0 || d.series > 0 ? words.t("frame-delete-watched-done", { count: d.episodes, size: Fmt.bytes(d.bytes) })
+                    : d.episodes > 0 || d.series > 0 ? words.t("frame-delete-watched-done", { count: d.episodes, size: words.bytes(d.bytes) })
                     : words.t("frame-delete-nothing"))
                 return
             }

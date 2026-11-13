@@ -582,6 +582,15 @@ pub enum Call {
         id: u64,
         count: u32,
     },
+    /// How downloads roll, the `rolling` part of the downloads settings,
+    /// for a shell that sets nothing else there (the phone). Replies
+    /// `RollingSettings`.
+    GetRollingSettings,
+    /// Saves how downloads roll and nothing else of the downloads settings.
+    /// Replies `RollingSettings` with what was saved.
+    SetRollingSettings {
+        rolling: RollingSettings,
+    },
     /// Saves the downloads settings. The two secrets have three answers
     /// each: `None` keeps what is stored, `Some("")` removes it, anything
     /// else replaces it. A running sidecar is stopped, since its
@@ -653,10 +662,14 @@ pub enum Call {
     },
     /// Downloads releases into the library folder under `name`, else the show's own
     /// name. `limit_bytes`, when set, refuses what would take the library past it.
+    /// `rolling` is `DownloadOptions::rolling`: hold the download to a window of
+    /// episodes (`downloads::rolling`), `None` as the rolling settings say.
     PhoneDownload {
         items: Vec<Release>,
         name: Option<String>,
         limit_bytes: Option<u64>,
+        #[serde(default)]
+        rolling: Option<bool>,
     },
     /// Subscribes to a search, as `Subscribe`: its feed and rule are kept by the core,
     /// which checks the feed and downloads each new episode once.
@@ -958,6 +971,9 @@ pub enum Reply {
     PhoneTorrents {
         torrents: Vec<Torrent>,
         held: bool,
+    },
+    RollingSettings {
+        rolling: RollingSettings,
     },
     EndpointCatalog {
         catalog: EndpointCatalog,

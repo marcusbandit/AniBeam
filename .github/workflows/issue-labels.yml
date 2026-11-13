@@ -1,6 +1,6 @@
 name: Issue labels
 
-# Creates the labels the issue forms, triage (docs/agents/triage.md), issue-state.yml, pr-build.yml and pr-issue.yml use, with these colours
+# Creates the labels the issue forms, triage (docs/agents/triage.md), issue-state.yml, pr-build.yml, pr-issue.yml and pr-labels.yml use, with these colours
 # and descriptions, and puts them back when the forms or this list change on main, or when one
 # of them is deleted.
 on:
@@ -32,3 +32,7 @@ jobs:
           gh label create "no issue" --force --color c5def5 --description "A typo-sized PR that may merge without closing an issue (pr-issue.yml)."
           gh label create "test build" --force --color 0e8a16 --description "Builds installers for this PR onto the pr-builds pre-release."
           gh label create "via-triage" --force --color 7dd3fc --description "Filed by a coding agent through the triage report form"
+          gh label create "bug" --force --color d73a4a --description "Something isn't working"
+          gh label create "enhancement" --force --color a2eeef --description "New feature or request"
+          gh label create "documentation" --force --color 0075ca --description "Improvements or additions to documentation"
+          gh label create "question" --force --color d876e3 --description "Further information is requested"

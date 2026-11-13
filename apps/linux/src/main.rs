@@ -98,6 +98,8 @@ fn main() {
     devstats::startup_mark("main");
     runtime::install_paths(paths);
     runtime::install_args(args);
+    // The saved language before the engine loads, so the first frame is already in it
+    bridge::tr::language_from_settings(&runtime::paths().config_dir().join("shell.conf"));
     if serving {
         std::process::exit(serve::run());
     }

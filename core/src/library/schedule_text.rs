@@ -21,7 +21,13 @@ pub(crate) const SPAN_MAX: u32 = 500;
 
 /// Month names in English, Spanish, French and German, each a prefix
 /// `month_num` reads back.
-const MONTHS: &str = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|januar|februar|märz|maerz|juni|juli|oktober|dezember|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|dicembre|janeiro|fevereiro|março|marco|maio|junho|julho|setembro|outubro|dezembro";
+const MONTHS: &str = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|januar|februar|märz|maerz|juni|juli|oktober|dezember|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|dicembre|janeiro|fevereiro|março|marco|maio|junho|julho|setembro|outubro|dezembro\
+|janv|févr|fevr|avr|juil|déc\
+|marts|maja?|august|september|november|december\
+|januari|februari|maart|mrt|mei|augustus\
+|stycz(?:eń|nia)|lut(?:y|ego)|mar(?:ca|zec)|kwie(?:cień|tnia)|czerw(?:iec|ca)|lip(?:ca|iec)|sierp(?:ień|nia)|wrze(?:sień|śnia)|paździer(?:nik|nika)|listopad[a]?|grud(?:zień|nia)\
+|январ\\w*|феврал\\w*|март\\w*|апрел\\w*|ма[йя]|июн\\w*|июл\\w*|август\\w*|сентябр\\w*|октябр\\w*|ноябр\\w*|декабр\\w*\
+|янв|фев|мар|апр|авг|сен|окт|ноя|дек";
 const DAYS: &str = "(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*|lunes|martes|miércoles|jueves|viernes|sábado|domingo|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\\.?,?\\s+(?:the\\s+|le\\s+|el\\s+|den\\s+)?";
 
 fn re(s: &str) -> Regex {
@@ -650,6 +656,33 @@ fn month_num(name: &str) -> Option<u8> {
         ("lug", 7),
         ("ott", 10),
         ("out", 10),
+        // Danish, Dutch, Polish and Russian (#792), the dated forms too: "stycznia", "января"
+        ("maa", 3),
+        ("mrt", 3),
+        ("mei", 5),
+        ("maj", 5),
+        ("stycz", 1),
+        ("lut", 2),
+        ("kwie", 4),
+        ("czerw", 6),
+        ("lip", 7),
+        ("sierp", 8),
+        ("wrze", 9),
+        ("paździer", 10),
+        ("lis", 11),
+        ("grud", 12),
+        ("янв", 1),
+        ("фев", 2),
+        ("мар", 3),
+        ("апр", 4),
+        ("ма", 5),
+        ("июн", 6),
+        ("июл", 7),
+        ("авг", 8),
+        ("сен", 9),
+        ("окт", 10),
+        ("ноя", 11),
+        ("дек", 12),
     ];
     PREFIXES
         .iter()
@@ -922,6 +955,18 @@ pub(crate) mod tests {
             "Korean, Italian and Portuguese",
             "13화 「안개 항구」 2027년 1월 10일 방송\n14화 방영 일정 미정\nEpisodio 15 - Il faro (17 gennaio 2027)\nEpisódio 16: Sal e Ferro, 24 de janeiro de 2027",
             "13 10 Jan 2027; 14 TBC; 15 17 Jan 2027; 16 24 Jan 2027",
+            None,
+        ),
+        (
+            "Danish, Dutch, Polish and Russian months",
+            "Episode 13 (10. januar 2027)\nEpisode 14 (17 maart 2027)\nEpisode 15 (24 stycznia 2027)\nEpisode 16 (31 января 2027)\nEpisode 17 (15 maja 2027)\nEpisode 18 (1 grudnia 2027)",
+            "13 10 Jan 2027; 14 17 Mar 2027; 15 24 Jan 2027; 16 31 Jan 2027; 17 15 May 2027; 18 1 Dec 2027",
+            None,
+        ),
+        (
+            "Short month forms, as each language's date hint writes them",
+            "Episode 1 (7 janv. 2027)\nEpisode 2 (7 févr. 2027)\nEpisode 3 (7 mrt 2027)\nEpisode 4 (7. maj 2027)",
+            "1 7 Jan 2027; 2 7 Feb 2027; 3 7 Mar 2027; 4 7 May 2027",
             None,
         ),
         (

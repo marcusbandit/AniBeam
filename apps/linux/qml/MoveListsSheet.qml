@@ -48,7 +48,7 @@ Item {
     function sideText(status, score, empty) {
         var bits = []
         if (status) bits.push(root.statusText(status))
-        if (score !== null && score !== undefined) bits.push(words.t("move-lists-score", { score: Fmt.score(score) }))
+        if (score !== null && score !== undefined) bits.push(words.t("move-lists-score", { score: words.score(score) }))
         return bits.length ? bits.join(", ") : empty
     }
 

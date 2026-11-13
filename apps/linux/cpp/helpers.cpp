@@ -1,4 +1,5 @@
 #include "helpers.h"
+#include <QtCore/QLocale>
 #include <QtCore/QByteArray>
 #include <QtCore/qglobal.h>
 #include <QtGui/QGuiApplication>
@@ -261,4 +262,16 @@ private:
 void install_qml_dir(QQmlApplicationEngine &engine, const QString &dir)
 {
     engine.addUrlInterceptor(new QmlDirInterceptor(QFileInfo(dir).absoluteFilePath()));
+}
+
+void set_default_locale(const QString &tag)
+{
+    QLocale::setDefault(QLocale(tag));
+}
+
+QString system_locale_name()
+{
+    // The languages the person reads, most wanted first (LANGUAGE, then LC_MESSAGES on
+    // Linux), not the locale numbers and dates are formatted in
+    return QLocale::system().uiLanguages().join(QLatin1Char(','));
 }

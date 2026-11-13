@@ -186,8 +186,8 @@ Item {
     readonly property real finishedBytes: finishedCards.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
     // A show's line in Downloaded: how many episodes, how big, how much of it is watched
     function diskLedger(c) {
-        var parts = [c.kind === "Movie" ? words.t("downloads-disk-film") : words.t("count-episodes", { count: c.episodes_on_disk || 0 }), Fmt.bytes(c.bytes_on_disk || 0)]
-        if (c.watched_bytes > 0 && c.watched_bytes < c.bytes_on_disk) parts.push(words.t("downloads-disk-watched", { size: Fmt.bytes(c.watched_bytes) }))
+        var parts = [c.kind === "Movie" ? words.t("downloads-disk-film") : words.t("count-episodes", { count: c.episodes_on_disk || 0 }), words.bytes(c.bytes_on_disk || 0)]
+        if (c.watched_bytes > 0 && c.watched_bytes < c.bytes_on_disk) parts.push(words.t("downloads-disk-watched", { size: words.bytes(c.watched_bytes) }))
         else if (c.watched_bytes > 0) parts.push(words.t("downloads-disk-all-watched"))
         return parts.join(", ")
     }
@@ -197,9 +197,9 @@ Item {
     function askDeleteWatched(anchor) {
         var p = anchor.mapToItem(frame, 0, anchor.height + theme.space(1))
         frame.openMenu(p.x, p.y, [
-            { text: words.t("downloads-delete-watched-menu", { count: page.watchedEpisodes, size: Fmt.bytes(page.watchedBytes) }), icon: "trash-2",
+            { text: words.t("downloads-delete-watched-menu", { count: page.watchedEpisodes, size: words.bytes(page.watchedBytes) }), icon: "trash-2",
               action: function() { page.confirmDeleteWatched(anchor, false) } },
-            { text: words.t("downloads-delete-finished-menu", { count: page.finishedCards.length, size: Fmt.bytes(page.finishedBytes) }), icon: "trash-2",
+            { text: words.t("downloads-delete-finished-menu", { count: page.finishedCards.length, size: words.bytes(page.finishedBytes) }), icon: "trash-2",
               action: function() { page.confirmDeleteWatched(anchor, true) } }
         ])
     }
@@ -214,11 +214,11 @@ Item {
             return
         }
         frame.askRemoval(anchor, finished ? {
-            heading: words.t("downloads-delete-finished-heading", { count: page.finishedCards.length, size: Fmt.bytes(page.finishedBytes) }),
+            heading: words.t("downloads-delete-finished-heading", { count: page.finishedCards.length, size: words.bytes(page.finishedBytes) }),
             base: words.t("downloads-delete-finished-base", { titles: page.someTitles(page.finishedCards), client: page.clientName }),
             rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
         } : {
-            heading: words.t("downloads-delete-watched-heading", { count: page.watchedEpisodes, size: Fmt.bytes(page.watchedBytes) }),
+            heading: words.t("downloads-delete-watched-heading", { count: page.watchedEpisodes, size: words.bytes(page.watchedBytes) }),
             base: words.t("downloads-delete-watched-base", { client: page.clientName }),
             rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
         }, function() { frame.deleteWatched(finished) })
@@ -1119,11 +1119,11 @@ Item {
     function groupLedger(g) {
         if (page.groupState(g) === "downloading") {
             var parts = [Math.round(100 * g.have / Math.max(1, g.size)) + "%"]
-            if (g.dlspeed > 0) parts.push(words.t("downloads-speed-down", { speed: Fmt.bytes(g.dlspeed) }))
+            if (g.dlspeed > 0) parts.push(words.t("downloads-speed-down", { speed: words.bytes(g.dlspeed) }))
             if (g.eta > 0) parts.push(words.t("downloads-time-left", { time: words.countdown(g.eta) }))
             return parts.join(", ")
         }
-        return words.t("downloads-torrents", { count: g.torrents.length }) + ", " + Fmt.bytes(g.size)
+        return words.t("downloads-torrents", { count: g.torrents.length }) + ", " + words.bytes(g.size)
     }
     function stateDot(key) {
         return key === "complete" || key === "broken" || key === "nofeed" ? theme.red : key === "airing" || key === "downloading" ? theme.accent
@@ -2349,7 +2349,7 @@ Item {
                         Label { text: page.selectedCount ? words.t("downloads-ticked", { count: page.selectedCount }) : words.t("downloads-nothing-ticked"); role: "title"; font.pointSize: theme.typeNormal }
                         Label {
                             width: parent.width
-                            text: page.selectedCount ? (page.selectedBytes > 0 ? words.t("downloads-ticked-size", { size: Fmt.bytes(page.selectedBytes) }) : "") : words.t("downloads-tick-hint")
+                            text: page.selectedCount ? (page.selectedBytes > 0 ? words.t("downloads-ticked-size", { size: words.bytes(page.selectedBytes) }) : "") : words.t("downloads-tick-hint")
                             role: "ui"
                             font.pointSize: theme.typeSmall
                             color: theme.textDim
@@ -2799,9 +2799,9 @@ Item {
             BandHead {
                 title: words.t("downloads-lens-downloaded")
                 count: page.downloadedCount
-                line: words.t("downloads-dl-line", { size: Fmt.bytes(page.diskBytes), rest: !page.torrentOn ? words.t("downloads-dl-client-off", { client: page.clientName })
+                line: words.t("downloads-dl-line", { size: words.bytes(page.diskBytes), rest: !page.torrentOn ? words.t("downloads-dl-client-off", { client: page.clientName })
                       : page.torrentsError !== "" ? words.t("downloads-dl-unread")
-                      : page.torrentsRead ? words.t("downloads-dl-in-client", { count: page.torrents.length, size: Fmt.bytes(page.downloadedSize), client: page.clientName }) : words.t("downloads-reading") })
+                      : page.torrentsRead ? words.t("downloads-dl-in-client", { count: page.torrents.length, size: words.bytes(page.downloadedSize), client: page.clientName }) : words.t("downloads-reading") })
                 alarm: !page.torrentOn || page.torrentsError !== ""
                 view: frame.downloadsDlView
                 viewName: "downloads-dl-view"
@@ -2828,8 +2828,8 @@ Item {
                     anchors.rightMargin: theme.space(6)
                     anchors.verticalCenter: parent.verticalCenter
                     parts: [
-                        { label: words.t("downloads-usage-watched"), value: Fmt.bytes(page.watchedBytes), amount: page.watchedBytes, color: theme.green },
-                        { label: words.t("downloads-usage-not-watched"), value: Fmt.bytes(page.diskBytes - page.watchedBytes), amount: page.diskBytes - page.watchedBytes, color: theme.accent }
+                        { label: words.t("downloads-usage-watched"), value: words.bytes(page.watchedBytes), amount: page.watchedBytes, color: theme.green },
+                        { label: words.t("downloads-usage-not-watched"), value: words.bytes(page.diskBytes - page.watchedBytes), amount: page.diskBytes - page.watchedBytes, color: theme.accent }
                     ]
                 }
                 Button {
@@ -3055,7 +3055,7 @@ Item {
                         if (modelData.show && modelData.show.complete) c.push({ text: words.t("downloads-sub-complete"), dot: theme.red })
                         return c
                     }
-                    facts: page.groupLedger(modelData) + (gl.state === "downloading" ? ", " + words.t("downloads-torrents", { count: modelData.torrents.length }) : modelData.upspeed > 0 ? ", " + words.t("downloads-speed-up", { speed: Fmt.bytes(modelData.upspeed) }) : "")
+                    facts: page.groupLedger(modelData) + (gl.state === "downloading" ? ", " + words.t("downloads-torrents", { count: modelData.torrents.length }) : modelData.upspeed > 0 ? ", " + words.t("downloads-speed-up", { speed: words.bytes(modelData.upspeed) }) : "")
                     trouble: modelData.broken > 0 && modelData.broken < modelData.torrents.length ? words.t("downloads-broken-some", { count: modelData.broken }) : ""
                     folder: modelData.folder
                     progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1

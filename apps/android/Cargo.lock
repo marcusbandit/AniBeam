@@ -135,6 +135,7 @@ dependencies = [
  "anibeam-host-api",
  "anibeam-recs",
  "anibeam-room",
+ "anyhow",
  "apple-native-keyring-store",
  "axum",
  "backon",

@@ -31,6 +31,17 @@ SettingsTab {
     Timer { interval: 30000; running: true; repeat: true; onTriggered: tab.nowMs = Date.now() }
 
     Panel {
+        title: words.t("settings-appearance-language")
+        SettingRow { label: words.t("settings-appearance-language")
+            Dropdown {
+                objectName: "language"
+                options: words.pickNames()
+                index: Math.max(0, words.pickCodes.indexOf(words.picked))
+                onPicked: function(i) { words.pick(words.pickCodes[i]) }
+            }
+        }
+    }
+    Panel {
         title: words.t("settings-appearance-colours")
         SettingRow { label: words.t("settings-appearance-mode")
             Seg { options: [{ text: words.t("settings-appearance-mode-dark"), icon: "moon" }, { text: words.t("settings-appearance-mode-light"), icon: "sun" }, { text: words.t("settings-appearance-mode-system"), icon: "monitor" }]

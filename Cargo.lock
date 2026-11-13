@@ -98,6 +98,7 @@ dependencies = [
  "anibeam-recs",
  "anibeam-relay",
  "anibeam-room",
+ "anyhow",
  "apple-native-keyring-store",
  "axum",
  "backon",
