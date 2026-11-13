@@ -5,10 +5,29 @@
 // t() reads Tr.lang before it looks the words up, so a binding that calls it is re-run when
 // the language changes, and the screen switches without a restart.
 import QtQuick
+import QtCore
 import com.marcusrosado.AniBeam
 
 QtObject {
+    id: root
     readonly property string lang: Tr.lang
+
+    // The language picked in Settings or onboarding, by code; "" follows the system's.
+    // ANIBEAM_LANG pins a run to one language (captures), and then the pick waits.
+    readonly property string picked: kept.language
+    readonly property string systemCode: Tr.systemCode()
+    property Settings kept: Settings {
+        location: Shell.settingsUrl
+        category: "shell"
+        property string language: ""
+    }
+    function pick(code) {
+        kept.language = code
+        if (!Tr.pinned) Tr.setLanguage(code || systemCode)
+    }
+    Component.onCompleted: if (!Tr.pinned) Tr.setLanguage(kept.language || systemCode)
+    // Every language as a picker lists them: { code, name } in the language itself
+    readonly property var languages: Tr.languages()
 
     // The words for message `id`, with `args` ({ count: 3, title: "..." }) filled in. A
     // number in args also picks the plural.
@@ -24,6 +43,8 @@ QtObject {
     function runtime(minutes) { return lang, Fmt.runtime(minutes) }
     function episodeName(title, number) { return lang, Fmt.episodeName(title, number) }
     function episodeSpan(first, through) { return lang, Fmt.episodeSpan(first, through) }
+    function bytes(n) { return lang, Fmt.bytes(n) }
+    function score(x) { return lang, Fmt.score(x) }
     // AniList's words for a show, by its code, "" for a code with no words yet. The status
     // takes AniList's own codes (RELEASING) and the core's (Releasing) alike.
     function formatLabel(code) {

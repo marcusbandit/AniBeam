@@ -117,7 +117,7 @@ Item {
     function ratePicked(score) {
         var n = page.pickedCount
         page.act({ Score: { score: score } }, score === null ? words.t("library-clearing-score", { count: n })
-                                                             : words.t("library-rating", { count: n, score: Fmt.score(score) }))
+                                                             : words.t("library-rating", { count: n, score: words.score(score) }))
     }
     function listPicked(anchor) {
         var lists = frame.listStatusItems(-1, "")

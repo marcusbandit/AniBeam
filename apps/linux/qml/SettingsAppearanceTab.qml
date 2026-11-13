@@ -30,6 +30,24 @@ SettingsTab {
     property real nowMs: Date.now()
     Timer { interval: 30000; running: true; repeat: true; onTriggered: tab.nowMs = Date.now() }
 
+    // The language: the system's first, then each one by its own name. "" follows the system.
+    readonly property var languageCodes: [""].concat(words.languages.map(function(l) { return l.code }))
+    Panel {
+        title: words.t("settings-appearance-language")
+        SettingRow { label: words.t("settings-appearance-language")
+            Dropdown {
+                objectName: "language"
+                options: [words.t("settings-appearance-language-system", { language: tab.nameOf(words.systemCode) })]
+                         .concat(words.languages.map(function(l) { return l.name }))
+                index: Math.max(0, tab.languageCodes.indexOf(words.picked))
+                onPicked: function(i) { words.pick(tab.languageCodes[i]) }
+            }
+        }
+    }
+    function nameOf(code) {
+        var hit = words.languages.filter(function(l) { return l.code === code })
+        return hit.length ? hit[0].name : code
+    }
     Panel {
         title: words.t("settings-appearance-colours")
         SettingRow { label: words.t("settings-appearance-mode")

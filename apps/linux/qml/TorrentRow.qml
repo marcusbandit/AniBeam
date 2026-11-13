@@ -40,10 +40,10 @@ Item {
     readonly property string facts: {
         var parts = []
         var size = root.t.size || 0
-        if (root.done) parts.push(Fmt.bytes(size))
-        else parts.push(words.t("torrent-row-done-of-size", { done: Fmt.bytes(Math.round(size * (root.t.progress || 0))), size: Fmt.bytes(size) }))
-        if ((root.t.dlspeed || 0) > 0) parts.push(words.t("torrent-row-speed-down", { speed: Fmt.bytes(root.t.dlspeed) }))
-        if ((root.t.upspeed || 0) > 0) parts.push(words.t("torrent-row-speed-up", { speed: Fmt.bytes(root.t.upspeed) }))
+        if (root.done) parts.push(words.bytes(size))
+        else parts.push(words.t("torrent-row-done-of-size", { done: words.bytes(Math.round(size * (root.t.progress || 0))), size: words.bytes(size) }))
+        if ((root.t.dlspeed || 0) > 0) parts.push(words.t("torrent-row-speed-down", { speed: words.bytes(root.t.dlspeed) }))
+        if ((root.t.upspeed || 0) > 0) parts.push(words.t("torrent-row-speed-up", { speed: words.bytes(root.t.upspeed) }))
         if (!root.done && (root.t.dlspeed || 0) > 0 && root.t.eta > 0 && root.t.eta < 8640000) parts.push(words.t("torrent-row-time-left", { time: words.countdown(root.t.eta) }))
         if (!root.done) parts.push(words.t("torrent-row-seeders", { count: root.t.num_seeds || 0 }))
         if (root.t.roll) parts.push(words.t("torrent-row-rolling", { next: root.t.roll.next, through: root.t.roll.through, total: root.t.roll.total }))

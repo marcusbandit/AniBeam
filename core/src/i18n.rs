@@ -127,6 +127,15 @@ impl Lang {
         Lang::ALL.into_iter().find(|l| l.code() == code)
     }
 
+    /// The mark between a number's whole part and its fraction: "1,5 GB" in Danish, German
+    /// and most of Europe, "1.5 GB" in English and the three East Asian languages.
+    pub fn decimal_mark(self) -> char {
+        match self {
+            Lang::En | Lang::Ja | Lang::Ko | Lang::ZhCn => '.',
+            _ => ',',
+        }
+    }
+
     /// The language's place in [`Lang::ALL`], which lists them in declaration order.
     fn index(self) -> usize {
         self as usize
@@ -222,6 +231,10 @@ fn bundle(lang: Lang) -> &'static Bundle {
         // Qt and Slint draw the isolation marks Fluent puts around arguments as boxes,
         // and every language here runs left to right.
         bundle.set_use_isolating(false);
+        // A number argument with a fraction takes the language's decimal mark ("12,5")
+        if lang.decimal_mark() == ',' {
+            bundle.set_formatter(Some(decimal_comma));
+        }
         for (name, text) in CATALOG[lang.index()].1 {
             let resource = FluentResource::try_new(text.to_string()).unwrap_or_else(|(r, e)| {
                 tracing::warn!("i18n/{}/{name}: {} parse errors", lang.code(), e.len());
@@ -253,6 +266,26 @@ pub fn chrono_locale(lang: Lang) -> chrono::Locale {
         Lang::Ja => L::ja_JP,
         Lang::Ko => L::ko_KR,
         Lang::ZhCn => L::zh_CN,
+    }
+}
+
+/// Fluent's formatter for a language that writes "12,5": every number with a fraction.
+fn decimal_comma<M>(value: &FluentValue, _: &M) -> Option<String> {
+    match value {
+        FluentValue::Number(n) => {
+            let s = n.as_string();
+            s.contains('.').then(|| s.replace('.', ","))
+        }
+        _ => None,
+    }
+}
+
+/// `text`, a number already written with a point ("1.5"), with the current language's
+/// decimal mark instead.
+pub fn decimal(text: &str) -> String {
+    match lang().decimal_mark() {
+        '.' => text.to_string(),
+        mark => text.replace('.', &mark.to_string()),
     }
 }
 
@@ -473,6 +506,46 @@ mod tests {
         }
     }
 
+    fn patterns_of(lang: Lang) -> Vec<String> {
+        patterns(lang).into_iter().map(|(id, _, _)| id).collect()
+    }
+
+    #[test]
+    fn every_term_a_language_uses_is_defined_in_that_language() {
+        // A bundle reads only its own language's files, so a `-term` defined in English alone
+        // is an error everywhere else, and the whole message falls back to English
+        for lang in Lang::ALL {
+            let mut defined = BTreeSet::new();
+            let mut used = BTreeSet::new();
+            for (_, text) in CATALOG[lang.index()].1 {
+                for entry in FluentResource::try_new(text.to_string()).unwrap().entries() {
+                    match entry {
+                        Entry::Term(t) => {
+                            defined.insert(t.id.name.to_string());
+                        }
+                        Entry::Message(_) => {}
+                        _ => {}
+                    }
+                }
+                let mut rest = text;
+                while let Some(i) = rest.find("{ -") {
+                    let tail = &rest[i + 3..];
+                    let end = tail
+                        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+                        .unwrap_or(tail.len());
+                    used.insert(tail[..end].to_string());
+                    rest = &tail[end..];
+                }
+            }
+            let missing: Vec<_> = used.difference(&defined).collect();
+            assert!(
+                missing.is_empty(),
+                "i18n/{} uses {missing:?} without defining them",
+                lang.code()
+            );
+        }
+    }
+
     #[test]
     fn a_message_that_does_not_format_says_so() {
         let mut bundle: Bundle = FluentBundle::new_concurrent(vec![]);
@@ -502,6 +575,16 @@ mod tests {
     }
 
     #[test]
+    fn a_fraction_takes_the_language_s_decimal_mark() {
+        let ep = |lang| tr_in(lang, "episode-number", &[("number", 12.5.into())]);
+        assert_eq!(ep(Lang::En), "Episode 12.5");
+        assert!(ep(Lang::Da).contains("12,5"), "{}", ep(Lang::Da));
+        assert!(ep(Lang::Ja).contains("12.5"), "{}", ep(Lang::Ja));
+        let whole = tr_in(Lang::De, "episode-number", &[("number", 12.into())]);
+        assert!(whole.contains("12") && !whole.contains(','), "{whole}");
+    }
+
+    #[test]
     fn a_number_picks_the_plural_its_language_uses() {
         let eps = |lang, n: u64| tr_in(lang, "count-episodes", &[("count", n.into())]);
         assert_eq!(eps(Lang::En, 1), "1 episode");
@@ -516,7 +599,14 @@ mod tests {
     #[test]
     fn a_missing_id_falls_back_to_english_then_to_itself() {
         let args = [("count", Arg::from(2))];
-        assert_eq!(tr_in(Lang::De, "count-episodes", &args), "2 episodes");
+        // Any message one language lacks reads as the English, while translations are partial
+        for lang in Lang::ALL {
+            let missing = (patterns_of(Lang::En).into_iter())
+                .find(|id| !id.contains('.') && lookup(bundle(lang), id).is_none());
+            if let Some(id) = missing {
+                assert_eq!(tr_in(lang, &id, &[]), tr_in(Lang::En, &id, &[]), "{id}");
+            }
+        }
         assert_eq!(tr_in(Lang::De, "no-such-message", &[]), "no-such-message"); // i18n: none
         let attr = tr_in(Lang::En, "count-episodes.tip", &args); // i18n: none
         assert_eq!(attr, "count-episodes.tip");

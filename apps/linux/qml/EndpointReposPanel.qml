@@ -248,7 +248,7 @@ Panel {
             spacing: theme.space(1)
             Row {
                 spacing: theme.space(1.5)
-                Field { objectName: "custom-name"; text: root.customName; width: theme.space(20); placeholder: words.t("endpoint-repos-panel-name"); onEdited: function(t) { root.customName = t } }
+                Field { objectName: "custom-name"; text: root.customName; width: theme.space(28); placeholder: words.t("endpoint-repos-panel-name"); onEdited: function(t) { root.customName = t } }
                 Field { objectName: "custom-url"; text: root.customUrl; mono: true; width: theme.space(40); placeholder: "http://...{query}..."; onEdited: function(t) { root.customUrl = t } }
                 Button { msg: "endpoint-repos-panel-add"; icon: "plus"; enabled: root.customName.trim() !== "" && root.customUrl.trim() !== ""; onClicked: root.addCustom() }
             }

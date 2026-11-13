@@ -49,6 +49,11 @@ void set_cursor_hidden(bool hidden);
 // Hyprland the token never came, so every link in the shell did nothing. A Mac runs
 // open(1) instead. Returns false when the opener could not be started.
 bool open_url(const QString &url);
+// The app's language (#792): QLocale's default, which Qt.formatDate and Qt.locale() name
+// months, days and numbers in. A BCP 47 tag such as "da" or "pt-BR".
+void set_default_locale(const QString &tag);
+// The system's own locale name ("da_DK"), whatever the default has been set to since.
+QString system_locale_name();
 
 // Dev only: serves the shell's own QML files from a directory on disk instead of the
 // compiled resources, so a QML-only edit needs no cargo build. Every file the engine would

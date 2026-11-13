@@ -1,4 +1,5 @@
 #include "helpers.h"
+#include <QtCore/QLocale>
 #include <QtCore/QByteArray>
 #include <QtCore/qglobal.h>
 #include <QtGui/QGuiApplication>
@@ -261,4 +262,14 @@ private:
 void install_qml_dir(QQmlApplicationEngine &engine, const QString &dir)
 {
     engine.addUrlInterceptor(new QmlDirInterceptor(QFileInfo(dir).absoluteFilePath()));
+}
+
+void set_default_locale(const QString &tag)
+{
+    QLocale::setDefault(QLocale(tag));
+}
+
+QString system_locale_name()
+{
+    return QLocale::system().name();
 }

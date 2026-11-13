@@ -415,8 +415,27 @@ Item {
     // ---- Welcome: what the app does, before it asks for anything
     Component {
         id: welcomePane
+        Column {
+        spacing: theme.space(6)
+        // The language first: everything after it reads in the one picked. It starts on the
+        // system's, and Settings, Appearance changes it later.
+        Row {
+            objectName: "onboarding-language"
+            spacing: theme.space(3)
+            Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "languages"; color: theme.textDim }
+            Label { anchors.verticalCenter: parent.verticalCenter; msg: "onboarding-language"; color: theme.textDim }
+            Dropdown {
+                anchors.verticalCenter: parent.verticalCenter
+                readonly property var codes: [""].concat(words.languages.map(function(l) { return l.code }))
+                options: [words.t("settings-appearance-language-system", { language: root.languageName(words.systemCode) })]
+                         .concat(words.languages.map(function(l) { return l.name }))
+                index: Math.max(0, codes.indexOf(words.picked))
+                onPicked: function(i) { words.pick(codes[i]) }
+            }
+        }
         Grid {
             id: grid
+            width: parent.width
             columns: width > theme.space(200) ? 4 : 2
             spacing: theme.grout
             readonly property real cell: (width - spacing * (columns - 1)) / columns
@@ -448,6 +467,11 @@ Item {
                 }
             }
         }
+        }
+    }
+    function languageName(code) {
+        var hit = words.languages.filter(function(l) { return l.code === code })
+        return hit.length ? hit[0].name : code
     }
 
     // ---- The library: the folder, then what the scan found, posters and all

@@ -393,6 +393,7 @@ home-failed-body = AniBeam could not read the library just now. Try again in a m
 
 ## Onboarding
 
+onboarding-language = Language
 onboarding-step-welcome = Welcome
 onboarding-step-library = Your library
 onboarding-step-lists = Your list
@@ -2467,6 +2468,8 @@ settings-find-sync-now =
     .words = refresh progress lists tracker
 settings-find-on-hold =
     .words = on hold paused inactive untouched days
+settings-find-language =
+    .words = language translation locale english
 settings-find-mode =
     .words = dark light system theme night
 settings-find-colours-from =
@@ -3228,6 +3231,9 @@ settings-library-folder-added = Folder added, scanning
 
 ## SettingsAppearanceTab
 
+settings-appearance-language = Language
+# $language is the system's language in its own name ("Dansk")
+settings-appearance-language-system = Same as the system ({ $language })
 settings-appearance-text-smaller = Smaller
 settings-appearance-text-normal = Normal
 settings-appearance-text-large = Large
@@ -3620,6 +3626,12 @@ fmt-runtime-minutes = { $m } min
 fmt-runtime-hours = { $h } h
 fmt-runtime-hours-minutes = { $h } h { $m } min
 fmt-episode = Episode
+# $size is already written with the language's decimal mark ("1,5")
+fmt-size-b = { $size } B
+fmt-size-kb = { $size } KB
+fmt-size-mb = { $size } MB
+fmt-size-gb = { $size } GB
+fmt-size-tb = { $size } TB
 fmt-episode-span = Episodes { $first } to { $through }
 
 ## apps/linux/src/problem.rs: every call error in a person's words, what happened and what to do
