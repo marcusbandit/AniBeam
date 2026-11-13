@@ -505,6 +505,11 @@ pub fn series(
             .into(),
     };
 
+    // A tracker keeps marks for any aired episode; without one only the files here take one.
+    let tracked = card
+        .match_info
+        .as_ref()
+        .is_some_and(|m| m.anilist_id.is_some() || m.mal_id.is_some());
     // Sorted by season, then number: a show with S1 and S2 lists each season in order.
     let mut lines: Vec<((u32, f64), EpisodeLine)> = Vec::new();
     let downloading: HashSet<u64> = detail
@@ -551,6 +556,11 @@ pub fn series(
                 picked: false,
                 remote: false,
                 versions: version_lines(e, &downloading),
+                // On the phone, so it can be marked with a tracker or without one.
+                markable: true,
+                watched: e.watched,
+                number: e.number as f32,
+                season: e.season.unwrap_or(1) as i32,
             },
         ));
     }
@@ -583,6 +593,11 @@ pub fn series(
                 picked: false,
                 remote: false,
                 versions: Default::default(),
+                // Not on the phone: only a tracker keeps the mark.
+                markable: tracked,
+                watched: matches!(a.cube.as_str(), "w" | "l"),
+                number: a.number as f32,
+                season: a.season.unwrap_or(1) as i32,
             },
         ));
     }
@@ -611,6 +626,7 @@ pub fn series(
                 picked: false,
                 remote: false,
                 versions: Default::default(),
+                ..Default::default()
             },
         ));
     }

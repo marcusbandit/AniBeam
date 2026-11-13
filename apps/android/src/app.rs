@@ -145,6 +145,9 @@ struct App {
     /// What Plan to watch said, kept apart from the list's own note.
     airing_plan_note: Option<String>,
     airing_undo: Option<(u64, String, u32)>,
+    /// What the last episode mark said, the tick it said it on, and how to put it back: the
+    /// series, the count before it and the season.
+    mark_note: Option<(String, Option<(u64, u32, u32)>, u32)>,
     /// Shows marked not interested here and not yet gone from the core's list.
     airing_hidden: HashSet<u64>,
     /// A read asked for while one was out: run it, asking AniList or not, when that lands.
@@ -710,6 +713,14 @@ impl App {
         {
             self.airing_undo = None;
             data.set_airing_undo("".into());
+        }
+        if self
+            .mark_note
+            .as_ref()
+            .is_some_and(|(_, _, at)| self.ticks.wrapping_sub(*at) > MARK_TICKS)
+        {
+            self.mark_note = None;
+            self.show_mark();
         }
         if self.ticks.is_multiple_of(5) {
             self.hold_for_network();
@@ -1646,6 +1657,70 @@ impl App {
             });
     }
 
+    /// An episode's mark, the desktop's cube click: a watched one marks it and every one after
+    /// it unwatched, any other marks it and every one before it watched. The season goes
+    /// along, since a show with no tracker keeps its marks per season.
+    fn mark(&mut self, number: f32, season: i32, watched: bool) {
+        let (Some(Open::Phone(series)), Some(core)) = (self.open, crate::local::core()) else {
+            return;
+        };
+        let whole = number.max(0.0).floor() as u32;
+        let target = if watched { whole.saturating_sub(1) } else { whole };
+        let season = u32::try_from(season).unwrap_or(1).max(1);
+        let before = self.detail.as_ref().and_then(|d| d.card.watched);
+        self.set_progress(core, series, target, season, before);
+    }
+
+    fn set_progress(
+        &mut self,
+        core: std::sync::Arc<anibeam_core::Core>,
+        series: u64,
+        target: u32,
+        season: u32,
+        before: Option<u32>,
+    ) {
+        let _ = std::thread::Builder::new()
+            .name("mark".into())
+            .spawn(move || {
+                let answer = core.call(Call::SetProgress {
+                    series,
+                    progress: target,
+                    season: Some(season),
+                });
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        app.mark_note = match answer {
+                            Err(e) => Some((e.to_string(), None, app.ticks)),
+                            Ok(_) => mark_line(target, before)
+                                .map(|line| (line, before.map(|b| (series, b, season)), app.ticks)),
+                        };
+                        app.show_mark();
+                        app.reload_open();
+                        app.tick();
+                    })
+                });
+            });
+    }
+
+    fn mark_take_back(&mut self) {
+        let Some((_, Some((series, before, season)), _)) = self.mark_note.take() else {
+            return;
+        };
+        self.show_mark();
+        if let Some(core) = crate::local::core() {
+            self.set_progress(core, series, before, season, None);
+        }
+    }
+
+    fn show_mark(&self) {
+        let (line, undo) = self
+            .mark_note
+            .as_ref()
+            .map_or((String::new(), false), |(l, u, _)| (l.clone(), u.is_some()));
+        self.data().set_mark_line(line.into());
+        self.data().set_mark_undo(undo);
+    }
+
     fn reload_open(&mut self) {
         if let (Some(Open::Phone(id)), Some(core)) = (self.open, crate::local::core()) {
             self.detail = match core.call(Call::GetSeries { series: id }) {
@@ -1656,6 +1731,8 @@ impl App {
     }
 
     fn close_series(&mut self) {
+        self.mark_note = None;
+        self.show_mark();
         self.deleting = false;
         self.picked.clear();
         self.open = None;
@@ -1758,6 +1835,22 @@ fn demo_notifies() -> bool {
 pub(crate) const AIRING_ART: u64 = 1 << 48;
 /// How long, in ticks of a second, a not interested mark can be taken back.
 const UNDO_TICKS: u32 = 6;
+/// How long an episode mark's line stays, the desktop toast's eight seconds.
+const MARK_TICKS: u32 = 8;
+
+/// What a mark that moves more than one episode says, as the desktop's toast does; one
+/// that moves a single episode shows on its cube and says nothing.
+fn mark_line(target: u32, before: Option<u32>) -> Option<String> {
+    let before = before?;
+    if target.abs_diff(before) <= 1 {
+        return None;
+    }
+    Some(if target > before {
+        format!("Watched up to Episode {target}")
+    } else {
+        format!("Unwatched from Episode {}", target + 1)
+    })
+}
 
 /// A list status as a poster's flag says it.
 fn list_word(status: anibeam_core::ListStatus) -> &'static str {
@@ -1998,6 +2091,8 @@ pub fn run(
     data.on_open_remote(|id| with_app(|app| app.open_series(id, true)));
     data.on_close_series(|| with_app(App::close_series));
     data.on_play(|file| crate::player::open(file as u64));
+    data.on_mark(|number, season, watched| with_app(|app| app.mark(number, season, watched)));
+    data.on_mark_take_back(|| with_app(App::mark_take_back));
     data.on_play_remote(|file| crate::player::open_remote(file as u64));
     let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL
         .iter()
@@ -2225,6 +2320,7 @@ pub fn run(
         airing_note: None,
         airing_plan_note: None,
         airing_undo: None,
+        mark_note: None,
         airing_hidden: HashSet::new(),
         airing_again: None,
         airing_filters,
@@ -2331,4 +2427,23 @@ pub fn run(
     APP.with(|cell| cell.borrow_mut().take());
     ran?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mark_line;
+
+    #[test]
+    fn a_mark_says_so_only_when_it_moves_more_than_one_episode() {
+        assert_eq!(
+            mark_line(5, Some(1)).as_deref(),
+            Some("Watched up to Episode 5")
+        );
+        assert_eq!(
+            mark_line(2, Some(8)).as_deref(),
+            Some("Unwatched from Episode 3")
+        );
+        assert_eq!(mark_line(4, Some(3)), None);
+        assert_eq!(mark_line(4, None), None);
+    }
 }

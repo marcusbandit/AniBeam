@@ -25,7 +25,7 @@ component EpisodeItem inherits Rectangle {
     property <bool> versioned: root.data.versions.length > 1 && !AppData.deleting;
     height: Math.max(Theme.unit * 13, texts.preferred-height + 4 * Theme.unit);
     border-radius: Theme.radius-row + 4px;
-    background: touch.pressed && root.data.file != 0 ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
+    background: touch.pressed && (root.data.file != 0 || root.holdable) ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
     border-width: root.next ? 1px : 0;
     border-color: Theme.line-strong;
     if !AppData.deleting || root.data.file == 0: Rectangle {
@@ -89,13 +89,47 @@ component EpisodeItem inherits Rectangle {
     // An aired episode this phone's show lacks opens Downloads on the show. Upcoming ones
     // carry no note, and the other device's show is got on that device.
     property <bool> gettable: root.data.file == 0 && root.data.note != "" && !AppData.series-remote;
+    // Held, an episode offers its mark, as the desktop's cube does at a click.
+    property <bool> holdable: root.data.markable && !AppData.deleting;
+    property <bool> was-held;
+    hold := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.was-held = true;
+            Ask.mark-title = root.data.code + "  " + root.data.title;
+            Ask.mark-number = root.data.number;
+            Ask.mark-season = root.data.season;
+            Ask.mark-watched = root.data.watched;
+            Ask.mark-open = true;
+        }
+    }
     touch := TouchArea {
-        enabled: root.data.file != 0 || (root.gettable && !AppData.deleting);
+        enabled: root.data.file != 0 || (root.gettable && !AppData.deleting) || root.holdable;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.was-held = false;
+                hold.running = root.holdable;
+            } else if (e.kind != PointerEventKind.move) {
+                hold.running = false;
+            }
+        }
+        // A finger that moves is a scroll, not a hold.
+        moved => {
+            if (Math.abs(self.mouse-x - self.pressed-x) > 3 * Theme.unit || Math.abs(self.mouse-y - self.pressed-y) > 3 * Theme.unit) {
+                hold.running = false;
+            }
+        }
         clicked => {
-            if (root.data.file == 0) {
-                FindData.find-series(AppData.series.id);
-                AppData.close-series();
-                Nav.page = 2;
+            if (root.was-held) {
+                // The hold opened the mark; the lift is not a tap.
+            } else if (root.data.file == 0) {
+                if (root.gettable && !AppData.deleting) {
+                    FindData.find-series(AppData.series.id);
+                    AppData.close-series();
+                    Nav.page = 2;
+                }
             } else if (root.data.remote) {
                 AppData.play-remote(root.data.file);
             } else if (AppData.deleting) {
@@ -119,6 +153,39 @@ component EpisodeItem inherits Rectangle {
             Ask.versions-remote = root.data.remote;
             Ask.versions-current = root.data.file;
             Ask.versions-open = true;
+        }
+    }
+}
+
+// What the last mark did, with Undo when it moved more than one episode.
+component MarkBar inherits Rectangle {
+    height: row.preferred-height;
+    background: Theme.float;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    TouchArea { }
+    row := HorizontalLayout {
+        padding: Theme.unit * 3;
+        padding-left: Theme.unit * 4;
+        spacing: Theme.unit * 3;
+        Text {
+            horizontal-stretch: 1;
+            text: AppData.mark-line;
+            color: Theme.text;
+            font-size: Theme.small + 0.5px;
+            wrap: word-wrap;
+            vertical-alignment: center;
+        }
+        if AppData.mark-undo: VerticalLayout {
+            alignment: center;
+            Button {
+                text: "Undo";
+                icon: @image-url("icons/rotate-ccw.svg");
+                has-icon: true;
+                small: true;
+                clicked => { AppData.mark-take-back(); }
+            }
         }
     }
 }
@@ -330,5 +397,10 @@ export component SeriesPage inherits Rectangle {
             // The characters, related entries and recommendations of a show of this phone's.
             if ShowData.series-id >= 0: ShowSections { }
         }
+    }
+    if AppData.mark-line != "": MarkBar {
+        x: Theme.grout + Theme.unit;
+        width: parent.width - 2 * self.x;
+        y: parent.height - self.height - Theme.grout - Theme.unit;
     }
 }

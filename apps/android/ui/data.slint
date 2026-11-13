@@ -132,6 +132,12 @@ export struct EpisodeLine {
     // The episode's releases when it is on disk more than once; empty for one file. The
     // row plays `file`, and its versions chip offers the others.
     versions: [EpisodeVersionLine],
+    // Held, it offers Mark watched up to here, or Mark unwatched from here: with a tracker
+    // any aired episode, without one an episode on this phone, as on the desktop.
+    markable: bool,
+    watched: bool,
+    number: float,
+    season: int,
 }
 
 // One download on this phone, the desktop's Downloading panel.
@@ -362,6 +368,14 @@ export global AppData {
     callback confirm-delete();
     // Opens the player on a file of this phone's.
     callback play(int);
+    // An episode's mark: its number, its season, and whether it is watched now, so the mark
+    // takes it and those before it, or it and those after it, the other way.
+    callback mark(float, int, bool);
+    // What the last mark did, "Watched up to Episode 5", for a few seconds, and whether
+    // Undo can put it back.
+    in property <string> mark-line;
+    in property <bool> mark-undo;
+    callback mark-take-back();
     // Opens the player on a file of the other device's, streamed.
     callback play-remote(int);
     // How a stream from the other device plays: Auto, Original, 1080p, 720p, 480p.
