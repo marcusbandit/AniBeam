@@ -4,6 +4,7 @@
 //! AniBeam on the tailnet, synced by the worker thread, only fills Library when it is picked
 //! there, and its episodes stream from it.
 
+use anibeam_core::i18n::tr;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -1977,6 +1978,8 @@ pub fn run(
         )
         .into(),
     );
+    data.set_ratings_label(tr("about-ratings", &[]).into());
+    data.set_ratings_credit(tr("about-ratings-credit", &[]).into());
     data.set_host_address(address.display().into());
 
     let home_shelves = Shelves::new();

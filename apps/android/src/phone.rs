@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anibeam_companion::calendar;
 use anibeam_companion::format;
+use anibeam_core::i18n::tr;
 use anibeam_core::{AiringStatus, Episode, SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
 use chrono::{Datelike, Days, NaiveDate};
 
@@ -664,19 +665,21 @@ impl Facts<'_> {
         if !self.movie
             && let Some(total) = self.total
         {
-            facts.push(format!(
-                "{total} {}{}",
-                if total == 1 { "episode" } else { "episodes" },
-                if self.estimate { "+" } else { "" }
-            ));
+            let count = tr("count-episodes", &[("count", total.into())]);
+            // A count that may still grow, as the desktop marks it.
+            facts.push(if self.estimate {
+                format!("{count}+") // i18n: none
+            } else {
+                count
+            });
         }
         if !self.film
             && let Some(m) = self.minutes
         {
-            facts.push(format!("{} each", runtime(m)));
+            facts.push(tr("series-runtime-each", &[("runtime", runtime(m).into())]));
         }
         if let Some(status) = self.status {
-            facts.push(airing_word(status).to_string());
+            facts.push(airing_word(status));
         }
         facts
     }
@@ -692,22 +695,21 @@ fn scores(
 ) -> String {
     let mut parts = Vec::new();
     if let Some(a) = average {
-        parts.push(format!("Average score {}", crate::listmove::score(a)));
+        let score = crate::listmove::score(a);
+        parts.push(tr("series-average-score", &[("score", score.into())]));
     }
     if let Some(i) = imdb {
+        let score = crate::listmove::score(i);
         parts.push(match votes {
-            Some(v) => format!(
-                "IMDb {} from {} votes",
-                crate::listmove::score(i),
-                thousands(v)
+            Some(v) => tr(
+                "series-imdb-votes",
+                &[("score", score.into()), ("votes", thousands(v).into())],
             ),
-            None => format!("IMDb {}", crate::listmove::score(i)),
+            None => tr("series-imdb", &[("score", score.into())]),
         });
     }
-    match rewatches {
-        Some(1) => parts.push("Rewatched 1 time".to_string()),
-        Some(n) if n > 1 => parts.push(format!("Rewatched {n} times")),
-        _ => {}
+    if let Some(n) = rewatches.filter(|n| *n > 0) {
+        parts.push(tr("series-rewatched", &[("count", n.into())]));
     }
     parts.join("  ")
 }
@@ -728,22 +730,24 @@ fn thousands(n: u64) -> String {
 /// How long an episode or a film runs, the desktop's `Fmt.runtime`: "24 min", "1 h 52 min",
 /// "2 h" on the hour.
 fn runtime(minutes: u32) -> String {
-    match (minutes / 60, minutes % 60) {
-        (0, m) => format!("{m} min"),
-        (h, 0) => format!("{h} h"),
-        (h, m) => format!("{h} h {m} min"),
-    }
+    tr(
+        "series-runtime",
+        &[("hours", (minutes / 60).into()), ("minutes", (minutes % 60).into())],
+    )
 }
 
 /// Whether a show airs, in the desktop's words.
-fn airing_word(status: AiringStatus) -> &'static str {
-    match status {
-        AiringStatus::Releasing => "Airing",
-        AiringStatus::Finished => "Finished",
-        AiringStatus::NotYetReleased => "Upcoming",
-        AiringStatus::Cancelled => "Cancelled",
-        AiringStatus::Hiatus => "On hiatus",
-    }
+fn airing_word(status: AiringStatus) -> String {
+    tr(
+        match status {
+            AiringStatus::Releasing => "series-status-airing",
+            AiringStatus::Finished => "series-status-finished",
+            AiringStatus::NotYetReleased => "series-status-upcoming",
+            AiringStatus::Cancelled => "series-status-cancelled",
+            AiringStatus::Hiatus => "series-status-hiatus",
+        },
+        &[],
+    )
 }
 
 /// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.

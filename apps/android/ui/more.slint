@@ -887,8 +887,8 @@ export component MorePage inherits Rectangle {
                 on: Settings.lit == "Ratings";
                 reveal(y) => { about.reveal(y); }
                 ListRow {
-                    label: "Ratings";
-                    helper: "Information courtesy of IMDb (https://www.imdb.com). Used with permission.";
+                    label: AppData.ratings-label;
+                    helper: AppData.ratings-credit;
                 }
             }
             Lit {
