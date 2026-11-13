@@ -80,7 +80,7 @@ impl EventBus {
         &self,
         level: Level,
         stage: Stage,
-        plain: Option<String>,
+        plain: Option<Words>,
         message: impl Into<String>,
         job: Option<JobRef>,
         mut body: EventBody,
@@ -97,7 +97,8 @@ impl EventBus {
             level,
             stage,
             message: message.into(),
-            plain,
+            plain: plain.as_ref().map(Words::render),
+            plain_words: plain,
             job,
             body,
         };
@@ -160,11 +161,11 @@ impl EventBus {
         &self,
         level: Level,
         stage: Stage,
-        plain: impl Into<String>,
+        plain: Words,
         message: impl Into<String>,
         body: EventBody,
     ) -> Event {
-        self.emit_said(level, stage, Some(plain.into()), message, None, body)
+        self.emit_said(level, stage, Some(plain), message, None, body)
     }
 
     /// Fire-and-forget: queued on the writer thread with no reply, so an
@@ -179,6 +180,18 @@ impl EventBus {
         let mut e = event.clone();
         e.message = crate::net::scrub_secrets(&e.message);
         e.plain = e.plain.map(|p| crate::net::scrub_secrets(&p));
+        // An argument can hold an address just as the line can
+        if let Some(w) = e.plain_words.as_mut() {
+            for value in w.args.values_mut() {
+                if let WordValue::Text { value } = value {
+                    *value = crate::net::scrub_secrets(value);
+                }
+            }
+        }
+        let plain_words = e
+            .plain_words
+            .as_ref()
+            .and_then(|w| serde_json::to_string(w).ok());
         self.store.post(move |c| {
             let (job_id, job_kind, job_phase) = match &e.job {
                 Some(j) => (Some(j.id as i64), Some(j.kind.as_str()), Some(j.phase.as_str())),
@@ -192,8 +205,8 @@ impl EventBus {
                 }
             };
             if let Err(err) = c.execute(
-                "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body, e.plain],
+                "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain, plain_words) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body, e.plain, plain_words],
             ) {
                 tracing::warn!("failed to insert event seq {}: {err}", e.seq);
                 return;
@@ -235,7 +248,7 @@ impl EventBus {
         let limit = limit.min(RING_SIZE);
         self.store.write(move |c| {
             let mut stmt = c.prepare_cached(
-                "SELECT seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain FROM events ORDER BY seq DESC LIMIT ?1",
+                "SELECT seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain, plain_words FROM events ORDER BY seq DESC LIMIT ?1",
             )?;
             let mut rows: Vec<Event> = stmt
                 .query_map(params![limit as i64], |r| {
@@ -249,6 +262,9 @@ impl EventBus {
                     let job_phase_col: Option<String> = r.get(7)?;
                     let body_col: String = r.get(8)?;
                     let plain: Option<String> = r.get(9)?;
+                    let plain_words: Option<Words> = r
+                        .get::<_, Option<String>>(10)?
+                        .and_then(|j| serde_json::from_str(&j).ok());
 
                     let Some(level) = Level::from_column(&level_col) else {
                         tracing::warn!("skipping event seq {seq}: unknown level {level_col:?}");
@@ -277,7 +293,7 @@ impl EventBus {
                         return Ok(None);
                     };
 
-                    Ok(Some(Event { seq: seq as u64, at: time::from_secs(at), level, stage, message, plain, job, body }))
+                    Ok(Some(Event { seq: seq as u64, at: time::from_secs(at), level, stage, message, plain, plain_words, job, body }))
                 })?
                 .collect::<Result<Vec<Option<Event>>, _>>()?
                 .into_iter()
@@ -298,18 +314,17 @@ impl EventBus {
 
 /// The plain line for a warning or an error whose site has no wording of its
 /// own: which part of the app it touched, and where the details are.
-pub fn stage_problem(stage: Stage) -> String {
-    let area = match stage {
-        Stage::Library => "your library",
-        Stage::Metadata => "show info",
-        Stage::Trackers => "your lists",
-        Stage::Franchise => "related shows",
-        Stage::Playback => "playback",
-        Stage::Store => "saving your data",
-        Stage::System => "AniBeam",
-        Stage::Downloads => "downloads",
-    };
-    format!("Something went wrong with {area}. Developer options have the details.")
+pub fn stage_problem(stage: Stage) -> Words {
+    Words::new(match stage {
+        Stage::Library => "event-problem-library",
+        Stage::Metadata => "event-problem-metadata",
+        Stage::Trackers => "event-problem-trackers",
+        Stage::Franchise => "event-problem-franchise",
+        Stage::Playback => "event-problem-playback",
+        Stage::Store => "event-problem-store",
+        Stage::System => "event-problem-system",
+        Stage::Downloads => "event-problem-downloads",
+    })
 }
 
 /// Handed back by `Core::subscribe`; dropping it or calling `unsubscribe`
@@ -451,7 +466,7 @@ mod tests {
         bus.store
             .write(|c| {
                 let mut stmt = c.prepare(
-                    "SELECT message, coalesce(plain, ''), body FROM events ORDER BY seq",
+                    "SELECT message, coalesce(plain, '') || coalesce(plain_words, ''), body FROM events ORDER BY seq",
                 )?;
                 let rows = stmt.query_map([], |r| {
                     Ok(format!(
@@ -517,7 +532,9 @@ mod tests {
             bus.say(
                 Level::Info,
                 Stage::Downloads,
-                format!("Read {FEED} and {MAGNET}"),
+                Words::new("test-read")
+                    .arg("feed", FEED)
+                    .arg("magnet", MAGNET),
                 format!("read {FEED} via {MAGNET}"),
                 body,
             );
@@ -644,7 +661,7 @@ mod tests {
         assert_eq!(quiet.plain, None);
         assert_eq!(
             loud.plain.as_deref(),
-            Some(stage_problem(Stage::Library).as_str())
+            Some(stage_problem(Stage::Library).render().as_str())
         );
         assert_eq!(
             kept.plain, None,

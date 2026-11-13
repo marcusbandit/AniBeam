@@ -185,7 +185,7 @@ pub fn spawn(binary: &Path, profile: &Path, port: u16) -> std::io::Result<()> {
 }
 
 /// The last lines of the profile's log, for a failure message.
-pub fn log_tail(profile: &Path) -> String {
+pub fn log_tail(profile: &Path) -> Option<String> {
     let text = std::fs::read_to_string(log_file(profile)).unwrap_or_default();
     let lines: Vec<&str> = text
         .lines()
@@ -193,12 +193,9 @@ pub fn log_tail(profile: &Path) -> String {
         .filter(|l| !l.is_empty())
         .collect();
     if lines.is_empty() {
-        return String::new();
+        return None;
     }
-    format!(
-        ": {}",
-        lines[lines.len().saturating_sub(LOG_TAIL)..].join(" / ")
-    )
+    Some(lines[lines.len().saturating_sub(LOG_TAIL)..].join(" / "))
 }
 
 #[cfg(test)]

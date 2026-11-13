@@ -273,9 +273,12 @@ fn indexer_error(doc: &roxmltree::Document, endpoint_name: &str) -> Option<CoreE
     }
     let message = match root.attribute("description").map(str::trim) {
         Some(d) if !d.is_empty() => their_message(d),
-        _ => format!(
-            "the indexer answered error {}",
-            their_message(root.attribute("code").unwrap_or("?"))
+        _ => crate::i18n::tr(
+            "core-releases-indexer-error",
+            &[(
+                "code",
+                their_message(root.attribute("code").unwrap_or("?")).into(),
+            )],
         ),
     };
     Some(CoreError::Service {
@@ -292,7 +295,7 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
     let doc = roxmltree::Document::parse(data).map_err(|e| CoreError::Service {
         service: endpoint_name.to_string(),
         code: "unreadable".to_string(),
-        message: format!("bad feed: {e}"),
+        message: crate::i18n::tr("core-releases-bad-feed", &[("error", e.to_string().into())]),
     })?;
     if let Some(e) = indexer_error(&doc, endpoint_name) {
         return Err(e);
@@ -399,7 +402,10 @@ pub async fn fetch_rss(
         return Err(CoreError::Service {
             service: source_name.to_string(),
             code: format!("http_{}", response.status),
-            message: format!("the feed answered {}", response.status),
+            message: crate::i18n::tr(
+                "core-releases-feed-answered",
+                &[("status", response.status.to_string().into())],
+            ),
         });
     }
     let body = String::from_utf8_lossy(&response.body);

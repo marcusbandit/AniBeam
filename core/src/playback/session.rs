@@ -483,10 +483,12 @@ pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession,
                 return Err(CoreError::Service {
                     service: crate::downloads::qbt::SERVICE.to_string(),
                     code: "downloading".to_string(),
-                    message: format!(
-                        "episode {} is still downloading, {}% done",
-                        f.number as u32,
-                        (done * 100.0).floor()
+                    message: crate::i18n::tr(
+                        "core-playback-still-downloading",
+                        &[
+                            ("number", (f.number as u32).to_string().into()),
+                            ("done", (done * 100.0).floor().to_string().into()),
+                        ],
                     ),
                 });
             }
@@ -782,7 +784,7 @@ fn mark(core: &Core, s: &Session) {
         core.bus.say(
             Level::Warn,
             Stage::Playback,
-            format!("Your progress on {folder} was not saved. Match the show first."),
+            crate::words!("core-playback-not-saved", folder = &folder),
             format!("watched to the end but {folder} has no AniList or MAL id"),
             EventBody::Notice,
         );

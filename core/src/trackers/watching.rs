@@ -37,7 +37,7 @@ use crate::time;
 use crate::trackers::accounts;
 use crate::trackers::cache::normalize_status;
 use crate::trackers::writes;
-use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, as_count, as_u32};
+use crate::trackers::{TRACKER_TIMEOUT, as_count, as_u32, no_token};
 
 /// The title of last resort. A stub the store has only ever seen on this
 /// list still draws a card, and an id reads better than an empty one.
@@ -308,10 +308,10 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
     // never carried one cannot be read at all.
     let user_id = account
         .user_id
-        .ok_or_else(|| tracker_error("the account carries no user id"))?;
+        .ok_or_else(|| tracker_error(crate::i18n::tr("core-trackers-no-user-id", &[])))?;
     let token = accounts::access_token(core, Tracker::Anilist)
         .await?
-        .ok_or_else(|| tracker_error(NO_TOKEN))?;
+        .ok_or_else(|| tracker_error(no_token()))?;
     // Anything written to the cache after this moment (a status the user
     // just set) is newer than what the fetch can know, and is left alone.
     let started = time::now_secs();

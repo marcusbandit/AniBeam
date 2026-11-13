@@ -362,7 +362,10 @@ async fn read_page(core: Arc<Core>, id: u64) -> Result<Finished, CoreError> {
     if media.is_null() {
         return Err(CoreError::invalid(
             "anilist_id",
-            format!("AniList has no anime {id}"),
+            crate::i18n::tr(
+                "core-recommended-no-anime",
+                &[("id", id.to_string().into())],
+            ),
         ));
     }
     let mut urls: Vec<String> = Vec::new();

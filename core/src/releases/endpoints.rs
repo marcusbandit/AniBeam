@@ -40,8 +40,9 @@ pub fn answers_rss(kind: &str) -> bool {
 }
 
 /// Why a json source cannot be added by hand: its field map only comes from a definition.
-pub const JSON_NEEDS_REPO: &str =
-    "a JSON search source comes from an endpoint repo whose definition maps its fields";
+pub fn json_needs_repo() -> String {
+    crate::i18n::tr("core-releases-json-needs-repo", &[])
+}
 
 /// Splits a query into fields, keeping `-"quoted phrase"` and `"quoted"` intact
 /// (anirss `endpoints.FIELD_RE`, shared with refine's positional-insert logic).
@@ -62,7 +63,10 @@ fn seconds(s: f64) -> Duration {
 pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     let (name, kind, url) = (name.trim(), kind.trim(), url.trim());
     if name.is_empty() {
-        return Err(CoreError::invalid("endpoint name", "missing `name`"));
+        return Err(CoreError::invalid(
+            "endpoint name",
+            crate::i18n::tr("core-releases-endpoint-no-name", &[]),
+        ));
     }
     if !name
         .chars()
@@ -70,7 +74,10 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     {
         return Err(CoreError::invalid(
             "endpoint name",
-            format!("{name:?}: use only letters, digits, '.', '_', '-'"),
+            crate::i18n::tr(
+                "core-releases-endpoint-bad-name",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     check_shape(name, kind, url)
@@ -85,45 +92,71 @@ pub fn check_shape(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
     if kind == "json" {
         return Err(CoreError::invalid(
             "endpoint kind",
-            format!("{name:?}: {JSON_NEEDS_REPO}"),
+            crate::i18n::tr(
+                "core-releases-endpoint-json",
+                &[
+                    ("name", format!("{name:?}").into()),
+                    ("why", json_needs_repo().into()),
+                ],
+            ),
         ));
     }
     if !VALID_KINDS.contains(&kind) {
         return Err(CoreError::invalid(
             "endpoint kind",
-            format!(
-                "{name:?}: unknown kind {kind:?} (valid: {})",
-                VALID_KINDS
-                    .iter()
-                    .filter(|k| **k != "json")
-                    .copied()
-                    .collect::<Vec<_>>()
-                    .join(", ")
+            crate::i18n::tr(
+                "core-releases-endpoint-unknown-kind",
+                &[
+                    ("name", format!("{name:?}").into()),
+                    ("kind", format!("{kind:?}").into()),
+                    (
+                        "valid",
+                        VALID_KINDS
+                            .iter()
+                            .filter(|k| **k != "json")
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                            .into(),
+                    ),
+                ],
             ),
         ));
     }
     if url.is_empty() {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: missing `url`"),
+            crate::i18n::tr(
+                "core-releases-endpoint-no-url",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: the address must start with http:// or https://"),
+            crate::i18n::tr(
+                "core-releases-endpoint-not-http",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     if needs_query(kind) && !url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: {kind} url must contain a {{query}} placeholder"),
+            crate::i18n::tr(
+                "core-releases-endpoint-needs-query",
+                &[("name", format!("{name:?}").into()), ("kind", kind.into())],
+            ),
         ));
     }
     if !needs_query(kind) && url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: a {kind} url adds the search itself, so it takes no {{query}}"),
+            crate::i18n::tr(
+                "core-releases-endpoint-no-query",
+                &[("name", format!("{name:?}").into()), ("kind", kind.into())],
+            ),
         ));
     }
     Ok(())
@@ -536,7 +569,7 @@ async fn fetch_exact(
             return Err(CoreError::Service {
                 service: ep.name.clone(),
                 code: "unmapped".into(),
-                message: JSON_NEEDS_REPO.into(),
+                message: json_needs_repo(),
             });
         };
         let (positive, excluded) = split_exclusions(query);

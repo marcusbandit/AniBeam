@@ -187,7 +187,7 @@ pub fn start(
     if !duration.is_finite() || duration <= 0.0 {
         return Err(CoreError::invalid(
             "duration",
-            "a duration is a positive number of seconds",
+            crate::i18n::tr("core-playback-bad-duration", &[]),
         ));
     }
     session::report_chapters(core, session, duration, None);

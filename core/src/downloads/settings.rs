@@ -156,21 +156,21 @@ pub fn validate(s: &mut DownloadSettings, retired: &[SavedTorrentClient]) -> Res
     if s.anirss_mode == AnirssMode::Sidecar && s.anirss_command.is_empty() {
         return Err(CoreError::invalid(
             "anirss_command",
-            "the anirss command cannot be empty",
+            crate::i18n::tr("core-downloads-settings-command-empty", &[]),
         ));
     }
     if s.anirss_mode == AnirssMode::Remote && !is_http(&s.anirss_url) {
         return Err(CoreError::invalid(
             "anirss_url",
-            "the anirss address must start with http:// or https://",
+            crate::i18n::tr("core-downloads-settings-anirss-address", &[]),
         ));
     }
     if !is_http(&s.torrent_url) {
         return Err(CoreError::invalid(
             "torrent_url",
-            format!(
-                "the {} address must start with http:// or https://",
-                s.torrent_client.as_str()
+            crate::i18n::tr(
+                "core-downloads-settings-client-address",
+                &[("client", s.torrent_client.as_str().into())],
             ),
         ));
     }
@@ -238,24 +238,27 @@ pub fn settle_clients(
         {
             return Err(CoreError::invalid(
                 "saved_clients",
-                format!(
-                    "{:?} is not a client id: use letters, digits, - and _",
-                    c.id
+                crate::i18n::tr(
+                    "core-downloads-settings-bad-id",
+                    &[("id", format!("{:?}", c.id).into())],
                 ),
             ));
         }
         if ids.contains(&c.id) {
             return Err(CoreError::invalid(
                 "saved_clients",
-                format!("two clients have the id {}", c.id),
+                crate::i18n::tr(
+                    "core-downloads-settings-same-id",
+                    &[("id", c.id.as_str().into())],
+                ),
             ));
         }
         if !is_http(&c.url) {
             return Err(CoreError::invalid(
                 "saved_clients",
-                format!(
-                    "the address of {} must start with http:// or https://",
-                    c.name
+                crate::i18n::tr(
+                    "core-downloads-settings-saved-address",
+                    &[("name", c.name.as_str().into())],
                 ),
             ));
         }
@@ -266,9 +269,9 @@ pub fn settle_clients(
         if names.contains(&name) {
             return Err(CoreError::invalid(
                 "saved_clients",
-                format!(
-                    "two clients are called {}; give each a name of its own",
-                    c.name
+                crate::i18n::tr(
+                    "core-downloads-settings-same-name",
+                    &[("name", c.name.as_str().into())],
                 ),
             ));
         }

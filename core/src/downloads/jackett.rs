@@ -77,14 +77,24 @@ pub fn explain(name: &str, failure: &StartFailure) -> (&'static str, String) {
     match failure {
         StartFailure::Missing(program) => (
             "missing",
-            format!(
-                "Jackett is not installed: {program} was not found. Install it, or change the command in Settings."
+            crate::i18n::tr(
+                "core-downloads-jackett-missing",
+                &[("program", program.as_str().into())],
             ),
         ),
-        StartFailure::Failed(why) => ("failed", format!("{name} could not start: {why}")),
+        StartFailure::Failed(why) => (
+            "failed",
+            crate::i18n::tr(
+                "core-downloads-endpoint-start-failed",
+                &[("name", name.into()), ("why", why.as_str().into())],
+            ),
+        ),
         StartFailure::Timeout(secs) => (
             "timeout",
-            format!("{name} started but did not answer within {secs} seconds."),
+            crate::i18n::tr(
+                "core-downloads-endpoint-start-timeout",
+                &[("name", name.into()), ("seconds", (*secs).into())],
+            ),
         ),
     }
 }
@@ -213,8 +223,12 @@ pub async fn start(
                 return Err(StartFailure::Missing(program(command)));
             }
             if !status.success() {
-                let why =
-                    last_line(log).unwrap_or_else(|| format!("the command exited with {status}"));
+                let why = last_line(log).unwrap_or_else(|| {
+                    crate::i18n::tr(
+                        "core-downloads-command-exited",
+                        &[("status", status.to_string().into())],
+                    )
+                });
                 return Err(StartFailure::Failed(why));
             }
             exited_clean = true;

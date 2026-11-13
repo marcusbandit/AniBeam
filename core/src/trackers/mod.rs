@@ -25,6 +25,11 @@ pub(crate) const TRACKER_TIMEOUT: std::time::Duration = std::time::Duration::fro
 /// failed and already said so.
 pub(crate) const NO_TOKEN: &str = "no access token stored, reconnect in Settings";
 
+/// [`NO_TOKEN`] in the current language, for an error a person reads.
+pub(crate) fn no_token() -> String {
+    crate::i18n::tr("core-trackers-no-token", &[])
+}
+
 /// A count off a provider's JSON, which is unsigned and small: anything
 /// missing or absurd is nought rather than a wrap-around.
 pub(crate) fn as_count(value: Option<u64>) -> u32 {

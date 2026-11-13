@@ -16,6 +16,7 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::i18n::tr;
 use crate::images;
 use crate::jobs::Finished;
 use crate::library::cards;
@@ -28,18 +29,17 @@ use crate::time;
 
 /// What the modal says when the text was a URL the core knows the host of
 /// but cannot follow: a themoviedb.org page, an AniList user profile, an
-/// id with a typo in it.
-const UNREADABLE: &str =
-    "Couldn't read that link. Paste an AniList, MyAnimeList, TVmaze or IMDb page URL.";
+/// id with a typo in it. Each of these three is a message ID in the catalog.
+const UNREADABLE: &str = "core-metadata-link-unreadable";
 
 /// AniList answered, and the answer was that it carries no entry for that
 /// MyAnimeList id. Deliberate rather than silent: `ResolveLink` is how a
 /// pasted link becomes a match, and a link that resolves to nothing has to
 /// say so instead of quietly writing a MAL-only match nobody asked for.
-const NO_MAL_ENTRY: &str = "AniList has no entry for that MyAnimeList id.";
+const NO_MAL_ENTRY: &str = "core-metadata-no-mal-entry";
 
 /// The same for a pasted IMDb link: TVmaze has no show behind that title.
-const NO_IMDB_SHOW: &str = "TVmaze has no show for that IMDb title.";
+const NO_IMDB_SHOW: &str = "core-metadata-no-imdb-show";
 
 /// A shortest sensible query. One character matches most of AniList.
 const MIN_QUERY: usize = 2;
@@ -56,14 +56,17 @@ const MAX_RESULTS: u32 = 50;
 pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Result<u64, CoreError> {
     if !MATCH_PROVIDERS.contains(&provider) {
         return Err(CoreError::Unsupported {
-            what: format!("search on {}", provider.as_str()),
+            what: tr(
+                "core-metadata-search-on",
+                &[("provider", provider.as_str().into())],
+            ),
         });
     }
     let query = query.trim().to_string();
     if query.chars().count() < MIN_QUERY {
         return Err(CoreError::invalid(
             "query",
-            "Type at least two characters to search.",
+            tr("core-metadata-query-too-short", &[]),
         ));
     }
     let per_page = limit.clamp(1, MAX_RESULTS);
@@ -116,12 +119,14 @@ enum Pasted {
 /// `Media(idMal:)`, because a MAL id alone is not something a series page
 /// can be drawn from, and an IMDb link goes through TVmaze's lookup.
 pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
-    let pasted = match link::parse(url).ok_or_else(|| CoreError::invalid("url", "not a link"))? {
+    let pasted = match link::parse(url)
+        .ok_or_else(|| CoreError::invalid("url", tr("core-metadata-not-a-link", &[])))?
+    {
         Link::Anilist { id } => Pasted::Anilist(id),
         Link::Mal { id } => Pasted::Mal(id),
         Link::Tvmaze { id } => Pasted::Tvmaze(id),
         Link::Imdb { id } => Pasted::Imdb(id),
-        Link::Unknown => return Err(CoreError::invalid("url", UNREADABLE)),
+        Link::Unknown => return Err(CoreError::invalid("url", tr(UNREADABLE, &[]))),
     };
     let owner = core.owner()?;
     Ok(owner
@@ -135,7 +140,7 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
                         CoreError::Provider {
                             provider: Provider::Anilist,
                             status: Some(404),
-                            message: NO_MAL_ENTRY.to_string(),
+                            message: tr(NO_MAL_ENTRY, &[]),
                             retry_after: None,
                         }
                     })?;
@@ -147,7 +152,7 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
                         CoreError::Provider {
                             provider: Provider::Tvmaze,
                             status: Some(404),
-                            message: NO_IMDB_SHOW.to_string(),
+                            message: tr(NO_IMDB_SHOW, &[]),
                             retry_after: None,
                         }
                     })?;
@@ -202,7 +207,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                         ctx.changed(card);
                     }
                     return Ok(Finished {
-                        plain: Some(format!("Matched {folder}.")),
+                        plain: Some(crate::words!("core-metadata-matched", show = &folder)),
                         level: Level::Info,
                         message: format!("matched {folder} to TVmaze {id}"),
                         body: EventBody::MatchApplied { series },
@@ -232,7 +237,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                         // A MAL-only match carries no record format.
                         fetch::reread_after_record(&owner, series).await;
                         return Ok(Finished {
-                            plain: Some(format!("Matched {folder}.")),
+                            plain: Some(crate::words!("core-metadata-matched", show = &folder)),
                             level: Level::Info,
                             message: format!("Matched {folder} to MyAnimeList {id}"),
                             body: EventBody::MatchApplied { series },
@@ -305,7 +310,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
             }
 
             Ok(Finished {
-                plain: Some(format!("Matched {folder}.")),
+                plain: Some(crate::words!("core-metadata-matched", show = &folder)),
                 level: Level::Info,
                 message: format!("Matched {folder} to AniList {anilist_id}"),
                 body: EventBody::MatchApplied { series },
@@ -333,7 +338,7 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
     }
     let Some(id) = target.id else {
         return Err(CoreError::Unsupported {
-            what: "refresh of a MAL-only or TMDB match".to_string(),
+            what: tr("core-metadata-refresh-unsupported", &[]),
         });
     };
     let owner = core.owner()?;
@@ -366,9 +371,9 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
             images::sweep_after(&owner, "a refresh").await;
             Ok(Finished {
                 plain: Some(if failed == 0 {
-                    format!("Updated the info for {folder}.")
+                    crate::words!("core-metadata-updated", show = &folder)
                 } else {
-                    format!("Could not update the info for {folder}. Try again later.")
+                    crate::words!("core-metadata-update-failed", show = &folder)
                 }),
                 level: if failed == 0 {
                     Level::Info
@@ -467,11 +472,15 @@ fn start_refresh_walk(
     let owner = core.clone();
     core.jobs.clone().start(kind, move |ctx| async move {
         let work = owner.store.write_async(move |c| candidates(c, sql)).await?;
+        let progress_label = match label {
+            "refresh" => tr("core-metadata-progress-refresh", &[]),
+            _ => tr("core-metadata-progress-backfill", &[]),
+        };
         let total = work.len() as u64;
         let (mut refreshed, mut failed) = (0u64, 0u64);
         for (done, c) in work.into_iter().enumerate() {
             ctx.checkpoint()?;
-            ctx.progress(done as u64, Some(total), label);
+            ctx.progress(done as u64, Some(total), &progress_label);
             match fetch_id(&owner, c.series, c.id, c.confirmed).await {
                 Ok(()) => {
                     refreshed += 1;
@@ -497,17 +506,14 @@ fn start_refresh_walk(
         // portraits in, and both owe the sweep that keeps the directory
         // from only ever growing.
         images::sweep_after(&owner, label).await;
-        let shows = |n: u64| crate::words::pick(n, "show", "shows");
         let said = match (refreshed, failed) {
             (0, 0) => None,
-            (n, 0) => Some(format!("Updated the info for {n} {}.", shows(n))),
-            (0, f) => Some(format!(
-                "Could not update the info for {f} {}. Try again later.",
-                shows(f)
-            )),
-            (n, f) => Some(format!(
-                "Updated the info for {n} {}; {f} could not be updated.",
-                shows(n)
+            (n, 0) => Some(crate::words!("core-metadata-updated-many", count = n)),
+            (0, f) => Some(crate::words!("core-metadata-update-failed-many", count = f)),
+            (n, f) => Some(crate::words!(
+                "core-metadata-updated-some",
+                count = n,
+                failed = f
             )),
         };
         Ok(Finished {

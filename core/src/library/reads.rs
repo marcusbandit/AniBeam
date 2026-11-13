@@ -315,10 +315,10 @@ pub fn set_hidden_many(core: &Core, series: &[u64], hidden: bool) -> Result<Repl
         .read(|c| cards::cards_for(c, &images_dir, series))?;
     let n = cards.len();
     let plain = match (cards.as_slice(), hidden) {
-        ([one], true) => format!("Hid {}.", one.title),
-        ([one], false) => format!("{} is back.", one.title),
-        (_, true) => format!("Hid {n} shows."),
-        (_, false) => format!("{n} shows are back."),
+        ([one], true) => crate::words!("core-library-hid-one", title = &one.title),
+        ([one], false) => crate::words!("core-library-back-one", title = &one.title),
+        (_, true) => crate::words!("core-library-hid-many", count = n),
+        (_, false) => crate::words!("core-library-back-many", count = n),
     };
     let what = if hidden { "hidden" } else { "shown" };
     core.bus.say(
@@ -368,8 +368,8 @@ pub fn set_episode_count(core: &Core, series: u64, count: Option<u32>) -> Result
         None => format!("{title}'s episode count cleared"),
     };
     let said = match count {
-        Some(n) => format!("{title} now has {n} episodes."),
-        None => format!("Cleared the episode count of {title}."),
+        Some(n) => crate::words!("core-library-episode-count-set", title = &title, count = n),
+        None => crate::words!("core-library-episode-count-cleared", title = &title),
     };
     core.bus.say(
         Level::Info,

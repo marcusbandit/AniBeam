@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::i18n::tr;
 use crate::net::{HttpRequest, Method};
 
 const STEP: Duration = Duration::from_secs(6);
@@ -81,9 +82,16 @@ async fn tcp(ip: IpAddr, port: u16) -> (bool, String, u64) {
     )
     .await
     {
-        Ok(Ok(_)) => (true, "connected".into(), ms(start)),
-        Ok(Err(e)) => (false, format!("refused: {e}"), ms(start)),
-        Err(_) => (false, "no answer (dropped)".into(), ms(start)),
+        Ok(Ok(_)) => (true, tr("core-phone-check-connected", &[]), ms(start)),
+        Ok(Err(e)) => (
+            false,
+            tr(
+                "core-phone-check-refused",
+                &[("error", e.to_string().into())],
+            ),
+            ms(start),
+        ),
+        Err(_) => (false, tr("core-phone-check-dropped", &[]), ms(start)),
     }
 }
 
@@ -117,7 +125,10 @@ async fn host(
                 .collect::<Vec<_>>()
                 .join(", ");
             out.push(line(
-                format!("{label}: finding its address"),
+                tr(
+                    "core-phone-check-finding",
+                    &[("label", label.as_str().into())],
+                ),
                 !found.is_empty(),
                 shown,
                 ms(start),
@@ -125,24 +136,46 @@ async fn host(
             ips.extend(found);
         }
         Ok(Err(e)) => out.push(line(
-            format!("{label}: finding its address"),
+            tr(
+                "core-phone-check-finding",
+                &[("label", label.as_str().into())],
+            ),
             false,
-            format!("failed: {e}"),
+            tr(
+                "core-phone-check-failed",
+                &[("error", e.to_string().into())],
+            ),
             ms(start),
         )),
         Err(_) => out.push(line(
-            format!("{label}: finding its address"),
+            tr(
+                "core-phone-check-finding",
+                &[("label", label.as_str().into())],
+            ),
             false,
-            "no answer".into(),
+            tr("core-phone-check-no-answer", &[]),
             ms(start),
         )),
     }
 
-    let doh_line = format!("{label}: finding it privately");
+    let doh_line = tr(
+        "core-phone-check-private",
+        &[("label", label.as_str().into())],
+    );
     if name.parse::<IpAddr>().is_ok() {
-        out.push(line(doh_line, true, "skipped, an address".into(), 0));
+        out.push(line(
+            doh_line,
+            true,
+            tr("core-phone-check-skipped-address", &[]),
+            0,
+        ));
     } else if crate::net::doh::is_home_name(name) {
-        out.push(line(doh_line, true, "skipped, home-network name".into(), 0));
+        out.push(line(
+            doh_line,
+            true,
+            tr("core-phone-check-skipped-home", &[]),
+            0,
+        ));
     } else {
         let start = Instant::now();
         match doh.find(name).await {
@@ -164,13 +197,13 @@ async fn host(
             crate::net::doh::Found::NoRecord => out.push(line(
                 doh_line,
                 true,
-                "no public address, left to this network's DNS".into(),
+                tr("core-phone-check-no-record", &[]),
                 ms(start),
             )),
             crate::net::doh::Found::NoAnswer => out.push(line(
                 doh_line,
                 false,
-                "no resolver answered".into(),
+                tr("core-phone-check-no-resolver", &[]),
                 ms(start),
             )),
         }
@@ -178,7 +211,14 @@ async fn host(
 
     for ip in ips.iter().filter(|ip| ip.is_ipv4()).take(3) {
         let (ok, detail, t) = tcp(*ip, port).await;
-        out.push(line(format!("{label}: reaching {ip}"), ok, detail, t));
+        let step = tr(
+            "core-phone-check-reaching",
+            &[
+                ("label", label.as_str().into()),
+                ("ip", ip.to_string().into()),
+            ],
+        );
+        out.push(line(step, ok, detail, t));
     }
 
     let start = Instant::now();
@@ -211,7 +251,13 @@ async fn host(
         Ok(r) => out.push(line(
             format!("{label}: {fetch}"),
             r.is_success(),
-            format!("HTTP {}, {} bytes", r.status, r.body.len()),
+            tr(
+                "core-phone-check-http",
+                &[
+                    ("status", r.status.to_string().into()),
+                    ("bytes", r.body.len().into()),
+                ],
+            ),
             ms(start),
         )),
         Err(e) => out.push(line(
@@ -228,7 +274,14 @@ async fn host(
 pub async fn run(core: &Core) -> Vec<NetCheck> {
     let client = match crate::net::resolver_client() {
         Ok(c) => c,
-        Err(e) => return vec![line("setup".into(), false, e.to_string(), 0)],
+        Err(e) => {
+            return vec![line(
+                tr("core-phone-check-setup", &[]),
+                false,
+                e.to_string(),
+                0,
+            )];
+        }
     };
     let doh = crate::net::doh::Doh::new(client);
     let Ok(owner) = core.owner() else {

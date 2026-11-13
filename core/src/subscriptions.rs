@@ -26,7 +26,7 @@ const ANIRSS_TIMEOUT: Duration = Duration::from_secs(15);
 pub fn start(core: &Core) -> Result<u64, CoreError> {
     if cfg!(windows) {
         return Err(CoreError::Unsupported {
-            what: "anirss on this platform".to_string(),
+            what: crate::i18n::tr("core-subscriptions-platform", &[]),
         });
     }
     let owner = core.owner()?;
@@ -93,7 +93,10 @@ async fn run(home: &crate::downloads::home::AnirssHome) -> Result<SubscriptionsR
         Err(message) => Err(CoreError::Service {
             service: "anirss".into(),
             code: "unreadable".into(),
-            message: format!("its answer could not be read ({message})"),
+            message: crate::i18n::tr(
+                "core-subscriptions-unreadable",
+                &[("message", message.into())],
+            ),
         }),
     }
 }
@@ -196,9 +199,12 @@ pub fn classify_failure(stderr: &str) -> Result<SubscriptionsResult, CoreError> 
             service: "anirss".into(),
             code: "exited".into(),
             message: if trimmed.is_empty() {
-                "it stopped without saying why".into()
+                crate::i18n::tr("core-subscriptions-stopped", &[])
             } else {
-                format!("it stopped: {trimmed}")
+                crate::i18n::tr(
+                    "core-subscriptions-stopped-said",
+                    &[("said", trimmed.into())],
+                )
             },
         })
     }

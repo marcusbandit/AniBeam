@@ -655,7 +655,11 @@ pub fn start_fill(core: &Arc<Core>) -> u64 {
 
             for (round, batch) in urls.chunks(BATCH).enumerate() {
                 ctx.checkpoint()?;
-                ctx.progress((round * BATCH) as u64, Some(total), "fetching images");
+                ctx.progress(
+                    (round * BATCH) as u64,
+                    Some(total),
+                    &crate::i18n::tr("core-images-progress-fetching", &[]),
+                );
                 let mut arrived: Vec<String> = Vec::new();
                 for (url, outcome) in owner.images.ensure(batch).await {
                     match outcome {

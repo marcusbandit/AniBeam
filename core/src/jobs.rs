@@ -22,7 +22,7 @@ pub struct Finished {
     pub level: Level,
     /// The line a person reads in the plain log; `None` keeps the moment
     /// to the developer log.
-    pub plain: Option<String>,
+    pub plain: Option<Words>,
     pub message: String,
     pub body: EventBody,
 }
@@ -98,17 +98,11 @@ impl JobCtx {
     }
 
     /// `emit` with the line a person reads in the plain activity log.
-    pub fn say(
-        &self,
-        level: Level,
-        plain: impl Into<String>,
-        message: impl Into<String>,
-        body: EventBody,
-    ) {
+    pub fn say(&self, level: Level, plain: Words, message: impl Into<String>, body: EventBody) {
         self.bus.emit_said(
             level,
             self.kind.stage(),
-            Some(plain.into()),
+            Some(plain),
             message,
             Some(self.job_ref(JobPhase::Running)),
             body,
@@ -294,8 +288,8 @@ impl JobCtx {
 
 /// What a person reads when a job ends in an error or a panic: nothing for
 /// a chore the app runs on its own, whose failure the next run retries.
-fn stopped_line(kind: JobKind) -> Option<String> {
-    (!kind.chore()).then(|| format!("{} stopped with a problem.", kind.doing()))
+fn stopped_line(kind: JobKind) -> Option<Words> {
+    (!kind.chore()).then(|| Words::new(format!("{}.stopped", kind.words_id())))
 }
 
 /// Guarantees a job's registry entry and terminal event are never lost to a
@@ -757,7 +751,7 @@ mod tests {
         let (_d, _rt, jobs, c) = setup();
         let id = jobs.start(JobKind::Search, |_ctx| async move {
             Ok(Finished {
-                plain: Some("Found it.".to_string()),
+                plain: Some(crate::words!("count-shows", count = 2u64)),
                 level: Level::Info,
                 message: "found".into(),
                 body: EventBody::SearchFinished { results: vec![] },
@@ -769,7 +763,7 @@ mod tests {
             .into_iter()
             .rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id))
             .unwrap();
-        assert_eq!(last.plain.as_deref(), Some("Found it."));
+        assert_eq!(last.plain.as_deref(), Some("2 shows"));
         assert_eq!(last.message, "found");
     }
 

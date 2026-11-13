@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::contract::{CoreError, EndpointField};
+use crate::i18n::tr;
 use crate::releases::endpoints::VALID_KINDS;
 
 /// The envelope's `format`.
@@ -353,59 +354,59 @@ pub fn fingerprint(key: &str) -> String {
 fn verifying_key(key: &str) -> Result<VerifyingKey, RepoFault> {
     let raw = key
         .strip_prefix("ed25519:")
-        .ok_or_else(|| RepoFault::new("format", "the index's key is not an ed25519 key"))?;
+        .ok_or_else(|| RepoFault::new("format", tr("core-repos-key-not-ed25519", &[])))?;
     let bytes: [u8; 32] = B64
         .decode(raw)
         .ok()
         .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| RepoFault::new("format", "the index's key is not 32 bytes of base64"))?;
+        .ok_or_else(|| RepoFault::new("format", tr("core-repos-key-not-base64", &[])))?;
     VerifyingKey::from_bytes(&bytes)
-        .map_err(|_| RepoFault::new("format", "the index's key is not a valid ed25519 key"))
+        .map_err(|_| RepoFault::new("format", tr("core-repos-key-invalid", &[])))
 }
 
 /// Reads a repo file: the envelope, then the payload's signature against the key the payload
 /// itself names, then the index.
 pub fn parse(bytes: &[u8], core_version: &str) -> Result<Index, RepoFault> {
     if bytes.len() > MAX_BYTES {
-        return Err(RepoFault::new(
-            "format",
-            "the file is too large to be a repo",
-        ));
+        return Err(RepoFault::new("format", tr("core-repos-too-large", &[])));
     }
     let env: Envelope = serde_json::from_slice(bytes)
-        .map_err(|_| RepoFault::new("format", "this is not an AniBeam endpoint repo"))?;
+        .map_err(|_| RepoFault::new("format", tr("core-repos-not-a-repo", &[])))?;
     if env.format != FORMAT {
-        return Err(RepoFault::new(
-            "format",
-            "this is not an AniBeam endpoint repo",
-        ));
+        return Err(RepoFault::new("format", tr("core-repos-not-a-repo", &[])));
     }
     if env.version != VERSION {
         return Err(RepoFault::new(
             "version",
-            format!(
-                "the repo is format version {}; this AniBeam reads version {VERSION}. Update AniBeam.",
-                env.version
+            tr(
+                "core-repos-format-version",
+                &[
+                    ("found", env.version.to_string().into()),
+                    ("reads", VERSION.to_string().into()),
+                ],
             ),
         ));
     }
     let payload = B64
         .decode(env.payload.trim())
-        .map_err(|_| RepoFault::new("format", "the repo's payload is not base64"))?;
+        .map_err(|_| RepoFault::new("format", tr("core-repos-payload-not-base64", &[])))?;
     let signature = B64
         .decode(env.signature.trim())
         .ok()
         .and_then(|b| Signature::from_slice(&b).ok())
-        .ok_or_else(|| RepoFault::new("signature", "the repo's signature is malformed"))?;
-    let raw: RawIndex = serde_json::from_slice(&payload)
-        .map_err(|e| RepoFault::new("format", format!("the repo's index does not read: {e}")))?;
-    let key = verifying_key(&raw.key)?;
-    key.verify_strict(&payload, &signature).map_err(|_| {
+        .ok_or_else(|| RepoFault::new("signature", tr("core-repos-signature-malformed", &[])))?;
+    let raw: RawIndex = serde_json::from_slice(&payload).map_err(|e| {
         RepoFault::new(
-            "signature",
-            "the repo's signature does not match its contents",
+            "format",
+            tr(
+                "core-repos-index-unreadable",
+                &[("error", e.to_string().into())],
+            ),
         )
     })?;
+    let key = verifying_key(&raw.key)?;
+    key.verify_strict(&payload, &signature)
+        .map_err(|_| RepoFault::new("signature", tr("core-repos-signature-mismatch", &[])))?;
     let mut endpoints: Vec<Definition> = Vec::new();
     for value in raw.endpoints {
         let Ok(def) = serde_json::from_value::<Definition>(value) else {
@@ -492,20 +493,25 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     let http = http || (torznab && def.host_is_placeholder());
     let scheme_ok = def.url.starts_with("https://") || (http && def.url.starts_with("http://"));
     if !scheme_ok || def.host().is_empty() {
-        return Err(format!(
-            "{}: the address must start with {}",
-            def.id,
+        return Err(tr(
             if http {
-                "http:// or https://"
+                "core-repos-check-scheme-http"
             } else {
-                "https://"
-            }
+                "core-repos-check-scheme"
+            },
+            &[("id", def.id.as_str().into())],
         ));
     }
     let mut keys = Vec::new();
     for field in &def.auth {
         if !plain_id(&field.key) || field.key == "query" || keys.contains(&field.key.as_str()) {
-            return Err(format!("{}: bad auth key {:?}", def.id, field.key));
+            return Err(tr(
+                "core-repos-check-auth-key",
+                &[
+                    ("id", def.id.as_str().into()),
+                    ("key", format!("{:?}", field.key).into()),
+                ],
+            ));
         }
         if !def.url.contains(&format!("{{{}}}", field.key)) {
             return Err(format!(
@@ -525,9 +531,9 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     // person sees: their own server, and nothing a secret could steer.
     if def.host_is_placeholder() {
         if !torznab {
-            return Err(format!(
-                "{}: only a torznab address may name its host as {{{HOST_KEY}}}",
-                def.id
+            return Err(tr(
+                "core-repos-check-host-torznab",
+                &[("id", def.id.as_str().into()), ("key", HOST_KEY.into())],
             ));
         }
         if def.auth.iter().any(|f| f.key == HOST_KEY && f.secret) {
@@ -537,7 +543,10 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
             ));
         }
     } else if def.host().contains('{') {
-        return Err(format!("{}: a placeholder in the host", def.id));
+        return Err(tr(
+            "core-repos-check-host-placeholder",
+            &[("id", def.id.as_str().into())],
+        ));
     }
     let has_query = def.url.contains("{query}");
     if def.kind == crate::releases::kinds::FILTERED_RSS && has_query {

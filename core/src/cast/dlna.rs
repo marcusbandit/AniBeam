@@ -133,7 +133,9 @@ impl Client {
             .body(envelope(action, args))
             .send()
             .await
-            .map_err(|e| format!("the TV did not answer: {e}"))?;
+            .map_err(|e| {
+                crate::i18n::tr("core-cast-tv-no-answer", &[("error", e.to_string().into())])
+            })?;
         let ok = r.status().is_success();
         let text = r.text().await.unwrap_or_default();
         if !ok {
@@ -142,10 +144,13 @@ impl Client {
                     .find(|n| n.has_tag_name("errorDescription") || n.has_tag_name("errorCode"))
                     .and_then(|n| n.text().map(str::to_string))
             });
-            return Err(format!(
-                "the TV refused {action}{}",
-                code.map(|c| format!(" ({c})")).unwrap_or_default()
-            ));
+            return Err(match code {
+                Some(code) => crate::i18n::tr(
+                    "core-cast-tv-refused-code",
+                    &[("action", action.into()), ("code", code.into())],
+                ),
+                None => crate::i18n::tr("core-cast-tv-refused", &[("action", action.into())]),
+            });
         }
         Ok(text)
     }

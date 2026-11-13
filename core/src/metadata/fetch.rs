@@ -301,7 +301,10 @@ fn no_such_show(show_id: u64) -> CoreError {
     CoreError::Provider {
         provider: Provider::Tvmaze,
         status: Some(404),
-        message: format!("TVmaze has no show {show_id}"),
+        message: crate::i18n::tr(
+            "core-metadata-no-such-show",
+            &[("id", show_id.to_string().into())],
+        ),
         retry_after: None,
     }
 }
@@ -313,7 +316,10 @@ fn no_such_media(anilist_id: u64) -> CoreError {
     CoreError::Provider {
         provider: Provider::Anilist,
         status: Some(404),
-        message: format!("AniList has no media {anilist_id}"),
+        message: crate::i18n::tr(
+            "core-metadata-no-such-media",
+            &[("id", anilist_id.to_string().into())],
+        ),
         retry_after: None,
     }
 }

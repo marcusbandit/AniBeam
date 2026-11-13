@@ -24,7 +24,7 @@ use crate::library::titles;
 use crate::net::anilist::{AIRED_PAGE_QUERY, SEASON_PAGE_QUERY};
 use crate::prefs;
 use crate::time;
-use crate::trackers::{NO_TOKEN, accounts, as_u32, writes};
+use crate::trackers::{accounts, as_u32, no_token, writes};
 
 /// How old a season may be before `RefreshAiringNow` without `force` goes
 /// back to AniList.
@@ -54,11 +54,12 @@ pub struct Season {
     pub year: Option<i32>,
 }
 
+/// Each season's AniList name and the catalog ID of its label.
 const SEASONS: [(&str, &str); 4] = [
-    ("WINTER", "Winter"),
-    ("SPRING", "Spring"),
-    ("SUMMER", "Summer"),
-    ("FALL", "Fall"),
+    ("WINTER", "core-airing-now-winter"),
+    ("SPRING", "core-airing-now-spring"),
+    ("SUMMER", "core-airing-now-summer"),
+    ("FALL", "core-airing-now-fall"),
 ];
 
 /// `Now` is everything releasing, whatever season it started in, which is
@@ -69,7 +70,7 @@ pub fn season_of(pick: SeasonPick, now: i64) -> Season {
     match pick {
         SeasonPick::Now => Season {
             key: "NOW".to_string(),
-            label: "Airing now".to_string(),
+            label: crate::i18n::tr("core-airing-now-now", &[]),
             status: Some("RELEASING"),
             season: None,
             year: None,
@@ -93,7 +94,7 @@ fn named(index: usize, year: i32) -> Season {
     let (name, label) = SEASONS[index];
     Season {
         key: format!("{name}-{year}"),
-        label: format!("{label} {year}"),
+        label: crate::i18n::tr(label, &[("year", year.to_string().into())]),
         status: None,
         season: Some(name),
         year: Some(year),
@@ -885,7 +886,7 @@ async fn plan(
         let attempt = async {
             let token = accounts::access_token(&core, t)
                 .await?
-                .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
+                .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
             let live = writes::read_live(&core, t, media_id, user_id, &token).await?;
             if let Some(live) = live
                 && let Some(status) = live.status
@@ -921,19 +922,25 @@ async fn plan(
     };
     Ok(match (planned.is_empty(), found.first(), failure) {
         (false, _, _) => Finished {
-            plain: Some(format!(
-                "Added {title} to your Planning list on {}.",
-                names(&planned)
-            )),
+            plain: Some(match planned.as_slice() {
+                [one, other] => crate::words!(
+                    "core-airing-now-planned-both",
+                    title = &title,
+                    site = crate::trackers::oauth::site_name(*one),
+                    other = crate::trackers::oauth::site_name(*other),
+                ),
+                ts => crate::words!("core-airing-now-planned", title = &title, site = names(ts)),
+            }),
             level: Level::Info,
             message: format!("{title} is on Planning on {}", labels(&planned)),
             body: EventBody::Notice,
         },
         (true, Some((t, status)), _) => Finished {
-            plain: Some(format!(
-                "{title} is already on your {} list as {}.",
-                crate::trackers::oauth::site_name(*t),
-                status_words(*status)
+            plain: Some(crate::words!(
+                "core-airing-now-already-on",
+                title = &title,
+                site = crate::trackers::oauth::site_name(*t),
+                status = status.as_str(),
             )),
             level: Level::Info,
             message: format!(
@@ -944,9 +951,7 @@ async fn plan(
             body: EventBody::Notice,
         },
         (true, None, Some(why)) => Finished {
-            plain: Some(format!(
-                "Could not add {title} to your Planning list. Try again later."
-            )),
+            plain: Some(crate::words!("core-airing-now-plan-failed", title = &title)),
             level: Level::Warn,
             message: format!("{title} could not go on Planning: {why}"),
             body: EventBody::Notice,

@@ -20,6 +20,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::i18n::tr;
 use crate::images;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
@@ -93,19 +94,31 @@ async fn run(
         fields_ignored: ignored,
     };
 
-    ctx.progress(0, Some(SECTIONS), "sources");
+    ctx.progress(
+        0,
+        Some(SECTIONS),
+        &tr("core-transfer-progress-sources", &[]),
+    );
     let now = time::now_secs();
     let sources = import_sources(&core, sources, now, &mut summary).await?;
 
-    ctx.progress(1, Some(SECTIONS), "series");
+    ctx.progress(1, Some(SECTIONS), &tr("core-transfer-progress-series", &[]));
     let (touched, unscanned) = import_series(&core, series, now, &mut summary).await?;
 
-    ctx.progress(2, Some(SECTIONS), "history");
+    ctx.progress(
+        2,
+        Some(SECTIONS),
+        &tr("core-transfer-progress-history", &[]),
+    );
     if let Some(history) = history {
         import_history(&core, history, &mut summary).await?;
     }
 
-    ctx.progress(3, Some(SECTIONS), "accounts");
+    ctx.progress(
+        3,
+        Some(SECTIONS),
+        &tr("core-transfer-progress-accounts", &[]),
+    );
     // There is no TMDB in the native line, so its key is read, named and
     // dropped rather than stored.
     if let Some(keys) = keys.as_ref().and_then(|k| k.as_object()) {
@@ -118,12 +131,20 @@ async fn run(
         import_accounts(&core, accounts, now, &mut summary).await?;
     }
 
-    ctx.progress(4, Some(SECTIONS), "preferences");
+    ctx.progress(
+        4,
+        Some(SECTIONS),
+        &tr("core-transfer-progress-preferences", &[]),
+    );
     let imported_preferences = match preferences {
         Some(entry) => Some(import_preferences(&core, entry).await?),
         None => None,
     };
-    ctx.progress(SECTIONS, Some(SECTIONS), "done");
+    ctx.progress(
+        SECTIONS,
+        Some(SECTIONS),
+        &tr("core-transfer-progress-done", &[]),
+    );
 
     // What changed, in the order a shell wants to redraw it. The scan the
     // launch runs is what attaches files to the series this created; the
@@ -184,7 +205,7 @@ async fn run(
         summary.fields_ignored.len(),
     );
     Ok(Finished {
-        plain: Some("Loaded your library from the file.".to_string()),
+        plain: Some(crate::words!("core-transfer-imported")),
         level: Level::Info,
         message,
         body: EventBody::ImportFinished { summary },

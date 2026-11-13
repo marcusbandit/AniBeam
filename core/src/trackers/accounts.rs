@@ -40,7 +40,10 @@ const MAL_EXPIRED: &str = "MAL auth expired, reconnect in Settings.";
 /// signs in with the id and the PKCE verifier alone; one registered as
 /// "web" is confidential and MAL will not hand it a token without its
 /// secret. Nothing in the id says which kind it is, so the core tries
-/// without and says this when MAL answers `invalid_client`.
+/// without and says this when MAL answers `invalid_client`. The words are
+/// `core-trackers-mal-wants-secret` in the catalog; this is their English, which
+/// the tests hold the catalog to.
+#[cfg(test)]
 pub(crate) const MAL_WANTS_SECRET: &str = "MyAnimeList wants this app's client secret. Add it under Trackers in Settings, or register the app with App Type \"other\".";
 
 // Keys and bundled credentials ----------------------------------------------
@@ -195,7 +198,13 @@ pub fn effective_credentials(
         .stored_client_id()
         .or_else(|| bundled_client_id(t).map(str::to_string))
         .ok_or_else(|| {
-            CoreError::invalid("client_id", format!("No client ID set for {}.", t.label()))
+            CoreError::invalid(
+                "client_id",
+                crate::i18n::tr(
+                    "core-trackers-no-client-id",
+                    &[("tracker", t.label().into())],
+                ),
+            )
         })?;
     let stored_secret = core
         .secrets()
@@ -358,7 +367,7 @@ pub async fn access_token(core: &Arc<Core>, t: Tracker) -> Result<Option<String>
             core.bus.say(
                 Level::Warn,
                 Stage::Trackers,
-                "Reconnect MyAnimeList in Settings.",
+                crate::words!("core-trackers-mal-reconnect"),
                 MAL_EXPIRED,
                 EventBody::Notice,
             );
@@ -433,7 +442,7 @@ pub(crate) fn token_failure(response: &HttpResponse, sent_secret: bool) -> CoreE
         .ok()
         .and_then(|v| v["error"].as_str().map(str::to_string));
     let message = if !sent_secret && error.as_deref() == Some("invalid_client") {
-        MAL_WANTS_SECRET.to_string()
+        crate::i18n::tr("core-trackers-mal-wants-secret", &[])
     } else {
         response.text()
     };
@@ -456,12 +465,24 @@ pub(crate) struct Tokens {
 /// A token reply. `expires_in` is seconds from now, so it is turned into
 /// the instant the row stores while the reply is still fresh.
 pub(crate) fn parse_tokens(body: &[u8], now: SystemTime) -> Result<Tokens, CoreError> {
-    let value: serde_json::Value = serde_json::from_slice(body)
-        .map_err(|e| tracker_error(Tracker::Mal, format!("unreadable token reply: {e}")))?;
+    let value: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
+        tracker_error(
+            Tracker::Mal,
+            crate::i18n::tr(
+                "core-trackers-token-reply-unreadable",
+                &[("error", e.to_string().into())],
+            ),
+        )
+    })?;
     let access_token = value["access_token"]
         .as_str()
         .filter(|t| !t.is_empty())
-        .ok_or_else(|| tracker_error(Tracker::Mal, "the token reply carried no access token"))?
+        .ok_or_else(|| {
+            tracker_error(
+                Tracker::Mal,
+                crate::i18n::tr("core-trackers-token-reply-no-token", &[]),
+            )
+        })?
         .to_string();
     Ok(Tokens {
         access_token,

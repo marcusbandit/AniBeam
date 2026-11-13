@@ -314,7 +314,11 @@ async fn fetch_raters(net: &mut Net, favourites: &[u64]) -> Result<(), Halt> {
     )?;
     let total = todo.len().div_ceil(RATERS_PER_REQUEST) as u64;
     for (i, chunk) in todo.chunks(RATERS_PER_REQUEST).enumerate() {
-        net.label(i as u64, total, "Finding people with your taste");
+        net.label(
+            i as u64,
+            total,
+            &crate::i18n::tr("core-recommended-finding-people", &[]),
+        );
         let v = aliased(net, chunk, queries::raters).await?;
         let chunk = chunk.to_vec();
         let now = time::now_secs();
@@ -356,7 +360,11 @@ async fn fetch_users(net: &mut Net, ids: &[u64]) -> Result<(), Halt> {
     )?;
     let total = todo.len().div_ceil(USERS_PER_REQUEST) as u64;
     for (i, chunk) in todo.chunks(USERS_PER_REQUEST).enumerate() {
-        net.label(i as u64, total, "Reading their lists");
+        net.label(
+            i as u64,
+            total,
+            &crate::i18n::tr("core-recommended-reading-lists", &[]),
+        );
         fetch_user_chunk(net, chunk).await?;
     }
     Ok(())
@@ -508,7 +516,12 @@ pub async fn read(
     theirs.extend(super::mine::owned_ids(mine));
     theirs.sort_unstable();
     theirs.dedup();
-    shows(net, &theirs, "Reading your shows").await?;
+    shows(
+        net,
+        &theirs,
+        &crate::i18n::tr("core-recommended-reading-yours", &[]),
+    )
+    .await?;
 
     let core = net.core.clone();
     let known: HashSet<ShowId> = core.store.read(|c| {
@@ -531,7 +544,12 @@ pub async fn read(
     let mut wanted: Vec<u64> = pool.iter().chain(&trusted).copied().collect();
     wanted.sort_unstable();
     wanted.dedup();
-    shows(net, &wanted, "Reading shows to suggest").await?;
+    shows(
+        net,
+        &wanted,
+        &crate::i18n::tr("core-recommended-reading-suggestions", &[]),
+    )
+    .await?;
     Ok(Found {
         people,
         pool,

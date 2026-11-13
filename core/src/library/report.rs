@@ -23,6 +23,7 @@ use serde_json::json;
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::i18n::tr;
 use crate::library::{cards, readings};
 use crate::percent;
 use crate::store::sql::placeholders;
@@ -392,7 +393,10 @@ fn run_agent(agent: &Agent, prompt: &str, timeout: Duration) -> Result<String, S
                 Ok(Some(status)) => break status,
                 Ok(None) if Instant::now() >= deadline => {
                     end_group(&mut child);
-                    return Err(format!("no answer within {}", span(timeout)));
+                    return Err(tr(
+                        "core-library-agent-no-answer",
+                        &[("span", span(timeout).into())],
+                    ));
                 }
                 Ok(None) => thread::sleep(Duration::from_millis(200)),
                 Err(e) => {
@@ -418,9 +422,12 @@ fn run_agent(agent: &Agent, prompt: &str, timeout: Duration) -> Result<String, S
                 .find(|l| !l.trim().is_empty())
                 .unwrap_or("");
             return Err(match status.code() {
-                Some(code) if why.is_empty() => format!("it stopped with code {code}"),
+                Some(code) if why.is_empty() => tr(
+                    "core-library-agent-stopped-code",
+                    &[("code", code.to_string().into())],
+                ),
                 _ if !why.is_empty() => why.trim().to_string(),
-                _ => "it stopped".to_string(),
+                _ => tr("core-library-agent-stopped", &[]),
             });
         }
         let text = match agent.kind {
@@ -429,7 +436,7 @@ fn run_agent(agent: &Agent, prompt: &str, timeout: Duration) -> Result<String, S
         };
         let text = text.trim();
         if text.is_empty() {
-            return Err("it answered nothing".to_string());
+            return Err(tr("core-library-agent-answered-nothing", &[]));
         }
         Ok(cap(text, TRIAGE_CAP))
     })();
@@ -441,10 +448,8 @@ fn run_agent(agent: &Agent, prompt: &str, timeout: Duration) -> Result<String, S
 fn span(d: Duration) -> String {
     let s = d.as_secs();
     match (s % 60, s / 60) {
-        (0, 1) => "1 minute".to_string(),
-        (0, m) if m > 0 => format!("{m} minutes"),
-        _ if s == 1 => "1 second".to_string(),
-        _ => format!("{s} seconds"),
+        (0, m) if m > 0 => tr("core-library-span-minutes", &[("count", m.into())]),
+        _ => tr("core-library-span-seconds", &[("count", s.into())]),
     }
 }
 
@@ -707,7 +712,7 @@ pub fn report_fix(
     if facts.files.is_empty() {
         return Err(CoreError::invalid(
             "files",
-            "none of these files has a fix to report",
+            tr("core-library-report-no-fix", &[]),
         ));
     }
     let (triage, triaged_by, triage_error) = match find_agent() {
@@ -716,7 +721,10 @@ pub fn report_fix(
             Err(why) => (
                 None,
                 None,
-                Some(format!("{} wrote no triage: {why}", agent.name())),
+                Some(tr(
+                    "core-library-agent-no-triage",
+                    &[("agent", agent.name().into()), ("why", why.into())],
+                )),
             ),
         },
         None => (None, None, None),

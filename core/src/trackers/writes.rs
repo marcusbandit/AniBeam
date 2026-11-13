@@ -24,6 +24,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::i18n::{Arg, tr};
 use crate::jobs::{Finished, JobCtx};
 use crate::library::history::How;
 use crate::metadata::apply::card_for;
@@ -36,7 +37,7 @@ use crate::net::anilist::{
 use crate::prefs;
 use crate::time;
 use crate::trackers::{
-    NO_TOKEN, TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, on_hold,
+    TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, local, no_token, on_hold,
 };
 
 /// MAL's list API. AniList's address lives with its queries.
@@ -60,12 +61,17 @@ pub fn sanitize(
     mal_message: Option<&str>,
     raw: &str,
 ) -> String {
-    let label = t.label();
+    let label = || ("tracker", Arg::from(t.label()));
     match status {
-        Some(429) => return format!("{label} rate limited, try again in a minute."),
-        Some(401 | 403) => return format!("{label} auth expired, reconnect in Settings."),
-        Some(404) => return format!("{label} entry not found."),
-        Some(s) if s >= 500 => return format!("{label} server error ({s}), try again later."),
+        Some(429) => return tr("core-trackers-rate-limited", &[label()]),
+        Some(401 | 403) => return tr("core-trackers-auth-expired", &[label()]),
+        Some(404) => return tr("core-trackers-entry-not-found", &[label()]),
+        Some(s) if s >= 500 => {
+            return tr(
+                "core-trackers-server-error",
+                &[label(), ("status", s.to_string().into())],
+            );
+        }
         _ => {}
     }
     for candidate in [graphql_message, mal_message, Some(raw)] {
@@ -73,7 +79,7 @@ pub fn sanitize(
             return message.to_string();
         }
     }
-    format!("{label} error, see activity log.")
+    tr("core-trackers-error-see-log", &[label()])
 }
 
 /// The same line off a `CoreError`, which is the only shape a failure
@@ -207,7 +213,10 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
     if !episode.is_finite() || episode.floor() < 1.0 {
         return Err(CoreError::invalid(
             "episode",
-            format!("{episode} is not a whole episode above nought"),
+            tr(
+                "core-trackers-episode-not-whole",
+                &[("episode", episode.to_string().into())],
+            ),
         ));
     }
     let episode = episode.floor() as u32;
@@ -424,7 +433,10 @@ pub fn set_score(core: &Core, series: u64, score: Option<f64>) -> Result<Option<
     if !(0.0..=10.0).contains(&score) {
         return Err(CoreError::invalid(
             "score",
-            format!("{score} is outside 0 to 10"),
+            tr(
+                "core-trackers-score-out-of-range",
+                &[("score", score.to_string().into())],
+            ),
         ));
     }
     if kept_here(core, &target)? {
@@ -453,7 +465,7 @@ pub fn set_list_status(
     if status == ListStatus::Repeating {
         return Err(CoreError::invalid(
             "status",
-            "a rewatch is not a status to set by hand",
+            tr("core-trackers-rewatch-not-settable", &[]),
         ));
     }
     let target = core.store.read(|c| targets(c, series))?;
@@ -547,7 +559,7 @@ pub fn set_show_list_status(
     if status == ListStatus::Repeating {
         return Err(CoreError::invalid(
             "status",
-            "a rewatch is not a status to set by hand",
+            tr("core-trackers-rewatch-not-settable", &[]),
         ));
     }
     let target = core.store.read(|c| show_targets(c, anilist_id))?;
@@ -564,7 +576,10 @@ pub fn set_show_score(core: &Core, anilist_id: u64, score: f64) -> Result<Option
     if !(0.0..=10.0).contains(&score) {
         return Err(CoreError::invalid(
             "score",
-            format!("{score} is outside 0 to 10"),
+            tr(
+                "core-trackers-score-out-of-range",
+                &[("score", score.to_string().into())],
+            ),
         ));
     }
     let target = core.store.read(|c| show_targets(c, anilist_id))?;
@@ -632,7 +647,10 @@ pub fn set_notes(core: &Core, series: u64, notes: &str) -> Result<u64, CoreError
     if notes.chars().count() > NOTES_MAX {
         return Err(CoreError::invalid(
             "notes",
-            format!("notes are kept to {NOTES_MAX} characters"),
+            tr(
+                "core-trackers-notes-too-long",
+                &[("max", NOTES_MAX.to_string().into())],
+            ),
         ));
     }
     let target = core.store.read(|c| targets(c, series))?;
@@ -664,7 +682,10 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Optio
             if !(0.0..=10.0).contains(&score) {
                 return Err(CoreError::invalid(
                     "score",
-                    format!("{score} is outside 0 to 10"),
+                    tr(
+                        "core-trackers-score-out-of-range",
+                        &[("score", score.to_string().into())],
+                    ),
                 ));
             }
             Action::Score { score }
@@ -672,7 +693,7 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Optio
         ManyWrite::Status(ListStatus::Repeating) => {
             return Err(CoreError::invalid(
                 "status",
-                "a rewatch is not a status to set by hand",
+                tr("core-trackers-rewatch-not-settable", &[]),
             ));
         }
         ManyWrite::Status(status) => Action::Status { status },
@@ -711,7 +732,9 @@ pub fn start_many(core: &Core, series: &[u64], write: ManyWrite) -> Result<Optio
         if left_out.kept > 0 {
             return Ok(None);
         }
-        return Err(refused.unwrap_or_else(|| CoreError::invalid("series", "nothing picked")));
+        return Err(refused.unwrap_or_else(|| {
+            CoreError::invalid("series", tr("core-trackers-nothing-picked", &[]))
+        }));
     }
     let kind = match action {
         Action::Score { .. } => JobKind::Score,
@@ -760,45 +783,45 @@ async fn run_many(
             ctx.changed(card);
         }
     }
-    landed.sort_by_key(|t| *t != Tracker::Anilist);
-    let sites = landed
-        .iter()
-        .map(|t| super::oauth::site_name(*t))
-        .collect::<Vec<_>>()
-        .join(" and ");
-    let who = match (done, named) {
-        (1, Some(name)) => name,
-        (n, _) => format!("{n} {}", crate::words::pick(n, "show", "shows")),
+    let sites = sites_of(landed.iter().copied());
+    // One shown by name, or a count
+    let (named, name) = match (done, named) {
+        (1, Some(name)) => ("yes", name),
+        _ => ("no", String::new()),
     };
-    let mut said = Vec::new();
-    if done > 0 {
-        said.push(match action {
-            Action::Score { score } if score > 0.0 => format!("Scored {who} {score} on {sites}."),
-            Action::Score { .. } => format!("Cleared your score for {who} on {sites}."),
-            Action::Status { status } => {
-                format!("Set {who} to {} on {sites}.", status_label(status))
-            }
-            Action::Mark { .. } | Action::Progress { .. } | Action::Notes { .. } => {
-                unreachable!("not a many-write")
-            }
-        });
-    }
-    if failed > 0 {
-        let why = reason.map_or_else(String::new, |r| format!(": {}", r.trim_end_matches('.')));
-        said.push(if done > 0 {
-            format!("{failed} could not be updated{why}.")
-        } else {
-            format!(
-                "{failed} {} could not be updated{why}.",
-                crate::words::pick(failed, "show", "shows")
-            )
-        });
-    }
-    said.extend(left_out.lines());
+    let (act, score, status) = match &action {
+        Action::Score { score } if *score > 0.0 => ("score", score.to_string(), ""),
+        Action::Score { .. } => ("clear", String::new(), ""),
+        Action::Status { status } => ("status", String::new(), status.as_str()),
+        Action::Mark { .. } | Action::Progress { .. } | Action::Notes { .. } if done > 0 => {
+            unreachable!("not a many-write")
+        }
+        Action::Mark { .. } | Action::Progress { .. } | Action::Notes { .. } => {
+            ("none", String::new(), "")
+        }
+    };
+    let reason = reason.map(|r| r.trim_end_matches('.').to_string());
+    let said = crate::words!(
+        "core-trackers-written",
+        done = done,
+        failed = failed,
+        action = act,
+        named = named,
+        name = name,
+        score = score,
+        status = status,
+        sites = sites.unwrap_or("none"),
+        hasReason = if reason.is_some() { "yes" } else { "no" },
+        reason = reason.unwrap_or_default(),
+        noMatch = left_out.no_match,
+        hidden = left_out.hidden,
+        notConnected = left_out.not_connected,
+        kept = left_out.kept,
+    );
     let skipped = left_out.total();
     Ok(Finished {
         level: if done == 0 { Level::Warn } else { Level::Info },
-        plain: Some(said.join(" ")),
+        plain: Some(said),
         message: format!(
             "{} on {} series: {done} written, {failed} failed, {skipped} left out",
             action.verb(),
@@ -819,55 +842,28 @@ struct LeftOut {
 }
 
 impl LeftOut {
+    /// Every pick left out. The line names each reason in a sentence of its own, so it
+    /// says what to do about each (`core-trackers-left-out`).
     fn total(self) -> u64 {
         self.no_match + self.hidden + self.not_connected + self.kept
     }
-
-    /// One sentence per reason, so the line says what to do about each.
-    fn lines(self) -> Vec<String> {
-        let mut out = Vec::new();
-        if self.no_match > 0 {
-            let n = self.no_match;
-            out.push(format!(
-                "{n} {} no tracker match.",
-                crate::words::pick(n, "show has", "shows have")
-            ));
-        }
-        if self.hidden > 0 {
-            let n = self.hidden;
-            out.push(format!(
-                "{n} {} hidden, so {} sync is off.",
-                crate::words::pick(n, "show is", "shows are"),
-                crate::words::pick(n, "its", "their")
-            ));
-        }
-        if self.not_connected > 0 {
-            let n = self.not_connected;
-            out.push(format!(
-                "{n} {} only on a tracker that is not connected.",
-                crate::words::pick(n, "show is", "shows are")
-            ));
-        }
-        if self.kept > 0 {
-            let n = self.kept;
-            out.push(format!(
-                "{n} {} on this computer, with no tracker to send to.",
-                crate::words::pick(n, "show is kept", "shows are kept")
-            ));
-        }
-        out
-    }
 }
 
-/// A list status as the status pill names it.
-fn status_label(status: ListStatus) -> &'static str {
-    match status {
-        ListStatus::Watching => "Watching",
-        ListStatus::Planning => "Planning",
-        ListStatus::Completed => "Completed",
-        ListStatus::Paused => "On hold",
-        ListStatus::Dropped => "Dropped",
-        ListStatus::Repeating => "Repeating",
+/// The sites a write landed on, as the catalog's `$sites` names them: `anilist`, `mal`, or
+/// `both` for "AniList and MyAnimeList". None when it landed nowhere.
+fn sites_of(landed: impl Iterator<Item = Tracker>) -> Option<&'static str> {
+    let (mut anilist, mut mal) = (false, false);
+    for t in landed {
+        match t {
+            Tracker::Anilist => anilist = true,
+            Tracker::Mal => mal = true,
+        }
+    }
+    match (anilist, mal) {
+        (true, true) => Some("both"),
+        (true, false) => Some("anilist"),
+        (false, true) => Some("mal"),
+        (false, false) => None,
     }
 }
 
@@ -1042,16 +1038,10 @@ fn level_of(outcomes: &[TrackerOutcome]) -> Level {
     }
 }
 
-/// The sites a write landed on, as a person names them: "AniList and
-/// MyAnimeList". None when it landed nowhere, since each failed site has
-/// said so on its own line.
-fn landed_on(outcomes: &[TrackerOutcome]) -> Option<String> {
-    let names: Vec<&str> = outcomes
-        .iter()
-        .filter(|o| o.ok)
-        .map(|o| super::oauth::site_name(o.tracker))
-        .collect();
-    (!names.is_empty()).then(|| names.join(" and "))
+/// The sites a write landed on, as the catalog's `$sites` names them (`sites_of`). None
+/// when it landed nowhere, since each failed site has said so on its own line.
+fn landed_on(outcomes: &[TrackerOutcome]) -> Option<&'static str> {
+    sites_of(outcomes.iter().filter(|o| o.ok).map(|o| o.tracker))
 }
 
 fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> Finished {
@@ -1061,7 +1051,14 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
     let sites = landed_on(&outcomes);
     match action {
         Action::Mark { episode, .. } => Finished {
-            plain: sites.map(|s| format!("Marked episode {episode} of {folder} on {s}.")),
+            plain: sites.map(|s| {
+                crate::words!(
+                    "core-trackers-marked",
+                    episode = episode,
+                    show = folder,
+                    sites = s
+                )
+            }),
             level,
             message: format!("Marked episode {episode} of {folder}"),
             body: EventBody::Marked {
@@ -1071,7 +1068,14 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
             },
         },
         Action::Progress { progress } => Finished {
-            plain: sites.map(|s| format!("Set your progress on {folder} to {progress} on {s}.")),
+            plain: sites.map(|s| {
+                crate::words!(
+                    "core-trackers-progress-set",
+                    progress = progress,
+                    show = folder,
+                    sites = s
+                )
+            }),
             level,
             message: format!("Progress of {folder} set to {progress}"),
             body: EventBody::ProgressSet {
@@ -1086,8 +1090,13 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
             let rated = (score > 0.0).then_some(score);
             Finished {
                 plain: sites.map(|s| match rated {
-                    Some(score) => format!("Scored {folder} {score} on {s}."),
-                    None => format!("Cleared your score for {folder} on {s}."),
+                    Some(score) => crate::words!(
+                        "core-trackers-scored",
+                        score = score.to_string(),
+                        show = folder,
+                        sites = s
+                    ),
+                    None => crate::words!("core-trackers-score-cleared", show = folder, sites = s),
                 }),
                 level,
                 message: match rated {
@@ -1101,25 +1110,29 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
                 },
             }
         }
-        Action::Status { status } => {
-            let label = status_label(status);
-            Finished {
-                plain: sites.map(|s| format!("Set {folder} to {label} on {s}.")),
-                level,
-                message: format!("status of {folder} set to {}", status.as_str()),
-                body: EventBody::ListStatusSet {
-                    series,
-                    status,
-                    outcomes,
-                },
-            }
-        }
+        Action::Status { status } => Finished {
+            plain: sites.map(|s| {
+                crate::words!(
+                    "core-trackers-status-set",
+                    status = status.as_str(),
+                    show = folder,
+                    sites = s
+                )
+            }),
+            level,
+            message: format!("status of {folder} set to {}", status.as_str()),
+            body: EventBody::ListStatusSet {
+                series,
+                status,
+                outcomes,
+            },
+        },
         Action::Notes { notes } => {
             let cleared = notes.is_none();
             Finished {
                 plain: sites.map(|s| match cleared {
-                    false => format!("Saved your notes on {folder} to {s}."),
-                    true => format!("Cleared your notes on {folder} on {s}."),
+                    false => crate::words!("core-trackers-notes-saved", show = folder, sites = s),
+                    true => crate::words!("core-trackers-notes-cleared", show = folder, sites = s),
                 }),
                 level,
                 message: match cleared {
@@ -1176,9 +1189,9 @@ async fn write_one(
         Err(e) => {
             ctx.say(
                 Level::Error,
-                format!(
-                    "Could not update {}. Try again later.",
-                    super::oauth::site_name(t)
+                crate::words!(
+                    "core-trackers-update-failed",
+                    site = super::oauth::site_name(t)
                 ),
                 format!(
                     "{} {} failed: {}",
@@ -1213,7 +1226,7 @@ pub(crate) async fn attempt(
 ) -> Result<TrackerOutcome, CoreError> {
     let token = accounts::access_token(core, t)
         .await?
-        .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
+        .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
     let entry = read_entry(core, t, media_id, user_id, &token).await?;
     let current = entry.progress;
     let today = today();
@@ -1357,9 +1370,9 @@ pub(crate) async fn attempt(
                     ok: false,
                     progress: None,
                     reason: None,
-                    message: Some(format!(
-                        "Not on your {} list yet, add it to a list first.",
-                        t.label()
+                    message: Some(tr(
+                        "core-trackers-notes-not-on-list",
+                        &[("tracker", t.label().into())],
                     )),
                 });
             }
@@ -1535,7 +1548,7 @@ async fn read_entry(
             // token and answers with some other user's entry, so a missing
             // user id is a broken account rather than a reason to guess.
             let user_id = user_id
-                .ok_or_else(|| accounts::tracker_error(t, "the account carries no user id"))?;
+                .ok_or_else(|| accounts::tracker_error(t, tr("core-trackers-no-user-id", &[])))?;
             let variables = serde_json::json!({ "userId": user_id, "mediaId": media_id });
             match core
                 .anilist
@@ -1604,7 +1617,7 @@ pub(crate) async fn read_live(
     match t {
         Tracker::Anilist => {
             let user_id = user_id
-                .ok_or_else(|| accounts::tracker_error(t, "the account carries no user id"))?;
+                .ok_or_else(|| accounts::tracker_error(t, tr("core-trackers-no-user-id", &[])))?;
             let variables = serde_json::json!({ "userId": user_id, "mediaId": media_id });
             let data = match core
                 .anilist

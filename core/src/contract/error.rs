@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{Provider, Tracker};
+use super::{Provider, Tracker, Words};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum Entity {
@@ -21,18 +21,6 @@ pub enum Refusal {
     OnDisk,
 }
 
-/// The words a toast uses for each entity, tracker, provider and refusal; the
-/// Debug names ("Anilist", "NoMatch") are for logs, not for people.
-fn entity_words(what: Entity) -> &'static str {
-    match what {
-        Entity::Source => "folder",
-        Entity::Series => "series",
-        Entity::File => "file",
-        Entity::Session => "playback session",
-        Entity::Job => "job",
-    }
-}
-
 pub fn tracker_name(tracker: Tracker) -> &'static str {
     match tracker {
         Tracker::Anilist => "AniList",
@@ -49,74 +37,123 @@ pub fn provider_name(provider: Provider) -> &'static str {
     }
 }
 
-/// A message as a sentence: a terminal full stop, unless it already has one.
-fn sentence(message: &str) -> String {
-    if message.ends_with(['.', '!', '?']) {
-        message.to_string()
-    } else {
-        format!("{message}.")
-    }
-}
-
-/// The same sentences the player's `refusalWords` uses.
-fn refusal_words(reason: Refusal) -> &'static str {
-    match reason {
-        Refusal::Hidden => "the show is hidden",
-        Refusal::NoMatch => "the show is not matched yet; match it on Show info",
-        Refusal::NotNewer => "your list is already past this episode",
-        Refusal::Extra => "this is an extra",
-        Refusal::Unmatched => "the file is not matched to an episode",
-        Refusal::OnDisk => "the file is only on disk",
-    }
-}
-
 /// One enum, every fallible call returns it, and no exported code panics on
-/// shell input. Third-party errors arrive as the message string.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, thiserror::Error, uniffi::Error)]
+/// shell input. Third-party errors arrive as the message string. Its words for a person
+/// come from the catalog (`words`, #792); `Display` is them in the current language.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Error)]
 pub enum CoreError {
-    #[error("Could not find {} {id}.", entity_words(*.what))]
-    NotFound { what: Entity, id: u64 },
-    #[error("Invalid {}: {}", .field.replace('_', " "), sentence(.message))]
-    Invalid { field: String, message: String },
-    #[error("This folder is not available: {path}")]
-    Unavailable { path: String },
-    #[error("{} is not connected.", tracker_name(*.tracker))]
-    NotConnected { tracker: Tracker },
-    #[error("Cannot do that: {}.", refusal_words(*.reason))]
-    Refused { reason: Refusal },
-    #[error("{} did not respond: {message}", provider_name(*.provider))]
+    NotFound {
+        what: Entity,
+        id: u64,
+    },
+    Invalid {
+        field: String,
+        message: String,
+    },
+    Unavailable {
+        path: String,
+    },
+    NotConnected {
+        tracker: Tracker,
+    },
+    Refused {
+        reason: Refusal,
+    },
     Provider {
         provider: Provider,
         status: Option<u32>,
         message: String,
         retry_after: Option<f64>,
     },
-    #[error("Could not read or write a file: {message}")]
     Io {
         path: Option<String>,
         message: String,
     },
-    #[error("Could not save your library: {message}")]
-    Storage { message: String },
-    #[error("Could not reach the system password store: {message}")]
-    Keyring { message: String },
-    #[error("{what} is not supported yet.")]
-    Unsupported { what: String },
-    #[error("This export is from a newer AniBeam (format {found}). Update AniBeam to import it.")]
-    Version { found: u32, supported: u32 },
-    #[error("AniBeam hit an internal error: {message}")]
-    Internal { message: String },
+    Storage {
+        message: String,
+    },
+    Keyring {
+        message: String,
+    },
+    Unsupported {
+        what: String,
+    },
+    Version {
+        found: u32,
+        supported: u32,
+    },
+    Internal {
+        message: String,
+    },
     /// A service outside the metadata providers would not do what was
     /// asked: anirss or the torrent client. `code` is a fixed word a shell
     /// branches on (anirss's `error.type`, or `unreachable`, `unauthorized`,
     /// `not_running`, `missing`), `message` is for people.
-    #[error("{service}: {message}")]
     Service {
         service: String,
         code: String,
         message: String,
     },
 }
+
+impl CoreError {
+    /// The error's words: a catalog ID and its arguments, for a shell to show in the
+    /// language it speaks.
+    pub fn words(&self) -> Words {
+        use crate::words;
+        match self {
+            CoreError::NotFound { what, id } => Words::new(match what {
+                Entity::Source => "core-error-not-found-source",
+                Entity::Series => "core-error-not-found-series",
+                Entity::File => "core-error-not-found-file",
+                Entity::Session => "core-error-not-found-session",
+                Entity::Job => "core-error-not-found-job",
+            })
+            .arg("id", id.to_string()),
+            CoreError::Invalid { field, message } => words!(
+                "core-error-invalid",
+                field = field.replace('_', " "),
+                message = message.trim_end_matches(['.', '!', '?']),
+            ),
+            CoreError::Unavailable { path } => words!("core-error-unavailable", path = path),
+            CoreError::NotConnected { tracker } => {
+                words!("core-error-not-connected", tracker = tracker_name(*tracker))
+            }
+            CoreError::Refused { reason } => Words::new(match reason {
+                Refusal::Hidden => "core-error-refused-hidden",
+                Refusal::NoMatch => "core-error-refused-no-match",
+                Refusal::NotNewer => "core-error-refused-not-newer",
+                Refusal::Extra => "core-error-refused-extra",
+                Refusal::Unmatched => "core-error-refused-unmatched",
+                Refusal::OnDisk => "core-error-refused-on-disk",
+            }),
+            CoreError::Provider {
+                provider, message, ..
+            } => words!(
+                "core-error-provider",
+                provider = provider_name(*provider),
+                message = message
+            ),
+            CoreError::Io { message, .. } => words!("core-error-io", message = message),
+            CoreError::Storage { message } => words!("core-error-storage", message = message),
+            CoreError::Keyring { message } => words!("core-error-keyring", message = message),
+            CoreError::Unsupported { what } => words!("core-error-unsupported", what = what),
+            CoreError::Version { found, .. } => words!("core-error-version", found = *found),
+            CoreError::Internal { message } => words!("core-error-internal", message = message),
+            CoreError::Service {
+                service, message, ..
+            } => words!("core-error-service", service = service, message = message),
+        }
+    }
+}
+
+impl std::fmt::Display for CoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.words().render())
+    }
+}
+
+impl std::error::Error for CoreError {}
 
 impl From<rusqlite::Error> for CoreError {
     fn from(e: rusqlite::Error) -> Self {

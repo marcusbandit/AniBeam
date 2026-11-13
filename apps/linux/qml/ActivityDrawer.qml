@@ -52,7 +52,11 @@ Item {
         var d = new Date(at * 1000), now = new Date()
         return d.toDateString() === now.toDateString() ? Qt.formatTime(d, words.t("activity-drawer-time-format")) : Qt.formatDateTime(d, words.t("activity-drawer-stamp-format"))
     }
-    function toEntry(e) { return { time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, plain: e.plain || "", seq: e.seq } }
+    // `plainWords` is the plain line as a message ID and its arguments (#792), rendered when
+    // the row is drawn so a language switch reaches lines already in the log; `plain` is the
+    // line as the core first said it, for lines from before the core kept their IDs
+    function toEntry(e) { return { time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, plain: e.plain || "", plainWords: e.plain_words || null, seq: e.seq } }
+    function plainOf(e) { return e.plainWords ? words.t(e.plainWords.id, e.plainWords.args) : e.plain }
     Connections {
         target: Door
         function onEvent(envelope) {
@@ -93,9 +97,10 @@ Item {
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
             if (!technical) {
-                if (e.plain === "") continue
+                var said = plainOf(e)
+                if (said === "") continue
                 if (problemsOnly && e.level === "Info") continue
-                e = { time: e.time, stage: "", level: e.level, msg: e.plain, seq: e.seq }
+                e = { time: e.time, stage: "", level: e.level, msg: said, seq: e.seq }
             } else {
                 if (sAny && !stageOn[e.stage]) continue
                 if (lAny && !levelOn[e.level]) continue

@@ -11,6 +11,7 @@ use rusqlite::params;
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::i18n::tr;
 
 /// One file row as the delete needs it.
 struct Row {
@@ -35,13 +36,22 @@ fn paths(
         .collect();
     let mut out = Vec::new();
     for (id, row) in rows {
-        let row = row
-            .as_ref()
-            .ok_or_else(|| CoreError::invalid("files", format!("no file {id} in the library")))?;
+        let row = row.as_ref().ok_or_else(|| {
+            CoreError::invalid(
+                "files",
+                tr(
+                    "core-library-no-such-file",
+                    &[("id", id.to_string().into())],
+                ),
+            )
+        })?;
         if row.series != series {
             return Err(CoreError::invalid(
                 "files",
-                format!("file {id} belongs to another series, so nothing was removed"),
+                tr(
+                    "core-library-file-elsewhere-not-removed",
+                    &[("id", id.to_string().into())],
+                ),
             ));
         }
         let main = PathBuf::from(&row.path);
@@ -56,9 +66,9 @@ fn paths(
             if !plain || !inside {
                 return Err(CoreError::invalid(
                     "files",
-                    format!(
-                        "{} is not a file inside a library folder, so nothing was removed",
-                        p.display()
+                    tr(
+                        "core-library-file-outside",
+                        &[("path", p.display().to_string().into())],
                     ),
                 ));
             }
@@ -140,7 +150,12 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
         core.bus.say(
             Level::Info,
             Stage::Library,
-            format!("{line}."),
+            crate::words!(
+                "core-library-episodes-removed",
+                count = n,
+                title = &title,
+                place = trash_where()
+            ),
             line,
             EventBody::Notice,
         );
@@ -148,6 +163,16 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
     let scan = super::scan::rescan_series(core, series);
     moved?;
     scan
+}
+
+/// Where removed files went, as the catalog's `$place` names it: `deleted` where the
+/// system has no trash, `trash` otherwise.
+fn trash_where() -> &'static str {
+    if crate::downloads::trash::WHERE == "deleted" {
+        "deleted"
+    } else {
+        "trash"
+    }
 }
 
 /// What of `targets` is really gone: a trash that failed part way leaves the rest, and a
@@ -259,13 +284,22 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
                 "moved to the trash"
             }
         );
-        core.bus.say(
-            Level::Info,
-            Stage::Library,
-            format!("{line}."),
-            line,
-            EventBody::Notice,
-        );
+        let plain = if finished_shows {
+            crate::words!(
+                "core-library-finished-removed",
+                count = picked.len(),
+                place = trash_where()
+            )
+        } else {
+            crate::words!(
+                "core-library-watched-removed",
+                count = episodes,
+                series = picked.len(),
+                place = trash_where()
+            )
+        };
+        core.bus
+            .say(Level::Info, Stage::Library, plain, line, EventBody::Notice);
     }
     // A trash that fails part way has still moved what it moved: every series is read again
     for (series, _, _) in &picked {

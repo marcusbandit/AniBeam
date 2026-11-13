@@ -88,7 +88,10 @@ fn changes_something(row: &MoveRow) -> bool {
 /// when the person picked nothing.
 pub fn start(core: &Core, t: Tracker, series: Vec<u64>) -> Result<u64, CoreError> {
     if series.is_empty() {
-        return Err(CoreError::invalid("series", "no series picked to move"));
+        return Err(CoreError::invalid(
+            "series",
+            crate::i18n::tr("core-trackers-move-none-picked", &[]),
+        ));
     }
     let connected = core
         .store
@@ -200,11 +203,16 @@ async fn run(
     let site = super::oauth::site_name(t);
     let plain = match (moved, failed) {
         (0, 0) => None,
-        (m, 0) => Some(format!("Moved {} from this computer to {site}.", shows(m))),
-        (m, f) => Some(format!(
-            "Moved {} to {site}; {site} did not take {}.",
-            shows(m),
-            shows(f)
+        (m, 0) => Some(crate::words!(
+            "core-trackers-moved-up",
+            count = m,
+            site = site
+        )),
+        (m, f) => Some(crate::words!(
+            "core-trackers-moved-up-some-refused",
+            moved = m,
+            failed = f,
+            site = site
         )),
     };
     Ok(Finished {
@@ -221,15 +229,6 @@ async fn run(
             failed,
         },
     })
-}
-
-/// "1 show" or "3 shows".
-fn shows(n: u32) -> String {
-    if n == 1 {
-        "1 show".to_string()
-    } else {
-        format!("{n} shows")
-    }
 }
 
 /// One write to one tracker, true when it landed. A failure says so in the
@@ -250,10 +249,11 @@ async fn sent(
             let site = super::oauth::site_name(t);
             ctx.say(
                 Level::Error,
-                format!(
-                    "{site} did not take {}: {}",
-                    target.folder_name,
-                    writes::sanitize_error(t, &e)
+                crate::words!(
+                    "core-trackers-move-refused",
+                    site = site,
+                    show = &target.folder_name,
+                    error = writes::sanitize_error(t, &e)
                 ),
                 format!("{} move of {} failed: {e}", t.as_str(), target.folder_name),
                 EventBody::Notice,

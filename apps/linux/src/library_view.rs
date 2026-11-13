@@ -8,9 +8,14 @@
 //! nowhere else, franchises with two or more series as sections of their own when grouped
 //! (in release order when every one has a date), then the cut: Season (newest first, "No
 //! date" last), Type, Genre or Watch state (On hold last), or None (one plain list).
+//!
+//! A section has a `box`, the name the code knows it by ("On hold", a season label, a
+//! franchise's title), and a `title` in the language the app speaks (#792). Every rule
+//! here sorts and groups by the box; only the title is translated.
 
 use std::collections::{HashMap, HashSet};
 
+use anibeam_core::i18n::{Arg, tr};
 use serde_json::{Value, json};
 
 pub struct Params<'a> {
@@ -40,6 +45,7 @@ fn in_genre(c: &Value, genre: &str) -> bool {
             .is_some_and(|g| g.iter().any(|x| x.as_str() == Some(genre)))
 }
 
+/// The box a series goes in under Type; [`shown`] gives its title.
 fn type_of(c: &Value) -> &'static str {
     match str_of(c, "format") {
         "TV" | "TV_SHORT" => "TV",
@@ -51,7 +57,8 @@ fn type_of(c: &Value) -> &'static str {
     }
 }
 
-/// On hold is the tracker's list (AniList's Paused), whatever the episodes say
+/// On hold is the tracker's list (AniList's Paused), whatever the episodes say. The box a
+/// series goes in under Watch state; [`shown`] gives its title.
 fn state_of(c: &Value) -> &'static str {
     if str_of(c, "list_status") == "Paused" {
         return "On hold";
@@ -62,6 +69,30 @@ fn state_of(c: &Value) -> &'static str {
         _ if c["watched"].as_f64().unwrap_or(0.0) > 0.0 => "Watching",
         _ => "Not started",
     }
+}
+
+/// The box a series with no genre goes in under Genre.
+const NO_GENRE: &str = "Unmatched";
+
+/// The title of a box the code names itself, in the current language; any other box (a
+/// season label, a genre, a franchise) is its own title.
+fn shown(key: &str) -> String {
+    let id = match key {
+        "Airing" => "library-view-airing",
+        "No date" => "library-view-no-date",
+        "Dropped" => "status-dropped",
+        "TV" => "library-view-type-tv",
+        "Movies" => "library-view-type-movies",
+        "OVA, ONA and specials" => "library-view-type-extras",
+        "Music" => "library-view-type-music",
+        "Unknown" => "library-view-type-unknown",
+        "On hold" => "status-on-hold",
+        "Caught up" => "library-view-state-caught-up",
+        "Watching" => "status-watching",
+        "Not started" => "library-view-state-not-started",
+        _ => return key.to_string(),
+    };
+    tr(id, &[])
 }
 
 fn season_rank(c: &Value) -> i64 {
@@ -103,11 +134,20 @@ fn short_countdown(secs: f64) -> String {
     let t = secs.floor().max(0.0) as i64;
     let (d, h, m) = (t / 86400, t % 86400 / 3600, t % 3600 / 60);
     if d > 0 {
-        format!("{d}d {h}h")
+        tr(
+            "library-view-countdown-days",
+            &[("d", Arg::from(d)), ("h", Arg::from(h))],
+        )
     } else if h > 0 {
-        format!("{h}h {m}m")
+        tr(
+            "library-view-countdown-hours",
+            &[("h", Arg::from(h)), ("m", Arg::from(m))],
+        )
     } else {
-        format!("{}m", m.max(1))
+        tr(
+            "library-view-countdown-minutes",
+            &[("m", Arg::from(m.max(1)))],
+        )
     }
 }
 
@@ -135,22 +175,22 @@ fn fact_of(list: &[&Value], now: f64) -> String {
     }
     let n = list.len();
     if let Some(at) = soon {
-        return format!("Next episode in {}", short_countdown(at - now));
+        return tr(
+            "library-view-next-episode",
+            &[("span", Arg::from(short_countdown(at - now)))],
+        );
     }
     if going > 0 && going < n {
-        return format!("{going} in progress");
+        return tr("library-view-in-progress", &[("count", Arg::from(going))]);
     }
     if fresh > 0 && fresh < n {
-        return format!("{fresh} not started");
+        return tr("library-view-not-started", &[("count", Arg::from(fresh))]);
     }
     if n > 0 && done == n {
-        return "All watched".into();
+        return tr("library-view-all-watched", &[]);
     }
     if files > 0 {
-        return format!(
-            "{} on disk",
-            crate::format::plural(files, "episode", "episodes")
-        );
+        return tr("library-view-on-disk", &[("count", Arg::from(files))]);
     }
     String::new()
 }
@@ -160,13 +200,16 @@ fn dropped_fact(list: &[&Value]) -> String {
         .iter()
         .map(|c| c["episodes_on_disk"].as_f64().unwrap_or(0.0) as u64)
         .sum();
-    format!(
-        "{} still on disk",
-        crate::format::plural(files, "file", "files")
+    tr(
+        "library-view-dropped-on-disk",
+        &[("count", Arg::from(files))],
     )
 }
 
 struct Section<'a> {
+    /// What the code knows the section by, the same in every language
+    key: String,
+    /// What the page shows
     title: String,
     cards: Vec<&'a Value>,
     airing: bool,
@@ -205,7 +248,8 @@ fn season_sections<'a>(list: &[&'a Value], ids: &HashSet<u64>, current: &str) ->
             let cards = buckets.remove(&k).map(|b| b.1).unwrap_or_default();
             Section {
                 airing: any_airing(&cards, ids),
-                title: k,
+                title: k.clone(),
+                key: k,
                 cards,
                 dropped: false,
             }
@@ -213,7 +257,8 @@ fn season_sections<'a>(list: &[&'a Value], ids: &HashSet<u64>, current: &str) ->
         .collect();
     if !undated.is_empty() {
         out.push(Section {
-            title: "No date".into(),
+            key: "No date".into(),
+            title: shown("No date"),
             airing: any_airing(&undated, ids),
             cards: undated,
             dropped: false,
@@ -223,8 +268,9 @@ fn season_sections<'a>(list: &[&'a Value], ids: &HashSet<u64>, current: &str) ->
 }
 
 /// The sections of `reply` (ListLibrary's, lean or whole) as QML reads them: `{ key,
-/// sections: [{ title, airing, dropped, count, ids }], facts: [one per section], ids, count,
-/// counts }`. `key` names the structure, so a view that only moved its facts is seen as one.
+/// sections: [{ box, title, airing, dropped, count, ids }], facts: [one per section], ids,
+/// count, counts }`. `key` names the structure, so a view that only moved its facts is seen
+/// as one.
 pub fn view(reply: &Value, p: &Params) -> Value {
     let series: Vec<&Value> = reply["series"]
         .as_array()
@@ -244,6 +290,7 @@ pub fn view(reply: &Value, p: &Params) -> Value {
             vec![]
         } else {
             vec![Section {
+                key: String::new(),
                 title: String::new(),
                 cards: series.clone(),
                 airing: false,
@@ -257,6 +304,7 @@ pub fn view(reply: &Value, p: &Params) -> Value {
         .iter()
         .map(|s| {
             json!({
+                "box": s.key,
                 "title": s.title,
                 "airing": s.airing,
                 "dropped": s.dropped,
@@ -305,7 +353,8 @@ fn cut<'a>(series: &[&'a Value], ids: &HashSet<u64>, p: &Params) -> Vec<Section<
     let mut out: Vec<Section> = vec![];
     if !airing.is_empty() {
         out.push(Section {
-            title: "Airing".into(),
+            key: "Airing".into(),
+            title: shown("Airing"),
             cards: airing,
             airing: true,
             dropped: false,
@@ -365,6 +414,7 @@ fn cut<'a>(series: &[&'a Value], ids: &HashSet<u64>, p: &Params) -> Vec<Section<
             }
             out.push(Section {
                 airing: any_airing(&cards, ids),
+                key: title.clone(),
                 title,
                 cards,
                 dropped: false,
@@ -383,7 +433,7 @@ fn cut<'a>(series: &[&'a Value], ids: &HashSet<u64>, p: &Params) -> Vec<Section<
         for c in rest {
             let key = match p.arrange {
                 "Type" => type_of(c).to_string(),
-                "Genre" => c["genres"][0].as_str().unwrap_or("Unmatched").to_string(),
+                "Genre" => c["genres"][0].as_str().unwrap_or(NO_GENRE).to_string(),
                 _ => state_of(c).to_string(),
             };
             buckets
@@ -401,9 +451,17 @@ fn cut<'a>(series: &[&'a Value], ids: &HashSet<u64>, p: &Params) -> Vec<Section<
         }
         for k in order {
             let cards = buckets.remove(&k).unwrap_or_default();
+            // A genre is the provider's word ("Music" among them), never one of the boxes
+            // `shown` names, so only the series with no genre get a translated title
+            let title = match p.arrange {
+                "Genre" if k == NO_GENRE => tr("library-view-no-genre", &[]),
+                "Genre" => k.clone(),
+                _ => shown(&k),
+            };
             out.push(Section {
                 airing: any_airing(&cards, ids),
-                title: k,
+                title,
+                key: k,
                 cards,
                 dropped: false,
             });
@@ -411,7 +469,8 @@ fn cut<'a>(series: &[&'a Value], ids: &HashSet<u64>, p: &Params) -> Vec<Section<
     }
     if !dropped.is_empty() {
         out.push(Section {
-            title: "Dropped".into(),
+            key: "Dropped".into(),
+            title: shown("Dropped"),
             cards: dropped,
             airing: false,
             dropped: true,
@@ -475,6 +534,8 @@ mod tests {
             "the current season's airing series is under Airing only"
         );
         assert_eq!(v["facts"][4], "3 files still on disk");
+        assert_eq!(v["sections"][3]["box"], "No date");
+        assert_eq!(v["sections"][1]["box"], "Fall 2025");
         assert_eq!(v["count"], 5);
     }
 

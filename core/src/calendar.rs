@@ -178,8 +178,21 @@ pub fn render(entries: &[Entry], now: i64) -> String {
 /// where the schedule has one.
 fn summary(e: &Entry) -> String {
     match e.season {
-        Some(s) => format!("{} - Season {s} Episode {}", e.title, e.number),
-        None => format!("{} - Episode {}", e.title, e.number),
+        Some(s) => crate::i18n::tr(
+            "core-calendar-season-episode",
+            &[
+                ("title", e.title.as_str().into()),
+                ("season", s.to_string().into()),
+                ("number", e.number.to_string().into()),
+            ],
+        ),
+        None => crate::i18n::tr(
+            "core-calendar-episode",
+            &[
+                ("title", e.title.as_str().into()),
+                ("number", e.number.to_string().into()),
+            ],
+        ),
     }
 }
 

@@ -389,7 +389,7 @@ pub async fn apply(
             if tokens.is_empty() {
                 return Err(CoreError::invalid(
                     "tokens",
-                    "op 'tokens' needs a non-empty `tokens` list",
+                    crate::i18n::tr("core-releases-refine-no-tokens", &[]),
                 ));
             }
             let new_query = build_refined_query(query, &tokens, items);

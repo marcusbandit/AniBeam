@@ -161,10 +161,10 @@ pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
             let text = serde_json::to_string_pretty(&doc)?;
             atomic_file::write_async(Path::new(&path), text).await?;
             Ok(Finished {
-                plain: Some(format!(
-                    "Saved {count} {} to {}.",
-                    crate::words::pick(count, "show", "shows"),
-                    crate::library::scan::folder_of(&path)
+                plain: Some(crate::words!(
+                    "core-transfer-exported",
+                    count = count,
+                    folder = crate::library::scan::folder_of(&path)
                 )),
                 level: Level::Info,
                 message: format!("Exported {count} series to {path}"),
