@@ -37,6 +37,8 @@ def blurb(text):
     """AniList's description as plain text: its first paragraphs, without the source credit."""
     text = re.sub(r"<br\s*/?>", "\n", text or "", flags=re.I)
     text = html.unescape(re.sub(r"<[^>]+>", "", text))
+    # The site writes no long dashes: a clause dash becomes a comma, a range dash a hyphen.
+    text = re.sub(r"\s*\u2014\s*", ", ", text).replace("\u2013", "-")
     paras = []
     for p in re.split(r"\n\s*\n|\n", text):
         p = re.sub(r"\s+", " ", p).strip()
