@@ -2,13 +2,13 @@ name: Android APK
 
 # Builds the phone's APK, for phones and the emulator (arm64-v8a and x86_64 in one file), as the
 # version it ships as, signed with the project's key, and uploads it as the phone-apk artifact.
-# nightly.yml and release.yml call it and put the APK on their release; Run workflow from the
-# Actions tab builds one without a release. The key is the ANIBEAM_ANDROID_KEYSTORE secret, a
+# nightly.yml and release.yml call it and put the APK on their release. It has no Run workflow
+# of its own: an APK without a train version would sit below every nightly and not install
+# over one, so a build to try is a Nightly run. The key is the ANIBEAM_ANDROID_KEYSTORE secret, a
 # base64 keystore: every APK has to carry the same key, or Android refuses it as an update to
 # the AniBeam already on a phone. A run without the secret stops instead of signing with a
 # throwaway key.
 on:
-  workflow_dispatch:
   workflow_call:
     inputs:
       ref:

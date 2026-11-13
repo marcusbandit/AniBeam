@@ -98,8 +98,9 @@ too, so its library still shows when it is off.
    says whether AniBeam answered and which version it is.
 
 Release APKs are signed with the project's key, so each one installs over the last. An APK
-built in a checkout is signed with that machine's `~/.android/debug.keystore` and only
-installs over a release after an uninstall, unless it is the same key.
+built in a checkout is signed with that machine's `~/.android/debug.keystore`, and its
+versionCode sits below every nightly and release of its version, so it goes onto a phone
+that has one of those only after an uninstall. On the emulator that is no trouble.
 
 ## Building
 

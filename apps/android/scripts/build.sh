@@ -49,6 +49,32 @@ for t in x86_64-linux-android aarch64-linux-android; do
   export "CC_${low}=$TC/${t}${MIN_API}-clang" "CXX_${low}=$TC/${t}${MIN_API}-clang++" "AR_${low}=$TC/llvm-ar"
 done
 
+crate_version=$(sed -n '0,/^version = "\(.*\)"/s//\1/p' Cargo.toml)
+version_name="${ANIBEAM_RELEASE_VERSION:-$crate_version}"
+base="${version_name%%-*}"
+if [ "$base" != "$crate_version" ]; then
+  echo "build.sh: ANIBEAM_RELEASE_VERSION $version_name is not a build of $crate_version (Cargo.toml)." >&2
+  exit 1
+fi
+# Android installs an update only over a lower versionCode, so the code follows the train:
+# every build of 2.4.3 sits below every build of 2.5.0, and within 2.4.3 a local build comes
+# first, then the nightlies by run number, then the stable release they led up to.
+#   2.4.3 local 204030000   2.4.3-nightly.<day>.41 204030041   2.4.3 stable 204039999
+IFS=. read -r major minor patch <<<"$base"
+case "$version_name" in
+  "$base") step=$([ -n "${ANIBEAM_RELEASE_VERSION:-}" ] && echo 9999 || echo 0) ;;
+  "$base"-nightly.*.*) step="${version_name##*.}"; [[ "$step" =~ ^[1-9][0-9]*$ ]] || step=bad ;;
+  *) echo "build.sh: $version_name is neither a stable version nor a nightly." >&2; exit 1 ;;
+esac
+if [ "$step" = bad ] || (( minor > 99 || patch > 99 || step > 9999 )); then
+  echo "build.sh: $version_name does not fit the versionCode scheme." >&2
+  exit 1
+fi
+version_code=$(( ((major * 100 + minor) * 100 + patch) * 10000 + step ))
+# build.rs puts both into the app, which shows them in More, About. Worked out before the
+# cargo passthrough too, so a cargo test between two APK builds does not change them and
+# rebuild the app crate each time.
+export ANIBEAM_PHONE_VERSION="$version_name" ANIBEAM_VERSION_CODE="$version_code"
 if [[ "${1:-}" == "cargo" ]]; then
   shift
   exec cargo "$@"
@@ -69,31 +95,6 @@ while (( $# )); do
   shift
 done
 
-manifest=android/AndroidManifest.xml
-crate_version=$(sed -n '0,/^version = "\(.*\)"/s//\1/p' Cargo.toml)
-version_name="${ANIBEAM_RELEASE_VERSION:-$crate_version}"
-base="${version_name%%-*}"
-if [ "$base" != "$crate_version" ]; then
-  echo "build.sh: ANIBEAM_RELEASE_VERSION $version_name is not a build of $crate_version (Cargo.toml)." >&2
-  exit 1
-fi
-# Android installs an update only over a lower versionCode, so the code follows the train:
-# every build of 2.4.3 sits below every build of 2.5.0, and within 2.4.3 a local build comes
-# first, then the nightlies by run number, then the stable release they led up to.
-#   2.4.3 local 204030000   2.4.3-nightly.<day>.41 204030041   2.4.3 stable 204039999
-IFS=. read -r major minor patch <<<"$base"
-case "$version_name" in
-  "$base") step=$([ -n "${ANIBEAM_RELEASE_VERSION:-}" ] && echo 9999 || echo 0) ;;
-  "$base"-nightly.*.*) step="${version_name##*.}" ;;
-  *) echo "build.sh: $version_name is neither a stable version nor a nightly." >&2; exit 1 ;;
-esac
-if (( minor > 99 || patch > 99 || step > 9999 )); then
-  echo "build.sh: $version_name does not fit the versionCode scheme." >&2
-  exit 1
-fi
-version_code=$(( ((major * 100 + minor) * 100 + patch) * 10000 + step ))
-# build.rs puts both into the app, which shows them in More, About.
-export ANIBEAM_PHONE_VERSION="$version_name" ANIBEAM_VERSION_CODE="$version_code"
 # What's new reads CHANGELOG.md into the APK: a build ships with its own version's notes.
 notes_version=$(sed -n 's/^## \([^ ]*\).*/\1/p' CHANGELOG.md | head -1)
 if [ "$notes_version" != "$base" ]; then
@@ -128,6 +129,7 @@ for abi in "${abis[@]}"; do
   cp vendor/mpv/"$abi"/*.so "$stage/lib/$abi/"
 done
 
+manifest=android/AndroidManifest.xml
 "$BT/aapt2" compile --dir android/res -o "$stage/res.zip"
 "$BT/aapt2" link -o "$stage/base.apk" -I "$PLATFORM_JAR" --manifest "$manifest" \
   --version-code "$version_code" --version-name "$version_name" "$stage/res.zip"
