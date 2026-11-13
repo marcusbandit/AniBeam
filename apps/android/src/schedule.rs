@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use anibeam_core::library::schedule::{NoteRow, When};
 use anibeam_core::time::to_secs;
-use anibeam_core::{Call, Provider, Reply, SeriesDetail, SeriesKind};
+use anibeam_core::{Call, Provider, Reply, SeriesDetail, SeriesKind, provider_name};
 use chrono::{Local, TimeZone};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
@@ -244,15 +244,13 @@ impl Sheet {
         }
     }
 
-    fn tiles(&self) -> Vec<DateTile> {
-        let record = self.record_dates();
-        let guesses = self.guesses();
+    fn tiles(&self, record: &BTreeMap<u32, i64>, guesses: &BTreeMap<u32, i64>) -> Vec<DateTile> {
         (1..=self.up_to)
             .map(|ep| {
                 let note = note_for(&self.draft, ep);
                 DateTile {
                     ep: ep as i32,
-                    date: self.tile_text(ep, &record, &guesses).into(),
+                    date: self.tile_text(ep, record, guesses).into(),
                     kind: kind_of(note),
                     picked: self.picked.contains(&ep),
                     out: self.out(ep),
@@ -265,14 +263,13 @@ impl Sheet {
     }
 
     /// The footer's one line: where the season ends and how much is dated.
-    fn summary(&self) -> String {
+    fn summary(&self, record: &BTreeMap<u32, i64>, guesses: &BTreeMap<u32, i64>) -> String {
         let set: u32 = self.draft.iter().map(|n| n.last - n.first + 1).sum();
         let mut bits = Vec::new();
         if self.end_at > 0 {
             bits.push(format!("Ends at episode {}", self.end_at));
         }
-        let from_record = self
-            .record_dates()
+        let from_record = record
             .keys()
             .filter(|&&e| !self.out(e) && note_for(&self.draft, e).is_none())
             .count();
@@ -287,7 +284,7 @@ impl Sheet {
         if set > 0 {
             bits.push(format!("{set} set by you"));
         }
-        let guessed = self.guesses().len();
+        let guessed = guesses.len();
         if guessed > 0 {
             bits.push(format!("{guessed} guessed weekly"));
         }
@@ -304,15 +301,15 @@ impl Sheet {
 
     /// A tap toggles one; with Pick a run on, a tap picks the run from the last tap.
     fn tap(&mut self, ep: u32) {
-        if self.run && self.anchor > 0 {
+        if let Some(at) = self.picked.iter().position(|&e| e == ep) {
+            self.picked.remove(at);
+        } else if self.run && self.anchor > 0 {
             let (a, b) = (self.anchor.min(ep), self.anchor.max(ep));
             for e in a..=b {
                 if !self.picked.contains(&e) {
                     self.picked.push(e);
                 }
             }
-        } else if let Some(at) = self.picked.iter().position(|&e| e == ep) {
-            self.picked.remove(at);
         } else {
             self.picked.push(ep);
         }
@@ -334,8 +331,14 @@ impl Sheet {
             by.insert(ep, when);
         }
         self.draft = collapse(&by);
-        self.picked.clear();
+        self.done_picking();
         self.typed = None;
+    }
+
+    /// The picked episodes are dealt with: a run starts afresh from the next tap.
+    fn done_picking(&mut self) {
+        self.picked.clear();
+        self.anchor = 0;
     }
 
     fn unset(&mut self) {
@@ -344,7 +347,7 @@ impl Sheet {
             by.remove(ep);
         }
         self.draft = collapse(&by);
-        self.picked.clear();
+        self.done_picking();
     }
 
     /// Marks the one picked episode as the season's last, or clears the mark when it is.
@@ -357,7 +360,7 @@ impl Sheet {
             by.retain(|&e, _| e <= self.end_at);
         }
         self.draft = collapse(&by);
-        self.picked.clear();
+        self.done_picking();
     }
 
     /// A paste replaces the draft with what it reads; picking then fixes what it missed.
@@ -441,16 +444,6 @@ fn page(detail: &SeriesDetail) -> Page {
     }
 }
 
-/// A provider as the desktop names it, `frame.providerName`.
-fn provider_name(p: Provider) -> &'static str {
-    match p {
-        Provider::Anilist => "AniList",
-        Provider::Mal => "MyAnimeList",
-        Provider::Tmdb => "TMDB",
-        Provider::Tvmaze => "TVmaze",
-    }
-}
-
 /// The page's line on what the user told the season (#432): the episode count set by hand and
 /// a break in the schedule, the desktop's `countRow` text. Empty when neither is set.
 fn told_line(detail: &SeriesDetail) -> String {
@@ -526,9 +519,11 @@ fn draw(window: &AppWindow) {
     let data = window.global::<ScheduleData>();
     SHEET_STATE.with(|s| {
         let s = s.borrow();
+        let record = s.record_dates();
+        let guesses = s.guesses();
         TILES.with(|t| {
             if let Some(model) = t.borrow().as_ref() {
-                crate::app::update(model, s.tiles());
+                crate::app::update(model, s.tiles(&record, &guesses));
             }
         });
         let n = s.picked.len();
@@ -545,7 +540,7 @@ fn draw(window: &AppWindow) {
         data.set_run(s.run);
         data.set_is_last(matches!(s.picked[..], [one] if one == s.end_at));
         data.set_can_clear(s.picked.iter().any(|&e| note_for(&s.draft, e).is_some()));
-        data.set_summary(s.summary().into());
+        data.set_summary(s.summary(&record, &guesses).into());
         data.set_dirty(s.dirty());
         data.set_more(s.up_to < MOST);
     });
@@ -602,6 +597,7 @@ pub fn install(window: &AppWindow) {
             data.set_typed_text(Default::default());
             data.set_paste_text(Default::default());
             data.set_pasting(false);
+            data.set_error(Default::default());
             with_sheet(&window, |s| *s = Sheet::open(&page));
             window.global::<ShowData>().set_sheet(SHEET);
         }
@@ -630,13 +626,14 @@ pub fn install(window: &AppWindow) {
             with_sheet(&window, |s| s.typed = typed);
         }
     });
-    data.on_set_date({
+    // Set date and No date yet both empty the field once the picked tiles take the date.
+    let dated = {
         let weak = window.as_weak();
-        move || {
+        move |when: Option<When>| {
             let Some(window) = weak.upgrade() else { return };
             let mut done = false;
             with_sheet(&window, |s| {
-                if let Some(when) = s.typed {
+                if let Some(when) = when.or(s.typed) {
                     s.apply(when);
                     done = true;
                 }
@@ -647,8 +644,12 @@ pub fn install(window: &AppWindow) {
                     .set_typed_text(Default::default());
             }
         }
+    };
+    data.on_set_date({
+        let dated = dated.clone();
+        move || dated(None)
     });
-    data.on_no_date(on(|s| s.apply(When::Unknown)));
+    data.on_no_date(move || dated(Some(When::Unknown)));
     data.on_toggle_weekly(on(|s| s.weekly = !s.weekly));
     data.on_toggle_run(on(|s| {
         s.run = !s.run;
@@ -673,17 +674,26 @@ pub fn install(window: &AppWindow) {
         let weak = window.as_weak();
         move || {
             let Some(window) = weak.upgrade() else { return };
-            let s = SHEET_STATE.with(|s| s.borrow().clone());
-            window.global::<ShowData>().set_sheet(0);
-            save(s);
+            let data = window.global::<ScheduleData>();
+            if data.get_saving() {
+                return;
+            }
+            data.set_error(Default::default());
+            data.set_saving(true);
+            save(weak.clone(), SHEET_STATE.with(|s| s.borrow().clone()));
         }
     });
 }
 
-/// Saves the draft through the desktop's calls, off the UI thread, and says how it went.
-fn save(s: Sheet) {
+/// Saves the draft through the desktop's calls, off the UI thread. The sheet closes once the
+/// core took it, as the desktop's does; a refusal stays on the sheet with the draft kept.
+fn save(weak: slint::Weak<AppWindow>, s: Sheet) {
     let Some(core) = crate::local::core() else {
-        crate::show::say("AniBeam is still starting. Try again in a moment.".to_string());
+        if let Some(window) = weak.upgrade() {
+            let data = window.global::<ScheduleData>();
+            data.set_saving(false);
+            data.set_error("AniBeam is still starting. Try again in a moment.".into());
+        }
         return;
     };
     let _ = std::thread::Builder::new()
@@ -691,33 +701,55 @@ fn save(s: Sheet) {
         .spawn(move || {
             let notes = s.draft.iter().map(|n| n.to_wire()).collect::<Vec<_>>();
             let any = !notes.is_empty() || s.end_at > 0;
-            let mut line = match core.call(Call::SetScheduleNotes {
-                series: s.series,
-                // Always the season the page is about, the one its count and tiles belong to.
-                season: s.season,
-                notes,
-            }) {
-                Ok(_) => None,
-                Err(e) => Some(e.to_string()),
-            };
-            if line.is_none() && s.end_at != s.saved_end {
-                let count = (s.end_at > 0).then_some(s.end_at);
-                if let Err(e) = core.call(Call::SetEpisodeCount {
+            let mut failed = core
+                .call(Call::SetScheduleNotes {
                     series: s.series,
-                    count,
-                }) {
-                    line = Some(e.to_string());
-                }
+                    // Always the season the page is about, the one its count and tiles belong to.
+                    season: s.season,
+                    notes,
+                })
+                .err();
+            if failed.is_none() && s.end_at != s.saved_end {
+                let count = (s.end_at > 0).then_some(s.end_at);
+                failed = core
+                    .call(Call::SetEpisodeCount {
+                        series: s.series,
+                        count,
+                    })
+                    .err();
             }
-            let line = line.unwrap_or_else(|| {
-                if any {
-                    "Saved."
-                } else {
-                    "Schedule notes cleared."
+            let failed = failed.map(|e| e.to_string());
+            let _ = slint::invoke_from_event_loop(move || {
+                let Some(window) = weak.upgrade() else { return };
+                let data = window.global::<ScheduleData>();
+                data.set_saving(false);
+                if let Some(error) = failed {
+                    data.set_error(error.into());
+                    return;
                 }
-                .to_string()
+                // The page reads the show again on the change the core sends; until then a
+                // reopened sheet starts from what was just saved, not from the page before it.
+                PAGE.with(|p| {
+                    if let Some(page) = p.borrow_mut().as_mut()
+                        && page.series == s.series
+                    {
+                        page.notes = s.draft.clone();
+                        page.end_at = s.end_at;
+                    }
+                });
+                let show = window.global::<ShowData>();
+                if show.get_sheet() == SHEET {
+                    show.set_sheet(0);
+                }
+                crate::show::say(
+                    if any {
+                        "Saved."
+                    } else {
+                        "Schedule notes cleared."
+                    }
+                    .to_string(),
+                );
             });
-            let _ = slint::invoke_from_event_loop(move || crate::show::say(line));
         });
 }
 
@@ -775,6 +807,21 @@ mod tests {
         s.run = true;
         s.tap(6);
         assert_eq!(s.picked, vec![2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn a_run_starts_afresh_once_its_episodes_are_dated_and_a_picked_tile_unpicks() {
+        let mut s = sheet(12);
+        s.run = true;
+        s.tap(2);
+        s.tap(6);
+        s.apply(When::Year(2027));
+        s.tap(10);
+        assert_eq!(s.picked, vec![10]);
+        s.tap(12);
+        assert_eq!(s.picked, vec![10, 11, 12]);
+        s.tap(11);
+        assert_eq!(s.picked, vec![10, 12]);
     }
 
     #[test]
@@ -846,7 +893,10 @@ mod tests {
         let mut s = sheet(12);
         s.known.insert(3, (T0, true));
         assert!(s.record_dates().is_empty());
-        assert_eq!(s.summary(), "Nothing set yet");
+        assert_eq!(
+            s.summary(&s.record_dates(), &s.guesses()),
+            "Nothing set yet"
+        );
     }
 
     #[test]
@@ -857,7 +907,7 @@ mod tests {
         s.draft = vec![note(3, 4, When::Year(2027))];
         s.end_at = 4;
         assert_eq!(
-            s.summary(),
+            s.summary(&s.record_dates(), &s.guesses()),
             "Ends at episode 4 · 1 dated by TVmaze · 2 set by you · 1 guessed weekly"
         );
     }
@@ -877,7 +927,7 @@ mod tests {
         s.aired = vec![1];
         s.end_at = 6;
         s.draft = vec![note(4, 4, When::Year(2027)), note(5, 5, When::Unknown)];
-        let tiles = s.tiles();
+        let tiles = s.tiles(&s.record_dates(), &s.guesses());
         assert_eq!(tiles.len(), 12);
         assert_eq!(tiles[0].date, "Out");
         assert_eq!(tiles[3].date, "2027");

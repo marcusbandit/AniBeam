@@ -44,6 +44,9 @@ export global ScheduleData {
     in property <bool> can-clear;
     in property <string> summary;
     in property <bool> dirty;
+    // A save is under way; the core's words when one was refused.
+    in property <bool> saving;
+    in property <string> error;
     in-out property <bool> pasting;
     in-out property <string> paste-text;
     callback tap(int);
@@ -290,7 +293,11 @@ export component DatesSheet inherits ShowSheet {
                 primary: true;
                 text: "Set date";
                 enabled: ScheduleData.typed-ok;
-                clicked => { ScheduleData.set-date(); }
+                // Reads the field as it stands, not the last pause in typing.
+                clicked => {
+                    ScheduleData.typed(ScheduleData.typed-text);
+                    ScheduleData.set-date();
+                }
             }
             Button {
                 small: true;
@@ -333,13 +340,19 @@ export component DatesSheet inherits ShowSheet {
         font-size: Theme.small + 1px;
         wrap: word-wrap;
     }
+    if ScheduleData.error != "": Text {
+        text: ScheduleData.error;
+        color: Theme.bad;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
     HorizontalLayout {
         spacing: Theme.gap;
         alignment: start;
         Button {
-            text: "Save";
+            text: ScheduleData.saving ? "Saving" : "Save";
             primary: true;
-            enabled: ScheduleData.dirty;
+            enabled: ScheduleData.dirty && !ScheduleData.saving;
             clicked => { ScheduleData.save(); }
         }
         Button {
