@@ -20,6 +20,11 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "process", "macros", "fs"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 clap = { version = "4", features = ["derive"] }
+# Pinned once: the contract and the core must agree on these, or uniffi's derives and the
+# core's export disagree, and two libsqlite3-sys cannot link into one build.
+uniffi = "=0.32.0"
+rusqlite = "0.40"
+rusqlite_migration = "2.6"
 
 [profile.release]
 debug = 1

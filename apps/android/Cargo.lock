@@ -156,7 +156,6 @@ dependencies = [
  "axum",
  "backon",
  "base64",
- "chrono",
  "directories",
  "ed25519-dalek",
  "fancy-regex",

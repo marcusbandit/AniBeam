@@ -85,6 +85,11 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked -p anibeam-contract -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
 
+      # The contract alone, without the sqlite feature the core turns on: one cargo call
+      # with the core merges their features, and would hide an ungated rusqlite use here.
+      - name: Clippy (contract alone)
+        run: cargo clippy --locked -p anibeam-contract --all-targets -- -D warnings
+
       # Only the phone build compiles the core's phone and cast features, and no other
       # workflow builds the phone, so without this a desktop change can break the APK and
       # stay green (#309). The host target is enough: these features need no NDK.
