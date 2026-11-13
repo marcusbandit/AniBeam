@@ -1,113 +1,143 @@
-// Points every download button at the file in the newest release and puts the visitor's own
-// system first. Without JavaScript, or when GitHub does not answer, every link still goes to
-// the releases page, so nothing here is required.
+// The home page. Shared pieces (strings, the visitor's system, the release links, copy buttons)
+// come from common.js, which loads first.
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Pauses infinite motion (the marquee, the beams) while it is off screen.
+const motionGate = (el) => {
+  if (!el || !("IntersectionObserver" in window)) return;
+  // CSS reads --motion; an SVG's own animation (the cast arc's dot) is paused through its clock.
+  const svgs = [...el.querySelectorAll("svg")].filter((svg) => svg.querySelector("animate, animateMotion, animateTransform"));
+  new IntersectionObserver(([e]) => {
+    el.style.setProperty("--motion", e.isIntersecting ? "running" : "paused");
+    svgs.forEach((svg) => (e.isIntersecting ? svg.unpauseAnimations() : svg.pauseAnimations()));
+  }).observe(el);
+};
+
+// Adds `in` the first time an element is mostly on screen, which plays its one action.
+const onceInView = (els, threshold = 0.45) => {
+  if (!("IntersectionObserver" in window)) { els.forEach((el) => el.classList.add("in")); return; }
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+  }, { threshold });
+  els.forEach((el) => io.observe(el));
+};
+
+// The two download buttons lead to the visitor's own file in the newest release. Without
+// JavaScript, or for a system we build nothing for, they lead to the download page. A Mac whose
+// chip the browser keeps quiet goes there too, where the dmg says it is for Apple silicon; an
+// Intel Mac gets no file that will not run.
 (() => {
-  const repo = "marcusbandit/AniBeam";
-  const api = `https://api.github.com/repos/${repo}/releases`;
+  const { t, names, os } = AB;
+  const mains = [...document.querySelectorAll(".dl-auto")];
+  const want = { linux: ["stable", "appimage"], windows: ["stable", "setup"], mac: ["stable", "dmg"], android: ["phone", "apk"] }[os];
+  let file = null;
+  let chip = os === "mac" ? undefined : null;
 
-  const names = { linux: "Linux", windows: "Windows", mac: "Mac", android: "Android" };
-  const mainAsset = { linux: "appimage", windows: "setup", mac: "dmg", android: "apk" };
-  const match = {
-    appimage: (n) => n.endsWith(".AppImage"),
-    setup: (n) => n.endsWith("-setup.exe"),
-    zip: (n) => /windows.*\.zip$/.test(n),
-    dmg: (n) => n.endsWith(".dmg"),
-    apk: (n) => n.endsWith(".apk"),
-  };
-
-  // Only builds that exist: the dmg is Apple silicon, the AppImage x86_64. A system we
-  // cannot place gets the plain releases link rather than a file that will not run.
-  function detect() {
-    const ua = navigator.userAgent;
-    const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
-    if (/android/i.test(ua)) return "android";
-    if (/iphone|ipad|ipod/i.test(ua)) return null;
-    if (/win/i.test(platform) || /windows/i.test(ua)) return "windows";
-    if (/mac/i.test(platform) || /mac os x/i.test(ua)) {
-      return navigator.maxTouchPoints > 1 ? null : "mac"; // an iPad asks for the desktop site as a Mac
-    }
-    if (/aarch64|arm/i.test(platform)) return null;
-    if (/linux|x11/i.test(platform) || /linux/i.test(ua)) return "linux";
-    return null;
+  // Rewritten whole each time, so a Mac found to be Intel goes back to the plain words, and a
+  // new language gets them in its own.
+  function label() {
+    let text = t("Download AniBeam");
+    if (os === "ios") text = t("Coming to iPhone soon");
+    else if (os === "android") text = t("Get the Android app");
+    else if (want && !(os === "mac" && chip === false)) text = t("Download for {os}", { os: names[os] });
+    for (const m of mains) m.querySelector("span").textContent = text;
   }
-
-  let os = detect();
-  const main = document.getElementById("dl-main");
-  const phoneReleases = `https://github.com/${repo}/releases?q=android&expanded=true`;
-
-  // The CPU check and the release lookup can finish in either order; whichever comes last
-  // points the main button at the file.
-  const urls = {};
   function aim() {
-    if (os && urls[mainAsset[os]]) main.href = urls[mainAsset[os]];
+    const sure = os !== "mac" || chip === true;
+    for (const m of mains) {
+      if (os === "ios") {
+        m.removeAttribute("href");
+        m.setAttribute("aria-disabled", "true");
+        m.classList.replace("btn-primary", "btn-ghost");
+        m.classList.add("is-soon");
+      }
+      else if (file && sure) m.href = file;
+    }
   }
-
-  function pick(chosen) {
-    os = chosen;
-    if (!os) return;
-    main.textContent = os === "android" ? "Get the Android app" : `Download for ${names[os]}`;
-    if (os === "android") main.href = phoneReleases;
+  label();
+  aim();
+  document.addEventListener("langchange", label);
+  if (!want) return;
+  AB.macChip.then((c) => { chip = c; label(); aim(); });
+  AB.releases().then((r) => {
+    const from = r && r[want[0]];
+    file = from ? from.assets[want[1]] || from.url : null;
     aim();
-    const row = document.querySelector(`.platform[data-os="${os}"]`);
-    if (row) {
-      row.classList.add("yours");
-      row.parentElement.prepend(row);
-    }
+  });
+})();
+
+// The tour: the rail beside the screenshot works like the app's own, one screen per icon.
+(() => {
+  const img = document.getElementById("tour-img");
+  if (!img) return;
+  const alts = {
+    home: "AniBeam's Home: shows to continue and shows not started yet, as poster cards",
+    library: "The Library grid with every show as a poster",
+    series: "A show's page with its banner, episodes and characters",
+  };
+  const buttons = [...document.querySelectorAll(".rail button")];
+  // The other screens load ahead on a wide screen only; a phone fetches one when it is asked for.
+  const wide = matchMedia("(min-width: 900px)").matches;
+  const src = (k) => `${AB.ROOT}img/tour/${k}${wide ? "" : "-1134"}.webp`;
+  const warm = () => Object.keys(alts).forEach((k) => { new Image().src = src(k); });
+  if (wide) {
+    if ("requestIdleCallback" in window) requestIdleCallback(warm, { timeout: 3000 });
+    else setTimeout(warm, 1500);
   }
 
-  // Chromium can say the CPU; an Intel Mac has no build, so it gets no "Download for Mac".
-  if (os === "mac" && navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
-    navigator.userAgentData.getHighEntropyValues(["architecture"])
-      .then((v) => pick(v.architecture === "x86" ? null : "mac"))
-      .catch(() => pick("mac"));
-    os = null;
-  } else {
-    pick(os);
+  function show(key, focus) {
+    buttons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.screen === key)));
+    img.classList.add("swap");
+    const next = new Image();
+    next.onload = () => { img.removeAttribute("srcset"); img.src = next.src; img.alt = AB.t(alts[key]); img.classList.remove("swap"); };
+    // A screen that fails to load leaves the last one showing, not a dimmed frame.
+    next.onerror = () => img.classList.remove("swap");
+    next.src = src(key);
+    if (focus) buttons.find((b) => b.dataset.screen === key).focus();
   }
+  buttons.forEach((b, i) => {
+    b.addEventListener("click", () => show(b.dataset.screen));
+    b.addEventListener("keydown", (e) => {
+      const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      show(buttons[(i + step + buttons.length) % buttons.length].dataset.screen, true);
+    });
+  });
+})();
 
-  function wire(release, keys) {
-    if (!release) return;
-    for (const key of keys) {
-      const asset = release.assets.find((a) => match[key](a.name));
-      if (!asset) continue;
-      for (const link of document.querySelectorAll(`[data-asset="${key}"]`)) {
-        link.href = asset.browser_download_url;
-      }
-      urls[key] = asset.browser_download_url;
-    }
-  }
+// The posters around the headline follow the pointer, each by its own depth. The entrance moves
+// `transform`, the parallax moves `translate`, so the two never fight.
+(() => {
+  const hero = document.querySelector(".hero");
+  const field = document.getElementById("floats");
+  if (!hero || !field || reduced || !matchMedia("(pointer: fine)").matches) return;
+  let frame = 0;
+  hero.addEventListener("pointermove", (e) => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const r = hero.getBoundingClientRect();
+      field.style.setProperty("--px", `${(((e.clientX - r.left) / r.width - 0.5) * 36).toFixed(1)}px`);
+      field.style.setProperty("--py", `${(((e.clientY - r.top) / r.height - 0.5) * 28).toFixed(1)}px`);
+    });
+  });
+  hero.addEventListener("pointerleave", () => { field.style.setProperty("--px", "0px"); field.style.setProperty("--py", "0px"); });
+})();
+motionGate(document.querySelector(".beams"));
+motionGate(document.querySelector(".cast-scene"));
 
-  async function get(url) {
-    const res = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
-    if (!res.ok) throw new Error(`${res.status}`);
-    return res.json();
-  }
+motionGate(document.getElementById("marquee"));
 
-  // One call for both: the release list holds the desktop stable (v*, not a pre-release) and
-  // the phone's (android-v*). Unauthenticated calls are limited to 60 an hour per address.
-  get(`${api}?per_page=100`)
-    .then((list) => {
-      const live = list.filter((r) => !r.draft);
-      const stable = live.find((r) => /^v\d/.test(r.tag_name) && !r.prerelease);
-      const phone = live.find((r) => r.tag_name.startsWith("android-v"));
-      wire(stable, ["appimage", "setup", "zip", "dmg"]);
-      wire(phone, ["apk"]);
-      aim();
-      if (stable) {
-        const version = stable.tag_name.replace(/^v/, "");
-        const when = new Date(stable.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-        const note = document.getElementById("install-version");
-        note.textContent = `AniBeam ${version}, released ${when}. `;
-        const all = document.createElement("a");
-        all.href = stable.html_url;
-        all.textContent = "What's in it";
-        note.append(all);
-      }
-      const shown = os === "android" ? phone : stable;
-      if (shown) {
-        const version = shown.tag_name.replace(/^(android-)?v/, "");
-        document.getElementById("dl-note").textContent = `Version ${version}. Free and open source.`;
-      }
-    })
-    .catch(() => {});
+// Each section plays its one action the first time it is mostly on screen.
+onceInView([...document.querySelectorAll(".feat")], 0.4);
+
+// The player card is drawn at the app's own 960 x 540 and scaled to fit, so every size matches.
+(() => {
+  const player = document.querySelector(".player");
+  const stage = player && player.querySelector(".pl-stage");
+  if (!stage) return;
+  const fit = () => stage.style.setProperty("--k", (player.clientWidth / 960).toFixed(4));
+  fit();
+  if ("ResizeObserver" in window) new ResizeObserver(fit).observe(player);
+  else addEventListener("resize", fit);
 })();

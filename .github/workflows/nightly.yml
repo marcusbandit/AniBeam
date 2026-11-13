@@ -139,3 +139,17 @@ jobs:
               echo "Removing $tag"
               gh release delete "$tag" --yes --cleanup-tag
             done
+
+  # The website's What's new shows what this nightly brings under Coming next, with its number
+  # (#777): deploy the site once the nightly is public. The site reads which nightly is newest,
+  # and the change files at its tag, from GitHub itself.
+  site:
+    needs: [gate, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: The website shows what this nightly brings
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run site.yml -R "$GITHUB_REPOSITORY" --ref main
