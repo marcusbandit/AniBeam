@@ -24,7 +24,9 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[qml_singleton]
-        #[qproperty(QString, lang)]
+        // Read-only from QML: the language changes through set_language, which moves the
+        // core's lookup with it.
+        #[qproperty(QString, lang, READ, NOTIFY)]
         type Tr = super::TrRust;
 
         /// The words for `id` in the current language, `args` filled in: a string or a
@@ -45,17 +47,22 @@ pub struct TrRust {
 }
 
 impl Default for TrRust {
-    /// `ANIBEAM_LANG` picks the language for a run, so a capture can shoot any of them.
+    /// Whatever the core speaks when QML first asks; main() has set it by then.
     fn default() -> Self {
-        if let Some(lang) = std::env::var("ANIBEAM_LANG")
-            .ok()
-            .and_then(|code| Lang::from_code(&code))
-        {
-            i18n::set_lang(lang);
-        }
         Self {
             lang: QString::from(i18n::lang().code()),
         }
+    }
+}
+
+/// `ANIBEAM_LANG` picks the language for a run, so a capture can shoot any of them. main()
+/// calls this before anything formats a word.
+pub fn language_from_env() {
+    if let Some(lang) = std::env::var("ANIBEAM_LANG")
+        .ok()
+        .and_then(|code| Lang::from_code(&code))
+    {
+        i18n::set_lang(lang);
     }
 }
 
@@ -74,8 +81,10 @@ impl qobject::Tr {
             return;
         };
         i18n::set_lang(lang);
-        if self.as_ref().rust().lang != *code {
-            self.as_mut().set_lang(QString::from(lang.code()));
+        let code = QString::from(lang.code());
+        if self.as_ref().rust().lang != code {
+            self.as_mut().rust_mut().lang = code;
+            self.as_mut().lang_changed();
         }
     }
 

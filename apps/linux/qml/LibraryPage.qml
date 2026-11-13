@@ -179,7 +179,7 @@ Item {
     function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast(words.t("library-scan-started")) }
     property real nowMs: Date.now()
 
-    function clearGenre() { genre = ""; frame.nav.current.props = { q: page.query }; frame.nav.relabel(frame.nav.labelOf("library", "")); reload() }
+    function clearGenre() { genre = ""; frame.nav.current.props = { q: page.query }; frame.nav.relabel(""); reload() }
     function persist() {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.library_tab = tab === "Hidden" ? p.library_tab : tab

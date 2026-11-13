@@ -48,25 +48,17 @@ Item {
     Timer { id: seriesDebounce; interval: 500; onTriggered: page.load() }
 
     readonly property var s: show || ({})
-    function formatLabel(f) {
-        var id = ({ TV: "show-format-tv", TV_SHORT: "show-format-tv-short", MOVIE: "show-format-film", SPECIAL: "show-format-special", OVA: "show-format-ova",
-                   ONA: "show-format-ona", MUSIC: "show-format-music" })[f]
-        return id ? words.t(id) : ""
-    }
-    function statusLabel(st) {
-        var id = ({ FINISHED: "show-status-finished", RELEASING: "show-status-airing", NOT_YET_RELEASED: "show-status-not-yet-aired", CANCELLED: "show-status-cancelled",
-                   HIATUS: "show-status-hiatus" })[st]
-        return id ? words.t(id) : ""
-    }
+    function formatLabel(f) { return words.formatLabel(f) }
+    function statusLabel(st) { return words.releaseStatus(st) }
     readonly property string factsLine: {
         var f = []
         if (formatLabel(s.format)) f.push(formatLabel(s.format))
         if (s.year) f.push(String(s.year))
         if (s.studios && s.studios.length) f.push(s.studios[0])
-        if (s.format === "MOVIE" && s.duration) f.push(Fmt.runtime(s.duration))
+        if (s.format === "MOVIE" && s.duration) f.push(words.runtime(s.duration))
         else {
             if (s.episodes) f.push(words.t("count-episodes", { count: s.episodes }))
-            if (s.duration) f.push(words.t("show-runtime-each", { runtime: Fmt.runtime(s.duration) }))
+            if (s.duration) f.push(words.t("show-runtime-each", { runtime: words.runtime(s.duration) }))
         }
         if (statusLabel(s.status)) f.push(statusLabel(s.status))
         return f.join("  ")
@@ -113,18 +105,13 @@ Item {
     }
     function getEpisodes() {
         frame.go("downloads", { hit: { id: page.anilistId, title: s.title, romaji: s.romaji || "", english: s.english || "", native: s.native || "",
-                                       cover_url: s.poster || "", episodes: s.episodes || 0, format: s.format || "", year: s.year || 0 } }, words.t("show-downloads-title"))
+                                       cover_url: s.poster || "", episodes: s.episodes || 0, format: s.format || "", year: s.year || 0 } })
     }
     function open(x) {
         if (x.owned) frame.go("series", { id: x.owned }, x.title)
         else frame.go("show", { anilist: x.anilist_id }, x.title)
     }
-    function relationLabel(k) {
-        var id = ({ PREQUEL: "show-relation-prequel", SEQUEL: "show-relation-sequel", PARENT: "show-relation-parent", SIDE_STORY: "show-relation-side-story",
-                   SPIN_OFF: "show-relation-spin-off", ALTERNATIVE: "show-relation-alternative", SUMMARY: "show-relation-summary",
-                   COMPILATION: "show-relation-compilation", SOURCE: "show-relation-source", ADAPTATION: "show-relation-adaptation" })[k]
-        return words.t(id || "show-relation-related")
-    }
+    function relationLabel(k) { return words.relationLabel(k) || words.t("show-relation-related") }
 
     // ---- The band's colour, the way the Series page reads it off the poster
     PosterTone { id: toneOf; source: page.s.poster ? Fmt.fileUrl(page.s.poster) : "" }

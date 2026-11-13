@@ -30,7 +30,7 @@ Item {
     readonly property bool needsSecret: tracker === "Mal" && !connected && !waiting && /client secret/i.test(error)
     readonly property string line: connected
         ? words.t("tracker-row-connected", { user: account.username || words.t("tracker-row-unknown-user"),
-                                             when: account.last_sync ? Fmt.relative(account.last_sync, Date.now() / 1000) : words.t("tracker-row-never") })
+                                             when: account.last_sync ? words.relative(account.last_sync, Date.now() / 1000) : words.t("tracker-row-never") })
         : waiting ? words.t("tracker-row-waiting")
         : error !== "" ? frame.connectWords(tracker)
         : words.t("tracker-row-not-connected")

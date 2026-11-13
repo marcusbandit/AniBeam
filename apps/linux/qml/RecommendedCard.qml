@@ -30,7 +30,7 @@ Item {
     // "12 episodes", a film's "1h 52m"; the hover card reads these too
     function lengthOf(r) {
         if (!r) return ""
-        if (r.format === "MOVIE" && r.duration) return Fmt.runtime(r.duration)
+        if (r.format === "MOVIE" && r.duration) return words.runtime(r.duration)
         if (r.episodes) return words.t("count-episodes", { count: r.episodes })
         return ""
     }

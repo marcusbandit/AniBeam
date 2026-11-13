@@ -117,9 +117,7 @@ Corner {
     }
     function formatLabel(f) {
         if (!f) return ""
-        var id = ({ TV: "match-format-tv", TV_SHORT: "match-format-tv-short", OVA: "match-format-ova", ONA: "match-format-ona",
-                    SPECIAL: "match-format-special", MOVIE: "match-format-film", MUSIC: "match-format-music" })[f]
-        return id ? words.t(id) : f.replace(/_/g, " ")
+        return words.formatLabel(f) || f.replace(/_/g, " ")
     }
 
     readonly property real pad: theme.space(5)

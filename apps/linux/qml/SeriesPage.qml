@@ -173,7 +173,7 @@ Item {
         }
     }
     // Get episodes (#169): the Downloads page's show view for this series
-    function getEpisodes() { frame.go("downloads", { series: page.props.id }, words.t("series-downloads")) }
+    function getEpisodes() { frame.go("downloads", { series: page.props.id }) }
     // The quick fix (#170): every file on the page as the sheet lists them, by name
     function fixRows() {
         if (!detail) return []
@@ -247,39 +247,32 @@ Item {
     }
     // Never a file a torrent is still writing; the core refuses it too, behind every Play
     function openFile(file) {
-        for (var i = 0; i < episodes.length; i++) if (episodes[i].file === file && isDownloading(episodes[i])) { frame.toast(words.t("series-still-downloading", { episode: Fmt.episodeName("", episodes[i].number) })); return }
+        for (var i = 0; i < episodes.length; i++) if (episodes[i].file === file && isDownloading(episodes[i])) { frame.toast(words.t("series-still-downloading", { episode: words.episodeName("", episodes[i].number) })); return }
         frame.go("player", { file: file }, page.title)
     }
     function isDownloading(ep) { return ep.downloading !== undefined && ep.downloading !== null }
-    function status(s) {
-        var id = ({ Releasing: "series-status-airing", Finished: "series-status-finished", NotYetReleased: "series-status-upcoming", Cancelled: "series-status-cancelled", Hiatus: "series-status-hiatus" })[s]
-        return id ? words.t(id) : s
-    }
+    function status(s) { return words.releaseStatus(s) || s }
     function listStatus(s) {
         var id = ({ Watching: "status-watching", Planning: "status-planning", Completed: "status-completed", Paused: "status-on-hold", Dropped: "status-dropped", Repeating: "status-rewatching" })[s]
         return id ? words.t(id) : s
     }
     function formatLabel(f) {
-        if (isMovie) return words.t("series-format-film")
+        if (isMovie) return words.t("anilist-format-film")
         if (!f) return words.t("series-format-series")
-        var id = ({ TV: "series-format-tv", TV_SHORT: "series-format-tv-short", OVA: "series-format-ova", ONA: "series-format-ona", SPECIAL: "series-format-special", MOVIE: "series-format-film" })[f]
-        return id ? words.t(id) : f.replace(/_/g, " ")
+        return words.formatLabel(f) || f.replace(/_/g, " ")
     }
     // AniList's relation types, as a person reads them; one it adds later reads off its code
     function relationLabel(r) {
         if (!r) return ""
-        var id = ({ ADAPTATION: "series-relation-adaptation", PREQUEL: "series-relation-prequel", SEQUEL: "series-relation-sequel", PARENT: "series-relation-parent",
-                    SIDE_STORY: "series-relation-side-story", CHARACTER: "series-relation-character", SUMMARY: "series-relation-summary", ALTERNATIVE: "series-relation-alternative",
-                    SPIN_OFF: "series-relation-spin-off", OTHER: "series-relation-other", SOURCE: "series-relation-source", COMPILATION: "series-relation-compilation",
-                    CONTAINS: "series-relation-contains" })[r]
-        if (id) return words.t(id)
+        var said = words.relationLabel(r)
+        if (said) return said
         var s = String(r).replace(/_/g, " ").toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1)
     }
     // An episode's name: Fmt.episodeName, the one rule the player and the feed share (its
     // own title, else "Episode 13"; the file name is never a title). A lone film is the film.
     function episodeName(ep) {
         if (!ep.title && isMovie && detail && detail.episodes.length === 1) return page.title
-        return Fmt.episodeName(ep.title || "", ep.number)
+        return words.episodeName(ep.title || "", ep.number)
     }
 
     // Track to here / untrack to here, optimistic; the core confirms through progressSet.
@@ -314,7 +307,7 @@ Item {
         if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.fail(r.error); return }
         // A mark that moves more than one episode says so, with the way back
         if (before >= 0 && Math.abs(target - before) > 1)
-            frame.toast(target > before ? words.t("series-watched-up-to", { episode: Fmt.episodeName("", target) }) : words.t("series-unwatched-from", { episode: Fmt.episodeName("", target + 1) }), 8, words.t("series-undo"),
+            frame.toast(target > before ? words.t("series-watched-up-to", { episode: words.episodeName("", target) }) : words.t("series-unwatched-from", { episode: words.episodeName("", target + 1) }), 8, words.t("series-undo"),
                         function() { Door.setProgress(id, before, season); optimisticProgress = -1; optimisticFile = -1 })
     }
     function watchedWithOptimism(ep) {
@@ -404,10 +397,15 @@ Item {
     readonly property string playVerb: nextEpisode && anyWatched ? "resume" : caughtUp ? "again" : "play"
     // "Continue episode 8", "Play episode 1", "Watch again from episode 1", "Play" for a lone film
     readonly property string playText: {
-        if (waitingOnDownload) return words.t("series-play-downloading", { number: downloadingNow[0].number })
-        if (!playEpisode || (isMovie && episodes.length === 1))
+        if (waitingOnDownload) {
+            var downloading = words.episodeNumber(downloadingNow[0].number)
+            return downloading === null ? words.t("series-play-downloading-unnumbered")
+                                        : words.t("series-play-downloading", { number: downloading })
+        }
+        var number = playEpisode ? words.episodeNumber(playEpisode.number) : null
+        if (number === null || (isMovie && episodes.length === 1))
             return words.t(({ resume: "series-play-continue", again: "series-play-again", play: "action-play" })[playVerb])
-        return words.t(({ resume: "series-play-continue-episode", again: "series-play-again-from", play: "series-play-episode" })[playVerb], { number: playEpisode.number })
+        return words.t(({ resume: "series-play-continue-episode", again: "series-play-again-from", play: "series-play-episode" })[playVerb], { number: number })
     }
     readonly property string progressText: {
         if (!detail) return ""
@@ -437,16 +435,16 @@ Item {
         var f = [formatLabel(card.format)]
         if (detail.year) f.push(String(detail.year))
         if (detail.studio) f.push(detail.studio)
-        if (film && detail.episode_minutes) f.push(Fmt.runtime(detail.episode_minutes))
+        if (film && detail.episode_minutes) f.push(words.runtime(detail.episode_minutes))
         if (!isMovie && card.total_episodes) f.push(words.t(card.total_is_estimate ? "series-facts-episodes-estimate" : "count-episodes", { count: card.total_episodes }))
-        if (!film && detail.episode_minutes) f.push(words.t("series-facts-each", { runtime: Fmt.runtime(detail.episode_minutes) }))
+        if (!film && detail.episode_minutes) f.push(words.t("series-facts-each", { runtime: words.runtime(detail.episode_minutes) }))
         if (!isMovie) f.push(words.t("series-facts-on-disk", { count: detail.progress.on_disk }))
         if (card.status) f.push(status(card.status))
         return f.join("  ")
     }
     readonly property string episodesFact: {
         if (!detail) return ""
-        if (nextEpisode) return words.t("series-next", { episode: Fmt.episodeName("", nextEpisode.number) })
+        if (nextEpisode) return words.t("series-next", { episode: words.episodeName("", nextEpisode.number) })
         if (downloadingNow.length > 0) return words.t("series-episodes-downloading", { count: downloadingNow.length })
         if (caughtUp) return words.t("series-all-watched")
         return ""
@@ -815,11 +813,11 @@ Item {
                         text: {
                             var next = card.next_airing
                             if (!next) return ""
-                            var span = Fmt.episodeSpan(next.episode, next.through || 0)
+                            var span = words.episodeSpan(next.episode, next.through || 0)
                             if (next.season && next.season !== 1) span = words.t("series-next-season-span", { season: next.season, span: span })
                             if (next.predicted)
-                                return words.t("series-next-predicted", { span: span, date: Qt.formatDate(new Date(next.at * 1000), words.t("series-next-date-format")), wait: Fmt.countdown(next.at - page.nowMs / 1000) })
-                            return words.t("series-next-airs", { span: span, count: next.through ? 2 : 1, wait: Fmt.countdownSeconds(next.at - page.nowMs / 1000) })
+                                return words.t("series-next-predicted", { span: span, date: Qt.formatDate(new Date(next.at * 1000), words.t("series-next-date-format")), wait: words.countdown(next.at - page.nowMs / 1000) })
+                            return words.t("series-next-airs", { span: span, count: next.through ? 2 : 1, wait: words.countdownSeconds(next.at - page.nowMs / 1000) })
                         }
                         role: "ledger"
                         font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
@@ -1152,7 +1150,7 @@ Item {
                             EpisodeRow {
                                 required property var modelData
                                 episode: modelData; extra: true
-                                title: Fmt.episodeName(modelData.title || "", modelData.number)
+                                title: words.episodeName(modelData.title || "", modelData.number)
                                 detailText: Fmt.baseName(modelData.path)
                                 onPlay: page.openFile(modelData.file)
                                 picking: page.deleting

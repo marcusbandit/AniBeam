@@ -337,7 +337,7 @@ Item {
                     id: leftText
                     visible: text !== ""
                     text: line.broken ? words.t("activity-column-files-missing") : root.stopped(line.t) && !line.done ? "" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), words.t("activity-column-time-format"))
-                        : line.t.eta > 0 && line.t.eta < 8640000 ? words.t("activity-column-left", { time: Fmt.countdown(line.t.eta) }) : line.t.dlspeed > 0 ? Fmt.bytes(line.t.dlspeed) + "/s" : words.t("activity-column-waiting-peers")
+                        : line.t.eta > 0 && line.t.eta < 8640000 ? words.t("activity-column-left", { time: words.countdown(line.t.eta) }) : line.t.dlspeed > 0 ? Fmt.bytes(line.t.dlspeed) + "/s" : words.t("activity-column-waiting-peers")
                     role: line.broken ? "ui" : "figure"
                     font.pointSize: theme.typeSmall * 0.95
                     color: line.broken ? theme.red : theme.textDim

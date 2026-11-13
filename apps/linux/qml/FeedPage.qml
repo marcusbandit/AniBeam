@@ -30,8 +30,8 @@ Item {
 
     function reasonText(reason) {
         var kind = reason ? Object.keys(reason)[0] : "None"
-        if (kind === "Aired") return words.t("feed-aired", { episode: Fmt.episodeName("", reason.Aired.episode), when: Fmt.relative(reason.Aired.at, nowMs / 1000) })
-        if (kind === "Downloaded") return words.t("feed-downloaded", { when: Fmt.relative(reason.Downloaded.at, nowMs / 1000) })
+        if (kind === "Aired") return words.t("feed-aired", { episode: words.episodeName("", reason.Aired.episode), when: words.relative(reason.Aired.at, nowMs / 1000) })
+        if (kind === "Downloaded") return words.t("feed-downloaded", { when: words.relative(reason.Downloaded.at, nowMs / 1000) })
         return ""
     }
     function reasonAt(reason) {
@@ -72,7 +72,7 @@ Item {
             var earlier = tail.filter(function(e) { return !(e.at > 0 && now - e.at <= week) })
             if (fresh.length) out.push({ name: "this-week", title: words.t("feed-section-this-week"), cards: fresh, accent: true, fact: words.t("feed-new-episodes", { count: fresh.length }) })
             if (earlier.length) out.push({ name: "earlier", title: words.t("feed-section-earlier"), cards: earlier, accent: false,
-                                           fact: earlier[0].at > 0 ? words.t("feed-latest-out", { when: Fmt.relative(earlier[0].at, now) }) : "" })
+                                           fact: earlier[0].at > 0 ? words.t("feed-latest-out", { when: words.relative(earlier[0].at, now) }) : "" })
             return out
         }
         // The head line already names the next one; the section counts this week's
@@ -82,7 +82,7 @@ Item {
                                     fact: thisWeek > 0 ? words.t("feed-this-week-count", { count: thisWeek }) : "" })
         if (tail.length) out.push({ name: "everything-else", title: words.t("feed-section-everything-else"), cards: tail, accent: false,
                                     fact: recent > 0 ? words.t("feed-out-this-week", { count: recent })
-                                        : tail[0].at > 0 ? words.t("feed-latest-out", { when: Fmt.relative(tail[0].at, now) }) : "" })
+                                        : tail[0].at > 0 ? words.t("feed-latest-out", { when: words.relative(tail[0].at, now) }) : "" })
         return out
     }
 

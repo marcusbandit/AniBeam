@@ -100,7 +100,7 @@ SettingsTab {
             helper: words.t("settings-library-no-folders-helper")
         }
         SettingRow {
-            label: tab.sources.length ? (tab.lastScan ? words.t("settings-library-scanned", { when: Fmt.relative(tab.lastScan.at, Date.now() / 1000) }) : words.t("settings-library-not-scanned")) : words.t("settings-library-add-a-folder")
+            label: tab.sources.length ? (tab.lastScan ? words.t("settings-library-scanned", { when: words.relative(tab.lastScan.at, Date.now() / 1000) }) : words.t("settings-library-not-scanned")) : words.t("settings-library-add-a-folder")
             line: tab.sources.length && tab.lastScan ? tab.scanLine : ""
             Row {
                 spacing: theme.space(2)

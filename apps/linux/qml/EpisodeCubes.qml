@@ -270,7 +270,7 @@ Item {
     // handler below, not by a binding, so a warm handover never shows the cube before's
     function tipTextOf(i) {
         if (i < 0 || count > tipLimit || fold !== 1) return ""
-        return tipFor ? tipFor(i, cells[i] || "g") : words.t("episode-cubes-tip", { number: first + i, state: theme.cubeState(cells[i] || "g").label.toLowerCase() })
+        return tipFor ? tipFor(i, cells[i] || "g") : words.t("episode-cubes-tip", { number: first + i, state: words.t(theme.cubeState(cells[i] || "g").id + ".inline") })
     }
     Item {
         id: probe

@@ -85,15 +85,11 @@ Item {
     readonly property real posterW: theme.space(30)
 
     function lengthOf(x) {
-        if (x.format === "MOVIE" && x.duration) return Fmt.runtime(x.duration)
+        if (x.format === "MOVIE" && x.duration) return words.runtime(x.duration)
         if (x.episodes) return words.t("count-episodes", { count: x.episodes })
         return ""
     }
-    function formatOf(f) {
-        var id = ({ TV: "recommended-hover-format-tv", TV_SHORT: "recommended-hover-format-tv-short", MOVIE: "recommended-hover-format-movie", SPECIAL: "recommended-hover-format-special",
-                  OVA: "recommended-hover-format-ova", ONA: "recommended-hover-format-ona", MUSIC: "recommended-hover-format-music" })[f]
-        return id ? words.t(id) : ""
-    }
+    function formatOf(f) { return words.formatLabel(f) }
     readonly property string facts: {
         var f = []
         if (r.average_score !== null && r.average_score !== undefined) f.push(words.t("recommended-hover-anilist-score", { score: (r.average_score / 10).toFixed(1) }))

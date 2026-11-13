@@ -284,7 +284,7 @@ SettingsTab {
                 QC.ScrollBar.vertical: ThinScrollBar {}
             }
             Button { msg: "settings-developer-copy-events"; icon: "copy"; small: true
-                onClicked: frame.copyText(tab.shownEvents.map(function(e) { return (e.at / 1000).toFixed(3) + " " + e.level + " " + e.stage + " " + e.kind + " " + e.bytes + "B " + e.message }).join("\n")) }
+                onClicked: frame.copyText(tab.shownEvents.map(function(e) { return (e.at / 1000).toFixed(3) + " " + e.level + " " + e.stage + " " + e.kind + " " + e.bytes + "B " + e.message }).join("\n")) } // i18n: none
         }
     }
 }

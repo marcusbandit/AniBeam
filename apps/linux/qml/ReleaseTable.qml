@@ -257,7 +257,7 @@ Item {
                         width: root.wDate
                         readonly property var at: root.published(row.i)
                         opacity: rowHover.hovered ? 0 : 1
-                        text: at ? Fmt.relative(at, root.nowMs / 1000) : (root.datesState === "loading" ? "..." : "")
+                        text: at ? words.relative(at, root.nowMs / 1000) : (root.datesState === "loading" ? "..." : "")
                         ink: at ? theme.textDim : theme.textFaint
                         Tooltip { visible: !!parent.at; text: parent.at ? new Date(parent.at * 1000).toLocaleString(Qt.locale(), words.t("release-table-date-format")) : "" }
                     }

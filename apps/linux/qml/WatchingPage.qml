@@ -103,7 +103,7 @@ Item {
             var airs = item.next_airing && item.next_airing.at > now
             // The airing countdown says more than "updated 3d ago" when one runs
             var x = { id: item.id, item: item, raw: e, ghost: !owned(e),
-                      meta: airs ? "" : (e.updated_at ? words.t("watching-anilist-updated", { when: Fmt.relative(e.updated_at, nowMs / 1000) }) : "") }
+                      meta: airs ? "" : (e.updated_at ? words.t("watching-anilist-updated", { when: words.relative(e.updated_at, nowMs / 1000) }) : "") }
             if (!owned(e)) ghosts.push(x)
             else if (airs) airing.push(x)
             else if (e.total && e.progress >= e.total) done.push(x)

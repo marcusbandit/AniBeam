@@ -595,7 +595,7 @@ Item {
                             if (!s) return out
                             if (s.format) out.push(s.format)
                             if (s.year) out.push(String(s.year))
-                            if (s.airing) out.push(s.nextAiring ? words.t("get-show-next-in", { number: s.nextAiring.episode, wait: Fmt.countdown(s.nextAiring.at - root.nowMs / 1000) }) : words.t("get-show-airing"))
+                            if (s.airing) out.push(s.nextAiring ? words.t("get-show-next-in", { number: s.nextAiring.episode, wait: words.countdown(s.nextAiring.at - root.nowMs / 1000) }) : words.t("get-show-airing"))
                             else if (s.status === "Finished") out.push(words.t("get-show-finished"))
                             if (s.total > 0) out.push(words.t("get-show-total-episodes", { count: s.total }))
                             return out
@@ -1149,7 +1149,7 @@ Item {
                                 var t = card.t, bits = []
                                 bits.push(words.t("get-show-bytes-of", { done: Fmt.bytes(Math.round((t.size || 0) * (t.progress || 0))), size: Fmt.bytes(t.size || 0) }))
                                 if ((t.dlspeed || 0) > 0) bits.push(words.t("get-show-speed-down", { speed: Fmt.bytes(t.dlspeed) }))
-                                if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(words.t("get-show-time-left", { wait: Fmt.countdown(t.eta) }))
+                                if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(words.t("get-show-time-left", { wait: words.countdown(t.eta) }))
                                 return bits.join(", ")
                             }
                             role: "figure"; font.pointSize: theme.typeLarge; color: theme.textDim

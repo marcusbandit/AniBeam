@@ -39,19 +39,19 @@ Item {
     // is the legend's order. The hues are the theme's own, so every theme keeps a palette
     // that holds together: green and cyan sit side by side because both mean watched.
     readonly property var cubeStates: ({
-        w: { label: words.t("tokens-cube-watched-tracked"), fill: green, edge: "transparent", order: 0 },
-        l: { label: words.t("tokens-cube-watched-here"), fill: cyan, edge: "transparent", order: 1 },
-        d: { label: words.t("tokens-cube-on-disk"), fill: dark ? "#ffffff" : text, edge: "transparent", order: 2 },
-        t: { label: words.t("tokens-cube-downloading"), fill: purple, edge: "transparent", order: 3 },
-        m: { label: words.t("tokens-cube-missing"), fill: yellow, edge: "transparent", order: 4 },
-        e: { label: words.t("tokens-cube-error"), fill: red, edge: "transparent", order: 5 },
-        g: { label: words.t("tokens-cube-not-downloaded"), fill: glassOf(dark ? 0.16 : 0.18), edge: "transparent", order: 6 },
-        f: { label: words.t("tokens-cube-not-aired"), fill: "transparent", edge: glassOf(dark ? 0.2 : 0.28), order: 7 },
+        w: { id: "tokens-cube-watched-tracked", label: words.t("tokens-cube-watched-tracked"), fill: green, edge: "transparent", order: 0 },
+        l: { id: "tokens-cube-watched-here", label: words.t("tokens-cube-watched-here"), fill: cyan, edge: "transparent", order: 1 },
+        d: { id: "tokens-cube-on-disk", label: words.t("tokens-cube-on-disk"), fill: dark ? "#ffffff" : text, edge: "transparent", order: 2 },
+        t: { id: "tokens-cube-downloading", label: words.t("tokens-cube-downloading"), fill: purple, edge: "transparent", order: 3 },
+        m: { id: "tokens-cube-missing", label: words.t("tokens-cube-missing"), fill: yellow, edge: "transparent", order: 4 },
+        e: { id: "tokens-cube-error", label: words.t("tokens-cube-error"), fill: red, edge: "transparent", order: 5 },
+        g: { id: "tokens-cube-not-downloaded", label: words.t("tokens-cube-not-downloaded"), fill: glassOf(dark ? 0.16 : 0.18), edge: "transparent", order: 6 },
+        f: { id: "tokens-cube-not-aired", label: words.t("tokens-cube-not-aired"), fill: "transparent", edge: glassOf(dark ? 0.2 : 0.28), order: 7 },
         // Downloads-only marks on a provider's row: a release there, and one picked
-        a: { label: words.t("tokens-cube-available"), fill: glassOf(dark ? 0.1 : 0.12), edge: glassOf(dark ? 0.32 : 0.4), order: 8 },
-        p: { label: words.t("tokens-cube-picked"), fill: blue, edge: "transparent", order: 9 },
-        o: { label: words.t("tokens-cube-already-on-disk"), fill: glassOf(dark ? 0.05 : 0.07), edge: "transparent", order: 10 },
-        n: { label: words.t("tokens-cube-no-release"), fill: "transparent", edge: "transparent", order: 11 }
+        a: { id: "tokens-cube-available", label: words.t("tokens-cube-available"), fill: glassOf(dark ? 0.1 : 0.12), edge: glassOf(dark ? 0.32 : 0.4), order: 8 },
+        p: { id: "tokens-cube-picked", label: words.t("tokens-cube-picked"), fill: blue, edge: "transparent", order: 9 },
+        o: { id: "tokens-cube-already-on-disk", label: words.t("tokens-cube-already-on-disk"), fill: glassOf(dark ? 0.05 : 0.07), edge: "transparent", order: 10 },
+        n: { id: "tokens-cube-no-release", label: words.t("tokens-cube-no-release"), fill: "transparent", edge: "transparent", order: 11 }
     })
     function cubeState(code) { return cubeStates[code] || cubeStates.g }
     // A fraction as a row of step cubes, for progress that is not episodes (bytes, a job):

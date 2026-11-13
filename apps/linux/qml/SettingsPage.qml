@@ -143,7 +143,8 @@ FocusScope {
 
     // ---- The search: every row and group, by its name and the words a person might type
     // for it. `label` is the row's own label (or the group's title), so reveal finds it.
-    readonly property var searchIndex: [
+    // Built only when a query is typed: it is some 140 catalog lookups nobody else reads.
+    function searchIndex() { return [
         ["library", words.t("settings-library-folders"), words.t("settings-find-folders.words")],
         ["library", words.t("settings-library-matching"), words.t("settings-find-matching.words")],
         ["library", words.t("settings-library-show-hidden"), words.t("settings-find-hidden-shows.words")],
@@ -211,14 +212,14 @@ FocusScope {
         ["about", words.t("settings-about-updates"), words.t("settings-find-updates.words")],
         ["about", words.t("settings-about-developer"), words.t("settings-find-developer-options.words"), "", "unforced"],
         ["about", words.t("settings-about-ratings"), words.t("settings-find-ratings.words")]
-    ]
+    ] }
     property string query: ""
     readonly property var results: {
         var q = query.trim().toLowerCase()
         if (q === "") return []
         var terms = q.split(/\s+/)
         var out = []
-        searchIndex.forEach(function(e) {
+        searchIndex().forEach(function(e) {
             if (sectionIndex(e[0]) < 0) return
             // The switch ANIBEAM_DEV=1 hides
             if (e[4] === "unforced" && Dev.forced) return

@@ -16,7 +16,7 @@ QtObject {
     property var remembered: ({})
     readonly property bool canBack: trail.length > 0 || current.page !== "home"
     readonly property bool canForward: ahead.length > 0
-    property var current: ({ page: "home", props: {}, label: words.t("nav-home") })
+    property var current: entry("home", {}, "")
     property real pendingScroll: -1
     signal changed()
 
@@ -34,24 +34,16 @@ QtObject {
 
     function key(e) { return e.page + ":" + JSON.stringify(e.props || {}) }
     function labelOf(page, label) { return label || words.t(labels[page] || "action-back") }
-    // A page's own label (a series title) is kept as it came; a name from the catalog is
-    // looked up again when the language changes, across the trail and Forward too. `named`
-    // holds the names in the language the entries were made in, to tell the two apart.
-    property var named: ({})
-    Component.onCompleted: named = names()
-    function names() {
-        var m = { "": words.t("action-back") }
-        for (var page in labels) m[page] = words.t(labels[page])
-        return m
+    // An entry: `own` says the label came with it (a series title) and is kept as it came;
+    // without it the label is the page's name from the catalog, looked up again when the
+    // language changes, across the trail and Forward too.
+    function entry(page, props, label, scrollY) {
+        return { page: page, props: props || {}, label: labelOf(page, label), own: !!label, scrollY: scrollY || 0 }
     }
+    function keep(e, scrollY) { return entry(e.page, e.props, e.own ? e.label : "", scrollY) }
     readonly property string lang: words.lang
     onLangChanged: {
-        var was = named
-        function again(e) {
-            var own = e.label !== (was[e.page] !== undefined ? was[e.page] : was[""])
-            return own ? e : Object.assign({}, e, { label: labelOf(e.page, "") })
-        }
-        named = names()
+        function again(e) { return e.own ? e : Object.assign({}, e, { label: labelOf(e.page, "") }) }
         trail = trail.map(again)
         ahead = ahead.map(again)
         current = again(current)
@@ -73,27 +65,27 @@ QtObject {
     function open(page, props, label, leavingScroll) {
         remember(leavingScroll)
         ahead = []
-        var here = { page: current.page, props: current.props, label: current.label, scrollY: leavingScroll || 0 }
+        var here = keep(current, leavingScroll)
         var t = trail.filter(function(e) { return key(e) !== key(here) })
         t.push(here)
         trail = t.slice(-12)
-        current = { page: page, props: props || {}, label: labelOf(page, label) }
+        current = entry(page, props, label)
         pendingScroll = 0
         changed()
     }
     // Sideways: the trail stays, so Back leaves the level rather than the episode.
     function replace(page, props, label) {
-        current = { page: page, props: props || {}, label: labelOf(page, label) }
+        current = entry(page, props, label)
         pendingScroll = 0
         changed()
     }
     function back(leavingScroll) {
         remember(leavingScroll)
-        var here = { page: current.page, props: current.props, label: current.label, scrollY: leavingScroll || 0 }
+        var here = keep(current, leavingScroll)
         if (!trail.length) {
             if (current.page === "home") return
             ahead = ahead.concat([here])
-            current = { page: "home", props: {}, label: words.t("nav-home") }
+            current = entry("home", {}, "")
             pendingScroll = 0
             changed()
             return
@@ -102,7 +94,7 @@ QtObject {
         var target = t.pop()
         trail = t
         ahead = ahead.concat([here]).slice(-12)
-        current = { page: target.page, props: target.props, label: target.label }
+        current = keep(target)
         pendingScroll = target.scrollY || 0
         changed()
     }
@@ -111,12 +103,12 @@ QtObject {
         remember(leavingScroll)
         var a = ahead.slice()
         var target = a.pop()
-        trail = trail.concat([{ page: current.page, props: current.props, label: current.label, scrollY: leavingScroll || 0 }]).slice(-12)
+        trail = trail.concat([keep(current, leavingScroll)]).slice(-12)
         ahead = a
-        current = { page: target.page, props: target.props, label: target.label }
+        current = keep(target)
         pendingScroll = target.scrollY || 0
         changed()
     }
     // A page changed its own label (a series title arrived)
-    function relabel(label) { current = { page: current.page, props: current.props, label: label } }
+    function relabel(label) { current = entry(current.page, current.props, label) }
 }

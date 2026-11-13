@@ -345,8 +345,10 @@ home-hero-downloading = Downloading { $count ->
 }
 home-hero-min-left = { $count } min left
 home-hero-watched = { $watched } of { $total } watched
-home-hero-resume = Resume { $episode }
-home-hero-play = Play { $episode }
+home-hero-resume = Resume episode { $number }
+home-hero-play = Play episode { $number }
+home-hero-resume-unnumbered = Resume episode
+home-hero-play-unnumbered = Play episode
 home-downloaded = Recently downloaded
 home-downloaded-fact = { $count } series with new files this fortnight
 home-week = This week
@@ -574,13 +576,6 @@ match-found-mal = Found it on MyAnimeList
 # The sites a series is matched on, two at a time: "AniList and MyAnimeList"
 match-sites-and = { $first } and { $next }
 match-matched-on = Matched on { $sites }
-match-format-tv = TV
-match-format-tv-short = TV short
-match-format-ova = OVA
-match-format-ona = ONA
-match-format-special = Special
-match-format-film = Film
-match-format-music = Music
 match-provider-silent = { $provider } did not answer
 # The heading in a walk through several series, with "2 of 5"
 match-title-walk = Match, { $walk }
@@ -1043,6 +1038,7 @@ episode-cubes-range =
         [one] { $count } episode, { $first } to { $last }
        *[other] { $count } episodes, { $first } to { $last }
     }
+# $state is a cube state as it reads mid-sentence, the .inline form of a tokens-cube-* message.
 episode-cubes-tip = Episode { $number }: { $state }
 
 ## EpisodesPane.qml
@@ -1061,7 +1057,6 @@ episodes-pane-on-disk = On disk
 episodes-pane-not-on-disk = Not on disk
 episodes-pane-season = S{ $season }
 episodes-pane-get-tip = Get episode { $number }
-episodes-pane-downloads = Downloads
 episodes-pane-none-on-disk = No episodes on disk
 episodes-pane-change-match = Change match
 episodes-pane-refreshing = Refreshing { $title }
@@ -1247,43 +1242,19 @@ series-delete-where = They go to the trash, where you can get them back. What yo
 series-delete-move = Move to the trash
 series-pick-none = Pick none
 series-pick-all = Pick all
-series-downloads = Downloads
 series-rescan-started = Rescan started
 series-rated = Rated { $score }
 series-rated-cleared = Rated cleared
 series-score-failed = Score failed
 series-still-downloading = { $episode } is still downloading
-series-status-airing = Airing
-series-status-finished = Finished
-series-status-upcoming = Upcoming
-series-status-cancelled = Cancelled
-series-status-hiatus = On hiatus
-series-format-film = Film
 series-format-series = Series
-series-format-tv = TV
-series-format-tv-short = TV short
-series-format-ova = OVA
-series-format-ona = ONA
-series-format-special = Special
-series-relation-adaptation = Adaptation
-series-relation-prequel = Prequel
-series-relation-sequel = Sequel
-series-relation-parent = Parent
-series-relation-side-story = Side story
-series-relation-character = Character
-series-relation-summary = Summary
-series-relation-alternative = Alternative
-series-relation-spin-off = Spin off
-series-relation-other = Other
-series-relation-source = Source
-series-relation-compilation = Compilation
-series-relation-contains = Contains
 series-tracker-refused = { $tracker } did not take it
 series-tracker-refused-why = { $tracker } did not take it: { $why }
 series-watched-up-to = Watched up to { $episode }
 series-unwatched-from = Unwatched from { $episode }
 series-undo = Undo
 series-play-downloading = Downloading episode { $number }
+series-play-downloading-unnumbered = Downloading episode
 series-play-continue = Continue
 series-play-again = Watch again
 series-play-continue-episode = Continue episode { $number }
@@ -2321,35 +2292,12 @@ schedule-clear-date = Clear date
 
 show-title = Show
 # AniList's formats
-show-format-tv = TV
-show-format-tv-short = TV short
-show-format-film = Film
-show-format-special = Special
-show-format-ova = OVA
-show-format-ona = ONA
-show-format-music = Music
 # AniList's airing states
-show-status-finished = Finished
-show-status-airing = Airing
-show-status-not-yet-aired = Not yet aired
-show-status-cancelled = Cancelled
-show-status-hiatus = On hiatus
 # $runtime is a length such as "24 min"
 show-runtime-each = { $runtime } each
 show-add-to-list = Add to list
 show-moving-to = Moving to { $list }
 show-moved-to = Moved to { $list }
-show-downloads-title = Downloads
-show-relation-prequel = Prequel
-show-relation-sequel = Sequel
-show-relation-parent = Parent story
-show-relation-side-story = Side story
-show-relation-spin-off = Spin-off
-show-relation-alternative = Alternative
-show-relation-summary = Summary
-show-relation-compilation = Compilation
-show-relation-source = Source
-show-relation-adaptation = Adaptation
 show-relation-related = Related
 show-no-poster = No poster
 show-reading-anilist = Reading AniList
@@ -3547,13 +3495,6 @@ search-field-clear = Clear the search
 
 ## RecommendedHover
 
-recommended-hover-format-tv = TV
-recommended-hover-format-tv-short = TV short
-recommended-hover-format-movie = Film
-recommended-hover-format-special = Special
-recommended-hover-format-ova = OVA
-recommended-hover-format-ona = ONA
-recommended-hover-format-music = Music
 recommended-hover-anilist-score = AniList { $score }
 recommended-hover-forecast = { $percent }%
 recommended-hover-hidden-tags =
@@ -3597,17 +3538,29 @@ inline-confirm-keep = Keep
 ## Tokens
 
 tokens-cube-watched-tracked = Watched, tracked online
+    .inline = watched, tracked online
 tokens-cube-watched-here = Watched here, not tracked yet
+    .inline = watched here, not tracked yet
 tokens-cube-on-disk = On disk
+    .inline = on disk
 tokens-cube-downloading = Downloading
+    .inline = downloading
 tokens-cube-missing = Missing
+    .inline = missing
 tokens-cube-error = Error
+    .inline = error
 tokens-cube-not-downloaded = Not downloaded
+    .inline = not downloaded
 tokens-cube-not-aired = Not aired yet
+    .inline = not aired yet
 tokens-cube-available = Available
+    .inline = available
 tokens-cube-picked = Picked to get
+    .inline = picked to get
 tokens-cube-already-on-disk = Already on disk
+    .inline = already on disk
 tokens-cube-no-release = No release
+    .inline = no release
 
 ## Card
 

@@ -86,7 +86,7 @@ FocusScope {
     // helper, else (an extra or an unmatched file, which have no number) the file's name.
     readonly property string episodeLine: !session ? ""
         : session.episode_title ? session.episode_title
-        : !session.is_extra && episodeNumber >= 0 ? Fmt.episodeName("", episodeNumber)
+        : !session.is_extra && episodeNumber >= 0 ? words.episodeName("", episodeNumber)
         : Fmt.baseName(session.path)
     readonly property bool canMark: trackerKnown && !!session && !session.is_extra && episodeNumber >= 0
     function readSeries() {
@@ -105,7 +105,7 @@ FocusScope {
     property var nextEpisode: null
     readonly property string nextLine: {
         if (!nextEpisode) return words.t("player-next")
-        var name = Fmt.episodeName("", nextEpisode.number)
+        var name = words.episodeName("", nextEpisode.number)
         return frame.prefs.nextNamesEpisode && nextEpisode.title ? name + " \u00b7 " + nextEpisode.title : name
     }
     Component.onDestruction: {

@@ -655,7 +655,7 @@ Item {
                 text: {
                     var d = nextTile.drop
                     if (!d) return ""
-                    var args = { season: d.season, span: Fmt.episodeSpan(d.episode, d.through || 0),
+                    var args = { season: d.season, span: words.episodeSpan(d.episode, d.through || 0),
                                  time: Qt.formatDateTime(new Date(d.at * 1000), words.t("home-next-time-format")) }
                     var seasoned = d.season && d.season !== 1
                     return d.predicted ? words.t(seasoned ? "home-next-when-season-estimated" : "home-next-when-estimated", args)
@@ -770,8 +770,8 @@ Item {
                 Label {
                     width: Math.min(implicitWidth, parent.width - (waits.visible ? waits.implicitWidth + parent.spacing : 0))
                     elide: Text.ElideRight
-                    text: !tile.drop ? "" : tile.drop.season && tile.drop.season !== 1 ? words.t("home-tile-season-span", { season: tile.drop.season, span: Fmt.episodeSpan(tile.drop.episode, tile.drop.through || 0) })
-                        : Fmt.episodeSpan(tile.drop.episode, tile.drop.through || 0)
+                    text: !tile.drop ? "" : tile.drop.season && tile.drop.season !== 1 ? words.t("home-tile-season-span", { season: tile.drop.season, span: words.episodeSpan(tile.drop.episode, tile.drop.through || 0) })
+                        : words.episodeSpan(tile.drop.episode, tile.drop.through || 0)
                     visible: text !== ""
                     role: "ledger"
                     color: theme.textDim
@@ -910,7 +910,7 @@ Item {
                     objectName: "card-" + modelData.id   // a --drive target
                     item: modelData
                     metaOverride: !shelfBox.airing ? ""
-                        : modelData.aired_at !== undefined ? words.t("home-card-aired", { episode: Fmt.episodeName("", modelData.aired_episode), ago: page.ago(modelData.aired_at) })
+                        : modelData.aired_at !== undefined ? words.t("home-card-aired", { episode: words.episodeName("", modelData.aired_episode), ago: page.ago(modelData.aired_at) })
                         : (modelData.meta || "")
                     posterWidth: shelfBox.cardWidth
                     nowMs: page.nowMs
@@ -1134,7 +1134,7 @@ Item {
                 }
                 Label {
                     width: parent.width
-                    text: hero.ep ? Fmt.episodeName(hero.ep.title || "", hero.ep.number) : ""
+                    text: hero.ep ? words.episodeName(hero.ep.title || "", hero.ep.number) : ""
                     role: "ui"
                     color: hero.ink
                     elide: Text.ElideRight
@@ -1188,7 +1188,9 @@ Item {
                         primary: true
                         tint: hero.inkAccent
                         icon: "play"
-                        text: hero.ep ? words.t(hero.r.partial ? "home-hero-resume" : "home-hero-play", { episode: Fmt.episodeName("", hero.ep.number).toLowerCase() }) : ""
+                        text: !hero.ep ? "" : words.episodeNumber(hero.ep.number) === null
+                              ? words.t(hero.r.partial ? "home-hero-resume-unnumbered" : "home-hero-play-unnumbered")
+                              : words.t(hero.r.partial ? "home-hero-resume" : "home-hero-play", { number: words.episodeNumber(hero.ep.number) })
                         onClicked: if (hero.ep) page.playFile(hero.ep.file, hero.c.title)
                     }
                     Button {

@@ -1089,7 +1089,7 @@ Item {
         var total = s.total_episodes && !s.total_is_estimate ? s.total_episodes : 0, have = s.episodes_on_disk || 0
         if (s.complete) return words.t("downloads-rule-all-here", { total: total })
         if (s.next_airing && s.next_airing.at * 1000 > page.nowMs) {
-            var next = { episode: s.next_airing.episode, through: s.next_airing.through, predicted: s.next_airing.predicted ? "yes" : "no", time: Fmt.countdown(s.next_airing.at - page.nowMs / 1000) }
+            var next = { episode: s.next_airing.episode, through: s.next_airing.through, predicted: s.next_airing.predicted ? "yes" : "no", time: words.countdown(s.next_airing.at - page.nowMs / 1000) }
             return s.next_airing.through ? words.t("downloads-rule-next-span", next) : words.t("downloads-rule-next", next)
         }
         if (total > 0) return words.t("downloads-rule-have-of", { have: have, total: total })
@@ -1120,7 +1120,7 @@ Item {
         if (page.groupState(g) === "downloading") {
             var parts = [Math.round(100 * g.have / Math.max(1, g.size)) + "%"]
             if (g.dlspeed > 0) parts.push(words.t("downloads-speed-down", { speed: Fmt.bytes(g.dlspeed) }))
-            if (g.eta > 0) parts.push(words.t("downloads-time-left", { time: Fmt.countdown(g.eta) }))
+            if (g.eta > 0) parts.push(words.t("downloads-time-left", { time: words.countdown(g.eta) }))
             return parts.join(", ")
         }
         return words.t("downloads-torrents", { count: g.torrents.length }) + ", " + Fmt.bytes(g.size)
@@ -1973,7 +1973,7 @@ Item {
                                         var parts = []
                                         var na = srow.c.next_airing
                                         if (na) {
-                                            var next = { episode: na.episode, through: na.through || 0, predicted: na.predicted ? "yes" : "no", time: Fmt.countdown(na.at - page.nowMs / 1000) }
+                                            var next = { episode: na.episode, through: na.through || 0, predicted: na.predicted ? "yes" : "no", time: words.countdown(na.at - page.nowMs / 1000) }
                                             parts.push((na.through || 0) > na.episode ? words.t("downloads-suggest-airing-span", next) : words.t("downloads-suggest-airing", next))
                                         }
                                         else if (srow.c.status === "Finished") parts.push(words.t("downloads-suggest-finished"))
@@ -2244,7 +2244,7 @@ Item {
                             var disk = total ? words.t("downloads-strip-have-of", { have: s.episodes_on_disk, total: total }) : words.t("downloads-strip-have", { count: s.episodes_on_disk })
                             var na = s.next_airing, more = ""
                             if (na && na.at * 1000 > page.nowMs) {
-                                var next = { episode: na.episode, through: na.through || 0, predicted: na.predicted ? "yes" : "no", time: Fmt.countdown(na.at - page.nowMs / 1000) }
+                                var next = { episode: na.episode, through: na.through || 0, predicted: na.predicted ? "yes" : "no", time: words.countdown(na.at - page.nowMs / 1000) }
                                 more = (na.through || 0) > na.episode ? words.t("downloads-strip-next-span", next) : words.t("downloads-strip-next", next)
                             }
                             else if (s.complete) more = words.t("downloads-strip-complete")
@@ -2669,7 +2669,7 @@ Item {
                         ledger: {
                             var na = modelData.next_airing
                             if (!na) return words.t("downloads-sub-airing")
-                            var next = { episode: na.episode, through: na.through || 0, predicted: na.predicted ? "yes" : "no", time: Fmt.countdown(na.at - page.nowMs / 1000) }
+                            var next = { episode: na.episode, through: na.through || 0, predicted: na.predicted ? "yes" : "no", time: words.countdown(na.at - page.nowMs / 1000) }
                             return (na.through || 0) > na.episode ? words.t("downloads-card-next-span", next) : words.t("downloads-card-next", next)
                         }
                         cubes: modelData.cubes || ""

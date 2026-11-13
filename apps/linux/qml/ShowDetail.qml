@@ -65,9 +65,9 @@ Column {
         if (airing) {
             var next = show.next_airing
             parts.push(words.t(next.predicted ? "show-detail-next-predicted" : "show-detail-next-airs", {
-                span: Fmt.episodeSpan(next.episode, next.through || 0),
+                span: words.episodeSpan(next.episode, next.through || 0),
                 count: next.through ? 2 : 1,
-                wait: Fmt.countdown(next.at - nowMs / 1000)
+                wait: words.countdown(next.at - nowMs / 1000)
             }))
         }
         if (finished && have > 0 && missing.length) {
@@ -422,7 +422,7 @@ Column {
                             width: parent.width
                             text: {
                                 var e = entryRow.modelData, parts = []
-                                if (e.published) parts.push(Fmt.relative(e.published, root.nowMs / 1000))
+                                if (e.published) parts.push(words.relative(e.published, root.nowMs / 1000))
                                 if (e.size) parts.push(e.size)
                                 if (e.seeders !== null && e.seeders !== undefined) parts.push(words.t("show-detail-seeders", { count: e.seeders }))
                                 return parts.join(", ")

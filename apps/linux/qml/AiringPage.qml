@@ -147,9 +147,9 @@ Item {
     // The ledger line: an episode out in the last day says so; else the countdown runs (an
     // empty override); else what kind of show it is
     function metaOf(s) {
-        if (fresh(s)) return words.t("airing-episode-out", { episode: Fmt.episodeName("", s.latest.episode), ago: ago(s.latest.at) })
+        if (fresh(s)) return words.t("airing-episode-out", { episode: words.episodeName("", s.latest.episode), ago: ago(s.latest.at) })
         if (s.next_airing) return ""
-        if (s.latest) return words.t("airing-episode-out", { episode: Fmt.episodeName("", s.latest.episode), ago: ago(s.latest.at) })
+        if (s.latest) return words.t("airing-episode-out", { episode: words.episodeName("", s.latest.episode), ago: ago(s.latest.at) })
         return s.episodes ? words.t("count-episodes", { count: s.episodes }) : words.t("airing-no-date")
     }
     function cardItem(s) {
@@ -667,7 +667,7 @@ Item {
                                     }
                                     Row {
                                         spacing: theme.space(2)
-                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
+                                        Label { text: words.episodeName("", pill.modelData.episode); role: "ledger"; color: Qt.rgba(1, 1, 1, 0.72) }
                                         Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : Qt.rgba(1, 1, 1, 0.55) }
                                     }
                                 }
@@ -722,7 +722,7 @@ Item {
                                     }
                                     Row {
                                         spacing: theme.space(2)
-                                        Label { text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
+                                        Label { text: words.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
                                         Label { text: page.ago(pill.modelData.at); role: "ledger"; color: pill.today ? theme.accent : theme.textFaint }
                                     }
                                 }

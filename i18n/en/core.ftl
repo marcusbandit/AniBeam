@@ -55,3 +55,31 @@ status-rewatching = Rewatching
 ## Episodes
 
 episode-number = Episode { $number }
+
+## AniList's words for a show: its format, its airing status, how two shows relate
+
+anilist-format-tv = TV
+anilist-format-tv-short = TV short
+anilist-format-film = Film
+anilist-format-special = Special
+anilist-format-ova = OVA
+anilist-format-ona = ONA
+anilist-format-music = Music
+anilist-status-finished = Finished
+anilist-status-airing = Airing
+anilist-status-not-yet-aired = Not yet aired
+anilist-status-cancelled = Cancelled
+anilist-status-hiatus = On hiatus
+anilist-relation-adaptation = Adaptation
+anilist-relation-prequel = Prequel
+anilist-relation-sequel = Sequel
+anilist-relation-parent = Parent story
+anilist-relation-side-story = Side story
+anilist-relation-character = Character
+anilist-relation-summary = Summary
+anilist-relation-alternative = Alternative
+anilist-relation-spin-off = Spin-off
+anilist-relation-other = Other
+anilist-relation-source = Source
+anilist-relation-compilation = Compilation
+anilist-relation-contains = Contains

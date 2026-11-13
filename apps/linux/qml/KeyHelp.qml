@@ -23,7 +23,7 @@ Item {
         { name: words.t("key-help-group-playback"), keys: [
             [words.t("key-help-key-space"), words.t("key-help-play-pause")],
             [words.t("key-help-key-left-right"), words.t("key-help-seek-5")],
-            ["J / L", words.t("key-help-seek-10")],
+            ["J / L", words.t("key-help-seek-10")], // i18n: none
             [words.t("key-help-key-ctrl-right"), words.t("key-help-skip")],
             [", / .", words.t("key-help-frame-step")],
             ["[ / ]", words.t("key-help-speed")],
@@ -31,16 +31,16 @@ Item {
             [words.t("key-help-key-up-down"), words.t("key-help-volume")],
             ["M", words.t("key-help-mute")],
             ["C", words.t("key-help-subtitles-toggle")],
-            ["z / Z", words.t("key-help-subtitle-delay")],
-            ["a / A", words.t("key-help-audio-delay")],
+            ["z / Z", words.t("key-help-subtitle-delay")], // i18n: none
+            ["a / A", words.t("key-help-audio-delay")], // i18n: none
             [words.t("key-help-key-hold"), words.t("key-help-hold-speed")],
             ["S", words.t("key-help-screenshot")]
         ] },
         { name: words.t("key-help-group-navigation"), keys: [
-            ["N / P", words.t("key-help-episode")],
+            ["N / P", words.t("key-help-episode")], // i18n: none
             [words.t("key-help-key-page"), words.t("key-help-chapter")],
             [words.t("key-help-key-home-end"), words.t("key-help-start-end")],
-            ["F / F11", words.t("key-help-fullscreen")],
+            ["F / F11", words.t("key-help-fullscreen")], // i18n: none
             [words.t("key-help-key-escape"), words.t("key-help-escape-player")],
             [words.t("key-help-key-alt-left"), words.t("action-back")],
             ["?", words.t("key-help-toggle-list")]

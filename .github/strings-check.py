@@ -101,14 +101,13 @@ def files(globs):
 def is_words(literal, text_line):
     """Whether a literal reads as words for a person rather than a code or a path.
     `text_line` says the line sets a text property, where a single word is words too."""
+    # An escape ("\u00b7") is one character, not letters.
+    literal = re.sub(r"\\(?:u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)", "\u00b7", literal)
     text = literal.strip()
     if not re.search(r"[^\W\d_]", text):
         return False
     words = re.findall(r"[^\W_]+", text)
     if words and all(w in BRANDS for w in words) and not re.search(r"\s", literal.strip()):
-        return False
-    # A lone letter off a text line is a code, such as an SVG path command (" L").
-    if not text_line and not re.search(r"[^\W\d_]{2}", text):
         return False
     # A literal with a space, or an edge space that joins it to a number, is words.
     if re.search(r"\s", literal):
@@ -311,7 +310,9 @@ def main():
     for path in files(CODE):
         rel = path.relative_to(ROOT).as_posix()
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if line.rstrip().endswith("// i18n: none"):
+            # A Rust test may ask for an ID that must not exist; in UI files the marker only
+            # excuses raw strings, and the IDs on its line are still checked.
+            if path.suffix == ".rs" and line.rstrip().endswith("// i18n: none"):
                 continue
             for pattern in ID_USES:
                 for m in pattern.finditer(line):
