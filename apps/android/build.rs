@@ -1,15 +1,16 @@
 fn main() {
     changes();
-    // The manifest owns the version; the app shows the build number from it in Settings.
-    let manifest = std::fs::read_to_string("android/AndroidManifest.xml")
-        .expect("android/AndroidManifest.xml");
-    let code = manifest
-        .split("android:versionCode=\"")
-        .nth(1)
-        .and_then(|rest| rest.split('"').next())
-        .expect("versionCode in the manifest");
-    println!("cargo:rustc-env=ANIBEAM_VERSION_CODE={code}");
-    println!("cargo:rerun-if-changed=android/AndroidManifest.xml");
+    // scripts/build.sh works out the version the APK ships as (2.4.3-nightly.20261113.41 on a
+    // nightly) and its versionCode; the app shows both in More. A plain cargo run, the tests
+    // say, has neither and shows the crate's version.
+    for (key, fallback) in [
+        ("ANIBEAM_PHONE_VERSION", std::env::var("CARGO_PKG_VERSION").unwrap()),
+        ("ANIBEAM_VERSION_CODE", "0".to_string()),
+    ] {
+        println!("cargo:rerun-if-env-changed={key}");
+        let value = std::env::var(key).unwrap_or(fallback);
+        println!("cargo:rustc-env={key}={value}");
+    }
     // The player links libmpv out of vendor/mpv/<abi>, which scripts/fetch-mpv.sh fills.
     // Its ffmpeg libraries load by name from the APK beside it; libavcodec is linked too
     // because the app hands it the Java VM before mpv starts.

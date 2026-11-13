@@ -8,6 +8,7 @@ and every nightly, so the file is current without each visitor asking GitHub's A
     "stable":  {"tag", "version", "published", "url", "assets": {"appimage", "deb", "rpm", "dmg", "setup", "zip"}},
     "nightly": the same, or null when no nightly is newer than the stable release,
     "phone":   {"tag", "version", "published", "url", "assets": {"apk"}},
+    "phone_nightly": the same, or null when no phone nightly is newer than the phone's release,
     "tags":    every published tag, for What's new to link only releases that exist
   }
 
@@ -71,18 +72,27 @@ def main(site):
     # A nightly older than the stable release is behind it, not ahead: there is no nightly then.
     if nightly and stable and nightly["published_at"] <= stable["published_at"]:
         nightly = None
-    phones = [r for r in releases if r["tag_name"].startswith("android-v")]
+    # The phone's releases are android-v2.4.3; the ones made by hand before the Release workflow
+    # shipped the phone (#794) went out as pre-releases, so they count too. Its nightlies are
+    # android-v2.4.3-nightly.*, the same rule as the desktop's.
+    phones = [r for r in releases if re.fullmatch(r"android-v\d+\.\d+\.\d+", r["tag_name"])]
     phone = max(phones, key=lambda r: semver(r["tag_name"]), default=None)
+    phone_nightlies = [r for r in releases if re.match(r"android-v[\d.]+-nightly\.", r["tag_name"])]
+    phone_nightly = max(phone_nightlies, key=lambda r: r["published_at"], default=None)
+    if phone_nightly and phone and phone_nightly["published_at"] <= phone["published_at"]:
+        phone_nightly = None
     desktop = ["appimage", "deb", "rpm", "dmg", "setup", "zip"]
     data = {
         "stable": shape(stable, desktop),
         "nightly": shape(nightly, desktop),
         "phone": shape(phone, ["apk"]),
+        "phone_nightly": shape(phone_nightly, ["apk"]),
         "tags": sorted(r["tag_name"] for r in releases),
     }
     Path(site, "releases.json").write_text(json.dumps(data, indent=1) + "\n")
     print(f"releases: stable {data['stable'] and data['stable']['version']}, "
-          f"nightly {data['nightly'] and data['nightly']['version']}, phone {data['phone'] and data['phone']['version']}")
+          f"nightly {data['nightly'] and data['nightly']['version']}, phone {data['phone'] and data['phone']['version']}, "
+          f"phone nightly {data['phone_nightly'] and data['phone_nightly']['version']}")
 
 
 if __name__ == "__main__":

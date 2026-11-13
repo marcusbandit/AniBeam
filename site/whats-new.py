@@ -266,11 +266,12 @@ lost = """<section class="wn-hero"><h1>Nothing here.</h1></section>
 # hotfix, a version whose notes are empty) links the list instead.
 if RELEASES:
     slugs = {e["slug"] for e in versions}
-    for key, slug in (("stable", lambda v: v), ("nightly", lambda v: None), ("phone", lambda v: f"android-{v}")):
+    for key, slug in (("stable", lambda v: v), ("nightly", lambda v: None), ("phone", lambda v: f"android-{v}"),
+                      ("phone_nightly", lambda v: None)):
         r = RELEASES.get(key)
         if r:
             page_slug = slug(r["version"])
-            r["notes"] = f"whats-new/{page_slug}/" if page_slug in slugs else ("whats-new/#next" if key == "nightly" else "whats-new/")
+            r["notes"] = f"whats-new/{page_slug}/" if page_slug in slugs else ("whats-new/#next" if key.endswith("nightly") else "whats-new/")
     (out / "releases.json").write_text(json.dumps(RELEASES, indent=1) + "\n")
 
 # Every release page goes in the sitemap next to the pages i18n.py listed.

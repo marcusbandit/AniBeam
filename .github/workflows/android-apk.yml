@@ -1,0 +1,96 @@
+name: Android APK
+
+# Builds the phone's APK, for phones and the emulator (arm64-v8a and x86_64 in one file), as the
+# version it ships as, signed with the project's key, and uploads it as the phone-apk artifact.
+# nightly.yml and release.yml call it and put the APK on their release; Run workflow from the
+# Actions tab builds one without a release. The key is the ANIBEAM_ANDROID_KEYSTORE secret, a
+# base64 keystore: every APK has to carry the same key, or Android refuses it as an update to
+# the AniBeam already on a phone. A run without the secret stops instead of signing with a
+# throwaway key.
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+      version:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # scripts/build.sh skips its systemd memory cap; a runner has no user session for one.
+  ANIBEAM_BUILD_SCOPED: '1'
+  # The version the APK ships as, 2.4.3 or 2.4.3-nightly.20261113.41; empty builds Cargo.toml's.
+  ANIBEAM_RELEASE_VERSION: ${{ inputs.version }}
+  # The project's AniList and MAL registrations, so the phone signs in with one tap.
+  ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
+  ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
+  # Only for a key other than a debug keystore's (password android, alias androiddebugkey).
+  ANIBEAM_KEYSTORE_PASS: ${{ secrets.ANIBEAM_KEYSTORE_PASS }}
+  ANIBEAM_KEY_ALIAS: ${{ secrets.ANIBEAM_KEY_ALIAS }}
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.ANIBEAM_ANDROID_KEYSTORE }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            echo "::error::The ANIBEAM_ANDROID_KEYSTORE secret is not set. An APK signed with any other key will not install over the AniBeam already on a phone; see CONTRIBUTING.md, Releases."
+            exit 1
+          fi
+          base64 -d <<<"$KEYSTORE" > "$RUNNER_TEMP/anibeam.keystore"
+          echo "ANIBEAM_KEYSTORE=$RUNNER_TEMP/anibeam.keystore" >> "$GITHUB_ENV"
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install
+          # A runner can hold a partial toolchain without rustc (#674)
+          rustup component add rustc cargo rust-std
+          rustup target add aarch64-linux-android x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/android
+          key: apk
+
+      # vendor/ is about 60 MB of pinned mpv-android libraries; build.sh refetches only when
+      # the pinned tag changes.
+      - uses: actions/cache@v4
+        with:
+          path: apps/android/vendor/mpv
+          key: mpv-${{ hashFiles('apps/android/scripts/fetch-mpv.sh') }}
+
+      # build.sh links against platforms;android-36, which the runner image may not carry yet.
+      - name: Android platform
+        run: |
+          if [ ! -f "$ANDROID_HOME/platforms/android-36/android.jar" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" > /dev/null
+          fi
+
+      - name: Build
+        run: |
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" JAVA_HOME="$JAVA_HOME_17_X64"
+          scripts/build.sh --dist
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-apk
+          path: apps/android/dist/*.apk
+          if-no-files-found: error

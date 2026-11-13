@@ -9,11 +9,15 @@ name: Nightly
 # track hears about it; the Stable track never does. release.yml promotes the newest nightly
 # to a stable version. The ten newest nightlies are kept. CONTRIBUTING.md, under Releases,
 # has the whole line.
+#
+# The phone rides the same train under its own number: when the phone or what it builds on
+# changed since its last nightly, the same run builds its APK from apps/android/Cargo.toml's
+# version, 2.4.3-nightly.20261030.12, and publishes it as android-v2.4.3-nightly.20261030.12.
 on:
   workflow_dispatch:
     inputs:
       force:
-        description: Build even if the app has not changed on main since the last nightly
+        description: Build even if the apps have not changed on main since their last nightlies
         type: boolean
         default: false
 
@@ -33,6 +37,9 @@ jobs:
       sha: ${{ steps.gate.outputs.sha }}
       version: ${{ steps.gate.outputs.version }}
       previous: ${{ steps.gate.outputs.previous }}
+      phone: ${{ steps.gate.outputs.phone }}
+      phone_version: ${{ steps.gate.outputs.phone_version }}
+      phone_previous: ${{ steps.gate.outputs.phone_previous }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,6 +73,30 @@ jobs:
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "build=$build, $version at ${sha::7}"
 
+          # The phone: its own version and its own last nightly. Its first nightly's notes
+          # start at its newest release made by hand.
+          phone_base="$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/android/Cargo.toml | head -n1)"
+          phone_version="$phone_base-nightly.$(date -u +%Y%m%d).$GITHUB_RUN_NUMBER"
+          echo "phone_version=$phone_version" >> "$GITHUB_OUTPUT"
+          tags="$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("android-v"))] | sort_by(.createdAt) | .[].tagName')"
+          last="$(grep -E '^android-v[0-9.]+-nightly\.' <<<"$tags" | tail -n1 || true)"
+          phone=true
+          if [ -n "$last" ]; then
+            echo "phone_previous=$last" >> "$GITHUB_OUTPUT"
+            git fetch -q origin "refs/tags/$last:refs/tags/$last"
+            if git diff --quiet "$last" "$sha" -- apps/android core host-api recs Cargo.toml Cargo.lock rust-toolchain.toml; then
+              echo "The phone has not changed on main since $last."
+              phone=false
+            fi
+          else
+            hand="$(grep -E '^android-v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$tags" | sort -V | tail -n1 || true)"
+            if [ -n "$hand" ]; then echo "phone_previous=$hand" >> "$GITHUB_OUTPUT"; fi
+          fi
+          if [ "$FORCE" = true ]; then phone=true; fi
+          echo "phone=$phone" >> "$GITHUB_OUTPUT"
+          echo "phone=$phone, $phone_version at ${sha::7}"
+
   macos:
     needs: gate
     if: needs.gate.outputs.build == 'true'
@@ -92,6 +123,15 @@ jobs:
     with:
       ref: ${{ needs.gate.outputs.sha }}
       version: ${{ needs.gate.outputs.version }}
+
+  android:
+    needs: gate
+    if: needs.gate.outputs.phone == 'true'
+    uses: ./.github/workflows/android-apk.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.gate.outputs.sha }}
+      version: ${{ needs.gate.outputs.phone_version }}
 
   publish:
     needs: [gate, macos, linux, windows]
@@ -140,11 +180,59 @@ jobs:
               gh release delete "$tag" --yes --cleanup-tag
             done
 
+  # The phone's nightly, its own pre-release the way the desktop's is: a draft until the APK
+  # is on it.
+  publish-phone:
+    needs: [gate, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: phone-apk
+          path: dist
+
+      - name: Publish the phone's nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.gate.outputs.phone_version }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          PREVIOUS: ${{ needs.gate.outputs.phone_previous }}
+        run: |
+          ls -la dist
+          tag="android-v$VERSION"
+          {
+            echo "A nightly build of the phone app from main at ${SHA::7}: what the next phone version is becoming, not yet checked the way a release is."
+            echo
+            sed "s/@VERSION@/$VERSION/g" .github/release-notes-android.md
+          } > notes.md
+          start=()
+          if [ -n "$PREVIOUS" ]; then start=(--notes-start-tag "$PREVIOUS"); fi
+          gh release create "$tag" dist/*.apk --draft --prerelease --latest=false --target "$SHA" \
+            --title "$(.github/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
+          gh release edit "$tag" --draft=false --prerelease --latest=false
+
+      - name: Keep the ten newest phone nightlies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | test("^android-v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+            while read -r tag; do
+              echo "Removing $tag"
+              gh release delete "$tag" --yes --cleanup-tag
+            done
+
   # The website's What's new shows what this nightly brings under Coming next, with its number
-  # (#777): deploy the site once the nightly is public. The site reads which nightly is newest,
+  # (#777), and its download page links the phone's nightly: deploy the site once either
+  # nightly is public. The site reads which nightly is newest,
   # and the change files at its tag, from GitHub itself.
   site:
-    needs: [gate, publish]
+    needs: [gate, publish, publish-phone]
+    if: always() && (needs.publish.result == 'success' || needs.publish-phone.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       actions: write
