@@ -76,6 +76,9 @@ def pending(changes_dir, ref=None):
 
 
 def inline(text):
+    # The site spells the name Anibeam; the notes are shared with the apps, which still say
+    # AniBeam, so the name is respelled here. A path such as Pictures/AniBeam stays as it is.
+    text = re.sub(r"(?<![/.\w])AniBeam(?!\.(?:app|dmg)|[\w-])", "Anibeam", text)
     text = html.escape(text)
     return re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
 
@@ -176,7 +179,7 @@ def page(title, prefix, body, canonical, description):
 <meta name="theme-color" content="#07080a">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="{prefix}img/logo.svg" type="image/svg+xml">
-<meta property="og:site_name" content="AniBeam">
+<meta property="og:site_name" content="Anibeam">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{html.escape(title)}">
 <meta property="og:description" content="{html.escape(description)}">
@@ -231,8 +234,8 @@ index = f"""<section class="wn-hero"><h1>What's new</h1></section>
 {chr(10).join(blocks)}
 </div>"""
 (out / "whats-new").mkdir(parents=True, exist_ok=True)
-(out / "whats-new/index.html").write_text(page("What's new in AniBeam", "../", index, "whats-new/",
-                                              "Every AniBeam release for desktop and Android, newest first."))
+(out / "whats-new/index.html").write_text(page("What's new in Anibeam", "../", index, "whats-new/",
+                                              "Every Anibeam release for desktop and Android, newest first."))
 
 # One page per version
 for i, e in enumerate(versions):
@@ -250,7 +253,7 @@ for i, e in enumerate(versions):
 {entry(e, "../../", link=False, level="h1")}
 </div>
 {nav}"""
-    title = f"AniBeam {'' if e['app'] == 'desktop' else 'for Android '}{v}" + (f": {e['title']}" if e["title"] else "")
+    title = f"Anibeam {'' if e['app'] == 'desktop' else 'for Android '}{v}" + (f": {e['title']}" if e["title"] else "")
     (out / "whats-new" / slug).mkdir(parents=True, exist_ok=True)
     (out / "whats-new" / slug / "index.html").write_text(
         page(title, "../../", body, f"whats-new/{slug}/", f"What changed in {e['app_name']} {v}, released {nice_date(e['date'])}."))
@@ -258,8 +261,8 @@ for i, e in enumerate(versions):
 # The page GitHub Pages serves for an address that leads nowhere. It can be served at any depth,
 # so its links start from the site root.
 lost = """<section class="wn-hero"><h1>Nothing here.</h1></section>
-<p class="lost"><a class="btn btn-primary btn-lg" href="/">AniBeam home</a></p>"""
-(out / "404.html").write_text(page("Not found: AniBeam", "/", lost, "404.html", "This page does not exist.")
+<p class="lost"><a class="btn btn-primary btn-lg" href="/">Anibeam home</a></p>"""
+(out / "404.html").write_text(page("Not found: Anibeam", "/", lost, "404.html", "This page does not exist.")
                               .replace("<head>", '<head>\n<meta name="robots" content="noindex">', 1))
 
 # The download page links each release to its notes. A release with no page of its own (a

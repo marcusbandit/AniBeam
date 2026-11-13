@@ -22,15 +22,15 @@ from pathlib import Path
 I18N = Path(__file__).resolve().parent.parent / "i18n"  # site/i18n
 PAGES = ["index.html", "download/index.html"]
 # Strings the scripts put on the page (app.js, download.js), so the page carries them translated.
-JS_STRINGS = ["Download for {os}", "Get the Android app", "Copy", "Copied", "What's new", "Download AniBeam",
+JS_STRINGS = ["Download for {os}", "Get the Android app", "Copy", "Copied", "What's new", "Download Anibeam",
               "Coming to iPhone soon", "No nightly newer than {version} yet.", "Selected. Press Ctrl+C to copy.",
               # the tour's screenshots, swapped by app.js
-              "AniBeam's Home: shows to continue and shows not started yet, as poster cards",
+              "Anibeam's Home: shows to continue and shows not started yet, as poster cards",
               "The Library grid with every show as a poster", "A show's page with its banner, episodes and characters"]
 # A folder name is the short code; hreflang and lang take the full tag where the script matters.
 TAG = {"zh": "zh-Hans"}
-SKIP = {"AniBeam", "GitHub", "Ko-fi", "Linux", "Mac", "Windows", "AUR", ".deb", ".rpm", "Homebrew",
-        "$", "|", "English", "AniList", "marcusbandit/AniBeam", "GPL 3.0", "AniBeam, GPL 3.0",
+SKIP = {"Anibeam", "GitHub", "Ko-fi", "Linux", "Mac", "Windows", "AUR", ".deb", ".rpm", "Homebrew",
+        "$", "|", "English", "AniList", "marcusbandit/AniBeam", "GPL 3.0", "Anibeam, GPL 3.0",
         # show titles in the mock app screens are names, not text
         "City the Animation", "Frieren: Beyond Journey's End", "Sousou no Frieren", "Attack on Titan Season 2",
         "Attack on Titan Season 3", "Season 3 Part 2", "The Final Season", "Final Season Part 2", "The Final Chapters"}
