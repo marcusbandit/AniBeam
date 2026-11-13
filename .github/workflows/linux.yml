@@ -63,12 +63,15 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0 # git describe names the version
 
+      # FFmpeg is built by deps.sh, lean, from the libraries named on the third line; noble's
+      # own FFmpeg drags 125 MB of encoders and speech libraries into the image (#850). The
+      # ffmpeg program stays: smoke.sh encodes its test clip with it, and nothing links it.
       - name: apt packages
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config meson ninja-build cmake \
-            libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev \
+            build-essential pkg-config meson ninja-build cmake nasm \
+            libdav1d-dev libgnutls28-dev libwebp-dev libbz2-dev zlib1g-dev \
             libplacebo-dev libass-dev liblcms2-dev libuchardet-dev libzimg-dev libffmpeg-nvenc-dev \
             libegl-dev libgl-dev libdrm-dev libdisplay-info-dev libgbm-dev \
             libwayland-dev libwayland-bin wayland-protocols libxkbcommon-dev \
@@ -103,25 +106,25 @@ jobs:
         id: depkey
         run: |
           key="$( { cat apps/linux/packaging/linux/deps.sh
-                    dpkg-query -W libavcodec-dev libavformat-dev libavfilter-dev libplacebo-dev libass-dev \
-                      liblcms2-dev libuchardet-dev libzimg-dev libdrm-dev libwayland-dev
+                    dpkg-query -W nasm libdav1d-dev libgnutls28-dev libwebp-dev libffmpeg-nvenc-dev \
+                      libplacebo-dev libass-dev liblcms2-dev libuchardet-dev libzimg-dev libdrm-dev libwayland-dev
                     "$QT_ROOT_DIR/bin/qmake" -query QT_VERSION
                   } | sha256sum | cut -c1-16)"
           echo "key=ubuntu-24.04-deps-$key" >> "$GITHUB_OUTPUT"
 
-      - name: Restore libmpv and MpvQt
+      - name: Restore FFmpeg, libmpv and MpvQt
         id: deps
         uses: actions/cache/restore@v4
         with:
           path: ~/anibeam-deps
           key: ${{ steps.depkey.outputs.key }}
 
-      - name: Build libva, libmpv and MpvQt
+      - name: Build libva, FFmpeg, libmpv and MpvQt
         if: steps.deps.outputs.cache-hit != 'true'
         run: apps/linux/packaging/linux/deps.sh "$DEPS_PREFIX"
 
       # Saved here rather than at the end, so a run that fails later keeps them.
-      - name: Save libva, libmpv and MpvQt
+      - name: Save libva, FFmpeg, libmpv and MpvQt
         if: steps.deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
