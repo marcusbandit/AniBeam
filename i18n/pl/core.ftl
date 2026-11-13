@@ -1538,3 +1538,25 @@ core-subscriptions-stopped-said = zatrzymał się: { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = nazwa ma od 1 do { $max } znaków, bez znaków sterujących
+core-prefs-room-relay = adres przekaźnika musi zaczynać się od https:// lub http://
+core-room-service = Wspólne oglądanie
+core-room-not-found = Nie ma pokoju o tym kodzie. Mógł zostać zamknięty.
+core-room-full = Ten pokój jest pełny.
+core-room-proto = Ten przekaźnik używa innej wersji pokojów. Zaktualizuj { -app-name }, aby dołączyć.
+core-room-unreachable = Nie udało się połączyć z przekaźnikiem: { $message }
+core-room-refused = Przekaźnik odmówił: { $message }
+core-room-not-in = Nie jesteś w żadnym pokoju.
+core-room-no-name = wybierz nazwę, pod którą widzą Cię inni w pokoju
+core-room-bad-code = kod pokoju to 6 liter i cyfr
+core-room-created = Utworzono pokój wspólnego oglądania. Jego kod to { $code }.
+core-room-joined = Dołączono do pokoju wspólnego oglądania { $code }.
+core-room-left = Opuszczono pokój wspólnego oglądania.
+core-room-member-joined = { $name } dołącza do pokoju.
+core-room-member-left = { $name } opuszcza pokój.
+core-room-closed = Pokój wspólnego oglądania został zamknięty.
+core-room-lost = Utracono połączenie z pokojem wspólnego oglądania. Ponawianie.
+core-room-back = Ponownie w pokoju wspólnego oglądania.

@@ -3696,3 +3696,83 @@ door-not-a-torrent-action = { $value } ist keine Torrent-Aktion
 
 shell-starter-folder-failed = { $folder } konnte nicht angelegt werden: { $error }
 shell-update-gone = { -app-name } { $version } wird nicht mehr angeboten
+
+## Watch together (#846)
+
+onboarding-step-together = Gemeinsam schauen
+onboarding-title-together = Mit Freunden schauen
+onboarding-body-together = Starte im Player einen Raum und schick seinen Code. Alle spielen ihre eigene Kopie der Folge ab, und Abspielen, Pause und Spulen bleiben für alle im Takt.
+onboarding-ready-together = Gemeinsam schauen
+onboarding-ready-together-as = Räume zeigen dich als { $name }.
+onboarding-ready-together-none = Noch kein Name. Das Raumpanel fragt beim ersten Mal.
+onboarding-together-you = Du
+onboarding-together-code = Raumcode
+onboarding-together-episode = Frieren · Folge 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Dein Name in Räumen
+rail-room = Gemeinsam schauen (Strg+J)
+rail-room-in = Im Raum zum gemeinsamen Schauen (Strg+J)
+player-chrome-watch-together = Gemeinsam schauen
+player-chrome-room = Raum { $code } · { $count ->
+    [one] 1 Person
+   *[other] { $count } Personen
+}
+room-name-empty = Gib den Namen ein, den andere im Raum sehen.
+room-name-bad = Dieser Name geht nicht. Nutze 1 bis 32 Zeichen.
+room-error-not-found = Kein Raum hat diesen Code. Prüfe ihn mit der Person, die ihn geschickt hat; der Raum ist vielleicht geschlossen.
+room-error-full = Dieser Raum ist voll. Ein Raum fasst 10 Personen.
+room-error-unreachable = Raumserver nicht erreichbar. Prüfe deine Verbindung und versuch es nochmal.
+room-error-refused = Der Raumserver hat abgelehnt. Versuch es in einer Minute nochmal.
+room-error-proto = Dieser Raum läuft auf einer neueren Version von Räumen. Aktualisiere { -app-name }, um beizutreten.
+room-error-not-in-room = Du bist nicht mehr in diesem Raum. Starte einen oder tritt wieder einem bei.
+room-error-bad-code = Ein Raumcode hat 6 Buchstaben und Ziffern, wie K7QM2X.
+room-error-bad-relay = Der Raumserver unter Einstellungen, Wiedergabe ist keine Webadresse. Korrigiere ihn dort und versuch es nochmal.
+room-panel-title = Gemeinsam schauen
+room-panel-close = Schließen
+room-panel-connected = Verbunden
+room-panel-reconnecting = Verbinde neu
+room-panel-name-label = Dein Name in Räumen
+room-panel-name-placeholder = Dein Name
+room-panel-name-start = Raum starten
+room-panel-name-join = Raum beitreten
+room-panel-start = Einen Raum starten
+room-panel-or-join = Oder tritt einem mit Code bei
+room-panel-join-label = Raumcode
+room-panel-join = Beitreten
+room-panel-you-are = Du erscheinst als { $name }
+room-panel-change-name = Ändern
+room-panel-code-label = Raumcode
+room-panel-copy = Link kopieren
+room-panel-link-copied = Raumlink kopiert
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = Diese Folge ist nicht in deiner Bibliothek, also kannst du noch nicht mitschauen.
+room-panel-open-episode = Folge öffnen
+room-panel-people = { $count ->
+    [one] 1 Person
+   *[other] { $count } Personen
+}
+room-panel-host = Host
+room-panel-you = Du
+room-panel-ready = Bereit
+room-panel-opening = Öffnet
+room-panel-missing = Hat sie nicht
+room-panel-offset = Dein Versatz
+room-panel-offset-earlier = Eine halbe Sekunde früher
+room-panel-offset-later = Eine halbe Sekunde später
+room-panel-seconds = { $value } s
+room-panel-suggested = Die Openings schlagen { $offset } vor
+room-panel-use-suggested = Übernehmen
+room-panel-leave = Raum verlassen
+player-room-speed = Das Tempo bestimmt der Raum
+settings-find-room-name =
+    .words = gemeinsam schauen raum name freunde
+settings-find-room-relay =
+    .words = gemeinsam schauen raum relay server
+key-help-key-ctrl-j = Strg+J
+key-help-room = Gemeinsam schauen
+settings-playback-together = Gemeinsam schauen
+settings-playback-room-name = Dein Name beim gemeinsamen Schauen
+settings-playback-room-name-placeholder = Dein Name
+settings-playback-room-relay = Raumserver
+settings-playback-room-relay-helper = Hier entstehen die Räume. Ändere das nur für einen Server, den du selbst betreibst.

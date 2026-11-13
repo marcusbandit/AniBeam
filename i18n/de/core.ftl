@@ -1273,3 +1273,25 @@ core-subscriptions-stopped-said = es wurde beendet: { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = ein Name hat 1 bis { $max } Zeichen, ohne Steuerzeichen
+core-prefs-room-relay = die Relay-Adresse muss mit https:// oder http:// beginnen
+core-room-service = Gemeinsam schauen
+core-room-not-found = Kein Raum hat diesen Code. Vielleicht wurde er geschlossen.
+core-room-full = Dieser Raum ist voll.
+core-room-proto = Dieses Relay nutzt eine andere Version von Räumen. Aktualisiere { -app-name }, um beizutreten.
+core-room-unreachable = Relay nicht erreichbar: { $message }
+core-room-refused = Das Relay hat abgelehnt: { $message }
+core-room-not-in = Du bist in keinem Raum.
+core-room-no-name = wähle den Namen, unter dem andere im Raum dich sehen
+core-room-bad-code = ein Raumcode hat 6 Buchstaben und Ziffern
+core-room-created = Raum zum gemeinsamen Schauen gestartet. Der Code ist { $code }.
+core-room-joined = Dem Raum { $code } zum gemeinsamen Schauen beigetreten.
+core-room-left = Raum zum gemeinsamen Schauen verlassen.
+core-room-member-joined = { $name } ist dem Raum beigetreten.
+core-room-member-left = { $name } hat den Raum verlassen.
+core-room-closed = Der Raum zum gemeinsamen Schauen wurde geschlossen.
+core-room-lost = Verbindung zum Raum zum gemeinsamen Schauen verloren. Neuer Versuch läuft.
+core-room-back = Wieder im Raum zum gemeinsamen Schauen.

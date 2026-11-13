@@ -3693,3 +3693,83 @@ door-not-a-torrent-action = { $value } is geen torrentactie
 
 shell-starter-folder-failed = Kon { $folder } niet maken: { $error }
 shell-update-gone = { -app-name } { $version } wordt niet meer aangeboden
+
+## Watch together (#846)
+
+onboarding-step-together = Samen kijken
+onboarding-title-together = Kijk met vrienden
+onboarding-body-together = Start een kamer vanuit de speler en stuur de code. Iedereen speelt zijn eigen kopie van de aflevering, en afspelen, pauzeren en spoelen blijven voor jullie allemaal gelijk.
+onboarding-ready-together = Samen kijken
+onboarding-ready-together-as = In kamers zien anderen je als { $name }.
+onboarding-ready-together-none = Nog geen naam. Het kamerpaneel vraagt erom de eerste keer.
+onboarding-together-you = Jij
+onboarding-together-code = Kamercode
+onboarding-together-episode = Frieren · Aflevering 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Je naam in kamers
+rail-room = Samen kijken (Ctrl+J)
+rail-room-in = In een kamer om samen te kijken (Ctrl+J)
+player-chrome-watch-together = Samen kijken
+player-chrome-room = Kamer { $code } · { $count ->
+    [one] 1 persoon
+   *[other] { $count } personen
+}
+room-name-empty = Typ de naam die anderen in de kamer zien.
+room-name-bad = Die naam werkt niet. Gebruik 1 tot 32 tekens.
+room-error-not-found = Geen kamer met die code. Controleer hem bij wie hem stuurde; de kamer is misschien gesloten.
+room-error-full = Die kamer is vol. Er passen 10 mensen in een kamer.
+room-error-unreachable = Kon de kamerserver niet bereiken. Controleer je verbinding en probeer het opnieuw.
+room-error-refused = De kamerserver weigerde dit. Probeer het over een minuut opnieuw.
+room-error-proto = Die kamer draait op een nieuwere versie van kamers. Werk { -app-name } bij om mee te doen.
+room-error-not-in-room = Je zit niet meer in die kamer. Start er een of doe opnieuw mee.
+room-error-bad-code = Een kamercode is 6 letters en cijfers, zoals K7QM2X.
+room-error-bad-relay = De kamerserver in Instellingen, Afspelen is geen webadres. Pas het daar aan en probeer het opnieuw.
+room-panel-title = Samen kijken
+room-panel-close = Sluiten
+room-panel-connected = Verbonden
+room-panel-reconnecting = Opnieuw verbinden
+room-panel-name-label = Je naam in kamers
+room-panel-name-placeholder = Je naam
+room-panel-name-start = Kamer starten
+room-panel-name-join = Kamer binnengaan
+room-panel-start = Een kamer starten
+room-panel-or-join = Of doe mee met een code
+room-panel-join-label = Kamercode
+room-panel-join = Meedoen
+room-panel-you-are = Je bent { $name }
+room-panel-change-name = Wijzigen
+room-panel-code-label = Kamercode
+room-panel-copy = Link kopiëren
+room-panel-link-copied = Kamerlink gekopieerd
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = Deze aflevering staat niet in je bibliotheek, dus je kunt nog niet meekijken.
+room-panel-open-episode = Aflevering openen
+room-panel-people = { $count ->
+    [one] 1 persoon
+   *[other] { $count } personen
+}
+room-panel-host = Host
+room-panel-you = Jij
+room-panel-ready = Klaar
+room-panel-opening = Openen
+room-panel-missing = Heeft hem niet
+room-panel-offset = Jouw verschuiving
+room-panel-offset-earlier = Halve seconde eerder
+room-panel-offset-later = Halve seconde later
+room-panel-seconds = { $value } s
+room-panel-suggested = De intro's wijzen op { $offset }
+room-panel-use-suggested = Gebruiken
+room-panel-leave = Kamer verlaten
+player-room-speed = De snelheid volgt de kamer
+settings-find-room-name =
+    .words = samen kijken kamer naam vrienden
+settings-find-room-relay =
+    .words = samen kijken kamer relay server
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = Samen kijken
+settings-playback-together = Samen kijken
+settings-playback-room-name = Je naam in kamers om samen te kijken
+settings-playback-room-name-placeholder = Je naam
+settings-playback-room-relay = Kamerserver
+settings-playback-room-relay-helper = Hier worden kamers gemaakt. Wijzig dit alleen voor een server die je zelf draait.

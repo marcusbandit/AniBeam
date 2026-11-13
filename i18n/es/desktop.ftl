@@ -3694,3 +3694,83 @@ door-not-a-torrent-action = { $value } no es una acción de torrent
 
 shell-starter-folder-failed = No se pudo crear { $folder }: { $error }
 shell-update-gone = { -app-name } { $version } ya no está disponible
+
+## Watch together (#846)
+
+onboarding-step-together = Ver juntos
+onboarding-title-together = Ver con amigos
+onboarding-body-together = Abre una sala desde el reproductor y envía su código. Cada uno reproduce su propia copia del episodio, y reproducir, pausar y saltar van sincronizados para todos.
+onboarding-ready-together = Ver juntos
+onboarding-ready-together-as = En las salas apareces como { $name }.
+onboarding-ready-together-none = Aún sin nombre. El panel de la sala lo pide la primera vez.
+onboarding-together-you = Tú
+onboarding-together-code = Código de sala
+onboarding-together-episode = Frieren · Episodio 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Tu nombre en las salas
+rail-room = Ver juntos (Ctrl+J)
+rail-room-in = En una sala para ver juntos (Ctrl+J)
+player-chrome-watch-together = Ver juntos
+player-chrome-room = Sala { $code } · { $count ->
+    [one] 1 persona
+   *[other] { $count } personas
+}
+room-name-empty = Escribe el nombre que verán los demás en la sala.
+room-name-bad = Ese nombre no vale. Usa de 1 a 32 caracteres.
+room-error-not-found = Ninguna sala tiene ese código. Compruébalo con quien te lo envió; puede que la sala se haya cerrado.
+room-error-full = Esa sala está llena. Caben 10 personas por sala.
+room-error-unreachable = No se pudo llegar al servidor de salas. Comprueba tu conexión y vuelve a intentarlo.
+room-error-refused = El servidor de salas lo rechazó. Vuelve a intentarlo en un minuto.
+room-error-proto = Esa sala usa una versión más nueva de las salas. Actualiza { -app-name } para unirte.
+room-error-not-in-room = Ya no estás en esa sala. Abre una o únete a otra.
+room-error-bad-code = Un código de sala tiene 6 letras y dígitos, como K7QM2X.
+room-error-bad-relay = El servidor de salas en Ajustes, Reproducción no es una dirección web. Corrígelo ahí y vuelve a intentarlo.
+room-panel-title = Ver juntos
+room-panel-close = Cerrar
+room-panel-connected = Conectado
+room-panel-reconnecting = Reconectando
+room-panel-name-label = Tu nombre en las salas
+room-panel-name-placeholder = Tu nombre
+room-panel-name-start = Abrir la sala
+room-panel-name-join = Unirse a la sala
+room-panel-start = Abrir una sala
+room-panel-or-join = O únete a una con su código
+room-panel-join-label = Código de sala
+room-panel-join = Unirse
+room-panel-you-are = Apareces como { $name }
+room-panel-change-name = Cambiar
+room-panel-code-label = Código de sala
+room-panel-copy = Copiar enlace
+room-panel-link-copied = Enlace de la sala copiado
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = Este episodio no está en tu biblioteca, así que aún no puedes verlo con los demás.
+room-panel-open-episode = Abrir el episodio
+room-panel-people = { $count ->
+    [one] 1 persona
+   *[other] { $count } personas
+}
+room-panel-host = Anfitrión
+room-panel-you = Tú
+room-panel-ready = Listo
+room-panel-opening = Abriendo
+room-panel-missing = No lo tiene
+room-panel-offset = Tu desfase
+room-panel-offset-earlier = Medio segundo antes
+room-panel-offset-later = Medio segundo después
+room-panel-seconds = { $value } s
+room-panel-suggested = Las intros sugieren { $offset }
+room-panel-use-suggested = Usarlo
+room-panel-leave = Salir de la sala
+player-room-speed = La velocidad la marca la sala
+settings-find-room-name =
+    .words = ver juntos sala nombre amigos
+settings-find-room-relay =
+    .words = ver juntos sala relay servidor
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = Ver juntos
+settings-playback-together = Ver juntos
+settings-playback-room-name = Tu nombre en las salas para ver juntos
+settings-playback-room-name-placeholder = Tu nombre
+settings-playback-room-relay = Servidor de salas
+settings-playback-room-relay-helper = Aquí se crean las salas. Cámbialo solo por un servidor que tengas tú.
