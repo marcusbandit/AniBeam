@@ -152,11 +152,9 @@ pub fn install(window: &AppWindow, data_dir: &Path) {
 /// The phone's own language changed; only a phone-following choice follows it.
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn system_changed() {
-    with(|p| {
-        if p.choice.pick.is_empty() {
-            p.apply();
-        }
-    });
+    // A picked language stays, but the "Same as the phone" row names the phone's new one.
+    // apply re-words the pages only when the language in use changed.
+    with(Page::apply);
 }
 
 /// `Tr.lookup`'s arguments, name and value in turn; a `#` before a name marks a number.

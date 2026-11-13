@@ -156,7 +156,7 @@ pub fn relocalize() {
     #[cfg(target_os = "android")]
     {
         let r = with_env(|env, app| {
-            env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
+            env.with_local_frame(32, |env| -> Result<(), Box<dyn std::error::Error>> {
                 let class = app_class(env, app, "TorrentService")?;
                 set_service_words(env, app, &class)
             })
@@ -176,7 +176,7 @@ pub fn start_service(shown: &crate::notify::Ongoing) -> bool {
     {
         // The UI thread stays attached, so the call's local references go with a frame.
         let r = with_env(|env, app| {
-            env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
+            env.with_local_frame(32, |env| -> Result<(), Box<dyn std::error::Error>> {
                 use jni::objects::JValue;
                 let intent = service_intent(env)?;
                 let words = service_words();
@@ -267,13 +267,17 @@ pub fn episode_ready(id: i32, title: &str, text: &str) {
     {
         let r = with_env(|env, app| {
             use jni::objects::JValue;
-            env.with_local_frame(16, |env| -> Result<(), Box<dyn std::error::Error>> {
+            env.with_local_frame(32, |env| -> Result<(), Box<dyn std::error::Error>> {
                 // The Application's class loader sees the app's own classes, as the
                 // activity's does.
                 let class = app_class(env, app, "TorrentService")?;
                 // The channel it posts on is made in the app's language, in a process
                 // that has not started the service yet too.
-                set_service_words(env, app, &class)?;
+                // A rename that fails must not cost the notification itself.
+                if let Err(e) = set_service_words(env, app, &class) {
+                    let _ = env.exception_clear();
+                    crate::local::log(&format!("notification words not set: {e}"));
+                }
                 let title = env.new_string(title)?;
                 let text = env.new_string(text)?;
                 env.call_static_method(

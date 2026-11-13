@@ -95,7 +95,7 @@ component DownloadCard inherits Rectangle {
                 }
                 Text {
                     horizontal-stretch: 1;
-                    text: root.data.tone == 0 ? root.data.what : root.data.what != "" ? Tr.s2("dl-joined", "first", root.data.state, "second", root.data.what) : root.data.state;
+                    text: root.data.state == "" ? root.data.what : root.data.what != "" ? Tr.s2("dl-joined", "first", root.data.state, "second", root.data.what) : root.data.state;
                     color: Theme.dim;
                     font-size: Theme.small + 0.5px;
                     overflow: elide;

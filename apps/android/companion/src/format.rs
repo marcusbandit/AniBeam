@@ -9,7 +9,7 @@ const DAY: i64 = 24 * HOUR;
 /// A moment written by the catalog's own date pattern (`fmt-day-month = %-d %b` in English),
 /// with month and weekday names in the language the app speaks. A pattern chrono cannot
 /// read falls back to `fallback` rather than panicking.
-fn dated<Tz: TimeZone>(t: &DateTime<Tz>, id: &str, fallback: &str) -> String
+pub fn dated<Tz: TimeZone>(t: &DateTime<Tz>, id: &str, fallback: &str) -> String
 where
     Tz::Offset: std::fmt::Display,
 {

@@ -530,7 +530,6 @@ phone-match-look-up = 조회
 match-apply = 적용
 match-look-up-all = AniBeam이 아직 모르는 폴더 모두 조회
 match-format-music = 뮤직
-match-join-and = { $first }, { $second }
 phone-match-matched-on = { $sites }에서 매칭됨
 phone-match-found-tvmaze = TVmaze에서 작품을 찾았어요
 phone-match-found-anilist = AniList에서 찾았어요
@@ -594,8 +593,7 @@ move-failed = { $count ->
 
 ## Downloads: find (search, shows, sources, releases)
 
-find-join-comma = { $a }, { $b }
-find-join-and = { $a }, { $b }
+common-join-and = { $a }, { $b }
 find-join-sentences = { $a } { $b }
 
 find-downloads = 다운로드
@@ -1371,3 +1369,8 @@ player-speed-not-while-casting = 캐스트 중 불가
 ## Downloads
 
 downloads-other-release-on-disk = 다른 릴리스 저장됨
+
+## Month patterns
+
+dates-month-short = %Y년 %-m월
+dates-month-long = %Y년 %-m월

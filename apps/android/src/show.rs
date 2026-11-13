@@ -255,7 +255,11 @@ pub fn sync(
             want(crate::app::AIRING_ART | n.anilist_id, &n.poster);
             let line = [
                 relation_label(n.relation.as_deref()),
-                format_label(n.format.as_deref()),
+                // A node with no format says nothing here, not "Series".
+                n.format
+                    .as_deref()
+                    .map(|f| format_label(Some(f)))
+                    .unwrap_or_default(),
                 n.year.map(|y| y.to_string()).unwrap_or_default(),
             ];
             let line: Vec<String> = line.into_iter().filter(|s| !s.is_empty()).collect();

@@ -154,6 +154,9 @@ fn status_word(status: &str) -> String {
     match status {
         "Releasing" => tr!("clib-status-airing"),
         "NotYetReleased" => tr!("clib-status-not-yet"),
+        "Finished" => tr!("series-status-finished"),
+        "Cancelled" => tr!("series-status-cancelled"),
+        "Hiatus" => tr!("series-status-hiatus"),
         other => other.to_string(),
     }
 }

@@ -616,7 +616,6 @@ match-apply = Apply
 match-look-up-all = Look up every folder AniBeam does not know yet
 match-format-music = Music
 # { $first } and { $second } are names of sites: "AniList and MyAnimeList".
-match-join-and = { $first } and { $second }
 # { $sites } is one or more site names.
 phone-match-matched-on = Matched on { $sites }
 phone-match-found-tvmaze = Found the show on TVmaze
@@ -696,8 +695,7 @@ move-failed = { $count ->
 ## Downloads: find (search, shows, sources, releases)
 
 # Joins. Each language picks its own comma, conjunction and sentence gap.
-find-join-comma = { $a }, { $b }
-find-join-and = { $a } and { $b }
+common-join-and = { $a } and { $b }
 find-join-sentences = { $a } { $b }
 
 # Page title of the back link in the show view and the release list.
@@ -1602,6 +1600,9 @@ dates-paste-note = What AniBeam reads shows on the episodes below.
 dates-tap-hint = Tap an episode to date it.
 dates-run = Pick a run
 dates-field-hint = 7 Jan, March 2027, 2027
+# chrono patterns for a month: %b short name, %B full name, %Y year.
+dates-month-short = %b %Y
+dates-month-long = %B %Y
 dates-set = Set date
 dates-no-date = No date yet
 dates-weekly = Weekly

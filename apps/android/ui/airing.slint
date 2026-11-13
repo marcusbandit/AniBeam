@@ -17,6 +17,9 @@ export global AiringPick {
     in-out property <bool> open;
     // The season showing, "Spring 2019", or "" for this one.
     in property <string> showing;
+    // The same season as a year and quarter, -1 for this season, so the picker marks it.
+    in property <int> showing-year: -1;
+    in property <int> showing-quarter: -1;
     // The year and quarter this moment is in; the quarter carries a dot.
     in property <int> this-year;
     in property <int> this-quarter;
@@ -292,8 +295,7 @@ export component SeasonSheet inherits Rectangle {
                             vertical-alignment: center;
                         }
                         for name[q] in root.names: Rectangle {
-                            // seasons.rs words the showing season the same way, so the two read equal.
-                            property <bool> on: AiringPick.showing == Tr.s2("season-named", "season", name, "year", "" + year);
+                            property <bool> on: year == AiringPick.showing-year && q == AiringPick.showing-quarter;
                             property <bool> here: year == AiringPick.this-year && q == AiringPick.this-quarter;
                             height: Theme.touch;
                             y: (parent.height - self.height) / 2;

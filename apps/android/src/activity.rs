@@ -5,7 +5,6 @@
 
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::fmt::Write;
 use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 
@@ -272,14 +271,7 @@ fn stamp(at: SystemTime, now: DateTime<Local>) -> String {
     } else {
         ("activity-time-other", "%-d %b %H:%M")
     };
-    // A pattern chrono cannot read falls back rather than panicking.
-    let mut out = String::new();
-    let locale = crate::tr::chrono_locale(crate::tr::lang());
-    if write!(out, "{}", d.format_localized(&tr!(id), locale)).is_err() {
-        out.clear();
-        let _ = write!(out, "{}", d.format_localized(fallback, locale));
-    }
-    out
+    anibeam_companion::format::dated(&d, id, fallback)
 }
 
 /// The page's rows: the lines worded for a person, only problems when asked, with runs of

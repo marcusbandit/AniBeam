@@ -183,6 +183,9 @@ struct App {
     service_shown: bool,
     /// When Android's notification dialog was last asked for.
     asked_at: Option<std::time::Instant>,
+    /// The last sync's end, while the computer's line still shows it, so a language change
+    /// words it again without asking the computer.
+    synced: Option<(i64, Option<String>)>,
 }
 
 thread_local! {
@@ -341,19 +344,8 @@ impl App {
         match event {
             Event::SyncStarted => {}
             Event::SyncDone { at, error } => {
-                let (tone, text) = match error {
-                    None => (0, tr!("host-synced", when = format::stamp(at))),
-                    Some(e) => (
-                        1,
-                        tr!(
-                            "host-last-try",
-                            when = format::stamp(at),
-                            error = e.to_string()
-                        ),
-                    ),
-                };
-                self.data().set_host_tone(tone);
-                self.data().set_host_result(text.into());
+                self.synced = Some((at, error.map(|e| e.to_string())));
+                self.show_synced();
             }
             Event::Snapshot(cache) => {
                 crate::player::set_remote_numbers(remote_numbers(&cache));
@@ -368,6 +360,7 @@ impl App {
             Event::AniList(anilist) => self.anilist = anilist,
             Event::TestStarted => {
                 self.data().set_host_tone(2);
+                self.synced = None;
                 self.data().set_host_result(tr!("host-asking").into());
             }
             Event::TestDone(result) => {
@@ -437,6 +430,22 @@ impl App {
         if let Ok(Reply::Trackers { state }) = core.call(Call::GetTrackers) {
             self.trackers = Some((state.anilist, state.mal));
         }
+    }
+
+    /// The computer's line for the last sync, in the language the app speaks now.
+    fn show_synced(&self) {
+        let Some((at, error)) = &self.synced else {
+            return;
+        };
+        let (tone, text) = match error {
+            None => (0, tr!("host-synced", when = format::stamp(*at))),
+            Some(e) => (
+                1,
+                tr!("host-last-try", when = format::stamp(*at), error = e),
+            ),
+        };
+        self.data().set_host_tone(tone);
+        self.data().set_host_result(text.into());
     }
 
     /// Everything the pages show, rebuilt from what is held and the clock. Cheap enough to
@@ -855,6 +864,10 @@ impl App {
         );
         let pick = window.global::<crate::AiringPick>();
         pick.set_showing(crate::seasons::label(self.airing_season, at).into());
+        let (showing_year, showing_quarter) = crate::seasons::moment_of(self.airing_season, at)
+            .map_or((-1, -1), |(y, q)| (y, q as i32));
+        pick.set_showing_year(showing_year);
+        pick.set_showing_quarter(showing_quarter);
         pick.set_this_year(at.0);
         pick.set_this_quarter(at.1 as i32);
         pick.set_focus_year(crate::seasons::year_of(self.airing_season, at));
@@ -1463,6 +1476,9 @@ impl App {
             .into(),
         );
         data.set_ratings_label(tr!("about-ratings").into());
+        data.set_mark_watched_label(tr!("mark-menu-watched").into());
+        data.set_mark_unwatched_label(tr!("mark-menu-unwatched").into());
+        data.set_mark_cancel_label(tr!("mark-menu-cancel").into());
         data.set_ratings_credit(tr!("about-ratings-credit").into());
         let qualities: Vec<slint::SharedString> = crate::stream::Quality::ALL
             .iter()
@@ -1789,12 +1805,14 @@ impl App {
         match HostAddress::parse(text) {
             Ok(address) => {
                 self.data().set_host_address(address.display().into());
+                self.synced = None;
                 self.data().set_host_result(tr!("host-saved").into());
                 self.data().set_host_tone(2);
                 let _ = self.commands.send(Command::SaveAndSync(address));
             }
             Err(why) => {
                 self.data().set_host_tone(1);
+                self.synced = None;
                 self.data().set_host_result(why.into());
             }
         }
@@ -1807,6 +1825,7 @@ impl App {
             }
             Err(why) => {
                 self.data().set_host_tone(1);
+                self.synced = None;
                 self.data().set_host_result(why.into());
             }
         }
@@ -1940,18 +1959,11 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
         .filter_map(|f| f.episode)
         .collect();
     episodes.sort_by(f64::total_cmp);
-    let what = match (t.episode, episodes.first(), episodes.last()) {
-        (Some(e), _, _) if !t.batch => tr!("common-episode-n", n = e.to_string()),
-        (_, Some(a), Some(b)) if a != b => {
-            tr!(
-                "dl-episodes-range",
-                from = a.to_string(),
-                to = b.to_string()
-            )
-        }
-        (_, Some(a), _) => tr!("common-episode-n", n = a.to_string()),
-        _ if t.batch => tr!("dl-batch"),
-        _ => String::new(),
+    let what = match crate::notify::what_of(t) {
+        crate::notify::What::Episode(n) => tr!("common-episode-n", n = n),
+        crate::notify::What::Episodes(from, to) => tr!("dl-episodes-range", from = from, to = to),
+        crate::notify::What::Batch => tr!("dl-batch"),
+        crate::notify::What::None => String::new(),
     };
     let release = [t.group.as_str(), t.resolution.as_str()]
         .iter()
@@ -1991,7 +2003,12 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
     DownloadRow {
         hash: t.hash.clone().into(),
         name: t.name.clone().into(),
-        state: tr!(state).into(),
+        // A download that is simply moving says no state word; the row shows what it holds.
+        state: if state == "dl-state-downloading" {
+            Default::default()
+        } else {
+            tr!(state).into()
+        },
         facts: facts.into(),
         progress: t.progress as f32,
         paused,
@@ -2063,8 +2080,8 @@ pub fn relocalize() {
         app.show_prefs();
         app.storage();
         app.show_airing();
-        // The computer's line is worded when a sync ends; one now words it again.
-        let _ = app.commands.send(Command::Sync);
+        app.show_synced();
+        crate::schedule::relocalize(&app.window);
         app.tick();
     });
     crate::player::relocalize();
@@ -2136,9 +2153,6 @@ pub fn run(
     data.on_play(|file| crate::player::open(file as u64));
     data.on_mark(|number, season, watched| with_app(|app| app.mark(number, season, watched)));
     data.on_mark_take_back(|| with_app(App::mark_take_back));
-    data.set_mark_watched_label(tr("mark-menu-watched", &[]).into());
-    data.set_mark_unwatched_label(tr("mark-menu-unwatched", &[]).into());
-    data.set_mark_cancel_label(tr("mark-menu-cancel", &[]).into());
     data.on_play_remote(|file| crate::player::open_remote(file as u64));
     data.on_set_stream_quality(|i| {
         with_app(|app| {
@@ -2383,6 +2397,7 @@ pub fn run(
         unfinished: HashSet::new(),
         service_shown: false,
         asked_at: None,
+        synced: None,
     };
     app.show_prefs();
     app.start_notes();

@@ -194,9 +194,7 @@ fn match_text(info: &MatchInfo) -> String {
     let Some(first) = bits.next() else {
         return String::new();
     };
-    let sites = bits.fold(first, |all, next| {
-        tr!("match-join-and", first = all, second = next)
-    });
+    let sites = bits.fold(first, |all, next| tr!("common-join-and", a = all, b = next));
     tr!("phone-match-matched-on", sites = sites)
 }
 

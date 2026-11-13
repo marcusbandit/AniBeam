@@ -237,7 +237,7 @@ fn words(e: &CoreError) -> String {
 fn comma_list(parts: Vec<String>) -> String {
     parts
         .into_iter()
-        .reduce(|a, b| tr!("find-join-comma", a = a, b = b))
+        .reduce(|a, b| tr!("common-join-comma", a = a, b = b))
         .unwrap_or_default()
 }
 
@@ -246,7 +246,7 @@ fn and_list<S: AsRef<str>>(names: &[S]) -> String {
     names
         .iter()
         .map(|n| n.as_ref().to_string())
-        .reduce(|a, b| tr!("find-join-and", a = a, b = b))
+        .reduce(|a, b| tr!("common-join-and", a = a, b = b))
         .unwrap_or_default()
 }
 

@@ -504,7 +504,6 @@ phone-match-look-up = 検索
 match-apply = 適用
 match-look-up-all = AniBeamが未認識のフォルダをすべて検索
 match-format-music = 音楽
-match-join-and = { $first }と{ $second }
 phone-match-matched-on = { $sites }で照合済み
 phone-match-found-tvmaze = TVmazeで作品が見つかりました
 phone-match-found-anilist = AniListで見つかりました
@@ -554,8 +553,7 @@ move-failed = { $site }が{ $count }作品を受け付けませんでした。�
 
 ## Downloads: find (search, shows, sources, releases)
 
-find-join-comma = { $a }、{ $b }
-find-join-and = { $a }と{ $b }
+common-join-and = { $a }と{ $b }
 find-join-sentences = { $a }{ $b }
 
 find-downloads = ダウンロード
@@ -1279,3 +1277,8 @@ player-speed-not-while-casting = キャスト中は変更不可
 ## Downloads
 
 downloads-other-release-on-disk = 別のリリースが保存済み
+
+## Month patterns
+
+dates-month-short = %Y年%-m月
+dates-month-long = %Y年%-m月

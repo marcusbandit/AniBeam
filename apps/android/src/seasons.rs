@@ -93,6 +93,17 @@ pub fn label(showing: SeasonPick, at: Moment) -> String {
     }
 }
 
+/// The season showing as a year and quarter, for the picker to mark; none for this season.
+pub fn moment_of(showing: SeasonPick, at: Moment) -> Option<Moment> {
+    match showing {
+        SeasonPick::Now => None,
+        SeasonPick::Next => Some(next(at)),
+        SeasonPick::Season { name, year } => {
+            Some((year, ORDER.iter().position(|n| *n == name).unwrap_or(0)))
+        }
+    }
+}
+
 /// The year the picker opens on: the showing season's, else this one's.
 pub fn year_of(showing: SeasonPick, at: Moment) -> i32 {
     match showing {

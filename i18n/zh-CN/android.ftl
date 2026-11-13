@@ -508,7 +508,6 @@ phone-match-look-up = 查找
 match-apply = 应用
 match-look-up-all = 查找 AniBeam 尚未识别的所有文件夹
 match-format-music = 音乐
-match-join-and = { $first } 和 { $second }
 phone-match-matched-on = 已匹配到 { $sites }
 phone-match-found-tvmaze = 已在 TVmaze 找到这部番剧
 phone-match-found-anilist = 已在 AniList 找到
@@ -558,8 +557,7 @@ move-failed = { $site } 未接受 { $count } 部番剧，详见活动日志
 
 ## Downloads: find (search, shows, sources, releases)
 
-find-join-comma = { $a }，{ $b }
-find-join-and = { $a }和{ $b }
+common-join-and = { $a }和{ $b }
 find-join-sentences = { $a }{ $b }
 
 find-downloads = 下载
@@ -1279,3 +1277,8 @@ player-speed-not-while-casting = 投放时不可用
 ## Downloads
 
 downloads-other-release-on-disk = 已有其他发布版本
+
+## Month patterns
+
+dates-month-short = %Y年%-m月
+dates-month-long = %Y年%-m月

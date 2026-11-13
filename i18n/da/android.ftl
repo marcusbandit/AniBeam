@@ -553,7 +553,6 @@ phone-match-look-up = Slå op
 match-apply = Anvend
 match-look-up-all = Slå op for hver mappe, AniBeam endnu ikke kender
 match-format-music = Musik
-match-join-and = { $first } og { $second }
 phone-match-matched-on = Matchet på { $sites }
 phone-match-found-tvmaze = Fandt serien på TVmaze
 phone-match-found-anilist = Fandt den på AniList
@@ -624,8 +623,7 @@ move-failed = { $count ->
 
 ## Downloads: find (søgning, serier, kilder, udgivelser)
 
-find-join-comma = { $a }, { $b }
-find-join-and = { $a } og { $b }
+common-join-and = { $a } og { $b }
 find-join-sentences = { $a } { $b }
 
 find-downloads = Downloads
@@ -1470,3 +1468,8 @@ player-speed-not-while-casting = Ikke under cast
 
 ## Downloads
 downloads-other-release-on-disk = Anden udgivelse på disk
+
+## Month patterns
+
+dates-month-short = %b %Y
+dates-month-long = %B %Y

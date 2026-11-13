@@ -156,7 +156,15 @@ pub fn series(
         id: id(Some(series_id)),
         title: page.title.clone().into(),
         alt_title: page.alt_title.clone().unwrap_or_default().into(),
-        facts: page.facts.join("  ").into(),
+        // The computer's snapshot names the season in English ("Fall 2026"); the phone's
+        // own page words it in the language the app speaks, and so does this one.
+        facts: page
+            .facts
+            .iter()
+            .map(|f| crate::seasons::localized(f))
+            .collect::<Vec<_>>()
+            .join("  ")
+            .into(),
         poster,
         has_poster,
         initials: format::initials(&page.title).into(),

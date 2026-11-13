@@ -553,7 +553,6 @@ phone-match-look-up = Chercher
 match-apply = Appliquer
 match-look-up-all = Chercher tous les dossiers qu'AniBeam ne connaît pas encore
 match-format-music = Musique
-match-join-and = { $first } et { $second }
 phone-match-matched-on = Associé sur { $sites }
 phone-match-found-tvmaze = Série trouvée sur TVmaze
 phone-match-found-anilist = Trouvée sur AniList
@@ -624,8 +623,7 @@ move-failed = { $count ->
 
 ## Downloads: find (search, shows, sources, releases)
 
-find-join-comma = { $a }, { $b }
-find-join-and = { $a } et { $b }
+common-join-and = { $a } et { $b }
 find-join-sentences = { $a } { $b }
 
 find-downloads = Téléchargements
@@ -1472,3 +1470,8 @@ player-speed-not-while-casting = Pas en diffusion
 ## Downloads
 
 downloads-other-release-on-disk = Autre release sur disque
+
+## Month patterns
+
+dates-month-short = %b %Y
+dates-month-long = %B %Y

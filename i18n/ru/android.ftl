@@ -579,7 +579,6 @@ phone-match-look-up = Найти
 match-apply = Применить
 match-look-up-all = Найти все папки, которых AniBeam пока не знает
 match-format-music = Музыка
-match-join-and = { $first } и { $second }
 phone-match-matched-on = Найдено: { $sites }
 phone-match-found-tvmaze = Сериал найден на TVmaze
 phone-match-found-anilist = Найдено на AniList
@@ -664,8 +663,7 @@ move-failed = { $count ->
 
 ## Загрузки: поиск (сериалы, источники, релизы)
 
-find-join-comma = { $a }, { $b }
-find-join-and = { $a } и { $b }
+common-join-and = { $a } и { $b }
 find-join-sentences = { $a } { $b }
 
 find-downloads = Загрузки
@@ -1594,3 +1592,8 @@ player-speed-not-while-casting = Нельзя при трансляции
 ## Загрузки
 
 downloads-other-release-on-disk = Другой релиз на диске
+
+## Month patterns
+
+dates-month-short = %b %Y
+dates-month-long = %b %Y
