@@ -47,6 +47,11 @@ block2 = "0.6"
 [build-dependencies]
 slint-build = "1.18"
 
+# librqbit-dualstack-sockets 0.7.0 takes its Linux path on iOS and does not build there.
+# Pinned to the fix in ikatson/librqbit-dualstack-sockets#7 until a release carries it (#868).
+[patch.crates-io]
+librqbit-dualstack-sockets = { git = "https://github.com/zerx-lab/librqbit-dualstack-sockets", rev = "ab2d894db4115e7ed7d4e67716e395e8b85be93f" }
+
 [profile.release]
 opt-level = "s"
 lto = "thin"

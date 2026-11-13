@@ -155,8 +155,8 @@ xcrun simctl install booted build/ios/Build/Products/Debug-iphonesimulator/AniBe
 xcrun simctl launch --console-pty booted com.marcusrosado.anibeam
 ```
 
-Until `librqbit-dualstack-sockets` releases its iOS fix (its pull request #7), cargo
-stops in that crate when it builds for iOS.
+`librqbit-dualstack-sockets` 0.7.0 does not build for iOS, so Cargo.toml pins the fix
+from its pull request #7 under `[patch.crates-io]`. Drop the pin once a release has it.
 
 ## The emulator loop
 
