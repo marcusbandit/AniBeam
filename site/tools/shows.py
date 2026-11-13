@@ -2,7 +2,7 @@
 """Writes site/shows.json: what the card shows when a poster in the home page's wall is clicked.
 
 Each poster in img/posters/ is named for a show; SHOWS gives its AniList id. This asks AniList
-once for every show and keeps the title, format, year, episodes, main studio, score, genres, the
+once for every show and keeps the title, format, year, episodes, main studio, score, the
 MyAnimeList id and a short description. The site reads the file as it is, so the card opens with
 no request to AniList. Run it again after adding a poster:
 
@@ -26,7 +26,7 @@ SHOWS = {
     "yourname": 21519,
 }
 QUERY = """query($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: ANIME) {
-  id idMal title { english romaji } format episodes seasonYear averageScore genres
+  id idMal title { english romaji } format episodes seasonYear averageScore
   studios(isMain: true) { nodes { name } } description(asHtml: false)
 } } }"""
 # Long enough for the premise, short enough to read in the card without scrolling much.
@@ -71,13 +71,11 @@ def main():
             "anilist": aid,
             "mal": m["idMal"],
             "title": (m["title"]["english"] or m["title"]["romaji"]).replace("’", "'"),
-            "romaji": m["title"]["romaji"],
             "format": m["format"],
             "year": m["seasonYear"],
             "episodes": m["episodes"],
             "studio": studios[0]["name"] if studios else None,
             "score": m["averageScore"],
-            "genres": m["genres"][:3],
             "description": blurb(m["description"]),
         }
     (SITE / "shows.json").write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n")

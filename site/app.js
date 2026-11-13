@@ -183,16 +183,21 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     io.observe(wall);
   } else load().then(enable);
 
-  // Right after the wall, so Tab from the card goes on to the page after it.
+  // Right after the wall, so Tab from the card goes on to the page after it. The card sits in a
+  // box that starts at the poster's edge and clips it, so it slides out from behind the poster.
+  const pop = document.createElement("div");
+  pop.className = "show-pop";
+  pop.hidden = true;
   const card = document.createElement("div");
   card.className = "show-card";
   card.setAttribute("role", "dialog");
   card.setAttribute("aria-modal", "false");
   card.setAttribute("aria-labelledby", "show-card-title");
-  card.hidden = true;
-  wall.after(card);
+  pop.append(card);
+  wall.after(pop);
 
-  const narrow = matchMedia("(max-width: 640px)");
+  // Below 940 px a poster near the middle has no room on either side, so the card is a sheet.
+  const narrow = matchMedia("(max-width: 940px)");
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -213,58 +218,57 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     return a;
   };
 
-  function fill(s, poster) {
+  // The description's last lines fade only while there is more of it below.
+  const fade = (text) => text.classList.toggle("more", text.scrollTop + text.clientHeight < text.scrollHeight - 2);
+
+  function fill(s) {
     const close = el("button", "show-x");
     close.type = "button";
     close.setAttribute("aria-label", t("Close"));
     close.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
     close.addEventListener("click", () => shut(true));
 
-    const head = el("div", "show-head");
-    const thumb = el("img");
-    thumb.src = poster.querySelector("img").src;
-    thumb.alt = "";
-    const names = el("div");
     const title = el("h3", null, s.title);
     title.id = "show-card-title";
-    names.append(title);
-    if (s.romaji && s.romaji.toLowerCase() !== s.title.toLowerCase()) names.append(el("p", "show-romaji", s.romaji));
-    head.append(thumb, names);
 
     const facts = [s.format === "MOVIE" ? t("Movie") : s.format === "TV" ? "TV" : s.format, s.year];
     if (s.format !== "MOVIE" && s.episodes > 1) facts.push(t("{n} episodes", { n: s.episodes }));
     if (s.studio) facts.push(s.studio);
     const meta = el("p", "show-meta");
     facts.filter(Boolean).forEach((f, i) => { if (i) meta.append(el("b", null, "·")); meta.append(el("span", null, String(f))); });
-
-    const tags = el("div", "show-tags");
-    if (s.score) tags.append(el("span", "show-score", `★ ${s.score}%`));
-    for (const g of s.genres) tags.append(el("span", null, g));
+    if (s.score) { meta.append(el("b", null, "·")); meta.append(el("span", "show-score", `★ ${s.score}%`)); }
 
     const text = el("div", "show-text");
     for (const para of s.description.split("\n\n")) text.append(el("p", null, para));
+    text.addEventListener("scroll", () => fade(text), { passive: true });
 
     const links = el("div", "show-links");
     links.append(link(`https://anilist.co/anime/${s.anilist}`, "to-anilist", ANILIST, "AniList"));
     if (s.mal) links.append(link(`https://myanimelist.net/anime/${s.mal}`, "to-mal", MAL, "MyAnimeList"));
 
-    card.replaceChildren(close, head, meta, tags, text, links);
+    card.replaceChildren(close, title, meta, text, links);
   }
-  // Beside the poster on whichever side has room, level with it, kept on screen and clear of the
-  // nav bar. The card sits in the page, not fixed, so it scrolls along with its poster.
+  // Beside the poster on whichever side has room, exactly as tall as it and level with it. The
+  // box starts at the poster's edge with room for the shadow on the other three sides; the card
+  // waits inside it, pushed back behind the poster, until `in` slides it out.
+  const PAD = 48, GAP = 14;
   function place(poster) {
-    card.style.left = card.style.top = "";
-    card.classList.remove("from-left", "from-right");
+    for (const k of ["left", "top", "width", "height"]) { pop.style[k] = ""; card.style[k] = ""; }
+    pop.classList.remove("to-right", "to-left");
     if (narrow.matches) return;
     const r = poster.getBoundingClientRect();
-    const box = card.offsetParent ? card.offsetParent.getBoundingClientRect() : { left: -scrollX, top: -scrollY };
-    const w = card.offsetWidth, h = card.offsetHeight, gap = 16, edge = 16, under = 84;
-    const right = r.right + gap + w <= innerWidth - edge;
-    const left = right ? r.right + gap : Math.max(edge, r.left - gap - w);
-    const top = Math.max(under, Math.min(r.top + r.height / 2 - h / 2, innerHeight - edge - h));
-    card.classList.add(right ? "from-left" : "from-right");
-    card.style.left = `${left - box.left}px`;
-    card.style.top = `${top - box.top}px`;
+    const box = pop.offsetParent ? pop.offsetParent.getBoundingClientRect() : { left: -scrollX, top: -scrollY };
+    const w = card.offsetWidth;
+    const right = r.right + GAP + w + 16 <= innerWidth;
+    pop.classList.add(right ? "to-right" : "to-left");
+    pop.style.width = `${GAP + w + PAD}px`;
+    pop.style.height = `${r.height + 2 * PAD}px`;
+    pop.style.top = `${r.top - PAD - box.top}px`;
+    pop.style.left = `${(right ? r.right : r.left - GAP - w - PAD) - box.left}px`;
+    card.style.top = `${PAD}px`;
+    card.style.left = `${right ? GAP : PAD}px`;
+    card.style.height = `${r.height}px`;
+    card.style.setProperty("--tuck", `${(right ? -1 : 1) * (GAP + w)}px`);
   }
 
   // On a phone the sheet covers the page, so it gets a history entry and back closes it. Leaving
@@ -291,6 +295,7 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
 
   let open = null;
   let wanted = null;
+  let hiding = 0;
   async function show(poster, byKey) {
     wanted = poster;
     const s = (await load())[poster.dataset.show];
@@ -300,12 +305,17 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     open = poster;
     poster.classList.add("is-open");
     wall.classList.add("holding");
-    fill(s, poster);
-    card.hidden = false;
+    fill(s);
+    clearTimeout(hiding);
+    // A card already out goes straight back behind its poster, then slides out by the new one.
+    card.classList.add("snap");
     card.classList.remove("in");
+    pop.hidden = false;
     place(poster);
-    void card.offsetWidth; // start the slide from the closed state, on a phone too
-    requestAnimationFrame(() => card.classList.add("in"));
+    fade(card.querySelector(".show-text"));
+    void card.offsetWidth;
+    card.classList.remove("snap");
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (open === poster) card.classList.add("in"); }));
     pushSheet();
     if (byKey) card.querySelector(".show-x").focus({ preventScroll: true });
   }
@@ -317,7 +327,9 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     poster.classList.remove("is-open");
     wall.classList.remove("holding");
     card.classList.remove("in");
-    card.hidden = true;
+    // Hidden once it has slid back behind the poster.
+    clearTimeout(hiding);
+    hiding = setTimeout(() => { if (!open) pop.hidden = true; }, 320);
     if (!fromHistory) popSheet(viaLink);
     if (refocus) poster.focus({ preventScroll: true });
   }
