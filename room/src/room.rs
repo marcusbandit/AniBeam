@@ -231,7 +231,11 @@ impl Room {
                 _ => vec![error(conn, ErrorCode::Proto, "hello must come first")],
             };
         };
-        if let Some(outs) = self.over_limit(i, conn, now_ms) {
+        // Leaving is never dropped: a lost bye would hold the seat, and the
+        // host role, for the whole grace.
+        if !matches!(msg, ClientMsg::Bye)
+            && let Some(outs) = self.over_limit(i, conn, now_ms)
+        {
             return outs;
         }
         let id = self.slots[i].id;

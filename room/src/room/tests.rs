@@ -735,6 +735,23 @@ fn twenty_messages_a_second_then_rate_limited() {
 }
 
 #[test]
+fn a_bye_past_the_rate_still_leaves_and_hands_the_host_over() {
+    let mut r = room();
+    join(&mut r, 1, "Ann", Some(KEY), 0);
+    join(&mut r, 2, "Bea", None, 0);
+    for _ in 0..=RATE_PER_SEC {
+        r.handle(ConnId(1), ClientMsg::Ping { c: 0 }, 1_000);
+    }
+    let outs = r.handle(ConnId(1), ClientMsg::Bye, 1_000);
+    assert!(
+        outs.iter()
+            .any(|o| matches!(o.msg, ServerMsg::Closed { .. })),
+        "the bye is handled, not dropped"
+    );
+    assert_eq!(r.host(), Some(MemberId(2)), "Bea is host at once");
+}
+
+#[test]
 fn bad_messages_count_against_the_rate() {
     let mut r = room();
     join(&mut r, 1, "Ann", None, 0);

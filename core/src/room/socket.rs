@@ -331,7 +331,7 @@ impl Link<'_> {
                     }
                     let sent = sink.send(text(&msg)).await.is_ok();
                     if bye {
-                        let _ = sink.close().await;
+                        farewell(&mut sink, &mut stream).await;
                         return End::Left;
                     }
                     if !sent {
@@ -339,7 +339,15 @@ impl Link<'_> {
                     }
                 }
                 _ = cancel.cancelled() => {
-                    let _ = sink.close().await;
+                    // Leaving always queues a bye first, and the biased select
+                    // sends it before this; say it again in case it was taken
+                    // by a branch that returned.
+                    if welcomed {
+                        let _ = sink.send(text(&ClientMsg::Bye)).await;
+                        farewell(&mut sink, &mut stream).await;
+                    } else {
+                        let _ = sink.close().await;
+                    }
                     return End::Left;
                 }
                 _ = kick.notified() => return End::Dropped { welcomed },
@@ -414,6 +422,12 @@ impl Link<'_> {
                         }
                         other => {
                             if !super::on_message(&core, self.serial, other) {
+                                // The room was left while this frame was on
+                                // its way: the bye queued behind it must still
+                                // go out, or the seat and the host role wait
+                                // out the grace.
+                                let _ = sink.send(text(&ClientMsg::Bye)).await;
+                                farewell(&mut sink, &mut stream).await;
                                 return End::Left;
                             }
                         }
@@ -439,6 +453,32 @@ fn ping() -> ClientMsg {
         c: super::local_ms(),
     }
 }
+
+/// After a `bye`: waits a moment for the relay's `closed`, then closes. Closing
+/// at once can make the relay fail a write to this socket and drop it before
+/// it reads the bye, which keeps the seat, and the host role, for the grace.
+async fn farewell(
+    sink: &mut futures_util::stream::SplitSink<Ws, Message>,
+    stream: &mut futures_util::stream::SplitStream<Ws>,
+) {
+    let _ = tokio::time::timeout(BYE_WAIT, async {
+        while let Some(Ok(frame)) = stream.next().await {
+            if let Message::Text(body) = frame
+                && matches!(
+                    ServerMsg::parse(body.as_str()),
+                    Ok(ServerMsg::Closed { .. })
+                )
+            {
+                break;
+            }
+        }
+    })
+    .await;
+    let _ = sink.close().await;
+}
+
+/// How long [`farewell`] waits for the relay to confirm a `bye`.
+const BYE_WAIT: Duration = Duration::from_secs(1);
 
 fn text(msg: &ClientMsg) -> Message {
     Message::Text(msg.to_json().into())

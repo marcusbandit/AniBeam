@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anibeam_room::limit::{self, HELLO_MS, Verdict, Window, limit_key};
-use anibeam_room::proto::{CreateRoom, CreatedRoom};
+use anibeam_room::proto::{ClientMsg, CreateRoom, CreatedRoom};
 use anibeam_room::{ConnId, Out, Room, code, page};
 use axum::Router;
 use axum::body::Bytes;
@@ -361,6 +361,9 @@ async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
             frame = rx.recv() => match frame {
                 Some(Frame::Text(text)) => {
                     if socket.send(Message::Text(text.into())).await.is_err() {
+                        // The client may have closed right after its last
+                        // words, a bye most often: read those before ending.
+                        drain(&mut socket, &relay, &room_code, conn).await;
                         break;
                     }
                 }
@@ -379,6 +382,8 @@ async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
                 };
                 match window.hit(now_ms()) {
                     Verdict::Pass => relay.on_text(&room_code, conn, text.as_str()),
+                    // Leaving is never dropped, however fast the socket was.
+                    _ if is_bye(text.as_str()) => relay.on_text(&room_code, conn, text.as_str()),
                     Verdict::Refuse => {
                         let refusal = limit::refusal().to_json();
                         if socket.send(Message::Text(refusal.into())).await.is_err() {
@@ -440,6 +445,20 @@ async fn tick_loop(relay: Weak<Mutex<Inner>>) {
         inner.rooms.retain(|_, entry| !entry.room.is_closed());
         inner.limits.retain(|_, l| now < l.start_ms + 60_000);
     }
+}
+
+/// Reads what a socket sent before it closed, once a write to it has failed,
+/// so a `bye` that raced a broadcast still leaves the room properly.
+async fn drain(socket: &mut WebSocket, relay: &Relay, room_code: &str, conn: ConnId) {
+    let wait = std::time::Duration::from_millis(500);
+    while let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(wait, socket.recv()).await {
+        relay.on_text(room_code, conn, text.as_str());
+    }
+}
+
+/// Whether a frame is a `bye`, which the per socket rate never drops.
+fn is_bye(text: &str) -> bool {
+    matches!(ClientMsg::parse(text), Ok(ClientMsg::Bye))
 }
 
 #[cfg(test)]
