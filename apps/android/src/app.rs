@@ -1236,7 +1236,7 @@ impl App {
                     let data = window.global::<AppData>();
                     data.set_checking(false);
                     let Ok(Reply::PhoneNetCheck { checks }) = answer else { return };
-                    app.check_text = std::iter::once(format!("AniBeam {} connection check", env!("CARGO_PKG_VERSION")))
+                    app.check_text = std::iter::once(format!("AniBeam {} connection check", env!("ANIBEAM_PHONE_VERSION")))
                         .chain(checks.iter().map(|c| {
                             format!("{} {}: {} ({} ms)", if c.ok { "OK  " } else { "FAIL" }, c.name, c.detail, c.ms)
                         }))
@@ -2097,7 +2097,7 @@ pub fn run(
     data.set_version(
         format!(
             "AniBeam for Android {} (build {})",
-            env!("CARGO_PKG_VERSION"),
+            env!("ANIBEAM_PHONE_VERSION"),
             env!("ANIBEAM_VERSION_CODE")
         )
         .into(),

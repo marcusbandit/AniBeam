@@ -14,17 +14,20 @@
     if (toggle) toggle.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.channel === channel)));
     if (!rel) return;
     // No nightly newer than the release means Nightly offers the release's files, and says so.
-    const behind = channel === "nightly" && !rel.nightly;
-    const desktop = channel === "nightly" && rel.nightly ? rel.nightly : rel.stable;
+    // The phone has a nightly of its own, under its own number.
+    const nightly = channel === "nightly";
+    const behind = nightly && !(AB.phone ? rel.phone_nightly : rel.nightly);
+    const desktop = nightly && rel.nightly ? rel.nightly : rel.stable;
+    const phone = nightly && rel.phone_nightly ? rel.phone_nightly : rel.phone;
     for (const card of document.querySelectorAll("#dl-grid [data-asset]")) {
-      const from = card.dataset.asset === "apk" ? rel.phone : desktop;
+      const from = card.dataset.asset === "apk" ? phone : desktop;
       if (from) card.href = from.assets[card.dataset.asset] || from.url;
     }
     // A phone sees only the phone's tile, so the line under the title is the phone release's.
-    const shown = AB.phone ? rel.phone : desktop;
+    const shown = AB.phone ? phone : desktop;
     if (!meta || !shown) return;
     const when = new Date(shown.published).toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" });
-    meta.textContent = behind && !AB.phone
+    meta.textContent = behind
       ? t("No nightly newer than {version} yet.", { version: shown.version }) + " "
       : `${shown.version}, ${when}. `;
     // whats-new.py writes each release's notes page into releases.json, or the list when it has none.

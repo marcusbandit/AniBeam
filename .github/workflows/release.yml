@@ -17,12 +17,22 @@ name: Release
 # a version without its download. The AUR packages (anibeam and anibeam-bin) and the brew
 # cask follow by hand: apps/linux/packaging/aur/publish.sh 2.5.0 and
 # apps/linux/packaging/brew/bump.sh 2.5.0.
+#
+# The phone ships the same way with app set to phone: its newest nightly,
+# android-v2.4.3-nightly.20261113.41, ships as android-v2.4.3, an APK built from that commit.
+# It is never the Latest release, which stays the desktop's for the site and install.sh. Then
+# the phone moves to its next minor version (2.5.0) with a heading in apps/android/CHANGELOG.md.
 # CONTRIBUTING.md, under Releases, has the whole line.
 on:
   workflow_dispatch:
     inputs:
+      app:
+        description: Which app ships
+        type: choice
+        options: [desktop, phone]
+        default: desktop
       nightly:
-        description: The nightly to promote, v2.5.0-nightly.20261102.40; empty for the newest
+        description: The nightly to promote, v2.5.0-nightly.20261102.40 or android-v2.4.3-nightly.20261113.41; empty for the app's newest
         type: string
         default: ''
   push:
@@ -42,6 +52,7 @@ jobs:
       sha: ${{ steps.resolve.outputs.sha }}
       version: ${{ steps.resolve.outputs.version }}
       kind: ${{ steps.resolve.outputs.kind }}
+      app: ${{ steps.resolve.outputs.app }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +63,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NIGHTLY: ${{ inputs.nightly }}
+          APP: ${{ inputs.app || 'desktop' }}
         run: |
+          # The desktop's tags are v2.5.0 and v2.5.0-nightly.*, the phone's android-v2.4.3 and
+          # android-v2.4.3-nightly.*, each with its own change notes.
+          if [ "$APP" = phone ]; then prefix=android-v notes=apps/android; else prefix=v notes=apps/linux; fi
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             if [ "$GITHUB_REF" != refs/heads/main ]; then
               echo "::error::A stable version is promoted from main. A fix for a shipped version is a tag on its release branch; see CONTRIBUTING.md, Releases."
@@ -61,25 +76,25 @@ jobs:
             tag="$NIGHTLY"
             if [ -z "$tag" ]; then
               tag="$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
-                --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | last // empty | .tagName')"
+                --jq "[.[] | select(.tagName | test(\"^${prefix}[0-9.]+-nightly\\\\.\"))] | sort_by(.createdAt) | last // empty | .tagName")"
             fi
-            if ! [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-nightly\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::error::No nightly to promote (got '$tag'). Run the Nightly workflow first."
+            if ! [[ "$tag" =~ ^${prefix}([0-9]+\.[0-9]+\.[0-9]+)-nightly\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::No $APP nightly to promote (got '$tag'). Run the Nightly workflow first."
               exit 1
             fi
             version="${BASH_REMATCH[1]}"
             sha="$(git rev-list -n 1 "$tag")"
-            if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
-              echo "::error::v$version is out already. Main moves to the next version after a release; check Cargo.toml on main."
+            if git rev-parse -q --verify "refs/tags/$prefix$version" > /dev/null; then
+              echo "::error::$prefix$version is out already. Main moves to the next version after a release; check the version on main."
               exit 1
             fi
             # What's new shows the newest heading's lines and the change files waiting to
             # fold under it, so a version with neither has nothing to say to the people it
             # reaches.
-            if ! git show "$sha:apps/linux/CHANGELOG.md" |
+            if ! git show "$sha:$notes/CHANGELOG.md" |
               awk '/^## /{n++} n==1 && /^### /{found=1} n==2{exit} END{exit !found}' &&
-              ! git ls-tree --name-only "$sha" apps/linux/changes/ | grep -v '/README\.md$' | grep -q '\.md$'; then
-              echo "::error::apps/linux/CHANGELOG.md has no lines under $version at $tag, and apps/linux/changes has none waiting."
+              ! git ls-tree --name-only "$sha" $notes/changes/ | grep -v '/README\.md$' | grep -q '\.md$'; then
+              echo "::error::$notes/CHANGELOG.md has no lines under $version at $tag, and $notes/changes has none waiting."
               exit 1
             fi
             # GitHub refuses GITHUB_TOKEN a new tag whose workflow files differ from main's,
@@ -88,9 +103,11 @@ jobs:
               echo "::error::$tag (${sha::7}) has different workflow files from main, so GitHub will not let this workflow tag it. Run the Nightly workflow with force, then run this again."
               exit 1
             fi
-            echo "Promoting $tag (${sha::7}) to v$version"
+            echo "Promoting $tag (${sha::7}) to $prefix$version"
             kind=promote
           else
+            # A hotfix tag is the desktop's; the phone's next version is its next nightly.
+            APP=desktop
             version="${GITHUB_REF_NAME#v}"
             branch="release/${version%.*}"
             sha="$GITHUB_SHA"
@@ -104,9 +121,11 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
 
   macos:
     needs: resolve
+    if: needs.resolve.outputs.app == 'desktop'
     uses: ./.github/workflows/macos.yml
     secrets: inherit
     with:
@@ -115,6 +134,7 @@ jobs:
 
   linux:
     needs: resolve
+    if: needs.resolve.outputs.app == 'desktop'
     uses: ./.github/workflows/linux.yml
     secrets: inherit
     with:
@@ -123,6 +143,7 @@ jobs:
 
   windows:
     needs: resolve
+    if: needs.resolve.outputs.app == 'desktop'
     uses: ./.github/workflows/windows.yml
     secrets: inherit
     with:
@@ -132,7 +153,17 @@ jobs:
   # The tarball the AUR's anibeam-bin installs, built in an Arch container (#235).
   arch:
     needs: resolve
+    if: needs.resolve.outputs.app == 'desktop'
     uses: ./.github/workflows/arch.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+      version: ${{ needs.resolve.outputs.version }}
+
+  android:
+    needs: resolve
+    if: needs.resolve.outputs.app == 'phone'
+    uses: ./.github/workflows/android-apk.yml
     secrets: inherit
     with:
       ref: ${{ needs.resolve.outputs.sha }}
@@ -140,6 +171,7 @@ jobs:
 
   publish:
     needs: [resolve, macos, linux, windows, arch]
+    if: needs.resolve.outputs.app == 'desktop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,14 +214,52 @@ jobs:
             --title "$(.github/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --latest="$latest"
 
+  # The phone's release: the APK on a release of its own, never the Latest one. Its notes start
+  # at the phone's version below it, a release made by hand until the first one this ships.
+  publish-phone:
+    needs: [resolve, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: phone-apk
+          path: dist
+
+      - name: Publish the phone's release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          ls -la dist
+          tag="android-v$VERSION"
+          sed "s/@VERSION@/$VERSION/g" .github/release-notes-android.md > notes.md
+          previous="$( {
+            gh release list --limit 100 --exclude-drafts --json tagName \
+              --jq '.[].tagName | select(test("^android-v[0-9]+\\.[0-9]+\\.[0-9]+$"))'
+            echo "$tag"
+          } | sort -uV | grep -B1 -xF "$tag" | grep -vxF "$tag" || true)"
+          echo "previous=${previous:-none}"
+          start=()
+          if [ -n "$previous" ]; then start=(--notes-start-tag "$previous"); fi
+          gh release create "$tag" dist/*.apk --draft --latest=false --target "$SHA" \
+            --title "$(.github/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
+          gh release edit "$tag" --draft=false --latest=false
+
   # The apt and dnf repos on anibeam.app are signed from the newest stable release's
   # packages each time the site deploys (#788), so deploy it now that this one is public.
   # The Pages environment only deploys from main, so the site runs there, not on a hotfix tag.
   # It waits for `next`, whose fold of the change files writes the shipped version's notes, so
   # What's new has the release's page the moment the release is public. A hotfix skips `next`.
   site:
-    needs: [publish, next]
-    if: always() && needs.publish.result == 'success' && needs.next.result != 'failure'
+    needs: [publish, publish-phone, next]
+    if: >-
+      always() && (needs.publish.result == 'success' || needs.publish-phone.result == 'success') &&
+      needs.next.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -213,8 +283,10 @@ jobs:
           gh run watch "$run" -R "$GITHUB_REPOSITORY" --exit-status
 
   next:
-    needs: [resolve, publish]
-    if: needs.resolve.outputs.kind == 'promote'
+    needs: [resolve, publish, publish-phone]
+    if: >-
+      always() && needs.resolve.outputs.kind == 'promote' &&
+      (needs.publish.result == 'success' || needs.publish-phone.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -223,6 +295,7 @@ jobs:
           fetch-depth: 0
 
       - name: Main moves to the next version
+        if: needs.resolve.outputs.app == 'desktop'
         env:
           SHIPPED: ${{ needs.resolve.outputs.version }}
           SHA: ${{ needs.resolve.outputs.sha }}
@@ -263,4 +336,31 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "chore(release): main is $next now that $SHIPPED shipped"
+          git push origin HEAD:main
+
+      # The phone's version is its own, in apps/android: Cargo.toml, the phone's package in its
+      # lock, and its CHANGELOG.md. The APK's versionCode follows from the version (build.sh).
+      - name: The phone moves to its next version
+        if: needs.resolve.outputs.app == 'phone'
+        env:
+          SHIPPED: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          current="$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/android/Cargo.toml | head -n1)"
+          if [ "$current" != "$SHIPPED" ]; then
+            echo "The phone is $current already, not $SHIPPED; nothing to move."
+            exit 0
+          fi
+          IFS=. read -r major minor _ <<<"$SHIPPED"
+          next="$major.$((minor + 1)).0"
+          sed -i "0,/^version = \"$SHIPPED\"$/s//version = \"$next\"/" apps/android/Cargo.toml
+          sed -i "/^name = \"anibeam-android\"$/{n;s/^version = \"$SHIPPED\"$/version = \"$next\"/}" apps/android/Cargo.lock
+          # The bot's push runs no checks, so the lock must still resolve as written.
+          (cd apps/android && cargo metadata --locked --format-version 1 > /dev/null)
+          .github/changelog-fold.sh apps/android "$SHA"
+          sed -i "0,/^## /s//## $next · $(date -u +%Y-%m-%d)\n\n## /" apps/android/CHANGELOG.md
+          git diff --stat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): the phone is $next now that $SHIPPED shipped"
           git push origin HEAD:main
