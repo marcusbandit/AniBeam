@@ -169,12 +169,9 @@ fn with(f: impl FnOnce(&mut Find)) {
 /// what is left is a block on the address, or the site being down.
 fn words(e: &CoreError) -> String {
     let text = e.to_string();
-    let lower = text.to_lowercase();
-    if lower.contains("timed out")
-        || lower.contains("error sending request")
-        || lower.contains("unreachable")
-        || lower.contains("connect")
-    {
+    // The words are in the reader's language, so the kind of failure comes from the
+    // error's shape (#792)
+    if e.is_unreachable() {
         let host = match e {
             CoreError::Service { service, .. } => service.clone(),
             _ => "The source".to_string(),

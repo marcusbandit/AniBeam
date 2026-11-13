@@ -104,6 +104,8 @@ core-error-not-found-session = Could not find playback session { $id }.
 core-error-not-found-job = Could not find job { $id }.
 # $field is the setting's own name; $message is already in the reader's language.
 core-error-invalid = Invalid { $field }: { $message }.
+# The same, for a $message that already ends in its own full stop, question mark or ellipsis.
+core-error-invalid-ended = Invalid { $field }: { $message }
 core-error-unavailable = This folder is not available: { $path }
 core-error-not-connected = { $tracker } is not connected.
 core-error-refused-hidden = Cannot do that: the show is hidden.

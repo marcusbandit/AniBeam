@@ -110,11 +110,19 @@ impl CoreError {
                 Entity::Job => "core-error-not-found-job",
             })
             .arg("id", id.to_string()),
-            CoreError::Invalid { field, message } => words!(
-                "core-error-invalid",
-                field = field.replace('_', " "),
-                message = message.trim_end_matches(['.', '!', '?']),
-            ),
+            // A message that ends a sentence keeps its own mark; any other gets a full stop
+            CoreError::Invalid { field, message } => Words::new(
+                if message
+                    .trim_end()
+                    .ends_with(['.', '!', '?', '。', '！', '？', '…'])
+                {
+                    "core-error-invalid-ended"
+                } else {
+                    "core-error-invalid"
+                },
+            )
+            .arg("field", field.replace('_', " "))
+            .arg("message", message.trim_end()),
             CoreError::Unavailable { path } => words!("core-error-unavailable", path = path),
             CoreError::NotConnected { tracker } => {
                 words!("core-error-not-connected", tracker = tracker_name(*tracker))
@@ -211,6 +219,17 @@ impl CoreError {
         )
     }
 
+    /// True for a service or provider that could not be reached at all: a timeout, a
+    /// refused connection, no route. A shell picks its explanation from this, never from
+    /// the words, which are in the reader's language (#792).
+    pub fn is_unreachable(&self) -> bool {
+        match self {
+            CoreError::Service { code, .. } => matches!(code.as_str(), "unreachable" | "timeout"),
+            CoreError::Provider { status: None, .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn io_at(path: impl Into<String>, e: std::io::Error) -> CoreError {
         CoreError::Io {
             path: Some(path.into()),
@@ -257,6 +276,41 @@ mod tests {
             reason: Refusal::OnDisk,
         };
         assert_eq!(e.to_string(), "Cannot do that: the file is only on disk.");
+    }
+
+    #[test]
+    fn unreachable_comes_from_the_shape_never_the_words() {
+        let service = |code: &str| CoreError::Service {
+            service: "Feed".into(),
+            code: code.into(),
+            message: "anything at all".into(),
+        };
+        assert!(service("unreachable").is_unreachable());
+        assert!(service("timeout").is_unreachable());
+        assert!(!service("unauthorized").is_unreachable());
+        let provider = |status| CoreError::Provider {
+            provider: Provider::Anilist,
+            status,
+            message: "timed out".into(),
+            retry_after: None,
+        };
+        assert!(provider(None).is_unreachable());
+        assert!(!provider(Some(500)).is_unreachable());
+    }
+
+    #[test]
+    fn an_invalid_message_keeps_its_own_ending() {
+        let invalid = |m: &str| CoreError::invalid("folder_path", m).to_string();
+        assert_eq!(invalid("is empty"), "Invalid folder path: is empty.");
+        assert_eq!(invalid("is empty."), "Invalid folder path: is empty.");
+        assert_eq!(
+            invalid("is that the right folder?"),
+            "Invalid folder path: is that the right folder?"
+        );
+        assert_eq!(
+            invalid("still reading..."),
+            "Invalid folder path: still reading..."
+        );
     }
 
     #[test]

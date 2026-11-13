@@ -857,9 +857,8 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
 /// progress takes the same shape as one that has just started, so a delegate never has to
 /// tell the two apart. `doing` is the kind in plain words for the status strip.
 fn job_entry(id: &Value, kind: &Value, progress: &Value) -> Value {
-    // `to_string` holds whether the core hands the words over borrowed or as its own String
     let doing = serde_json::from_value::<anibeam_core::JobKind>(kind.clone())
-        .map(|k| k.doing().to_string())
+        .map(|k| k.doing())
         .unwrap_or_default();
     json!({
         "id": id,
@@ -1232,7 +1231,7 @@ impl qobject::Door {
         if event.level >= Level::Info {
             self.as_mut().set_latest_line(wire.clone());
         }
-        if event.plain.is_some() || event.plain_words.is_some() {
+        if event.plain.is_some() {
             self.as_mut().set_latest_plain(wire.clone());
         }
         if event.level == Level::Error {
