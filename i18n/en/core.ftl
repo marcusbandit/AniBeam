@@ -149,7 +149,7 @@ core-repos-repo-removed = Removed a list of download sources.
 # $key is the field's key in quotes.
 core-repos-no-field = { $name } has no field { $key }
 core-repos-needs-field = { $name } needs its { $label }
-core-repos-host-only = { $name }: the { $label } is a host or host:port only, like 192.168.1.10:9696
+core-repos-host-only = { $name }: the { $label } is a host or host:port only, like 192.0.2.10:9696
 core-repos-not-added = that repo is not added
 core-repos-not-offered = { $repo } does not offer { $id }
 core-repos-already-installed = { $name } is already installed

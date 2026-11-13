@@ -202,6 +202,13 @@ an ID a language lacks shows in English. All of a language's files load as one, 
 - One message per sentence, its numbers and names as arguments. A sentence glued together in
   code cannot be translated, and a count picks its plural in the message, never in code.
 - Never give an element `id: words`: it hides the global lookup from everything inside it.
+- A message added or changed in English shows in English in the other languages until it is
+  translated; add its translations in the same PR when you can, keeping the IDs, the
+  attributes and the variables exactly as English has them.
+- Labels must not grow. `apps/linux/scripts/layout-check.py --root <sandbox with a library>`
+  shoots every page and Settings tab in every language at a wide and a narrow window and lists
+  each piece of text that wraps onto more lines than in English or is cut off. Run it after a
+  change to a label's words or to the layout around one.
 - A new message goes in English in the same PR. A translation can follow later.
 
 `.github/strings-check.py` runs on every pull request. It fails a raw string added to a

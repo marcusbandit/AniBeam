@@ -128,7 +128,7 @@ FocusScope {
             return words.t("settings-status-downloads-unconnected")
         }
         if (id === "phone") return Door.preferences.share_over_tailscale ? words.t("settings-status-phone-shared") : words.t("settings-status-phone-off")
-        if (id === "storage") return storage ? words.t("settings-status-storage", { size: Fmt.bytes(storage.image_bytes || 0) }) : words.t("settings-status-storage-unread")
+        if (id === "storage") return storage ? words.t("settings-status-storage", { size: words.bytes(storage.image_bytes || 0) }) : words.t("settings-status-storage-unread")
         if (id === "help") return words.t("settings-status-help")
         if (id === "about") return !frame.updatePanel.pending ? Shell.build
             : frame.updatePanel.phase === "offer" ? words.t("settings-status-about-update", { version: frame.updatePanel.version }) : frame.updatePanel.headline
@@ -155,6 +155,7 @@ FocusScope {
         ["accounts", words.t("settings-accounts-main-list"), words.t("settings-find-main-list.words"), words.t("settings-accounts-lists")],
         ["accounts", words.t("settings-accounts-sync-now"), words.t("settings-find-sync-now.words"), words.t("settings-accounts-lists")],
         ["accounts", words.t("settings-accounts-move-on-hold"), words.t("settings-find-on-hold.words"), words.t("settings-accounts-lists")],
+        ["appearance", words.t("settings-appearance-language"), words.t("settings-find-language.words")],
         ["appearance", words.t("settings-appearance-mode"), words.t("settings-find-mode.words")],
         ["appearance", words.t("settings-appearance-colours-from"), words.t("settings-find-colours-from.words")],
         ["appearance", words.t("settings-appearance-dark-theme"), words.t("settings-find-dark-theme.words"), words.t("settings-appearance-colours-from")],

@@ -823,7 +823,7 @@ Item {
                                     : d.state === "counting" ? words.t("get-show-batch-counting")
                                     : d.state === "unknown" ? words.t("get-show-batch-unlisted")
                                     : words.t("get-show-batch-episodes", { count: d.count }))
-                                if (d.size > 0) parts.push(Fmt.bytes(d.size))
+                                if (d.size > 0) parts.push(words.bytes(d.size))
                                 return parts.join(", ")
                             }
                             codes: root.codesOf(modelData)
@@ -907,7 +907,7 @@ Item {
                         visible: root.planList.length > 0
                         width: parent.width
                         spacing: theme.space(6)
-                        Column { Label { text: Fmt.bytes(root.pickBytes); role: "figure"; font.pointSize: theme.typeLarge }
+                        Column { Label { text: words.bytes(root.pickBytes); role: "figure"; font.pointSize: theme.typeLarge }
                             Label { msg: "get-show-together"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
                         Column { Label { text: String(root.pickItems.length); role: "figure"; font.pointSize: theme.typeLarge }
                             Label { text: words.t("get-show-torrents-unit", { count: root.pickItems.length }); role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
@@ -1147,8 +1147,8 @@ Item {
                             wrapMode: Text.Wrap
                             text: {
                                 var t = card.t, bits = []
-                                bits.push(words.t("get-show-bytes-of", { done: Fmt.bytes(Math.round((t.size || 0) * (t.progress || 0))), size: Fmt.bytes(t.size || 0) }))
-                                if ((t.dlspeed || 0) > 0) bits.push(words.t("get-show-speed-down", { speed: Fmt.bytes(t.dlspeed) }))
+                                bits.push(words.t("get-show-bytes-of", { done: words.bytes(Math.round((t.size || 0) * (t.progress || 0))), size: words.bytes(t.size || 0) }))
+                                if ((t.dlspeed || 0) > 0) bits.push(words.t("get-show-speed-down", { speed: words.bytes(t.dlspeed) }))
                                 if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(words.t("get-show-time-left", { wait: words.countdown(t.eta) }))
                                 return bits.join(", ")
                             }
@@ -1331,7 +1331,7 @@ Item {
                 var it = root.current.items[idx], f = root.current.facts[idx]
                 var bits = [it.title]
                 if (it.seeders !== null && it.seeders !== undefined) bits.push(words.t("get-show-seeders", { count: it.seeders }))
-                if (f && f.size_bytes) bits.push(Fmt.bytes(f.size_bytes))
+                if (f && f.size_bytes) bits.push(words.bytes(f.size_bytes))
                 if (code === "o") bits.push(words.t("get-show-cube-on-disk"))
                 if (code === "t") bits.push(words.t("get-show-cube-downloading"))
                 return bits.join("\n")

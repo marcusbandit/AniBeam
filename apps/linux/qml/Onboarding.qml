@@ -415,14 +415,41 @@ Item {
     // ---- Welcome: what the app does, before it asks for anything
     Component {
         id: welcomePane
+        Column {
+        spacing: theme.space(6)
+        // The language first: everything after it reads in the one picked. It starts on the
+        // system's, and Settings, Appearance changes it later.
+        Row {
+            objectName: "onboarding-language"
+            spacing: theme.space(3)
+            Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "languages"; color: theme.textDim }
+            Label { anchors.verticalCenter: parent.verticalCenter; msg: "onboarding-language"; color: theme.textDim }
+            Dropdown {
+                anchors.verticalCenter: parent.verticalCenter
+                options: words.pickNames()
+                index: Math.max(0, words.pickCodes.indexOf(words.picked))
+                onPicked: function(i) { words.pick(words.pickCodes[i]) }
+            }
+        }
         Grid {
             id: grid
+            width: parent.width
             columns: width > theme.space(200) ? 4 : 2
             spacing: theme.grout
             readonly property real cell: (width - spacing * (columns - 1)) / columns
-            // One height for the four, the tallest one's
+            // One height for the four, the tallest one's, measured afresh whenever a tile's
+            // words change, so it shrinks back too after a longer language
             property real tallest: 0
+            function refit() {
+                var t = 0
+                for (var i = 0; i < welcomeTiles.count; i++) {
+                    var tile = welcomeTiles.itemAt(i)
+                    if (tile) t = Math.max(t, tile.need)
+                }
+                tallest = t
+            }
             Repeater {
+                id: welcomeTiles
                 model: [
                     { icon: "folder-open", title: words.t("onboarding-payoff-library"), line: words.t("onboarding-payoff-library-line") },
                     { icon: "circle-play", title: words.t("onboarding-payoff-plays"), line: words.t("onboarding-payoff-plays-line") },
@@ -433,7 +460,7 @@ Item {
                     required property var modelData
                     width: grid.cell
                     readonly property real need: tileWords.y + tileWords.height + padding * 2
-                    onNeedChanged: grid.tallest = Math.max(grid.tallest, need)
+                    onNeedChanged: Qt.callLater(grid.refit)
                     height: Math.max(need, grid.tallest)
                     padding: theme.space(7)
                     Badge { id: badge; glyph: modelData.icon }
@@ -447,6 +474,7 @@ Item {
                     }
                 }
             }
+        }
         }
     }
 

@@ -144,19 +144,27 @@ pub fn runtime(minutes: u32) -> String {
     }
 }
 
+/// A size in the language's own units and decimal mark: "1.5 GB", "1,5 Go" in French.
 pub fn bytes(n: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    const UNITS: [&str; 5] = [
+        "fmt-size-b",
+        "fmt-size-kb",
+        "fmt-size-mb",
+        "fmt-size-gb",
+        "fmt-size-tb",
+    ];
     let mut v = n as f64;
     let mut i = 0;
     while v >= 1024.0 && i < UNITS.len() - 1 {
         v /= 1024.0;
         i += 1;
     }
-    if i == 0 {
-        format!("{n} B")
+    let size = if i == 0 {
+        n.to_string()
     } else {
-        format!("{v:.1} {}", UNITS[i])
-    }
+        anibeam_core::i18n::decimal(&format!("{v:.1}"))
+    };
+    tr(UNITS[i], &[("size", size.into())])
 }
 
 /// An episode's name wherever one is shown (the series ledger, the player's header, the
@@ -206,11 +214,12 @@ pub fn plural(n: u64, one: &str, many: &str) -> String {
 pub fn score(x: f64) -> String {
     let quarters = x * 4.0;
     let is_tie = quarters.fract() == 0.0 && (quarters as i64).rem_euclid(2) != 0;
-    if is_tie {
+    let text = if is_tie {
         format!("{:.1}", (x * 10.0).round() / 10.0)
     } else {
         format!("{x:.1}")
-    }
+    };
+    anibeam_core::i18n::decimal(&text)
 }
 
 #[cfg(test)]

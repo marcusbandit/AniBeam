@@ -67,7 +67,7 @@ SettingsTab {
         title: words.t("settings-data-image-cache")
         helper: words.t("settings-data-image-cache-helper")
         SettingRow {
-            label: tab.storageFailed ? words.t("settings-data-cache-unmeasured") : tab.storage.image_count ? words.t("settings-data-cache-size", { size: Fmt.bytes(tab.storage.image_bytes || 0), count: tab.storage.image_count }) : words.t("settings-data-cache-empty")
+            label: tab.storageFailed ? words.t("settings-data-cache-unmeasured") : tab.storage.image_count ? words.t("settings-data-cache-size", { size: words.bytes(tab.storage.image_bytes || 0), count: tab.storage.image_count }) : words.t("settings-data-cache-empty")
             helper: tab.storageFailed ? words.t("settings-data-cache-unmeasured-helper") : ""
             Item {
                 width: tab.confirmingClear ? confirm.implicitWidth : clearBtn.width

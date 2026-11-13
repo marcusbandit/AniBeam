@@ -127,6 +127,15 @@ impl Lang {
         Lang::ALL.into_iter().find(|l| l.code() == code)
     }
 
+    /// The mark between a number's whole part and its fraction: "1,5 GB" in Danish, German
+    /// and most of Europe, "1.5 GB" in English and the three East Asian languages.
+    pub fn decimal_mark(self) -> char {
+        match self {
+            Lang::En | Lang::Ja | Lang::Ko | Lang::ZhCn => '.',
+            _ => ',',
+        }
+    }
+
     /// The language's place in [`Lang::ALL`], which lists them in declaration order.
     fn index(self) -> usize {
         self as usize
@@ -222,6 +231,10 @@ fn bundle(lang: Lang) -> &'static Bundle {
         // Qt and Slint draw the isolation marks Fluent puts around arguments as boxes,
         // and every language here runs left to right.
         bundle.set_use_isolating(false);
+        // A number argument with a fraction takes the language's decimal mark ("12,5")
+        if lang.decimal_mark() == ',' {
+            bundle.set_formatter(Some(decimal_comma));
+        }
         for (name, text) in CATALOG[lang.index()].1 {
             let resource = FluentResource::try_new(text.to_string()).unwrap_or_else(|(r, e)| {
                 tracing::warn!("i18n/{}/{name}: {} parse errors", lang.code(), e.len());
@@ -256,6 +269,26 @@ pub fn chrono_locale(lang: Lang) -> chrono::Locale {
     }
 }
 
+/// Fluent's formatter for a language that writes "12,5": every number with a fraction.
+fn decimal_comma<M>(value: &FluentValue, _: &M) -> Option<String> {
+    match value {
+        FluentValue::Number(n) => {
+            let s = n.as_string();
+            s.contains('.').then(|| s.replace('.', ","))
+        }
+        _ => None,
+    }
+}
+
+/// `text`, a number already written with a point ("1.5"), with the current language's
+/// decimal mark instead.
+pub fn decimal(text: &str) -> String {
+    match lang().decimal_mark() {
+        '.' => text.to_string(),
+        mark => text.replace('.', &mark.to_string()),
+    }
+}
+
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
 
 /// Switch every later [`tr`] to `lang`. Words already on screen stay as they are until
@@ -282,18 +315,20 @@ pub fn tr(id: &str, args: &[(&str, Arg)]) -> String {
 /// format cleanly, such as one naming a variable English does not pass, gives way to the
 /// English rather than showing `{$cout}`.
 pub fn tr_in(lang: Lang, id: &str, args: &[(&str, Arg)]) -> String {
-    if lang != Lang::En
-        && let Some((text, clean)) = format(bundle(lang), id, args)
-    {
+    let own = (lang != Lang::En).then(|| bundle(lang));
+    words_from(own, bundle(Lang::En), id, args)
+}
+
+/// The words for `id` from `own`, a language's bundle, or else from `english`, or else the
+/// ID itself. A translation that does not format cleanly gives way to the English.
+fn words_from(own: Option<&Bundle>, english: &Bundle, id: &str, args: &[(&str, Arg)]) -> String {
+    if let Some((text, clean)) = own.and_then(|b| format(b, id, args)) {
         if clean {
             return text;
         }
-        tracing::warn!(
-            "i18n/{}: {id} does not format, shown in English",
-            lang.code()
-        );
+        tracing::warn!("i18n: {id} does not format, shown in English");
     }
-    format(bundle(Lang::En), id, args)
+    format(english, id, args)
         .map(|(text, _)| text)
         .unwrap_or_else(|| id.to_string())
 }
@@ -473,6 +508,80 @@ mod tests {
         }
     }
 
+    fn patterns_of(lang: Lang) -> Vec<String> {
+        patterns(lang).into_iter().map(|(id, _, _)| id).collect()
+    }
+
+    /// The `-terms` a pattern refers to, however deep in a select or a call.
+    fn terms_in(p: &ast::Pattern<&str>, out: &mut BTreeSet<String>) {
+        fn inline(e: &ast::InlineExpression<&str>, out: &mut BTreeSet<String>) {
+            match e {
+                ast::InlineExpression::TermReference { id, arguments, .. } => {
+                    out.insert(id.name.to_string());
+                    if let Some(a) = arguments {
+                        call(a, out);
+                    }
+                }
+                ast::InlineExpression::FunctionReference { arguments, .. } => call(arguments, out),
+                ast::InlineExpression::Placeable { expression } => expr(expression, out),
+                _ => {}
+            }
+        }
+        fn call(a: &ast::CallArguments<&str>, out: &mut BTreeSet<String>) {
+            a.positional.iter().for_each(|e| inline(e, out));
+            a.named.iter().for_each(|n| inline(&n.value, out));
+        }
+        fn expr(e: &ast::Expression<&str>, out: &mut BTreeSet<String>) {
+            match e {
+                ast::Expression::Inline(e) => inline(e, out),
+                ast::Expression::Select { selector, variants } => {
+                    inline(selector, out);
+                    variants.iter().for_each(|v| terms_in(&v.value, out));
+                }
+            }
+        }
+        for el in &p.elements {
+            if let ast::PatternElement::Placeable { expression } = el {
+                expr(expression, out);
+            }
+        }
+    }
+
+    #[test]
+    fn every_term_a_language_uses_is_defined_in_that_language() {
+        // A bundle reads only its own language's files, so a `-term` defined in English alone
+        // is an error everywhere else, and the whole message falls back to English
+        for lang in Lang::ALL {
+            let (mut defined, mut used) = (BTreeSet::new(), BTreeSet::new());
+            for (_, text) in CATALOG[lang.index()].1 {
+                let resource = FluentResource::try_new(text.to_string()).unwrap();
+                for entry in resource.entries() {
+                    match entry {
+                        Entry::Term(t) => {
+                            defined.insert(t.id.name.to_string());
+                            terms_in(&t.value, &mut used);
+                        }
+                        Entry::Message(m) => {
+                            if let Some(v) = &m.value {
+                                terms_in(v, &mut used);
+                            }
+                            m.attributes
+                                .iter()
+                                .for_each(|a| terms_in(&a.value, &mut used));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            let missing: Vec<_> = used.difference(&defined).collect();
+            assert!(
+                missing.is_empty(),
+                "i18n/{} uses {missing:?} without defining them",
+                lang.code()
+            );
+        }
+    }
+
     #[test]
     fn a_message_that_does_not_format_says_so() {
         let mut bundle: Bundle = FluentBundle::new_concurrent(vec![]);
@@ -502,6 +611,16 @@ mod tests {
     }
 
     #[test]
+    fn a_fraction_takes_the_language_s_decimal_mark() {
+        let ep = |lang| tr_in(lang, "episode-number", &[("number", 12.5.into())]);
+        assert_eq!(ep(Lang::En), "Episode 12.5");
+        assert!(ep(Lang::Da).contains("12,5"), "{}", ep(Lang::Da));
+        assert!(ep(Lang::Ja).contains("12.5"), "{}", ep(Lang::Ja));
+        let whole = tr_in(Lang::De, "episode-number", &[("number", 12.into())]);
+        assert!(whole.contains("12") && !whole.contains(','), "{whole}");
+    }
+
+    #[test]
     fn a_number_picks_the_plural_its_language_uses() {
         let eps = |lang, n: u64| tr_in(lang, "count-episodes", &[("count", n.into())]);
         assert_eq!(eps(Lang::En, 1), "1 episode");
@@ -515,8 +634,33 @@ mod tests {
 
     #[test]
     fn a_missing_id_falls_back_to_english_then_to_itself() {
+        let made = |ftl: &str| {
+            let mut b: Bundle = FluentBundle::new_concurrent(vec![]);
+            b.set_use_isolating(false);
+            b.add_resource(FluentResource::try_new(ftl.to_string()).unwrap())
+                .unwrap();
+            b
+        };
+        let english = made("only-english = Hello\nboth = Hello both\nbroken = { $n } left\n");
+        let own = made("both = Hej begge\nbroken = { $m } tilbage\n");
+        let n = [("n", Arg::from(2))];
+        assert_eq!(words_from(Some(&own), &english, "both", &[]), "Hej begge");
+        assert_eq!(
+            words_from(Some(&own), &english, "only-english", &[]),
+            "Hello"
+        );
+        assert_eq!(words_from(Some(&own), &english, "broken", &n), "2 left");
+        assert_eq!(words_from(Some(&own), &english, "nowhere", &[]), "nowhere"); // i18n: none
+
         let args = [("count", Arg::from(2))];
-        assert_eq!(tr_in(Lang::De, "count-episodes", &args), "2 episodes");
+        // Any message one language lacks reads as the English, while translations are partial
+        for lang in Lang::ALL {
+            let missing = (patterns_of(Lang::En).into_iter())
+                .find(|id| !id.contains('.') && lookup(bundle(lang), id).is_none());
+            if let Some(id) = missing {
+                assert_eq!(tr_in(lang, &id, &[]), tr_in(Lang::En, &id, &[]), "{id}");
+            }
+        }
         assert_eq!(tr_in(Lang::De, "no-such-message", &[]), "no-such-message"); // i18n: none
         let attr = tr_in(Lang::En, "count-episodes.tip", &args); // i18n: none
         assert_eq!(attr, "count-episodes.tip");

@@ -245,7 +245,7 @@ Item {
                         text: row.fact.episode !== null && row.fact.episode !== undefined
                               ? (row.fact.season && row.fact.season > 1 ? words.t("release-table-season-episode", { season: row.fact.season, episode: row.fact.episode }) : String(row.fact.episode)) : ""
                     }
-                    Cell { width: root.wSize; text: { var b = root.bytes(row.i); return b ? Fmt.bytes(b) : (row.item.size || "") } }
+                    Cell { width: root.wSize; text: { var b = root.bytes(row.i); return b ? words.bytes(b) : (row.item.size || "") } }
                     Cell {
                         width: root.wSeed
                         text: row.seeders === null ? "" : String(row.seeders)

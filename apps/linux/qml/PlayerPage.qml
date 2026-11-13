@@ -656,7 +656,7 @@ FocusScope {
         function onMarked(series, episode, outcomes) { if (page.session && series === page.session.series) page.markOutcome(outcomes) }
         function onScored(series, score, outcomes) {
             if (!page.session || series !== page.session.series) return
-            notice.show(page.asArray(outcomes).every(function(o) { return o.ok }) ? words.t("player-rated", { score: Fmt.score(score) }) : words.t("player-score-failed"))
+            notice.show(page.asArray(outcomes).every(function(o) { return o.ok }) ? words.t("player-rated", { score: words.score(score) }) : words.t("player-score-failed"))
         }
     }
 
