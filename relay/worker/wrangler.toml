@@ -2,6 +2,9 @@ name = "anibeam-rooms"
 main = "build/index.js"
 compatibility_date = "2026-11-01"
 
+# The relay the apps use by default (core ROOM_RELAY).
+routes = [{ pattern = "rooms.anibeam.app", custom_domain = true }]
+
 [build]
 command = "worker-build --release"
 
