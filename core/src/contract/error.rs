@@ -58,8 +58,9 @@ fn sentence(message: &str) -> String {
     }
 }
 
-/// The same sentences the player's `refusalWords` uses.
-fn refusal_words(reason: Refusal) -> &'static str {
+/// Why a list update was refused, in the words every shell shows: the desktop player's
+/// `refusalWords` and the phone's player say the same.
+pub fn refusal_words(reason: Refusal) -> &'static str {
     match reason {
         Refusal::Hidden => "the show is hidden",
         Refusal::NoMatch => "the show is not matched yet; match it on Show info",

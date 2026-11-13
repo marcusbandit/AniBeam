@@ -186,22 +186,12 @@ impl Rules {
 }
 
 fn tracker_name(t: &Tracker) -> &'static str {
-    match t {
-        Tracker::Anilist => "AniList",
-        Tracker::Mal => "MyAnimeList",
-    }
+    anibeam_core::tracker_name(*t)
 }
 
+/// The core's own words for a refusal, so the phone says what the desktop says.
 fn refusal_word(r: &anibeam_core::Refusal) -> &'static str {
-    use anibeam_core::Refusal::*;
-    match r {
-        Hidden => "the show is hidden",
-        NoMatch => "the show has no tracker match",
-        NotNewer => "the tracker is already past this episode",
-        Extra => "this is an extra",
-        Unmatched => "the file is not matched to an episode",
-        OnDisk => "the file is only on disk",
-    }
+    anibeam_core::refusal_words(*r)
 }
 
 /// "Tracked: AniList at 12; MyAnimeList at 12", the desktop's outcome line.
@@ -2400,11 +2390,11 @@ mod tests {
         );
         assert_eq!(
             outcome_line(&[ok, refused.clone()]),
-            "Tracked: AniList at 12; MyAnimeList: the tracker is already past this episode"
+            "Tracked: AniList at 12; MyAnimeList: your list is already past this episode"
         );
         assert_eq!(
             outcome_line(&[refused]),
-            "Not tracked: MyAnimeList: the tracker is already past this episode"
+            "Not tracked: MyAnimeList: your list is already past this episode"
         );
     }
 
