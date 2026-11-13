@@ -323,6 +323,11 @@ impl Engine {
         peeked: Peeked,
         priorities: Vec<i64>,
     ) -> Result<String, CoreError> {
+        // One the engine has already keeps its record and its selection: nothing about it
+        // changes, the shelf included, or the storage would write files the session skips.
+        if let Some(h) = self.handle(&peeked.hash) {
+            return Ok(h.info_hash().as_string());
+        }
         let entry = Entry {
             priorities,
             ..Default::default()
@@ -417,8 +422,17 @@ impl Engine {
                     entry.completion_on = now();
                     changed = true;
                 }
-                // A rolling download's window moved on: it is downloading again.
-                if !stats.finished && entry.completion_on != 0 {
+                // A rolling download's window moved on: it is downloading again. A torrent
+                // still checking its files, or stopped by an error, reads as unfinished too,
+                // and keeps its time.
+                if !stats.finished
+                    && stats.error.is_none()
+                    && matches!(
+                        stats.state,
+                        librqbit::TorrentStatsState::Live | librqbit::TorrentStatsState::Paused
+                    )
+                    && entry.completion_on != 0
+                {
                     entry.completion_on = 0;
                     changed = true;
                 }
@@ -541,24 +555,40 @@ impl Engine {
             .ok_or_else(|| CoreError::invalid("hash", format!("no torrent {hash}")))?;
         let key = h.info_hash().as_string();
         let count = h.with_metadata(|m| m.file_infos.len()).map_err(fail)?;
-        let (wanted, by_user, folder) = {
-            let mut entries = self.entries.lock().unwrap();
-            let e = entries.entry(key.clone()).or_default();
-            e.priorities.resize(count, NORMAL);
+        // The new priorities are worked out on a copy and kept only once the engine took
+        // them: librqbit refuses a change while a torrent still checks its files, and a
+        // priority recorded but never applied would make the next pass see nothing to do.
+        let (old, new, by_user, folder) = {
+            let entries = self.entries.lock().unwrap();
+            let e = entries.get(&key).cloned().unwrap_or_default();
+            let mut n = e.clone();
+            n.priorities.resize(count, NORMAL);
             for &i in ids.iter().filter(|&&i| i < count) {
-                e.priorities[i] = priority;
+                n.priorities[i] = priority;
             }
-            (e.wanted(), e.paused_by_user, self.root.join(&e.folder))
+            (e.wanted(), n, e.paused_by_user, self.root.join(&e.folder))
         };
-        self.save_entries();
+        let wanted = new.wanted();
         // The storage learns first, so a file wanted again takes its part file over before
         // the engine writes to it.
-        self.shelf.files(&key, &folder).set_wanted(wanted.clone());
+        let files = self.shelf.files(&key, &folder);
+        files.set_wanted(wanted.clone());
         let all: HashSet<usize> = (0..count).collect();
-        self.session
+        if let Err(e) = self
+            .session
             .update_only_files(&h, wanted.as_ref().unwrap_or(&all))
             .await
-            .map_err(fail)?;
+        {
+            files.set_wanted(old);
+            return Err(fail(e));
+        }
+        self.entries
+            .lock()
+            .unwrap()
+            .entry(key.clone())
+            .or_default()
+            .priorities = new.priorities;
+        self.save_entries();
         if h.is_paused() && !by_user && !self.held() && !h.stats().finished {
             self.session.unpause(&h).await.map_err(fail)?;
         }

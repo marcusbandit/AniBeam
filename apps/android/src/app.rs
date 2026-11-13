@@ -174,6 +174,8 @@ struct App {
     sources: Vec<PhoneSource>,
     downloads: Rc<VecModel<DownloadRow>>,
     polling: bool,
+    /// The rolling settings were asked for.
+    rolling_loaded: bool,
     held: Option<bool>,
     service: Option<notify::Ongoing>,
     /// The downloads seen not yet whole, so each one that finishes is told once.
@@ -1209,13 +1211,26 @@ impl App {
         data.set_roll_keep(r.keep_watched as i32);
     }
 
-    fn load_rolling(&self) {
+    /// Reads the rolling settings once, off the UI thread; More changes them only through
+    /// the app, which shows what it saves.
+    fn load_rolling(&mut self) {
+        if self.rolling_loaded {
+            return;
+        }
         let Some(core) = crate::local::core() else {
             return;
         };
-        if let Ok(Reply::RollingSettings { rolling }) = core.call(Call::GetRollingSettings) {
-            self.show_rolling(&rolling);
-        }
+        self.rolling_loaded = true;
+        let _ = std::thread::Builder::new()
+            .name("rolling".into())
+            .spawn(move || {
+                if let Ok(Reply::RollingSettings { rolling }) = core.call(Call::GetRollingSettings)
+                {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        with_app(|app| app.show_rolling(&rolling))
+                    });
+                }
+            });
     }
 
     /// Saves off the UI thread, in order: a slider sends a step at a time, and only the
@@ -1330,8 +1345,8 @@ impl App {
         };
         if self.sources.is_empty() {
             self.load_sources();
-            self.load_rolling();
         }
+        self.load_rolling();
         crate::repos::opened();
         self.polling = true;
         let _ = std::thread::Builder::new()
@@ -2416,14 +2431,23 @@ pub fn run(
         with_app(|app| app.torrent_action(hash.to_string(), action))
     });
     data.on_roll_action(|id, what, n| with_app(|app| app.roll_action(id, what, n)));
+    data.set_roll_max_ahead(anibeam_core::downloads::rolling::MAX_AHEAD as i32);
+    // The core's defaults until its stored values come in.
+    let d = RollingSettings::default();
+    data.set_roll_big(d.big);
+    data.set_roll_ahead(d.ahead as i32);
+    data.set_roll_over(d.over as i32);
+    data.set_roll_delete(d.delete_watched);
+    data.set_roll_keep(d.keep_watched as i32);
     data.on_set_roll(|big, ahead, over, delete, keep| {
         with_app(|app| {
+            let d = RollingSettings::default();
             let rolling = RollingSettings {
                 big,
-                ahead: u32::try_from(ahead).unwrap_or(12),
-                over: u32::try_from(over).unwrap_or(30),
+                ahead: u32::try_from(ahead).unwrap_or(d.ahead),
+                over: u32::try_from(over).unwrap_or(d.over),
                 delete_watched: delete,
-                keep_watched: u32::try_from(keep).unwrap_or(1),
+                keep_watched: u32::try_from(keep).unwrap_or(d.keep_watched),
             };
             app.show_rolling(&rolling);
             app.save_rolling(rolling);
@@ -2515,6 +2539,7 @@ pub fn run(
         sources: Vec::new(),
         downloads,
         polling: false,
+        rolling_loaded: false,
         held: None,
         service: None,
         unfinished: HashSet::new(),

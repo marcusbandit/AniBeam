@@ -78,7 +78,7 @@ component RollBlock inherits VerticalLayout {
             small: true;
             icon: @image-url("icons/plus.svg");
             has-icon: true;
-            enabled: root.data.roll-ahead < 500;
+            enabled: root.data.roll-ahead < AppData.roll-max-ahead;
             clicked => { AppData.roll-action(root.data.roll, 0, root.data.roll-ahead + 1); }
         }
     }

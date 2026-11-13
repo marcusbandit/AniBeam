@@ -575,8 +575,19 @@ pub fn download(
                 }
             }
         }
-        plan.rolls
-            .retain(|r| !r.parts.is_empty() && r.parts.iter().any(|p| p.added && !p.gone));
+        // A torrent a stored roll already holds (the same release picked again) keeps that
+        // roll: two would fight over its files.
+        let held: std::collections::HashSet<String> = rolling::load(core)?
+            .iter()
+            .flat_map(|r| &r.parts)
+            .filter(|p| !p.hash.is_empty())
+            .map(|p| p.hash.clone())
+            .collect();
+        plan.rolls.retain(|r| {
+            !r.parts.is_empty()
+                && r.parts.iter().any(|p| p.added && !p.gone)
+                && !r.parts.iter().any(|p| held.contains(&p.hash))
+        });
         if !plan.rolls.is_empty() {
             let rolls = std::mem::take(&mut plan.rolls);
             rolling::add_rolls(&owner, rolls).await?;
@@ -619,10 +630,18 @@ pub fn download(
         },
         EventBody::Notice,
     );
-    match failed {
-        Some(e) => Err(e),
-        None => Ok(Reply::Ok),
+    // Some went in: the download stands, and what did not is said in the log rather than
+    // as a failure, so a second Get does not add the same releases again.
+    if let Some(e) = failed {
+        core.bus.say(
+            Level::Warn,
+            Stage::Downloads,
+            format!("Not every release of {folder} could be added: {e}"),
+            format!("Download of {folder} stopped part way: {e}"),
+            EventBody::Notice,
+        );
     }
+    Ok(Reply::Ok)
 }
 
 /// The phone's engine as the rolling downloads' client.
@@ -969,8 +988,9 @@ pub fn torrents(core: &Core) -> Result<Reply, CoreError> {
         let mut torrents = engine.list().await;
         if core.downloads.unattended_allowed()
             && let Ok(owner) = core.owner()
+            && crate::downloads::rolling::tick(&owner, &PhoneRolls { core, engine }, &torrents)
+                .await
         {
-            crate::downloads::rolling::tick(&owner, &PhoneRolls { core, engine }, &torrents).await;
             torrents = engine.list().await;
         }
         crate::downloads::rolling::annotate(core, &mut torrents);

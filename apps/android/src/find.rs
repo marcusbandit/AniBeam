@@ -1759,14 +1759,16 @@ impl Find {
         (can, can && on)
     }
 
-    /// What Get sends as `rolling`: the pick when one was made, never when replacing, and
-    /// otherwise left to the settings where the download runs.
-    fn roll_wish(state: &ShowState, has_had: bool) -> Option<bool> {
+    /// What Get sends as `rolling`: what the switch shows, so the download rolls the way
+    /// the page said wherever it runs, this phone or the computer with settings of its own.
+    /// A pick that replaces episodes never rolls; one the switch is not offered for is left
+    /// to the settings where it runs.
+    fn roll_wish(&self, state: &ShowState, picked: usize, has_had: bool) -> Option<bool> {
         if state.replace && has_had {
-            Some(false)
-        } else {
-            state.roll
+            return Some(false);
         }
+        let (can, on) = self.roll_choice(state, picked, has_had);
+        can.then_some(on)
     }
 
     fn limit(&self) -> Option<u64> {
@@ -1803,7 +1805,7 @@ impl Find {
             && state.offer.show.airing
             && !state.no_feed.contains(&provider);
         let has_had = state.picks.map.keys().any(|n| grid::have(&library, *n));
-        let rolling = Self::roll_wish(state, has_had);
+        let rolling = self.roll_wish(state, plan.episodes.len(), has_had);
         if let Some(why) = self.desk_waiting() {
             self.line("", &why);
             return;

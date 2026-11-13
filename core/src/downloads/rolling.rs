@@ -928,15 +928,16 @@ fn edit(core: &Core, id: u64, f: impl FnOnce(&mut Roll) + Send + 'static) -> Res
 /// player's nudge all run it.
 static PASS: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 
-/// One pass over the stored rolls against a fresh torrent read.
-pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torrent]) {
+/// One pass over the stored rolls against a fresh torrent read. True when it asked the
+/// client to change something, so a caller that shows the torrents reads them again.
+pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torrent]) -> bool {
     let _one = PASS.lock().await;
     let before = match load(core) {
         Ok(r) if !r.is_empty() => r,
-        Ok(_) => return,
+        Ok(_) => return false,
         Err(e) => {
             tracing::warn!("rolling downloads not read: {e}");
-            return;
+            return false;
         }
     };
     let here = client.files_here(core);
@@ -944,8 +945,9 @@ pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torre
     bind(&mut rolls, torrents);
     let now = now_secs();
     let mut drop = HashSet::new();
+    let mut changed = false;
     for roll in rolls.iter_mut() {
-        if step(core, client, roll, torrents, here).await == Step::Drop {
+        if step(core, client, roll, torrents, here, &mut changed).await == Step::Drop {
             drop.insert(roll.id);
         }
     }
@@ -953,6 +955,7 @@ pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torre
     if let Err(e) = save_changes(core, &before, &rolls) {
         tracing::warn!("rolling downloads not saved: {e}");
     }
+    changed
 }
 
 #[derive(PartialEq)]
@@ -967,6 +970,7 @@ async fn step<C: RollClient>(
     roll: &mut Roll,
     torrents: &[Torrent],
     here: bool,
+    changed: &mut bool,
 ) -> Step {
     // Find the torrents, and count a batch's episodes once its list is in
     let mut files_of: HashMap<usize, Vec<TorrentFile>> = HashMap::new();
@@ -1085,6 +1089,7 @@ async fn step<C: RollClient>(
         for (priority, ids) in priority_changes(wish, files) {
             match client.set_file_priority(&hash, &ids, priority).await {
                 Ok(()) => {
+                    *changed = true;
                     for &i in &ids {
                         if let Some(f) = files.get_mut(i) {
                             f.priority = priority;
@@ -1107,6 +1112,7 @@ async fn step<C: RollClient>(
             .collect();
         match client.add(core, &items, roll).await {
             Ok(hashes) => {
+                *changed = true;
                 for &p in &m.add {
                     roll.parts[p].added = true;
                 }
@@ -1140,6 +1146,7 @@ async fn step<C: RollClient>(
         if part.single {
             match client.delete(std::slice::from_ref(&t.hash), true).await {
                 Ok(()) => {
+                    *changed = true;
                     roll.parts[p].units[u].gone = true;
                     roll.parts[p].gone = true;
                     deleted += 1;
@@ -1168,6 +1175,7 @@ async fn step<C: RollClient>(
         }
         match std::fs::remove_file(&path) {
             Ok(()) => {
+                *changed = true;
                 roll.parts[p].units[u].gone = true;
                 recheck.insert(p);
                 deleted += 1;
@@ -1261,7 +1269,9 @@ pub async fn after_add(core: &Arc<Core>, mut rolls: Vec<Roll>, now: &[Release], 
                 continue;
             };
             match client.torrents().await {
-                Ok(torrents) => tick(&core, client.as_ref(), &torrents).await,
+                Ok(torrents) => {
+                    tick(&core, client.as_ref(), &torrents).await;
+                }
                 Err(e) => tracing::debug!("rolling read failed: {e}"),
             }
             match load(&core) {
@@ -1317,7 +1327,9 @@ async fn pass_now(core: &Arc<Core>) {
             }
         };
         match client.torrents().await {
-            Ok(torrents) => tick(core, client.as_ref(), &torrents).await,
+            Ok(torrents) => {
+                tick(core, client.as_ref(), &torrents).await;
+            }
             Err(e) => tracing::debug!("rolling read failed: {e}"),
         }
         let _ = super::list_torrents(core);
