@@ -104,30 +104,6 @@ pub fn score_text(tenths: i32) -> String {
     format!("{}.{}", tenths / 10, tenths % 10)
 }
 
-/// A score out of ten to one decimal, the desktop's `Fmt.score`: a tie rounds half away
-/// from zero, so 7.25 reads 7.3 and 7.75 reads 7.8, as a person would round it.
-fn score_line(x: f64) -> String {
-    let quarters = x * 4.0;
-    if quarters.fract() == 0.0 && (quarters as i64).rem_euclid(2) != 0 {
-        format!("{:.1}", (x * 10.0).round() / 10.0)
-    } else {
-        format!("{x:.1}")
-    }
-}
-
-/// A count with a comma every three digits: 12,345.
-fn thousands(n: u64) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
-}
-
 /// Where a status or score of this show goes, in a line, the desktop's `listHome`.
 fn list_home(detail: &SeriesDetail, anilist: bool, mal: bool) -> &'static str {
     let ids = detail.card.match_info.as_ref();
@@ -200,35 +176,6 @@ pub fn sync(
         match score {
             Some(s) => format!("Your score {}", score_text(s)),
             None => "Rate".to_string(),
-        }
-        .into(),
-    );
-    // The quiet facts beside your own: the average score, IMDb's with its votes, the
-    // rewatches, as the desktop's row has them.
-    show.set_average(
-        card.community_score
-            .map(|s| format!("Average score {}", score_line(s)))
-            .unwrap_or_default()
-            .into(),
-    );
-    show.set_imdb(
-        card.imdb_score
-            .map(|s| format!("IMDb {}", score_line(s)))
-            .unwrap_or_default()
-            .into(),
-    );
-    show.set_imdb_votes(
-        card.imdb_votes
-            .filter(|_| card.imdb_score.is_some())
-            .map(|v| format!("{} votes", thousands(v)))
-            .unwrap_or_default()
-            .into(),
-    );
-    show.set_rewatched(
-        match detail.rewatch_count {
-            Some(1) => "Rewatched 1 time".to_string(),
-            Some(n) if n > 1 => format!("Rewatched {n} times"),
-            _ => String::new(),
         }
         .into(),
     );
@@ -679,17 +626,6 @@ fn call(call: Call, done: impl FnOnce(bool) -> String + Send + 'static) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn scores_and_votes_read_like_the_desktop() {
-        assert_eq!(score_line(8.6), "8.6");
-        assert_eq!(score_line(7.25), "7.3");
-        assert_eq!(score_line(7.75), "7.8");
-        assert_eq!(score_line(9.0), "9.0");
-        assert_eq!(thousands(7), "7");
-        assert_eq!(thousands(1_000), "1,000");
-        assert_eq!(thousands(1_234_567), "1,234,567");
-    }
 
     #[test]
     fn a_score_keeps_its_point() {

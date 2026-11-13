@@ -420,42 +420,25 @@ pub fn series(
     .find(|t| t.as_str() != card.title)
     .cloned()
     .unwrap_or_default();
-    // The desktop's ledger line: the format, when it started, the studio, a film's runtime,
-    // the episodes and how long each runs, and whether it airs. The season says the year
-    // too, so it stands in for the year when the record has one.
-    let mut facts: Vec<String> = vec![if movie {
-        "Film".to_string()
-    } else {
-        crate::show::format_label(card.format.as_deref())
-    }];
-    if let Some(s) = &card.season {
-        facts.push(s.clone());
-    } else if let Some(y) = detail.year {
-        facts.push(y.to_string());
+    let facts = Facts {
+        movie,
+        film: card.film,
+        format: card.format.as_deref(),
+        season: card.season.as_deref(),
+        year: detail.year,
+        studio: detail.studio.as_deref(),
+        minutes: detail.episode_minutes,
+        total: card.total_episodes,
+        estimate: card.total_is_estimate,
+        status: card.status,
     }
-    if let Some(studio) = &detail.studio {
-        facts.push(studio.clone());
-    }
-    if card.film
-        && let Some(m) = detail.episode_minutes
-    {
-        facts.push(runtime(m));
-    }
-    if !movie && let Some(total) = card.total_episodes {
-        facts.push(format!(
-            "{total} {}{}",
-            if total == 1 { "episode" } else { "episodes" },
-            if card.total_is_estimate { "+" } else { "" }
-        ));
-    }
-    if !card.film
-        && let Some(m) = detail.episode_minutes
-    {
-        facts.push(format!("{} each", runtime(m)));
-    }
-    if let Some(status) = card.status {
-        facts.push(airing_word(status).to_string());
-    }
+    .words();
+    let scores = scores(
+        card.community_score,
+        card.imdb_score,
+        card.imdb_votes,
+        detail.rewatch_count,
+    );
     let next = card
         .next_airing
         .as_ref()
@@ -500,6 +483,7 @@ pub fn series(
         title: card.title.clone().into(),
         alt_title: alt.into(),
         facts: facts.join("  ").into(),
+        scores: scores.into(),
         poster,
         has_poster,
         initials: format::initials(&card.title).into(),
@@ -641,6 +625,102 @@ pub fn series(
     (head, lines.into_iter().map(|(_, l)| l).collect())
 }
 
+/// What the desktop's ledger line is made of: the format, when it started, the studio, a
+/// film's runtime, the episodes and how long each runs, and whether it airs. The season says
+/// the year too, so it stands in for the year when the record has one.
+struct Facts<'a> {
+    movie: bool,
+    film: bool,
+    format: Option<&'a str>,
+    season: Option<&'a str>,
+    year: Option<u32>,
+    studio: Option<&'a str>,
+    minutes: Option<u32>,
+    total: Option<u32>,
+    estimate: bool,
+    status: Option<AiringStatus>,
+}
+
+impl Facts<'_> {
+    fn words(&self) -> Vec<String> {
+        let mut facts = vec![if self.movie {
+            "Film".to_string()
+        } else {
+            crate::show::format_label(self.format)
+        }];
+        if let Some(s) = self.season {
+            facts.push(s.to_string());
+        } else if let Some(y) = self.year {
+            facts.push(y.to_string());
+        }
+        if let Some(studio) = self.studio {
+            facts.push(studio.to_string());
+        }
+        if self.film
+            && let Some(m) = self.minutes
+        {
+            facts.push(runtime(m));
+        }
+        if !self.movie
+            && let Some(total) = self.total
+        {
+            facts.push(format!(
+                "{total} {}{}",
+                if total == 1 { "episode" } else { "episodes" },
+                if self.estimate { "+" } else { "" }
+            ));
+        }
+        if !self.film
+            && let Some(m) = self.minutes
+        {
+            facts.push(format!("{} each", runtime(m)));
+        }
+        if let Some(status) = self.status {
+            facts.push(airing_word(status).to_string());
+        }
+        facts
+    }
+}
+
+/// The quiet facts beside your own score, the desktop's row: the average score, IMDb's with
+/// its votes (the desktop's tooltip, which a phone has no hover for), and the rewatches.
+fn scores(
+    average: Option<f64>,
+    imdb: Option<f64>,
+    votes: Option<u64>,
+    rewatches: Option<u32>,
+) -> String {
+    let mut parts = Vec::new();
+    if let Some(a) = average {
+        parts.push(format!("Average score {}", crate::listmove::score(a)));
+    }
+    if let Some(i) = imdb {
+        parts.push(match votes {
+            Some(v) => format!("IMDb {} from {} votes", crate::listmove::score(i), thousands(v)),
+            None => format!("IMDb {}", crate::listmove::score(i)),
+        });
+    }
+    match rewatches {
+        Some(1) => parts.push("Rewatched 1 time".to_string()),
+        Some(n) if n > 1 => parts.push(format!("Rewatched {n} times")),
+        _ => {}
+    }
+    parts.join("  ")
+}
+
+/// A count with a comma every three digits: 12,345.
+fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// How long an episode or a film runs, the desktop's `Fmt.runtime`: "24 min", "1 h 52 min",
 /// "2 h" on the hour.
 fn runtime(minutes: u32) -> String {
@@ -676,6 +756,68 @@ pub(crate) fn clock(secs: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tv() -> Facts<'static> {
+        Facts {
+            movie: false,
+            film: false,
+            format: Some("TV"),
+            season: Some("Fall 2023"),
+            year: Some(2023),
+            studio: Some("Madhouse"),
+            minutes: Some(24),
+            total: Some(28),
+            estimate: false,
+            status: Some(AiringStatus::Finished),
+        }
+    }
+
+    #[test]
+    fn a_shows_facts_read_like_the_desktops_ledger() {
+        assert_eq!(
+            tv().words().join("  "),
+            "TV  Fall 2023  Madhouse  28 episodes  24 min each  Finished"
+        );
+        let airing = Facts {
+            season: None,
+            total: Some(1),
+            estimate: true,
+            status: Some(AiringStatus::Releasing),
+            ..tv()
+        };
+        assert_eq!(
+            airing.words().join("  "),
+            "TV  2023  Madhouse  1 episode+  24 min each  Airing"
+        );
+    }
+
+    #[test]
+    fn a_film_gives_its_runtime_and_no_episode_count() {
+        let film = Facts {
+            movie: true,
+            film: true,
+            format: Some("MOVIE"),
+            minutes: Some(112),
+            total: Some(1),
+            ..tv()
+        };
+        assert_eq!(
+            film.words().join("  "),
+            "Film  Fall 2023  Madhouse  1 h 52 min  Finished"
+        );
+    }
+
+    #[test]
+    fn scores_and_votes_read_like_the_desktop() {
+        assert_eq!(
+            scores(Some(9.0), Some(8.65), Some(12_345), Some(2)),
+            "Average score 9.0  IMDb 8.7 from 12,345 votes  Rewatched 2 times"
+        );
+        assert_eq!(scores(None, Some(7.25), None, Some(0)), "IMDb 7.3");
+        assert_eq!(scores(None, None, None, None), "");
+        assert_eq!(thousands(1_234_567), "1,234,567");
+        assert_eq!(thousands(7), "7");
+    }
 
     #[test]
     fn runtimes_and_airing_read_like_the_desktop() {
