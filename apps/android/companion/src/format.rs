@@ -43,6 +43,15 @@ pub fn progress_of(profile: Option<&crate::api::Profile>) -> String {
     }
 }
 
+/// ", part" to follow a line with, or nothing for an empty part.
+pub fn after(part: &str) -> String {
+    if part.is_empty() {
+        String::new()
+    } else {
+        format!(", {part}")
+    }
+}
+
 /// "17:56" in the phone's zone.
 pub fn clock(at: i64) -> String {
     Local
@@ -182,6 +191,8 @@ mod tests {
         assert_eq!(progress_of(Some(&named("Alex Doe"))), "Alex Doe's progress");
         assert_eq!(progress_of(Some(&named("  "))), "");
         assert_eq!(progress_of(None), "");
+        assert_eq!(after("Alex Doe's progress"), ", Alex Doe's progress");
+        assert_eq!(after(""), "");
     }
 
     #[test]

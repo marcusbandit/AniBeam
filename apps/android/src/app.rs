@@ -535,9 +535,14 @@ impl App {
             .into(),
         );
 
-        data.set_host_person(
-            format::progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref())).into(),
-        );
+        // Whose progress the last sync showed, said only beside the address it came from,
+        // so a newly typed address never sits under the last computer's person.
+        let whose = format::progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref()));
+        let synced_here = self
+            .cache
+            .as_ref()
+            .is_some_and(|c| c.address.trim() == data.get_host_address().trim());
+        data.set_host_person(if synced_here { whose.as_str() } else { "" }.into());
 
         // Library: this phone, or the device picked above it.
         let mut devices: Vec<SharedString> = vec!["This phone".into()];
@@ -585,13 +590,7 @@ impl App {
                     .as_ref()
                     .map(|c| format::ago(now - c.synced_at))
                     .unwrap_or_default();
-                let whose =
-                    format::progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref()));
-                if whose.is_empty() {
-                    format!("{}, synced {at}", devices[device])
-                } else {
-                    format!("{}, {whose}, synced {at}", devices[device])
-                }
+                format!("{}{}, synced {at}", devices[device], format::after(&whose))
             }
             .into(),
         );

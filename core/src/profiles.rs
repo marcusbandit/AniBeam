@@ -72,9 +72,9 @@ pub fn resolve(
     }
 }
 
-/// How a profile is named to the device it answers (#633): its Tailscale name and
-/// login, and whether it is the owner's. None while the host has never learned the
-/// name, as for the owner of a tagged machine.
+/// How a profile is named to the device it answers (#633), as last seen: its Tailscale
+/// name and login, and whether it is the owner's. None while the host has never learned
+/// a name, as for the owner of a tagged machine.
 pub fn named(conn: &Connection, id: u64) -> Result<Option<anibeam_host_api::Profile>, CoreError> {
     let row: Option<(Option<String>, Option<String>)> = conn
         .query_row(
@@ -84,17 +84,23 @@ pub fn named(conn: &Connection, id: u64) -> Result<Option<anibeam_host_api::Prof
         )
         .optional()?;
     Ok(row.and_then(|(name, login)| {
-        let login = login.unwrap_or_default();
-        // Tailscale may name nobody; the login still says who it is.
-        let name = name
-            .filter(|n| !n.trim().is_empty())
-            .unwrap_or_else(|| login.clone());
-        (!name.trim().is_empty()).then_some(anibeam_host_api::Profile {
-            name,
-            login,
-            owner: id == OWNER,
-        })
+        let user = TailnetUser {
+            id: String::new(),
+            login: login.unwrap_or_default(),
+            name: name.unwrap_or_default(),
+        };
+        shown(&user, id)
     }))
+}
+
+/// Profile `id` named after `user`, by [`TailnetUser::shown`]. None when Tailscale gives
+/// them neither a name nor a login.
+pub fn shown(user: &TailnetUser, id: u64) -> Option<anibeam_host_api::Profile> {
+    Some(anibeam_host_api::Profile {
+        name: user.shown()?.to_string(),
+        login: user.login.clone(),
+        owner: id == OWNER,
+    })
 }
 
 #[cfg(test)]

@@ -390,40 +390,51 @@ fn listed(core: &Core) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
 
 /// Every device with whose profile it gets, and every person the host answers with a
 /// profile of their own (#633): the owner first, then the rest by name. A tagged device
-/// counts as the owner's, as it is answered; one the tailnet ties to nobody counts as
-/// no one's. A tailnet that names no person for this machine lists no people, since
-/// the host then cannot tell anyone apart.
+/// is the owner's, as it is answered; one the tailnet ties to nobody is refused, and says
+/// so. A person's count is of the devices the host serves, switched-off ones left out. A
+/// tailnet that names no person for this machine lists no people, since the host then
+/// cannot tell anyone apart.
 fn listing(t: &trust::Tailnet, off: &[String]) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
-    let owner = t.owner();
-    let mut people: Vec<TailnetPerson> = owner.map(|me| person(me, true)).into_iter().collect();
+    // The owner, also when the status has no entry for their user.
+    let owner = t.me_user.as_deref().map(|id| {
+        t.user(id).cloned().unwrap_or_else(|| trust::TailnetUser {
+            id: id.to_string(),
+            ..trust::TailnetUser::default()
+        })
+    });
+    let mut people: Vec<TailnetPerson> = owner.iter().map(|me| person(me, true)).collect();
     let devices = t
         .peers
         .iter()
         .map(|p| {
-            let at = match trust::whose(t, Some(p)) {
+            let asker = trust::whose(t, Some(p));
+            let at = match &asker {
                 trust::Asker::Owner if owner.is_some() => Some(0),
                 trust::Asker::Person(user) => {
                     Some(match people.iter().position(|q| q.id == user.id) {
                         Some(i) => i,
                         None => {
-                            people.push(person(&user, false));
+                            people.push(person(user, false));
                             people.len() - 1
                         }
                     })
                 }
                 _ => None,
             };
-            let name = at.map(|i| {
+            let trusted = !off.contains(&p.id);
+            if let Some(i) = at
+                && trusted
+            {
                 people[i].devices += 1;
-                people[i].name.clone()
-            });
+            }
             TailnetDevice {
                 id: p.id.clone(),
                 name: p.name.clone(),
                 os: p.os.clone(),
                 online: p.online,
-                trusted: !off.contains(&p.id),
-                person: name.unwrap_or_default(),
+                trusted,
+                person: at.map(|i| people[i].name.clone()).unwrap_or_default(),
+                nobody: asker == trust::Asker::Unknown,
             }
         })
         .collect();
@@ -432,19 +443,13 @@ fn listing(t: &trust::Tailnet, off: &[String]) -> (Vec<TailnetDevice>, Vec<Tailn
     (devices, people)
 }
 
+/// What Settings calls a person who has neither a name nor a login in Tailscale.
+const NO_NAME: &str = "No name in Tailscale";
+
 fn person(user: &trust::TailnetUser, owner: bool) -> TailnetPerson {
-    let name = if user.name.trim().is_empty() {
-        user.login.clone()
-    } else {
-        user.name.clone()
-    };
     TailnetPerson {
         id: user.id.clone(),
-        name: if name.trim().is_empty() {
-            user.id.clone()
-        } else {
-            name
-        },
+        name: user.shown().unwrap_or(NO_NAME).to_string(),
         login: user.login.clone(),
         owner,
         devices: 0,
@@ -749,19 +754,19 @@ mod tests {
     fn each_device_is_listed_under_the_person_whose_profile_it_gets() {
         let t = trust::read_status(STATUS).unwrap();
         let (devices, people) = listing(&t, &["nLap".to_string()]);
-        let whose: Vec<(&str, &str, bool)> = devices
+        let whose: Vec<(&str, &str, bool, bool)> = devices
             .iter()
-            .map(|d| (d.name.as_str(), d.person.as_str(), d.trusted))
+            .map(|d| (d.name.as_str(), d.person.as_str(), d.trusted, d.nobody))
             .collect();
         assert_eq!(
             whose,
             [
-                ("alexphone", "alex@example.com", true),
-                ("lap", "Sam", false),
-                ("nas", "Owner", true),
-                ("odd", "", true),
-                ("phone", "Owner", true),
-                ("tab", "Sam", true),
+                ("alexphone", "alex@example.com", true, false),
+                ("lap", "Sam", false, false),
+                ("nas", "Owner", true, false),
+                ("odd", "", true, true),
+                ("phone", "Owner", true, false),
+                ("tab", "Sam", true, false),
             ]
         );
         let listed: Vec<(&str, bool, u32)> = people
@@ -773,10 +778,33 @@ mod tests {
             [
                 ("Owner", true, 2),
                 ("alex@example.com", false, 1),
-                ("Sam", false, 2),
+                ("Sam", false, 1),
             ],
-            "the owner first, then the rest by name"
+            "the owner first, then the rest by name, each counting the devices served"
         );
+    }
+
+    #[test]
+    fn the_owner_is_listed_without_an_entry_and_nobody_shows_a_bare_id() {
+        // The status names this machine's user and the tablet's, but has no entry for
+        // either: the owner is still first, and the friend is not called "3".
+        let bare = String::from_utf8(STATUS.to_vec())
+            .unwrap()
+            .replace(r#""1": {"ID": 1"#, r#""101": {"ID": 101"#)
+            .replace(r#""3": {"ID": 3"#, r#""103": {"ID": 103"#);
+        let t = trust::read_status(bare.as_bytes()).unwrap();
+        let (devices, people) = listing(&t, &[]);
+        let listed: Vec<(&str, bool)> = people.iter().map(|p| (p.name.as_str(), p.owner)).collect();
+        assert_eq!(
+            listed,
+            [
+                (NO_NAME, true),
+                ("alex@example.com", false),
+                (NO_NAME, false),
+            ]
+        );
+        let phone = devices.iter().find(|d| d.name == "phone").unwrap();
+        assert_eq!(phone.person, NO_NAME);
     }
 
     #[test]

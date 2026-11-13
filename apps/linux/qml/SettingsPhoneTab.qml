@@ -52,7 +52,8 @@ SettingsTab {
         if (os !== "") parts.push(os)
         parts.push(d.online ? "Online" : "Offline")
         if (d.person) parts.push(d.person)
-        if (!d.trusted) parts.push("Gets nothing from this computer")
+        if (d.nobody) parts.push("Gets nothing: Tailscale names no person for it")
+        else if (!d.trusted) parts.push("Gets nothing from this computer")
         return parts.join(" · ")
     }
     function personLine(p) {
@@ -111,7 +112,6 @@ SettingsTab {
         objectName: "settings-tailnet-people"
         visible: tab.people.length > 0
         title: "People"
-        helper: "Each person's devices see their own progress here."
         Repeater {
             model: tab.people
             SettingRow {

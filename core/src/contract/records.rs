@@ -1315,6 +1315,10 @@ pub struct TailnetDevice {
     /// (#633). Empty when the tailnet does not say.
     #[serde(default)]
     pub person: String,
+    /// Tailscale ties it to no person while the host tells people apart, so the host
+    /// refuses it whatever the switch says.
+    #[serde(default)]
+    pub nobody: bool,
 }
 
 /// A person whose devices the tailnet host serves, for Settings (#633): the Tailscale
@@ -1329,7 +1333,8 @@ pub struct TailnetPerson {
     pub login: String,
     /// The person this computer belongs to: their devices see its own history.
     pub owner: bool,
-    /// How many of their devices are on the tailnet, this computer left out.
+    /// How many of their devices the host serves: on the tailnet and not switched
+    /// off, this computer left out.
     pub devices: u32,
 }
 

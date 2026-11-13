@@ -63,6 +63,16 @@ pub struct Tailnet {
     pub users: Vec<TailnetUser>,
 }
 
+impl TailnetUser {
+    /// What to call them: their Tailscale name, or their login when it gives none. None
+    /// with neither, so no screen shows a bare user id (#633).
+    pub fn shown(&self) -> Option<&str> {
+        [self.name.trim(), self.login.trim()]
+            .into_iter()
+            .find(|s| !s.is_empty())
+    }
+}
+
 impl Tailnet {
     pub fn peer(&self, ip: IpAddr) -> Option<&Peer> {
         self.peers.iter().find(|p| p.ips.contains(&ip))
