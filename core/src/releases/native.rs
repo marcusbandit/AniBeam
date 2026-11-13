@@ -355,14 +355,6 @@ fn gone(name: &str) -> String {
     crate::i18n::tr("core-releases-endpoint-gone", &[("name", name.into())])
 }
 
-/// The label of a query parameter that holds a secret; None for any other.
-pub fn secret_param(name: &str) -> Option<&'static str> {
-    crate::redact::SECRET_PARAMS
-        .iter()
-        .find(|(p, _)| p.eq_ignore_ascii_case(name))
-        .map(|(_, label)| *label)
-}
-
 /// A URL with any key in it cut short, for a list a person reads: the value of each secret
 /// query parameter, and the password of a `user:password@` login.
 pub fn mask(url: &str) -> String {
@@ -387,7 +379,7 @@ pub fn mask(url: &str) -> String {
         let pairs: Vec<String> = query
             .split('&')
             .map(|pair| match pair.split_once('=') {
-                Some((k, v)) if secret_param(k).is_some() && !v.starts_with('{') => {
+                Some((k, v)) if crate::redact::secret_param(k).is_some() && !v.starts_with('{') => {
                     format!("{k}=...")
                 }
                 _ => pair.to_string(),

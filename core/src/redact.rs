@@ -1,6 +1,6 @@
 //! Keeping secrets out of what the core stores (#509). [`SECRET_PARAMS`] names the query
-//! parameters that hold one, and [`scrub_secrets`] empties their values and drops the
-//! login from every address in a text.
+//! parameters that hold one, [`secret_param`] looks a name up in it, and [`scrub_secrets`]
+//! empties their values and drops the login from every address in a text.
 //!
 //! It names nothing else in the crate, so the event bus can scrub what it stores without
 //! reaching into the network layer (#856).
@@ -25,6 +25,14 @@ pub const SECRET_PARAMS: [(&str, &str); 15] = [
     ("password", "Password"),
     ("uid", "User id"),
 ];
+
+/// The label of a query parameter that holds a secret; None for any other.
+pub fn secret_param(name: &str) -> Option<&'static str> {
+    SECRET_PARAMS
+        .iter()
+        .find(|(p, _)| p.eq_ignore_ascii_case(name))
+        .map(|(_, label)| *label)
+}
 
 /// The secret query parameters [`scrub_secrets`] empties, as one alternation.
 fn secret_names() -> String {

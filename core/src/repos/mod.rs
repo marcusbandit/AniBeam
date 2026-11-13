@@ -864,7 +864,7 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
                 let Some((k, v)) = pair.split_once('=') else {
                     return pair.to_string();
                 };
-                let Some(label) = crate::releases::native::secret_param(k) else {
+                let Some(label) = crate::redact::secret_param(k) else {
                     return pair.to_string();
                 };
                 if v.is_empty() || v.starts_with('{') {
