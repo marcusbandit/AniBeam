@@ -884,7 +884,7 @@ export component MorePage inherits Rectangle {
                 }
             }
             Lit {
-                on: Settings.lit == "Ratings";
+                on: Settings.lit == "Ratings"; // i18n: none, the settings index key
                 reveal(y) => { about.reveal(y); }
                 ListRow {
                     label: AppData.ratings-label;
