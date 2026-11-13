@@ -1694,6 +1694,12 @@ impl App {
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| {
                         app.mark_note = match answer {
+                            // A tracker's show with no account behind it: the way to one.
+                            Err(e @ anibeam_core::CoreError::NotConnected { .. }) => Some((
+                                format!("{e} Sign in under More, Accounts."),
+                                None,
+                                app.ticks,
+                            )),
                             Err(e) => Some((e.to_string(), None, app.ticks)),
                             Ok(_) => mark_line(target, before)
                                 .map(|line| (line, before.map(|b| (series, b, season)), app.ticks)),
