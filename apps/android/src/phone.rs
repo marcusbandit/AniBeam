@@ -80,9 +80,8 @@ fn next_code(card: &SeriesCard) -> Option<String> {
 
 fn on_phone(card: &SeriesCard) -> String {
     match card.episodes_on_disk {
-        0 => "nothing on phone".to_string(),
-        1 => "1 on phone".to_string(),
-        n => format!("{n} on phone"),
+        0 => tr!("phone-nothing-on-phone"),
+        n => tr!("phone-on-phone", count = n),
     }
 }
 
@@ -208,8 +207,12 @@ fn episodes(drop: &WeekDrop) -> String {
         _ => format!("{e}"),
     };
     match drop.through.filter(|t| *t > drop.episode) {
-        Some(t) => format!("Episodes {} to {}", code(drop.episode), code(t)),
-        None => format!("Episode {}", code(drop.episode)),
+        Some(t) => tr!(
+            "phone-episodes-range",
+            from = code(drop.episode),
+            to = code(t)
+        ),
+        None => tr!("common-episode-n", n = code(drop.episode)),
     }
 }
 
@@ -240,8 +243,8 @@ fn calendar(
         };
         let when = match state {
             0 => format::countdown(at - now),
-            1 => "On the phone".to_string(),
-            _ => format!("Out {}", format::ago(now - at)),
+            1 => tr!("phone-on-the-phone"),
+            _ => tr!("phone-out-ago", ago = format::ago(now - at)),
         };
         CalItem {
             id: id(c.id),
@@ -252,7 +255,11 @@ fn calendar(
             time: format::clock(at).into(),
             // Home's list spans days, so its rows say which.
             episode: if with_day {
-                format!("{}, {}", episodes(d), day_word(calendar::today(at), today))
+                tr!(
+                    "phone-episode-day",
+                    episode = episodes(d),
+                    day = day_word(calendar::today(at), today)
+                )
             } else {
                 episodes(d)
             }
@@ -297,10 +304,11 @@ pub fn days_of(timed: Vec<(i64, CalItem)>, now: i64) -> Vec<(CalDay, Vec<CalItem
                 .map(|(_, item)| item.clone())
                 .collect();
             let day = CalDay {
-                weekday: date.format("%a").to_string().into(),
+                weekday: format::day(date, "cal-weekday-short", "%a").into(),
                 date: date.day().to_string().into(),
                 title: day_word(date, today).into(),
-                full: date.format("%A %-d %B").to_string().into(),
+                offset: (date - today).num_days().clamp(-9, 9) as i32,
+                full: format::day(date, "cal-day-full", "%A %-d %B").into(),
                 today: date == today,
                 past: date < today,
                 count: items.len() as i32,
@@ -322,10 +330,10 @@ pub fn days_of(timed: Vec<(i64, CalItem)>, now: i64) -> Vec<(CalDay, Vec<CalItem
 /// "Today", "Tomorrow", "Yesterday", else the weekday: "Thursday".
 fn day_word(date: NaiveDate, today: NaiveDate) -> String {
     match (date - today).num_days() {
-        0 => "Today".to_string(),
-        1 => "Tomorrow".to_string(),
-        -1 => "Yesterday".to_string(),
-        _ => date.format("%A").to_string(),
+        0 => tr!("cal-today"),
+        1 => tr!("cal-tomorrow"),
+        -1 => tr!("cal-yesterday"),
+        _ => format::day(date, "cal-weekday", "%A"),
     }
 }
 
@@ -445,10 +453,10 @@ pub fn series(
         .as_ref()
         .filter(|a| secs(a.at) > now)
         .map(|a| {
-            format!(
-                "Episode {} airs in {}",
-                a.episode,
-                format::countdown_full(secs(a.at) - now)
+            tr!(
+                "phone-next-airs",
+                n = a.episode,
+                time = format::countdown_full(secs(a.at) - now)
             )
         })
         .unwrap_or_default();
@@ -462,24 +470,24 @@ pub fn series(
     // since its marks live on the episodes here.
     let tracked_count = detail.progress.watched.is_some();
     let progress_text = match (movie, detail.progress.total) {
-        (true, _) if !tracked_count => tr("series-not-tracked", &[]),
-        (false, _) if !tracked_count => {
-            tr("series-not-tracked-on-phone", &[("count", on_disk.into())])
+        (true, _) if !tracked_count => tr!("series-not-tracked"),
+        (false, _) if !tracked_count => tr!("series-not-tracked-on-phone", count = on_disk),
+        (true, _) => {
+            if watched > 0 {
+                tr!("phone-watched")
+            } else {
+                tr!("phone-not-watched")
+            }
         }
-        (true, _) => if watched > 0 {
-            "Watched"
-        } else {
-            "Not watched yet"
-        }
-        .to_string(),
         (false, Some(total)) if total > 0 => {
-            format!(
-                "{} of {total} watched, {} on this phone",
-                watched.min(total),
-                on_disk
+            tr!(
+                "phone-progress",
+                watched = watched.min(total),
+                total = total,
+                count = on_disk
             )
         }
-        _ => format!("{on_disk} on this phone"),
+        _ => tr!("phone-on-this-phone", count = on_disk),
     };
     // Play opens the next one up, the desktop hero's rule, when it is whole on the phone.
     let play = detail
@@ -504,17 +512,11 @@ pub fn series(
         play_file: play.map(|e| e.file as i32).unwrap_or(0),
         play_remote: false,
         play_label: play
-            .map(|e| {
-                let what = if movie {
-                    "the film".to_string()
-                } else {
-                    format!("episode {}", e.number)
-                };
-                if e.resume.is_some() {
-                    format!("Resume {what}")
-                } else {
-                    format!("Play {what}")
-                }
+            .map(|e| match (movie, e.resume.is_some()) {
+                (true, true) => tr!("phone-resume-film"),
+                (true, false) => tr!("phone-play-film"),
+                (false, true) => tr!("phone-resume-episode", n = e.number),
+                (false, false) => tr!("phone-play-episode", n = e.number),
             })
             .unwrap_or_default()
             .into(),
@@ -535,11 +537,14 @@ pub fn series(
         .collect();
     for e in one_per_episode(&detail.episodes, deleting) {
         let note = if let Some(p) = e.downloading {
-            format!("Downloading {}%", (p * 100.0).round() as i64)
+            tr!(
+                "series-note-downloading",
+                percent = (p * 100.0).round() as i64
+            )
         } else if e.next_up {
-            "Next up".to_string()
+            tr!("series-note-next-up")
         } else if let Some(r) = &e.resume {
-            format!("Resume at {}", clock(r.position))
+            tr!("series-note-resume-at", time = clock(r.position))
         } else {
             String::new()
         };
@@ -547,7 +552,7 @@ pub fn series(
             if movie {
                 card.title.clone()
             } else {
-                format!("Episode {}", e.number)
+                tr!("common-episode-n", n = e.number)
             }
         });
         lines.push((
@@ -561,6 +566,7 @@ pub fn series(
                     .unwrap_or_default()
                     .into(),
                 note: note.into(),
+                note_kind: i32::from(e.next_up && e.downloading.is_none()),
                 cube: e.cube.chars().next().map(cube_code).unwrap_or(2),
                 // A file a torrent is still writing is on disk but not playable.
                 file: if e.downloading.is_none() {
@@ -587,7 +593,7 @@ pub fn series(
                 title: a
                     .title
                     .clone()
-                    .unwrap_or_else(|| format!("Episode {}", a.number))
+                    .unwrap_or_else(|| tr!("common-episode-n", n = a.number))
                     .into(),
                 date: a
                     .air_date
@@ -598,11 +604,12 @@ pub fn series(
                 // a hole before an episode that is here; past the last one it is not
                 // downloaded, so a show with nothing here never reads as missing (#735).
                 note: match a.cube.as_str() {
-                    "w" | "l" => "Not on this phone",
-                    "m" => "Missing",
-                    _ => "Not downloaded",
+                    "w" | "l" => tr!("series-note-not-here"),
+                    "m" => tr!("series-note-missing"),
+                    _ => tr!("series-note-not-downloaded"),
                 }
                 .into(),
+                note_kind: if a.cube == "m" { 2 } else { 0 },
                 cube: a.cube.chars().next().map(cube_code).unwrap_or(3),
                 file: 0,
                 picked: false,
@@ -619,7 +626,7 @@ pub fn series(
     for u in detail.upcoming.iter().take(6) {
         let at = secs(u.at);
         let date = if u.predicted {
-            format!("about {}", format::day_month(at))
+            tr!("phone-about-date", date = format::day_month(at))
         } else if at - now < 7 * 86_400 {
             format::countdown(at - now)
         } else {
@@ -632,10 +639,11 @@ pub fn series(
                 title: u
                     .title
                     .clone()
-                    .unwrap_or_else(|| format!("Episode {}", u.number))
+                    .unwrap_or_else(|| tr!("common-episode-n", n = u.number))
                     .into(),
                 date: date.into(),
                 note: Default::default(),
+                note_kind: 0,
                 cube: 5,
                 file: 0,
                 picked: false,
@@ -668,12 +676,12 @@ struct Facts<'a> {
 impl Facts<'_> {
     fn words(&self) -> Vec<String> {
         let mut facts = vec![if self.movie {
-            "Film".to_string()
+            tr("show-format-film", &[])
         } else {
             crate::show::format_label(self.format)
         }];
         if let Some(s) = self.season {
-            facts.push(s.to_string());
+            facts.push(crate::seasons::localized(s));
         } else if let Some(y) = self.year {
             facts.push(y.to_string());
         }

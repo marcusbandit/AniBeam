@@ -21,11 +21,26 @@ enum Job {
     Clear,
 }
 
+/// The line the page shows under the buttons. Kept as what happened, not as words, so a
+/// change of language words it again.
+#[derive(Clone, Debug, PartialEq)]
+enum Say {
+    Nothing,
+    BackedUp,
+    NotSaved,
+    Removed(u64),
+    Summary(ImportSummary),
+    Starting,
+    /// A reason the core or the file picker gave, shown as it came.
+    Failed(String),
+}
+
 struct Page {
     window: Weak<AppWindow>,
     folder: PathBuf,
     waiting: Option<Job>,
     storage: Option<(u64, u64)>,
+    saying: Say,
 }
 
 thread_local! {
@@ -50,6 +65,7 @@ pub fn install(window: &AppWindow, data_dir: &std::path::Path) {
             folder,
             waiting: None,
             storage: None,
+            saying: Say::Nothing,
         })
     });
     let d = window.global::<BackupData>();
@@ -57,6 +73,14 @@ pub fn install(window: &AppWindow, data_dir: &std::path::Path) {
     d.on_restore(|| with(Page::restore));
     d.on_clear_images(|| with(Page::clear));
     d.on_read(|| with(Page::measure));
+}
+
+/// The language changed: the lines on the page are worded again.
+pub fn relocalize() {
+    with(|p| {
+        p.render();
+        p.show_storage();
+    });
 }
 
 /// Every event the core sends, from whichever thread sent it.
@@ -99,7 +123,7 @@ impl Page {
         let private = self.data(|d| d.get_include_private()).unwrap_or(false);
         let _ = std::fs::create_dir_all(&self.folder);
         let file = self.folder.join("export.json");
-        self.say("", "", "");
+        self.say(Say::Nothing);
         match core.call(Call::Export {
             path: file.to_string_lossy().into_owned(),
             private,
@@ -108,7 +132,7 @@ impl Page {
                 self.waiting = Some(Job::Export);
                 self.data(|d| d.set_busy(true));
             }
-            Err(e) => self.say("", "", &e.to_string()),
+            Err(e) => self.say(Say::Failed(e.to_string())),
         }
     }
 
@@ -126,9 +150,9 @@ impl Page {
                 p.waiting = None;
                 p.data(|d| d.set_busy(false));
                 match outcome {
-                    Outcome::Done => p.say("Backed up. The file is where you saved it.", "", ""),
-                    Outcome::Cancelled => p.say("Not saved. Nothing was written.", "", ""),
-                    Outcome::Failed(e) => p.say("", "", &e),
+                    Outcome::Done => p.say(Say::BackedUp),
+                    Outcome::Cancelled => p.say(Say::NotSaved),
+                    Outcome::Failed(e) => p.say(Say::Failed(e)),
                 }
             });
         });
@@ -140,14 +164,14 @@ impl Page {
         }
         let _ = std::fs::create_dir_all(&self.folder);
         let file = self.folder.join("import.json");
-        self.say("", "", "");
+        self.say(Say::Nothing);
         self.waiting = Some(Job::Import);
         self.data(|d| d.set_busy(true));
         files::pick(Pick::Open, &file, "", move |outcome| {
             with(|p| match outcome {
                 Outcome::Done => p.import(),
-                Outcome::Cancelled => p.stop("", ""),
-                Outcome::Failed(e) => p.stop("", &e),
+                Outcome::Cancelled => p.stop(Say::Nothing),
+                Outcome::Failed(e) => p.stop(Say::Failed(e)),
             });
         });
     }
@@ -155,26 +179,45 @@ impl Page {
     /// The picked file is in: hand it to the core.
     fn import(&mut self) {
         let Some(core) = crate::local::core() else {
-            return self.stop("", "AniBeam is still starting. Try again in a moment.");
+            return self.stop(Say::Starting);
         };
         let file = self.folder.join("import.json");
         match core.call(Call::Import {
             path: file.to_string_lossy().into_owned(),
         }) {
             Ok(_) => {}
-            Err(e) => self.stop("", &e.to_string()),
+            Err(e) => self.stop(Say::Failed(e.to_string())),
         }
     }
 
     /// Ends a backup or restore that is not going on: clears the spinner and says why.
-    fn stop(&mut self, note: &str, error: &str) {
+    fn stop(&mut self, say: Say) {
         self.waiting = None;
         let _ = std::fs::remove_dir_all(&self.folder);
         self.data(|d| d.set_busy(false));
-        self.say(note, "", error);
+        self.say(say);
     }
 
-    fn say(&self, last: &str, summary: &str, failed: &str) {
+    fn say(&mut self, say: Say) {
+        self.saying = say;
+        self.render();
+    }
+
+    /// Words what the page last said, in the language the app speaks now.
+    fn render(&self) {
+        let (last, summary, failed) = match &self.saying {
+            Say::Nothing => (String::new(), String::new(), String::new()),
+            Say::BackedUp => (tr!("backup-done"), String::new(), String::new()),
+            Say::NotSaved => (tr!("backup-not-saved"), String::new(), String::new()),
+            Say::Removed(n) => (
+                tr!("backup-removed", count = *n),
+                String::new(),
+                String::new(),
+            ),
+            Say::Summary(s) => (String::new(), summary_line(s), String::new()),
+            Say::Starting => (String::new(), String::new(), tr!("backup-starting")),
+            Say::Failed(why) => (String::new(), String::new(), why.clone()),
+        };
         self.data(|d| {
             d.set_last(last.into());
             d.set_summary(summary.into());
@@ -189,23 +232,19 @@ impl Page {
                 self.waiting = None;
                 let _ = std::fs::remove_dir_all(&self.folder);
                 self.data(|d| d.set_busy(false));
-                self.say("", &summary_line(&summary), "");
+                self.say(Say::Summary(summary));
                 crate::local::touch();
             }
             Done::Cleared(removed) if self.waiting == Some(Job::Clear) => {
                 self.waiting = None;
-                self.say(
-                    &format!("Removed {}", plural(removed, "image", "images")),
-                    "",
-                    "",
-                );
+                self.say(Say::Removed(removed));
                 self.measure();
             }
             Done::Failed(job, error) if self.waiting == Some(job) => {
                 if job == Job::Export {
                     let _ = std::fs::remove_dir_all(&self.folder);
                 }
-                self.stop("", &error);
+                self.stop(Say::Failed(error));
             }
             _ => {}
         }
@@ -218,10 +257,10 @@ impl Page {
         if self.waiting.is_some() {
             return;
         }
-        self.say("", "", "");
+        self.say(Say::Nothing);
         match core.call(Call::ClearImages) {
             Ok(_) => self.waiting = Some(Job::Clear),
-            Err(e) => self.say("", "", &e.to_string()),
+            Err(e) => self.say(Say::Failed(e.to_string())),
         }
     }
 
@@ -257,16 +296,16 @@ impl Page {
             d.set_images_line(images_line(storage).into());
             d.set_images_note(
                 if storage.is_none() {
-                    "Try again in a moment. The images themselves are fine."
+                    tr!("backup-images-retry-note")
                 } else {
-                    ""
+                    String::new()
                 }
                 .into(),
             );
             d.set_images_question(
-                format!(
-                    "Remove {}?",
-                    plural(storage.map_or(0, |(n, _)| n), "image", "images")
+                tr!(
+                    "backup-images-question",
+                    count = storage.map_or(0, |(n, _)| n)
                 )
                 .into(),
             );
@@ -274,69 +313,55 @@ impl Page {
     }
 }
 
-fn plural(n: u64, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
-}
-
 fn images_line(storage: Option<(u64, u64)>) -> String {
     match storage {
-        None => "The image cache could not be measured".into(),
-        Some((0, _)) => "No images cached".into(),
-        Some((n, bytes)) => format!("{} in {}", bytes_label(bytes), plural(n, "image", "images")),
+        None => tr!("backup-images-unmeasured"),
+        Some((0, _)) => tr!("backup-images-none"),
+        Some((n, bytes)) => tr!("backup-images-line", size = bytes_label(bytes), count = n),
     }
 }
 
 fn bytes_label(n: u64) -> String {
-    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
     let mut v = n as f64;
-    let mut i = 0;
-    while v >= 1024.0 && i < UNITS.len() - 1 {
+    let mut unit = 0;
+    while v >= 1024.0 && unit < 3 {
         v /= 1024.0;
-        i += 1;
+        unit += 1;
     }
-    if i == 0 || v >= 100.0 {
-        format!("{v:.0} {}", UNITS[i])
-    } else {
-        format!("{v:.1} {}", UNITS[i])
-    }
+    anibeam_companion::format::sized(v, unit)
 }
 
-/// What a restore did, in the desktop's words.
+/// What a restore did, in the desktop's words. One message per clause, so a language can
+/// order and inflect each its own way; the clauses are joined by the catalog's separator.
 fn summary_line(s: &ImportSummary) -> String {
-    let mut out = [
-        format!("{} added", plural(s.sources_added, "folder", "folders")),
-        format!("{} created", plural(s.series_created, "series", "series")),
-        format!("{} applied", plural(s.matches_applied, "match", "matches")),
-        format!(
-            "{} and {} merged",
-            plural(s.views_merged, "view", "views"),
-            plural(s.completed_merged, "finished episode", "finished episodes")
+    let clauses = [
+        tr!("backup-sum-folders", count = s.sources_added),
+        tr!("backup-sum-series", count = s.series_created),
+        tr!("backup-sum-matches", count = s.matches_applied),
+        tr!(
+            "backup-sum-views",
+            views = s.views_merged,
+            episodes = s.completed_merged
         ),
-        format!(
-            "{} merged",
-            plural(s.resume_points_merged, "resume point", "resume points")
-        ),
-        format!(
-            "{} brought in",
-            plural(s.accounts_imported, "list account", "list accounts")
-        ),
-    ]
-    .join(", ")
-        + ".";
+        tr!("backup-sum-resume", count = s.resume_points_merged),
+        tr!("backup-sum-accounts", count = s.accounts_imported),
+    ];
+    let sep = tr!("backup-sum-sep");
+    let mut out = tr!("backup-sum-list", items = clauses.join(sep.as_str()));
     if s.fixes_applied > 0 {
-        out += &format!(
-            " {} a fix you made.",
-            plural(s.fixes_applied, "file takes", "files take")
-        );
+        out += " ";
+        out += &tr!("backup-sum-fixes", count = s.fixes_applied);
     }
     if s.sources_unavailable > 0 {
-        out += &format!(
-            " {} not found on this phone.",
-            plural(s.sources_unavailable, "folder was", "folders were")
-        );
+        out += " ";
+        out += &tr!("backup-sum-missing", count = s.sources_unavailable);
     }
     if !s.fields_ignored.is_empty() {
-        out += &format!(" Left out: {}.", s.fields_ignored.join(", "));
+        out += " ";
+        out += &tr!(
+            "backup-sum-left-out",
+            fields = s.fields_ignored.join(sep.as_str())
+        );
     }
     out
 }
@@ -362,6 +387,7 @@ mod tests {
 
     #[test]
     fn a_restore_reads_back_in_the_desktops_words() {
+        crate::tr::set_lang(crate::tr::Lang::En);
         assert_eq!(
             summary_line(&summary()),
             "1 folder added, 12 series created, 9 matches applied, 40 views and 1 finished episode merged, 3 resume points merged, 0 list accounts brought in."
@@ -380,6 +406,7 @@ mod tests {
 
     #[test]
     fn the_cache_is_named_by_size_and_count() {
+        crate::tr::set_lang(crate::tr::Lang::En);
         assert_eq!(images_line(None), "The image cache could not be measured");
         assert_eq!(images_line(Some((0, 0))), "No images cached");
         assert_eq!(

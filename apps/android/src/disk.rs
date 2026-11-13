@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use anibeam_companion::format;
 use anibeam_core::{Call, Direction, Reply, SeriesAction, SeriesCard, Sort, Tab};
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak};
 
 use crate::{AppWindow, DiskData, HiddenRow};
 
@@ -25,18 +25,11 @@ struct State {
     deleting: bool,
     /// What the open sheet will delete.
     finished: bool,
+    window: Weak<AppWindow>,
 }
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State { dirty: true, ..State::default() });
-}
-
-fn plural(n: u64, one: &str, many: &str) -> String {
-    if n == 1 {
-        format!("1 {one}")
-    } else {
-        format!("{n} {many}")
-    }
 }
 
 /// The figures behind the usage line and the sheet.
@@ -67,12 +60,15 @@ fn titles(cards: &[&SeriesCard]) -> String {
     match names.len() {
         0 => String::new(),
         1 => names[0].to_string(),
-        2 | 3 => format!(
-            "{} and {}",
-            names[..names.len() - 1].join(", "),
-            names[names.len() - 1]
+        2 => tr!("disk-list-two", a = names[0], b = names[1]),
+        3 => tr!("disk-list-three", a = names[0], b = names[1], c = names[2]),
+        n => tr!(
+            "disk-list-more",
+            a = names[0],
+            b = names[1],
+            c = names[2],
+            count = n - 3
         ),
-        n => format!("{} and {} more", names[..3].join(", "), n - 3),
     }
 }
 
@@ -125,10 +121,10 @@ fn show(window: &AppWindow) {
                 .map(|c| HiddenRow {
                     id: i32::try_from(c.id).unwrap_or(-1),
                     title: c.title.clone().into(),
-                    ledger: format!(
-                        "{}, {}",
-                        plural(c.episodes_on_disk, "episode", "episodes"),
-                        format::bytes(c.bytes_on_disk)
+                    ledger: tr!(
+                        "disk-episodes-size",
+                        count = c.episodes_on_disk,
+                        size = format::bytes(c.bytes_on_disk)
                     )
                     .into(),
                 })
@@ -149,18 +145,18 @@ fn show(window: &AppWindow) {
     d.set_can_delete(u.watched_bytes > 0);
     d.set_busy(deleting);
     d.set_all_line(
-        format!(
-            "{}, {}",
-            plural(u.watched_episodes, "episode", "episodes"),
-            format::bytes(u.watched_bytes)
+        tr!(
+            "disk-episodes-size",
+            count = u.watched_episodes,
+            size = format::bytes(u.watched_bytes)
         )
         .into(),
     );
     d.set_finished_line(
-        format!(
-            "{}, {}",
-            plural(u.finished_shows, "show", "shows"),
-            format::bytes(u.finished_bytes)
+        tr!(
+            "disk-shows-size",
+            count = u.finished_shows,
+            size = format::bytes(u.finished_bytes)
         )
         .into(),
     );
@@ -171,6 +167,53 @@ fn show(window: &AppWindow) {
         return;
     }
     d.set_hidden(ModelRc::new(VecModel::from(hidden)));
+}
+
+/// The language changed: the figures' lines are written again at the next tick, and an open
+/// sheet is worded again now.
+pub fn relocalize() {
+    let (window, finished) = STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.dirty = true;
+        (s.window.upgrade(), s.finished)
+    });
+    if let Some(window) = window {
+        let d = window.global::<DiskData>();
+        if d.get_sheet() >= 2 {
+            let u = STATE.with(|s| usage(&s.borrow().disk));
+            sheet_text(&d, finished, &u);
+        }
+    }
+}
+
+/// The open sheet's title and body: what the delete takes, and its names.
+fn sheet_text(d: &DiskData, finished: bool, u: &Usage) {
+    if finished {
+        let names = STATE.with(|s| {
+            let s = s.borrow();
+            let done: Vec<&SeriesCard> = s.disk.iter().filter(|c| c.finished_watched).collect();
+            titles(&done)
+        });
+        d.set_sheet_title(
+            tr!(
+                "disk-delete-finished-title",
+                count = u.finished_shows,
+                size = format::bytes(u.finished_bytes)
+            )
+            .into(),
+        );
+        d.set_sheet_body(tr!("disk-delete-finished-body", names = names).into());
+    } else {
+        d.set_sheet_title(
+            tr!(
+                "disk-delete-watched-title",
+                count = u.watched_episodes,
+                size = format::bytes(u.watched_bytes)
+            )
+            .into(),
+        );
+        d.set_sheet_body(tr!("disk-delete-watched-body").into());
+    }
 }
 
 /// Called each second with whether the core said something and the library's cards.
@@ -203,6 +246,7 @@ fn act_hide(id: u64, hidden: bool) {
 
 /// Wires the usage line, the sheet and Hide. Once, at startup.
 pub fn install(window: &AppWindow) {
+    STATE.with(|s| s.borrow_mut().window = window.as_weak());
     let d = window.global::<DiskData>();
     d.on_hide(|id| {
         if let Ok(id) = u64::try_from(id) {
@@ -226,51 +270,19 @@ pub fn install(window: &AppWindow) {
                 return;
             }
             let finished = kind == 2;
-            let (u, names) = STATE.with(|s| {
-                let s = s.borrow();
-                let done: Vec<&SeriesCard> = s.disk.iter().filter(|c| c.finished_watched).collect();
-                (usage(&s.disk), titles(&done))
-            });
+            let u = STATE.with(|s| usage(&s.borrow().disk));
             if finished && u.finished_shows == 0 {
                 d.set_sheet(0);
-                d.set_line("No finished show is watched all the way through".into());
+                d.set_line(tr!("disk-no-finished").into());
                 return;
             }
             if !finished && u.watched_episodes == 0 {
                 d.set_sheet(0);
-                d.set_line("Nothing watched is on this phone".into());
+                d.set_line(tr!("disk-nothing-watched").into());
                 return;
             }
             STATE.with(|s| s.borrow_mut().finished = finished);
-            if finished {
-                d.set_sheet_title(
-                    format!(
-                        "Delete {}, {}?",
-                        plural(u.finished_shows, "finished show", "finished shows"),
-                        format::bytes(u.finished_bytes)
-                    )
-                    .into(),
-                );
-                d.set_sheet_body(
-                    format!(
-                        "{names}. Only shows the provider says have finished, every episode watched; a show still airing, or whose end is a guess, stays. Every file of them is deleted from this phone, extras too. Their downloads leave too, so they can be downloaded again."
-                    )
-                    .into(),
-                );
-            } else {
-                d.set_sheet_title(
-                    format!(
-                        "Delete {}, {}?",
-                        plural(u.watched_episodes, "watched episode", "watched episodes"),
-                        format::bytes(u.watched_bytes)
-                    )
-                    .into(),
-                );
-                d.set_sheet_body(
-                    "Every episode you have watched, in every show. Episodes not watched yet and extras stay. The files and their subtitles are deleted from this phone for good."
-                        .into(),
-                );
-            }
+            sheet_text(&d, finished, &u);
             d.set_sheet(if finished { 3 } else { 2 });
         }
     });
@@ -314,13 +326,13 @@ pub fn install(window: &AppWindow) {
                         let line = match answer {
                             Ok(Reply::Deleted {
                                 episodes, bytes, ..
-                            }) => format!(
-                                "Deleted {}, {}",
-                                plural(episodes, "episode", "episodes"),
-                                format::bytes(bytes)
+                            }) => tr!(
+                                "disk-deleted",
+                                count = episodes,
+                                size = format::bytes(bytes)
                             ),
                             Ok(_) => String::new(),
-                            Err(e) => format!("Nothing was deleted: {e}"),
+                            Err(e) => tr!("disk-delete-failed", error = e.to_string()),
                         };
                         let d = window.global::<DiskData>();
                         d.set_busy(false);
@@ -334,13 +346,6 @@ pub fn install(window: &AppWindow) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn counts_read_one_and_many() {
-        assert_eq!(plural(1, "show", "shows"), "1 show");
-        assert_eq!(plural(0, "show", "shows"), "0 shows");
-        assert_eq!(plural(12, "episode", "episodes"), "12 episodes");
-    }
 
     #[test]
     fn no_cards_take_no_space() {

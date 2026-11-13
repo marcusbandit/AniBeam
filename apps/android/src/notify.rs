@@ -5,6 +5,8 @@
 
 use std::collections::HashSet;
 
+use anibeam_core::Torrent;
+
 /// Where the permission stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Notify {
@@ -61,42 +63,72 @@ pub struct Ongoing {
     pub progress: i32,
 }
 
+/// What a download holds, kept as the facts and not as words, so each language words it
+/// its own way in a notification: "Frieren episode 7", "Frieren episodes 1 to 12".
+#[derive(Clone, Debug, PartialEq)]
+pub enum What {
+    /// The torrent names no episode and is not a batch.
+    None,
+    /// One episode, by its number as the core reads it.
+    Episode(String),
+    /// A run of episodes, first and last.
+    Episodes(String, String),
+    /// A batch that names no episodes.
+    Batch,
+}
+
+/// What a torrent holds: its one episode, the run of episodes picked to download, or a
+/// batch. Only the files picked count: a skipped one is not coming.
+pub fn what_of(t: &Torrent) -> What {
+    let mut episodes: Vec<f64> = t
+        .files
+        .iter()
+        .filter(|f| f.priority != 0)
+        .filter_map(|f| f.episode)
+        .collect();
+    episodes.sort_by(f64::total_cmp);
+    match (t.episode, episodes.first(), episodes.last()) {
+        (Some(e), _, _) if !t.batch => What::Episode(e.to_string()),
+        (_, Some(a), Some(b)) if a != b => What::Episodes(a.to_string(), b.to_string()),
+        (_, Some(a), _) => What::Episode(a.to_string()),
+        _ if t.batch => What::Batch,
+        _ => What::None,
+    }
+}
+
 /// What a download is called in a notification: the show and its episode, "Frieren
 /// episode 7" or "Frieren episodes 1 to 12", the show alone for a batch that names none, or
 /// the torrent's own name when it is not a show's.
-pub fn called(show: &str, what: &str, name: &str) -> String {
+pub fn called(show: &str, what: &What, name: &str) -> String {
     if show.is_empty() {
         return name.to_string();
     }
-    if what.is_empty() || what == "A batch" {
-        return show.to_string();
+    match what {
+        What::Episode(n) => tr!("notify-called-episode", show = show, n = n),
+        What::Episodes(from, to) => {
+            tr!("notify-called-episodes", show = show, from = from, to = to)
+        }
+        What::Batch | What::None => show.to_string(),
     }
-    format!("{show} {}", lower_first(what))
 }
 
 /// The finished download's notification: "Frieren episode 7 is ready", "are" for a run of
 /// episodes, "A batch of Frieren is ready" for a batch that names none.
-pub fn ready_title(show: &str, what: &str, name: &str) -> String {
-    if what == "A batch" && !show.is_empty() {
-        return format!("A batch of {show} is ready");
+pub fn ready_title(show: &str, what: &What, name: &str) -> String {
+    if *what == What::Batch && !show.is_empty() {
+        return tr!("notify-ready-batch", show = show);
     }
-    let verb = if what.starts_with("Episodes") {
-        "are"
+    let id = if matches!(what, What::Episodes(..)) {
+        "notify-ready-many"
     } else {
-        "is"
+        "notify-ready"
     };
-    format!("{} {verb} ready", called(show, what, name))
+    tr!(id, called = called(show, what, name))
 }
 
 /// The line under it, the same words onboarding's preview shows.
-pub const READY_TEXT: &str = "Downloaded to this phone. Tap to open AniBeam.";
-
-fn lower_first(text: &str) -> String {
-    let mut chars = text.chars();
-    match chars.next() {
-        Some(c) => c.to_lowercase().chain(chars).collect(),
-        None => String::new(),
-    }
+pub fn ready_text() -> String {
+    tr!("notify-ready-text")
 }
 
 /// The ongoing notification for what is moving: one download by name with the numbers
@@ -109,13 +141,17 @@ pub fn ongoing(moving: &[Moving], bytes: impl Fn(u64) -> String) -> Option<Ongoi
     match moving {
         [] => None,
         [one] if one.size == 0 => Some(Ongoing {
-            title: format!("Downloading {}", one.called),
-            text: "Starting".into(),
+            title: tr!("notify-downloading", called = &one.called),
+            text: tr!("notify-starting"),
             progress: -1,
         }),
         [one] => Some(Ongoing {
-            title: format!("Downloading {}", one.called),
-            text: format!("{}%, {}", percent(one.progress), one.facts),
+            title: tr!("notify-downloading", called = &one.called),
+            text: tr!(
+                "notify-progress",
+                percent = percent(one.progress).to_string(),
+                facts = &one.facts
+            ),
             progress: tenths(one.progress),
         }),
         many => {
@@ -124,16 +160,16 @@ pub fn ongoing(moving: &[Moving], bytes: impl Fn(u64) -> String) -> Option<Ongoi
             let progress = if size > 0 { done / size as f64 } else { 0.0 };
             Some(Ongoing {
                 // Downloads, not episodes: one of them may be a whole batch.
-                title: format!("{} downloads", many.len()),
+                title: tr!("notify-many", count = many.len()),
                 text: if size > 0 {
-                    format!(
-                        "{}%, {} of {}",
-                        percent(progress),
-                        bytes(done as u64),
-                        bytes(size)
+                    tr!(
+                        "notify-progress-of",
+                        percent = percent(progress).to_string(),
+                        done = bytes(done as u64),
+                        size = bytes(size)
                     )
                 } else {
-                    "Starting".into()
+                    tr!("notify-starting")
                 },
                 progress: if size > 0 { tenths(progress) } else { -1 },
             })
@@ -217,33 +253,34 @@ mod tests {
 
     #[test]
     fn a_download_is_called_by_its_show_and_episode() {
+        let seven = What::Episode("7".into());
         assert_eq!(
-            called("Frieren", "Episode 7", "[G] Frieren - 07"),
+            called("Frieren", &seven, "[G] Frieren - 07"),
             "Frieren episode 7"
         );
-        assert_eq!(called("Frieren", "", "[G] Frieren"), "Frieren");
-        assert_eq!(
-            called("", "Episode 7", "[G] Frieren - 07"),
-            "[G] Frieren - 07"
-        );
-        assert_eq!(called("Frieren", "A batch", "[G] Frieren"), "Frieren");
+        assert_eq!(called("Frieren", &What::None, "[G] Frieren"), "Frieren");
+        assert_eq!(called("", &seven, "[G] Frieren - 07"), "[G] Frieren - 07");
+        assert_eq!(called("Frieren", &What::Batch, "[G] Frieren"), "Frieren");
     }
 
     #[test]
     fn a_batch_is_ready_in_the_plural() {
         assert_eq!(
-            ready_title("Frieren", "Episode 7", "x"),
+            ready_title("Frieren", &What::Episode("7".into()), "x"),
             "Frieren episode 7 is ready"
         );
         assert_eq!(
-            ready_title("Frieren", "Episodes 1 to 12", "x"),
+            ready_title("Frieren", &What::Episodes("1".into(), "12".into()), "x"),
             "Frieren episodes 1 to 12 are ready"
         );
         assert_eq!(
-            ready_title("Frieren", "A batch", "x"),
+            ready_title("Frieren", &What::Batch, "x"),
             "A batch of Frieren is ready"
         );
-        assert_eq!(ready_title("", "", "[G] Film"), "[G] Film is ready");
+        assert_eq!(
+            ready_title("", &What::None, "[G] Film"),
+            "[G] Film is ready"
+        );
     }
 
     #[test]

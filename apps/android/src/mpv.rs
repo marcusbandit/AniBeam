@@ -267,7 +267,7 @@ mod imp {
             });
             let handle = unsafe { mpv_create() };
             if handle.is_null() {
-                return Err("mpv did not start".into());
+                return Err(tr!("player-mpv-no-start"));
             }
             for (k, v) in BOOT_OPTIONS {
                 // The emulator's MediaCodec H.264 decoder (c2.goldfish) streaks the picture
@@ -281,7 +281,7 @@ mod imp {
             let code = unsafe { mpv_initialize(handle) };
             if code < 0 {
                 unsafe { mpv_terminate_destroy(handle) };
-                return Err(format!("mpv did not start: {}", error(code)));
+                return Err(tr!("player-mpv-no-start-why", why = error(code)));
             }
             for (i, (name, format)) in OBSERVED.iter().enumerate() {
                 let format = match format {
@@ -431,7 +431,7 @@ mod host {
 
     impl Mpv {
         pub fn new(_listener: Listener) -> Result<Arc<Mpv>, String> {
-            Err("the player runs on Android only".into())
+            Err(tr!("player-android-only"))
         }
         pub fn set(&self, _name: &str, _value: &str) {}
         pub fn command(&self, _args: &[&str]) {}

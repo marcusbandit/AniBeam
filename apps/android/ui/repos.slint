@@ -4,6 +4,7 @@
 
 import { Theme } from "theme.slint";
 import { Button, Field, GlassTag, Lit, Switch, TextButton } from "widgets.slint";
+import { Tr } from "tr.slint";
 
 // A trusted repo.
 export struct RepoRow {
@@ -70,8 +71,8 @@ export global RepoData {
     in property <[AuthRow]> fields;
     // What went wrong with the form's own call, shown inside it.
     in property <string> asking-error;
-    // What the form's button does: Install, Update or Save.
-    in property <string> asking-action: "Install";
+    // What the form's button does: 0 Install, 1 Update, 2 Save.
+    in property <int> asking-kind: 0;
     // An endpoint added by hand.
     in-out property <string> custom-name;
     in-out property <string> custom-url;
@@ -115,18 +116,18 @@ export component CustomAdd inherits Rectangle {
         height: self.preferred-height;
         spacing: Theme.unit * 3;
         Text {
-            text: "Add one by hand";
+            text: Tr.t("repos-by-hand-title");
             color: Theme.text;
             font-family: Theme.strong-face;
         }
         Text {
-            text: "For a site no repo carries. Any feed with {query} where the search goes, a Jackett or Prowlarr feed among them. A key or token in the address is moved to this phone's secret store.";
+            text: Tr.t("repos-by-hand-note");
             color: Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;
         }
-        Field { text <=> RepoData.custom-name; placeholder: "Name"; }
-        Field { text <=> RepoData.custom-url; placeholder: "https://...{query}..."; }
+        Field { text <=> RepoData.custom-name; placeholder: Tr.t("repos-name-placeholder"); }
+        Field { text <=> RepoData.custom-url; placeholder: Tr.t("repos-url-placeholder"); }
         if RepoData.custom-error != "": Text {
             text: RepoData.custom-error;
             color: Theme.bad;
@@ -136,7 +137,7 @@ export component CustomAdd inherits Rectangle {
         HorizontalLayout {
             alignment: start;
             Button {
-                text: "Add site";
+                text: Tr.t("repos-add-site");
                 small: true;
                 enabled: RepoData.custom-name != "" && RepoData.custom-url != "";
                 clicked => { RepoData.add-custom(RepoData.custom-name, RepoData.custom-url); }
@@ -154,25 +155,25 @@ component RepoForm inherits Rectangle {
         width: parent.width;
         spacing: Theme.unit * 3;
         Text {
-            text: "Add a repo";
+            text: Tr.t("repos-add-title");
             color: Theme.text;
             font-family: Theme.strong-face;
         }
         Text {
-            text: "Paste the address of a repo's index. AniBeam checks its signature and shows you its key before anything is saved.";
+            text: Tr.t("repos-add-note");
             color: Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;
         }
         Field {
             text <=> RepoData.url;
-            placeholder: "https://.../index.json";
+            placeholder: Tr.t("repos-index-placeholder");
             accepted(t) => { RepoData.add(t); }
         }
         HorizontalLayout {
             alignment: start;
             Button {
-                text: RepoData.busy ? "Checking..." : "Add repo";
+                text: RepoData.busy ? Tr.t("common-checking") : Tr.t("repos-add-repo");
                 small: true;
                 enabled: !RepoData.busy && RepoData.url != "";
                 clicked => { RepoData.add(RepoData.url); }
@@ -187,7 +188,7 @@ component RepoPreview inherits Rectangle {
         width: parent.width;
         spacing: Theme.unit * 2;
         Text {
-            text: "Trust this repo?";
+            text: Tr.t("repos-trust-title");
             color: Theme.text;
             font-family: Theme.strong-face;
         }
@@ -221,7 +222,7 @@ component RepoPreview inherits Rectangle {
             wrap: word-wrap;
         }
         Text {
-            text: "Key fingerprint";
+            text: Tr.t("repos-fingerprint");
             color: Theme.dim;
             font-size: Theme.small;
         }
@@ -232,7 +233,7 @@ component RepoPreview inherits Rectangle {
             wrap: word-wrap;
         }
         Text {
-            text: "Its sites decide where your searches go. Trust a repo only from someone you trust.";
+            text: Tr.t("repos-trust-warning");
             color: Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;
@@ -241,14 +242,14 @@ component RepoPreview inherits Rectangle {
             spacing: Theme.gap;
             alignment: start;
             Button {
-                text: "Trust";
+                text: Tr.t("repos-trust");
                 small: true;
                 primary: true;
                 enabled: !RepoData.busy;
                 clicked => { RepoData.trust(); }
             }
             Button {
-                text: "Cancel";
+                text: Tr.t("common-cancel");
                 small: true;
                 clicked => { RepoData.cancel(); }
             }
@@ -322,7 +323,7 @@ export component RepoItem inherits Rectangle {
         x: parent.width - self.width - Theme.pad;
         y: (parent.height - self.height) / 2;
         width: self.min-width;
-        text: "Remove";
+        text: Tr.t("common-remove");
         small: true;
         danger: true;
         clicked => { root.remove(); }
@@ -358,7 +359,7 @@ component AskField inherits Rectangle {
         if root.field.help-url != "": HorizontalLayout {
             alignment: start;
             TextButton {
-                text: "Open " + root.field.help-url;
+                text: Tr.s("repos-open-link", "url", root.field.help-url);
                 ink: Theme.accent;
                 clicked => { RepoData.open-link(root.field.help-url); }
             }
@@ -396,14 +397,14 @@ component AskValues inherits Rectangle {
             spacing: Theme.gap;
             alignment: start;
             Button {
-                text: RepoData.busy ? "Saving..." : RepoData.asking-action;
+                text: RepoData.busy ? Tr.t("repos-saving") : RepoData.asking-kind == 0 ? Tr.t("repos-install") : RepoData.asking-kind == 1 ? Tr.t("repos-update") : Tr.t("common-save");
                 small: true;
                 primary: true;
                 enabled: !RepoData.busy;
                 clicked => { RepoData.confirm(); }
             }
             Button {
-                text: "Cancel";
+                text: Tr.t("common-cancel");
                 small: true;
                 clicked => { RepoData.dismiss(); }
             }
@@ -488,7 +489,7 @@ export component EndpointItem inherits Rectangle {
             }
             if !root.endpoint.installed && !root.asking: Button {
                 y: (parent.height - self.height) / 2;
-                text: "Install";
+                text: Tr.t("repos-install");
                 small: true;
                 primary: true;
                 clicked => { root.act(); }
@@ -506,15 +507,15 @@ export component EndpointItem inherits Rectangle {
             padding-top: Theme.unit;
             Field {
                 text <=> RepoData.edit-name;
-                placeholder: "Name";
+                placeholder: Tr.t("repos-name-placeholder");
             }
             Field {
                 text <=> RepoData.edit-url;
                 figure: true;
-                placeholder: "https://...{query}...";
+                placeholder: Tr.t("repos-url-placeholder");
             }
             Text {
-                text: RepoData.edit-keys == "" ? "A key or token typed into the address is moved to this phone's secret store." : "Leave each {key} in the address as it is; its value is kept on this phone.";
+                text: RepoData.edit-keys == "" ? Tr.t("repos-edit-note") : Tr.t("repos-edit-note-keys");
                 color: Theme.dim;
                 font-size: Theme.small;
                 wrap: word-wrap;
@@ -529,18 +530,18 @@ export component EndpointItem inherits Rectangle {
                 spacing: Theme.gap;
                 alignment: start;
                 Button {
-                    text: "Save";
+                    text: Tr.t("common-save");
                     small: true;
                     primary: true;
                     clicked => { RepoData.save-edit(); }
                 }
                 Button {
-                    text: "Cancel";
+                    text: Tr.t("common-cancel");
                     small: true;
                     clicked => { RepoData.close-edit(); }
                 }
                 if RepoData.edit-keys != "": Button {
-                    text: "Change its " + RepoData.edit-keys;
+                    text: Tr.s("repos-change-its", "keys", RepoData.edit-keys);
                     small: true;
                     clicked => { RepoData.change-values(); }
                 }
@@ -556,7 +557,7 @@ export component EndpointItem inherits Rectangle {
                 clicked => { root.act(); }
             }
             Button {
-                text: "Remove";
+                text: Tr.t("common-remove");
                 small: true;
                 danger: true;
                 clicked => { root.remove(); }
@@ -575,25 +576,28 @@ export component EndpointItem inherits Rectangle {
 // The repos, then what they offer: More shows all of it, the first run the same list.
 export component RepoPanes inherits VerticalLayout {
     // The setting More's search landed on, by its label, and where to scroll for it.
+    // It holds the translated label of the setting, found by its message ID: the ones this
+    // file compares with are repos-check-repos, repos-check-sites, repos-add-title and
+    // repos-add-site-label.
     in property <string> lit;
     callback reveal(length);
     spacing: Theme.unit * 4;
     // Each repo's list is read again, for sites it added or changed.
     if RepoData.repos.length > 0 || RepoData.on-count > 0: Lit {
-        on: root.lit == "Check repos for new sites" || root.lit == "Check the sites";
+        on: root.lit == Tr.t("repos-check-repos") || root.lit == Tr.t("repos-check-sites");
         reveal(y) => { root.reveal(y); }
         HorizontalLayout {
             alignment: start;
             spacing: Theme.gap;
             if RepoData.repos.length > 0: Button {
-                text: "Check repos for new sites";
+                text: Tr.t("repos-check-repos");
                 icon: @image-url("icons/refresh-cw.svg");
                 has-icon: true;
                 small: true;
                 clicked => { RepoData.refresh(); }
             }
             if RepoData.on-count > 0: Button {
-                text: RepoData.checking ? "Checking..." : "Check the sites";
+                text: RepoData.checking ? Tr.t("common-checking") : Tr.t("repos-check-sites");
                 icon: @image-url("icons/wifi.svg");
                 has-icon: true;
                 small: true;
@@ -615,7 +619,7 @@ export component RepoPanes inherits VerticalLayout {
                 remove => { RepoData.remove-repo(i); }
             }
             Lit {
-                on: root.lit == "Add a repo";
+                on: root.lit == Tr.t("repos-add-title");
                 reveal(y) => { root.reveal(y); }
                 RepoAdd { }
             }
@@ -639,7 +643,7 @@ export component RepoPanes inherits VerticalLayout {
                 open => { RepoData.open(i); }
             }
             Lit {
-                on: root.lit == "Add a site by hand";
+                on: root.lit == Tr.t("repos-add-site-label");
                 reveal(y) => { root.reveal(y); }
                 CustomAdd { }
             }

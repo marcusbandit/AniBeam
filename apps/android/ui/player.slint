@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { Fold } from "fold.slint";
 import { Button, TextButton } from "widgets.slint";
+import { Tr } from "tr.slint";
 
 // The player, the desktop's PlayerChrome at phone size: the picture fills the screen, the
 // header sits over its top, and the controls island over its foot carries the time, the
@@ -56,8 +57,8 @@ export global PlayerData {
     in property <string> notice-action;
     // The subtitle and audio delay mpv reports, in seconds, and whether the file's has moved.
     // The text is the desktop's delayText, written in Rust.
-    in property <string> sub-delay-text: "0.0 s";
-    in property <string> audio-delay-text: "0.0 s";
+    in property <string> sub-delay-text;
+    in property <string> audio-delay-text;
     in property <bool> sub-delay-set;
     in property <bool> audio-delay-set;
     // 0 none, 1 audio, 2 subtitles, 3 speed, 4 cast, 5 delays.
@@ -381,26 +382,26 @@ component Delays inherits Rectangle {
             padding: Theme.pad;
             spacing: Theme.unit;
             Text {
-                text: "Delay";
+                text: Tr.t("player-delay-title");
                 color: Theme.text;
                 font-size: Theme.large;
                 font-family: Theme.display-face;
             }
             Text {
-                text: "Each tap moves it 0.1 s. Until the next file.";
+                text: Tr.t("player-delay-note");
                 color: Theme.dim;
                 font-size: Theme.small;
                 wrap: word-wrap;
             }
             Rectangle { height: Theme.unit; }
             DelayRow {
-                label: "Subtitles";
+                label: Tr.t("player-subtitles");
                 kind: 0;
                 text: PlayerData.sub-delay-text;
                 set: PlayerData.sub-delay-set;
             }
             DelayRow {
-                label: "Audio";
+                label: Tr.t("player-audio");
                 kind: 1;
                 text: PlayerData.audio-delay-text;
                 set: PlayerData.audio-delay-set;
@@ -451,7 +452,7 @@ export component PlayerPage inherits Rectangle {
                 image-fit: contain;
             }
             Text {
-                text: "Playing on " + PlayerData.cast-device;
+                text: Tr.s("player-cast-playing-on", "device", PlayerData.cast-device);
                 color: Theme.text;
                 font-family: Theme.display-face;
                 font-size: Theme.section;
@@ -536,11 +537,11 @@ export component PlayerPage inherits Rectangle {
             }
             if (self.mouse-x < self.width / 3) {
                 PlayerData.seek-by(-10);
-                jump.text = "−10 s";
+                jump.text = Tr.t("player-jump-back");
                 jump.left = true;
             } else if (self.mouse-x > self.width * 2 / 3) {
                 PlayerData.seek-by(10);
-                jump.text = "+10 s";
+                jump.text = Tr.t("player-jump-forward");
                 jump.left = false;
             } else {
                 PlayerData.toggle-pause();
@@ -791,7 +792,7 @@ export component PlayerPage inherits Rectangle {
                 Text {
                     horizontal-stretch: 1;
                     horizontal-alignment: center;
-                    text: PlayerData.speed != 1 ? "Speed " + Fmt.speed(PlayerData.speed) : "";
+                    text: PlayerData.speed != 1 ? Tr.s("player-speed-now", "speed", Fmt.speed(PlayerData.speed)) : "";
                     color: Theme.accent;
                     font-family: Theme.figure;
                     font-size: Theme.small;
@@ -899,7 +900,7 @@ export component PlayerPage inherits Rectangle {
             padding: 1.5 * Theme.unit;
             spacing: 1.5 * Theme.unit;
             TextButton {
-                text: "Stay";
+                text: Tr.t("player-next-stay");
                 ink: Theme.on-poster;
                 clicked => { PlayerData.stay(); }
             }
@@ -918,7 +919,7 @@ export component PlayerPage inherits Rectangle {
                     background: Theme.accent.with-alpha(0.35);
                 }
                 next-label := Text {
-                    text: "Next";
+                    text: Tr.t("player-next-go");
                     color: Theme.text;
                     font-family: Theme.title-face;
                 }
@@ -995,7 +996,7 @@ export component PlayerPage inherits Rectangle {
             }
             Text {
                 vertical-alignment: center;
-                text: "2× speed";
+                text: Tr.t("player-hold-speed");
                 color: Theme.text;
                 font-family: Theme.figure;
             }
@@ -1010,7 +1011,7 @@ export component PlayerPage inherits Rectangle {
         primary: true;
         has-icon: true;
         icon: @image-url("icons/rotate-ccw.svg");
-        text: "Replay";
+        text: Tr.t("player-replay");
         clicked => { PlayerData.replay-clicked(); }
     }
 
@@ -1073,7 +1074,7 @@ export component PlayerPage inherits Rectangle {
         visible: PlayerData.locked && self.shown;
         has-icon: true;
         icon: @image-url("icons/lock-open.svg");
-        text: "Unlock";
+        text: Tr.t("player-unlock");
         primary: true;
         clicked => {
             PlayerData.locked = false;

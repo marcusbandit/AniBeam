@@ -116,6 +116,11 @@ pub fn install(window: &AppWindow) {
     });
 }
 
+/// The language changed: the rows are built again, with their times written the new way.
+pub fn relocalize() {
+    with(Page::show);
+}
+
 /// Every event the core sends, from whichever thread sent it.
 pub fn core_event(event: &Event) {
     if matches!(event.level, Level::Debug) {
@@ -261,11 +266,12 @@ fn line(r: &Row) -> String {
 /// read as a fresh one.
 fn stamp(at: SystemTime, now: DateTime<Local>) -> String {
     let d: DateTime<Local> = at.into();
-    if d.date_naive() == now.date_naive() {
-        d.format("%H:%M:%S").to_string()
+    let (id, fallback) = if d.date_naive() == now.date_naive() {
+        ("activity-time-today", "%H:%M:%S")
     } else {
-        d.format("%-d %b %H:%M").to_string()
-    }
+        ("activity-time-other", "%-d %b %H:%M")
+    };
+    anibeam_companion::format::dated(&d, id, fallback)
 }
 
 /// The page's rows: the lines worded for a person, only problems when asked, with runs of
@@ -385,6 +391,7 @@ mod tests {
 
     #[test]
     fn a_line_from_another_day_says_the_day() {
+        crate::tr::set_lang(crate::tr::Lang::En);
         let old: SystemTime = Local
             .with_ymd_and_hms(2026, 11, 10, 8, 5, 3)
             .unwrap()

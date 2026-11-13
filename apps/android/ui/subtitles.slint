@@ -6,6 +6,7 @@
 
 import { Theme } from "theme.slint";
 import { Button, Field, ListGroup, Segmented, SectionHead, Slider, Switch } from "widgets.slint";
+import { Tr } from "tr.slint";
 
 export global SubtitleData {
     in property <float> scale: 1;
@@ -32,7 +33,7 @@ export global SubtitleData {
     in property <bool> bad-outline-colour;
     in property <bool> bad-shadow;
     // The one line of the status in More's index.
-    in property <string> line: "Size 1×, plain files take your style";
+    in property <string> line: Tr.t("subs-line-default");
     callback opened();
     callback set-scale(float);
     callback set-position(float);
@@ -82,7 +83,7 @@ component Preview inherits Rectangle {
         line := Text {
             x: root.line-size * 0.35;
             y: root.line-size * 0.1;
-            text: "Where did you hide it?";
+            text: Tr.t("subs-sample");
             font-family: SubtitleData.font;
             font-size: root.line-size;
             font-weight: SubtitleData.bold ? 700 : 400;
@@ -185,12 +186,12 @@ export component SubtitleRows inherits VerticalLayout {
     init => { SubtitleData.opened(); }
     Preview { }
     SectionHead {
-        title: "Size and place";
+        title: Tr.t("subs-size-place-title");
         note: "";
     }
     ListGroup {
         SubRow {
-            label: "Size";
+            label: Tr.t("subs-size");
             value: Math.round(SubtitleData.scale * 100) / 100 + "×";
             Slider {
                 minimum: 0.5;
@@ -200,9 +201,9 @@ export component SubtitleRows inherits VerticalLayout {
             }
         }
         SubRow {
-            label: "Position";
+            label: Tr.t("subs-position");
             value: Math.round(SubtitleData.position) + "%";
-            helper: "100 sits on the bottom edge. Lower numbers lift the lines up the frame.";
+            helper: Tr.t("subs-position-helper");
             last: true;
             Slider {
                 minimum: 0;
@@ -213,24 +214,24 @@ export component SubtitleRows inherits VerticalLayout {
         }
     }
     SectionHead {
-        title: "Style";
+        title: Tr.t("subs-style-title");
         note: "";
     }
     ListGroup {
         SubRow {
-            label: "Styled subtitles";
-            helper: SubtitleData.ass-mode == 0 ? "Styled (ASS) files look exactly as their makers set them."
-                : SubtitleData.ass-mode == 2 ? "Your style below goes on every file. Signs and karaoke can break."
-                : "Styled subtitle files keep their look and take your size. Plain files take your style.";
+            label: Tr.t("subs-styled");
+            helper: SubtitleData.ass-mode == 0 ? Tr.t("subs-styled-as-made")
+                : SubtitleData.ass-mode == 2 ? Tr.t("subs-styled-mine")
+                : Tr.t("subs-styled-size-only");
             Segmented {
-                options: ["As made", "Size only", "Mine"];
+                options: [Tr.t("subs-mode-as-made"), Tr.t("subs-mode-size-only"), Tr.t("subs-mode-mine")];
                 picked: SubtitleData.ass-mode;
                 pick(i) => { SubtitleData.set-ass-mode(i); }
             }
         }
         SubRow {
-            label: "Font";
-            helper: SubtitleData.bad-font ? "Type a font name, such as Noto Sans." : "";
+            label: Tr.t("subs-font");
+            helper: SubtitleData.bad-font ? Tr.t("subs-font-bad") : "";
             warn: true;
             TypedField {
                 text <=> SubtitleData.font;
@@ -239,7 +240,7 @@ export component SubtitleRows inherits VerticalLayout {
             }
         }
         SubRow {
-            label: "Bold";
+            label: Tr.t("subs-bold");
             HorizontalLayout {
                 alignment: start;
                 Switch {
@@ -249,8 +250,8 @@ export component SubtitleRows inherits VerticalLayout {
             }
         }
         SubRow {
-            label: "Text colour";
-            helper: SubtitleData.bad-colour ? "Type a colour like #ffcc00." : "";
+            label: Tr.t("subs-colour");
+            helper: SubtitleData.bad-colour ? Tr.t("subs-colour-bad") : "";
             warn: true;
             TypedField {
                 has-swatch: true;
@@ -261,10 +262,10 @@ export component SubtitleRows inherits VerticalLayout {
             }
         }
         SubRow {
-            label: "Outline";
-            helper: SubtitleData.bad-outline ? "The width is a number, 0 or more."
-                : SubtitleData.bad-outline-colour ? "Type the colour like #000000."
-                : "Its width, then its colour.";
+            label: Tr.t("subs-outline");
+            helper: SubtitleData.bad-outline ? Tr.t("subs-outline-bad-width")
+                : SubtitleData.bad-outline-colour ? Tr.t("subs-outline-bad-colour")
+                : Tr.t("subs-outline-helper");
             warn: SubtitleData.bad-outline || SubtitleData.bad-outline-colour;
             HorizontalLayout {
                 spacing: Theme.unit * 2;
@@ -285,8 +286,8 @@ export component SubtitleRows inherits VerticalLayout {
             }
         }
         SubRow {
-            label: "Shadow";
-            helper: SubtitleData.bad-shadow ? "A number, 0 or more. 0 means no shadow." : "How far the shadow falls, 0 for none.";
+            label: Tr.t("subs-shadow");
+            helper: SubtitleData.bad-shadow ? Tr.t("subs-shadow-bad") : Tr.t("subs-shadow-helper");
             warn: SubtitleData.bad-shadow;
             TypedField {
                 text <=> SubtitleData.shadow;
@@ -295,9 +296,9 @@ export component SubtitleRows inherits VerticalLayout {
             }
         }
         SubRow {
-            label: "Background box";
+            label: Tr.t("subs-box");
             value: Math.round(SubtitleData.box-opacity * 100) / 100 + "";
-            helper: "A dark box behind the lines. 0 leaves it out.";
+            helper: Tr.t("subs-box-helper");
             Slider {
                 minimum: 0;
                 maximum: 1;
@@ -306,14 +307,14 @@ export component SubtitleRows inherits VerticalLayout {
             }
         }
         SubRow {
-            label: "Start over";
-            helper: "Puts the size, font, colours, outline, box and position back to how they came.";
+            label: Tr.t("subs-reset-title");
+            helper: Tr.t("subs-reset-helper");
             last: true;
             Button {
                 small: true;
                 has-icon: true;
                 icon: @image-url("icons/rotate-ccw.svg");
-                text: "Reset";
+                text: Tr.t("subs-reset");
                 clicked => { SubtitleData.reset(); }
             }
         }

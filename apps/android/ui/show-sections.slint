@@ -4,6 +4,7 @@
 import { Theme } from "theme.slint";
 import { Button, Poster, SectionHead, TileRow } from "widgets.slint";
 import { ShowCard, ShowData, ShowPerson } from "show.slint";
+import { Tr } from "tr.slint";
 
 // A character: round portrait, the name in two lines at most and the role under it.
 component PersonItem inherits Rectangle {
@@ -113,7 +114,7 @@ export component ShowSections inherits VerticalLayout {
     if ShowData.people.length > 0: VerticalLayout {
         spacing: Theme.unit * 3;
         SectionHead {
-            title: "Characters";
+            title: Tr.t("show-characters");
             note: "" + ShowData.people.length;
         }
         Flickable {
@@ -129,7 +130,7 @@ export component ShowSections inherits VerticalLayout {
     if ShowData.related.length > 0: VerticalLayout {
         spacing: Theme.unit * 3;
         SectionHead {
-            title: "Related";
+            title: Tr.t("phone-show-related");
             note: "" + Math.max(ShowData.related.length, ShowData.related-total);
         }
         // A big franchise shows its first dozen; the rest are one tap away.
@@ -140,13 +141,13 @@ export component ShowSections inherits VerticalLayout {
         if ShowData.related-total > ShowData.related.length: HorizontalLayout {
             alignment: start;
             Button {
-                text: "Show all " + ShowData.related-total;
+                text: Tr.n("show-related-all", "count", ShowData.related-total);
                 small: true;
                 clicked => { ShowData.show-all-related(); }
             }
         }
         if ShowData.related-filling: Text {
-            text: "Still filling in from AniList.";
+            text: Tr.t("show-related-filling");
             color: Theme.faint;
             font-size: Theme.small;
         }
@@ -154,7 +155,7 @@ export component ShowSections inherits VerticalLayout {
     if ShowData.recs.length > 0: VerticalLayout {
         spacing: Theme.unit * 3;
         SectionHead {
-            title: "Recommendations";
+            title: Tr.t("phone-show-recommendations");
             note: "" + ShowData.recs.length;
         }
         TileRow {

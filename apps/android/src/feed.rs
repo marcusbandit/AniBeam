@@ -50,8 +50,9 @@ fn scheduled_at(card: &FeedCard) -> Option<i64> {
     }
 }
 
-/// The cards of each section, by position: Recently released is this week's over the
-/// earlier ones; Coming soon is the scheduled ones over everything else.
+/// The cards of each section, by position, under the section title's message ID (the
+/// shelves look it up): Recently released is this week's over the earlier ones; Coming soon
+/// is the scheduled ones over everything else.
 fn cut(cards: &[FeedCard], sort: FeedSort, now: i64) -> Vec<(&'static str, Vec<usize>)> {
     let fresh = |c: &FeedCard| {
         let at = reason_at(c);
@@ -61,20 +62,20 @@ fn cut(cards: &[FeedCard], sort: FeedSort, now: i64) -> Vec<(&'static str, Vec<u
     match sort {
         FeedSort::Recent => vec![
             (
-                "This week",
+                "feed-this-week",
                 all.clone().filter(|&i| fresh(&cards[i])).collect(),
             ),
-            ("Earlier", all.filter(|&i| !fresh(&cards[i])).collect()),
+            ("feed-earlier", all.filter(|&i| !fresh(&cards[i])).collect()),
         ],
         FeedSort::Upcoming => vec![
             (
-                "Coming soon",
+                "feed-coming-soon",
                 all.clone()
                     .filter(|&i| scheduled_at(&cards[i]).is_some())
                     .collect(),
             ),
             (
-                "Everything else",
+                "feed-everything-else",
                 all.filter(|&i| scheduled_at(&cards[i]).is_none()).collect(),
             ),
         ],
@@ -85,11 +86,11 @@ fn short_countdown(secs: i64) -> String {
     let t = secs.max(0);
     let (d, h, m) = (t / 86400, t % 86400 / 3600, t % 3600 / 60);
     if d > 0 {
-        format!("{d}d {h}h")
+        tr!("phone-feed-countdown-days", d = d, h = h)
     } else if h > 0 {
-        format!("{h}h {m}m")
+        tr!("phone-feed-countdown-hours", h = h, m = m)
     } else {
-        format!("{}m", m.max(1))
+        tr!("phone-feed-countdown-minutes", m = m.max(1))
     }
 }
 
@@ -101,8 +102,14 @@ fn summary(cards: &[FeedCard], sort: FeedSort, now: i64) -> String {
             .filter_map(|c| scheduled_at(c).map(|at| (at, c)))
             .filter(|(at, _)| *at > now)
             .min_by_key(|(at, _)| *at)
-            .map(|(at, c)| format!("Next: {} in {}", c.series.title, short_countdown(at - now)))
-            .unwrap_or_else(|| "Nothing scheduled yet.".into()),
+            .map(|(at, c)| {
+                tr!(
+                    "phone-feed-next",
+                    title = &c.series.title,
+                    countdown = short_countdown(at - now)
+                )
+            })
+            .unwrap_or_else(|| tr!("phone-feed-nothing-scheduled")),
         FeedSort::Recent => {
             let fresh = cards
                 .iter()
@@ -112,9 +119,8 @@ fn summary(cards: &[FeedCard], sort: FeedSort, now: i64) -> String {
                 })
                 .count();
             match fresh {
-                0 => "Nothing new this week.".into(),
-                1 => "1 new episode this week.".into(),
-                n => format!("{n} new episodes this week."),
+                0 => tr!("phone-feed-nothing-new"),
+                n => tr!("phone-feed-new-episodes", count = n),
             }
         }
     }
@@ -135,10 +141,10 @@ fn tile(card: &FeedCard, art: &Art, now: i64) -> Tile {
     match &card.reason {
         FeedReason::Aired { episode, at } => {
             t.badge = format::episode_code(None, *episode).into();
-            t.ledger = format!("aired {}", format::ago(now - secs(*at))).into();
+            t.ledger = tr!("phone-feed-aired", ago = format::ago(now - secs(*at))).into();
         }
         FeedReason::Downloaded { at } => {
-            t.ledger = format!("downloaded {}", format::ago(now - secs(*at))).into();
+            t.ledger = tr!("phone-feed-downloaded", ago = format::ago(now - secs(*at))).into();
         }
         FeedReason::Scheduled {
             episode,
@@ -212,6 +218,15 @@ pub fn install(window: &AppWindow) {
             window.global::<FeedData>().set_sort(i);
         }
         keep_sort(sort);
+    });
+}
+
+/// The language changed: the tiles' lines and the summary are written again at the next tick.
+pub fn relocalize() {
+    STATE.with(|s| {
+        if let Some(s) = s.borrow_mut().as_mut() {
+            s.built_at = 0;
+        }
     });
 }
 

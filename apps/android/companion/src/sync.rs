@@ -61,7 +61,7 @@ impl Syncer {
             snapshot,
         };
         if let Err(e) = self.store.save_cache(&cache) {
-            return Err(HostError::Bad(format!("Could not save the snapshot: {e}")));
+            return Err(HostError::Bad(tr!("sync-save-failed", why = e.to_string())));
         }
         Ok(cache)
     }
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn a_failed_list_keeps_the_last_one() {
-        let now = vec![peer("kangaeru")];
+        let now = vec![peer("laptop")];
         let failed = Err(HostError::Bad("500".into()));
         assert_eq!(updated(&now, failed), None);
         assert_eq!(updated(&now, Ok(now.clone())), None, "nothing changed");
@@ -188,16 +188,13 @@ mod tests {
 
     #[test]
     fn a_new_snapshot_keeps_the_list_only_from_the_same_host() {
-        let last = || Some(cache_at("banditbox:8790", vec![peer("kangaeru")]));
-        assert_eq!(
-            carried(last(), "banditbox:8790", true),
-            vec![peer("kangaeru")]
-        );
-        assert!(carried(last(), "nemurenai:8790", true).is_empty());
+        let last = || Some(cache_at("desktop:8790", vec![peer("laptop")]));
+        assert_eq!(carried(last(), "desktop:8790", true), vec![peer("laptop")]);
+        assert!(carried(last(), "study:8790", true).is_empty());
         assert!(
-            carried(last(), "banditbox:8790", false).is_empty(),
+            carried(last(), "desktop:8790", false).is_empty(),
             "a host that stopped offering the list has none"
         );
-        assert!(carried(None, "banditbox:8790", true).is_empty());
+        assert!(carried(None, "desktop:8790", true).is_empty());
     }
 }

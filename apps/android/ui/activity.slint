@@ -3,6 +3,7 @@
 // into one row that opens on a tap. Everything or just problems, Copy, and Clear.
 
 import { Theme } from "theme.slint";
+import { Tr } from "tr.slint";
 import { Button, Segmented } from "widgets.slint";
 
 // One line of the log, or a run of identical ones. `count` over 1 is a folded run; `fold`
@@ -82,7 +83,7 @@ component Line inherits Rectangle {
                 border-radius: self.height / 2;
                 background: Theme.raised;
                 closes := Text {
-                    text: "Fold";
+                    text: Tr.t("activity-fold");
                     color: Theme.dim;
                     font-size: Theme.small - 1px;
                     horizontal-alignment: center;
@@ -111,7 +112,7 @@ export component ActivityBody inherits VerticalLayout {
     spacing: Theme.unit * 4;
     init => { ActivityData.read(); }
     Segmented {
-        options: ["Everything", "Problems"];
+        options: [Tr.t("activity-everything"), Tr.t("activity-problems")];
         picked: ActivityData.problems-only ? 1 : 0;
         pick(i) => { ActivityData.filter(i == 1); }
     }
@@ -119,13 +120,13 @@ export component ActivityBody inherits VerticalLayout {
         spacing: Theme.gap;
         alignment: start;
         Button {
-            text: ActivityData.copied ? "Copied" : "Copy";
+            text: ActivityData.copied ? Tr.t("activity-copied") : Tr.t("common-copy");
             small: true;
             enabled: ActivityData.rows.length > 0;
             clicked => { ActivityData.copy-all(); }
         }
         Button {
-            text: ActivityData.clear-armed ? "Clear every line" : "Clear";
+            text: ActivityData.clear-armed ? Tr.t("activity-clear-every-line") : Tr.t("common-clear");
             small: true;
             danger: ActivityData.clear-armed;
             clicked => {
@@ -149,7 +150,7 @@ export component ActivityBody inherits VerticalLayout {
         triggered => { ActivityData.clear-armed = false; }
     }
     if ActivityData.loaded && ActivityData.rows.length == 0: Text {
-        text: ActivityData.problems-only ? "No problems. Everything worked." : "Nothing to report yet. What AniBeam does for you shows up here.";
+        text: ActivityData.problems-only ? Tr.t("activity-no-problems") : Tr.t("activity-nothing-yet");
         color: Theme.dim;
         wrap: word-wrap;
     }

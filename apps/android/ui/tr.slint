@@ -1,8 +1,38 @@
-// The phone's lookup into the word catalog, i18n/<lang>/android.ftl and core.ftl: `Tr.t(id)`
-// for a plain message, `Tr.n(id, name, n)` for one that takes a number. `tr.rs` answers
-// with the core's `i18n::tr`, so a missing ID shows in English, then as the ID.
-
+// Every word the app shows comes from the core's catalog (i18n/<lang>/android.ftl at the repo
+// root), asked by message ID. A page writes `Tr.t("nav-more")`, never the English. `rev`
+// changes when the language does, and every binding that called through here reads it, so
+// the whole app re-words where it stands, with no restart.
+//
+// Arguments are name, value pairs. A number goes through `n`, so the catalog can pick the
+// plural ("1 episode", "5 episodes").
 export global Tr {
-    pure callback t(string) -> string;
-    pure callback n(string, string, int) -> string;
+    in property <int> rev;
+    // The ID, the language's revision, and the arguments flattened: name, value, name,
+    // value. A name starting with # carries a number.
+    pure callback lookup(string, int, [string]) -> string;
+
+    public pure function t(id: string) -> string {
+        return root.lookup(id, root.rev, []);
+    }
+    public pure function s(id: string, k: string, v: string) -> string {
+        return root.lookup(id, root.rev, [k, v]);
+    }
+    public pure function s2(id: string, k1: string, v1: string, k2: string, v2: string) -> string {
+        return root.lookup(id, root.rev, [k1, v1, k2, v2]);
+    }
+    public pure function s3(id: string, k1: string, v1: string, k2: string, v2: string, k3: string, v3: string) -> string {
+        return root.lookup(id, root.rev, [k1, v1, k2, v2, k3, v3]);
+    }
+    public pure function n(id: string, k: string, v: float) -> string {
+        return root.lookup(id, root.rev, ["#" + k, "" + v]);
+    }
+    public pure function n2(id: string, k1: string, v1: float, k2: string, v2: float) -> string {
+        return root.lookup(id, root.rev, ["#" + k1, "" + v1, "#" + k2, "" + v2]);
+    }
+    public pure function ns(id: string, k1: string, v1: float, k2: string, v2: string) -> string {
+        return root.lookup(id, root.rev, ["#" + k1, "" + v1, k2, v2]);
+    }
+    public pure function ns2(id: string, k1: string, v1: float, k2: string, v2: string, k3: string, v3: string) -> string {
+        return root.lookup(id, root.rev, ["#" + k1, "" + v1, k2, v2, k3, v3]);
+    }
 }

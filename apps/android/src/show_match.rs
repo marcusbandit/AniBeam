@@ -150,8 +150,12 @@ fn with_window(f: impl FnOnce(&AppWindow)) {
     }
 }
 
-fn provider_name(provider: i32) -> &'static str {
-    if provider == 1 { "TVmaze" } else { "AniList" }
+fn provider_name(provider: i32) -> String {
+    if provider == 1 {
+        tr!("match-tvmaze")
+    } else {
+        tr!("tracker-anilist")
+    }
 }
 
 fn provider_of(provider: i32) -> Provider {
@@ -165,43 +169,45 @@ fn provider_of(provider: i32) -> Provider {
 /// Where a looked-up link points, in words: the ids are the provider's business.
 fn target_text(target: &MatchTarget) -> String {
     match target {
-        MatchTarget::Tvmaze { .. } => "Found the show on TVmaze".to_string(),
+        MatchTarget::Tvmaze { .. } => tr!("phone-match-found-tvmaze"),
         MatchTarget::Anilist { season, .. } => match season {
-            Some(s) => format!("Found it on AniList, season {s}"),
-            None => "Found it on AniList".to_string(),
+            Some(s) => tr!("phone-match-found-anilist-season", season = *s),
+            None => tr!("phone-match-found-anilist"),
         },
-        MatchTarget::Mal { .. } => "Found it on MyAnimeList".to_string(),
+        MatchTarget::Mal { .. } => tr!("phone-match-found-mal"),
     }
 }
 
 /// What the show is matched to, in words.
 fn match_text(info: &MatchInfo) -> String {
-    let mut bits = Vec::new();
+    let mut bits: Vec<String> = Vec::new();
     if info.anilist_id.is_some() {
-        bits.push("AniList");
+        bits.push(tr!("tracker-anilist"));
     }
     if info.mal_id.is_some() {
-        bits.push("MyAnimeList");
+        bits.push(tr!("tracker-mal"));
     }
     if info.tvmaze_id.is_some() {
-        bits.push("TVmaze");
+        bits.push(tr!("match-tvmaze"));
     }
-    if bits.is_empty() {
-        String::new()
-    } else {
-        format!("Matched on {}", bits.join(" and "))
-    }
+    let mut bits = bits.into_iter();
+    let Some(first) = bits.next() else {
+        return String::new();
+    };
+    let sites = bits.fold(first, |all, next| tr!("common-join-and", a = all, b = next));
+    tr!("phone-match-matched-on", sites = sites)
 }
 
 /// An AniList format as the match panel words it.
 fn format_label(format: &str) -> String {
     match format {
-        "TV" => "TV".to_string(),
-        "TV_SHORT" => "TV short".to_string(),
-        "OVA" | "ONA" => format.to_string(),
-        "SPECIAL" => "Special".to_string(),
-        "MOVIE" => "Film".to_string(),
-        "MUSIC" => "Music".to_string(),
+        "TV" => tr!("show-format-tv"),
+        "TV_SHORT" => tr!("show-format-tv-short"),
+        "OVA" => tr!("show-format-ova"),
+        "ONA" => tr!("show-format-ona"),
+        "SPECIAL" => tr!("show-format-special"),
+        "MOVIE" => tr!("show-format-film"),
+        "MUSIC" => tr!("match-format-music"),
         other => other.replace('_', " "),
     }
 }
@@ -216,8 +222,7 @@ fn row(r: &SearchResult) -> MatchRow {
         r.year.map(|y| y.to_string()).unwrap_or_default(),
         format,
         match r.episodes {
-            Some(1) => "1 episode".to_string(),
-            Some(n) => format!("{n} episodes"),
+            Some(n) => tr!("common-episodes", count = n),
             None => String::new(),
         },
     ]
@@ -239,11 +244,11 @@ fn show_results(data: &MatchData) {
     let query = data.get_query();
     data.set_empty(
         if searching {
-            format!("Searching {name}")
+            tr!("phone-match-searching", name = name)
         } else if query.trim().chars().count() < 2 {
-            format!("Type at least two letters to search {name}.")
+            tr!("phone-match-type-more", name = name)
         } else {
-            format!("No titles found on {name}.")
+            tr!("match-none", name = name)
         }
         .into(),
     );
@@ -281,6 +286,31 @@ pub fn track(card: Option<&SeriesCard>) {
             folder: c.titles.folder.clone(),
             info: c.match_info.clone(),
         });
+    });
+}
+
+/// The language changed: the lines pushed once, what the show is matched to, what a link
+/// pointed at and the stand-in under the results, are worded again. A note under the buttons
+/// is a few seconds old and stays as it was.
+pub fn relocalize() {
+    with_window(|window| {
+        let data = window.global::<MatchData>();
+        let (current, found) = STATE.with(|s| {
+            let s = s.borrow();
+            (
+                s.open
+                    .as_ref()
+                    .and_then(|o| o.info.as_ref())
+                    .map(match_text)
+                    .unwrap_or_default(),
+                s.found.as_ref().map(target_text),
+            )
+        });
+        data.set_current(current.into());
+        if let Some(found) = found {
+            data.set_found(found.into());
+        }
+        show_results(&data);
     });
 }
 
@@ -362,7 +392,7 @@ pub fn install(window: &AppWindow) {
             Some((o.series, target, r.title.clone()))
         });
         if let Some((series, target, title)) = target {
-            apply(series, target, format!("Matched to {title}."));
+            apply(series, target, tr!("phone-match-matched-to", title = title));
         }
     });
     data.on_look_up(|url| {
@@ -373,14 +403,14 @@ pub fn install(window: &AppWindow) {
         let Some(core) = crate::local::core() else {
             with_window(|w| {
                 w.global::<MatchData>()
-                    .set_note("AniBeam is still starting. Try again in a moment.".into())
+                    .set_note(tr!("show-still-starting").into())
             });
             return;
         };
         with_window(|w| {
             let data = w.global::<MatchData>();
             data.set_found("".into());
-            data.set_note("Looking it up.".into());
+            data.set_note(tr!("match-looking-up").into());
         });
         let _ = std::thread::Builder::new()
             .name("match-link".into())
@@ -401,7 +431,7 @@ pub fn install(window: &AppWindow) {
     data.on_apply_found(|| {
         let found = with_state(|s| Some((s.open.as_ref()?.series, s.found.clone()?)));
         if let Some((series, target)) = found {
-            apply(series, target, "Match applied.".to_string());
+            apply(series, target, tr!("phone-match-applied"));
         }
     });
     data.on_refresh(|| {
@@ -410,8 +440,8 @@ pub fn install(window: &AppWindow) {
         {
             crate::show::run(
                 Call::RefreshSeries { series },
-                format!("Refreshing {title}."),
-                format!("Refreshing {title}."),
+                tr!("phone-match-refreshing", title = title.as_str()),
+                tr!("phone-match-refreshing", title = title),
             );
             with_window(|w| w.global::<ShowData>().invoke_close());
         }
@@ -420,14 +450,14 @@ pub fn install(window: &AppWindow) {
         if let Some(series) = with_state(|s| s.open.as_ref().map(|o| o.series)) {
             crate::show::run(
                 Call::ClearMatch { series },
-                "Clearing the match.".to_string(),
-                "Match cleared.".to_string(),
+                tr!("match-clearing"),
+                tr!("phone-match-cleared"),
             );
             with_window(|w| w.global::<ShowData>().invoke_close());
         }
     });
     data.on_auto_match(|| {
-        let said = "Looking up the folders AniBeam does not know yet.".to_string();
+        let said = tr!("match-auto-looking");
         crate::show::run(Call::AutoMatch, said.clone(), said);
         with_window(|w| w.global::<ShowData>().invoke_close());
     });
@@ -440,7 +470,7 @@ fn with_state<T>(f: impl FnOnce(&State) -> Option<T>) -> Option<T> {
 fn apply(series: u64, target: MatchTarget, said: String) {
     crate::show::run(
         Call::ApplyMatch { series, target },
-        "Applying the match.".to_string(),
+        tr!("match-applying"),
         said,
     );
     with_window(|w| w.global::<ShowData>().invoke_close());
@@ -476,7 +506,7 @@ fn search(query: String) {
         let data = w.global::<MatchData>();
         data.set_searching(true);
         data.set_note("".into());
-        data.set_empty(format!("Searching {}", provider_name(provider)).into());
+        data.set_empty(tr!("phone-match-searching", name = provider_name(provider)).into());
         show_results(&data);
     });
     let _ = std::thread::Builder::new()
