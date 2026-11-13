@@ -34,6 +34,14 @@ _Avoid_: push, notification, signal, callback
 Long-running work started by a call that returns at once and reports through events until it finishes: a scan, a match sweep, a crawl.
 _Avoid_: task, sweep, operation
 
+**Catalog**:
+The Fluent files under `i18n/` that hold every word a person reads, one folder per language, English the source. Code asks for a message by its ID through `tr`; no shell writes a word of its own.
+_Avoid_: translations, strings file, locale files
+
+**Message ID**:
+The stable name of one message in the catalog, saying where it shows and what it says (`player-skip-intro`), never the English text.
+_Avoid_: key, string key, label
+
 ### Playback
 
 **Session**:
