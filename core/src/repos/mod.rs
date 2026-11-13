@@ -20,6 +20,7 @@ use rusqlite::params;
 use crate::contract::*;
 use crate::core::Core;
 use crate::downloads::EndpointSync;
+use crate::i18n::tr;
 use crate::net::{HttpRequest, Method};
 use index::{Definition, Index, RepoFault};
 
@@ -63,7 +64,7 @@ fn normal_url(url: &str) -> Result<String, CoreError> {
     if url.is_empty() {
         return Err(CoreError::invalid(
             "repo url",
-            "paste the address of a repo",
+            tr("core-repos-paste-address", &[]),
         ));
     }
     // A phone keyboard capitalises the first letter: "Http://" is still an address.
@@ -77,7 +78,10 @@ fn normal_url(url: &str) -> Result<String, CoreError> {
     };
     let url = url.as_str();
     if url.starts_with("http://") && !is_local_http(url) {
-        return Err(CoreError::invalid("repo url", "the address must be https"));
+        return Err(CoreError::invalid(
+            "repo url",
+            tr("core-repos-must-be-https", &[]),
+        ));
     }
     Ok(url.to_string())
 }
@@ -105,26 +109,36 @@ async fn fetch_bytes(core: &Core, url: &str) -> Result<Vec<u8>, RepoFault> {
         let res = crate::net::Http::send(&http, req).await.map_err(|e| {
             RepoFault::new(
                 "unreachable",
-                format!("could not reach the repo: {}", e.message),
+                tr(
+                    "core-repos-unreachable",
+                    &[("message", e.message.as_str().into())],
+                ),
             )
         })?;
         if res.status == 404 {
-            return Err(RepoFault::new(
-                "missing",
-                "nothing at that address (a private GitHub repo answers 404 too)",
-            ));
+            return Err(RepoFault::new("missing", tr("core-repos-not-found", &[])));
         }
         if !res.is_success() {
             return Err(RepoFault::new(
                 "unreachable",
-                format!("the repo answered HTTP {}", res.status),
+                tr(
+                    "core-repos-http-status",
+                    &[("status", res.status.to_string().into())],
+                ),
             ));
         }
         return Ok(res.body);
     }
     let path = url.strip_prefix("file://").unwrap_or(url);
-    std::fs::read(path)
-        .map_err(|e| RepoFault::new("missing", format!("could not read {path}: {e}")))
+    std::fs::read(path).map_err(|e| {
+        RepoFault::new(
+            "missing",
+            tr(
+                "core-repos-unreadable",
+                &[("path", path.into()), ("error", e.to_string().into())],
+            ),
+        )
+    })
 }
 
 async fn fetch(core: &Core, url: &str) -> Result<Index, RepoFault> {
@@ -208,7 +222,7 @@ fn find_install(core: &Core, install: &str) -> Result<InstallRow, CoreError> {
     let all = core.store.read(read_installed)?;
     all.into_iter()
         .find(|r| r.install_id == install)
-        .ok_or_else(|| CoreError::invalid("endpoint", "no installed endpoint with that id"))
+        .ok_or_else(|| CoreError::invalid("endpoint", tr("core-repos-no-such-endpoint", &[])))
 }
 
 /// Saves a checked index for a repo, the trusted key held to.
@@ -287,15 +301,18 @@ fn admit(stored: &RepoRow, idx: &Index) -> Result<(), RepoFault> {
     if idx.key != stored.key {
         return Err(RepoFault::new(
             "key_changed",
-            "the repo is now signed by a different key than the one you trusted. Remove it and add it again to accept the new key.",
+            tr("core-repos-key-changed", &[]),
         ));
     }
     if idx.serial < stored.serial {
         return Err(RepoFault::new(
             "stale",
-            format!(
-                "the repo served an older index (serial {} after {}); keeping the newer one",
-                idx.serial, stored.serial
+            tr(
+                "core-repos-stale",
+                &[
+                    ("serial", idx.serial.to_string().into()),
+                    ("kept", stored.serial.to_string().into()),
+                ],
             ),
         ));
     }
@@ -466,11 +483,7 @@ pub fn trust_repo(core: &Core, url: String, key: String) -> Result<Reply, CoreEr
         None => core.handle.block_on(fetch(core, &url))?,
     };
     if idx.key != key {
-        return Err(RepoFault::new(
-            "key_changed",
-            "the repo's key is not the one you were shown. Add it again and compare the fingerprint.",
-        )
-        .into());
+        return Err(RepoFault::new("key_changed", tr("core-repos-key-not-shown", &[])).into());
     }
     let stored = stored_repo(core, &url)?;
     if let Some(stored) = &stored {
@@ -481,7 +494,7 @@ pub fn trust_repo(core: &Core, url: String, key: String) -> Result<Reply, CoreEr
         core.bus.say(
             Level::Info,
             Stage::Downloads,
-            "Added a list of download sources.",
+            crate::words!("core-repos-repo-added"),
             format!("Added the endpoint repo {}", idx.name),
             EventBody::Notice,
         );
@@ -501,7 +514,7 @@ pub fn remove_repo(core: &Core, url: String) -> Result<Reply, CoreError> {
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Removed a list of download sources.",
+        crate::words!("core-repos-repo-removed"),
         format!("Removed the endpoint repo {}", stored.name),
         EventBody::Notice,
     );
@@ -552,7 +565,13 @@ fn credentials_for(
         if !def.auth.iter().any(|a| a.key == c.key) {
             return Err(CoreError::invalid(
                 "credentials",
-                format!("{} has no field {:?}", def.name, c.key),
+                tr(
+                    "core-repos-no-field",
+                    &[
+                        ("name", def.name.as_str().into()),
+                        ("key", format!("{:?}", c.key).into()),
+                    ],
+                ),
             ));
         }
     }
@@ -567,7 +586,13 @@ fn credentials_for(
             if all {
                 return Err(CoreError::invalid(
                     "credentials",
-                    format!("{} needs its {}", def.name, field.label),
+                    tr(
+                        "core-repos-needs-field",
+                        &[
+                            ("name", def.name.as_str().into()),
+                            ("label", field.label.as_str().into()),
+                        ],
+                    ),
                 ));
             }
             continue;
@@ -575,9 +600,12 @@ fn credentials_for(
         if field.key == index::HOST_KEY && def.host_is_placeholder() && !index::bare_host(&value) {
             return Err(CoreError::invalid(
                 "credentials",
-                format!(
-                    "{}: the {} is a host or host:port only, like 192.168.1.10:9696",
-                    def.name, field.label
+                tr(
+                    "core-repos-host-only",
+                    &[
+                        ("name", def.name.as_str().into()),
+                        ("label", field.label.as_str().into()),
+                    ],
                 ),
             ));
         }
@@ -599,12 +627,18 @@ fn store_credentials(
 
 fn offered_def(core: &Core, repo: &str, id: &str) -> Result<Definition, CoreError> {
     let stored = stored_repo(core, repo)?
-        .ok_or_else(|| CoreError::invalid("repo", "that repo is not added"))?;
+        .ok_or_else(|| CoreError::invalid("repo", tr("core-repos-not-added", &[])))?;
     index::reread(&stored.payload, CORE_VERSION)
         .into_iter()
         .find(|d| d.id == id)
         .ok_or_else(|| {
-            CoreError::invalid("endpoint", format!("{} does not offer {id}", stored.name))
+            CoreError::invalid(
+                "endpoint",
+                tr(
+                    "core-repos-not-offered",
+                    &[("repo", stored.name.as_str().into()), ("id", id.into())],
+                ),
+            )
         })
 }
 
@@ -622,16 +656,14 @@ pub fn install(
         return Err(CoreError::invalid(
             "endpoint",
             if other.repo_url == repo {
-                format!("{} is already installed", def.name)
-            } else {
-                format!(
-                    "an endpoint called {id} is already installed ({}); remove it first",
-                    if other.repo_url == CUSTOM {
-                        "added by you"
-                    } else {
-                        "from another repo"
-                    }
+                tr(
+                    "core-repos-already-installed",
+                    &[("name", def.name.as_str().into())],
                 )
+            } else if other.repo_url == CUSTOM {
+                tr("core-repos-taken-by-you", &[("id", id.as_str().into())])
+            } else {
+                tr("core-repos-taken-by-repo", &[("id", id.as_str().into())])
             },
         ));
     }
@@ -655,7 +687,7 @@ pub fn install(
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Added a download source.",
+        crate::words!("core-repos-source-added"),
         format!("Installed the endpoint {}", def.name),
         EventBody::Notice,
     );
@@ -698,7 +730,7 @@ pub fn update(
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Updated a download source.",
+        crate::words!("core-repos-source-updated"),
         format!(
             "Updated the endpoint {} to version {}",
             next.name, next.version
@@ -723,7 +755,7 @@ pub fn remove(core: &Core, install: String) -> Result<Reply, CoreError> {
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Removed a download source.",
+        crate::words!("core-repos-source-removed"),
         format!("Removed the endpoint {}", row.def.name),
         EventBody::Notice,
     );
@@ -751,7 +783,7 @@ pub fn set_enabled(core: &Core, install: String, enabled: bool) -> Result<Reply,
     if rows == 0 {
         return Err(CoreError::invalid(
             "endpoint",
-            "no installed endpoint with that id",
+            tr("core-repos-no-such-endpoint", &[]),
         ));
     }
     changed(core)
@@ -881,7 +913,10 @@ fn custom_definition(
     let name = name.trim().to_string();
     let id = id_of(&name);
     if id.is_empty() {
-        return Err(CoreError::invalid("endpoint name", "give it a name"));
+        return Err(CoreError::invalid(
+            "endpoint name",
+            tr("core-repos-give-name", &[]),
+        ));
     }
     let url = url.trim();
     let url = match url.split_once("://") {
@@ -899,7 +934,7 @@ fn custom_definition(
     } else {
         return Err(CoreError::invalid(
             "endpoint url",
-            "put {query} in the address where the search goes",
+            tr("core-repos-put-query", &[]),
         ));
     };
     let def = Definition {
@@ -939,7 +974,7 @@ pub fn add_custom(
     if installed.iter().any(|i| i.def.id == id) {
         return Err(CoreError::invalid(
             "endpoint name",
-            format!("an endpoint called {id} is already installed"),
+            tr("core-repos-name-taken", &[("id", id.as_str().into())]),
         ));
     }
     let mut given = credentials;
@@ -969,7 +1004,7 @@ pub fn add_custom(
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Added a download source.",
+        crate::words!("core-repos-source-added"),
         format!("Added the endpoint {name}"),
         EventBody::Notice,
     );
@@ -988,7 +1023,7 @@ pub fn edit_custom(
     if row.repo_url != CUSTOM {
         return Err(CoreError::invalid(
             "endpoint",
-            "only a source added by hand can be edited",
+            tr("core-repos-only-by-hand", &[]),
         ));
     }
     let (mut def, lifted) = custom_definition(&name, &url, Some(&row.def.kind))?;
@@ -1000,9 +1035,12 @@ pub fn edit_custom(
         if !kept && !lifted_again && !url.contains(&format!("{{{}}}", old.key)) {
             return Err(CoreError::invalid(
                 "endpoint url",
-                format!(
-                    "keep {{{}}} in the address and change its value with Change its {}, or remove the site and add it again without it",
-                    old.key, old.label
+                tr(
+                    "core-repos-keep-key",
+                    &[
+                        ("key", old.key.as_str().into()),
+                        ("label", old.label.as_str().into()),
+                    ],
                 ),
             ));
         }
@@ -1020,7 +1058,7 @@ pub fn edit_custom(
     {
         return Err(CoreError::invalid(
             "endpoint name",
-            format!("an endpoint called {} is already installed", def.id),
+            tr("core-repos-name-taken", &[("id", def.id.as_str().into())]),
         ));
     }
     let given: Vec<EndpointCredential> = lifted
@@ -1050,7 +1088,7 @@ pub fn edit_custom(
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Changed a download source.",
+        crate::words!("core-repos-source-changed"),
         format!("Changed the endpoint {}", def.name),
         EventBody::Notice,
     );
@@ -1211,37 +1249,34 @@ fn note_for(
     }
     let view = view?;
     if !ANIRSS_KINDS.contains(&def.kind.as_str()) {
-        return Some(format!(
-            "anirss cannot search the {} kind, so the desktop leaves it out; the phone searches it",
-            def.kind
+        return Some(tr(
+            "core-repos-note-kind",
+            &[("kind", def.kind.as_str().into())],
         ));
     }
     let listed = view.endpoints.contains(&def.id);
-    let by_hand = || {
-        format!(
-            "anirss has its own {}, written by hand; the desktop searches that one",
-            def.id
-        )
-    };
+    let by_hand = || tr("core-repos-note-by-hand", &[("id", def.id.as_str().into())]);
     match view.sync {
         // A server the person runs keeps its own config, and searches what it lists: once
         // they have added the endpoint there, there is nothing to note (#499).
-        EndpointSync::Theirs => (!listed).then(|| {
-            format!(
-                "This anirss is one you run, and the desktop never changes its config: add {} to that anirss's own config for the desktop to search it",
-                def.id
-            )
-        }),
+        EndpointSync::Theirs => {
+            (!listed).then(|| tr("core-repos-note-theirs", &[("id", def.id.as_str().into())]))
+        }
         // A sandbox run reads the owner's anirss as it is, notes and all, and adds nothing.
         EndpointSync::Sandbox if listed => (!synced.contains_key(&def.id)).then(by_hand),
-        EndpointSync::Sandbox => Some(format!(
-            "This run never writes into anirss's config, so the desktop does not search {} here",
-            def.id
+        EndpointSync::Sandbox => Some(tr(
+            "core-repos-note-sandbox",
+            &[("id", def.id.as_str().into())],
         )),
-        EndpointSync::Syncs if !view.endpoint_writes => Some(format!(
-            "anirss {} cannot take endpoints from AniBeam; update it to {} or newer for the desktop to search this",
-            view.version,
-            crate::downloads::anirss::MIN_VERSION
+        EndpointSync::Syncs if !view.endpoint_writes => Some(tr(
+            "core-repos-note-old",
+            &[
+                ("version", view.version.to_string().into()),
+                (
+                    "min",
+                    crate::downloads::anirss::MIN_VERSION.to_string().into(),
+                ),
+            ],
         )),
         EndpointSync::Syncs => (listed && !synced.contains_key(&def.id)).then(by_hand),
     }

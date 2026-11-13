@@ -100,7 +100,7 @@ impl Native {
         if self.endpoints.is_empty() {
             return Err(CoreError::invalid(
                 "endpoint",
-                "no endpoints yet: add a repo, or one by hand, under Endpoints in More",
+                crate::i18n::tr("core-releases-no-endpoints", &[]),
             ));
         }
         match name {
@@ -109,7 +109,12 @@ impl Native {
                 .endpoints
                 .iter()
                 .find(|e| e.name == name)
-                .ok_or_else(|| CoreError::invalid("endpoint", format!("no source named {name}"))),
+                .ok_or_else(|| {
+                    CoreError::invalid(
+                        "endpoint",
+                        crate::i18n::tr("core-releases-no-source-named", &[("name", name.into())]),
+                    )
+                }),
         }
     }
 
@@ -158,7 +163,10 @@ impl Native {
     ) -> Result<Found, CoreError> {
         let query = query.trim();
         if query.is_empty() {
-            return Err(CoreError::invalid("query", "type something to search for"));
+            return Err(CoreError::invalid(
+                "query",
+                crate::i18n::tr("core-releases-empty-query", &[]),
+            ));
         }
         let active = self.endpoint(endpoint)?;
         let mut order = vec![active];
@@ -327,9 +335,9 @@ impl Native {
         if !endpoints::answers_rss(&ep.kind) {
             return Err(CoreError::invalid(
                 "endpoint",
-                format!(
-                    "{} cannot be followed: it answers searches, but has no feed to check for new episodes",
-                    ep.name
+                crate::i18n::tr(
+                    "core-releases-cannot-follow",
+                    &[("name", ep.name.as_str().into())],
                 ),
             ));
         }
@@ -344,7 +352,7 @@ impl Native {
 
 /// Why a step after a search cannot go on: its endpoint left the list since.
 fn gone(name: &str) -> String {
-    format!("{name} is not available any more: removed, switched off or missing its key")
+    crate::i18n::tr("core-releases-endpoint-gone", &[("name", name.into())])
 }
 
 /// Query parameters that hold a secret, with the label a person reads for each. A source

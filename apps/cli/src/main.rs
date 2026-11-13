@@ -394,6 +394,7 @@ mod tests {
             stage: Stage::Store,
             message: String::new(),
             plain: None,
+            plain_words: None,
             job: Some(JobRef {
                 id: job,
                 kind: JobKind::Export,

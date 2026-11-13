@@ -75,7 +75,10 @@ pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
     if let Some(p) = order.iter().find(|p| !MATCH_PROVIDERS.contains(p)) {
         return Err(CoreError::invalid(
             "order",
-            format!("{} is not a match provider", p.label()),
+            crate::i18n::tr(
+                "core-prefs-not-a-provider",
+                &[("provider", p.label().into())],
+            ),
         ));
     }
     for p in MATCH_PROVIDERS {
@@ -83,9 +86,9 @@ pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
         if n != 1 {
             return Err(CoreError::invalid(
                 "order",
-                format!(
-                    "{} appears {n} times; every provider appears once",
-                    p.label()
+                crate::i18n::tr(
+                    "core-prefs-provider-count",
+                    &[("provider", p.label().into()), ("count", n.into())],
                 ),
             ));
         }
@@ -99,11 +102,13 @@ pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
     if !(on_hold::MIN_DAYS..=on_hold::MAX_DAYS).contains(&p.on_hold_days) {
         return Err(CoreError::invalid(
             "on_hold_days",
-            format!(
-                "{} is outside {} to {}",
-                p.on_hold_days,
-                on_hold::MIN_DAYS,
-                on_hold::MAX_DAYS
+            crate::i18n::tr(
+                "core-prefs-outside",
+                &[
+                    ("value", p.on_hold_days.to_string().into()),
+                    ("low", on_hold::MIN_DAYS.to_string().into()),
+                    ("high", on_hold::MAX_DAYS.to_string().into()),
+                ],
             ),
         ));
     }
@@ -124,7 +129,14 @@ fn range(field: &str, v: f64, lo: f64, hi: f64) -> Result<(), CoreError> {
     } else {
         Err(CoreError::invalid(
             field,
-            format!("{v} is outside {lo} to {hi}"),
+            crate::i18n::tr(
+                "core-prefs-outside",
+                &[
+                    ("value", v.to_string().into()),
+                    ("low", lo.to_string().into()),
+                    ("high", hi.to_string().into()),
+                ],
+            ),
         ))
     }
 }
@@ -136,7 +148,10 @@ pub fn validate_subtitle_defaults(d: &SubtitleDefaults) -> Result<(), CoreError>
     range("outline_size", d.text_style.outline_size, 0.0, f64::MAX)?;
     range("shadow_offset", d.text_style.shadow_offset, 0.0, f64::MAX)?;
     if d.text_style.font.trim().is_empty() {
-        return Err(CoreError::invalid("font", "empty"));
+        return Err(CoreError::invalid(
+            "font",
+            crate::i18n::tr("core-prefs-empty", &[]),
+        ));
     }
     Ok(())
 }

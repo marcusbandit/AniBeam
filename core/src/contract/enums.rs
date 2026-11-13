@@ -564,54 +564,60 @@ impl JobKind {
         }
     }
 
-    /// The kind as plain words for a status line while it runs: no variant
-    /// names, no provider names beyond the two trackers a person connected.
-    pub fn doing(self) -> &'static str {
+    /// The kind's message in the catalog. Its value is [`JobKind::doing`]; its `.stopped`
+    /// attribute is the plain line for a job of the kind that ended in a problem.
+    pub fn words_id(self) -> &'static str {
         use JobKind::*;
         match self {
-            Scan => "Checking your folders",
-            AutoMatch => "Matching shows",
-            Search => "Searching for a show",
-            ResolveLink => "Reading a link",
-            ApplyMatch => "Matching a show",
-            Refresh => "Updating a show",
-            RefreshAll => "Updating show info",
-            RefreshAiring => "Checking what is airing",
-            RefreshImdb => "Updating ratings",
-            ClearImages => "Clearing pictures",
-            FillImages => "Fetching pictures",
-            ConnectTracker => "Connecting your list",
-            Mark => "Marking an episode watched",
-            SetProgress => "Setting your progress",
-            Score => "Saving your score",
-            RefreshProgress => "Reading your list progress",
-            RefreshWatching => "Reading your Watching list",
-            RefreshAiringNow => "Checking this season",
-            RefreshRecommended => "Finding shows for you",
-            ReadShowPage => "Reading a show",
-            OnHold => "Moving idle shows to On hold",
-            SetStatus => "Changing a list status",
-            MoveLists => "Moving your list to your tracker",
-            Notes => "Saving your notes",
-            Crawl => "Finding related shows",
-            SkipWindows => "Finding the opening and ending",
-            Export => "Saving your library to a file",
-            Import => "Loading your library from a file",
-            Subscriptions => "Checking your subscriptions",
-            ConnectDownloads => "Connecting the download app",
-            SearchReleases => "Looking for episodes",
-            RefineReleases => "Narrowing down episodes",
-            Subscribe => "Subscribing to a show",
-            Download => "Adding downloads",
-            RemoveSubscription => "Removing a subscription",
-            ControlTorrents => "Changing your downloads",
-            TestTorrentClient => "Testing the download app",
-            RemoveShow => "Removing a show",
-            RepairSubscription => "Repairing a subscription",
-            CheckEndpoints => "Checking your download sources",
-            StartEndpoint => "Starting a download source",
-            ScheduleAgent => "Asking your coding agent for a schedule",
+            Scan => "core-jobs-scan",
+            AutoMatch => "core-jobs-auto-match",
+            Search => "core-jobs-search",
+            ResolveLink => "core-jobs-resolve-link",
+            ApplyMatch => "core-jobs-apply-match",
+            Refresh => "core-jobs-refresh",
+            RefreshAll => "core-jobs-refresh-all",
+            RefreshAiring => "core-jobs-refresh-airing",
+            RefreshImdb => "core-jobs-refresh-imdb",
+            ClearImages => "core-jobs-clear-images",
+            FillImages => "core-jobs-fill-images",
+            ConnectTracker => "core-jobs-connect-tracker",
+            Mark => "core-jobs-mark",
+            SetProgress => "core-jobs-set-progress",
+            Score => "core-jobs-score",
+            RefreshProgress => "core-jobs-refresh-progress",
+            RefreshWatching => "core-jobs-refresh-watching",
+            RefreshAiringNow => "core-jobs-refresh-airing-now",
+            RefreshRecommended => "core-jobs-refresh-recommended",
+            ReadShowPage => "core-jobs-read-show-page",
+            OnHold => "core-jobs-on-hold",
+            SetStatus => "core-jobs-set-status",
+            MoveLists => "core-jobs-move-lists",
+            Notes => "core-jobs-notes",
+            Crawl => "core-jobs-crawl",
+            SkipWindows => "core-jobs-skip-windows",
+            Export => "core-jobs-export",
+            Import => "core-jobs-import",
+            Subscriptions => "core-jobs-subscriptions",
+            ConnectDownloads => "core-jobs-connect-downloads",
+            SearchReleases => "core-jobs-search-releases",
+            RefineReleases => "core-jobs-refine-releases",
+            Subscribe => "core-jobs-subscribe",
+            Download => "core-jobs-download",
+            RemoveSubscription => "core-jobs-remove-subscription",
+            ControlTorrents => "core-jobs-control-torrents",
+            TestTorrentClient => "core-jobs-test-torrent-client",
+            RemoveShow => "core-jobs-remove-show",
+            RepairSubscription => "core-jobs-repair-subscription",
+            CheckEndpoints => "core-jobs-check-endpoints",
+            StartEndpoint => "core-jobs-start-endpoint",
+            ScheduleAgent => "core-jobs-schedule-agent",
         }
+    }
+
+    /// The kind as plain words for a status line while it runs: no variant
+    /// names, no provider names beyond the two trackers a person connected.
+    pub fn doing(self) -> String {
+        crate::i18n::tr(self.words_id(), &[])
     }
 
     /// Kinds the app starts on its own, on a timer or after another job,

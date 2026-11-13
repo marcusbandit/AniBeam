@@ -195,12 +195,12 @@ pub fn set_notes(
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
     let (said, what) = if count == 0 {
         (
-            format!("Cleared the schedule notes of {title}."),
+            crate::words!("core-library-schedule-cleared", title = &title),
             format!("{title}'s schedule notes cleared"),
         )
     } else {
         (
-            format!("Saved {count} schedule notes for {title}."),
+            crate::words!("core-library-schedule-saved", count = count, title = &title),
             format!("{title}'s schedule set by hand"),
         )
     };

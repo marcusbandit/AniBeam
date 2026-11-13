@@ -117,7 +117,7 @@ pub async fn resolve(core: &Arc<Core>, qbt: &QbtClient) -> Result<SavePaths, Cor
             if base.is_empty() {
                 return Err(CoreError::invalid(
                     "save_path",
-                    "qBittorrent names no default save folder; set one in qBittorrent",
+                    crate::i18n::tr("core-downloads-no-default-folder", &[]),
                 ));
             }
             base
@@ -135,18 +135,24 @@ pub async fn resolve(core: &Arc<Core>, qbt: &QbtClient) -> Result<SavePaths, Cor
 pub(crate) fn validate_name(name: &str) -> Result<String, CoreError> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(CoreError::invalid("name", "the name cannot be empty"));
+        return Err(CoreError::invalid(
+            "name",
+            crate::i18n::tr("core-downloads-name-empty", &[]),
+        ));
     }
     if name.contains(['/', '\\']) {
         return Err(CoreError::invalid(
             "name",
-            "the name must not contain / or \\",
+            crate::i18n::tr("core-downloads-name-slash", &[]),
         ));
     }
     if name == "." || name == ".." || name.chars().any(|c| (c as u32) < 32 || c as u32 == 127) {
         return Err(CoreError::invalid(
             "name",
-            format!("{name:?} is not a folder name"),
+            crate::i18n::tr(
+                "core-downloads-name-not-folder",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     Ok(name.to_string())

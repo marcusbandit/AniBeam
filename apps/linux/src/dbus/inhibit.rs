@@ -12,7 +12,11 @@ use zbus::{Connection, Result};
 const PORTAL: &str = "org.freedesktop.portal.Desktop";
 /// Inhibit's flags are a bitmask: 1 logout, 2 user switch, 4 suspend, 8 idle.
 const IDLE: u32 = 8;
-const REASON: &str = "Playing an episode";
+/// Why the screen stays on, as a desktop's power or idle panel may show it, in the
+/// language the app speaks when the hold is taken (#792).
+fn reason() -> String {
+    anibeam_core::i18n::tr("inhibit-reason", &[])
+}
 /// The same patience the other bus calls in the shell have.
 const BUS_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -109,7 +113,7 @@ async fn bounded<T>(call: impl Future<Output = Result<T>>) -> std::result::Resul
 
 async fn portal_inhibit(conn: &Connection) -> Result<OwnedObjectPath> {
     let mut options: HashMap<&str, Value<'_>> = HashMap::new();
-    options.insert("reason", Value::from(REASON));
+    options.insert("reason", Value::from(reason()));
     let reply = conn
         .call_method(
             Some(PORTAL),
@@ -123,13 +127,14 @@ async fn portal_inhibit(conn: &Connection) -> Result<OwnedObjectPath> {
 }
 
 async fn screensaver_inhibit(conn: &Connection) -> Result<u32> {
+    let reason = reason();
     let reply = conn
         .call_method(
             Some("org.freedesktop.ScreenSaver"),
             "/org/freedesktop/ScreenSaver",
             Some("org.freedesktop.ScreenSaver"),
             "Inhibit",
-            &(crate::APP_ID, REASON),
+            &(crate::APP_ID, reason.as_str()),
         )
         .await?;
     reply.body().deserialize()

@@ -755,7 +755,10 @@ impl AnilistClient {
         }
         match value.get("data") {
             Some(data) if !data.is_null() => Ok(data.clone()),
-            _ => Err(provider_error(None, "no data")),
+            _ => Err(provider_error(
+                None,
+                crate::i18n::tr("core-net-no-data", &[]),
+            )),
         }
     }
 

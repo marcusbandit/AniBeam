@@ -770,26 +770,26 @@ impl Core {
             Call::MarkEpisode { .. } => {
                 return Err(CoreError::invalid(
                     "tracker",
-                    "the tracker accounts on that computer are its owner's, so this device marks nothing there",
+                    crate::i18n::tr("core-core-guest-trackers", &[]),
                 ));
             }
             Call::SetTrackChoice { .. } => return Ok(Reply::Ok),
             Call::SetNotInterested { .. } => {
                 return Err(CoreError::invalid(
                     "not_interested",
-                    "Not interested on that computer is its owner's list, so this device changes nothing there",
+                    crate::i18n::tr("core-core-guest-not-interested", &[]),
                 ));
             }
             Call::SetShowListStatus { .. } | Call::SetShowScore { .. } => {
                 return Err(CoreError::invalid(
                     "tracker",
-                    "the tracker accounts on that computer are its owner's, so this device marks nothing there",
+                    crate::i18n::tr("core-core-guest-trackers", &[]),
                 ));
             }
             Call::ListRecommended { .. } | Call::RefreshRecommended { .. } => {
                 return Err(CoreError::invalid(
                     "recommended",
-                    "the recommendations on that computer are learnt from its owner's list",
+                    crate::i18n::tr("core-core-guest-recommended", &[]),
                 ));
             }
             _ => {}
@@ -1433,7 +1433,10 @@ impl Core {
             }
         }
         if picks.is_empty() {
-            return Err(CoreError::invalid("series", "nothing picked"));
+            return Err(CoreError::invalid(
+                "series",
+                crate::i18n::tr("core-core-nothing-picked", &[]),
+            ));
         }
         // One read for every id, however many were picked
         let there: std::collections::HashSet<u64> = self.store.read(|c| {

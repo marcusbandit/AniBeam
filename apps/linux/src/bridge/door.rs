@@ -14,6 +14,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use anibeam_core::events::Subscription;
+use anibeam_core::i18n::tr;
 use anibeam_core::{
     Call, Chapter, CloseReason, CoreError, Direction, DownloadOptions, DownloadSettings, Event,
     EventBody, EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences,
@@ -747,10 +748,7 @@ fn parse_season(s: &QString) -> Result<SeasonPick, CoreError> {
     let name = serde_json::from_value::<SeasonName>(Value::String(name.to_string())).ok();
     match (name, year.parse::<i32>().ok()) {
         (Some(name), Some(year)) => Ok(SeasonPick::Season { name, year }),
-        _ => Err(CoreError::invalid(
-            "season",
-            format!("{text} is not a valid choice"),
-        )),
+        _ => Err(CoreError::invalid("season", not_a_choice(&text))),
     }
 }
 
@@ -769,9 +767,15 @@ fn season_text(pick: SeasonPick) -> String {
     }
 }
 
+/// The reason a value QML sent is not one the call takes, in the current language.
+fn not_a_choice(text: &str) -> String {
+    tr("door-not-a-choice", &[("value", text.into())])
+}
+
 fn parse_enum<T: DeserializeOwned>(field: &str, s: &QString) -> Result<T, CoreError> {
-    serde_json::from_value(Value::String(s.to_string()))
-        .map_err(|_| CoreError::invalid(field, format!("{s} is not a valid choice")))
+    let text = s.to_string();
+    serde_json::from_value(Value::String(text.clone()))
+        .map_err(|_| CoreError::invalid(field, not_a_choice(&text)))
 }
 
 fn parse_object<T: DeserializeOwned>(field: &str, o: &QJsonObject) -> Result<T, CoreError> {
@@ -824,7 +828,7 @@ fn refine_op(o: &QJsonObject) -> Result<RefineOp, CoreError> {
                 })
                 .unwrap_or_default();
             if tokens.is_empty() {
-                return Err(CoreError::invalid("op", "a tokens op needs tokens"));
+                return Err(CoreError::invalid("op", tr("door-tokens-op-empty", &[])));
             }
             Ok(RefineOp::Tokens { tokens })
         }
@@ -833,7 +837,7 @@ fn refine_op(o: &QJsonObject) -> Result<RefineOp, CoreError> {
         "best_fit" => Ok(RefineOp::BestFit),
         other => Err(CoreError::invalid(
             "op",
-            format!("{other} is not a refine op"),
+            tr("door-not-a-refine-op", &[("value", other.into())]),
         )),
     }
 }
@@ -855,7 +859,7 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
 fn job_entry(id: &Value, kind: &Value, progress: &Value) -> Value {
     let doing = serde_json::from_value::<anibeam_core::JobKind>(kind.clone())
         .map(|k| k.doing())
-        .unwrap_or("");
+        .unwrap_or_default();
     json!({
         "id": id,
         "kind": kind,
@@ -1636,7 +1640,7 @@ impl qobject::Door {
         let call = if limit < 1 {
             Err(CoreError::invalid(
                 "limit",
-                format!("must be at least 1, got {limit}"),
+                tr("door-limit-too-low", &[("limit", limit.to_string().into())]),
             ))
         } else {
             parse_enum::<Provider>("provider", provider).map(|provider| Call::SearchProvider {
@@ -2019,7 +2023,7 @@ impl qobject::Door {
             "UnFirstLast" => Ok(TorrentAction::FirstLastPieces { on: false }),
             other => Err(CoreError::invalid(
                 "action",
-                format!("{other} is not a torrent action"),
+                tr("door-not-a-torrent-action", &[("value", other.into())]),
             )),
         };
         self.dispatch(action.map(|action| Call::ControlTorrents { hashes, action }))

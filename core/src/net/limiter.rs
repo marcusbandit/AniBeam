@@ -146,7 +146,10 @@ impl ProviderClient {
                     // like any other: nothing is retried and the caller
                     // decides what to do about it.
                     Err(_) => Err(super::HttpError {
-                        message: format!("timed out after {}ms", d.as_millis()),
+                        message: crate::i18n::tr(
+                            "core-net-timed-out",
+                            &[("ms", d.as_millis().to_string().into())],
+                        ),
                     }),
                 },
                 None => self.http.send(req.clone()).await,
@@ -183,7 +186,10 @@ impl ProviderClient {
             Err(Attempt::Limited(r)) => Err(CoreError::Provider {
                 provider: self.upstream.provider(),
                 status: Some(429),
-                message: format!("{} rate limited", self.upstream.label()),
+                message: crate::i18n::tr(
+                    "core-net-rate-limited",
+                    &[("provider", self.upstream.label().into())],
+                ),
                 retry_after: retry_after(&r),
             }),
             Err(Attempt::Transport(message)) => Err(CoreError::Provider {

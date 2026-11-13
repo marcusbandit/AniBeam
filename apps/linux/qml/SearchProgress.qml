@@ -17,13 +17,21 @@ Tile {
     signal cancel()
     signal switchTo(string name)
 
-    // The phase label comes worded from the core's job progress, so these compare its words
-    readonly property bool starting: label.indexOf("Starting") === 0 && label !== "Starting the search" // i18n: none
+    // The phase label comes worded from the core's job progress, in the language the shell
+    // speaks too, so these compare it with the same messages. A source's start names the
+    // source, which may not be the one this card follows, so it is matched by its shape:
+    // the words before and after the name.
+    readonly property string helperLabel: words.t("core-downloads-search-starting")
+    readonly property var startShape: words.t("core-downloads-search-starting-endpoint", { endpoint: "\u0001" }).split("\u0001")
+    readonly property bool starting: label !== helperLabel && startShape.length === 2
+        && label.length > startShape[0].length + startShape[1].length
+        && label.indexOf(startShape[0]) === 0
+        && label.lastIndexOf(startShape[1]) === label.length - startShape[1].length
     readonly property bool ondemand: total > 0
     readonly property string why: {
-        if (label === "Starting the search") return words.t("search-progress-why-helper") // i18n: none
+        if (label === helperLabel) return words.t("search-progress-why-helper")
         if (starting) return words.t("search-progress-why-starting", { endpoint: root.endpoint, seconds: Math.round(root.total) })
-        if (label.indexOf("Reading") === 0) return words.t("search-progress-why-reading") // i18n: none
+        if (label === words.t("core-downloads-search-reading")) return words.t("search-progress-why-reading")
         if (root.ondemand) return words.t("search-progress-why-ondemand", { endpoint: root.endpoint })
         return root.elapsed > 8 ? words.t("search-progress-why-slow", { endpoint: root.endpoint }) : words.t("search-progress-why-usual")
     }

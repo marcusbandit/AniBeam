@@ -38,7 +38,10 @@ pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreErro
         return Err(CoreError::Service {
             service: host,
             code: format!("http_{}", response.status),
-            message: format!("the feed answered {}", response.status),
+            message: crate::i18n::tr(
+                "core-downloads-feed-answered",
+                &[("status", response.status.to_string().into())],
+            ),
         });
     }
     let text = String::from_utf8_lossy(&response.body);
@@ -50,7 +53,12 @@ pub async fn read(http: &dyn Http, url: &str) -> Result<Vec<FeedEntry>, CoreErro
 }
 
 pub fn parse(text: &str) -> Result<Vec<FeedEntry>, String> {
-    let doc = roxmltree::Document::parse(text).map_err(|e| format!("not a feed: {e}"))?;
+    let doc = roxmltree::Document::parse(text).map_err(|e| {
+        crate::i18n::tr(
+            "core-downloads-not-a-feed",
+            &[("error", e.to_string().into())],
+        )
+    })?;
     let mut out = Vec::new();
     for item in doc.descendants().filter(|n| n.has_tag_name("item")) {
         out.push(entry(item));

@@ -50,22 +50,32 @@ pub fn plan(keyframes: &[u64], end_ms: u64) -> Vec<Segment> {
 /// Chromecasts decode it cannot be told from what they announce, so the device decides, and
 /// a refusal names HEVC as the likely reason.
 pub fn verdict(probe: &Probe, audio: Option<&AudioTrack>) -> Result<(), String> {
-    let video = probe.video.as_ref().ok_or("This file has no video.")?;
+    let video = probe.video.as_ref().ok_or_else(no_video)?;
     match &video.codec {
         VideoCodec::H264 { profile, .. } if *profile >= 110 => {
-            return Err("This episode is 10-bit H.264 (Hi10P), which no TV or Chromecast decodes. Casting it needs a transcode, which is not built yet.".into());
+            return Err(crate::i18n::tr("core-cast-hi10p", &[]));
         }
         VideoCodec::Other(id) => {
-            return Err(format!("This episode's video ({id}) cannot be cast."));
+            return Err(crate::i18n::tr(
+                "core-cast-video-codec",
+                &[("codec", id.as_str().into())],
+            ));
         }
         _ => {}
     }
     if let Some(a) = audio
         && let AudioCodec::Other(id) = &a.codec
     {
-        return Err(format!("This episode's audio ({id}) cannot be cast."));
+        return Err(crate::i18n::tr(
+            "core-cast-audio-codec",
+            &[("codec", id.as_str().into())],
+        ));
     }
     Ok(())
+}
+
+fn no_video() -> String {
+    crate::i18n::tr("core-cast-no-video", &[])
 }
 
 /// A subtitle choice for the receiver: a track in the file, or a file beside it.
@@ -99,7 +109,7 @@ impl Prepared {
         let probe = mkv::probe(&reader);
         let audio = probe.audio_track(audio_track).cloned();
         verdict(&probe, audio.as_ref())?;
-        let video = probe.video.clone().ok_or("This file has no video.")?;
+        let video = probe.video.clone().ok_or_else(no_video)?;
         let first = match &audio {
             Some(a) if matches!(a.codec, AudioCodec::Ac3 | AudioCodec::Eac3) => {
                 mkv::first_frame(&mut reader, &probe, a.number)

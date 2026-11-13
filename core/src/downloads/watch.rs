@@ -340,9 +340,11 @@ async fn give_up(core: &Arc<Core>, d: &Due) {
 }
 
 /// What the activity log says when a followed episode never came.
-pub fn missed_line(title: &str, episode: u32) -> String {
-    format!(
-        "Episode {episode} of {title} has not turned up three days after it aired. Your feed keeps looking for it."
+pub fn missed_line(title: &str, episode: u32) -> crate::contract::Words {
+    crate::words!(
+        "core-downloads-episode-missed",
+        episode = episode,
+        title = title
     )
 }
 

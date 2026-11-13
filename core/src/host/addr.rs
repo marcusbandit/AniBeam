@@ -43,7 +43,7 @@ pub fn wanted(bind_override: Option<&str>, all: &[IpAddr]) -> Result<Vec<SocketA
         Some(text) => text
             .parse::<SocketAddr>()
             .map(|a| vec![a])
-            .map_err(|_| format!("{text} is not an address and port")),
+            .map_err(|_| crate::i18n::tr("core-host-not-an-address", &[("text", text.into())])),
         None => Ok(pick(all)
             .into_iter()
             .map(|ip| SocketAddr::new(ip, DEFAULT_PORT))

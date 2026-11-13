@@ -508,7 +508,10 @@ pub fn prepare(
         if r.item as usize >= items.len() {
             return Err(CoreError::invalid(
                 "options",
-                format!("item {} is not one of the {} releases", r.item, items.len()),
+                crate::i18n::tr(
+                    "core-downloads-replace-bad-item",
+                    &[("item", r.item.into()), ("count", items.len().into())],
+                ),
             ));
         }
         replace
@@ -808,7 +811,7 @@ pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
                 core.bus.say(
                     Level::Warn,
                     Stage::Downloads,
-                    format!("Episode {} was not replaced.", entry.episode),
+                    crate::words!("core-downloads-not-replaced", episode = entry.episode),
                     format!("Episode {} was not replaced: {e}", entry.episode),
                     EventBody::Notice,
                 );
@@ -869,7 +872,7 @@ async fn replace_episode(
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        format!("Replaced episode {} with the new download.", entry.episode),
+        crate::words!("core-downloads-replaced", episode = entry.episode),
         format!(
             "Replaced episode {}: {} {}",
             entry.episode,

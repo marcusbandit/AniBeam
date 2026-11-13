@@ -27,8 +27,10 @@ pub enum Candidate {
     Series { path: String },
 }
 
+/// A refusal of the whole request, `why` naming the catalog message that says what is
+/// wrong with `path`.
 fn refuse(path: &str, why: &str) -> CoreError {
-    CoreError::invalid("files", format!("{path} {why}, so nothing was removed"))
+    CoreError::invalid("files", crate::i18n::tr(why, &[("path", path.into())]))
 }
 
 fn clean(path: &str) -> PathBuf {
@@ -66,10 +68,10 @@ pub fn targets(
             continue;
         }
         if !p.is_absolute() || has_parent_step(&p) {
-            return Err(refuse(raw, "is not a plain absolute path"));
+            return Err(refuse(raw, "core-downloads-refuse-not-absolute"));
         }
         if p.parent().is_none() {
-            return Err(refuse(raw, "is the filesystem root"));
+            return Err(refuse(raw, "core-downloads-refuse-root"));
         }
         if std::fs::symlink_metadata(&p).is_err() {
             continue;
@@ -77,23 +79,20 @@ pub fn targets(
         if let Some(home) = home
             && home.starts_with(&p)
         {
-            return Err(refuse(raw, "is the home folder or holds it"));
+            return Err(refuse(raw, "core-downloads-refuse-home-folder"));
         }
         if sources.iter().any(|s| s.starts_with(&p)) {
-            return Err(refuse(raw, "is a library folder or holds one"));
+            return Err(refuse(raw, "core-downloads-refuse-library-folder"));
         }
         match c {
             Candidate::Series { .. } => {
                 if !sources.iter().any(|s| p.starts_with(s)) {
-                    return Err(refuse(raw, "is not inside a library folder"));
+                    return Err(refuse(raw, "core-downloads-refuse-outside-library"));
                 }
             }
             Candidate::Torrent { save_path, .. } => {
                 if clean(save_path) == p && !series_paths.contains(&p) {
-                    return Err(refuse(
-                        raw,
-                        "is the folder the torrent was saved in, not what it downloaded",
-                    ));
+                    return Err(refuse(raw, "core-downloads-refuse-save-folder"));
                 }
             }
         }

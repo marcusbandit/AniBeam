@@ -3621,3 +3621,137 @@ fmt-runtime-hours = { $h } h
 fmt-runtime-hours-minutes = { $h } h { $m } min
 fmt-episode = Episode
 fmt-episode-span = Episodes { $first } to { $through }
+
+## apps/linux/src/problem.rs: every call error in a person's words, what happened and what to do
+
+problem-report = Try again. If it keeps happening, report it from the activity log.
+problem-try-later = Try again later.
+problem-helper-unreachable = The search helper did not answer.
+problem-helper-unauthorized = The search helper turned down the login.
+problem-helper-not-running = The search helper is not running.
+problem-helper-missing = The search helper is not installed.
+problem-helper-failed = The search helper could not do that.
+problem-helper-no-login = The search helper cannot log in to the torrent client.
+problem-helper-no-login-next = Save the torrent client's password in Settings, under Downloads.
+problem-torrent-unreachable = The torrent client did not answer.
+problem-torrent-unauthorized = The torrent client turned down the login.
+problem-torrent-not-running = The torrent client is not running.
+problem-torrent-missing = The torrent client is not installed.
+problem-torrent-failed = The torrent client could not do that.
+problem-downloads-unreachable-next = Check it is running and its address is right in Settings, under Downloads.
+problem-downloads-unauthorized-next = Check the username and password in Settings, under Downloads.
+problem-downloads-not-running-next = Start it from Settings, under Downloads.
+problem-downloads-missing-next = Settings, under Downloads, says how to set it up.
+problem-trash = { -app-name } could not move the files to the trash.
+problem-trash-next = Check the files are yours and the disk is not read only.
+problem-source-list = That source list did not work.
+problem-source-list-next = Check its address in Settings, under Downloads, Source lists.
+# $name is a search source or a site, by its own name.
+problem-remote-unreachable = { $name } did not answer.
+problem-remote-unreachable-next = The site may be down. Try again later, or search another source.
+problem-remote-unauthorized = { $name } turned down the key it was given.
+problem-remote-unauthorized-next = Change its key in Settings, under Downloads, Source lists.
+problem-remote-failed = { $name } could not do that.
+problem-remote-failed-next = Try again later, or search another source.
+# $name is AniList, MyAnimeList, TVmaze and the like.
+problem-provider-sign-in = { $name } turned down { -app-name }'s sign-in.
+problem-provider-sign-in-next = Connect it again in Settings, under Accounts.
+problem-provider-turned-away = { $name } turned { -app-name } away.
+problem-provider-busy = { $name } is busy right now.
+problem-provider-busy-next = Wait a minute, then try again.
+problem-provider-no-answer = { $name } did not answer.
+problem-provider-no-answer-next = Check your internet connection, then try again.
+problem-provider-trouble = { $name } is having trouble right now.
+problem-provider-trouble-next = Try again in a few minutes.
+problem-provider-rejected = { $name } did not accept that.
+problem-not-found = { -app-name } could not find that any more.
+problem-not-found-next = It may have been removed. Try again to load the page afresh.
+problem-invalid-next = Check it and try again.
+problem-unavailable = That folder cannot be reached right now.
+problem-unavailable-next = Plug in its drive or check the folder in Settings, under Library.
+problem-not-connected = { $tracker } is not connected.
+problem-not-connected-next = Connect it in Settings, under Accounts.
+problem-io = { -app-name } could not read or write a file.
+problem-io-next = Check the disk has room and the folder is yours, then try again.
+problem-storage = { -app-name } could not save your library.
+problem-storage-next = Check the disk has room, then try again.
+problem-keyring = The system password store did not answer.
+problem-keyring-next = Unlock your desktop's keyring, then try again.
+problem-unsupported = { -app-name } cannot do that here yet.
+problem-version = This backup comes from a newer { -app-name }.
+problem-version-next = Update { -app-name } in Settings, under About, then import it again.
+problem-internal = Something went wrong inside { -app-name }.
+problem-refused-hidden = That show is hidden.
+problem-refused-hidden-next = Unhide it from its page first.
+problem-refused-no-match = That show is not matched yet.
+problem-refused-no-match-next = Match it on Show info first.
+problem-refused-not-newer = Your list is already past this episode.
+problem-refused-extra = That file is an extra, not an episode.
+problem-refused-unmatched = That file is not tied to an episode.
+problem-refused-unmatched-next = Fix it from the show's page, under Fixes.
+problem-refused-on-disk = That file is only on this computer.
+
+## apps/linux/src/library_view.rs: the library page's section titles and the one fact under each
+## (Dropped, On hold and Watching reuse status-* from core.ftl)
+
+library-view-airing = Airing
+library-view-no-date = No date
+library-view-type-tv = TV
+library-view-type-movies = Movies
+library-view-type-extras = OVA, ONA and specials
+library-view-type-music = Music
+library-view-type-unknown = Unknown
+# The Genre section for shows with no genre yet, most often because they are not matched.
+library-view-no-genre = Unmatched
+library-view-state-caught-up = Caught up
+library-view-state-not-started = Not started
+# $span is a short countdown: library-view-countdown-*.
+library-view-next-episode = Next episode in { $span }
+library-view-countdown-days = { $d }d { $h }h
+library-view-countdown-hours = { $h }h { $m }m
+library-view-countdown-minutes = { $m }m
+library-view-in-progress = { $count } in progress
+library-view-not-started = { $count } not started
+library-view-all-watched = All watched
+library-view-on-disk =
+    { $count ->
+        [one] { $count } episode
+       *[other] { $count } episodes
+    } on disk
+library-view-dropped-on-disk =
+    { $count ->
+        [one] { $count } file
+       *[other] { $count } files
+    } still on disk
+
+## apps/linux/src/dbus/notify.rs: the desktop notification for a new episode
+## (its Open button reuses action-open from core.ftl)
+
+# $episode is the episode's number, $title the show's.
+notify-episode-out = Episode { $episode } of { $title } is out
+notify-click-open = Click to open it in { -app-name }
+notify-click-get = Click to get the episodes in { -app-name }
+notify-get-episodes = Get episodes
+
+## apps/linux/src/nowplaying.rs: the second line a media widget shows while an episode plays
+
+# $episode is episode-number from core.ftl ("Episode 12").
+now-playing-show-episode = { $show }, { $episode }
+
+## apps/linux/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
+
+inhibit-reason = Playing an episode
+
+## apps/linux/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
+
+door-not-a-choice = { $value } is not a valid choice
+door-tokens-op-empty = a tokens op needs tokens
+door-not-a-refine-op = { $value } is not a refine op
+door-limit-too-low = must be at least 1, got { $limit }
+door-not-a-torrent-action = { $value } is not a torrent action
+
+## apps/linux/src/bridge/shell.rs: the first-run starter folder and the update notice
+
+# $folder is a path, $error the system's own reason.
+shell-starter-folder-failed = Could not make { $folder }: { $error }
+shell-update-gone = { -app-name } { $version } is no longer on offer

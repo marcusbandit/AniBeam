@@ -427,7 +427,7 @@ async fn refresh(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreErro
         Err(sync::Halt::Fail(e)) => return Err(e),
     };
     ctx.checkpoint()?;
-    ctx.progress(0, None, "Ranking shows for you");
+    ctx.progress(0, None, &crate::i18n::tr("core-recommended-ranking", &[]));
 
     let (catalog, neighbours) = {
         let people = found.people.clone();

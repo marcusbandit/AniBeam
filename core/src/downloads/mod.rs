@@ -284,7 +284,7 @@ async fn reach(core: &Arc<Core>) -> Result<Reached, CoreError> {
             }
             st.sidecar = None;
             st.anirss.state = AnirssState::Failed;
-            st.anirss.message = "anirss stopped".to_string();
+            st.anirss.message = crate::i18n::tr("core-downloads-anirss-stopped", &[]);
         }
         st.anirss.state = AnirssState::Starting;
         st.anirss.message.clear();
@@ -309,22 +309,31 @@ async fn reach(core: &Arc<Core>) -> Result<Reached, CoreError> {
     let mut sidecar = match Sidecar::spawn(&command, &login, &home) {
         Ok(sc) => sc,
         Err(SpawnFailure::Missing) => {
-            let hint = format!(
-                "{}. Or point Settings at a running server.",
-                anirss::install_hint()
-            );
+            let hint = anirss::install_hint();
             // The shell already says anirss is not installed; a command
             // the user typed in is worth naming, the default is not.
             let message = if s.anirss_command == "anirss" {
-                hint
+                crate::i18n::tr("core-downloads-anirss-missing", &[("install", hint.into())])
             } else {
-                format!("{} was not found. {hint}", s.anirss_command)
+                crate::i18n::tr(
+                    "core-downloads-anirss-command-missing",
+                    &[
+                        ("command", s.anirss_command.as_str().into()),
+                        ("install", hint.into()),
+                    ],
+                )
             };
             set_anirss_failure_at(core, generation, AnirssState::Missing, &message);
             return Err(service(anirss::SERVICE, "missing", message));
         }
         Err(SpawnFailure::Io(e)) => {
-            let message = format!("{} could not start: {e}", s.anirss_command);
+            let message = crate::i18n::tr(
+                "core-downloads-anirss-start-failed",
+                &[
+                    ("command", s.anirss_command.as_str().into()),
+                    ("error", e.into()),
+                ],
+            );
             set_anirss_failure_at(core, generation, AnirssState::Failed, &message);
             return Err(service(anirss::SERVICE, "failed", message));
         }
@@ -380,9 +389,13 @@ async fn reach(core: &Arc<Core>) -> Result<Reached, CoreError> {
                 .await
                 .and_then(|text| anirss::too_old(&text))
             {
-                Some(version) => {
-                    format!("{} It said: {message}", anirss::too_old_message(&version))
-                }
+                Some(version) => crate::i18n::tr(
+                    "core-downloads-anirss-too-old-said",
+                    &[
+                        ("tooOld", anirss::too_old_message(&version).into()),
+                        ("message", message.into()),
+                    ],
+                ),
                 None => message,
             };
             set_anirss_failure_at(core, generation, AnirssState::Failed, &message);
@@ -549,7 +562,7 @@ async fn decide_torrent(
         let port = match own_port {
             Some(port) => port,
             None => anirss::free_port()
-                .map_err(|e| service(qbt::SERVICE, "failed", format!("no free port: {e}")))?,
+                .map_err(|e| service(qbt::SERVICE, "failed", no_free_port(&e)))?,
         };
         s.torrent_mode = TorrentMode::Managed;
         s.torrent_url = format!("http://127.0.0.1:{port}");
@@ -560,11 +573,9 @@ async fn decide_torrent(
         return Err(service(
             qbt::SERVICE,
             "missing",
-            format!(
-                "No qBittorrent answers at {}, and AniBeam has none of its own to run. Install \
-                 qBittorrent and turn on its Web UI, or install qbittorrent-nox, which AniBeam \
-                 then runs for you",
-                s.torrent_url
+            crate::i18n::tr(
+                "core-downloads-no-torrent-client",
+                &[("address", s.torrent_url.as_str().into())],
             ),
         ));
     };
@@ -584,8 +595,9 @@ async fn decide_torrent(
 fn own_address(core: &Core) -> Result<String, CoreError> {
     let port = match managed::configured_port(&managed::profile_dir(&core.paths.data_dir)) {
         Some(port) => port,
-        None => anirss::free_port()
-            .map_err(|e| service(qbt::SERVICE, "failed", format!("no free port: {e}")))?,
+        None => {
+            anirss::free_port().map_err(|e| service(qbt::SERVICE, "failed", no_free_port(&e)))?
+        }
     };
     Ok(format!("http://127.0.0.1:{port}"))
 }
@@ -607,9 +619,7 @@ async fn start_managed(core: &Arc<Core>, s: &DownloadSettings) -> Result<(), Cor
         service(
             qbt::SERVICE,
             "missing",
-            "AniBeam's qBittorrent is gone: qbittorrent-nox is not installed. Reinstall \
-             AniBeam, or point Settings at a qBittorrent of your own"
-                .to_string(),
+            crate::i18n::tr("core-downloads-own-client-gone", &[]),
         )
     })?;
     let port = s
@@ -617,13 +627,29 @@ async fn start_managed(core: &Arc<Core>, s: &DownloadSettings) -> Result<(), Cor
         .rsplit(':')
         .next()
         .and_then(|p| p.trim_end_matches('/').parse::<u16>().ok())
-        .ok_or_else(|| failed(format!("no port in {}", s.torrent_url)))?;
+        .ok_or_else(|| {
+            failed(crate::i18n::tr(
+                "core-downloads-no-port",
+                &[("address", s.torrent_url.as_str().into())],
+            ))
+        })?;
     let profile = managed::profile_dir(&core.paths.data_dir);
     let save = AnirssHome::of(&core.paths).save_dir();
-    managed::write_config(&profile, port, save.as_deref())
-        .map_err(|e| failed(format!("cannot write qBittorrent's settings: {e}")))?;
-    managed::spawn(&binary, &profile, port)
-        .map_err(|e| failed(format!("{} could not start: {e}", binary.display())))?;
+    managed::write_config(&profile, port, save.as_deref()).map_err(|e| {
+        failed(crate::i18n::tr(
+            "core-downloads-own-client-settings",
+            &[("error", e.to_string().into())],
+        ))
+    })?;
+    managed::spawn(&binary, &profile, port).map_err(|e| {
+        failed(crate::i18n::tr(
+            "core-downloads-own-client-start-failed",
+            &[
+                ("command", binary.display().to_string().into()),
+                ("error", e.to_string().into()),
+            ],
+        ))
+    })?;
     let started = tokio::time::Instant::now();
     loop {
         tokio::time::sleep(managed::READY_POLL).await;
@@ -632,10 +658,13 @@ async fn start_managed(core: &Arc<Core>, s: &DownloadSettings) -> Result<(), Cor
             return Ok(());
         }
         if started.elapsed() > managed::READY_TIMEOUT {
-            return Err(failed(format!(
-                "AniBeam's qBittorrent did not start{}",
-                managed::log_tail(&profile)
-            )));
+            return Err(failed(match managed::log_tail(&profile) {
+                Some(said) => crate::i18n::tr(
+                    "core-downloads-own-client-slow-start-said",
+                    &[("said", said.into())],
+                ),
+                None => crate::i18n::tr("core-downloads-own-client-slow-start", &[]),
+            }));
         }
     }
 }
@@ -660,6 +689,14 @@ async fn probe_torrent(core: &Arc<Core>) {
             st.torrent.message = plain(&e);
         }
     }
+}
+
+/// What a port that could not be had says.
+fn no_free_port(e: &std::io::Error) -> String {
+    crate::i18n::tr(
+        "core-downloads-no-free-port",
+        &[("error", e.to_string().into())],
+    )
 }
 
 fn service(name: &str, code: &str, message: String) -> CoreError {
@@ -746,8 +783,8 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
     };
     let said = match level {
         Level::Debug => None,
-        Level::Warn => Some("Downloads are not ready. Check Downloads in Settings.".to_string()),
-        _ => Some("Downloads are ready.".to_string()),
+        Level::Warn => Some(crate::words!("core-downloads-not-ready")),
+        _ => Some(crate::words!("core-downloads-ready")),
     };
     Ok(Finished {
         plain: said,
@@ -900,10 +937,7 @@ fn say_helper_sources(core: &Arc<Core>) {
     core.bus.say(
         Level::Warn,
         Stage::Downloads,
-        format!(
-            "Downloads now search with AniBeam itself, which does not read the {n} {} in the search helper's own config. Add them in Settings, Downloads, or pick the search helper there.",
-            if n == 1 { "source" } else { "sources" }
-        ),
+        crate::words!("core-downloads-helper-sources", count = n),
         format!("native engine with no endpoints while anirss's config names {n}"),
         EventBody::Notice,
     );
@@ -1006,10 +1040,8 @@ pub fn test_torrent_client(core: &Core) -> Result<u64, CoreError> {
             };
             let said = match (status.torrent.connected, before) {
                 (true, true) => None,
-                (true, false) => Some("The download app is connected.".to_string()),
-                (false, _) => Some(
-                    "The download app is not connected. Check its address in Settings.".to_string(),
-                ),
+                (true, false) => Some(crate::words!("core-downloads-client-connected")),
+                (false, _) => Some(crate::words!("core-downloads-client-not-connected")),
             };
             Ok(Finished {
                 plain: said,
@@ -1112,7 +1144,13 @@ pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
         .as_deref()
         .and_then(|p| settings::anirss_ondemand(p, &name))
         .ok_or_else(|| {
-            CoreError::invalid("name", format!("{name} is not an on-demand endpoint"))
+            CoreError::invalid(
+                "name",
+                crate::i18n::tr(
+                    "core-downloads-not-on-demand",
+                    &[("name", name.as_str().into())],
+                ),
+            )
         })?;
     let log = std::path::Path::new(&core.paths.state_dir).join("jackett-start.log");
     let home = AnirssHome::of(&core.paths);
@@ -1122,7 +1160,14 @@ pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
         .start(JobKind::StartEndpoint, move |ctx| async move {
             let s = load_settings(&owner).await?;
             let command = jackett::resolve_command(&s.jackett_command, config.as_deref(), &name);
-            ctx.progress(0, None, &format!("Starting {name}"));
+            ctx.progress(
+                0,
+                None,
+                &crate::i18n::tr(
+                    "core-downloads-search-starting-endpoint",
+                    &[("endpoint", name.as_str().into())],
+                ),
+            );
             jackett::start(
                 owner.http.as_ref(),
                 &command,
@@ -1143,7 +1188,7 @@ pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
             owner.downloads.state().endpoints = endpoints;
             let status = status_async(&owner).await?;
             Ok(Finished {
-                plain: Some("The download source is running.".to_string()),
+                plain: Some(crate::words!("core-downloads-source-running")),
                 level: Level::Info,
                 message: format!("{name} is running"),
                 body: EventBody::DownloadsStatusChanged { status },
@@ -1208,9 +1253,9 @@ async fn guard_search(
             return Err(CoreError::Service {
                 service: e.name.clone(),
                 code: "not_running".to_string(),
-                message: format!(
-                    "{} is not running. Switch it on in the sources and confirm to start it.",
-                    e.name
+                message: crate::i18n::tr(
+                    "core-downloads-source-not-running",
+                    &[("name", e.name.as_str().into())],
                 ),
             });
         }
@@ -1222,7 +1267,10 @@ async fn guard_search(
 pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u64, CoreError> {
     let query = query.trim().to_string();
     if query.is_empty() {
-        return Err(CoreError::invalid("query", "type something to search for"));
+        return Err(CoreError::invalid(
+            "query",
+            crate::i18n::tr("core-downloads-empty-query", &[]),
+        ));
     }
     let owner = core.owner()?;
     Ok(owner
@@ -1247,9 +1295,9 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                         ctx.clone(),
                         owner.http.clone(),
                         phase.clone(),
-                        first
-                            .clone()
-                            .unwrap_or_else(|| "the first endpoint".to_string()),
+                        first.clone().unwrap_or_else(|| {
+                            crate::i18n::tr("core-downloads-first-endpoint", &[])
+                        }),
                         ondemand,
                     );
                     let work = async {
@@ -1310,12 +1358,23 @@ async fn search_native(
     let on = endpoint
         .clone()
         .or_else(|| backend.first_endpoint())
-        .unwrap_or_else(|| "the first endpoint".to_string());
+        .unwrap_or_else(|| crate::i18n::tr("core-downloads-first-endpoint", &[]));
     ctx.checkpoint()?;
-    ctx.progress(0, None, &format!("Searching {on}"));
+    ctx.progress(
+        0,
+        None,
+        &crate::i18n::tr(
+            "core-downloads-search-searching-endpoint",
+            &[("endpoint", on.into())],
+        ),
+    );
     let raw = backend.search(query, endpoint.as_deref(), true).await?;
     ctx.checkpoint()?;
-    ctx.progress(started.elapsed().as_secs(), None, "Reading the results");
+    ctx.progress(
+        started.elapsed().as_secs(),
+        None,
+        &crate::i18n::tr("core-downloads-search-reading", &[]),
+    );
     read_search(owner, backend, raw).await
 }
 
@@ -1402,13 +1461,19 @@ async fn watch_search(
     let started = std::time::Instant::now();
     loop {
         let label = match phase.load(Ordering::Relaxed) {
-            PHASE_CONNECTING => "Starting the search".to_string(),
-            PHASE_READING => "Reading the results".to_string(),
+            PHASE_CONNECTING => crate::i18n::tr("core-downloads-search-starting", &[]),
+            PHASE_READING => crate::i18n::tr("core-downloads-search-reading", &[]),
             _ => match &ondemand {
                 Some(od) if !od.ready.is_empty() && !answers(http.as_ref(), &od.ready).await => {
-                    format!("Starting {endpoint}")
+                    crate::i18n::tr(
+                        "core-downloads-search-starting-endpoint",
+                        &[("endpoint", endpoint.as_str().into())],
+                    )
                 }
-                _ => format!("Searching {endpoint}"),
+                _ => crate::i18n::tr(
+                    "core-downloads-search-searching-endpoint",
+                    &[("endpoint", endpoint.as_str().into())],
+                ),
             },
         };
         // No total: the seconds are not a count of anything, and the page
@@ -1682,7 +1747,7 @@ pub fn subscribe(
             // and a key: the event names the rule, and the shell reads the feed from it (#478).
             result.feed_url.clear();
             Ok(Finished {
-                plain: Some(format!("Subscribed to {}.", result.name)),
+                plain: Some(crate::words!("core-downloads-subscribed", name = &result.name)),
                 level: Level::Info,
                 message,
                 body: EventBody::Subscribed { result },
@@ -1721,7 +1786,10 @@ async fn rehome_rule(
         return Err(service(
             "anirss",
             "rule_missing",
-            format!("qBittorrent holds no rule named {}", result.name),
+            crate::i18n::tr(
+                "core-downloads-client-no-rule",
+                &[("name", result.name.as_str().into())],
+            ),
         ));
     };
     qbt.set_rule(&result.name, &rewire::rehomed(def, home))
@@ -1756,7 +1824,10 @@ async fn rewire_subscription(
         return Err(service(
             "anirss",
             "rule_missing",
-            format!("qBittorrent holds no rule named {}", result.name),
+            crate::i18n::tr(
+                "core-downloads-client-no-rule",
+                &[("name", result.name.as_str().into())],
+            ),
         ));
     };
     let def = rewire::narrowed(def, terms, &feed_url);
@@ -1842,7 +1913,10 @@ async fn tightest_feed(
         ctx.progress(
             n as u64,
             Some(words.len() as u64),
-            &format!("Trying \"{candidate}\""),
+            &crate::i18n::tr(
+                "core-downloads-trying-search",
+                &[("search", candidate.as_str().into())],
+            ),
         );
         let url = rewire::with_search(feed_url, &key, &candidate);
         let Ok(entries) = feed::read(http, &url).await else {
@@ -1872,7 +1946,10 @@ pub fn download_with(
     options: DownloadOptions,
 ) -> Result<u64, CoreError> {
     if items.is_empty() {
-        return Err(CoreError::invalid("items", "nothing selected to download"));
+        return Err(CoreError::invalid(
+            "items",
+            crate::i18n::tr("core-downloads-nothing-selected", &[]),
+        ));
     }
     let owner = core.owner()?;
     // What rolls is held back before anything else is asked of it, so a
@@ -1911,10 +1988,7 @@ pub fn download_with(
                 }
             }
             Ok(Finished {
-                plain: Some(format!(
-                    "Added {} to your downloads.",
-                    plural(result.count, "download", "downloads")
-                )),
+                plain: Some(crate::words!("core-downloads-added", count = result.count)),
                 level: Level::Info,
                 message: format!(
                     "Added {} to {} under {}{extra}",
@@ -2031,7 +2105,7 @@ pub fn movie(core: &Core, link: String) -> Result<u64, CoreError> {
     {
         return Err(CoreError::invalid(
             "link",
-            "a movie link must be a magnet or an http(s) URL",
+            crate::i18n::tr("core-downloads-movie-link", &[]),
         ));
     }
     let owner = core.owner()?;
@@ -2042,7 +2116,7 @@ pub fn movie(core: &Core, link: String) -> Result<u64, CoreError> {
             let backend = DownloadsBackend::open(&owner).await?;
             let result = backend.movie(&link).await?;
             Ok(Finished {
-                plain: Some("Added a movie to your downloads.".to_string()),
+                plain: Some(crate::words!("core-downloads-added-movie")),
                 level: Level::Info,
                 message: format!("Added a movie to {}", result.save_path),
                 body: EventBody::TorrentsAdded { result },
@@ -2103,7 +2177,7 @@ pub fn remove(core: &Core, name: String, torrents: bool, files: bool) -> Result<
                 (false, false) => "",
             };
             Ok(Finished {
-                plain: Some(format!("Unsubscribed from {name}.")),
+                plain: Some(crate::words!("core-downloads-unsubscribed", name = &name)),
                 level: Level::Info,
                 message: format!("Removed the subscription {name}{extra}"),
                 body: EventBody::SubscriptionRemoved { name },
@@ -2126,8 +2200,9 @@ pub(crate) fn not_a_library_show(core: &Core, folder: &str) -> Result<(), CoreEr
     match shows.iter().find(|(path, _)| paths::real(path) == want) {
         Some((_, name)) => Err(CoreError::invalid(
             "files",
-            format!(
-                "{folder} is the library folder of {name}, with episodes this subscription did not download: remove the subscription without its files, or remove {name} from its page"
+            crate::i18n::tr(
+                "core-downloads-library-folder",
+                &[("folder", folder.into()), ("name", name.as_str().into())],
             ),
         )),
         None => Ok(()),
@@ -2141,7 +2216,10 @@ pub fn control(core: &Core, hashes: Vec<String>, action: TorrentAction) -> Resul
         .filter(|h| !h.is_empty())
         .collect();
     if hashes.is_empty() {
-        return Err(CoreError::invalid("hashes", "no torrents named"));
+        return Err(CoreError::invalid(
+            "hashes",
+            crate::i18n::tr("core-downloads-no-torrents-named", &[]),
+        ));
     }
     let owner = core.owner()?;
     Ok(owner
@@ -2185,20 +2263,15 @@ pub fn control(core: &Core, hashes: Vec<String>, action: TorrentAction) -> Resul
             };
             let n = hashes.len() as u64;
             let said = match &action {
-                TorrentAction::Stop => {
-                    Some(format!("Paused {}.", plural(n, "download", "downloads")))
-                }
-                TorrentAction::Start => {
-                    Some(format!("Resumed {}.", plural(n, "download", "downloads")))
-                }
-                TorrentAction::Delete { files: true } => Some(format!(
-                    "Deleted {} and the files.",
-                    plural(n, "download", "downloads")
+                TorrentAction::Stop => Some(crate::words!("core-downloads-paused", count = n)),
+                TorrentAction::Start => Some(crate::words!("core-downloads-resumed", count = n)),
+                TorrentAction::Delete { files: true } => Some(crate::words!(
+                    "core-downloads-deleted-with-files",
+                    count = n
                 )),
-                TorrentAction::Delete { files: false } => Some(format!(
-                    "Removed {} from your list.",
-                    plural(n, "download", "downloads")
-                )),
+                TorrentAction::Delete { files: false } => {
+                    Some(crate::words!("core-downloads-removed-from-list", count = n))
+                }
                 TorrentAction::Sequential { .. } | TorrentAction::FirstLastPieces { .. } => None,
             };
             Ok(Finished {
@@ -2236,13 +2309,18 @@ pub fn remove_show(
     let takes_torrents = torrents && !hashes.is_empty();
     let takes_files = files && (!hashes.is_empty() || series.is_some());
     if rule.is_none() && !takes_torrents && !takes_files {
-        return Err(CoreError::invalid("show", "nothing to remove"));
+        return Err(CoreError::invalid(
+            "show",
+            crate::i18n::tr("core-downloads-nothing-to-remove", &[]),
+        ));
     }
-    let title = if title.trim().is_empty() {
-        rule.clone().unwrap_or_else(|| "the show".to_string())
+    // The name the plain line gives the show; with none, it says "the show" in its own words
+    let named = if title.trim().is_empty() {
+        rule.clone()
     } else {
-        title.trim().to_string()
+        Some(title.trim().to_string())
     };
+    let title = named.clone().unwrap_or_else(|| "the show".to_string());
     let owner = core.owner()?;
     Ok(owner
         .jobs
@@ -2346,7 +2424,10 @@ pub fn remove_show(
                 ),
             };
             Ok(Finished {
-                plain: Some(format!("Removed {title} from your downloads.")),
+                plain: Some(match &named {
+                    Some(name) => crate::words!("core-downloads-removed-show", title = name),
+                    None => crate::words!("core-downloads-removed-the-show"),
+                }),
                 level: Level::Info,
                 message: format!("Removed {title}: {what}"),
                 body: EventBody::ShowRemoved {
@@ -2698,7 +2779,7 @@ pub fn drop_torrents_of(core: &Core, gone: Vec<std::path::PathBuf>) {
                 owner.bus.say(
                     Level::Warn,
                     Stage::Downloads,
-                    "Deleted files are still listed in the download app.",
+                    crate::words!("core-downloads-deleted-still-listed"),
                     format!("The torrents of the deleted files stay in the client: {e}"),
                     EventBody::Notice,
                 );
@@ -2961,7 +3042,10 @@ pub fn inspect_release(core: &Core, link: String) -> Result<Reply, CoreError> {
 pub fn read_feed(core: &Core, url: String, tag: String) -> Result<Reply, CoreError> {
     let url = url.trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(CoreError::invalid("url", "a feed is an http(s) URL"));
+        return Err(CoreError::invalid(
+            "url",
+            crate::i18n::tr("core-downloads-feed-url", &[]),
+        ));
     }
     let owner = core.owner()?;
     core.handle.spawn(async move {
@@ -2995,7 +3079,10 @@ pub fn read_feed(core: &Core, url: String, tag: String) -> Result<Reply, CoreErr
 pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err(CoreError::invalid("name", "a rule has a name"));
+        return Err(CoreError::invalid(
+            "name",
+            crate::i18n::tr("core-downloads-rule-needs-name", &[]),
+        ));
     }
     let owner = core.owner()?;
     Ok(owner
@@ -3005,18 +3092,26 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
             let qbt = qbt_client(&owner).await?;
             let rules = qbt.rules().await?;
             let def = rules.get(&name).cloned().ok_or_else(|| {
-                service(qbt::SERVICE, "rule_missing", format!("no rule named {name}"))
+                service(
+                    qbt::SERVICE,
+                    "rule_missing",
+                    crate::i18n::tr("core-downloads-no-rule", &[("name", name.as_str().into())]),
+                )
             })?;
             let url = def["affectedFeeds"][0].as_str().unwrap_or("").to_string();
             let host = crate::net::host_shown(&url);
             let (key, value) = rewire::search_param(&url).ok_or_else(|| {
-                service(&host, "no_search", "the feed carries no search to shorten".to_string())
+                service(
+                    &host,
+                    "no_search",
+                    crate::i18n::tr("core-downloads-feed-no-search", &[]),
+                )
             })?;
             let http = crate::repos::endpoint_http(&owner);
             let now = feed::read(&http, &url).await?;
             if !now.is_empty() {
                 return Ok(Finished {
-                    plain: Some(format!("{name} needs no repair.")),
+                    plain: Some(crate::words!("core-downloads-no-repair", name = &name)),
                     level: Level::Info,
                     message: format!(
                         "{name} needs no repair: its feed finds {}",
@@ -3033,7 +3128,14 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
             let tries: Vec<usize> = (1..fields.len()).rev().take(4).collect();
             for (n, k) in tries.iter().enumerate() {
                 let candidate = fields[..*k].join(" ");
-                ctx.progress(n as u64, Some(tries.len() as u64), &format!("Trying \"{candidate}\""));
+                ctx.progress(
+                    n as u64,
+                    Some(tries.len() as u64),
+                    &crate::i18n::tr(
+                        "core-downloads-trying-search",
+                        &[("search", candidate.as_str().into())],
+                    ),
+                );
                 let next = rewire::with_search(&url, &key, &candidate);
                 let entries = feed::read(&http, &next).await?;
                 if entries.is_empty() {
@@ -3044,7 +3146,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                 swap_feed(&qbt, &rules, &name, &narrowed, &url, &next).await?;
                 let must = narrowed["mustContain"].as_str().unwrap_or("").to_string();
                 return Ok(Finished {
-                    plain: Some(format!("Repaired the subscription to {name}.")),
+                    plain: Some(crate::words!("core-downloads-repaired", name = &name)),
                     level: Level::Info,
                     message: format!(
                         "Repaired {name}: {host} is searched for \"{candidate}\" ({}) and the rule keeps {}",
@@ -3061,9 +3163,9 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
             Err(service(
                 &host,
                 "repair_failed",
-                format!(
-                    "no shorter search finds anything; even \"{}\" comes back empty",
-                    fields.first().cloned().unwrap_or_default()
+                crate::i18n::tr(
+                    "core-downloads-repair-failed",
+                    &[("search", fields.first().cloned().unwrap_or_default().into())],
                 ),
             ))
         }))
@@ -3074,7 +3176,10 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
 pub fn read_rule(core: &Core, name: String) -> Result<Reply, CoreError> {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err(CoreError::invalid("name", "a rule has a name"));
+        return Err(CoreError::invalid(
+            "name",
+            crate::i18n::tr("core-downloads-rule-needs-name", &[]),
+        ));
     }
     let owner = core.owner()?;
     core.handle.spawn(async move {
@@ -3085,7 +3190,7 @@ pub fn read_rule(core: &Core, name: String) -> Result<Reply, CoreError> {
                 service(
                     qbt::SERVICE,
                     "rule_missing",
-                    format!("no rule named {name}"),
+                    crate::i18n::tr("core-downloads-no-rule", &[("name", name.as_str().into())]),
                 )
             })?;
             let matching = qbt.matching_articles(&name).await?;
@@ -3284,7 +3389,13 @@ pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
     let name = match id.as_deref() {
         Some(id) => {
             let c = s.saved_clients.iter().find(|c| c.id == id).ok_or_else(|| {
-                CoreError::invalid("id", format!("no saved torrent client {id:?}"))
+                CoreError::invalid(
+                    "id",
+                    crate::i18n::tr(
+                        "core-downloads-no-saved-client",
+                        &[("id", format!("{id:?}").into())],
+                    ),
+                )
             })?;
             let name = c.name.clone();
             s.torrent_url = c.url.clone();
@@ -3306,7 +3417,7 @@ pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        "Downloads now use a different download app.",
+        crate::words!("core-downloads-client-switched"),
         format!("Downloads use {name}"),
         EventBody::DownloadsStatusChanged { status },
     );
@@ -3364,7 +3475,7 @@ pub(crate) async fn host_read(
         service(
             what,
             "not_running",
-            "is not running on the host".to_string(),
+            crate::i18n::tr("core-downloads-host-not-running", &[]),
         )
     };
     let rules = async {
@@ -3388,7 +3499,13 @@ pub(crate) async fn host_read(
         link_torrents(core, &mut torrents);
         Ok(torrents)
     };
-    let late = |what: &str| service(what, "timeout", "did not answer in time".to_string());
+    let late = |what: &str| {
+        service(
+            what,
+            "timeout",
+            crate::i18n::tr("core-downloads-host-late", &[]),
+        )
+    };
     let (rules, torrents) = tokio::join!(
         tokio::time::timeout(limit, rules),
         tokio::time::timeout(limit, torrents)

@@ -90,7 +90,7 @@ impl Activity {
         poster: Option<String>,
     ) -> Activity {
         let state = if is_extra {
-            Some("Extra".to_string())
+            Some(crate::i18n::tr("core-presence-extra", &[]))
         } else if is_film {
             None
         } else {

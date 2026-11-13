@@ -52,7 +52,18 @@ Item {
         var d = new Date(at * 1000), now = new Date()
         return d.toDateString() === now.toDateString() ? Qt.formatTime(d, words.t("activity-drawer-time-format")) : Qt.formatDateTime(d, words.t("activity-drawer-stamp-format"))
     }
-    function toEntry(e) { return { time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, plain: e.plain || "", seq: e.seq } }
+    // `plainWords` is the plain line as a message ID and its arguments (#792); `said` is the
+    // core's own words, for lines from before the core kept their IDs. Each entry is worded
+    // once, when it arrives, and again for every entry when the language changes, so a
+    // switch reaches lines already in the log without wording 2000 rows on every event.
+    function sayOf(w, said) { return w ? words.t(w.id, w.args) : (said || "") }
+    function toEntry(e) { return { at: e.at, time: stampOf(e.at), stage: e.stage, level: e.level, msg: e.message, plain: sayOf(e.plain_words, e.plain), plainWords: e.plain_words || null, said: e.plain || "", seq: e.seq } }
+    Connections {
+        target: words
+        function onLangChanged() {
+            root.entries = root.entries.map(function(x) { return Object.assign({}, x, { time: root.stampOf(x.at), plain: root.sayOf(x.plainWords, x.said) }) })
+        }
+    }
     Connections {
         target: Door
         function onEvent(envelope) {
@@ -93,9 +104,10 @@ Item {
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
             if (!technical) {
-                if (e.plain === "") continue
+                var said = e.plain
+                if (said === "") continue
                 if (problemsOnly && e.level === "Info") continue
-                e = { time: e.time, stage: "", level: e.level, msg: e.plain, seq: e.seq }
+                e = { time: e.time, stage: "", level: e.level, msg: said, seq: e.seq }
             } else {
                 if (sAny && !stageOn[e.stage]) continue
                 if (lAny && !levelOn[e.level]) continue

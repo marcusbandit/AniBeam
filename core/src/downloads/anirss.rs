@@ -499,7 +499,10 @@ impl AnirssClient {
         self.http.send(req).await.map_err(|e| CoreError::Service {
             service: SERVICE.to_string(),
             code: "unreachable".to_string(),
-            message: format!("anirss did not answer: {}", e.message),
+            message: crate::i18n::tr(
+                "core-downloads-anirss-no-answer",
+                &[("message", e.message.into())],
+            ),
         })
     }
 }
@@ -521,7 +524,15 @@ fn judge(response: HttpResponse) -> Result<Value, CoreError> {
     let message = envelope["error"]["message"]
         .as_str()
         .map(String::from)
-        .unwrap_or_else(|| format!("anirss answered {}: {}", response.status, response.text()));
+        .unwrap_or_else(|| {
+            crate::i18n::tr(
+                "core-downloads-anirss-answered",
+                &[
+                    ("status", response.status.to_string().into()),
+                    ("text", response.text().into()),
+                ],
+            )
+        });
     Err(CoreError::Service {
         service: SERVICE.to_string(),
         code,
@@ -643,7 +654,12 @@ impl Sidecar {
         qbt: &QbtLogin<'_>,
         home: &super::home::AnirssHome,
     ) -> Result<Sidecar, SpawnFailure> {
-        let port = free_port().map_err(|e| SpawnFailure::Io(format!("no free port: {e}")))?;
+        let port = free_port().map_err(|e| {
+            SpawnFailure::Io(crate::i18n::tr(
+                "core-downloads-no-free-port",
+                &[("error", e.to_string().into())],
+            ))
+        })?;
         let token = random_token();
         let mut cmd = crate::process::command(command);
         cmd.arg("--serve")
@@ -711,18 +727,34 @@ impl Sidecar {
         let started = tokio::time::Instant::now();
         loop {
             if let Ok(Some(status)) = self.child.try_wait() {
-                return Err(format!("anirss exited ({status}){}", self.stderr_tail()));
+                let status = status.to_string();
+                return Err(match self.stderr_tail() {
+                    Some(said) => crate::i18n::tr(
+                        "core-downloads-anirss-exited-said",
+                        &[("status", status.into()), ("said", said.into())],
+                    ),
+                    None => crate::i18n::tr(
+                        "core-downloads-anirss-exited",
+                        &[("status", status.into())],
+                    ),
+                });
             }
             if let Ok(health) = client.health().await {
                 return Ok(health);
             }
             if started.elapsed() > READY_TIMEOUT {
                 let _ = self.child.start_kill();
-                return Err(format!(
-                    "anirss did not start within {} seconds{}",
-                    READY_TIMEOUT.as_secs(),
-                    self.stderr_tail()
-                ));
+                let seconds = READY_TIMEOUT.as_secs();
+                return Err(match self.stderr_tail() {
+                    Some(said) => crate::i18n::tr(
+                        "core-downloads-anirss-slow-start-said",
+                        &[("seconds", seconds.into()), ("said", said.into())],
+                    ),
+                    None => crate::i18n::tr(
+                        "core-downloads-anirss-slow-start",
+                        &[("seconds", seconds.into())],
+                    ),
+                });
             }
             tokio::time::sleep(READY_POLL).await;
         }
@@ -737,7 +769,8 @@ impl Sidecar {
         let _ = self.child.start_kill();
     }
 
-    fn stderr_tail(&self) -> String {
+    /// The last few lines stderr said, joined, or `None` when it said nothing.
+    fn stderr_tail(&self) -> Option<String> {
         let t = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
         let lines: Vec<&str> = t
             .iter()
@@ -745,9 +778,9 @@ impl Sidecar {
             .filter(|s| !s.is_empty())
             .collect();
         if lines.is_empty() {
-            String::new()
+            None
         } else {
-            format!(": {}", lines[lines.len().saturating_sub(3)..].join(" / "))
+            Some(lines[lines.len().saturating_sub(3)..].join(" / "))
         }
     }
 }
@@ -799,41 +832,64 @@ fn parse_version(word: &str) -> Option<(u32, u32, u32)> {
 /// shows.
 pub fn install_hint() -> String {
     if cfg!(target_os = "macos") {
-        format!(
-            "Install anirss {MIN_VERSION} or newer with: brew install marcusbandit/anirss/anirss"
+        crate::i18n::tr(
+            "core-downloads-anirss-install-mac",
+            &[
+                ("version", MIN_VERSION.into()),
+                ("command", "brew install marcusbandit/anirss/anirss".into()),
+            ],
         )
     } else {
-        format!(
-            "Install anirss {MIN_VERSION} or newer: the anirss package on the AUR, \
-             or uv tool install git+https://github.com/marcusbandit/anirss"
+        crate::i18n::tr(
+            "core-downloads-anirss-install-linux",
+            &[
+                ("version", MIN_VERSION.into()),
+                (
+                    "command",
+                    "uv tool install git+https://github.com/marcusbandit/anirss".into(),
+                ),
+            ],
         )
     }
 }
 
 /// What an anirss older than [`MIN_VERSION`] reports, `version` being its own.
 pub fn too_old_message(version: &str) -> String {
-    format!(
-        "anirss {version} is too old for AniBeam, which needs {MIN_VERSION} or newer. {}.",
-        update_hint()
+    crate::i18n::tr(
+        "core-downloads-anirss-too-old",
+        &[
+            ("version", version.into()),
+            ("minimum", MIN_VERSION.into()),
+            ("update", update_hint().into()),
+        ],
     )
 }
 
 /// What a sidecar that does not list [`SIDECAR_FEATURE`] reports, `version`
 /// being its own.
 pub fn lacks_feature_message(version: &str) -> String {
-    format!(
-        "anirss {version} cannot keep each torrent client's login to itself, which AniBeam \
-         needs to switch clients; anirss {MIN_VERSION} and newer can. {}.",
-        update_hint()
+    crate::i18n::tr(
+        "core-downloads-anirss-lacks-feature",
+        &[
+            ("version", version.into()),
+            ("minimum", MIN_VERSION.into()),
+            ("update", update_hint().into()),
+        ],
     )
 }
 
 /// How this platform updates anirss, for the message an old one shows.
-pub fn update_hint() -> &'static str {
+pub fn update_hint() -> String {
     if cfg!(target_os = "macos") {
-        "Update it with: brew upgrade anirss"
+        crate::i18n::tr(
+            "core-downloads-anirss-update-mac",
+            &[("command", "brew upgrade anirss".into())],
+        )
     } else {
-        "Update the anirss package, or run: uv tool upgrade anirss"
+        crate::i18n::tr(
+            "core-downloads-anirss-update-linux",
+            &[("command", "uv tool upgrade anirss".into())],
+        )
     }
 }
 

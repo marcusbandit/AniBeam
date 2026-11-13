@@ -389,15 +389,22 @@ impl QbtClient {
             .map_err(|e| CoreError::Service {
                 service: SERVICE.to_string(),
                 code: "unreachable".to_string(),
-                message: format!("qBittorrent did not answer at {}: {}", self.base, e.message),
+                message: crate::i18n::tr(
+                    "core-downloads-qbt-no-answer",
+                    &[
+                        ("address", self.base.as_str().into()),
+                        ("message", e.message.into()),
+                    ],
+                ),
             })
     }
 
     async fn login(&self) -> Result<(), CoreError> {
         if *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) {
-            return Err(unauthorized(
-                "qBittorrent rejected the password; fix it in Settings",
-            ));
+            return Err(unauthorized(crate::i18n::tr(
+                "core-downloads-qbt-password-rejected",
+                &[],
+            )));
         }
         let form = vec![
             ("username".to_string(), self.username.clone()),
@@ -416,13 +423,19 @@ impl QbtClient {
             .map_err(|e| CoreError::Service {
                 service: SERVICE.to_string(),
                 code: "unreachable".to_string(),
-                message: format!("qBittorrent did not answer at {}: {}", self.base, e.message),
+                message: crate::i18n::tr(
+                    "core-downloads-qbt-no-answer",
+                    &[
+                        ("address", self.base.as_str().into()),
+                        ("message", e.message.into()),
+                    ],
+                ),
             })?;
         if r.status == 403 {
             return Err(CoreError::Service {
                 service: SERVICE.to_string(),
                 code: "banned".to_string(),
-                message: "qBittorrent has banned this address after failed logins; wait, or restart qBittorrent".to_string(),
+                message: crate::i18n::tr("core-downloads-qbt-banned", &[]),
             });
         }
         // 4.x answers a good login with `Ok.` and a bad one with `Fails.`, both 200;
@@ -431,17 +444,21 @@ impl QbtClient {
         let text = String::from_utf8_lossy(&r.body).trim().to_string();
         if r.status == 401 || (r.is_success() && text == "Fails.") {
             *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) = true;
-            return Err(unauthorized(
-                "qBittorrent rejected the username or password",
-            ));
+            return Err(unauthorized(crate::i18n::tr(
+                "core-downloads-qbt-login-rejected",
+                &[],
+            )));
         }
         if r.status >= 500 {
             return Err(CoreError::Service {
                 service: SERVICE.to_string(),
                 code: "unreachable".to_string(),
-                message: format!(
-                    "qBittorrent's login at {} answered {}; trying again on the next call",
-                    self.base, r.status
+                message: crate::i18n::tr(
+                    "core-downloads-qbt-login-failed",
+                    &[
+                        ("address", self.base.as_str().into()),
+                        ("status", r.status.to_string().into()),
+                    ],
                 ),
             });
         }
@@ -472,10 +489,12 @@ impl QbtClient {
             None => Err(CoreError::Service {
                 service: SERVICE.to_string(),
                 code: format!("http_{}", r.status),
-                message: format!(
-                    "{} answered {}, but not as qBittorrent's Web UI. Check the address in Settings, \
-                     and that the Web UI is turned on in qBittorrent",
-                    self.base, r.status
+                message: crate::i18n::tr(
+                    "core-downloads-qbt-not-web-ui",
+                    &[
+                        ("address", self.base.as_str().into()),
+                        ("status", r.status.to_string().into()),
+                    ],
                 ),
             }),
         }
@@ -519,24 +538,31 @@ fn added_or_not(r: &HttpResponse) -> Result<(), CoreError> {
         })
     };
     let Ok(v) = serde_json::from_str::<Value>(body) else {
-        return failed(format!("qBittorrent did not add the torrents: {body:?}"));
+        return failed(crate::i18n::tr(
+            "core-downloads-qbt-not-added",
+            &[("said", format!("{body:?}").into())],
+        ));
     };
     if !v.is_object() {
-        return failed(format!("qBittorrent did not add the torrents: {body:?}"));
+        return failed(crate::i18n::tr(
+            "core-downloads-qbt-not-added",
+            &[("said", format!("{body:?}").into())],
+        ));
     }
     match num(&v["failure_count"]) {
         0 => Ok(()),
-        n => failed(format!(
-            "qBittorrent could not add {n} of the torrents: {body:?}"
+        n => failed(crate::i18n::tr(
+            "core-downloads-qbt-some-not-added",
+            &[("count", n.into()), ("said", format!("{body:?}").into())],
         )),
     }
 }
 
-fn unauthorized(message: &str) -> CoreError {
+fn unauthorized(message: String) -> CoreError {
     CoreError::Service {
         service: SERVICE.to_string(),
         code: "unauthorized".to_string(),
-        message: message.to_string(),
+        message,
     }
 }
 
@@ -569,10 +595,12 @@ fn judge(base: &str, r: HttpResponse) -> Result<HttpResponse, CoreError> {
     let text = r.text();
     let text = text.trim();
     let message = if text.starts_with('<') {
-        format!(
-            "{base} answered {}, but not as qBittorrent's Web UI. Check the address in Settings, \
-             and that the Web UI is turned on in qBittorrent",
-            r.status
+        crate::i18n::tr(
+            "core-downloads-qbt-not-web-ui",
+            &[
+                ("address", base.into()),
+                ("status", r.status.to_string().into()),
+            ],
         )
     } else {
         let line: String = text
@@ -582,7 +610,13 @@ fn judge(base: &str, r: HttpResponse) -> Result<HttpResponse, CoreError> {
             .chars()
             .take(160)
             .collect();
-        format!("qBittorrent answered {}: {line}", r.status)
+        crate::i18n::tr(
+            "core-downloads-qbt-answered",
+            &[
+                ("status", r.status.to_string().into()),
+                ("line", line.into()),
+            ],
+        )
     };
     Err(CoreError::Service {
         service: SERVICE.to_string(),

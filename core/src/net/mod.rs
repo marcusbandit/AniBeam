@@ -309,9 +309,12 @@ impl Front {
         let wait = gate
             .admit(std::time::Instant::now())
             .map_err(|left| HttpError {
-                message: format!(
-                    "{host}: timed out a moment ago; AniBeam waits {} s before asking it again",
-                    left.as_secs().max(1)
+                message: crate::i18n::tr(
+                    "core-net-waiting",
+                    &[
+                        ("host", host.as_str().into()),
+                        ("seconds", left.as_secs().max(1).to_string().into()),
+                    ],
                 ),
             })?;
         tokio::time::sleep(wait).await;

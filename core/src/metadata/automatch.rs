@@ -440,7 +440,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
                     let score = hit.score;
                     let title = hit.title;
                     let label = hit.provider.label();
-                    ctx.say(Level::Info, format!("Matched {folder} to {title}."), format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
+                    ctx.say(Level::Info, crate::words!("core-metadata-matched-to", show = &folder, title = &title), format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
                     let dir = images_dir.clone();
                     let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
@@ -484,13 +484,9 @@ pub fn start(core: &Arc<Core>) -> u64 {
 
         let said = match (matched, unmatched) {
             (0, 0) => None,
-            (m, 0) => Some(format!("Matched {m} {}.", crate::words::pick(m, "show", "shows"))),
-            (0, u) => Some(format!("{u} {} a match.", crate::words::pick(u, "show still needs", "shows still need"))),
-            (m, u) => Some(format!(
-                "Matched {m} {}; {u} still {} a match.",
-                crate::words::pick(m, "show", "shows"),
-                crate::words::pick(u, "needs", "need")
-            )),
+            (m, 0) => Some(crate::words!("core-metadata-auto-matched", count = m)),
+            (0, u) => Some(crate::words!("core-metadata-auto-unmatched", count = u)),
+            (m, u) => Some(crate::words!("core-metadata-auto-matched-some", matched = m, unmatched = u)),
         };
         Ok(Finished {
             plain: said,
@@ -557,7 +553,7 @@ pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
         let images_dir = owner.paths.images_dir();
         let total = todo.len() as u64;
         let (mut matched, mut unmatched, mut failed) = (0u64, 0u64, 0u64);
-        let (mut hit_line, mut miss_name) = (None, None);
+        let (mut hit_pair, mut miss_name) = (None, None);
         for (series, folder, kind, _, _, cleared) in todo {
             ctx.checkpoint()?;
             ctx.progress(matched + unmatched + failed, Some(total), &folder);
@@ -570,7 +566,7 @@ pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
                     matched += 1;
                     let label = hit.provider.label();
                     ctx.emit(Level::Debug, format!("Match ({label} {:.2}): {folder} -> {}", hit.score, hit.title), EventBody::Notice);
-                    hit_line = Some(format!("Matched {folder} to {}.", hit.title));
+                    hit_pair = Some((folder.clone(), hit.title.clone()));
                     let dir = images_dir.clone();
                     let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
@@ -604,7 +600,7 @@ pub fn start_for(core: &Arc<Core>, series: Vec<u64>) -> u64 {
             images::sweep_after(&owner, "match").await;
         }
         Ok(Finished {
-            plain: Some(find_line(matched, unmatched, failed, had, busy.len() as u64, hit_line, miss_name)),
+            plain: Some(find_line(matched, unmatched, failed, had, busy.len() as u64, hit_pair, miss_name)),
             level: if matched == 0 && unmatched == 0 && failed > 0 { Level::Warn } else { Level::Info },
             message: format!(
                 "Find a match on {} series: {matched} matched, {unmatched} unmatched, {failed} failed, {had} had one, {} being matched",
@@ -624,41 +620,43 @@ fn find_line(
     failed: u64,
     had: u64,
     busy: u64,
-    hit_line: Option<String>,
+    hit: Option<(String, String)>,
     miss_name: Option<String>,
-) -> String {
-    let shows = |n: u64| format!("{n} {}", crate::words::pick(n, "show", "shows"));
-    let mut said = Vec::new();
-    match (matched, hit_line) {
-        (0, _) => {}
-        (1, Some(line)) => said.push(line),
-        (m, _) => said.push(format!("Matched {}.", shows(m))),
-    }
-    match (unmatched, miss_name) {
-        (0, _) => {}
-        (1, Some(name)) => said.push(format!("No match found for {name}.")),
-        (u, _) => said.push(format!("No match found for {}.", shows(u))),
-    }
-    if failed > 0 {
-        said.push(format!(
-            "{} could not be searched; try again later.",
-            shows(failed)
-        ));
-    }
-    if had > 0 {
-        said.push(format!(
-            "{had} {} a match already.",
-            crate::words::pick(had, "show had", "shows had")
-        ));
-    }
-    if busy > 0 {
-        said.push(format!(
-            "{} {} being matched already.",
-            shows(busy),
-            crate::words::pick(busy, "is", "are")
-        ));
-    }
-    said.join(" ")
+) -> Words {
+    // Each sentence after the first is set off by a space; `$first` names the one
+    // that leads, so it gets none.
+    let first = [
+        ("matched", matched),
+        ("unmatched", unmatched),
+        ("failed", failed),
+        ("had", had),
+        ("busy", busy),
+    ]
+    .into_iter()
+    .find(|(_, n)| *n > 0)
+    .map_or("none", |(name, _)| name);
+    let (hit_named, hit_folder, hit_title) = match (matched, hit) {
+        (1, Some((folder, title))) => ("yes", folder, title),
+        _ => ("no", String::new(), String::new()),
+    };
+    let (miss_named, miss_name) = match (unmatched, miss_name) {
+        (1, Some(name)) => ("yes", name),
+        _ => ("no", String::new()),
+    };
+    crate::words!(
+        "core-metadata-find",
+        first = first,
+        matched = matched,
+        hitNamed = hit_named,
+        hitFolder = hit_folder,
+        hitTitle = hit_title,
+        unmatched = unmatched,
+        missNamed = miss_named,
+        missName = miss_name,
+        failed = failed,
+        had = had,
+        busy = busy,
+    )
 }
 
 /// Takes a series' identity away again, and keeps the auto-match off it

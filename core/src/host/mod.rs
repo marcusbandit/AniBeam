@@ -123,7 +123,7 @@ fn off() -> HostStatus {
     HostStatus {
         enabled: false,
         urls: Vec::new(),
-        message: "Off".to_string(),
+        message: crate::i18n::tr("core-host-off", &[]),
     }
 }
 
@@ -294,7 +294,7 @@ impl Host {
             HostStatus {
                 enabled: true,
                 urls: Vec::new(),
-                message: "Starting".to_string(),
+                message: crate::i18n::tr("core-host-starting", &[]),
             },
         );
         let bind = recover(&self.bind)
@@ -542,7 +542,10 @@ impl Serving {
         HostStatus {
             enabled: true,
             urls,
-            message: format!("Serving on {}", shown.join(", ")),
+            message: crate::i18n::tr(
+                "core-host-serving",
+                &[("addresses", shown.join(", ").into())],
+            ),
         }
     }
 }
@@ -571,7 +574,10 @@ async fn supervise(
                 if let Some(old) = serving.take() {
                     old.stop().await;
                 }
-                status.put(Some(&cancel), waiting("Tailscale is not connected"));
+                status.put(
+                    Some(&cancel),
+                    waiting(&crate::i18n::tr("core-host-no-tailscale", &[])),
+                );
             }
             Ok(wanted) => {
                 if let Some(s) = serving.as_mut()
@@ -640,7 +646,7 @@ async fn listen(core: &Weak<Core>, wanted: Vec<SocketAddr>) -> Result<Serving, S
     };
     let (_, failure) = serving.bind(&wanted).await;
     if serving.bound.is_empty() {
-        return Err(failure.unwrap_or_else(|| "Could not listen".to_string()));
+        return Err(failure.unwrap_or_else(|| crate::i18n::tr("core-host-cannot-listen", &[])));
     }
     Ok(serving)
 }
@@ -684,9 +690,20 @@ impl Serving {
                     took += 1;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                    failure = Some(format!("Port {} is taken", want.port()));
+                    failure = Some(crate::i18n::tr(
+                        "core-host-port-taken",
+                        &[("port", want.port().to_string().into())],
+                    ));
                 }
-                Err(e) => failure = Some(format!("Could not listen on {want}: {e}")),
+                Err(e) => {
+                    failure = Some(crate::i18n::tr(
+                        "core-host-cannot-listen-on",
+                        &[
+                            ("address", want.to_string().into()),
+                            ("error", e.to_string().into()),
+                        ],
+                    ));
+                }
             }
         }
         (took, failure)

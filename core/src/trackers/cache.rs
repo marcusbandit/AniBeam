@@ -28,7 +28,7 @@ use crate::time;
 use crate::trackers::accounts;
 use crate::trackers::on_hold;
 use crate::trackers::writes;
-use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, as_count};
+use crate::trackers::{TRACKER_TIMEOUT, as_count, no_token};
 
 /// How long a fetched list is taken to be current. Electron's
 /// `PROGRESS_FRESHNESS_MS`.
@@ -522,13 +522,14 @@ async fn fetch_and_replace(
 ) -> Result<usize, CoreError> {
     let token = accounts::access_token(core, t)
         .await?
-        .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
+        .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
     let entries = match t {
         Tracker::Anilist => {
             // AniList's collection is asked for by user id, so an account
             // whose profile never carried one cannot be read at all.
-            let user_id = user_id
-                .ok_or_else(|| accounts::tracker_error(t, "the account carries no user id"))?;
+            let user_id = user_id.ok_or_else(|| {
+                accounts::tracker_error(t, crate::i18n::tr("core-trackers-no-user-id", &[]))
+            })?;
             fetch_anilist(core, user_id, &token).await?
         }
         Tracker::Mal => fetch_mal(core, &token).await?,

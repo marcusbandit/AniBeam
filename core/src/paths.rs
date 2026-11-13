@@ -23,7 +23,7 @@ impl CorePaths {
     pub fn xdg() -> Result<CorePaths, CoreError> {
         let dirs = ProjectDirs::from("", "", "anibeam").ok_or_else(|| CoreError::Io {
             path: None,
-            message: "no home directory".to_string(),
+            message: crate::i18n::tr("core-paths-no-home", &[]),
         })?;
         let state = dirs
             .state_dir()

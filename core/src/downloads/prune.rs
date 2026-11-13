@@ -264,7 +264,7 @@ async fn check(
                 core.bus.say(
                     Level::Info,
                     Stage::Downloads,
-                    format!("Unsubscribed from {}, it finished airing.", d.title),
+                    crate::words!("core-downloads-pruned", title = &d.title),
                     format!(
                         "Unsubscribed from {}: finished airing {} ago",
                         d.title,
@@ -277,10 +277,7 @@ async fn check(
                 core.bus.say(
                     Level::Warn,
                     Stage::Downloads,
-                    format!(
-                        "Could not unsubscribe from {}. Check Downloads in Settings.",
-                        d.title
-                    ),
+                    crate::words!("core-downloads-prune-failed", title = &d.title),
                     format!(
                         "Could not unsubscribe from {}: {}",
                         d.title,

@@ -55,7 +55,7 @@ pub fn call(core: &Core, call: Call) -> Result<Reply, CoreError> {
             Call::CastStatus => Ok(Reply::CastState { state: None }),
             _ => Err(CoreError::invalid(
                 "cast",
-                "Casting is not part of this build",
+                crate::i18n::tr("core-cast-not-built", &[]),
             )),
         }
     }
@@ -234,12 +234,12 @@ mod imp {
         } else {
             let device = &state.device;
             let said = match state.state {
-                CastPlayState::Connecting => Some(format!("Casting to {device}.")),
-                CastPlayState::Ended => Some(format!("Finished casting to {device}.")),
-                CastPlayState::Stopped => Some(format!("Stopped casting to {device}.")),
-                CastPlayState::Failed => Some(format!(
-                    "Casting to {device} failed. Check that it is on the same network."
-                )),
+                CastPlayState::Connecting => {
+                    Some(crate::words!("core-cast-connecting", device = device))
+                }
+                CastPlayState::Ended => Some(crate::words!("core-cast-ended", device = device)),
+                CastPlayState::Stopped => Some(crate::words!("core-cast-stopped", device = device)),
+                CastPlayState::Failed => Some(crate::words!("core-cast-failed", device = device)),
                 CastPlayState::Playing | CastPlayState::Paused | CastPlayState::Buffering => None,
             };
             let what = match state.state {
@@ -289,6 +289,18 @@ mod imp {
         }
     }
 
+    fn no_route() -> String {
+        crate::i18n::tr("core-cast-no-route", &[])
+    }
+
+    fn no_control() -> String {
+        crate::i18n::tr("core-cast-no-control", &[])
+    }
+
+    fn not_handed(e: reqwest::Error) -> String {
+        crate::i18n::tr("core-cast-not-handed", &[("error", e.to_string().into())])
+    }
+
     fn fail(core: &Core, id: u64, error: String) {
         update(core, id, |s| {
             s.state.state = CastPlayState::Failed;
@@ -305,7 +317,9 @@ mod imp {
             })
             .await
             .copied()
-            .map_err(|e| format!("could not serve the episode: {e}"))
+            .map_err(|e| {
+                crate::i18n::tr("core-cast-serve-failed", &[("error", e.to_string().into())])
+            })
     }
 
     pub fn call(core: &Core, call: Call) -> Result<Reply, CoreError> {
@@ -338,7 +352,7 @@ mod imp {
                     .find(|f| f.device.id == device)
                     .cloned()
                     .ok_or_else(|| {
-                        CoreError::invalid("device", "That device is no longer on the network")
+                        CoreError::invalid("device", crate::i18n::tr("core-cast-device-gone", &[]))
                     })?;
                 let path = file_path(core, file)?;
                 stop(core);
@@ -416,11 +430,14 @@ mod imp {
                     .find(|f| f.device.id == device)
                     .cloned()
                     .ok_or_else(|| {
-                        CoreError::invalid("device", "That device is no longer on the network")
+                        CoreError::invalid("device", crate::i18n::tr("core-cast-device-gone", &[]))
                     })?;
                 let Some((dir, name)) = url.split('?').next().and_then(|u| u.rsplit_once('/'))
                 else {
-                    return Err(CoreError::invalid("url", "not a playlist address"));
+                    return Err(CoreError::invalid(
+                        "url",
+                        crate::i18n::tr("core-cast-not-a-playlist", &[]),
+                    ));
                 };
                 let dir = format!("{dir}/");
                 let query = url.split_once('?').map(|(_, q)| q).unwrap_or_default();
@@ -510,13 +527,19 @@ mod imp {
         let inner = inner(core);
         let s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
         let Some(session) = s.as_ref() else {
-            return Err(CoreError::invalid("cast", "Nothing is casting"));
+            return Err(CoreError::invalid(
+                "cast",
+                crate::i18n::tr("core-cast-nothing", &[]),
+            ));
         };
         match &session.control {
             Control::Cast(c) => f(Ctl::Cast(c), session.id),
             Control::Dlna { client, .. } => f(Ctl::Dlna(client.clone()), session.id),
             Control::Starting => {
-                return Err(CoreError::invalid("cast", "The device is still starting"));
+                return Err(CoreError::invalid(
+                    "cast",
+                    crate::i18n::tr("core-cast-still-starting", &[]),
+                ));
             }
         }
         Ok(Reply::Ok)
@@ -540,7 +563,10 @@ mod imp {
         let (mode, base, title, id, prepared, pieces) = {
             let mut s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
             let Some(s) = s.as_mut() else {
-                return Err(CoreError::invalid("cast", "Nothing is casting"));
+                return Err(CoreError::invalid(
+                    "cast",
+                    crate::i18n::tr("core-cast-nothing", &[]),
+                ));
             };
             s.state.position = to;
             (
@@ -630,8 +656,7 @@ mod imp {
     ) -> Result<(), String> {
         let inner = inner(core);
         let port = server(&inner).await?.port();
-        let ip =
-            discover::local_ip_for(found.addr.ip()).ok_or("this device has no route to the TV")?;
+        let ip = discover::local_ip_for(found.addr.ip()).ok_or_else(no_route)?;
         let host = discover::dev()
             .advertise
             .unwrap_or_else(|| format!("{ip}:{port}"));
@@ -687,20 +712,17 @@ mod imp {
     ) -> Result<(), String> {
         let inner = inner(core);
         let client = Arc::new(dlna::Client::new(
-            found
-                .control
-                .clone()
-                .ok_or("the TV gave no control address")?,
+            found.control.clone().ok_or_else(no_control)?,
         ));
         let list = served::relay_client()
             .get(format!("{dir}{playlist}"))
             .send()
             .await
             .and_then(|r| r.error_for_status())
-            .map_err(|e| format!("the other computer did not hand over the episode: {e}"))?
+            .map_err(not_handed)?
             .text()
             .await
-            .map_err(|e| format!("the other computer did not hand over the episode: {e}"))?;
+            .map_err(not_handed)?;
         // The fetch can take as long as the other computer needs to start converting; a
         // cast stopped or replaced meanwhile is left alone, and so is the TV.
         if !current(&inner, id) {
@@ -708,11 +730,10 @@ mod imp {
         }
         let pieces = Arc::new(served::read_pieces(&list));
         if pieces.is_empty() {
-            return Err("the other computer sent an empty playlist".into());
+            return Err(crate::i18n::tr("core-cast-empty-playlist", &[]));
         }
         let port = server(&inner).await?.port();
-        let ip =
-            discover::local_ip_for(found.addr.ip()).ok_or("this device has no route to the TV")?;
+        let ip = discover::local_ip_for(found.addr.ip()).ok_or_else(no_route)?;
         let host = discover::dev()
             .advertise
             .unwrap_or_else(|| format!("{ip}:{port}"));
@@ -786,7 +807,7 @@ mod imp {
         let inner = inner(core);
         let port = server(&inner).await?.port();
         let peer: IpAddr = found.addr.ip();
-        let ip = discover::local_ip_for(peer).ok_or("this device has no route to the TV")?;
+        let ip = discover::local_ip_for(peer).ok_or_else(no_route)?;
         let host = discover::dev()
             .advertise
             .unwrap_or_else(|| format!("{ip}:{port}"));
@@ -867,10 +888,7 @@ mod imp {
             }
             CastKind::Dlna => {
                 let client = Arc::new(dlna::Client::new(
-                    found
-                        .control
-                        .clone()
-                        .ok_or("the TV gave no control address")?,
+                    found.control.clone().ok_or_else(no_control)?,
                 ));
                 let srt = prepared
                     .as_ref()
@@ -918,7 +936,10 @@ mod imp {
                         let url = format!("{base}/stream.mp4?t={start:.3}");
                         let meta = dlna::didl(&url, "video/mp4", &title, srt.as_deref());
                         client.set_uri(&url, &meta).await.map_err(|e| {
-                            format!("{e}; it refused the file as it is too ({first})")
+                            crate::i18n::tr(
+                                "core-cast-refused-both",
+                                &[("error", e.into()), ("first", first.into())],
+                            )
                         })?;
                         client.play().await?;
                         Mode::Progressive {
@@ -960,9 +981,9 @@ mod imp {
                 let mut e = st
                     .error
                     .clone()
-                    .unwrap_or_else(|| "the Chromecast stopped".into());
+                    .unwrap_or_else(|| crate::i18n::tr("core-cast-chromecast-stopped", &[]));
                 if s.hevc_doubt {
-                    e.push_str(". This episode is HEVC, which only newer Chromecasts (with Google TV, or Ultra) decode");
+                    e = crate::i18n::tr("core-cast-hevc", &[("error", e.into())]);
                 }
                 s.state.error = Some(e);
             }

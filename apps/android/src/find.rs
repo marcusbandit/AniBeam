@@ -69,19 +69,15 @@ enum Why {
 
 impl Why {
     fn of(e: &CoreError) -> Why {
-        let text = e.to_string();
-        let lower = text.to_lowercase();
-        if lower.contains("timed out")
-            || lower.contains("error sending request")
-            || lower.contains("unreachable")
-            || lower.contains("connect")
-        {
+        // The words are in the reader's language, so the kind of failure comes from the
+        // error's shape (#792)
+        if e.is_unreachable() {
             return Why::Blocked(match e {
                 CoreError::Service { service, .. } => service.clone(),
                 _ => String::new(),
             });
         }
-        Why::Text(text)
+        Why::Text(e.to_string())
     }
 
     fn say(&self) -> String {

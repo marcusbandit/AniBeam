@@ -4,6 +4,7 @@ pub mod enums;
 pub mod error;
 pub mod events;
 pub mod records;
+pub mod words;
 
 pub use calls::*;
 pub use downloads::*;
@@ -11,6 +12,7 @@ pub use enums::*;
 pub use error::*;
 pub use events::*;
 pub use records::*;
+pub use words::*;
 
 #[cfg(test)]
 mod tests {
@@ -125,6 +127,11 @@ mod tests {
         for kind in every_job_kind() {
             let words = kind.doing();
             assert!(!words.is_empty(), "{kind:?} has no words");
+            assert!(
+                crate::i18n::exists(kind.words_id())
+                    && crate::i18n::exists(&format!("{}.stopped", kind.words_id())),
+                "{kind:?} is missing from the catalog"
+            );
             assert!(
                 !words.contains(['-', '\u{2013}', '\u{2014}', '.']),
                 "{kind:?}: {words:?} has a dash or a full stop"
