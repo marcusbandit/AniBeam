@@ -8,11 +8,15 @@
 //! it, or further when the user asked for more (`until`). What the window
 //! does to an episode depends on its shape:
 //!
-//! - a file of a batch is set to "do not download" in qBittorrent outside
-//!   the window and back to normal inside it, the next one to watch at top
-//!   priority so it finishes first;
-//! - a single-episode release is held in the roll and only added to
-//!   qBittorrent once the window reaches it.
+//! - a file of a batch is set to "do not download" in the torrent client
+//!   outside the window and back to normal inside it, the next one to watch
+//!   at top priority so it finishes first;
+//! - a single-episode release is held in the roll and only added to the
+//!   client once the window reaches it.
+//!
+//! The client is qBittorrent on the desktop and the phone's own engine
+//! (`phone::engine`) on the phone; both answer through [`RollClient`], so
+//! the window, the watching and the deleting are the same code on each.
 //!
 //! Only a completion recorded since the roll began counts as watched, so a
 //! show seen once before and fetched again to rewatch starts at the start,
@@ -24,7 +28,7 @@
 //! A single-episode torrent is removed with its file. A batch file is
 //! deleted from the disk only when the client keeps its files on this
 //! machine and the path sits inside the torrent's save folder; the torrent
-//! is then rechecked so qBittorrent stops offering pieces it no longer has.
+//! is then rechecked so the client stops offering pieces it no longer has.
 //!
 //! Rolls are kept as JSON in the settings table. A pass runs right after
 //! the add (a short burst until each torrent is found), on every torrent
@@ -36,6 +40,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -62,14 +67,109 @@ const UNBOUND_AGE_SECS: i64 = 3 * 24 * 3600;
 /// The most a window may reach ahead, so a typo cannot fetch a whole run.
 pub const MAX_AHEAD: u32 = 500;
 
-/// qBittorrent's file priorities: skipped, normal and maximal.
-const SKIP: i64 = 0;
-const NORMAL: i64 = 1;
-const FIRST: i64 = 7;
+/// qBittorrent's file priorities: skipped, normal and maximal. The phone's
+/// engine keeps the same numbers.
+pub const SKIP: i64 = 0;
+pub const NORMAL: i64 = 1;
+pub const FIRST: i64 = 7;
 
 const VIDEO: &[&str] = &[
     "mkv", "mp4", "avi", "webm", "m4v", "mov", "ts", "m2ts", "wmv", "flv", "ogm",
 ];
+
+/// What a pass asks of the torrent client. qBittorrent answers it on the
+/// desktop, the phone's own engine on the phone.
+pub trait RollClient: Sync {
+    /// A torrent's files, each with the priority it has now.
+    fn files(&self, hash: &str)
+    -> impl Future<Output = Result<Vec<TorrentFile>, CoreError>> + Send;
+    fn set_file_priority(
+        &self,
+        hash: &str,
+        ids: &[usize],
+        priority: i64,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send;
+    fn set_sequential(
+        &self,
+        hashes: &[String],
+        on: bool,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send;
+    fn delete(
+        &self,
+        hashes: &[String],
+        files: bool,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send;
+    /// Files of the torrent were deleted underneath it: the client checks
+    /// what it still has.
+    fn recheck(&self, hashes: &[String]) -> impl Future<Output = Result<(), CoreError>> + Send;
+    /// Whether the client's files are on this machine, so a batch file can
+    /// be deleted from the disk here.
+    fn files_here(&self, core: &Core) -> bool;
+    /// Adds held singles the window reached, answering a hash for each
+    /// release it took, in order, when it can.
+    fn add(
+        &self,
+        core: &Arc<Core>,
+        items: &[Release],
+        roll: &Roll,
+    ) -> impl Future<Output = Result<Vec<String>, CoreError>> + Send;
+}
+
+impl RollClient for QbtClient {
+    fn files(
+        &self,
+        hash: &str,
+    ) -> impl Future<Output = Result<Vec<TorrentFile>, CoreError>> + Send {
+        QbtClient::files(self, hash)
+    }
+    fn set_file_priority(
+        &self,
+        hash: &str,
+        ids: &[usize],
+        priority: i64,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send {
+        QbtClient::set_file_priority(self, hash, ids, priority)
+    }
+    fn set_sequential(
+        &self,
+        hashes: &[String],
+        on: bool,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send {
+        QbtClient::set_sequential(self, hashes, on)
+    }
+    fn delete(
+        &self,
+        hashes: &[String],
+        files: bool,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send {
+        QbtClient::delete(self, hashes, files)
+    }
+    fn recheck(&self, hashes: &[String]) -> impl Future<Output = Result<(), CoreError>> + Send {
+        QbtClient::recheck(self, hashes)
+    }
+    fn files_here(&self, core: &Core) -> bool {
+        settings::read(core)
+            .map(|s| settings::files_here(&s))
+            .unwrap_or(false)
+    }
+    async fn add(
+        &self,
+        core: &Arc<Core>,
+        items: &[Release],
+        roll: &Roll,
+    ) -> Result<Vec<String>, CoreError> {
+        let backend = super::backend::DownloadsBackend::open(core).await?;
+        let added = backend
+            .download(
+                items,
+                roll.name.as_deref(),
+                super::still_there(roll.home.as_deref()),
+            )
+            .await?;
+        super::move_home(core, items, &added, roll.home.as_deref());
+        Ok(added.hashes)
+    }
+}
 
 /// One rolling download.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -562,6 +662,36 @@ pub fn more(roll: &mut Roll, count: u32) {
     }
 }
 
+/// The priority of each file of a batch about to be added, from its file list, for a
+/// client that can hold files back from the start (the phone's engine): the first window
+/// fetched, the rest skipped. None when the batch holds no more episodes than the roll's
+/// `over`, so it does not roll and is added whole. `part` is the batch's part.
+pub fn first_window(roll: &Roll, part: usize, files: &[TorrentFile]) -> Option<Vec<i64>> {
+    let mut r = roll.clone();
+    let p = r.parts.get_mut(part)?;
+    p.units = units_of(files);
+    p.counted = true;
+    if let Some(over) = r.over
+        && r.parts.iter().all(|p| p.counted)
+    {
+        let total: usize = r.parts.iter().map(|p| p.units.len()).sum();
+        if total <= over as usize {
+            return None;
+        }
+        r.over = None;
+    }
+    if r.over.is_some() {
+        return None;
+    }
+    let mut out = vec![NORMAL; files.len()];
+    for (i, priority) in moves(&r).priorities.remove(&part).unwrap_or_default() {
+        if let Some(slot) = out.get_mut(i) {
+            *slot = priority;
+        }
+    }
+    Some(out)
+}
+
 // Binding and finishing --------------------------------------------------------
 
 /// Binds each added part with no hash to its torrent: the earliest one added
@@ -762,7 +892,7 @@ fn save_changes(core: &Core, before: &[Roll], after: &[Roll]) -> Result<(), Core
 }
 
 /// Saves new rolls, numbering them after the stored ones.
-async fn add_rolls(core: &Arc<Core>, rolls: Vec<Roll>) -> Result<(), CoreError> {
+pub(crate) async fn add_rolls(core: &Arc<Core>, rolls: Vec<Roll>) -> Result<(), CoreError> {
     core.store
         .write_async(move |c| {
             let mut cur = kv::get::<Vec<Roll>>(c, ROLLS)?.unwrap_or_default();
@@ -799,7 +929,7 @@ fn edit(core: &Core, id: u64, f: impl FnOnce(&mut Roll) + Send + 'static) -> Res
 static PASS: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 /// One pass over the stored rolls against a fresh torrent read.
-pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
+pub async fn tick<C: RollClient>(core: &Arc<Core>, client: &C, torrents: &[Torrent]) {
     let _one = PASS.lock().await;
     let before = match load(core) {
         Ok(r) if !r.is_empty() => r,
@@ -809,9 +939,7 @@ pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
             return;
         }
     };
-    let here = settings::read(core)
-        .map(|s| settings::files_here(&s))
-        .unwrap_or(false);
+    let here = client.files_here(core);
     let mut rolls = before.clone();
     bind(&mut rolls, torrents);
     let now = now_secs();
@@ -833,9 +961,9 @@ enum Step {
     Drop,
 }
 
-async fn step(
+async fn step<C: RollClient>(
     core: &Arc<Core>,
-    client: &QbtClient,
+    client: &C,
     roll: &mut Roll,
     torrents: &[Torrent],
     here: bool,
@@ -977,35 +1105,24 @@ async fn step(
             .iter()
             .map(|&p| roll.parts[p].release.clone())
             .collect();
-        match super::backend::DownloadsBackend::open(core).await {
-            Ok(backend) => match backend
-                .download(
-                    &items,
-                    roll.name.as_deref(),
-                    super::still_there(roll.home.as_deref()),
-                )
-                .await
-            {
-                Ok(added) => {
-                    for &p in &m.add {
-                        roll.parts[p].added = true;
-                    }
-                    let mut parts: Vec<&mut Part> = roll
-                        .parts
-                        .iter_mut()
-                        .enumerate()
-                        .filter(|(i, _)| m.add.contains(i))
-                        .map(|(_, p)| p)
-                        .collect();
-                    take_hashes(&mut parts, &added.hashes);
-                    super::move_home(core, &items, &added, roll.home.as_deref());
-                    acted.push(format!(
-                        "added {}",
-                        plural(m.add.len(), "episode", "episodes")
-                    ));
+        match client.add(core, &items, roll).await {
+            Ok(hashes) => {
+                for &p in &m.add {
+                    roll.parts[p].added = true;
                 }
-                Err(e) => tracing::warn!("{}: held episodes not added: {e}", roll.title),
-            },
+                let mut parts: Vec<&mut Part> = roll
+                    .parts
+                    .iter_mut()
+                    .enumerate()
+                    .filter(|(i, _)| m.add.contains(i))
+                    .map(|(_, p)| p)
+                    .collect();
+                take_hashes(&mut parts, &hashes);
+                acted.push(format!(
+                    "added {}",
+                    plural(m.add.len(), "episode", "episodes")
+                ));
+            }
             Err(e) => tracing::warn!("{}: held episodes not added: {e}", roll.title),
         }
     }
@@ -1144,7 +1261,7 @@ pub async fn after_add(core: &Arc<Core>, mut rolls: Vec<Roll>, now: &[Release], 
                 continue;
             };
             match client.torrents().await {
-                Ok(torrents) => tick(&core, &client, &torrents).await,
+                Ok(torrents) => tick(&core, client.as_ref(), &torrents).await,
                 Err(e) => tracing::debug!("rolling read failed: {e}"),
             }
             match load(&core) {
@@ -1179,24 +1296,32 @@ pub fn nudge(core: &Core) {
 }
 
 /// A pass with a fresh read, then a torrent read for the page. Where the
-/// read runs the pass itself, the read alone.
+/// read runs the pass itself, the read alone. On the phone, a pass over its
+/// own engine.
 async fn pass_now(core: &Arc<Core>) {
-    if core.downloads.unattended_allowed() {
-        let _ = super::list_torrents(core);
-        return;
+    #[cfg(feature = "phone")]
+    {
+        crate::phone::roll_pass(core).await;
     }
-    let client = match super::qbt_client(core).await {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::debug!("rolling pass skipped: {e}");
+    #[cfg(not(feature = "phone"))]
+    {
+        if core.downloads.unattended_allowed() {
+            let _ = super::list_torrents(core);
             return;
         }
-    };
-    match client.torrents().await {
-        Ok(torrents) => tick(core, &client, &torrents).await,
-        Err(e) => tracing::debug!("rolling read failed: {e}"),
+        let client = match super::qbt_client(core).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::debug!("rolling pass skipped: {e}");
+                return;
+            }
+        };
+        match client.torrents().await {
+            Ok(torrents) => tick(core, client.as_ref(), &torrents).await,
+            Err(e) => tracing::debug!("rolling read failed: {e}"),
+        }
+        let _ = super::list_torrents(core);
     }
-    let _ = super::list_torrents(core);
 }
 
 /// `SetRoll`: how far ahead, whether watched episodes go, or stop rolling.
@@ -1226,6 +1351,23 @@ pub fn set(
     })?;
     kick(core);
     Ok(Reply::Ok)
+}
+
+/// `SetRollingSettings`: the rolling part of the downloads settings, the
+/// rest left as stored. Out-of-range numbers are brought into range, the
+/// way the desktop's sliders hold them.
+pub fn set_settings(core: &Core, mut rolling: RollingSettings) -> Result<Reply, CoreError> {
+    rolling.ahead = rolling.ahead.clamp(1, MAX_AHEAD);
+    rolling.over = rolling.over.max(1);
+    rolling.keep_watched = rolling.keep_watched.min(MAX_AHEAD);
+    let home = super::home::AnirssHome::of(&core.paths);
+    let saved = rolling.clone();
+    core.store.write(move |c| {
+        let mut s = settings::load_stored(c, &home)?;
+        s.rolling = saved;
+        settings::save(c, &s)
+    })?;
+    Ok(Reply::RollingSettings { rolling })
 }
 
 /// `RollMore`: fetch `count` more episodes now.
@@ -1538,6 +1680,58 @@ mod tests {
         assert_eq!(p.rolls.len(), 1);
         assert_eq!(p.rolls[0].over, Some(30));
         assert!(!p.rolls[0].parts[0].counted);
+    }
+
+    fn batch_files(n: usize) -> Vec<TorrentFile> {
+        let mut files: Vec<TorrentFile> = (1..=n)
+            .map(|i| file(&format!("Show/Show - {i:03} [1080p].mkv"), NORMAL))
+            .collect();
+        files.push(file("Show/Show.nfo", NORMAL));
+        files
+    }
+
+    #[test]
+    fn a_long_batch_starts_with_only_its_first_window_fetched() {
+        let items = singles(&["[Judas] Black Clover (001-040) [1080p][Batch]"]);
+        let p = plan(
+            &items,
+            &DownloadOptions::default(),
+            &RollingSettings::default(),
+            None,
+            5,
+        );
+        let wish = first_window(&p.rolls[0], 0, &batch_files(40)).unwrap();
+        assert_eq!(wish.len(), 41);
+        assert_eq!(wish[0], FIRST);
+        assert!(wish[1..12].iter().all(|&w| w == NORMAL));
+        assert!(wish[12..40].iter().all(|&w| w == SKIP));
+        // Not an episode: the nfo comes whatever the window.
+        assert_eq!(wish[40], NORMAL);
+    }
+
+    #[test]
+    fn a_short_batch_has_no_first_window_unless_asked_to_roll() {
+        let items = singles(&["[Judas] Black Clover (001-020) [1080p][Batch]"]);
+        let p = plan(
+            &items,
+            &DownloadOptions::default(),
+            &RollingSettings::default(),
+            None,
+            5,
+        );
+        assert_eq!(first_window(&p.rolls[0], 0, &batch_files(20)), None);
+        let asked = plan(
+            &items,
+            &DownloadOptions {
+                rolling: Some(true),
+                ..Default::default()
+            },
+            &RollingSettings::default(),
+            None,
+            5,
+        );
+        let wish = first_window(&asked.rolls[0], 0, &batch_files(20)).unwrap();
+        assert_eq!(wish.iter().filter(|&&w| w == SKIP).count(), 8);
     }
 
     #[test]

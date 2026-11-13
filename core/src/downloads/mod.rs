@@ -136,7 +136,7 @@ impl Downloads {
         self.sandbox_finds_clients.store(true, Ordering::Relaxed);
     }
 
-    fn unattended_allowed(&self) -> bool {
+    pub(crate) fn unattended_allowed(&self) -> bool {
         !self.unattended_off.load(Ordering::Relaxed)
     }
 
@@ -2446,7 +2446,7 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
             let transfer = client.transfer().await?;
             if owner.downloads.unattended_allowed() {
                 replace::tick(&owner, &client, &torrents).await;
-                rolling::tick(&owner, &client, &torrents).await;
+                rolling::tick(&owner, client.as_ref(), &torrents).await;
             }
             Ok::<_, CoreError>((torrents, transfer))
         }

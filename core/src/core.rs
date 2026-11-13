@@ -1267,6 +1267,10 @@ impl Core {
                 delete_watched,
             } => downloads::rolling::set(self, id, ahead, on, delete_watched),
             Call::RollMore { id, count } => downloads::rolling::roll_more(self, id, count),
+            Call::GetRollingSettings => Ok(Reply::RollingSettings {
+                rolling: downloads::settings::read(self)?.rolling,
+            }),
+            Call::SetRollingSettings { rolling } => downloads::rolling::set_settings(self, rolling),
             Call::SetDownloadSettings {
                 settings,
                 anirss_token,
@@ -1340,7 +1344,8 @@ impl Core {
                 items,
                 name,
                 limit_bytes,
-            } => crate::phone::download(self, items, name, limit_bytes),
+                rolling,
+            } => crate::phone::download(self, items, name, limit_bytes, rolling),
             Call::PhoneSubscribe {
                 query,
                 endpoint,

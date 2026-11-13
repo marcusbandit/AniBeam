@@ -5,7 +5,11 @@
 pub mod check;
 #[cfg(feature = "phone")]
 pub mod engine;
+#[cfg(feature = "phone")]
+pub mod storage;
 
+#[cfg(feature = "phone")]
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::contract::*;
@@ -449,69 +453,258 @@ pub fn download(
     items: Vec<Release>,
     name: Option<String>,
     limit_bytes: Option<u64>,
+    rolling: Option<bool>,
 ) -> Result<Reply, CoreError> {
+    use crate::downloads::rolling;
     if items.is_empty() {
         return Err(CoreError::invalid("items", "nothing to download"));
     }
     let folder = name_for(name.as_deref(), &items, "Downloads")?;
-    if let Some(limit) = limit_bytes {
-        // On disk, plus what the engine still has to write, plus these; a release whose
-        // size the feed did not give counts as a typical episode.
-        let used = used_bytes(&library_dir(core));
-        let pending: u64 = core.handle.block_on(async {
-            match engine(core).await {
-                Ok(e) => e
-                    .list()
-                    .await
-                    .iter()
-                    .map(|t| t.size.saturating_sub((t.progress * t.size as f64) as u64))
-                    .sum(),
-                Err(_) => 0,
-            }
-        });
-        let size: u64 = items
-            .iter()
-            .map(|i| crate::downloads::facts::size_bytes(&i.size).unwrap_or(1_500_000_000))
-            .sum();
-        if used + pending + size > limit {
-            return Err(CoreError::invalid(
-                "limit",
-                format!(
-                    "this would take AniBeam past its storage cap ({:.1} of {:.1} GB used or on the way); delete episodes or raise the cap",
-                    (used + pending) as f64 / 1e9,
-                    limit as f64 / 1e9
-                ),
-            ));
-        }
-    }
-    core.handle.block_on(async {
-        let engine = engine(core).await?;
-        for item in &items {
-            let file = torrent_file(core, &item.link).await?;
-            engine.add(item, &folder, file).await?;
-        }
-        Ok::<(), CoreError>(())
-    })?;
-    let what = if items.len() == 1 {
-        items[0].title.clone()
-    } else {
-        format!("{} releases of {folder}", items.len())
+    // A long show is held to a window of episodes, as on the desktop: a pick of single
+    // episodes adds only the first window, and a batch is added with only its first window
+    // fetched, picked from its file list before a byte of the rest is written.
+    let settings = crate::downloads::settings::read(core)?.rolling;
+    let options = DownloadOptions {
+        rolling,
+        ..Default::default()
     };
+    let mut plan = rolling::plan(
+        &items,
+        &options,
+        &settings,
+        Some(&folder),
+        crate::time::now_secs(),
+    );
+    let owner = core.owner()?;
+    let (added, failed) = core.handle.block_on(async {
+        let engine = engine(core).await?;
+        // Each rolling batch's file list first, so its first window is known before
+        // anything is added and only that counts against the storage cap.
+        let mut peeks: HashMap<String, (engine::Peeked, Option<Vec<i64>>)> = HashMap::new();
+        for r in &plan.rolls {
+            let [p] = r.parts.as_slice() else { continue };
+            if p.single {
+                continue;
+            }
+            let file = torrent_file(core, &p.release.link).await?;
+            let peeked = engine.peek(&p.release, file).await?;
+            let first = rolling::first_window(r, 0, &peeked.files);
+            peeks.insert(p.release.link.clone(), (peeked, first));
+        }
+        if let Some(limit) = limit_bytes {
+            // On disk, plus what the engine still has to write, plus these; a release whose
+            // size the feed did not give counts as a typical episode.
+            let used = used_bytes(&library_dir(core));
+            let pending: u64 = engine
+                .list()
+                .await
+                .iter()
+                .map(|t| t.size.saturating_sub((t.progress * t.size as f64) as u64))
+                .sum();
+            let size: u64 = plan
+                .now
+                .iter()
+                .map(|i| match peeks.get(&i.link) {
+                    Some((peeked, first)) => peeked
+                        .files
+                        .iter()
+                        .enumerate()
+                        .filter(|(n, _)| {
+                            first
+                                .as_ref()
+                                .is_none_or(|w| w.get(*n) != Some(&rolling::SKIP))
+                        })
+                        .map(|(_, f)| f.size)
+                        .sum(),
+                    None => crate::downloads::facts::size_bytes(&i.size).unwrap_or(1_500_000_000),
+                })
+                .sum();
+            if used + pending + size > limit {
+                return Err(CoreError::invalid(
+                    "limit",
+                    format!(
+                        "this would take AniBeam past its storage cap ({:.1} of {:.1} GB used or on the way); delete episodes or raise the cap",
+                        (used + pending) as f64 / 1e9,
+                        limit as f64 / 1e9
+                    ),
+                ));
+            }
+        }
+        let mut added: HashMap<String, String> = HashMap::new();
+        let mut failed = None;
+        for item in &plan.now {
+            let got = match peeks.remove(&item.link) {
+                Some((peeked, first)) => {
+                    // Not long enough to roll: the whole batch comes, as any other.
+                    if first.is_none()
+                        && let Some(r) = plan
+                            .rolls
+                            .iter_mut()
+                            .find(|r| r.parts.iter().any(|p| p.release.link == item.link))
+                    {
+                        r.parts.clear();
+                    }
+                    engine
+                        .add_peeked(item, &folder, peeked, first.unwrap_or_default())
+                        .await
+                }
+                None => match torrent_file(core, &item.link).await {
+                    Ok(file) => engine.add(item, &folder, file).await,
+                    Err(e) => Err(e),
+                },
+            };
+            match got {
+                Ok(hash) => {
+                    added.insert(item.link.clone(), hash);
+                }
+                // The ones after it are left: the engine would likely refuse them too.
+                Err(e) => {
+                    failed = Some(e);
+                    break;
+                }
+            }
+        }
+        // Each roll's added parts get their torrents; a single that did not go in waits in
+        // its roll for the window, and a batch that did not go in has nothing to roll.
+        for r in plan.rolls.iter_mut() {
+            for p in r.parts.iter_mut().filter(|p| p.added) {
+                match added.get(&p.release.link) {
+                    Some(hash) => p.hash = hash.clone(),
+                    None if p.single => p.added = false,
+                    None => p.gone = true,
+                }
+            }
+        }
+        plan.rolls
+            .retain(|r| !r.parts.is_empty() && r.parts.iter().any(|p| p.added && !p.gone));
+        if !plan.rolls.is_empty() {
+            let rolls = std::mem::take(&mut plan.rolls);
+            rolling::add_rolls(&owner, rolls).await?;
+            let torrents = engine.list().await;
+            rolling::tick(&owner, &PhoneRolls { core, engine }, &torrents).await;
+        }
+        Ok::<_, CoreError>((added, failed))
+    })?;
+    if added.is_empty()
+        && let Some(e) = failed
+    {
+        return Err(e);
+    }
+    let count = added.len();
+    let what = if count == 1 {
+        plan.now
+            .iter()
+            .find(|i| added.contains_key(&i.link))
+            .map(|i| i.title.clone())
+            .unwrap_or_default()
+    } else {
+        format!("{count} releases of {folder}")
+    };
+    let held = items.len().saturating_sub(plan.now.len());
     core.bus.say(
         Level::Info,
         Stage::Downloads,
         format!(
             "Started downloading {} of {folder}.",
-            if items.len() == 1 {
+            if count == 1 {
                 "an episode".to_string()
             } else {
-                format!("{} episodes", items.len())
+                format!("{count} episodes")
             }
         ),
-        format!("Downloading {what}"),
+        if held > 0 {
+            format!("Downloading {what}, {held} more waiting to roll in")
+        } else {
+            format!("Downloading {what}")
+        },
         EventBody::Notice,
     );
-    Ok(Reply::Ok)
+    match failed {
+        Some(e) => Err(e),
+        None => Ok(Reply::Ok),
+    }
+}
+
+/// The phone's engine as the rolling downloads' client.
+#[cfg(feature = "phone")]
+struct PhoneRolls<'a> {
+    core: &'a Core,
+    engine: &'a engine::Engine,
+}
+
+#[cfg(feature = "phone")]
+impl crate::downloads::rolling::RollClient for PhoneRolls<'_> {
+    async fn files(&self, hash: &str) -> Result<Vec<TorrentFile>, CoreError> {
+        self.engine.files(hash)
+    }
+
+    async fn set_file_priority(
+        &self,
+        hash: &str,
+        ids: &[usize],
+        priority: i64,
+    ) -> Result<(), CoreError> {
+        self.engine.set_priority(hash, ids, priority).await
+    }
+
+    /// librqbit always fetches a torrent's files in name order, which is episode order.
+    async fn set_sequential(&self, _: &[String], _: bool) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    async fn delete(&self, hashes: &[String], files: bool) -> Result<(), CoreError> {
+        let action = if files {
+            PhoneAction::Remove
+        } else {
+            PhoneAction::Forget
+        };
+        self.engine.control(hashes, action).await
+    }
+
+    async fn recheck(&self, hashes: &[String]) -> Result<(), CoreError> {
+        for h in hashes {
+            self.engine.close_files(h);
+        }
+        Ok(())
+    }
+
+    fn files_here(&self, _: &Core) -> bool {
+        true
+    }
+
+    async fn add(
+        &self,
+        _: &std::sync::Arc<Core>,
+        items: &[Release],
+        roll: &crate::downloads::rolling::Roll,
+    ) -> Result<Vec<String>, CoreError> {
+        let folder = name_for(roll.name.as_deref(), items, "Downloads")?;
+        let mut hashes = Vec::new();
+        for item in items {
+            let file = torrent_file(self.core, &item.link).await?;
+            hashes.push(self.engine.add(item, &folder, file).await?);
+        }
+        Ok(hashes)
+    }
+}
+
+/// A pass over the rolling downloads against the engine now: after an episode was watched
+/// to the end, or a roll was changed.
+#[cfg(feature = "phone")]
+pub async fn roll_pass(core: &std::sync::Arc<Core>) {
+    let engine = match engine(core).await {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::debug!("rolling pass skipped: {e}");
+            return;
+        }
+    };
+    let torrents = engine.list().await;
+    let client = PhoneRolls {
+        core: core.as_ref(),
+        engine,
+    };
+    crate::downloads::rolling::tick(core, &client, &torrents).await;
 }
 
 /// Subscribes to a search (`Subscribe`): the core keeps the feed and its rule, takes what
@@ -767,11 +960,20 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
     }
 }
 
+/// The engine's torrents, each rolling one with its roll. The read is also when the
+/// rolling downloads move on, as the desktop's torrent read is.
 #[cfg(feature = "phone")]
 pub fn torrents(core: &Core) -> Result<Reply, CoreError> {
     core.handle.block_on(async {
         let engine = engine(core).await?;
-        let torrents = engine.list().await;
+        let mut torrents = engine.list().await;
+        if core.downloads.unattended_allowed()
+            && let Ok(owner) = core.owner()
+        {
+            crate::downloads::rolling::tick(&owner, &PhoneRolls { core, engine }, &torrents).await;
+            torrents = engine.list().await;
+        }
+        crate::downloads::rolling::annotate(core, &mut torrents);
         // Which torrent each library file came from, as the desktop records it from
         // qBittorrent (#620), off this call's path so the list never waits on the store.
         record_origins(core, torrents.clone(), "on a list read");
@@ -838,6 +1040,7 @@ pub fn download(
     _: Vec<Release>,
     _: Option<String>,
     _: Option<u64>,
+    _: Option<bool>,
 ) -> Result<Reply, CoreError> {
     Err(unsupported())
 }

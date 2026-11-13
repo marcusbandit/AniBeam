@@ -204,6 +204,31 @@ more-storage-used = used by episodes
 more-storage-cap-caption = cap
 more-storage-free = free on the phone
 more-set-storage-cap = Storage cap
+more-set-rolling = Keep the next few ready
+more-roll-note-over = { $count ->
+    [one] Over { $count } episode
+   *[other] Over { $count } episodes
+}
+more-roll-note-asked = When asked
+more-roll-big = For long shows
+more-roll-big-help = { $count ->
+    [one] Anything over { $count } episode downloads a few at a time by itself. Its card in Downloads can still get everything at once.
+   *[other] Anything over { $count } episodes downloads a few at a time by itself. Its card in Downloads can still get everything at once.
+}
+more-roll-ahead = Episodes ahead
+more-roll-ahead-help = How many stay downloaded past the one you are on. 12 is about a season.
+more-roll-over = Long means over
+more-roll-over-help = Downloads with more episodes than this get a few at a time.
+more-roll-watched = Watched episodes
+more-roll-delete = Delete
+more-roll-keep-all = Keep all
+more-roll-delete-help = Deleted once you are further along, so the phone only holds what is left to watch.
+more-roll-keep-all-help = Every file stays on the phone after you watch it.
+more-roll-behind = Keep behind
+more-roll-behind-help = { $count ->
+    [0] Finishing an episode deletes the one before it.
+   *[other] Watched episodes kept behind the one you just finished. With { $count }, finishing episode { $episode } deletes episode 1.
+}
 more-storage-cap-on = At { $cap }, nothing more downloads until you delete episodes.
 more-storage-cap-off = Off: AniBeam downloads until the phone is full.
 more-network = Network
@@ -326,6 +351,7 @@ more-set-subs-style = Subtitle style
 more-words-anilist = anilist tracker sign in login account connect list progress
 more-words-mal = mal myanimelist tracker sign in login account connect list progress
 more-words-storage-cap = space disk limit gb full storage delete size
+more-words-rolling = rolling roll long show episodes ahead delete watched keep behind batch space
 more-words-wifi = wifi wi-fi mobile data cellular network
 more-words-notifications = notification notify alert progress permission shade allow
 more-words-stream-quality = auto original 1080p 720p 480p convert data computer play
@@ -850,6 +876,16 @@ find-plan-follow-note = New episodes from { $query } will download by themselves
 find-plan-on-desk = They download on { $name }, into its library.
 find-follow-new = Follow new episodes
 find-follow-new-note = They download by themselves as they air.
+find-roll-title = Keep the next few ready
+find-roll-on = { $count ->
+    [one] { $count } episode downloads now, and each one you finish starts the next.
+   *[other] { $count } episodes download now, and each one you finish starts the next.
+}
+find-roll-on-delete = { $count ->
+    [one] { $count } episode downloads now, and each one you finish starts the next. Watched ones leave the phone.
+   *[other] { $count } episodes download now, and each one you finish starts the next. Watched ones leave the phone.
+}
+find-roll-off = Every picked episode downloads at once.
 find-replace = Replace what you have
 find-replace-note = Downloads the picked episodes again over the ones on this phone.
 # The main button. { $mode } is replace, subscribe, both or plain; { $count } the picked episodes.
@@ -1399,6 +1435,18 @@ dl-batch-files = { $count ->
 }
 # Chip on a download made of several episodes, with no count.
 dl-batch-tag = Batch
+dl-roll-line = { $watched ->
+    [0] Keeping { $ahead } ready: episodes { $next } to { $through } of { $total }
+   *[other] Keeping { $ahead } ready: episodes { $next } to { $through } of { $total }, { $watched } watched
+}
+dl-roll-more = Get { $count } more
+dl-roll-all = Get all
+dl-roll-all-ask = { $count ->
+    [one] Download the last episode left?
+   *[other] Download all { $count } episodes left?
+}
+dl-roll-keep = Keep rolling
+dl-roll-ahead = { $count } ahead
 # Figure caption on Downloads. { $count } is how many are moving.
 dl-downloading-count = { $count ->
     [one] { $count } downloading

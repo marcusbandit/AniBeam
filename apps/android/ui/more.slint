@@ -318,6 +318,47 @@ component IconChoice inherits Rectangle {
 
 // One section as its own page: the pill back to the index, the section's name with how it
 // stands, then its settings. `reveal` scrolls a setting the search landed on into view.
+// A number set with a slider: the row says what it is and where it stands, the slider sits
+// under it, and each whole step is passed on.
+component NumberRow inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <string> helper;
+    in property <int> minimum;
+    in property <int> maximum;
+    in property <int> at;
+    in property <bool> last;
+    callback moved(int);
+    ListRow {
+        label: root.label;
+        value: root.value;
+        helper: root.helper;
+        last: true;
+    }
+    Rectangle {
+        height: slider-column.preferred-height;
+        slider-column := VerticalLayout {
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-bottom: Theme.unit * 3;
+            Slider {
+                minimum: root.minimum;
+                maximum: root.maximum;
+                value: root.at;
+                moved(v) => {
+                    if (Math.round(v) != root.at) {
+                        root.moved(Math.round(v));
+                    }
+                }
+            }
+        }
+    }
+    if !root.last: Rectangle {
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
 component SectionPage inherits Rectangle {
     in property <string> title;
     in property <string> note;
@@ -618,6 +659,76 @@ export component MorePage inherits Rectangle {
                             AppData.set-wifi-only(true);
                         }
                     }
+                }
+            }
+        }
+        SectionHead {
+            title: Tr.t("more-set-rolling");
+            note: AppData.roll-big ? Tr.n("more-roll-note-over", "count", AppData.roll-over) : Tr.t("more-roll-note-asked");
+        }
+        Lit {
+            on: Settings.lit == Tr.t("more-set-rolling");
+            reveal(y) => { downloads.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                ListRow {
+                    label: Tr.t("more-roll-big");
+                    helper: Tr.n("more-roll-big-help", "count", AppData.roll-over);
+                    switch: true;
+                    on: AppData.roll-big;
+                    toggled => { AppData.set-roll(!AppData.roll-big, AppData.roll-ahead, AppData.roll-over, AppData.roll-delete, AppData.roll-keep); }
+                }
+                NumberRow {
+                    label: Tr.t("more-roll-ahead");
+                    value: Tr.n("common-episodes", "count", AppData.roll-ahead);
+                    helper: Tr.t("more-roll-ahead-help");
+                    minimum: 1;
+                    maximum: 52;
+                    at: AppData.roll-ahead;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, n, AppData.roll-over, AppData.roll-delete, AppData.roll-keep); }
+                }
+                NumberRow {
+                    label: Tr.t("more-roll-over");
+                    value: Tr.n("common-episodes", "count", AppData.roll-over);
+                    helper: Tr.t("more-roll-over-help");
+                    minimum: 12;
+                    maximum: 200;
+                    at: AppData.roll-over;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, n, AppData.roll-delete, AppData.roll-keep); }
+                }
+                VerticalLayout {
+                    padding: Theme.unit * 3;
+                    spacing: Theme.unit * 2;
+                    Text {
+                        text: Tr.t("more-roll-watched");
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                    }
+                    Segmented {
+                        options: [Tr.t("more-roll-delete"), Tr.t("more-roll-keep-all")];
+                        picked: AppData.roll-delete ? 0 : 1;
+                        pick(i) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, AppData.roll-over, i == 0, AppData.roll-keep); }
+                    }
+                    Text {
+                        text: AppData.roll-delete ? Tr.t("more-roll-delete-help") : Tr.t("more-roll-keep-all-help");
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                }
+                if AppData.roll-delete: Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+                if AppData.roll-delete: NumberRow {
+                    label: Tr.t("more-roll-behind");
+                    value: Tr.n("common-episodes", "count", AppData.roll-keep);
+                    helper: Tr.n2("more-roll-behind-help", "count", AppData.roll-keep, "episode", AppData.roll-keep + 2);
+                    minimum: 0;
+                    maximum: 12;
+                    at: AppData.roll-keep;
+                    last: true;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, AppData.roll-over, AppData.roll-delete, n); }
                 }
             }
         }

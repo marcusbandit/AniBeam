@@ -105,6 +105,11 @@ export global FindData {
     in-out property <bool> follow;
     in-out property <bool> replace;
     in property <bool> has-had;
+    // Keep the next few ready: offered for a pick of more than one episode that replaces
+    // nothing, and what it will do.
+    in property <bool> can-roll;
+    in-out property <bool> rolling;
+    in property <string> roll-line;
     // Where the open show is on the person's list: "Watching", "Planning", or empty; and
     // whether it can be put on Planning from here (#734).
     in property <string> list-status;
@@ -147,6 +152,7 @@ export global FindData {
     callback toggle-cube(int, int);
     callback set-follow(bool);
     callback set-replace(bool);
+    callback set-rolling(bool);
     callback go();
     callback list-all();
     callback apply-group(int);
@@ -662,6 +668,31 @@ export component ShowView inherits VerticalLayout {
                     Switch {
                         on: FindData.follow;
                         toggled => { FindData.set-follow(!FindData.follow); }
+                    }
+                }
+            }
+            if FindData.can-roll: HorizontalLayout {
+                spacing: Theme.gap;
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: Tr.t("find-roll-title");
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                    }
+                    Text {
+                        text: FindData.roll-line;
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Switch {
+                        on: FindData.rolling;
+                        toggled => { FindData.set-rolling(!FindData.rolling); }
                     }
                 }
             }

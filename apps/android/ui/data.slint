@@ -183,6 +183,13 @@ export struct DownloadRow {
     poster: image,
     has-poster: bool,
     initials: string,
+    // A rolling download, held to a window of episodes: its id, -1 when it does not roll.
+    roll: int,
+    // "Keeping 12 ready: episodes 13 to 24 of 170, 12 watched".
+    roll-line: string,
+    roll-ahead: int,
+    // Episodes past the window, which Get all fetches.
+    roll-left: int,
 }
 
 // One line of the connection check.
@@ -419,7 +426,17 @@ export global AppData {
     callback save-host(string);
     callback refresh();
     // 0 pause, 1 resume, 2 cancel and delete, 3 take a finished one off the list.
+    // How downloads roll, the desktop's Keep the next few ready.
+    in property <bool> roll-big: true;
+    in property <int> roll-ahead: 12;
+    in property <int> roll-over: 30;
+    in property <bool> roll-delete: true;
+    in property <int> roll-keep: 1;
+    callback set-roll(bool, int, int, bool, int);
     callback torrent-action(string, int);
+    // A rolling download's controls: 0 keeps the given number ahead, 1 fetches that many
+    // more now, 2 stops rolling and fetches the rest.
+    callback roll-action(int, int, int);
     callback remove-source(int);
     callback run-check();
     callback copy-check();

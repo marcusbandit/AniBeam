@@ -23,6 +23,93 @@ component StateDot inherits Rectangle {
     background: root.tone == 0 ? Theme.purple : root.tone == 2 ? Theme.yellow : root.tone == 3 ? Theme.bad : root.tone == 4 ? Theme.ok : Theme.dim;
 }
 
+// A rolling download's window and its controls, the desktop's: where the window stands, a
+// button that fetches one more window now, how many stay ahead, and Get all, which stops
+// rolling and fetches the rest once asked inline.
+component RollBlock inherits VerticalLayout {
+    in property <DownloadRow> data;
+    property <bool> confirming;
+    property <int> more: Math.min(root.data.roll-ahead, root.data.roll-left);
+    spacing: Theme.unit * 2.5;
+    Text {
+        text: root.data.roll-line;
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    if !root.confirming: HorizontalLayout {
+        spacing: Theme.unit * 2;
+        alignment: start;
+        Button {
+            small: true;
+            text: Tr.n("dl-roll-more", "count", root.more);
+            icon: @image-url("icons/download.svg");
+            has-icon: true;
+            enabled: root.data.roll-left > 0;
+            clicked => { AppData.roll-action(root.data.roll, 1, root.data.roll-ahead); }
+        }
+        Button {
+            small: true;
+            text: Tr.t("dl-roll-all");
+            icon: @image-url("icons/layers.svg");
+            has-icon: true;
+            enabled: root.data.roll-left > 0;
+            clicked => { root.confirming = true; }
+        }
+    }
+    if !root.confirming: HorizontalLayout {
+        spacing: Theme.unit * 2;
+        alignment: start;
+        Button {
+            small: true;
+            icon: @image-url("icons/minus.svg");
+            has-icon: true;
+            enabled: root.data.roll-ahead > 1;
+            clicked => { AppData.roll-action(root.data.roll, 0, root.data.roll-ahead - 1); }
+        }
+        Text {
+            text: Tr.n("dl-roll-ahead", "count", root.data.roll-ahead);
+            color: Theme.dim;
+            font-family: Theme.figure;
+            font-size: Theme.small + 0.5px;
+            vertical-alignment: center;
+        }
+        Button {
+            small: true;
+            icon: @image-url("icons/plus.svg");
+            has-icon: true;
+            enabled: root.data.roll-ahead < 500;
+            clicked => { AppData.roll-action(root.data.roll, 0, root.data.roll-ahead + 1); }
+        }
+    }
+    if root.confirming: Text {
+        text: Tr.n("dl-roll-all-ask", "count", root.data.roll-left);
+        color: Theme.text;
+        font-size: Theme.small + 0.5px;
+        wrap: word-wrap;
+    }
+    if root.confirming: HorizontalLayout {
+        spacing: Theme.unit * 2;
+        alignment: start;
+        Button {
+            small: true;
+            primary: true;
+            text: Tr.t("dl-roll-all");
+            icon: @image-url("icons/download.svg");
+            has-icon: true;
+            clicked => {
+                root.confirming = false;
+                AppData.roll-action(root.data.roll, 2, 0);
+            }
+        }
+        Button {
+            small: true;
+            text: Tr.t("dl-roll-keep");
+            clicked => { root.confirming = false; }
+        }
+    }
+}
+
 // One download that is not finished: the show's poster, which episodes and how far, the bar
 // or a cube per file, the figures, and Pause and Cancel as round buttons at the side. A tap
 // opens the show. A batch, many episodes in one download, is a stack of cards with a Batch
@@ -32,7 +119,7 @@ component DownloadCard inherits Rectangle {
     property <color> fill: root.data.tone == 0 ? Theme.purple : root.data.tone == 2 ? Theme.yellow : root.data.tone == 3 ? Theme.bad : Theme.dim;
     // The state's words are translated, so the tone says which it is: 3 is trouble.
     property <bool> failed: root.data.tone == 3;
-    property <length> card-height: Math.max(row.preferred-height, 20 * Theme.unit);
+    property <length> card-height: Math.max(body.preferred-height, 20 * Theme.unit);
     height: self.card-height + (root.data.batch ? 3 * Theme.unit : 0);
     if root.data.batch: CardStack { card-height: root.card-height; }
     Rectangle {
@@ -52,96 +139,101 @@ component DownloadCard inherits Rectangle {
             }
         }
     }
-    row := HorizontalLayout {
+    body := VerticalLayout {
         y: 0;
         height: root.card-height;
         padding: Theme.unit * 3;
-        spacing: Theme.unit * 3.5;
-        Poster {
-            width: 12 * Theme.unit;
-            height: self.width * Theme.poster-ratio;
-            y: (parent.height - self.height) / 2;
-            source: root.data.poster;
-            has-image: root.data.has-poster;
-            initials: root.data.initials;
-        }
-        VerticalLayout {
-            horizontal-stretch: 1;
-            alignment: center;
-            spacing: Theme.unit * 1.5;
-            if root.data.batch: HorizontalLayout {
-                alignment: start;
-                Chip {
-                    text: root.data.cubes.length > 1 ? Tr.n("dl-batch-files", "count", root.data.cubes.length) : Tr.t("dl-batch-tag");
-                    small: true;
-                    selected: true;
-                    has-icon: true;
-                    icon: @image-url("icons/layers.svg");
-                }
+        spacing: Theme.unit * 3;
+        HorizontalLayout {
+            spacing: Theme.unit * 3.5;
+            Poster {
+                width: 12 * Theme.unit;
+                height: self.width * Theme.poster-ratio;
+                y: (parent.height - self.height) / 2;
+                source: root.data.poster;
+                has-image: root.data.has-poster;
+                initials: root.data.initials;
             }
-            ClampedText {
-                text: root.data.show != "" ? root.data.show : root.data.name;
-                face: root.data.show != "" ? Theme.title-face : Theme.face;
-                font-size: root.data.show != "" ? Theme.normal + 1px : Theme.small + 0.5px;
-                lines: 2;
-            }
-            HorizontalLayout {
-                spacing: Theme.unit * 2;
-                Text {
-                    text: root.data.percent;
-                    color: root.fill;
-                    font-family: Theme.figure;
-                    font-size: Theme.small + 0.5px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: Theme.unit * 1.5;
+                if root.data.batch: HorizontalLayout {
+                    alignment: start;
+                    Chip {
+                        text: root.data.cubes.length > 1 ? Tr.n("dl-batch-files", "count", root.data.cubes.length) : Tr.t("dl-batch-tag");
+                        small: true;
+                        selected: true;
+                        has-icon: true;
+                        icon: @image-url("icons/layers.svg");
+                    }
                 }
-                Text {
-                    horizontal-stretch: 1;
-                    text: root.data.state == "" ? root.data.what : root.data.what != "" ? Tr.s2("dl-joined", "first", root.data.state, "second", root.data.what) : root.data.state;
+                ClampedText {
+                    text: root.data.show != "" ? root.data.show : root.data.name;
+                    face: root.data.show != "" ? Theme.title-face : Theme.face;
+                    font-size: root.data.show != "" ? Theme.normal + 1px : Theme.small + 0.5px;
+                    lines: 2;
+                }
+                HorizontalLayout {
+                    spacing: Theme.unit * 2;
+                    Text {
+                        text: root.data.percent;
+                        color: root.fill;
+                        font-family: Theme.figure;
+                        font-size: Theme.small + 0.5px;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.data.state == "" ? root.data.what : root.data.what != "" ? Tr.s2("dl-joined", "first", root.data.state, "second", root.data.what) : root.data.state;
+                        color: Theme.dim;
+                        font-size: Theme.small + 0.5px;
+                        overflow: elide;
+                    }
+                }
+                if root.data.cubes.length > 0: Cubes {
+                    codes: root.data.cubes;
+                    size: 16px;
+                    spacing: 4px;
+                }
+                if root.data.cubes.length == 0: ProgressLine {
+                    height: 4px;
+                    progress: root.data.progress;
+                    fill: root.fill;
+                }
+                // The speed and time left first: on a narrow card they are what is read.
+                if root.data.speed != "": Text {
+                    text: root.data.speed;
                     color: Theme.dim;
-                    font-size: Theme.small + 0.5px;
+                    font-size: Theme.small - 0.5px;
+                    font-family: Theme.figure;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.data.release != "" ? Tr.s2("dl-joined", "first", root.data.amount, "second", root.data.release) : root.data.amount;
+                    color: Theme.faint;
+                    font-size: Theme.small - 0.5px;
                     overflow: elide;
                 }
             }
-            if root.data.cubes.length > 0: Cubes {
-                codes: root.data.cubes;
-                size: 16px;
-                spacing: 4px;
-            }
-            if root.data.cubes.length == 0: ProgressLine {
-                height: 4px;
-                progress: root.data.progress;
-                fill: root.fill;
-            }
-            // The speed and time left first: on a narrow card they are what is read.
-            if root.data.speed != "": Text {
-                text: root.data.speed;
-                color: Theme.dim;
-                font-size: Theme.small - 0.5px;
-                font-family: Theme.figure;
-                overflow: elide;
-            }
-            Text {
-                text: root.data.release != "" ? Tr.s2("dl-joined", "first", root.data.amount, "second", root.data.release) : root.data.amount;
-                color: Theme.faint;
-                font-size: Theme.small - 0.5px;
-                overflow: elide;
+            VerticalLayout {
+                alignment: center;
+                spacing: Theme.unit * 2;
+                    // Held for Wi-Fi, nothing restarts it, so there is nothing to press; a rolling
+                // download whose window is in has nothing to pause.
+                if root.data.tone != 2 && root.data.tone != 4: IconButton {
+                    icon: root.failed ? @image-url("icons/refresh-cw.svg") : root.data.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
+                    primary: root.data.paused || root.failed;
+                    clicked => { AppData.torrent-action(root.data.hash, root.data.paused || root.failed ? 1 : 0); }
+                }
+                // Cancel deletes what the download had written so far.
+                IconButton {
+                    icon: @image-url("icons/x.svg");
+                    danger: true;
+                    clicked => { AppData.torrent-action(root.data.hash, 2); }
+                }
             }
         }
-        VerticalLayout {
-            alignment: center;
-            spacing: Theme.unit * 2;
-            // Held for Wi-Fi, nothing restarts it, so there is nothing to press.
-            if root.data.tone != 2: IconButton {
-                icon: root.failed ? @image-url("icons/refresh-cw.svg") : root.data.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
-                primary: root.data.paused || root.failed;
-                clicked => { AppData.torrent-action(root.data.hash, root.data.paused || root.failed ? 1 : 0); }
-            }
-            // Cancel deletes what the download had written so far.
-            IconButton {
-                icon: @image-url("icons/x.svg");
-                danger: true;
-                clicked => { AppData.torrent-action(root.data.hash, 2); }
-            }
-        }
+        if root.data.roll >= 0: RollBlock { data: root.data; }
     }
 }
 

@@ -94,6 +94,7 @@ version = "2.5.0"
 dependencies = [
  "anibeam-host-api",
  "anibeam-recs",
+ "anyhow",
  "apple-native-keyring-store",
  "axum",
  "backon",

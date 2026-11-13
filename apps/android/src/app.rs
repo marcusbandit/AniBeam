@@ -16,8 +16,8 @@ use anibeam_companion::address::HostAddress;
 use anibeam_companion::format;
 use anibeam_companion::store::{AniListCache, Cache, Store};
 use anibeam_core::{
-    AiringNow, AiringShow, Call, Direction, PhoneAction, PhoneSource, Reply, SeasonPick,
-    SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
+    AiringNow, AiringShow, Call, Direction, PhoneAction, PhoneSource, Reply, RollingSettings,
+    SeasonPick, SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
@@ -238,6 +238,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     (0, "tracker-mal", "more-words-mal"),
     (1, "more-set-storage-cap", "more-words-storage-cap"),
     (1, "onb-wifi-only", "more-words-wifi"),
+    (1, "more-set-rolling", "more-words-rolling"),
     (1, "onb-notify-title", "more-words-notifications"),
     (2, "more-set-stream-quality", "more-words-stream-quality"),
     (3, REPOS_CHECK, "more-words-check-repos"),
@@ -1165,6 +1166,84 @@ impl App {
             });
     }
 
+    /// A rolling download's control: how many stay ahead, more now, or everything.
+    fn roll_action(&mut self, id: i32, what: i32, n: i32) {
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        let (Ok(id), Ok(n)) = (u64::try_from(id), u32::try_from(n)) else {
+            return;
+        };
+        let call = match what {
+            0 => Call::SetRoll {
+                id,
+                ahead: Some(n),
+                on: None,
+                delete_watched: None,
+            },
+            1 => Call::RollMore { id, count: n },
+            _ => Call::SetRoll {
+                id,
+                ahead: None,
+                on: Some(false),
+                delete_watched: None,
+            },
+        };
+        let _ = std::thread::Builder::new()
+            .name("roll".into())
+            .spawn(move || {
+                if let Err(e) = core.call(call) {
+                    crate::local::log(&format!("roll change failed: {e}"));
+                }
+                let _ = slint::invoke_from_event_loop(|| with_app(App::poll_torrents));
+            });
+    }
+
+    /// The rolling settings as More shows them.
+    fn show_rolling(&self, r: &RollingSettings) {
+        let data = self.data();
+        data.set_roll_big(r.big);
+        data.set_roll_ahead(r.ahead as i32);
+        data.set_roll_over(r.over as i32);
+        data.set_roll_delete(r.delete_watched);
+        data.set_roll_keep(r.keep_watched as i32);
+    }
+
+    fn load_rolling(&self) {
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        if let Ok(Reply::RollingSettings { rolling }) = core.call(Call::GetRollingSettings) {
+            self.show_rolling(&rolling);
+        }
+    }
+
+    /// Saves off the UI thread, in order: a slider sends a step at a time, and only the
+    /// newest of the steps waiting is written.
+    fn save_rolling(&self, rolling: RollingSettings) {
+        static SAVES: std::sync::OnceLock<Sender<RollingSettings>> = std::sync::OnceLock::new();
+        let tx = SAVES.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<RollingSettings>();
+            let _ = std::thread::Builder::new()
+                .name("rolling".into())
+                .spawn(move || {
+                    while let Ok(mut rolling) = rx.recv() {
+                        while let Ok(newer) = rx.try_recv() {
+                            rolling = newer;
+                        }
+                        let Some(core) = crate::local::core() else {
+                            continue;
+                        };
+                        if let Err(e) = core.call(Call::SetRollingSettings { rolling }) {
+                            crate::local::log(&format!("rolling settings not saved: {e}"));
+                        }
+                    }
+                });
+            tx
+        });
+        let _ = tx.send(rolling);
+    }
+
     fn remove_source(&mut self, index: i32) {
         let Some(core) = crate::local::core() else {
             return;
@@ -1251,6 +1330,7 @@ impl App {
         };
         if self.sources.is_empty() {
             self.load_sources();
+            self.load_rolling();
         }
         crate::repos::opened();
         self.polling = true;
@@ -1348,7 +1428,7 @@ impl App {
             .set_rate_down(tr!("dl-speed", rate = format::bytes(down)).into());
         self.data()
             .set_rate_up(tr!("dl-speed", rate = format::bytes(up)).into());
-        let finished = torrents.iter().filter(|t| t.progress >= 1.0).count();
+        let finished = torrents.iter().filter(|t| finished(t)).count();
         self.data().set_finished_count(finished as i32);
         self.data()
             .set_downloading_count((torrents.len() - finished) as i32);
@@ -2012,7 +2092,7 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
         facts: facts.into(),
         progress: t.progress as f32,
         paused,
-        done,
+        done: finished(t),
         percent: format!("{}%", (t.progress * 100.0).floor() as i64).into(),
         what: what.into(),
         amount: amount.into(),
@@ -2031,7 +2111,36 @@ fn download_row(t: &Torrent, held: bool, show: Option<&SeriesCard>, art: &Art) -
             .map(|c| format::initials(&c.title))
             .unwrap_or_default()
             .into(),
+        roll: t
+            .roll
+            .as_ref()
+            .and_then(|r| i32::try_from(r.id).ok())
+            .unwrap_or(-1),
+        roll_line: t.roll.as_ref().map(roll_line).unwrap_or_default().into(),
+        roll_ahead: t.roll.as_ref().map_or(0, |r| r.ahead as i32),
+        roll_left: t
+            .roll
+            .as_ref()
+            .map_or(0, |r| r.total.saturating_sub(r.through) as i32),
     }
+}
+
+/// Where a rolling download's window stands, in the desktop's words.
+fn roll_line(r: &anibeam_core::RollView) -> String {
+    tr!(
+        "dl-roll-line",
+        ahead = r.ahead as i64,
+        next = r.next as i64,
+        through = r.through as i64,
+        total = r.total as i64,
+        watched = r.watched as i64
+    )
+}
+
+/// A finished download that is not rolling: it moves to Finished. A rolling one stays with
+/// what downloads, its controls there, whatever its window holds.
+fn finished(t: &Torrent) -> bool {
+    t.progress >= 1.0 && t.roll.is_none()
 }
 
 /// Reads poster files off the UI thread and hands each decoded one back.
@@ -2305,6 +2414,20 @@ pub fn run(
     data.on_save_host(|text| with_app(|app| app.save_host(&text)));
     data.on_torrent_action(|hash, action| {
         with_app(|app| app.torrent_action(hash.to_string(), action))
+    });
+    data.on_roll_action(|id, what, n| with_app(|app| app.roll_action(id, what, n)));
+    data.on_set_roll(|big, ahead, over, delete, keep| {
+        with_app(|app| {
+            let rolling = RollingSettings {
+                big,
+                ahead: u32::try_from(ahead).unwrap_or(12),
+                over: u32::try_from(over).unwrap_or(30),
+                delete_watched: delete,
+                keep_watched: u32::try_from(keep).unwrap_or(1),
+            };
+            app.show_rolling(&rolling);
+            app.save_rolling(rolling);
+        })
     });
     data.on_remove_source(|i| with_app(|app| app.remove_source(i)));
     data.on_run_check(|| with_app(App::run_check));

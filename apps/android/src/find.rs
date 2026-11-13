@@ -11,8 +11,8 @@ use anibeam_companion::format;
 use anibeam_core::releases::grid;
 use anibeam_core::{
     BestFit, Call, CoreError, Direction, DownloadOptions, RefineOp, Refinement, Release,
-    ReleaseFacts, ReleaseGroup, ReleaseSearch, Reply, SearchResult, SeriesCard, Sort,
-    SubscriptionRule, Tab, Torrent, WatchingEntry,
+    ReleaseFacts, ReleaseGroup, ReleaseSearch, Reply, RollingSettings, SearchResult, SeriesCard,
+    Sort, SubscriptionRule, Tab, Torrent, WatchingEntry,
 };
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel, Weak};
 
@@ -116,6 +116,9 @@ struct ShowState {
     picks: grid::Picks,
     follow: bool,
     replace: bool,
+    /// Keep the next few ready, as picked here: None follows the rolling settings, which
+    /// roll anything over their count by themselves.
+    roll: Option<bool>,
 }
 
 /// The release list: anirss's search state, which the caller holds.
@@ -200,6 +203,8 @@ struct Find {
     desk_asked: Option<std::time::Instant>,
     /// Get goes to the computer: the pick in Download to, kept in prefs.
     to_desk: bool,
+    /// How downloads roll on this phone, read when a show opens.
+    rolling: RollingSettings,
 }
 
 /// One show on the person's list.
@@ -319,6 +324,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             desk_asking: false,
             desk_asked: None,
             to_desk,
+            rolling: RollingSettings::default(),
         })
     });
     let d = window.global::<FindData>();
@@ -384,6 +390,14 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
         with(|f| {
             if let Some(s) = f.show.as_mut() {
                 s.replace = on;
+            }
+            f.draw_show();
+        })
+    });
+    d.on_set_rolling(|on| {
+        with(|f| {
+            if let Some(s) = f.show.as_mut() {
+                s.roll = Some(on);
             }
             f.draw_show();
         })
@@ -1148,6 +1162,13 @@ impl Find {
             picks: grid::Picks::default(),
             follow,
             replace: false,
+            roll: None,
+        });
+        ask(Call::GetRollingSettings, |f, answer| {
+            if let Ok(Reply::RollingSettings { rolling }) = answer {
+                f.rolling = rolling;
+                f.draw_show();
+            }
         });
         self.list = None;
         self.history.clear();
@@ -1246,6 +1267,7 @@ impl Find {
         state.active = Some(i);
         state.picks = grid::Picks::default();
         state.replace = false;
+        state.roll = None;
         if matches!(
             state.sources[i].1,
             Answer::Done(_) | Answer::Searching { .. }
@@ -1530,6 +1552,7 @@ impl Find {
         let mut library_codes = Vec::new();
         let mut grid_rows = Vec::new();
         let mut dropped_line = String::new();
+        let mut picked = 0usize;
         let (mut plan_line, mut plan_detail, mut go_text, mut can_go, mut can_follow, mut has_had) = (
             String::new(),
             String::new(),
@@ -1603,6 +1626,7 @@ impl Find {
                 !plan.follow_query.is_empty() && show.airing && !state.no_feed.contains(&provider);
             let following = state.follow && can_follow;
             let n = plan.episodes.len();
+            picked = n;
             can_go = n > 0 || following;
             go_text = match (n, following) {
                 (0, true) => tr!("find-subscribe"),
@@ -1650,6 +1674,18 @@ impl Find {
                 };
             }
         }
+        let (can_roll, rolling) = self.roll_choice(state, picked, has_had);
+        let roll_line = match (rolling, self.rolling.delete_watched) {
+            (false, _) => tr!("find-roll-off"),
+            (true, delete) => tr!(
+                if delete {
+                    "find-roll-on-delete"
+                } else {
+                    "find-roll-on"
+                },
+                count = (self.rolling.ahead as usize).min(picked.max(1)) as i64
+            ),
+        };
         let desk = self.on_desk().map(|d| d.name.clone());
         if let Some(why) = self.desk_waiting() {
             can_go = false;
@@ -1701,10 +1737,36 @@ impl Find {
             d.set_can_follow(can_follow);
             d.set_follow(follow);
             d.set_replace(replace);
+            d.set_can_roll(can_roll);
+            d.set_rolling(rolling);
+            d.set_roll_line(roll_line.into());
             d.set_has_had(has_had);
             d.set_library_label(library_label.into());
             d.set_error(error.into());
         });
+    }
+
+    /// Whether Keep the next few ready is offered for `picked` episodes, and whether it is
+    /// on: as picked here, else as the rolling settings say, which roll a pick of more than
+    /// their count by themselves. A pick that replaces episodes never rolls, as on the
+    /// desktop.
+    fn roll_choice(&self, state: &ShowState, picked: usize, has_had: bool) -> (bool, bool) {
+        let replacing = state.replace && has_had;
+        let can = picked > 1 && !replacing;
+        let on = state
+            .roll
+            .unwrap_or(self.rolling.big && picked > self.rolling.over as usize);
+        (can, can && on)
+    }
+
+    /// What Get sends as `rolling`: the pick when one was made, never when replacing, and
+    /// otherwise left to the settings where the download runs.
+    fn roll_wish(state: &ShowState, has_had: bool) -> Option<bool> {
+        if state.replace && has_had {
+            Some(false)
+        } else {
+            state.roll
+        }
     }
 
     fn limit(&self) -> Option<u64> {
@@ -1740,6 +1802,8 @@ impl Find {
             && !plan.follow_query.is_empty()
             && state.offer.show.airing
             && !state.no_feed.contains(&provider);
+        let has_had = state.picks.map.keys().any(|n| grid::have(&library, *n));
+        let rolling = Self::roll_wish(state, has_had);
         if let Some(why) = self.desk_waiting() {
             self.line("", &why);
             return;
@@ -1749,7 +1813,10 @@ impl Find {
         let download = !plan.items.is_empty();
         let calls = match self.on_desk().cloned() {
             Some(desk) => {
-                let options = self.desk_options(&desk, provider.clone());
+                let options = DownloadOptions {
+                    rolling,
+                    ..self.desk_options(&desk, provider.clone())
+                };
                 let series = options.series;
                 Sent {
                     download: download.then(|| Call::DownloadReleasesWith {
@@ -1774,6 +1841,7 @@ impl Find {
                     items: plan.items,
                     name: name.clone(),
                     limit_bytes: self.limit(),
+                    rolling,
                 }),
                 subscribe: follow.then_some(Call::PhoneSubscribe {
                     query: plan.follow_query,
@@ -2045,6 +2113,7 @@ impl Find {
                 items,
                 name,
                 limit_bytes: self.limit(),
+                rolling: None,
             },
             move |f, answer| match answer {
                 Ok(_) => {
