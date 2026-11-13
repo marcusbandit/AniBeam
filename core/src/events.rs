@@ -179,17 +179,17 @@ impl EventBus {
     ///
     /// The stored copy keeps no secret, whichever event carries one (#509): a feed's
     /// or a tracker's address can hold a login and a key, so the message, the plain
-    /// line and the body lose both (`net::scrub_secrets`). Listeners hear the event
+    /// line and the body lose both (`redact::scrub_secrets`). Listeners hear the event
     /// whole, since a release's link has to reach the client as it is.
     fn persist(&self, event: &Event) {
         let mut e = event.clone();
-        e.message = crate::net::scrub_secrets(&e.message);
-        e.plain = e.plain.map(|p| crate::net::scrub_secrets(&p));
+        e.message = crate::redact::scrub_secrets(&e.message);
+        e.plain = e.plain.map(|p| crate::redact::scrub_secrets(&p));
         // An argument can hold an address just as the line can
         if let Some(w) = e.plain_words.as_mut() {
             for value in w.args.values_mut() {
                 if let WordValue::Text { value } = value {
-                    *value = crate::net::scrub_secrets(value);
+                    *value = crate::redact::scrub_secrets(value);
                 }
             }
         }
@@ -419,7 +419,7 @@ impl EventListener for Collector {
 fn scrub_value(value: serde_json::Value) -> serde_json::Value {
     use serde_json::Value;
     match value {
-        Value::String(s) => Value::String(crate::net::scrub_secrets(&s)),
+        Value::String(s) => Value::String(crate::redact::scrub_secrets(&s)),
         Value::Array(items) => Value::Array(items.into_iter().map(scrub_value).collect()),
         Value::Object(map) => {
             Value::Object(map.into_iter().map(|(k, v)| (k, scrub_value(v))).collect())
@@ -439,11 +439,11 @@ fn scrub_stored(store: &Store) -> Result<(), CoreError> {
                 .collect::<Result<_, _>>()?
         };
         for (seq, message, plain, body) in rows {
-            let new_message = crate::net::scrub_secrets(&message);
-            let new_plain = plain.as_deref().map(crate::net::scrub_secrets);
+            let new_message = crate::redact::scrub_secrets(&message);
+            let new_plain = plain.as_deref().map(crate::redact::scrub_secrets);
             let new_body = serde_json::from_str(&body)
                 .map(|v| scrub_value(v).to_string())
-                .unwrap_or_else(|_| crate::net::scrub_secrets(&body));
+                .unwrap_or_else(|_| crate::redact::scrub_secrets(&body));
             if new_message != message || new_plain != plain || new_body != body {
                 c.execute(
                     "UPDATE events SET message = ?2, plain = ?3, body = ?4 WHERE seq = ?1",

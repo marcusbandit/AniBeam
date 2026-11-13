@@ -144,7 +144,7 @@ pub fn without_secrets(url: &str) -> String {
         .split('&')
         .filter(|pair| {
             let name = pair.split('=').next().unwrap_or("");
-            crate::releases::native::secret_param(name).is_none()
+            crate::redact::secret_param(name).is_none()
         })
         .collect();
     if kept.is_empty() {

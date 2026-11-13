@@ -812,7 +812,7 @@ fn id_of(name: &str) -> String {
 }
 
 /// Takes the secret values out of a pasted address: each `apikey=...`, `token=...` and the
-/// like (`releases::native::SECRET_PARAMS`) becomes a placeholder and an `auth` field, and its
+/// like (`redact::SECRET_PARAMS`) becomes a placeholder and an `auth` field, and its
 /// value a credential, and so does the password of a `user:password@` login. Any other
 /// placeholder the person wrote (`{user}`) becomes a field too, to be filled from `given`.
 fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, String)>) {
@@ -864,7 +864,7 @@ fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, Strin
                 let Some((k, v)) = pair.split_once('=') else {
                     return pair.to_string();
                 };
-                let Some(label) = crate::releases::native::secret_param(k) else {
+                let Some(label) = crate::redact::secret_param(k) else {
                     return pair.to_string();
                 };
                 if v.is_empty() || v.starts_with('{') {

@@ -36,6 +36,7 @@ pub mod presence;
 pub(crate) mod process;
 pub mod profiles;
 pub mod recommended;
+pub mod redact;
 pub mod releases;
 pub mod repos;
 pub mod room;
