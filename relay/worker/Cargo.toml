@@ -1,0 +1,27 @@
+[package]
+name = "anibeam-rooms-worker"
+description = "The watch together relay as a Cloudflare Worker: one Durable Object per room"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/marcusbandit/AniBeam"
+publish = false
+
+# Its own workspace, so the repo's `cargo test --workspace` never builds this
+# wasm-only crate. It shares the room crate by path.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+anibeam-room = { path = "../../room" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wasm-bindgen = "0.2"
+worker = "0.9"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

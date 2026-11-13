@@ -120,6 +120,11 @@ impl EventBus {
                 | EventBody::TorrentsRead { .. }
                 | EventBody::PresenceChanged { .. }
                 | EventBody::TailnetDevicesChanged { .. }
+                // Nor a watch together room's news: no read the shell caches depends on
+                // it, and a room in sync sends a correction as often as once a second.
+                | EventBody::RoomChanged { .. }
+                | EventBody::RoomEpisode { .. }
+                | EventBody::RoomApply { .. }
         ) {
             self.generation.fetch_add(1, Ordering::SeqCst);
         }

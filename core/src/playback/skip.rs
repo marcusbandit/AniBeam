@@ -203,6 +203,10 @@ pub fn start(
             if let Some(outro) = windows.iter().find(|w| w.kind == SkipKind::Outro) {
                 session::report_chapters(&owner, s.id, duration, Some(outro.start));
             }
+            // A watch together room suggests an offset from the opening.
+            if let Some(opening) = session::opening_of(&windows) {
+                session::report_opening(&owner, s.id, opening);
+            }
             Ok(Finished {
                 plain: None,
                 level: Level::Debug,

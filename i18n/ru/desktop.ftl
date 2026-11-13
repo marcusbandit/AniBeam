@@ -4029,3 +4029,87 @@ door-not-a-torrent-action = { $value } не является действием 
 # $folder is a path, $error the system's own reason.
 shell-starter-folder-failed = Не удалось создать { $folder }: { $error }
 shell-update-gone = { -app-name } { $version } больше не предлагается
+
+## Watch together (#846)
+
+onboarding-step-together = Вместе
+onboarding-title-together = Смотрите с друзьями
+onboarding-body-together = Создайте комнату в плеере и отправьте её код. Каждый смотрит свою копию серии, а воспроизведение, пауза и перемотка идут у всех синхронно.
+onboarding-ready-together = Совместный просмотр
+onboarding-ready-together-as = В комнатах вас видят как { $name }.
+onboarding-ready-together-none = Имени пока нет. Панель комнаты спросит его в первый раз.
+onboarding-together-you = Вы
+onboarding-together-code = Код комнаты
+onboarding-together-episode = Frieren · Серия 3
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = Ваше имя в комнатах
+rail-room = Совместный просмотр (Ctrl+J)
+rail-room-in = В комнате совместного просмотра (Ctrl+J)
+player-chrome-watch-together = Смотреть вместе
+player-chrome-room = Комната { $code } · { $count ->
+    [one] { $count } человек
+    [few] { $count } человека
+    [many] { $count } человек
+   *[other] { $count } человека
+}
+room-name-empty = Введите имя, которое увидят остальные в комнате.
+room-name-bad = Это имя не подходит. Используйте от 1 до 32 символов.
+room-error-not-found = Комнаты с таким кодом нет. Уточните его у того, кто прислал; возможно, комната закрылась.
+room-error-full = Эта комната заполнена. В комнате до 10 человек.
+room-error-unreachable = Не удалось связаться с сервером комнат. Проверьте подключение и попробуйте снова.
+room-error-refused = Сервер комнат отклонил запрос. Попробуйте через минуту.
+room-error-proto = Эта комната работает на более новой версии комнат. Обновите { -app-name }, чтобы войти.
+room-error-not-in-room = Вы больше не в этой комнате. Создайте новую или войдите снова.
+room-error-bad-code = Код комнаты состоит из 6 букв и цифр, например K7QM2X.
+room-error-bad-relay = Сервер комнат в «Настройки, Воспроизведение» не является веб-адресом. Исправьте его там и попробуйте снова.
+room-panel-title = Совместный просмотр
+room-panel-close = Закрыть
+room-panel-connected = Подключено
+room-panel-reconnecting = Переподключение
+room-panel-name-label = Ваше имя в комнатах
+room-panel-name-placeholder = Ваше имя
+room-panel-name-start = Создать комнату
+room-panel-name-join = Войти в комнату
+room-panel-start = Создать комнату
+room-panel-or-join = Или войдите по коду
+room-panel-join-label = Код комнаты
+room-panel-join = Войти
+room-panel-you-are = Вас видят как { $name }
+room-panel-change-name = Изменить
+room-panel-code-label = Код комнаты
+room-panel-copy = Копировать ссылку
+room-panel-link-copied = Ссылка на комнату скопирована
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = Этой серии нет в вашей библиотеке, поэтому смотреть вместе пока нельзя.
+room-panel-open-episode = Открыть серию
+room-panel-people = { $count ->
+    [one] { $count } человек
+    [few] { $count } человека
+    [many] { $count } человек
+   *[other] { $count } человека
+}
+room-panel-host = Ведущий
+room-panel-you = Вы
+room-panel-ready = Готово
+room-panel-opening = Открывает
+room-panel-missing = Нет серии
+room-panel-offset = Ваш сдвиг
+room-panel-offset-earlier = На полсекунды раньше
+room-panel-offset-later = На полсекунды позже
+room-panel-seconds = { $value } с
+room-panel-suggested = По опенингам: { $offset }
+room-panel-use-suggested = Применить
+room-panel-leave = Выйти из комнаты
+player-room-speed = Скорость задаёт комната
+settings-find-room-name =
+    .words = совместный просмотр вместе комната имя друзья
+settings-find-room-relay =
+    .words = совместный просмотр вместе комната ретранслятор сервер
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = Совместный просмотр
+settings-playback-together = Совместный просмотр
+settings-playback-room-name = Ваше имя в комнатах совместного просмотра
+settings-playback-room-name-placeholder = Ваше имя
+settings-playback-room-relay = Сервер комнат
+settings-playback-room-relay-helper = Здесь создаются комнаты. Меняйте его, только если сервер ваш.

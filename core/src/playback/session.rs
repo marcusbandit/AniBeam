@@ -71,10 +71,18 @@ pub struct Session {
     pub is_film: bool,
     pub anilist_id: Option<u64>,
     pub mal_id: Option<u64>,
+    /// Set for a TVmaze match only, like `SeriesRow::tvmaze_id`.
+    pub tvmaze_id: Option<u64>,
+    /// The titles the player shows, which a watch together room carries.
+    pub series_title: String,
+    pub episode_title: Option<String>,
     /// Known only once the shell has reported the chapters, so the first
     /// ticks of a session have neither a mark line nor a tail to reach.
     pub duration: Option<f64>,
     pub outro_start: Option<f64>,
+    /// Where the opening starts: from the windows cached at open, or once the
+    /// skip windows job finds them. A room suggests an offset from it.
+    pub opening_start: Option<f64>,
     pub last_position: Option<f64>,
     pub watched_secs: f64,
     pub viewed: bool,
@@ -609,8 +617,12 @@ pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession,
             is_film,
             anilist_id: s.anilist_id,
             mal_id: s.mal_id,
+            tvmaze_id: s.tvmaze_id,
+            series_title: series_title.clone(),
+            episode_title: episode_title.clone(),
             duration: None,
             outro_start: None,
+            opening_start: opening_of(&skip_windows),
             last_position: None,
             watched_secs: 0.0,
             viewed: false,
@@ -642,6 +654,30 @@ pub fn open_for(core: &Core, file: u64, profile: u64) -> Result<PlaybackSession,
         subtitle_defaults,
         track_choice: s.track_choice,
     })
+}
+
+/// Where the opening starts among an episode's skip windows.
+pub fn opening_of(windows: &[SkipWindow]) -> Option<f64> {
+    windows
+        .iter()
+        .find(|w| w.kind == SkipKind::Intro)
+        .map(|w| w.start)
+}
+
+/// The opening the skip windows job found, for the session and for a watch
+/// together room it is attached to.
+pub fn report_opening(core: &Core, session: u64, start: f64) {
+    if !start.is_finite() || start < 0.0 {
+        return;
+    }
+    {
+        let mut map = core.sessions.lock();
+        let Some(s) = map.get_mut(&session) else {
+            return;
+        };
+        s.opening_start = Some(start);
+    }
+    crate::room::opening_known(core, session, start);
 }
 
 /// What the shell learned when the file loaded. Called twice by the skip
@@ -692,6 +728,7 @@ pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<()
     if s.profile == crate::profiles::OWNER {
         crate::presence::tick(core, s.id, &s.presence, position, paused);
     }
+    crate::room::tick(core, s.id, position, paused);
     apply(core, &s, &fired)
 }
 
@@ -710,6 +747,7 @@ pub fn close(
         return Ok(());
     };
     crate::presence::close(core, session);
+    crate::room::closed(core, session);
     let mut fired = effects(&mut s, position, TickKind::Closing);
     if reason == CloseReason::Ended
         && let Some(effect) = ended(&mut s)
@@ -994,8 +1032,12 @@ mod tests {
             is_film: false,
             anilist_id: Some(1),
             mal_id: None,
+            tvmaze_id: None,
+            series_title: "Bebop".to_string(),
+            episode_title: None,
             duration,
             outro_start: None,
+            opening_start: None,
             last_position: None,
             watched_secs: 0.0,
             viewed: false,

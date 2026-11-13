@@ -1090,3 +1090,25 @@ core-subscriptions-stopped-said = 它停止了：{ $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = 名字须为 1 到 { $max } 个字符，且不含控制字符
+core-prefs-room-relay = 中继地址必须以 https:// 或 http:// 开头
+core-room-service = 一起看
+core-room-not-found = 没有使用该代码的房间。房间可能已关闭。
+core-room-full = 该房间已满。
+core-room-proto = 该中继运行的是另一个版本的房间。请更新 { -app-name } 后再加入。
+core-room-unreachable = 无法连接中继：{ $message }
+core-room-refused = 中继拒绝了请求：{ $message }
+core-room-not-in = 你不在房间中。
+core-room-no-name = 请选择房间里其他人看到的名字
+core-room-bad-code = 房间代码是 6 位字母和数字
+core-room-created = 已创建一起看房间。房间代码是 { $code }。
+core-room-joined = 已加入一起看房间 { $code }。
+core-room-left = 已离开一起看房间。
+core-room-member-joined = { $name } 加入了房间。
+core-room-member-left = { $name } 离开了房间。
+core-room-closed = 一起看房间已关闭。
+core-room-lost = 与一起看房间的连接已断开，正在重试。
+core-room-back = 已重新回到一起看房间。

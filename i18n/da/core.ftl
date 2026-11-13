@@ -1273,3 +1273,25 @@ core-subscriptions-stopped-said = den stoppede: { $said }
 -app-name = AniBeam
 -anilist = AniList
 -mal = MyAnimeList
+
+## Watch together (#846)
+
+core-prefs-room-name = et navn er 1 til { $max } tegn uden kontroltegn
+core-prefs-room-relay = relæadressen skal starte med https:// eller http://
+core-room-service = Se sammen
+core-room-not-found = Intet rum har den kode. Det er måske lukket.
+core-room-full = Det rum er fuldt.
+core-room-proto = Det relæ kører en anden version af rum. Opdater { -app-name } for at gå ind i det.
+core-room-unreachable = Kunne ikke nå relæet: { $message }
+core-room-refused = Relæet sagde nej: { $message }
+core-room-not-in = Du er ikke i et rum.
+core-room-no-name = vælg det navn, de andre i rummet ser dig som
+core-room-bad-code = en rumkode er 6 bogstaver og tal
+core-room-created = Startede et se sammen-rum. Koden er { $code }.
+core-room-joined = Gik ind i se sammen-rummet { $code }.
+core-room-left = Forlod se sammen-rummet.
+core-room-member-joined = { $name } kom ind i rummet.
+core-room-member-left = { $name } forlod rummet.
+core-room-closed = Se sammen-rummet lukkede.
+core-room-lost = Mistede forbindelsen til se sammen-rummet. Prøver igen.
+core-room-back = Tilbage i se sammen-rummet.

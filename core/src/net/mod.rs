@@ -402,6 +402,25 @@ impl ReqwestHttp {
 /// A client for the DNS-over-HTTPS resolvers, which it reaches by address: the phone's
 /// bundled roots on Android, the system's elsewhere.
 pub fn resolver_client() -> Result<reqwest::Client, CoreError> {
+    plain_builder()?
+        .build()
+        .map_err(|e| CoreError::internal(format!("dns client: {e}")))
+}
+
+/// A client for the watch together relay (#846): HTTP/1.1 only, since its WebSocket is an
+/// HTTP/1.1 upgrade, and no overall timeout, which would cut the socket that upgrade
+/// leaves open. The same TLS as every other client: the system's roots, or the phone's
+/// bundled ones.
+pub fn room_client(connect_timeout: Duration) -> Result<reqwest::Client, CoreError> {
+    plain_builder()?
+        .http1_only()
+        .connect_timeout(connect_timeout)
+        .build()
+        .map_err(|e| CoreError::internal(format!("room client: {e}")))
+}
+
+/// A client builder with the user agent and, on the phone, the bundled Mozilla roots.
+fn plain_builder() -> Result<reqwest::ClientBuilder, CoreError> {
     let builder = reqwest::Client::builder().user_agent(format!("AniBeam/{}", crate::VERSION));
     #[cfg(target_os = "android")]
     let builder = {
@@ -412,9 +431,7 @@ pub fn resolver_client() -> Result<reqwest::Client, CoreError> {
             .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")))?;
         builder.tls_certs_only(roots)
     };
-    builder
-        .build()
-        .map_err(|e| CoreError::internal(format!("dns client: {e}")))
+    Ok(builder)
 }
 
 /// A URL as a log or error line names it: scheme, host and a port the URL names, since a

@@ -97,6 +97,8 @@ fn main() {
             .qml_file("qml/SeekBar.qml")
             .qml_file("qml/TrackPicker.qml")
             .qml_file("qml/PlayerDelays.qml")
+            .qml_file("qml/Room.qml")
+            .qml_file("qml/RoomPanel.qml")
             .qml_file("qml/Notice.qml")
             .qml_file("qml/KeyHelp.qml")
             .qml_file("qml/PlayerChrome.qml")

@@ -467,6 +467,25 @@ pub mod qobject {
         fn crawl_finished(self: Pin<&mut Door>, fetched: f64, deferred: f64);
         #[qsignal]
         fn skip_windows_ready(self: Pin<&mut Door>, session: f64, windows: QJsonArray);
+        // Watch together (#846)
+        /// The room as this member sees it (RoomInfo); an empty object once out of it.
+        #[qsignal]
+        fn room_changed(self: Pin<&mut Door>, room: QJsonObject);
+        /// What the room watches, for this member to open: `file` is this library's copy,
+        /// -1 when it lacks one, and `series` the matching series, -1 when there is none.
+        #[qsignal]
+        fn room_episode(self: Pin<&mut Door>, episode: QJsonObject, series: f64, file: f64);
+        /// What the player of `session` does to keep up: play or pause, a seek to `seek_to`
+        /// when `seek` is true, and the speed. Applied without sending anything back.
+        #[qsignal]
+        fn room_apply(
+            self: Pin<&mut Door>,
+            session: f64,
+            playing: bool,
+            seek: bool,
+            seek_to: f64,
+            speed: f64,
+        );
         #[qsignal]
         fn preferences_changed(self: Pin<&mut Door>, preferences: QJsonObject);
         #[qsignal]
@@ -1357,6 +1376,29 @@ impl qobject::Door {
             | EventBody::RemovalPlanned { .. }
             | EventBody::RecommendedRefreshed
             | EventBody::ShowPageRead { .. } => {}
+            EventBody::RoomChanged { room } => {
+                let room = match room {
+                    Some(_) => obj("room"),
+                    None => QJsonObject::default(),
+                };
+                self.as_mut().room_changed(room)
+            }
+            EventBody::RoomEpisode { .. } => {
+                self.as_mut()
+                    .room_episode(obj("episode"), n("series"), n("file"))
+            }
+            EventBody::RoomApply {
+                playing,
+                seek_to,
+                speed,
+                ..
+            } => self.as_mut().room_apply(
+                n("session"),
+                *playing,
+                seek_to.is_some(),
+                seek_to.unwrap_or(0.0),
+                *speed,
+            ),
             EventBody::SkipWindowsReady { .. } => self
                 .as_mut()
                 .skip_windows_ready(n("session"), arr("windows")),

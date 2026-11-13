@@ -1,0 +1,11 @@
+#compdef anibeam-relay
+# zsh completion for the AniBeam watch together relay.
+
+_anibeam-relay() {
+  _arguments \
+    '(- *)'{--help,-h}'[print help]' \
+    '(- *)'{--version,-V}'[print the version]' \
+    '--listen[the address and port to listen on]:address:(127.0.0.1\:8795 0.0.0.0\:8795)'
+}
+
+_anibeam-relay "$@"

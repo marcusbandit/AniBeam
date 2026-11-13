@@ -3143,3 +3143,81 @@ door-not-a-torrent-action = { $value }はトレント操作ではありません
 # $folder is a path, $error the system's own reason.
 shell-starter-folder-failed = { $folder }を作成できませんでした: { $error }
 shell-update-gone = { -app-name } { $version }はもう提供されていません
+
+## Watch together (#846)
+
+onboarding-step-together = 一緒に見る
+onboarding-title-together = 友だちと一緒に見る
+onboarding-body-together = プレーヤーでルームを作り、コードを送りましょう。各自が自分のエピソードを再生し、再生、一時停止、シークは全員で同期します。
+onboarding-ready-together = 一緒に見る
+onboarding-ready-together-as = ルームでは{ $name }と表示されます。
+onboarding-ready-together-none = 名前はまだありません。初回にルームパネルで聞かれます。
+onboarding-together-you = あなた
+onboarding-together-code = ルームコード
+onboarding-together-episode = Frieren · 第3話
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = ルームでの名前
+rail-room = 一緒に見る (Ctrl+J)
+rail-room-in = 一緒に見るルームに参加中 (Ctrl+J)
+player-chrome-watch-together = 一緒に見る
+player-chrome-room = ルーム { $code } · { $count ->
+   *[other] { $count }人
+}
+room-name-empty = ルームの他の人に表示される名前を入力してください。
+room-name-bad = その名前は使えません。1〜32文字にしてください。
+room-error-not-found = そのコードのルームはありません。送ってくれた人に確認してください。ルームが終了した可能性があります。
+room-error-full = そのルームは満員です。定員は10人です。
+room-error-unreachable = ルームサーバーに接続できませんでした。接続を確認して、もう一度お試しください。
+room-error-refused = ルームサーバーに断られました。少し待ってからもう一度お試しください。
+room-error-proto = そのルームは新しいバージョンのルームで動いています。参加するには{ -app-name }を更新してください。
+room-error-not-in-room = そのルームにはもう参加していません。もう一度ルームを作るか参加してください。
+room-error-bad-code = ルームコードはK7QM2Xのような英数字6文字です。
+room-error-bad-relay = 設定の「再生」にあるルームサーバーがWebアドレスではありません。そこで直してから、もう一度お試しください。
+room-panel-title = 一緒に見る
+room-panel-close = 閉じる
+room-panel-connected = 接続済み
+room-panel-reconnecting = 再接続中
+room-panel-name-label = ルームでの名前
+room-panel-name-placeholder = 名前
+room-panel-name-start = ルームを作る
+room-panel-name-join = ルームに参加
+room-panel-start = ルームを作る
+room-panel-or-join = またはコードで参加
+room-panel-join-label = ルームコード
+room-panel-join = 参加
+room-panel-you-are = 表示名: { $name }
+room-panel-change-name = 変更
+room-panel-code-label = ルームコード
+room-panel-copy = リンクをコピー
+room-panel-link-copied = ルームのリンクをコピーしました
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = このエピソードはライブラリにないため、まだ一緒に再生できません。
+room-panel-open-episode = エピソードを開く
+room-panel-people = { $count ->
+   *[other] { $count }人
+}
+room-panel-host = ホスト
+room-panel-you = あなた
+room-panel-ready = 準備完了
+room-panel-opening = 開いています
+room-panel-missing = 持っていません
+room-panel-offset = タイミング調整
+room-panel-offset-earlier = 0.5秒早く
+room-panel-offset-later = 0.5秒遅く
+room-panel-seconds = { $value }秒
+room-panel-suggested = OPからの推定: { $offset }
+room-panel-use-suggested = 適用
+room-panel-leave = ルームを退出
+player-room-speed = 速度はルームに合わせます
+settings-find-room-name =
+    .words = 一緒に見る ルーム 名前 友だち
+settings-find-room-relay =
+    .words = 一緒に見る ルーム リレー サーバー
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = 一緒に見る
+settings-playback-together = 一緒に見る
+settings-playback-room-name = 一緒に見るルームでの名前
+settings-playback-room-name-placeholder = 名前
+settings-playback-room-relay = ルームサーバー
+settings-playback-room-relay-helper = ルームはここで作られます。自分で運用するサーバーのときだけ変更してください。

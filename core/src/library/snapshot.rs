@@ -140,6 +140,8 @@ pub struct ImdbPick {
 /// batch never loads the whole library.
 pub struct Snapshot {
     pub now: SystemTime,
+    /// Whose progress and lists this snapshot holds (#631).
+    pub profile: u64,
     pub lang: TitleLanguage,
     pub main_tracker: Tracker,
     pub series: Vec<SeriesRow>,
@@ -324,6 +326,7 @@ impl Snapshot {
     ) -> Result<Snapshot, CoreError> {
         let mut snap = Snapshot {
             now,
+            profile,
             lang: prefs::load_preferences(conn)?.title_language,
             main_tracker: prefs::load_main_tracker(conn)?,
             series: Vec::new(),

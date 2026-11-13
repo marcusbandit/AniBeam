@@ -3054,3 +3054,81 @@ door-not-a-torrent-action = { $value } 不是有效的种子操作
 
 shell-starter-folder-failed = 无法创建 { $folder }：{ $error }
 shell-update-gone = { -app-name } { $version } 已不再提供
+
+## Watch together (#846)
+
+onboarding-step-together = 一起看
+onboarding-title-together = 和朋友一起看
+onboarding-body-together = 在播放器中创建房间并发送房间代码。每个人播放自己的那份剧集，播放、暂停和跳转对所有人保持同步。
+onboarding-ready-together = 一起看
+onboarding-ready-together-as = 你在房间中显示为 { $name }。
+onboarding-ready-together-none = 还没有名字。第一次使用时房间面板会询问。
+onboarding-together-you = 你
+onboarding-together-code = 房间代码
+onboarding-together-episode = Frieren · 第 3 集
+onboarding-together-friend-1 = Sam
+onboarding-together-friend-2 = Robin
+onboarding-together-name = 你在房间中的名字
+rail-room = 一起看（Ctrl+J）
+rail-room-in = 正在一起看房间中（Ctrl+J）
+player-chrome-watch-together = 一起看
+player-chrome-room = 房间 { $code } · { $count ->
+   *[other] { $count } 人
+}
+room-name-empty = 输入房间里其他人会看到的名字。
+room-name-bad = 这个名字不可用。请使用 1 到 32 个字符。
+room-error-not-found = 没有使用该代码的房间。请向发送者核对，房间可能已关闭。
+room-error-full = 该房间已满。每个房间最多 10 人。
+room-error-unreachable = 无法连接房间服务器。请检查网络连接后重试。
+room-error-refused = 房间服务器拒绝了请求。请过一分钟再试。
+room-error-proto = 该房间使用更新版本的房间功能。请更新 { -app-name } 后再加入。
+room-error-not-in-room = 你已不在该房间中。请重新创建或加入房间。
+room-error-bad-code = 房间代码是 6 位字母和数字，例如 K7QM2X。
+room-error-bad-relay = 设置的“播放”中的房间服务器不是网址。请在那里修改后重试。
+room-panel-title = 一起看
+room-panel-close = 关闭
+room-panel-connected = 已连接
+room-panel-reconnecting = 正在重新连接
+room-panel-name-label = 你在房间中的名字
+room-panel-name-placeholder = 你的名字
+room-panel-name-start = 创建房间
+room-panel-name-join = 加入房间
+room-panel-start = 创建房间
+room-panel-or-join = 或用房间代码加入
+room-panel-join-label = 房间代码
+room-panel-join = 加入
+room-panel-you-are = 你显示为 { $name }
+room-panel-change-name = 更改
+room-panel-code-label = 房间代码
+room-panel-copy = 复制链接
+room-panel-link-copied = 已复制房间链接
+room-panel-watching = { $series } · { $episode }
+room-panel-missing-here = 你的媒体库中没有这一集，暂时无法一起播放。
+room-panel-open-episode = 打开这一集
+room-panel-people = { $count ->
+   *[other] { $count } 人
+}
+room-panel-host = 房主
+room-panel-you = 你
+room-panel-ready = 就绪
+room-panel-opening = 正在打开
+room-panel-missing = 没有这一集
+room-panel-offset = 你的偏移
+room-panel-offset-earlier = 提前 0.5 秒
+room-panel-offset-later = 延后 0.5 秒
+room-panel-seconds = { $value } 秒
+room-panel-suggested = 根据片头建议 { $offset }
+room-panel-use-suggested = 使用
+room-panel-leave = 离开房间
+player-room-speed = 速度跟随房间
+settings-find-room-name =
+    .words = 一起看 房间 名字 朋友
+settings-find-room-relay =
+    .words = 一起看 房间 中继 服务器
+key-help-key-ctrl-j = Ctrl+J
+key-help-room = 一起看
+settings-playback-together = 一起看
+settings-playback-room-name = 你在一起看房间中的名字
+settings-playback-room-name-placeholder = 你的名字
+settings-playback-room-relay = 房间服务器
+settings-playback-room-relay-helper = 房间在这里创建。只有使用你自己运行的服务器时才需要更改。

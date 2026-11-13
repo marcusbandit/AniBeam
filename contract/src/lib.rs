@@ -43,6 +43,18 @@ mod tests {
         assert_send_sync::<CoreError>();
         assert_send_sync::<SeriesCard>();
         assert_send_sync::<PlaybackSession>();
+        assert_send_sync::<RoomInfo>();
+        assert_send_sync::<EpisodeRef>();
+    }
+
+    /// A blob saved before rooms existed reads with no name and the default relay.
+    #[test]
+    fn room_preferences_default_for_old_blobs() {
+        let old = r#"{"title_language":"English","library_tab":"All","library_sort":"Alpha","library_direction":"Asc","feed_sort":"Recent"}"#;
+        let p: Preferences = serde_json::from_str(old).unwrap();
+        assert_eq!(p.room_name, "");
+        assert_eq!(p.room_relay, ROOM_RELAY);
+        assert_eq!(Preferences::default().room_relay, ROOM_RELAY);
     }
 
     #[test]

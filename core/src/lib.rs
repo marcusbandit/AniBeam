@@ -38,6 +38,7 @@ pub mod profiles;
 pub mod recommended;
 pub mod releases;
 pub mod repos;
+pub mod room;
 pub mod stats;
 pub mod store;
 pub mod subscriptions;

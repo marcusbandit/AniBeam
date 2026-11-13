@@ -16,6 +16,7 @@ crate-type = ["lib"]
 uniffi.workspace = true
 anibeam-contract = { workspace = true, features = ["sqlite"] }
 anibeam-recs.workspace = true
+anibeam-room.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -47,6 +48,10 @@ roxmltree = "0.20"
 anibeam-host-api = { workspace = true, features = ["proof"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 if-addrs = "0.13"
+# Watch together rooms (#846): the relay's WebSocket, opened through reqwest's own client
+# and HTTP upgrade so it rides the same TLS setup as every other request.
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 # Casting: the Matroska reader for cutting segments, mDNS for finding Chromecasts, and rustls
 # for their TLS. Only the shells that cast turn it on.
 matroska-demuxer = { version = "0.8", optional = true }
@@ -80,6 +85,8 @@ rustix = { version = "1", features = ["system", "process"] }
 
 [dev-dependencies]
 tempfile = "3"
+# The native relay, run in-process by the rooms tests.
+anibeam-relay = { path = "../apps/relay" }
 
 # The desktop's trash; a phone deletes its own files outright.
 [target.'cfg(not(target_os = "android"))'.dependencies]
