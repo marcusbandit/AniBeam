@@ -5,7 +5,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use anibeam_companion::address::HostAddress;
 use anibeam_companion::api::{self, Probe};
 use anibeam_companion::client::{self, HostClient};
 use anibeam_companion::store::Store;
@@ -113,7 +112,10 @@ impl Host {
     pub fn connect() -> Result<Host, String> {
         let dir = DATA_DIR.get().ok_or("The app is still starting")?;
         let store = Store::open(dir).map_err(|e| e.to_string())?;
-        let address = HostAddress::parse(&store.settings().address)?;
+        let address = store
+            .settings()
+            .host()
+            .ok_or("No computer yet. Add yours in More.")?;
         let client = HostClient::new(client::agent(), address);
         let hello = client.hello().map_err(|e| e.to_string())?;
         if hello.streaming_off {

@@ -20,7 +20,7 @@ export component Onboarding inherits Rectangle {
         { title: "Storage", note: "A cap on how much AniBeam may download. It reserves nothing: the space stays free until episodes fill it." },
         { title: "Notifications", note: "While episodes download, a notification shows how far along they are, and another says when one is ready to watch. Downloads run either way." },
         { title: "Search sites", note: "AniBeam comes with nothing to search. A repo is a signed list of sites to search. Paste a repo's address, check its key, then install the sites you want. You can do this later in More." },
-        { title: "Your computer", note: "AniBeam on a computer can share its library with this phone over Tailscale: its shows appear in Library and their episodes play here. Type its Tailscale name and port, then Test. No computer? Skip this; More has it later." },
+        { title: "Your computer", note: "AniBeam on a computer can share its library with this phone over Tailscale: its shows appear in Library and their episodes play here. Type its Tailscale name and port, then Test. No computer? Leave it empty and start; More has it later." },
     ];
 
     TouchArea { }
@@ -165,7 +165,14 @@ export component Onboarding inherits Rectangle {
             primary: true;
             clicked => {
                 if (AppData.step >= root.steps - 1) {
-                    AppData.finish-onboarding();
+                    // A computer typed in counts as saved; one that does not read stays
+                    // here with its error.
+                    if (AppData.host-address != "") {
+                        AppData.save-host(AppData.host-address);
+                    }
+                    if (AppData.host-address == "" || AppData.host-tone != 1) {
+                        AppData.finish-onboarding();
+                    }
                 } else {
                     AppData.step += 1;
                 }

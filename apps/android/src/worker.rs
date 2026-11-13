@@ -15,6 +15,8 @@ pub enum Command {
     SaveAndSync(HostAddress),
     /// Only ask the host who it is.
     Test(HostAddress),
+    /// Stop reaching a computer: the phone keeps to its own library.
+    Forget,
 }
 
 pub enum Event {
@@ -75,6 +77,9 @@ impl<F: Fn(Event)> Worker<F> {
                         sync = true;
                     }
                     Command::Test(address) => self.test(&address),
+                    Command::Forget => {
+                        let _ = self.syncer.store().save_settings(&Settings::default());
+                    }
                 }
             }
             if sync {
@@ -107,7 +112,15 @@ impl<F: Fn(Event)> Worker<F> {
     fn sync(&self) {
         let store = self.syncer.store();
         // A fresh install has no computer until one is typed in, in onboarding or More (#736).
-        let Ok(address) = HostAddress::parse(&store.settings().address) else {
+        // AniList's schedules for what the last computer had still come in.
+        let Some(address) = store.settings().host() else {
+            if let Some(cache) = store.cache()
+                && let Some(anilist) = self
+                    .syncer
+                    .refresh_anilist_if_due(&cache, anibeam_companion::now())
+            {
+                (self.deliver)(Event::AniList(anilist));
+            }
             return;
         };
         (self.deliver)(Event::SyncStarted);

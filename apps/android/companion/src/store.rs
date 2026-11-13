@@ -47,6 +47,13 @@ pub struct Settings {
     pub address: String,
 }
 
+impl Settings {
+    /// The computer to reach, or None when there is none: nothing saved, or it was removed.
+    pub fn host(&self) -> Option<crate::address::HostAddress> {
+        crate::address::HostAddress::parse(&self.address).ok()
+    }
+}
+
 /// AniList's schedules, by AniList id, and when they were asked for.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AniListCache {
@@ -104,8 +111,13 @@ impl Store {
         }
     }
 
+    /// What More saved. A phone from before #736 that synced on the old built-in address
+    /// without ever pressing Save has no settings.json, so it keeps the computer its cache
+    /// came from; a fresh install has neither and points nowhere.
     pub fn settings(&self) -> Settings {
-        self.read_json("settings.json").unwrap_or_default()
+        self.read_json("settings.json").unwrap_or_else(|| Settings {
+            address: self.cache().map(|c| c.address).unwrap_or_default(),
+        })
     }
 
     pub fn save_settings(&self, settings: &Settings) -> std::io::Result<()> {
@@ -227,6 +239,30 @@ mod tests {
     }
 
     #[test]
+    fn a_store_from_before_settings_keeps_the_computer_its_cache_came_from() {
+        let store = Store::open(scratch("upgrade")).unwrap();
+        let snapshot: Snapshot =
+            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json"))
+                .unwrap();
+        let cache = Cache {
+            address: "desktop:8790".into(),
+            host: "desktop".into(),
+            host_version: "2.4.0".into(),
+            synced_at: 1_792_242_100,
+            snapshot,
+            peers: Vec::new(),
+        };
+        store.save_cache(&cache).unwrap();
+        assert_eq!(store.settings().address, "desktop:8790");
+        store.save_settings(&Settings::default()).unwrap();
+        assert_eq!(
+            store.settings().host(),
+            None,
+            "a removed computer stays removed"
+        );
+    }
+
+    #[test]
     fn the_cache_and_settings_round_trip() {
         let store = Store::open(scratch("roundtrip")).unwrap();
         let snapshot: Snapshot =
@@ -240,7 +276,7 @@ mod tests {
             snapshot,
             peers: vec![crate::api::PeerHost {
                 name: "laptop".into(),
-                url: "http://100.80.3.4:8790".into(),
+                url: "http://100.64.0.3:8790".into(),
                 version: "2.4.0".into(),
             }],
         };

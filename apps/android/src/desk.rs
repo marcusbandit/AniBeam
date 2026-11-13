@@ -36,8 +36,7 @@ struct Series {
 /// is off costs the connect timeout, so call it off the UI thread.
 pub fn probe(data_dir: &Path) -> Option<Desk> {
     let store = Store::open(data_dir).ok()?;
-    let typed = store.settings().address;
-    let address = HostAddress::parse(&typed).ok()?;
+    let address = store.settings().host()?;
     let client = HostClient::new(client::agent(), address);
     let hello = client.hello().ok()?;
     if hello.app != api::APP || !hello.features.iter().any(|f| f == api::FEATURE_DOWNLOADS) {

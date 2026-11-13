@@ -1697,6 +1697,14 @@ impl App {
     }
 
     fn save_host(&mut self, text: &str) {
+        if text.trim().is_empty() {
+            self.data().set_host_address("".into());
+            self.data().set_host_tone(2);
+            self.data()
+                .set_host_result("No computer. This phone keeps to its own library.".into());
+            let _ = self.commands.send(Command::Forget);
+            return;
+        }
         match HostAddress::parse(text) {
             Ok(address) => {
                 self.data().set_host_address(address.display().into());
@@ -1955,7 +1963,7 @@ pub fn run(
     crate::airing::start(&data_dir);
     crate::stream::init(data_dir.clone());
     let store = Store::open(&data_dir)?;
-    let address = HostAddress::parse(&store.settings().address).ok();
+    let address = store.settings().host();
 
     let window = AppWindow::new()?;
     crate::player::install(&window);
