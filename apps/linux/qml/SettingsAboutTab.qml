@@ -29,7 +29,8 @@ SettingsTab {
                 Button { objectName: "about-update-install"; visible: tab.offered && tab.upd.how === "install"; text: "Install " + tab.upd.version; icon: "download"; primary: true; onClicked: tab.upd.install() }
                 Button { objectName: "about-update-copy"; visible: tab.offered && tab.upd.how === "command"; text: tab.upd.copyText; icon: tab.upd.copied ? "check" : "copy"; primary: true; onClicked: tab.upd.copyCommand() }
                 Button { objectName: "about-update-restart"; visible: tab.upd.phase === "ready"; text: tab.upd.restartText; icon: "refresh-cw"; primary: true; onClicked: tab.upd.restart() }
-                Button { objectName: "about-update-retry"; visible: tab.upd.phase === "failed"; text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: tab.upd.install() }
+                Button { objectName: "about-update-retry"; visible: tab.upd.phase === "failed"; text: tab.upd.retryText; icon: "rotate-cw"; primary: true; onClicked: tab.upd.install() }
+                Button { objectName: "about-update-cancel"; visible: tab.upd.phase === "downloading"; text: tab.upd.cancelText; icon: "x"; flat: true; onClicked: tab.upd.cancel() }
                 Button { objectName: "about-update-page"; visible: (tab.upd.phase === "failed" || (tab.offered && (tab.upd.how === "page" || tab.upd.how === "source"))) && tab.upd.url !== ""
                          text: tab.upd.pageText; icon: "external-link"; primary: tab.upd.how === "page" && tab.upd.phase !== "failed"; flat: !primary; onClicked: frame.openLink(tab.upd.url) } } }
         SettingRow { label: "Setup"; helper: "The walkthrough a new install opens with: your folder, your list and downloads."

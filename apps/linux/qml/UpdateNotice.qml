@@ -69,10 +69,19 @@ Frost {
     }
     function setTrack(t) {
         kept.track = t
-        // An update already on its way is not dropped for a change of track
-        if (busy) return
+        // An update already on its way is not dropped for a change of track; if it stops
+        // short, its offer goes and the new track is asked then
+        if (busy) { trackMoved = true; return }
+        drop()
+    }
+    // The track changed under a download that has not landed
+    property bool trackMoved: false
+    // The offer goes, notice and badges with it, and the track is asked again
+    function drop() {
+        trackMoved = false
         shown = false
         pending = false
+        phase = "offer"
         check()
     }
 
@@ -84,8 +93,9 @@ Frost {
         }
         function onUpdateCurrent(track, error) {
             if (track !== root.track) return
-            // Nothing newer on this track: an offer from an earlier check is gone
-            if (!error && !root.busy) root.pending = false
+            // Nothing newer on this track: an offer from an earlier check is gone, the
+            // notice with it
+            if (!error && !root.busy) { root.pending = false; root.shown = false; root.phase = "offer" }
             if (!root.asked) return
             root.asked = false
             if (error) frame.toast("AniBeam could not check for updates. Check your internet connection, then try again.", 8, "Try again", root.checkNow, String(error))
@@ -102,7 +112,10 @@ Frost {
             root.phase = "ready"
             if (!root.covered) root.restart()
         }
-        function onUpdateFailed(message) { root.failure = message; root.phase = "failed"; root.shown = true }
+        function onUpdateFailed(message) {
+            if (root.trackMoved) { root.drop(); return }
+            root.failure = message; root.phase = "failed"; root.shown = true
+        }
     }
 
     // Check for updates in About: like the launch check, but it shows the offer even for a
@@ -138,6 +151,7 @@ Frost {
     function cancel() {
         Shell.cancelUpdate()
         root.phase = "offer"
+        if (trackMoved) drop()
     }
     function restart() {
         Shell.restartForUpdate()
@@ -151,6 +165,8 @@ Frost {
     // The words on the island's buttons, which About's own buttons use too
     readonly property string copyText: copied ? "Copied" : "Copy"
     readonly property string restartText: "Restart"
+    readonly property string retryText: "Retry"
+    readonly property string cancelText: "Cancel"
     readonly property string pageText: "Release page"
 
     function mb(bytes) { return Math.round(bytes / 1048576) }
@@ -201,7 +217,7 @@ Frost {
         Button {
             objectName: "update-install"
             visible: (root.phase === "offer" && root.how === "install") || root.phase === "failed"
-            text: root.phase === "failed" ? "Retry" : "Update"
+            text: root.phase === "failed" ? root.retryText : "Update"
             icon: root.phase === "failed" ? "rotate-cw" : "download"
             primary: true; small: true
             onClicked: root.install()
@@ -228,7 +244,7 @@ Frost {
         Button {
             objectName: "update-cancel"
             visible: root.phase === "downloading"
-            text: "Cancel"; icon: "x"; small: true
+            text: root.cancelText; icon: "x"; small: true
             onClicked: root.cancel()
         }
         Button {

@@ -28,21 +28,30 @@ say() { printf '\033[1;33m==>\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" > /dev/null 2>&1; }
 
-# The release links the site keeps (tools/releases.py), read once; empty when they cannot be had.
-releases=""
-read_releases() { releases="$(curl -fsSL "$base/releases.json" 2> /dev/null)" || releases=""; }
+# The release links the site keeps (tools/releases.py), read once and only by the routes that
+# download a file; empty when they cannot be had.
+releases="" read=""
+read_releases() {
+  [ -n "$read" ] && return
+  read=1
+  releases="$(curl -fsSL --max-time 20 "$base/releases.json" 2> /dev/null)" || releases=""
+}
 
 # The newest file of one kind (appimage, dmg) on the channel's release, from those links. When
 # they cannot be had, GitHub's newest release, or its newest nightly.
 asset() {
+  read_releases
   if [ "$channel" = nightly ]; then range='/"nightly":/,/"phone":/p'; else range='/"stable":/,/"nightly":/p'; fi
   url="$(printf '%s\n' "$releases" | sed -n "$range" \
     | grep -o "\"$1\": *\"[^\"]*\"" | head -n 1 | sed 's/.*"\(https[^"]*\)"/\1/')" || url=""
   [ -n "$url" ] && return
   if [ "$channel" = nightly ]; then
-    # GitHub lists the newest release first
+    # GitHub lists the newest release first. A stable release newer than every nightly is the
+    # newest build there is, the same rule releases.py keeps, so it counts too; test builds
+    # (-pr.) do not.
     url="$(curl -fsSL "https://api.github.com/repos/$repo/releases?per_page=30" \
-      | grep -o "\"browser_download_url\": *\"[^\"]*-nightly\.[^\"]*$2\"" | head -n 1 | sed 's/.*"\(https[^"]*\)"/\1/')" || url=""
+      | grep -oE "\"browser_download_url\": *\"[^\"]*/AniBeam-[0-9.]+(-nightly\.[0-9.]+)?-$2\"" | head -n 1 \
+      | sed 's/.*"\(https[^"]*\)"/\1/')" || url=""
     return
   fi
   url="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
@@ -54,14 +63,14 @@ asset() {
 pick_channel() {
   case "$channel" in
     stable) return ;;
-    nightly) ;;
+    nightly) nightly_route=1 ;;
     *) fail "ANIBEAM_CHANNEL is stable or nightly, not $channel" ;;
   esac
+  read_releases
   if printf '%s\n' "$releases" | grep -q '"nightly": *null'; then
     say "No nightly is newer than the stable release yet, so the stable release goes in."
     say "Pick Nightly in Settings > About > Updates to move to the next nightly once it is out"
     channel=stable
-    nightly_route=1
   fi
 }
 nightly_route=""
@@ -75,7 +84,7 @@ unquarantine() {
 
 mac() {
   [ "$(uname -m)" = arm64 ] || fail "AniBeam for Mac is built for Apple silicon only."
-  if [ "$channel" = nightly ] || [ -n "$nightly_route" ]; then
+  if [ -n "$nightly_route" ]; then
     have brew && say "Nightly comes as the dmg, not the Homebrew cask, which carries stable releases only"
   elif have brew; then
     say "Installing AniBeam with Homebrew"
@@ -200,11 +209,16 @@ main() {
   fi
   if [ "${ANIBEAM_APPIMAGE:-}" = 1 ]; then
     appimage
-  elif [ "$channel" = nightly ] || [ -n "$nightly_route" ]; then
+  elif [ -n "$nightly_route" ]; then
     case " $id $like " in
       *" arch "* | *" debian "* | *" fedora "*)
         say "Nightly comes as the AppImage: the AUR and the apt and dnf repos carry stable releases only" ;;
     esac
+    # A copy from the system's packages stays as it is: the menu entry this writes opens the
+    # AppImage, but anibeam typed in a shell may still find the packaged one first
+    if [ -x /usr/bin/anibeam ]; then
+      say "AniBeam from the system's packages stays in /usr/bin; the menu opens the nightly AppImage. Remove the package to keep one copy"
+    fi
     appimage
   elif family arch && have pacman; then
     arch

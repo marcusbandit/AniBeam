@@ -132,7 +132,8 @@ FocusScope {
         if (id === "phone") return Door.preferences.share_over_tailscale ? "Shared on your tailnet" : "Not shared"
         if (id === "storage") return storage ? Fmt.bytes(storage.image_bytes || 0) + " of images cached" : "Images, export and import"
         if (id === "help") return "Answers to what people ask most"
-        if (id === "about") return frame.updatePanel.pending ? "Version " + frame.updatePanel.version + " is out" : Shell.build
+        if (id === "about") return !frame.updatePanel.pending ? Shell.build
+            : frame.updatePanel.phase === "offer" ? "Version " + frame.updatePanel.version + " is out" : frame.updatePanel.headline
         if (id === "developer") return frame.devRecorder.last ? frame.devRecorder.last.label + " built in " + Math.round(frame.devRecorder.last.built) + " ms" : "Timing every page"
         return ""
     }
