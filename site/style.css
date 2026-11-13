@@ -592,8 +592,8 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 a.gh:hover, a.gh:focus-visible { color: var(--fg); }
 a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; border-radius: 6px; }
 .hint-anilist svg { fill: #02a9ff; }
-.hint-tailscale .ts-on { fill: var(--fg); }
-.hint-tailscale .ts-off { fill: var(--fg); opacity: 0.3; }
+/* Tailscale's own mark, as their site draws it */
+.gh .ts-logo { width: 16px; height: 16px; vertical-align: -3px; }
 
 /* Install: the download button and the command line */
 .install h2 { margin-bottom: 56px; }
