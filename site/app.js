@@ -297,11 +297,16 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     if (pushed) { pushed = false; shut(false, true); }
   });
 
-  // A card that leaves slides back behind its poster and fades, then goes; the next one does not
-  // wait for it.
+  // A card that leaves slides back behind its poster and fades, then goes once its own animations
+  // have finished; the next one does not wait for it. While it goes nothing in it can be reached.
   const retire = (pop) => {
-    pop.firstChild.classList.replace("in", "out") || pop.firstChild.classList.add("out");
-    setTimeout(() => pop.remove(), 560);
+    const card = pop.firstChild;
+    pop.inert = true;
+    card.classList.remove("in");
+    card.classList.add("out");
+    return new Promise((done) => requestAnimationFrame(() => {
+      Promise.all(card.getAnimations().map((a) => a.finished)).catch(() => {}).then(() => { pop.remove(); done(); });
+    }));
   };
 
   let open = null;
@@ -333,11 +338,12 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     const poster = open;
     open = null;
     poster.classList.remove("is-open");
-    wall.classList.remove("holding");
-    retire(current);
+    // Focus inside the leaving card goes back to its poster before the card goes.
+    if (refocus || current.contains(document.activeElement)) poster.focus({ preventScroll: true });
+    // The wall moves again only once the card is back behind its poster.
+    retire(current).then(() => { if (!open) wall.classList.remove("holding"); });
     current = null;
     if (!fromHistory) popSheet(viaLink);
-    if (refocus) poster.focus({ preventScroll: true });
   }
 
   wall.addEventListener("click", (e) => {
@@ -350,7 +356,8 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     const p = e.target.closest(".poster[role=button]");
     if (!p || (e.key !== "Enter" && e.key !== " ")) return;
     e.preventDefault();
-    show(p, true);
+    if (p === open || p === wanted) shut(true);
+    else show(p, true);
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && (open || wanted)) shut(true); });
   document.addEventListener("pointerdown", (e) => {
