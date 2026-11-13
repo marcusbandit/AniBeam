@@ -72,7 +72,6 @@ dates-told-gave-way =
         [one] You set { $count } episode; that no longer applies
        *[other] You set { $count } episodes; that no longer applies
     }
-||||||| 87f27e1d
 
 ## The series page
 
