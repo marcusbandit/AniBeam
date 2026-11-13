@@ -74,18 +74,6 @@ static AUDIO_PATTERNS: LazyLock<Vec<(&'static str, FancyRegex)>> = LazyLock::new
 // per-episode size is normalised to a "1080p x264-equivalent" figure and compared against
 // one config target.
 
-static SIZE_RE: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)(\d[\d.,]*)\s*([KMGT])?i?B\b"));
-
-fn unit_mib(unit: &str) -> f64 {
-    match unit {
-        "" => 1.0 / (1024.0 * 1024.0),
-        "k" => 1.0 / 1024.0,
-        "m" => 1.0,
-        "g" => 1024.0,
-        _ => 1024.0 * 1024.0,
-    }
-}
-
 /// Codec efficiency relative to AVC/x264 (1.0): how many times smaller a file in this
 /// codec can be while still looking the same. List order is detection precedence. An
 /// untagged title falls back to 1.0, the least efficient codec, which reads its size as
@@ -229,31 +217,9 @@ fn resolution_score(res: i64, preferred_resolution: &str) -> i64 {
     res
 }
 
-/// Parse a size number that may use '.' or ',' as its decimal mark, and ',' as a
-/// thousands separator ("1,024" is 1024.0, "6,2" is 6.2).
-fn to_float(raw: &str) -> Option<f64> {
-    let text = raw.trim();
-    let text = if text.contains('.') && text.contains(',') {
-        text.replace(',', "")
-    } else if text.contains(',') {
-        let (head, tail) = text.rsplit_once(',').unwrap_or(("", text));
-        let joiner = if tail.chars().count() == 3 { "" } else { "." };
-        format!("{}{joiner}{tail}", head.replace(',', ""))
-    } else {
-        text.to_string()
-    };
-    text.parse::<f64>().ok()
-}
-
 /// A feed's size string ("6.2 GiB", "301.4 MiB") in MiB, or None if unreadable.
 pub fn size_mib(size: &str) -> Option<f64> {
-    let m = SIZE_RE.captures(size)?;
-    let value = to_float(&m[1])?;
-    let unit = m
-        .get(2)
-        .map(|u| u.as_str().to_lowercase())
-        .unwrap_or_default();
-    Some(value * unit_mib(&unit))
+    crate::downloads::facts::size_in_bytes(size).map(|b| b / (1024.0 * 1024.0))
 }
 
 /// How many times smaller this title's codec can be than x264 for equal quality. 1.0
@@ -626,16 +592,6 @@ mod tests {
     }
 
     #[test]
-    fn to_float_decimal_and_thousands_marks() {
-        assert_eq!(to_float("1,024"), Some(1024.0));
-        assert_eq!(to_float("6,2"), Some(6.2));
-        assert_eq!(to_float("1,024.5"), Some(1024.5));
-        assert_eq!(to_float("6.2"), Some(6.2));
-        assert_eq!(to_float("1,234,567"), Some(1234567.0));
-        assert_eq!(to_float("1.2.3"), None);
-    }
-
-    #[test]
     fn size_mib_units() {
         assert_eq!(size_mib("6.2 GiB"), Some(6.2 * 1024.0));
         assert_eq!(size_mib("301.4 MiB"), Some(301.4));
@@ -644,6 +600,7 @@ mod tests {
         assert_eq!(size_mib("512 KiB"), Some(0.5));
         assert_eq!(size_mib("1048576 B"), Some(1.0));
         assert_eq!(size_mib("1,024 MiB"), Some(1024.0));
+        assert_eq!(size_mib("6,2 GiB"), Some(6.2 * 1024.0));
         assert_eq!(size_mib(""), None);
         assert_eq!(size_mib("big"), None);
     }
