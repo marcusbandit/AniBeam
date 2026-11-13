@@ -146,10 +146,8 @@ Minecraft's patch notes: a version, a few sections, one short line per change.
   conflict with every other open PR (#504); separate files never do.
 - The apps build the change files in and show them under the newest heading, so a nightly's
   What's new has them. When a version ships, `.github/changelog-fold.sh` folds them into
-  `CHANGELOG.md` under its heading and deletes them: the Release workflow does it for the
-  desktop. The PR that bumps the phone's version, made for the build about to leave the
-  machine, adds the new heading first and then runs `.github/changelog-fold.sh
-  apps/android`, so what changed since the last APK lands under the version that ships it.
+  `CHANGELOG.md` under its heading and deletes them: the Release workflow does it for both
+  apps, each when its own version ships.
 - Say what the person sees. No why, no how, no issue numbers, no file names, no full stop.
   80 characters at most; most lines fit in 50.
 - The newest heading is the app's version, with the day: `## 2.1.1 · 2026-10-25`. Bumping
@@ -180,8 +178,7 @@ also runs `.github/changelog-newest.sh` against the PR's base, which fails a lin
 writes into `CHANGELOG.md` under any heading but the newest, unless it was folded in from a
 change file the same PR deletes. Run it by hand with `.github/changelog-newest.sh
 origin/main`.
-The phone's `build.sh` refuses an APK whose newest heading is not its
-`versionName`.
+The phone's `build.sh` refuses an APK whose newest heading is not its version.
 
 ## Sources
 
@@ -234,9 +231,15 @@ update track from that version:
 | Stable | `2.5.0` | Release workflow, promoting a nightly | everyone; the Latest release |
 | Nightly | `2.5.0-nightly.20261102.40` | `nightly.yml`, run on demand | the Nightly track in Settings |
 | PR test build | `2.5.0-pr.280.3` | `pr-build.yml`, the `test build` label | whoever the PR comment reaches |
+| Phone stable | `android-v2.4.3` | Release workflow with app `phone`, promoting a phone nightly | everyone with the phone app |
+| Phone nightly | `android-v2.4.3-nightly.20261113.41` | `nightly.yml`, the same run | whoever installs it |
 
 The workspace version in `Cargo.toml` is always the next stable version, and every build
-between two releases carries it as its base.
+between two releases carries it as its base. The phone has a number of its own, the
+`version` in `apps/android/Cargo.toml`, and the same rule holds for it. Its APK's
+versionCode follows from the version (`apps/android/scripts/build.sh`), so a nightly
+installs over the stable version before it, the stable version over its nightlies, and the
+next version's nightlies over both. Nobody bumps a versionCode by hand.
 
 Every nightly and stable release that brings something new also gets its page on the website:
 [anibeam.app/whats-new](https://anibeam.app/whats-new/) lists every version, newest first, with
@@ -248,7 +251,9 @@ release needs. Nobody writes these pages by hand.
 - **Nightly.** The less polished, frontier build, not a daily one. Run `nightly.yml` from
   the Actions tab when main holds something worth trying; it builds main and publishes it as
   its own pre-release, and skips the run when the app has not changed since the last
-  nightly unless `force` is ticked. The ten newest are kept.
+  nightly unless `force` is ticked. The ten newest are kept. The same run builds the phone's
+  APK when the phone or what it builds on changed since the phone's last nightly, and
+  publishes it as its own `android-v*-nightly.*` pre-release.
 - **PR test build.** Put the `test build` label on a PR to get installers for it on the
   `pr-builds` pre-release, linked from a comment on the PR. Every push rebuilds them;
   closing the PR or taking the label off removes them. Use it to have someone try a
@@ -263,6 +268,12 @@ release needs. Nobody writes these pages by hand.
   with a new heading. Then update the AUR packages (`anibeam` and `anibeam-bin`, one
   command) and the brew cask: `apps/linux/packaging/aur/publish.sh 2.5.0` and
   `apps/linux/packaging/brew/bump.sh 2.5.0`.
+- **Phone stable.** The same Release workflow with app set to `phone`: it promotes the
+  newest phone nightly, so `android-v2.4.3-nightly.20261113.41` ships as `android-v2.4.3`,
+  an APK built from that commit. It is never the Latest release, which stays the desktop's
+  for the site and `install.sh`. Then it folds `apps/android/changes` into the phone's
+  `CHANGELOG.md` and moves the phone to `2.5.0` with a new heading. A phone version that
+  needs a fix gets it on main and ships in the next phone version.
 - **Hotfix.** A shipped version that needs a fix gets a branch from its tag, only then:
   `git push origin v2.5.0^{commit}:refs/heads/release/2.5`. The fix lands on main first
   through the usual PR, then is cherry-picked onto the branch with `git cherry-pick -x` in
@@ -273,10 +284,9 @@ release needs. Nobody writes these pages by hand.
   origin v2.5.1`. The Release workflow refuses a tag that is not on its own branch. The
   branch is never merged back, since everything on it came from main.
 
-A phone build for testing goes on the newest nightly under one fixed name instead of a new
-`android-v*` pre-release: `cp AniBeam-2.1.2.apk AniBeam-phone.apk && gh release upload
-<nightly tag> AniBeam-phone.apk --clobber`. The phone ships under its own number,
-`android-v2.1.2` for example, published by hand.
+Every phone APK on a release is signed with one key, the `ANIBEAM_ANDROID_KEYSTORE`
+secret (a base64 keystore), because Android installs an update only over an install signed
+with the same key. A phone build is never published by hand: run the Nightly workflow.
 
 A build made outside CI (a checkout, the AUR) names itself after the newest stable tag in
 its history plus commits, `2.4.0.r12.gabc1234`, and counts as the workspace version for
