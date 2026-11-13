@@ -1,5 +1,5 @@
-// Fixes, the desktop's menu of the same name: the things a show can need put right. The match
-// and rescan are here; each other fix opens its own sheet.
+// Fixes, the desktop's menu of the same name: the things a show can need put right. Episodes
+// and dates, the match and rescan are here; each fix opens its own sheet.
 
 import { Theme } from "theme.slint";
 import { Button } from "widgets.slint";
@@ -10,6 +10,12 @@ export component FixesSheet inherits ShowSheet {
     title: "Fixes";
     line: ShowData.series-title;
     dismissed => { ShowData.close(); }
+    if !ShowData.movie: Button {
+        text: "Episodes and dates";
+        icon: @image-url("icons/calendar-days.svg");
+        has-icon: true;
+        clicked => { ShowData.open-dates(); }
+    }
     Button {
         text: ShowData.matched ? "Match" : "Find a match";
         icon: @image-url("icons/search.svg");

@@ -1,0 +1,350 @@
+// Episodes and dates, the desktop's schedule sheet (#418, #432, #746): every episode of the
+// season is a tile with its date under its number, the last one is marked, and nothing past
+// it is predicted. Tap tiles, then one row of actions dates them, ends the season there or
+// clears them. Paste a list reads a release list onto the tiles. `schedule.rs` holds the
+// draft and builds the tiles; every tap calls back into it.
+
+import { Theme } from "theme.slint";
+import { Button, Chip, Field } from "widgets.slint";
+import { ShowData, ShowSheet } from "show.slint";
+
+// One episode's tile.
+export struct DateTile {
+    ep: int,
+    // What it says under its number: "7 Jan", "2027", "No date", "Last", "Out", "≈ 14 Jan".
+    date: string,
+    // What the user set: 0 nothing, 1 a day, 2 a month, 3 a year, 4 no date yet.
+    kind: int,
+    picked: bool,
+    // Already aired.
+    out: bool,
+    // The season's last episode.
+    end: bool,
+    // Past the last episode.
+    past: bool,
+    // The record dates it.
+    record: bool,
+}
+
+export global ScheduleData {
+    // "Title · Season 2".
+    in property <string> line;
+    in property <[DateTile]> tiles;
+    // The grid can grow by another row.
+    in property <bool> more;
+    in property <int> picked-count;
+    // "Episode 4" or "3 episodes".
+    in property <string> picked-word;
+    // The typed date reads as one.
+    in property <bool> typed-ok;
+    in-out property <string> typed-text;
+    in property <bool> weekly;
+    in property <bool> run;
+    in property <bool> is-last;
+    in property <bool> can-clear;
+    in property <string> summary;
+    in property <bool> dirty;
+    in-out property <bool> pasting;
+    in-out property <string> paste-text;
+    callback tap(int);
+    callback typed(string);
+    callback set-date();
+    callback no-date();
+    callback toggle-weekly();
+    callback toggle-run();
+    callback mark-last();
+    callback clear-date();
+    callback more-tiles();
+    callback paste(string);
+    callback save();
+
+    // A user's own date takes its kind's colour.
+    public pure function kind-ink(kind: int) -> color {
+        if kind == 1 {
+            return Theme.ok;
+        }
+        if kind == 2 {
+            return Theme.warn;
+        }
+        if kind == 3 {
+            return Theme.purple;
+        }
+        return Theme.dim;
+    }
+}
+
+component DateCell inherits Rectangle {
+    in property <DateTile> tile;
+    border-radius: Theme.radius-row;
+    background: root.tile.picked ? Theme.accent : touch.pressed ? Theme.pressed : Theme.raised;
+    border-width: root.tile.kind != 0 && !root.tile.picked && !root.tile.past ? 2px : 1px;
+    border-color: root.tile.picked ? Theme.accent
+        : root.tile.kind != 0 && !root.tile.past ? ScheduleData.kind-ink(root.tile.kind) : Theme.line;
+    opacity: root.tile.past && !root.tile.picked ? 0.4 : 1;
+    animate background { duration: 100ms; }
+    VerticalLayout {
+        alignment: center;
+        spacing: Theme.unit * 0.5;
+        Text {
+            text: root.tile.ep;
+            horizontal-alignment: center;
+            font-family: Theme.strong-face;
+            font-size: Theme.normal;
+            color: root.tile.picked ? Theme.on-accent : root.tile.out && root.tile.kind == 0 ? Theme.faint : Theme.text;
+        }
+        Text {
+            text: root.tile.date == "" ? " " : root.tile.date;
+            horizontal-alignment: center;
+            font-family: Theme.ledger-face;
+            font-size: Theme.small - 1px;
+            overflow: elide;
+            // A date the user set takes its kind's colour, the record's own the text colour,
+            // a guess and Out stay faint.
+            color: root.tile.picked ? Theme.on-accent
+                : root.tile.kind != 0 && !root.tile.past ? ScheduleData.kind-ink(root.tile.kind)
+                : root.tile.record ? Theme.text : Theme.faint;
+        }
+    }
+    // The last episode: a bar along its foot.
+    if root.tile.end: Rectangle {
+        y: parent.height - self.height - Theme.unit * 1.5;
+        width: parent.width * 0.5;
+        height: Theme.unit * 0.75;
+        border-radius: self.height / 2;
+        background: root.tile.picked ? Theme.on-accent : Theme.text;
+    }
+    touch := TouchArea {
+        clicked => { ScheduleData.tap(root.tile.ep); }
+    }
+}
+
+// The tiles, as many to a row as fit, stretched to fill it.
+component DateGrid inherits Rectangle {
+    property <length> gap: Theme.unit * 2;
+    property <int> cols: Math.max(4, Math.floor((self.width + self.gap) / (15 * Theme.unit + self.gap)));
+    property <length> size: (self.width - (self.cols - 1) * self.gap) / self.cols;
+    property <int> count: ScheduleData.tiles.length + (ScheduleData.more ? 1 : 0);
+    height: Math.ceil(self.count / self.cols) * (self.size + self.gap) - self.gap;
+    for t[i] in ScheduleData.tiles: DateCell {
+        x: Math.mod(i, root.cols) * (root.size + root.gap);
+        y: Math.floor(i / root.cols) * (root.size + root.gap);
+        width: root.size;
+        height: root.size;
+        tile: t;
+    }
+    // One more row of tiles, for a season longer than the page knows.
+    if ScheduleData.more: Rectangle {
+        property <int> at: ScheduleData.tiles.length;
+        x: Math.mod(self.at, root.cols) * (root.size + root.gap);
+        y: Math.floor(self.at / root.cols) * (root.size + root.gap);
+        width: root.size;
+        height: root.size;
+        border-radius: Theme.radius-row;
+        background: more.pressed ? Theme.pressed : transparent;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        Image {
+            width: 5 * Theme.unit;
+            height: self.width;
+            source: @image-url("icons/plus.svg");
+            colorize: Theme.dim;
+        }
+        more := TouchArea {
+            clicked => { ScheduleData.more-tiles(); }
+        }
+    }
+}
+
+export component DatesSheet inherits ShowSheet {
+    title: "Episodes and dates";
+    line: ScheduleData.line;
+    reach: 0.7;
+    dismissed => { ShowData.close(); }
+
+    paste-wait := Timer {
+        interval: 150ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            ScheduleData.paste(ScheduleData.paste-text);
+        }
+    }
+    typed-wait := Timer {
+        interval: 120ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            ScheduleData.typed(ScheduleData.typed-text);
+        }
+    }
+
+    HorizontalLayout {
+        alignment: start;
+        Button {
+            small: true;
+            icon: @image-url("icons/scroll-text.svg");
+            has-icon: true;
+            text: ScheduleData.pasting ? "Done pasting" : "Paste a list";
+            clicked => { ScheduleData.pasting = !ScheduleData.pasting; }
+        }
+    }
+
+    // Paste: the box, and the one line saying where its reading goes.
+    if ScheduleData.pasting: VerticalLayout {
+        spacing: Theme.unit * 2;
+        Rectangle {
+            height: Math.max(30 * Theme.unit, input.preferred-height + 6 * Theme.unit);
+            border-radius: Theme.radius-row + 4px;
+            background: Theme.field;
+            border-width: 1px;
+            border-color: input.has-focus ? Theme.line-strong : Theme.line;
+            if input.text == "": Text {
+                x: Theme.unit * 3;
+                y: Theme.unit * 3;
+                width: parent.width - 6 * Theme.unit;
+                text: "Paste a release list, a table or a post";
+                color: Theme.faint;
+                wrap: word-wrap;
+            }
+            input := TextInput {
+                x: Theme.unit * 3;
+                y: Theme.unit * 3;
+                width: parent.width - 6 * Theme.unit;
+                text <=> ScheduleData.paste-text;
+                color: Theme.text;
+                font-family: Theme.face;
+                wrap: word-wrap;
+                single-line: false;
+                edited => {
+                    paste-wait.running = false;
+                    paste-wait.running = true;
+                }
+            }
+        }
+        Text {
+            text: "What AniBeam reads shows on the episodes below.";
+            color: Theme.dim;
+            font-size: Theme.small + 1px;
+            wrap: word-wrap;
+        }
+    }
+
+    DateGrid { }
+
+    // Nothing picked: how to start, and the run switch, the desktop's shift-click.
+    if ScheduleData.picked-count == 0: HorizontalLayout {
+        spacing: Theme.unit * 2;
+        Text {
+            text: "Tap an episode to date it.";
+            color: Theme.dim;
+            font-size: Theme.small + 1px;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+        Chip {
+            small: true;
+            tappable: true;
+            selected: ScheduleData.run;
+            text: "Pick a run";
+            clicked => { ScheduleData.toggle-run(); }
+        }
+    }
+
+    // Something picked: the actions for it.
+    if ScheduleData.picked-count > 0: VerticalLayout {
+        spacing: Theme.unit * 2;
+        HorizontalLayout {
+            spacing: Theme.unit * 2;
+            Text {
+                text: ScheduleData.picked-word + ":";
+                color: Theme.text;
+                font-family: Theme.strong-face;
+                vertical-alignment: center;
+            }
+            Chip {
+                small: true;
+                tappable: true;
+                selected: ScheduleData.run;
+                text: "Pick a run";
+                clicked => { ScheduleData.toggle-run(); }
+            }
+            Rectangle { }
+        }
+        Field {
+            text <=> ScheduleData.typed-text;
+            placeholder: "7 Jan, March 2027, 2027";
+            edited => {
+                typed-wait.running = false;
+                typed-wait.running = true;
+            }
+            accepted => {
+                ScheduleData.typed(ScheduleData.typed-text);
+                ScheduleData.set-date();
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.unit * 2;
+            alignment: start;
+            Button {
+                small: true;
+                primary: true;
+                text: "Set date";
+                enabled: ScheduleData.typed-ok;
+                clicked => { ScheduleData.set-date(); }
+            }
+            Button {
+                small: true;
+                text: "No date yet";
+                clicked => { ScheduleData.no-date(); }
+            }
+            if ScheduleData.picked-count > 1: Chip {
+                small: true;
+                tappable: true;
+                selected: ScheduleData.weekly;
+                text: "Weekly";
+                clicked => { ScheduleData.toggle-weekly(); }
+            }
+        }
+        if ScheduleData.picked-count == 1 || ScheduleData.can-clear: HorizontalLayout {
+            spacing: Theme.unit * 2;
+            alignment: start;
+            if ScheduleData.picked-count == 1: Button {
+                small: true;
+                text: ScheduleData.is-last ? "Not the last" : "Last episode";
+                clicked => { ScheduleData.mark-last(); }
+            }
+            if ScheduleData.can-clear: Button {
+                small: true;
+                danger: true;
+                text: "Clear date";
+                clicked => { ScheduleData.clear-date(); }
+            }
+        }
+    }
+
+    // A hairline, then the summary and the way out.
+    Rectangle {
+        height: 1px;
+        background: Theme.line;
+    }
+    Text {
+        text: ScheduleData.summary;
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: start;
+        Button {
+            text: "Save";
+            primary: true;
+            enabled: ScheduleData.dirty;
+            clicked => { ScheduleData.save(); }
+        }
+        Button {
+            text: "Cancel";
+            clicked => { ShowData.close(); }
+        }
+    }
+}

@@ -35,6 +35,7 @@ mod posters;
 mod prefs;
 mod remote;
 mod repos;
+mod schedule;
 mod seasons;
 mod show;
 mod show_match;

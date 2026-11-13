@@ -59,7 +59,7 @@ thread_local! {
 }
 
 /// Puts the line under the buttons up for a few seconds and asks the pages to read again.
-fn say(line: String) {
+pub(crate) fn say(line: String) {
     NOTE.with(|n| *n.borrow_mut() = Some((line, Instant::now())));
     crate::local::touch();
 }
@@ -145,6 +145,7 @@ pub fn sync(
 ) -> Vec<(u64, String)> {
     let show = window.global::<ShowData>();
     crate::show_match::track(detail.map(|d| &d.card));
+    crate::schedule::track(window, detail);
     let Some(detail) = detail else {
         show.set_series_id(-1);
         show.set_sheet(0);
