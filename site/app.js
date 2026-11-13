@@ -196,7 +196,8 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
   pop.append(card);
   wall.after(pop);
 
-  const narrow = matchMedia("(max-width: 700px)");
+  // Below 940 px a poster near the middle has no room on either side, so the card is a sheet.
+  const narrow = matchMedia("(max-width: 940px)");
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -217,6 +218,9 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     return a;
   };
 
+  // The description's last lines fade only while there is more of it below.
+  const fade = (text) => text.classList.toggle("more", text.scrollTop + text.clientHeight < text.scrollHeight - 2);
+
   function fill(s) {
     const close = el("button", "show-x");
     close.type = "button";
@@ -236,6 +240,7 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
 
     const text = el("div", "show-text");
     for (const para of s.description.split("\n\n")) text.append(el("p", null, para));
+    text.addEventListener("scroll", () => fade(text), { passive: true });
 
     const links = el("div", "show-links");
     links.append(link(`https://anilist.co/anime/${s.anilist}`, "to-anilist", ANILIST, "AniList"));
@@ -307,9 +312,10 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     card.classList.remove("in");
     pop.hidden = false;
     place(poster);
+    fade(card.querySelector(".show-text"));
     void card.offsetWidth;
     card.classList.remove("snap");
-    requestAnimationFrame(() => requestAnimationFrame(() => card.classList.add("in")));
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (open === poster) card.classList.add("in"); }));
     pushSheet();
     if (byKey) card.querySelector(".show-x").focus({ preventScroll: true });
   }
@@ -323,7 +329,7 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     card.classList.remove("in");
     // Hidden once it has slid back behind the poster.
     clearTimeout(hiding);
-    hiding = setTimeout(() => { if (!open) pop.hidden = true; }, reduced ? 0 : 320);
+    hiding = setTimeout(() => { if (!open) pop.hidden = true; }, 320);
     if (!fromHistory) popSheet(viaLink);
     if (refocus) poster.focus({ preventScroll: true });
   }

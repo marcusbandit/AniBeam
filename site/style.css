@@ -373,7 +373,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 
 /* The card a poster opens: the nav bar's glass, as tall as the poster, sliding out from behind
    it. .show-pop starts at the poster's edge and clips, so the card is hidden until it is out. */
-.show-pop { position: absolute; z-index: 60; overflow: hidden; pointer-events: none; margin: 0 !important; max-width: none !important; }
+.show-pop { position: absolute; z-index: 40; overflow: hidden; pointer-events: none; margin: 0 !important; max-width: none !important; }
 .show-pop[hidden] { display: none; }
 .show-card {
   position: absolute;
@@ -415,11 +415,10 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .show-meta { display: flex; flex-wrap: wrap; gap: 2px 7px; margin: 0; color: var(--fg-3); font-size: 12.5px; font-weight: 500; letter-spacing: 0.01em; line-height: 1.4; }
 .show-meta b { color: var(--fg-4); font-weight: 400; }
 .show-meta .show-score { color: var(--brand); font-family: var(--mono); font-weight: 500; }
-.show-text { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; color: var(--fg-2); font-size: 13.5px; line-height: 1.55; scrollbar-width: none; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
-.show-text::-webkit-scrollbar { display: none; }
+.show-text { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; color: var(--fg-2); font-size: 13.5px; line-height: 1.55; scrollbar-width: thin; scrollbar-color: var(--fg-4) transparent; }
+.show-text.more { -webkit-mask-image: linear-gradient(#000 calc(100% - 36px), transparent); mask-image: linear-gradient(#000 calc(100% - 36px), transparent); }
 .show-text p { margin: 0; }
 .show-text p + p { margin-top: 0.7em; }
-.show-text p:last-child { padding-bottom: 1.2em; }
 .show-links { display: flex; gap: 8px; }
 .show-link {
   display: inline-flex;
@@ -443,8 +442,8 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 .to-mal { background: #2e51a2; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), inset 0 1px rgba(255, 255, 255, 0.18); }
 .to-mal:hover { background: #3760bd; }
 .to-mal svg { width: 40px; height: 18px; }
-/* A phone gets the card as a sheet along the bottom of the screen, sliding up from below it */
-@media (max-width: 700px) {
+/* A phone or a narrow window gets the card as a sheet along the bottom, sliding up from below */
+@media (max-width: 940px) {
   .show-pop { position: fixed; inset: auto 0 0 0; overflow: visible; }
   .show-card { position: relative; width: auto; max-height: 72vh; gap: 12px; padding: 18px 18px max(18px, env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 20px 20px 0 0; background: rgba(17, 18, 20, 0.9); transform: translateY(105%); }
   .show-card h3 { font-size: 19px; }
@@ -452,7 +451,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
   .show-text { font-size: 15px; }
   .show-link { height: 40px; font-size: 14px; }
 }
-@media (prefers-reduced-motion: reduce) { .show-card, .show-card.snap { transform: none; transition: opacity 0.18s ease; opacity: 0; } .show-card.in { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .show-card { transform: none; transition: opacity 0.18s ease; opacity: 0; } .show-card.in { opacity: 1; } .show-card.snap { transition: none; } }
 
 /* Features: a bento of small, real pieces of the app */
 .feats h2 { margin-bottom: 64px; text-align: center; }
