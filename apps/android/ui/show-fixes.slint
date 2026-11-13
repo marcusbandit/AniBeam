@@ -2,6 +2,7 @@
 // and dates, the match and rescan are here; each fix opens its own sheet.
 
 import { Theme } from "theme.slint";
+import { Tr } from "tr.slint";
 import { Button } from "widgets.slint";
 import { MatchData } from "show-match.slint";
 import { ShowData, ShowSheet } from "show.slint";
@@ -11,7 +12,7 @@ export component FixesSheet inherits ShowSheet {
     line: ShowData.series-title;
     dismissed => { ShowData.close(); }
     if !ShowData.movie: Button {
-        text: "Episodes and dates";
+        text: Tr.t("dates-title");
         icon: @image-url("icons/calendar-days.svg");
         has-icon: true;
         clicked => { ShowData.open-dates(); }

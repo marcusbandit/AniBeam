@@ -13,6 +13,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use anibeam_core::i18n::{Arg, tr};
 use anibeam_core::library::schedule::{NoteRow, When};
 use anibeam_core::time::to_secs;
 use anibeam_core::{Call, Provider, Reply, SeriesDetail, SeriesKind, provider_name};
@@ -224,21 +225,21 @@ impl Sheet {
         if note.is_none()
             && let Some(&at) = guesses.get(&ep)
         {
-            return format!("≈ {}", local(at, "%-d %b"));
+            return tr("dates-tile-guess", &[("date", local(at, "%-d %b").into())]);
         }
         if let Some(n) = note {
             return match n.when {
                 When::On(at) => local(at, "%-d %b"),
                 When::Month(y, m) => month_name(y, m, "%b %Y"),
                 When::Year(y) => y.to_string(),
-                When::Unknown => "No date".to_string(),
+                When::Unknown => tr("dates-tile-none", &[]),
             };
         }
         if self.end_at == ep {
-            return "Last".to_string();
+            return tr("dates-tile-last", &[]);
         }
         if self.out(ep) {
-            "Out".to_string()
+            tr("dates-tile-out", &[])
         } else {
             String::new()
         }
@@ -267,29 +268,32 @@ impl Sheet {
         let set: u32 = self.draft.iter().map(|n| n.last - n.first + 1).sum();
         let mut bits = Vec::new();
         if self.end_at > 0 {
-            bits.push(format!("Ends at episode {}", self.end_at));
+            bits.push(tr("dates-summary-ends", &[("episode", self.end_at.into())]));
         }
         let from_record = record
             .keys()
             .filter(|&&e| !self.out(e) && note_for(&self.draft, e).is_none())
             .count();
         if from_record > 0 {
-            let site = if self.site.is_empty() {
-                "the record"
+            let count: Arg = from_record.into();
+            bits.push(if self.site.is_empty() {
+                tr("dates-summary-record-unnamed", &[("count", count)])
             } else {
-                &self.site
-            };
-            bits.push(format!("{from_record} dated by {site}"));
+                tr(
+                    "dates-summary-record",
+                    &[("count", count), ("site", self.site.as_str().into())],
+                )
+            });
         }
         if set > 0 {
-            bits.push(format!("{set} set by you"));
+            bits.push(tr("dates-summary-set", &[("count", set.into())]));
         }
         let guessed = guesses.len();
         if guessed > 0 {
-            bits.push(format!("{guessed} guessed weekly"));
+            bits.push(tr("dates-summary-guessed", &[("count", guessed.into())]));
         }
         if bits.is_empty() {
-            "Nothing set yet".to_string()
+            tr("dates-summary-none", &[])
         } else {
             bits.join(" · ")
         }
@@ -453,45 +457,50 @@ fn told_line(detail: &SeriesDetail) -> String {
         .iter()
         .find(|n| n.at.is_none())
         .map(|n| {
-            let eps = if n.first == n.last {
-                format!("Episode {}", n.first)
+            let episodes: Arg = if n.first == n.last {
+                tr("dates-told-one", &[("episode", n.first.into())])
             } else {
-                format!("Episodes {} to {}", n.first, n.last)
+                tr(
+                    "dates-told-many",
+                    &[("first", n.first.into()), ("last", n.last.into())],
+                )
+            }
+            .into();
+            let when = match (n.year, n.month.and_then(|m| u8::try_from(m).ok())) {
+                (None, _) => return tr("dates-told-undated", &[("episodes", episodes)]),
+                (Some(y), Some(m)) if (1..=12).contains(&m) => month_name(y, m, "%B %Y"),
+                (Some(y), _) => y.to_string(),
             };
-            let due = match (n.year, n.month.and_then(|m| u8::try_from(m).ok())) {
-                (None, _) => " not dated yet".to_string(),
-                (Some(y), Some(m)) if (1..=12).contains(&m) => {
-                    format!(" due in {}", month_name(y, m, "%B %Y"))
-                }
-                (Some(y), _) => format!(" due in {y}"),
-            };
-            eps + &due
+            tr(
+                "dates-told-due",
+                &[("episodes", episodes), ("when", when.into())],
+            )
         })
         .unwrap_or_default();
+    let by_you = |told: String| tr("dates-told-by-you", &[("told", told.into())]);
     let Some(set) = card.episodes_set else {
-        return if held.is_empty() {
-            held
-        } else {
-            format!("{held}, set by you")
-        };
+        return if held.is_empty() { held } else { by_you(held) };
     };
     let gave_way = !card.episodes_set_applied;
     if gave_way && held.is_empty() {
-        return format!("You set {set} episodes; that no longer applies");
+        return tr("dates-told-gave-way", &[("count", set.into())]);
     }
     let count = if gave_way {
         String::new()
     } else {
         match card.count_season {
-            Some(s) => format!("Season {s} ends at episode {set}"),
-            None => format!("Ends at episode {set}"),
+            Some(s) => tr(
+                "dates-told-season-ends",
+                &[("season", s.into()), ("episode", set.into())],
+            ),
+            None => tr("dates-told-ends", &[("episode", set.into())]),
         }
     };
     let words: Vec<&str> = [count.as_str(), held.as_str()]
         .into_iter()
         .filter(|s| !s.is_empty())
         .collect();
-    format!("{}, set by you", words.join(" · "))
+    by_you(words.join(" · "))
 }
 
 /// Keeps the open show's page for the sheet to open from, and puts its line on the page.
@@ -530,8 +539,8 @@ fn draw(window: &AppWindow) {
         data.set_picked_count(n as i32);
         data.set_picked_word(
             match s.picked[..] {
-                [one] => format!("Episode {one}"),
-                _ => format!("{n} episodes"),
+                [one] => tr("dates-picked-one", &[("episode", one.into())]),
+                _ => tr("dates-picked-many", &[("count", n.into())]),
             }
             .into(),
         );
@@ -589,7 +598,10 @@ pub fn install(window: &AppWindow) {
             let data = window.global::<ScheduleData>();
             data.set_line(
                 match page.season {
-                    Some(s) => format!("{} · Season {s}", page.title),
+                    Some(s) => tr(
+                        "dates-season-line",
+                        &[("title", page.title.as_str().into()), ("season", s.into())],
+                    ),
                     None => page.title.clone(),
                 }
                 .into(),
@@ -692,7 +704,7 @@ fn save(weak: slint::Weak<AppWindow>, s: Sheet) {
         if let Some(window) = weak.upgrade() {
             let data = window.global::<ScheduleData>();
             data.set_saving(false);
-            data.set_error("AniBeam is still starting. Try again in a moment.".into());
+            data.set_error(tr("dates-starting", &[]).into());
         }
         return;
     };
@@ -741,14 +753,7 @@ fn save(weak: slint::Weak<AppWindow>, s: Sheet) {
                 if show.get_sheet() == SHEET {
                     show.set_sheet(0);
                 }
-                crate::show::say(
-                    if any {
-                        "Saved."
-                    } else {
-                        "Schedule notes cleared."
-                    }
-                    .to_string(),
-                );
+                crate::show::say(tr(if any { "dates-saved" } else { "dates-cleared" }, &[]));
             });
         });
 }
@@ -937,6 +942,21 @@ mod tests {
         assert!(tiles[5].end);
         assert!(tiles[6].past);
         assert_eq!(tiles[6].date, "");
+    }
+
+    #[test]
+    fn every_word_the_sheet_asks_for_is_in_the_catalog() {
+        let source = include_str!("schedule.rs");
+        let slint = include_str!("../ui/show-dates.slint");
+        let ids: Vec<&str> = source
+            .split('"')
+            .chain(slint.split('"'))
+            .filter(|s| s.starts_with("dates-") && s.len() > 6 && !s.contains(' '))
+            .collect();
+        assert!(ids.len() > 30);
+        for id in ids {
+            assert!(anibeam_core::i18n::exists(id), "{id} is not in i18n/en");
+        }
     }
 
     #[test]

@@ -3,6 +3,7 @@
 // each tick; the sheets in the other `show-*.slint` files read it and call back into Rust.
 
 import { Theme } from "theme.slint";
+import { Tr } from "tr.slint";
 import { Button, Chip } from "widgets.slint";
 import { Fold } from "fold.slint";
 import { Tile } from "data.slint";
@@ -211,7 +212,7 @@ export component ShowActions inherits VerticalLayout {
         }
         Button {
             small: true;
-            text: "Change";
+            text: Tr.t("dates-change");
             icon: @image-url("icons/calendar-days.svg");
             has-icon: true;
             clicked => { ShowData.open-dates(); }

@@ -43,6 +43,7 @@ mod stats;
 mod stream;
 mod subtitles;
 mod thumbs;
+mod tr;
 mod versions;
 mod video;
 mod worker;

@@ -1968,6 +1968,7 @@ pub fn run(
     crate::show::install(&window);
     crate::show_match::install(&window);
     crate::schedule::install(&window);
+    crate::tr::install(&window);
     let data = window.global::<AppData>();
     data.set_version(
         format!(

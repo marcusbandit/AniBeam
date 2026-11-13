@@ -7,6 +7,7 @@
 import { Theme } from "theme.slint";
 import { Button, Chip, Field } from "widgets.slint";
 import { ShowData, ShowSheet } from "show.slint";
+import { Tr } from "tr.slint";
 
 // One episode's tile.
 export struct DateTile {
@@ -33,7 +34,7 @@ export global ScheduleData {
     // The grid can grow by another row.
     in property <bool> more;
     in property <int> picked-count;
-    // "Episode 4" or "3 episodes".
+    // "Episode 4:" or "3 episodes:".
     in property <string> picked-word;
     // The typed date reads as one.
     in property <bool> typed-ok;
@@ -159,7 +160,7 @@ component DateGrid inherits Rectangle {
 }
 
 export component DatesSheet inherits ShowSheet {
-    title: "Episodes and dates";
+    title: Tr.t("dates-title");
     line: ScheduleData.line;
     reach: 0.7;
     dismissed => { ShowData.close(); }
@@ -187,7 +188,7 @@ export component DatesSheet inherits ShowSheet {
             small: true;
             icon: @image-url("icons/scroll-text.svg");
             has-icon: true;
-            text: ScheduleData.pasting ? "Done pasting" : "Paste a list";
+            text: ScheduleData.pasting ? Tr.t("dates-paste-done") : Tr.t("dates-paste-open");
             clicked => { ScheduleData.pasting = !ScheduleData.pasting; }
         }
     }
@@ -205,7 +206,7 @@ export component DatesSheet inherits ShowSheet {
                 x: Theme.unit * 3;
                 y: Theme.unit * 3;
                 width: parent.width - 6 * Theme.unit;
-                text: "Paste a release list, a table or a post";
+                text: Tr.t("dates-paste-hint");
                 color: Theme.faint;
                 wrap: word-wrap;
             }
@@ -225,7 +226,7 @@ export component DatesSheet inherits ShowSheet {
             }
         }
         Text {
-            text: "What AniBeam reads shows on the episodes below.";
+            text: Tr.t("dates-paste-note");
             color: Theme.dim;
             font-size: Theme.small + 1px;
             wrap: word-wrap;
@@ -238,7 +239,7 @@ export component DatesSheet inherits ShowSheet {
     if ScheduleData.picked-count == 0: HorizontalLayout {
         spacing: Theme.unit * 2;
         Text {
-            text: "Tap an episode to date it.";
+            text: Tr.t("dates-tap-hint");
             color: Theme.dim;
             font-size: Theme.small + 1px;
             vertical-alignment: center;
@@ -248,7 +249,7 @@ export component DatesSheet inherits ShowSheet {
             small: true;
             tappable: true;
             selected: ScheduleData.run;
-            text: "Pick a run";
+            text: Tr.t("dates-run");
             clicked => { ScheduleData.toggle-run(); }
         }
     }
@@ -259,7 +260,7 @@ export component DatesSheet inherits ShowSheet {
         HorizontalLayout {
             spacing: Theme.unit * 2;
             Text {
-                text: ScheduleData.picked-word + ":";
+                text: ScheduleData.picked-word;
                 color: Theme.text;
                 font-family: Theme.strong-face;
                 vertical-alignment: center;
@@ -268,14 +269,14 @@ export component DatesSheet inherits ShowSheet {
                 small: true;
                 tappable: true;
                 selected: ScheduleData.run;
-                text: "Pick a run";
+                text: Tr.t("dates-run");
                 clicked => { ScheduleData.toggle-run(); }
             }
             Rectangle { }
         }
         Field {
             text <=> ScheduleData.typed-text;
-            placeholder: "7 Jan, March 2027, 2027";
+            placeholder: Tr.t("dates-field-hint");
             edited => {
                 typed-wait.running = false;
                 typed-wait.running = true;
@@ -291,7 +292,7 @@ export component DatesSheet inherits ShowSheet {
             Button {
                 small: true;
                 primary: true;
-                text: "Set date";
+                text: Tr.t("dates-set");
                 enabled: ScheduleData.typed-ok;
                 // Reads the field as it stands, not the last pause in typing.
                 clicked => {
@@ -301,14 +302,14 @@ export component DatesSheet inherits ShowSheet {
             }
             Button {
                 small: true;
-                text: "No date yet";
+                text: Tr.t("dates-no-date");
                 clicked => { ScheduleData.no-date(); }
             }
             if ScheduleData.picked-count > 1: Chip {
                 small: true;
                 tappable: true;
                 selected: ScheduleData.weekly;
-                text: "Weekly";
+                text: Tr.t("dates-weekly");
                 clicked => { ScheduleData.toggle-weekly(); }
             }
         }
@@ -317,13 +318,13 @@ export component DatesSheet inherits ShowSheet {
             alignment: start;
             if ScheduleData.picked-count == 1: Button {
                 small: true;
-                text: ScheduleData.is-last ? "Not the last" : "Last episode";
+                text: ScheduleData.is-last ? Tr.t("dates-not-last") : Tr.t("dates-last");
                 clicked => { ScheduleData.mark-last(); }
             }
             if ScheduleData.can-clear: Button {
                 small: true;
                 danger: true;
-                text: "Clear date";
+                text: Tr.t("dates-clear");
                 clicked => { ScheduleData.clear-date(); }
             }
         }
@@ -350,13 +351,13 @@ export component DatesSheet inherits ShowSheet {
         spacing: Theme.gap;
         alignment: start;
         Button {
-            text: ScheduleData.saving ? "Saving" : "Save";
+            text: ScheduleData.saving ? Tr.t("dates-saving") : Tr.t("dates-save");
             primary: true;
             enabled: ScheduleData.dirty && !ScheduleData.saving;
             clicked => { ScheduleData.save(); }
         }
         Button {
-            text: "Cancel";
+            text: Tr.t("dates-cancel");
             clicked => { ShowData.close(); }
         }
     }
