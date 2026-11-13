@@ -335,6 +335,8 @@ struct Player {
     level_hide: Timer,
     /// The speed to go back to when a long press lets go.
     held_from: Option<String>,
+    /// The speed picked for this episode, and carried to the next; never the held 2x.
+    speed: f64,
 }
 
 thread_local! {
@@ -708,13 +710,12 @@ fn begin(
         adjusting: None,
         level_hide: Timer::default(),
         held_from: None,
+        speed: 1.0,
     };
     player.start();
-    // The speed goes along to the next episode, as on the desktop; a cast plays it on the TV.
-    if (speed - 1.0).abs() > 0.01 && player.cast_on_load.is_none() {
-        player.mpv.set("speed", &speed.to_string());
-        player.d(|d| d.set_speed(speed as f32));
-    }
+    // The speed goes along to the next episode, as on the desktop. A cast carried with it
+    // plays on the TV meanwhile, and the episode plays on here at this speed once it stops.
+    player.set_speed(speed);
     player.show_cast();
     if let Some(note) = note {
         player.flash(&note, None);
@@ -855,7 +856,7 @@ fn neighbour(forward: bool) {
     let mut speed = 1.0;
     with_player(|p| {
         remote = p.host.is_some();
-        p.d(|d| speed = f64::from(d.get_speed()));
+        speed = p.speed;
         if !p.session.is_extra {
             target = if forward {
                 p.session.next
@@ -1575,6 +1576,14 @@ impl Player {
         );
     }
 
+    /// The speed this episode plays at, and Next carries: mpv's, the picker's and the label's.
+    /// A held 2x goes around it, so it is never carried.
+    fn set_speed(&mut self, speed: f64) {
+        self.speed = speed;
+        self.mpv.set("speed", &speed.to_string());
+        self.d(|d| d.set_speed(speed as f32));
+    }
+
     /// Double speed while a finger holds the picture, then the speed it had.
     fn hold(&mut self, on: bool) {
         if on {
@@ -1703,8 +1712,7 @@ impl Player {
                 (title.into(), rows)
             }
             _ => {
-                let mut speed = 1.0;
-                self.d(|d| speed = d.get_speed() as f64);
+                let speed = self.speed;
                 (
                     "Speed".into(),
                     SPEEDS
@@ -1811,8 +1819,12 @@ impl Player {
             }
             3 => {
                 let Some(s) = SPEEDS.get(i) else { return };
-                self.mpv.set("speed", &s.to_string());
-                self.d(|d| d.set_speed(*s as f32));
+                // The TV plays at its own speed, as on the desktop.
+                if self.cast.is_some() {
+                    self.flash("Not while casting", None);
+                } else {
+                    self.set_speed(*s);
+                }
             }
             _ => {}
         }
