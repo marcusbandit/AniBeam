@@ -1955,9 +1955,7 @@ pub fn run(
     crate::airing::start(&data_dir);
     crate::stream::init(data_dir.clone());
     let store = Store::open(&data_dir)?;
-    let address = HostAddress::parse(&store.settings().address).unwrap_or_else(|_| {
-        HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap()
-    });
+    let address = HostAddress::parse(&store.settings().address).ok();
 
     let window = AppWindow::new()?;
     crate::player::install(&window);
@@ -1976,7 +1974,7 @@ pub fn run(
         )
         .into(),
     );
-    data.set_host_address(address.display().into());
+    data.set_host_address(address.map(|a| a.display()).unwrap_or_default().into());
 
     let home_shelves = Shelves::new();
     let (calendar, coming, library, episodes) = (list(), list(), list(), list());

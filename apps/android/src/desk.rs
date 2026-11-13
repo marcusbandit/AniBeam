@@ -14,7 +14,7 @@ use anibeam_core::{Call, CoreError, Reply};
 /// The connected computer, when it takes downloads.
 #[derive(Clone)]
 pub struct Desk {
-    /// Its own name, from its hello ("banditbox").
+    /// Its own name, from its hello ("desktop").
     pub name: String,
     client: Arc<HostClient>,
     /// Its library from the last snapshot, when that snapshot came from this computer.

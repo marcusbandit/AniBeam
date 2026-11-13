@@ -92,9 +92,9 @@ too, so its library still shows when it is off.
    adb install -r dist/AniBeam-0.8.0.apk
    ```
 
-4. Open AniBeam. It starts out pointed at `banditbox:8790`, the desktop's MagicDNS name.
-   If the phone cannot resolve the short name, use the full one in More,
-   `banditbox.tail24c6a9.ts.net:8790`, or the machine's `100.x.y.z` address. **Test**
+4. Open AniBeam. Onboarding's last step asks for your computer: its MagicDNS name and port,
+   such as `desktop:8790`. If the phone cannot resolve the short name, use the full one,
+   `desktop.example.ts.net:8790`, or the machine's `100.x.y.z` address. **Test**
    says whether AniBeam answered and which version it is.
 
 The APK is signed with the debug key in `~/.android/debug.keystore`. Android only installs

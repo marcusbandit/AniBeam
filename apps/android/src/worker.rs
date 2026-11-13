@@ -106,9 +106,10 @@ impl<F: Fn(Event)> Worker<F> {
 
     fn sync(&self) {
         let store = self.syncer.store();
-        let address = HostAddress::parse(&store.settings().address).unwrap_or_else(|_| {
-            HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap()
-        });
+        // A fresh install has no computer until one is typed in, in onboarding or More (#736).
+        let Ok(address) = HostAddress::parse(&store.settings().address) else {
+            return;
+        };
         (self.deliver)(Event::SyncStarted);
         let now = anibeam_companion::now();
         match self.syncer.fetch_snapshot(&address, now) {

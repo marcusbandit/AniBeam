@@ -19,7 +19,6 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::address::DEFAULT_ADDRESS;
 use crate::anilist::Schedule;
 use crate::api::Snapshot;
 
@@ -28,7 +27,7 @@ use crate::api::Snapshot;
 pub struct Cache {
     /// The address it was fetched from, as typed in Settings.
     pub address: String,
-    /// The host's own name, from its hello ("banditbox").
+    /// The host's own name, from its hello ("desktop").
     pub host: String,
     /// The host's AniBeam version.
     #[serde(default)]
@@ -42,17 +41,10 @@ pub struct Cache {
     pub peers: Vec<crate::api::PeerHost>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// Empty until someone types their computer's address in: a fresh install points nowhere.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub address: String,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Settings {
-            address: DEFAULT_ADDRESS.to_string(),
-        }
-    }
 }
 
 /// AniList's schedules, by AniList id, and when they were asked for.
@@ -227,9 +219,9 @@ mod tests {
     }
 
     #[test]
-    fn a_fresh_store_points_at_banditbox_and_has_nothing_cached() {
+    fn a_fresh_store_points_at_no_computer_and_has_nothing_cached() {
         let store = Store::open(scratch("fresh")).unwrap();
-        assert_eq!(store.settings().address, "banditbox:8790");
+        assert_eq!(store.settings().address, "");
         assert!(store.cache().is_none());
         assert_eq!(store.anilist().fetched_at, 0);
     }
@@ -242,12 +234,12 @@ mod tests {
                 .unwrap();
         let cache = Cache {
             address: "10.0.2.2:8790".into(),
-            host: "banditbox".into(),
+            host: "desktop".into(),
             host_version: "2.1.0".into(),
             synced_at: 1_792_242_100,
             snapshot,
             peers: vec![crate::api::PeerHost {
-                name: "kangaeru".into(),
+                name: "laptop".into(),
                 url: "http://100.80.3.4:8790".into(),
                 version: "2.4.0".into(),
             }],
