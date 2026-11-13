@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use anibeam_core::library::schedule::{NoteRow, When};
-use anibeam_core::time::{from_secs, to_secs};
+use anibeam_core::time::to_secs;
 use anibeam_core::{Call, Provider, Reply, SeriesDetail, SeriesKind};
 use chrono::{Local, TimeZone};
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -134,7 +134,7 @@ impl Sheet {
             season: page.season,
             saved: page.notes.clone(),
             draft,
-            up_to: page.up_to.max(top).max(12).min(MOST),
+            up_to: page.up_to.max(top).clamp(12, MOST),
             aired: page.aired.clone(),
             end_at: page.end_at,
             saved_end: page.end_at,
@@ -724,7 +724,7 @@ fn save(s: Sheet) {
 /// Unix seconds as the wire's time, for tests.
 #[cfg(test)]
 fn at(secs: i64) -> std::time::SystemTime {
-    from_secs(secs)
+    anibeam_core::time::from_secs(secs)
 }
 
 #[cfg(test)]
