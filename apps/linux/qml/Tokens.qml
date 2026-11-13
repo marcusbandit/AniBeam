@@ -243,10 +243,12 @@ Item {
     // and the pixmap cache keys on it, so a warmed poster is a hit, never a second decode.
     readonly property real devicePixelRatio: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
     readonly property size posterDecodeSize: Qt.size(Math.ceil(posterWidth * 1.25 * devicePixelRatio), Math.ceil(posterWidth * 1.25 * 1.5 * devicePixelRatio))
-    // The system's size, but never under 11pt: a desktop whose font comes through a platform
-    // theme the build does not carry (qt6ct under the AppImage) hands Qt its 9pt fallback, and
-    // every page would read a quarter smaller than it does on the system Qt (#830)
-    readonly property real systemPointSize: Math.max(11, Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 11)
+    // The system's size, but never under 11pt on any platform. A desktop whose font comes
+    // through a platform theme the build does not carry (qt6ct under the AppImage) hands Qt
+    // its 9pt fallback, and Windows reports 9pt too; at that size every page read a quarter
+    // smaller (#830). Text size in Appearance still scales it, Smaller included. A font set
+    // in pixels reports -1, which the floor covers as well.
+    readonly property real systemPointSize: Math.max(11, Qt.application.font.pointSize)
     // Text size (Appearance): every type size below is the system's times this, so the
     // whole window's type follows one setting
     readonly property real textScale: Theme.textScale
