@@ -1,4 +1,4 @@
-/* AniBeam's site.
+/* Anibeam's site.
 
    Surfaces follow one recipe: a dark diagonal gradient, a hairline of white at 6% and a 1px white
    highlight along the top edge. The app window gets four stacked shadows and an inner ring.
@@ -736,7 +736,7 @@ a.gh:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; borde
 .channel-thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--brand); transition: transform 0.35s var(--ease), background-color 0.45s ease; }
 .dl-page[data-channel="nightly"] .channel-thumb { transform: translateX(100%); }
 
-/* Get AniBeam on the home page: the hero's two buttons again, and the install command. */
+/* Get Anibeam on the home page: the hero's two buttons again, and the install command. */
 .install { text-align: center; }
 .install h2 { margin-bottom: 0; }
 .get-actions { margin-top: 40px; }

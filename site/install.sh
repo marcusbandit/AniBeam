@@ -1,8 +1,8 @@
 #!/bin/sh
-# AniBeam's installer for Linux and Mac:  curl -fsSL https://anibeam.app/install.sh | sh
+# Anibeam's installer for Linux and Mac:  curl -fsSL https://anibeam.app/install.sh | sh
 # The newest nightly instead:              curl -fsSL https://anibeam.app/install.sh | ANIBEAM_CHANNEL=nightly sh
 #
-# It installs AniBeam the way the system installs things, so updates arrive with the rest of it.
+# It installs Anibeam the way the system installs things, so updates arrive with the rest of it.
 # On a Mac (Apple silicon): the Homebrew cask when brew is there, otherwise the dmg's app copied
 # into /Applications. On Linux it reads /etc/os-release:
 #   Arch and its family    anibeam-bin from the AUR with yay or paru; without either, the AppImage
@@ -83,11 +83,11 @@ unquarantine() {
 }
 
 mac() {
-  [ "$(uname -m)" = arm64 ] || fail "AniBeam for Mac is built for Apple silicon only."
+  [ "$(uname -m)" = arm64 ] || fail "Anibeam for Mac is built for Apple silicon only."
   if [ -n "$nightly_route" ]; then
     have brew && say "Nightly comes as the dmg, not the Homebrew cask, which carries stable releases only"
   elif have brew; then
-    say "Installing AniBeam with Homebrew"
+    say "Installing Anibeam with Homebrew"
     brew tap marcusbandit/anibeam "https://github.com/$repo" < /dev/null
     brew install --cask marcusbandit/anibeam/anibeam < /dev/null
     unquarantine /Applications/AniBeam.app
@@ -107,7 +107,7 @@ mac() {
   hdiutil detach -quiet "$work/mnt"
   rm -rf "$work"
   unquarantine "$apps/AniBeam.app"
-  say "AniBeam is in $apps. It updates itself from Settings > About"
+  say "Anibeam is in $apps. It updates itself from Settings > About"
 }
 
 # Only the system package managers need root; the AppImage goes in the home folder.
@@ -141,25 +141,25 @@ arch() {
     fi
   done
   # anibeam-bin needs anirss, an AUR package too, which makepkg alone cannot fetch.
-  say "No AUR helper (yay or paru) here, so AniBeam goes in as the AppImage"
+  say "No AUR helper (yay or paru) here, so Anibeam goes in as the AppImage"
   appimage
 }
 
 debian() {
   need_root
-  say "Adding the AniBeam apt repo"
+  say "Adding the Anibeam apt repo"
   $sudo install -d -m 755 /etc/apt/sources.list.d
   put "$base/apt/anibeam.sources" /etc/apt/sources.list.d/anibeam.sources
   $sudo apt-get update < /dev/null
-  say "Installing AniBeam"
+  say "Installing Anibeam"
   $sudo apt-get install -y anibeam < /dev/null
 }
 
 fedora() {
   need_root
-  say "Adding the AniBeam dnf repo"
+  say "Adding the Anibeam dnf repo"
   put "$base/rpm/anibeam.repo" /etc/yum.repos.d/anibeam.repo
-  say "Installing AniBeam"
+  say "Installing Anibeam"
   $sudo dnf install -y anibeam < /dev/null
 }
 
@@ -196,11 +196,11 @@ main() {
   pick_channel
   if [ "$(uname -s)" = Darwin ]; then
     mac
-    say "AniBeam is installed. Open it from Launchpad or Applications"
+    say "Anibeam is installed. Open it from Launchpad or Applications"
     return
   fi
   [ "$(uname -s)" = Linux ] || fail "This installer is for Linux and Mac. Windows: $base/download/"
-  [ "$(uname -m)" = x86_64 ] || fail "AniBeam is built for x86_64 Linux only for now."
+  [ "$(uname -m)" = x86_64 ] || fail "Anibeam is built for x86_64 Linux only for now."
   if [ -r /etc/os-release ]; then
     # shellcheck disable=SC1091
     . /etc/os-release
@@ -217,7 +217,7 @@ main() {
     # A copy from the system's packages stays as it is: the menu entry this writes opens the
     # AppImage, but anibeam typed in a shell may still find the packaged one first
     if [ -x /usr/bin/anibeam ]; then
-      say "AniBeam from the system's packages stays in /usr/bin; the menu opens the nightly AppImage. Remove the package to keep one copy"
+      say "Anibeam from the system's packages stays in /usr/bin; the menu opens the nightly AppImage. Remove the package to keep one copy"
     fi
     appimage
   elif family arch && have pacman; then
@@ -229,7 +229,7 @@ main() {
   else
     appimage
   fi
-  say "AniBeam is installed. Open it from your app menu, or run anibeam"
+  say "Anibeam is installed. Open it from your app menu, or run anibeam"
 }
 
 main "$@"

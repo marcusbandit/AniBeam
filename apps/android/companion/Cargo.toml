@@ -8,6 +8,8 @@ license = "GPL-3.0-or-later"
 publish = false
 
 [dependencies]
+# The word catalog and its lookup (#792); no feature of the core is needed for it.
+anibeam-core = { path = "../../../core" }
 anibeam-host-api = { path = "../../../host-api", features = ["proof"] }
 # The device key's seed and each proof's nonce (#555).
 getrandom = "0.3"
@@ -15,4 +17,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # rustls with the bundled Mozilla roots: the Android trust store is only reachable from Java.
 ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# unstable-locales: month and weekday names in the language the app speaks (#792).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "unstable-locales"] }

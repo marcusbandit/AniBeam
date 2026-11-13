@@ -5,12 +5,13 @@ import { AppData, Nav } from "data.slint";
 import { Button, EmptyNote, Figure, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
 import { Area, Fold } from "fold.slint";
 import { Leaf, Scroll } from "panes.slint";
+import { Tr } from "tr.slint";
 
 // The head, the device switch and the search.
 component LibraryControls inherits VerticalLayout {
     spacing: Theme.unit * 4;
     PageTitle {
-        title: "Library";
+        title: Tr.t("lib-title");
         note: AppData.library-note;
     }
     if AppData.devices.length > 1: Segmented {
@@ -22,7 +23,7 @@ component LibraryControls inherits VerticalLayout {
     if AppData.device != 0: HorizontalLayout {
         alignment: start;
         Button {
-            text: "Refresh";
+            text: Tr.t("lib-refresh");
             icon: @image-url("icons/refresh-cw.svg");
             has-icon: true;
             small: true;
@@ -30,7 +31,7 @@ component LibraryControls inherits VerticalLayout {
         }
     }
     SearchField {
-        placeholder: AppData.device == 0 ? "Search this phone" : "Search " + AppData.devices[AppData.device];
+        placeholder: AppData.device == 0 ? Tr.t("lib-search-phone") : Tr.s("lib-search-device", "device", AppData.devices[AppData.device]);
         text <=> AppData.query;
         edited(text) => { AppData.search(text); }
     }
@@ -38,7 +39,7 @@ component LibraryControls inherits VerticalLayout {
     if AppData.device == 0 && AppData.query != "": HorizontalLayout {
         alignment: start;
         Button {
-            text: "Find \"" + AppData.query + "\" in Downloads";
+            text: Tr.s("lib-find-in-downloads", "query", AppData.query);
             widest: root.width;
             icon: @image-url("icons/download.svg");
             has-icon: true;
@@ -79,7 +80,7 @@ component LibraryGrid inherits VerticalLayout {
     if AppData.ready && AppData.library.length == 0: EmptyNote {
         title: AppData.library-empty;
         body: AppData.device == 0 && AppData.query == ""
-            ? "Episodes you download on this phone land here. Find a show in Downloads."
+            ? Tr.t("lib-empty-body")
             : "";
     }
 }
@@ -91,7 +92,7 @@ component Glance inherits VerticalLayout {
     padding: Theme.pad;
     spacing: Theme.unit * 6;
     Text {
-        text: "Pick a show to open it here.";
+        text: Tr.t("lib-pick-show");
         color: Theme.text;
         font-size: Theme.section - 3px;
         font-family: Theme.display-face;
@@ -102,19 +103,19 @@ component Glance inherits VerticalLayout {
         spacing: Theme.unit * 8;
         Figure {
             value: AppData.library.length + "";
-            caption: AppData.library.length == 1 ? "show" : "shows";
+            caption: Tr.n("lib-shows-caption", "count", AppData.library.length);
         }
         if AppData.device == 0: Figure {
             value: AppData.used-figure;
-            caption: "on the phone";
+            caption: Tr.t("lib-on-phone");
         }
         if AppData.device == 0: Figure {
             value: AppData.free-figure;
-            caption: "free";
+            caption: Tr.t("lib-free");
         }
     }
     if AppData.device == 0: Text {
-        text: "Hold a poster to get more episodes or delete them.";
+        text: Tr.t("lib-hold-poster");
         color: Theme.dim;
         font-size: Theme.small + 1px;
         wrap: word-wrap;

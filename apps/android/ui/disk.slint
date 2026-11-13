@@ -5,6 +5,7 @@
 import { Theme } from "theme.slint";
 import { Button, ListGroup, ListRow, SectionHead } from "widgets.slint";
 import { Sheet } from "sheet.slint";
+import { Tr } from "tr.slint";
 
 export struct HiddenRow {
     id: int,
@@ -88,7 +89,7 @@ export component DiskBlock inherits VerticalLayout {
     if DiskData.show: VerticalLayout {
         spacing: Theme.unit * 3;
         SectionHead {
-            title: "On this phone";
+            title: Tr.t("disk-on-phone");
             note: DiskData.total-text;
         }
         UsageBar { }
@@ -97,12 +98,12 @@ export component DiskBlock inherits VerticalLayout {
             alignment: start;
             Key {
                 ink: Theme.ok;
-                label: "Watched";
+                label: Tr.t("disk-watched");
                 value: DiskData.watched-text;
             }
             Key {
                 ink: Theme.accent;
-                label: "Not watched";
+                label: Tr.t("disk-not-watched");
                 value: DiskData.unwatched-text;
             }
         }
@@ -110,7 +111,7 @@ export component DiskBlock inherits VerticalLayout {
             spacing: Theme.unit * 3;
             alignment: start;
             Button {
-                text: DiskData.busy ? "Deleting" : "Delete watched";
+                text: DiskData.busy ? Tr.t("disk-deleting") : Tr.t("disk-delete-watched");
                 icon: @image-url("icons/x.svg");
                 has-icon: true;
                 small: true;
@@ -129,8 +130,8 @@ export component DiskBlock inherits VerticalLayout {
     }
     if DiskData.hidden.length > 0: ListGroup {
         ListRow {
-            label: "Hidden shows";
-            helper: "Out of Home and the library until you bring them back.";
+            label: Tr.t("disk-hidden-shows");
+            helper: Tr.t("disk-hidden-helper");
             value: "" + DiskData.hidden.length;
             tappable: true;
             chevron: true;
@@ -163,7 +164,7 @@ export component DiskBlock inherits VerticalLayout {
                     VerticalLayout {
                         alignment: center;
                         Button {
-                            text: "Unhide";
+                            text: Tr.t("disk-unhide");
                             small: true;
                             clicked => { DiskData.unhide(row.id); }
                         }
@@ -185,14 +186,14 @@ export component DiskBlock inherits VerticalLayout {
 export component DiskSheet inherits Sheet {
     dismissed => { DiskData.sheet = 0; }
     Text {
-        text: DiskData.sheet == 1 ? "Delete watched" : DiskData.sheet-title;
+        text: DiskData.sheet == 1 ? Tr.t("disk-delete-watched") : DiskData.sheet-title;
         color: Theme.text;
         font-size: Theme.section;
         font-family: Theme.display-face;
         wrap: word-wrap;
     }
     if DiskData.sheet == 1: Text {
-        text: "Files and subtitles are deleted from this phone for good.";
+        text: Tr.t("disk-delete-note");
         color: Theme.dim;
         font-size: Theme.small + 1px;
         wrap: word-wrap;
@@ -207,7 +208,7 @@ export component DiskSheet inherits Sheet {
     if DiskData.sheet == 1: VerticalLayout {
         spacing: Theme.unit * 2;
         Button {
-            text: "Every watched episode";
+            text: Tr.t("disk-every-watched");
             icon: @image-url("icons/x.svg");
             has-icon: true;
             danger: true;
@@ -224,7 +225,7 @@ export component DiskSheet inherits Sheet {
     if DiskData.sheet == 1: VerticalLayout {
         spacing: Theme.unit * 2;
         Button {
-            text: "Every finished show you watched";
+            text: Tr.t("disk-every-finished");
             icon: @image-url("icons/x.svg");
             has-icon: true;
             danger: true;
@@ -239,7 +240,7 @@ export component DiskSheet inherits Sheet {
         }
     }
     if DiskData.sheet != 1: Button {
-        text: "Delete";
+        text: Tr.t("common-delete");
         icon: @image-url("icons/x.svg");
         has-icon: true;
         danger: true;
@@ -249,7 +250,7 @@ export component DiskSheet inherits Sheet {
         }
     }
     Button {
-        text: "Cancel";
+        text: Tr.t("common-cancel");
         clicked => { DiskData.sheet = 0; }
     }
 }

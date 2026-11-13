@@ -55,17 +55,9 @@ fn runs(list: &[u32]) -> String {
 fn note(answer: Option<&Answer>) -> String {
     match answer {
         None => String::new(),
-        Some(Answer::Asking) => "Reading its file list".into(),
+        Some(Answer::Asking) => tr!("inspect-reading"),
         Some(Answer::Done(eps)) if eps.is_empty() => String::new(),
-        Some(Answer::Done(eps)) => format!(
-            "{} in it: {}",
-            if eps.len() == 1 {
-                "1 episode".to_string()
-            } else {
-                format!("{} episodes", eps.len())
-            },
-            runs(eps)
-        ),
+        Some(Answer::Done(eps)) => tr!("inspect-holds", count = eps.len(), runs = runs(eps)),
     }
 }
 
@@ -86,6 +78,11 @@ fn render() {
             .global::<FindData>()
             .set_release_notes(ModelRc::new(VecModel::from(notes)));
     }
+}
+
+/// The language changed: the rows' notes are worded again where they stand.
+pub fn relocalize() {
+    render();
 }
 
 pub fn install(window: &AppWindow) {

@@ -5,7 +5,6 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use anibeam_companion::address::HostAddress;
 use anibeam_companion::client::HostError;
-use anibeam_companion::format;
 use anibeam_companion::store::{AniListCache, Cache, Settings, Store};
 use anibeam_companion::sync::Syncer;
 
@@ -100,14 +99,21 @@ impl<F: Fn(Event)> Worker<F> {
         let result = self
             .syncer
             .test(address)
-            .map(|hello| {
-                format!(
-                    "Reached {}, AniBeam {}{}.",
-                    hello.host,
-                    hello.version,
-                    format::after(&crate::app::progress_of(hello.profile.as_ref()))
-                )
-            })
+            .map(
+                |hello| match crate::app::person_name(hello.profile.as_ref()) {
+                    Some(name) => tr!(
+                        "host-reached-for",
+                        host = hello.host.as_str(),
+                        version = hello.version.as_str(),
+                        name = name
+                    ),
+                    None => tr!(
+                        "host-reached",
+                        host = hello.host.as_str(),
+                        version = hello.version.as_str()
+                    ),
+                },
+            )
             .map_err(|e| e.to_string());
         (self.deliver)(Event::TestDone(result));
     }

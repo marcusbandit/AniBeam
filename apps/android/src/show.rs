@@ -65,38 +65,38 @@ pub(crate) fn say(line: String) {
 }
 
 /// A status as the desktop's series page words it.
-pub fn status_word(status: ListStatus) -> &'static str {
+pub fn status_word(status: ListStatus) -> String {
     match status {
-        ListStatus::Watching => "Watching",
-        ListStatus::Planning => "Planning",
-        ListStatus::Completed => "Completed",
-        ListStatus::Paused => "On hold",
-        ListStatus::Dropped => "Dropped",
-        ListStatus::Repeating => "Rewatching",
+        ListStatus::Watching => tr!("show-status-watching"),
+        ListStatus::Planning => tr!("show-status-planning"),
+        ListStatus::Completed => tr!("show-status-completed"),
+        ListStatus::Paused => tr!("show-status-paused"),
+        ListStatus::Dropped => tr!("show-status-dropped"),
+        ListStatus::Repeating => tr!("show-status-repeating"),
     }
 }
 
-fn status_key(status: ListStatus) -> &'static str {
-    match status {
-        ListStatus::Watching => "Watching",
-        ListStatus::Planning => "Planning",
-        ListStatus::Completed => "Completed",
-        ListStatus::Paused => "Paused",
-        ListStatus::Dropped => "Dropped",
-        ListStatus::Repeating => "Repeating",
-    }
+/// The statuses in the order the sheet counts them: `ShowData.status-index`.
+const STATUSES: [ListStatus; 6] = [
+    ListStatus::Watching,
+    ListStatus::Planning,
+    ListStatus::Completed,
+    ListStatus::Paused,
+    ListStatus::Dropped,
+    ListStatus::Repeating,
+];
+
+fn status_index(status: ListStatus) -> i32 {
+    STATUSES
+        .iter()
+        .position(|s| *s == status)
+        .map_or(-1, |i| i as i32)
 }
 
-fn parse_status(key: &str) -> Option<ListStatus> {
-    Some(match key {
-        "Watching" => ListStatus::Watching,
-        "Planning" => ListStatus::Planning,
-        "Completed" => ListStatus::Completed,
-        "Paused" => ListStatus::Paused,
-        "Dropped" => ListStatus::Dropped,
-        "Repeating" => ListStatus::Repeating,
-        _ => return None,
-    })
+fn parse_status(index: i32) -> Option<ListStatus> {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| STATUSES.get(i).copied())
 }
 
 /// "8.5", the way the desktop writes a score: a whole one keeps its point.
@@ -105,32 +105,32 @@ pub fn score_text(tenths: i32) -> String {
 }
 
 /// Where a status or score of this show goes, in a line, the desktop's `listHome`.
-fn list_home(detail: &SeriesDetail, anilist: bool, mal: bool) -> &'static str {
+fn list_home(detail: &SeriesDetail, anilist: bool, mal: bool) -> String {
     let ids = detail.card.match_info.as_ref();
     let al = ids.is_some_and(|m| m.anilist_id.is_some());
     let my = ids.is_some_and(|m| m.mal_id.is_some());
     if (anilist && al) || (mal && my) {
-        "Change it on each list that is connected."
+        tr!("show-home-each")
     } else if !al && !my {
-        "Kept on this phone: no tracker carries this show."
+        tr!("show-home-no-tracker")
     } else if anilist || mal {
-        "Kept on this phone: your tracker does not carry this show."
+        tr!("show-home-tracker-lacks")
     } else {
-        "Kept on this phone until you connect AniList or MyAnimeList."
+        tr!("show-home-until-connected")
     }
 }
 
 /// The connected trackers this show's writes reach, as a person names them.
 fn tracker_sites(detail: &SeriesDetail, anilist: bool, mal: bool) -> String {
     let ids = detail.card.match_info.as_ref();
-    let mut sites = Vec::new();
-    if anilist && ids.is_some_and(|m| m.anilist_id.is_some()) {
-        sites.push("AniList");
+    let al = anilist && ids.is_some_and(|m| m.anilist_id.is_some());
+    let my = mal && ids.is_some_and(|m| m.mal_id.is_some());
+    match (al, my) {
+        (true, true) => tr!("show-sites-both"),
+        (true, false) => tr!("tracker-anilist"),
+        (false, true) => tr!("tracker-mal"),
+        (false, false) => String::new(),
     }
-    if mal && ids.is_some_and(|m| m.mal_id.is_some()) {
-        sites.push("MyAnimeList");
-    }
-    sites.join(" and ")
 }
 
 /// Copies the open series into the sheets' state, or empties it when this phone has none
@@ -162,11 +162,11 @@ pub fn sync(
     // A hidden show is off every list: its tracker sync is off.
     show.set_lists(!card.hidden);
     show.set_matched(card.match_info.is_some());
-    show.set_status_key(card.list_status.map(status_key).unwrap_or("").into());
+    show.set_status_index(card.list_status.map_or(-1, status_index));
     show.set_status_word(
         card.list_status
             .map(status_word)
-            .unwrap_or("Add to a list")
+            .unwrap_or_else(|| tr!("phone-show-add-to-list"))
             .into(),
     );
     let score = card
@@ -175,8 +175,8 @@ pub fn sync(
     show.set_score(score.unwrap_or(-1));
     show.set_score_word(
         match score {
-            Some(s) => format!("Your score {}", score_text(s)),
-            None => "Rate".to_string(),
+            Some(s) => tr!("phone-show-your-score", score = score_text(s)),
+            None => tr!("show-rate"),
         }
         .into(),
     );
@@ -255,25 +255,26 @@ pub fn sync(
             want(crate::app::AIRING_ART | n.anilist_id, &n.poster);
             let line = [
                 relation_label(n.relation.as_deref()),
-                format_label(n.format.as_deref()),
+                // A node with no format says nothing here, not "Series".
+                n.format
+                    .as_deref()
+                    .map(|f| format_label(Some(f)))
+                    .unwrap_or_default(),
                 n.year.map(|y| y.to_string()).unwrap_or_default(),
             ];
-            let line: Vec<String> = line
-                .into_iter()
-                .filter(|s| !s.is_empty() && s != "Series")
-                .collect();
+            let line: Vec<String> = line.into_iter().filter(|s| !s.is_empty()).collect();
             entry(
                 art,
                 n.anilist_id,
                 n.owned,
                 &n.title,
                 line.join(", "),
-                if n.owned.is_some() {
-                    "In your library"
+                &if n.owned.is_some() {
+                    tr!("show-card-owned")
                 } else if !n.released {
-                    "Not yet released"
+                    tr!("show-card-unreleased")
                 } else {
-                    "On AniList"
+                    tr!("show-card-on-anilist")
                 },
                 n.list_status,
                 n.site_url.as_deref(),
@@ -291,10 +292,10 @@ pub fn sync(
                 r.owned,
                 &r.title,
                 String::new(),
-                if r.owned.is_some() {
-                    "In your library"
+                &if r.owned.is_some() {
+                    tr!("show-card-owned")
                 } else {
-                    "On AniList"
+                    tr!("show-card-on-anilist")
                 },
                 r.list_status,
                 None,
@@ -315,7 +316,7 @@ pub fn sync(
             ShowPerson {
                 id: id.and_then(|id| i32::try_from(id).ok()).unwrap_or(-1),
                 name: p.name.clone().into(),
-                role: sentence(&p.role).into(),
+                role: role_label(&p.role).into(),
                 image,
                 has_image,
                 initials: format::initials(&p.name).into(),
@@ -356,7 +357,7 @@ fn entry(
         initials: format::initials(title).into(),
         line: line.into(),
         note: note.into(),
-        status: status.map(status_word).unwrap_or("").into(),
+        status: status.map(status_word).unwrap_or_default().into(),
         url: site_url
             .map(str::to_string)
             .unwrap_or_else(|| format!("https://anilist.co/anime/{anilist_id}"))
@@ -366,7 +367,33 @@ fn entry(
 
 /// "SIDE_STORY" as "Side story".
 fn relation_label(relation: Option<&str>) -> String {
-    sentence(&relation.unwrap_or_default().replace('_', " "))
+    match relation.unwrap_or_default() {
+        "PREQUEL" => tr!("show-relation-prequel"),
+        "SEQUEL" => tr!("show-relation-sequel"),
+        "SIDE_STORY" => tr!("show-relation-side-story"),
+        "PARENT" => tr!("show-relation-parent"),
+        "SPIN_OFF" => tr!("show-relation-spin-off"),
+        "ADAPTATION" => tr!("show-relation-adaptation"),
+        "ALTERNATIVE" => tr!("show-relation-alternative"),
+        "SUMMARY" => tr!("show-relation-summary"),
+        "CHARACTER" => tr!("show-relation-character"),
+        "SOURCE" => tr!("show-relation-source"),
+        "COMPILATION" => tr!("show-relation-compilation"),
+        "CONTAINS" => tr!("show-relation-contains"),
+        "OTHER" => tr!("show-relation-other"),
+        // A relation the core adds later reads as its own name until the catalog has it.
+        other => sentence(&other.replace('_', " ")),
+    }
+}
+
+/// A character's role as AniList gives it ("MAIN"), worded for a person.
+fn role_label(role: &str) -> String {
+    match role {
+        "MAIN" => tr!("show-role-main"),
+        "SUPPORTING" => tr!("show-role-supporting"),
+        "BACKGROUND" => tr!("show-role-background"),
+        other => sentence(other),
+    }
 }
 
 /// The first letter up, the rest down: "main" as "Main".
@@ -382,13 +409,13 @@ fn sentence(text: &str) -> String {
 /// An AniList format as the desktop words it.
 pub(crate) fn format_label(format: Option<&str>) -> String {
     match format {
-        None => "Series".to_string(),
-        Some("TV") => "TV".to_string(),
-        Some("TV_SHORT") => "TV short".to_string(),
-        Some("OVA") => "OVA".to_string(),
-        Some("ONA") => "ONA".to_string(),
-        Some("SPECIAL") => "Special".to_string(),
-        Some("MOVIE") => "Film".to_string(),
+        None => tr!("show-format-series"),
+        Some("TV") => tr!("show-format-tv"),
+        Some("TV_SHORT") => tr!("show-format-tv-short"),
+        Some("OVA") => tr!("show-format-ova"),
+        Some("ONA") => tr!("show-format-ona"),
+        Some("SPECIAL") => tr!("show-format-special"),
+        Some("MOVIE") => tr!("show-format-film"),
         Some(other) => other.replace('_', " "),
     }
 }
@@ -407,7 +434,12 @@ fn sections(related: &[ShowCard], recs: &[ShowCard], people: &[ShowPerson]) {
                 poster: c.poster.clone(),
                 has_poster: c.has_poster,
                 initials: c.initials.clone(),
-                badge: if c.owned >= 0 { "Available" } else { "AniList" }.into(),
+                badge: if c.owned >= 0 {
+                    tr!("show-rec-available")
+                } else {
+                    tr!("tracker-anilist")
+                }
+                .into(),
                 flag: c.status.clone(),
                 ..Default::default()
             })
@@ -481,6 +513,13 @@ fn graph(series: u64, matched: Option<u64>, has_graph: bool) {
         });
 }
 
+/// The language changed: the related rows and recommendations carry words (what each is, the
+/// list it is on) that are built once per change of the page, so build them again.
+pub fn relocalize() {
+    SIG.with(|s| s.set(None));
+    crate::local::touch();
+}
+
 /// Hooks the sheets' callbacks to the core.
 pub fn install(window: &AppWindow) {
     let show = window.global::<ShowData>();
@@ -525,7 +564,7 @@ pub fn install(window: &AppWindow) {
                 return;
             };
             call(Call::RescanSeries { series }, |_| {
-                "Rescan started.".to_string()
+                tr!("show-rescan-started")
             });
         }
     });
@@ -544,19 +583,20 @@ pub fn install(window: &AppWindow) {
     });
     show.on_set_status({
         let weak = weak.clone();
-        move |key| {
-            let (Some(window), Some(status)) = (weak.upgrade(), parse_status(&key)) else {
+        move |index| {
+            let (Some(window), Some(status)) = (weak.upgrade(), parse_status(index)) else {
                 return;
             };
             let Ok(series) = u64::try_from(window.global::<ShowData>().get_series_id()) else {
                 return;
             };
-            let label = status_word(status);
             call(Call::SetListStatus { series, status }, move |started| {
+                // Worded when the core answers, in the language the app speaks by then.
+                let label = status_word(status);
                 if started {
-                    format!("Moving to {label}.")
+                    tr!("phone-show-moving-to", label = label)
                 } else {
-                    format!("Moved to {label}.")
+                    tr!("phone-show-moved-to", label = label)
                 }
             });
         }
@@ -572,11 +612,10 @@ pub fn install(window: &AppWindow) {
             let clearing = notes.trim().is_empty();
             call(Call::SetSeriesNotes { series, notes }, move |_| {
                 if clearing {
-                    "Clearing your notes."
+                    tr!("show-notes-clearing")
                 } else {
-                    "Saving your notes."
+                    tr!("show-notes-saving")
                 }
-                .to_string()
             });
         }
     });
@@ -588,12 +627,11 @@ pub fn install(window: &AppWindow) {
         let score = (tenths >= 0).then(|| f64::from(tenths) / 10.0);
         call(Call::SetScore { series, score }, move |started| {
             match (score.is_some(), started) {
-                (true, true) => "Saving your score.",
-                (true, false) => "Score saved.",
-                (false, true) => "Clearing your score.",
-                (false, false) => "Score cleared.",
+                (true, true) => tr!("show-score-saving"),
+                (true, false) => tr!("show-score-saved"),
+                (false, true) => tr!("show-score-clearing"),
+                (false, false) => tr!("show-score-cleared"),
             }
-            .to_string()
         });
     });
 }
@@ -610,7 +648,7 @@ pub fn run(call_: Call, working: String, done: String) {
 /// list kept on this phone).
 fn call(call: Call, done: impl FnOnce(bool) -> String + Send + 'static) {
     let Some(core) = crate::local::core() else {
-        say("AniBeam is still starting. Try again in a moment.".to_string());
+        say(tr!("show-still-starting"));
         return;
     };
     let _ = std::thread::Builder::new()
@@ -646,10 +684,11 @@ mod tests {
             ListStatus::Dropped,
             ListStatus::Repeating,
         ] {
-            assert_eq!(parse_status(status_key(status)), Some(status));
+            assert_eq!(parse_status(status_index(status)), Some(status));
         }
         assert_eq!(status_word(ListStatus::Paused), "On hold");
-        assert_eq!(parse_status("Nonsense"), None);
+        assert_eq!(parse_status(-1), None);
+        assert_eq!(parse_status(99), None);
     }
 
     #[test]

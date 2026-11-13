@@ -114,8 +114,8 @@ impl Desk {
 /// What the phone tells a person once the computer answered: done, or still adding.
 pub fn sent_line(reply: &Reply, what: &str, name: &str) -> String {
     match reply {
-        Reply::Started { .. } => format!("Sent {what} to {name}. It is still adding them."),
-        _ => format!("Getting {what} on {name}."),
+        Reply::Started { .. } => tr!("desk-sent-adding", what = what, name = name),
+        _ => tr!("desk-sent", what = what, name = name),
     }
 }
 

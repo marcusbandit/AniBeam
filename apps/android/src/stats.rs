@@ -10,10 +10,6 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 use crate::{AppWindow, StatBar, StatRank, StatsData};
 
-const MONTH_LETTERS: [&str; 12] = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
-const MONTH_WORDS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
 /// The newest years the picker offers; older ones would crowd the pill.
 const YEARS_SHOWN: usize = 4;
 /// Rows a ranked list keeps. The core already trims; this only bounds what a phone draws.
@@ -25,6 +21,8 @@ struct Page {
     years: Vec<i32>,
     /// A read is on its way; a second tap waits for it.
     busy: bool,
+    /// The last year read, kept so the page can word itself again when the language changes.
+    last: Option<Stats>,
 }
 
 thread_local! {
@@ -45,11 +43,21 @@ pub fn install(window: &AppWindow) {
             window: window.as_weak(),
             years: Vec::new(),
             busy: false,
+            last: None,
         })
     });
     window
         .global::<StatsData>()
         .on_read(|pick| with(|p| p.read(pick)));
+}
+
+/// The language changed: the page's lines are worded again from the last year read.
+pub fn relocalize() {
+    with(|p| {
+        if let Some(stats) = p.last.clone() {
+            p.show(&stats);
+        }
+    });
 }
 
 impl Page {
@@ -100,11 +108,12 @@ impl Page {
         let Some(window) = self.window.upgrade() else {
             return;
         };
+        self.last = Some(stats.clone());
         self.years = year_options(stats, Local::now().year());
         let d = window.global::<StatsData>();
         d.set_loaded(true);
         d.set_empty(stats.years.is_empty());
-        d.set_year_line(format!("What you watched in {}", stats.year).into());
+        d.set_year_line(tr!("stats-year-line", year = stats.year.to_string()).into());
         d.set_years(ModelRc::new(VecModel::from(
             self.years
                 .iter()
@@ -119,14 +128,7 @@ impl Page {
         );
         d.set_hours(hours(stats.minutes).into());
         d.set_episodes(stats.episodes.to_string().into());
-        d.set_episodes_caption(
-            if stats.episodes == 1 {
-                "episode"
-            } else {
-                "episodes"
-            }
-            .into(),
-        );
+        d.set_episodes_caption(tr!("stats-episodes-caption", count = stats.episodes).into());
         d.set_finished(stats.series_completed.to_string().into());
         d.set_busiest(busiest(stats).into());
         d.set_months(ModelRc::new(VecModel::from(bars(stats))));
@@ -190,7 +192,7 @@ fn hours(minutes: u64) -> String {
         if r.fract() == 0.0 {
             format!("{r:.0}")
         } else {
-            format!("{r:.1}")
+            format!("{r:.1}").replace('.', &tr!("fmt-decimal-point"))
         }
     }
 }
@@ -202,9 +204,9 @@ fn busiest(stats: &Stats) -> String {
         .iter()
         .filter(|m| m.minutes > 0)
         .max_by_key(|m| m.minutes)
-        .and_then(|m| MONTH_WORDS.get((m.month as usize).wrapping_sub(1)))
-        .map(|w| w.to_string())
-        .unwrap_or_else(|| "None".into())
+        .filter(|m| (1..=12).contains(&m.month))
+        .map(|m| tr!(&format!("stats-month-{}", m.month)))
+        .unwrap_or_else(|| tr!("common-none"))
 }
 
 fn bars(stats: &Stats) -> Vec<StatBar> {
@@ -223,7 +225,7 @@ fn bars(stats: &Stats) -> Vec<StatBar> {
                 .find(|m| m.month == n)
                 .map_or(0, |m| m.minutes);
             StatBar {
-                letter: MONTH_LETTERS[n as usize - 1].into(),
+                letter: tr!(&format!("stats-month-letter-{n}")).into(),
                 hours: if minutes > 0 {
                     hours(minutes).into()
                 } else {
@@ -241,11 +243,7 @@ fn bars(stats: &Stats) -> Vec<StatBar> {
 }
 
 fn eps(n: u32) -> String {
-    if n == 1 {
-        "1 ep".into()
-    } else {
-        format!("{n} eps")
-    }
+    tr!("stats-eps", count = n)
 }
 
 fn ranks(rows: &[StatCount]) -> Vec<StatRank> {
@@ -305,6 +303,7 @@ mod tests {
 
     #[test]
     fn hours_are_whole_from_ten_and_one_decimal_below() {
+        crate::tr::set_lang(crate::tr::Lang::En);
         assert_eq!(hours(0), "0");
         assert_eq!(hours(90), "1.5");
         assert_eq!(hours(120), "2");
@@ -314,6 +313,7 @@ mod tests {
 
     #[test]
     fn the_busiest_month_is_named_or_none() {
+        crate::tr::set_lang(crate::tr::Lang::En);
         let s = stats(vec![2026], 2026, &[(3, 100), (10, 500), (11, 200)]);
         assert_eq!(busiest(&s), "Oct");
         assert_eq!(busiest(&stats(vec![], 2026, &[])), "None");
@@ -349,6 +349,7 @@ mod tests {
 
     #[test]
     fn ranks_scale_to_the_leader() {
+        crate::tr::set_lang(crate::tr::Lang::En);
         let rows = vec![
             StatCount {
                 name: "Action".into(),

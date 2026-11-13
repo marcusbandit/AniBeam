@@ -4,12 +4,13 @@
 import { Theme } from "theme.slint";
 import { Button } from "widgets.slint";
 import { ShowData, ShowSheet } from "show.slint";
+import { Tr } from "tr.slint";
 
 export component NotesSheet inherits ShowSheet {
     // The core's one limit for both trackers.
     property <int> max: 2000;
     property <int> count: input.text.character-count;
-    title: "Notes";
+    title: Tr.t("show-notes-title");
     line: ShowData.series-title;
     dismissed => { ShowData.close(); }
     Rectangle {
@@ -22,7 +23,7 @@ export component NotesSheet inherits ShowSheet {
             x: Theme.unit * 3;
             y: Theme.unit * 3;
             width: parent.width - 6 * Theme.unit;
-            text: "Where you left off, who recommended it, which release to get";
+            text: Tr.t("show-notes-placeholder");
             color: Theme.faint;
             wrap: word-wrap;
         }
@@ -38,8 +39,8 @@ export component NotesSheet inherits ShowSheet {
         }
     }
     Text {
-        text: root.count > root.max ? (root.count - root.max) + " characters over the limit"
-            : "Saved to " + (ShowData.sites != "" ? ShowData.sites : "your tracker") + ".";
+        text: root.count > root.max ? Tr.n("show-notes-over", "count", root.count - root.max)
+            : ShowData.sites != "" ? Tr.s("show-notes-saved-to", "sites", ShowData.sites) : Tr.t("show-notes-saved-to-tracker");
         color: root.count > root.max ? Theme.bad : Theme.dim;
         font-size: Theme.small + 1px;
         wrap: word-wrap;
@@ -48,7 +49,7 @@ export component NotesSheet inherits ShowSheet {
         spacing: Theme.gap;
         alignment: start;
         Button {
-            text: "Save";
+            text: Tr.t("common-save");
             primary: true;
             enabled: root.count <= root.max && ShowData.notes-draft != ShowData.notes;
             clicked => {
@@ -57,7 +58,7 @@ export component NotesSheet inherits ShowSheet {
             }
         }
         Button {
-            text: "Cancel";
+            text: Tr.t("common-cancel");
             clicked => { ShowData.close(); }
         }
     }
