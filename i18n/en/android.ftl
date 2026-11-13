@@ -54,6 +54,11 @@ series-not-tracked-on-phone =
        *[other] Not tracked, { $count } episodes on this phone
     }
 
+## Your computer
+
+# Whose watch history the computer shows this phone, by the person's Tailscale name.
+host-progress = { $name }'s progress
+
 ## The player
 
 # The speed picker while the episode plays on a TV, which keeps its own speed.

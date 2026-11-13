@@ -105,7 +105,7 @@ impl<F: Fn(Event)> Worker<F> {
                     "Reached {}, AniBeam {}{}.",
                     hello.host,
                     hello.version,
-                    format::after(&format::progress_of(hello.profile.as_ref()))
+                    format::after(&crate::app::progress_of(hello.profile.as_ref()))
                 )
             })
             .map_err(|e| e.to_string());

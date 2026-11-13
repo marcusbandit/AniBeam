@@ -34,15 +34,6 @@ pub fn countdown_full(seconds: i64) -> String {
     }
 }
 
-/// "Alex Doe's progress": whose watch history a computer shows this phone, by the name
-/// in its hello. Empty with no name, so a screen says nothing rather than a guess.
-pub fn progress_of(profile: Option<&crate::api::Profile>) -> String {
-    match profile.map(|p| p.name.trim()) {
-        Some(name) if !name.is_empty() => format!("{name}'s progress"),
-        _ => String::new(),
-    }
-}
-
 /// ", part" to follow a line with, or nothing for an empty part.
 pub fn after(part: &str) -> String {
     if part.is_empty() {
@@ -183,14 +174,7 @@ mod tests {
     use chrono::FixedOffset;
 
     #[test]
-    fn whose_progress_is_said_only_with_a_name() {
-        let named = |name: &str| crate::api::Profile {
-            name: name.into(),
-            ..Default::default()
-        };
-        assert_eq!(progress_of(Some(&named("Alex Doe"))), "Alex Doe's progress");
-        assert_eq!(progress_of(Some(&named("  "))), "");
-        assert_eq!(progress_of(None), "");
+    fn a_part_follows_a_line_only_when_there_is_one() {
         assert_eq!(after("Alex Doe's progress"), ", Alex Doe's progress");
         assert_eq!(after(""), "");
     }

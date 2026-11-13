@@ -382,6 +382,15 @@ fn account_line(a: &TrackerAccount) -> String {
     }
 }
 
+/// "Alex Doe's progress": whose watch history the computer shows this phone, by the name
+/// in its hello. Empty with no name, so a screen says nothing rather than a guess.
+pub(crate) fn progress_of(profile: Option<&anibeam_companion::api::Profile>) -> String {
+    match profile.map(|p| p.name.trim()) {
+        Some(name) if !name.is_empty() => tr("host-progress", &[("name", name.into())]),
+        _ => String::new(),
+    }
+}
+
 impl App {
     fn data(&self) -> AppData<'_> {
         self.window.global::<AppData>()
@@ -547,7 +556,7 @@ impl App {
 
         // Whose progress the last sync showed, said only beside the address it came from,
         // so a newly typed address never sits under the last computer's person.
-        let whose = format::progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref()));
+        let whose = progress_of(self.cache.as_ref().and_then(|c| c.profile.as_ref()));
         let synced_here = self
             .cache
             .as_ref()

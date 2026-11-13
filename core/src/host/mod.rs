@@ -443,13 +443,13 @@ fn listing(t: &trust::Tailnet, off: &[String]) -> (Vec<TailnetDevice>, Vec<Tailn
     (devices, people)
 }
 
-/// What Settings calls a person who has neither a name nor a login in Tailscale.
-const NO_NAME: &str = "No name in Tailscale";
-
 fn person(user: &trust::TailnetUser, owner: bool) -> TailnetPerson {
     TailnetPerson {
         id: user.id.clone(),
-        name: user.shown().unwrap_or(NO_NAME).to_string(),
+        name: user.shown().map_or_else(
+            || crate::i18n::tr("tailnet-person-no-name", &[]),
+            str::to_string,
+        ),
         login: user.login.clone(),
         owner,
         devices: 0,
@@ -794,17 +794,18 @@ mod tests {
             .replace(r#""3": {"ID": 3"#, r#""103": {"ID": 103"#);
         let t = trust::read_status(bare.as_bytes()).unwrap();
         let (devices, people) = listing(&t, &[]);
+        let no_name = crate::i18n::tr("tailnet-person-no-name", &[]);
         let listed: Vec<(&str, bool)> = people.iter().map(|p| (p.name.as_str(), p.owner)).collect();
         assert_eq!(
             listed,
             [
-                (NO_NAME, true),
+                (no_name.as_str(), true),
                 ("alex@example.com", false),
-                (NO_NAME, false),
+                (no_name.as_str(), false),
             ]
         );
         let phone = devices.iter().find(|d| d.name == "phone").unwrap();
-        assert_eq!(phone.person, NO_NAME);
+        assert_eq!(phone.person, no_name);
     }
 
     #[test]
