@@ -1,0 +1,81 @@
+name: PR labels
+
+# Every PR carries one category label from the moment it opens: bug, enhancement,
+# documentation or question (#860). The type in the title or branch decides:
+#
+#   fix                                  -> bug
+#   feat, perf, refactor, chore, ci, test -> enhancement
+#   docs                                 -> documentation
+#
+# A PR with no type goes to Haiku, which reads the title, branch and the start of the body
+# and must answer with one of the four; any other answer adds nothing. Haiku runs only when
+# the CLAUDE_CODE_OAUTH_TOKEN secret is set, with no tools, so PR text cannot make it act.
+# A PR that already has a category label is left alone, so a hand-picked label stays.
+# pull_request_target, because a PR from a fork gets a read-only token under pull_request;
+# this job never checks out the PR's code, and PR text is read through the API, never
+# expanded into the script.
+on:
+  pull_request_target:
+    types: [opened, reopened, edited]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to label
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pr-labels-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  label:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Add the category label
+        run: |
+          set -euo pipefail
+          cats=" bug enhancement documentation question "
+          pr="$(gh pr view "$PR" --json title,headRefName,body,labels)"
+          if jq -e --arg c "$cats" 'any(.labels[]; .name as $l | $c | contains(" " + $l + " "))' <<<"$pr" >/dev/null; then
+            echo "#$PR already has a category label."
+            exit 0
+          fi
+          title="$(jq -r .title <<<"$pr")"
+          branch="$(jq -r .headRefName <<<"$pr")"
+          by_type() {
+            case "$1" in
+              fix) echo bug ;;
+              feat|perf|refactor|chore|ci|test) echo enhancement ;;
+              docs) echo documentation ;;
+            esac
+          }
+          type="$(sed -nE 's/^([a-z]+)(\([^)]*\))?!?:.*/\1/p' <<<"$title")"
+          pick="$(by_type "$type")"
+          [ -n "$pick" ] || pick="$(by_type "${branch%%/*}")"
+          via=type
+          if [ -z "$pick" ] && [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            via=haiku
+            body="$(jq -r '.body // "" | .[0:1500]' <<<"$pr")"
+            answer="$(printf 'Pick the one GitHub label that fits this pull request: bug (fixes something broken), enhancement (new or better behaviour, refactors, tooling), documentation (docs only) or question. Answer with the label only, nothing else.\n\nBranch: %s\nTitle: %s\n\n<pr_body>\n%s\n</pr_body>\n' "$branch" "$title" "$body" |
+              timeout 120 npx -y @anthropic-ai/claude-code -p --model haiku --tools "" \
+                --strict-mcp-config --no-session-persistence 2>/dev/null || true)"
+            answer="$(tr -d '[:space:]`.' <<<"$answer" | tr '[:upper:]' '[:lower:]')"
+            case "$cats" in *" $answer "*) pick="$answer" ;; esac
+          fi
+          if [ -z "$pick" ]; then
+            echo "::notice::#$PR has no type in its title or branch; no label added."
+            exit 0
+          fi
+          gh api --silent "repos/$GH_REPO/issues/$PR/labels" -f "labels[]=$pick"
+          echo "#$PR gets $pick ($via)."
