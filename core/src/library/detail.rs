@@ -376,27 +376,24 @@ impl Snapshot {
                     (SELECT ta.status FROM tracker_entries ta WHERE ta.tracker = 'anilist' AND ta.media_id = m.id AND ta.profile_id = ?2),
                     (SELECT tm.status FROM tracker_entries tm WHERE tm.tracker = 'mal' AND tm.media_id = m.mal_id AND tm.profile_id = ?2),
                     m.title_native,
-                    (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = m.id AND ?2 = ?3 ORDER BY ls.id LIMIT 1)
+                    (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = m.id ORDER BY ls.id LIMIT 1)
              FROM recommendations r
              JOIN anilist_media m ON m.id = r.recommended_id
              LEFT JOIN images i ON i.url = m.cover_url
              WHERE r.anilist_id = ?1
              ORDER BY r.rank",
         )?;
-        // Each list is the reader's own (#852); the list kept on this device is
-        // the owner's alone, as the snapshot loads it.
-        let params = [
-            anilist_id as i64,
-            self.profile as i64,
-            crate::profiles::OWNER as i64,
-        ];
-        let rows = stmt.query_map(params, |r| {
+        // Each tracker list is the reader's own (#852).
+        let rows = stmt.query_map([anilist_id as i64, self.profile as i64], |r| {
             let romaji: Option<String> = r.get(1)?;
             let english: Option<String> = r.get(2)?;
             let anilist_status: Option<String> = r.get(5)?;
             let mal_status: Option<String> = r.get(6)?;
             let native: Option<String> = r.get(7)?;
-            let kept_here: Option<String> = r.get(8)?;
+            // The list kept on this device is the owner's alone, as `load_for` reads it.
+            let kept_here: Option<String> = r
+                .get::<_, Option<String>>(8)?
+                .filter(|_| self.profile == crate::profiles::OWNER);
             let (main, other) = match self.main_tracker {
                 Tracker::Anilist => (anilist_status, mal_status),
                 Tracker::Mal => (mal_status, anilist_status),
@@ -964,58 +961,51 @@ mod tests {
         // show, the friend has finished it. Each page says its reader's own.
         let dir = tempfile::tempdir().unwrap();
         let store = crate::store::Store::open(&dir.path().join("anibeam.db")).unwrap();
-        store
-            .write(|c| {
-                c.execute_batch(
-                    "INSERT INTO profiles (id, created_at) VALUES (2, 0);
-                     INSERT INTO anilist_media (id, mal_id, title_romaji) VALUES (10, 110, 'Show'), (11, 111, 'Other');
-                     INSERT INTO recommendations (anilist_id, recommended_id, rank) VALUES (10, 11, 1);
-                     INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
-                     INSERT INTO series (id, source_id, kind, path, folder_name, added_at, anilist_id) VALUES (1, 1, 'show', '/tv/Show', 'Show', 0, 10);
-                     INSERT INTO tracker_entries (profile_id, tracker, media_id, status, fetched_at) VALUES
-                         (1, 'anilist', 11, 'watching', 0), (2, 'anilist', 11, 'completed', 0),
-                         (1, 'mal', 111, 'watching', 0), (2, 'mal', 111, 'completed', 0);",
-                )?;
-                Ok(())
-            })
-            .unwrap();
-        let status = |profile: u64| {
+        let sql = |batch: &'static str| {
+            store
+                .write(move |c| {
+                    c.execute_batch(batch)?;
+                    Ok(())
+                })
+                .unwrap()
+        };
+        sql("INSERT INTO profiles (id, created_at) VALUES (2, 0);
+             INSERT INTO anilist_media (id, mal_id, title_romaji) VALUES (10, 110, 'Show'), (11, 111, 'Other');
+             INSERT INTO recommendations (anilist_id, recommended_id, rank) VALUES (10, 11, 1);
+             INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO series (id, source_id, kind, path, folder_name, added_at, anilist_id) VALUES (1, 1, 'show', '/tv/Show', 'Show', 0, 10);
+             INSERT INTO tracker_entries (profile_id, tracker, media_id, status, fetched_at) VALUES
+                 (1, 'anilist', 11, 'watching', 0), (2, 'anilist', 11, 'completed', 0),
+                 (1, 'mal', 111, 'paused', 0), (2, 'mal', 111, 'dropped', 0);");
+        let status = |profile: u64, main: Tracker| {
             store
                 .read(move |c| {
-                    let snap = Snapshot::load_for(
+                    let mut snap = Snapshot::load_for(
                         c,
                         profile,
                         Path::new("/images"),
                         std::time::SystemTime::now(),
                         Some(&[1]),
                     )?;
+                    snap.main_tracker = main;
                     Ok(snap.detail(c, 1)?.unwrap().recommendations[0].list_status)
                 })
                 .unwrap()
         };
-        assert_eq!(status(crate::profiles::OWNER), Some(ListStatus::Watching));
-        assert_eq!(status(2), Some(ListStatus::Completed));
-        // MAL as the main list reads the same per profile.
-        store
-            .write(|c| {
-                c.execute("DELETE FROM tracker_entries WHERE tracker = 'anilist'", [])?;
-                Ok(())
-            })
-            .unwrap();
-        assert_eq!(status(crate::profiles::OWNER), Some(ListStatus::Watching));
-        assert_eq!(status(2), Some(ListStatus::Completed));
+        let owner = crate::profiles::OWNER;
+        assert_eq!(status(owner, Tracker::Anilist), Some(ListStatus::Watching));
+        assert_eq!(status(2, Tracker::Anilist), Some(ListStatus::Completed));
+        assert_eq!(status(owner, Tracker::Mal), Some(ListStatus::Paused));
+        assert_eq!(status(2, Tracker::Mal), Some(ListStatus::Dropped));
+        // Someone else's row never stands in for a reader who has none.
+        sql("DELETE FROM tracker_entries WHERE profile_id = 1;");
+        assert_eq!(status(owner, Tracker::Anilist), None);
+        assert_eq!(status(2, Tracker::Anilist), Some(ListStatus::Completed));
         // The list kept on this device is the owner's alone.
-        store
-            .write(|c| {
-                c.execute_batch(
-                    "DELETE FROM tracker_entries;
-                     INSERT INTO series (id, source_id, kind, path, folder_name, added_at, anilist_id) VALUES (2, 1, 'show', '/tv/Other', 'Other', 0, 11);
-                     INSERT INTO local_entries (series_id, status, updated_at) VALUES (2, 'planning', 0);",
-                )?;
-                Ok(())
-            })
-            .unwrap();
-        assert_eq!(status(crate::profiles::OWNER), Some(ListStatus::Planning));
-        assert_eq!(status(2), None);
+        sql("DELETE FROM tracker_entries;
+             INSERT INTO series (id, source_id, kind, path, folder_name, added_at, anilist_id) VALUES (2, 1, 'show', '/tv/Other', 'Other', 0, 11);
+             INSERT INTO local_entries (series_id, status, updated_at) VALUES (2, 'planning', 0);");
+        assert_eq!(status(owner, Tracker::Anilist), Some(ListStatus::Planning));
+        assert_eq!(status(2, Tracker::Anilist), None);
     }
 }
