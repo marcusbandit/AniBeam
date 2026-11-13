@@ -1,11 +1,11 @@
 name: Site
 
 # Publishes the website in site/ on GitHub Pages whenever it changes on main (#768). A pull
-# request touching it only assembles the site, so a broken build.sh shows before the merge.
-# site/build.sh adds the screenshots from docs/readme, so they live in one place.
-# The custom domain is set in the repo's Pages settings, not in a CNAME file. The What's new
-# pages come from the apps' patch notes, so a change to them deploys too, and every nightly
-# and stable release deploys once it is public.
+# request touching it, or the patch notes What's new is built from, only assembles the site,
+# so a broken build shows before the merge. The custom domain is set in the repo's Pages
+# settings, not in a CNAME file. What's new shows what has shipped, so it deploys with every
+# nightly and stable release (nightly.yml and release.yml start this once theirs is public),
+# not with every merged change file.
 # Every deploy also signs the apt and dnf repos from the newest stable release's packages into
 # /apt and /rpm (publish-repos.sh, #788), and release.yml runs this on main right after a
 # stable release goes public, so the repos carry it without a commit.
@@ -14,27 +14,20 @@ on:
     branches: [main]
     paths:
       - site/**
-      - docs/readme/**
+      - assets/icon.png
+      - .github/workflows/site.yml
+      - apps/linux/packaging/linux/repos.sh
+      - apps/linux/packaging/linux/publish-repos.sh
+  pull_request:
+    paths:
+      - site/**
       - assets/icon.png
       - .github/workflows/site.yml
       - apps/linux/CHANGELOG.md
       - apps/android/CHANGELOG.md
       - apps/linux/changes/**
       - apps/android/changes/**
-      - apps/linux/packaging/linux/repos.sh
-      - apps/linux/packaging/linux/publish-repos.sh
-  pull_request:
-    paths:
-      - site/**
-      - docs/readme/**
-      - assets/icon.png
-      - .github/workflows/site.yml
   workflow_dispatch:
-    inputs:
-      nightly:
-        description: The newest nightly, 2.5.0-nightly.20261112.40, for What's new; nightly.yml fills it
-        type: string
-        default: ''
 
 permissions:
   contents: read
@@ -68,7 +61,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: site/build.sh "$RUNNER_TEMP/site"
         env:
-          ANIBEAM_NIGHTLY: ${{ inputs.nightly }}
           GH_TOKEN: ${{ github.token }}
       - name: The apt and dnf repos
         env:

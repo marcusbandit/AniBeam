@@ -32,13 +32,14 @@ const onceInView = (els, threshold = 0.45) => {
   let file = null;
   let chip = os === "mac" ? undefined : null;
 
+  // Rewritten whole each time, so a Mac found to be Intel goes back to the plain words, and a
+  // new language gets them in its own.
   function label() {
-    for (const m of mains) {
-      const span = m.querySelector("span");
-      if (os === "ios") span.textContent = t("Coming to iPhone soon");
-      else if (os === "android") span.textContent = t("Get the Android app");
-      else if (want && !(os === "mac" && chip === false)) span.textContent = t("Download for {os}", { os: names[os] });
-    }
+    let text = t("Download AniBeam");
+    if (os === "ios") text = t("Coming to iPhone soon");
+    else if (os === "android") text = t("Get the Android app");
+    else if (want && !(os === "mac" && chip === false)) text = t("Download for {os}", { os: names[os] });
+    for (const m of mains) m.querySelector("span").textContent = text;
   }
   function aim() {
     const sure = os !== "mac" || chip === true;
@@ -87,7 +88,7 @@ const onceInView = (els, threshold = 0.45) => {
     buttons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.screen === key)));
     img.classList.add("swap");
     const next = new Image();
-    next.onload = () => { img.removeAttribute("srcset"); img.src = next.src; img.alt = alts[key]; img.classList.remove("swap"); };
+    next.onload = () => { img.removeAttribute("srcset"); img.src = next.src; img.alt = AB.t(alts[key]); img.classList.remove("swap"); };
     // A screen that fails to load leaves the last one showing, not a dimmed frame.
     next.onerror = () => img.classList.remove("swap");
     next.src = src(key);

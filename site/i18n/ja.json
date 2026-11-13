@@ -82,5 +82,7 @@
   "Apple silicon": "Appleシリコン",
   "Coming to iPhone soon": "iPhone 版は近日公開",
   "No nightly newer than {version} yet.": "{version} より新しい Nightly はまだありません。",
-  "Selected. Press Ctrl+C to copy.": "選択しました。Ctrl+C でコピーできます。"
+  "Selected. Press Ctrl+C to copy.": "選択しました。Ctrl+C でコピーできます。",
+  "The Library grid with every show as a poster": "すべての作品をポスターで並べたライブラリ",
+  "A show's page with its banner, episodes and characters": "バナー、エピソード、キャラクターが並ぶ作品ページ"
 }

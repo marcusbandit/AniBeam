@@ -82,5 +82,7 @@
   "Apple silicon": "Apple 실리콘",
   "Coming to iPhone soon": "iPhone 버전 곧 출시",
   "No nightly newer than {version} yet.": "아직 {version}보다 새로운 Nightly가 없습니다.",
-  "Selected. Press Ctrl+C to copy.": "선택했습니다. Ctrl+C를 눌러 복사하세요."
+  "Selected. Press Ctrl+C to copy.": "선택했습니다. Ctrl+C를 눌러 복사하세요.",
+  "The Library grid with every show as a poster": "모든 작품을 포스터로 보여 주는 라이브러리",
+  "A show's page with its banner, episodes and characters": "배너, 에피소드, 캐릭터가 있는 작품 페이지"
 }

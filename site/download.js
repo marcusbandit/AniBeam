@@ -27,9 +27,9 @@
     meta.textContent = behind && !AB.phone
       ? t("No nightly newer than {version} yet.", { version: shown.version }) + " "
       : `${shown.version}, ${when}. `;
+    // whats-new.py writes each release's notes page into releases.json, or the list when it has none.
     const notes = document.createElement("a");
-    notes.href = AB.phone ? `${ROOT}whats-new/android-${shown.version}/`
-      : channel === "nightly" && !behind ? ROOT + "whats-new/#next" : `${ROOT}whats-new/${shown.version}/`;
+    notes.href = ROOT + (shown.notes || "whats-new/");
     notes.textContent = t("What's new");
     meta.append(notes);
   }
@@ -45,15 +45,17 @@
 
   // The visitor's own system gets the wide tile on top and the brand-coloured button. A phone gets
   // the phone tile, and the page shows nothing else (style.css, data-device). A system we build
-  // nothing for gets no tile picked.
-  const want = AB.phone ? "android" : AB.os;
-  const mine = want && document.querySelector(`.dl-tile[data-os="${want}"]`);
-  if (mine) {
+  // nothing for gets no tile picked, and neither does a Mac the browser says is Intel.
+  function feature(want) {
+    const mine = want && document.querySelector(`.dl-tile[data-os="${want}"]`);
+    if (!mine) return;
     mine.classList.add("is-featured");
     mine.parentElement.prepend(mine);
     const main = mine.querySelector(".dl-main");
     if (AB.os !== "ios") { main.classList.remove("btn-ghost"); main.classList.add("btn-primary"); }
   }
+  if (AB.os === "mac") AB.macChip.then((chip) => feature(chip === false ? null : "mac"));
+  else feature(AB.phone ? "android" : AB.os);
 })();
 
 // The streaks. Each switch of channel plays their entrance again, the same extension the page

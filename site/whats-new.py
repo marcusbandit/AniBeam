@@ -15,8 +15,8 @@ usage: whats-new.py <repo-root> <out-dir>
 """
 import html
 import json
-import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -47,14 +47,27 @@ def parse(text):
     return versions
 
 
-def pending(changes_dir):
+def git(*args):
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=True).stdout
+
+
+def change_files(changes_dir, ref):
+    """The change files' texts, as main has them, or as the commit `ref` had them."""
+    if ref:
+        rel = changes_dir.relative_to(root).as_posix()
+        names = git("ls-tree", "--name-only", f"{ref}:{rel}").split()
+        return [(n, git("show", f"{ref}:{rel}/{n}")) for n in sorted(names) if n.endswith(".md")]
+    return [(f.name, f.read_text()) for f in sorted(changes_dir.glob("*.md"))]
+
+
+def pending(changes_dir, ref=None):
     """The lines in the change files, merged by section."""
     sections = {}
-    for f in sorted(changes_dir.glob("*.md")):
-        if f.name.lower() == "readme.md":
+    for name, text in change_files(changes_dir, ref):
+        if name.lower() == "readme.md":
             continue
         section = None
-        for line in f.read_text().splitlines():
+        for line in text.splitlines():
             if line.startswith("### "):
                 section = line[4:].strip()
             elif line.startswith("- ") and section:
@@ -96,13 +109,23 @@ versions.sort(key=lambda e: (e["date"], e["app"] == "desktop", vkey(e["version"]
 # The tags that exist on GitHub (tools/releases.py, run just before). A version with notes but
 # no published release gets no download link; without the list every version keeps its link.
 try:
-    TAGS = set(json.loads((out / "releases.json").read_text())["tags"])
+    RELEASES = json.loads((out / "releases.json").read_text())
+    TAGS = set(RELEASES["tags"])
 except (OSError, ValueError, KeyError):
-    TAGS = None
-coming = {key: pending(path / "changes") for key, _, path in APPS}
+    RELEASES, TAGS = {}, None
+# Coming next is what the newest nightly brings: the change files at its own tag, so a merge
+# after it never shows as in it. With no nightly newer than the stable release, or without
+# git or the network, it is what main holds, under a plain "Coming next".
+nightly = RELEASES.get("nightly") or {}
+nightly_version, ref = "", None
+if nightly.get("tag"):
+    try:
+        git("fetch", "--quiet", "--depth=1", "origin", "tag", nightly["tag"])
+        ref, nightly_version = nightly["tag"], nightly["version"]
+    except (OSError, subprocess.CalledProcessError) as e:
+        print(f"whats-new: {nightly['tag']} not fetched, Coming next is main's ({e})")
+coming = {key: pending(path / "changes", ref) for key, _, path in APPS}
 coming = {k: v for k, v in coming.items() if any(v.values())}
-# site.yml passes the newest nightly when nightly.yml starts the deploy.
-nightly_version = os.environ.get("ANIBEAM_NIGHTLY", "")
 
 
 def notes_html(apps, named=True):
@@ -130,8 +153,9 @@ FOOT = re.search(r'<footer class="foot">.*?</footer>', _dl, re.S).group(0)
 
 
 # The notes are English only, so the language menu here leads to each language's home page.
-NAV = re.sub(r'(<a href=")[^"]*(" hreflang="([\w-]+)")',
-             lambda m: f'{m.group(1)}../{"" if m.group(3) == "en" else m.group(3) + "/"}{m.group(2)}', NAV)
+# The folder comes from the download page's own link (../da/download/), since a hreflang such
+# as zh-Hans is not a folder name.
+NAV = re.sub(r'(<a href=")\.\./(?:([\w-]+)/)?download/(" hreflang=)', lambda m: f'{m.group(1)}../{m.group(2) + "/" if m.group(2) else ""}{m.group(3)}', NAV)
 
 
 def chrome(fragment, prefix):
@@ -237,6 +261,17 @@ lost = """<section class="wn-hero"><h1>Nothing here.</h1></section>
 <p class="lost"><a class="btn btn-primary btn-lg" href="/">AniBeam home</a></p>"""
 (out / "404.html").write_text(page("Not found: AniBeam", "/", lost, "404.html", "This page does not exist.")
                               .replace("<head>", '<head>\n<meta name="robots" content="noindex">', 1))
+
+# The download page links each release to its notes. A release with no page of its own (a
+# hotfix, a version whose notes are empty) links the list instead.
+if RELEASES:
+    slugs = {e["slug"] for e in versions}
+    for key, slug in (("stable", lambda v: v), ("nightly", lambda v: None), ("phone", lambda v: f"android-{v}")):
+        r = RELEASES.get(key)
+        if r:
+            page_slug = slug(r["version"])
+            r["notes"] = f"whats-new/{page_slug}/" if page_slug in slugs else ("whats-new/#next" if key == "nightly" else "whats-new/")
+    (out / "releases.json").write_text(json.dumps(RELEASES, indent=1) + "\n")
 
 # Every release page goes in the sitemap next to the pages i18n.py listed.
 sitemap = out / "sitemap.xml"

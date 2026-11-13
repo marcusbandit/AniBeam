@@ -141,7 +141,8 @@ jobs:
             done
 
   # The website's What's new shows what this nightly brings under Coming next, with its number
-  # (#777): deploy the site once the nightly is public.
+  # (#777): deploy the site once the nightly is public. The site reads which nightly is newest,
+  # and the change files at its tag, from GitHub itself.
   site:
     needs: [gate, publish]
     runs-on: ubuntu-latest
@@ -151,5 +152,4 @@ jobs:
       - name: The website shows what this nightly brings
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.gate.outputs.version }}
-        run: gh workflow run site.yml -R "$GITHUB_REPOSITORY" --ref main -f nightly="$VERSION"
+        run: gh workflow run site.yml -R "$GITHUB_REPOSITORY" --ref main

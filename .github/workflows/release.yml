@@ -185,8 +185,11 @@ jobs:
   # The apt and dnf repos on anibeam.app are signed from the newest stable release's
   # packages each time the site deploys (#788), so deploy it now that this one is public.
   # The Pages environment only deploys from main, so the site runs there, not on a hotfix tag.
+  # It waits for `next`, whose fold of the change files writes the shipped version's notes, so
+  # What's new has the release's page the moment the release is public. A hotfix skips `next`.
   site:
-    needs: publish
+    needs: [publish, next]
+    if: always() && needs.publish.result == 'success' && needs.next.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

@@ -82,5 +82,7 @@
  "Apple silicon": "Apple-chip",
  "Coming to iPhone soon": "Kommer snart til iPhone",
  "No nightly newer than {version} yet.": "Ingen Nightly nyere end {version} endnu.",
- "Selected. Press Ctrl+C to copy.": "Markeret. Tryk Ctrl+C for at kopiere."
+ "Selected. Press Ctrl+C to copy.": "Markeret. Tryk Ctrl+C for at kopiere.",
+ "The Library grid with every show as a poster": "Biblioteket som et gitter med hver serie som plakat",
+ "A show's page with its banner, episodes and characters": "En series side med banner, afsnit og figurer"
 }

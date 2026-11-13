@@ -82,5 +82,7 @@
  "Apple silicon": "Puce Apple",
  "Coming to iPhone soon": "Bientôt sur iPhone",
  "No nightly newer than {version} yet.": "Pas encore de Nightly plus récente que la {version}.",
- "Selected. Press Ctrl+C to copy.": "Sélectionné. Appuyez sur Ctrl+C pour copier."
+ "Selected. Press Ctrl+C to copy.": "Sélectionné. Appuyez sur Ctrl+C pour copier.",
+ "The Library grid with every show as a poster": "La bibliothèque en grille, chaque série en affiche",
+ "A show's page with its banner, episodes and characters": "La page d'une série avec sa bannière, ses épisodes et ses personnages"
 }

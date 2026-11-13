@@ -82,5 +82,7 @@
  "Apple silicon": "Чип Apple",
  "Coming to iPhone soon": "Скоро на iPhone",
  "No nightly newer than {version} yet.": "Пока нет Nightly новее {version}.",
- "Selected. Press Ctrl+C to copy.": "Выделено. Нажмите Ctrl+C, чтобы скопировать."
+ "Selected. Press Ctrl+C to copy.": "Выделено. Нажмите Ctrl+C, чтобы скопировать.",
+ "The Library grid with every show as a poster": "Библиотека сеткой, каждый сериал постером",
+ "A show's page with its banner, episodes and characters": "Страница сериала с баннером, сериями и персонажами"
 }

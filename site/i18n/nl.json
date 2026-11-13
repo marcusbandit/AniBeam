@@ -82,5 +82,7 @@
   "Apple silicon": "Apple-chip",
   "Coming to iPhone soon": "Binnenkort op iPhone",
   "No nightly newer than {version} yet.": "Nog geen Nightly nieuwer dan {version}.",
-  "Selected. Press Ctrl+C to copy.": "Geselecteerd. Druk op Ctrl+C om te kopiëren."
+  "Selected. Press Ctrl+C to copy.": "Geselecteerd. Druk op Ctrl+C om te kopiëren.",
+  "The Library grid with every show as a poster": "De bibliotheek als raster, elke serie als poster",
+  "A show's page with its banner, episodes and characters": "De pagina van een serie met banner, afleveringen en personages"
 }

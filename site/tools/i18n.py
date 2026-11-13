@@ -23,7 +23,10 @@ I18N = Path(__file__).resolve().parent.parent / "i18n"  # site/i18n
 PAGES = ["index.html", "download/index.html"]
 # Strings the scripts put on the page (app.js, download.js), so the page carries them translated.
 JS_STRINGS = ["Download for {os}", "Get the Android app", "Copy", "Copied", "What's new", "Download AniBeam",
-              "Coming to iPhone soon", "No nightly newer than {version} yet.", "Selected. Press Ctrl+C to copy."]
+              "Coming to iPhone soon", "No nightly newer than {version} yet.", "Selected. Press Ctrl+C to copy.",
+              # the tour's screenshots, swapped by app.js
+              "AniBeam's Home: shows to continue and shows not started yet, as poster cards",
+              "The Library grid with every show as a poster", "A show's page with its banner, episodes and characters"]
 # A folder name is the short code; hreflang and lang take the full tag where the script matters.
 TAG = {"zh": "zh-Hans"}
 SKIP = {"AniBeam", "GitHub", "Ko-fi", "Linux", "Mac", "Windows", "AUR", ".deb", ".rpm", "Homebrew",
@@ -117,7 +120,6 @@ def deeper(page):
     home page and the download page stay inside the language."""
     def fix(m):
         attr, url = m.groups()
-        bare = url.lstrip("./")
         is_page = url.endswith("/") or url in (".", "./")
         if is_page and "whats-new" not in url:
             return m.group(0)
@@ -176,7 +178,6 @@ def build(site):
                               f'<meta property="og:url" content="https://anibeam.app/{code}/{sub}">', page)
                 strings = {k: data[k] for k in JS_STRINGS if k in data}
                 strings["_locale"] = data.get("_locale", code)
-                strings["_root"] = "../"
                 page = page.replace("</head>", f"<script>window.I18N = {json.dumps(strings, ensure_ascii=False)};</script>\n</head>", 1)
                 to_root = "../" + depth
             page = NAV_LANG.sub(lambda m: menu(langs, code, page_name, to_root), page, count=1)

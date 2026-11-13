@@ -82,5 +82,7 @@
   "Apple silicon": "Apple 芯片",
   "Coming to iPhone soon": "iPhone 版即将推出",
   "No nightly newer than {version} yet.": "暂无比 {version} 更新的 Nightly。",
-  "Selected. Press Ctrl+C to copy.": "已选中，按 Ctrl+C 复制。"
+  "Selected. Press Ctrl+C to copy.": "已选中，按 Ctrl+C 复制。",
+  "The Library grid with every show as a poster": "以海报网格展示所有作品的资料库",
+  "A show's page with its banner, episodes and characters": "作品页面，含横幅、剧集和角色"
 }
