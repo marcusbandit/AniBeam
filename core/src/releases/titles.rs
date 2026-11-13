@@ -25,6 +25,13 @@ pub static RES_RE: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\b(\d{3,4})p\b"))
 /// " - 04" or " - 04v2" followed by space, end, or bracket; not " - 1080p".
 pub static EPISODE_RE: LazyLock<FancyRegex> =
     LazyLock::new(|| fancy(r"\s+-\s+\d{1,4}(?:v\d+)?(?=\s|\z|\[)"));
+/// An episode range, " - 02-03", " - 01~12" or "(01-12)", which marks a batch.
+/// Kept apart from `EPISODE_RE`, which `bestfit` reads as one episode.
+static EPISODE_RANGE_RE: LazyLock<FancyRegex> = LazyLock::new(|| {
+    fancy(
+        r"\s+-\s+\d{1,4}(?:v\d+)?\s*[-~]\s*\d{1,4}(?:v\d+)?(?=\s|\z|\[|\()|\s*\(\d{1,4}\s*[-~]\s*\d{1,4}\)",
+    )
+});
 /// "S01E02" / "s1e2" / "S01E02v2" season and episode markers. The season half is a
 /// legitimate search facet; the episode half must never leak into queries or refine tags
 /// (it would pin a single episode).
@@ -53,6 +60,9 @@ pub fn show_name(title: &str) -> String {
     let name = POSTER_RE.replace(&name, "").trim().to_string();
     let mut cuts: Vec<usize> = Vec::new();
     if let Ok(Some(m)) = EPISODE_RE.find(&name) {
+        cuts.push(m.start());
+    }
+    if let Ok(Some(m)) = EPISODE_RANGE_RE.find(&name) {
         cuts.push(m.start());
     }
     if let Some(m) = SEASON_EP_RE.find(&name) {
@@ -136,6 +146,23 @@ mod tests {
         // A leading bracket after the poster is not a cut at zero.
         assert_eq!(show_name("[Grp] [Tag] Show - 02"), "[Tag] Show");
         assert_eq!(show_name("- Show -"), "Show");
+    }
+
+    #[test]
+    fn show_name_cuts_at_an_episode_range() {
+        assert_eq!(
+            show_name("[Demo] Cowboy Bebop - 02-03 [1080p]"),
+            "Cowboy Bebop"
+        );
+        assert_eq!(show_name("[Grp] Show - 01~12 [1080p]"), "Show");
+        assert_eq!(show_name("[Grp] Show - 01 ~ 12"), "Show");
+        assert_eq!(show_name("[Grp] Show - 01v2-03v2.mkv"), "Show");
+        assert_eq!(show_name("[Grp] Show (01-12) [1080p]"), "Show");
+        assert_eq!(show_name("[Grp] Show (01~12)"), "Show");
+        // A hyphenated name is not a range.
+        assert_eq!(show_name("[Grp] Re-Kan - 03 [720p]"), "Re-Kan");
+        // A parenthesised word is still part of the name.
+        assert_eq!(show_name("[Grp] Show (Batch) [1080p]"), "Show (Batch)");
     }
 
     #[test]
