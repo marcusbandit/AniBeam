@@ -114,7 +114,7 @@
   --quick: 0.18s ease;
   --wide: 1200px;
   --gutter: clamp(20px, 5vw, 48px);
-  --space: clamp(150px, 22vh, 260px);
+  --space: clamp(6vh, 7vh, 260px);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
