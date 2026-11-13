@@ -96,7 +96,7 @@ component Showcase inherits VerticalLayout {
     in property <bool> titled: true;
     spacing: Theme.unit * 4;
     if root.titled: PageTitle {
-        title: Tr.t("home-title");
+        title: Tr.t("phone-home-title");
         note: AppData.home-note;
     }
     if AppData.hero.show: NextUp { }
@@ -118,8 +118,8 @@ component Showcase inherits VerticalLayout {
     }
     FeedBlock { }
     if AppData.ready && !AppData.hero.show && AppData.home-shelves.length == 0: EmptyNote {
-        title: Tr.t("home-empty-title");
-        body: Tr.t("home-empty-body");
+        title: Tr.t("phone-home-empty-title");
+        body: Tr.t("phone-home-empty-body");
     }
 }
 

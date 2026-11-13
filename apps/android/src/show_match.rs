@@ -169,12 +169,12 @@ fn provider_of(provider: i32) -> Provider {
 /// Where a looked-up link points, in words: the ids are the provider's business.
 fn target_text(target: &MatchTarget) -> String {
     match target {
-        MatchTarget::Tvmaze { .. } => tr!("match-found-tvmaze"),
+        MatchTarget::Tvmaze { .. } => tr!("phone-match-found-tvmaze"),
         MatchTarget::Anilist { season, .. } => match season {
-            Some(s) => tr!("match-found-anilist-season", season = *s),
-            None => tr!("match-found-anilist"),
+            Some(s) => tr!("phone-match-found-anilist-season", season = *s),
+            None => tr!("phone-match-found-anilist"),
         },
-        MatchTarget::Mal { .. } => tr!("match-found-mal"),
+        MatchTarget::Mal { .. } => tr!("phone-match-found-mal"),
     }
 }
 
@@ -197,7 +197,7 @@ fn match_text(info: &MatchInfo) -> String {
     let sites = bits.fold(first, |all, next| {
         tr!("match-join-and", first = all, second = next)
     });
-    tr!("match-matched-on", sites = sites)
+    tr!("phone-match-matched-on", sites = sites)
 }
 
 /// An AniList format as the match panel words it.
@@ -246,9 +246,9 @@ fn show_results(data: &MatchData) {
     let query = data.get_query();
     data.set_empty(
         if searching {
-            tr!("match-searching", name = name)
+            tr!("phone-match-searching", name = name)
         } else if query.trim().chars().count() < 2 {
-            tr!("match-type-more", name = name)
+            tr!("phone-match-type-more", name = name)
         } else {
             tr!("match-none", name = name)
         }
@@ -394,7 +394,7 @@ pub fn install(window: &AppWindow) {
             Some((o.series, target, r.title.clone()))
         });
         if let Some((series, target, title)) = target {
-            apply(series, target, tr!("match-matched-to", title = title));
+            apply(series, target, tr!("phone-match-matched-to", title = title));
         }
     });
     data.on_look_up(|url| {
@@ -433,7 +433,7 @@ pub fn install(window: &AppWindow) {
     data.on_apply_found(|| {
         let found = with_state(|s| Some((s.open.as_ref()?.series, s.found.clone()?)));
         if let Some((series, target)) = found {
-            apply(series, target, tr!("match-applied"));
+            apply(series, target, tr!("phone-match-applied"));
         }
     });
     data.on_refresh(|| {
@@ -442,8 +442,8 @@ pub fn install(window: &AppWindow) {
         {
             crate::show::run(
                 Call::RefreshSeries { series },
-                tr!("match-refreshing", title = title.as_str()),
-                tr!("match-refreshing", title = title),
+                tr!("phone-match-refreshing", title = title.as_str()),
+                tr!("phone-match-refreshing", title = title),
             );
             with_window(|w| w.global::<ShowData>().invoke_close());
         }
@@ -453,7 +453,7 @@ pub fn install(window: &AppWindow) {
             crate::show::run(
                 Call::ClearMatch { series },
                 tr!("match-clearing"),
-                tr!("match-cleared"),
+                tr!("phone-match-cleared"),
             );
             with_window(|w| w.global::<ShowData>().invoke_close());
         }
@@ -508,7 +508,7 @@ fn search(query: String) {
         let data = w.global::<MatchData>();
         data.set_searching(true);
         data.set_note("".into());
-        data.set_empty(tr!("match-searching", name = provider_name(provider)).into());
+        data.set_empty(tr!("phone-match-searching", name = provider_name(provider)).into());
         show_results(&data);
     });
     let _ = std::thread::Builder::new()

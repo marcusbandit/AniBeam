@@ -380,7 +380,7 @@ component IndexPage inherits Rectangle {
                 IndexRow {
                     section: 1;
                     icon: @image-url("icons/download.svg");
-                    name: Tr.t("nav-downloads");
+                    name: Tr.t("phone-nav-downloads");
                     status: Status.downloads;
                     clicked => { Settings.open(1, ""); }
                 }
@@ -547,7 +547,7 @@ export component MorePage inherits Rectangle {
     }
 
     if root.shown == 1: downloads := SectionPage {
-        title: Tr.t("nav-downloads");
+        title: Tr.t("phone-nav-downloads");
         note: Status.downloads;
         SectionHead {
             title: Tr.t("more-storage");

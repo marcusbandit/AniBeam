@@ -106,7 +106,7 @@ export component OutNow inherits VerticalLayout {
     in property <length> fit-width: self.width;
     spacing: Theme.unit * 3;
     if AppData.airing-out.length > 0: SectionHead {
-        title: Tr.t("airing-out-now");
+        title: Tr.t("phone-airing-out-now");
         note: Tr.t("airing-last-two-days");
     }
     if AppData.airing-out.length > 0 && root.grid: TileGrid {
@@ -170,7 +170,7 @@ export component UndoBar inherits Rectangle {
         if root.can-undo: VerticalLayout {
             alignment: center;
             Button {
-                text: Tr.t("airing-undo");
+                text: Tr.t("phone-airing-undo");
                 icon: @image-url("icons/rotate-ccw.svg");
                 has-icon: true;
                 small: true;
@@ -230,7 +230,7 @@ export component AiringSheet inherits Rectangle {
                 }
             }
             Button {
-                text: Tr.t("airing-not-interested");
+                text: Tr.t("phone-airing-not-interested");
                 icon: @image-url("icons/x.svg");
                 has-icon: true;
                 clicked => { AppData.airing-dismiss(AppData.airing-menu.id); }

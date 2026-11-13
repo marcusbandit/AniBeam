@@ -102,10 +102,10 @@ look-text-size-note = AniBeam全体の文字の大きさです。端末のフォ
 ## The window: tabs and the sheets over every page
 
 app-title = AniBeam
-nav-home = ホーム
+phone-nav-home = ホーム
 nav-calendar = カレンダー
-nav-library = ライブラリ
-nav-downloads = ダウンロード
+phone-nav-library = ライブラリ
+phone-nav-downloads = ダウンロード
 nav-more = その他
 app-mobile-title = モバイルデータでダウンロードしますか?
 app-mobile-note = 1話で1〜2 GBになることもあります。データ容量に上限があるプランでは、1晩で1か月分を使い切る場合があります。
@@ -230,7 +230,7 @@ cal-note-none = 今週の放送なし
 cal-note = 今後7日間に{ $count }話
 airing-asking = AniList確認中
 airing-asking-newest = AniListから最新を取得中
-airing-filter-all = すべて { $count }
+phone-airing-filter-all = すべて { $count }
 airing-filter-listed = マイリスト { $count }
 airing-filter-owned = この端末 { $count }
 airing-this-season = 今期
@@ -302,13 +302,13 @@ more-words-language = 言語 翻訳 英語 ロケール
 
 ## Home
 
-home-title = ホーム
+phone-home-title = ホーム
 home-next-to-air = 次の放送
 home-after-that = その次
 home-coming-up = 近日放送
 home-nothing-week = 今後1週間の予定はありません。
-home-empty-title = この端末にはまだ何もありません
-home-empty-body = この端末にダウンロードした作品と、その放送予定がホームに表示されます。「ダウンロード」で作品を探してください。
+phone-home-empty-title = この端末にはまだ何もありません
+phone-home-empty-body = この端末にダウンロードした作品と、その放送予定がホームに表示されます。「ダウンロード」で作品を探してください。
 
 ## Library
 
@@ -356,7 +356,7 @@ phone-out-ago = { $ago }に公開
 
 ## Airing now
 
-airing-out-now = 公開中
+phone-airing-out-now = 公開中
 airing-last-two-days = 過去2日間
 airing-season-note = 今期の作品はAniListから取得しています。
 airing-none-lists-title = 放送中でマイリストにある作品はありません
@@ -364,11 +364,11 @@ airing-none-lists-body = 作品の「視聴予定」を押すとリストに追�
 airing-none-phone-title = 放送中でこの端末にある作品はありません
 airing-none-phone-body = 作品の「エピソードを入手」を押すと、ここにダウンロードされます。
 airing-marked = { $title }を「興味なし」にしました。
-airing-undo = 元に戻す
+phone-airing-undo = 元に戻す
 airing-plan = 視聴予定
 airing-get-more = エピソードをさらに入手
 airing-get = エピソードを入手
-airing-not-interested = 興味なし
+phone-airing-not-interested = 興味なし
 
 ## Seasons
 
@@ -385,11 +385,11 @@ series-back-home = ホーム
 series-back-library = ライブラリ
 series-back-downloads = ダウンロード
 series-back-calendar = カレンダー
-series-get-episodes = エピソードを入手
-series-episodes = エピソード
+phone-series-get-episodes = エピソードを入手
+phone-series-episodes = エピソード
 series-delete-episodes = エピソードを削除
 series-delete-tap = 削除するエピソードをタップしてください。
-series-delete-picked = { $count }話を選択中。
+phone-series-delete-picked = { $count }話を選択中。
 series-delete-note = ファイルはこの端末から削除されます。視聴記録は残ります。
 series-delete-button = { $count }話を削除
 series-no-episodes = この端末にエピソードはなく、予定もありません。
@@ -421,8 +421,8 @@ show-status-paused = 保留
 show-status-dropped = 中止
 show-status-repeating = 再視聴中
 show-status-now = { $label }（現在）
-show-add-to-list = リストに追加
-show-your-score = スコア { $score }
+phone-show-add-to-list = リストに追加
+phone-show-your-score = スコア { $score }
 show-rate = 評価
 show-fixes = 修正
 show-your-notes = メモ
@@ -443,8 +443,8 @@ show-score-saving = スコアを保存しています。
 show-score-saved = 保存しました。
 show-score-clearing = スコアを消去しています。
 show-score-cleared = 消去しました。
-show-moving-to = 「{ $label }」へ移動中。
-show-moved-to = 「{ $label }」へ移動しました。
+phone-show-moving-to = 「{ $label }」へ移動中。
+phone-show-moved-to = 「{ $label }」へ移動しました。
 show-rescan-started = 再スキャンします。
 show-still-starting = AniBeamは起動中です。少し待ってからもう一度お試しください。
 show-fix-match = 照合
@@ -454,10 +454,10 @@ show-fix-rescan = 再スキャン
 ## A show's characters, related shows and recommendations
 
 show-characters = キャラクター
-show-related = 関連作品
+phone-show-related = 関連作品
 show-related-all = 全{ $count }件を表示
 show-related-filling = AniListから取得中です。
-show-recommendations = おすすめ
+phone-show-recommendations = おすすめ
 show-card-owned = ライブラリにあります
 show-card-unreleased = 未公開
 show-card-on-anilist = AniList上
@@ -490,9 +490,9 @@ show-entry-line = { $line }、{ $status }
 
 ## Fix a wrong match
 
-match-title = 照合
+phone-match-title = 照合
 match-refresh = 情報を更新
-match-clear = 照合を解除
+phone-match-clear = 照合を解除
 match-clear-it = 解除する
 match-clear-warning = 解除すると、トラッカーとの紐づけと手動で設定した話数が失われます。もう一度タップすると解除します。
 match-tvmaze = TVmaze
@@ -500,26 +500,26 @@ match-search-anilist = AniListを検索
 match-search-tvmaze = TVmazeを検索
 match-paste-anilist = AniListまたはMyAnimeListのリンクを貼り付け
 match-paste-tvmaze = TVmazeまたはIMDbのリンクを貼り付け
-match-look-up = 検索
+phone-match-look-up = 検索
 match-apply = 適用
 match-look-up-all = AniBeamが未認識のフォルダをすべて検索
 match-format-music = 音楽
 match-join-and = { $first }と{ $second }
-match-matched-on = { $sites }で照合済み
-match-found-tvmaze = TVmazeで作品が見つかりました
-match-found-anilist = AniListで見つかりました
-match-found-anilist-season = AniListで見つかりました（シーズン{ $season }）
-match-found-mal = MyAnimeListで見つかりました
-match-searching = { $name }を検索中
-match-type-more = { $name }を検索するには2文字以上入力してください。
+phone-match-matched-on = { $sites }で照合済み
+phone-match-found-tvmaze = TVmazeで作品が見つかりました
+phone-match-found-anilist = AniListで見つかりました
+phone-match-found-anilist-season = AniListで見つかりました（シーズン{ $season }）
+phone-match-found-mal = MyAnimeListで見つかりました
+phone-match-searching = { $name }を検索中
+phone-match-type-more = { $name }を検索するには2文字以上入力してください。
 match-none = { $name }に該当する作品はありません。
 match-looking-up = 検索しています。
-match-matched-to = { $title }に照合しました。
-match-applied = 適用しました。
+phone-match-matched-to = { $title }に照合しました。
+phone-match-applied = 適用しました。
 match-applying = 照合を適用しています。
-match-refreshing = { $title }を更新しています。
+phone-match-refreshing = { $title }を更新しています。
 match-clearing = 照合を解除しています。
-match-cleared = 解除しました。
+phone-match-cleared = 解除しました。
 match-auto-looking = AniBeamが未認識のフォルダを検索しています。
 
 ## Batches (the line under a release in a search)
@@ -529,7 +529,7 @@ inspect-holds = { $count }話を収録: { $runs }
 
 ## What's new
 
-notes-title = 更新内容
+phone-notes-title = 更新内容
 notes-got-it = OK
 
 ## Move the list to a tracker
@@ -739,7 +739,7 @@ find-desk-not-subscribed = { $name }で購読できませんでした: { $error 
 
 player-subtitles = 字幕
 player-audio = 音声
-player-speed = 速度
+phone-player-speed = 速度
 player-connecting = 接続中
 player-hold-speed = 2×速
 player-replay = もう一度
@@ -751,11 +751,11 @@ player-jump-forward = +10秒
 player-speed-now = 速度 { $speed }
 player-skip-intro = OPをスキップ
 player-skip-outro = EDをスキップ
-player-skipped-intro = OPスキップ済み
-player-skipped-outro = EDスキップ済み
-player-undo = 元に戻す
-player-start-over = 最初から
-player-resumed-at = { $time }から再開しました
+phone-player-skipped-intro = OPスキップ済み
+phone-player-skipped-outro = EDスキップ済み
+phone-player-undo = 元に戻す
+phone-player-start-over = 最初から
+phone-player-resumed-at = { $time }から再開しました
 player-picture-failed = 映像を開始できませんでした。音声は再生を続けます。
 player-file-failed = このファイルを再生できませんでした: { $why }。
 player-streaming-from = { $host }からストリーミング中（{ $height }p）
@@ -767,27 +767,27 @@ player-android-only = プレーヤーはAndroidでのみ動作します
 
 player-delay-title = 遅延
 player-delay-note = タップするごとに0.1秒ずれます。次のファイルまで有効です。
-player-delay-seconds = { $value }秒
+phone-player-delay-seconds = { $value }秒
 player-sub-delay-now = 字幕の遅延 { $value }
 player-audio-delay-now = 音声の遅延 { $value }
 
 ## Player: cast
 
 player-cast-playing-on = { $device }で再生中
-player-cast-stop = { $device }へのキャストを停止
+phone-player-cast-stop = { $device }へのキャストを停止
 player-cast-searching = ChromecastとTVを探しています
-player-cast-to = キャスト先
-player-cast-tv = TV
-player-cast-loading = 読み込み中
-player-cast-playing = 再生中
-player-cast-paused = 一時停止中
-player-cast-finished = 終了
-player-cast-stopped = 停止
+phone-player-cast-to = キャスト先
+phone-player-cast-tv = TV
+phone-player-cast-loading = 読み込み中
+phone-player-cast-playing = 再生中
+phone-player-cast-paused = 一時停止中
+phone-player-cast-finished = 終了
+phone-player-cast-stopped = 停止
 
 ## Player: the tracker's word
 
-player-rated = 評価済み
-player-score-failed = スコアを保存できませんでした
+phone-player-rated = 評価済み
+phone-player-score-failed = スコアを保存できませんでした
 player-marked-watched = 視聴済みにしました
 player-tracked = 記録済み
 player-not-tracked = 未記録
@@ -798,12 +798,12 @@ player-track-ok = { $tracker } OK
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker }を更新できませんでした
 player-track-line = { $head }: { $parts }
-player-refusal-hidden = 作品が非表示です
-player-refusal-no-match = 作品がトラッカーと照合されていません
-player-refusal-not-newer = トラッカーはすでにこの話より先まで進んでいます
-player-refusal-extra = 特典映像です
-player-refusal-unmatched = ファイルがエピソードに照合されていません
-player-refusal-on-disk = ファイルはディスク上のみです
+phone-player-refusal-hidden = 作品が非表示です
+phone-player-refusal-no-match = 作品がトラッカーと照合されていません
+phone-player-refusal-not-newer = トラッカーはすでにこの話より先まで進んでいます
+phone-player-refusal-extra = 特典映像です
+phone-player-refusal-unmatched = ファイルがエピソードに照合されていません
+phone-player-refusal-on-disk = ファイルはディスク上のみです
 
 ## Subtitles
 
@@ -852,16 +852,16 @@ stream-answered-status = { $name }の応答: { $status }
 
 ## Stats
 
-stats-nothing-yet = まだありません
-stats-empty-title = まだ視聴していません
-stats-empty-body = エピソードを観終わると、ここに集計されます。視聴時間、ジャンル、視聴したシーズンです。
+phone-stats-nothing-yet = まだありません
+phone-stats-empty-title = まだ視聴していません
+phone-stats-empty-body = エピソードを観終わると、ここに集計されます。視聴時間、ジャンル、視聴したシーズンです。
 stats-hours-caption = 視聴時間
 stats-finished-caption = 完走した作品
 stats-busiest-caption = 最も視聴した月
 stats-episodes-caption = 話
-stats-by-month = 月別
-stats-top-genres = ジャンル上位
-stats-top-studios = スタジオ上位
+phone-stats-by-month = 月別
+phone-stats-top-genres = ジャンル上位
+phone-stats-top-studios = スタジオ上位
 stats-seasons = 視聴したシーズン
 stats-watched-most = 最も視聴
 stats-year-line = { $year }年の視聴
@@ -954,7 +954,7 @@ fmt-span-days = { $d }日{ $h }時間
 fmt-span-hours = { $h }時間{ $m }分
 fmt-span-minutes = { $m }分{ $s }秒
 fmt-span-seconds = { $s }秒
-fmt-in = { $span }後
+phone-fmt-in = { $span }後
 fmt-full-days = { $d }日{ $h }時間{ $m }分{ $s }秒
 fmt-full-hours = { $h }時間{ $m }分{ $s }秒
 fmt-full-minutes = { $m }分{ $s }秒
@@ -1135,21 +1135,21 @@ notify-turn-on = オンにする
 
 ## Feed
 
-feed-title = フィード
+phone-feed-title = フィード
 feed-recently-released = 最近公開
 feed-coming-soon = 近日公開
 feed-this-week = 今週
 feed-earlier = 以前
 feed-everything-else = その他すべて
-feed-countdown-days = { $d }日{ $h }時間
-feed-countdown-hours = { $h }時間{ $m }分
-feed-countdown-minutes = { $m }分
-feed-next = 次: { $title }まで{ $countdown }
-feed-nothing-scheduled = 予定はまだありません。
-feed-nothing-new = 今週の新着はありません。
-feed-new-episodes = 今週の新エピソード: { $count }話
-feed-aired = { $ago }に放送
-feed-downloaded = { $ago }にダウンロード
+phone-feed-countdown-days = { $d }日{ $h }時間
+phone-feed-countdown-hours = { $h }時間{ $m }分
+phone-feed-countdown-minutes = { $m }分
+phone-feed-next = 次: { $title }まで{ $countdown }
+phone-feed-nothing-scheduled = 予定はまだありません。
+phone-feed-nothing-new = 今週の新着はありません。
+phone-feed-new-episodes = 今週の新エピソード: { $count }話
+phone-feed-aired = { $ago }に放送
+phone-feed-downloaded = { $ago }にダウンロード
 
 ## Files and the file picker
 

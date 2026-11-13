@@ -107,10 +107,10 @@ look-text-size-note = Размер текста везде в AniBeam, пове�
 ## Окно: вкладки и панели поверх страниц
 
 app-title = AniBeam
-nav-home = Главная
+phone-nav-home = Главная
 nav-calendar = Календарь
-nav-library = Библиотека
-nav-downloads = Загрузки
+phone-nav-library = Библиотека
+phone-nav-downloads = Загрузки
 nav-more = Ещё
 app-mobile-title = Скачивать по мобильному интернету?
 app-mobile-note = Одна серия часто весит 1-2 ГБ. На тарифе с лимитом за вечер может уйти трафик на месяц.
@@ -275,7 +275,7 @@ cal-note = { $count ->
 }
 airing-asking = Запрос к AniList
 airing-asking-newest = Запрос к AniList за новинками
-airing-filter-all = Все { $count }
+phone-airing-filter-all = Все { $count }
 airing-filter-listed = В списках { $count }
 airing-filter-owned = На телефоне { $count }
 airing-this-season = Этот сезон
@@ -347,13 +347,13 @@ more-words-language = язык перевод английский локаль
 
 ## Главная
 
-home-title = Главная
+phone-home-title = Главная
 home-next-to-air = Скоро выйдет
 home-after-that = Потом
 home-coming-up = Скоро
 home-nothing-week = На ближайшую неделю ничего нет.
-home-empty-title = На телефоне пока ничего нет
-home-empty-body = Скачанные здесь сериалы и их новые серии появятся на главной. Найдите сериал в разделе «Загрузки».
+phone-home-empty-title = На телефоне пока ничего нет
+phone-home-empty-body = Скачанные здесь сериалы и их новые серии появятся на главной. Найдите сериал в разделе «Загрузки».
 
 ## Библиотека
 
@@ -406,7 +406,7 @@ phone-out-ago = Вышла { $ago }
 
 ## В эфире
 
-airing-out-now = Уже вышло
+phone-airing-out-now = Уже вышло
 airing-last-two-days = Последние два дня
 airing-season-note = Сериалы сезона берутся с AniList.
 airing-none-lists-title = В эфире нет сериалов из ваших списков
@@ -414,11 +414,11 @@ airing-none-lists-body = Кнопка «В планы» на сериале до
 airing-none-phone-title = В эфире нет сериалов с телефона
 airing-none-phone-body = Кнопка «Скачать серии» на сериале скачивает его сюда.
 airing-marked = «{ $title }» отмечен как неинтересный.
-airing-undo = Отменить
+phone-airing-undo = Отменить
 airing-plan = В планы
 airing-get-more = Скачать ещё серии
 airing-get = Скачать серии
-airing-not-interested = Не интересно
+phone-airing-not-interested = Не интересно
 
 ## Сезоны
 
@@ -435,11 +435,11 @@ series-back-home = Главная
 series-back-library = Библиотека
 series-back-downloads = Загрузки
 series-back-calendar = Календарь
-series-get-episodes = Скачать серии
-series-episodes = Серии
+phone-series-get-episodes = Скачать серии
+phone-series-episodes = Серии
 series-delete-episodes = Удалить серии
 series-delete-tap = Нажмите на серии, которые нужно удалить.
-series-delete-picked = { $count ->
+phone-series-delete-picked = { $count ->
     [one] Выбрана { $count } серия.
     [few] Выбрано { $count } серии.
     [many] Выбрано { $count } серий.
@@ -491,8 +491,8 @@ show-status-paused = Отложено
 show-status-dropped = Брошено
 show-status-repeating = Пересматриваю
 show-status-now = { $label }, выбрано
-show-add-to-list = В список
-show-your-score = Ваша оценка { $score }
+phone-show-add-to-list = В список
+phone-show-your-score = Ваша оценка { $score }
 show-rate = Оценить
 show-fixes = Правки
 show-your-notes = Ваши заметки
@@ -518,8 +518,8 @@ show-score-saving = Сохранение оценки.
 show-score-saved = Оценка записана.
 show-score-clearing = Удаление оценки.
 show-score-cleared = Оценка удалена.
-show-moving-to = Перенос в «{ $label }».
-show-moved-to = Перенесено в «{ $label }».
+phone-show-moving-to = Перенос в «{ $label }».
+phone-show-moved-to = Перенесено в «{ $label }».
 show-rescan-started = Скан запущен.
 show-still-starting = AniBeam ещё запускается. Попробуйте ещё раз через минуту.
 show-fix-match = Привязка
@@ -529,10 +529,10 @@ show-fix-rescan = Сканировать папку
 ## Персонажи, связанные сериалы и рекомендации
 
 show-characters = Персонажи
-show-related = Связанное
+phone-show-related = Связанное
 show-related-all = Показать все { $count }
 show-related-filling = Данные ещё подгружаются с AniList.
-show-recommendations = Рекомендации
+phone-show-recommendations = Рекомендации
 show-card-owned = В вашей библиотеке
 show-card-unreleased = Ещё не вышло
 show-card-on-anilist = На AniList
@@ -565,9 +565,9 @@ show-entry-line = { $line }, { $status }
 
 ## Исправить неверное совпадение
 
-match-title = Привязка
+phone-match-title = Привязка
 match-refresh = Обновить данные
-match-clear = Сбросить
+phone-match-clear = Сбросить
 match-clear-it = Сбросить
 match-clear-warning = Сброс удаляет связь с трекером и заданное вручную число серий. Нажмите ещё раз, чтобы сбросить.
 match-tvmaze = TVmaze
@@ -575,26 +575,26 @@ match-search-anilist = Поиск в AniList
 match-search-tvmaze = Поиск в TVmaze
 match-paste-anilist = Вставьте ссылку на AniList или MyAnimeList
 match-paste-tvmaze = Вставьте ссылку на TVmaze или IMDb
-match-look-up = Найти
+phone-match-look-up = Найти
 match-apply = Применить
 match-look-up-all = Найти все папки, которых AniBeam пока не знает
 match-format-music = Музыка
 match-join-and = { $first } и { $second }
-match-matched-on = Найдено: { $sites }
-match-found-tvmaze = Сериал найден на TVmaze
-match-found-anilist = Найдено на AniList
-match-found-anilist-season = Найдено на AniList, сезон { $season }
-match-found-mal = Найдено на MyAnimeList
-match-searching = Поиск: { $name }
-match-type-more = Чтобы искать в { $name }, введите хотя бы две буквы.
+phone-match-matched-on = Найдено: { $sites }
+phone-match-found-tvmaze = Сериал найден на TVmaze
+phone-match-found-anilist = Найдено на AniList
+phone-match-found-anilist-season = Найдено на AniList, сезон { $season }
+phone-match-found-mal = Найдено на MyAnimeList
+phone-match-searching = Поиск: { $name }
+phone-match-type-more = Чтобы искать в { $name }, введите хотя бы две буквы.
 match-none = { $name }: ничего не найдено.
 match-looking-up = Поиск.
-match-matched-to = Привязано к «{ $title }».
-match-applied = Привязка задана.
+phone-match-matched-to = Привязано к «{ $title }».
+phone-match-applied = Привязка задана.
 match-applying = Применение привязки.
-match-refreshing = Обновление: «{ $title }».
+phone-match-refreshing = Обновление: «{ $title }».
 match-clearing = Сброс привязки.
-match-cleared = Привязка сброшена.
+phone-match-cleared = Привязка сброшена.
 match-auto-looking = Поиск папок, которых AniBeam пока не знает.
 
 ## Пакеты (строка под релизом в поиске)
@@ -609,7 +609,7 @@ inspect-holds = { $count ->
 
 ## Что нового
 
-notes-title = Что нового
+phone-notes-title = Что нового
 notes-got-it = Понятно
 
 ## Перенос списка в трекер
@@ -884,7 +884,7 @@ find-desk-not-subscribed = Подписка на { $name } не оформлен
 
 player-subtitles = Субтитры
 player-audio = Аудио
-player-speed = Скорость
+phone-player-speed = Скорость
 player-connecting = Подключение
 player-hold-speed = Скорость 2×
 player-replay = Повтор
@@ -896,11 +896,11 @@ player-jump-forward = +10 с
 player-speed-now = Скорость { $speed }
 player-skip-intro = Пропустить
 player-skip-outro = Пропустить
-player-skipped-intro = Опенинг пропущен
-player-skipped-outro = Эндинг пропущен
-player-undo = Отменить
-player-start-over = Сначала
-player-resumed-at = Продолжено с { $time }
+phone-player-skipped-intro = Опенинг пропущен
+phone-player-skipped-outro = Эндинг пропущен
+phone-player-undo = Отменить
+phone-player-start-over = Сначала
+phone-player-resumed-at = Продолжено с { $time }
 player-picture-failed = Не удалось включить изображение. Звук продолжает играть.
 player-file-failed = Файл не воспроизводится: { $why }.
 player-streaming-from = Поток с { $host }, { $height }p
@@ -912,27 +912,27 @@ player-android-only = плеер работает только на Android
 
 player-delay-title = Задержка
 player-delay-note = Каждое нажатие сдвигает на 0,1 с. До следующего файла.
-player-delay-seconds = { $value } с
+phone-player-delay-seconds = { $value } с
 player-sub-delay-now = Задержка субтитров { $value }
 player-audio-delay-now = Задержка аудио { $value }
 
 ## Плеер: трансляция на устройство
 
 player-cast-playing-on = Играет на { $device }
-player-cast-stop = Остановить трансляцию на { $device }
+phone-player-cast-stop = Остановить трансляцию на { $device }
 player-cast-searching = Поиск Chromecast и ТВ
-player-cast-to = Вывести на
-player-cast-tv = ТВ
-player-cast-loading = Загрузка
-player-cast-playing = Играет
-player-cast-paused = Пауза
-player-cast-finished = Завершено
-player-cast-stopped = Остановлено
+phone-player-cast-to = Вывести на
+phone-player-cast-tv = ТВ
+phone-player-cast-loading = Загрузка
+phone-player-cast-playing = Играет
+phone-player-cast-paused = Пауза
+phone-player-cast-finished = Завершено
+phone-player-cast-stopped = Остановлено
 
 ## Плеер: слова трекера
 
-player-rated = Оценено
-player-score-failed = Не удалось сохранить оценку
+phone-player-rated = Оценено
+phone-player-score-failed = Не удалось сохранить оценку
 player-marked-watched = Просмотрено
 player-tracked = Учтено
 player-not-tracked = Не учтено
@@ -943,12 +943,12 @@ player-track-ok = { $tracker }: ок
 player-track-note = { $tracker }: { $note }
 player-track-failed = Не удалось обновить { $tracker }
 player-track-line = { $head }: { $parts }
-player-refusal-hidden = сериал скрыт
-player-refusal-no-match = у сериала нет привязки к трекеру
-player-refusal-not-newer = трекер уже дальше этой серии
-player-refusal-extra = это экстра
-player-refusal-unmatched = файл не сопоставлен с серией
-player-refusal-on-disk = файл есть только на диске
+phone-player-refusal-hidden = сериал скрыт
+phone-player-refusal-no-match = у сериала нет привязки к трекеру
+phone-player-refusal-not-newer = трекер уже дальше этой серии
+phone-player-refusal-extra = это экстра
+phone-player-refusal-unmatched = файл не сопоставлен с серией
+phone-player-refusal-on-disk = файл есть только на диске
 
 ## Субтитры
 
@@ -997,9 +997,9 @@ stream-answered-status = { $name } ответил { $status }
 
 ## Статистика
 
-stats-nothing-yet = Пока ничего
-stats-empty-title = Ничего не просмотрено
-stats-empty-body = Досмотрите серию, и она появится здесь: часы, жанры и сезоны, которые вы смотрели.
+phone-stats-nothing-yet = Пока ничего
+phone-stats-empty-title = Ничего не просмотрено
+phone-stats-empty-body = Досмотрите серию, и она появится здесь: часы, жанры и сезоны, которые вы смотрели.
 stats-hours-caption = часов просмотра
 stats-finished-caption = завершённых сериалов
 stats-busiest-caption = лучший месяц
@@ -1009,9 +1009,9 @@ stats-episodes-caption = { $count ->
     [many] серий
    *[other] серии
 }
-stats-by-month = По месяцам
-stats-top-genres = Топ жанров
-stats-top-studios = Топ студий
+phone-stats-by-month = По месяцам
+phone-stats-top-genres = Топ жанров
+phone-stats-top-studios = Топ студий
 stats-seasons = Просмотренные сезоны
 stats-watched-most = Топ просмотров
 stats-year-line = Что вы смотрели в { $year } году
@@ -1164,7 +1164,7 @@ fmt-span-days = { $d } д { $h } ч
 fmt-span-hours = { $h } ч { $m } мин
 fmt-span-minutes = { $m } мин { $s } с
 fmt-span-seconds = { $s } с
-fmt-in = через { $span }
+phone-fmt-in = через { $span }
 fmt-full-days = { $d } д { $h } ч { $m } мин { $s } с
 fmt-full-hours = { $h } ч { $m } мин { $s } с
 fmt-full-minutes = { $m } мин { $s } с
@@ -1397,26 +1397,26 @@ notify-turn-on = Включить
 
 ## Лента
 
-feed-title = Лента
+phone-feed-title = Лента
 feed-recently-released = Недавние релизы
 feed-coming-soon = Скоро
 feed-this-week = Эта неделя
 feed-earlier = Раньше
 feed-everything-else = Остальное
-feed-countdown-days = { $d } д { $h } ч
-feed-countdown-hours = { $h } ч { $m } мин
-feed-countdown-minutes = { $m } мин
-feed-next = Далее: { $title } через { $countdown }
-feed-nothing-scheduled = Пока ничего не запланировано.
-feed-nothing-new = На этой неделе нового нет.
-feed-new-episodes = { $count ->
+phone-feed-countdown-days = { $d } д { $h } ч
+phone-feed-countdown-hours = { $h } ч { $m } мин
+phone-feed-countdown-minutes = { $m } мин
+phone-feed-next = Далее: { $title } через { $countdown }
+phone-feed-nothing-scheduled = Пока ничего не запланировано.
+phone-feed-nothing-new = На этой неделе нового нет.
+phone-feed-new-episodes = { $count ->
     [one] { $count } новая серия на этой неделе.
     [few] { $count } новые серии на этой неделе.
     [many] { $count } новых серий на этой неделе.
    *[other] { $count } новые серии на этой неделе.
 }
-feed-aired = вышло { $ago }
-feed-downloaded = скачано { $ago }
+phone-feed-aired = вышло { $ago }
+phone-feed-downloaded = скачано { $ago }
 
 ## Файлы и выбор файла
 

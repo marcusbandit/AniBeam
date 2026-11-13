@@ -166,7 +166,7 @@ pub fn sync(
     show.set_status_word(
         card.list_status
             .map(status_word)
-            .unwrap_or_else(|| tr!("show-add-to-list"))
+            .unwrap_or_else(|| tr!("phone-show-add-to-list"))
             .into(),
     );
     let score = card
@@ -175,7 +175,7 @@ pub fn sync(
     show.set_score(score.unwrap_or(-1));
     show.set_score_word(
         match score {
-            Some(s) => tr!("show-your-score", score = score_text(s)),
+            Some(s) => tr!("phone-show-your-score", score = score_text(s)),
             None => tr!("show-rate"),
         }
         .into(),
@@ -590,9 +590,9 @@ pub fn install(window: &AppWindow) {
                 // Worded when the core answers, in the language the app speaks by then.
                 let label = status_word(status);
                 if started {
-                    tr!("show-moving-to", label = label)
+                    tr!("phone-show-moving-to", label = label)
                 } else {
-                    tr!("show-moved-to", label = label)
+                    tr!("phone-show-moved-to", label = label)
                 }
             });
         }

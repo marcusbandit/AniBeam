@@ -105,7 +105,7 @@ component Ranked inherits VerticalLayout {
         font-family: Theme.title-face;
     }
     if root.rows.length == 0: Text {
-        text: Tr.t("stats-nothing-yet");
+        text: Tr.t("phone-stats-nothing-yet");
         color: Theme.faint;
         font-size: Theme.small + 1px;
     }
@@ -163,13 +163,13 @@ export component StatsBody inherits VerticalLayout {
             y: 4 * Theme.unit;
             spacing: Theme.unit * 2;
             Text {
-                text: Tr.t("stats-empty-title");
+                text: Tr.t("phone-stats-empty-title");
                 color: Theme.text;
                 font-size: Theme.large;
                 font-family: Theme.display-face;
             }
             Text {
-                text: Tr.t("stats-empty-body");
+                text: Tr.t("phone-stats-empty-body");
                 color: Theme.dim;
                 wrap: word-wrap;
             }
@@ -203,7 +203,7 @@ export component StatsBody inherits VerticalLayout {
         VerticalLayout {
             spacing: 2 * Theme.unit;
             Text {
-                text: Tr.t("stats-by-month");
+                text: Tr.t("phone-stats-by-month");
                 color: Theme.text;
                 font-size: Theme.heading;
                 font-family: Theme.title-face;
@@ -211,11 +211,11 @@ export component StatsBody inherits VerticalLayout {
             MonthBars { bars: StatsData.months; }
         }
         Ranked {
-            heading: Tr.t("stats-top-genres");
+            heading: Tr.t("phone-stats-top-genres");
             rows: StatsData.genres;
         }
         Ranked {
-            heading: Tr.t("stats-top-studios");
+            heading: Tr.t("phone-stats-top-studios");
             rows: StatsData.studios;
         }
         Ranked {

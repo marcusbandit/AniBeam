@@ -102,10 +102,10 @@ look-text-size-note = AniBeam 内所有文字的大小，叠加在手机自身�
 ## The window: tabs and the sheets over every page
 
 app-title = AniBeam
-nav-home = 首页
+phone-nav-home = 首页
 nav-calendar = 日历
-nav-library = 媒体库
-nav-downloads = 下载
+phone-nav-library = 媒体库
+phone-nav-downloads = 下载
 nav-more = 更多
 app-mobile-title = 使用移动数据下载？
 app-mobile-note = 一集通常有 1 到 2 GB。流量有限时，一晚上就可能用完一个月的流量。
@@ -232,7 +232,7 @@ cal-note-none = 本周没有播出
 cal-note = 未来 7 天有 { $count } 集
 airing-asking = 正在询问 AniList
 airing-asking-newest = 正在向 AniList 询问最新内容
-airing-filter-all = 全部 { $count }
+phone-airing-filter-all = 全部 { $count }
 airing-filter-listed = 我的列表 { $count }
 airing-filter-owned = 本机 { $count }
 airing-this-season = 本季
@@ -306,13 +306,13 @@ more-words-language = 语言 翻译 英语 区域
 
 ## Home
 
-home-title = 首页
+phone-home-title = 首页
 home-next-to-air = 即将播出
 home-after-that = 之后
 home-coming-up = 即将到来
 home-nothing-week = 未来一周没有内容。
-home-empty-title = 这部手机上还没有内容
-home-empty-body = 你在这里下载的番剧及其播出信息会显示在首页。在“下载”中找一部吧。
+phone-home-empty-title = 这部手机上还没有内容
+phone-home-empty-body = 你在这里下载的番剧及其播出信息会显示在首页。在“下载”中找一部吧。
 
 ## Library
 
@@ -360,7 +360,7 @@ phone-out-ago = { $ago }播出
 
 ## Airing now
 
-airing-out-now = 已播出
+phone-airing-out-now = 已播出
 airing-last-two-days = 过去两天
 airing-season-note = 本季番剧来自 AniList。
 airing-none-lists-title = 你的列表里没有正在播出的番剧
@@ -368,11 +368,11 @@ airing-none-lists-body = 对番剧点“想看”，就会加入你的列表。
 airing-none-phone-title = 这部手机上没有正在播出的番剧
 airing-none-phone-body = 对番剧点“获取剧集”，就会下载到这里。
 airing-marked = 已将《{ $title }》标记为不感兴趣。
-airing-undo = 撤销
+phone-airing-undo = 撤销
 airing-plan = 想看
 airing-get-more = 获取更多剧集
 airing-get = 获取剧集
-airing-not-interested = 不感兴趣
+phone-airing-not-interested = 不感兴趣
 
 ## Seasons
 
@@ -389,11 +389,11 @@ series-back-home = 首页
 series-back-library = 媒体库
 series-back-downloads = 下载
 series-back-calendar = 日历
-series-get-episodes = 获取剧集
-series-episodes = 剧集
+phone-series-get-episodes = 获取剧集
+phone-series-episodes = 剧集
 series-delete-episodes = 删除剧集
 series-delete-tap = 点按要删除的剧集。
-series-delete-picked = 已选 { $count } 集。
+phone-series-delete-picked = 已选 { $count } 集。
 series-delete-note = 这些文件会从这部手机上删除，观看记录仍会保留。
 series-delete-button = 删除 { $count } 集
 series-no-episodes = 这部手机上没有剧集，也没有排期。
@@ -425,8 +425,8 @@ show-status-paused = 搁置
 show-status-dropped = 抛弃
 show-status-repeating = 重看
 show-status-now = { $label }，当前
-show-add-to-list = 加入列表
-show-your-score = 评分 { $score }
+phone-show-add-to-list = 加入列表
+phone-show-your-score = 评分 { $score }
 show-rate = 评分
 show-fixes = 修正
 show-your-notes = 你的笔记
@@ -447,8 +447,8 @@ show-score-saving = 正在保存评分。
 show-score-saved = 评分已保存。
 show-score-clearing = 正在清除评分。
 show-score-cleared = 评分已清除。
-show-moving-to = 正在移到“{ $label }”。
-show-moved-to = 已移到“{ $label }”。
+phone-show-moving-to = 正在移到“{ $label }”。
+phone-show-moved-to = 已移到“{ $label }”。
 show-rescan-started = 已开始重新扫描。
 show-still-starting = AniBeam 仍在启动，请稍后再试。
 show-fix-match = 匹配
@@ -458,10 +458,10 @@ show-fix-rescan = 重新扫描文件夹
 ## A show's characters, related shows and recommendations
 
 show-characters = 角色
-show-related = 相关作品
+phone-show-related = 相关作品
 show-related-all = 显示全部 { $count } 部
 show-related-filling = 仍在从 AniList 补全。
-show-recommendations = 推荐
+phone-show-recommendations = 推荐
 show-card-owned = 已在媒体库
 show-card-unreleased = 尚未发行
 show-card-on-anilist = AniList 上有
@@ -494,9 +494,9 @@ show-entry-line = { $line }，{ $status }
 
 ## Fix a wrong match
 
-match-title = 匹配
+phone-match-title = 匹配
 match-refresh = 刷新信息
-match-clear = 清除匹配
+phone-match-clear = 清除匹配
 match-clear-it = 清除
 match-clear-warning = 清除会丢弃追踪服务的关联和手动设置的集数。再点一次即可清除。
 match-tvmaze = TVmaze
@@ -504,26 +504,26 @@ match-search-anilist = 搜索 AniList
 match-search-tvmaze = 搜索 TVmaze
 match-paste-anilist = 粘贴 AniList 或 MyAnimeList 链接
 match-paste-tvmaze = 粘贴 TVmaze 或 IMDb 链接
-match-look-up = 查找
+phone-match-look-up = 查找
 match-apply = 应用
 match-look-up-all = 查找 AniBeam 尚未识别的所有文件夹
 match-format-music = 音乐
 match-join-and = { $first } 和 { $second }
-match-matched-on = 已匹配到 { $sites }
-match-found-tvmaze = 已在 TVmaze 找到这部番剧
-match-found-anilist = 已在 AniList 找到
-match-found-anilist-season = 已在 AniList 找到，第 { $season } 季
-match-found-mal = 已在 MyAnimeList 找到
-match-searching = 正在搜索 { $name }
-match-type-more = 至少输入两个字才能搜索 { $name }。
+phone-match-matched-on = 已匹配到 { $sites }
+phone-match-found-tvmaze = 已在 TVmaze 找到这部番剧
+phone-match-found-anilist = 已在 AniList 找到
+phone-match-found-anilist-season = 已在 AniList 找到，第 { $season } 季
+phone-match-found-mal = 已在 MyAnimeList 找到
+phone-match-searching = 正在搜索 { $name }
+phone-match-type-more = 至少输入两个字才能搜索 { $name }。
 match-none = 在 { $name } 上没有找到作品。
 match-looking-up = 正在查找。
-match-matched-to = 已匹配到《{ $title }》。
-match-applied = 已应用匹配。
+phone-match-matched-to = 已匹配到《{ $title }》。
+phone-match-applied = 已应用匹配。
 match-applying = 正在应用匹配。
-match-refreshing = 正在刷新《{ $title }》。
+phone-match-refreshing = 正在刷新《{ $title }》。
 match-clearing = 正在清除匹配。
-match-cleared = 匹配已清除。
+phone-match-cleared = 匹配已清除。
 match-auto-looking = 正在查找 AniBeam 尚未识别的文件夹。
 
 ## Batches (the line under a release in a search)
@@ -533,7 +533,7 @@ inspect-holds = 含 { $count } 集：{ $runs }
 
 ## What's new
 
-notes-title = 更新内容
+phone-notes-title = 更新内容
 notes-got-it = 知道了
 
 ## Move the list to a tracker
@@ -742,7 +742,7 @@ find-desk-not-subscribed = 未能在 { $name } 上订阅：{ $error }
 
 player-subtitles = 字幕
 player-audio = 音频
-player-speed = 倍速
+phone-player-speed = 倍速
 player-connecting = 连接中
 player-hold-speed = 2 倍速
 player-replay = 重播
@@ -754,11 +754,11 @@ player-jump-forward = +10 秒
 player-speed-now = 倍速 { $speed }
 player-skip-intro = 跳过片头
 player-skip-outro = 跳过片尾
-player-skipped-intro = 已跳过片头
-player-skipped-outro = 已跳过片尾
-player-undo = 撤销
-player-start-over = 从头播放
-player-resumed-at = 已从 { $time } 继续
+phone-player-skipped-intro = 已跳过片头
+phone-player-skipped-outro = 已跳过片尾
+phone-player-undo = 撤销
+phone-player-start-over = 从头播放
+phone-player-resumed-at = 已从 { $time } 继续
 player-picture-failed = 画面无法启动，声音仍在播放。
 player-file-failed = 这个文件无法播放：{ $why }。
 player-streaming-from = 正在从 { $host } 串流，{ $height }p
@@ -770,27 +770,27 @@ player-android-only = 播放器仅支持 Android
 
 player-delay-title = 延迟
 player-delay-note = 每点按一次调整 0.1 秒。到下一个文件为止。
-player-delay-seconds = { $value } 秒
+phone-player-delay-seconds = { $value } 秒
 player-sub-delay-now = 字幕延迟 { $value }
 player-audio-delay-now = 音频延迟 { $value }
 
 ## Player: cast
 
 player-cast-playing-on = 正在 { $device } 上播放
-player-cast-stop = 停止投放到 { $device }
+phone-player-cast-stop = 停止投放到 { $device }
 player-cast-searching = 正在查找 Chromecast 和电视
-player-cast-to = 投放到
-player-cast-tv = 电视
-player-cast-loading = 加载中
-player-cast-playing = 播放中
-player-cast-paused = 已暂停
-player-cast-finished = 已结束
-player-cast-stopped = 已停止
+phone-player-cast-to = 投放到
+phone-player-cast-tv = 电视
+phone-player-cast-loading = 加载中
+phone-player-cast-playing = 播放中
+phone-player-cast-paused = 已暂停
+phone-player-cast-finished = 已结束
+phone-player-cast-stopped = 已停止
 
 ## Player: the tracker's word
 
-player-rated = 已评分
-player-score-failed = 无法保存评分
+phone-player-rated = 已评分
+phone-player-score-failed = 无法保存评分
 player-marked-watched = 已标记为看过
 player-tracked = 已记录
 player-not-tracked = 未记录
@@ -801,12 +801,12 @@ player-track-ok = { $tracker } 正常
 player-track-note = { $tracker }：{ $note }
 player-track-failed = 无法更新 { $tracker }
 player-track-line = { $head }：{ $parts }
-player-refusal-hidden = 这部番剧已隐藏
-player-refusal-no-match = 这部番剧没有匹配的追踪条目
-player-refusal-not-newer = 追踪服务上的进度已超过这一集
-player-refusal-extra = 这是附加内容
-player-refusal-unmatched = 文件未匹配到剧集
-player-refusal-on-disk = 文件只存在于本地
+phone-player-refusal-hidden = 这部番剧已隐藏
+phone-player-refusal-no-match = 这部番剧没有匹配的追踪条目
+phone-player-refusal-not-newer = 追踪服务上的进度已超过这一集
+phone-player-refusal-extra = 这是附加内容
+phone-player-refusal-unmatched = 文件未匹配到剧集
+phone-player-refusal-on-disk = 文件只存在于本地
 
 ## Subtitles
 
@@ -855,16 +855,16 @@ stream-answered-status = { $name } 返回了 { $status }
 
 ## Stats
 
-stats-nothing-yet = 暂无
-stats-empty-title = 还没有观看记录
-stats-empty-body = 看完一集就会计入这里：小时数、类型和你看过的季度。
+phone-stats-nothing-yet = 暂无
+phone-stats-empty-title = 还没有观看记录
+phone-stats-empty-body = 看完一集就会计入这里：小时数、类型和你看过的季度。
 stats-hours-caption = 观看小时
 stats-finished-caption = 看完的番剧
 stats-busiest-caption = 最多的月份
 stats-episodes-caption = 已看集数
-stats-by-month = 按月份
-stats-top-genres = 热门类型
-stats-top-studios = 热门制作公司
+phone-stats-by-month = 按月份
+phone-stats-top-genres = 热门类型
+phone-stats-top-studios = 热门制作公司
 stats-seasons = 观看的季度
 stats-watched-most = 看得最多
 stats-year-line = 你在 { $year } 年看了什么
@@ -957,7 +957,7 @@ fmt-span-days = { $d }天{ $h }小时
 fmt-span-hours = { $h }小时{ $m }分
 fmt-span-minutes = { $m }分{ $s }秒
 fmt-span-seconds = { $s }秒
-fmt-in = { $span }后
+phone-fmt-in = { $span }后
 fmt-full-days = { $d }天{ $h }小时{ $m }分{ $s }秒
 fmt-full-hours = { $h }小时{ $m }分{ $s }秒
 fmt-full-minutes = { $m }分{ $s }秒
@@ -1135,21 +1135,21 @@ notify-turn-on = 开启
 
 ## Feed
 
-feed-title = 动态
+phone-feed-title = 动态
 feed-recently-released = 最近发布
 feed-coming-soon = 即将发布
 feed-this-week = 本周
 feed-earlier = 更早
 feed-everything-else = 其他
-feed-countdown-days = { $d }天{ $h }小时
-feed-countdown-hours = { $h }小时{ $m }分
-feed-countdown-minutes = { $m }分
-feed-next = 下一部：{ $title }，{ $countdown }后
-feed-nothing-scheduled = 暂无排期。
-feed-nothing-new = 本周没有新内容。
-feed-new-episodes = 本周有 { $count } 集新剧集。
-feed-aired = { $ago }播出
-feed-downloaded = { $ago }下载
+phone-feed-countdown-days = { $d }天{ $h }小时
+phone-feed-countdown-hours = { $h }小时{ $m }分
+phone-feed-countdown-minutes = { $m }分
+phone-feed-next = 下一部：{ $title }，{ $countdown }后
+phone-feed-nothing-scheduled = 暂无排期。
+phone-feed-nothing-new = 本周没有新内容。
+phone-feed-new-episodes = 本周有 { $count } 集新剧集。
+phone-feed-aired = { $ago }播出
+phone-feed-downloaded = { $ago }下载
 
 ## Files and the file picker
 

@@ -11,7 +11,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 use crate::tr::{self, Lang};
 
 /// A line from the catalog by message ID, in the language the app speaks now:
-/// `tr!("look-mode")`, `tr!("sites-on", count = n)`, `tr!("synced", when = stamp)`.
+/// `tr!("look-mode")`, `tr!("home-note", count = n)`, `tr!("host-synced", when = stamp)`.
 /// A number argument picks the plural form.
 macro_rules! tr {
     ($id:expr) => {

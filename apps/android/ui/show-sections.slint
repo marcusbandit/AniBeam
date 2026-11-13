@@ -130,7 +130,7 @@ export component ShowSections inherits VerticalLayout {
     if ShowData.related.length > 0: VerticalLayout {
         spacing: Theme.unit * 3;
         SectionHead {
-            title: Tr.t("show-related");
+            title: Tr.t("phone-show-related");
             note: "" + Math.max(ShowData.related.length, ShowData.related-total);
         }
         // A big franchise shows its first dozen; the rest are one tap away.
@@ -155,7 +155,7 @@ export component ShowSections inherits VerticalLayout {
     if ShowData.recs.length > 0: VerticalLayout {
         spacing: Theme.unit * 3;
         SectionHead {
-            title: Tr.t("show-recommendations");
+            title: Tr.t("phone-show-recommendations");
             note: "" + ShowData.recs.length;
         }
         TileRow {

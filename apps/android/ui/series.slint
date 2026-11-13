@@ -174,7 +174,7 @@ component DeleteBar inherits Rectangle {
         spacing: Theme.unit * 3;
         Text {
             text: AppData.delete-count == 0 ? Tr.t("series-delete-tap")
-                : Tr.n("series-delete-picked", "count", AppData.delete-count);
+                : Tr.n("phone-series-delete-picked", "count", AppData.delete-count);
             color: Theme.text;
             font-family: Theme.strong-face;
         }
@@ -325,7 +325,7 @@ export component SeriesPage inherits Rectangle {
                     clicked => { AppData.play(AppData.series.play-file); }
                 }
                 Button {
-                    text: Tr.t("series-get-episodes");
+                    text: Tr.t("phone-series-get-episodes");
                     icon: @image-url("icons/download.svg");
                     has-icon: true;
                     primary: AppData.series.play-file == 0;
@@ -346,7 +346,7 @@ export component SeriesPage inherits Rectangle {
                 leading: 1.4;
             }
             SectionHead {
-                title: Tr.t("series-episodes");
+                title: Tr.t("phone-series-episodes");
                 note: AppData.episodes.length > 0 ? "" + AppData.episodes.length : "";
             }
             // Deleting: off, a button to start; on, what it will do and the two ways out.

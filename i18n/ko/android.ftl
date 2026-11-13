@@ -102,10 +102,10 @@ look-text-size-note = AniBeam 전체의 글자 크기예요. 휴대전화의 글
 ## The window: tabs and the sheets over every page
 
 app-title = AniBeam
-nav-home = 홈
+phone-nav-home = 홈
 nav-calendar = 캘린더
-nav-library = 라이브러리
-nav-downloads = 다운로드
+phone-nav-library = 라이브러리
+phone-nav-downloads = 다운로드
 nav-more = 더보기
 app-mobile-title = 모바일 데이터로 다운로드할까요?
 app-mobile-note = 에피소드 하나가 1~2 GB인 경우가 많아요. 데이터 한도가 있는 요금제라면 하루 저녁에 한 달 데이터를 다 쓸 수 있어요.
@@ -242,7 +242,7 @@ cal-note = { $count ->
 }
 airing-asking = AniList에 요청 중
 airing-asking-newest = AniList에서 최신 항목 요청 중
-airing-filter-all = 전체 { $count }
+phone-airing-filter-all = 전체 { $count }
 airing-filter-listed = 내 목록 { $count }
 airing-filter-owned = 휴대전화 { $count }
 airing-this-season = 이번 시즌
@@ -316,13 +316,13 @@ more-words-language = 언어 번역 영어 한국어 locale
 
 ## Home
 
-home-title = 홈
+phone-home-title = 홈
 home-next-to-air = 다음 방영
 home-after-that = 그다음
 home-coming-up = 방영 예정
 home-nothing-week = 다음 주까지 방영 없음.
-home-empty-title = 이 휴대전화에는 아직 없어요
-home-empty-body = 여기서 다운로드한 작품과 그 방영 일정이 홈에 표시돼요. 다운로드에서 작품을 찾아 보세요.
+phone-home-empty-title = 이 휴대전화에는 아직 없어요
+phone-home-empty-body = 여기서 다운로드한 작품과 그 방영 일정이 홈에 표시돼요. 다운로드에서 작품을 찾아 보세요.
 
 ## Library
 
@@ -372,7 +372,7 @@ phone-out-ago = { $ago } 공개
 
 ## Airing now
 
-airing-out-now = 방금 공개
+phone-airing-out-now = 방금 공개
 airing-last-two-days = 최근 이틀
 airing-season-note = 이번 시즌 작품은 AniList에서 가져와요.
 airing-none-lists-title = 방영 중인 작품이 내 목록에 없어요
@@ -380,11 +380,11 @@ airing-none-lists-body = 작품에서 시청 예정을 누르면 목록에 추�
 airing-none-phone-title = 방영 중인 작품이 이 휴대전화에 없어요
 airing-none-phone-body = 작품에서 에피소드 받기를 누르면 여기로 다운로드해요.
 airing-marked = { $title }: 관심 없음으로 표시했어요.
-airing-undo = 되돌리기
+phone-airing-undo = 되돌리기
 airing-plan = 시청 예정
 airing-get-more = 에피소드 더 받기
 airing-get = 에피소드 받기
-airing-not-interested = 관심 없음
+phone-airing-not-interested = 관심 없음
 
 ## Seasons
 
@@ -401,11 +401,11 @@ series-back-home = 홈
 series-back-library = 라이브러리
 series-back-downloads = 다운로드
 series-back-calendar = 캘린더
-series-get-episodes = 에피소드 받기
-series-episodes = 에피소드
+phone-series-get-episodes = 에피소드 받기
+phone-series-episodes = 에피소드
 series-delete-episodes = 에피소드 삭제
 series-delete-tap = 삭제할 에피소드를 탭하세요.
-series-delete-picked = { $count ->
+phone-series-delete-picked = { $count ->
    *[other] 에피소드 { $count }개 선택됨.
 }
 series-delete-note = 파일이 이 휴대전화에서 삭제돼요. 시청 기록은 그대로 남아요.
@@ -445,8 +445,8 @@ show-status-paused = 보류
 show-status-dropped = 중단
 show-status-repeating = 재시청 중
 show-status-now = { $label }, 현재
-show-add-to-list = 목록에 추가
-show-your-score = 내 점수 { $score }
+phone-show-add-to-list = 목록에 추가
+phone-show-your-score = 내 점수 { $score }
 show-rate = 평점
 show-fixes = 수정
 show-your-notes = 내 메모
@@ -469,8 +469,8 @@ show-score-saving = 점수를 저장하는 중.
 show-score-saved = 점수 저장됨.
 show-score-clearing = 점수를 지우는 중.
 show-score-cleared = 점수를 지웠어요.
-show-moving-to = 이동 중: { $label }.
-show-moved-to = 이동 완료: { $label }.
+phone-show-moving-to = 이동 중: { $label }.
+phone-show-moved-to = 이동 완료: { $label }.
 show-rescan-started = 스캔을 시작했어요.
 show-still-starting = AniBeam이 아직 시작 중이에요. 잠시 후 다시 시도하세요.
 show-fix-match = 매칭
@@ -480,10 +480,10 @@ show-fix-rescan = 폴더 다시 스캔
 ## A show's characters, related shows and recommendations
 
 show-characters = 캐릭터
-show-related = 관련 작품
+phone-show-related = 관련 작품
 show-related-all = { $count }개 모두 보기
 show-related-filling = AniList에서 아직 채우는 중이에요.
-show-recommendations = 추천
+phone-show-recommendations = 추천
 show-card-owned = 내 라이브러리
 show-card-unreleased = 방영 전
 show-card-on-anilist = AniList에 있음
@@ -516,9 +516,9 @@ show-entry-line = { $line }, { $status }
 
 ## Fix a wrong match
 
-match-title = 매칭
+phone-match-title = 매칭
 match-refresh = 정보 새로고침
-match-clear = 매칭 해제
+phone-match-clear = 매칭 해제
 match-clear-it = 해제
 match-clear-warning = 해제하면 트래커 연결과 직접 설정한 에피소드 수가 사라져요. 한 번 더 탭하면 해제돼요.
 match-tvmaze = TVmaze
@@ -526,26 +526,26 @@ match-search-anilist = AniList 검색
 match-search-tvmaze = TVmaze 검색
 match-paste-anilist = AniList 또는 MyAnimeList 링크 붙여넣기
 match-paste-tvmaze = TVmaze 또는 IMDb 링크 붙여넣기
-match-look-up = 조회
+phone-match-look-up = 조회
 match-apply = 적용
 match-look-up-all = AniBeam이 아직 모르는 폴더 모두 조회
 match-format-music = 뮤직
 match-join-and = { $first }, { $second }
-match-matched-on = { $sites }에서 매칭됨
-match-found-tvmaze = TVmaze에서 작품을 찾았어요
-match-found-anilist = AniList에서 찾았어요
-match-found-anilist-season = AniList에서 찾았어요, 시즌 { $season }
-match-found-mal = MyAnimeList에서 찾았어요
-match-searching = { $name } 검색 중
-match-type-more = 두 글자 이상 입력하면 { $name }에서 검색해요.
+phone-match-matched-on = { $sites }에서 매칭됨
+phone-match-found-tvmaze = TVmaze에서 작품을 찾았어요
+phone-match-found-anilist = AniList에서 찾았어요
+phone-match-found-anilist-season = AniList에서 찾았어요, 시즌 { $season }
+phone-match-found-mal = MyAnimeList에서 찾았어요
+phone-match-searching = { $name } 검색 중
+phone-match-type-more = 두 글자 이상 입력하면 { $name }에서 검색해요.
 match-none = { $name }에서 찾은 제목이 없어요.
 match-looking-up = 조회하는 중.
-match-matched-to = 매칭됨: { $title }
-match-applied = 매칭을 적용했어요.
+phone-match-matched-to = 매칭됨: { $title }
+phone-match-applied = 매칭을 적용했어요.
 match-applying = 매칭을 적용하는 중.
-match-refreshing = { $title } 새로고침 중.
+phone-match-refreshing = { $title } 새로고침 중.
 match-clearing = 매칭을 해제하는 중.
-match-cleared = 매칭을 해제했어요.
+phone-match-cleared = 매칭을 해제했어요.
 match-auto-looking = AniBeam이 아직 모르는 폴더를 조회하는 중.
 
 ## Batches (the line under a release in a search)
@@ -557,7 +557,7 @@ inspect-holds = { $count ->
 
 ## What's new
 
-notes-title = 새로운 기능
+phone-notes-title = 새로운 기능
 notes-got-it = 확인
 
 ## Move the list to a tracker
@@ -786,7 +786,7 @@ find-desk-not-subscribed = { $name }에서 구독하지 못했어요: { $error }
 
 player-subtitles = 자막
 player-audio = 오디오
-player-speed = 속도
+phone-player-speed = 속도
 player-connecting = 연결 중
 player-hold-speed = 2배속
 player-replay = 다시 재생
@@ -798,11 +798,11 @@ player-jump-forward = +10초
 player-speed-now = 속도 { $speed }
 player-skip-intro = 오프닝 스킵
 player-skip-outro = 엔딩 스킵
-player-skipped-intro = 오프닝 건너뜀
-player-skipped-outro = 엔딩 건너뜀
-player-undo = 되돌리기
-player-start-over = 처음부터
-player-resumed-at = { $time }부터 이어 재생
+phone-player-skipped-intro = 오프닝 건너뜀
+phone-player-skipped-outro = 엔딩 건너뜀
+phone-player-undo = 되돌리기
+phone-player-start-over = 처음부터
+phone-player-resumed-at = { $time }부터 이어 재생
 player-picture-failed = 화면을 시작하지 못했어요. 소리는 계속 재생돼요.
 player-file-failed = 이 파일을 재생하지 못했어요: { $why }.
 player-streaming-from = { $host }에서 { $height }p로 스트리밍 중
@@ -814,27 +814,27 @@ player-android-only = 플레이어는 Android에서만 실행돼요
 
 player-delay-title = 지연
 player-delay-note = 탭할 때마다 0.1초씩 움직여요. 다음 파일까지 유지돼요.
-player-delay-seconds = { $value }초
+phone-player-delay-seconds = { $value }초
 player-sub-delay-now = 자막 지연 { $value }
 player-audio-delay-now = 오디오 지연 { $value }
 
 ## Player: cast
 
 player-cast-playing-on = { $device }에서 재생 중
-player-cast-stop = { $device } 캐스트 중지
+phone-player-cast-stop = { $device } 캐스트 중지
 player-cast-searching = Chromecast와 TV 찾는 중
-player-cast-to = 캐스트 대상
-player-cast-tv = TV
-player-cast-loading = 로드 중
-player-cast-playing = 재생 중
-player-cast-paused = 일시정지
-player-cast-finished = 종료
-player-cast-stopped = 중지됨
+phone-player-cast-to = 캐스트 대상
+phone-player-cast-tv = TV
+phone-player-cast-loading = 로드 중
+phone-player-cast-playing = 재생 중
+phone-player-cast-paused = 일시정지
+phone-player-cast-finished = 종료
+phone-player-cast-stopped = 중지됨
 
 ## Player: the tracker's word
 
-player-rated = 평가함
-player-score-failed = 점수를 저장하지 못했어요
+phone-player-rated = 평가함
+phone-player-score-failed = 점수를 저장하지 못했어요
 player-marked-watched = 시청함으로 표시
 player-tracked = 기록됨
 player-not-tracked = 기록 안 됨
@@ -845,12 +845,12 @@ player-track-ok = { $tracker } 정상
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker } 업데이트 실패
 player-track-line = { $head }: { $parts }
-player-refusal-hidden = 숨긴 작품
-player-refusal-no-match = 트래커에 매칭되지 않은 작품
-player-refusal-not-newer = 트래커가 이미 이 에피소드 이후까지 기록함
-player-refusal-extra = 번외 에피소드
-player-refusal-unmatched = 에피소드에 매칭되지 않은 파일
-player-refusal-on-disk = 디스크에만 있는 파일
+phone-player-refusal-hidden = 숨긴 작품
+phone-player-refusal-no-match = 트래커에 매칭되지 않은 작품
+phone-player-refusal-not-newer = 트래커가 이미 이 에피소드 이후까지 기록함
+phone-player-refusal-extra = 번외 에피소드
+phone-player-refusal-unmatched = 에피소드에 매칭되지 않은 파일
+phone-player-refusal-on-disk = 디스크에만 있는 파일
 
 ## Subtitles
 
@@ -899,18 +899,18 @@ stream-answered-status = { $name }의 응답: { $status }
 
 ## Stats
 
-stats-nothing-yet = 아직 없음
-stats-empty-title = 아직 본 작품이 없어요
-stats-empty-body = 에피소드를 끝까지 보면 여기에 집계돼요: 시청 시간, 장르, 시청한 시즌.
+phone-stats-nothing-yet = 아직 없음
+phone-stats-empty-title = 아직 본 작품이 없어요
+phone-stats-empty-body = 에피소드를 끝까지 보면 여기에 집계돼요: 시청 시간, 장르, 시청한 시즌.
 stats-hours-caption = 시청 시간
 stats-finished-caption = 완주한 작품
 stats-busiest-caption = 가장 많이 본 달
 stats-episodes-caption = { $count ->
    *[other] 에피소드
 }
-stats-by-month = 월별
-stats-top-genres = 상위 장르
-stats-top-studios = 상위 스튜디오
+phone-stats-by-month = 월별
+phone-stats-top-genres = 상위 장르
+phone-stats-top-studios = 상위 스튜디오
 stats-seasons = 시청한 시즌
 stats-watched-most = 최다 시청
 stats-year-line = { $year }년에 본 작품
@@ -1023,7 +1023,7 @@ fmt-span-days = { $d }일 { $h }시간
 fmt-span-hours = { $h }시간 { $m }분
 fmt-span-minutes = { $m }분 { $s }초
 fmt-span-seconds = { $s }초
-fmt-in = { $span } 후
+phone-fmt-in = { $span } 후
 fmt-full-days = { $d }일 { $h }시간 { $m }분 { $s }초
 fmt-full-hours = { $h }시간 { $m }분 { $s }초
 fmt-full-minutes = { $m }분 { $s }초
@@ -1225,23 +1225,23 @@ notify-turn-on = 켜기
 
 ## Feed
 
-feed-title = 피드
+phone-feed-title = 피드
 feed-recently-released = 최근 공개
 feed-coming-soon = 공개 예정
 feed-this-week = 이번 주
 feed-earlier = 이전
 feed-everything-else = 그 외
-feed-countdown-days = { $d }일 { $h }시간
-feed-countdown-hours = { $h }시간 { $m }분
-feed-countdown-minutes = { $m }분
-feed-next = 다음: { $title }, { $countdown } 후
-feed-nothing-scheduled = 예정된 항목이 아직 없어요.
-feed-nothing-new = 이번 주에 새 항목이 없어요.
-feed-new-episodes = { $count ->
+phone-feed-countdown-days = { $d }일 { $h }시간
+phone-feed-countdown-hours = { $h }시간 { $m }분
+phone-feed-countdown-minutes = { $m }분
+phone-feed-next = 다음: { $title }, { $countdown } 후
+phone-feed-nothing-scheduled = 예정된 항목이 아직 없어요.
+phone-feed-nothing-new = 이번 주에 새 항목이 없어요.
+phone-feed-new-episodes = { $count ->
    *[other] 이번 주 새 에피소드 { $count }개.
 }
-feed-aired = { $ago } 방영
-feed-downloaded = { $ago } 다운로드
+phone-feed-aired = { $ago } 방영
+phone-feed-downloaded = { $ago } 다운로드
 
 ## Files and the file picker
 

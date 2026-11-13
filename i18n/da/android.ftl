@@ -105,10 +105,10 @@ look-text-size-note = Hvor stor teksten er overalt i AniBeam, oven i telefonens 
 ## Vinduet: faner og ark over alle sider
 
 app-title = AniBeam
-nav-home = Hjem
+phone-nav-home = Hjem
 nav-calendar = Kalender
-nav-library = Bibliotek
-nav-downloads = Downloads
+phone-nav-library = Bibliotek
+phone-nav-downloads = Downloads
 nav-more = Mere
 app-mobile-title = Download over mobildata?
 app-mobile-note = Ét afsnit fylder ofte 1 til 2 GB. Med et begrænset abonnement kan det æde en måneds data på en aften.
@@ -259,7 +259,7 @@ cal-note = { $count ->
 }
 airing-asking = Spørger AniList
 airing-asking-newest = Spørger AniList om det nyeste
-airing-filter-all = Alt { $count }
+phone-airing-filter-all = Alt { $count }
 airing-filter-listed = På mine lister { $count }
 airing-filter-owned = På telefonen { $count }
 airing-this-season = Denne sæson
@@ -333,13 +333,13 @@ more-words-language = sprog oversættelse engelsk dansk locale
 
 ## Hjem
 
-home-title = Hjem
+phone-home-title = Hjem
 home-next-to-air = Sendes næste
 home-after-that = Derefter
 home-coming-up = Kommer snart
 home-nothing-week = Intet den næste uge.
-home-empty-title = Intet på denne telefon endnu
-home-empty-body = Serier, du downloader her, og hvad der sendes af dem, vises under Hjem. Find en under Downloads.
+phone-home-empty-title = Intet på denne telefon endnu
+phone-home-empty-body = Serier, du downloader her, og hvad der sendes af dem, vises under Hjem. Find en under Downloads.
 
 ## Bibliotek
 
@@ -390,7 +390,7 @@ phone-out-ago = Udkom { $ago }
 
 ## Sendes nu
 
-airing-out-now = Udkommet nu
+phone-airing-out-now = Udkommet nu
 airing-last-two-days = De sidste to dage
 airing-season-note = Sæsonens serier kommer fra AniList.
 airing-none-lists-title = Intet, der sendes, er på dine lister
@@ -398,11 +398,11 @@ airing-none-lists-body = Planlæg på en serie sætter den på din liste.
 airing-none-phone-title = Intet, der sendes, er på telefonen
 airing-none-phone-body = Hent afsnit på en serie downloader den her.
 airing-marked = { $title } er markeret som uinteressant.
-airing-undo = Fortryd
+phone-airing-undo = Fortryd
 airing-plan = Planlæg
 airing-get-more = Hent flere afsnit
 airing-get = Hent afsnit
-airing-not-interested = Ikke interesseret
+phone-airing-not-interested = Ikke interesseret
 
 ## Sæsoner
 
@@ -419,11 +419,11 @@ series-back-home = Hjem
 series-back-library = Bibliotek
 series-back-downloads = Downloads
 series-back-calendar = Kalender
-series-get-episodes = Hent afsnit
-series-episodes = Afsnit
+phone-series-get-episodes = Hent afsnit
+phone-series-episodes = Afsnit
 series-delete-episodes = Slet afsnit
 series-delete-tap = Tryk på de afsnit, der skal slettes.
-series-delete-picked = { $count ->
+phone-series-delete-picked = { $count ->
     [one] { $count } afsnit valgt.
    *[other] { $count } afsnit valgt.
 }
@@ -467,8 +467,8 @@ show-status-paused = På pause
 show-status-dropped = Droppet
 show-status-repeating = Genser
 show-status-now = { $label }, nu
-show-add-to-list = Føj til liste
-show-your-score = Din karakter { $score }
+phone-show-add-to-list = Føj til liste
+phone-show-your-score = Din karakter { $score }
 show-rate = Bedøm
 show-fixes = Rettelser
 show-your-notes = Dine noter
@@ -492,8 +492,8 @@ show-score-saving = Gemmer din karakter.
 show-score-saved = Karakter gemt.
 show-score-clearing = Rydder din karakter.
 show-score-cleared = Karakter ryddet.
-show-moving-to = Flytter til { $label }.
-show-moved-to = Flyttet til { $label }.
+phone-show-moving-to = Flytter til { $label }.
+phone-show-moved-to = Flyttet til { $label }.
 show-rescan-started = Genscanning startet.
 show-still-starting = AniBeam starter stadig. Prøv igen om lidt.
 show-fix-match = Match
@@ -503,10 +503,10 @@ show-fix-rescan = Genscan mappe
 ## En series figurer, relaterede serier og anbefalinger
 
 show-characters = Figurer
-show-related = Relateret
+phone-show-related = Relateret
 show-related-all = Vis alle { $count }
 show-related-filling = Hentes stadig fra AniList.
-show-recommendations = Anbefalinger
+phone-show-recommendations = Anbefalinger
 show-card-owned = I dit bibliotek
 show-card-unreleased = Endnu ikke udgivet
 show-card-on-anilist = På AniList
@@ -539,9 +539,9 @@ show-entry-line = { $line }, { $status }
 
 ## Ret et forkert match
 
-match-title = Match
+phone-match-title = Match
 match-refresh = Opdater info
-match-clear = Ryd match
+phone-match-clear = Ryd match
 match-clear-it = Ryd det
 match-clear-warning = Rydning fjerner trackerlinket og et manuelt sat afsnitsantal. Tryk igen for at rydde.
 match-tvmaze = TVmaze
@@ -549,26 +549,26 @@ match-search-anilist = Søg på AniList
 match-search-tvmaze = Søg på TVmaze
 match-paste-anilist = Indsæt et AniList- eller MyAnimeList-link
 match-paste-tvmaze = Indsæt et TVmaze- eller IMDb-link
-match-look-up = Slå op
+phone-match-look-up = Slå op
 match-apply = Anvend
 match-look-up-all = Slå op for hver mappe, AniBeam endnu ikke kender
 match-format-music = Musik
 match-join-and = { $first } og { $second }
-match-matched-on = Matchet på { $sites }
-match-found-tvmaze = Fandt serien på TVmaze
-match-found-anilist = Fandt den på AniList
-match-found-anilist-season = Fandt den på AniList, sæson { $season }
-match-found-mal = Fandt den på MyAnimeList
-match-searching = Søger på { $name }
-match-type-more = Skriv mindst to bogstaver for at søge på { $name }.
+phone-match-matched-on = Matchet på { $sites }
+phone-match-found-tvmaze = Fandt serien på TVmaze
+phone-match-found-anilist = Fandt den på AniList
+phone-match-found-anilist-season = Fandt den på AniList, sæson { $season }
+phone-match-found-mal = Fandt den på MyAnimeList
+phone-match-searching = Søger på { $name }
+phone-match-type-more = Skriv mindst to bogstaver for at søge på { $name }.
 match-none = Ingen titler fundet på { $name }.
 match-looking-up = Slår op.
-match-matched-to = Matchet med { $title }.
-match-applied = Match anvendt.
+phone-match-matched-to = Matchet med { $title }.
+phone-match-applied = Match anvendt.
 match-applying = Anvender matchet.
-match-refreshing = Opdaterer { $title }.
+phone-match-refreshing = Opdaterer { $title }.
 match-clearing = Rydder matchet.
-match-cleared = Match ryddet.
+phone-match-cleared = Match ryddet.
 match-auto-looking = Slår de mapper op, AniBeam endnu ikke kender.
 
 ## Pakker (linjen under en udgivelse i en søgning)
@@ -581,7 +581,7 @@ inspect-holds = { $count ->
 
 ## Nyheder
 
-notes-title = Nyheder
+phone-notes-title = Nyheder
 notes-got-it = Forstået
 
 ## Flyt listen til en tracker
@@ -828,7 +828,7 @@ find-desk-not-subscribed = Ikke abonneret på { $name }: { $error }
 
 player-subtitles = Undertekster
 player-audio = Lyd
-player-speed = Hastighed
+phone-player-speed = Hastighed
 player-connecting = Forbinder
 player-hold-speed = 2× hastighed
 player-replay = Gentag
@@ -840,11 +840,11 @@ player-jump-forward = +10 s
 player-speed-now = Hastighed { $speed }
 player-skip-intro = Spring intro over
 player-skip-outro = Spring outro over
-player-skipped-intro = Sprang intro over
-player-skipped-outro = Sprang outro over
-player-undo = Fortryd
-player-start-over = Fra start
-player-resumed-at = Fortsatte ved { $time }
+phone-player-skipped-intro = Sprang intro over
+phone-player-skipped-outro = Sprang outro over
+phone-player-undo = Fortryd
+phone-player-start-over = Fra start
+phone-player-resumed-at = Fortsatte ved { $time }
 player-picture-failed = Billedet kunne ikke starte. Lyden afspilles videre.
 player-file-failed = Denne fil kunne ikke afspilles: { $why }.
 player-streaming-from = Streamer fra { $host } i { $height }p
@@ -856,27 +856,27 @@ player-android-only = afspilleren kører kun på Android
 
 player-delay-title = Forsinkelse
 player-delay-note = Hvert tryk flytter den 0,1 s. Indtil næste fil.
-player-delay-seconds = { $value } s
+phone-player-delay-seconds = { $value } s
 player-sub-delay-now = Undertekstforsinkelse { $value }
 player-audio-delay-now = Lydforsinkelse { $value }
 
 ## Afspiller: cast
 
 player-cast-playing-on = Afspilles på { $device }
-player-cast-stop = Stop cast til { $device }
+phone-player-cast-stop = Stop cast til { $device }
 player-cast-searching = Leder efter Chromecasts og tv
-player-cast-to = Cast til
-player-cast-tv = TV
-player-cast-loading = Indlæser
-player-cast-playing = Afspiller
-player-cast-paused = På pause
-player-cast-finished = Færdig
-player-cast-stopped = Stoppet
+phone-player-cast-to = Cast til
+phone-player-cast-tv = TV
+phone-player-cast-loading = Indlæser
+phone-player-cast-playing = Afspiller
+phone-player-cast-paused = På pause
+phone-player-cast-finished = Færdig
+phone-player-cast-stopped = Stoppet
 
 ## Afspiller: trackerens ord
 
-player-rated = Bedømt
-player-score-failed = Kunne ikke gemme karakteren
+phone-player-rated = Bedømt
+phone-player-score-failed = Kunne ikke gemme karakteren
 player-marked-watched = Markeret som set
 player-tracked = Synket
 player-not-tracked = Ikke synket
@@ -887,12 +887,12 @@ player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker } kunne ikke opdateres
 player-track-line = { $head }: { $parts }
-player-refusal-hidden = serien er skjult
-player-refusal-no-match = serien har intet match hos trackeren
-player-refusal-not-newer = trackeren er allerede forbi dette afsnit
-player-refusal-extra = det er en ekstra
-player-refusal-unmatched = filen er ikke matchet med et afsnit
-player-refusal-on-disk = filen findes kun på disken
+phone-player-refusal-hidden = serien er skjult
+phone-player-refusal-no-match = serien har intet match hos trackeren
+phone-player-refusal-not-newer = trackeren er allerede forbi dette afsnit
+phone-player-refusal-extra = det er en ekstra
+phone-player-refusal-unmatched = filen er ikke matchet med et afsnit
+phone-player-refusal-on-disk = filen findes kun på disken
 
 ## Undertekster
 
@@ -941,9 +941,9 @@ stream-answered-status = { $name } svarede { $status }
 
 ## Statistik
 
-stats-nothing-yet = Intet endnu
-stats-empty-title = Intet set endnu
-stats-empty-body = Se et afsnit færdigt, så tæller det her: timer, genrer og de sæsoner, du har set.
+phone-stats-nothing-yet = Intet endnu
+phone-stats-empty-title = Intet set endnu
+phone-stats-empty-body = Se et afsnit færdigt, så tæller det her: timer, genrer og de sæsoner, du har set.
 stats-hours-caption = timer set
 stats-finished-caption = serier set færdige
 stats-busiest-caption = travleste måned
@@ -951,9 +951,9 @@ stats-episodes-caption = { $count ->
     [one] afsnit
    *[other] afsnit
 }
-stats-by-month = Pr. måned
-stats-top-genres = Topgenrer
-stats-top-studios = Topstudier
+phone-stats-by-month = Pr. måned
+phone-stats-top-genres = Topgenrer
+phone-stats-top-studios = Topstudier
 stats-seasons = Sæsoner set
 stats-watched-most = Mest set
 stats-year-line = Hvad du så i { $year }
@@ -1085,7 +1085,7 @@ fmt-span-days = { $d } d { $h } t
 fmt-span-hours = { $h } t { $m } m
 fmt-span-minutes = { $m } m { $s } s
 fmt-span-seconds = { $s } s
-fmt-in = om { $span }
+phone-fmt-in = om { $span }
 fmt-full-days = { $d } d { $h } t { $m } m { $s } s
 fmt-full-hours = { $h } t { $m } m { $s } s
 fmt-full-minutes = { $m } m { $s } s
@@ -1299,24 +1299,24 @@ notify-turn-on = Slå til
 
 ## Feed
 
-feed-title = Feed
+phone-feed-title = Feed
 feed-recently-released = Nyligt udkommet
 feed-coming-soon = Kommer snart
 feed-this-week = Denne uge
 feed-earlier = Tidligere
 feed-everything-else = Alt andet
-feed-countdown-days = { $d } d { $h } t
-feed-countdown-hours = { $h } t { $m } m
-feed-countdown-minutes = { $m } m
-feed-next = Næste: { $title } om { $countdown }
-feed-nothing-scheduled = Intet planlagt endnu.
-feed-nothing-new = Intet nyt denne uge.
-feed-new-episodes = { $count ->
+phone-feed-countdown-days = { $d } d { $h } t
+phone-feed-countdown-hours = { $h } t { $m } m
+phone-feed-countdown-minutes = { $m } m
+phone-feed-next = Næste: { $title } om { $countdown }
+phone-feed-nothing-scheduled = Intet planlagt endnu.
+phone-feed-nothing-new = Intet nyt denne uge.
+phone-feed-new-episodes = { $count ->
     [one] { $count } nyt afsnit denne uge.
    *[other] { $count } nye afsnit denne uge.
 }
-feed-aired = sendt { $ago }
-feed-downloaded = downloadet { $ago }
+phone-feed-aired = sendt { $ago }
+phone-feed-downloaded = downloadet { $ago }
 
 ## Filer og filvælgeren
 

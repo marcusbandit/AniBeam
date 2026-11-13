@@ -195,12 +195,12 @@ fn tracker_name(t: &Tracker) -> String {
 fn refusal_word(r: &anibeam_core::Refusal) -> String {
     use anibeam_core::Refusal::*;
     match r {
-        Hidden => tr!("player-refusal-hidden"),
-        NoMatch => tr!("player-refusal-no-match"),
-        NotNewer => tr!("player-refusal-not-newer"),
-        Extra => tr!("player-refusal-extra"),
-        Unmatched => tr!("player-refusal-unmatched"),
-        OnDisk => tr!("player-refusal-on-disk"),
+        Hidden => tr!("phone-player-refusal-hidden"),
+        NoMatch => tr!("phone-player-refusal-no-match"),
+        NotNewer => tr!("phone-player-refusal-not-newer"),
+        Extra => tr!("phone-player-refusal-extra"),
+        Unmatched => tr!("phone-player-refusal-unmatched"),
+        OnDisk => tr!("phone-player-refusal-on-disk"),
     }
 }
 
@@ -992,9 +992,9 @@ pub fn core_event(body: &EventBody) {
                 let ok = outcomes.iter().all(|o| o.ok);
                 p.flash(
                     &if ok {
-                        tr!("player-rated")
+                        tr!("phone-player-rated")
                     } else {
-                        tr!("player-score-failed")
+                        tr!("phone-player-score-failed")
                     },
                     None,
                 );
@@ -1242,7 +1242,7 @@ impl Player {
         // Picked up where it was left: say so, with the way back to the start.
         if let Some(at) = self.session.resume_from.filter(|r| *r > 5.0) {
             self.flash(
-                &tr!("player-resumed-at", time = crate::phone::clock(at)),
+                &tr!("phone-player-resumed-at", time = crate::phone::clock(at)),
                 Some(Undo::StartOver),
             );
         }
@@ -1360,9 +1360,9 @@ impl Player {
             Step::Skip { to, undo, kind } => {
                 self.mpv.command(&["seek", &to.to_string(), "absolute"]);
                 let line = if kind == SkipKind::Intro {
-                    tr!("player-skipped-intro")
+                    tr!("phone-player-skipped-intro")
                 } else {
-                    tr!("player-skipped-outro")
+                    tr!("phone-player-skipped-outro")
                 };
                 self.flash(&line, Some(Undo::Skip { to: undo, kind }));
             }
@@ -1720,7 +1720,8 @@ impl Player {
                 let mut rows = Vec::new();
                 if let Some(c) = &self.cast {
                     rows.push(PickRow {
-                        label: tr!("player-cast-stop", device = c.device.name.as_str()).into(),
+                        label: tr!("phone-player-cast-stop", device = c.device.name.as_str())
+                            .into(),
                         active: false,
                     });
                 }
@@ -1730,7 +1731,7 @@ impl Player {
                         CastKind::Chromecast => {
                             dev.model.clone().unwrap_or_else(|| "Chromecast".into())
                         }
-                        CastKind::Dlna => tr!("player-cast-tv"),
+                        CastKind::Dlna => tr!("phone-player-cast-tv"),
                     };
                     let active = self.cast.as_ref().is_some_and(|c| c.device.id == dev.id);
                     rows.push(PickRow {
@@ -1741,14 +1742,14 @@ impl Player {
                 let title = if devices.is_empty() {
                     tr!("player-cast-searching")
                 } else {
-                    tr!("player-cast-to")
+                    tr!("phone-player-cast-to")
                 };
                 (title, rows)
             }
             _ => {
                 let speed = self.speed;
                 (
-                    tr!("player-speed"),
+                    tr!("phone-player-speed"),
                     SPEEDS
                         .iter()
                         .map(|s| PickRow {
@@ -2115,12 +2116,12 @@ impl Player {
                 c.device.name.clone(),
                 match c.state {
                     CastPlayState::Connecting => tr!("player-connecting"),
-                    CastPlayState::Buffering => tr!("player-cast-loading"),
-                    CastPlayState::Playing => tr!("player-cast-playing"),
-                    CastPlayState::Paused => tr!("player-cast-paused"),
-                    CastPlayState::Ended => tr!("player-cast-finished"),
-                    CastPlayState::Failed => tr!("player-cast-stopped"),
-                    CastPlayState::Stopped => tr!("player-cast-stopped"),
+                    CastPlayState::Buffering => tr!("phone-player-cast-loading"),
+                    CastPlayState::Playing => tr!("phone-player-cast-playing"),
+                    CastPlayState::Paused => tr!("phone-player-cast-paused"),
+                    CastPlayState::Ended => tr!("phone-player-cast-finished"),
+                    CastPlayState::Failed => tr!("phone-player-cast-stopped"),
+                    CastPlayState::Stopped => tr!("phone-player-cast-stopped"),
                 },
             ),
             None => (false, String::new(), String::new()),
@@ -2244,8 +2245,8 @@ impl Player {
 
     fn flash_for(&mut self, line: &str, undo: Option<Undo>, secs: Duration) {
         let action = match undo {
-            Some(Undo::Skip { .. }) => tr!("player-undo"),
-            Some(Undo::StartOver) => tr!("player-start-over"),
+            Some(Undo::Skip { .. }) => tr!("phone-player-undo"),
+            Some(Undo::StartOver) => tr!("phone-player-start-over"),
             None => String::new(),
         };
         self.undo = undo;
@@ -2283,7 +2284,7 @@ impl Player {
 fn delay_text(v: f64) -> String {
     let r = (v * 100.0).round() / 100.0;
     if r == 0.0 {
-        return tr!("player-delay-seconds", value = "0.0");
+        return tr!("phone-player-delay-seconds", value = "0.0");
     }
     let fine = (r * 10.0 - (r * 10.0).round()).abs() > 1e-6;
     let sign = if r > 0.0 { "+" } else { "" };
@@ -2292,7 +2293,7 @@ fn delay_text(v: f64) -> String {
     } else {
         format!("{sign}{r:.1}")
     };
-    tr!("player-delay-seconds", value = value)
+    tr!("phone-player-delay-seconds", value = value)
 }
 
 fn parse_tracks(json: &str) -> Vec<tracks::Track> {

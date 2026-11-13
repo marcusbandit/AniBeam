@@ -79,7 +79,7 @@ component ResultRow inherits Rectangle {
 }
 
 export component MatchSheet inherits ShowSheet {
-    title: Tr.t("match-title");
+    title: Tr.t("phone-match-title");
     line: ShowData.series-title;
     reach: 0.7;
     dismissed => { ShowData.close(); }
@@ -114,7 +114,7 @@ export component MatchSheet inherits ShowSheet {
         // Two steps: it drops the tracker link and a hand-set episode count, and the show is
         // then left alone by the automatic match.
         Button {
-            text: MatchData.armed ? Tr.t("match-clear-it") : Tr.t("match-clear");
+            text: MatchData.armed ? Tr.t("match-clear-it") : Tr.t("phone-match-clear");
             small: true;
             danger: MatchData.armed;
             clicked => {
@@ -157,7 +157,7 @@ export component MatchSheet inherits ShowSheet {
             accepted(t) => { MatchData.look-up(t); }
         }
         Button {
-            text: Tr.t("match-look-up");
+            text: Tr.t("phone-match-look-up");
             small: true;
             enabled: MatchData.link != "";
             clicked => { MatchData.look-up(MatchData.link); }

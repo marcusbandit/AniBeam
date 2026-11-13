@@ -211,7 +211,7 @@ fn with_app(f: impl FnOnce(&mut App)) {
 /// More's sections' names, by the index Settings.section uses.
 const SECTIONS: [&str; 14] = [
     "more-accounts",
-    "nav-downloads",
+    "phone-nav-downloads",
     "more-streaming",
     "onb-sites-title",
     "more-connection",
@@ -833,7 +833,7 @@ impl App {
         update(
             &self.airing_filters,
             vec![
-                tr!("airing-filter-all", count = shows.len()).into(),
+                tr!("phone-airing-filter-all", count = shows.len()).into(),
                 tr!("airing-filter-listed", count = listed).into(),
                 tr!("airing-filter-owned", count = owned).into(),
             ],

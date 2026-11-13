@@ -86,11 +86,11 @@ fn short_countdown(secs: i64) -> String {
     let t = secs.max(0);
     let (d, h, m) = (t / 86400, t % 86400 / 3600, t % 3600 / 60);
     if d > 0 {
-        tr!("feed-countdown-days", d = d, h = h)
+        tr!("phone-feed-countdown-days", d = d, h = h)
     } else if h > 0 {
-        tr!("feed-countdown-hours", h = h, m = m)
+        tr!("phone-feed-countdown-hours", h = h, m = m)
     } else {
-        tr!("feed-countdown-minutes", m = m.max(1))
+        tr!("phone-feed-countdown-minutes", m = m.max(1))
     }
 }
 
@@ -104,12 +104,12 @@ fn summary(cards: &[FeedCard], sort: FeedSort, now: i64) -> String {
             .min_by_key(|(at, _)| *at)
             .map(|(at, c)| {
                 tr!(
-                    "feed-next",
+                    "phone-feed-next",
                     title = &c.series.title,
                     countdown = short_countdown(at - now)
                 )
             })
-            .unwrap_or_else(|| tr!("feed-nothing-scheduled")),
+            .unwrap_or_else(|| tr!("phone-feed-nothing-scheduled")),
         FeedSort::Recent => {
             let fresh = cards
                 .iter()
@@ -119,8 +119,8 @@ fn summary(cards: &[FeedCard], sort: FeedSort, now: i64) -> String {
                 })
                 .count();
             match fresh {
-                0 => tr!("feed-nothing-new"),
-                n => tr!("feed-new-episodes", count = n),
+                0 => tr!("phone-feed-nothing-new"),
+                n => tr!("phone-feed-new-episodes", count = n),
             }
         }
     }
@@ -141,10 +141,10 @@ fn tile(card: &FeedCard, art: &Art, now: i64) -> Tile {
     match &card.reason {
         FeedReason::Aired { episode, at } => {
             t.badge = format::episode_code(None, *episode).into();
-            t.ledger = tr!("feed-aired", ago = format::ago(now - secs(*at))).into();
+            t.ledger = tr!("phone-feed-aired", ago = format::ago(now - secs(*at))).into();
         }
         FeedReason::Downloaded { at } => {
-            t.ledger = tr!("feed-downloaded", ago = format::ago(now - secs(*at))).into();
+            t.ledger = tr!("phone-feed-downloaded", ago = format::ago(now - secs(*at))).into();
         }
         FeedReason::Scheduled {
             episode,

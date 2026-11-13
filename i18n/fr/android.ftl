@@ -105,10 +105,10 @@ look-text-size-note = La taille des mots partout dans AniBeam, en plus de celle 
 ## The window: tabs and the sheets over every page
 
 app-title = AniBeam
-nav-home = Accueil
+phone-nav-home = Accueil
 nav-calendar = Calendrier
-nav-library = Biblio.
-nav-downloads = Téléch.
+phone-nav-library = Biblio.
+phone-nav-downloads = Téléch.
 nav-more = Plus
 app-mobile-title = Télécharger en données mobiles ?
 app-mobile-note = Un épisode pèse souvent 1 à 2 Go. Avec un forfait limité, une soirée peut suffire à épuiser un mois de données.
@@ -259,7 +259,7 @@ cal-note = { $count ->
 }
 airing-asking = Demande à AniList
 airing-asking-newest = Interrogation d'AniList pour les nouveautés
-airing-filter-all = Tout { $count }
+phone-airing-filter-all = Tout { $count }
 airing-filter-listed = Mes listes { $count }
 airing-filter-owned = Ici { $count }
 airing-this-season = Cette saison
@@ -333,13 +333,13 @@ more-words-language = langue traduction anglais français
 
 ## Home
 
-home-title = Accueil
+phone-home-title = Accueil
 home-next-to-air = Prochaine sortie
 home-after-that = Ensuite
 home-coming-up = À venir
 home-nothing-week = Rien la semaine prochaine.
-home-empty-title = Rien sur ce téléphone
-home-empty-body = Les séries que vous téléchargez ici, et ce qui sort pour elles, s'affichent dans Accueil. Trouvez-en une dans Téléchargements.
+phone-home-empty-title = Rien sur ce téléphone
+phone-home-empty-body = Les séries que vous téléchargez ici, et ce qui sort pour elles, s'affichent dans Accueil. Trouvez-en une dans Téléchargements.
 
 ## Library
 
@@ -390,7 +390,7 @@ phone-out-ago = Sorti { $ago }
 
 ## Airing now
 
-airing-out-now = Sorti
+phone-airing-out-now = Sorti
 airing-last-two-days = 2 derniers jours
 airing-season-note = Les séries de la saison viennent d'AniList.
 airing-none-lists-title = Rien en cours de diffusion dans vos listes
@@ -398,11 +398,11 @@ airing-none-lists-body = À voir sur une série l'ajoute à votre liste.
 airing-none-phone-title = Rien en cours de diffusion sur ce téléphone
 airing-none-phone-body = Obtenir des épisodes d'une série la télécharge ici.
 airing-marked = { $title } est marquée sans intérêt.
-airing-undo = Annuler
+phone-airing-undo = Annuler
 airing-plan = À voir
 airing-get-more = Plus d'épisodes
 airing-get = Obtenir des épisodes
-airing-not-interested = Sans intérêt
+phone-airing-not-interested = Sans intérêt
 
 ## Seasons
 
@@ -419,11 +419,11 @@ series-back-home = Accueil
 series-back-library = Bibliothèque
 series-back-downloads = Téléchargements
 series-back-calendar = Calendrier
-series-get-episodes = Obtenir des épisodes
-series-episodes = Épisodes
+phone-series-get-episodes = Obtenir des épisodes
+phone-series-episodes = Épisodes
 series-delete-episodes = Supprimer des épisodes
 series-delete-tap = Touchez les épisodes à supprimer.
-series-delete-picked = { $count ->
+phone-series-delete-picked = { $count ->
     [one] { $count } épisode choisi.
    *[other] { $count } épisodes choisis.
 }
@@ -467,8 +467,8 @@ show-status-paused = En pause
 show-status-dropped = Abandonné
 show-status-repeating = Revisionnage
 show-status-now = { $label }, actuel
-show-add-to-list = Ajouter à une liste
-show-your-score = Votre note { $score }
+phone-show-add-to-list = Ajouter à une liste
+phone-show-your-score = Votre note { $score }
 show-rate = Noter
 show-fixes = Corriger
 show-your-notes = Vos notes
@@ -492,8 +492,8 @@ show-score-saving = Enregistrement de votre note.
 show-score-saved = Note enregistrée.
 show-score-clearing = Effacement de votre note.
 show-score-cleared = Note effacée.
-show-moving-to = Déplacement vers { $label }.
-show-moved-to = Déplacé vers { $label }.
+phone-show-moving-to = Déplacement vers { $label }.
+phone-show-moved-to = Déplacé vers { $label }.
 show-rescan-started = Nouvelle analyse lancée.
 show-still-starting = AniBeam démarre encore. Réessayez dans un instant.
 show-fix-match = Associer
@@ -503,10 +503,10 @@ show-fix-rescan = Réanalyser
 ## A show's characters, related shows and recommendations
 
 show-characters = Personnages
-show-related = Liées
+phone-show-related = Liées
 show-related-all = Tout voir ({ $count })
 show-related-filling = AniList complète encore la liste.
-show-recommendations = Recommandations
+phone-show-recommendations = Recommandations
 show-card-owned = Possédé
 show-card-unreleased = Pas encore sortie
 show-card-on-anilist = Sur AniList
@@ -539,9 +539,9 @@ show-entry-line = { $line }, { $status }
 
 ## Fix a wrong match
 
-match-title = Association
+phone-match-title = Association
 match-refresh = Actualiser
-match-clear = Dissocier
+phone-match-clear = Dissocier
 match-clear-it = Dissocier
 match-clear-warning = Dissocier supprime le lien de suivi et un nombre d'épisodes fixé à la main. Touchez encore pour dissocier.
 match-tvmaze = TVmaze
@@ -549,26 +549,26 @@ match-search-anilist = Chercher AniList
 match-search-tvmaze = Chercher TVmaze
 match-paste-anilist = Collez un lien AniList ou MyAnimeList
 match-paste-tvmaze = Collez un lien TVmaze ou IMDb
-match-look-up = Chercher
+phone-match-look-up = Chercher
 match-apply = Appliquer
 match-look-up-all = Chercher tous les dossiers qu'AniBeam ne connaît pas encore
 match-format-music = Musique
 match-join-and = { $first } et { $second }
-match-matched-on = Associé sur { $sites }
-match-found-tvmaze = Série trouvée sur TVmaze
-match-found-anilist = Trouvée sur AniList
-match-found-anilist-season = Trouvée sur AniList, saison { $season }
-match-found-mal = Trouvée sur MyAnimeList
-match-searching = Recherche sur { $name }
-match-type-more = Saisissez au moins deux lettres pour chercher sur { $name }.
+phone-match-matched-on = Associé sur { $sites }
+phone-match-found-tvmaze = Série trouvée sur TVmaze
+phone-match-found-anilist = Trouvée sur AniList
+phone-match-found-anilist-season = Trouvée sur AniList, saison { $season }
+phone-match-found-mal = Trouvée sur MyAnimeList
+phone-match-searching = Recherche sur { $name }
+phone-match-type-more = Saisissez au moins deux lettres pour chercher sur { $name }.
 match-none = Aucun titre trouvé sur { $name }.
 match-looking-up = Recherche en cours.
-match-matched-to = Associé à { $title }.
-match-applied = Association appliquée.
+phone-match-matched-to = Associé à { $title }.
+phone-match-applied = Association appliquée.
 match-applying = Application de l'association.
-match-refreshing = Actualisation de { $title }.
+phone-match-refreshing = Actualisation de { $title }.
 match-clearing = Effacement de l'association.
-match-cleared = Association effacée.
+phone-match-cleared = Association effacée.
 match-auto-looking = Recherche des dossiers qu'AniBeam ne connaît pas encore.
 
 ## Batches (the line under a release in a search)
@@ -581,7 +581,7 @@ inspect-holds = { $count ->
 
 ## What's new
 
-notes-title = Nouveautés
+phone-notes-title = Nouveautés
 notes-got-it = Compris
 
 ## Move the list to a tracker
@@ -828,7 +828,7 @@ find-desk-not-subscribed = Pas abonné sur { $name } : { $error }
 
 player-subtitles = Sous-titres
 player-audio = Audio
-player-speed = Vitesse
+phone-player-speed = Vitesse
 player-connecting = Connexion
 player-hold-speed = Vitesse 2×
 player-replay = Revoir
@@ -840,11 +840,11 @@ player-jump-forward = +10 s
 player-speed-now = Vitesse { $speed }
 player-skip-intro = Passer l'intro
 player-skip-outro = Passer l'outro
-player-skipped-intro = Intro passée
-player-skipped-outro = Outro passé
-player-undo = Annuler
-player-start-over = Au début
-player-resumed-at = Repris à { $time }
+phone-player-skipped-intro = Intro passée
+phone-player-skipped-outro = Outro passé
+phone-player-undo = Annuler
+phone-player-start-over = Au début
+phone-player-resumed-at = Repris à { $time }
 player-picture-failed = L'image n'a pas pu démarrer. Le son continue.
 player-file-failed = Ce fichier n'a pas pu être lu : { $why }.
 player-streaming-from = Diffusion depuis { $host } en { $height }p
@@ -856,27 +856,27 @@ player-android-only = le lecteur ne fonctionne que sur Android
 
 player-delay-title = Décalage
 player-delay-note = Chaque appui le déplace de 0,1 s. Jusqu'au prochain fichier.
-player-delay-seconds = { $value } s
+phone-player-delay-seconds = { $value } s
 player-sub-delay-now = Décalage des sous-titres { $value }
 player-audio-delay-now = Décalage audio { $value }
 
 ## Player: cast
 
 player-cast-playing-on = Lecture sur { $device }
-player-cast-stop = Arrêter la diffusion vers { $device }
+phone-player-cast-stop = Arrêter la diffusion vers { $device }
 player-cast-searching = Recherche de Chromecast et de TV
-player-cast-to = Diffuser vers
-player-cast-tv = TV
-player-cast-loading = Chargement
-player-cast-playing = Lecture
-player-cast-paused = En pause
-player-cast-finished = Terminé
-player-cast-stopped = Arrêté
+phone-player-cast-to = Diffuser vers
+phone-player-cast-tv = TV
+phone-player-cast-loading = Chargement
+phone-player-cast-playing = Lecture
+phone-player-cast-paused = En pause
+phone-player-cast-finished = Terminé
+phone-player-cast-stopped = Arrêté
 
 ## Player: the tracker's word
 
-player-rated = Noté
-player-score-failed = Impossible d'enregistrer la note
+phone-player-rated = Noté
+phone-player-score-failed = Impossible d'enregistrer la note
 player-marked-watched = Marqué comme vu
 player-tracked = Suivi
 player-not-tracked = Non suivi
@@ -887,12 +887,12 @@ player-track-ok = { $tracker } ok
 player-track-note = { $tracker } : { $note }
 player-track-failed = Impossible de mettre à jour { $tracker }
 player-track-line = { $head } : { $parts }
-player-refusal-hidden = la série est masquée
-player-refusal-no-match = la série n'a pas d'association de suivi
-player-refusal-not-newer = le suivi est déjà au-delà de cet épisode
-player-refusal-extra = c'est un bonus
-player-refusal-unmatched = le fichier n'est pas associé à un épisode
-player-refusal-on-disk = le fichier n'existe que sur le disque
+phone-player-refusal-hidden = la série est masquée
+phone-player-refusal-no-match = la série n'a pas d'association de suivi
+phone-player-refusal-not-newer = le suivi est déjà au-delà de cet épisode
+phone-player-refusal-extra = c'est un bonus
+phone-player-refusal-unmatched = le fichier n'est pas associé à un épisode
+phone-player-refusal-on-disk = le fichier n'existe que sur le disque
 
 ## Subtitles
 
@@ -941,9 +941,9 @@ stream-answered-status = { $name } a répondu { $status }
 
 ## Stats
 
-stats-nothing-yet = Rien encore
-stats-empty-title = Rien de vu pour l'instant
-stats-empty-body = Terminez un épisode et il compte ici : heures, genres et saisons vues.
+phone-stats-nothing-yet = Rien encore
+phone-stats-empty-title = Rien de vu pour l'instant
+phone-stats-empty-body = Terminez un épisode et il compte ici : heures, genres et saisons vues.
 stats-hours-caption = heures vues
 stats-finished-caption = séries terminées
 stats-busiest-caption = mois record
@@ -951,9 +951,9 @@ stats-episodes-caption = { $count ->
     [one] épisode
    *[other] épisodes
 }
-stats-by-month = Par mois
-stats-top-genres = Genres favoris
-stats-top-studios = Studios favoris
+phone-stats-by-month = Par mois
+phone-stats-top-genres = Genres favoris
+phone-stats-top-studios = Studios favoris
 stats-seasons = Saisons vues
 stats-watched-most = Le plus vu
 stats-year-line = Ce que vous avez vu en { $year }
@@ -1085,7 +1085,7 @@ fmt-span-days = { $d } j { $h } h
 fmt-span-hours = { $h } h { $m } min
 fmt-span-minutes = { $m } min { $s } s
 fmt-span-seconds = { $s } s
-fmt-in = dans { $span }
+phone-fmt-in = dans { $span }
 fmt-full-days = { $d } j { $h } h { $m } min { $s } s
 fmt-full-hours = { $h } h { $m } min { $s } s
 fmt-full-minutes = { $m } min { $s } s
@@ -1299,24 +1299,24 @@ notify-turn-on = Activer
 
 ## Feed
 
-feed-title = Fil
+phone-feed-title = Fil
 feed-recently-released = Sorti récemment
 feed-coming-soon = Bientôt
 feed-this-week = Cette semaine
 feed-earlier = Plus tôt
 feed-everything-else = Tout le reste
-feed-countdown-days = { $d } j { $h } h
-feed-countdown-hours = { $h } h { $m } min
-feed-countdown-minutes = { $m } min
-feed-next = Suivant : { $title } dans { $countdown }
-feed-nothing-scheduled = Rien de prévu pour l'instant.
-feed-nothing-new = Rien de nouveau cette semaine.
-feed-new-episodes = { $count ->
+phone-feed-countdown-days = { $d } j { $h } h
+phone-feed-countdown-hours = { $h } h { $m } min
+phone-feed-countdown-minutes = { $m } min
+phone-feed-next = Suivant : { $title } dans { $countdown }
+phone-feed-nothing-scheduled = Rien de prévu pour l'instant.
+phone-feed-nothing-new = Rien de nouveau cette semaine.
+phone-feed-new-episodes = { $count ->
     [one] { $count } nouvel épisode cette semaine.
    *[other] { $count } nouveaux épisodes cette semaine.
 }
-feed-aired = diffusé { $ago }
-feed-downloaded = téléchargé { $ago }
+phone-feed-aired = diffusé { $ago }
+phone-feed-downloaded = téléchargé { $ago }
 
 ## Files and the file picker
 

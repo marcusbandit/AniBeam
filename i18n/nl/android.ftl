@@ -105,10 +105,10 @@ look-text-size-note = Hoe groot de tekst overal in AniBeam is, bovenop de groott
 ## Het venster: tabs en de sheets boven elke pagina
 
 app-title = AniBeam
-nav-home = Start
+phone-nav-home = Start
 nav-calendar = Agenda
-nav-library = Bibliotheek
-nav-downloads = Downloads
+phone-nav-library = Bibliotheek
+phone-nav-downloads = Downloads
 nav-more = Meer
 app-mobile-title = Downloaden via mobiele data?
 app-mobile-note = Eén aflevering is vaak 1 tot 2 GB. Met een beperkt abonnement kan dat in één avond een maand aan data kosten.
@@ -259,7 +259,7 @@ cal-note = { $count ->
 }
 airing-asking = AniList vragen
 airing-asking-newest = AniList om het nieuwste vragen
-airing-filter-all = Alles { $count }
+phone-airing-filter-all = Alles { $count }
 airing-filter-listed = Op mijn lijsten { $count }
 airing-filter-owned = Op deze telefoon { $count }
 airing-this-season = Dit seizoen
@@ -333,13 +333,13 @@ more-words-language = taal vertaling engels nederlands
 
 ## Start
 
-home-title = Start
+phone-home-title = Start
 home-next-to-air = Eerstvolgende
 home-after-that = Daarna
 home-coming-up = Binnenkort
 home-nothing-week = Niets de komende week.
-home-empty-title = Nog niets op deze telefoon
-home-empty-body = Series die je hier downloadt, en wat ervan wordt uitgezonden, staan op Start. Zoek er een onder Downloads.
+phone-home-empty-title = Nog niets op deze telefoon
+phone-home-empty-body = Series die je hier downloadt, en wat ervan wordt uitgezonden, staan op Start. Zoek er een onder Downloads.
 
 ## Bibliotheek
 
@@ -390,7 +390,7 @@ phone-out-ago = Uit { $ago }
 
 ## Nu uitgezonden
 
-airing-out-now = Nu uit
+phone-airing-out-now = Nu uit
 airing-last-two-days = De laatste twee dagen
 airing-season-note = De series van het seizoen komen van AniList.
 airing-none-lists-title = Niets dat loopt staat op je lijsten
@@ -398,11 +398,11 @@ airing-none-lists-body = Later kijken bij een serie zet hem op je lijst.
 airing-none-phone-title = Niets dat loopt staat op deze telefoon
 airing-none-phone-body = Afl. ophalen bij een serie downloadt hem hier.
 airing-marked = { $title } is als niet interessant gemarkeerd.
-airing-undo = Ongedaan
+phone-airing-undo = Ongedaan
 airing-plan = Later kijken
 airing-get-more = Meer afl. ophalen
 airing-get = Afl. ophalen
-airing-not-interested = Niet interessant
+phone-airing-not-interested = Niet interessant
 
 ## Seizoenen
 
@@ -419,11 +419,11 @@ series-back-home = Start
 series-back-library = Bibliotheek
 series-back-downloads = Downloads
 series-back-calendar = Agenda
-series-get-episodes = Afl. ophalen
-series-episodes = Afleveringen
+phone-series-get-episodes = Afl. ophalen
+phone-series-episodes = Afleveringen
 series-delete-episodes = Afl. wissen
 series-delete-tap = Tik op de afleveringen om te wissen.
-series-delete-picked = { $count ->
+phone-series-delete-picked = { $count ->
     [one] { $count } aflevering gekozen.
    *[other] { $count } afleveringen gekozen.
 }
@@ -467,8 +467,8 @@ show-status-paused = Gepauzeerd
 show-status-dropped = Gestopt
 show-status-repeating = Herkijken
 show-status-now = { $label }, nu
-show-add-to-list = Op lijst zetten
-show-your-score = Jouw score { $score }
+phone-show-add-to-list = Op lijst zetten
+phone-show-your-score = Jouw score { $score }
 show-rate = Score
 show-fixes = Herstel
 show-your-notes = Je notities
@@ -492,8 +492,8 @@ show-score-saving = Score opslaan.
 show-score-saved = Score bewaard.
 show-score-clearing = Je score wordt gewist.
 show-score-cleared = Score gewist.
-show-moving-to = Zetten op { $label }.
-show-moved-to = Gezet op { $label }.
+phone-show-moving-to = Zetten op { $label }.
+phone-show-moved-to = Gezet op { $label }.
 show-rescan-started = Scan gestart.
 show-still-starting = AniBeam is nog aan het starten. Probeer het zo opnieuw.
 show-fix-match = Koppeling
@@ -503,10 +503,10 @@ show-fix-rescan = Opnieuw scannen
 ## Personages, gerelateerde series en aanbevelingen van een serie
 
 show-characters = Personages
-show-related = Verwant
+phone-show-related = Verwant
 show-related-all = Alle { $count } tonen
 show-related-filling = Wordt nog aangevuld vanuit AniList.
-show-recommendations = Aanbevelingen
+phone-show-recommendations = Aanbevelingen
 show-card-owned = In je bibliotheek
 show-card-unreleased = Nog niet uitgekomen
 show-card-on-anilist = Op AniList
@@ -539,9 +539,9 @@ show-entry-line = { $line }, { $status }
 
 ## Een verkeerde koppeling herstellen
 
-match-title = Koppeling
+phone-match-title = Koppeling
 match-refresh = Info vernieuwen
-match-clear = Ontkoppelen
+phone-match-clear = Ontkoppelen
 match-clear-it = Wissen
 match-clear-warning = Wissen haalt de trackerkoppeling en een met de hand ingesteld aantal afleveringen weg. Tik nogmaals om te wissen.
 match-tvmaze = TVmaze
@@ -549,26 +549,26 @@ match-search-anilist = Zoek op AniList
 match-search-tvmaze = Zoek op TVmaze
 match-paste-anilist = Plak een AniList- of MyAnimeList-link
 match-paste-tvmaze = Plak een TVmaze- of IMDb-link
-match-look-up = Opzoeken
+phone-match-look-up = Opzoeken
 match-apply = Toepassen
 match-look-up-all = Zoek elke map op die AniBeam nog niet kent
 match-format-music = Muziek
 match-join-and = { $first } en { $second }
-match-matched-on = Gekoppeld via { $sites }
-match-found-tvmaze = Serie gevonden op TVmaze
-match-found-anilist = Gevonden op AniList
-match-found-anilist-season = Gevonden op AniList, seizoen { $season }
-match-found-mal = Gevonden op MyAnimeList
-match-searching = { $name } doorzoeken
-match-type-more = Typ minstens twee letters om { $name } te doorzoeken.
+phone-match-matched-on = Gekoppeld via { $sites }
+phone-match-found-tvmaze = Serie gevonden op TVmaze
+phone-match-found-anilist = Gevonden op AniList
+phone-match-found-anilist-season = Gevonden op AniList, seizoen { $season }
+phone-match-found-mal = Gevonden op MyAnimeList
+phone-match-searching = { $name } doorzoeken
+phone-match-type-more = Typ minstens twee letters om { $name } te doorzoeken.
 match-none = Geen titels gevonden op { $name }.
 match-looking-up = Opzoeken.
-match-matched-to = Gekoppeld aan { $title }.
-match-applied = Koppeling gezet.
+phone-match-matched-to = Gekoppeld aan { $title }.
+phone-match-applied = Koppeling gezet.
 match-applying = Koppeling toepassen.
-match-refreshing = { $title } vernieuwen.
+phone-match-refreshing = { $title } vernieuwen.
 match-clearing = Koppeling wissen.
-match-cleared = Koppeling gewist.
+phone-match-cleared = Koppeling gewist.
 match-auto-looking = De mappen opzoeken die AniBeam nog niet kent.
 
 ## Batches (de regel onder een release in een zoekopdracht)
@@ -581,7 +581,7 @@ inspect-holds = { $count ->
 
 ## Wat is nieuw
 
-notes-title = Wat is nieuw
+phone-notes-title = Wat is nieuw
 notes-got-it = Begrepen
 
 ## De lijst naar een tracker verplaatsen
@@ -828,7 +828,7 @@ find-desk-not-subscribed = Niet geabonneerd op { $name }: { $error }
 
 player-subtitles = Ondertitels
 player-audio = Audio
-player-speed = Snelheid
+phone-player-speed = Snelheid
 player-connecting = Verbinden
 player-hold-speed = 2× snelheid
 player-replay = Opnieuw
@@ -840,11 +840,11 @@ player-jump-forward = +10 s
 player-speed-now = Snelheid { $speed }
 player-skip-intro = Sla intro over
 player-skip-outro = Sla outro over
-player-skipped-intro = Intro overgeslagen
-player-skipped-outro = Outro overgeslagen
-player-undo = Ongedaan
-player-start-over = Van het begin
-player-resumed-at = Hervat bij { $time }
+phone-player-skipped-intro = Intro overgeslagen
+phone-player-skipped-outro = Outro overgeslagen
+phone-player-undo = Ongedaan
+phone-player-start-over = Van het begin
+phone-player-resumed-at = Hervat bij { $time }
 player-picture-failed = Het beeld kon niet starten. Het geluid speelt door.
 player-file-failed = Dit bestand speelde niet af: { $why }.
 player-streaming-from = Streamen van { $host } in { $height }p
@@ -856,27 +856,27 @@ player-android-only = de speler draait alleen op Android
 
 player-delay-title = Timing
 player-delay-note = Elke tik verschuift 0,1 s. Tot het volgende bestand.
-player-delay-seconds = { $value } s
+phone-player-delay-seconds = { $value } s
 player-sub-delay-now = Ondertitelvertraging { $value }
 player-audio-delay-now = Audiovertraging { $value }
 
 ## Speler: casten
 
 player-cast-playing-on = Speelt af op { $device }
-player-cast-stop = Stop met casten naar { $device }
+phone-player-cast-stop = Stop met casten naar { $device }
 player-cast-searching = Chromecasts en tv's zoeken
-player-cast-to = Casten naar
-player-cast-tv = Tv
-player-cast-loading = Laden
-player-cast-playing = Speelt af
-player-cast-paused = Gepauzeerd
-player-cast-finished = Afgelopen
-player-cast-stopped = Gestopt
+phone-player-cast-to = Casten naar
+phone-player-cast-tv = Tv
+phone-player-cast-loading = Laden
+phone-player-cast-playing = Speelt af
+phone-player-cast-paused = Gepauzeerd
+phone-player-cast-finished = Afgelopen
+phone-player-cast-stopped = Gestopt
 
 ## Speler: het woord van de tracker
 
-player-rated = Gescoord
-player-score-failed = Score opslaan mislukt
+phone-player-rated = Gescoord
+phone-player-score-failed = Score opslaan mislukt
 player-marked-watched = Als gekeken
 player-tracked = Bijgewerkt
 player-not-tracked = Niet bijgewerkt
@@ -887,12 +887,12 @@ player-track-ok = { $tracker } ok
 player-track-note = { $tracker }: { $note }
 player-track-failed = { $tracker } kon niet worden bijgewerkt
 player-track-line = { $head }: { $parts }
-player-refusal-hidden = de serie is verborgen
-player-refusal-no-match = de serie heeft geen trackerkoppeling
-player-refusal-not-newer = de tracker is al voorbij deze aflevering
-player-refusal-extra = dit is een extra
-player-refusal-unmatched = het bestand is niet aan een aflevering gekoppeld
-player-refusal-on-disk = het bestand is alleen op schijf
+phone-player-refusal-hidden = de serie is verborgen
+phone-player-refusal-no-match = de serie heeft geen trackerkoppeling
+phone-player-refusal-not-newer = de tracker is al voorbij deze aflevering
+phone-player-refusal-extra = dit is een extra
+phone-player-refusal-unmatched = het bestand is niet aan een aflevering gekoppeld
+phone-player-refusal-on-disk = het bestand is alleen op schijf
 
 ## Ondertitels
 
@@ -941,9 +941,9 @@ stream-answered-status = { $name } antwoordde { $status }
 
 ## Statistieken
 
-stats-nothing-yet = Nog niets
-stats-empty-title = Nog niets gekeken
-stats-empty-body = Kijk een aflevering uit en hij telt hier mee: uren, genres en de seizoenen die je keek.
+phone-stats-nothing-yet = Nog niets
+phone-stats-empty-title = Nog niets gekeken
+phone-stats-empty-body = Kijk een aflevering uit en hij telt hier mee: uren, genres en de seizoenen die je keek.
 stats-hours-caption = uur gekeken
 stats-finished-caption = series uitgekeken
 stats-busiest-caption = drukste maand
@@ -951,9 +951,9 @@ stats-episodes-caption = { $count ->
     [one] aflevering
    *[other] afleveringen
 }
-stats-by-month = Per maand
-stats-top-genres = Top genres
-stats-top-studios = Top studio's
+phone-stats-by-month = Per maand
+phone-stats-top-genres = Top genres
+phone-stats-top-studios = Top studio's
 stats-seasons = Gekeken seizoenen
 stats-watched-most = Meest gekeken
 stats-year-line = Wat je keek in { $year }
@@ -1082,7 +1082,7 @@ fmt-span-days = { $d } d { $h } u
 fmt-span-hours = { $h } u { $m } min
 fmt-span-minutes = { $m } min { $s } s
 fmt-span-seconds = { $s } s
-fmt-in = over { $span }
+phone-fmt-in = over { $span }
 fmt-full-days = { $d } d { $h } u { $m } min { $s } s
 fmt-full-hours = { $h } u { $m } min { $s } s
 fmt-full-minutes = { $m } min { $s } s
@@ -1296,24 +1296,24 @@ notify-turn-on = Aanzetten
 
 ## Feed
 
-feed-title = Feed
+phone-feed-title = Feed
 feed-recently-released = Recent uitgekomen
 feed-coming-soon = Binnenkort
 feed-this-week = Deze week
 feed-earlier = Eerder
 feed-everything-else = Al het andere
-feed-countdown-days = { $d } d { $h } u
-feed-countdown-hours = { $h } u { $m } min
-feed-countdown-minutes = { $m } min
-feed-next = Hierna: { $title } over { $countdown }
-feed-nothing-scheduled = Nog niets gepland.
-feed-nothing-new = Niets nieuws deze week.
-feed-new-episodes = { $count ->
+phone-feed-countdown-days = { $d } d { $h } u
+phone-feed-countdown-hours = { $h } u { $m } min
+phone-feed-countdown-minutes = { $m } min
+phone-feed-next = Hierna: { $title } over { $countdown }
+phone-feed-nothing-scheduled = Nog niets gepland.
+phone-feed-nothing-new = Niets nieuws deze week.
+phone-feed-new-episodes = { $count ->
     [one] { $count } nieuwe aflevering deze week.
    *[other] { $count } nieuwe afleveringen deze week.
 }
-feed-aired = uit { $ago }
-feed-downloaded = gedownload { $ago }
+phone-feed-aired = uit { $ago }
+phone-feed-downloaded = gedownload { $ago }
 
 ## Bestanden en de bestandskiezer
 

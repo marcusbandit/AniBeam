@@ -57,7 +57,7 @@ pub fn span(seconds: i64) -> String {
 
 /// "in 2d 4h", "in 4h 12m", "in 12m 05s", "in 42s": [`span`] after the catalog's "in".
 pub fn countdown(seconds: i64) -> String {
-    tr!("fmt-in", span = span(seconds))
+    tr!("phone-fmt-in", span = span(seconds))
 }
 
 /// The desktop series page's ticking form: "3d 02h 15m 07s", "2h 05m 07s", "15m 07s".
