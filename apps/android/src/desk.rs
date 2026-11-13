@@ -36,7 +36,8 @@ struct Series {
 /// is off costs the connect timeout, so call it off the UI thread.
 pub fn probe(data_dir: &Path) -> Option<Desk> {
     let store = Store::open(data_dir).ok()?;
-    let address = store.settings().host()?;
+    let settings = store.settings();
+    let address = settings.host()?;
     let client = HostClient::new(client::agent(), address);
     let hello = client.hello().ok()?;
     if hello.app != api::APP || !hello.features.iter().any(|f| f == api::FEATURE_DOWNLOADS) {
@@ -46,7 +47,7 @@ pub fn probe(data_dir: &Path) -> Option<Desk> {
     // here: a download sent with one would land in whichever show has that id.
     let series = store
         .cache()
-        .filter(|c| c.address == typed)
+        .filter(|c| c.address == settings.address)
         .map(|c| c.snapshot.series.into_iter().map(series_of).collect())
         .unwrap_or_default();
     Some(Desk {
