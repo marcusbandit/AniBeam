@@ -17,7 +17,7 @@ use anibeam_core::i18n::{Arg, tr};
 use anibeam_core::library::schedule::{NoteRow, When};
 use anibeam_core::time::to_secs;
 use anibeam_core::{Call, Provider, Reply, SeriesDetail, SeriesKind, provider_name};
-use chrono::{Local, TimeZone};
+
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::{AppWindow, DateTile, ScheduleData, ShowData};
@@ -112,17 +112,16 @@ fn kind_of(note: Option<&NoteRow>) -> i32 {
     }
 }
 
-fn local(at: i64, pattern: &str) -> String {
-    Local
-        .timestamp_opt(at, 0)
-        .single()
-        .map(|t| t.format(pattern).to_string())
-        .unwrap_or_default()
+/// "17 Oct", in the language the app speaks.
+fn local(at: i64) -> String {
+    anibeam_companion::format::day_month(at)
 }
 
-fn month_name(year: i32, month: u8, pattern: &str) -> String {
+/// A month by a catalog pattern, its name in the language the app speaks: "Oct 2026",
+/// "October 2026".
+fn month_name(year: i32, month: u8, id: &str, fallback: &str) -> String {
     chrono::NaiveDate::from_ymd_opt(year, u32::from(month), 1)
-        .map(|d| d.format(pattern).to_string())
+        .map(|d| anibeam_companion::format::day(d, id, fallback))
         .unwrap_or_else(|| year.to_string())
 }
 
@@ -220,17 +219,17 @@ impl Sheet {
             && let Some(&at) = record.get(&ep)
             && !self.out(ep)
         {
-            return local(at, "%-d %b");
+            return local(at);
         }
         if note.is_none()
             && let Some(&at) = guesses.get(&ep)
         {
-            return tr("dates-tile-guess", &[("date", local(at, "%-d %b").into())]);
+            return tr("dates-tile-guess", &[("date", local(at).into())]);
         }
         if let Some(n) = note {
             return match n.when {
-                When::On(at) => local(at, "%-d %b"),
-                When::Month(y, m) => month_name(y, m, "%b %Y"),
+                When::On(at) => local(at),
+                When::Month(y, m) => month_name(y, m, "dates-month-short", "%b %Y"),
                 When::Year(y) => y.to_string(),
                 When::Unknown => tr("dates-tile-none", &[]),
             };
@@ -468,7 +467,9 @@ fn told_line(detail: &SeriesDetail) -> String {
             .into();
             let when = match (n.year, n.month.and_then(|m| u8::try_from(m).ok())) {
                 (None, _) => return tr("dates-told-undated", &[("episodes", episodes)]),
-                (Some(y), Some(m)) if (1..=12).contains(&m) => month_name(y, m, "%B %Y"),
+                (Some(y), Some(m)) if (1..=12).contains(&m) => {
+                    month_name(y, m, "dates-month-long", "%B %Y")
+                }
                 (Some(y), _) => y.to_string(),
             };
             tr(
@@ -521,6 +522,12 @@ pub fn track(window: &AppWindow, detail: Option<&SeriesDetail>) {
     });
     show.set_told(told_line(detail).into());
     show.set_movie(detail.card.kind == SeriesKind::Movie);
+}
+
+/// The language changed: the open sheet is drawn again in it. The page's line follows on
+/// the next tick.
+pub fn relocalize(window: &AppWindow) {
+    draw(window);
 }
 
 /// Draws the sheet from the draft.

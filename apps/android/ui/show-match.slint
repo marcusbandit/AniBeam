@@ -4,6 +4,7 @@
 import { Theme } from "theme.slint";
 import { Button, Field, SearchField, Segmented } from "widgets.slint";
 import { ShowData, ShowSheet } from "show.slint";
+import { Tr } from "tr.slint";
 
 export struct MatchRow {
     title: string,
@@ -78,7 +79,7 @@ component ResultRow inherits Rectangle {
 }
 
 export component MatchSheet inherits ShowSheet {
-    title: "Match";
+    title: Tr.t("phone-match-title");
     line: ShowData.series-title;
     reach: 0.7;
     dismissed => { ShowData.close(); }
@@ -104,7 +105,7 @@ export component MatchSheet inherits ShowSheet {
         spacing: Theme.gap;
         alignment: start;
         Button {
-            text: "Refresh info";
+            text: Tr.t("match-refresh");
             icon: @image-url("icons/refresh-cw.svg");
             has-icon: true;
             small: true;
@@ -113,7 +114,7 @@ export component MatchSheet inherits ShowSheet {
         // Two steps: it drops the tracker link and a hand-set episode count, and the show is
         // then left alone by the automatic match.
         Button {
-            text: MatchData.armed ? "Clear it" : "Clear match";
+            text: MatchData.armed ? Tr.t("match-clear-it") : Tr.t("phone-match-clear");
             small: true;
             danger: MatchData.armed;
             clicked => {
@@ -127,18 +128,18 @@ export component MatchSheet inherits ShowSheet {
         }
     }
     if MatchData.armed: Text {
-        text: "Clearing drops the tracker link and a hand-set episode count. Tap again to clear.";
+        text: Tr.t("match-clear-warning");
         color: Theme.bad;
         font-size: Theme.small;
         wrap: word-wrap;
     }
     Segmented {
-        options: ["AniList", "TVmaze"];
+        options: [Tr.t("tracker-anilist"), Tr.t("match-tvmaze")];
         picked: MatchData.provider;
         pick(i) => { MatchData.pick-provider(i); }
     }
     SearchField {
-        placeholder: "Search " + (MatchData.provider == 1 ? "TVmaze" : "AniList");
+        placeholder: MatchData.provider == 1 ? Tr.t("match-search-tvmaze") : Tr.t("match-search-anilist");
         text <=> MatchData.query;
         edited(t) => {
             debounce.running = false;
@@ -151,12 +152,12 @@ export component MatchSheet inherits ShowSheet {
         Field {
             horizontal-stretch: 1;
             text <=> MatchData.link;
-            placeholder: MatchData.provider == 1 ? "Paste a TVmaze or IMDb link" : "Paste an AniList or MyAnimeList link";
+            placeholder: MatchData.provider == 1 ? Tr.t("match-paste-tvmaze") : Tr.t("match-paste-anilist");
             figure: true;
             accepted(t) => { MatchData.look-up(t); }
         }
         Button {
-            text: "Look up";
+            text: Tr.t("phone-match-look-up");
             small: true;
             enabled: MatchData.link != "";
             clicked => { MatchData.look-up(MatchData.link); }
@@ -172,7 +173,7 @@ export component MatchSheet inherits ShowSheet {
             wrap: word-wrap;
         }
         Button {
-            text: "Apply";
+            text: Tr.t("match-apply");
             small: true;
             primary: true;
             clicked => { MatchData.apply-found(); }
@@ -197,7 +198,7 @@ export component MatchSheet inherits ShowSheet {
         height: Theme.touch;
         clicked => { MatchData.auto-match(); }
         Text {
-            text: "Look up every folder AniBeam does not know yet";
+            text: Tr.t("match-look-up-all");
             color: Theme.dim;
             font-size: Theme.small + 0.5px;
             font-family: Theme.strong-face;

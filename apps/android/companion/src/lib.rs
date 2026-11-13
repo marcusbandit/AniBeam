@@ -6,11 +6,25 @@
 
 pub use anibeam_host_api as api;
 
+/// A line from the catalog by message ID, in the language the app speaks now:
+/// `tr!("fmt-ago-now")`, `tr!("fmt-ago-hours", count = n)`. A number argument picks the
+/// plural form. Declared before the modules so every one of them sees it.
+macro_rules! tr {
+    ($id:expr) => {
+        $crate::i18n::tr($id, &[])
+    };
+    ($id:expr, $($name:ident = $value:expr),+ $(,)?) => {
+        $crate::i18n::tr($id, &[$((stringify!($name), $crate::i18n::Arg::from($value))),+])
+    };
+}
+
 pub mod address;
 pub mod anilist;
 pub mod calendar;
 pub mod client;
 pub mod format;
+/// The core's catalog lookup, so the screens' words and dates come from one place.
+pub use anibeam_core::i18n;
 pub mod library;
 pub mod schedule;
 pub mod store;

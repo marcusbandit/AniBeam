@@ -8,13 +8,14 @@
 import { Theme } from "theme.slint";
 import { Nav, Tile } from "data.slint";
 import { Settings } from "more.slint";
+import { Tr } from "tr.slint";
 import { Button, CardStack, Chip, ClampedText, Cubes, EmptyNote, Field, ListGroup, Pane, PageTitle, Poster, SectionHead, Segmented, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
 
 // One source in the show view: its name and what asking it gave.
 export struct SourceChip {
     name: string,
-    // "idle", "searching", "done", "error".
-    state: string,
+    // 0 idle, 1 searching, 2 done, 3 error.
+    state: int,
     // "12 releases", "Searching 3s", "Not answering".
     line: string,
 }
@@ -113,7 +114,7 @@ export global FindData {
     in property <[string]> targets;
     in property <int> target;
     // Whose episodes the grid's first row shows: "On this phone", or the computer's.
-    in property <string> library-label: "On this phone";
+    in property <string> library-label: Tr.t("find-on-this-phone");
     // The subscription that downloads into the open show's folder, and what it has taken;
     // empty when the show is not followed.
     in property <string> rule-name;
@@ -166,7 +167,7 @@ export global FindData {
 component DownloadTo inherits VerticalLayout {
     spacing: Theme.unit * 2;
     Text {
-        text: "Download to";
+        text: Tr.t("find-download-to");
         color: Theme.text;
         font-family: Theme.strong-face;
     }
@@ -293,12 +294,12 @@ component SuggestionItem inherits Rectangle {
 export component Suggestions inherits VerticalLayout {
     spacing: Theme.unit * 3;
     SectionHead {
-        title: "Shows";
-        note: FindData.suggesting ? "Asking AniList..."
+        title: Tr.t("find-shows");
+        note: FindData.suggesting ? Tr.t("find-suggesting")
             : FindData.suggest-error != "" ? FindData.suggest-error
-            : FindData.suggestions.length > 0 ? "Tap one to see who has it. Return searches release names."
-            : FindData.suggest-done ? "No show by that name. Return searches release names instead."
-            : "Shows come up as you type. Return searches release names.";
+            : FindData.suggestions.length > 0 ? Tr.t("find-suggest-tap")
+            : FindData.suggest-done ? Tr.t("find-suggest-none")
+            : Tr.t("find-suggest-hint");
     }
     if FindData.suggestions.length > 0: ListGroup {
         for s[i] in FindData.suggestions: SuggestionItem {
@@ -318,18 +319,18 @@ component SourceItem inherits Rectangle {
     callback clicked();
     height: 17 * Theme.unit;
     background: touch.pressed ? Theme.pressed : root.active ? Theme.raised : transparent;
-    property <color> state-ink: root.data.state == "error" ? Theme.bad : root.data.state == "done" ? Theme.ok : root.data.state == "searching" ? Theme.accent : Theme.faint;
-    if root.data.state != "searching": Rectangle {
+    property <color> state-ink: root.data.state == 3 ? Theme.bad : root.data.state == 2 ? Theme.ok : root.data.state == 1 ? Theme.accent : Theme.faint;
+    if root.data.state != 1: Rectangle {
         x: Theme.pad;
         y: (parent.height - self.height) / 2;
         width: 2.5 * Theme.unit;
         height: self.width;
         border-radius: self.width / 2;
-        background: root.data.state == "idle" ? transparent : root.state-ink;
-        border-width: root.data.state == "idle" ? 1.5px : 0;
+        background: root.data.state == 0 ? transparent : root.state-ink;
+        border-width: root.data.state == 0 ? 1.5px : 0;
         border-color: Theme.faint;
     }
-    if root.data.state == "searching": Image {
+    if root.data.state == 1: Image {
         x: Theme.pad - 1.25 * Theme.unit;
         y: (parent.height - self.height) / 2;
         width: 5 * Theme.unit;
@@ -351,7 +352,7 @@ component SourceItem inherits Rectangle {
         }
         Text {
             text: root.data.line;
-            color: root.data.state == "error" ? Theme.bad : Theme.dim;
+            color: root.data.state == 3 ? Theme.bad : Theme.dim;
             font-size: Theme.small;
             overflow: elide;
         }
@@ -425,7 +426,7 @@ component GridItem inherits Rectangle {
                 VerticalLayout {
                     alignment: center;
                     Chip {
-                        text: root.batch ? root.data.batch : "Episodes";
+                        text: root.batch ? root.data.batch : Tr.t("find-episodes-tag");
                         small: true;
                         selected: root.batch;
                         dimmed: !root.batch;
@@ -456,7 +457,7 @@ component FollowingPane inherits Rectangle {
         padding: Theme.pad;
         spacing: Theme.unit * 3;
         Text {
-            text: FindData.unfollow-ask ? "Stop following " + FindData.rule-name + "?" : "Following";
+            text: FindData.unfollow-ask ? Tr.s("find-stop-following-ask", "name", FindData.rule-name) : Tr.t("find-following");
             color: Theme.text;
             font-size: Theme.large;
             font-family: Theme.display-face;
@@ -464,7 +465,7 @@ component FollowingPane inherits Rectangle {
         }
         Text {
             text: FindData.unfollow-ask
-                ? "New episodes stop downloading. What is in its folder can stay, or go with it: every download there, episodes you got by hand included."
+                ? Tr.t("find-unfollow-explain")
                 : FindData.rule-line;
             color: Theme.dim;
             font-size: Theme.small;
@@ -473,7 +474,7 @@ component FollowingPane inherits Rectangle {
         if !FindData.unfollow-ask: HorizontalLayout {
             alignment: start;
             Button {
-                text: "Stop following";
+                text: Tr.t("find-stop-following");
                 small: true;
                 enabled: !FindData.busy;
                 clicked => { FindData.unfollow-ask = true; }
@@ -482,19 +483,19 @@ component FollowingPane inherits Rectangle {
         if FindData.unfollow-ask: VerticalLayout {
             spacing: Theme.unit * 2;
             Button {
-                text: "Stop, keep the episodes";
+                text: Tr.t("find-stop-keep");
                 primary: true;
                 enabled: !FindData.busy;
                 clicked => { FindData.unfollow(false); }
             }
             Button {
-                text: "Stop and delete its folder's downloads";
+                text: Tr.t("find-stop-delete");
                 danger: true;
                 enabled: !FindData.busy;
                 clicked => { FindData.unfollow(true); }
             }
             Button {
-                text: "Cancel";
+                text: Tr.t("common-cancel");
                 clicked => { FindData.unfollow-ask = false; }
             }
         }
@@ -504,7 +505,7 @@ component FollowingPane inherits Rectangle {
 export component ShowView inherits VerticalLayout {
     spacing: Theme.unit * 4;
     PageTitle {
-        back: "Downloads";
+        back: Tr.t("find-downloads");
         title: "";
         go-back => { FindData.back(); }
     }
@@ -547,7 +548,7 @@ export component ShowView inherits VerticalLayout {
             if FindData.can-plan: HorizontalLayout {
                 alignment: start;
                 Button {
-                    text: "Plan to watch";
+                    text: Tr.t("find-plan-to-watch");
                     icon: @image-url("icons/check-check.svg");
                     has-icon: true;
                     small: true;
@@ -560,8 +561,8 @@ export component ShowView inherits VerticalLayout {
     if FindData.rule-name != "": FollowingPane { }
 
     SectionHead {
-        title: "Where to get it";
-        note: FindData.source < 0 ? "Pick a source to see what it has." : "Nothing downloads until you say so.";
+        title: Tr.t("find-where");
+        note: FindData.source < 0 ? Tr.t("find-where-pick") : Tr.t("find-where-nothing");
     }
     if FindData.sources.length > 0: ListGroup {
         for chip[i] in FindData.sources: SourceItem {
@@ -572,13 +573,13 @@ export component ShowView inherits VerticalLayout {
         }
     }
     if FindData.sources.length == 0: EmptyNote {
-        title: "No search sites yet";
-        body: "Add a repo of search sites, or a feed of your own, in More.";
+        title: Tr.t("find-no-sites-title");
+        body: Tr.t("find-no-sites-body");
     }
     if FindData.sources.length == 0: HorizontalLayout {
         alignment: start;
         Button {
-            text: "Open More";
+            text: Tr.t("find-open-more");
             small: true;
             clicked => {
                 Settings.open(3, "");
@@ -588,8 +589,8 @@ export component ShowView inherits VerticalLayout {
     }
 
     if FindData.rows.length > 0: SectionHead {
-        title: "What it has";
-        note: "Tap a row to take it all, or single episodes.";
+        title: Tr.t("find-has");
+        note: Tr.t("find-has-note");
     }
     if FindData.rows.length > 0 && FindData.library.length > 0: VerticalLayout {
         spacing: Theme.unit * 2;
@@ -645,12 +646,12 @@ export component ShowView inherits VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 1;
                     Text {
-                        text: "Follow new episodes";
+                        text: Tr.t("find-follow-new");
                         color: Theme.text;
                         font-family: Theme.strong-face;
                     }
                     Text {
-                        text: "They download by themselves as they air.";
+                        text: Tr.t("find-follow-new-note");
                         color: Theme.dim;
                         font-size: Theme.small;
                         wrap: word-wrap;
@@ -670,12 +671,12 @@ export component ShowView inherits VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 1;
                     Text {
-                        text: "Replace what you have";
+                        text: Tr.t("find-replace");
                         color: Theme.text;
                         font-family: Theme.strong-face;
                     }
                     Text {
-                        text: "Downloads the picked episodes again over the ones on this phone.";
+                        text: Tr.t("find-replace-note");
                         color: Theme.dim;
                         font-size: Theme.small;
                         wrap: word-wrap;
@@ -698,7 +699,7 @@ export component ShowView inherits VerticalLayout {
                 clicked => { FindData.go(); }
             }
             Button {
-                text: "Every release from this source";
+                text: Tr.t("find-every-release");
                 icon: @image-url("icons/search.svg");
                 has-icon: true;
                 small: true;
@@ -707,8 +708,8 @@ export component ShowView inherits VerticalLayout {
         }
     }
     if FindData.rows.length == 0 && FindData.source < 0 && FindData.sources.length > 0: EmptyNote {
-        title: "Pick a source";
-        body: "Its releases show up here as a grid, an episode to a cube.";
+        title: Tr.t("find-pick-source-title");
+        body: Tr.t("find-pick-source-body");
     }
 }
 
@@ -731,12 +732,12 @@ component ReleaseItem inherits Rectangle {
             spacing: Theme.unit * 1.5;
             alignment: start;
             if root.data.best: Chip {
-                text: "Best fit";
+                text: Tr.t("find-best-fit");
                 small: true;
                 selected: true;
             }
             if root.data.on-disk: Chip {
-                text: "On disk";
+                text: Tr.t("find-on-disk");
                 small: true;
                 dot: Theme.ok;
             }
@@ -772,7 +773,7 @@ component ReleaseItem inherits Rectangle {
             VerticalLayout {
                 alignment: end;
                 Button {
-                    text: "Get";
+                    text: Tr.t("find-get");
                     icon: @image-url("icons/download.svg");
                     has-icon: true;
                     small: true;
@@ -787,23 +788,23 @@ component ReleaseItem inherits Rectangle {
 export component ReleaseList inherits VerticalLayout {
     spacing: Theme.unit * 3;
     PageTitle {
-        back: "Downloads";
+        back: Tr.t("find-downloads");
         title: FindData.text;
-        note: FindData.releases.length == 1 ? "1 release" : FindData.releases.length + " releases";
+        note: Tr.n("find-releases", "count", FindData.releases.length);
         go-back => { FindData.back(); }
     }
     if FindData.best-fit || FindData.can-undo: HorizontalLayout {
         spacing: Theme.gap;
         alignment: start;
         if FindData.best-fit: Button {
-            text: "Best fit";
+            text: Tr.t("find-best-fit");
             icon: @image-url("icons/sparkles.svg");
             has-icon: true;
             small: true;
             clicked => { FindData.apply-best-fit(); }
         }
         if FindData.can-undo: Button {
-            text: "Back a step";
+            text: Tr.t("find-back-step");
             icon: @image-url("icons/arrow-left.svg");
             has-icon: true;
             small: true;
@@ -833,7 +834,7 @@ export component ReleaseList inherits VerticalLayout {
         }
     }
     Field {
-        placeholder: "Narrow, or -word to leave out";
+        placeholder: Tr.t("find-narrow-placeholder");
         text <=> FindData.narrow;
         accepted(t) => { FindData.apply-narrow(t); }
     }
@@ -847,12 +848,12 @@ export component ReleaseList inherits VerticalLayout {
         spacing: Theme.gap;
         Button {
             horizontal-stretch: 1;
-            text: "Get all " + FindData.releases.length;
+            text: Tr.n("find-get-all", "count", FindData.releases.length);
             clicked => { FindData.download-all(); }
         }
         Button {
             horizontal-stretch: 1;
-            text: "Subscribe";
+            text: Tr.t("find-subscribe");
             icon: @image-url("icons/rss.svg");
             has-icon: true;
             primary: true;
@@ -866,7 +867,7 @@ export component Lenses inherits VerticalLayout {
     in property <length> fit-width: self.width;
     spacing: Theme.unit * 3;
     SectionHead {
-        title: "What to get";
+        title: Tr.t("find-what-to-get");
         note: FindData.lens-line;
     }
     Rectangle {

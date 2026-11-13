@@ -6,13 +6,14 @@ import { AppData, Nav } from "data.slint";
 import { Button } from "widgets.slint";
 import { FindData } from "find.slint";
 import { ShowData, ShowSheet } from "show.slint";
+import { Tr } from "tr.slint";
 
 export component EntrySheet inherits ShowSheet {
     title: ShowData.entry.title;
-    line: ShowData.entry.line + (ShowData.entry.line != "" && ShowData.entry.status != "" ? ", " : "") + ShowData.entry.status;
+    line: ShowData.entry.line != "" && ShowData.entry.status != "" ? Tr.s2("show-entry-line", "line", ShowData.entry.line, "status", ShowData.entry.status) : ShowData.entry.line + ShowData.entry.status;
     dismissed => { ShowData.close(); }
     Button {
-        text: "Get episodes";
+        text: Tr.t("show-entry-get");
         icon: @image-url("icons/download.svg");
         has-icon: true;
         primary: true;
@@ -26,7 +27,7 @@ export component EntrySheet inherits ShowSheet {
         }
     }
     Button {
-        text: "Open on AniList";
+        text: Tr.t("show-entry-open-anilist");
         icon: @image-url("icons/globe.svg");
         has-icon: true;
         clicked => {
@@ -35,7 +36,7 @@ export component EntrySheet inherits ShowSheet {
         }
     }
     Button {
-        text: "Cancel";
+        text: Tr.t("common-cancel");
         clicked => { ShowData.close(); }
     }
 }

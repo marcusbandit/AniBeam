@@ -8,7 +8,15 @@ use chrono::{Datelike, Utc};
 /// The oldest year the picker lists.
 pub const OLDEST: i32 = 1940;
 
-const NAMES: [&str; 4] = ["Winter", "Spring", "Summer", "Fall"];
+/// The four quarters' message IDs, Winter first.
+const NAMES: [&str; 4] = [
+    "season-winter",
+    "season-spring",
+    "season-summer",
+    "season-fall",
+];
+/// What the core and AniList call them, in the order of `NAMES`.
+const CORE_NAMES: [&str; 4] = ["Winter", "Spring", "Summer", "Fall"];
 const ORDER: [SeasonName; 4] = [
     SeasonName::Winter,
     SeasonName::Spring,
@@ -25,9 +33,23 @@ pub fn now() -> Moment {
     (d.year(), (d.month0() / 3) as usize)
 }
 
-/// "Spring 2027".
+/// "Spring 2027", in the app's language.
 pub fn named(quarter: usize, year: i32) -> String {
-    format!("{} {year}", NAMES[quarter.min(3)])
+    tr!(
+        "season-named",
+        season = tr!(NAMES[quarter.min(3)]),
+        year = year.to_string()
+    )
+}
+
+/// A season label the core wrote ("Fall 2012") in the app's language. Anything that is not
+/// a season and a year stays as it came.
+pub fn localized(label: &str) -> String {
+    let parsed = label.split_once(' ').and_then(|(word, year)| {
+        let quarter = CORE_NAMES.iter().position(|n| *n == word)?;
+        Some(named(quarter, year.parse().ok()?))
+    });
+    parsed.unwrap_or_else(|| label.to_string())
 }
 
 /// The season after the one `at` is in, by AniList's quarters.
@@ -71,6 +93,17 @@ pub fn label(showing: SeasonPick, at: Moment) -> String {
     }
 }
 
+/// The season showing as a year and quarter, for the picker to mark; none for this season.
+pub fn moment_of(showing: SeasonPick, at: Moment) -> Option<Moment> {
+    match showing {
+        SeasonPick::Now => None,
+        SeasonPick::Next => Some(next(at)),
+        SeasonPick::Season { name, year } => {
+            Some((year, ORDER.iter().position(|n| *n == name).unwrap_or(0)))
+        }
+    }
+}
+
 /// The year the picker opens on: the showing season's, else this one's.
 pub fn year_of(showing: SeasonPick, at: Moment) -> i32 {
     match showing {
@@ -108,6 +141,12 @@ mod tests {
                 year: 2019
             }
         );
+    }
+
+    #[test]
+    fn a_core_label_is_a_season_and_a_year() {
+        assert_eq!(localized("Fall 2012"), "Fall 2012");
+        assert_eq!(localized("Autumn"), "Autumn");
     }
 
     #[test]

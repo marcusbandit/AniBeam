@@ -19,7 +19,14 @@ use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel, Weak};
 use crate::prefs;
 use crate::{AppWindow, FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion, Tile};
 
-const LENSES: [&str; 5] = ["Your list", "Gaps", "Airing", "Following", "Downloaded"];
+/// The five lenses, by message ID.
+const LENSES: [&str; 5] = [
+    "find-lens-list",
+    "find-lens-gaps",
+    "find-lens-airing",
+    "find-lens-following",
+    "find-lens-downloaded",
+];
 
 /// A show a lens offers, enough to open the show view.
 #[derive(Clone, Debug, Default)]
@@ -36,6 +43,9 @@ struct Offer {
     ledger: String,
     /// The tile's tone for the ledger: 0 quiet, 1 accent, 2 warning, 3 good.
     ledger_tone: i32,
+    /// What AniList says of a show found by typing, apart from its episode count: the
+    /// format and the year, as the suggestion row words them.
+    facts: Vec<String>,
 }
 
 /// What one source answered for the open show.
@@ -44,6 +54,55 @@ enum Answer {
     Idle,
     Searching { at: usize },
     Done(Box<ReleaseSearch>),
+    Failed(Why),
+}
+
+/// Why a source gave nothing, kept as data so the line is worded in the language of the
+/// moment, not the one it happened in.
+#[derive(Clone, Debug)]
+enum Why {
+    /// The source cannot be reached: the host, empty when it is not known.
+    Blocked(String),
+    /// What the core said.
+    Text(String),
+}
+
+impl Why {
+    fn of(e: &CoreError) -> Why {
+        let text = e.to_string();
+        let lower = text.to_lowercase();
+        if lower.contains("timed out")
+            || lower.contains("error sending request")
+            || lower.contains("unreachable")
+            || lower.contains("connect")
+        {
+            return Why::Blocked(match e {
+                CoreError::Service { service, .. } => service.clone(),
+                _ => String::new(),
+            });
+        }
+        Why::Text(text)
+    }
+
+    fn say(&self) -> String {
+        match self {
+            Why::Blocked(host) => tr!(
+                "find-unreachable",
+                host = if host.is_empty() {
+                    tr!("find-the-source")
+                } else {
+                    host.clone()
+                }
+            ),
+            Why::Text(text) => text.clone(),
+        }
+    }
+}
+
+/// Why the person's list is empty when it is not just empty.
+#[derive(Clone, Debug)]
+enum ListNote {
+    SignedOut,
     Failed(String),
 }
 
@@ -115,6 +174,8 @@ struct Find {
     suggestions: Vec<Offer>,
     /// The typed text the AniList answer is for; an answer for older text is dropped.
     suggest_for: String,
+    /// Why AniList could not be asked for `suggest_for`, when it could not.
+    suggest_why: Option<Why>,
     /// The last answer and the text it was for, so going back to the same words lists
     /// them again without asking AniList twice.
     answered_for: String,
@@ -124,7 +185,7 @@ struct Find {
     /// AniList is being asked for the list; it is read again as the core reports.
     list_refreshing: bool,
     /// Why the list is empty when it is not just empty: no tracker signed in.
-    list_note: Option<String>,
+    list_note: Option<ListNote>,
     /// Shows put on Planning from here that the list has not caught up with yet.
     planned: Vec<(u64, std::time::Instant)>,
     /// Shows Plan to watch found already on a list, with whatever status they have there.
@@ -168,22 +229,30 @@ fn with(f: impl FnOnce(&mut Find)) {
 /// most likely is: the network blocks it. AniBeam already looks names up privately, so
 /// what is left is a block on the address, or the site being down.
 fn words(e: &CoreError) -> String {
-    let text = e.to_string();
-    let lower = text.to_lowercase();
-    if lower.contains("timed out")
-        || lower.contains("error sending request")
-        || lower.contains("unreachable")
-        || lower.contains("connect")
-    {
-        let host = match e {
-            CoreError::Service { service, .. } => service.clone(),
-            _ => "The source".to_string(),
-        };
-        return format!(
-            "{host} could not be reached. Some networks and countries block release sites; AniBeam already gets past blocks on names, so this one blocks the site itself, or the site is down. A VPN gets past it, or try another source."
-        );
-    }
-    text
+    Why::of(e).say()
+}
+
+/// A row of items as one line ("a, b, c"), joined through the catalog so each language
+/// picks its own comma.
+fn comma_list(parts: Vec<String>) -> String {
+    parts
+        .into_iter()
+        .reduce(|a, b| tr!("common-join-comma", a = a, b = b))
+        .unwrap_or_default()
+}
+
+/// Names as one phrase ("A and B").
+fn and_list<S: AsRef<str>>(names: &[S]) -> String {
+    names
+        .iter()
+        .map(|n| n.as_ref().to_string())
+        .reduce(|a, b| tr!("common-join-and", a = a, b = b))
+        .unwrap_or_default()
+}
+
+/// Two sentences side by side.
+fn sentences(a: &str, b: &str) -> String {
+    tr!("find-join-sentences", a = a, b = b)
 }
 
 /// Runs `call` on a thread and hands its answer to `then` on the UI thread.
@@ -202,6 +271,18 @@ fn ask(call: Call, then: impl FnOnce(&mut Find, Result<Reply, CoreError>) + Send
 /// The app's tick, with whether the core reported a change since the last one.
 pub fn tick(changed: bool) {
     with(|f| f.list_tick(changed));
+}
+
+/// The language changed: every line this page pushed as a string is pushed again.
+pub fn relocalize() {
+    with(|f| {
+        f.show_lens();
+        f.draw_show();
+        f.draw_suggestions();
+        f.draw_suggest_error();
+        f.draw_list();
+        f.draw_targets();
+    });
 }
 
 fn model<T: Clone + 'static>(rows: Vec<T>) -> ModelRc<T> {
@@ -226,6 +307,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             posters: BTreeMap::new(),
             suggestions: Vec::new(),
             suggest_for: String::new(),
+            suggest_why: None,
             answered_for: String::new(),
             answered: Vec::new(),
             entries: Vec::new(),
@@ -241,7 +323,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     });
     let d = window.global::<FindData>();
     d.set_lenses(model(
-        LENSES.iter().map(|l| SharedString::from(*l)).collect(),
+        LENSES.iter().map(|l| SharedString::from(tr!(*l))).collect(),
     ));
     d.on_open(|text| with(|f| f.open(text.to_string())));
     d.on_close(|| with(Find::close));
@@ -261,7 +343,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
                     f.list = None;
                     f.set_view(0);
                     f.show_lens();
-                    f.line("", "That show is no longer in the library on this phone.");
+                    f.line("", &tr!("find-show-gone"));
                 }
             }
         })
@@ -468,6 +550,7 @@ impl Find {
             poster: card.poster.clone(),
             ledger: String::new(),
             ledger_tone: 0,
+            facts: Vec::new(),
         }
     }
 
@@ -503,6 +586,7 @@ impl Find {
             poster: None,
             ledger: String::new(),
             ledger_tone: 0,
+            facts: Vec::new(),
         }
     }
 
@@ -537,7 +621,7 @@ impl Find {
                         ledger: if at > now {
                             format::countdown(at - now)
                         } else {
-                            "aired".into()
+                            tr!("find-aired")
                         },
                         ..Self::offer_of(c)
                     })
@@ -551,12 +635,10 @@ impl Find {
                     Offer {
                         // A rule on a source that answers JSON reads no feed (#536)
                         ledger: if !r.followable {
-                            "no new episodes: its source has no feed".into()
-                        } else if r.torrent_count == 1 {
-                            // Short, for a tile; the show view says the rest.
-                            "1 download".into()
+                            tr!("find-ledger-no-feed")
                         } else {
-                            format!("{} downloads", r.torrent_count)
+                            // Short, for a tile; the show view says the rest.
+                            tr!("find-ledger-downloads", count = r.torrent_count)
                         },
                         ledger_tone: if r.followable { 0 } else { 2 },
                         ..self.offer_named(&r.name, &folder)
@@ -576,7 +658,7 @@ impl Find {
                     .into_iter()
                     .map(|(folder, name, progress)| Offer {
                         ledger: if progress >= 1.0 {
-                            "downloaded".into()
+                            tr!("find-ledger-downloaded")
                         } else {
                             format!("{}%", (progress * 100.0) as i64)
                         },
@@ -586,25 +668,24 @@ impl Find {
             }
         };
         let lines = [
-            "Watching and Planning on your list. Open one to get its episodes.",
-            "Aired episodes that are not on this phone. Open a show to see who has them.",
-            "New episodes still to come, the soonest first.",
-            "The subscriptions: new episodes download by themselves. Open one to stop it.",
-            "What this phone downloaded, a show at a time.",
+            "find-lens-list-line",
+            "find-lens-gaps-line",
+            "find-lens-airing-line",
+            "find-lens-following-line",
+            "find-lens-downloaded-line",
         ];
-        let list_empty = self.list_note.clone().unwrap_or_else(|| {
-            if self.list_refreshing {
-                "Reading your list...".into()
-            } else {
-                "Nothing on your list yet. Search a show above and add it.".into()
-            }
-        });
+        let list_empty = match &self.list_note {
+            Some(ListNote::SignedOut) => tr!("find-list-signed-out"),
+            Some(ListNote::Failed(e)) => tr!("find-list-failed", error = e),
+            None if self.list_refreshing => tr!("find-list-reading"),
+            None => tr!("find-list-empty"),
+        };
         let empty = [
-            list_empty.as_str(),
-            "No gaps: every show you have started has its aired episodes here.",
-            "Nothing on this phone is airing.",
-            "No subscriptions yet. Open a show and turn on Follow.",
-            "Nothing downloaded yet.",
+            list_empty,
+            tr!("find-lens-gaps-empty"),
+            tr!("find-lens-airing-empty"),
+            tr!("find-lens-following-empty"),
+            tr!("find-lens-downloaded-empty"),
         ];
         let counts = [
             self.entries.len(),
@@ -650,16 +731,16 @@ impl Find {
             .enumerate()
             .map(|(i, l)| {
                 if i == 4 {
-                    SharedString::from(*l)
+                    SharedString::from(tr!(*l))
                 } else {
-                    format!("{l} {}", counts[i]).into()
+                    tr!("find-lens-with-count", lens = tr!(*l), count = counts[i]).into()
                 }
             })
             .collect();
         let line = if offers.is_empty() {
-            empty[lens]
+            empty[lens].clone()
         } else {
-            lines[lens]
+            tr!(lines[lens])
         };
         self.with_data(|d| {
             d.set_lens(lens as i32);
@@ -678,11 +759,11 @@ impl Find {
             .map(|e| {
                 let w = &e.show;
                 let ledger = if e.planning {
-                    "Planning".to_string()
+                    tr!("find-ledger-planning")
                 } else {
                     match w.total {
-                        Some(t) => format!("Watching, {} of {t}", w.progress),
-                        None => format!("Watching, {} seen", w.progress),
+                        Some(t) => tr!("find-ledger-watching-of", progress = w.progress, total = t),
+                        None => tr!("find-ledger-watching-seen", progress = w.progress),
                     }
                 };
                 let card = w
@@ -742,9 +823,7 @@ impl Find {
         let mut entries = Vec::new();
         self.list_note = None;
         if !signed_in {
-            self.list_note = Some(
-                "Sign in to AniList under More, Accounts, and your list shows up here.".into(),
-            );
+            self.list_note = Some(ListNote::SignedOut);
             self.list_refreshing = false;
             self.entries.clear();
             self.show_lens();
@@ -759,7 +838,7 @@ impl Find {
                         .map(|show| Entry { planning, show }),
                 ),
                 Ok(_) => {}
-                Err(e) => self.list_note = Some(format!("Your list could not be read: {e}")),
+                Err(e) => self.list_note = Some(ListNote::Failed(e.to_string())),
             }
         }
         // A show put on Planning here stays until the list has it, or a minute goes by:
@@ -790,12 +869,14 @@ impl Find {
         });
         let id = offer.anilist;
         match found {
-            Some(e) if e.planning => "On your list: Planning".into(),
-            Some(_) => "On your list: Watching".into(),
+            Some(e) if e.planning => tr!("find-list-status-planning"),
+            Some(_) => tr!("find-list-status-watching"),
             None if id.is_some_and(|id| self.planned.iter().any(|(p, _)| *p == id)) => {
-                "On your list: Planning".into()
+                tr!("find-list-status-planning")
             }
-            None if id.is_some_and(|id| self.listed.contains(&id)) => "Already on your list".into(),
+            None if id.is_some_and(|id| self.listed.contains(&id)) => {
+                tr!("find-list-status-already")
+            }
             None => String::new(),
         }
     }
@@ -814,18 +895,15 @@ impl Find {
                 // A job: Planning on every tracker that lacked it.
                 Ok(Reply::Started { .. }) => {
                     f.planned.push((id, std::time::Instant::now()));
-                    f.line(&format!("{title} is going on Planning."), "");
+                    f.line(&tr!("find-going-planning", title = &title), "");
                 }
                 // Every tracker lists it already, with its own status; nothing moves.
                 Ok(_) => {
                     f.listed.push(id);
-                    f.line(&format!("{title} is already on your list."), "");
+                    f.line(&tr!("find-already-listed", title = &title), "");
                 }
-                Err(CoreError::NotConnected { .. }) => f.line(
-                    "",
-                    "Adding to your list needs AniList or MAL. Sign in under More, Accounts.",
-                ),
-                Err(e) => f.line("", &format!("Not added to your list: {e}")),
+                Err(CoreError::NotConnected { .. }) => f.line("", &tr!("find-plan-needs-tracker")),
+                Err(e) => f.line("", &tr!("find-plan-failed", error = e.to_string())),
             }
             f.show_lens();
             f.draw_show();
@@ -875,6 +953,7 @@ impl Find {
         if text == self.answered_for {
             self.suggestions = self.answered.clone();
             self.suggest_for = text;
+            self.suggest_why = None;
             self.with_data(|d| {
                 d.set_suggesting(false);
                 d.set_suggest_done(true);
@@ -898,6 +977,7 @@ impl Find {
         let mut offers: Vec<Offer> = shown.into_iter().map(library_offer).collect();
         self.suggestions = offers.clone();
         self.suggest_for = text.clone();
+        self.suggest_why = None;
         self.with_data(|d| {
             d.set_suggesting(true);
             d.set_suggest_done(false);
@@ -951,15 +1031,12 @@ impl Find {
                     }
                     Ok(_) => f.with_data(|d| d.set_suggesting(false)),
                     Err(e) => {
-                        let why = SharedString::from(format!(
-                            "AniList could not be asked: {}",
-                            words(&e)
-                        ));
+                        f.suggest_why = Some(Why::of(&e));
                         f.with_data(|d| {
                             d.set_suggesting(false);
                             d.set_suggest_done(true);
-                            d.set_suggest_error(why);
                         });
+                        f.draw_suggest_error();
                     }
                 }
             },
@@ -969,12 +1046,42 @@ impl Find {
     fn clear_suggestions(&mut self) {
         self.suggestions.clear();
         self.suggest_for.clear();
+        self.suggest_why = None;
         self.with_data(|d| {
             d.set_suggesting(false);
             d.set_suggest_done(false);
             d.set_suggest_error(SharedString::new());
         });
         self.draw_suggestions();
+    }
+
+    /// Why AniList could not be asked, as the Shows header says it.
+    fn draw_suggest_error(&self) {
+        let line = self
+            .suggest_why
+            .as_ref()
+            .map(|why| tr!("find-suggest-failed", error = why.say()))
+            .unwrap_or_default();
+        self.with_data(|d| d.set_suggest_error(line.into()));
+    }
+
+    /// A suggestion row's line: what the phone has of a library show, or what AniList
+    /// says of one found by typing.
+    fn suggestion_line(&self, o: &Offer) -> String {
+        if o.in_library {
+            return match o
+                .series
+                .and_then(|id| self.cards.iter().find(|c| c.id == id))
+            {
+                Some(c) => library_line(c),
+                None => o.ledger.clone(),
+            };
+        }
+        let mut parts = o.facts.clone();
+        if o.show.total > 0 {
+            parts.push(tr!("common-episodes", count = o.show.total));
+        }
+        comma_list(parts)
     }
 
     fn draw_suggestions(&self) {
@@ -989,7 +1096,7 @@ impl Find {
                 };
                 Suggestion {
                     title: o.show.title.clone().into(),
-                    line: o.ledger.clone().into(),
+                    line: self.suggestion_line(o).into(),
                     poster,
                     has_poster,
                     initials: format::initials(&o.show.title).into(),
@@ -1096,7 +1203,7 @@ impl Find {
     /// Download to: this phone, and the computer once it answered or while it is the pick.
     fn draw_targets(&self) {
         let targets: Vec<SharedString> = if self.desk.is_some() || self.to_desk {
-            vec!["This phone".into(), self.desk_name().into()]
+            vec![tr!("find-this-phone").into(), self.desk_name().into()]
         } else {
             Vec::new()
         };
@@ -1182,7 +1289,7 @@ impl Find {
                         state.sources[i].1 = Answer::Done(Box::new(search));
                     }
                     Ok(_) => {}
-                    Err(e) => state.sources[i].1 = Answer::Failed(words(&e)),
+                    Err(e) => state.sources[i].1 = Answer::Failed(Why::of(&e)),
                 }
                 if f.show.as_ref().and_then(|s| s.active) == Some(i) {
                     // A source that failed, or had nothing of this show, hands over to the next
@@ -1241,9 +1348,9 @@ impl Find {
         }
         let name = self.desk_name();
         Some(if self.desk_asking {
-            format!("Asking {name}...")
+            tr!("find-desk-asking", name = name)
         } else {
-            format!("{name} does not answer. Pick This phone, or try again when it is on.")
+            tr!("find-desk-silent", name = name)
         })
     }
 
@@ -1254,7 +1361,7 @@ impl Find {
             .map(|d| d.name.clone())
             .or_else(|| Some(prefs::load(&self.data_dir).desk_name))
             .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| "Your computer".into())
+            .unwrap_or_else(|| tr!("find-your-computer"))
     }
 
     /// The computer's own series and options for the open show.
@@ -1370,32 +1477,26 @@ impl Find {
             .sources
             .iter()
             .map(|(name, answer)| {
+                // 0 idle, 1 searching, 2 done, 3 error, as the chip's state reads.
                 let (st, line) = match answer {
-                    Answer::Idle => ("idle", "Tap to ask".to_string()),
+                    Answer::Idle => (0, tr!("find-source-idle")),
                     Answer::Searching { at } => (
-                        "searching",
+                        1,
                         if *at > 0 {
-                            format!(
-                                "Trying {}",
-                                show.queries.get(*at).cloned().unwrap_or_default()
+                            tr!(
+                                "find-source-trying",
+                                name = show.queries.get(*at).cloned().unwrap_or_default()
                             )
                         } else {
-                            "Searching".into()
+                            tr!("find-source-searching")
                         },
                     ),
-                    Answer::Done(s) => (
-                        "done",
-                        if s.items.len() == 1 {
-                            "1 release".into()
-                        } else {
-                            format!("{} releases", s.items.len())
-                        },
-                    ),
-                    Answer::Failed(_) => ("error", "Not answering".into()),
+                    Answer::Done(s) => (2, tr!("find-releases", count = s.items.len())),
+                    Answer::Failed(_) => (3, tr!("find-source-silent")),
                 };
                 SourceChip {
                     name: name.clone().into(),
-                    state: st.into(),
+                    state: st,
                     line: line.into(),
                 }
             })
@@ -1411,14 +1512,10 @@ impl Find {
         };
         let mut facts_line = Vec::new();
         if show.total > 0 {
-            facts_line.push(if show.total == 1 {
-                "1 episode".to_string()
-            } else {
-                format!("{} episodes", show.total)
-            });
+            facts_line.push(tr!("common-episodes", count = show.total));
         }
         if show.airing {
-            facts_line.push("Airing".into());
+            facts_line.push(tr!("find-airing"));
         }
         let on_phone = match &show.here {
             Some(here) => here.len(),
@@ -1428,11 +1525,7 @@ impl Find {
                 .filter(|c| matches!(c, 'd' | 'l' | 'w'))
                 .count(),
         };
-        facts_line.push(if on_phone == 1 {
-            "1 on this phone".into()
-        } else {
-            format!("{on_phone} on this phone")
-        });
+        facts_line.push(tr!("find-on-phone-count", count = on_phone));
 
         let mut library_codes = Vec::new();
         let mut grid_rows = Vec::new();
@@ -1440,14 +1533,14 @@ impl Find {
         let (mut plan_line, mut plan_detail, mut go_text, mut can_go, mut can_follow, mut has_had) = (
             String::new(),
             String::new(),
-            "Get".to_string(),
+            tr!("find-get"),
             false,
             false,
             false,
         );
         let mut error = String::new();
         if let Some(Answer::Failed(e)) = state.active.map(|i| &state.sources[i].1) {
-            error = e.clone();
+            error = e.say();
         }
         if let Some((items, facts, dropped, query, provider)) = self.current() {
             let (aimed, flight) = self.aimed();
@@ -1456,11 +1549,7 @@ impl Find {
             let rows = grid::rows(&items, &facts, total, &provider);
             library_codes = library.iter().map(|c| Self::library_code(*c)).collect();
             if dropped > 0 {
-                dropped_line = if dropped == 1 {
-                    "1 release that does not name this show is left out.".to_string()
-                } else {
-                    format!("{dropped} releases that do not name this show are left out.")
-                };
+                dropped_line = tr!("find-dropped", count = dropped);
             }
             grid_rows = rows
                 .iter()
@@ -1469,19 +1558,15 @@ impl Find {
                     // its name.
                     let label = format!("{} {}", row.group, row.resolution);
                     let batch = if row.batch {
-                        format!("Batch {}", row.label).trim().to_string()
+                        tr!("find-batch", label = &row.label).trim().to_string()
                     } else {
                         String::new()
                     };
-                    let meta = format!(
-                        "{}  {} seeds  {}",
-                        if row.count == 1 {
-                            "1 episode".to_string()
-                        } else {
-                            format!("{} episodes", row.count)
-                        },
-                        row.seeds,
-                        format::bytes(row.size)
+                    let meta = tr!(
+                        "find-row-meta",
+                        count = row.count,
+                        seeds = row.seeds,
+                        size = format::bytes(row.size)
                     );
                     let cubes = grid::codes_of(row, &state.picks, &library, total)
                         .into_iter()
@@ -1520,35 +1605,31 @@ impl Find {
             let n = plan.episodes.len();
             can_go = n > 0 || following;
             go_text = match (n, following) {
-                (0, true) => "Subscribe".into(),
-                (0, false) => "Pick episodes to get".into(),
-                (n, f) => format!(
-                    "Get {}{}{}",
-                    if n == 1 {
-                        "1 episode".to_string()
-                    } else {
-                        format!("{n} episodes")
-                    },
-                    if state.replace && has_had {
-                        " and replace"
-                    } else {
-                        ""
-                    },
-                    if f { " and subscribe" } else { "" }
+                (0, true) => tr!("find-subscribe"),
+                (0, false) => tr!("find-go-pick"),
+                (n, f) => tr!(
+                    "find-go",
+                    count = n,
+                    mode = match (state.replace && has_had, f) {
+                        (true, true) => "both",
+                        (true, false) => "replace",
+                        (false, true) => "subscribe",
+                        (false, false) => "plain",
+                    }
                 ),
             };
             plan_line = if n == 0 {
                 if rows.is_empty() {
-                    "This source has no releases of this show.".into()
+                    tr!("find-plan-no-releases")
                 } else {
-                    "Nothing picked: tap a row or its cubes.".into()
+                    tr!("find-plan-nothing-picked")
                 }
             } else {
-                format!(
-                    "{} from {}, {}",
-                    grid::episodes_phrase(&plan.episodes),
-                    plan.groups.join(" and "),
-                    format::bytes(plan.bytes)
+                tr!(
+                    "find-plan-line",
+                    episodes = grid::episodes_phrase(&plan.episodes),
+                    groups = and_list(&plan.groups),
+                    size = format::bytes(plan.bytes)
                 )
             };
             let skipped = state
@@ -1558,26 +1639,14 @@ impl Find {
                 .filter(|n| grid::have(&library, **n))
                 .count();
             if skipped > 0 && !state.replace {
-                plan_detail = format!(
-                    "{} you already have {} left out. Turn on Replace to get {} again.",
-                    if skipped == 1 {
-                        "1 episode"
-                    } else {
-                        "Episodes"
-                    },
-                    if skipped == 1 { "is" } else { "are" },
-                    if skipped == 1 { "it" } else { "them" }
-                );
+                plan_detail = tr!("find-plan-skipped", count = skipped);
             }
             if following {
-                let more = format!(
-                    "New episodes from {} will download by themselves.",
-                    plan.follow_query
-                );
+                let more = tr!("find-plan-follow-note", query = &plan.follow_query);
                 plan_detail = if plan_detail.is_empty() {
                     more
                 } else {
-                    format!("{plan_detail} {more}")
+                    sentences(&plan_detail, &more)
                 };
             }
         }
@@ -1588,17 +1657,17 @@ impl Find {
         } else if let Some(name) = &desk
             && can_go
         {
-            let there = format!("They download on {name}, into its library.");
+            let there = tr!("find-plan-on-desk", name = name);
             plan_detail = if plan_detail.is_empty() {
                 there
             } else {
-                format!("{plan_detail} {there}")
+                sentences(&plan_detail, &there)
             };
         }
         let library_label = if self.to_desk {
-            format!("On {}", self.desk_name())
+            tr!("find-on-computer", name = self.desk_name())
         } else {
-            "On this phone".to_string()
+            tr!("find-on-this-phone")
         };
         let list_status = self.list_status(&state.offer);
         let can_plan = state.offer.anilist.is_some() && list_status.is_empty();
@@ -1675,7 +1744,7 @@ impl Find {
             self.line("", &why);
             return;
         }
-        let what = count_word(plan.episodes.len(), "episode", "episodes");
+        let what = tr!("common-episodes", count = plan.episodes.len());
         let name = Some(plan.name.clone());
         let download = !plan.items.is_empty();
         let calls = match self.on_desk().cloned() {
@@ -1747,7 +1816,7 @@ impl Find {
         self.probe_desk(false);
         self.draw_targets();
         self.with_data(|d| d.set_busy(true));
-        self.line(&format!("Searching for {text}..."), "");
+        self.line(&tr!("find-searching-for", text = &text), "");
         ask(
             Call::PhoneSearch {
                 query: text,
@@ -1772,19 +1841,18 @@ impl Find {
     }
 
     fn search_line(s: &ReleaseSearch) -> String {
-        let mut line = match s.items.len() {
-            0 => format!("Nothing on {} for that.", s.endpoint),
-            1 => format!("1 release on {}", s.endpoint),
-            n => format!("{n} releases on {}", s.endpoint),
-        };
-        if s.fell_back {
-            line.push_str(", after the first source had nothing");
-        }
-        if let Some(token) = &s.auto_resolution {
-            line.push_str(&format!(", narrowed to {token}"));
-        }
-        line.push('.');
-        line
+        tr!(
+            "find-search-line",
+            count = s.items.len(),
+            source = &s.endpoint,
+            fell = i32::from(s.fell_back),
+            narrowed = i32::from(s.auto_resolution.is_some()),
+            token = s
+                .auto_resolution
+                .as_ref()
+                .map(|t| t.to_string())
+                .unwrap_or_default()
+        )
     }
 
     fn refine(&mut self, op: RefineOp) {
@@ -1804,11 +1872,11 @@ impl Find {
                 match answer {
                     Ok(Reply::PhoneRefined { refinement }) if refinement.applied => {
                         f.history.push(list);
-                        let line = format!(
-                            "{} releases, {} {}.",
-                            refinement.items.len(),
-                            if refinement.delta < 0 { "down" } else { "up" },
-                            refinement.delta.abs()
+                        let line = tr!(
+                            "find-refined",
+                            count = refinement.items.len(),
+                            dir = if refinement.delta < 0 { "down" } else { "up" },
+                            delta = refinement.delta.abs()
                         );
                         f.list = Some(ListState::from(refinement));
                         f.with_data(|d| d.set_narrow("".into()));
@@ -1817,12 +1885,12 @@ impl Find {
                     }
                     Ok(Reply::PhoneRefined { refinement }) => {
                         let why = match refinement.reason.as_deref() {
-                            Some("zero_results") => "That leaves nothing.",
-                            Some("no_match") => "No release has that.",
-                            Some("empty_term") => "Type something first.",
-                            _ => "That changes nothing.",
+                            Some("zero_results") => tr!("find-refine-nothing-left"),
+                            Some("no_match") => tr!("find-refine-no-match"),
+                            Some("empty_term") => tr!("find-refine-empty"),
+                            _ => tr!("find-refine-no-change"),
                         };
-                        f.line("", why);
+                        f.line("", &why);
                     }
                     Ok(_) => {}
                     Err(e) => f.line("", &words(&e)),
@@ -1866,7 +1934,7 @@ impl Find {
                     if f.batch {
                         facts.push(match (f.first_episode, f.last_episode) {
                             (Some(a), Some(b)) => format!("E{a:02}-{b:02}"),
-                            _ => "batch".into(),
+                            _ => tr!("find-fact-batch"),
                         });
                     } else if let Some(e) = f.episode {
                         facts.push(format!("E{:02}", e as i64));
@@ -1876,10 +1944,10 @@ impl Find {
                     }
                 }
                 if let Some(s) = r.seeders {
-                    facts.push(format!("{s} seeds"));
+                    facts.push(tr!("find-fact-seeds", count = s));
                 }
                 if !r.source.is_empty() {
-                    facts.push(format!("via {}", r.source));
+                    facts.push(tr!("find-fact-via", source = &r.source));
                 }
                 ReleaseRow {
                     title: r.title.clone().into(),
@@ -1912,7 +1980,7 @@ impl Find {
             .collect();
         let best = list.best_fit.available;
         let best_line = if best {
-            format!("Best fit searches: {}", list.best_fit.query)
+            tr!("find-best-fit-searches", query = &list.best_fit.query)
         } else {
             String::new()
         };
@@ -1967,7 +2035,7 @@ impl Find {
                     options,
                 }),
                 subscribe: None,
-                what: count_word(count, "release", "releases"),
+                what: tr!("find-releases", count = count),
                 to: To::Desk(desk),
             });
             return;
@@ -1980,17 +2048,10 @@ impl Find {
             },
             move |f, answer| match answer {
                 Ok(_) => {
-                    f.line(
-                        &if count == 1 {
-                            "Downloading 1 release.".into()
-                        } else {
-                            format!("Downloading {count} releases.")
-                        },
-                        "",
-                    );
+                    f.line(&tr!("find-downloading", count = count), "");
                     crate::app::download_started();
                 }
-                Err(e) => f.line("", &format!("Not added: {}", words(&e))),
+                Err(e) => f.line("", &tr!("find-not-added", error = words(&e))),
             },
         );
     }
@@ -2054,18 +2115,12 @@ impl Find {
             },
             |f, answer| match answer {
                 Ok(Reply::PhoneSubscribed { subscribed }) => {
-                    f.line(
-                        &format!(
-                            "Subscribed as {}: new episodes download by themselves.",
-                            subscribed.name
-                        ),
-                        "",
-                    );
+                    f.line(&tr!("find-subscribed-as", name = &subscribed.name), "");
                     f.refresh();
                     crate::app::download_started();
                 }
                 Ok(_) => {}
-                Err(e) => f.line("", &format!("Not subscribed: {}", words(&e))),
+                Err(e) => f.line("", &tr!("find-not-subscribed", error = words(&e))),
             },
         );
     }
@@ -2113,7 +2168,7 @@ impl Find {
                     // The core takes the subscription out before it deletes, so a failure
                     // can leave it gone with its downloads still there: the rules are read
                     // again and the page says what is left.
-                    Err(e) => f.line("", &format!("Stopping did not finish: {}", words(&e))),
+                    Err(e) => f.line("", &tr!("find-stop-failed", error = words(&e))),
                 }
                 f.draw_show();
                 f.refresh();
@@ -2137,15 +2192,6 @@ struct Sent {
     to: To,
 }
 
-/// "1 episode", "3 episodes".
-fn count_word(n: usize, one: &str, many: &str) -> String {
-    if n == 1 {
-        format!("1 {one}")
-    } else {
-        format!("{n} {many}")
-    }
-}
-
 /// What the Gaps lens says about a show, the desktop's rule (`hasGap`): a hole before an
 /// episode that is here is missing, and an aired one past the last is not downloaded, but
 /// only once the show has something on this phone. A show with nothing here has no gap.
@@ -2155,12 +2201,15 @@ fn gap_ledger(cubes: &str) -> Option<String> {
     // On disk, or watched here; 'w' is watched somewhere else, nothing on this phone.
     let has_some = cubes.chars().any(|x| matches!(x, 'd' | 'l'));
     let not_got = if has_some { not_got } else { 0 };
-    let parts: Vec<String> = [(missing, "missing"), (not_got, "not downloaded")]
-        .iter()
-        .filter(|(n, _)| *n > 0)
-        .map(|(n, word)| format!("{n} {word}"))
-        .collect();
-    (!parts.is_empty()).then(|| parts.join(", "))
+    let parts: Vec<String> = [
+        (missing, "find-gap-missing"),
+        (not_got, "find-gap-not-downloaded"),
+    ]
+    .iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(n, id)| tr!(*id, count = *n))
+    .collect();
+    (!parts.is_empty()).then(|| comma_list(parts))
 }
 
 /// The show as the computer has it: an episode with a file there is had, a hole before
@@ -2201,8 +2250,8 @@ impl Find {
         self.with_data(|d| d.set_busy(true));
         self.line(
             &match &sent.to {
-                To::Phone => "Working...".to_string(),
-                To::Desk(d) => format!("Sending to {}...", d.name),
+                To::Phone => tr!("common-working"),
+                To::Desk(d) => tr!("find-sending-to", name = &d.name),
             },
             "",
         );
@@ -2218,13 +2267,13 @@ impl Find {
                 let mut error = String::new();
                 if let Some(c) = &sent.download {
                     match (call(c), &sent.to) {
-                        (Ok(_), To::Phone) => line.push(format!("Getting {}.", sent.what)),
+                        (Ok(_), To::Phone) => line.push(tr!("find-getting", what = &sent.what)),
                         (Ok(r), To::Desk(d)) => {
                             line.push(crate::desk::sent_line(&r, &sent.what, &d.name))
                         }
                         (Err(e), To::Phone) => error = words(&e),
                         (Err(e), To::Desk(d)) => {
-                            error = format!("{} did not take it: {}", d.name, words(&e))
+                            error = tr!("find-desk-refused", name = &d.name, error = words(&e))
                         }
                     }
                 }
@@ -2232,16 +2281,17 @@ impl Find {
                     && let Some(c) = &sent.subscribe
                 {
                     match (call(c), &sent.to) {
-                        (Ok(_), To::Phone) => {
-                            line.push("Subscribed: new episodes download by themselves.".into())
+                        (Ok(_), To::Phone) => line.push(tr!("find-subscribed")),
+                        (Ok(_), To::Desk(d)) => {
+                            line.push(tr!("find-subscribed-desk", name = &d.name))
                         }
-                        (Ok(_), To::Desk(d)) => line.push(format!(
-                            "Subscribed on {}: new episodes download there by themselves.",
-                            d.name
-                        )),
                         (Err(e), To::Phone) => error = words(&e),
                         (Err(e), To::Desk(d)) => {
-                            error = format!("Not subscribed on {}: {}", d.name, words(&e))
+                            error = tr!(
+                                "find-desk-not-subscribed",
+                                name = &d.name,
+                                error = words(&e)
+                            )
                         }
                     }
                 }
@@ -2249,10 +2299,14 @@ impl Find {
                 let _ = slint::invoke_from_event_loop(move || {
                     with(|f| {
                         f.with_data(|d| d.set_busy(false));
-                        f.line(&line.join(" "), &error);
+                        let said = line
+                            .into_iter()
+                            .reduce(|a, b| sentences(&a, &b))
+                            .unwrap_or_default();
+                        f.line(&said, &error);
                         // Something was taken here: the first time, the notification is
                         // explained before Android asks for it.
-                        if here && !line.is_empty() {
+                        if here && !said.is_empty() {
                             crate::app::download_started();
                         }
                         if error.is_empty()
@@ -2301,39 +2355,32 @@ fn rules_for<'a>(rules: &'a [SubscriptionRule], folder: &str) -> Vec<&'a Subscri
 /// What is in a subscription's folder: "3 downloads, 6 files in its folder". The core counts
 /// the folder, so downloads got by hand into it count too.
 fn taken(r: &SubscriptionRule) -> String {
-    let count = |n: u64, one: &str, many: &str| {
-        if n == 1 {
-            format!("1 {one}")
-        } else {
-            format!("{n} {many}")
-        }
-    };
-    format!(
-        "{}, {} in its folder",
-        count(r.torrent_count, "download", "downloads"),
-        count(r.file_count, "file", "files")
+    tr!(
+        "find-rule-taken",
+        downloads = r.torrent_count,
+        files = r.file_count
     )
 }
 
 /// The show view's line about its subscription: whether new episodes still come, and what
 /// its folder holds.
 fn rule_line(r: &SubscriptionRule) -> String {
-    let state = if !r.rule_enabled {
-        "It is paused, so no new episodes come"
+    let id = if !r.rule_enabled {
+        "find-rule-paused"
     } else if !r.followable {
-        "Its source has no feed, so no new episodes come"
+        "find-rule-no-feed"
     } else {
-        "New episodes download by themselves"
+        "find-rule-active"
     };
-    format!("{state}. {}.", taken(r))
+    tr!(id, taken = taken(r))
 }
 
 /// What the page says once a show is no longer followed.
 fn unfollowed_line(name: &str, files: bool) -> String {
     if files {
-        format!("Stopped following {name} and deleted the downloads in its folder.")
+        tr!("find-unfollowed-deleted", name = name)
     } else {
-        format!("Stopped following {name}. Its episodes stay on this phone.")
+        tr!("find-unfollowed-kept", name = name)
     }
 }
 
@@ -2362,9 +2409,9 @@ fn library_line(c: &SeriesCard) -> String {
     // Files numbered past the record's count (absolute numbering) still count as here.
     let total = c.cubes.chars().filter(|k| *k != 'f').count().max(here);
     match (here, total) {
-        (_, 0) => "In your library".to_string(),
-        (0, t) => format!("In your library, none of {t} on this phone"),
-        (h, t) => format!("In your library, {h} of {t} on this phone"),
+        (_, 0) => tr!("find-library-line"),
+        (0, t) => tr!("find-library-line-none", total = t),
+        (h, t) => tr!("find-library-line-some", here = h, total = t),
     }
 }
 
@@ -2462,6 +2509,7 @@ fn anilist_offer(
         poster,
         ledger: String::new(),
         ledger_tone: 0,
+        facts: Vec::new(),
     }
 }
 
@@ -2528,21 +2576,15 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
     if let Some(y) = h.year {
         facts.push(y.to_string());
     }
-    if total > 0 {
-        facts.push(if total == 1 {
-            "1 episode".to_string()
-        } else {
-            format!("{total} episodes")
-        });
-    }
     Offer {
         show: fresh_show(title, queries, total, h.airing),
         anilist: matches!(h.provider, anibeam_core::Provider::Anilist).then_some(h.id),
         series: None,
         in_library: false,
         poster: (!poster.is_empty()).then_some(poster),
-        ledger: facts.join(", "),
+        ledger: String::new(),
         ledger_tone: 0,
+        facts,
     }
 }
 

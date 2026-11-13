@@ -185,22 +185,22 @@ impl Rules {
     }
 }
 
-fn tracker_name(t: &Tracker) -> &'static str {
+fn tracker_name(t: &Tracker) -> String {
     match t {
-        Tracker::Anilist => "AniList",
-        Tracker::Mal => "MyAnimeList",
+        Tracker::Anilist => tr!("tracker-anilist"),
+        Tracker::Mal => tr!("tracker-mal"),
     }
 }
 
-fn refusal_word(r: &anibeam_core::Refusal) -> &'static str {
+fn refusal_word(r: &anibeam_core::Refusal) -> String {
     use anibeam_core::Refusal::*;
     match r {
-        Hidden => "the show is hidden",
-        NoMatch => "the show has no tracker match",
-        NotNewer => "the tracker is already past this episode",
-        Extra => "this is an extra",
-        Unmatched => "the file is not matched to an episode",
-        OnDisk => "the file is only on disk",
+        Hidden => tr!("phone-player-refusal-hidden"),
+        NoMatch => tr!("phone-player-refusal-no-match"),
+        NotNewer => tr!("phone-player-refusal-not-newer"),
+        Extra => tr!("phone-player-refusal-extra"),
+        Unmatched => tr!("phone-player-refusal-unmatched"),
+        OnDisk => tr!("phone-player-refusal-on-disk"),
     }
 }
 
@@ -210,30 +210,42 @@ pub fn outcome_line(outcomes: &[TrackerOutcome]) -> String {
         .iter()
         .filter(|o| o.ok)
         .map(|o| match o.progress {
-            Some(p) => format!("{} at {p}", tracker_name(&o.tracker)),
-            None => format!("{} ok", tracker_name(&o.tracker)),
+            Some(p) => tr!(
+                "player-track-ok-at",
+                tracker = tracker_name(&o.tracker),
+                progress = p
+            ),
+            None => tr!("player-track-ok", tracker = tracker_name(&o.tracker)),
         })
         .collect();
     let bad: Vec<&TrackerOutcome> = outcomes.iter().filter(|o| !o.ok).collect();
     let head = if !ok.is_empty() {
-        "Tracked"
+        tr!("player-tracked")
     } else if bad.iter().all(|o| o.reason.is_some()) {
-        "Not tracked"
+        tr!("player-not-tracked")
     } else {
-        "Could not update your list"
+        tr!("player-track-update-failed")
     };
     let all: Vec<String> = ok
         .into_iter()
         .chain(bad.iter().map(|o| match (&o.reason, &o.message) {
-            (Some(r), _) => format!("{}: {}", tracker_name(&o.tracker), refusal_word(r)),
-            (None, Some(m)) => format!("{}: {m}", tracker_name(&o.tracker)),
-            (None, None) => format!("{} could not be updated", tracker_name(&o.tracker)),
+            (Some(r), _) => tr!(
+                "player-track-note",
+                tracker = tracker_name(&o.tracker),
+                note = refusal_word(r)
+            ),
+            (None, Some(m)) => tr!(
+                "player-track-note",
+                tracker = tracker_name(&o.tracker),
+                note = m.as_str()
+            ),
+            (None, None) => tr!("player-track-failed", tracker = tracker_name(&o.tracker)),
         }))
         .collect();
     if all.is_empty() {
-        head.to_string()
+        head
     } else {
-        format!("{head}: {}", all.join("; "))
+        tr!("player-track-line", head = head, parts = all.join("; "))
     }
 }
 
@@ -358,6 +370,18 @@ fn with_player(f: impl FnOnce(&mut Player)) {
         {
             f(p);
         }
+    });
+}
+
+/// The language changed while a player is up: what the page pushed once is worded again.
+/// Notices clear themselves in seconds and are left as they are.
+pub fn relocalize() {
+    with_player(|p| {
+        p.show_skip();
+        p.show_cast();
+        p.show_delay(true);
+        p.show_delay(false);
+        p.show_tracks();
     });
 }
 
@@ -521,7 +545,7 @@ fn open_remote_at(file: u64, speed: f64) {
         close_page(CloseReason::Switched);
     }
     failed(&window, String::new());
-    data(&window, |d| d.set_title("Connecting".into()));
+    data(&window, |d| d.set_title(tr!("player-connecting").into()));
     let quality = crate::stream::quality();
     let unmetered = crate::android::unmetered().unwrap_or(false);
     let ticket = OPENING.with(|o| {
@@ -547,9 +571,13 @@ fn open_remote_at(file: u64, speed: f64) {
             match opened {
                 Ok(o) => {
                     let number = REMOTE_NUMBERS.with(|n| n.borrow().get(&file).copied());
-                    let note = o
-                        .converted
-                        .map(|h| format!("Streaming from {} at {h}p", o.host.name));
+                    let note = o.converted.map(|h| {
+                        tr!(
+                            "player-streaming-from",
+                            host = o.host.name.as_str(),
+                            height = h
+                        )
+                    });
                     // The other device decides what its tracker takes; the button is offered
                     // for every episode, and a refusal says why.
                     begin(
@@ -628,7 +656,7 @@ fn begin(
             .clone()
             .or_else(|| {
                 (!session.is_extra)
-                    .then(|| episode_number.map(|n| format!("Episode {n}")))
+                    .then(|| episode_number.map(|n| tr!("common-episode-n", n = n)))
                     .flatten()
             })
             .unwrap_or_else(|| {
@@ -963,10 +991,10 @@ pub fn core_event(body: &EventBody) {
             } if series == p.session.series => {
                 let ok = outcomes.iter().all(|o| o.ok);
                 p.flash(
-                    if ok {
-                        "Rated"
+                    &if ok {
+                        tr!("phone-player-rated")
                     } else {
-                        "Could not save the score"
+                        tr!("phone-player-score-failed")
                     },
                     None,
                 );
@@ -1105,7 +1133,7 @@ impl Player {
     /// video track chosen again, which opens the output on the new one.
     fn video_started(&mut self, ok: bool) {
         if !ok {
-            self.d(|d| d.set_error("The picture could not start. The sound plays on.".into()));
+            self.d(|d| d.set_error(tr!("player-picture-failed").into()));
         }
         if !self.requested {
             self.requested = true;
@@ -1134,7 +1162,7 @@ impl Player {
         match event {
             MpvEvent::FileLoaded => self.loaded(),
             MpvEvent::EndFile { error: Some(e) } if !self.rules.loaded => {
-                self.d(|d| d.set_error(format!("This file did not play: {e}.").into()));
+                self.d(|d| d.set_error(tr!("player-file-failed", why = e).into()));
             }
             MpvEvent::EndFile { .. } => {}
             MpvEvent::Property(name, value) => self.observed(name, value),
@@ -1214,7 +1242,7 @@ impl Player {
         // Picked up where it was left: say so, with the way back to the start.
         if let Some(at) = self.session.resume_from.filter(|r| *r > 5.0) {
             self.flash(
-                &format!("Resumed at {}", crate::phone::clock(at)),
+                &tr!("phone-player-resumed-at", time = crate::phone::clock(at)),
                 Some(Undo::StartOver),
             );
         }
@@ -1332,11 +1360,11 @@ impl Player {
             Step::Skip { to, undo, kind } => {
                 self.mpv.command(&["seek", &to.to_string(), "absolute"]);
                 let line = if kind == SkipKind::Intro {
-                    "Skipped intro"
+                    tr!("phone-player-skipped-intro")
                 } else {
-                    "Skipped outro"
+                    tr!("phone-player-skipped-outro")
                 };
-                self.flash(line, Some(Undo::Skip { to: undo, kind }));
+                self.flash(&line, Some(Undo::Skip { to: undo, kind }));
             }
             Step::StartCount => {
                 self.next
@@ -1605,12 +1633,12 @@ impl Player {
 
     fn show_skip(&self) {
         let label = match self.rules.current().map(|w| &w.kind) {
-            Some(SkipKind::Intro) => "Skip intro",
-            Some(SkipKind::Outro) => "Skip outro",
-            None => "",
+            Some(SkipKind::Intro) => tr!("player-skip-intro"),
+            Some(SkipKind::Outro) => tr!("player-skip-outro"),
+            None => String::new(),
         };
         self.d(|d| {
-            if d.get_skip_label() != label {
+            if d.get_skip_label() != label.as_str() {
                 d.set_skip_label(label.into());
             }
         });
@@ -1662,7 +1690,7 @@ impl Player {
     fn picker_rows(&self, kind: i32) -> (String, Vec<PickRow>) {
         match kind {
             1 => (
-                "Audio".into(),
+                tr!("player-audio"),
                 self.tracks
                     .iter()
                     .filter(|t| t.kind == "audio")
@@ -1674,7 +1702,7 @@ impl Player {
             ),
             2 => {
                 let mut rows = vec![PickRow {
-                    label: "Off".into(),
+                    label: tr!("common-off").into(),
                     active: self.sid < 0,
                 }];
                 rows.extend(
@@ -1686,13 +1714,14 @@ impl Player {
                             active: t.id == self.sid,
                         }),
                 );
-                ("Subtitles".into(), rows)
+                (tr!("player-subtitles"), rows)
             }
             4 => {
                 let mut rows = Vec::new();
                 if let Some(c) = &self.cast {
                     rows.push(PickRow {
-                        label: format!("Stop casting to {}", c.device.name).into(),
+                        label: tr!("phone-player-cast-stop", device = c.device.name.as_str())
+                            .into(),
                         active: false,
                     });
                 }
@@ -1702,7 +1731,7 @@ impl Player {
                         CastKind::Chromecast => {
                             dev.model.clone().unwrap_or_else(|| "Chromecast".into())
                         }
-                        CastKind::Dlna => "TV".into(),
+                        CastKind::Dlna => tr!("phone-player-cast-tv"),
                     };
                     let active = self.cast.as_ref().is_some_and(|c| c.device.id == dev.id);
                     rows.push(PickRow {
@@ -1711,16 +1740,16 @@ impl Player {
                     });
                 }
                 let title = if devices.is_empty() {
-                    "Looking for Chromecasts and TVs"
+                    tr!("player-cast-searching")
                 } else {
-                    "Cast to"
+                    tr!("phone-player-cast-to")
                 };
-                (title.into(), rows)
+                (title, rows)
             }
             _ => {
                 let speed = self.speed;
                 (
-                    "Speed".into(),
+                    tr!("phone-player-speed"),
                     SPEEDS
                         .iter()
                         .map(|s| PickRow {
@@ -2086,15 +2115,14 @@ impl Player {
                 true,
                 c.device.name.clone(),
                 match c.state {
-                    CastPlayState::Connecting => "Connecting",
-                    CastPlayState::Buffering => "Loading",
-                    CastPlayState::Playing => "Playing",
-                    CastPlayState::Paused => "Paused",
-                    CastPlayState::Ended => "Finished",
-                    CastPlayState::Failed => "Stopped",
-                    CastPlayState::Stopped => "Stopped",
-                }
-                .to_string(),
+                    CastPlayState::Connecting => tr!("player-connecting"),
+                    CastPlayState::Buffering => tr!("phone-player-cast-loading"),
+                    CastPlayState::Playing => tr!("phone-player-cast-playing"),
+                    CastPlayState::Paused => tr!("phone-player-cast-paused"),
+                    CastPlayState::Ended => tr!("phone-player-cast-finished"),
+                    CastPlayState::Failed => tr!("phone-player-cast-stopped"),
+                    CastPlayState::Stopped => tr!("phone-player-cast-stopped"),
+                },
             ),
             None => (false, String::new(), String::new()),
         };
@@ -2125,7 +2153,7 @@ impl Player {
         };
         let refused = |e: &anibeam_core::CoreError| match e {
             anibeam_core::CoreError::Refused { reason } => {
-                format!("Not tracked: {}.", refusal_word(reason))
+                tr!("player-not-tracked-why", reason = refusal_word(reason))
             }
             other => other.to_string(),
         };
@@ -2135,7 +2163,7 @@ impl Player {
                 let (host, session) = (host.clone(), self.session.session);
                 std::thread::spawn(move || {
                     let line = match host.call(&call) {
-                        Ok(_) => "Marked watched".to_string(),
+                        Ok(_) => tr!("player-marked-watched"),
                         Err(e) => refused(&e),
                     };
                     let _ = slint::invoke_from_event_loop(move || {
@@ -2193,16 +2221,16 @@ impl Player {
     /// settled on. Hundredths, so a step from a fine value in mpv.conf moves by exactly 0.1.
     fn set_delay(&mut self, kind: i32, to: f64) {
         let to = (to * 100.0).round() / 100.0;
-        let (prop, line) = if kind == 0 {
+        let (prop, id) = if kind == 0 {
             self.sub_delay = to;
-            ("sub-delay", "Subtitle delay")
+            ("sub-delay", "player-sub-delay-now")
         } else {
             self.audio_delay = to;
-            ("audio-delay", "Audio delay")
+            ("audio-delay", "player-audio-delay-now")
         };
         self.mpv.set(prop, &to.to_string());
         self.show_delay(kind == 0);
-        self.flash(&format!("{line} {}", delay_text(to)), None);
+        self.flash(&tr!(id, value = delay_text(to)), None);
         self.show_chrome();
     }
 
@@ -2217,9 +2245,9 @@ impl Player {
 
     fn flash_for(&mut self, line: &str, undo: Option<Undo>, secs: Duration) {
         let action = match undo {
-            Some(Undo::Skip { .. }) => "Undo",
-            Some(Undo::StartOver) => "Start over",
-            None => "",
+            Some(Undo::Skip { .. }) => tr!("phone-player-undo"),
+            Some(Undo::StartOver) => tr!("phone-player-start-over"),
+            None => String::new(),
         };
         self.undo = undo;
         self.d(|d| {
@@ -2256,15 +2284,16 @@ impl Player {
 fn delay_text(v: f64) -> String {
     let r = (v * 100.0).round() / 100.0;
     if r == 0.0 {
-        return "0.0 s".into();
+        return tr!("phone-player-delay-seconds", value = "0.0");
     }
     let fine = (r * 10.0 - (r * 10.0).round()).abs() > 1e-6;
     let sign = if r > 0.0 { "+" } else { "" };
-    if fine {
-        format!("{sign}{r:.2} s")
+    let value = if fine {
+        format!("{sign}{r:.2}")
     } else {
-        format!("{sign}{r:.1} s")
-    }
+        format!("{sign}{r:.1}")
+    };
+    tr!("phone-player-delay-seconds", value = value)
 }
 
 fn parse_tracks(json: &str) -> Vec<tracks::Track> {

@@ -10,6 +10,9 @@
 
 slint::include_modules!();
 
+// First, so its `tr!` reaches every module after it.
+#[macro_use]
+mod lang;
 mod activity;
 mod airing;
 mod android;
@@ -69,9 +72,13 @@ fn android_main(android: slint::android::AndroidApp) {
         if let PollEvent::Main(MainEvent::Resume { .. }) = event {
             let _ = on_resume.send(worker::Command::Sync);
         }
-        // The phone's light or dark setting changed: Appearance's System mode follows it.
+        // The phone's light or dark setting or its language changed: Appearance's System mode
+        // and a language left to follow the phone follow it.
         if let PollEvent::Main(MainEvent::ConfigChanged { .. }) = event {
-            let _ = slint::invoke_from_event_loop(look::system_changed);
+            let _ = slint::invoke_from_event_loop(|| {
+                look::system_changed();
+                lang::system_changed();
+            });
         }
     })
     .expect("the Slint Android backend starts");
