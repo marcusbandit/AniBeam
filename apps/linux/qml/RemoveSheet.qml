@@ -31,8 +31,8 @@ Item {
     readonly property bool canFiles: spec.canFiles === true
     readonly property string confirmText: {
         if (spec.confirmText) return spec.confirmText
-        if (rule) return files ? "Unsubscribe and delete" : torrents ? "Unsubscribe and remove torrents" : "Unsubscribe"
-        return files ? "Remove and delete files" : (torrentCount === 1 ? "Remove the torrent" : "Remove torrents")
+        if (rule) return files ? words.t("remove-unsubscribe-delete") : torrents ? words.t("remove-unsubscribe-torrents") : words.t("remove-unsubscribe")
+        return files ? words.t("remove-delete-files") : words.t("remove-torrents", { count: torrentCount })
     }
 
     function openAt(anchor, s, cb) {
@@ -107,16 +107,16 @@ Item {
                 visible: root.canTorrents
                 checked: root.torrents || root.files
                 locked: root.files
-                text: root.torrentCount === 1 ? "Also remove its torrent" : "Also remove its " + root.torrentCount + " torrents"
-                detail: root.files ? "Deleting the files takes the torrents with them." : "They leave the client; the files stay."
+                text: words.t("remove-also-torrents", { count: root.torrentCount })
+                detail: root.files ? words.t("remove-torrents-go-with-files") : words.t("remove-torrents-files-stay")
                 onToggled: root.torrents = !root.torrents
             }
             Check {
                 objectName: "remove-sheet-files"
                 visible: root.canFiles
                 checked: root.files
-                text: "Also delete the files"
-                detail: "Moves " + (root.spec.filesWhere || "what the torrents downloaded") + " to the trash" + (root.rule ? ", and removes the torrents." : ".")
+                text: words.t("remove-also-files")
+                detail: words.t(root.rule ? "remove-files-detail-rule" : "remove-files-detail", { where: root.spec.filesWhere || words.t("remove-files-default-where") })
                 onToggled: root.files = !root.files
             }
             Label { width: parent.width; visible: text !== ""; text: root.spec.note || ""; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint; wrapMode: Text.Wrap }
@@ -126,7 +126,7 @@ Item {
                 Row {
                     anchors.right: parent.right
                     spacing: theme.space(2)
-                    Button { objectName: "remove-sheet-cancel"; text: root.spec.keepText || "Cancel"; flat: true; onClicked: root.close() }
+                    Button { objectName: "remove-sheet-cancel"; text: root.spec.keepText || words.t("action-cancel"); flat: true; onClicked: root.close() }
                     Button { objectName: "remove-sheet-confirm"; text: root.confirmText; icon: root.files ? "trash-2" : root.rule ? "rss" : "x"; danger: true; onClicked: root.confirm() }
                 }
             }
@@ -142,7 +142,7 @@ Item {
         property string detail: ""
         signal toggled()
         width: parent ? parent.width : 0
-        height: Math.max(box.height, words.implicitHeight) + theme.space(1)
+        height: Math.max(box.height, checkLines.implicitHeight) + theme.space(1)
         opacity: locked ? 0.7 : 1
         Rectangle {
             id: box
@@ -155,7 +155,7 @@ Item {
             Icon { visible: check.checked; anchors.centerIn: parent; glyph: "check"; size: theme.space(3.5); color: theme.contrast(theme.red, Qt.rgba(1, 1, 1, 1)) >= 4.5 ? "#ffffff" : "#0d0e11" }
         }
         Column {
-            id: words
+            id: checkLines
             anchors.left: box.right
             anchors.leftMargin: theme.space(2.5)
             anchors.right: parent.right

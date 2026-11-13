@@ -53,17 +53,28 @@ Column {
     readonly property var entries: feed && feed.entries ? feed.entries : []
 
     readonly property string standing: {
-        if (!show) return "This folder is not in the library yet. Once a scan finds it, its poster and episodes show here."
-        if (show.kind === "Movie") return complete ? "The film is on disk." : "The film is not on disk yet."
+        if (!show) return words.t("show-detail-not-in-library")
+        if (show.kind === "Movie") return complete ? words.t("show-detail-film-on-disk") : words.t("show-detail-film-not-on-disk")
         var have = show.episodes_on_disk || 0
-        if (complete) return "Finished airing, and all " + total + " episodes are here. Nothing more will come, so the subscription has nothing left to do."
+        if (complete) return words.t("show-detail-complete-line", { total: total })
         var parts = []
-        if (finished) parts.push("Finished airing.")
-        else if (airing) parts.push("Airing.")
-        if (total > 0) parts.push(have + " of " + total + " episodes here.")
-        else parts.push(Fmt.plural(have, "episode", "episodes") + " here.")
-        if (airing) parts.push(Fmt.episodeSpan(show.next_airing.episode, show.next_airing.through || 0) + (show.next_airing.predicted ? (show.next_airing.through ? " are" : " is") + " predicted in " : show.next_airing.through ? " air in " : " airs in ") + Fmt.countdown(show.next_airing.at - nowMs / 1000) + ".")
-        if (finished && have > 0 && missing.length) parts.push((missing.length === 1 ? "Episode " : "Episodes ") + missing.slice(0, 8).join(", ") + (missing.length > 8 ? " and " + (missing.length - 8) + " more" : "") + (missing.length === 1 ? " is" : " are") + " not here.")
+        if (finished) parts.push(words.t("show-detail-finished"))
+        else if (airing) parts.push(words.t("show-detail-airing"))
+        if (total > 0) parts.push(words.t("show-detail-have-of-total", { have: have, total: total }))
+        else parts.push(words.t("show-detail-have", { count: have }))
+        if (airing) {
+            var next = show.next_airing
+            parts.push(words.t(next.predicted ? "show-detail-next-predicted" : "show-detail-next-airs", {
+                span: words.episodeSpan(next.episode, next.through || 0),
+                count: next.through ? 2 : 1,
+                wait: words.countdown(next.at - nowMs / 1000)
+            }))
+        }
+        if (finished && have > 0 && missing.length) {
+            var shown = missing.slice(0, 8).join(", ")
+            parts.push(missing.length > 8 ? words.t("show-detail-missing-more", { list: shown, more: missing.length - 8 })
+                : words.t("show-detail-missing", { count: missing.length, list: shown }))
+        }
         return parts.join(" ")
     }
     // Letters and digits, lower case: a torrent's name and its feed title differ in dots,
@@ -89,12 +100,12 @@ Column {
     function entryState(e) {
         var t = root.torrentFor(e)
         if (t) {
-            if ((t.progress || 0) >= 1) return { word: "Downloaded", ink: theme.accent, torrent: t }
-            return { word: "Downloading " + Math.round((t.progress || 0) * 100) + "%", ink: theme.accent, torrent: t }
+            if ((t.progress || 0) >= 1) return { word: words.t("show-detail-downloaded"), ink: theme.accent, torrent: t }
+            return { word: words.t("show-detail-downloading", { percent: Math.round((t.progress || 0) * 100) }), ink: theme.accent, torrent: t }
         }
         if (!root.ruleView) return { word: "", ink: theme.textDim, torrent: null }
-        if (root.matchingKeys[root.key(e.title)]) return { word: root.watching ? "Taken by the rule, adding" : "Taken by the rule", ink: theme.orange, torrent: null }
-        return { word: "Left out by the rule", ink: theme.textFaint, torrent: null }
+        if (root.matchingKeys[root.key(e.title)]) return { word: root.watching ? words.t("show-detail-taken-adding") : words.t("show-detail-taken"), ink: theme.orange, torrent: null }
+        return { word: words.t("show-detail-left-out"), ink: theme.textFaint, torrent: null }
     }
     // What the rule takes of the feed as it reads now (qBittorrent can still hold articles
     // an earlier version of the feed found; those are not counted)
@@ -115,15 +126,15 @@ Column {
     readonly property string settling: {
         if (!root.justSubscribed || !root.rule && !root.watching) return ""
         if (root.feedEmpty) return ""
-        if (!root.ruleView || !root.feed || root.feed.loading) return "Subscribed. qBittorrent is reading the feed."
+        if (!root.ruleView || !root.feed || root.feed.loading) return words.t("show-detail-subscribed-reading")
         if (root.takenCount > 0) {
-            var line = "The rule takes " + root.takenCount + " of the feed's " + Fmt.plural(root.entries.length, "release", "releases")
-            if (root.movingCount > 0) return line + "; " + Fmt.plural(root.movingCount, "is", "are") + " downloading below."
-            if (root.torrents.length > 0) return line + "; " + Fmt.plural(root.torrents.length, "torrent is", "torrents are") + " in the client."
-            return line + "; qBittorrent is adding " + (root.takenCount === 1 ? "it." : "them.")
+            var counts = { taken: root.takenCount, releases: root.entries.length }
+            if (root.movingCount > 0) return words.t("show-detail-taken-moving", Object.assign({ moving: root.movingCount }, counts))
+            if (root.torrents.length > 0) return words.t("show-detail-taken-held", Object.assign({ torrents: root.torrents.length }, counts))
+            return words.t("show-detail-taken-adding-line", counts)
         }
-        if (root.feed && !root.feed.loading && root.entries.length === 0) return "The feed holds nothing yet. Releases that fit download as soon as they appear in it."
-        return "Nothing in the feed fits the rule yet. Releases that fit download as soon as they appear."
+        if (root.feed && !root.feed.loading && root.entries.length === 0) return words.t("show-detail-feed-holds-nothing")
+        return words.t("show-detail-nothing-fits")
     }
 
     spacing: theme.space(5)
@@ -133,7 +144,7 @@ Column {
     Row {
         width: parent.width
         spacing: theme.space(3)
-        Button { objectName: "show-back"; text: "Back"; icon: "arrow-left"; flat: true; small: true; anchors.verticalCenter: parent.verticalCenter; onClicked: root.back() }
+        Button { objectName: "show-back"; msg: "action-back"; icon: "arrow-left"; flat: true; small: true; anchors.verticalCenter: parent.verticalCenter; onClicked: root.back() }
         Label {
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, root.width - theme.space(40))
@@ -155,7 +166,7 @@ Column {
                 anchors.centerIn: parent
                 spacing: theme.space(1.25)
                 Rectangle { anchors.verticalCenter: parent.verticalCenter; width: theme.space(2); height: width; radius: width / 2; color: theme.red }
-                Label { text: "Complete"; role: "ledger"; color: theme.text }
+                Label { msg: "show-detail-complete"; role: "ledger"; color: theme.text }
             }
         }
     }
@@ -192,7 +203,7 @@ Column {
             Button {
                 visible: !!root.show
                 width: parent.width
-                text: "Open in library"
+                msg: "show-detail-open-in-library"
                 icon: "layers"
                 onClicked: frame.go("series", { id: root.show.series_id }, root.show.title)
             }
@@ -225,12 +236,14 @@ Column {
                     y: theme.space(4)
                     width: parent.width - theme.space(8)
                     spacing: theme.space(2)
-                    Label { text: "This feed finds nothing"; role: "title"; font.pointSize: theme.typeNormal * 1.05; color: theme.text }
+                    Label { msg: "show-detail-feed-finds-nothing"; role: "title"; font.pointSize: theme.typeNormal * 1.05; color: theme.text }
                     Label {
                         width: parent.width
-                        text: "It asks " + (root.source !== "" ? root.source : root.feedHost(root.rule ? root.rule.feed_url : "")) + (root.feedQuery ? " for \u201c" + root.feedQuery + "\u201d" : "")
-                              + ", which comes back empty, so nothing new can reach the rule. A shorter search usually answers; the words it drops can stay in the rule instead."
-                              + (root.ruleView && root.ruleView.matching && root.ruleView.matching.length ? " qBittorrent still shows what an earlier version of this feed found." : "")
+                        text: {
+                            var asked = { source: root.source !== "" ? root.source : root.feedHost(root.rule ? root.rule.feed_url : ""), query: root.feedQuery }
+                            var line = words.t(root.feedQuery ? "show-detail-feed-empty-query" : "show-detail-feed-empty", asked)
+                            return root.ruleView && root.ruleView.matching && root.ruleView.matching.length ? [line, words.t("show-detail-feed-empty-earlier")].join(" ") : line
+                        }
                         role: "ui"
                         color: theme.textDim
                         wrapMode: Text.Wrap
@@ -239,7 +252,7 @@ Column {
                         spacing: theme.space(3)
                         Button {
                             objectName: "show-repair"
-                            text: root.repairing ? "Repairing" : "Repair"
+                            text: root.repairing ? words.t("show-detail-repairing") : words.t("show-detail-repair")
                             icon: "wrench"
                             primary: true
                             enabled: !root.repairing
@@ -306,7 +319,7 @@ Column {
                     objectName: "show-unsubscribe"
                     visible: !!root.rule
                     enabled: !root.removing
-                    text: "Unsubscribe"
+                    msg: "show-detail-unsubscribe"
                     icon: "rss"
                     onClicked: root.unsubscribe(unsubscribeButton)
                 }
@@ -315,7 +328,7 @@ Column {
                     objectName: "show-remove-torrents"
                     visible: root.torrents.length > 0
                     enabled: !root.removing
-                    text: root.torrents.length === 1 ? "Remove the torrent" : "Remove " + root.torrents.length + " torrents"
+                    text: words.t("show-detail-remove-torrents", { count: root.torrents.length })
                     icon: "x"
                     flat: true
                     danger: true
@@ -328,26 +341,26 @@ Column {
                 columns: 2
                 columnSpacing: theme.space(5)
                 rowSpacing: theme.space(1.5)
-                Label { text: "Searches"; role: "ledger"; color: theme.textFaint }
-                Label { text: root.rule && root.rule.query ? "“" + root.rule.query + "”" : "the whole feed"; role: "ui"; color: theme.text; elide: Text.ElideRight; width: Math.min(implicitWidth, info.width - theme.space(40)) }
-                Label { text: "From"; role: "ledger"; color: theme.textFaint }
+                Label { msg: "show-detail-searches"; role: "ledger"; color: theme.textFaint }
+                Label { text: root.rule && root.rule.query ? words.t("show-detail-quoted", { words: root.rule.query }) : words.t("show-detail-whole-feed"); role: "ui"; color: theme.text; elide: Text.ElideRight; width: Math.min(implicitWidth, info.width - theme.space(40)) }
+                Label { msg: "show-detail-from"; role: "ledger"; color: theme.textFaint }
                 Label { text: root.rule ? (root.source !== "" ? root.source + " (" + root.feedHost(root.rule.feed_url) + ")" : root.feedHost(root.rule.feed_url)) : ""; role: "ui"; color: theme.textDim }
-                Label { text: "Rule"; role: "ledger"; color: theme.textFaint }
-                Label { text: root.rule && root.rule.followable === false ? "Cannot fetch new episodes: its source answers searches but has no feed" : root.rule && root.rule.rule_enabled === false ? "Paused" : "Active"; role: "ui"; color: root.rule && root.rule.followable === false ? theme.red : root.rule && root.rule.rule_enabled === false ? theme.textFaint : theme.text; elide: Text.ElideRight; width: Math.min(implicitWidth, info.width - theme.space(40)) }
-                Label { visible: !!root.ruleView && root.ruleView.must_contain !== ""; text: "Keeps"; role: "ledger"; color: theme.textFaint }
-                Label { visible: !!root.ruleView && root.ruleView.must_contain !== ""; text: root.ruleView ? "releases with \u201c" + root.ruleView.must_contain + "\u201d" : ""; role: "ui"; color: theme.text }
-                Label { visible: !!root.ruleView && root.ruleView.must_not_contain !== ""; text: "Drops"; role: "ledger"; color: theme.textFaint }
-                Label { visible: !!root.ruleView && root.ruleView.must_not_contain !== ""; text: root.ruleView ? "releases with " + root.ruleView.must_not_contain.split("|").map(function(w) { return "\u201c" + w + "\u201d" }).join(" or ") : ""; role: "ui"; color: theme.text }
-                Label { visible: !!root.ruleView && root.ruleView.last_match !== ""; text: "Last took"; role: "ledger"; color: theme.textFaint }
+                Label { msg: "show-detail-rule"; role: "ledger"; color: theme.textFaint }
+                Label { text: root.rule && root.rule.followable === false ? words.t("show-detail-rule-unfollowable") : root.rule && root.rule.rule_enabled === false ? words.t("status-paused") : words.t("show-detail-rule-active"); role: "ui"; color: root.rule && root.rule.followable === false ? theme.red : root.rule && root.rule.rule_enabled === false ? theme.textFaint : theme.text; elide: Text.ElideRight; width: Math.min(implicitWidth, info.width - theme.space(40)) }
+                Label { visible: !!root.ruleView && root.ruleView.must_contain !== ""; msg: "show-detail-keeps"; role: "ledger"; color: theme.textFaint }
+                Label { visible: !!root.ruleView && root.ruleView.must_contain !== ""; text: root.ruleView ? words.t("show-detail-keeps-value", { words: root.ruleView.must_contain }) : ""; role: "ui"; color: theme.text }
+                Label { visible: !!root.ruleView && root.ruleView.must_not_contain !== ""; msg: "show-detail-drops"; role: "ledger"; color: theme.textFaint }
+                Label { visible: !!root.ruleView && root.ruleView.must_not_contain !== ""; text: root.ruleView ? words.t("show-detail-drops-value", { words: root.ruleView.must_not_contain.split("|").map(function(w) { return words.t("show-detail-quoted", { words: w }) }).reduce(function(a, b) { return words.t("show-detail-or", { first: a, second: b }) }) }) : ""; role: "ui"; color: theme.text }
+                Label { visible: !!root.ruleView && root.ruleView.last_match !== ""; msg: "show-detail-last-took"; role: "ledger"; color: theme.textFaint }
                 Label { visible: !!root.ruleView && root.ruleView.last_match !== ""; text: root.ruleView ? root.ruleView.last_match : ""; role: "ui"; color: theme.textDim }
-                Label { text: "Saves to"; role: "ledger"; color: theme.textFaint }
+                Label { msg: "show-detail-saves-to"; role: "ledger"; color: theme.textFaint }
                 Label { text: root.folder; role: "ledger"; color: theme.textDim; elide: Text.ElideMiddle; width: Math.min(implicitWidth, info.width - theme.space(40)) }
             }
             Grid {
                 visible: !root.rule
                 columns: 2
                 columnSpacing: theme.space(5)
-                Label { text: "Folder"; role: "ledger"; color: theme.textFaint }
+                Label { msg: "show-detail-folder"; role: "ledger"; color: theme.textFaint }
                 Label { text: root.folder; role: "ledger"; color: theme.textDim; elide: Text.ElideMiddle; width: Math.min(implicitWidth, info.width - theme.space(40)) }
             }
         }
@@ -376,16 +389,16 @@ Column {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: theme.space(2)
                     spacing: theme.space(3)
-                    Label { id: feedTitle; text: "In the feed"; role: "display"; font.pointSize: theme.typeLarge * 0.85; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+                    Label { id: feedTitle; msg: "show-detail-in-the-feed"; role: "display"; font.pointSize: theme.typeLarge * 0.85; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
                     Label { anchors.baseline: feedTitle.baseline; visible: root.entries.length > 0; text: root.entries.length; role: "ledger"; color: theme.textFaint }
                     Label {
                         anchors.baseline: feedTitle.baseline
-                        text: !root.feed || root.feed.loading ? "Reading the feed." : root.feed.error ? root.feed.error : root.entries.length ? "What the feed offers now, newest first." : "The feed is empty."
+                        text: !root.feed || root.feed.loading ? words.t("show-detail-feed-reading") : root.feed.error ? root.feed.error : root.entries.length ? words.t("show-detail-feed-offers") : words.t("show-detail-feed-is-empty")
                         role: "ui"
                         color: root.feed && root.feed.error ? theme.red : theme.textDim
                     }
                 }
-                Button { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); text: "Read again"; icon: "refresh-cw"; flat: true; small: true; enabled: !!root.feed && !root.feed.loading; onClicked: root.refreshFeed() }
+                Button { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); msg: "show-detail-read-again"; icon: "refresh-cw"; flat: true; small: true; enabled: !!root.feed && !root.feed.loading; onClicked: root.refreshFeed() }
             }
             Repeater {
                 model: root.entries
@@ -409,9 +422,9 @@ Column {
                             width: parent.width
                             text: {
                                 var e = entryRow.modelData, parts = []
-                                if (e.published) parts.push(Fmt.relative(e.published, root.nowMs / 1000))
+                                if (e.published) parts.push(words.relative(e.published, root.nowMs / 1000))
                                 if (e.size) parts.push(e.size)
-                                if (e.seeders !== null && e.seeders !== undefined) parts.push(Fmt.plural(e.seeders, "seeder", "seeders"))
+                                if (e.seeders !== null && e.seeders !== undefined) parts.push(words.t("show-detail-seeders", { count: e.seeders }))
                                 return parts.join(", ")
                             }
                             role: "ledger"
@@ -427,7 +440,7 @@ Column {
                         width: stateWord.implicitWidth + (getButton.visible ? getButton.implicitWidth + theme.space(2) : 0)
                         height: theme.controlHeight
                         Label { id: stateWord; visible: entryRow.st.word !== ""; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: entryRow.st.word; role: "ledger"; color: entryRow.st.ink }
-                        Button { id: getButton; anchors.rightMargin: stateWord.visible ? stateWord.implicitWidth + theme.space(2) : 0; visible: !entryRow.st.torrent && entryRow.st.ink !== theme.orange && !!entryRow.modelData.link; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: "Download"; icon: "download"; flat: true; small: true; onClicked: root.downloadEntry(entryRow.modelData) }
+                        Button { id: getButton; anchors.rightMargin: stateWord.visible ? stateWord.implicitWidth + theme.space(2) : 0; visible: !entryRow.st.torrent && entryRow.st.ink !== theme.orange && !!entryRow.modelData.link; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; msg: "show-detail-download"; icon: "download"; flat: true; small: true; onClicked: root.downloadEntry(entryRow.modelData) }
                     }
                     Rectangle { anchors.bottom: parent.bottom; x: theme.space(2); width: parent.width - theme.space(4); height: 1; color: theme.line; opacity: 0.5 }
                 }
@@ -447,9 +460,9 @@ Column {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: theme.space(2)
                     spacing: theme.space(3)
-                    Label { id: trTitle; text: "Torrents"; role: "display"; font.pointSize: theme.typeLarge * 0.85; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+                    Label { id: trTitle; msg: "show-detail-torrents"; role: "display"; font.pointSize: theme.typeLarge * 0.85; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
                     Label { anchors.baseline: trTitle.baseline; visible: root.torrents.length > 0; text: root.torrents.length; role: "ledger"; color: theme.textFaint }
-                    Label { anchors.baseline: trTitle.baseline; text: root.torrents.length ? (root.movingCount > 0 ? Fmt.plural(root.movingCount, "downloading", "downloading") + " now; the bars fill as they go." : "What the client holds for this folder.") : (root.watching ? "Waiting for qBittorrent to add what the rule takes." : "The client holds none for this folder."); role: "ui"; color: theme.textDim }
+                    Label { anchors.baseline: trTitle.baseline; text: root.torrents.length ? (root.movingCount > 0 ? words.t("show-detail-torrents-moving", { count: root.movingCount }) : words.t("show-detail-torrents-held")) : (root.watching ? words.t("show-detail-torrents-waiting") : words.t("show-detail-torrents-none")); role: "ui"; color: theme.textDim }
                 }
             }
             Repeater {

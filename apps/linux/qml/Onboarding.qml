@@ -44,11 +44,11 @@ Item {
     }
 
     readonly property var steps: [
-        { key: "welcome", label: "Welcome", icon: "sparkles" },
-        { key: "library", label: "Your library", icon: "folder-open" },
-        { key: "lists", label: "Your list", icon: "user-check" },
-        { key: "downloads", label: "Downloads", icon: "download" },
-        { key: "ready", label: "Ready", icon: "circle-check" }
+        { key: "welcome", label: words.t("onboarding-step-welcome"), icon: "sparkles" },
+        { key: "library", label: words.t("onboarding-step-library"), icon: "folder-open" },
+        { key: "lists", label: words.t("onboarding-step-lists"), icon: "user-check" },
+        { key: "downloads", label: words.t("onboarding-step-downloads"), icon: "download" },
+        { key: "ready", label: words.t("onboarding-step-ready"), icon: "circle-check" }
     ]
     property int step: 0
     // Steps left with Skip, by key
@@ -83,15 +83,19 @@ Item {
     Timer { id: settling; interval: 8000 }
     readonly property string scanLine: {
         var j = scanJob
-        var tally = seriesCount > 0 ? ", " + posterCount + " of " + seriesCount + " found" : ""
-        if (!j && settling.running) return "Reading the folder"
-        if (!j) return seriesCount > 0 ? "Found " + Fmt.plural(seriesCount, "series", "series") + ". Go on whenever you like; the rest fills in by itself."
-                     : starterOnly ? "Your new folder is empty for now. Shows you put in it turn up here by themselves."
-                     : "No video files turned up. Check that it is the right folder."
-        if (j.kind === "Scan") return "Reading the folder"
-        if (j.kind === "AutoMatch") return "Looking up " + (j.label || "your shows") + tally
-        if (j.kind === "FillImages") return "Fetching posters" + tally
-        return "Finding related seasons" + tally
+        // With series in, each working line counts the posters found so far
+        var tally = seriesCount > 0, args = { posters: posterCount, count: seriesCount }
+        if (!j && settling.running) return words.t("onboarding-scan-reading")
+        if (!j) return seriesCount > 0 ? words.t("onboarding-scan-found", { count: seriesCount })
+                     : starterOnly ? words.t("onboarding-scan-starter-empty")
+                     : words.t("onboarding-scan-no-video")
+        if (j.kind === "Scan") return words.t("onboarding-scan-reading")
+        if (j.kind === "AutoMatch") {
+            args.what = j.label || words.t("onboarding-scan-your-shows")
+            return words.t(tally ? "onboarding-scan-looking-up-tally" : "onboarding-scan-looking-up", args)
+        }
+        if (j.kind === "FillImages") return words.t(tally ? "onboarding-scan-posters-tally" : "onboarding-scan-posters", args)
+        return words.t(tally ? "onboarding-scan-seasons-tally" : "onboarding-scan-seasons", args)
     }
 
     // As the app starts. A capture or a drive never opens it on its own; a drive calls open().
@@ -181,7 +185,7 @@ Item {
     }
     FolderDialog {
         id: folderDialog
-        title: "Choose your anime folder"
+        title: words.t("onboarding-choose-folder")
         currentFolder: StandardPaths.writableLocation(StandardPaths.MoviesLocation)
         onAccepted: root.addFolder(Fmt.localPath(String(selectedFolder)))
     }
@@ -217,7 +221,7 @@ Item {
             id: about
             anchors.top: mark.bottom; anchors.topMargin: theme.space(1)
             width: parent.width
-            text: "A minute of setup. Your library finishes on its own."
+            msg: "onboarding-about"
             role: "ui"; color: theme.textDim
             wrapMode: Text.Wrap
         }
@@ -263,7 +267,7 @@ Item {
                         anchors.right: parent.right; anchors.rightMargin: theme.space(3)
                         anchors.verticalCenter: parent.verticalCenter
                         visible: row.wasSkipped
-                        text: "Later"
+                        msg: "onboarding-step-later"
                         role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim
                     }
                     // A step already passed can be opened again
@@ -285,7 +289,7 @@ Item {
             objectName: "onboarding-skip-all"
             anchors.bottom: parent.bottom
             visible: root.step < root.steps.length - 1
-            text: "Skip setup"
+            msg: "onboarding-skip-setup"
             flat: true
             onClicked: root.finish()
         }
@@ -330,11 +334,11 @@ Item {
                             objectName: "onboarding-title"
                             width: parent.width
                             text: [
-                                "Welcome to AniBeam",
-                                "Where is your anime?",
-                                "Connect your anime list",
-                                "How downloads work",
-                                root.laterCount === 0 ? "You're all set" : "Ready, " + ["one thing", "two things", "three things"][root.laterCount - 1] + " for later"
+                                words.t("onboarding-title-welcome"),
+                                words.t("onboarding-title-library"),
+                                words.t("onboarding-title-lists"),
+                                words.t("onboarding-title-downloads"),
+                                root.laterCount === 0 ? words.t("onboarding-title-ready") : words.t("onboarding-title-later", { count: root.laterCount })
                             ][root.step]
                             role: "display"
                             font.pointSize: theme.typeHeading * 1.6
@@ -343,11 +347,11 @@ Item {
                         Label {
                             width: parent.width
                             text: [
-                                "AniBeam keeps your anime in one place. It finds the shows on your disk, plays them right here, and keeps AniList or MyAnimeList up to date as you watch.",
-                                "Pick the folder you keep your shows in. Every folder inside it becomes a series, with its poster, its episodes and where you left off. AniBeam only reads the folder. It never moves or renames a file.",
-                                "Sign in once, and every episode you finish here is marked on your list, with nothing to type. The sign-in happens in your browser, so AniBeam never sees your password.",
-                                "Follow a show on the Downloads page and each new episode lands in your library as it airs. Two things make that work: somewhere to search, and a torrent client to fetch with.",
-                                "Everything here can be changed later in Settings, and Settings, About runs this setup again."
+                                words.t("onboarding-body-welcome"),
+                                words.t("onboarding-body-library"),
+                                words.t("onboarding-body-lists"),
+                                words.t("onboarding-body-downloads"),
+                                words.t("onboarding-body-ready")
                             ][root.step]
                             role: "ui"
                             font.pointSize: theme.typeLarge
@@ -374,13 +378,13 @@ Item {
                 Button {
                     objectName: "onboarding-skip"
                     visible: root.skippable
-                    text: "Skip for now"; flat: true
+                    msg: "onboarding-skip-step"; flat: true
                     onClicked: root.skip()
                 }
                 Button {
                     objectName: "onboarding-back"
                     visible: root.step > 0
-                    text: "Back"; icon: "arrow-left"
+                    msg: "action-back"; icon: "arrow-left"
                     onClicked: root.step--
                 }
                 Button {
@@ -388,7 +392,7 @@ Item {
                     objectName: "onboarding-continue"
                     primary: true
                     icon: root.step === root.steps.length - 1 ? "circle-play" : "arrow-right"
-                    text: root.step === 0 ? "Get started" : root.step === root.steps.length - 1 ? "Open AniBeam" : "Continue"
+                    text: root.step === 0 ? words.t("onboarding-get-started") : root.step === root.steps.length - 1 ? words.t("onboarding-open-app") : words.t("onboarding-continue")
                     enabled: root.step !== 1 || root.sources.length > 0
                     onClicked: root.next()
                 }
@@ -420,21 +424,21 @@ Item {
             property real tallest: 0
             Repeater {
                 model: [
-                    { icon: "folder-open", title: "Your library", line: "Posters, episodes and what comes next, for every show in your folders." },
-                    { icon: "circle-play", title: "Plays right here", line: "Subtitles, intro skips, and it remembers where you stopped." },
-                    { icon: "user-check", title: "Your list, synced", line: "Finish an episode and it counts on AniList or MyAnimeList." },
-                    { icon: "download", title: "Episodes arrive", line: "Follow a show and each new episode lands in your library." }
+                    { icon: "folder-open", title: words.t("onboarding-payoff-library"), line: words.t("onboarding-payoff-library-line") },
+                    { icon: "circle-play", title: words.t("onboarding-payoff-plays"), line: words.t("onboarding-payoff-plays-line") },
+                    { icon: "user-check", title: words.t("onboarding-payoff-list"), line: words.t("onboarding-payoff-list-line") },
+                    { icon: "download", title: words.t("onboarding-payoff-episodes"), line: words.t("onboarding-payoff-episodes-line") }
                 ]
                 Tile {
                     required property var modelData
                     width: grid.cell
-                    readonly property real need: words.y + words.height + padding * 2
+                    readonly property real need: tileWords.y + tileWords.height + padding * 2
                     onNeedChanged: grid.tallest = Math.max(grid.tallest, need)
                     height: Math.max(need, grid.tallest)
                     padding: theme.space(7)
                     Badge { id: badge; glyph: modelData.icon }
                     Column {
-                        id: words
+                        id: tileWords
                         anchors.top: badge.bottom; anchors.topMargin: theme.space(5)
                         width: parent.width
                         spacing: theme.space(2)
@@ -463,21 +467,21 @@ Item {
                     anchors.centerIn: parent
                     spacing: theme.space(4)
                     Badge { anchors.horizontalCenter: parent.horizontalCenter; glyph: "folder-plus"; box: theme.space(20) }
-                    Label { anchors.horizontalCenter: parent.horizontalCenter; text: "Choose your anime folder"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
-                    Label { anchors.horizontalCenter: parent.horizontalCenter; text: "A folder of films works too: call it Movies."; color: theme.textDim }
+                    Label { anchors.horizontalCenter: parent.horizontalCenter; msg: "onboarding-choose-folder"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
+                    Label { anchors.horizontalCenter: parent.horizontalCenter; msg: "onboarding-films-too"; color: theme.textDim }
                     Item { width: 1; height: theme.space(2) }
-                    Button { anchors.horizontalCenter: parent.horizontalCenter; objectName: "onboarding-add-folder"; text: "Choose folder"; icon: "folder-open"; primary: true; onClicked: folderDialog.open() }
+                    Button { anchors.horizontalCenter: parent.horizontalCenter; objectName: "onboarding-add-folder"; msg: "onboarding-choose-folder-button"; icon: "folder-open"; primary: true; onClicked: folderDialog.open() }
                     // Someone starting from nothing gets a folder, so downloads have a home
                     Button {
                         anchors.horizontalCenter: parent.horizontalCenter
                         objectName: "onboarding-make-folder"
-                        text: "I don't have a folder yet"
+                        msg: "onboarding-no-folder"
                         flat: true
                         onClicked: root.makeStarter()
                     }
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "That makes an Anime folder in " + root.videosDir + " and uses it."
+                        text: words.t("onboarding-starter-where", { dir: root.videosDir })
                         font.pointSize: theme.typeSmall
                         color: theme.textDim
                     }
@@ -529,7 +533,7 @@ Item {
                                     color: theme.textDim
                                 }
                             }
-                            Button { id: addMore; anchors.right: parent.right; text: "Add another folder"; icon: "folder-plus"; small: true; onClicked: folderDialog.open() }
+                            Button { id: addMore; anchors.right: parent.right; msg: "onboarding-add-another"; icon: "folder-plus"; small: true; onClicked: folderDialog.open() }
                         }
                     }
                 }
@@ -617,7 +621,7 @@ Item {
                                     visible: card.more
                                     anchors.centerIn: parent
                                     Label { anchors.horizontalCenter: parent.horizontalCenter; text: "+" + (shelf.rest + 1); role: "display"; font.pointSize: theme.typeHeading }
-                                    Label { anchors.horizontalCenter: parent.horizontalCenter; text: "more"; color: theme.textDim }
+                                    Label { anchors.horizontalCenter: parent.horizontalCenter; msg: "onboarding-shelf-more"; color: theme.textDim }
                                 }
                             }
                         }
@@ -666,8 +670,8 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: (parent.width - thumb.width - arrow.width - theme.space(5) * 4) / 2
                     spacing: theme.space(1)
-                    Label { width: parent.width; text: show ? show.title : "Your show"; role: "title"; font.pointSize: theme.typeLarge; elide: Text.ElideRight }
-                    Label { width: parent.width; text: "Episode 3 finished here"; color: theme.textDim; elide: Text.ElideRight }
+                    Label { width: parent.width; text: show ? show.title : words.t("onboarding-preview-show"); role: "title"; font.pointSize: theme.typeLarge; elide: Text.ElideRight }
+                    Label { width: parent.width; msg: "onboarding-preview-finished"; color: theme.textDim; elide: Text.ElideRight }
                 }
                 Icon { id: arrow; anchors.left: watched.right; anchors.leftMargin: theme.space(5); anchors.verticalCenter: parent.verticalCenter; glyph: "arrow-right"; color: theme.textDim }
                 Column {
@@ -678,9 +682,9 @@ Item {
                     Row {
                         spacing: theme.space(2)
                         Icon { glyph: "circle-check"; color: theme.accent; anchors.verticalCenter: parent.verticalCenter }
-                        Label { text: "On your list: 3 watched"; role: "title"; font.pointSize: theme.typeLarge; anchors.verticalCenter: parent.verticalCenter }
+                        Label { msg: "onboarding-preview-on-list"; role: "title"; font.pointSize: theme.typeLarge; anchors.verticalCenter: parent.verticalCenter }
                     }
-                    Label { width: parent.width; text: "Set by AniBeam the moment the credits roll"; color: theme.textDim; elide: Text.ElideRight }
+                    Label { width: parent.width; msg: "onboarding-preview-set-by"; color: theme.textDim; elide: Text.ElideRight }
                 }
             }
             Tile {
@@ -698,8 +702,8 @@ Item {
             }
             Label {
                 width: parent.width
-                text: root.tracked ? "Connected. What you watch here now counts on your list."
-                    : "No account yet? Both are free, and one is plenty. You can disconnect any time in Settings, Accounts."
+                text: root.tracked ? words.t("onboarding-lists-connected")
+                    : words.t("onboarding-lists-no-account")
                 color: root.tracked ? theme.accent : theme.textDim
                 wrapMode: Text.Wrap
             }
@@ -724,12 +728,12 @@ Item {
                 anchors.left: whereMark.right; anchors.leftMargin: theme.space(5)
                 anchors.right: whereButton.left; anchors.rightMargin: theme.space(5)
                 spacing: theme.space(2)
-                Label { text: "Somewhere to search"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
+                Label { msg: "onboarding-search-title"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
                 Label {
                     width: parent.width
                     text: root.endpointCount > 0
-                        ? Fmt.plural(root.endpointCount, "source", "sources") + " ready to search."
-                        : "AniBeam comes with no sources of its own. You add them from a source repo: a link someone shares with you, which you paste in Settings, Downloads."
+                        ? words.t("onboarding-search-ready", { count: root.endpointCount })
+                        : words.t("onboarding-search-none")
                     color: theme.textDim; wrapMode: Text.Wrap; lineHeight: 1.1
                 }
             }
@@ -739,12 +743,12 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: whereWords.verticalCenter
                 visible: root.endpointCount === 0
-                text: root.wantsSources ? "Opens after setup" : "Add a repo after setup"
+                text: root.wantsSources ? words.t("onboarding-sources-after") : words.t("onboarding-sources-add")
                 icon: root.wantsSources ? "check" : "plus"
                 onClicked: root.wantsSources = !root.wantsSources
             }
           }
-          Label { text: "Who fetches"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
+          Label { msg: "onboarding-fetch-title"; role: "title"; font.pointSize: theme.typeLarge * 1.2 }
           Row {
             id: choices
             width: parent.width
@@ -752,10 +756,12 @@ Item {
             readonly property real cell: (width - spacing) / 2
             Repeater {
                 model: [
-                    { mode: "Auto", icon: "sparkles", title: "Let AniBeam handle it", tag: "Recommended",
-                      line: "AniBeam brings its own qBittorrent and runs it quietly in the background. Nothing to install, nothing to fill in." },
-                    { mode: "Existing", icon: "hard-drive", title: "I already use qBittorrent", tag: "",
-                      line: "AniBeam connects to the qBittorrent you already run. You enter its address and login in Settings next." }
+                    { mode: "Auto", icon: "sparkles",
+                      title: words.t("onboarding-fetch-auto"), tag: words.t("onboarding-fetch-recommended"),
+                      line: words.t("onboarding-fetch-auto-line") },
+                    { mode: "Existing", icon: "hard-drive",
+                      title: words.t("onboarding-fetch-existing"), tag: "",
+                      line: words.t("onboarding-fetch-existing-line") }
                 ]
                 Tile {
                     id: choice
@@ -808,16 +814,18 @@ Item {
             Repeater {
                 id: tiles
                 model: [
-                    { ok: root.sources.length > 0, icon: "folder-open", title: "Library", step: 1,
-                      line: root.sources.length > 0 ? Fmt.plural(root.sources.length, "folder", "folders") + (root.seriesCount > 0 ? ", " + Fmt.plural(root.seriesCount, "series", "series") + " so far" : root.starterOnly ? ", empty for now" : ", scanning")
-                          : "No folder yet. It lives in Settings, Library when you want it." },
-                    { ok: root.tracked, icon: "user-check", title: "Your list", step: 2,
-                      line: root.anilist.connected === true ? "AniList, as " + (root.anilist.username || "?") : root.mal.connected === true ? "MyAnimeList, as " + (root.mal.username || "?")
-                          : "Not connected yet. It lives in Settings, Accounts when you want it." },
-                    { ok: root.downloadsReady, icon: "download", title: "Downloads", step: 3,
-                      line: (root.endpointCount > 0 ? Fmt.plural(root.endpointCount, "source", "sources") : "No sources yet")
-                          + (root.torrentMode === "Existing" ? ", your own qBittorrent." : ", AniBeam's own qBittorrent.")
-                          + (root.downloadsReady ? " All set." : root.wantsSources || root.torrentMode === "Existing" ? " Settings, Downloads opens next." : " Both live in Settings, Downloads.") }
+                    { ok: root.sources.length > 0, icon: "folder-open", title: words.t("onboarding-ready-library"), step: 1,
+                      line: root.sources.length === 0 ? words.t("onboarding-ready-library-none")
+                          : root.seriesCount > 0 ? words.t("onboarding-ready-library-series", { count: root.sources.length, series: root.seriesCount })
+                          : root.starterOnly ? words.t("onboarding-ready-library-empty", { count: root.sources.length })
+                          : words.t("onboarding-ready-library-scanning", { count: root.sources.length }) },
+                    { ok: root.tracked, icon: "user-check", title: words.t("onboarding-ready-lists"), step: 2,
+                      line: root.anilist.connected === true ? words.t("onboarding-ready-lists-as", { tracker: "AniList", user: root.anilist.username || "?" })
+                          : root.mal.connected === true ? words.t("onboarding-ready-lists-as", { tracker: "MyAnimeList", user: root.mal.username || "?" })
+                          : words.t("onboarding-ready-lists-none") },
+                    { ok: root.downloadsReady, icon: "download", title: words.t("onboarding-ready-downloads"), step: 3,
+                      line: words.t("onboarding-ready-downloads-line", { sources: root.endpointCount, client: root.torrentMode === "Existing" ? "own" : "bundled",
+                          next: root.downloadsReady ? "ready" : root.wantsSources || root.torrentMode === "Existing" ? "opens" : "both" }) }
                 ]
                 Tile {
                     id: tile
@@ -842,7 +850,7 @@ Item {
                         Button {
                             visible: tile.offers
                             objectName: "onboarding-later-" + modelData.step
-                            text: modelData.step === 3 ? "Open Settings, Downloads" : "Set up now"; icon: "arrow-right"; small: true
+                            text: modelData.step === 3 ? words.t("onboarding-ready-open-downloads") : words.t("onboarding-ready-set-up"); icon: "arrow-right"; small: true
                             onClicked: if (modelData.step === 3) root.finishAt("downloads"); else root.step = modelData.step
                         }
                     }

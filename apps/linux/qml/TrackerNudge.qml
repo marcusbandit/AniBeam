@@ -21,7 +21,7 @@ Tile {
 
     visible: wanted
     // What the content needs; the page cuts the tile to the module from this.
-    implicitHeight: Math.max(words.implicitHeight, actions.height, mark.height) + padding * 2
+    implicitHeight: Math.max(nudgeLines.implicitHeight, actions.height, mark.height) + padding * 2
 
     Corner {
         id: mark
@@ -34,21 +34,21 @@ Tile {
         Icon { anchors.centerIn: parent; glyph: "user-check"; color: theme.textDim; size: theme.space(5) }
     }
     Column {
-        id: words
+        id: nudgeLines
         anchors.left: mark.right; anchors.leftMargin: theme.space(4)
         anchors.right: actions.left; anchors.rightMargin: theme.space(6)
         anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(1)
-        Label { width: parent.width; text: "Connect your anime list"; role: "title"; font.pointSize: theme.typeNormal; elide: Text.ElideRight }
-        Label { width: parent.width; text: "AniBeam marks episodes on AniList or MyAnimeList as you watch."; color: theme.textDim; font.pointSize: theme.typeSmall; wrapMode: Text.Wrap }
+        Label { width: parent.width; msg: "tracker-nudge-title"; role: "title"; font.pointSize: theme.typeNormal; elide: Text.ElideRight }
+        Label { width: parent.width; msg: "tracker-nudge-body"; color: theme.textDim; font.pointSize: theme.typeSmall; wrapMode: Text.Wrap }
     }
     Row {
         id: actions
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(2)
-        ConnectButton { objectName: "nudge-anilist"; tracker: "Anilist"; text: "Connect AniList"; icon: "log-in"; primary: true; onClicked: frame.openConnect("Anilist") }
-        ConnectButton { objectName: "nudge-mal"; tracker: "Mal"; text: "Connect MyAnimeList"; icon: "log-in"; onClicked: frame.openConnect("Mal") }
-        Button { objectName: "nudge-dismiss"; text: "Not now"; flat: true; onClicked: kept.trackerNudgeDismissed = true }
+        ConnectButton { objectName: "nudge-anilist"; tracker: "Anilist"; text: words.t("tracker-nudge-connect-anilist"); icon: "log-in"; primary: true; onClicked: frame.openConnect("Anilist") }
+        ConnectButton { objectName: "nudge-mal"; tracker: "Mal"; text: words.t("tracker-nudge-connect-mal"); icon: "log-in"; onClicked: frame.openConnect("Mal") }
+        Button { objectName: "nudge-dismiss"; msg: "tracker-nudge-not-now"; flat: true; onClicked: kept.trackerNudgeDismissed = true }
     }
 }

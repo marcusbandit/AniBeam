@@ -19,3 +19,4 @@ pub mod player;
 #[allow(clippy::too_many_arguments)]
 pub mod shell;
 pub mod theme;
+pub mod tr;

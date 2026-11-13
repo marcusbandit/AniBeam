@@ -29,6 +29,15 @@ UI = [
     "apps/android/ui/**/*.slint",
 ]
 
+# Developer tools nobody but a developer sees: the drive and recording harness, the
+# frame-time HUD and the token sheet. Their words stay English.
+DEV_ONLY = {
+    "apps/linux/qml/Driver.qml",
+    "apps/linux/qml/DevHud.qml",
+    "apps/linux/qml/DevRecorder.qml",
+    "apps/linux/qml/TokensPage.qml",
+}
+
 # The files whose ID uses are checked against the English catalog.
 CODE = UI + [
     "core/src/**/*.rs",
@@ -92,6 +101,8 @@ def files(globs):
 def is_words(literal, text_line):
     """Whether a literal reads as words for a person rather than a code or a path.
     `text_line` says the line sets a text property, where a single word is words too."""
+    # An escape ("\u00b7") is one character, not letters.
+    literal = re.sub(r"\\(?:u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)", "\u00b7", literal)
     text = literal.strip()
     if not re.search(r"[^\W\d_]", text):
         return False
@@ -259,6 +270,8 @@ def main():
     counts = {}
     shown = {}
     for path in files(UI):
+        if path.relative_to(ROOT).as_posix() in DEV_ONLY:
+            continue
         hits = raw_strings(path)
         if hits:
             rel = path.relative_to(ROOT).as_posix()
@@ -297,7 +310,9 @@ def main():
     for path in files(CODE):
         rel = path.relative_to(ROOT).as_posix()
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if line.rstrip().endswith("// i18n: none"):
+            # A Rust test may ask for an ID that must not exist; in UI files the marker only
+            # excuses raw strings, and the IDs on its line are still checked.
+            if path.suffix == ".rs" and line.rstrip().endswith("// i18n: none"):
                 continue
             for pattern in ID_USES:
                 for m in pattern.finditer(line):

@@ -11,8 +11,8 @@ import com.marcusrosado.AniBeam
 
 SettingsTab {
     id: tab
-    title: "Phone app"
-    lead: "AniBeam on your phone can play this library, see what is airing and follow your downloads, wherever you are."
+    title: words.t("settings-phone-title")
+    lead: words.t("settings-phone-lead")
     property var host: ({ enabled: false, urls: [], message: "" })
     // Read once on open; a failed read says so with Try again, not as sharing switched off
     function reloadHost() { var r = Door.getHost(); if (r.error) frame.fail(r.error, tab.reloadHost); else host = r.reply.status }
@@ -28,7 +28,7 @@ SettingsTab {
         var r = Door.setPreferences(p)
         if (r.error) frame.toast(r.error.message)
     }
-    readonly property string enableCommand: "systemctl --user enable --now anibeam-host"
+    readonly property string enableCommand: "systemctl --user enable --now anibeam-host" // i18n: none
     // "serving", "waiting" while this window has the library, or empty with no service.
     property string service: ""
     property var devices: []
@@ -46,21 +46,20 @@ SettingsTab {
     }
     function deviceLine(d) {
         // Tailscale's own words for the system, as people write them
-        var names = { linux: "Linux", windows: "Windows", android: "Android", ios: "iOS", macos: "macOS", freebsd: "FreeBSD", openbsd: "OpenBSD" }
+        var names = { linux: "Linux", windows: "Windows", android: "Android", ios: "iOS", macos: "macOS", freebsd: "FreeBSD", openbsd: "OpenBSD" } // i18n: none
         var os = names[d.os.toLowerCase()] || d.os
         var parts = []
         if (os !== "") parts.push(os)
-        parts.push(d.online ? "Online" : "Offline")
+        parts.push(d.online ? words.t("settings-phone-online") : words.t("settings-phone-offline"))
         if (d.person) parts.push(d.person)
-        if (d.nobody) parts.push("Gets nothing: Tailscale names no person for it")
-        else if (!d.trusted) parts.push("Gets nothing from this computer")
+        if (d.nobody) parts.push(words.t("settings-phone-nobody"))
+        else if (!d.trusted) parts.push(words.t("settings-phone-untrusted"))
         return parts.join(" · ")
     }
     function personLine(p) {
         var parts = []
         if (p.login && p.login !== p.name) parts.push(p.login)
-        if (p.owner) parts.push(p.devices === 0 ? "This computer" : p.devices === 1 ? "This computer and 1 device" : "This computer and " + p.devices + " devices")
-        else parts.push(p.devices === 1 ? "1 device" : p.devices + " devices")
+        parts.push(words.t(p.owner ? "settings-phone-person-own-devices" : "settings-phone-person-devices", { count: p.devices }))
         return parts.join(" · ")
     }
     Component.onCompleted: { reloadHost(); reloadDevices(); service = Shell.hostService() }
@@ -70,10 +69,10 @@ SettingsTab {
 
     Panel {
         objectName: "settings-share"
-        title: "Sharing"
-        helper: "Only your own devices on Tailscale can reach it. Episodes watched on the phone keep their place and progress here."
+        title: words.t("settings-phone-sharing")
+        helper: words.t("settings-phone-sharing-helper")
         SettingRow {
-            label: "Share over Tailscale"
+            label: words.t("settings-phone-share")
             line: tab.host.message
             // The service shares whatever the switch says, so with one running it reads on
             Switch {
@@ -85,10 +84,10 @@ SettingsTab {
             }
         }
         SettingRow {
-            label: "Stream episodes"
+            label: words.t("settings-phone-stream")
             helper: Door.preferences.stream_over_tailscale !== false
-                ? "Your devices can play and cast the episodes on this computer."
-                : "Your devices see the library and what is airing, but cannot play from here."
+                ? words.t("settings-phone-stream-on")
+                : words.t("settings-phone-stream-off")
             Switch {
                 objectName: "settings-stream-switch"
                 checked: Door.preferences.stream_over_tailscale !== false
@@ -97,21 +96,21 @@ SettingsTab {
         }
         SettingRow {
             objectName: "settings-host-service"
-            label: "Host service"
-            line: tab.service === "" ? "Not running" : "Running"
-            helper: tab.service === "" ? "Run the command once and your devices reach AniBeam from login on, with no window open."
-                : "Your devices reach AniBeam with no window open. While this window is open, it shares in the service's place."
+            label: words.t("settings-phone-host-service")
+            line: tab.service === "" ? words.t("settings-phone-not-running") : words.t("settings-phone-running")
+            helper: tab.service === "" ? words.t("settings-phone-service-off-helper")
+                : words.t("settings-phone-service-on-helper")
             Button {
                 visible: tab.service === ""
-                text: "Copy command"; icon: "copy"; flat: true; small: true
-                onClicked: frame.copyText(tab.enableCommand, "Command copied")
+                msg: "settings-phone-copy-command"; icon: "copy"; flat: true; small: true
+                onClicked: frame.copyText(tab.enableCommand, words.t("settings-phone-command-copied"))
             }
         }
     }
     Panel {
         objectName: "settings-tailnet-people"
         visible: tab.people.length > 0
-        title: "People"
+        title: words.t("settings-phone-people")
         Repeater {
             model: tab.people
             SettingRow {
@@ -120,7 +119,7 @@ SettingsTab {
                 line: tab.personLine(modelData)
                 Chip {
                     visible: modelData.owner
-                    text: "This computer's profile"
+                    text: words.t("settings-phone-own-profile")
                     mono: false
                     small: true
                     color: theme.raised
@@ -131,8 +130,8 @@ SettingsTab {
     Panel {
         objectName: "settings-tailnet-devices"
         visible: tab.devices.length > 0
-        title: "Devices on your tailnet"
-        helper: "Every device on your tailnet can reach this computer while sharing is on. Switch one off and it gets nothing from here."
+        title: words.t("settings-phone-devices")
+        helper: words.t("settings-phone-devices-helper")
         Repeater {
             model: tab.devices
             SettingRow {
@@ -148,14 +147,14 @@ SettingsTab {
     }
     Panel {
         visible: tab.host.enabled && tab.host.urls.length > 0
-        title: "Addresses"
-        helper: "Type one of these into the phone app the first time it asks."
+        title: words.t("settings-phone-addresses")
+        helper: words.t("settings-phone-addresses-helper")
         Repeater {
             model: tab.host.urls
             SettingRow {
                 required property var modelData
                 label: modelData
-                Button { text: "Copy"; icon: "copy"; flat: true; small: true; onClicked: frame.copyText(modelData, "Address copied") }
+                Button { msg: "settings-phone-copy"; icon: "copy"; flat: true; small: true; onClicked: frame.copyText(modelData, words.t("settings-phone-address-copied")) }
             }
         }
     }

@@ -46,7 +46,7 @@ Item {
         var m = card.match_info, out = []
         if (m && m.anilist_id && frame.trackerOn("anilist")) out.push("AniList")
         if (m && m.mal_id && frame.trackerOn("mal")) out.push("MyAnimeList")
-        return out.join(" and ")
+        return out.length === 2 ? words.t("series-trackers-both", { first: out[0], second: out[1] }) : out.join("")
     }
     readonly property bool matched: !!card.match_info
     // The site the record came from, named on the button that opens it
@@ -63,7 +63,7 @@ Item {
     function setEpisodeCount(n) {
         var r = Door.call("SetEpisodeCount", { series: page.props.id, count: n })
         if (r && r.error) frame.fail(r.error)
-        else frame.toast(n === null ? "Episode count cleared" : "Set to " + n + " episodes")
+        else frame.toast(n === null ? words.t("series-count-cleared") : words.t("series-count-set", { count: n }))
     }
     // Schedule notes (#418): what the user told the schedule, for the card's season
     readonly property var scheduleNotes: detail && detail.schedule_notes ? detail.schedule_notes : []
@@ -99,27 +99,28 @@ Item {
         var held = scheduleNotes.filter(function(n) { return n.at === null || n.at === undefined })
         if (!held.length) return ""
         var n = held[0]
-        var eps = n.first === n.last ? "Episode " + n.first : "Episodes " + n.first + " to " + n.last
-        var due = n.year === null || n.year === undefined ? " not dated yet"
-            : " due in " + (n.month ? Qt.formatDate(new Date(n.year, n.month - 1, 1), "MMMM yyyy") : n.year)
-        return eps + due
+        var one = n.first === n.last
+        if (n.year === null || n.year === undefined)
+            return words.t(one ? "series-held-one-undated" : "series-held-range-undated", { first: n.first, last: n.last })
+        var when = n.month ? Qt.formatDate(new Date(n.year, n.month - 1, 1), words.t("series-held-month-format")) : String(n.year)
+        return words.t(one ? "series-held-one-due" : "series-held-range-due", { first: n.first, last: n.last, when: when })
     }
     // Fixes (#283): every way to correct what the page shows, in one menu
     // Three questions (#432): how many episodes and when, what each file is, which show this is
     function fixItems() {
         var items = []
         if (!page.isMovie)
-            items.push({ text: "Episodes and dates", icon: "calendar-clock", action: page.openSchedule })
+            items.push({ text: words.t("series-fix-schedule"), icon: "calendar-clock", action: page.openSchedule })
         items.push(page.filesHere > 0
-            ? { text: "Files", icon: "folder", action: function() { page.openFix(page.detail ? page.detail.suggested_fix : null, false) } }
-            : { text: "Rescan folder", icon: "refresh-cw", action: page.rescan })
-        items.push({ text: page.matched ? "Match" : "Find a match", icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
+            ? { text: words.t("series-fix-files"), icon: "folder", action: function() { page.openFix(page.detail ? page.detail.suggested_fix : null, false) } }
+            : { text: words.t("series-fix-rescan-folder"), icon: "refresh-cw", action: page.rescan })
+        items.push({ text: page.matched ? words.t("series-fix-match") : words.t("series-find-match"), icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
         return items
     }
     function contextItems() {
         return [
-            { text: "Rescan show", icon: "refresh-cw", action: page.rescan },
-            { text: "Open in Show info", icon: "database", action: function() { frame.go("metadata", { q: page.title }) } }
+            { text: words.t("series-rescan-show"), icon: "refresh-cw", action: page.rescan },
+            { text: words.t("series-open-in-show-info"), icon: "database", action: function() { frame.go("metadata", { q: page.title }) } }
         ]
     }
     // Deleting (#158, #168), the phone's way: Delete in the first section's heading, then a bar
@@ -138,7 +139,8 @@ Item {
         : episodeRows.length > 0 ? "episodes" : detail && detail.extras.length > 0 ? "extras" : "stray"
     readonly property string pickNoun: deletePicked.every(function(f) { return page.episodeFiles.indexOf(f) >= 0 })
         ? (isMovie ? "film" : "episode") : "file"
-    function pickWords(n) { return Fmt.plural(n, pickNoun, pickNoun + "s") }
+    // The words' arguments for n picks: the count and what they are
+    function pickArgs(n) { return { count: n, kind: pickNoun } }
     function startDelete() { page.deletePicked = []; page.deleteError = ""; page.deleting = true }
     function togglePick(file) {
         var i = deletePicked.indexOf(file), next = deletePicked.slice()
@@ -152,11 +154,11 @@ Item {
     property real deleteToken: -1
     // What the toast names once the trash answers: the picks as sent, since a reload while the
     // call runs can drop picks whose files are already gone
-    property string deleteWords: ""
+    property var deleteSent: ({ count: 0, kind: "file" })
     function deletePickedFiles() {
         if (deleteToken >= 0 || deletePicked.length === 0) return
         page.deleteError = ""
-        page.deleteWords = page.pickWords(deletePicked.length)
+        page.deleteSent = page.pickArgs(deletePicked.length)
         deleteToken = Door.callAsync("DeleteEpisodes", { series: page.props.id, files: deletePicked.slice() })
     }
     Connections {
@@ -167,11 +169,11 @@ Item {
             if (reply.error) { page.deleteError = frame.errorText(reply.error); return }
             page.deleting = false
             page.deletePicked = []
-            frame.toast(page.deleteWords + " moved to the trash")
+            frame.toast(words.t("series-delete-done", page.deleteSent))
         }
     }
     // Get episodes (#169): the Downloads page's show view for this series
-    function getEpisodes() { frame.go("downloads", { series: page.props.id }, "Downloads") }
+    function getEpisodes() { frame.go("downloads", { series: page.props.id }) }
     // The quick fix (#170): every file on the page as the sheet lists them, by name
     function fixRows() {
         if (!detail) return []
@@ -197,7 +199,7 @@ Item {
     // From the page's Quick fix the sheet comes filled in; from Fix files the suggestion waits
     // behind Fill in, so a fix of another file never carries it along
     function openFix(suggested, fill) { fixSheet.openFor(page.props.id, page.title, page.fixRows(), suggested || null, !!fill) }
-    function rescan() { var r = Door.rescanSeries(page.props.id); r.error ? frame.fail(r.error) : frame.toast("Rescan started") }
+    function rescan() { var r = Door.rescanSeries(page.props.id); r.error ? frame.fail(r.error) : frame.toast(words.t("series-rescan-started")) }
     function load() {
         var r = Door.getSeries(props.id)
         if (r.error) { frame.fail(r.error); return }
@@ -226,7 +228,7 @@ Item {
             var bad = page.failedOutcomes(outcomes)
             if (bad !== "") frame.toast(bad, 8)
         }
-        function onScored(series, score, outcomes) { if (series === page.props.id) { reloadDebounce.restart(); frame.toast(outcomes.every(function(o) { return o.ok }) ? "Rated " + (score < 0 ? "cleared" : Fmt.score(score)) : "Score failed") } }
+        function onScored(series, score, outcomes) { if (series === page.props.id) { reloadDebounce.restart(); frame.toast(!outcomes.every(function(o) { return o.ok }) ? words.t("series-score-failed") : score < 0 ? words.t("series-rated-cleared") : words.t("series-rated", { score: Fmt.score(score) })) } }
         function onMarked(series, episode, outcomes) {
             if (series !== page.props.id) return
             reloadDebounce.restart()
@@ -245,19 +247,32 @@ Item {
     }
     // Never a file a torrent is still writing; the core refuses it too, behind every Play
     function openFile(file) {
-        for (var i = 0; i < episodes.length; i++) if (episodes[i].file === file && isDownloading(episodes[i])) { frame.toast(Fmt.episodeName("", episodes[i].number) + " is still downloading"); return }
+        for (var i = 0; i < episodes.length; i++) if (episodes[i].file === file && isDownloading(episodes[i])) { frame.toast(words.t("series-still-downloading", { episode: words.episodeName("", episodes[i].number) })); return }
         frame.go("player", { file: file }, page.title)
     }
     function isDownloading(ep) { return ep.downloading !== undefined && ep.downloading !== null }
-    function status(s) { return { Releasing: "Airing", Finished: "Finished", NotYetReleased: "Upcoming", Cancelled: "Cancelled", Hiatus: "On hiatus" }[s] || s }
-    function listStatus(s) { return { Watching: "Watching", Planning: "Planning", Completed: "Completed", Paused: "On hold", Dropped: "Dropped", Repeating: "Rewatching" }[s] || s }
-    function formatLabel(f) { return isMovie ? "Film" : !f ? "Series" : ({ TV: "TV", TV_SHORT: "TV short", OVA: "OVA", ONA: "ONA", SPECIAL: "Special", MOVIE: "Film" })[f] || f.replace(/_/g, " ") }
-    function relationLabel(r) { if (!r) return ""; var s = String(r).replace(/_/g, " ").toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1) }
+    function status(s) { return words.releaseStatus(s) || s }
+    function listStatus(s) {
+        var id = ({ Watching: "status-watching", Planning: "status-planning", Completed: "status-completed", Paused: "status-on-hold", Dropped: "status-dropped", Repeating: "status-rewatching" })[s]
+        return id ? words.t(id) : s
+    }
+    function formatLabel(f) {
+        if (isMovie) return words.t("anilist-format-film")
+        if (!f) return words.t("series-format-series")
+        return words.formatLabel(f) || f.replace(/_/g, " ")
+    }
+    // AniList's relation types, as a person reads them; one it adds later reads off its code
+    function relationLabel(r) {
+        if (!r) return ""
+        var said = words.relationLabel(r)
+        if (said) return said
+        var s = String(r).replace(/_/g, " ").toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1)
+    }
     // An episode's name: Fmt.episodeName, the one rule the player and the feed share (its
     // own title, else "Episode 13"; the file name is never a title). A lone film is the film.
     function episodeName(ep) {
         if (!ep.title && isMovie && detail && detail.episodes.length === 1) return page.title
-        return Fmt.episodeName(ep.title || "", ep.number)
+        return words.episodeName(ep.title || "", ep.number)
     }
 
     // Track to here / untrack to here, optimistic; the core confirms through progressSet.
@@ -274,7 +289,7 @@ Item {
         for (var i = 0; i < outcomes.length; i++) {
             var o = outcomes[i]
             if (o.ok) continue
-            list.push((names[o.tracker] || o.tracker) + " did not take it" + (o.message ? ": " + o.message : ""))
+            list.push(words.t(o.message ? "series-tracker-refused-why" : "series-tracker-refused", { tracker: names[o.tracker] || o.tracker, why: o.message || "" }))
         }
         return list.join("; ")
     }
@@ -292,7 +307,7 @@ Item {
         if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.fail(r.error); return }
         // A mark that moves more than one episode says so, with the way back
         if (before >= 0 && Math.abs(target - before) > 1)
-            frame.toast(target > before ? "Watched up to " + Fmt.episodeName("", target) : "Unwatched from " + Fmt.episodeName("", target + 1), 8, "Undo",
+            frame.toast(target > before ? words.t("series-watched-up-to", { episode: words.episodeName("", target) }) : words.t("series-unwatched-from", { episode: words.episodeName("", target + 1) }), 8, words.t("series-undo"),
                         function() { Door.setProgress(id, before, season); optimisticProgress = -1; optimisticFile = -1 })
     }
     function watchedWithOptimism(ep) {
@@ -379,19 +394,25 @@ Item {
     // on from the latest completion, so watching only the finale leaves nothing after it.
     readonly property bool caughtUp: !!detail && !nextEpisode && firstWhole !== null
         && episodes.every(function(e) { return isDownloading(e) || watchedWithOptimism(e) })
-    readonly property string playVerb: nextEpisode && anyWatched ? "Continue" : caughtUp ? "Watch again" : "Play"
+    readonly property string playVerb: nextEpisode && anyWatched ? "resume" : caughtUp ? "again" : "play"
     // "Continue episode 8", "Play episode 1", "Watch again from episode 1", "Play" for a lone film
     readonly property string playText: {
-        if (waitingOnDownload) return "Downloading " + Fmt.episodeName("", downloadingNow[0].number).toLowerCase()
-        if (!playEpisode) return playVerb
-        if (isMovie && episodes.length === 1) return playVerb
-        return playVerb + (caughtUp ? " from " : " ") + Fmt.episodeName("", playEpisode.number).toLowerCase()
+        if (waitingOnDownload) {
+            var downloading = words.episodeNumber(downloadingNow[0].number)
+            return downloading === null ? words.t("series-play-downloading-unnumbered")
+                                        : words.t("series-play-downloading", { number: downloading })
+        }
+        var number = playEpisode ? words.episodeNumber(playEpisode.number) : null
+        if (number === null || (isMovie && episodes.length === 1))
+            return words.t(({ resume: "series-play-continue", again: "series-play-again", play: "action-play" })[playVerb])
+        return words.t(({ resume: "series-play-continue-episode", again: "series-play-again-from", play: "series-play-episode" })[playVerb], { number: number })
     }
     readonly property string progressText: {
         if (!detail) return ""
-        if (!tracked) return isMovie ? "Not tracked" : "Not tracked, " + Fmt.plural(detail.progress.on_disk, "episode", "episodes") + " on disk"
+        if (!tracked) return isMovie ? words.t("series-page-not-tracked") : words.t("series-not-tracked-on-disk", { count: detail.progress.on_disk })
         var p = detail.progress
-        return p.total ? watchedCount + " of " + p.total + (p.estimate ? "+" : "") + " watched" : watchedCount + " watched"
+        if (!p.total) return words.t("series-watched", { count: watchedCount })
+        return words.t(p.estimate ? "series-watched-of-estimate" : "series-watched-of", { watched: watchedCount, total: p.total })
     }
     readonly property real progressFraction: tracked && detail.progress.total ? Math.min(1, watchedCount / detail.progress.total) : 0
     readonly property bool airsAhead: !!card.next_airing && card.next_airing.at * 1000 > nowMs
@@ -414,18 +435,18 @@ Item {
         var f = [formatLabel(card.format)]
         if (detail.year) f.push(String(detail.year))
         if (detail.studio) f.push(detail.studio)
-        if (film && detail.episode_minutes) f.push(Fmt.runtime(detail.episode_minutes))
-        if (!isMovie && card.total_episodes) f.push(Fmt.plural(card.total_episodes, "episode", "episodes") + (card.total_is_estimate ? "+" : ""))
-        if (!film && detail.episode_minutes) f.push(Fmt.runtime(detail.episode_minutes) + " each")
-        if (!isMovie) f.push(detail.progress.on_disk + " on disk")
+        if (film && detail.episode_minutes) f.push(words.runtime(detail.episode_minutes))
+        if (!isMovie && card.total_episodes) f.push(words.t(card.total_is_estimate ? "series-facts-episodes-estimate" : "count-episodes", { count: card.total_episodes }))
+        if (!film && detail.episode_minutes) f.push(words.t("series-facts-each", { runtime: words.runtime(detail.episode_minutes) }))
+        if (!isMovie) f.push(words.t("series-facts-on-disk", { count: detail.progress.on_disk }))
         if (card.status) f.push(status(card.status))
         return f.join("  ")
     }
     readonly property string episodesFact: {
         if (!detail) return ""
-        if (nextEpisode) return "Next: " + Fmt.episodeName("", nextEpisode.number)
-        if (downloadingNow.length > 0) return Fmt.plural(downloadingNow.length, "episode", "episodes") + " downloading"
-        if (caughtUp) return "All watched"
+        if (nextEpisode) return words.t("series-next", { episode: words.episodeName("", nextEpisode.number) })
+        if (downloadingNow.length > 0) return words.t("series-episodes-downloading", { count: downloadingNow.length })
+        if (caughtUp) return words.t("series-all-watched")
         return ""
     }
     // The core hands the synopsis over as plain text in paragraphs, whatever the provider.
@@ -517,7 +538,7 @@ Item {
         visible: page.deleteAt === where && !page.deleting
         small: true; flat: true
         icon: "trash-2"
-        text: "Delete"
+        msg: "action-delete"
         onClicked: page.startDelete()
     }
     // The phone's delete bar: how many are picked, what deleting does, and the two ways out
@@ -541,12 +562,12 @@ Item {
             spacing: theme.space(2)
             Label {
                 width: parent.width
-                text: page.deletePicked.length === 0 ? "Click the files to delete." : page.pickWords(page.deletePicked.length) + " picked."
+                text: page.deletePicked.length === 0 ? words.t("series-delete-click") : words.t("series-delete-picked", page.pickArgs(page.deletePicked.length))
                 role: "title"; font.pointSize: theme.typeNormal
             }
             Label {
                 width: parent.width
-                text: "They go to the trash, where you can get them back. What you watched stays tracked."
+                msg: "series-delete-where"
                 role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
             }
             Label {
@@ -564,7 +585,7 @@ Item {
                     icon: "trash-2"
                     busy: page.deleteToken >= 0
                     enabled: page.deletePicked.length > 0 && page.deleteToken < 0
-                    text: page.deletePicked.length === 0 ? "Move to the trash" : "Move " + page.pickWords(page.deletePicked.length) + " to the trash"
+                    text: page.deletePicked.length === 0 ? words.t("series-delete-move") : words.t("series-delete-move-picked", page.pickArgs(page.deletePicked.length))
                     onClicked: page.deletePickedFiles()
                 }
                 // Every file on the page but the ones a torrent is still writing; again to drop them all
@@ -575,12 +596,12 @@ Item {
                         return !page.episodes.some(function(e) { return e.file === f && page.isDownloading(e) })
                     })
                     readonly property bool allPicked: all.length > 0 && all.every(function(f) { return page.deletePicked.indexOf(f) >= 0 })
-                    text: allPicked ? "Pick none" : "Pick all"
+                    text: allPicked ? words.t("series-pick-none") : words.t("series-pick-all")
                     icon: allPicked ? "x" : "check-check"
                     enabled: page.deleteToken < 0
                     onClicked: page.deletePicked = allPicked ? [] : all
                 }
-                Button { objectName: "delete-cancel"; small: true; flat: true; text: "Cancel"; onClicked: { page.deleting = false; page.deleteError = "" } }
+                Button { objectName: "delete-cancel"; small: true; flat: true; msg: "action-cancel"; onClicked: { page.deleting = false; page.deleteError = "" } }
             }
         }
     }
@@ -605,7 +626,7 @@ Item {
             width: parent.width
             readonly property real pad: theme.space(8)
             readonly property real posterH: theme.space(72)
-            height: Math.max(posterH, words.implicitHeight) + pad * 2
+            height: Math.max(posterH, bandWords.implicitHeight) + pad * 2
 
             Rectangle { anchors.fill: parent; radius: theme.radiusXl; color: page.bandBase; antialiasing: true }
             // The art sits in the right two thirds, under a wash of the band's colour that
@@ -662,11 +683,11 @@ Item {
                     sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
                     fillMode: Image.PreserveAspectCrop; asynchronous: true
                 }
-                Label { visible: !card.poster; anchors.centerIn: parent; text: "No poster"; color: page.inkDim; role: "ui"; font.pointSize: theme.typeSmall }
+                Label { visible: !card.poster; anchors.centerIn: parent; msg: "series-no-poster"; color: page.inkDim; role: "ui"; font.pointSize: theme.typeSmall }
             }
 
             Column {
-                id: words
+                id: bandWords
                 anchors.left: posterBox.right
                 anchors.leftMargin: theme.space(8)
                 anchors.right: parent.right
@@ -789,7 +810,15 @@ Item {
                         id: airing
                         objectName: "fact-airing"
                         visible: page.airsAhead
-                        text: card.next_airing ? (card.next_airing.season && card.next_airing.season !== 1 ? "S" + card.next_airing.season + " " : "") + Fmt.episodeSpan(card.next_airing.episode, card.next_airing.through || 0) + (card.next_airing.predicted ? " predicted for " + Qt.formatDate(new Date(card.next_airing.at * 1000), "ddd d MMM") + ", in " + Fmt.countdown(card.next_airing.at - page.nowMs / 1000) : (card.next_airing.through ? " air in " : " airs in ") + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000)) : ""
+                        text: {
+                            var next = card.next_airing
+                            if (!next) return ""
+                            var span = words.episodeSpan(next.episode, next.through || 0)
+                            if (next.season && next.season !== 1) span = words.t("series-next-season-span", { season: next.season, span: span })
+                            if (next.predicted)
+                                return words.t("series-next-predicted", { span: span, date: Qt.formatDate(new Date(next.at * 1000), words.t("series-next-date-format")), wait: words.countdown(next.at - page.nowMs / 1000) })
+                            return words.t("series-next-airs", { span: span, count: next.through ? 2 : 1, wait: words.countdownSeconds(next.at - page.nowMs / 1000) })
+                        }
                         role: "ledger"
                         font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
                         color: page.inkAccent
@@ -798,7 +827,7 @@ Item {
                         id: downloadingFact
                         objectName: "fact-downloading"
                         visible: page.downloadingNow.length > 0
-                        text: "Downloading " + Fmt.plural(page.downloadingNow.length, "episode", "episodes")
+                        text: words.t("series-downloading-episodes", { count: page.downloadingNow.length })
                         role: "ledger"
                         font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
                         color: page.downloadInk
@@ -813,17 +842,17 @@ Item {
                     readonly property var set: card.episodes_set === undefined ? null : card.episodes_set
                     readonly property bool gaveWay: set !== null && card.episodes_set_applied !== true
                     // A TVmaze count is one season's, so the row names it
-                    readonly property string seasonWord: card.count_season ? "Season " + card.count_season : ""
                     readonly property string countText: set === null || gaveWay ? ""
-                        : (seasonWord ? seasonWord + " ends" : "Ends") + " at episode " + set
+                        : card.count_season ? words.t("series-count-season-ends", { season: card.count_season, number: set })
+                        : words.t("series-count-ends", { number: set })
                     visible: set !== null || page.heldLine !== ""
                     spacing: theme.space(2)
                     Label {
                         objectName: "schedule-held"
                         anchors.verticalCenter: parent.verticalCenter
                         text: countRow.gaveWay && !page.heldLine
-                              ? "You set " + countRow.set + " episodes; that no longer applies"
-                              : [countRow.countText, page.heldLine].filter(Boolean).join(" · ") + ", set by you"
+                              ? words.t("series-count-gave-way", { count: countRow.set })
+                              : words.t("series-count-set-by-you", { line: [countRow.countText, page.heldLine].filter(Boolean).join(" · ") })
                         role: "ledger"
                         color: page.inkDim
                     }
@@ -832,7 +861,7 @@ Item {
                         small: true; flat: true
                         tint: page.inkAccent
                         icon: "calendar-clock"
-                        text: "Change"
+                        msg: "series-change"
                         onClicked: page.openSchedule()
                     }
                 }
@@ -859,7 +888,7 @@ Item {
                         ghost: page.playEpisode !== null
                         tint: page.inkAccent
                         icon: "download"
-                        text: "Get episodes"
+                        msg: "series-get-episodes"
                         onClicked: page.getEpisodes()
                     }
                     Row {
@@ -897,16 +926,16 @@ Item {
                         visible: !card.hidden
                         small: true; ghost: true
                         icon: "star"
-                        text: page.hasScore ? "Your score " + Fmt.score(card.my_score) : "Rate"
+                        text: page.hasScore ? words.t("series-your-score", { score: Fmt.score(card.my_score) }) : words.t("series-rate")
                         onClicked: scorePicker.openAt(rateButton, page.hasScore ? card.my_score : -1)
                     }
-                    Fact { objectName: "fact-average"; visible: page.hasAverage; icon: "users"; text: page.hasAverage ? "Average score " + Fmt.score(card.community_score) : "" }
+                    Fact { objectName: "fact-average"; visible: page.hasAverage; icon: "users"; text: page.hasAverage ? words.t("series-page-average-score", { score: Fmt.score(card.community_score) }) : "" }
                     Fact {
                         objectName: "fact-imdb"
                         visible: page.hasImdb
                         icon: "clapperboard"
-                        text: page.hasImdb ? "IMDb " + Fmt.score(card.imdb_score) : ""
-                        Tooltip { text: page.hasImdb && card.imdb_votes ? Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) + " votes" : "" }
+                        text: page.hasImdb ? words.t("series-page-imdb", { score: Fmt.score(card.imdb_score) }) : ""
+                        Tooltip { text: page.hasImdb && card.imdb_votes ? words.t("series-page-imdb-votes", { votes: Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) }) : "" }
                     }
                     // The list status, and with a tracker connected the menu that changes it
                     Fact {
@@ -916,12 +945,12 @@ Item {
                         visible: !!card.list_status || settable
                         menu: settable
                         icon: page.listIcon(card.list_status)
-                        text: card.list_status ? page.listStatus(card.list_status) : "Add to a list"
+                        text: card.list_status ? page.listStatus(card.list_status) : words.t("series-add-to-list")
                         pressName: "series-status"
                         onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
                         Tooltip { text: statusFact.settable ? frame.listHome(card) : "" }
                     }
-                    Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
+                    Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? words.t("series-page-rewatched", { count: page.detail.rewatch_count }) : "" }
                     // The list entry's notes, written to every connected tracker (#211); a show not
                     // on a list yet has no entry to write them on
                     Button {
@@ -930,14 +959,14 @@ Item {
                         visible: statusFact.settable && !!card.list_status
                         small: true; ghost: true
                         icon: "pencil"
-                        text: page.detail && page.detail.notes ? "Your notes" : "Add notes"
+                        text: page.detail && page.detail.notes ? words.t("series-your-notes") : words.t("series-add-notes")
                         onClicked: notesSheet.openFor(page.props.id, page.title, page.detail ? page.detail.notes : "", page.trackerSites)
-                        Tooltip { text: page.detail && page.detail.notes ? page.detail.notes : "Notes on your list entry, kept on " + page.trackerSites }
+                        Tooltip { text: page.detail && page.detail.notes ? page.detail.notes : words.t("series-notes-tip", { sites: page.trackerSites }) }
                     }
                     Button {
                         objectName: "series-hide"
                         small: true; ghost: true
-                        text: card.hidden ? "Unhide" : "Hide"
+                        text: card.hidden ? words.t("series-unhide") : words.t("series-hide")
                         icon: card.hidden ? "eye" : "eye-off"
                         onClicked: {
                             var hide = !card.hidden
@@ -945,19 +974,19 @@ Item {
                             var id = props.id
                             var r = Door.setHidden(id, hide)
                             if (r.error) { frame.fail(r.error); return }
-                            frame.toast(hide ? page.title + " is hidden here, and AniBeam stops syncing it to AniList and MyAnimeList" : page.title + " is back, and syncs again", 6, "Undo",
+                            frame.toast(hide ? words.t("series-hidden-toast", { title: page.title }) : words.t("series-unhidden-toast", { title: page.title }), 6, words.t("series-undo"),
                                         function() { Door.setHidden(id, !hide) })
                         }
-                        Tooltip { text: page.hasTracker ? "Hidden from every page here, and AniBeam stops syncing it to AniList and MyAnimeList" : "Hidden from every list" }
+                        Tooltip { text: page.hasTracker ? words.t("series-hide-tip-tracked") : words.t("series-hide-tip") }
                     }
                     Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: frame.openLink(page.detail.site_url) }
                     Button {
                         id: fixesButton
                         objectName: "series-fixes"
                         small: true; ghost: true
-                        text: "Fixes"; icon: "wrench"
+                        msg: "series-fixes"; icon: "wrench"
                         onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, page.fixItems()) }
-                        Tooltip { text: "Fix files, the episode count, the match, or rescan" }
+                        Tooltip { msg: "series-fixes-tip" }
                     }
                 }
             }
@@ -1009,7 +1038,7 @@ Item {
                             objectName: "series-suggested-fix-open"
                             anchors.verticalCenter: parent.verticalCenter
                             small: true; primary: true
-                            text: "Quick fix"; icon: "wrench"
+                            msg: "series-quick-fix"; icon: "wrench"
                             onClicked: page.openFix(page.detail.suggested_fix, true)
                         }
                     }
@@ -1022,7 +1051,7 @@ Item {
                     width: parent.width
                     spacing: theme.space(4)
                     Heading {
-                        text: page.isMovie ? "Film" : "Episodes"
+                        text: page.isMovie ? words.t("series-film") : words.t("series-episodes")
                         // Episodes, not files: the same while picking, when each file has a row
                         count: page.episodeRows.filter(function(r) { return !r.upcoming }).length - (page.deleting ? page.extraVersions : 0)
                         fact: page.episodesFact
@@ -1061,10 +1090,11 @@ Item {
                     visible: !!page.detail && page.detail.extras.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: "Openings, endings and more"; count: page.detail ? page.grouped(page.detail.extras).length : 0; action: DeleteButton { where: "extras" } }
+                    Heading { text: words.t("series-extras"); count: page.detail ? page.grouped(page.detail.extras).length : 0; action: DeleteButton { where: "extras" } }
                     DeleteBar { where: "extras" }
                     Repeater {
-                        model: [["Op", "Openings"], ["Ed", "Endings"], ["Pv", "Previews and trailers"], ["Sp", "Specials"], ["Other", "Other"]]
+                        // The extra's kind from the core, and the message that names it
+                        model: [["Op", "series-extras-openings"], ["Ed", "series-extras-endings"], ["Pv", "series-extras-previews"], ["Sp", "series-extras-specials"], ["Other", "series-extras-other"]] // i18n: none
                         Column {
                             required property var modelData
                             // Two releases of one extra are one row, as for an episode (#468)
@@ -1072,7 +1102,7 @@ Item {
                             visible: group.length > 0
                             width: parent.width
                             spacing: theme.space(2)
-                            Caption { text: modelData[1] + ", " + group.length }
+                            Caption { text: words.t("series-extras-group", { kind: words.t(modelData[1]), count: group.length }) }
                             Column {
                                 width: parent.width
                                 spacing: theme.space(4)
@@ -1101,7 +1131,7 @@ Item {
                     visible: !!page.detail && page.detail.unmatched_files.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: "Extra files"; count: page.detail ? page.detail.unmatched_files.length : 0; action: DeleteButton { where: "stray" } }
+                    Heading { text: words.t("series-extra-files"); count: page.detail ? page.detail.unmatched_files.length : 0; action: DeleteButton { where: "stray" } }
                     DeleteBar { where: "stray" }
                     Row {
                         width: parent.width
@@ -1110,7 +1140,7 @@ Item {
                         Label {
                             width: parent.width - theme.space(6)
                             wrapMode: Text.Wrap; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim
-                            text: page.detail ? (page.detail.unmatched_files.length === 1 ? "One file is" : page.detail.unmatched_files.length + " files are") + " more than the " + (card.total_episodes || 0) + " expected episodes: misnamed, duplicates or specials. Rename or remove " + (page.detail.unmatched_files.length === 1 ? "it." : "them.") : ""
+                            text: page.detail ? words.t("series-extra-files-warning", { count: page.detail.unmatched_files.length, total: card.total_episodes || 0 }) : ""
                         }
                     }
                     Column {
@@ -1120,7 +1150,7 @@ Item {
                             EpisodeRow {
                                 required property var modelData
                                 episode: modelData; extra: true
-                                title: Fmt.episodeName(modelData.title || "", modelData.number)
+                                title: words.episodeName(modelData.title || "", modelData.number)
                                 detailText: Fmt.baseName(modelData.path)
                                 onPlay: page.openFile(modelData.file)
                                 picking: page.deleting
@@ -1143,7 +1173,7 @@ Item {
                     visible: page.synopsisText !== ""
                     width: parent.width
                     spacing: theme.space(3)
-                    Heading { text: "Synopsis" }
+                    Heading { text: words.t("series-synopsis") }
                     // Selectable, so a line of it can be copied; folded to eight lines until More
                     TextEdit {
                         id: synopsis
@@ -1156,7 +1186,7 @@ Item {
                         readOnly: true
                         selectByMouse: true
                         textFormat: TextEdit.RichText
-                        text: "<div style=\"line-height:120%\">" + page.synopsisText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") + "</div>"
+                        text: "<div style=\"line-height:120%\">" + page.synopsisText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") + "</div>" // i18n: none
                         color: theme.textDim
                         selectionColor: theme.accentSoft
                         selectedTextColor: theme.text
@@ -1165,7 +1195,7 @@ Item {
                         font.variableAxes: theme.roleAxes("ui")
                         FontMetrics { id: synopsisMetrics; font: synopsis.font }
                     }
-                    Button { visible: synopsis.truncated || page.synopsisOpen; small: true; flat: true; text: page.synopsisOpen ? "Less" : "More"; icon: page.synopsisOpen ? "chevron-up" : "chevron-down"; onClicked: page.synopsisOpen = !page.synopsisOpen }
+                    Button { visible: synopsis.truncated || page.synopsisOpen; small: true; flat: true; text: page.synopsisOpen ? words.t("series-less") : words.t("series-more"); icon: page.synopsisOpen ? "chevron-up" : "chevron-down"; onClicked: page.synopsisOpen = !page.synopsisOpen }
                 }
 
                 // Unmatched: the match, where the synopsis would be
@@ -1174,17 +1204,17 @@ Item {
                     visible: !!page.detail && !page.matched
                     width: parent.width
                     spacing: theme.space(3)
-                    Heading { text: "Match" }
+                    Heading { text: words.t("series-match") }
                     Label {
                         width: Math.min(parent.width, theme.space(140))
-                        text: "Not matched yet, so there is no poster, synopsis or tracking. Find its show info on AniList or TVmaze."
+                        msg: "series-not-matched"
                         role: "ui"; color: theme.textDim
                         wrapMode: Text.Wrap
                     }
                     Row {
                         spacing: theme.space(2)
-                        Button { objectName: "series-find-match"; text: "Find a match"; icon: "search"; primary: true; onClicked: matchPanel.openFor(page.props.id, page.title, card.match_info) }
-                        Button { text: "Open in Show info"; icon: "database"; flat: true; onClicked: frame.go("metadata", { q: page.title }) }
+                        Button { objectName: "series-find-match"; msg: "series-find-match"; icon: "search"; primary: true; onClicked: matchPanel.openFor(page.props.id, page.title, card.match_info) }
+                        Button { msg: "series-open-in-show-info"; icon: "database"; flat: true; onClicked: frame.go("metadata", { q: page.title }) }
                     }
                     // What a name that matches looks like (#207): the show's title as AniList
                     // writes it, then the season, then the episode
@@ -1197,13 +1227,14 @@ Item {
                             id: namingCol
                             width: parent.width
                             spacing: theme.space(2)
-                            Label { text: "Names that match"; role: "title"; font.pointSize: theme.typeNormal }
+                            Label { msg: "series-naming-title"; role: "title"; font.pointSize: theme.typeNormal }
                             Label { width: parent.width; wrapMode: Text.Wrap; role: "ui"; color: theme.textDim
-                                text: "The folder is the show's title, the way AniList writes it, with the season after it when it is not the first. Each file carries the episode number." }
+                                msg: "series-naming-body" }
                             Repeater {
-                                model: [["Spy x Family Season 2", "Spy x Family S02E01.mkv"],
-                                        ["Spy x Family Season 2", "[Group] Spy x Family Season 2 - 01 [1080p].mkv"],
-                                        ["Your Name (2016)", "Your Name (2016).mkv"]]
+                                // Folder and file names the way the scanner reads them, in every language
+                                model: [["Spy x Family Season 2", "Spy x Family S02E01.mkv"], // i18n: none
+                                        ["Spy x Family Season 2", "[Group] Spy x Family Season 2 - 01 [1080p].mkv"], // i18n: none
+                                        ["Your Name (2016)", "Your Name (2016).mkv"]] // i18n: none
                                 Row {
                                     required property var modelData
                                     spacing: theme.space(2)
@@ -1212,7 +1243,7 @@ Item {
                                     Label { anchors.verticalCenter: parent.verticalCenter; text: modelData[1]; role: "ledger"; color: theme.textDim }
                                 }
                             }
-                            Button { text: "Fix how files read"; icon: "wrench"; flat: true; small: true; onClicked: page.openFix(null, false) }
+                            Button { msg: "series-fix-how-files-read"; icon: "wrench"; flat: true; small: true; onClicked: page.openFix(null, false) }
                         }
                     }
                 }
@@ -1222,7 +1253,7 @@ Item {
                     visible: !!page.detail && page.detail.characters.length > 0
                     width: parent.width
                     spacing: theme.space(3)
-                    Heading { text: "Characters"; count: page.detail ? page.detail.characters.length : 0 }
+                    Heading { text: words.t("series-characters"); count: page.detail ? page.detail.characters.length : 0 }
                     Flow { width: parent.width; spacing: theme.space(3); Repeater { model: page.detail ? page.detail.characters : []; PersonCard { required property var modelData; person: modelData } } }
                 }
 
@@ -1232,7 +1263,7 @@ Item {
                     visible: page.relationNodes.length > 0
                     width: parent.width
                     spacing: theme.space(3)
-                    Heading { text: "Related"; count: page.relationNodes.length }
+                    Heading { text: words.t("series-related"); count: page.relationNodes.length }
                     Flow {
                         id: relationFlow
                         width: parent.width
@@ -1245,7 +1276,7 @@ Item {
                             RelationStone { required property var modelData; node: modelData; width: relationFlow.stoneW }
                         }
                     }
-                    Caption { visible: !!page.graph && !page.graph.complete; text: "Still filling in from AniList." }
+                    Caption { visible: !!page.graph && !page.graph.complete; msg: "series-related-filling" }
                 }
 
                 // Tags by rank; spoiler and adult tags behind the toggle
@@ -1254,12 +1285,12 @@ Item {
                     width: parent.width
                     spacing: theme.space(3)
                     Heading {
-                        text: "Tags"
+                        text: words.t("series-tags")
                         count: page.tagList.length
                         action: Row {
                             spacing: theme.space(2)
-                            Button { visible: page.anySpoiler; small: true; flat: true; text: page.spoilers ? "Hide spoilers" : "Spoilers"; icon: page.spoilers ? "eye-off" : "eye"; onClicked: page.spoilers = !page.spoilers }
-                            Button { visible: tagFlow.implicitHeight > tagClip.height || page.tagsOpen; small: true; flat: true; text: page.tagsOpen ? "Less" : "All tags"; onClicked: page.tagsOpen = !page.tagsOpen }
+                            Button { visible: page.anySpoiler; small: true; flat: true; text: page.spoilers ? words.t("series-hide-spoilers") : words.t("series-spoilers"); icon: page.spoilers ? "eye-off" : "eye"; onClicked: page.spoilers = !page.spoilers }
+                            Button { visible: tagFlow.implicitHeight > tagClip.height || page.tagsOpen; small: true; flat: true; text: page.tagsOpen ? words.t("series-less") : words.t("series-all-tags"); onClicked: page.tagsOpen = !page.tagsOpen }
                         }
                     }
                     // A hidden reference chip: chip height depends on font metrics, so the
@@ -1276,7 +1307,7 @@ Item {
                             width: parent.width; spacing: theme.space(2)
                             Repeater {
                                 model: page.tagList
-                                Chip { required property var modelData; text: modelData.name + ", " + modelData.rank + "%"; mono: false; color: theme.tile; borderColor: "transparent"; textColor: modelData.spoiler || modelData.adult ? theme.text : theme.textDim }
+                                Chip { required property var modelData; text: words.t("series-tag", { name: modelData.name, rank: modelData.rank }); mono: false; color: theme.tile; borderColor: "transparent"; textColor: modelData.spoiler || modelData.adult ? theme.text : theme.textDim }
                             }
                         }
                     }
@@ -1300,7 +1331,7 @@ Item {
                         : (width - (count - 1) * gap) / count >= theme.space(28) ? count
                         : Math.min(Math.ceil(count / 2), fit)
                     readonly property real cardW: Math.max(0, Math.floor((width - (cols - 1) * gap) / cols))
-                    Heading { text: "Recommendations"; count: page.detail ? page.detail.recommendations.length : 0 }
+                    Heading { text: words.t("series-recommendations"); count: page.detail ? page.detail.recommendations.length : 0 }
                     Grid { columns: recCol.cols; spacing: recCol.gap
                         Repeater { model: page.detail ? page.detail.recommendations : []
                             RecommendationCard { required property var modelData; rec: modelData; width: recCol.cardW
@@ -1339,11 +1370,11 @@ Item {
             spacing: theme.space(1)
             Label { width: parent.width; text: rel.node.title || ""; role: "title"; font.pointSize: theme.typeNormal; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; color: rel.node.pending ? theme.textDim : theme.text }
             Label { width: parent.width; role: "ledger"; color: theme.textDim; elide: Text.ElideRight
-                text: [page.relationLabel(rel.node.relation), page.formatLabel(rel.node.format), rel.node.year ? String(rel.node.year) : ""].filter(function(s) { return s !== "" && s !== "Series" }).join(", ") }
+                text: [page.relationLabel(rel.node.relation), page.formatLabel(rel.node.format), rel.node.year ? String(rel.node.year) : ""].filter(function(s) { return s !== "" && s !== words.t("series-format-series") }).join(", ") }
             Row {
                 spacing: theme.space(1.5)
                 StatusDot { anchors.verticalCenter: parent.verticalCenter; status: rel.node.list_status || "" }
-                Label { role: "ledger"; text: rel.owned ? "In your library" : !rel.node.released ? "Not yet released" : "On AniList"; color: rel.owned ? theme.accent : theme.textDim }
+                Label { role: "ledger"; text: rel.owned ? words.t("series-relation-owned") : !rel.node.released ? words.t("series-relation-unreleased") : words.t("series-relation-on-anilist"); color: rel.owned ? theme.accent : theme.textDim }
             }
         }
         MouseArea {
@@ -1358,8 +1389,8 @@ Item {
 
     ScorePicker { id: scorePicker; parent: frame.overlay
         // A score kept on this device has no job to report back, so it says so here (#213)
-        onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast("Score saved") }
-        onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast("Score cleared") } }
+        onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast(words.t("series-score-saved")) }
+        onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.fail(r.error); else if (!r.reply || r.reply.job === undefined) frame.toast(words.t("series-score-cleared")) } }
 
     // The quick fix (#170), over the overlay like the match
     FixSheet {

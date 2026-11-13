@@ -99,8 +99,8 @@ Corner {
     readonly property string extrasLine: {
         if (!detail) return ""
         var bits = []
-        if (detail.extras.length > 0) bits.push(Fmt.plural(detail.extras.length, "extra", "extras"))
-        if (detail.unmatched_files.length > 0) bits.push(Fmt.plural(detail.unmatched_files.length, "unmatched file", "unmatched files"))
+        if (detail.extras.length > 0) bits.push(words.t("episodes-pane-extras", { count: detail.extras.length }))
+        if (detail.unmatched_files.length > 0) bits.push(words.t("episodes-pane-unmatched", { count: detail.unmatched_files.length }))
         return bits.join(", ")
     }
 
@@ -158,7 +158,7 @@ Corner {
             // A film: on disk or not
             Label {
                 visible: root.film
-                text: root.episodes.length > 0 ? "On disk" : "Not on disk"
+                text: root.episodes.length > 0 ? words.t("episodes-pane-on-disk") : words.t("episodes-pane-not-on-disk")
                 role: "ui"
                 color: root.episodes.length > 0 ? theme.text : theme.textDim
             }
@@ -183,7 +183,7 @@ Corner {
                             width: visible ? theme.space(7) : 0
                             height: root.chip
                             verticalAlignment: Text.AlignVCenter
-                            text: visible ? "S" + seasonRow.modelData.season : ""
+                            text: visible ? words.t("episodes-pane-season", { season: seasonRow.modelData.season }) : ""
                             role: "ledger"
                             color: theme.textDim
                         }
@@ -212,16 +212,16 @@ Corner {
                                     // A missing one opens Downloads on the series, to get it
                                     MouseArea {
                                         Accessible.role: Accessible.Button
-                                        Accessible.onPressAction: { var id = root.seriesId, t = root.title; root.close(); frame.go("downloads", { series: id }, "Downloads") }
+                                        Accessible.onPressAction: { var id = root.seriesId, t = root.title; root.close(); frame.go("downloads", { series: id }) }
                                         Accessible.name: theme.nameNear(parent)
                                         id: chipMouse
                                         anchors.fill: parent
                                         enabled: !parent.present && !parent.loading
                                         hoverEnabled: enabled
                                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                        onClicked: { var id = root.seriesId, t = root.title; root.close(); frame.go("downloads", { series: id }, "Downloads") }
+                                        onClicked: { var id = root.seriesId, t = root.title; root.close(); frame.go("downloads", { series: id }) }
                                     }
-                                    Tooltip { text: !parent.present && !parent.loading ? "Get episode " + parent.number : "" }
+                                    Tooltip { text: !parent.present && !parent.loading ? words.t("episodes-pane-get-tip", { number: parent.number }) : "" }
                                 }
                             }
                         }
@@ -230,7 +230,7 @@ Corner {
                 // No expected count and nothing on disk: say so rather than draw nothing
                 Label {
                     visible: root.detail !== null && root.seasonRows.every(function(r) { return r.count === 0 })
-                    text: "No episodes on disk"
+                    msg: "episodes-pane-none-on-disk"
                     role: "ui"; color: theme.textDim
                 }
             }
@@ -250,18 +250,18 @@ Corner {
                 spacing: theme.space(2)
                 Button {
                     objectName: "episodes-open"
-                    flat: true; small: true; icon: "arrow-up-right"; text: "Open"
+                    flat: true; small: true; icon: "arrow-up-right"; msg: "action-open"
                     onClicked: { var id = root.seriesId, t = root.title; root.close(); frame.go("series", { id: id }, t) }
                 }
                 Button {
                     objectName: "episodes-change-match"
-                    flat: true; small: true; icon: "link"; text: "Change match"
+                    flat: true; small: true; icon: "link"; msg: "episodes-pane-change-match"
                     onClicked: { var id = root.seriesId, t = root.title, m = root.card.match_info || null; root.close(); root.changeMatch(id, t, m) }
                 }
                 Button {
                     objectName: "episodes-refresh"
-                    flat: true; small: true; icon: "refresh-cw"; text: "Refresh"
-                    onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Refreshing " + root.title) }
+                    flat: true; small: true; icon: "refresh-cw"; msg: "action-refresh"
+                    onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast(words.t("episodes-pane-refreshing", { title: root.title })) }
                 }
             }
         }

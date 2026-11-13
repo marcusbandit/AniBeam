@@ -8,7 +8,7 @@ Item {
     id: page
     objectName: "recommended-page"
     property var props: ({})
-    property string title: "Recommended for you"
+    property string title: words.t("recommended-title")
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
     Keys.onPressed: function(event) { scroll.keyPressed(event) }
@@ -60,7 +60,9 @@ Item {
     readonly property string fittedFact: {
         if (!recommended || !recommended.fitted_at) return ""
         var mins = Math.max(0, Math.floor((Date.now() / 1000 - recommended.fitted_at) / 60))
-        return mins < 60 ? "Ranked " + Math.max(1, mins) + "m ago" : mins < 1440 ? "Ranked " + Math.floor(mins / 60) + "h ago" : "Ranked " + Math.floor(mins / 1440) + "d ago"
+        return mins < 60 ? words.t("recommended-ranked-minutes", { minutes: Math.max(1, mins) })
+            : mins < 1440 ? words.t("recommended-ranked-hours", { hours: Math.floor(mins / 60) })
+            : words.t("recommended-ranked-days", { days: Math.floor(mins / 1440) })
     }
 
     RecommendedHover {
@@ -90,7 +92,7 @@ Item {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: theme.space(2)
                 spacing: theme.space(3)
-                Label { id: heading; text: "Recommended for you"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
+                Label { id: heading; msg: "recommended-title"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
                 Label { anchors.baseline: heading.baseline; text: page.fittedFact; role: "ui"; color: theme.textDim }
             }
             Row {
@@ -101,10 +103,10 @@ Item {
                 Seg {
                     objectName: "recommended-scope"
                     anchors.verticalCenter: parent.verticalCenter
-                    accessibleName: "Recommended from"
-                    options: [{ text: "All", name: "all", count: page.counts.all },
-                              { text: "In library", name: "library", count: page.counts.in_library },
-                              { text: "On list", name: "list", count: page.counts.on_list }]
+                    accessibleName: words.t("recommended-scope-name")
+                    options: [{ text: words.t("recommended-scope-all"), name: "all", count: page.counts.all },
+                              { text: words.t("recommended-scope-library"), name: "library", count: page.counts.in_library },
+                              { text: words.t("recommended-scope-list"), name: "list", count: page.counts.on_list }]
                     index: Math.max(0, page.scopes.indexOf(page.scope))
                     onPicked: function(i) { page.setScope(page.scopes[i]) }
                 }
@@ -113,7 +115,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     small: true
                     icon: "refresh-cw"
-                    text: page.refreshing !== null ? "Ranking" : "Rank again"
+                    text: page.refreshing !== null ? words.t("recommended-ranking") : words.t("recommended-rank-again")
                     enabled: page.refreshing === null
                     onClicked: page.refresh()
                 }
@@ -124,15 +126,15 @@ Item {
             visible: page.recommended !== null && page.list.length === 0
             width: parent.width
             icon: "sparkles"
-            title: page.recommended && page.recommended.state === "NoScores" ? "Rate a few shows first"
-                : page.recommended && page.recommended.state === "NoList" ? "Nothing to learn from yet"
-                : page.recommended && page.recommended.state === "NeverFitted" ? "Ranking your shows"
-                : "Nothing left here"
-            body: page.recommended && page.recommended.state === "NoScores" ? "Recommendations learn from the scores on your list. Score a few shows on AniList and they appear here."
-                : page.recommended && page.recommended.state === "NoList" ? "Connect AniList in Settings, or keep a list on this device, and the shows you rate teach this page."
-                : page.recommended && page.recommended.state === "NeverFitted" ? "The first ranking reads AniList for a minute or two. It runs in the background."
-                : page.scope === "InLibrary" ? "Everything in your library that fits is watched. All finds shows you do not have yet."
-                : "Everything on your lists that fits is watched. All finds shows you have not listed."
+            title: page.recommended && page.recommended.state === "NoScores" ? words.t("recommended-no-scores-title")
+                : page.recommended && page.recommended.state === "NoList" ? words.t("recommended-no-list-title")
+                : page.recommended && page.recommended.state === "NeverFitted" ? words.t("recommended-never-fitted-title")
+                : words.t("recommended-nothing-left-title")
+            body: page.recommended && page.recommended.state === "NoScores" ? words.t("recommended-no-scores-body")
+                : page.recommended && page.recommended.state === "NoList" ? words.t("recommended-no-list-body")
+                : page.recommended && page.recommended.state === "NeverFitted" ? words.t("recommended-never-fitted-body")
+                : page.scope === "InLibrary" ? words.t("recommended-nothing-left-library-body")
+                : words.t("recommended-nothing-left-body")
         }
 
         Flow {

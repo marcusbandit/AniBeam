@@ -70,7 +70,7 @@ Corner {
     function apply(target, title) {
         var r = Door.applyMatch(root.seriesId, target)
         if (r.error) { frame.fail(r.error); return }
-        frame.toast(title ? "Matched to " + title : "Match applied")
+        frame.toast(title ? words.t("match-matched-to", { title: title }) : words.t("match-applied"))
         root.close("applied")
     }
     // A result row applies by its provider: a TVmaze show through the id-only call, an
@@ -79,7 +79,7 @@ Corner {
         if (r.provider === "Tvmaze") {
             var out = Door.applyTvmaze(root.seriesId, r.id)
             if (out.error) { frame.fail(out.error); return }
-            frame.toast("Matched to " + r.title)
+            frame.toast(words.t("match-matched-to", { title: r.title }))
             root.close("applied")
         } else root.apply({ "Anilist": { "id": r.id, "season": null } }, r.title)
     }
@@ -95,24 +95,30 @@ Corner {
     // the provider's business
     function targetText(t) {
         if (!t) return ""
-        if (t.Tvmaze !== undefined) return "Found the show on TVmaze"
-        if (t.Anilist !== undefined) return "Found it on AniList" + (t.Anilist.season !== null && t.Anilist.season !== undefined ? ", season " + t.Anilist.season : "")
-        return "Found it on MyAnimeList"
+        if (t.Tvmaze !== undefined) return words.t("match-found-tvmaze")
+        if (t.Anilist !== undefined) return t.Anilist.season !== null && t.Anilist.season !== undefined
+            ? words.t("match-found-anilist-season", { season: t.Anilist.season }) : words.t("match-found-anilist")
+        return words.t("match-found-mal")
     }
     function matchText(m) {
         var bits = []
         if (m.anilist_id !== null && m.anilist_id !== undefined) bits.push("AniList")
         if (m.mal_id !== null && m.mal_id !== undefined) bits.push("MyAnimeList")
         if (m.tvmaze_id !== null && m.tvmaze_id !== undefined) bits.push("TVmaze")
-        return bits.length ? "Matched on " + bits.join(" and ") : ""
+        if (!bits.length) return ""
+        var sites = bits.reduce(function(a, b) { return words.t("match-sites-and", { first: a, next: b }) })
+        return words.t("match-matched-on", { sites: sites })
     }
     // A result's year, then its format (AniList) or its type as TVmaze writes it, then its length
     function resultMeta(r) {
         return [r.year ? String(r.year) : "",
                 r.provider === "Tvmaze" ? (r.format || "") : root.formatLabel(r.format),
-                r.episodes ? Fmt.plural(r.episodes, "episode", "episodes") : ""].filter(Boolean).join(", ")
+                r.episodes ? words.t("count-episodes", { count: r.episodes }) : ""].filter(Boolean).join(", ")
     }
-    function formatLabel(f) { return !f ? "" : ({ TV: "TV", TV_SHORT: "TV short", OVA: "OVA", ONA: "ONA", SPECIAL: "Special", MOVIE: "Film", MUSIC: "Music" })[f] || f.replace(/_/g, " ") }
+    function formatLabel(f) {
+        if (!f) return ""
+        return words.formatLabel(f) || f.replace(/_/g, " ")
+    }
 
     readonly property real pad: theme.space(5)
     width: Math.min(theme.space(170), (parent ? parent.width : theme.space(170)) - theme.space(16))
@@ -138,7 +144,7 @@ Corner {
         function onJobFailed(job, kind, error) {
             if (job === root.searchJob) { root.searching = false; root.searchJob = -1 }
             else if (job !== root.resolveJob) return
-            frame.toast(error && error.message ? error.message : root.providerName + " did not answer")
+            frame.toast(error && error.message ? error.message : words.t("match-provider-silent", { provider: root.providerName }))
         }
     }
 
@@ -157,21 +163,21 @@ Corner {
             Column {
                 id: heading
                 width: parent.width - closeBtn.width - theme.space(3) - (root.walkLine !== "" ? theme.space(30) : 0)
-                Label { text: root.walkLine !== "" ? "Match, " + root.walkLine : "Match"; role: "title" }
+                Label { text: root.walkLine !== "" ? words.t("match-title-walk", { walk: root.walkLine }) : words.t("match-title"); role: "title" }
                 Label { width: parent.width; text: root.seriesTitle; role: "ui"; color: theme.textDim; elide: Text.ElideRight }
             }
             Button {
                 objectName: "match-skip"
                 visible: root.walkLine !== ""
                 anchors.right: closeBtn.left; anchors.rightMargin: theme.space(2); anchors.top: parent.top
-                small: true; icon: "skip-forward"; text: "Skip"
+                small: true; icon: "skip-forward"; msg: "match-skip"
                 onClicked: root.close("skipped")
             }
             Button {
                 id: closeBtn
                 objectName: "match-close"
                 anchors.right: parent.right; anchors.top: parent.top
-                small: true; icon: "x"; text: "Close"
+                small: true; icon: "x"; msg: "action-close"
                 onClicked: root.close()
             }
         }
@@ -190,15 +196,15 @@ Corner {
                 objectName: "match-refresh"
                 small: true
                 icon: "refresh-cw"
-                text: "Refresh info"
-                onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast("Refreshing " + root.seriesTitle) }
+                msg: "match-refresh-info"
+                onClicked: { var r = Door.refreshSeries(root.seriesId); r.error ? frame.fail(r.error) : frame.toast(words.t("match-refreshing", { title: root.seriesTitle })) }
             }
             // Two steps: it drops the tracker link and a hand-set episode count, and the
             // series is then left alone by the automatic match
             Button {
                 id: clearBtn
                 property bool armed: false
-                text: armed ? "Clear it: drops the link and the set episode count" : "Clear match"
+                text: armed ? words.t("match-clear-confirm") : words.t("match-clear")
                 small: true
                 danger: armed
                 onClicked: {
@@ -206,7 +212,7 @@ Corner {
                     armed = false
                     var r = Door.clearMatch(root.seriesId)
                     if (r.error) frame.fail(r.error)
-                    else frame.toast("Match cleared")
+                    else frame.toast(words.t("match-cleared"))
                     root.close()
                 }
                 Timer { id: disarm; interval: 5000; onTriggered: clearBtn.armed = false }
@@ -229,7 +235,7 @@ Corner {
                 id: search
                 objectName: "match-search"
                 width: parent.width - providerSeg.width - parent.spacing
-                placeholder: "Search " + root.providerName
+                placeholder: words.t("match-search-placeholder", { provider: root.providerName })
                 hint: ""
                 onTextChanged: if (root.visible) { searchDebounce.restart(); list.currentIndex = -1 }
                 // Up and Down walk the results, Return applies the one walked to, else the first
@@ -246,14 +252,14 @@ Corner {
             Field {
                 id: linkField
                 width: parent.width - lookUp.width - parent.spacing
-                placeholder: root.provider === "Tvmaze" ? "Paste a TVmaze or IMDb link" : "Paste an AniList or MyAnimeList link"
+                placeholder: root.provider === "Tvmaze" ? words.t("match-link-tvmaze") : words.t("match-link-anilist")
                 mono: true
                 onEdited: if (linkField.text.trim() !== "" && !root.resolved) lookUp.clicked()
             }
             Button {
                 id: lookUp
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Look up"
+                msg: "match-look-up"
                 onClicked: {
                     var r = Door.resolveLink(linkField.text)
                     if (r.error) { frame.fail(r.error); return }
@@ -271,12 +277,14 @@ Corner {
                 role: "ui"
                 anchors.verticalCenter: parent.verticalCenter
             }
-            Button { text: "Apply"; small: true; primary: true; onClicked: root.apply(root.resolved, "") }
+            Button { msg: "action-apply"; small: true; primary: true; onClicked: root.apply(root.resolved, "") }
         }
 
         Label {
             visible: root.results.length === 0
-            text: root.searching ? "Searching " + root.providerName : search.text.trim().length < 2 ? "Type at least two letters to search " + root.providerName + "." : "No titles found on " + root.providerName + "."
+            text: root.searching ? words.t("match-searching", { provider: root.providerName })
+                : search.text.trim().length < 2 ? words.t("match-type-more", { provider: root.providerName })
+                : words.t("match-no-results", { provider: root.providerName })
             role: "ui"; color: theme.textDim
         }
     }
@@ -342,7 +350,7 @@ Corner {
                 objectName: "match-apply-" + result.index
                 anchors.right: parent.right; anchors.rightMargin: theme.space(2)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Apply"
+                msg: "action-apply"
                 small: true
                 onClicked: root.applyResult(result.modelData)
             }

@@ -37,18 +37,18 @@ Item {
         var ids = root.rows.map(function(row) { return row.series })
         var r = Door.call("MoveLists", { tracker: root.tracker, series: ids })
         if (r.error) { frame.toast(frame.errorText(r.error)); return }
-        frame.toast("Moving " + (ids.length === 1 ? "1 show" : ids.length + " shows") + " to " + root.site)
+        frame.toast(words.t("move-lists-moving", { count: ids.length, site: root.site }))
         root.close()
     }
     function statusText(s) {
-        var names = { Watching: "Watching", Planning: "Planning", Completed: "Completed", Paused: "On hold", Dropped: "Dropped", Repeating: "Rewatching" }
-        return s ? (names[s] || s) : ""
+        var names = { Watching: "status-watching", Planning: "status-planning", Completed: "status-completed", Paused: "status-on-hold", Dropped: "status-dropped", Repeating: "status-rewatching" }
+        return s ? (names[s] ? words.t(names[s]) : s) : ""
     }
     // One side of a row: the status and the score, or a dash of words for nothing
     function sideText(status, score, empty) {
         var bits = []
         if (status) bits.push(root.statusText(status))
-        if (score !== null && score !== undefined) bits.push("score " + Fmt.score(score))
+        if (score !== null && score !== undefined) bits.push(words.t("move-lists-score", { score: Fmt.score(score) }))
         return bits.length ? bits.join(", ") : empty
     }
 
@@ -72,15 +72,13 @@ Item {
             width: panel.width - root.pad * 2
             spacing: theme.space(4)
 
-            Label { text: "Move your list to " + root.site; role: "title" }
+            Label { msg: "move-lists-title"; msgArgs: ({ site: root.site }); role: "title" }
             Label {
                 width: parent.width
                 wrapMode: Text.Wrap
                 role: "ui"; color: theme.textDim
-                text: (root.rows.length === 1 ? "One show has" : root.rows.length + " shows have") +
-                      " a status or a score only on this computer. Moving them puts them on your " +
-                      root.site + " list, where your phone and your profile see them. For these shows, what " +
-                      root.site + " has now is replaced. Nothing is sent until you press Move."
+                msg: "move-lists-body"
+                msgArgs: ({ count: root.rows.length, site: root.site })
             }
 
             // The shows, with a header row naming the two sides
@@ -91,9 +89,9 @@ Item {
                     id: headRow
                     width: parent.width
                     height: theme.space(7)
-                    Label { width: parent.width * 0.44; text: "Show"; role: "ui"; color: theme.textFaint }
-                    Label { width: parent.width * 0.28; text: "On this computer"; role: "ui"; color: theme.textFaint }
-                    Label { width: parent.width * 0.28; text: "On " + root.site + " now"; role: "ui"; color: theme.textFaint }
+                    Label { width: parent.width * 0.44; msg: "move-lists-head-show"; role: "ui"; color: theme.textFaint }
+                    Label { width: parent.width * 0.28; msg: "move-lists-head-here"; role: "ui"; color: theme.textFaint }
+                    Label { width: parent.width * 0.28; msg: "move-lists-head-tracker"; msgArgs: ({ site: root.site }); role: "ui"; color: theme.textFaint }
                 }
                 ListView {
                     id: list
@@ -111,9 +109,9 @@ Item {
                         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
                         Label { width: parent.width * 0.44 - theme.space(2); anchors.verticalCenter: parent.verticalCenter; text: modelData.title; role: "ui"; elide: Text.ElideRight }
                         Label { x: parent.width * 0.44; width: parent.width * 0.28 - theme.space(2); anchors.verticalCenter: parent.verticalCenter
-                                text: root.sideText(modelData.status, modelData.score, "Nothing"); role: "ui"; elide: Text.ElideRight }
+                                text: root.sideText(modelData.status, modelData.score, words.t("move-lists-nothing")); role: "ui"; elide: Text.ElideRight }
                         Label { x: parent.width * 0.72; width: parent.width * 0.28; anchors.verticalCenter: parent.verticalCenter
-                                text: root.sideText(modelData.tracker_status, modelData.tracker_score, "Not on your list"); role: "ui"; color: theme.textDim; elide: Text.ElideRight }
+                                text: root.sideText(modelData.tracker_status, modelData.tracker_score, words.t("move-lists-not-on-list")); role: "ui"; color: theme.textDim; elide: Text.ElideRight }
                     }
                 }
             }
@@ -126,18 +124,19 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - actions.width - theme.space(4)
                     elide: Text.ElideRight
-                    text: "Later: Settings, Accounts"
+                    msg: "move-lists-later-hint"
                     role: "ui"; color: theme.textDim
                 }
                 Row {
                     id: actions
                     anchors.right: parent.right
                     spacing: theme.space(2)
-                    Button { objectName: "move-lists-later"; flat: true; text: "Not now"; onClicked: root.close() }
+                    Button { objectName: "move-lists-later"; flat: true; msg: "move-lists-not-now"; onClicked: root.close() }
                     Button {
                         objectName: "move-lists-move"
                         primary: true
-                        text: root.rows.length === 1 ? "Move 1 show" : "Move " + root.rows.length + " shows"
+                        msg: "move-lists-move"
+                        msgArgs: ({ count: root.rows.length })
                         onClicked: root.move()
                     }
                 }

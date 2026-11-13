@@ -23,15 +23,15 @@ Item {
     Keys.onEnterPressed: opened()
     Keys.onSpacePressed: opened()
     Accessible.role: Accessible.Button
-    Accessible.name: (rec.title || "") + ", " + rec.forecast + " percent for you"
+    Accessible.name: words.t("recommended-card-spoken", { title: rec.title || "", percent: rec.forecast })
     Accessible.onPressAction: opened()
     onActiveFocusChanged: if (!m.containsMouse) rested(activeFocus)
 
     // "12 episodes", a film's "1h 52m"; the hover card reads these too
     function lengthOf(r) {
         if (!r) return ""
-        if (r.format === "MOVIE" && r.duration) return Fmt.runtime(r.duration)
-        if (r.episodes) return Fmt.plural(r.episodes, "episode", "episodes")
+        if (r.format === "MOVIE" && r.duration) return words.runtime(r.duration)
+        if (r.episodes) return words.t("count-episodes", { count: r.episodes })
         return ""
     }
     // The genres first, then the strongest tags, never more than `n`
@@ -77,7 +77,7 @@ Item {
         radius: theme.radiusTile; antialiasing: true
         anchors.bottom: parent.bottom
         width: parent.width
-        height: Math.max(parent.height * theme.scrimReach, words.height + theme.space(10))
+        height: Math.max(parent.height * theme.scrimReach, cardLines.height + theme.space(10))
         gradient: Gradient {
             GradientStop { position: 0; color: "transparent" }
             GradientStop { position: 0.45; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, theme.posterScrim.a * (m.containsMouse ? 0.8 : 0.66)) }
@@ -93,7 +93,7 @@ Item {
         radius: theme.radiusSm; antialiasing: true
         color: Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.7)
         border.color: Qt.rgba(1, 1, 1, 0.14); border.width: 1
-        Label { id: pct; anchors.centerIn: parent; role: "ledger"; text: root.rec.forecast + "%"; color: theme.accentOnPoster }
+        Label { id: pct; anchors.centerIn: parent; role: "ledger"; msg: "recommended-card-forecast"; msgArgs: ({ percent: root.rec.forecast }); color: theme.accentOnPoster }
     }
     Rectangle {
         visible: !!root.rec.owned
@@ -102,11 +102,11 @@ Item {
         radius: theme.radiusSm; antialiasing: true
         color: Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.62)
         border.color: Qt.rgba(1, 1, 1, 0.14); border.width: 1
-        Label { id: have; anchors.centerIn: parent; role: "ledger"; text: "In library"; color: theme.onPosterDim }
+        Label { id: have; anchors.centerIn: parent; role: "ledger"; msg: "recommended-card-in-library"; color: theme.onPosterDim }
     }
 
     Column {
-        id: words
+        id: cardLines
         x: theme.space(2.5)
         width: parent.width - theme.space(5) - (dot.visible ? dot.width + theme.space(2) : 0)
         anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2.5)

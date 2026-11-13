@@ -22,15 +22,15 @@ Item {
 
     readonly property string headline: {
         var s = summary
-        if (s.shows === 0) return "Nothing to show yet"
-        var line = "Found " + Fmt.plural(s.shows, "show", "shows") + ", " + s.recognised + " recognised"
-        return root.needCount > 0 ? line + ", " + root.needCount + " need you" : line
+        if (s.shows === 0) return words.t("scan-summary-nothing")
+        return root.needCount > 0
+            ? words.t("scan-summary-found-need", { count: s.shows, recognised: s.recognised, need: root.needCount })
+            : words.t("scan-summary-found", { count: s.shows, recognised: s.recognised })
     }
     readonly property string episodesLine: {
         var s = summary
-        var line = Fmt.plural(s.episodes, "episode", "episodes") + " on disk"
-        if (root.trackerName !== "") line += ", " + s.watched + " already watched on " + root.trackerName
-        return line + "."
+        if (root.trackerName !== "") return words.t("scan-summary-episodes-watched", { count: s.episodes, watched: s.watched, tracker: root.trackerName })
+        return words.t("scan-summary-episodes", { count: s.episodes })
     }
 
     function open(folder, summary) {
@@ -75,7 +75,7 @@ Item {
             Item {
                 width: parent.width
                 height: title.height + where.height + theme.space(1)
-                Label { id: title; text: "Your folder is in"; role: "display"; font.pointSize: theme.typeHeading }
+                Label { id: title; msg: "scan-summary-title"; role: "display"; font.pointSize: theme.typeHeading }
                 Label {
                     id: where
                     anchors.top: title.bottom; anchors.topMargin: theme.space(1)
@@ -88,7 +88,7 @@ Item {
                     size: theme.space(4.5)
                     color: closeMouse.containsMouse ? theme.text : theme.textDim
                     anchors.right: parent.right; anchors.top: parent.top
-                    MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close(); Accessible.role: Accessible.Button; Accessible.name: "Close"; Accessible.onPressAction: root.close() }
+                    MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close(); Accessible.role: Accessible.Button; Accessible.name: words.t("action-close"); Accessible.onPressAction: root.close() }
                 }
             }
             Label {
@@ -106,9 +106,9 @@ Item {
                 readonly property real cell: (width - spacing * 2) / 3
                 Repeater {
                     model: [
-                        { n: root.summary.shows, label: "found", icon: "folder-open", lit: false },
-                        { n: root.summary.recognised, label: "recognised", icon: "circle-check", lit: false },
-                        { n: root.needCount, label: "need you", icon: "search", lit: root.needCount > 0 }
+                        { n: root.summary.shows, label: words.t("scan-summary-count-found"), icon: "folder-open", lit: false },
+                        { n: root.summary.recognised, label: words.t("scan-summary-count-recognised"), icon: "circle-check", lit: false },
+                        { n: root.needCount, label: words.t("scan-summary-count-need"), icon: "search", lit: root.needCount > 0 }
                     ]
                     Tile {
                         required property var modelData
@@ -142,13 +142,13 @@ Item {
                     Button {
                         objectName: "scan-summary-later"
                         visible: root.needCount > 0
-                        text: "Later"; flat: true
+                        msg: "scan-summary-later"; flat: true
                         onClicked: root.close()
                     }
                     Button {
                         objectName: "scan-summary-go"
                         primary: true
-                        text: root.needCount > 0 ? "Match the " + root.needCount : "Open the library"
+                        text: root.needCount > 0 ? words.t("scan-summary-match", { count: root.needCount }) : words.t("scan-summary-open-library")
                         icon: "arrow-right"
                         onClicked: if (root.needCount > 0) root.walk(); else { root.close(); frame.go("library") }
                     }
