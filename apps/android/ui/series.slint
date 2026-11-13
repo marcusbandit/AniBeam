@@ -242,6 +242,14 @@ component SeriesHeadView inherits VerticalLayout {
                 font-size: Theme.small;
                 wrap: word-wrap;
             }
+            // The desktop's quiet row: the average score, IMDb's, the rewatches. It wraps,
+            // so a folded phone keeps all of it.
+            if AppData.series.scores != "": Text {
+                text: AppData.series.scores;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
         }
     }
     if AppData.series.next != "": Text {

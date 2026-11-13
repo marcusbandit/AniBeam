@@ -286,6 +286,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     ),
     (6, "What's new", "changelog patch notes changes update"),
     (6, "Set up again", "onboarding first run start over"),
+    (6, "Ratings", "imdb credit scores"),
     (6, "Version", "build about"),
     (
         8,
@@ -2106,6 +2107,8 @@ pub fn run(
         )
         .into(),
     );
+    data.set_ratings_label(tr("about-ratings", &[]).into());
+    data.set_ratings_credit(tr("about-ratings-credit", &[]).into());
     data.set_host_address(address.display().into());
 
     let home_shelves = Shelves::new();
