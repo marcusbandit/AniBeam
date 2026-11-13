@@ -255,6 +255,7 @@ mod tests {
             synced_at: 1_792_242_100,
             snapshot,
             peers: Vec::new(),
+            profile: None,
         };
         store.save_cache(&cache).unwrap();
         assert_eq!(store.settings().address, "desktop:8790");
