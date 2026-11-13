@@ -162,7 +162,12 @@ jobs:
           PY
 
       - name: Test the core and the shell
-        run: LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam-core -p anibeam
+        # The core's tests run the runner's own ffmpeg to make sample episodes, and that
+        # ffmpeg needs Ubuntu's libavcodec with its encoders. Only the shell links the lean
+        # FFmpeg in DEPS_PREFIX, so only the shell's tests get it on the library path.
+        run: |
+          cargo test --locked -p anibeam-core
+          LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam
 
       - name: AppImage
         run: apps/linux/packaging/linux/appimage.sh dist
