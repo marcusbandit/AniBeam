@@ -5,7 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anibeam_companion::calendar;
 use anibeam_companion::format;
-use anibeam_core::{Episode, SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
+use anibeam_core::i18n::tr;
+use anibeam_core::{AiringStatus, Episode, SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
 use chrono::{Datelike, Days, NaiveDate};
 
 use crate::posters;
@@ -420,19 +421,25 @@ pub fn series(
     .find(|t| t.as_str() != card.title)
     .cloned()
     .unwrap_or_default();
-    let mut facts: Vec<String> = Vec::new();
-    if let Some(f) = &card.format {
-        facts.push(f.clone());
+    let facts = Facts {
+        movie,
+        film: card.film,
+        format: card.format.as_deref(),
+        season: card.season.as_deref(),
+        year: detail.year,
+        studio: detail.studio.as_deref(),
+        minutes: detail.episode_minutes,
+        total: card.total_episodes,
+        estimate: card.total_is_estimate,
+        status: card.status,
     }
-    if let Some(s) = &card.season {
-        facts.push(s.clone());
-    }
-    if let Some(total) = card.total_episodes {
-        facts.push(format!(
-            "{total}{} episodes",
-            if card.total_is_estimate { "?" } else { "" }
-        ));
-    }
+    .words();
+    let scores = scores(
+        card.community_score,
+        card.imdb_score,
+        card.imdb_votes,
+        detail.rewatch_count,
+    );
     let next = card
         .next_airing
         .as_ref()
@@ -477,6 +484,7 @@ pub fn series(
         title: card.title.clone().into(),
         alt_title: alt.into(),
         facts: facts.join("  ").into(),
+        scores: scores.into(),
         poster,
         has_poster,
         initials: format::initials(&card.title).into(),
@@ -618,6 +626,133 @@ pub fn series(
     (head, lines.into_iter().map(|(_, l)| l).collect())
 }
 
+/// What the desktop's ledger line is made of: the format, when it started, the studio, a
+/// film's runtime, the episodes and how long each runs, and whether it airs. The season says
+/// the year too, so it stands in for the year when the record has one.
+struct Facts<'a> {
+    movie: bool,
+    film: bool,
+    format: Option<&'a str>,
+    season: Option<&'a str>,
+    year: Option<u32>,
+    studio: Option<&'a str>,
+    minutes: Option<u32>,
+    total: Option<u32>,
+    estimate: bool,
+    status: Option<AiringStatus>,
+}
+
+impl Facts<'_> {
+    fn words(&self) -> Vec<String> {
+        let mut facts = vec![if self.movie {
+            "Film".to_string()
+        } else {
+            crate::show::format_label(self.format)
+        }];
+        if let Some(s) = self.season {
+            facts.push(s.to_string());
+        } else if let Some(y) = self.year {
+            facts.push(y.to_string());
+        }
+        if let Some(studio) = self.studio {
+            facts.push(studio.to_string());
+        }
+        if self.film
+            && let Some(m) = self.minutes
+        {
+            facts.push(runtime(m));
+        }
+        if !self.movie
+            && let Some(total) = self.total
+        {
+            let count = tr("count-episodes", &[("count", total.into())]);
+            // A count that may still grow, as the desktop marks it.
+            facts.push(if self.estimate {
+                format!("{count}+") // i18n: none
+            } else {
+                count
+            });
+        }
+        if !self.film
+            && let Some(m) = self.minutes
+        {
+            facts.push(tr("series-runtime-each", &[("runtime", runtime(m).into())]));
+        }
+        if let Some(status) = self.status {
+            facts.push(airing_word(status));
+        }
+        facts
+    }
+}
+
+/// The quiet facts beside your own score, the desktop's row: the average score, IMDb's with
+/// its votes (the desktop's tooltip, which a phone has no hover for), and the rewatches.
+fn scores(
+    average: Option<f64>,
+    imdb: Option<f64>,
+    votes: Option<u64>,
+    rewatches: Option<u32>,
+) -> String {
+    let mut parts = Vec::new();
+    if let Some(a) = average {
+        let score = crate::listmove::score(a);
+        parts.push(tr("series-average-score", &[("score", score.into())]));
+    }
+    if let Some(i) = imdb {
+        let score = crate::listmove::score(i);
+        parts.push(match votes {
+            Some(v) => tr(
+                "series-imdb-votes",
+                &[("score", score.into()), ("votes", thousands(v).into())],
+            ),
+            None => tr("series-imdb", &[("score", score.into())]),
+        });
+    }
+    if let Some(n) = rewatches.filter(|n| *n > 0) {
+        parts.push(tr("series-rewatched", &[("count", n.into())]));
+    }
+    parts.join("  ")
+}
+
+/// A count with a comma every three digits: 12,345.
+fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// How long an episode or a film runs, the desktop's `Fmt.runtime`: "24 min", "1 h 52 min",
+/// "2 h" on the hour.
+fn runtime(minutes: u32) -> String {
+    tr(
+        "series-runtime",
+        &[
+            ("hours", (minutes / 60).into()),
+            ("minutes", (minutes % 60).into()),
+        ],
+    )
+}
+
+/// Whether a show airs, in the desktop's words.
+fn airing_word(status: AiringStatus) -> String {
+    tr(
+        match status {
+            AiringStatus::Releasing => "series-status-airing",
+            AiringStatus::Finished => "series-status-finished",
+            AiringStatus::NotYetReleased => "series-status-upcoming",
+            AiringStatus::Cancelled => "series-status-cancelled",
+            AiringStatus::Hiatus => "series-status-hiatus",
+        },
+        &[],
+    )
+}
+
 /// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
 pub(crate) fn clock(secs: f64) -> String {
     let t = secs.max(0.0) as u64;
@@ -632,6 +767,77 @@ pub(crate) fn clock(secs: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tv() -> Facts<'static> {
+        Facts {
+            movie: false,
+            film: false,
+            format: Some("TV"),
+            season: Some("Fall 2023"),
+            year: Some(2023),
+            studio: Some("Madhouse"),
+            minutes: Some(24),
+            total: Some(28),
+            estimate: false,
+            status: Some(AiringStatus::Finished),
+        }
+    }
+
+    #[test]
+    fn a_shows_facts_read_like_the_desktops_ledger() {
+        assert_eq!(
+            tv().words().join("  "),
+            "TV  Fall 2023  Madhouse  28 episodes  24 min each  Finished"
+        );
+        let airing = Facts {
+            season: None,
+            total: Some(1),
+            estimate: true,
+            status: Some(AiringStatus::Releasing),
+            ..tv()
+        };
+        assert_eq!(
+            airing.words().join("  "),
+            "TV  2023  Madhouse  1 episode+  24 min each  Airing"
+        );
+    }
+
+    #[test]
+    fn a_film_gives_its_runtime_and_no_episode_count() {
+        let film = Facts {
+            movie: true,
+            film: true,
+            format: Some("MOVIE"),
+            minutes: Some(112),
+            total: Some(1),
+            ..tv()
+        };
+        assert_eq!(
+            film.words().join("  "),
+            "Film  Fall 2023  Madhouse  1 h 52 min  Finished"
+        );
+    }
+
+    #[test]
+    fn scores_and_votes_read_like_the_desktop() {
+        assert_eq!(
+            scores(Some(9.0), Some(8.65), Some(12_345), Some(2)),
+            "Average score 9.0  IMDb 8.7 from 12,345 votes  Rewatched 2 times"
+        );
+        assert_eq!(scores(None, Some(7.25), None, Some(0)), "IMDb 7.3");
+        assert_eq!(scores(None, None, None, None), "");
+        assert_eq!(thousands(1_234_567), "1,234,567");
+        assert_eq!(thousands(7), "7");
+    }
+
+    #[test]
+    fn runtimes_and_airing_read_like_the_desktop() {
+        assert_eq!(runtime(24), "24 min");
+        assert_eq!(runtime(112), "1 h 52 min");
+        assert_eq!(runtime(120), "2 h");
+        assert_eq!(airing_word(AiringStatus::Hiatus), "On hiatus");
+        assert_eq!(airing_word(AiringStatus::Releasing), "Airing");
+    }
 
     #[test]
     fn every_core_cube_letter_has_a_colour_code() {

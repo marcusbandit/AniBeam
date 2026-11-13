@@ -88,6 +88,8 @@ export struct SeriesHead {
     alt-title: string,
     // "TV  Fall 2026  Airing  12 episodes".
     facts: string,
+    // "Average score 8.1  IMDb 8.6 from 12,345 votes  Rewatched 2 times", or empty.
+    scores: string,
     poster: image,
     has-poster: bool,
     initials: string,
@@ -287,6 +289,9 @@ export global AppData {
     in property <string> free-line;
     in property <string> trackers-line;
     in property <string> version;
+    // About's IMDb row, from the catalog: its name and IMDb's credit line.
+    in property <string> ratings-label;
+    in property <string> ratings-credit;
     // Devices: the host address and what the last test said.
     in-out property <string> host-address;
     in property <string> host-result;

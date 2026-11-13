@@ -884,6 +884,15 @@ export component MorePage inherits Rectangle {
                 }
             }
             Lit {
+                // The settings index's key, matched to Settings.lit, not a word on screen.
+                on: Settings.lit == "Ratings"; // i18n: none
+                reveal(y) => { about.reveal(y); }
+                ListRow {
+                    label: AppData.ratings-label;
+                    helper: AppData.ratings-credit;
+                }
+            }
+            Lit {
                 on: Settings.lit == "Version";
                 reveal(y) => { about.reveal(y); }
                 ListRow {
