@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "recs", "host-api", "apps/cli", "apps/linux"]
+members = ["contract", "core", "recs", "host-api", "apps/cli", "apps/linux"]
 
 [workspace.package]
 version = "2.5.0"
@@ -10,6 +10,7 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/marcusbandit/AniBeam"
 
 [workspace.dependencies]
+anibeam-contract = { path = "contract" }
 anibeam-core = { path = "core" }
 anibeam-host-api = { path = "host-api" }
 anibeam-recs = { path = "recs" }

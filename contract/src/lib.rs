@@ -1,8 +1,16 @@
+//! AniBeam's contract: the door every shell talks through. The calls and their replies,
+//! the records they carry, the events the core sends and the errors it answers with, plus
+//! the catalog of words (`i18n`) the contract's own messages come from.
+//!
+//! It sits below `anibeam-core`, which re-exports all of it, so a shell keeps naming
+//! `anibeam_core::contract::...` and `anibeam_core::...` as before (#855).
+
 pub mod calls;
 pub mod downloads;
 pub mod enums;
 pub mod error;
 pub mod events;
+pub mod i18n;
 pub mod records;
 pub mod words;
 
@@ -13,6 +21,12 @@ pub use error::*;
 pub use events::*;
 pub use records::*;
 pub use words::*;
+
+// The derives above name `crate::UniFfiTag`, which this defines, so a crate holding uniffi
+// types needs a scaffolding of its own even though `Core` and its export live in
+// `anibeam-core`. Its namespace is the crate's name: bindings get an `anibeam_contract`
+// module beside `anibeam_core`, and the core's exports use these types from it.
+uniffi::setup_scaffolding!();
 
 #[cfg(test)]
 mod tests {

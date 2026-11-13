@@ -10,6 +10,7 @@ name: Linux
 on:
   pull_request:
     paths:
+      - 'contract/**'
       - 'core/**'
       - 'host-api/**'
       - 'apps/linux/**'
@@ -159,7 +160,7 @@ jobs:
           PY
 
       - name: Test the core and the shell
-        run: LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam-core -p anibeam
+        run: LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam-contract -p anibeam-core -p anibeam
 
       - name: AppImage
         run: apps/linux/packaging/linux/appimage.sh dist

@@ -1,0 +1,31 @@
+[package]
+name = "anibeam-contract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "AniBeam's contract: the calls, replies, records, events and errors every shell speaks, and the catalog of words"
+
+[lib]
+name = "anibeam_contract"
+crate-type = ["lib"]
+
+[dependencies]
+uniffi = "=0.32.0"
+serde.workspace = true
+serde_json.workspace = true
+# The catalog (#792): every string a person reads, looked up by message ID in i18n/.
+fluent-bundle = "0.16"
+fluent-syntax = "0.12"
+unic-langid = "0.9"
+# Month and weekday names in the chosen language, for the dates the shells format.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "unstable-locales"] }
+tracing = "0.1"
+# Only for `From<rusqlite::Error>` and `From<rusqlite_migration::Error>` on `CoreError`, which
+# have to live beside the type. The core turns it on; the contract alone needs no database.
+rusqlite = { version = "0.40", features = ["bundled"], optional = true }
+rusqlite_migration = { version = "2.6", optional = true }
+
+[features]
+sqlite = ["dep:rusqlite", "dep:rusqlite_migration"]

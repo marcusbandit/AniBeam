@@ -213,7 +213,7 @@ core-playback-region-spain = Spagna
 core-playback-region-simplified = Semplificato
 core-playback-region-traditional = Tradizionale
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Controllo delle cartelle
     .stopped = Il controllo delle cartelle si è fermato per un problema.

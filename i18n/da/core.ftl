@@ -215,7 +215,7 @@ core-playback-region-spain = Spanien
 core-playback-region-simplified = Forenklet
 core-playback-region-traditional = Traditionelt
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = Tjekker dine mapper
     .stopped = Tjek af dine mapper stoppede med et problem.

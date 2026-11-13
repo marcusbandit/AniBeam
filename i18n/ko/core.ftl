@@ -211,7 +211,7 @@ core-playback-region-spain = 스페인
 core-playback-region-simplified = 간체
 core-playback-region-traditional = 번체
 
-## core/src/contract/enums.rs
+## contract/src/enums.rs
 
 core-jobs-scan = 폴더 확인 중
     .stopped = 폴더 확인 중 문제가 생겨 멈췄어요.

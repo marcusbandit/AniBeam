@@ -42,7 +42,7 @@ pub enum StoreKind {
     File,
 }
 
-crate::contract::enums::column_strings!(
+crate::contract::column_strings!(
     /// The value every store column holds.
     StoreKind {
         Keyring => "keyring",
