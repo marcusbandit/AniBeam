@@ -304,9 +304,17 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     pop.inert = true;
     card.classList.remove("in");
     card.classList.add("out");
-    return new Promise((done) => requestAnimationFrame(() => {
-      Promise.all(card.getAnimations().map((a) => a.finished)).catch(() => {}).then(() => { pop.remove(); done(); });
-    }));
+    // The style is read first so the slide back is already running. A card still on its way out
+    // has its entrance cancelled by the slide back, so this waits until nothing at all is moving.
+    getComputedStyle(card).transform;
+    return new Promise((done) => {
+      const gone = () => {
+        const moving = card.getAnimations();
+        if (!moving.length) { pop.remove(); done(); return; }
+        Promise.allSettled(moving.map((a) => a.finished)).then(gone);
+      };
+      gone();
+    });
   };
 
   let open = null;

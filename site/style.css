@@ -395,7 +395,7 @@ h3 { font-size: 19px; line-height: 1.3; letter-spacing: -0.015em; }
 }
 /* Out: a long, soft glide that settles. Back: quicker, easing in, fading as it goes under. */
 .show-card.in { opacity: 1; transform: none; }
-.show-card.out { pointer-events: none; transition: transform 0.42s cubic-bezier(0.55, 0, 0.75, 0.4), opacity 0.3s ease 0.08s; }
+.show-card.out { pointer-events: none; transition: transform 0.46s cubic-bezier(0.5, 0, 0.75, 0.3), opacity 0.34s ease-in 0.12s; }
 .show-x {
   position: absolute;
   top: 8px;
