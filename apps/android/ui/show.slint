@@ -3,6 +3,7 @@
 // each tick; the sheets in the other `show-*.slint` files read it and call back into Rust.
 
 import { Theme } from "theme.slint";
+import { Tr } from "tr.slint";
 import { Button, Chip } from "widgets.slint";
 import { Fold } from "fold.slint";
 import { Tile } from "data.slint";
@@ -44,7 +45,7 @@ export global ShowData {
     // The show has a record from a provider.
     in property <bool> matched;
     // The sheet over the page: 0 none, 1 list status, 2 score, 3 a related or recommended
-    // show, 4 notes, 5 fixes, 6 match.
+    // show, 4 notes, 5 fixes, 6 match, 7 episodes and dates.
     in-out property <int> sheet;
     // The series' list status as the core names it ("Watching", "Paused"), or empty.
     in property <string> status-key;
@@ -78,6 +79,12 @@ export global ShowData {
     callback pick-person(int);
     callback open-link(string);
     callback rescan();
+    // A film has no episodes to date.
+    in property <bool> movie;
+    // What the user told the season, in a line: "Ends at episode 12, set by you"; or empty.
+    in property <string> told;
+    // Opens Episodes and dates on the draft of what is saved.
+    callback open-dates();
     // The notes on the list entry as the tracker holds them, the sites that keep them, and
     // the text being written in the sheet.
     in property <string> notes;
@@ -190,6 +197,25 @@ export component ShowActions inherits VerticalLayout {
             selected: ShowData.notes != "";
             text: ShowData.notes != "" ? "Your notes" : "Add notes";
             clicked => { ShowData.open(4); }
+        }
+    }
+    // What the user told the season, with the way back to the sheet that set it.
+    if ShowData.told != "": HorizontalLayout {
+        spacing: Theme.unit * 2;
+        Text {
+            text: ShowData.told;
+            color: Theme.dim;
+            font-size: Theme.small;
+            font-family: Theme.ledger-face;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+        Button {
+            small: true;
+            text: Tr.t("dates-change");
+            icon: @image-url("icons/calendar-days.svg");
+            has-icon: true;
+            clicked => { ShowData.open-dates(); }
         }
     }
     if ShowData.note != "": Text {

@@ -13,6 +13,9 @@ Item {
     property int active: 0
     // Complete subscriptions waiting to be cleared: a red count on Downloads
     property int downloadsBadge: 0
+    // An update waits: a red dot on Settings until it is installed, and its line in the tip
+    property bool settingsBadge: false
+    property string settingsNote: ""
     signal picked(int index)
     signal versionClicked()
 
@@ -137,14 +140,18 @@ Item {
                     color: minor.on ? theme.accent : (mm.containsMouse ? theme.text : theme.textFaint)
                 }
                 MouseArea { id: mm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(minor.modelData.index) }
-                Tooltip { text: minor.badge > 0 ? words.t("rail-downloads-complete", { count: minor.badge }) : words.t(minor.modelData.msg) }
+                Tooltip { text: minor.badge > 0 ? words.t("rail-downloads-complete", { count: minor.badge })
+                                : minor.dot && root.settingsNote !== "" ? words.t("rail-settings-note", { note: root.settingsNote }) : words.t(minor.modelData.msg) }
                 readonly property int badge: modelData.key === "downloads" ? root.downloadsBadge : 0
-                // The badge: red, its count in it, over the glyph's top right
+                // Settings has no count to show, only that something waits there
+                readonly property bool dot: modelData.key === "settings" && root.settingsBadge
+                // The badge: red, its count in it, over the glyph's top right; a dot alone for
+                // Settings
                 Rectangle {
-                    objectName: "rail-downloads-badge"
-                    visible: minor.badge > 0
-                    height: theme.space(4.5)
-                    width: Math.max(height, badgeText.implicitWidth + theme.space(2))
+                    objectName: minor.dot ? "rail-settings-badge" : "rail-downloads-badge"
+                    visible: minor.badge > 0 || minor.dot
+                    height: minor.dot ? theme.space(3.5) : theme.space(4.5)
+                    width: minor.dot ? height : Math.max(height, badgeText.implicitWidth + theme.space(2))
                     radius: height / 2
                     x: minor.width - width * 0.7
                     y: -height * 0.2
@@ -153,6 +160,7 @@ Item {
                     border.width: 2
                     Label {
                         id: badgeText
+                        visible: !minor.dot
                         anchors.centerIn: parent
                         text: minor.badge > 99 ? "99+" : String(minor.badge)
                         role: "ledger"

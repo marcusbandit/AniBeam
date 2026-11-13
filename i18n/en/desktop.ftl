@@ -519,6 +519,7 @@ rail-title-language-english = English
 rail-title-language-tip = Title language: Romaji, English or Japanese
 rail-whats-new-in = What's new in { $release }
 rail-whats-new = What's new
+rail-settings-note = Settings: { $note }
 
 ## FixSheet.qml
 
@@ -2842,14 +2843,14 @@ settings-about-title = About
 settings-about-lead = Which AniBeam this is, and how it hears about the next one.
 settings-about-update-failed = The update did not finish. Try again, or get it from the release page.
 settings-about-update-ready = { $version } is ready to install.
-settings-about-update-aur = { $version } is on the AUR: { $command }
+settings-about-update-command = { $version } is out. Update it with { $command }
+settings-about-update-progress = { $headline }  ·  { $detail }
 settings-about-update-source = { $version } is out. This copy is built from source: pull and rebuild.
 settings-about-update-elsewhere = { $version } is out, with no download here for this computer.
 settings-about-version = Version
 settings-about-build = AniBeam { $build }
 settings-about-whats-new = What's new
 settings-about-install = Install { $version }
-settings-about-release-page = Release page
 settings-about-setup = Setup
 settings-about-setup-helper = The walkthrough a new install opens with: your folder, your list and downloads.
 settings-about-run-setup = Run setup again

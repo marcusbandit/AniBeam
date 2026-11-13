@@ -130,14 +130,15 @@ FocusScope {
         if (id === "phone") return Door.preferences.share_over_tailscale ? words.t("settings-status-phone-shared") : words.t("settings-status-phone-off")
         if (id === "storage") return storage ? words.t("settings-status-storage", { size: Fmt.bytes(storage.image_bytes || 0) }) : words.t("settings-status-storage-unread")
         if (id === "help") return words.t("settings-status-help")
-        if (id === "about") return frame.updatePanel.phase === "offer" && frame.updatePanel.shown ? words.t("settings-status-about-update", { version: frame.updatePanel.version }) : Shell.build
+        if (id === "about") return !frame.updatePanel.pending ? Shell.build
+            : frame.updatePanel.phase === "offer" ? words.t("settings-status-about-update", { version: frame.updatePanel.version }) : frame.updatePanel.headline
         if (id === "developer") return frame.devRecorder.last ? words.t("settings-status-developer-last", { page: frame.devRecorder.last.label, ms: Math.round(frame.devRecorder.last.built) }) : words.t("settings-status-developer")
         return ""
     }
     // An entry that wants attention: a folder gone, downloads not set up
     function warns(id) {
         if (id === "library") return srcs.some(function(s) { return s.available === false })
-        if (id === "about") return frame.updatePanel.phase === "offer" && frame.updatePanel.shown
+        if (id === "about") return frame.updatePanel.pending
         return false
     }
 

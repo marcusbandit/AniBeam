@@ -9,13 +9,14 @@ SettingsTab {
     title: words.t("settings-about-title")
     lead: words.t("settings-about-lead")
     readonly property var upd: frame.updatePanel
-    readonly property bool offered: upd.phase === "offer" && upd.shown
-    // Only a build that can replace itself installs from here; the others say where to get it
-    readonly property bool installs: offered && upd.how === "install"
+    // An update waits for this track, put away or not; About keeps the way to take it until
+    // it is installed or the track changes
+    readonly property bool offered: upd.pending && upd.phase === "offer"
     readonly property string offerLine: upd.phase === "failed" ? words.t("settings-about-update-failed")
+        : upd.pending && (upd.phase === "downloading" || upd.phase === "ready") ? words.t("settings-about-update-progress", { headline: upd.headline, detail: upd.detail })
         : !offered ? ""
         : upd.how === "install" ? words.t("settings-about-update-ready", { version: upd.version })
-        : upd.how === "command" ? words.t("settings-about-update-aur", { version: upd.version, command: upd.command })
+        : upd.how === "command" ? words.t("settings-about-update-command", { version: upd.version, command: upd.command })
         : upd.how === "source" ? words.t("settings-about-update-source", { version: upd.version })
         : words.t("settings-about-update-elsewhere", { version: upd.version })
 
@@ -25,9 +26,13 @@ SettingsTab {
             helper: tab.offerLine
             Row { spacing: theme.space(2)
                 Button { objectName: "data-whats-new"; msg: "settings-about-whats-new"; icon: "sparkles"; flat: true; onClicked: frame.openWhatsNew() }
-                Button { visible: tab.installs; msg: "settings-about-install"; msgArgs: ({ version: tab.upd.version }); icon: "download"; primary: true; onClicked: tab.upd.install() }
-                Button { visible: tab.upd.phase === "failed"; msg: "action-try-again"; icon: "refresh-cw"; primary: true; onClicked: tab.upd.install() }
-                Button { visible: (tab.upd.phase === "failed" || (tab.offered && tab.upd.how === "page")) && tab.upd.url !== ""; msg: "settings-about-release-page"; icon: "external-link"; flat: true; onClicked: frame.openLink(tab.upd.url) } } }
+                Button { objectName: "about-update-install"; visible: tab.offered && tab.upd.how === "install"; msg: "settings-about-install"; msgArgs: ({ version: tab.upd.version }); icon: "download"; primary: true; onClicked: tab.upd.install() }
+                Button { objectName: "about-update-copy"; visible: tab.offered && tab.upd.how === "command"; text: tab.upd.copyText; icon: tab.upd.copied ? "check" : "copy"; primary: true; onClicked: tab.upd.copyCommand() }
+                Button { objectName: "about-update-restart"; visible: tab.upd.phase === "ready"; text: tab.upd.restartText; icon: "refresh-cw"; primary: true; onClicked: tab.upd.restart() }
+                Button { objectName: "about-update-retry"; visible: tab.upd.phase === "failed"; text: tab.upd.retryText; icon: "rotate-cw"; primary: true; onClicked: tab.upd.install() }
+                Button { objectName: "about-update-cancel"; visible: tab.upd.phase === "downloading"; text: tab.upd.cancelText; icon: "x"; flat: true; onClicked: tab.upd.cancel() }
+                Button { objectName: "about-update-page"; visible: (tab.upd.phase === "failed" || (tab.offered && (tab.upd.how === "page" || tab.upd.how === "source"))) && tab.upd.url !== ""
+                         text: tab.upd.pageText; icon: "external-link"; primary: tab.upd.how === "page" && tab.upd.phase !== "failed"; flat: !primary; onClicked: frame.openLink(tab.upd.url) } } }
         SettingRow { label: words.t("settings-about-setup"); helper: words.t("settings-about-setup-helper")
             Button { objectName: "about-run-setup"; msg: "settings-about-run-setup"; icon: "rotate-ccw"; flat: true; onClicked: frame.openOnboarding(0) } }
         SettingRow { label: words.t("settings-about-updates")

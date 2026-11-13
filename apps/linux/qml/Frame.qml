@@ -195,6 +195,8 @@ FocusScope {
         anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
         active: nav.railIndex
         downloadsBadge: frame.downloadsAttention
+        settingsBadge: updateNotice.pending
+        settingsNote: updateNotice.pending ? updateNotice.headline : ""
         // A rail page opens as it was left; the icon of the page already open takes it back
         // to its top
         onPicked: function(i) {
