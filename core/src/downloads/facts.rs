@@ -55,8 +55,11 @@ static VERSION: LazyLock<Regex> =
 /// The CRC32 a fansub group tags its file with: `[80977B2B]`. An all-digit tag
 /// is read as a date (`[20241005]`), not a CRC.
 static CRC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([0-9A-Fa-f]{8})\]").unwrap());
+/// A size anywhere in the text, so "Size: 1.4 GiB" reads, but never the tail of a longer
+/// number: a size right after a digit, a sign or a mark ("1 234 MiB", "-1 GiB") reads as
+/// none rather than as its last group.
 static SIZE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)(\d[\d.,]*)\s*([KMGT])?i?B\b").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i)(?:^|[^\d\s.,+-])\s*([\d.,]*\d)\s*([KMGT])?i?B\b").unwrap());
 
 /// The facts of a bare name, a file's or a torrent's, read as a release
 /// title is; a path counts by its last part.
@@ -242,7 +245,8 @@ pub fn size_in_bytes(text: &str) -> Option<f64> {
             "K" => 1024.0,
             "M" => 1024.0 * 1024.0,
             "G" => 1024.0 * 1024.0 * 1024.0,
-            _ => 1024.0_f64.powi(4),
+            "T" => 1024.0_f64.powi(4),
+            _ => return None,
         },
     };
     Some(n * scale)
@@ -254,12 +258,18 @@ pub fn size_bytes(text: &str) -> Option<u64> {
     (b.is_finite() && b < u64::MAX as f64).then_some(b as u64)
 }
 
-/// A size's number, with '.' or ',' as its decimal mark and ',' as a
-/// thousands separator: "1,024" is 1024.0, "6,2" is 6.2.
+/// A size's number, with '.' or ',' as its decimal mark. With both, the last one is
+/// the decimal mark and the other separates thousands: "1,024.5" and "1.024,5" are both
+/// 1024.5. A lone ',' separates thousands only when three digits follow it: "1,024" is
+/// 1024.0, "6,2" is 6.2.
 fn size_number(raw: &str) -> Option<f64> {
     let text = raw.trim();
     let text = if text.contains('.') && text.contains(',') {
-        text.replace(',', "")
+        if text.rfind(',') > text.rfind('.') {
+            text.replace('.', "").replace(',', ".")
+        } else {
+            text.replace(',', "")
+        }
     } else if text.contains(',') {
         let (head, tail) = text.rsplit_once(',').unwrap_or(("", text));
         let joiner = if tail.chars().count() == 3 { "" } else { "." };
@@ -388,6 +398,16 @@ mod tests {
         assert_eq!(size_number("6.2"), Some(6.2));
         assert_eq!(size_number("1,234,567"), Some(1234567.0));
         assert_eq!(size_number("1.2.3"), None);
+        assert_eq!(size_number("1.234,5"), Some(1234.5));
+    }
+
+    #[test]
+    fn a_size_is_never_the_tail_of_a_longer_number() {
+        assert_eq!(size_in_bytes(".5 GiB"), size_in_bytes("0.5 GiB"));
+        assert_eq!(size_bytes("Size: 1.5 KiB"), Some(1536));
+        assert_eq!(size_bytes("1 234 MiB"), None);
+        assert_eq!(size_bytes("-1 GiB"), None);
+        assert_eq!(size_bytes("1.234,5 MiB"), size_bytes("1234.5 MiB"));
     }
 
     #[test]
