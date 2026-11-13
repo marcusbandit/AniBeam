@@ -180,6 +180,28 @@ change file the same PR deletes. Run it by hand with `.github/changelog-newest.s
 origin/main`.
 The phone's `build.sh` refuses an APK whose newest heading is not its version.
 
+## Words
+
+Every word a person reads lives in one catalog, the Fluent files under `i18n/` at the repo
+root: `i18n/<lang>/core.ftl` for what the core says, `desktop.ftl` for the desktop and
+`android.ftl` for the phone. English is the source; the other 12 languages translate it, and
+an ID a language lacks shows in English. All of a language's files load as one, so a
+`-term` or a shared message in `core.ftl` works from the others.
+
+- A message has a stable ID naming where it shows and what it says, never the English:
+  `player-skip-intro`, `downloads-empty`. Counts use Fluent's plurals, never a word picked
+  in code.
+- The code asks for the ID: `anibeam_core::i18n::tr("player-skip-intro", &[])` in Rust, and
+  through the shell's own lookup in QML and Slint. No shell writes a word of its own.
+- A new message goes in English in the same PR. A translation can follow later.
+
+`.github/strings-check.py` runs on every pull request. It fails a raw string added to a
+shell's UI files and an ID missing from `i18n/en/`. The files that held raw strings before
+the catalog are listed in `.github/strings-baseline.txt`; a file may hold no more than its
+count there, and a PR that moves strings out has to lower it in the same PR with
+`.github/strings-check.py --update`. A line that holds no words for a person, such as a
+format string, ends in `// i18n: none`.
+
 ## Sources
 
 AniBeam ships no download sources, and this repo takes no PR that adds one. Nothing in
@@ -220,6 +242,7 @@ kind, open an issue about the kind and leave the source out.
 - A change someone can notice has its line in a change file under the app's `changes/`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
 - Nothing in the diff names a download site. See Sources.
+- `.github/strings-check.py` passes: new words go in `i18n/en/` under an ID. See Words.
 
 ## Releases
 
