@@ -207,6 +207,8 @@ pub enum EventBody {
     /// `ListTailnetDevices` starts and does not wait for.
     TailnetDevicesChanged {
         devices: Vec<TailnetDevice>,
+        #[serde(default)]
+        people: Vec<TailnetPerson>,
     },
     /// Discord rich presence connected, or let the connection go: Discord
     /// closed, stopped answering, or the switch went off.

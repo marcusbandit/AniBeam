@@ -993,9 +993,10 @@ impl Core {
             Call::GetHost => Ok(Reply::Host {
                 status: self.host.status(),
             }),
-            Call::ListTailnetDevices => Ok(Reply::TailnetDevices {
-                devices: crate::host::devices(self),
-            }),
+            Call::ListTailnetDevices => {
+                let (devices, people) = crate::host::devices(self);
+                Ok(Reply::TailnetDevices { devices, people })
+            }
             Call::SetTailnetDeviceTrust { device, trusted } => {
                 let preferences = self.store.write(move |c| {
                     let mut p = prefs::load_preferences(c)?;

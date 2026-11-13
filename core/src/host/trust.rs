@@ -104,10 +104,15 @@ pub fn asker(from: IpAddr, tailnet: Option<&Tailnet>) -> Asker {
     if t.me.contains(&from) {
         return Asker::Owner;
     }
+    whose(t, t.peer(from))
+}
+
+/// Whose profile a device of the tailnet is answered with: the asker it makes, by the
+/// rules of [`asker`]. Settings lists each device under that person (#633).
+pub fn whose(t: &Tailnet, peer: Option<&Peer>) -> Asker {
     let Some(me) = t.me_user.as_deref() else {
         return Asker::Owner;
     };
-    let peer = t.peer(from);
     // A tagged device belongs to the tailnet rather than to anyone: the owner's.
     if peer.is_some_and(|p| p.tagged) {
         return Asker::Owner;

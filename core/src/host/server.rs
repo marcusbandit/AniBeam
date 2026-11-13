@@ -316,7 +316,9 @@ async fn hello(
 ) -> Response {
     // Downloads are offered only to the owner's devices, the only ones the call route
     // takes them from (#733).
-    let owner = profile.is_some_and(|p| p.0.0 == crate::profiles::OWNER);
+    let owner = profile
+        .as_ref()
+        .is_some_and(|p| p.0.0 == crate::profiles::OWNER);
     // `trusted` read the key before this route, so this only takes it.
     let key = st
         .core
@@ -327,6 +329,17 @@ async fn hello(
         .core
         .upgrade()
         .is_some_and(|core| super::relayed(&core, from.ip()));
+    // Whose progress this device gets (#633), named as the profile was last seen.
+    let named = match (st.core.upgrade(), profile) {
+        (Some(core), Some(p)) => tokio::task::spawn_blocking(move || {
+            core.store.read(|c| crate::profiles::named(c, p.0.0))
+        })
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .flatten(),
+        _ => None,
+    };
     let hello = wire::Hello {
         app: wire::APP.to_string(),
         api: wire::API_VERSION,
@@ -337,6 +350,7 @@ async fn hello(
         key: key.map(|k| k.public()).unwrap_or_default(),
         streaming_off: !streaming,
         relayed,
+        profile: named,
     };
     match serde_json::to_vec(&hello) {
         Ok(body) => json(Bytes::from(body)),

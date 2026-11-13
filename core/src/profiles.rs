@@ -72,6 +72,31 @@ pub fn resolve(
     }
 }
 
+/// How a profile is named to the device it answers (#633): its Tailscale name and
+/// login, and whether it is the owner's. None while the host has never learned the
+/// name, as for the owner of a tagged machine.
+pub fn named(conn: &Connection, id: u64) -> Result<Option<anibeam_host_api::Profile>, CoreError> {
+    let row: Option<(Option<String>, Option<String>)> = conn
+        .query_row(
+            "SELECT name, login FROM profiles WHERE id = ?1",
+            params![id as i64],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    Ok(row.and_then(|(name, login)| {
+        let login = login.unwrap_or_default();
+        // Tailscale may name nobody; the login still says who it is.
+        let name = name
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(|| login.clone());
+        (!name.trim().is_empty()).then_some(anibeam_host_api::Profile {
+            name,
+            login,
+            owner: id == OWNER,
+        })
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,6 +154,37 @@ mod tests {
             })
             .unwrap();
         assert_eq!((count, name.as_str()), (1, "Friend B"));
+    }
+
+    #[test]
+    fn a_profile_is_named_by_tailscale_and_the_owner_says_so() {
+        let (_dir, store) = open();
+        assert_eq!(
+            store.read(|c| named(c, OWNER)).unwrap(),
+            None,
+            "no name learned yet"
+        );
+        let me = user("100", "Owner");
+        let friend = Asker::Person(TailnetUser {
+            name: String::new(),
+            ..user("200", "friend")
+        });
+        let id = store
+            .write(move |c| {
+                resolve(c, &Asker::Owner, Some(&me), 5)?;
+                resolve(c, &friend, None, 5)
+            })
+            .unwrap()
+            .unwrap();
+        let owner = store.read(|c| named(c, OWNER)).unwrap().unwrap();
+        assert_eq!((owner.name.as_str(), owner.owner), ("Owner", true));
+        let guest = store.read(move |c| named(c, id)).unwrap().unwrap();
+        assert_eq!(
+            (guest.name.as_str(), guest.owner),
+            ("friend@example.com", false),
+            "a person with no name is named by their login"
+        );
+        assert_eq!(store.read(|c| named(c, 99)).unwrap(), None);
     }
 
     #[test]
