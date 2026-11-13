@@ -232,9 +232,22 @@ jobs:
           IFS=. read -r major minor _ <<<"$SHIPPED"
           next="$major.$((minor + 1)).0"
           sed -i "0,/^version = \"$SHIPPED\"$/s//version = \"$next\"/" Cargo.toml
-          # The workspace's own packages in the lock carry its version too.
-          for pkg in anibeam anibeam-cli anibeam-core anibeam-host-api; do
-            sed -i "/^name = \"$pkg\"$/{n;s/^version = \"$SHIPPED\"$/version = \"$next\"/}" Cargo.lock
+          # The workspace's own packages carry its version in the lock too, and so they do in
+          # the phone's: apps/android is a workspace of its own that builds on the core, so
+          # its lock names them as well, and `cargo test --locked` fails there when only the
+          # root one moves (#767). They are the root lock's packages with no source line.
+          pkgs="$(awk -v v="$SHIPPED" '
+            /^\[\[package\]\]$/ { if (n != "" && ver == v && !src) print n; n = ""; ver = ""; src = 0 }
+            /^name = /    { n = $3; gsub(/"/, "", n) }
+            /^version = / { ver = $3; gsub(/"/, "", ver) }
+            /^source = /  { src = 1 }
+            END { if (n != "" && ver == v && !src) print n }
+          ' Cargo.lock)"
+          echo "Workspace packages: $(echo $pkgs)"
+          for lock in Cargo.lock apps/android/Cargo.lock; do
+            for pkg in $pkgs; do
+              sed -i "/^name = \"$pkg\"$/{n;s/^version = \"$SHIPPED\"$/version = \"$next\"/}" "$lock"
+            done
           done
           # The change files that shipped become the shipped version's lines; any merged
           # since the promoted nightly stay, and show under the new version.
