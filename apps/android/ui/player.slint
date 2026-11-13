@@ -39,6 +39,8 @@ export global PlayerData {
     in property <bool> has-prev;
     in property <bool> has-next;
     in property <[Band]> bands;
+    // Where each chapter starts, in seconds: a notch in the groove at each.
+    in property <[float]> chapters;
     // "Skip intro", "Skip outro", or empty while the position is in neither window.
     in property <string> skip-label;
     in property <bool> next-visible;
@@ -167,13 +169,15 @@ component PlayerButton inherits Rectangle {
 }
 
 // The groove, the desktop's SeekBar: the skip windows as white bands under the played
-// part, and the knob. A drag shows the frame under the finger in the bubble and seeks once on
-// release; the bar then holds that spot until mpv gets there, or 1.5 s, so the knob never
-// jumps back. A release within `still` of where the knob was at the press does not seek.
+// part, a thin dark notch where each chapter starts, and the knob. A drag shows the frame
+// under the finger in the bubble and seeks once on release; the bar then holds that spot
+// until mpv gets there, or 1.5 s, so the knob never jumps back. A release within `still` of
+// where the knob was at the press does not seek.
 component SeekBar inherits Rectangle {
     in property <float> position;
     in property <float> duration;
     in property <[Band]> bands;
+    in property <[float]> chapters;
     out property <bool> scrubbing: touch.pressed;
     out property <float> scrub-to;
     out property <length> knob-x: root.groove * root.shown + root.knob / 2;
@@ -212,6 +216,14 @@ component SeekBar inherits Rectangle {
         height: 4px;
         border-radius: 2px;
         background: Theme.accent;
+    }
+    // Placed against the duration as it is now, none in the first or last second.
+    for at in root.chapters: Rectangle {
+        visible: root.duration > 0 && at > 1 && at < root.duration - 1;
+        x: root.knob / 2 + root.groove * (root.duration > 0 ? at / root.duration : 0) - 1px;
+        width: 2px;
+        height: 4px;
+        background: #000000b3;
     }
     Rectangle {
         x: root.groove * root.shown;
@@ -795,6 +807,7 @@ export component PlayerPage inherits Rectangle {
                 position: PlayerData.position;
                 duration: PlayerData.duration;
                 bands: PlayerData.bands;
+                chapters: PlayerData.chapters;
             }
             HorizontalLayout {
                 spacing: Theme.unit;
