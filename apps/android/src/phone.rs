@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anibeam_companion::calendar;
 use anibeam_companion::format;
-use anibeam_core::{Episode, SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
+use anibeam_core::{AiringStatus, Episode, SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
 use chrono::{Datelike, Days, NaiveDate};
 
 use crate::posters;
@@ -420,18 +420,41 @@ pub fn series(
     .find(|t| t.as_str() != card.title)
     .cloned()
     .unwrap_or_default();
-    let mut facts: Vec<String> = Vec::new();
-    if let Some(f) = &card.format {
-        facts.push(f.clone());
-    }
+    // The desktop's ledger line: the format, when it started, the studio, a film's runtime,
+    // the episodes and how long each runs, and whether it airs. The season says the year
+    // too, so it stands in for the year when the record has one.
+    let mut facts: Vec<String> = vec![if movie {
+        "Film".to_string()
+    } else {
+        crate::show::format_label(card.format.as_deref())
+    }];
     if let Some(s) = &card.season {
         facts.push(s.clone());
+    } else if let Some(y) = detail.year {
+        facts.push(y.to_string());
     }
-    if let Some(total) = card.total_episodes {
+    if let Some(studio) = &detail.studio {
+        facts.push(studio.clone());
+    }
+    if card.film
+        && let Some(m) = detail.episode_minutes
+    {
+        facts.push(runtime(m));
+    }
+    if !movie && let Some(total) = card.total_episodes {
         facts.push(format!(
-            "{total}{} episodes",
-            if card.total_is_estimate { "?" } else { "" }
+            "{total} {}{}",
+            if total == 1 { "episode" } else { "episodes" },
+            if card.total_is_estimate { "+" } else { "" }
         ));
+    }
+    if !card.film
+        && let Some(m) = detail.episode_minutes
+    {
+        facts.push(format!("{} each", runtime(m)));
+    }
+    if let Some(status) = card.status {
+        facts.push(airing_word(status).to_string());
     }
     let next = card
         .next_airing
@@ -618,6 +641,27 @@ pub fn series(
     (head, lines.into_iter().map(|(_, l)| l).collect())
 }
 
+/// How long an episode or a film runs, the desktop's `Fmt.runtime`: "24 min", "1 h 52 min",
+/// "2 h" on the hour.
+fn runtime(minutes: u32) -> String {
+    match (minutes / 60, minutes % 60) {
+        (0, m) => format!("{m} min"),
+        (h, 0) => format!("{h} h"),
+        (h, m) => format!("{h} h {m} min"),
+    }
+}
+
+/// Whether a show airs, in the desktop's words.
+fn airing_word(status: AiringStatus) -> &'static str {
+    match status {
+        AiringStatus::Releasing => "Airing",
+        AiringStatus::Finished => "Finished",
+        AiringStatus::NotYetReleased => "Upcoming",
+        AiringStatus::Cancelled => "Cancelled",
+        AiringStatus::Hiatus => "On hiatus",
+    }
+}
+
 /// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
 pub(crate) fn clock(secs: f64) -> String {
     let t = secs.max(0.0) as u64;
@@ -632,6 +676,15 @@ pub(crate) fn clock(secs: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtimes_and_airing_read_like_the_desktop() {
+        assert_eq!(runtime(24), "24 min");
+        assert_eq!(runtime(112), "1 h 52 min");
+        assert_eq!(runtime(120), "2 h");
+        assert_eq!(airing_word(AiringStatus::Hiatus), "On hiatus");
+        assert_eq!(airing_word(AiringStatus::Releasing), "Airing");
+    }
 
     #[test]
     fn every_core_cube_letter_has_a_colour_code() {

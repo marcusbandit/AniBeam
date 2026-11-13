@@ -53,6 +53,12 @@ export global ShowData {
     // The score in tenths, 0 to 100, or -1 for none.
     in property <int> score: -1;
     in property <string> score-word;
+    // "Average score 8.1", "IMDb 8.6" and its "12,345 votes", "Rewatched 2 times"; empty
+    // when the record has none.
+    in property <string> average;
+    in property <string> imdb;
+    in property <string> imdb-votes;
+    in property <string> rewatched;
     // The score being picked, in tenths.
     in-out property <int> draft: 80;
     // Where a status or score goes: the trackers, or only this phone.
@@ -151,6 +157,33 @@ export component ShowSheet inherits Rectangle {
 // The quiet row on a show's page: your score and the list it is on. Each opens its sheet.
 export component ShowActions inherits VerticalLayout {
     spacing: Theme.unit * 2;
+    // The quiet facts: the average score, IMDb's, and the rewatches.
+    if ShowData.average != "" || ShowData.imdb != "" || ShowData.rewatched != "": HorizontalLayout {
+        spacing: Theme.unit * 2;
+        alignment: start;
+        if ShowData.average != "": Chip {
+            icon: @image-url("icons/users.svg");
+            has-icon: true;
+            small: true;
+            ink: Theme.dim;
+            text: ShowData.average;
+        }
+        if ShowData.imdb != "": Chip {
+            icon: @image-url("icons/clapperboard.svg");
+            has-icon: true;
+            small: true;
+            ink: Theme.dim;
+            text: ShowData.imdb;
+            hint: ShowData.imdb-votes;
+        }
+        if ShowData.rewatched != "": Chip {
+            icon: @image-url("icons/rotate-ccw.svg");
+            has-icon: true;
+            small: true;
+            ink: Theme.dim;
+            text: ShowData.rewatched;
+        }
+    }
     if ShowData.lists: HorizontalLayout {
         spacing: Theme.unit * 2;
         alignment: start;

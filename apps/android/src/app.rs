@@ -277,6 +277,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     ),
     (6, "What's new", "changelog patch notes changes update"),
     (6, "Set up again", "onboarding first run start over"),
+    (6, "Ratings", "imdb credit scores"),
     (6, "Version", "build about"),
     (
         8,

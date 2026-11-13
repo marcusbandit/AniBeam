@@ -884,6 +884,14 @@ export component MorePage inherits Rectangle {
                 }
             }
             Lit {
+                on: Settings.lit == "Ratings";
+                reveal(y) => { about.reveal(y); }
+                ListRow {
+                    label: "Ratings";
+                    helper: "Information courtesy of IMDb (https://www.imdb.com). Used with permission.";
+                }
+            }
+            Lit {
                 on: Settings.lit == "Version";
                 reveal(y) => { about.reveal(y); }
                 ListRow {
