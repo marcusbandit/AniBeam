@@ -19,7 +19,6 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::address::DEFAULT_ADDRESS;
 use crate::anilist::Schedule;
 use crate::api::Snapshot;
 
@@ -28,7 +27,7 @@ use crate::api::Snapshot;
 pub struct Cache {
     /// The address it was fetched from, as typed in Settings.
     pub address: String,
-    /// The host's own name, from its hello ("banditbox").
+    /// The host's own name, from its hello ("desktop").
     pub host: String,
     /// The host's AniBeam version.
     #[serde(default)]
@@ -40,18 +39,22 @@ pub struct Cache {
     /// from a host older than the list.
     #[serde(default)]
     pub peers: Vec<crate::api::PeerHost>,
+    /// Whose progress the host answered with, from its hello. None from a host
+    /// older than profiles, and from one that could not name the person.
+    #[serde(default)]
+    pub profile: Option<crate::api::Profile>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// Empty until someone types their computer's address in: a fresh install points nowhere.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub address: String,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        Settings {
-            address: DEFAULT_ADDRESS.to_string(),
-        }
+impl Settings {
+    /// The computer to reach, or None when there is none: nothing saved, or it was removed.
+    pub fn host(&self) -> Option<crate::address::HostAddress> {
+        crate::address::HostAddress::parse(&self.address).ok()
     }
 }
 
@@ -112,8 +115,13 @@ impl Store {
         }
     }
 
+    /// What More saved. A phone from before #736 that synced on the old built-in address
+    /// without ever pressing Save has no settings.json, so it keeps the computer its cache
+    /// came from; a fresh install has neither and points nowhere.
     pub fn settings(&self) -> Settings {
-        self.read_json("settings.json").unwrap_or_default()
+        self.read_json("settings.json").unwrap_or_else(|| Settings {
+            address: self.cache().map(|c| c.address).unwrap_or_default(),
+        })
     }
 
     pub fn save_settings(&self, settings: &Settings) -> std::io::Result<()> {
@@ -227,11 +235,36 @@ mod tests {
     }
 
     #[test]
-    fn a_fresh_store_points_at_banditbox_and_has_nothing_cached() {
+    fn a_fresh_store_points_at_no_computer_and_has_nothing_cached() {
         let store = Store::open(scratch("fresh")).unwrap();
-        assert_eq!(store.settings().address, "banditbox:8790");
+        assert_eq!(store.settings().address, "");
         assert!(store.cache().is_none());
         assert_eq!(store.anilist().fetched_at, 0);
+    }
+
+    #[test]
+    fn a_store_from_before_settings_keeps_the_computer_its_cache_came_from() {
+        let store = Store::open(scratch("upgrade")).unwrap();
+        let snapshot: Snapshot =
+            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json"))
+                .unwrap();
+        let cache = Cache {
+            address: "desktop:8790".into(),
+            host: "desktop".into(),
+            host_version: "2.4.0".into(),
+            synced_at: 1_792_242_100,
+            snapshot,
+            peers: Vec::new(),
+            profile: None,
+        };
+        store.save_cache(&cache).unwrap();
+        assert_eq!(store.settings().address, "desktop:8790");
+        store.save_settings(&Settings::default()).unwrap();
+        assert_eq!(
+            store.settings().host(),
+            None,
+            "a removed computer stays removed"
+        );
     }
 
     #[test]
@@ -242,15 +275,20 @@ mod tests {
                 .unwrap();
         let cache = Cache {
             address: "10.0.2.2:8790".into(),
-            host: "banditbox".into(),
+            host: "desktop".into(),
             host_version: "2.1.0".into(),
             synced_at: 1_792_242_100,
             snapshot,
             peers: vec![crate::api::PeerHost {
-                name: "kangaeru".into(),
-                url: "http://100.80.3.4:8790".into(),
+                name: "laptop".into(),
+                url: "http://100.64.0.3:8790".into(),
                 version: "2.4.0".into(),
             }],
+            profile: Some(crate::api::Profile {
+                name: "Alex Doe".into(),
+                login: "alex@example.com".into(),
+                owner: true,
+            }),
         };
         store.save_cache(&cache).unwrap();
         assert_eq!(store.cache().unwrap(), cache);

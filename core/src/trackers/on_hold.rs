@@ -37,7 +37,7 @@ use crate::metadata::apply::card_for;
 use crate::metadata::fetch::message_of;
 use crate::prefs;
 use crate::time;
-use crate::trackers::{NO_TOKEN, accounts, cache, writes};
+use crate::trackers::{NO_TOKEN, accounts, cache, no_token, writes};
 
 const DAY: i64 = 86_400;
 const WEEK: i64 = 7 * DAY;
@@ -501,7 +501,10 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>) -> Result<Finished, CoreError> {
                 continue;
             }
         };
-        let label = format!("Moving to On hold on {}", t.label());
+        let label = crate::i18n::tr(
+            "core-trackers-on-hold-moving",
+            &[("tracker", t.label().into())],
+        );
         let total = pass.due.len();
         let mut moved = 0usize;
         for (i, entry) in pass.due.iter().enumerate() {
@@ -685,10 +688,6 @@ fn series_for(conn: &Connection, t: Tracker, media_id: u64) -> Result<Vec<u64>, 
     Ok(ids)
 }
 
-fn shows(n: usize) -> &'static str {
-    crate::words::pick(n, "show", "shows")
-}
-
 fn quiet(message: &str) -> Finished {
     Finished {
         plain: None,
@@ -706,22 +705,34 @@ fn finished(tally: &Tally, days: u32) -> Finished {
         return quiet("Nothing to move to On hold");
     }
     let mut message = String::new();
-    let mut said = Vec::new();
+    let site = |t: &Tracker| super::oauth::site_name(*t);
+    let failed = tally.failed;
+    let said = match (tally.moved.as_slice(), failed) {
+        ([], _) => crate::words!("core-trackers-on-hold-failed", failed = failed),
+        ([(t, n)], 0) => crate::words!("core-trackers-on-hold-moved", count = *n, site = site(t)),
+        ([(t, n)], _) => crate::words!(
+            "core-trackers-on-hold-moved-failed",
+            count = *n,
+            site = site(t),
+            failed = failed
+        ),
+        ([(t, n), (t2, n2), ..], 0) => crate::words!(
+            "core-trackers-on-hold-moved-two",
+            count = *n,
+            site = site(t),
+            second = *n2,
+            secondSite = site(t2)
+        ),
+        ([(t, n), (t2, n2), ..], _) => crate::words!(
+            "core-trackers-on-hold-moved-two-failed",
+            count = *n,
+            site = site(t),
+            second = *n2,
+            secondSite = site(t2),
+            failed = failed
+        ),
+    };
     if moved > 0 {
-        let sites: Vec<String> = tally
-            .moved
-            .iter()
-            .enumerate()
-            .map(|(i, (t, n))| {
-                let site = super::oauth::site_name(*t);
-                if i == 0 {
-                    format!("{n} {} to On hold on {site}", shows(*n))
-                } else {
-                    format!("{n} on {site}")
-                }
-            })
-            .collect();
-        said.push(format!("Moved {}.", sites.join(" and ")));
         let wheres: Vec<String> = tally
             .moved
             .iter()
@@ -749,19 +760,8 @@ fn finished(tally: &Tally, days: u32) -> Finished {
             tally.failed
         ));
     }
-    if tally.failed > 0 {
-        said.push(format!(
-            "{} {} not move to On hold.",
-            tally.failed,
-            if tally.failed == 1 {
-                "show could"
-            } else {
-                "shows could"
-            }
-        ));
-    }
     Finished {
-        plain: Some(said.join(" ")),
+        plain: Some(said),
         level: if tally.failed > 0 {
             Level::Warn
         } else {
@@ -862,7 +862,7 @@ async fn back_to_watching(
         let attempt = async {
             let token = accounts::access_token(&core, t)
                 .await?
-                .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
+                .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
             let live = writes::read_live(&core, t, media_id, user_id, &token).await?;
             if live.is_none_or(|l| l.status != Some(ListStatus::Paused)) {
                 return Ok(false);
@@ -904,17 +904,29 @@ async fn back_to_watching(
             .map_err(CoreError::from)
         })
         .await?
-        .unwrap_or_else(|| format!("series {series}"));
+        .unwrap_or_else(|| {
+            crate::i18n::tr(
+                "core-trackers-series-fallback",
+                &[("id", series.to_string().into())],
+            )
+        });
+    let site = |t: &Tracker| super::oauth::site_name(*t);
     Ok(match (moved.is_empty(), failure) {
         (false, _) => Finished {
-            plain: Some(format!(
-                "{name} is back on Watching on {}.",
-                moved
-                    .iter()
-                    .map(|t| super::oauth::site_name(*t))
-                    .collect::<Vec<_>>()
-                    .join(" and ")
-            )),
+            plain: Some(match moved.as_slice() {
+                [t] => crate::words!(
+                    "core-trackers-back-on-watching",
+                    name = &name,
+                    site = site(t)
+                ),
+                [t, t2, ..] => crate::words!(
+                    "core-trackers-back-on-watching-two",
+                    name = &name,
+                    site = site(t),
+                    secondSite = site(t2)
+                ),
+                [] => unreachable!("moved is not empty"),
+            }),
             level: Level::Info,
             message: format!(
                 "{name} is back on Watching on {}",
@@ -927,8 +939,9 @@ async fn back_to_watching(
             body: EventBody::Notice,
         },
         (true, Some(why)) => Finished {
-            plain: Some(format!(
-                "{name} could not go back on Watching. Try again later."
+            plain: Some(crate::words!(
+                "core-trackers-back-on-watching-failed",
+                name = &name
             )),
             level: Level::Warn,
             message: format!("{name} could not go back on Watching: {why}"),

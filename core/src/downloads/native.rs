@@ -62,10 +62,16 @@ pub(super) async fn subscribe(
 ) -> Result<Subscribed, CoreError> {
     let query = query.trim();
     if query.is_empty() {
-        return Err(CoreError::invalid("query", "empty query"));
+        return Err(CoreError::invalid(
+            "query",
+            crate::i18n::tr("core-downloads-native-empty-query", &[]),
+        ));
     }
     if items.is_empty() {
-        return Err(not_found(format!("no results for {query:?}")));
+        return Err(not_found(crate::i18n::tr(
+            "core-downloads-native-no-results",
+            &[("query", format!("{query:?}").into())],
+        )));
     }
     let name = paths::name_for(name, items, query)?;
     let spec = native.preview(query, endpoint, items).await?;
@@ -88,7 +94,10 @@ pub(super) async fn subscribe(
         // A feed already sits at that path with another address
         return Err(CoreError::invalid(
             "name",
-            format!("a feed named {name:?} already reads another address"),
+            crate::i18n::tr(
+                "core-downloads-native-feed-taken",
+                &[("name", format!("{name:?}").into())],
+            ),
         ));
     }
     qbt.set_rule(&name, &rule_def(&spec, &save_path, &tags))
@@ -174,7 +183,10 @@ pub(super) async fn download(
     save_path: Option<&str>,
 ) -> Result<AddedTorrents, CoreError> {
     if items.is_empty() {
-        return Err(CoreError::invalid("items", "no items given"));
+        return Err(CoreError::invalid(
+            "items",
+            crate::i18n::tr("core-downloads-native-no-items", &[]),
+        ));
     }
     let name = paths::name_for(name, items, FALLBACK_NAME)?;
     let links = checked_links(items.iter().map(|i| i.link.as_str()))?;
@@ -232,13 +244,19 @@ fn checked_links<'a>(links: impl IntoIterator<Item = &'a str>) -> Result<Vec<Str
         if !fits || safe.chars().any(char::is_whitespace) {
             return Err(CoreError::invalid(
                 "links",
-                format!("links must be magnet: or http(s) URLs, got {link:?}"),
+                crate::i18n::tr(
+                    "core-downloads-native-bad-link",
+                    &[("link", format!("{link:?}").into())],
+                ),
             ));
         }
         out.push(safe);
     }
     if out.is_empty() {
-        return Err(CoreError::invalid("links", "no links given"));
+        return Err(CoreError::invalid(
+            "links",
+            crate::i18n::tr("core-downloads-native-no-links", &[]),
+        ));
     }
     Ok(out)
 }
@@ -415,14 +433,16 @@ pub(super) async fn remove(
         }
     }
     if unique.is_empty() {
-        return Err(CoreError::invalid("names", "no subscription names given"));
+        return Err(CoreError::invalid(
+            "names",
+            crate::i18n::tr("core-downloads-native-no-names", &[]),
+        ));
     }
     let here = files_here(core)?;
     if files && !torrents && !here {
         return Err(CoreError::invalid(
             "files",
-            "the torrent client keeps its files on another machine, so they can only go with \
-             its torrents",
+            crate::i18n::tr("core-downloads-native-files-elsewhere", &[]),
         ));
     }
     let qbt = super::qbt_client(core).await?;
@@ -463,9 +483,9 @@ async fn plan(
         .map(String::as_str)
         .collect();
     if !missing.is_empty() {
-        return Err(not_found(format!(
-            "unknown feed(s): {}",
-            missing.join(", ")
+        return Err(not_found(crate::i18n::tr(
+            "core-downloads-native-unknown-feeds",
+            &[("names", missing.join(", ").into())],
         )));
     }
     let mut plans = Vec::new();
@@ -533,9 +553,9 @@ fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Resu
     if !outside.is_empty() {
         return Err(CoreError::invalid(
             "files",
-            format!(
-                "refusing to remove files outside the download folders: {}",
-                outside.join(", ")
+            crate::i18n::tr(
+                "core-downloads-native-outside-folders",
+                &[("paths", outside.join(", ").into())],
             ),
         ));
     }
@@ -563,18 +583,18 @@ fn confined(core: &Core, plans: &[Plan], saving: &SavePaths, here: bool) -> Resu
         if home.as_deref().is_some_and(holds) {
             return Err(CoreError::invalid(
                 "files",
-                format!(
-                    "{} is the home folder or holds it, so nothing was removed",
-                    p.save_path
+                crate::i18n::tr(
+                    "core-downloads-refuse-home-folder",
+                    &[("path", p.save_path.as_str().into())],
                 ),
             ));
         }
         if sources.iter().any(|s| holds(s)) {
             return Err(CoreError::invalid(
                 "files",
-                format!(
-                    "{} is a library folder or holds one, so nothing was removed",
-                    p.save_path
+                crate::i18n::tr(
+                    "core-downloads-refuse-library-folder",
+                    &[("path", p.save_path.as_str().into())],
                 ),
             ));
         }

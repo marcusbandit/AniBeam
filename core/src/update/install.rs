@@ -27,6 +27,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
 use super::{Asset, Update};
+use crate::i18n::tr;
 
 /// How the running copy was installed.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -288,15 +289,21 @@ pub async fn fetch(
     progress: impl FnMut(u64, u64) + Send,
 ) -> Result<Prepared, String> {
     let asset = install.asset(&update.assets).ok_or_else(|| {
-        format!(
-            "AniBeam {} has no download for this computer",
-            update.version
+        tr(
+            "core-update-no-download",
+            &[("version", update.version.as_str().into())],
         )
     })?;
     let _ = tokio::fs::remove_dir_all(work).await;
-    tokio::fs::create_dir_all(work)
-        .await
-        .map_err(|e| format!("Could not make {}: {e}", work.display()))?;
+    tokio::fs::create_dir_all(work).await.map_err(|e| {
+        tr(
+            "core-update-cannot-make",
+            &[
+                ("path", work.display().to_string().into()),
+                ("error", e.to_string().into()),
+            ],
+        )
+    })?;
     match install {
         Install::AppImage { path } => {
             let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
@@ -308,13 +315,24 @@ pub async fn fetch(
                 use std::os::unix::fs::PermissionsExt;
                 tokio::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o755))
                     .await
-                    .map_err(|e| format!("Could not mark the new AppImage runnable: {e}"))?;
+                    .map_err(|e| {
+                        tr(
+                            "core-update-cannot-mark",
+                            &[("error", e.to_string().into())],
+                        )
+                    })?;
             }
             // The running copy is mounted from the old file's inode, which the rename
             // leaves alone until the app ends.
-            tokio::fs::rename(&next, path)
-                .await
-                .map_err(|e| format!("Could not replace {}: {e}", path.display()))?;
+            tokio::fs::rename(&next, path).await.map_err(|e| {
+                tr(
+                    "core-update-cannot-replace",
+                    &[
+                        ("path", path.display().to_string().into()),
+                        ("error", e.to_string().into()),
+                    ],
+                )
+            })?;
             Ok(Prepared::AppImage { path: path.clone() })
         }
         Install::MacApp { bundle } => {
@@ -345,7 +363,7 @@ pub async fn fetch(
                 work: work.to_path_buf(),
             })
         }
-        Install::Package { .. } | Install::Source => Err("This copy is not updated here".into()),
+        Install::Package { .. } | Install::Source => Err(tr("core-update-not-here", &[])),
     }
 }
 
@@ -362,20 +380,30 @@ async fn download(
         .connect_timeout(Duration::from_secs(20))
         .read_timeout(Duration::from_secs(60))
         .build()
-        .map_err(|e| format!("Could not start the download: {e}"))?;
+        .map_err(|e| {
+            tr(
+                "core-update-cannot-start",
+                &[("error", e.to_string().into())],
+            )
+        })?;
     let mut res = client
         .get(&asset.url)
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("The download did not start: {e}"))?;
+        .map_err(|e| {
+            tr(
+                "core-update-did-not-start",
+                &[("error", e.to_string().into())],
+            )
+        })?;
     let total = res.content_length().unwrap_or(asset.size);
     let mut part = to.as_os_str().to_owned();
     part.push(".part");
     let part = PathBuf::from(part);
     let mut file = tokio::fs::File::create(&part)
         .await
-        .map_err(|e| format!("Could not write {}: {e}", part.display()))?;
+        .map_err(|e| cannot_write(&part, e))?;
     let mut hash = Sha256::new();
     let mut got = 0u64;
     let mut told = u64::MAX;
@@ -383,14 +411,14 @@ async fn download(
         while let Some(chunk) = res
             .chunk()
             .await
-            .map_err(|e| format!("The download stopped: {e}"))?
+            .map_err(|e| tr("core-update-stopped", &[("error", e.to_string().into())]))?
         {
             if cancel.load(Ordering::SeqCst) {
-                return Err("Cancelled".into());
+                return Err(tr("core-update-cancelled", &[]));
             }
             file.write_all(&chunk)
                 .await
-                .map_err(|e| format!("Could not write {}: {e}", part.display()))?;
+                .map_err(|e| cannot_write(&part, e))?;
             hash.update(&chunk);
             got += chunk.len() as u64;
             // Once a percent, not once a chunk
@@ -400,13 +428,14 @@ async fn download(
                 progress(got, total);
             }
         }
-        file.flush()
-            .await
-            .map_err(|e| format!("Could not write {}: {e}", part.display()))?;
+        file.flush().await.map_err(|e| cannot_write(&part, e))?;
         if got != asset.size {
-            return Err(format!(
-                "The download ended early ({got} of {} bytes)",
-                asset.size
+            return Err(tr(
+                "core-update-ended-early",
+                &[
+                    ("got", got.to_string().into()),
+                    ("size", asset.size.to_string().into()),
+                ],
             ));
         }
         if let Some(want) = asset
@@ -416,7 +445,7 @@ async fn download(
         {
             let have = hex(&hash.finalize());
             if !have.eq_ignore_ascii_case(want) {
-                return Err("The download does not match GitHub's checksum".into());
+                return Err(tr("core-update-checksum", &[]));
             }
         }
         Ok(())
@@ -427,9 +456,22 @@ async fn download(
         let _ = tokio::fs::remove_file(&part).await;
         return Err(e);
     }
-    tokio::fs::rename(&part, to)
-        .await
-        .map_err(|e| format!("Could not move the download into place: {e}"))
+    tokio::fs::rename(&part, to).await.map_err(|e| {
+        tr(
+            "core-update-cannot-move",
+            &[("error", e.to_string().into())],
+        )
+    })
+}
+
+fn cannot_write(part: &Path, e: std::io::Error) -> String {
+    tr(
+        "core-update-cannot-write",
+        &[
+            ("path", part.display().to_string().into()),
+            ("error", e.to_string().into()),
+        ],
+    )
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -457,11 +499,14 @@ async fn stage_from_dmg(dmg: &Path, mount: &Path, staged: &Path) -> Result<(), S
         .arg(mount)
         .arg(dmg))
     .await
-    .map_err(|e| format!("Could not open the dmg: {e}"))?;
+    .map_err(|e| tr("core-update-cannot-open-dmg", &[("error", e.into())]))?;
     let copied = async {
-        let mut entries = tokio::fs::read_dir(mount)
-            .await
-            .map_err(|e| format!("Could not read the dmg: {e}"))?;
+        let mut entries = tokio::fs::read_dir(mount).await.map_err(|e| {
+            tr(
+                "core-update-cannot-read-dmg",
+                &[("error", e.to_string().into())],
+            )
+        })?;
         let mut app = None;
         while let Ok(Some(entry)) = entries.next_entry().await {
             if entry.path().extension() == Some("app".as_ref()) {
@@ -469,11 +514,11 @@ async fn stage_from_dmg(dmg: &Path, mount: &Path, staged: &Path) -> Result<(), S
                 break;
             }
         }
-        let app = app.ok_or("The dmg holds no app")?;
+        let app = app.ok_or_else(|| tr("core-update-no-app", &[]))?;
         let _ = tokio::fs::remove_dir_all(staged).await;
         run(Command::new("ditto").arg(&app).arg(staged))
             .await
-            .map_err(|e| format!("Could not copy the new app beside this one: {e}"))
+            .map_err(|e| tr("core-update-cannot-copy", &[("error", e.into())]))
     }
     .await;
     let _ = run(Command::new("hdiutil")

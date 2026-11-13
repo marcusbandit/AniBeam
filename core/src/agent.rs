@@ -156,7 +156,7 @@ pub fn read_line(line: &str) -> Vec<Said> {
             let text = v["result"].as_str().unwrap_or("").trim().to_string();
             if v["is_error"].as_bool().unwrap_or(false) || text.is_empty() {
                 let why = if text.is_empty() {
-                    "the agent gave no answer".to_string()
+                    crate::i18n::tr("core-agent-no-answer", &[])
                 } else {
                     text
                 };
@@ -172,12 +172,15 @@ pub fn read_line(line: &str) -> Vec<Said> {
 /// A tool call as a person reads it.
 fn tool_line(name: &str, input: &serde_json::Value) -> String {
     match name {
-        "WebSearch" => format!(
-            "Searching the web for {}",
-            input["query"].as_str().unwrap_or("the schedule")
-        ),
-        "WebFetch" => format!("Reading {}", input["url"].as_str().unwrap_or("a page")),
-        other => format!("Using {other}"),
+        "WebSearch" => match input["query"].as_str() {
+            Some(query) => crate::i18n::tr("core-agent-searching", &[("query", query.into())]),
+            None => crate::i18n::tr("core-agent-searching-schedule", &[]),
+        },
+        "WebFetch" => match input["url"].as_str() {
+            Some(url) => crate::i18n::tr("core-agent-reading", &[("url", url.into())]),
+            None => crate::i18n::tr("core-agent-reading-page", &[]),
+        },
+        other => crate::i18n::tr("core-agent-using", &[("tool", other.into())]),
     }
 }
 
@@ -194,7 +197,7 @@ fn user_message(text: &str) -> String {
 pub fn start(core: &Core, series: u64) -> Result<u64, CoreError> {
     let Some((path, name)) = find() else {
         return Err(CoreError::Unsupported {
-            what: "a coding agent on this computer".to_string(),
+            what: crate::i18n::tr("core-agent-none", &[]),
         });
     };
     let brief = brief(core, series)?;
@@ -331,11 +334,14 @@ async fn run(
                 }
             }
         }
-        Outcome::Failed(format!("{name} ended without an answer"))
+        Outcome::Failed(crate::i18n::tr(
+            "core-agent-ended",
+            &[("name", name.into())],
+        ))
     };
     let outcome = tokio::select! {
         done = session => done,
-        _ = tokio::time::sleep(SESSION_TIMEOUT) => Outcome::Failed(format!("{name} took too long")),
+        _ = tokio::time::sleep(SESSION_TIMEOUT) => Outcome::Failed(crate::i18n::tr("core-agent-too-long", &[("name", name.into())])),
         _ = ctx.cancelled() => Outcome::Stopped,
     };
     // One turn is the whole session: closing stdin ends it, and the guard

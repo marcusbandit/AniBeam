@@ -92,14 +92,22 @@ async fn run(core: &Core, ctx: &Arc<JobCtx>) -> Result<Finished, CoreError> {
 
     let links = if due(links_at, now, LINKS_TTL) {
         ctx.checkpoint()?;
-        ctx.progress(0, None, "Wikidata's IMDb links");
+        ctx.progress(
+            0,
+            None,
+            &crate::i18n::tr("core-metadata-progress-imdb-links", &[]),
+        );
         refresh_links(core, now).await?
     } else {
         Step::Fresh
     };
     let ratings = if due(ratings_at, now, RATINGS_TTL) {
         ctx.checkpoint()?;
-        ctx.progress(0, None, "IMDb ratings");
+        ctx.progress(
+            0,
+            None,
+            &crate::i18n::tr("core-metadata-progress-imdb-ratings", &[]),
+        );
         refresh_ratings(core, since, now).await?
     } else {
         Step::Fresh

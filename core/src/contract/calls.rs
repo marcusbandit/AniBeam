@@ -345,7 +345,7 @@ pub enum Call {
     /// arrive as `HostChanged`.
     GetHost,
     /// The devices on the tailnet as `tailscale status` last named them, each
-    /// with whether the host answers it. Never waits on `tailscale`: it starts
+    /// with whether the host answers it, and the people they belong to. Never waits on `tailscale`: it starts
     /// a fresh read, which arrives as `TailnetDevicesChanged`. Empty until the
     /// first read, and when `tailscale` is not there.
     ListTailnetDevices,
@@ -893,6 +893,10 @@ pub enum Reply {
     },
     TailnetDevices {
         devices: Vec<TailnetDevice>,
+        /// Whose devices they are, the owner first (#633). Empty while the tailnet
+        /// names no person.
+        #[serde(default)]
+        people: Vec<TailnetPerson>,
     },
     /// `available` is false for a build with no Discord application id,
     /// where the switch can do nothing.

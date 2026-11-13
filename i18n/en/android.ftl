@@ -73,6 +73,9 @@ onb-notify-title = Notifications
 onb-notify-note = While episodes download, a notification shows how far along they are, and another says when one is ready to watch. Downloads run either way.
 onb-sites-title = Search sites
 onb-sites-note = AniBeam comes with nothing to search. A repo is a signed list of sites to search. Paste a repo's address, check its key, then install the sites you want. You can do this later in More.
+# The last step: which computer's AniBeam the phone reaches, if any.
+onb-computer-title = Your computer
+onb-computer-note = AniBeam on a computer can share its library with this phone over Tailscale: its shows appear in Library and their episodes play here. Type its Tailscale name and port, then Test. No computer? Leave it empty and start; More has it later.
 onb-wifi-only = Only on Wi-Fi
 onb-wifi-on = On. Mobile data asks first.
 onb-wifi-off = Off. Downloads use mobile data too.
@@ -266,7 +269,10 @@ host-synced = Synced { $when }.
 host-last-try = Last try { $when }: { $error }
 host-asking = Asking...
 host-reached = Reached { $host }, AniBeam { $version }.
+# The same, naming whose watch history that computer shows this phone.
+host-reached-for = Reached { $host }, AniBeam { $version }, { $name }'s progress.
 host-saved = Saved. Syncing...
+host-none = No computer. This phone keeps to its own library.
 acct-signed-in-as = Signed in as { $name }
 acct-signed-in = Signed in
 acct-not-in-build = Not available in this build
@@ -288,6 +294,8 @@ lib-note-phone = { $count ->
 }
 # Device is the computer's name; when is how long ago, such as "3h ago".
 lib-note-remote = { $device }, synced { $when }
+# The same, naming whose watch history that computer shows this phone.
+lib-note-remote-for = { $device }, { $name }'s progress, synced { $when }
 lib-empty-search = Nothing matches "{ $query }".
 lib-empty-phone = Nothing on this phone yet.
 lib-empty-remote = That device has nothing in its library.
@@ -1098,6 +1106,7 @@ subs-reset = Reset
 stream-quality-auto = Auto
 stream-quality-original = Original
 stream-app-starting = The app is still starting
+stream-no-computer = No computer yet. Add yours in More.
 # { $host } is the other device's name. "Stream episodes", "Settings" and "Phone app" are names on its screen.
 stream-off-on-host = Streaming is off on { $host }. Turn on Stream episodes there, under Settings, Phone app.
 # { $host } is the other device's name, { $version } its AniBeam version.
@@ -1765,6 +1774,11 @@ series-not-tracked-on-phone =
        *[other] Not tracked, { $count } episodes on this phone
     }
 
+## Your computer
+
+# Whose watch history the computer shows this phone, by the person's Tailscale name.
+host-progress = { $name }'s progress
+
 ## The player
 
 # The speed picker while the episode plays on a TV, which keeps its own speed.
@@ -1774,3 +1788,4 @@ player-speed-not-while-casting = Not while casting
 
 # A release in the find list for an episode the phone has from another release.
 downloads-other-release-on-disk = Other release on disk
+

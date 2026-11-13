@@ -1,20 +1,20 @@
 import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
-import { Ask } from "more.slint";
+import { Tr } from "tr.slint";
+import { Ask, HostField } from "more.slint";
 import { Button, Figure, ListGroup, ListRow, Slider, TextButton } from "widgets.slint";
 import { RepoPanes } from "repos.slint";
 import { NotifyPreview, NotifyRow } from "notify.slint";
 import { LangList } from "lang.slint";
-import { Tr } from "tr.slint";
 
 // The first run, one question a step: the language, who you are on AniList and MAL, Wi-Fi or mobile data,
-// how much room the phone gives AniBeam, whether downloads show in the notifications, and
-// which endpoint repo it searches. Shown once; More can run it again. Each step
+// how much room the phone gives AniBeam, whether downloads show in the notifications,
+// which endpoint repo it searches, and which computer's AniBeam it reaches, if any. Shown once; More can run it again. Each step
 // is a page in the desktop's idiom: the step's title in the display cut, a dim line, the
 // one pane it asks about, and the buttons at the foot where a thumb is.
 export component Onboarding inherits Rectangle {
     background: Theme.ground;
-    property <int> steps: 7;
+    property <int> steps: 8;
     property <[{title: string, note: string}]> pages: [
         { title: Tr.t("onb-welcome-title"), note: Tr.t("onb-welcome-note") },
         { title: Tr.t("onb-language-title"), note: Tr.t("onb-language-note") },
@@ -23,6 +23,7 @@ export component Onboarding inherits Rectangle {
         { title: Tr.t("onb-storage-title"), note: Tr.t("onb-storage-note") },
         { title: Tr.t("onb-notify-title"), note: Tr.t("onb-notify-note") },
         { title: Tr.t("onb-sites-title"), note: Tr.t("onb-sites-note") },
+        { title: Tr.t("onb-computer-title"), note: Tr.t("onb-computer-note") },
     ];
 
     TouchArea { }
@@ -153,6 +154,8 @@ export component Onboarding inherits Rectangle {
                 spacing: Theme.unit * 4;
                 RepoPanes { }
             }
+
+            if AppData.step == 7: HostField { }
         }
     }
 
@@ -167,7 +170,14 @@ export component Onboarding inherits Rectangle {
             primary: true;
             clicked => {
                 if (AppData.step >= root.steps - 1) {
-                    AppData.finish-onboarding();
+                    // A computer typed in counts as saved; one that does not read stays
+                    // here with its error.
+                    if (AppData.host-address != "") {
+                        AppData.save-host(AppData.host-address);
+                    }
+                    if (AppData.host-address == "" || AppData.host-tone != 1) {
+                        AppData.finish-onboarding();
+                    }
                 } else {
                     AppData.step += 1;
                 }

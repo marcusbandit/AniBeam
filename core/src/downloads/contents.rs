@@ -85,13 +85,19 @@ pub async fn inspect(http: &dyn Http, link: &str) -> Result<(Vec<u32>, u64), Cor
         .map_err(|e| CoreError::Service {
             service: "torrent".to_string(),
             code: "unreachable".to_string(),
-            message: format!("the torrent file did not come: {}", e.message),
+            message: crate::i18n::tr(
+                "core-downloads-torrent-file-no-answer",
+                &[("message", e.message.into())],
+            ),
         })?;
     if r.status >= 400 {
         return Err(CoreError::Service {
             service: "torrent".to_string(),
             code: format!("http_{}", r.status),
-            message: format!("the torrent file answered {}", r.status),
+            message: crate::i18n::tr(
+                "core-downloads-torrent-file-answered",
+                &[("status", r.status.to_string().into())],
+            ),
         });
     }
     // A torrent file is metadata: a few hundred kilobytes for even a long batch

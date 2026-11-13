@@ -160,12 +160,13 @@ mod tests {
             serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json"))
                 .unwrap();
         Cache {
-            address: "banditbox:8790".into(),
-            host: "banditbox".into(),
+            address: "desktop:8790".into(),
+            host: "desktop".into(),
             host_version: "2.1.0".into(),
             synced_at: snapshot.generated_at + 5,
             snapshot,
             peers: Vec::new(),
+            profile: None,
         }
     }
 

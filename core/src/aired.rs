@@ -138,7 +138,11 @@ fn announce(core: &Core) -> Result<Option<i64>, CoreError> {
         Ok((out, next_at(tx, now)?))
     })?;
     for ep in out {
-        let plain = format!("Episode {} of {} is out.", ep.episode, ep.title);
+        let plain = crate::words!(
+            "core-aired-episode-out",
+            number = ep.episode.to_string(),
+            title = &ep.title,
+        );
         let message = format!(
             "episode out: {} {} (anilist {})",
             ep.title, ep.episode, ep.anilist_id

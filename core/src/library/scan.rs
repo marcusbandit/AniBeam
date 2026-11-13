@@ -12,6 +12,7 @@ use rusqlite::{Connection, ErrorCode, OptionalExtension, Transaction, params, pa
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::i18n::tr;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::library::history;
@@ -720,7 +721,10 @@ pub fn list_sources_call(core: &Core) -> Result<Reply, CoreError> {
 /// one; the job leaves everything under it alone.
 pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
     if !Path::new(path).is_absolute() {
-        return Err(CoreError::invalid("path", "a source path must be absolute"));
+        return Err(CoreError::invalid(
+            "path",
+            tr("core-library-source-not-absolute", &[]),
+        ));
     }
     let owner = core.owner()?;
     let path = normalise(path);
@@ -741,12 +745,15 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
         };
         for other in &existing {
             if *other == insert {
-                return Err(CoreError::invalid("path", "already a source"));
+                return Err(CoreError::invalid(
+                    "path",
+                    tr("core-library-source-exists", &[]),
+                ));
             }
             if under(&insert, other) || under(other, &insert) {
                 return Err(CoreError::invalid(
                     "path",
-                    "nested inside an existing source",
+                    tr("core-library-source-nested", &[]),
                 ));
             }
         }
@@ -757,9 +764,10 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
             Ok(_) => Ok(tx.last_insert_rowid() as u64),
             // The check above is the real guard; the column's own
             // constraint stays the backstop.
-            Err(e) if is_unique_violation(&e) => {
-                Err(CoreError::invalid("path", "already a source"))
-            }
+            Err(e) if is_unique_violation(&e) => Err(CoreError::invalid(
+                "path",
+                tr("core-library-source-exists", &[]),
+            )),
             Err(e) => Err(e.into()),
         }
     })?;
@@ -773,7 +781,7 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
     core.bus.say(
         Level::Info,
         Stage::Library,
-        format!("Added the folder {} to your library.", folder_of(&path)),
+        crate::words!("core-library-source-added", folder = folder_of(&path)),
         format!("source added: {path}"),
         EventBody::SourceChanged {
             source: source.clone(),
@@ -829,11 +837,12 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
         Level::Info,
         Stage::Library,
         if shows == 0 {
-            format!("Removed the folder {folder} from your library.")
+            crate::words!("core-library-source-removed", folder = &folder)
         } else {
-            format!(
-                "Removed the folder {folder} and its {shows} {} from your library.",
-                crate::words::pick(shows, "show", "shows")
+            crate::words!(
+                "core-library-source-removed-with-shows",
+                folder = &folder,
+                count = shows
             )
         },
         format!("source removed: {path}"),
@@ -868,7 +877,7 @@ pub fn forget_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
     core.bus.say(
         Level::Info,
         Stage::Library,
-        format!("Removed {name} from your library."),
+        crate::words!("core-library-series-forgotten", name = &name),
         format!("forgot {name}"),
         EventBody::SeriesRemoved { ids: vec![series] },
     );
@@ -997,9 +1006,9 @@ async fn set_available(
     };
     let folder = folder_of(path);
     let said = if available {
-        format!("The folder {folder} is back.")
+        crate::words!("core-library-source-back", folder = &folder)
     } else {
-        format!("The folder {folder} is not available. Check that its drive is connected.")
+        crate::words!("core-library-source-unavailable", folder = &folder)
     };
     ctx.say(
         if available { Level::Info } else { Level::Warn },
@@ -1019,19 +1028,25 @@ pub(crate) fn folder_of(path: &str) -> String {
 
 /// What a finished scan tells a person; nothing when it found nothing new,
 /// since the catch-up scan at launch would otherwise say so every time.
+fn scan_words(added: u64, changed: u64, removed: u64) -> Option<Words> {
+    // `$first` names the part that leads, so the parts after it are set off by a comma
+    let first = [("added", added), ("changed", changed), ("removed", removed)]
+        .into_iter()
+        .find(|(_, n)| *n > 0)?
+        .0;
+    Some(crate::words!(
+        "core-library-scan-done",
+        first = first,
+        added = added,
+        changed = changed,
+        removed = removed
+    ))
+}
+
+/// [`scan_words`] in the current language.
+#[cfg(test)]
 fn scan_line(added: u64, changed: u64, removed: u64) -> Option<String> {
-    let shows = |n: u64| crate::words::pick(n, "show", "shows");
-    let mut parts = Vec::new();
-    if added > 0 {
-        parts.push(format!("{added} new {}", shows(added)));
-    }
-    if changed > 0 {
-        parts.push(format!("{changed} {} changed", shows(changed)));
-    }
-    if removed > 0 {
-        parts.push(format!("{removed} missing"));
-    }
-    (!parts.is_empty()).then(|| format!("Checked your folders: {}.", parts.join(", ")))
+    scan_words(added, changed, removed).map(|w| w.render())
 }
 
 /// Starts the Scan job and returns its id. Scan runs one at a time, so a
@@ -1156,9 +1171,9 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                         Err(e) => {
                             ctx.say(
                                 Level::Warn,
-                                format!(
-                                    "Could not read the folder {}. Check that its drive is connected.",
-                                    folder_of(&path)
+                                crate::words!(
+                                    "core-library-source-unreadable",
+                                    folder = folder_of(&path)
                                 ),
                                 format!("cannot read {path}: {e}"),
                                 EventBody::Notice,
@@ -1183,9 +1198,9 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                         if held > 0 {
                             ctx.say(
                                 Level::Warn,
-                                format!(
-                                    "The folder {} looks empty, so your shows were left as they were.",
-                                    folder_of(&path)
+                                crate::words!(
+                                    "core-library-source-looks-empty",
+                                    folder = folder_of(&path)
                                 ),
                                 format!("{path} read as empty while it holds {held} series"),
                                 EventBody::Notice,
@@ -1224,7 +1239,10 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                         Err(e) => {
                             ctx.say(
                                 Level::Warn,
-                                format!("Could not update the shows in {}.", folder_of(&path)),
+                                crate::words!(
+                                    "core-library-source-reconcile-failed",
+                                    folder = folder_of(&path)
+                                ),
                                 format!("cannot reconcile {path}: {e}"),
                                 EventBody::Notice,
                             );
@@ -1302,7 +1320,7 @@ fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
                 crate::downloads::origins::after_scan(&core);
             }
             Ok(Finished {
-                plain: scan_line(added, changed, removed),
+                plain: scan_words(added, changed, removed),
                 level: Level::Info,
                 message: format!(
                     "scan finished: {added} added, {changed} changed, {removed} missing"

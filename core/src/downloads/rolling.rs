@@ -914,7 +914,7 @@ fn edit(core: &Core, id: u64, f: impl FnOnce(&mut Roll) + Send + 'static) -> Res
         let Some(r) = cur.iter_mut().find(|r| r.id == id) else {
             return Err(CoreError::invalid(
                 "id",
-                format!("no rolling download {id}"),
+                crate::i18n::tr("core-downloads-no-roll", &[("id", id.to_string().into())]),
             ));
         };
         f(r);
@@ -1212,12 +1212,12 @@ async fn step<C: RollClient>(
         core.bus.say(
             Level::Info,
             Stage::Downloads,
-            format!(
-                "{}: now on episodes {} to {} of {}.",
-                roll.title,
-                (after.start + 1).min(after.total),
-                after.end,
-                after.total
+            crate::words!(
+                "core-downloads-rolled",
+                title = &roll.title,
+                from = (after.start + 1).min(after.total),
+                to = after.end,
+                total = after.total
             ),
             line,
             EventBody::Notice,
@@ -1347,7 +1347,7 @@ pub fn set(
     if ahead == Some(0) {
         return Err(CoreError::invalid(
             "ahead",
-            "keep at least one episode ahead",
+            crate::i18n::tr("core-downloads-roll-ahead", &[]),
         ));
     }
     edit(core, id, move |r| {
@@ -1385,7 +1385,10 @@ pub fn set_settings(core: &Core, mut rolling: RollingSettings) -> Result<Reply, 
 /// `RollMore`: fetch `count` more episodes now.
 pub fn roll_more(core: &Core, id: u64, count: u32) -> Result<Reply, CoreError> {
     if count == 0 {
-        return Err(CoreError::invalid("count", "nothing to fetch"));
+        return Err(CoreError::invalid(
+            "count",
+            crate::i18n::tr("core-downloads-roll-nothing", &[]),
+        ));
     }
     edit(core, id, move |r| more(r, count.min(MAX_AHEAD)))?;
     kick(core);

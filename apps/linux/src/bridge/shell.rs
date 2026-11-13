@@ -292,7 +292,13 @@ impl qobject::Shell {
         let state = match first_run::make_starter_folder(&videos) {
             Ok(dir) => serde_json::json!({ "path": dir.to_string_lossy() }),
             Err(e) => serde_json::json!({
-                "error": format!("Could not make {}: {e}", first_run::starter_folder(&videos).display())
+                "error": anibeam_core::i18n::tr(
+                    "shell-starter-folder-failed",
+                    &[
+                        ("folder", first_run::starter_folder(&videos).display().to_string().into()),
+                        ("error", e.to_string().into()),
+                    ],
+                )
             }),
         };
         crate::json::to_qjson_object(&state)
@@ -484,7 +490,10 @@ impl qobject::Shell {
             .ok()
             .and_then(|o| o.iter().find(|u| u.version == version).cloned());
         let (Some(install), Some(update)) = (INSTALL.get().cloned(), found) else {
-            return self.fail(format!("AniBeam {version} is no longer on offer"));
+            return self.fail(anibeam_core::i18n::tr(
+                "shell-update-gone",
+                &[("version", version.as_str().into())],
+            ));
         };
         // A click while one runs, even one just cancelled, carries on with that download
         CANCEL.store(false, Ordering::SeqCst);

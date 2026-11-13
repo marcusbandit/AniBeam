@@ -2,9 +2,6 @@
 
 use crate::api::DEFAULT_PORT;
 
-/// What a fresh install points at: the owner's desktop, by its tailnet MagicDNS name.
-pub const DEFAULT_ADDRESS: &str = "banditbox:8790";
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostAddress {
     pub host: String,
@@ -12,7 +9,7 @@ pub struct HostAddress {
 }
 
 impl HostAddress {
-    /// Reads `banditbox`, `banditbox:8790`, `http://100.64.0.1:8790/` or `[fd7a::1]:8790`.
+    /// Reads `desktop`, `desktop:8790`, `http://100.64.0.1:8790/` or `[fd7a::1]:8790`.
     /// Without a port it is [`DEFAULT_PORT`].
     pub fn parse(text: &str) -> Result<Self, String> {
         let mut rest = text.trim();
@@ -89,11 +86,11 @@ mod tests {
 
     #[test]
     fn reads_the_forms_people_type() {
-        let a = HostAddress::parse("banditbox").unwrap();
-        assert_eq!((a.host.as_str(), a.port), ("banditbox", 8790));
-        let a = HostAddress::parse(" http://banditbox.tail24c6a9.ts.net:8791/ ").unwrap();
-        assert_eq!(a.display(), "banditbox.tail24c6a9.ts.net:8791");
-        assert_eq!(a.short_name(), "banditbox");
+        let a = HostAddress::parse("desktop").unwrap();
+        assert_eq!((a.host.as_str(), a.port), ("desktop", 8790));
+        let a = HostAddress::parse(" http://desktop.example.ts.net:8791/ ").unwrap();
+        assert_eq!(a.display(), "desktop.example.ts.net:8791");
+        assert_eq!(a.short_name(), "desktop");
         let a = HostAddress::parse("10.0.2.2:8790").unwrap();
         assert_eq!(a.base_url(), "http://10.0.2.2:8790");
         assert_eq!(a.short_name(), "10.0.2.2");
@@ -106,9 +103,9 @@ mod tests {
     #[test]
     fn says_what_is_wrong() {
         assert!(HostAddress::parse("").is_err());
-        assert!(HostAddress::parse("banditbox:http").is_err());
-        assert!(HostAddress::parse("banditbox:0").is_err());
-        assert!(HostAddress::parse("https://banditbox").is_err());
+        assert!(HostAddress::parse("desktop:http").is_err());
+        assert!(HostAddress::parse("desktop:0").is_err());
+        assert!(HostAddress::parse("https://desktop").is_err());
         assert!(HostAddress::parse("bandit box").is_err());
     }
 }

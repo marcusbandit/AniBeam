@@ -65,33 +65,44 @@ impl Quirks {
                 || word.len() > 32
                 || !word.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
         {
-            return Err(format!("one_variant {word:?} must be one short word"));
+            return Err(crate::i18n::tr(
+                "core-releases-quirks-variant",
+                &[("word", format!("{word:?}").into())],
+            ));
         }
         let Some(feed) = &self.show_feed else {
             return Ok(());
         };
         if feed.pages.is_empty() || feed.pages.len() > MAX_PATTERNS {
-            return Err(format!("show_feed takes 1 to {MAX_PATTERNS} page patterns"));
+            return Err(crate::i18n::tr(
+                "core-releases-quirks-pattern-count",
+                &[("most", MAX_PATTERNS.into())],
+            ));
         }
         for p in &feed.pages {
             if p.len() > MAX_PATTERN {
-                return Err("a show_feed page pattern is too long".into());
+                return Err(crate::i18n::tr("core-releases-quirks-pattern-long", &[]));
             }
-            let re = compile(p).map_err(|e| format!("show_feed page pattern: {e}"))?;
+            let re = compile(p).map_err(|e| {
+                crate::i18n::tr(
+                    "core-releases-quirks-pattern-bad",
+                    &[("error", e.to_string().into())],
+                )
+            })?;
             if !re.capture_names().any(|n| n == Some("slug")) {
-                return Err("a show_feed page pattern needs a group named slug".into());
+                return Err(crate::i18n::tr("core-releases-quirks-pattern-slug", &[]));
             }
         }
         // The show's feed carries the search address's parameters, a token among them, so it
         // must go to the same host.
         if !feed.url.starts_with("https://") {
-            return Err("show_feed url must be https".into());
+            return Err(crate::i18n::tr("core-releases-quirks-url-https", &[]));
         }
         if crate::repos::index::host_of(&feed.url) != host.to_ascii_lowercase() {
-            return Err("show_feed url must be on the endpoint's own host".into());
+            return Err(crate::i18n::tr("core-releases-quirks-url-host", &[]));
         }
         if feed.url.matches("{slug}").count() != 1 || feed.url.replace("{slug}", "").contains('{') {
-            return Err("show_feed url takes {slug} once and no other placeholder".into());
+            return Err(crate::i18n::tr("core-releases-quirks-url-slug", &[]));
         }
         Ok(())
     }

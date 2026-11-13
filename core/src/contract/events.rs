@@ -13,7 +13,9 @@ pub struct JobRef {
 /// by the core once; the shell never composes log text. `plain` is the same
 /// moment told to someone who has never read the code: no ids, paths, job
 /// names or provider internals. A line without one is for developers only,
-/// and the plain activity log leaves it out.
+/// and the plain activity log leaves it out. `plain_words` is that line as a catalog ID
+/// and its arguments (#792), for a shell to show in the language it speaks now; `plain` is
+/// the same words in the language the core spoke when it said them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Event {
     pub seq: u64,
@@ -23,6 +25,8 @@ pub struct Event {
     pub message: String,
     #[serde(default)]
     pub plain: Option<String>,
+    #[serde(default)]
+    pub plain_words: Option<Words>,
     pub job: Option<JobRef>,
     pub body: EventBody,
 }
@@ -207,6 +211,8 @@ pub enum EventBody {
     /// `ListTailnetDevices` starts and does not wait for.
     TailnetDevicesChanged {
         devices: Vec<TailnetDevice>,
+        #[serde(default)]
+        people: Vec<TailnetPerson>,
     },
     /// Discord rich presence connected, or let the connection go: Discord
     /// closed, stopped answering, or the switch went off.

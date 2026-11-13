@@ -110,7 +110,10 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
         {
             return Err(CoreError::invalid(
                 "endpoint name",
-                format!("{:?}: another source has that name", s.name),
+                crate::i18n::tr(
+                    "core-phone-name-taken",
+                    &[("name", format!("{:?}", s.name).into())],
+                ),
             ));
         }
     }
@@ -457,7 +460,10 @@ pub fn download(
 ) -> Result<Reply, CoreError> {
     use crate::downloads::rolling;
     if items.is_empty() {
-        return Err(CoreError::invalid("items", "nothing to download"));
+        return Err(CoreError::invalid(
+            "items",
+            crate::i18n::tr("core-phone-nothing-to-download", &[]),
+        ));
     }
     let folder = name_for(name.as_deref(), &items, "Downloads")?;
     // A long show is held to a window of episodes, as on the desktop: a pick of single
@@ -522,10 +528,15 @@ pub fn download(
             if used + pending + size > limit {
                 return Err(CoreError::invalid(
                     "limit",
-                    format!(
-                        "this would take AniBeam past its storage cap ({:.1} of {:.1} GB used or on the way); delete episodes or raise the cap",
-                        (used + pending) as f64 / 1e9,
-                        limit as f64 / 1e9
+                    crate::i18n::tr(
+                        "core-phone-over-cap",
+                        &[
+                            (
+                                "used",
+                                format!("{:.1}", (used + pending) as f64 / 1e9).into(),
+                            ),
+                            ("cap", format!("{:.1}", limit as f64 / 1e9).into()),
+                        ],
                     ),
                 ));
             }
@@ -615,13 +626,10 @@ pub fn download(
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        format!(
-            "Started downloading {} of {folder}.",
-            if count == 1 {
-                "an episode".to_string()
-            } else {
-                format!("{count} episodes")
-            }
+        crate::words!(
+            "core-phone-download-started",
+            count = count,
+            folder = &folder,
         ),
         if held > 0 {
             format!("Downloading {what}, {held} more waiting to roll in")
@@ -636,7 +644,11 @@ pub fn download(
         core.bus.say(
             Level::Warn,
             Stage::Downloads,
-            format!("Not every release of {folder} could be added: {e}"),
+            crate::words!(
+                "core-phone-download-partial",
+                folder = &folder,
+                error = e.to_string(),
+            ),
             format!("Download of {folder} stopped part way: {e}"),
             EventBody::Notice,
         );
@@ -739,12 +751,15 @@ pub fn subscribe(
 ) -> Result<Reply, CoreError> {
     let query = query.trim().to_string();
     if query.is_empty() {
-        return Err(CoreError::invalid("query", "the search is empty"));
+        return Err(CoreError::invalid(
+            "query",
+            crate::i18n::tr("core-phone-empty-search", &[]),
+        ));
     }
     if items.is_empty() {
         return Err(CoreError::invalid(
             "items",
-            format!("no results for {query}"),
+            crate::i18n::tr("core-phone-no-results", &[("query", query.as_str().into())]),
         ));
     }
     let native = native(core);
@@ -789,7 +804,7 @@ pub fn subscribe(
     core.bus.say(
         Level::Info,
         Stage::Downloads,
-        format!("Subscribed to {}.", subscribed.name),
+        crate::words!("core-phone-subscribed", name = &subscribed.name),
         format!("Subscribed to {}", subscribed.name),
         EventBody::Notice,
     );
@@ -925,11 +940,11 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
                 core.bus.say(
                     Level::Warn,
                     Stage::Downloads,
+                    crate::words!("core-phone-rule-stopped", name = &rule.name),
                     format!(
-                        "{} is not checked for new episodes: its source is gone or needs its key again.",
-                        rule.name
+                        "Subscription {} stopped: no credentials for {}",
+                        rule.name, rule.endpoint
                     ),
-                    format!("Subscription {} stopped: no credentials for {}", rule.name, rule.endpoint),
                     EventBody::Notice,
                 );
             }
@@ -962,7 +977,7 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
                     core.bus.say(
                         Level::Info,
                         Stage::Downloads,
-                        format!("A new episode of {} is downloading.", rule.name),
+                        crate::words!("core-phone-new-episode", name = &rule.name),
                         format!("New for {}: {}", rule.name, item.title),
                         EventBody::Notice,
                     );
@@ -1050,7 +1065,7 @@ pub fn set_held(core: &Core, held: bool) -> Result<Reply, CoreError> {
 #[cfg(not(feature = "phone"))]
 fn unsupported() -> CoreError {
     CoreError::Unsupported {
-        what: "a torrent engine of its own".to_string(),
+        what: crate::i18n::tr("core-phone-own-engine", &[]),
     }
 }
 

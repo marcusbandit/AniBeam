@@ -221,7 +221,7 @@ pub fn pair(core: &Core, key: &str, name: &str) -> Result<(), CoreError> {
     let Some(bytes) = proof::unhex::<32>(key) else {
         return Err(CoreError::Invalid {
             field: "key".into(),
-            message: format!("{key:?} is not a device key"),
+            message: crate::i18n::tr("core-host-not-a-key", &[("key", format!("{key:?}").into())]),
         });
     };
     let entry = Paired {

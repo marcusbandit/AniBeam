@@ -10,6 +10,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::i18n::tr;
 use crate::library::{cards, history, readings};
 use crate::time;
 
@@ -105,18 +106,21 @@ pub(crate) fn check(reading: &FileReading) -> Result<(), CoreError> {
             if !number.is_finite() || !(0.0..=10_000.0).contains(&number) {
                 return Err(CoreError::invalid(
                     "fixes",
-                    "an episode number runs from 0 to 10000",
+                    tr("core-library-fix-episode-range", &[]),
                 ));
             }
             if season.is_some_and(|s| s > 200) {
-                return Err(CoreError::invalid("fixes", "a season runs up to 200"));
+                return Err(CoreError::invalid(
+                    "fixes",
+                    tr("core-library-fix-season-range", &[]),
+                ));
             }
         }
         FileReading::Extra { index, .. } => {
             if index.is_some_and(|i| i > 10_000) {
                 return Err(CoreError::invalid(
                     "fixes",
-                    "an extra's index runs up to 10000",
+                    tr("core-library-fix-extra-range", &[]),
                 ));
             }
         }
@@ -159,14 +163,20 @@ pub(crate) fn write_fixes(
     let mut moves = Vec::new();
     for fix in fixes {
         let row = row(tx, fix.file)?.ok_or_else(|| {
-            CoreError::invalid("fixes", format!("no file {} in the library", fix.file))
+            CoreError::invalid(
+                "fixes",
+                tr(
+                    "core-library-no-such-file",
+                    &[("id", fix.file.to_string().into())],
+                ),
+            )
         })?;
         if row.series != series {
             return Err(CoreError::invalid(
                 "fixes",
-                format!(
-                    "file {} belongs to another series, so nothing was fixed",
-                    fix.file
+                tr(
+                    "core-library-file-elsewhere-not-fixed",
+                    &[("id", fix.file.to_string().into())],
                 ),
             ));
         }
@@ -244,9 +254,9 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
             format!("{n} files")
         };
         let said = if undo {
-            format!("Went back to reading {files} of {title} by name.")
+            crate::words!("core-library-fix-undone", count = n, title = &title)
         } else {
-            format!("Fixed how {files} of {title} are read.")
+            crate::words!("core-library-fixed", count = n, title = &title)
         };
         core.bus.say(
             Level::Info,

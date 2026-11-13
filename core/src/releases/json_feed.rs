@@ -35,8 +35,12 @@ struct Entry {
 /// The feed's entries as releases. The torrent's own name is the title: the feed's title adds
 /// an English name and tags after ` | `, which the title parsing would read as part of it.
 pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
-    let entries: Vec<Entry> =
-        serde_json::from_slice(body).map_err(|e| format!("not the feed's JSON: {e}"))?;
+    let entries: Vec<Entry> = serde_json::from_slice(body).map_err(|e| {
+        crate::i18n::tr(
+            "core-releases-not-feed-json",
+            &[("error", e.to_string().into())],
+        )
+    })?;
     Ok(entries
         .into_iter()
         .filter_map(|e| {
@@ -98,7 +102,10 @@ pub async fn fetch(
         return Err(CoreError::Service {
             service: source.to_string(),
             code: format!("http_{}", response.status),
-            message: format!("the feed answered {}", response.status),
+            message: crate::i18n::tr(
+                "core-releases-feed-answered",
+                &[("status", response.status.to_string().into())],
+            ),
         });
     }
     parse(&response.body, source).map_err(|message| CoreError::Service {

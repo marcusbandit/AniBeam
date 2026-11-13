@@ -96,7 +96,11 @@ Item {
 
     // ---- Today's Downloads lines from the log
     property var lines: []
-    function toLine(e) { return { at: e.at, time: Qt.formatTime(new Date(e.at * 1000), words.t("activity-column-time-format")), level: e.level, msg: e.message } }
+    function toLine(e) { return { at: e.at, time: Qt.formatTime(new Date(e.at * 1000), words.t("activity-column-time-format")), level: e.level, msg: e.message, plain: e.plain || "", plainWords: e.plain_words || null } }
+    // A line in a person's words, rendered when it is drawn so a language switch reaches
+    // lines already shown (#792): the message ID and its arguments, else the plain line as
+    // the core said it, else the developer's line for one the core never worded
+    function lineText(l) { return l.plainWords ? words.t(l.plainWords.id, l.plainWords.args) : l.plain || l.msg }
     function keep(e) {
         if (e.stage !== "Downloads" || e.level === "Debug") return false
         var since = new Date(); since.setHours(0, 0, 0, 0)
@@ -231,7 +235,7 @@ Item {
                             x: theme.space(5)
                             width: parent.width - x
                             Label { text: modelData.time; role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textFaint }
-                            Label { width: parent.width; text: modelData.msg; role: "ui"; color: theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight }
+                            Label { width: parent.width; text: root.lineText(modelData); role: "ui"; color: theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight }
                         }
                     }
                 }

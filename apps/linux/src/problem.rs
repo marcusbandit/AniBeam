@@ -1,7 +1,9 @@
 //! Every call error in a person's words: what happened, what to do about it, and the one
 //! fix a button can offer. The core's own message stays as the detail, one click away,
-//! never the only thing on screen.
+//! never the only thing on screen. The words come from the catalog (#792), in the language
+//! the app speaks when the error is shown.
 
+use anibeam_core::i18n::{Arg, tr};
 use anibeam_core::{CoreError, Provider, Refusal, provider_name, tracker_name};
 
 /// What a button next to the error does. The shell turns each into a labelled button.
@@ -43,7 +45,19 @@ fn problem(said: impl Into<String>, next: impl Into<String>, fix: Fix) -> Proble
     }
 }
 
-const REPORT: &str = "Try again. If it keeps happening, report it from the activity log.";
+/// A message from the catalog that takes no arguments.
+fn t(id: &str) -> String {
+    tr(id, &[])
+}
+
+/// A message from the catalog that names one service, site or provider as `$name`.
+fn named(id: &str, name: &str) -> String {
+    tr(id, &[("name", Arg::from(name))])
+}
+
+fn report() -> String {
+    t("problem-report")
+}
 
 /// A message the core wrote for people, as a sentence of its own: a capital first letter
 /// and a full stop.
@@ -54,7 +68,7 @@ fn as_sentence(message: &str) -> String {
         return String::new();
     };
     let mut out: String = first.to_uppercase().chain(chars).collect();
-    if !out.ends_with(['.', '!', '?']) {
+    if !out.ends_with(['.', '!', '?', '。', '！', '？']) {
         out.push('.');
     }
     out
@@ -82,62 +96,64 @@ fn service_of(name: &str) -> Service {
 }
 
 fn service_problem(service: &str, code: &str) -> Problem {
-    let local = |name: &str| match code {
-        "unreachable" => problem(
-            format!("{name} did not answer."),
-            "Check it is running and its address is right in Settings, under Downloads.",
-            Fix::Settings("downloads"),
-        ),
-        "unauthorized" => problem(
-            format!("{name} turned down the login."),
-            "Check the username and password in Settings, under Downloads.",
-            Fix::Settings("downloads"),
-        ),
-        "not_running" => problem(
-            format!("{name} is not running."),
-            "Start it from Settings, under Downloads.",
-            Fix::Settings("downloads"),
-        ),
-        "missing" => problem(
-            format!("{name} is not installed."),
-            "Settings, under Downloads, says how to set it up.",
-            Fix::Settings("downloads"),
-        ),
-        _ => problem(format!("{name} could not do that."), REPORT, Fix::Retry),
+    // One message per service and code, so a language can say "the search helper" in
+    // whatever form its sentence needs; `who` is the start of the IDs, `problem-helper` or
+    // `problem-torrent`.
+    let local = |who: &str| {
+        let said = |what: &str| t(&format!("{who}-{what}"));
+        match code {
+            "unreachable" => problem(
+                said("unreachable"),
+                t("problem-downloads-unreachable-next"),
+                Fix::Settings("downloads"),
+            ),
+            "unauthorized" => problem(
+                said("unauthorized"),
+                t("problem-downloads-unauthorized-next"),
+                Fix::Settings("downloads"),
+            ),
+            "not_running" => problem(
+                said("not-running"),
+                t("problem-downloads-not-running-next"),
+                Fix::Settings("downloads"),
+            ),
+            "missing" => problem(
+                said("missing"),
+                t("problem-downloads-missing-next"),
+                Fix::Settings("downloads"),
+            ),
+            _ => problem(said("failed"), report(), Fix::Retry),
+        }
     };
     match service_of(service) {
         // anirss's own word for a qBittorrent that wants the password it was not given
         Service::SearchHelper if code == "qbt_auth_required" => problem(
-            "The search helper cannot log in to the torrent client.",
-            "Save the torrent client's password in Settings, under Downloads.",
+            t("problem-helper-no-login"),
+            t("problem-helper-no-login-next"),
             Fix::Settings("downloads"),
         ),
-        Service::SearchHelper => local("The search helper"),
-        Service::TorrentClient => local("The torrent client"),
-        Service::Trash => problem(
-            "AniBeam could not move the files to the trash.",
-            "Check the files are yours and the disk is not read only.",
-            Fix::None,
-        ),
+        Service::SearchHelper => local("problem-helper"),
+        Service::TorrentClient => local("problem-torrent"),
+        Service::Trash => problem(t("problem-trash"), t("problem-trash-next"), Fix::None),
         Service::SourceList => problem(
-            "That source list did not work.",
-            "Check its address in Settings, under Downloads, Source lists.",
+            t("problem-source-list"),
+            t("problem-source-list-next"),
             Fix::Settings("downloads"),
         ),
         Service::Remote(name) => match code {
             "unreachable" => problem(
-                format!("{name} did not answer."),
-                "The site may be down. Try again later, or search another source.",
+                named("problem-remote-unreachable", &name),
+                t("problem-remote-unreachable-next"),
                 Fix::Retry,
             ),
             "unauthorized" => problem(
-                format!("{name} turned down the key it was given."),
-                "Change its key in Settings, under Downloads, Source lists.",
+                named("problem-remote-unauthorized", &name),
+                t("problem-remote-unauthorized-next"),
                 Fix::Settings("downloads"),
             ),
             _ => problem(
-                format!("{name} could not do that."),
-                "Try again later, or search another source.",
+                named("problem-remote-failed", &name),
+                t("problem-remote-failed-next"),
                 Fix::Retry,
             ),
         },
@@ -149,59 +165,66 @@ fn provider_problem(provider: Provider, status: Option<u32>, retry_after: Option
     let signs_in = matches!(provider, Provider::Anilist | Provider::Mal);
     match status {
         Some(401) | Some(403) if signs_in => problem(
-            format!("{name} turned down AniBeam's sign-in."),
-            "Connect it again in Settings, under Accounts.",
+            named("problem-provider-sign-in", name),
+            t("problem-provider-sign-in-next"),
             Fix::Settings("accounts"),
         ),
         Some(401) | Some(403) => problem(
-            format!("{name} turned AniBeam away."),
-            "Try again later.",
+            named("problem-provider-turned-away", name),
+            t("problem-try-later"),
             Fix::Retry,
         ),
         Some(429) => problem(
-            format!("{name} is busy right now."),
-            "Wait a minute, then try again.",
+            named("problem-provider-busy", name),
+            t("problem-provider-busy-next"),
             Fix::Retry,
         ),
         _ if retry_after.is_some() => problem(
-            format!("{name} is busy right now."),
-            "Wait a minute, then try again.",
+            named("problem-provider-busy", name),
+            t("problem-provider-busy-next"),
             Fix::Retry,
         ),
         None => problem(
-            format!("{name} did not answer."),
-            "Check your internet connection, then try again.",
+            named("problem-provider-no-answer", name),
+            t("problem-provider-no-answer-next"),
             Fix::Retry,
         ),
         Some(s) if s >= 500 => problem(
-            format!("{name} is having trouble right now."),
-            "Try again in a few minutes.",
+            named("problem-provider-trouble", name),
+            t("problem-provider-trouble-next"),
             Fix::Retry,
         ),
-        Some(_) => problem(format!("{name} did not accept that."), REPORT, Fix::Retry),
+        Some(_) => problem(
+            named("problem-provider-rejected", name),
+            report(),
+            Fix::Retry,
+        ),
     }
 }
 
 pub fn plain(e: &CoreError) -> Problem {
     match e {
         CoreError::NotFound { .. } => problem(
-            "AniBeam could not find that any more.",
-            "It may have been removed. Try again to load the page afresh.",
+            t("problem-not-found"),
+            t("problem-not-found-next"),
             Fix::Retry,
         ),
         // The core writes these reasons for people ("already a source", "The address must
         // be https"), so the reason is the sentence; the field name is the log's.
         CoreError::Invalid { message, .. } => {
-            problem(as_sentence(message), "Check it and try again.", Fix::None)
+            problem(as_sentence(message), t("problem-invalid-next"), Fix::None)
         }
         CoreError::Unavailable { .. } => problem(
-            "That folder cannot be reached right now.",
-            "Plug in its drive or check the folder in Settings, under Library.",
+            t("problem-unavailable"),
+            t("problem-unavailable-next"),
             Fix::Settings("library"),
         ),
         CoreError::NotConnected { tracker } => problem(
-            format!("{} is not connected.", tracker_name(*tracker)),
-            "Connect it in Settings, under Accounts.",
+            tr(
+                "problem-not-connected",
+                &[("tracker", Arg::from(tracker_name(*tracker)))],
+            ),
+            t("problem-not-connected-next"),
             Fix::Settings("accounts"),
         ),
         CoreError::Refused { reason } => refused(*reason),
@@ -211,32 +234,22 @@ pub fn plain(e: &CoreError) -> Problem {
             retry_after,
             ..
         } => provider_problem(*provider, *status, *retry_after),
-        CoreError::Io { .. } => problem(
-            "AniBeam could not read or write a file.",
-            "Check the disk has room and the folder is yours, then try again.",
-            Fix::Retry,
-        ),
-        CoreError::Storage { .. } => problem(
-            "AniBeam could not save your library.",
-            "Check the disk has room, then try again.",
-            Fix::Retry,
-        ),
-        CoreError::Keyring { .. } => problem(
-            "The system password store did not answer.",
-            "Unlock your desktop's keyring, then try again.",
-            Fix::Retry,
-        ),
+        CoreError::Io { .. } => problem(t("problem-io"), t("problem-io-next"), Fix::Retry),
+        CoreError::Storage { .. } => {
+            problem(t("problem-storage"), t("problem-storage-next"), Fix::Retry)
+        }
+        CoreError::Keyring { .. } => {
+            problem(t("problem-keyring"), t("problem-keyring-next"), Fix::Retry)
+        }
         // `what` names the feature the way the code does ("anirss on this platform"), so
         // it stays in the details
-        CoreError::Unsupported { .. } => problem("AniBeam cannot do that here yet.", "", Fix::None),
+        CoreError::Unsupported { .. } => problem(t("problem-unsupported"), "", Fix::None),
         CoreError::Version { .. } => problem(
-            "This backup comes from a newer AniBeam.",
-            "Update AniBeam in Settings, under About, then import it again.",
+            t("problem-version"),
+            t("problem-version-next"),
             Fix::Settings("about"),
         ),
-        CoreError::Internal { .. } => {
-            problem("Something went wrong inside AniBeam.", REPORT, Fix::Retry)
-        }
+        CoreError::Internal { .. } => problem(t("problem-internal"), report(), Fix::Retry),
         CoreError::Service { service, code, .. } => service_problem(service, code),
     }
 }
@@ -244,23 +257,23 @@ pub fn plain(e: &CoreError) -> Problem {
 fn refused(reason: Refusal) -> Problem {
     match reason {
         Refusal::Hidden => problem(
-            "That show is hidden.",
-            "Unhide it from its page first.",
+            t("problem-refused-hidden"),
+            t("problem-refused-hidden-next"),
             Fix::None,
         ),
         Refusal::NoMatch => problem(
-            "That show is not matched yet.",
-            "Match it on Show info first.",
+            t("problem-refused-no-match"),
+            t("problem-refused-no-match-next"),
             Fix::None,
         ),
-        Refusal::NotNewer => problem("Your list is already past this episode.", "", Fix::None),
-        Refusal::Extra => problem("That file is an extra, not an episode.", "", Fix::None),
+        Refusal::NotNewer => problem(t("problem-refused-not-newer"), "", Fix::None),
+        Refusal::Extra => problem(t("problem-refused-extra"), "", Fix::None),
         Refusal::Unmatched => problem(
-            "That file is not tied to an episode.",
-            "Fix it from the show's page, under Fixes.",
+            t("problem-refused-unmatched"),
+            t("problem-refused-unmatched-next"),
             Fix::None,
         ),
-        Refusal::OnDisk => problem("That file is only on this computer.", "", Fix::None),
+        Refusal::OnDisk => problem(t("problem-refused-on-disk"), "", Fix::None),
     }
 }
 

@@ -9,6 +9,7 @@ use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
 use crate::contract::*;
+use crate::i18n::tr;
 use crate::library::cards::{next_up, upcoming};
 use crate::library::classifier;
 use crate::library::snapshot::{FileRow, MediaRow, Snapshot, season_of};
@@ -519,18 +520,27 @@ fn suggest(
         && !(only.is_episode && only.number == 1.0)
         && (only.is_episode || only.extra_kind == Some(ExtraKind::Sp))
     {
-        let read = if only.is_episode {
-            format!("episode {}", classifier::format_number(only.number))
+        // The file's own label is what the scan stored for it
+        let (read, label) = if only.is_episode {
+            ("episode", String::new())
         } else {
-            only.label.to_lowercase()
+            ("label", only.label.to_lowercase())
         };
         let what = if format == Some("MOVIE") {
-            "the film"
+            "film"
         } else {
-            "its one episode"
+            "episode"
         };
         return Some(SuggestedFix {
-            text: format!("The one file here reads as {read}. It looks like {what}."),
+            text: tr(
+                "core-library-fix-one-file",
+                &[
+                    ("read", read.into()),
+                    ("number", classifier::format_number(only.number).into()),
+                    ("label", label.into()),
+                    ("what", what.into()),
+                ],
+            ),
             fixes: vec![to_episode(only, 1)],
         });
     }
@@ -552,15 +562,13 @@ fn suggest(
         let mut numbers = indexes.clone();
         numbers.sort_unstable();
         return Some(SuggestedFix {
-            text: format!(
-                "{} look like the missing {} {}.",
-                plural(specials.len(), "special", "specials"),
-                if numbers.len() == 1 {
-                    "episode"
-                } else {
-                    "episodes"
-                },
-                runs(&numbers)
+            text: tr(
+                "core-library-fix-specials",
+                &[
+                    ("count", specials.len().into()),
+                    ("episodes", numbers.len().into()),
+                    ("numbers", runs(&numbers).into()),
+                ],
             ),
             fixes: specials
                 .iter()
@@ -586,10 +594,15 @@ fn suggest(
             if numbers.len() > 1 && first > total && unbroken && last - first < total {
                 let shift = first - 1;
                 return Some(SuggestedFix {
-                    text: format!(
-                        "Episodes {} look like this record's {}, numbered on from an earlier season.",
-                        runs(&numbers),
-                        runs(&numbers.iter().map(|n| n - shift).collect::<Vec<_>>())
+                    text: tr(
+                        "core-library-fix-numbered-on",
+                        &[
+                            ("from", runs(&numbers).into()),
+                            (
+                                "to",
+                                runs(&numbers.iter().map(|n| n - shift).collect::<Vec<_>>()).into(),
+                            ),
+                        ],
                     ),
                     fixes: episodes
                         .iter()
@@ -602,28 +615,31 @@ fn suggest(
     None
 }
 
-fn plural(n: usize, one: &str, many: &str) -> String {
-    if n == 1 {
-        format!("1 {one}")
-    } else {
-        format!("{n} {many}")
-    }
-}
-
 /// Sorted whole numbers in words: `1 to 6`, `2, 4 and 7`, `1 and 2`, `3`.
 fn runs(numbers: &[u32]) -> String {
     match numbers {
         [] => String::new(),
         [only] => only.to_string(),
-        [first, _, .., last] if numbers.windows(2).all(|w| w[1] == w[0] + 1) => {
-            format!("{first} to {last}")
-        }
-        [init @ .., last] => format!(
-            "{} and {last}",
-            init.iter()
-                .map(u32::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
+        [first, _, .., last] if numbers.windows(2).all(|w| w[1] == w[0] + 1) => tr(
+            "core-library-runs-span",
+            &[
+                ("first", first.to_string().into()),
+                ("last", last.to_string().into()),
+            ],
+        ),
+        [init @ .., last] => tr(
+            "core-library-runs-list",
+            &[
+                (
+                    "init",
+                    init.iter()
+                        .map(u32::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                        .into(),
+                ),
+                ("last", last.to_string().into()),
+            ],
         ),
     }
 }

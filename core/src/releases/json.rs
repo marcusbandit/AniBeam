@@ -177,7 +177,9 @@ fn release(item: &Value, map: &JsonMap, source: &str) -> Option<Release> {
 /// at all, or whose list is something else, does not read, so an API that renames the field
 /// shows an error rather than "no results" forever.
 pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, String> {
-    let reply: Value = serde_json::from_slice(body).map_err(|e| format!("not JSON: {e}"))?;
+    let reply: Value = serde_json::from_slice(body).map_err(|e| {
+        crate::i18n::tr("core-releases-not-json", &[("error", e.to_string().into())])
+    })?;
     if let Some(v) = map.error.as_deref().and_then(|p| at(&reply, p))
         && truthy(v)
     {
@@ -187,16 +189,23 @@ pub fn parse(body: &[u8], map: &JsonMap, source: &str) -> Result<Vec<Release>, S
                 .map(super::fetch::their_message)
                 .filter(|m| !m.is_empty())
             {
-                Some(m) => format!("the search answered with an error: {m}"),
-                None => "the search answered with an error".into(),
+                Some(m) => {
+                    crate::i18n::tr("core-releases-search-error-said", &[("message", m.into())])
+                }
+                None => crate::i18n::tr("core-releases-search-error", &[]),
             },
         );
     }
     let items = match at(&reply, &map.items) {
         Some(Value::Null) => return Ok(Vec::new()),
-        None => return Err(format!("the reply has no results at {:?}", map.items)),
+        None => {
+            return Err(crate::i18n::tr(
+                "core-releases-no-results-field",
+                &[("path", format!("{:?}", map.items).into())],
+            ));
+        }
         Some(Value::Array(items)) => items,
-        Some(_) => return Err("the reply's results are not a list".into()),
+        Some(_) => return Err(crate::i18n::tr("core-releases-results-not-list", &[])),
     };
     Ok(items
         .iter()
@@ -236,7 +245,10 @@ pub async fn fetch(
         return Err(CoreError::Service {
             service: source.to_string(),
             code: format!("http_{}", response.status),
-            message: format!("the search answered {}", response.status),
+            message: crate::i18n::tr(
+                "core-releases-search-answered",
+                &[("status", response.status.to_string().into())],
+            ),
         });
     }
     parse(&response.body, map, source).map_err(|message| CoreError::Service {

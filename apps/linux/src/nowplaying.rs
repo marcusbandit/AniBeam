@@ -2,9 +2,8 @@
 //! as a name unless it is empty, the show's name, a bare episode token, or the show's name
 //! followed by separators and such a token.
 
+use anibeam_core::i18n::{Arg, tr};
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
-
-const SEP: &str = ", ";
 
 fn fold(s: &str) -> String {
     s.trim()
@@ -52,7 +51,7 @@ pub fn is_real_episode_title(title: &str, show: &str, number: Option<u32>) -> bo
     !is_episode_token(&rest, number)
 }
 
-/// (title, artist).
+/// (title, artist), in the language the app speaks now (#792).
 pub fn lines(
     show: &str,
     episode_number: Option<u32>,
@@ -66,14 +65,20 @@ pub fn lines(
     let Some(n) = episode_number else {
         return (show, String::new());
     };
-    let episode = format!("Episode {n}");
+    let episode = tr("episode-number", &[("number", Arg::from(n.to_string()))]);
     if let Some(t) = episode_title.map(str::trim).filter(|s| !s.is_empty())
         && is_real_episode_title(t, &show, Some(n))
     {
         let artist = if show.is_empty() {
             episode
         } else {
-            format!("{show}{SEP}{episode}")
+            tr(
+                "now-playing-show-episode",
+                &[
+                    ("show", Arg::from(show.as_str())),
+                    ("episode", Arg::from(episode.as_str())),
+                ],
+            )
         };
         return (t.to_string(), artist);
     }

@@ -256,6 +256,9 @@ FocusScope {
             readonly property var job: Door.runningJobs.length ? Door.runningJobs[0] : null
             // A person reads the plain line; with developer options on, the technical one
             readonly property var line: frame.devOn ? Door.latestLine : Door.latestPlain
+            // The plain line in the language the app speaks now (#792): its message ID and
+            // arguments, else the words the core said it in, for a line from before IDs
+            function plainOf(l) { return l.plain_words ? words.t(l.plain_words.id, l.plain_words.args) : l.plain }
             // A kind or stage as words: "ConnectTracker" reads "Connect tracker", "metadata"
             // reads "Metadata"
             function wordsOf(k) {
@@ -266,7 +269,7 @@ FocusScope {
             stage: frame.devOn ? (job ? wordsOf(job.kind) : (line && line.stage ? wordsOf(line.stage) : words.t("frame-strip-ready"))) : ""
             readonly property string doing: job ? (frame.devOn ? (job.label || wordsOf(job.kind)) : (job.doing || wordsOf(job.kind))) : ""
             message: job ? (job.total > 0 ? words.t("frame-strip-progress", { doing: doing, done: job.done, total: job.total }) : doing)
-                         : (line ? (frame.devOn ? line.message : line.plain) || words.t("frame-strip-idle") : words.t("frame-strip-idle"))
+                         : (line ? (frame.devOn ? line.message : plainOf(line)) || words.t("frame-strip-idle") : words.t("frame-strip-idle"))
             time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), words.t("frame-strip-time-format"))
             running: job !== null
             fraction: job && job.total > 0 ? job.done / job.total : 0
