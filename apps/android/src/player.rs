@@ -1821,7 +1821,10 @@ impl Player {
                 let Some(s) = SPEEDS.get(i) else { return };
                 // The TV plays at its own speed, as on the desktop.
                 if self.cast.is_some() {
-                    self.flash(&anibeam_core::i18n::tr("player-speed-not-while-casting", &[]), None);
+                    self.flash(
+                        &anibeam_core::i18n::tr("player-speed-not-while-casting", &[]),
+                        None,
+                    );
                 } else {
                     self.set_speed(*s);
                 }
