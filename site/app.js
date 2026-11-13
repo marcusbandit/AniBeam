@@ -141,3 +141,157 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
   if ("ResizeObserver" in window) new ResizeObserver(fit).observe(player);
   else addEventListener("resize", fit);
 })();
+
+// A poster in the wall opens a card beside it: the show from shows.json (tools/shows.py), its
+// description and its AniList and MyAnimeList pages. The wall holds still while the card is open,
+// so the card stays by its poster; on a narrow screen the card comes up from the bottom instead.
+// Back, Escape, a click outside and the close button all close it.
+(() => {
+  const wall = document.getElementById("marquee");
+  if (!wall) return;
+  const { t } = AB;
+  let shows = null;
+  const load = () => (shows ??= fetch(AB.ROOT + "shows.json").then((r) => (r.ok ? r.json() : {})).catch(() => ({})));
+
+  // Each track holds its posters twice so the loop is seamless; only the first copy is read out
+  // and reached with Tab.
+  const keyOf = (p) => (p.querySelector("img").getAttribute("src").match(/([\w-]+)\.webp$/) || [])[1];
+  for (const track of wall.querySelectorAll(".marquee-track")) {
+    const posters = [...track.querySelectorAll(".poster")];
+    posters.forEach((p, i) => {
+      p.dataset.show = keyOf(p);
+      if (i >= posters.length / 2) { p.setAttribute("aria-hidden", "true"); return; }
+      p.setAttribute("role", "button");
+      p.tabIndex = 0;
+    });
+  }
+  wall.removeAttribute("aria-hidden");
+  load().then((data) => {
+    for (const p of wall.querySelectorAll(".poster[role=button]")) {
+      const s = data[p.dataset.show];
+      if (s) p.setAttribute("aria-label", s.title);
+    }
+  });
+
+  const card = document.createElement("div");
+  card.className = "show-card";
+  card.setAttribute("role", "dialog");
+  card.setAttribute("aria-modal", "false");
+  card.setAttribute("aria-labelledby", "show-card-title");
+  card.hidden = true;
+  document.body.append(card);
+
+  const narrow = matchMedia("(max-width: 640px)");
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const link = (href, cls, label) => {
+    const a = el("a", `btn btn-sm btn-ghost ${cls}`);
+    a.href = href;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.append(el("i"), el("span", null, label));
+    return a;
+  };
+
+  function fill(s) {
+    const close = el("button", "show-x");
+    close.type = "button";
+    close.setAttribute("aria-label", t("Close"));
+    close.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    close.addEventListener("click", () => shut(true));
+
+    const head = el("div", "show-head");
+    const title = el("h3", null, s.title);
+    title.id = "show-card-title";
+    head.append(title);
+    if (s.romaji && s.romaji.toLowerCase() !== s.title.toLowerCase()) head.append(el("p", "show-romaji", s.romaji));
+
+    const facts = [s.format === "MOVIE" ? t("Movie") : s.format === "TV" ? "TV" : s.format, s.year];
+    if (s.format !== "MOVIE" && s.episodes > 1) facts.push(t("{n} episodes", { n: s.episodes }));
+    if (s.studio) facts.push(s.studio);
+    const meta = el("p", "show-meta");
+    facts.filter(Boolean).forEach((f, i) => { if (i) meta.append(el("b", null, "·")); meta.append(el("span", null, String(f))); });
+
+    const tags = el("div", "show-tags");
+    if (s.score) tags.append(el("span", "show-score", `★ ${s.score}%`));
+    for (const g of s.genres) tags.append(el("span", null, g));
+
+    const text = el("div", "show-text");
+    for (const para of s.description.split("\n\n")) text.append(el("p", null, para));
+
+    const links = el("div", "show-links");
+    links.append(link(`https://anilist.co/anime/${s.anilist}`, "to-anilist", "AniList"));
+    if (s.mal) links.append(link(`https://myanimelist.net/anime/${s.mal}`, "to-mal", "MyAnimeList"));
+
+    card.replaceChildren(close, head, meta, tags, text, links);
+  }
+
+  // Beside the poster on whichever side has room, top edge level with it, kept on screen. The
+  // card sits in the page, not fixed, so it scrolls along with its poster.
+  function place(poster) {
+    card.style.left = card.style.top = "";
+    card.classList.remove("from-left", "from-right");
+    if (narrow.matches) return;
+    const r = poster.getBoundingClientRect();
+    const w = card.offsetWidth, h = card.offsetHeight, gap = 16, edge = 16, under = 84; // clear of the nav bar
+    const right = r.right + gap + w <= innerWidth - edge;
+    const left = right ? r.right + gap : Math.max(edge, r.left - gap - w);
+    const top = Math.min(Math.max(under, r.top + r.height / 2 - h / 2), innerHeight - edge - h);
+    card.classList.add(right ? "from-left" : "from-right");
+    card.style.left = `${left + scrollX}px`;
+    card.style.top = `${Math.max(edge, top) + scrollY}px`;
+  }
+
+  let open = null;
+  let pushed = false;
+  async function show(poster, byKey) {
+    const s = (await load())[poster.dataset.show];
+    if (!s) return;
+    if (open) open.classList.remove("is-open");
+    open = poster;
+    poster.classList.add("is-open");
+    wall.classList.add("holding");
+    fill(s);
+    card.hidden = false;
+    card.classList.remove("in");
+    place(poster);
+    requestAnimationFrame(() => card.classList.add("in"));
+    // On a phone the card covers the page, so back closes it rather than leaving the site.
+    if (narrow.matches && !pushed) { history.pushState({ showCard: true }, ""); pushed = true; }
+    if (byKey) card.querySelector(".show-x").focus({ preventScroll: true });
+  }
+  function shut(refocus) {
+    if (!open) return;
+    const poster = open;
+    open = null;
+    poster.classList.remove("is-open");
+    wall.classList.remove("holding");
+    card.classList.remove("in");
+    card.hidden = true;
+    if (pushed) { pushed = false; history.back(); }
+    if (refocus) poster.focus({ preventScroll: true });
+  }
+
+  wall.addEventListener("click", (e) => {
+    const p = e.target.closest(".poster");
+    if (!p) return;
+    if (p === open) shut(false);
+    else show(p, false);
+  });
+  wall.addEventListener("keydown", (e) => {
+    const p = e.target.closest(".poster[role=button]");
+    if (!p || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    show(p, true);
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) shut(true); });
+  document.addEventListener("pointerdown", (e) => {
+    if (open && !card.contains(e.target) && !e.target.closest("#marquee .poster")) shut(false);
+  });
+  addEventListener("popstate", () => { if (pushed) { pushed = false; shut(false); } });
+  addEventListener("resize", () => { if (open) place(open); });
+})();
