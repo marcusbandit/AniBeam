@@ -21,3 +21,37 @@ count-shows =
         [one] { $count } show
        *[other] { $count } shows
     }
+
+## Actions every screen uses
+
+action-cancel = Cancel
+action-close = Close
+action-try-again = Try again
+action-remove = Remove
+action-delete = Delete
+action-open = Open
+action-save = Save
+action-apply = Apply
+action-clear = Clear
+action-refresh = Refresh
+action-play = Play
+action-connect = Connect
+action-start = Start
+action-back = Back
+action-see-all = See all
+action-open-series = Open series
+action-open-settings = Open settings
+
+## The lists a tracker keeps
+
+status-watching = Watching
+status-completed = Completed
+status-paused = Paused
+status-on-hold = On hold
+status-dropped = Dropped
+status-planning = Planning
+status-rewatching = Rewatching
+
+## Episodes
+
+episode-number = Episode { $number }

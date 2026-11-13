@@ -54,6 +54,8 @@ Window {
     // Until the engine's first push every token is absent, so the ground is the neutral one
     // until Theme.ready rather than Tokens' missing-token magenta.
     Tokens { id: theme }
+    // The words every component below shows, by message ID (#792)
+    Words { id: words }
     // The tokens the native poster cards draw with (CardFace, #289), handed over at start and
     // again whenever the theme moves
     QtObject {

@@ -29,6 +29,15 @@ UI = [
     "apps/android/ui/**/*.slint",
 ]
 
+# Developer tools nobody but a developer sees: the drive and recording harness, the
+# frame-time HUD and the token sheet. Their words stay English.
+DEV_ONLY = {
+    "apps/linux/qml/Driver.qml",
+    "apps/linux/qml/DevHud.qml",
+    "apps/linux/qml/DevRecorder.qml",
+    "apps/linux/qml/TokensPage.qml",
+}
+
 # The files whose ID uses are checked against the English catalog.
 CODE = UI + [
     "core/src/**/*.rs",
@@ -97,6 +106,9 @@ def is_words(literal, text_line):
         return False
     words = re.findall(r"[^\W_]+", text)
     if words and all(w in BRANDS for w in words) and not re.search(r"\s", literal.strip()):
+        return False
+    # A lone letter off a text line is a code, such as an SVG path command (" L").
+    if not text_line and not re.search(r"[^\W\d_]{2}", text):
         return False
     # A literal with a space, or an edge space that joins it to a number, is words.
     if re.search(r"\s", literal):
@@ -259,6 +271,8 @@ def main():
     counts = {}
     shown = {}
     for path in files(UI):
+        if path.relative_to(ROOT).as_posix() in DEV_ONLY:
+            continue
         hits = raw_strings(path)
         if hits:
             rel = path.relative_to(ROOT).as_posix()

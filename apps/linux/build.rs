@@ -25,6 +25,7 @@ fn main() {
             .qml_file("qml/Main.qml")
             .qml_file("qml/Driver.qml")
             .qml_file("qml/Tokens.qml")
+            .qml_file("qml/Words.qml")
             .qml_file("qml/TokensPage.qml")
             .qml_file("qml/Corner.qml")
             .qml_file("qml/Frost.qml")
@@ -152,6 +153,7 @@ fn main() {
         "src/bridge/player.rs",
         "src/bridge/shell.rs",
         "src/bridge/theme.rs",
+        "src/bridge/tr.rs",
     ])
     .include_dir("cpp")
     // mpvqt_export.h includes mpvqt_version.h bare; CMake's target used to supply this.
