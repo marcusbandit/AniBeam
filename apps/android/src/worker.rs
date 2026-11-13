@@ -20,7 +20,7 @@ pub enum Command {
 
 pub enum Event {
     SyncStarted,
-    Snapshot(Cache),
+    Snapshot(Box<Cache>),
     Poster(u64, crate::posters::Decoded),
     AniList(AniListCache),
     /// The sync ended; `None` when the host answered.
@@ -127,12 +127,12 @@ impl<F: Fn(Event)> Worker<F> {
                     cache.snapshot.series.len(),
                     cache.snapshot.subscriptions.len()
                 );
-                (self.deliver)(Event::Snapshot(cache.clone()));
+                (self.deliver)(Event::Snapshot(Box::new(cache.clone())));
                 self.syncer
                     .fetch_posters(&address, &cache, |id| self.send_poster(id));
                 // Last, so a host slow to ask its tailnet never holds up the screens.
                 if let Some(cache) = self.syncer.fetch_peers(&address, &cache) {
-                    (self.deliver)(Event::Snapshot(cache));
+                    (self.deliver)(Event::Snapshot(Box::new(cache)));
                 }
                 crate::airing::sync(&address);
                 (self.deliver)(Event::SyncDone {

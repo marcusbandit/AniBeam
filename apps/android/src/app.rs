@@ -420,7 +420,7 @@ impl App {
             }
             Event::Snapshot(cache) => {
                 crate::player::set_remote_numbers(remote_numbers(&cache));
-                self.cache = Some(cache);
+                self.cache = Some(*cache);
             }
             Event::Poster(id, decoded) => {
                 self.remote_art
