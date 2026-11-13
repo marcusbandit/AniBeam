@@ -111,21 +111,21 @@ pub fn targets(
 }
 
 /// Where `move_to_trash` sends paths, as a message says it.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub const WHERE: &str = "to the trash";
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub const WHERE: &str = "deleted";
 
 /// Moves the paths to the trash, all or as many as it can before the
-/// first failure, which it reports. Android has no trash, so a phone
-/// deletes them.
+/// first failure, which it reports. Android and iOS have no trash, so a
+/// phone deletes them.
 pub fn move_to_trash(paths: &[PathBuf]) -> Result<(), CoreError> {
     if paths.is_empty() {
         return Ok(());
     }
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     return delete_outright(paths);
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     trash::delete_all(paths).map_err(|e| CoreError::Service {
         service: "trash".to_string(),
         code: "failed".to_string(),
@@ -133,7 +133,7 @@ pub fn move_to_trash(paths: &[PathBuf]) -> Result<(), CoreError> {
     })
 }
 
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "android", target_os = "ios")), allow(dead_code))]
 fn delete_outright(paths: &[PathBuf]) -> Result<(), CoreError> {
     for p in paths {
         let gone = if p.is_dir() {
