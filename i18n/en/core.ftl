@@ -403,6 +403,7 @@ core-phone-download-started =
         [one] Started downloading an episode of { $folder }.
        *[other] Started downloading { $count } episodes of { $folder }.
     }
+core-phone-download-partial = Not every release of { $folder } could be added: { $error }
 core-phone-subscribed = Subscribed to { $name }.
 core-phone-rule-stopped = { $name } is not checked for new episodes: its source is gone or needs its key again.
 core-phone-new-episode = A new episode of { $name } is downloading.
