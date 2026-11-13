@@ -57,13 +57,19 @@ BRANDS = {
 TEXT_PROP = re.compile(
     r"(?<![\w.])(?:[a-z]+[A-Z]?)?(?:[tT]ext|[tT]itle|[lL]abel|[hH]elper|[bB]ody|[hH]eading|[lL]ead"
     r"|[pP]laceholder|[tT]ip|[nN]ote|[hH]int|[cC]aption|[mM]essage|[qQ]uestion|[fF]act"
-    r"|[pP]refix|[sS]uffix|[lL]ine|[dD]escription|[sS]ummary|[dD]etail|Accessible\.name)\s*:"
+    r"|[pP]refix|[sS]uffix|[lL]ine|[dD]escription|[sS]ummary|[dD]etail|Accessible\.name"
+    r"|model|[oO]ptions|[lL]abels|[iI]tems)\s*:"
 )
 
 # A literal compared against, or used as a case label or a key, is a code from the core.
-COMPARED = re.compile(r"(?:[!=]==?|\bcase|\bin\s*\[[^\]]*|\[)\s*$")
-COMPARED_AFTER = re.compile(r"\s*(?:[!=]==?|\]|\bin\b)")
+# A list of labels (`model: ["Watching", "Completed"]`) is words; `x in ["a", "b"]` is not.
+COMPARED = re.compile(r"(?:[!=]==?|\bcase|\bin\s*\[[^\]]*)\s*$")
+COMPARED_AFTER = re.compile(r"\s*(?:[!=]==?|\bin\b)")
+# Slint has double quotes only. QML is JavaScript too: single quotes and template literals,
+# whose ${...} parts are expressions, not words.
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
+STRING_QML = re.compile(r'"((?:[^"\\]|\\.)*)"|\'((?:[^\'\\]|\\.)*)\'|`((?:[^`\\]|\\.)*)`')
+TEMPLATE_PART = re.compile(r"\$\{[^}]*\}")
 ID = r"([a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9-]*)?)"
 ID_USES = [
     re.compile(r"\b(?:tr|tr_in|t)\(\s*(?:[A-Za-z:]+,\s*)?\"" + ID + r"\""),
@@ -104,6 +110,48 @@ def is_words(literal, text_line):
     )
 
 
+def code_lines(path, quotes):
+    """Each line of a file with its comments blanked to spaces, so columns still line up.
+    A `/* */` comment may open and close anywhere, on one line or across several; `//` and
+    `/*` inside a string literal (one of `quotes`) are part of the string."""
+    in_block = False
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        out, i, quote = [], 0, None
+        while i < len(line):
+            ch = line[i]
+            if in_block:
+                if line.startswith("*/", i):
+                    in_block = False
+                    out.append("  ")
+                    i += 2
+                else:
+                    out.append(" ")
+                    i += 1
+                continue
+            if quote:
+                out.append(ch)
+                if ch == "\\" and i + 1 < len(line):
+                    out.append(line[i + 1])
+                    i += 2
+                    continue
+                if ch == quote:
+                    quote = None
+                i += 1
+                continue
+            if ch in quotes:
+                quote = ch
+            elif line.startswith("//", i):
+                break
+            elif line.startswith("/*", i):
+                in_block = True
+                out.append("  ")
+                i += 2
+                continue
+            out.append(ch)
+            i += 1
+        yield n, line, "".join(out)
+
+
 # The phone's lookups: Tr.t("id"), Tr.s("id", "name", value), Tr.n("id", "count", n). The ID
 # and every argument name are codes; the values between them are expressions.
 SLINT_TR = re.compile(r"Tr\.(?:t|s|s2|s3|n|n2|ns|ns2)\(")
@@ -140,26 +188,10 @@ def raw_strings_slint(path):
     """Slint has no JS, so every literal with a letter is words unless it is a code: a font
     name, an import, an image path, or a Tr call's ID and argument names."""
     hits = []
-    in_block = False
     theme = path.name == "theme.slint"
-    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if in_block:
-            if "*/" not in line:
-                continue
-            line, in_block = line.split("*/", 1)[1], False
+    for n, line, code in code_lines(path, '"'):
         if line.rstrip().endswith("// i18n: none"):
             continue
-        code, quoted, i = [], False, 0
-        while i < len(line):
-            if line[i] == '"' and (i == 0 or line[i - 1] != "\\"):
-                quoted = not quoted
-            if not quoted and line.startswith("//", i):
-                break
-            code.append(line[i])
-            i += 1
-        code = "".join(code)
-        if "/*" in code:
-            code, in_block = code.split("/*", 1)[0], True
         if re.search(r"font-family\s*:", code) and "Tr." not in code:
             continue
         if theme and re.search(r"property\s*<string>", code):
@@ -177,28 +209,21 @@ def raw_strings(path):
     if path.suffix == ".slint":
         return raw_strings_slint(path)
     hits = []
-    in_block = False
-    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        stripped = line.strip()
-        if in_block:
-            if "*/" in stripped:
-                in_block = False
+    for n, line, code in code_lines(path, "\"'`"):
+        if not code.strip() or code.lstrip().startswith("import "):
             continue
-        if stripped.startswith("/*"):
-            in_block = "*/" not in stripped
+        if line.rstrip().endswith("// i18n: none") or NOT_TEXT.match(code):
             continue
-        if stripped.startswith("//") or stripped.startswith("import "):
+        if re.search(r"\bconsole\.\w+\(|\bobjectName\b", code):
             continue
-        if line.rstrip().endswith("// i18n: none") or NOT_TEXT.match(line):
-            continue
-        if re.search(r"\bconsole\.\w+\(|\bobjectName\b", line):
-            continue
-        code = line.split(" //", 1)[0]
-        for m in STRING.finditer(code):
+        for m in STRING_QML.finditer(code):
             if COMPARED.search(code[: m.start()]) or COMPARED_AFTER.match(code[m.end() :]):
                 continue
-            if is_words(m.group(1), bool(TEXT_PROP.search(code))):
-                hits.append((n, m.group(1)))
+            literal = next(g for g in m.groups() if g is not None)
+            if m.group(3) is not None:
+                literal = TEMPLATE_PART.sub(" ", literal)
+            if is_words(literal, bool(TEXT_PROP.search(code))):
+                hits.append((n, literal))
     return hits
 
 
@@ -259,10 +284,14 @@ def main():
             print(f"{path}: {counts[path]} raw strings, {allowed} allowed. Each one:")
             for n, s in shown[path]:
                 print(f"  {path}:{n}: \"{s}\"")
-    shrunk = [p for p in base if counts.get(p, 0) < base[p]]
+    # The count has to come down in the PR that moved the strings, or a later PR could add
+    # the same number back unseen.
+    shrunk = sorted(p for p in base if counts.get(p, 0) < base[p])
     if shrunk:
-        print(f"{len(shrunk)} files hold fewer raw strings than the baseline; run")
-        print("  .github/strings-check.py --update  to lower it.")
+        failed = True
+        for p in shrunk:
+            print(f"{p}: {counts.get(p, 0)} raw strings, the baseline still allows {base[p]}.")
+        print("Run  .github/strings-check.py --update  and commit the lower baseline.")
 
     known = english_ids()
     for path in files(CODE):

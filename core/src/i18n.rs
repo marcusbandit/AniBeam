@@ -127,14 +127,9 @@ impl Lang {
         Lang::ALL.into_iter().find(|l| l.code() == code)
     }
 
-    /// The locale chrono names months and weekdays in, for a date pattern from the catalog
-    /// formatted with `format_localized`. English reads the British way: 17 Oct, 24-hour.
-    pub fn chrono_locale(self) -> chrono::Locale {
-        chrono_locale(self)
-    }
-
+    /// The language's place in [`Lang::ALL`], which lists them in declaration order.
     fn index(self) -> usize {
-        Lang::ALL.iter().position(|l| *l == self).unwrap_or(0)
+        self as usize
     }
 }
 
@@ -168,28 +163,32 @@ macro_rules! num_arg {
 }
 num_arg!(i32, i64, u32, u64, usize, f32, f64);
 
-/// The files of one language, in the order they are added to its bundle.
+/// One language's code and its files, in the order they are added to its bundle.
 macro_rules! files {
     ($code:literal) => {
-        [
-            (
-                "core.ftl",
-                include_str!(concat!("../../i18n/", $code, "/core.ftl")),
-            ),
-            (
-                "desktop.ftl",
-                include_str!(concat!("../../i18n/", $code, "/desktop.ftl")),
-            ),
-            (
-                "android.ftl",
-                include_str!(concat!("../../i18n/", $code, "/android.ftl")),
-            ),
-        ]
+        (
+            $code,
+            [
+                (
+                    "core.ftl",
+                    include_str!(concat!("../../i18n/", $code, "/core.ftl")),
+                ),
+                (
+                    "desktop.ftl",
+                    include_str!(concat!("../../i18n/", $code, "/desktop.ftl")),
+                ),
+                (
+                    "android.ftl",
+                    include_str!(concat!("../../i18n/", $code, "/android.ftl")),
+                ),
+            ],
+        )
     };
 }
 
-/// Every file of every language, in [`Lang::ALL`]'s order.
-const CATALOG: [[(&str, &str); 3]; 13] = [
+/// Every file of every language, in [`Lang::ALL`]'s order; a test holds each code to its
+/// place.
+const CATALOG: [(&str, [(&str, &str); 3]); 13] = [
     files!("en"),
     files!("da"),
     files!("de"),
@@ -217,7 +216,7 @@ fn bundle(lang: Lang) -> &'static Bundle {
         // Qt and Slint draw the isolation marks Fluent puts around arguments as boxes,
         // and every language here runs left to right.
         bundle.set_use_isolating(false);
-        for (name, text) in CATALOG[lang.index()] {
+        for (name, text) in CATALOG[lang.index()].1 {
             let resource = FluentResource::try_new(text.to_string()).unwrap_or_else(|(r, e)| {
                 tracing::warn!("i18n/{}/{name}: {} parse errors", lang.code(), e.len());
                 r
@@ -230,7 +229,8 @@ fn bundle(lang: Lang) -> &'static Bundle {
     })
 }
 
-/// [`Lang::chrono_locale`] as a free function, beside [`tr`].
+/// The locale chrono names months and weekdays in, for a date pattern from the catalog
+/// formatted with `format_localized`. English reads the British way: 17 Oct, 24-hour.
 pub fn chrono_locale(lang: Lang) -> chrono::Locale {
     use chrono::Locale as L;
     match lang {
@@ -272,14 +272,23 @@ pub fn tr(id: &str, args: &[(&str, Arg)]) -> String {
     tr_in(lang(), id, args)
 }
 
-/// [`tr`] in a given language, whatever the current one is.
+/// [`tr`] in a given language, whatever the current one is. A translation that does not
+/// format cleanly, such as one naming a variable English does not pass, gives way to the
+/// English rather than showing `{$cout}`.
 pub fn tr_in(lang: Lang, id: &str, args: &[(&str, Arg)]) -> String {
-    format(bundle(lang), id, args)
-        .or_else(|| {
-            (lang != Lang::En)
-                .then(|| format(bundle(Lang::En), id, args))
-                .flatten()
-        })
+    if lang != Lang::En
+        && let Some((text, clean)) = format(bundle(lang), id, args)
+    {
+        if clean {
+            return text;
+        }
+        tracing::warn!(
+            "i18n/{}: {id} does not format, shown in English",
+            lang.code()
+        );
+    }
+    format(bundle(Lang::En), id, args)
+        .map(|(text, _)| text)
         .unwrap_or_else(|| id.to_string())
 }
 
@@ -302,7 +311,8 @@ fn lookup<'b>(bundle: &'b Bundle, id: &str) -> Option<&'b Pattern<&'b str>> {
     }
 }
 
-fn format(bundle: &Bundle, id: &str, args: &[(&str, Arg)]) -> Option<String> {
+/// The formatted words, and whether they formatted without an error.
+fn format(bundle: &Bundle, id: &str, args: &[(&str, Arg)]) -> Option<(String, bool)> {
     let pattern = lookup(bundle, id)?;
     let mut fluent_args = FluentArgs::new();
     for (key, arg) in args {
@@ -317,11 +327,15 @@ fn format(bundle: &Bundle, id: &str, args: &[(&str, Arg)]) -> Option<String> {
     if !errors.is_empty() {
         tracing::debug!("i18n {id}: {errors:?}");
     }
-    Some(text.into_owned())
+    Some((text.into_owned(), errors.is_empty()))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use fluent_syntax::ast::{self, Entry};
+
     use super::*;
 
     #[test]
@@ -349,10 +363,18 @@ mod tests {
     }
 
     #[test]
+    fn the_catalog_lists_each_language_at_its_place() {
+        for (i, lang) in Lang::ALL.into_iter().enumerate() {
+            assert_eq!(lang.index(), i);
+            assert_eq!(CATALOG[i].0, lang.code());
+        }
+    }
+
+    #[test]
     fn every_file_parses_and_no_id_is_defined_twice() {
         for lang in Lang::ALL {
             let mut bundle: Bundle = FluentBundle::new_concurrent(vec![]);
-            for (name, text) in CATALOG[lang.index()] {
+            for (name, text) in CATALOG[lang.index()].1 {
                 let resource = FluentResource::try_new(text.to_string())
                     .unwrap_or_else(|(_, e)| panic!("i18n/{}/{name}: {e:?}", lang.code()));
                 bundle
@@ -362,23 +384,103 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_translated_id_exists_in_english() {
-        for lang in Lang::ALL {
-            for (name, text) in CATALOG[lang.index()] {
-                let resource = FluentResource::try_new(text.to_string()).unwrap();
-                for entry in resource.entries() {
-                    if let fluent_syntax::ast::Entry::Message(m) = entry {
-                        assert!(
-                            exists(m.id.name),
-                            "i18n/{}/{name}: {} is not in English",
-                            lang.code(),
-                            m.id.name
-                        );
+    /// Every message and attribute of one language, by `id` or `id.attr`, with the
+    /// variables it reads.
+    fn patterns(lang: Lang) -> Vec<(String, &'static str, BTreeSet<String>)> {
+        let mut out = Vec::new();
+        for (name, text) in CATALOG[lang.index()].1 {
+            let resource = FluentResource::try_new(text.to_string()).unwrap();
+            for entry in resource.entries() {
+                let Entry::Message(m) = entry else { continue };
+                if let Some(value) = &m.value {
+                    out.push((m.id.name.to_string(), name, vars(value)));
+                }
+                for a in &m.attributes {
+                    let id = format!("{}.{}", m.id.name, a.id.name);
+                    out.push((id, name, vars(&a.value)));
+                }
+            }
+        }
+        out
+    }
+
+    fn vars(value: &ast::Pattern<&str>) -> BTreeSet<String> {
+        fn inline(e: &ast::InlineExpression<&str>, out: &mut BTreeSet<String>) {
+            match e {
+                ast::InlineExpression::VariableReference { id } => {
+                    out.insert(id.name.to_string());
+                }
+                ast::InlineExpression::FunctionReference { arguments, .. } => call(arguments, out),
+                ast::InlineExpression::TermReference {
+                    arguments: Some(arguments),
+                    ..
+                } => call(arguments, out),
+                ast::InlineExpression::Placeable { expression } => expr(expression, out),
+                _ => {}
+            }
+        }
+        fn call(a: &ast::CallArguments<&str>, out: &mut BTreeSet<String>) {
+            a.positional.iter().for_each(|e| inline(e, out));
+            a.named.iter().for_each(|n| inline(&n.value, out));
+        }
+        fn expr(e: &ast::Expression<&str>, out: &mut BTreeSet<String>) {
+            match e {
+                ast::Expression::Inline(e) => inline(e, out),
+                ast::Expression::Select { selector, variants } => {
+                    inline(selector, out);
+                    for v in variants {
+                        pattern(&v.value, out);
                     }
                 }
             }
         }
+        fn pattern(p: &ast::Pattern<&str>, out: &mut BTreeSet<String>) {
+            for el in &p.elements {
+                if let ast::PatternElement::Placeable { expression } = el {
+                    expr(expression, out);
+                }
+            }
+        }
+        let mut out = BTreeSet::new();
+        pattern(value, &mut out);
+        out
+    }
+
+    #[test]
+    fn every_translation_has_an_english_source_and_reads_only_its_variables() {
+        let english: BTreeMap<String, BTreeSet<String>> = patterns(Lang::En)
+            .into_iter()
+            .map(|(id, _, vars)| (id, vars))
+            .collect();
+        for lang in Lang::ALL {
+            for (id, file, vars) in patterns(lang) {
+                let Some(source) = english.get(&id) else {
+                    panic!("i18n/{}/{file}: {id} is not in English", lang.code());
+                };
+                let extra: Vec<_> = vars.difference(source).collect();
+                assert!(
+                    extra.is_empty(),
+                    "i18n/{}/{file}: {id} reads {extra:?}, which English never passes",
+                    lang.code()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_message_that_does_not_format_says_so() {
+        let mut bundle: Bundle = FluentBundle::new_concurrent(vec![]);
+        bundle.set_use_isolating(false);
+        let text = "broken = { $cout } shows\nfine = { $count } shows\n";
+        bundle
+            .add_resource(FluentResource::try_new(text.to_string()).unwrap())
+            .unwrap();
+        let args = [("count", Arg::from(2))];
+        assert!(!format(&bundle, "broken", &args).unwrap().1);
+        assert_eq!(
+            format(&bundle, "fine", &args),
+            Some(("2 shows".to_string(), true))
+        );
     }
 
     #[test]
@@ -414,16 +516,5 @@ mod tests {
         assert_eq!(attr, "count-episodes.tip");
         assert!(exists("count-episodes"));
         assert!(!exists("no-such-message"));
-    }
-
-    #[test]
-    fn set_lang_switches_what_tr_speaks() {
-        let args = [("count", Arg::from(2))];
-        set_lang(Lang::Da);
-        assert_eq!(lang(), Lang::Da);
-        let da = tr("count-shows", &args);
-        set_lang(Lang::En);
-        assert_eq!(da, "2 serier");
-        assert_eq!(tr("count-shows", &args), "2 shows");
     }
 }

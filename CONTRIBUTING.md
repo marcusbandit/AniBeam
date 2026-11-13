@@ -201,7 +201,7 @@ an ID a language lacks shows in English. All of a language's files load as one, 
 `.github/strings-check.py` runs on every pull request. It fails a raw string added to a
 shell's UI files and an ID missing from `i18n/en/`. The files that held raw strings before
 the catalog are listed in `.github/strings-baseline.txt`; a file may hold no more than its
-count there, and a PR that moves strings out lowers it with
+count there, and a PR that moves strings out has to lower it in the same PR with
 `.github/strings-check.py --update`. A line that holds no words for a person, such as a
 format string, ends in `// i18n: none`.
 
