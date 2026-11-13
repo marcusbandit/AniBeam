@@ -114,12 +114,12 @@ Corner {
     }
 
     function has(v) { return v !== null && v !== undefined }
-    function epsText(n) { return n.first === n.last ? "Episode " + n.first : "Episodes " + n.first + " to " + n.last }
+    function epsText(n) { return n.first === n.last ? words.t("episode-number", { number: n.first }) : words.t("schedule-episodes-range", { first: n.first, last: n.last }) }
     function whenOf(n) {
-        if (has(n.at)) return Qt.formatDate(new Date(n.at * 1000), "ddd d MMM yyyy")
-        if (has(n.year) && n.month) return Qt.formatDate(new Date(n.year, n.month - 1, 1), "MMMM yyyy")
-        if (has(n.year)) return "Some time in " + n.year
-        return "No date yet"
+        if (has(n.at)) return Qt.formatDate(new Date(n.at * 1000), words.t("schedule-day-format"))
+        if (has(n.year) && n.month) return Qt.formatDate(new Date(n.year, n.month - 1, 1), words.t("schedule-month-format"))
+        if (has(n.year)) return words.t("schedule-some-time-in", { year: String(n.year) })
+        return words.t("schedule-no-date-yet")
     }
     function kindOf(n) { return !n ? "" : has(n.at) ? "day" : has(n.year) && n.month ? "month" : has(n.year) ? "year" : "tbc" }
     function kindColor(k) { return k === "day" ? theme.green : k === "month" ? theme.orange : k === "year" ? theme.purple : theme.textDim }
@@ -128,31 +128,31 @@ Corner {
         if (root.endAt > 0 && ep > root.endAt) return ""
         var n = root.noteFor(ep)
         if (!n && root.recordDates[ep] !== undefined && root.aired.indexOf(ep) < 0)
-            return Qt.formatDate(new Date(root.recordDates[ep] * 1000), "d MMM")
+            return Qt.formatDate(new Date(root.recordDates[ep] * 1000), words.t("schedule-tile-day-format"))
         if (!n && root.guesses[ep] !== undefined)
-            return "≈ " + Qt.formatDate(new Date(root.guesses[ep] * 1000), "d MMM")
+            return words.t("schedule-tile-guess", { date: Qt.formatDate(new Date(root.guesses[ep] * 1000), words.t("schedule-tile-day-format")) })
         if (n) {
-            if (has(n.at)) return Qt.formatDate(new Date(n.at * 1000), "d MMM")
-            if (has(n.year) && n.month) return Qt.formatDate(new Date(n.year, n.month - 1, 1), "MMM yyyy")
+            if (has(n.at)) return Qt.formatDate(new Date(n.at * 1000), words.t("schedule-tile-day-format"))
+            if (has(n.year) && n.month) return Qt.formatDate(new Date(n.year, n.month - 1, 1), words.t("schedule-tile-month-format"))
             if (has(n.year)) return String(n.year)
-            return "No date"
+            return words.t("schedule-tile-no-date")
         }
-        if (root.endAt === ep) return "Last"
-        return root.aired.indexOf(ep) >= 0 ? "Out" : ""
+        if (root.endAt === ep) return words.t("schedule-tile-last")
+        return root.aired.indexOf(ep) >= 0 ? words.t("schedule-tile-out") : ""
     }
     // The footer's one line: where the season ends and how much is dated
     readonly property string summary: {
         var dated = 0
         for (var i = 0; i < draft.length; i++) dated += draft[i].last - draft[i].first + 1
         var bits = []
-        if (endAt > 0) bits.push("Ends at episode " + endAt)
+        if (endAt > 0) bits.push(words.t("schedule-ends-at", { number: endAt }))
         var fromRecord = 0
         for (var k in recordDates) if (aired.indexOf(Number(k)) < 0 && !noteFor(Number(k))) fromRecord++
-        if (fromRecord > 0) bits.push(fromRecord + " dated by " + (siteName || "the record"))
-        if (dated > 0) bits.push(dated + " set by you")
+        if (fromRecord > 0) bits.push(siteName ? words.t("schedule-dated-by-site", { count: fromRecord, site: siteName }) : words.t("schedule-dated-by-record", { count: fromRecord }))
+        if (dated > 0) bits.push(words.t("schedule-set-by-you", { count: dated }))
         var guessed = Object.keys(guesses).length
-        if (guessed > 0) bits.push(guessed + " guessed weekly")
-        return bits.length ? bits.join(" · ") : "Nothing set yet"
+        if (guessed > 0) bits.push(words.t("schedule-guessed-weekly", { count: guessed }))
+        return bits.length ? bits.join(" · ") : words.t("schedule-nothing-set")
     }
     function keyOf(w) { return [has(w.at) ? w.at : "", has(w.year) ? w.year : "", w.month || ""].join("|") }
 
@@ -226,7 +226,7 @@ Corner {
     function readTyped(text) {
         var t = String(text).trim()
         if (!t) { root.typed = null; return }
-        var r = Door.call("ParseSchedule", { text: "Episode 1 - " + t })
+        var r = Door.call("ParseSchedule", { text: "Episode 1 - " + t }) // i18n: none
         var n = !r.error && r.reply.notes && r.reply.notes.length ? r.reply.notes[0] : null
         root.typed = n ? { at: has(n.at) ? n.at : null, year: has(n.year) ? n.year : null, month: n.month || null } : null
     }
@@ -303,7 +303,7 @@ Corner {
             var c = Door.call("SetEpisodeCount", { series: root.seriesId, count: root.endAt > 0 ? root.endAt : null })
             if (c.error) { frame.fail(c.error); return }
         }
-        frame.toast(wire.length || root.endAt ? "Saved" : "Schedule notes cleared")
+        frame.toast(wire.length || root.endAt ? words.t("schedule-saved") : words.t("schedule-cleared"))
         root.close()
     }
 
@@ -348,10 +348,10 @@ Corner {
                 Column {
                     id: heading
                     width: parent.width - headActions.width - theme.space(4)
-                    Label { text: "Episodes and dates"; role: "title" }
+                    Label { msg: "schedule-title"; role: "title" }
                     Label {
                         width: parent.width
-                        text: root.seriesTitle + (root.season !== null ? " · Season " + root.season : "")
+                        text: root.seriesTitle + (root.season !== null ? " · " + words.t("schedule-season", { number: root.season }) : "")
                         role: "ui"; color: theme.textDim; elide: Text.ElideRight
                     }
                 }
@@ -365,14 +365,14 @@ Corner {
                         visible: root.agentName !== "" && !root.asking
                         flat: true
                         icon: "sparkles"
-                        text: "Ask " + root.agentName
+                        text: words.t("schedule-ask-agent", { agent: root.agentName })
                         onClicked: root.askAgent()
                     }
                     Button {
                         objectName: "schedule-paste-toggle"
                         flat: true
                         icon: root.pasting ? "check" : "copy"
-                        text: root.pasting ? "Done pasting" : "Paste a list"
+                        text: root.pasting ? words.t("schedule-done-pasting") : words.t("schedule-paste-list")
                         onClicked: { root.pasting = !root.pasting; if (root.pasting) input.forceActiveFocus() }
                     }
                     Button {
@@ -410,8 +410,8 @@ Corner {
                             width: parent.width - stopButton.width - theme.space(2)
                             elide: Text.ElideRight
                             role: "ui"
-                            text: root.asking ? root.agentName + " is looking up the dates. Nothing is saved until you press Save."
-                                              : root.agentName + " stopped: " + root.agentError
+                            text: root.asking ? words.t("schedule-agent-looking", { agent: root.agentName })
+                                              : words.t("schedule-agent-stopped", { agent: root.agentName, error: root.agentError })
                             color: root.asking ? theme.text : theme.textDim
                         }
                         Button {
@@ -420,7 +420,7 @@ Corner {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: root.asking
                             flat: true; small: true
-                            text: "Stop"
+                            msg: "schedule-stop"
                             onClicked: root.stopAgent()
                         }
                     }
@@ -481,7 +481,7 @@ Corner {
                             Keys.onEscapePressed: root.pasting = false
                             Text {
                                 visible: !input.text
-                                text: "Paste a release list, a table or a post"
+                                text: words.t("schedule-paste-placeholder")
                                 color: theme.textFaint
                                 font: input.font
                             }
@@ -489,7 +489,7 @@ Corner {
                     }
                 }
                 Label {
-                    text: "What AniBeam reads shows on the episodes below."
+                    msg: "schedule-paste-helper"
                     role: "ui"; color: theme.textDim
                 }
                 // No agent here: one quiet line on what one would do, never a nag (#419)
@@ -497,7 +497,7 @@ Corner {
                     visible: root.agentName === ""
                     width: parent.width
                     wrapMode: Text.Wrap
-                    text: "With Claude Code on this computer, AniBeam can ask it to look the dates up for you."
+                    msg: "schedule-agent-hint"
                     role: "ui"; color: theme.textFaint
                 }
             }
@@ -576,7 +576,7 @@ Corner {
                     color: moreMouse.containsMouse ? theme.raisedHover : "transparent"
                     borderColor: theme.line; borderWidth: 1; dashed: 1
                     Icon { anchors.centerIn: parent; glyph: "plus"; size: theme.space(5); color: theme.textDim }
-                    MouseArea { id: moreMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.upTo = Math.min(root.upTo + 12, 200); Accessible.role: Accessible.Button; Accessible.name: "Show more episodes"
+                    MouseArea { id: moreMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.upTo = Math.min(root.upTo + 12, 200); Accessible.role: Accessible.Button; Accessible.name: words.t("schedule-show-more")
                         Accessible.onPressAction: root.upTo = Math.min(root.upTo + 12, 200) }
                 }
             }
@@ -586,7 +586,7 @@ Corner {
                 visible: root.picked.length === 0
                 height: theme.controlHeight
                 verticalAlignment: Text.AlignVCenter
-                text: "Click an episode to date it. Shift-click picks a run."
+                msg: "schedule-pick-hint"
                 role: "ui"; color: theme.textDim
             }
             // Something picked: the one row of actions for it
@@ -597,48 +597,48 @@ Corner {
                 Label {
                     height: theme.controlHeight
                     verticalAlignment: Text.AlignVCenter
-                    text: (root.picked.length === 1 ? "Episode " + root.picked[0] : Fmt.plural(root.picked.length, "episode", "episodes")) + ":"
+                    text: root.picked.length === 1 ? words.t("schedule-picked-one", { number: root.picked[0] }) : words.t("schedule-picked", { count: root.picked.length })
                     role: "ui"
                 }
                 Field {
                     id: dateField
                     objectName: "schedule-date"
                     width: theme.space(44)
-                    placeholder: "7 Jan, March 2027, 2027"
+                    placeholder: words.t("schedule-date-placeholder")
                     onTextChanged: typedDebounce.restart()
                     Keys.onReturnPressed: root.apply(root.typed)
                     Keys.onEnterPressed: root.apply(root.typed)
                 }
                 Button {
                     objectName: "schedule-set"
-                    text: "Set date"
+                    msg: "schedule-set-date"
                     enabled: root.picked.length > 0 && root.typed !== null
                     onClicked: root.apply(root.typed)
                 }
                 Button {
                     objectName: "schedule-tbc"
-                    text: "No date yet"
+                    msg: "schedule-no-date-yet"
                     enabled: root.picked.length > 0
                     onClicked: root.apply({ at: null, year: null, month: null })
                 }
                 Button {
                     objectName: "schedule-weekly"
                     visible: root.picked.length > 1
-                    text: "Weekly"
+                    msg: "schedule-weekly"
                     icon: root.weekly ? "check" : ""
                     flat: !root.weekly
                     onClicked: root.weekly = !root.weekly
                 }
                 Button {
                     objectName: "schedule-last"
-                    text: root.picked.length === 1 && root.endAt === root.picked[0] ? "Not the last" : "Last episode"
+                    text: root.picked.length === 1 && root.endAt === root.picked[0] ? words.t("schedule-not-last") : words.t("schedule-last-episode")
                     visible: root.picked.length === 1
                     onClicked: root.markLast()
                 }
                 Button {
                     objectName: "schedule-clear-picked"
                     flat: true
-                    text: "Clear date"
+                    msg: "schedule-clear-date"
                     visible: root.picked.some(function(e) { return root.noteFor(e) !== null })
                     onClicked: root.unset()
                 }
@@ -657,11 +657,11 @@ Corner {
                 Row {
                     anchors.right: parent.right
                     spacing: theme.space(2)
-                    Button { flat: true; text: "Cancel"; onClicked: root.close() }
+                    Button { flat: true; msg: "action-cancel"; onClicked: root.close() }
                     Button {
                         objectName: "schedule-save"
                         primary: true
-                        text: "Save"
+                        msg: "action-save"
                         enabled: JSON.stringify(root.draft) !== JSON.stringify(root.collapse(root.expand(root.saved))) || root.endAt !== root.savedEnd
                         onClicked: root.save(root.draft)
                     }

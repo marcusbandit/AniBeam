@@ -2,6 +2,8 @@
 //! `VideoPlayer.tsx`: no weeks bucket, zero-padded lower units on a countdown, `m:ss` under
 //! an hour, base 1024 bytes with one decimal past bytes.
 
+use anibeam_core::i18n::{Arg, tr};
+
 const MIN: f64 = 60.0;
 const HOUR: f64 = 3600.0;
 const DAY: f64 = 86400.0;
@@ -12,55 +14,64 @@ pub fn relative(ts_secs: f64, now_secs: f64) -> String {
     let diff = now_secs - ts_secs;
     let abs = diff.abs();
     if abs < MIN {
-        return "just now".to_string();
+        return tr("fmt-just-now", &[]);
     }
+    let unit = |id: &str, n: u64| tr(id, &[("n", n.into())]);
     let label = if abs < HOUR {
-        format!("{}m", (abs / MIN).floor())
+        unit("fmt-minutes-short", (abs / MIN).floor() as u64)
     } else if abs < DAY {
-        format!("{}h", (abs / HOUR).floor())
+        unit("fmt-hours-short", (abs / HOUR).floor() as u64)
     } else if abs < MONTH {
-        format!("{}d", (abs / DAY).floor())
+        unit("fmt-days-short", (abs / DAY).floor() as u64)
     } else {
         let total_mo = (abs / MONTH).floor() as u64;
         let y = total_mo / 12;
         let mo = total_mo % 12;
         if y > 0 {
             if mo > 0 {
-                format!("{y}y {mo}mo")
+                tr(
+                    "fmt-years-months-short",
+                    &[("years", y.into()), ("months", mo.into())],
+                )
             } else {
-                format!("{y}y")
+                unit("fmt-years-short", y)
             }
         } else {
-            format!("{total_mo}mo")
+            unit("fmt-months-short", total_mo)
         }
     };
-    if diff < 0.0 {
-        format!("in {label}")
-    } else {
-        format!("{label} ago")
-    }
+    let id = if diff < 0.0 { "fmt-in" } else { "fmt-ago" };
+    tr(id, &[("span", label.into())])
+}
+
+/// Two digits, as the lower units of a countdown show them: "04".
+fn pad(n: u64) -> Arg<'static> {
+    Arg::from(format!("{n:02}"))
 }
 
 /// "2d 04h 05m", "4h 12m", "12m", or "now".
 pub fn countdown(secs_left: f64) -> String {
     if secs_left.is_nan() || secs_left <= 0.0 {
-        return "now".to_string();
+        return tr("fmt-now", &[]);
     }
     let total = secs_left.floor() as u64;
     let (d, h, m) = (total / 86400, (total % 86400) / 3600, (total % 3600) / 60);
     if d > 0 {
-        format!("{d}d {h:02}h {m:02}m")
+        tr(
+            "fmt-countdown-days",
+            &[("d", d.into()), ("h", pad(h)), ("m", pad(m))],
+        )
     } else if h > 0 {
-        format!("{h}h {m:02}m")
+        tr("fmt-countdown-hours", &[("h", h.into()), ("m", pad(m))])
     } else {
-        format!("{m}m")
+        tr("fmt-minutes-short", &[("n", m.into())])
     }
 }
 
 /// The series hero's countdown, with seconds: "1d 01h 01m 01s", "1h 01m 01s", "1m 01s", "59s".
 pub fn countdown_seconds(secs_left: f64) -> String {
     if secs_left.is_nan() || secs_left <= 0.0 {
-        return "now".to_string();
+        return tr("fmt-now", &[]);
     }
     let total = secs_left.floor() as u64;
     let (d, h, m, s) = (
@@ -70,13 +81,22 @@ pub fn countdown_seconds(secs_left: f64) -> String {
         total % 60,
     );
     if d > 0 {
-        format!("{d}d {h:02}h {m:02}m {s:02}s")
+        tr(
+            "fmt-countdown-days-seconds",
+            &[("d", d.into()), ("h", pad(h)), ("m", pad(m)), ("s", pad(s))],
+        )
     } else if h > 0 {
-        format!("{h}h {m:02}m {s:02}s")
+        tr(
+            "fmt-countdown-hours-seconds",
+            &[("h", h.into()), ("m", pad(m)), ("s", pad(s))],
+        )
     } else if m > 0 {
-        format!("{m}m {s:02}s")
+        tr(
+            "fmt-countdown-minutes-seconds",
+            &[("m", m.into()), ("s", pad(s))],
+        )
     } else {
-        format!("{s}s")
+        tr("fmt-seconds-short", &[("n", s.into())])
     }
 }
 
@@ -113,10 +133,14 @@ pub fn clock_ms(secs: f64) -> String {
 /// How long an episode or a film runs: "24 min", "1 h 52 min", or "2 h" on the hour. An
 /// unknown length is the caller's to leave out, never a 0 passed here.
 pub fn runtime(minutes: u32) -> String {
-    match (minutes / 60, minutes % 60) {
-        (0, m) => format!("{m} min"),
-        (h, 0) => format!("{h} h"),
-        (h, m) => format!("{h} h {m} min"),
+    let (h, m) = (u64::from(minutes / 60), u64::from(minutes % 60));
+    match (h, m) {
+        (0, m) => tr("fmt-runtime-minutes", &[("m", m.into())]),
+        (h, 0) => tr("fmt-runtime-hours", &[("h", h.into())]),
+        (h, m) => tr(
+            "fmt-runtime-hours-minutes",
+            &[("h", h.into()), ("m", m.into())],
+        ),
     }
 }
 
@@ -141,9 +165,14 @@ pub fn bytes(n: u64) -> String {
 pub fn episode_name(title: Option<&str>, number: f64) -> String {
     match title.map(str::trim) {
         Some(t) if !t.is_empty() => t.to_string(),
-        _ if number.is_finite() && number.fract() == 0.0 => format!("Episode {}", number as i64),
-        _ if number.is_finite() => format!("Episode {}", (number * 100.0).round() / 100.0),
-        _ => "Episode".to_string(),
+        _ if number.is_finite() && number.fract() == 0.0 => {
+            tr("episode-number", &[("number", (number as i64).into())])
+        }
+        _ if number.is_finite() => tr(
+            "episode-number",
+            &[("number", ((number * 100.0).round() / 100.0).into())],
+        ),
+        _ => tr("fmt-episode", &[]),
     }
 }
 
@@ -151,9 +180,12 @@ pub fn episode_name(title: Option<&str>, number: f64) -> String {
 /// when `through` names a later one landing at the same moment.
 pub fn episode_span(first: u32, through: u32) -> String {
     if through > first {
-        format!("Episodes {first} to {through}")
+        tr(
+            "fmt-episode-span",
+            &[("first", first.into()), ("through", through.into())],
+        )
     } else {
-        format!("Episode {first}")
+        tr("episode-number", &[("number", first.into())])
     }
 }
 

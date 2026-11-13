@@ -6,8 +6,8 @@ import QtQuick
 Corner {
     id: root
     property alias text: input.text
-    property string placeholder: "Search titles or folders"
-    property string hint: "/ or Ctrl+K"
+    property string placeholder: words.t("search-field-placeholder")
+    property string hint: words.t("search-field-hint")
     signal cleared()
     // Return or Enter in the field: a page that searches on demand rather than as you type
     signal accepted()
@@ -90,7 +90,7 @@ Corner {
         color: clearArea.pressed ? theme.surfacePressed : clearArea.containsMouse ? theme.tileHover : "transparent"
         Icon { anchors.centerIn: parent; glyph: "x"; size: theme.space(4); color: clearArea.containsMouse ? theme.text : theme.textDim }
         MouseArea { id: clearArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared(); input.forceActiveFocus() }
-            Accessible.role: Accessible.Button; Accessible.name: "Clear the search"; Accessible.onPressAction: clearArea.clicked(null) }
-        Tooltip { text: "Clear the search" }
+            Accessible.role: Accessible.Button; Accessible.name: words.t("search-field-clear"); Accessible.onPressAction: clearArea.clicked(null) }
+        Tooltip { msg: "search-field-clear" }
     }
 }

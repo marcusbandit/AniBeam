@@ -12,14 +12,14 @@ Item {
     id: page
     objectName: "stats-page"
     property var props: ({})
-    property string title: "Stats"
+    property string title: words.t("stats-title")
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
 
     property int year: props.year || 0
     property var stats: null
-    readonly property var monthWords: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    readonly property var monthNames: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    readonly property var monthIds: ["stats-month-jan", "stats-month-feb", "stats-month-mar", "stats-month-apr", "stats-month-may", "stats-month-jun",
+                                     "stats-month-jul", "stats-month-aug", "stats-month-sep", "stats-month-oct", "stats-month-nov", "stats-month-dec"]
     function hours(minutes) { var h = minutes / 60; return h >= 10 ? Math.round(h) : Math.round(h * 10) / 10 }
     readonly property int busiest: {
         if (!stats) return -1
@@ -90,7 +90,7 @@ Item {
             anchors.fill: parent
             spacing: theme.space(2)
             Label { text: ranked.heading; role: "title" }
-            Label { visible: ranked.rows.length === 0; text: "Nothing yet"; role: "ui"; color: theme.textFaint }
+            Label { visible: ranked.rows.length === 0; msg: "stats-nothing-yet"; role: "ui"; color: theme.textFaint }
             Repeater {
                 model: ranked.rows
                 Item {
@@ -105,7 +105,7 @@ Item {
                         width: Math.max(height, (parent.width * 0.4) * modelData.episodes / Math.max(1, ranked.rows[0].episodes))
                         color: index === 0 ? theme.accent : theme.line
                     }
-                    Label { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: Fmt.plural(modelData.episodes, "ep", "eps"); role: "ledger"; color: theme.textDim }
+                    Label { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; msg: "stats-ranked-episodes"; msgArgs: ({ count: modelData.episodes }); role: "ledger"; color: theme.textDim }
                 }
             }
         }
@@ -119,10 +119,10 @@ Item {
         Item {
             width: parent.width
             height: theme.space(20)
-            Label { id: titleLabel; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; text: "Stats"; role: "display"; font.pointSize: theme.typePage }
+            Label { id: titleLabel; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; msg: "stats-title"; role: "display"; font.pointSize: theme.typePage }
             Label {
                 anchors.left: titleLabel.right; anchors.leftMargin: theme.space(3); anchors.baseline: titleLabel.baseline
-                text: page.stats ? "What you watched in " + page.stats.year : ""
+                text: page.stats ? words.t("stats-year-summary", { year: String(page.stats.year) }) : ""
                 role: "ui"; color: theme.textDim
             }
             Seg {
@@ -141,9 +141,9 @@ Item {
             width: parent.width; height: visible ? theme.space(60) : 0
             EmptyState {
                 icon: "chart-pie"
-                title: "Nothing watched yet"
-                body: "Finish an episode and it counts here: hours, genres and the seasons you watched."
-                Button { text: "Library"; icon: "layers"; onClicked: frame.go("library") }
+                title: words.t("stats-empty-title")
+                body: words.t("stats-empty-body")
+                Button { msg: "stats-open-library"; icon: "layers"; onClicked: frame.go("library") }
             }
         }
 
@@ -153,10 +153,10 @@ Item {
             width: parent.width
             spacing: theme.grout
             readonly property real cell: (width - 3 * spacing) / 4
-            Figure { width: parent.cell; objectName: "stats-hours"; value: page.stats ? String(page.hours(page.stats.minutes)) : ""; label: "hours watched" }
-            Figure { width: parent.cell; value: page.stats ? String(page.stats.episodes) : ""; label: page.stats && page.stats.episodes === 1 ? "episode" : "episodes" }
-            Figure { width: parent.cell; value: page.stats ? String(page.stats.series_completed) : ""; label: "series finished" }
-            Figure { width: parent.cell; value: page.busiest >= 0 ? page.monthWords[page.busiest] : "None"; label: "busiest month" }
+            Figure { width: parent.cell; objectName: "stats-hours"; value: page.stats ? String(page.hours(page.stats.minutes)) : ""; label: words.t("stats-hours-watched") }
+            Figure { width: parent.cell; value: page.stats ? String(page.stats.episodes) : ""; label: words.t("stats-episodes-label", { count: page.stats ? page.stats.episodes : 0 }) }
+            Figure { width: parent.cell; value: page.stats ? String(page.stats.series_completed) : ""; label: words.t("stats-series-finished") }
+            Figure { width: parent.cell; value: page.busiest >= 0 ? words.t(page.monthIds[page.busiest]) : words.t("stats-none"); label: words.t("stats-busiest-month") }
         }
 
         // ---- A bar per month, hours above it
@@ -164,7 +164,7 @@ Item {
             visible: !!page.stats && page.stats.years.length > 0
             width: parent.width
             height: theme.space(64)
-            Label { id: monthsTitle; text: "By month"; role: "title" }
+            Label { id: monthsTitle; msg: "stats-by-month"; role: "title" }
             Row {
                 id: bars
                 anchors.top: monthsTitle.bottom; anchors.topMargin: theme.space(4)
@@ -178,7 +178,7 @@ Item {
                         required property var modelData
                         required property int index
                         width: bars.cell; height: bars.height
-                        Label { id: monthLabel; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; text: page.monthWords[index]; role: "ledger"; color: theme.textDim }
+                        Label { id: monthLabel; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; text: words.t(page.monthIds[index]); role: "ledger"; color: theme.textDim }
                         Rectangle {
                             id: bar
                             anchors.bottom: monthLabel.top; anchors.bottomMargin: theme.space(2)
@@ -188,7 +188,7 @@ Item {
                             radius: theme.radiusSm
                             color: index === page.busiest ? theme.accent : modelData.minutes > 0 ? theme.textFaint : theme.line
                         }
-                        Label { visible: modelData.minutes > 0; anchors.bottom: bar.top; anchors.bottomMargin: theme.space(1); anchors.horizontalCenter: parent.horizontalCenter; text: page.hours(modelData.minutes) + "h"; role: "ledger"; color: theme.textDim }
+                        Label { visible: modelData.minutes > 0; anchors.bottom: bar.top; anchors.bottomMargin: theme.space(1); anchors.horizontalCenter: parent.horizontalCenter; msg: "stats-month-hours"; msgArgs: ({ hours: page.hours(modelData.minutes) }); role: "ledger"; color: theme.textDim }
                     }
                 }
             }
@@ -200,9 +200,9 @@ Item {
             width: parent.width
             spacing: theme.grout
             readonly property real cell: (width - 2 * spacing) / 3
-            Ranked { width: parent.cell; heading: "Top genres"; rows: page.stats ? page.stats.genres : [] }
-            Ranked { width: parent.cell; heading: "Top studios"; rows: page.stats ? page.stats.studios : [] }
-            Ranked { width: parent.cell; heading: "Seasons watched"; rows: page.stats ? page.stats.seasons : [] }
+            Ranked { width: parent.cell; heading: words.t("stats-top-genres"); rows: page.stats ? page.stats.genres : [] }
+            Ranked { width: parent.cell; heading: words.t("stats-top-studios"); rows: page.stats ? page.stats.studios : [] }
+            Ranked { width: parent.cell; heading: words.t("stats-seasons-watched"); rows: page.stats ? page.stats.seasons : [] }
         }
 
         // ---- The recap: one card for the year, saved as a PNG
@@ -221,16 +221,16 @@ Item {
                     id: recapHead
                     spacing: theme.space(1)
                     Label { text: page.stats ? String(page.stats.year) : ""; role: "display"; font.pointSize: theme.typePage * 1.6; color: theme.accent }
-                    Label { text: "My year in anime"; role: "title" }
+                    Label { msg: "stats-recap-title"; role: "title" }
                 }
                 Grid {
                     id: recapFigures
                     anchors.top: recapHead.bottom; anchors.topMargin: theme.space(6)
                     columns: 2; columnSpacing: theme.space(10); rowSpacing: theme.space(4)
                     Repeater {
-                        model: page.stats ? [[String(page.hours(page.stats.minutes)), "hours"], [String(page.stats.episodes), "episodes"],
-                                             [String(page.stats.series_completed), "series finished"],
-                                             [page.stats.genres.length ? page.stats.genres[0].name : "None", "top genre"]] : []
+                        model: page.stats ? [[String(page.hours(page.stats.minutes)), words.t("stats-recap-hours")], [String(page.stats.episodes), words.t("stats-recap-episodes")],
+                                             [String(page.stats.series_completed), words.t("stats-series-finished")],
+                                             [page.stats.genres.length ? page.stats.genres[0].name : words.t("stats-none"), words.t("stats-recap-top-genre")]] : []
                         Column {
                             required property var modelData
                             Label { text: modelData[0]; role: "display"; font.pointSize: theme.typeHeading }
@@ -259,7 +259,7 @@ Item {
                                 }
                             }
                             Label { width: parent.w; text: modelData.title; role: "ui"; elide: Text.ElideRight }
-                            Label { width: parent.w; text: Fmt.plural(modelData.episodes, "episode", "episodes"); role: "ledger"; color: theme.textDim }
+                            Label { width: parent.w; msg: "count-episodes"; msgArgs: ({ count: modelData.episodes }); role: "ledger"; color: theme.textDim }
                         }
                     }
                 }
@@ -270,17 +270,17 @@ Item {
                 objectName: "stats-save-recap"
                 anchors.left: recap.right; anchors.leftMargin: theme.space(4)
                 anchors.top: recap.top
-                text: "Save as image"; icon: "image"
+                msg: "stats-save-image"; icon: "image"
                 onClicked: saveDialog.open()
             }
         }
     }
     FileDialog {
         id: saveDialog
-        title: "Save the recap"
+        title: words.t("stats-save-dialog-title")
         fileMode: FileDialog.SaveFile
         defaultSuffix: "png"
-        nameFilters: ["PNG image (*.png)"]
+        nameFilters: [words.t("stats-save-filter-png")]
         currentFolder: StandardPaths.writableLocation(StandardPaths.PicturesLocation)
         currentFile: currentFolder + "/AniBeam " + (page.stats ? page.stats.year : "") + ".png"
         onAccepted: page.saveRecap(Fmt.localPath(String(selectedFile)))
@@ -288,7 +288,7 @@ Item {
     // The card at twice its size on screen, so the PNG holds up when shared
     function saveRecap(path) {
         recap.grabToImage(function(result) {
-            frame.toast(result.saveToFile(path) ? "Recap saved" : "Could not save the recap")
+            frame.toast(result.saveToFile(path) ? words.t("stats-recap-saved") : words.t("stats-recap-save-failed"))
         }, Qt.size(recap.width * 2, recap.height * 2))
     }
 }

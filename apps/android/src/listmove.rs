@@ -279,7 +279,7 @@ fn status_word(s: ListStatus) -> &'static str {
 }
 
 /// A score as the desktop writes it: one decimal, a quarter point rounded away from even.
-fn score(x: f64) -> String {
+pub(crate) fn score(x: f64) -> String {
     let quarters = x * 4.0;
     if quarters.fract() == 0.0 && (quarters as i64).rem_euclid(2) != 0 {
         format!("{:.1}", (x * 10.0).round() / 10.0)

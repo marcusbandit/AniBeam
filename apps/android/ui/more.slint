@@ -33,6 +33,12 @@ export global Ask {
     in-out property <bool> versions-remote;
     // The file the row plays now, marked in the list.
     in-out property <int> versions-current;
+    // An episode row held down: its code and title, and what marking it needs.
+    in-out property <bool> mark-open;
+    in-out property <string> mark-title;
+    in-out property <float> mark-number;
+    in-out property <int> mark-season;
+    in-out property <bool> mark-watched;
 }
 
 // A setting the search found: the section it lives in, its label, and the section's name.
@@ -887,6 +893,15 @@ export component MorePage inherits Rectangle {
                     tappable: true;
                     chevron: true;
                     clicked => { AppData.restart-onboarding(); }
+                }
+            }
+            Lit {
+                // The settings index's key, matched to Settings.lit, not a word on screen.
+                on: Settings.lit == "Ratings"; // i18n: none
+                reveal(y) => { about.reveal(y); }
+                ListRow {
+                    label: AppData.ratings-label;
+                    helper: AppData.ratings-credit;
                 }
             }
             Lit {

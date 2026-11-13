@@ -248,7 +248,7 @@ Item {
                 objectName: root.objectName === "hero-tile" ? "hero-play" : ""
                 primary: true
                 icon: "play"
-                text: "Play"
+                msg: "action-play"
                 onClicked: root.played()
             }
         }
@@ -309,7 +309,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.dismissed()
             }
-            Tooltip { text: "Not interested" }
+            Tooltip { msg: "card-not-interested" }
         }
     }
 }

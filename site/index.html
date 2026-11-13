@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AniBeam: an anime library and player for your own files</title>
-<meta name="description" content="AniBeam turns the folder your anime lives in into a library. It matches every show on AniList, plays episodes in the window and syncs your progress to AniList or MyAnimeList. Free for Linux, Windows, Mac and Android.">
+<title>AniBeam: your anime, on your drive</title>
+<meta name="description" content="AniBeam turns the folder your anime lives in into a library. It matches every show on AniList, plays episodes in the window and syncs your progress to AniList. Free for Linux, Windows, Mac and Android.">
 <link rel="canonical" href="https://anibeam.app/">
-<meta name="theme-color" content="#07090f">
+<meta name="theme-color" content="#07080a">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="img/icon.png">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="AniBeam">
-<meta property="og:title" content="AniBeam: your anime folder, as a library you can watch and track">
-<meta property="og:description" content="Matches every show on AniList, plays in the window, syncs to AniList and MyAnimeList. Free for Linux, Windows, Mac and Android.">
+<meta property="og:title" content="AniBeam: your anime, on your drive">
+<meta property="og:description" content="Matches every show on AniList, plays in the window and syncs your progress. Free for Linux, Windows, Mac and Android.">
 <meta property="og:url" content="https://anibeam.app/">
 <meta property="og:image" content="https://anibeam.app/img/og.jpg">
 <meta property="og:image:width" content="1200">
@@ -27,11 +27,11 @@
   "@type": "SoftwareApplication",
   "name": "AniBeam",
   "url": "https://anibeam.app/",
-  "description": "An anime library and player for your own files. Matches every show on AniList, plays episodes in the window and syncs progress to AniList and MyAnimeList.",
+  "description": "An anime library and player for your own files. Matches every show on AniList, plays episodes in the window and syncs progress to AniList.",
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "Linux, Windows, macOS, Android",
   "image": "https://anibeam.app/img/og.jpg",
-  "screenshot": "https://anibeam.app/img/home.webp",
+  "screenshot": "https://anibeam.app/img/tour/home.webp",
   "downloadUrl": "https://github.com/marcusbandit/AniBeam/releases/latest",
   "license": "https://www.gnu.org/licenses/gpl-3.0.html",
   "isAccessibleForFree": true,
@@ -40,142 +40,291 @@
 }
 </script>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=B612+Mono:wght@400;700&display=swap">
 <link rel="stylesheet" href="style.css">
+<script src="common.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
 
-<header class="top">
+<header class="nav">
   <a class="brand" href="./" aria-label="AniBeam home">
-    <img src="img/logo.svg" alt="" width="32" height="32">
+    <img src="img/logo.svg" alt="" width="28" height="28">
     <span>AniBeam</span>
   </a>
-  <nav class="top-nav" aria-label="Main">
-    <a href="#install">Install</a>
-    <a href="https://github.com/marcusbandit/AniBeam">GitHub</a>
+  <nav class="nav-links" aria-label="Main">
+    <span class="nav-lang"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>English</span>
+    <a class="nav-gh" href="https://github.com/marcusbandit/AniBeam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>GitHub</a>
   </nav>
+  <a class="btn btn-primary btn-sm" href="download/">Download</a>
 </header>
 
 <main>
 
-<section class="hero">
+<section class="hero" id="top">
+  <div class="hero-grid" aria-hidden="true"></div>
+  <div class="beams" aria-hidden="true">
+    <i style="--i:0;--x:4%;--y:820px;--w:78%;--h:30px;--a:.42;--b:14px;--g:7.5s;--gd:1.2s"></i>
+    <i style="--i:1;--x:24%;--y:870px;--w:70%;--h:9px;--a:.55;--b:4px;--g:6s;--gd:2.6s"></i>
+    <i style="--i:2;--x:-4%;--y:790px;--w:62%;--h:60px;--a:.16;--b:30px;--g:9s;--gd:0s"></i>
+    <i style="--i:3;--x:44%;--y:890px;--w:62%;--h:2.5px;--a:.85;--b:.6px;--g:5.2s;--gd:.4s"></i>
+    <i style="--i:4;--x:8%;--y:900px;--w:46%;--h:14px;--a:.3;--b:8px;--g:8s;--gd:3.4s"></i>
+    <i style="--i:5;--x:54%;--y:860px;--w:50%;--h:2px;--a:.7;--b:.5px;--g:4.6s;--gd:1.9s"></i>
+    <i style="--i:6;--x:64%;--y:910px;--w:40%;--h:2px;--a:.55;--b:.5px;--g:6.4s;--gd:3s"></i>
+  </div>
+
+  <div class="floats" id="floats" aria-hidden="true">
+    <span class="float" style="--x:max(-600px,-46vw);--y:150px;--w:132px;--rot:-7deg;--fx:-180px;--fy:-40px;--d:.38s;--depth:1.2"><img src="img/posters/frieren.webp" alt=""></span>
+    <span class="float" style="--x:min(436px,34vw);--y:150px;--w:132px;--rot:6deg;--fx:180px;--fy:-60px;--d:.46s;--depth:1.2"><img src="img/posters/csm.webp" alt=""></span>
+    <span class="float" style="--x:max(-560px,-47vw);--y:-10px;--w:96px;--rot:5deg;--fx:-90px;--fy:-80px;--d:.54s;--depth:.6"><img src="img/posters/gits.webp" alt=""></span>
+    <span class="float" style="--x:min(500px,39vw);--y:-10px;--w:96px;--rot:-5deg;--fx:100px;--fy:-90px;--d:.58s;--depth:.6"><img src="img/posters/spirited.webp" alt=""></span>
+  </div>
+
   <div class="hero-copy">
-    <h1>Your anime folder, as a library you can watch and track.</h1>
-    <p class="lede">Point AniBeam at the folder your shows live in. It finds every series,
-      matches it on AniList, plays episodes right in the window and keeps your list up to date.</p>
-    <div class="cta">
-      <a class="button primary" id="dl-main" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download AniBeam</a>
-      <a class="button quiet" href="#install">Other platforms</a>
+    <h1>
+      <span class="rise" style="--d:0s">Your anime,</span>
+      <span class="rise" style="--d:.09s">on your drive.</span>
+    </h1>
+    <div class="hero-actions rise" style="--d:.24s">
+      <a class="btn btn-primary btn-lg dl-auto" id="dl-main" href="download/">
+        <svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
+        <span>Download AniBeam</span>
+      </a>
+      <a class="btn btn-ghost btn-lg dl-other" href="download/">Other platforms</a>
+      <a class="btn btn-ghost btn-lg ios-mac" href="download/"><svg viewBox="0 0 24 24" class="os-icon" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg><span>Get it for Mac</span></a>
     </div>
-    <p class="fine" id="dl-note">Free and open source. Linux, Windows, Mac and Android.</p>
   </div>
 
-  <figure class="match" aria-label="Files in an anime folder, each matched to its show">
-    <figcaption class="match-root">~/Anime</figcaption>
-    <ol class="match-rows">
-      <li style="--i:0"><code><span>Sousou no Frieren/</span>Frieren - 01.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Sousou no Frieren</b><small>28 episodes</small></span></li>
-      <li style="--i:1"><code><span>Dungeon Meshi/</span>Dungeon Meshi - 07.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Dungeon Meshi</b><small>24 episodes</small></span></li>
-      <li style="--i:2"><code><span>Bocchi the Rock/</span>Bocchi - 12.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Bocchi the Rock!</b><small>12 episodes</small></span></li>
-      <li style="--i:3"><code><span>Kusuriya/</span>Kusuriya no Hitorigoto - 03.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Kusuriya no Hitorigoto</b><small>24 episodes</small></span></li>
-      <li style="--i:4"><code><span>Vinland Saga S2/</span>Vinland Saga - 18.mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>VINLAND SAGA Season 2</b><small>24 episodes</small></span></li>
-      <li style="--i:5"><code><span>Movies/</span>Suzume (2022).mkv</code><span class="beam" aria-hidden="true"></span><span class="show"><b>Suzume no Tojimari</b><small>Film</small></span></li>
-    </ol>
-  </figure>
-</section>
-
-<figure class="shot shot-hero">
-  <img src="img/home.webp" width="1600" height="1000" alt="AniBeam's Home page: recently downloaded shows and shows not started yet, as poster cards with episode progress">
-</figure>
-
-<section class="features" aria-labelledby="features-h">
-  <div class="features-head">
-    <h2 id="features-h">Drop files in, get a library</h2>
-    <p>New files show up on their own, matched, with posters, synopses and what airs next.
-      Nothing to import and no folder to rescan.</p>
-  </div>
-  <dl class="feature-list">
-    <div><dt>Plays in the window</dt><dd>Built on mpv. It remembers where you stopped, offers the next episode, and every key is one <kbd>?</kbd> away.</dd></div>
-    <div><dt>Tracks for you</dt><dd>Watch most of an episode and it lands on AniList or MyAnimeList. Progress goes both ways.</dd></div>
-    <div><dt>Knows what airs</dt><dd>This season's shows, what is out now, and when the next episode lands.</dd></div>
-    <div><dt>New episodes arrive</dt><dd>Subscribe to a release once and every new episode downloads as it comes out. AniBeam ships with no sources; you add your own.</dd></div>
-    <div><dt>Franchise graph</dt><dd>Sequels, prequels and side stories on one map, so you know what to watch next.</dd></div>
-    <div><dt>Thirty-five themes</dt><dd>Catppuccin, Gruvbox, Tokyo Night and Nord among them, or the AniBeam ones.</dd></div>
-    <div><dt>Updates itself</dt><dd>Stable or Nightly, picked in Settings, with a What's new card after each update.</dd></div>
-    <div><dt>A phone app</dt><dd>Android keeps a library of its own and can stream yours from home over Tailscale.</dd></div>
-  </dl>
-  <div class="shot-pair">
-    <figure class="shot">
-      <img src="img/series.webp" width="1600" height="1000" loading="lazy" alt="A series page with its banner, episode list and watch progress">
-      <figcaption>A series page</figcaption>
-    </figure>
-    <figure class="shot">
-      <img src="img/library.webp" width="1600" height="1000" loading="lazy" alt="The Library grid with every show as a poster">
-      <figcaption>The whole library</figcaption>
-    </figure>
+  <div class="window-wrap rise" style="--d:.52s">
+    <div class="window">
+      <nav class="rail" aria-label="Screens of the app">
+        <img class="rail-logo" src="img/logo.svg" alt="" width="36" height="36">
+        <button type="button" data-screen="home" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span>Home</span>
+        </button>
+        <button type="button" data-screen="library" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+          <span>Library</span>
+        </button>
+        <span class="rail-gap" aria-hidden="true"></span>
+        <button type="button" data-screen="series" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="15" x="2" y="7" rx="2"/><path d="m17 2-5 5-5-5"/></svg>
+          <span>A show</span>
+        </button>
+      </nav>
+      <div class="screen">
+        <img id="tour-img" src="img/tour/home.webp" srcset="img/tour/home-1134.webp 1134w, img/tour/home.webp 2268w" sizes="(min-width: 1240px) 1100px, 92vw" width="2268" height="1500" alt="AniBeam's Home: shows to continue and shows not started yet, as poster cards">
+      </div>
+    </div>
   </div>
 </section>
 
-<section class="install" id="install" aria-labelledby="install-h">
-  <h2 id="install-h">Install</h2>
-  <p class="install-version" id="install-version">The newest version is on the <a href="https://github.com/marcusbandit/AniBeam/releases/latest">releases page</a>.</p>
-  <div class="platforms">
-    <div class="platform" data-os="linux">
-      <h3>Linux</h3>
-      <div class="get">
-        <a class="button" data-asset="appimage" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the AppImage</a>
-        <p>On Arch: <code class="cmd">yay -S anibeam-bin</code></p>
-      </div>
-      <p class="note">The AppImage runs on Ubuntu 24.04, Debian 13, Fedora 40 and later. Make it executable, then open it.</p>
-    </div>
-    <div class="platform" data-os="windows">
-      <h3>Windows</h3>
-      <div class="get">
-        <a class="button" data-asset="setup" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the installer</a>
-        <p>Or the <a data-asset="zip" href="https://github.com/marcusbandit/AniBeam/releases/latest">portable zip</a></p>
-      </div>
-      <p class="note">Windows 10 and 11. Installs for you alone, no admin prompt. If SmartScreen stops it, click More info, then Run anyway.</p>
-    </div>
-    <div class="platform" data-os="mac">
-      <h3>Mac</h3>
-      <div class="get">
-        <a class="button" data-asset="dmg" href="https://github.com/marcusbandit/AniBeam/releases/latest">Download the dmg</a>
-        <p>With Homebrew: <code class="cmd">brew install --cask marcusbandit/anibeam/anibeam</code></p>
-      </div>
-      <p class="note">macOS 15 and later, Apple silicon. The first launch asks once: System Settings, Privacy &amp; Security, Open Anyway.</p>
-    </div>
-    <div class="platform" data-os="android">
-      <h3>Android</h3>
-      <div class="get">
-        <a class="button" data-asset="apk" href="https://github.com/marcusbandit/AniBeam/releases?q=android&amp;expanded=true">Download the APK</a>
-      </div>
-      <p class="note">Sideload it. It tracks to the same AniList or MyAnimeList account as your computer.</p>
-    </div>
+<section class="section library" aria-labelledby="library-h">
+  <h2 id="library-h">Drop files in.<br>Get a library.</h2>
+
+  <div class="marquee" id="marquee" aria-hidden="true">
+    <div class="marquee-row"><div class="marquee-track"><span class="poster"><img src="img/posters/frieren.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/aot.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spirited.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/jjk.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/eva.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/csm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/akira.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spyfamily.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gits.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/demonslayer.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mononoke.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/oshinoko.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/fmab.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dandadan.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/perfectblue.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/frieren.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bebop.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/aot.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spirited.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/jjk.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/eva.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/csm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/akira.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/spyfamily.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gits.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/demonslayer.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mononoke.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/oshinoko.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/fmab.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dandadan.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/perfectblue.webp" alt="" loading="lazy" width="160" height="240"></span></div></div>
+    <div class="marquee-row reverse"><div class="marquee-track"><span class="poster"><img src="img/posters/deathnote.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/violet.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/steinsgate.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sololeveling.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/hxh.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bocchi.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/naruto.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/kaguya.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/onepiece.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/madeinabyss.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dbz.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/edgerunners.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sailormoon.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/haikyuu.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mha.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/opm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/yourname.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mob.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/vinland.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/champloo.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/geass.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gurren.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/deathnote.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/violet.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/steinsgate.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sololeveling.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/hxh.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/bocchi.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/naruto.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/kaguya.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/onepiece.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/madeinabyss.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/dbz.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/edgerunners.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/sailormoon.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/haikyuu.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mha.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/opm.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/yourname.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/mob.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/vinland.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/champloo.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/geass.webp" alt="" loading="lazy" width="160" height="240"></span><span class="poster"><img src="img/posters/gurren.webp" alt="" loading="lazy" width="160" height="240"></span></div></div>
   </div>
-  <p class="after">After that, AniBeam updates itself.</p>
 </section>
 
-<section class="steps" aria-labelledby="steps-h">
-  <h2 id="steps-h">First steps</h2>
-  <ol>
-    <li><h3>Add your library</h3><p>Click Add a folder on Home and pick your anime folder. One folder per show works best.</p></li>
-    <li><h3>Connect a tracker</h3><p>Settings, Library, Trackers, Connect. Approve AniBeam in the browser and your list comes along. You can skip this.</p></li>
-    <li><h3>Watch</h3><p>Click a show, then an episode. Space plays and pauses.</p></li>
-    <li><h3>Get new episodes</h3><p>Add an endpoint repo in Settings, Downloads, install the sources you want, then subscribe to a show. Also optional.</p></li>
-  </ol>
+<section class="section feats" id="features" aria-labelledby="feats-h">
+  <h2 id="feats-h">Built for watching.</h2>
+  <div class="feat-grid">
+
+    <article class="feat card feat-player">
+      <h3>Plays your own files</h3>
+      <div class="player" aria-hidden="true">
+        <div class="pl-stage">
+          <div class="pl-video"></div>
+          <div class="pl-glass pl-head">
+            <span class="pl-btn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></span>
+            <div class="pl-titles"><b>City the Animation</b><span>Episode 4</span><em>EP 4</em></div>
+          </div>
+          <div class="tracks">
+            <span class="tracks-h">Audio</span>
+            <span class="tr is-on">Japanese</span>
+            <span class="tr">English</span>
+            <span class="tracks-h">Subtitles</span>
+            <span class="tr is-on">English, full</span>
+            <span class="tr">English, signs only</span>
+            <span class="tr">Off</span>
+          </div>
+          <div class="pl-glass pl-ctl">
+            <div class="pl-times"><span>8:12</span><span class="dim">23:40</span></div>
+            <div class="pl-seek">
+              <span class="pl-track"></span>
+              <span class="pl-skip intro"></span>
+              <span class="pl-skip outro"></span>
+              <span class="pl-fill"></span>
+              <i style="--at:38%"></i><i style="--at:71%"></i>
+              <span class="pl-knob"></span>
+            </div>
+            <div class="pl-row">
+              <span class="pl-group"><span class="pl-btn dim"><svg viewBox="0 0 24 24"><path d="M19 20 9 12l10-8z"/><path d="M5 19V5"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="m5 4 10 8-10 8z"/><path d="M19 5v14"/></svg></span><span class="pl-gap"></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></svg></span><span class="pl-vol"><i></i></span><span class="pl-readout">100</span></span>
+              <span class="pl-group"><span class="pl-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3"/></svg></span><span class="pl-btn lit open"><svg viewBox="0 0 24 24"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M2 12a9 9 0 0 1 8 8"/><path d="M2 16a5 5 0 0 1 4 4"/><path d="M2 20h.01"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M10 8h.01M12 12h.01M14 8h.01M16 12h.01M18 8h.01M6 8h.01M7 16h10M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg></span><span class="pl-btn"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="feat card feat-sync">
+      <h3>Syncs with AniList</h3>
+      <div class="sync" aria-hidden="true">
+        <div class="sync-watch">
+          <span class="sw-label">Episode 13</span>
+          <span class="sw-bar"><i></i></span>
+          <span class="sw-check"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+        </div>
+        <span class="sync-streak"><i></i></span>
+        <div class="al-card">
+          <div class="al-head">
+            <svg viewBox="0 0 24 24"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg>
+            <span>AniList</span>
+            <span class="al-synced"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Synced</span>
+          </div>
+          <div class="al-entry">
+            <img src="img/posters/frieren.webp" alt="" loading="lazy">
+            <div class="al-meta">
+              <b>Sousou no Frieren</b>
+              <span class="al-status">Watching</span>
+            </div>
+            <div class="al-num"><span class="n"><span class="old">12</span><span class="new">13</span></span><span class="of">/ 28</span></div>
+          </div>
+          <div class="al-track"><i></i></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="feat card feat-resume">
+      <h3>Pick up where you left off</h3>
+      <div class="pickup" aria-hidden="true">
+        <div class="pickup-art"></div>
+        <img class="pickup-poster" src="img/posters/frieren.webp" alt="" loading="lazy">
+        <div class="pickup-text">
+          <b>Sousou no Frieren</b>
+          <span class="pickup-ep">Episode 13</span>
+          <span class="cubes"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="half"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="pickup-btns"><span class="pk-resume"><svg viewBox="0 0 24 24"><path d="M6 3l14 9-14 9z"/></svg>Resume episode 13</span><span class="pk-open">Open series</span></span>
+        </div>
+      </div>
+    </article>
+
+    <article class="feat card feat-chain">
+      <h3>Finds every sequel</h3>
+      <div class="related" aria-hidden="true">
+        <div class="stone owned" style="--i:0"><img src="img/posters/aot-20958.webp" alt="" loading="lazy"><div><b>Attack on Titan Season 2</b><span>Sequel, TV, 2017</span><em>In your library</em></div></div>
+        <div class="stone owned" style="--i:1"><img src="img/posters/aot-99147.webp" alt="" loading="lazy"><div><b>Attack on Titan Season 3</b><span>Sequel, TV, 2018</span><em>In your library</em></div></div>
+        <div class="stone" style="--i:2"><img src="img/posters/aot-104578.webp" alt="" loading="lazy"><div><b>Season 3 Part 2</b><span>Sequel, TV, 2019</span><em>On AniList</em></div></div>
+        <div class="stone" style="--i:3"><img src="img/posters/aot-110277.webp" alt="" loading="lazy"><div><b>The Final Season</b><span>Sequel, TV, 2021</span><em>On AniList</em></div></div>
+        <div class="stone" style="--i:4"><img src="img/posters/aot-131681.webp" alt="" loading="lazy"><div><b>Final Season Part 2</b><span>Sequel, TV, 2022</span><em>On AniList</em></div></div>
+        <div class="stone" style="--i:5"><img src="img/posters/aot-146984.webp" alt="" loading="lazy"><div><b>The Final Chapters</b><span>Sequel, special, 2023</span><em>On AniList</em></div></div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<section class="section cast-section" id="cast" aria-labelledby="cast-h">
+  <div class="cast-copy">
+    <h2 id="cast-h">Throw it on<br>the big screen.</h2>
+  </div>
+  <div class="cast-scene" aria-hidden="true">
+    <div class="tv">
+      <div class="tv-screen">
+        <img src="img/art/tv.webp" alt="" loading="lazy">
+        <div class="rx">
+          <img class="rx-logo" src="img/logo.svg" alt="">
+          <div class="rx-text"><b>City the Animation</b><span>Episode 1</span></div>
+          <span class="rx-time">8:12</span>
+          <span class="rx-bar"><i></i></span>
+          <span class="rx-time">23:40</span>
+        </div>
+      </div>
+      <span class="tv-stand"></span>
+    </div>
+    <svg class="cast-arc" viewBox="0 0 400 220" preserveAspectRatio="none">
+      <path id="arc" d="M10 210 C 120 60, 260 40, 390 20" fill="none"/>
+      <path class="arc-line" d="M10 210 C 120 60, 260 40, 390 20" fill="none"/>
+      <circle class="arc-dot" r="4"><animateMotion dur="2.4s" repeatCount="indefinite" rotate="auto"><mpath href="#arc"/></animateMotion></circle>
+    </svg>
+    <div class="remote card">
+      <div class="remote-head">
+        <svg class="cast-on" viewBox="0 0 24 24"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="6" y="7.5" width="12.5" height="9" rx="1" fill="currentColor"/><path d="M2 12a9 9 0 0 1 8 8M2 16a5 5 0 0 1 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="2.6" cy="20" r="1.2" fill="currentColor"/></svg>
+        <span>Living room TV</span>
+      </div>
+      <div class="remote-now">
+        <img src="img/art/tv-thumb.webp" alt="" loading="lazy">
+        <div class="remote-text"><b>City the Animation</b><span>Episode 1</span></div>
+        <span class="remote-play"><svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg></span>
+      </div>
+      <span class="remote-bar"><i></i></span>
+    </div>
+  </div>
+</section>
+
+<section class="section trust" aria-labelledby="trust-h">
+  <div class="trust-inner">
+    <h2 id="trust-h">Your files stay yours.</h2>
+    <div class="trust-grid">
+      <div class="tcell">
+        <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/><path d="M3 3l18 18"/></svg>
+        <h3>Free</h3>
+        <a class="gh" href="https://ko-fi.com/marcusbandit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.351 2.715c-2.7 0-4.986.025-6.83.26C2.078 3.285 0 5.154 0 8.61c0 3.506.182 6.13 1.585 8.493 1.584 2.701 4.233 4.182 7.662 4.182h.83c4.209 0 6.494-2.234 7.637-4a9.5 9.5 0 0 0 1.091-2.338C21.792 14.688 24 12.22 24 9.208v-.415c0-3.247-2.13-5.507-5.792-5.87-1.558-.156-2.65-.208-6.857-.208m0 1.947c4.208 0 5.09.052 6.571.182 2.624.311 4.13 1.584 4.13 4v.39c0 2.156-1.792 3.844-3.87 3.844h-.935l-.156.649c-.208 1.013-.597 1.818-1.039 2.546-.909 1.428-2.545 3.064-5.922 3.064h-.805c-2.571 0-4.831-.883-6.078-3.195-1.09-2-1.298-4.155-1.298-7.506 0-2.181.857-3.402 3.012-3.714 1.533-.233 3.559-.26 6.39-.26m6.547 2.287c-.416 0-.65.234-.65.546v2.935c0 .311.234.545.65.545 1.324 0 2.051-.754 2.051-2s-.727-2.026-2.052-2.026m-10.39.182c-1.818 0-3.013 1.48-3.013 3.142 0 1.533.858 2.857 1.949 3.897.727.701 1.87 1.429 2.649 1.896a1.47 1.47 0 0 0 1.507 0c.78-.467 1.922-1.195 2.623-1.896 1.117-1.039 1.974-2.364 1.974-3.897 0-1.662-1.247-3.142-3.039-3.142-1.065 0-1.792.545-2.338 1.298-.493-.753-1.246-1.298-2.312-1.298"/></svg>Unless you want to donate</a>
+      </div>
+      <div class="tcell">
+        <svg viewBox="0 0 24 24"><path d="M5 12H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h12M22 8v3a1 1 0 0 1-1 1h-7M7 8h.01M3 16v3a1 1 0 0 0 1 1h12m4-4a1 1 0 0 1 1 1v2M7 16h.01M2 2l20 20"/></svg>
+        <h3>No server</h3>
+        <a class="gh" href="https://tailscale.com"><svg class="ts-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#1f1e1e" d="M28.8 0C35.5206 0 38.881 0 41.4479 1.30792C43.7058 2.4584 45.5416 4.29417 46.6921 6.55211C48 9.11905 48 12.4794 48 19.2V28.8C48 35.5206 48 38.881 46.6921 41.4479C45.5416 43.7058 43.7058 45.5416 41.4479 46.6921C38.881 48 35.5206 48 28.8 48H19.2C12.4794 48 9.11905 48 6.55211 46.6921C4.29417 45.5416 2.4584 43.7058 1.30792 41.4479C0 38.881 0 35.5206 0 28.8L0 19.2C0 12.4794 0 9.11905 1.30792 6.55211C2.4584 4.29417 4.29417 2.4584 6.55211 1.30792C9.11905 0 12.4794 0 19.2 0L28.8 0Z"/><g fill="#fff"><circle cx="15" cy="24" r="3"/><circle cx="24" cy="24" r="3"/><circle cx="33" cy="24" r="3"/><circle cx="24" cy="33" r="3"/></g><g fill="#fff" opacity="0.4"><circle cx="15" cy="15" r="3"/><circle cx="24" cy="15" r="3"/><circle cx="33" cy="15" r="3"/><circle cx="15" cy="33" r="3"/><circle cx="33" cy="33" r="3"/></g></svg>But we support Tailscale</a>
+      </div>
+      <div class="tcell">
+        <svg viewBox="0 0 24 24"><path d="M2 21a8 8 0 0 1 10.82-7.48M10 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM17 17l5 5M22 17l-5 5"/></svg>
+        <h3>No account</h3>
+        <span class="gh hint-anilist"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M24 17.53v2.421c0 .71-.391 1.101-1.1 1.101h-5l-.057-.165L11.84 3.736c.106-.502.46-.788 1.053-.788h2.422c.71 0 1.1.391 1.1 1.1v12.38H22.9c.71 0 1.1.392 1.1 1.101zM11.034 2.947l6.337 18.104h-4.918l-1.052-3.131H6.019l-1.077 3.131H0L6.361 2.948h4.673zm-.66 10.96-1.69-5.014-1.541 5.015h3.23z"/></svg>But you can connect to AniList</span>
+      </div>
+      <div class="tcell">
+        <svg viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61M2 2l20 20"/></svg>
+        <h3>No telemetry</h3>
+        <a class="gh" href="https://github.com/marcusbandit/AniBeam/issues/new/choose"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>But feedback would be lovely</a>
+      </div>
+      <div class="tcell">
+        <svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+        <h3>Open source</h3>
+        <a class="gh" href="https://github.com/marcusbandit/AniBeam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>marcusbandit/AniBeam</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section install" id="install" aria-labelledby="install-h">
+  <h2 id="install-h">Get AniBeam.</h2>
+  <div class="hero-actions get-actions">
+    <a class="btn btn-primary btn-lg dl-auto" href="download/">
+      <svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
+      <span>Download AniBeam</span>
+    </a>
+    <a class="btn btn-ghost btn-lg dl-other" href="download/">Other platforms</a>
+      <a class="btn btn-ghost btn-lg ios-mac" href="download/"><svg viewBox="0 0 24 24" class="os-icon" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg><span>Get it for Mac</span></a>
+  </div>
+  <div class="get-term">
+    <div class="term term-big"><span class="prompt">$</span><code><span class="sh-cmd">curl</span> <span class="sh-flag">-fsSL</span> <span class="sh-url">https://anibeam.app/install.sh</span> <span class="sh-op">|</span> <span class="sh-cmd">sh</span></code><button type="button" class="copy" data-copy="curl -fsSL https://anibeam.app/install.sh | sh">Copy</button></div>
+    <span class="dl-term-for">For Linux and Mac</span>
+  </div>
 </section>
 
 </main>
 
 <footer class="foot">
-  <img src="img/logo.svg" alt="" width="40" height="40">
-  <p>AniBeam is free software under the GPL 3.0. This is its only website; the source lives on GitHub.</p>
+  <span class="foot-brand"><img src="img/logo.svg" alt="" width="20" height="20">AniBeam, GPL 3.0</span>
   <nav aria-label="Elsewhere">
-    <a href="https://github.com/marcusbandit/AniBeam">Source</a>
+    <a href="download/">Download</a>
+    <a href="whats-new/">What's new</a>
+    <a href="https://github.com/marcusbandit/AniBeam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>GitHub</a>
     <a href="https://github.com/marcusbandit/AniBeam/issues/new/choose">Report a problem</a>
-    <a href="https://ko-fi.com/marcusbandit">Buy me a coffee</a>
+    <a href="privacy/">Privacy</a>
+    <a href="terms/">Terms</a>
+    <a class="kofi" href="https://ko-fi.com/marcusbandit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.351 2.715c-2.7 0-4.986.025-6.83.26C2.078 3.285 0 5.154 0 8.61c0 3.506.182 6.13 1.585 8.493 1.584 2.701 4.233 4.182 7.662 4.182h.83c4.209 0 6.494-2.234 7.637-4a9.5 9.5 0 0 0 1.091-2.338C21.792 14.688 24 12.22 24 9.208v-.415c0-3.247-2.13-5.507-5.792-5.87-1.558-.156-2.65-.208-6.857-.208m0 1.947c4.208 0 5.09.052 6.571.182 2.624.311 4.13 1.584 4.13 4v.39c0 2.156-1.792 3.844-3.87 3.844h-.935l-.156.649c-.208 1.013-.597 1.818-1.039 2.546-.909 1.428-2.545 3.064-5.922 3.064h-.805c-2.571 0-4.831-.883-6.078-3.195-1.09-2-1.298-4.155-1.298-7.506 0-2.181.857-3.402 3.012-3.714 1.533-.233 3.559-.26 6.39-.26m6.547 2.287c-.416 0-.65.234-.65.546v2.935c0 .311.234.545.65.545 1.324 0 2.051-.754 2.051-2s-.727-2.026-2.052-2.026m-10.39.182c-1.818 0-3.013 1.48-3.013 3.142 0 1.533.858 2.857 1.949 3.897.727.701 1.87 1.429 2.649 1.896a1.47 1.47 0 0 0 1.507 0c.78-.467 1.922-1.195 2.623-1.896 1.117-1.039 1.974-2.364 1.974-3.897 0-1.662-1.247-3.142-3.039-3.142-1.065 0-1.792.545-2.338 1.298-.493-.753-1.246-1.298-2.312-1.298"/></svg>Ko-fi</a>
   </nav>
 </footer>
 

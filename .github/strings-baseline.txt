@@ -1,0 +1,33 @@
+# Raw strings each UI file still holds, from .github/strings-check.py --update.
+# A count only ever goes down; a file not listed may hold none (#792).
+9 apps/android/ui/activity.slint
+19 apps/android/ui/airing.slint
+18 apps/android/ui/app.slint
+14 apps/android/ui/backup.slint
+25 apps/android/ui/calendar.slint
+3 apps/android/ui/calhead.slint
+7 apps/android/ui/data.slint
+14 apps/android/ui/disk.slint
+23 apps/android/ui/downloads.slint
+3 apps/android/ui/feed.slint
+52 apps/android/ui/find.slint
+8 apps/android/ui/home.slint
+13 apps/android/ui/library.slint
+7 apps/android/ui/listmove.slint
+19 apps/android/ui/look.slint
+136 apps/android/ui/more.slint
+2 apps/android/ui/notes.slint
+18 apps/android/ui/notify.slint
+25 apps/android/ui/onboarding.slint
+15 apps/android/ui/player.slint
+36 apps/android/ui/repos.slint
+20 apps/android/ui/series.slint
+3 apps/android/ui/show-entry.slint
+5 apps/android/ui/show-fixes.slint
+15 apps/android/ui/show-lists.slint
+15 apps/android/ui/show-match.slint
+7 apps/android/ui/show-notes.slint
+5 apps/android/ui/show-sections.slint
+3 apps/android/ui/show.slint
+11 apps/android/ui/stats.slint
+31 apps/android/ui/subtitles.slint

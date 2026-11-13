@@ -97,9 +97,10 @@ too, so its library still shows when it is off.
    `my-computer.example.ts.net:8790`, or the machine's `100.x.y.z` address. **Test**
    says whether AniBeam answered and which version it is.
 
-The APK is signed with the debug key in `~/.android/debug.keystore`. Android only installs
-an update over an existing install when both are signed with the same key, so build
-updates on a machine with that keystore, or uninstall first.
+Release APKs are signed with the project's key, so each one installs over the last. An APK
+built in a checkout is signed with that machine's `~/.android/debug.keystore`, and its
+versionCode sits below every nightly and release of its version, so it goes onto a phone
+that has one of those only after an uninstall. On the emulator that is no trouble.
 
 ## Building
 
@@ -135,11 +136,11 @@ scripts/build.sh cargo test --workspace
 scripts/build.sh cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-The version lives in `android/AndroidManifest.xml` (`versionCode` and `versionName`).
-Bump both for every build that leaves the machine, and give the new version its heading in
-`CHANGELOG.md`, which the app shows as What's new. Then run `.github/changelog-fold.sh
-apps/android`, so the notes waiting in `changes/` land under the version that ships them; `build.sh` stops if `versionName`, the
-`version` in `Cargo.toml` and the newest heading in `CHANGELOG.md` disagree.
+The version lives in `Cargo.toml` and nowhere else. `build.sh` works the APK's versionName
+and versionCode out of it, or out of `ANIBEAM_RELEASE_VERSION` when CI ships the build as a
+nightly or a release, and stops when the newest heading in `CHANGELOG.md` is not that
+version. Builds for people come from CI, never from a checkout: CONTRIBUTING.md, under
+Releases.
 
 ## The emulator loop
 

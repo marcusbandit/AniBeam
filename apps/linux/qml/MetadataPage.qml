@@ -26,19 +26,20 @@ Item {
     id: page
     objectName: "metadata-page"
     property var props: ({})
-    property string title: "Show info"
+    property string title: words.t("metadata-title")
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
     function focusSearch() { scroll.contentY = 0; search.focusInput() }
     Keys.onPressed: function(event) { scroll.keyPressed(event) }
 
     readonly property var filters: ["All", "Series", "Movies", "MissingFiles"]
-    readonly property var filterLabels: ["All", "Series", "Films", "Missing"]
+    // Each filter's words with its count, by message ID
+    readonly property var filterLabels: ["metadata-filter-all", "metadata-filter-series", "metadata-filter-films", "metadata-filter-missing"]
     property string filter: "All"
     // A read that failed says so with Try again; before #540 it left the page blank
     property bool loadFailed: false
     property bool hasFolders: false
-    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast("Scan started") }
+    function scanAll() { var r = Door.scan(-1); r.error ? frame.fail(r.error, page.scanAll) : frame.toast(words.t("metadata-scan-started")) }
     function clearQuery() { search.text = ""; queryDebounce.stop(); page.query = ""; page.reload() }
     property string query: props.q || ""
     property var counts: ({ all: 0, series: 0, movies: 0, missing_files: 0 })
@@ -49,7 +50,8 @@ Item {
     property real nowMs: Date.now()
     // The Complete section's sort, kept across runs
     Settings { id: kept; location: Shell.settingsUrl; category: "metadata"; property string completeSort: "Added" }
-    readonly property var completeSorts: ["Added", "Season", "A to Z"]
+    readonly property var completeSorts: ["Added", "Season", "A to Z"]   // i18n: none
+    readonly property var completeSortLabels: ({ "Added": "metadata-sort-added", "Season": "metadata-sort-season", "A to Z": "metadata-sort-a-to-z" })   // i18n: none
     property alias completeSort: kept.completeSort
 
     function reload() {
@@ -104,25 +106,27 @@ Item {
         return "complete"
     }
     readonly property var sectionOrder: [
-        { key: "unmatched", title: "Not recognised" },
-        { key: "missing", title: "Folder not found" },
-        { key: "incomplete", title: "Missing episodes" },
-        { key: "empty", title: "Not downloaded" },
-        { key: "airing", title: "Airing" },
-        { key: "complete", title: "Complete" }
+        { key: "unmatched", title: words.t("metadata-section-unmatched") },
+        { key: "missing", title: words.t("metadata-section-missing") },
+        { key: "incomplete", title: words.t("metadata-section-incomplete") },
+        { key: "empty", title: words.t("metadata-section-empty") },
+        { key: "airing", title: words.t("metadata-section-airing") },
+        { key: "complete", title: words.t("metadata-section-complete") }
     ]
     // The tile's state line: the section's fact for this one series, short enough for a
     // tile's width (the section says the episodes are missing; the pane says which)
     function stateOf(d) {
         var card = d.series || {}, have = d.have || 0, k = bucketOf(d)
-        if (k === "missing") return "Folder not found"
-        if (k === "unmatched") return "No show info yet"
-        if (k === "airing") { var aired = airedOf(d); return Math.min(have, aired) + " of " + aired + " aired" }
+        if (k === "missing") return words.t("metadata-section-missing")
+        if (k === "unmatched") return words.t("metadata-no-info")
+        if (k === "airing") { var aired = airedOf(d); return words.t("metadata-state-aired", { have: Math.min(have, aired), aired: aired }) }
         var expected = expectedOf(d)
-        if (k === "incomplete") return have + " of " + expected
-        if (k === "empty") return "Not downloaded"
+        if (k === "incomplete") return words.t("metadata-state-of", { have: have, expected: expected })
+        if (k === "empty") return words.t("metadata-section-empty")
         var extra = expected > 0 ? Math.max(0, have - expected) : 0
-        return have + " of " + (expected > 0 ? expected : "?") + (extra > 0 ? " +" + extra : "")
+        var total = expected > 0 ? expected : "?"
+        return extra > 0 ? words.t("metadata-state-of-extra", { have: have, expected: total, extra: extra })
+                         : words.t("metadata-state-of", { have: have, expected: total })
     }
     // The same fact with the shortfall spelled out, for the pane's head
     function detailOf(d) {
@@ -130,11 +134,12 @@ Item {
         if (k === "airing") {
             var aired = airedOf(d), shortBy = Math.max(0, aired - have)
             // With no file at all it is not downloaded, not missing
-            if (have === 0 && aired > 0) return "None of the " + aired + " aired episodes are on disk"
-            return Math.min(have, aired) + " of " + aired + " aired on disk" + (shortBy > 0 ? ", " + shortBy + " missing" : "")
+            if (have === 0 && aired > 0) return words.t("metadata-detail-none-aired", { aired: aired })
+            return shortBy > 0 ? words.t("metadata-detail-aired-missing", { have: Math.min(have, aired), aired: aired, missing: shortBy })
+                               : words.t("metadata-detail-aired", { have: Math.min(have, aired), aired: aired })
         }
-        if (k === "empty") return "None of the " + expectedOf(d) + " episodes are on disk"
-        if (k === "incomplete") { var expected = expectedOf(d); return have + " of " + expected + " on disk, " + (expected - have) + " missing" }
+        if (k === "empty") return words.t("metadata-detail-none", { expected: expectedOf(d) })
+        if (k === "incomplete") { var expected = expectedOf(d); return words.t("metadata-detail-missing", { have: have, expected: expected, missing: expected - have }) }
         return stateOf(d)
     }
     // A tile's click: the episodes for a matched series, the match for one without a record
@@ -147,7 +152,7 @@ Item {
             var r = Door.getSeries(page.walkIds[page.walkAt])
             if (!r.error) {
                 var c = r.reply.detail.card
-                matchPanel.walkLine = (page.walkAt + 1) + " of " + page.walkIds.length
+                matchPanel.walkLine = words.t("metadata-walk-position", { at: page.walkAt + 1, total: page.walkIds.length })
                 matchPanel.openFor(c.id, c.title, c.match_info)
                 return
             }
@@ -160,8 +165,8 @@ Item {
         page.walkIds = []
         page.walkAt = -1
         matchPanel.walkLine = ""
-        if (done) frame.toast("That was the last one")
-        else if (left > 0) frame.toast(left === 1 ? "One left under Needs a match" : left + " left under Needs a match")
+        if (done) frame.toast(words.t("metadata-walk-done"))
+        else if (left > 0) frame.toast(words.t("metadata-walk-left", { count: left }))
     }
     Connections {
         target: matchPanel
@@ -180,13 +185,14 @@ Item {
     function shortCountdown(secs) {
         var t = Math.max(0, Math.floor(secs))
         var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
-        return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m"
+        return d > 0 ? words.t("metadata-countdown-days", { days: d, hours: h }) : h > 0 ? words.t("metadata-countdown-hours", { hours: h, minutes: m })
+            : words.t("metadata-countdown-minutes", { minutes: Math.max(1, m) })
     }
     // The tile's dim line: the countdown on an airing series, else the season or the year
     function noteOf(d) {
         var card = d.series || {}
         var n = nextOf(card)
-        if (n) return "Next in " + shortCountdown(n.at - page.nowMs / 1000)
+        if (n) return words.t("metadata-next-in", { wait: shortCountdown(n.at - page.nowMs / 1000) })
         return card.season ? String(card.season) : (card.year !== null && card.year !== undefined ? String(card.year) : "")
     }
     // When a record aired, as one number that sorts: the year four times plus the season's
@@ -283,7 +289,8 @@ Item {
             expected += page.isAiring(d.series || {}) ? page.airedOf(d) : page.expectedOf(d)
         }
         return page.sectionOrder.map(function(o) { return { value: String(n[o.key]), caption: o.title } }).concat([
-            { value: have.toLocaleString(Qt.locale(), "f", 0) + " of " + expected.toLocaleString(Qt.locale(), "f", 0), caption: "Files on disk" }
+            { value: words.t("metadata-files-of", { have: have.toLocaleString(Qt.locale(), "f", 0), expected: expected.toLocaleString(Qt.locale(), "f", 0) }),
+              caption: words.t("metadata-files-on-disk") }
         ])
     }
     function filterCount(f) {
@@ -299,7 +306,7 @@ Item {
     }
     function forget(card) {
         var r = Door.forgetSeries(card.id)
-        r.error ? frame.fail(r.error) : frame.toast("Forgot " + (card.title || card.titles.folder))
+        r.error ? frame.fail(r.error) : frame.toast(words.t("metadata-forgot", { title: card.title || card.titles.folder }))
     }
     Timer { id: debounce; interval: 250; onTriggered: page.reload() }
     Timer { id: queryDebounce; interval: 250; onTriggered: { page.query = search.text; page.reload() } }
@@ -312,12 +319,12 @@ Item {
         function onRevealHiddenChanged() { debounce.restart() }
         function onRefreshFinished(refreshed, failed) {
             debounce.restart()
-            frame.toast(failed > 0 ? "Refreshed " + refreshed + ", " + failed + " could not be refreshed" : "Refreshed " + Fmt.plural(refreshed, "series", "series"))
+            frame.toast(failed > 0 ? words.t("metadata-refreshed-failed", { refreshed: refreshed, failed: failed }) : words.t("metadata-refreshed", { count: refreshed }))
         }
         function onAutoMatchFinished(backfilled, matched, unmatched) {
             debounce.restart()
-            frame.toast(matched > 0 ? "Found " + Fmt.plural(matched, "show", "shows") + (unmatched > 0 ? ", " + unmatched + " still not recognised" : "")
-                                    : unmatched > 0 ? "Found nothing new, " + unmatched + " still not recognised" : "Every show is recognised")
+            frame.toast(matched > 0 ? (unmatched > 0 ? words.t("metadata-found-some-left", { count: matched, unmatched: unmatched }) : words.t("metadata-found", { count: matched }))
+                                    : unmatched > 0 ? words.t("metadata-found-nothing", { unmatched: unmatched }) : words.t("metadata-all-recognised"))
         }
         // A cleared match emits nothing of its own, and the job end is the one signal
         // every bulk action shares
@@ -365,11 +372,11 @@ Item {
                 anchors.right: search.left; anchors.rightMargin: theme.space(6)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(3)
-                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Show info"; role: "display"; font.pointSize: theme.typePage }
+                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; msg: "metadata-title"; role: "display"; font.pointSize: theme.typePage }
                 Label {
                     objectName: "metadata-count"
                     anchors.baseline: titleLabel.baseline
-                    text: Fmt.plural(page.counts.all, "series", "series")
+                    msg: "metadata-count"; msgArgs: ({ count: page.counts.all })
                     role: "ui"
                     color: theme.textDim
                 }
@@ -380,7 +387,7 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(theme.space(100), Math.max(theme.space(40), parent.width * 0.3))
-                placeholder: "Filter titles"
+                placeholder: words.t("metadata-search-placeholder")
                 onTextChanged: queryDebounce.restart()
                 onCleared: { queryDebounce.stop(); page.query = ""; page.reload() }
             }
@@ -393,25 +400,25 @@ Item {
             Seg {
                 id: filterSeg
                 objectName: "metadata-filter"
-                options: page.filters.map(function(f, i) { return { text: page.filterLabels[i] + " " + page.filterCount(f), name: f.toLowerCase() } })
+                options: page.filters.map(function(f, i) { return { text: words.t(page.filterLabels[i], { count: page.filterCount(f) }), name: f.toLowerCase() } })
                 index: Math.max(0, page.filters.indexOf(page.filter))
                 onPicked: function(i) { page.filter = page.filters[i]; page.reload() }
             }
             Button {
                 objectName: "metadata-match-all"
                 flat: true
-                text: "Find the rest"
+                msg: "metadata-find-rest"
                 icon: "link"
-                onClicked: { var r = Door.autoMatch(); r.error ? frame.fail(r.error, clicked) : frame.toast("Looking up the folders AniBeam does not know yet") }
-                Tooltip { text: "Looks up every folder AniBeam does not know yet, on each show info site in the order Settings gives them" }
+                onClicked: { var r = Door.autoMatch(); r.error ? frame.fail(r.error, clicked) : frame.toast(words.t("metadata-find-rest-started")) }
+                Tooltip { msg: "metadata-find-rest-tip" }
             }
             Button {
                 objectName: "metadata-refresh-all"
                 flat: true
-                text: "Refresh all"
+                msg: "metadata-refresh-all"
                 icon: "refresh-cw"
-                onClicked: { var r = Door.refreshAll(); r.error ? frame.fail(r.error, clicked) : frame.toast("Updating the info of every show") }
-                Tooltip { text: "Fetches the info of every recognised show again" }
+                onClicked: { var r = Door.refreshAll(); r.error ? frame.fail(r.error, clicked) : frame.toast(words.t("metadata-refresh-all-started")) }
+                Tooltip { msg: "metadata-refresh-all-tip" }
             }
             // The franchise crawl's own line, only while it runs
             Column {
@@ -423,8 +430,8 @@ Item {
                 topPadding: theme.space(1)
                 Row {
                     spacing: theme.space(2)
-                    Label { text: "Finding franchise links"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim }
-                    Label { text: parent.parent.job && parent.parent.job.total > 0 ? parent.parent.job.done + " of " + parent.parent.job.total : ""; role: "ledger"; color: theme.textDim }
+                    Label { msg: "metadata-crawling"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim }
+                    Label { text: parent.parent.job && parent.parent.job.total > 0 ? words.t("metadata-crawl-progress", { done: parent.parent.job.done, total: parent.parent.job.total }) : ""; role: "ledger"; color: theme.textDim }
                 }
                 EpisodeCubes {
                     width: parent.width
@@ -480,7 +487,7 @@ Item {
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: theme.space(2)
                         small: true
-                        options: page.completeSorts.map(function(s) { return { text: s, name: s.replace(/ /g, "").toLowerCase() } })
+                        options: page.completeSorts.map(function(s) { return { text: words.t(page.completeSortLabels[s]), name: s.replace(/ /g, "").toLowerCase() } })
                         index: Math.max(0, page.completeSorts.indexOf(page.completeSort))
                         onPicked: function(i) { page.completeSort = page.completeSorts[i] }
                     }
@@ -518,20 +525,19 @@ Item {
             EmptyState {
                 objectName: "metadata-empty"
                 icon: page.loadFailed ? "circle-alert" : parent.none ? "database" : "search"
-                title: page.loadFailed ? "Show info did not load"
-                     : parent.none ? (page.hasFolders ? "Nothing found in your folders yet" : "No show info yet")
-                     : page.query !== "" ? "No matches for \"" + page.query + "\""
-                     : "Nothing under " + page.filter
-                body: page.loadFailed ? "AniBeam could not read the library just now. Try again in a moment."
-                    : parent.none ? (page.hasFolders ? "AniBeam found no series in the folders it watches. Scan them again, or check the folders in Settings."
-                                                    : "Your library is empty. Add the folder your anime lives in and AniBeam scans it.")
-                    : page.query !== "" ? "No title in this view has those words."
-                    : "None of your series fit this filter right now. All shows the rest."
-                Button { visible: page.loadFailed; text: "Try again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
-                Button { visible: metaEmpty.none && page.hasFolders; text: "Scan all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
-                Button { visible: metaEmpty.none && !page.hasFolders; text: "Add a folder"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
-                Button { visible: !page.loadFailed && !metaEmpty.none && page.query !== ""; text: "Clear search"; icon: "x"; onClicked: page.clearQuery() }
-                Button { visible: !page.loadFailed && !metaEmpty.none && page.query === "" && page.filter !== "All"; text: "Show all"; icon: "layout-grid"; onClicked: { page.filter = "All"; page.reload() } }
+                title: page.loadFailed ? words.t("metadata-load-failed-title")
+                     : parent.none ? (page.hasFolders ? words.t("metadata-empty-scanned-title") : words.t("metadata-no-info"))
+                     : page.query !== "" ? words.t("metadata-no-matches", { query: page.query })
+                     : words.t("metadata-nothing-under", { filter: page.filter })
+                body: page.loadFailed ? words.t("metadata-load-failed-body")
+                    : parent.none ? (page.hasFolders ? words.t("metadata-empty-scanned-body") : words.t("metadata-empty-body"))
+                    : page.query !== "" ? words.t("metadata-no-matches-body")
+                    : words.t("metadata-nothing-under-body")
+                Button { visible: page.loadFailed; msg: "action-try-again"; icon: "refresh-cw"; primary: true; onClicked: page.reload() }
+                Button { visible: metaEmpty.none && page.hasFolders; msg: "metadata-scan-all"; icon: "refresh-cw"; primary: true; onClicked: page.scanAll() }
+                Button { visible: metaEmpty.none && !page.hasFolders; msg: "metadata-add-folder"; icon: "folder-plus"; primary: true; onClicked: frame.go("settings", { tab: "library" }) }
+                Button { visible: !page.loadFailed && !metaEmpty.none && page.query !== ""; msg: "metadata-clear-search"; icon: "x"; onClicked: page.clearQuery() }
+                Button { visible: !page.loadFailed && !metaEmpty.none && page.query === "" && page.filter !== "All"; msg: "metadata-show-all"; icon: "layout-grid"; onClicked: { page.filter = "All"; page.reload() } }
             }
         }
     }
@@ -649,8 +655,8 @@ Item {
                 readonly property bool hovered: lift > 0.5
                 objectName: String(tile.card.id) === page.firstRefreshId ? "row-refresh" : ""
                 icon: "refresh-cw"; small: true
-                onClicked: { var r = Door.refreshSeries(tile.card.id); r.error ? frame.fail(r.error) : frame.toast("Refreshing " + (tile.card.title || "")) }
-                Tooltip { text: "Fetch this show's info again" }
+                onClicked: { var r = Door.refreshSeries(tile.card.id); r.error ? frame.fail(r.error) : frame.toast(words.t("metadata-refreshing", { title: tile.card.title || "" })) }
+                Tooltip { msg: "metadata-refresh-tip" }
             }
         }
         Component {
@@ -662,10 +668,10 @@ Item {
                 // Two clicks: the first arms it and says what goes, the second forgets
                 property bool armed: false
                 icon: "trash-2"; small: true; danger: true
-                text: armed ? "Remove it" : ""
+                text: armed ? words.t("metadata-forget-armed") : ""
                 onClicked: { if (!armed) { armed = true; forgetDisarm.restart(); return } armed = false; page.forget(tile.card) }
                 Timer { id: forgetDisarm; interval: 4000; onTriggered: forgetGlyph.armed = false }
-                Tooltip { text: forgetGlyph.armed ? "Click again to remove this show and its watch history from AniBeam" : "The folder is not on the disk any more: remove this show and its history from AniBeam" }
+                Tooltip { text: forgetGlyph.armed ? words.t("metadata-forget-confirm-tip") : words.t("metadata-forget-tip") }
             }
         }
 

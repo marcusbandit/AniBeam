@@ -99,7 +99,7 @@ Item {
             height: title.height + note.height + theme.space(1)
             Label {
                 id: title
-                text: "What's new"
+                msg: "whats-new-title"
                 role: "display"
                 font.pointSize: theme.typeHeading
             }
@@ -117,7 +117,7 @@ Item {
                 size: theme.space(4.5)
                 color: closeMouse.containsMouse ? theme.text : theme.textDim
                 anchors.right: parent.right; anchors.top: parent.top
-                MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close(); Accessible.role: Accessible.Button; Accessible.name: "Close"
+                MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close(); Accessible.role: Accessible.Button; Accessible.name: words.t("action-close")
                     Accessible.onPressAction: root.close() }
             }
         }
@@ -195,14 +195,14 @@ Item {
                                         id: change
                                         required property var modelData
                                         width: section.width
-                                        height: words.implicitHeight
+                                        height: changeWords.implicitHeight
                                         Rectangle {
                                             y: Math.round((bodyMetrics.height - height) / 2)
                                             width: theme.space(1.25); height: width; radius: width / 2
                                             color: release.dim ? theme.textFaint : theme.text
                                         }
                                         Label {
-                                            id: words
+                                            id: changeWords
                                             x: theme.space(4)
                                             width: parent.width - x
                                             text: change.modelData
@@ -249,7 +249,7 @@ Item {
                 id: gotIt
                 objectName: "whats-new-got-it"
                 anchors.right: parent.right
-                text: "Got it"
+                msg: "whats-new-got-it"
                 icon: "thumbs-up"
                 primary: true
                 onClicked: root.close()

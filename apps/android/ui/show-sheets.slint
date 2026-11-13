@@ -1,6 +1,7 @@
 // Every sheet a show's page opens, in one place for the window to draw.
 
 import { ShowData } from "show.slint";
+import { DatesSheet } from "show-dates.slint";
 import { EntrySheet } from "show-entry.slint";
 import { FixesSheet } from "show-fixes.slint";
 import { MatchSheet } from "show-match.slint";
@@ -25,6 +26,9 @@ export component ShowSheets inherits Rectangle {
         inset-bottom: root.inset-bottom;
     }
     if ShowData.sheet == 6: MatchSheet {
+        inset-bottom: root.inset-bottom;
+    }
+    if ShowData.sheet == 7: DatesSheet {
         inset-bottom: root.inset-bottom;
     }
 }

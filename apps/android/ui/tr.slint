@@ -1,0 +1,8 @@
+// The phone's lookup into the word catalog, i18n/<lang>/android.ftl and core.ftl: `Tr.t(id)`
+// for a plain message, `Tr.n(id, name, n)` for one that takes a number. `tr.rs` answers
+// with the core's `i18n::tr`, so a missing ID shows in English, then as the ID.
+
+export global Tr {
+    pure callback t(string) -> string;
+    pure callback n(string, string, int) -> string;
+}

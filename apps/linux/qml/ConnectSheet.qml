@@ -159,10 +159,10 @@ Item {
                     spacing: theme.space(0.5)
                     Text {
                         id: headTitle
-                        text: root.mode === "done" ? "Connected to " + root.name
-                            : root.mode === "setup" ? "Connect " + root.name
-                            : root.error !== "" ? "The sign-in did not finish"
-                            : "Finish in your browser"
+                        text: root.mode === "done" ? words.t("connect-connected-to", { name: root.name })
+                            : root.mode === "setup" ? words.t("connect-connect-to", { name: root.name })
+                            : root.error !== "" ? words.t("connect-did-not-finish")
+                            : words.t("connect-finish-in-browser")
                         color: theme.text
                         font.family: theme.fontDisplay
                         font.pointSize: theme.typeNormal * 1.3
@@ -173,13 +173,13 @@ Item {
                         width: parent.width
                         wrapMode: Text.Wrap
                         text: root.mode === "done"
-                            ? "Signed in as " + root.connectedName + "." + (root.anilist ? " Your list is on the Watching page." : " Episodes are marked there as you watch.")
+                            ? words.t(root.anilist ? "connect-signed-in-anilist" : "connect-signed-in-mal", { account: root.connectedName })
                             : root.mode === "setup"
-                                ? root.name + " signs AniBeam in through an app of your own. It takes about a minute, once."
+                                ? words.t("connect-setup-lead", { name: root.name })
                                 : root.error !== "" ? frame.connectWords(root.tracker)
                                 : root.signInUrl !== ""
-                                    ? root.name + "'s sign-in page is open in your browser. Approve AniBeam there and this closes itself."
-                                    : "Opening " + root.name + "'s sign-in page in your browser."
+                                    ? words.t("connect-page-open", { name: root.name })
+                                    : words.t("connect-page-opening", { name: root.name })
                         color: root.mode === "browser" && root.error !== "" ? theme.red : theme.textDim
                         font.family: theme.fontUi
                         font.pointSize: theme.typeSmall
@@ -191,7 +191,7 @@ Item {
                     size: theme.space(4.5)
                     color: closeMouse.containsMouse ? theme.text : theme.textDim
                     anchors.right: parent.right; anchors.top: parent.top
-                    MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close(); Accessible.role: Accessible.Button; Accessible.name: "Close"
+                    MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -theme.space(1.5); hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close(); Accessible.role: Accessible.Button; Accessible.name: words.t("action-close")
                         Accessible.onPressAction: root.close() }
                 }
             }
@@ -201,8 +201,8 @@ Item {
             Row {
                 visible: root.mode === "done"
                 spacing: theme.space(3)
-                Button { visible: root.anilist; text: "Open Watching"; icon: "eye"; onClicked: { root.close(); frame.go("watching") } }
-                Button { text: "Done"; flat: root.anilist; primary: !root.anilist; onClicked: root.close() }
+                Button { visible: root.anilist; msg: "connect-open-watching"; icon: "eye"; onClicked: { root.close(); frame.go("watching") } }
+                Button { msg: "connect-done"; flat: root.anilist; primary: !root.anilist; onClicked: root.close() }
             }
             Timer {
                 interval: 2500
@@ -217,17 +217,17 @@ Item {
                 spacing: theme.space(2)
                 Button {
                     visible: root.waiting
-                    text: "Open the sign-in page again"; icon: "external-link"; flat: true
+                    msg: "connect-open-again"; icon: "external-link"; flat: true
                     enabled: root.signInUrl !== ""
                     onClicked: frame.reopenSignIn(root.tracker)
                 }
                 ConnectButton {
                     visible: !root.waiting
                     tracker: root.tracker
-                    text: "Connect"; icon: "log-in"; primary: true
+                    text: words.t("action-connect"); icon: "log-in"; primary: true
                     onClicked: frame.connectTracker(root.tracker)
                 }
-                Button { text: "Cancel"; flat: true; onClicked: { frame.cancelConnect(root.tracker); root.close() } }
+                Button { msg: "action-cancel"; flat: true; onClicked: { frame.cancelConnect(root.tracker); root.close() } }
             }
 
             // It failed: try again, with the secret when MAL said that was what it wanted
@@ -241,13 +241,13 @@ Item {
                     spacing: theme.space(2)
                     Text {
                         width: parent.width
-                        text: "It is the long string under \"Client Secret\" on the app's page at myanimelist.net/apiconfig."
+                        text: words.t("connect-secret-where")
                         color: theme.textDim
                         wrapMode: Text.Wrap
                         font.family: theme.fontUi
                         font.pointSize: theme.typeSmall
                     }
-                    Field { id: secretRetry; width: parent.width; placeholder: "Client secret"; mono: true }
+                    Field { id: secretRetry; width: parent.width; placeholder: words.t("connect-client-secret"); mono: true }
                 }
                 Flow {
                     width: parent.width
@@ -255,23 +255,23 @@ Item {
                     ConnectButton {
                         visible: root.needsSecret
                         tracker: root.tracker
-                        text: "Save and try again"; icon: "log-in"; primary: true
+                        text: words.t("connect-save-try-again"); icon: "log-in"; primary: true
                         enabled: secretRetry.text.trim() !== ""
                         onClicked: root.saveAndConnect(root.account.client_id || "", secretRetry.text.trim())
                     }
                     ConnectButton {
                         visible: !root.needsSecret
                         tracker: root.tracker
-                        text: "Try again"; icon: "rotate-ccw"; primary: true
+                        text: words.t("action-try-again"); icon: "rotate-ccw"; primary: true
                         onClicked: frame.connectTracker(root.tracker)
                     }
                     // A pasted id that is wrong is fixed in the set-up, not by trying again.
                     Button {
                         visible: root.account.bundled_credentials !== true
-                        text: "Change the Client ID"; icon: "pencil"; flat: true
+                        msg: "connect-change-client-id"; icon: "pencil"; flat: true
                         onClicked: { root.guided = true; frame.connectErrors = frame.withKey(frame.connectErrors, root.tracker); accountId.focusInput() }
                     }
-                    Button { text: "Close"; flat: true; onClicked: root.close() }
+                    Button { msg: "action-close"; flat: true; onClicked: root.close() }
                 }
             }
 
@@ -285,15 +285,15 @@ Item {
                     width: parent.width - badge1.width - parent.spacing * 2
                     spacing: theme.space(2)
                     StepText {
-                        title: root.anilist ? "Create the client on AniList" : "Create the app on MyAnimeList"
+                        title: root.anilist ? words.t("connect-step-create-anilist") : words.t("connect-step-create-mal")
                         body: root.anilist
-                            ? "Open AniList's developer settings, create a new client, and paste this address into its Redirect URL box exactly as it is here."
-                            : "Open MyAnimeList's API page, create an ID with App Type \"other\", and paste this address into its App Redirect URL box exactly as it is here."
+                            ? words.t("connect-step-create-anilist-body")
+                            : words.t("connect-step-create-mal-body")
                     }
                     Flow {
                         width: parent.width
                         spacing: theme.space(2)
-                        Button { text: "Open the developer page"; icon: "external-link"; small: true; flat: true
+                        Button { msg: "connect-open-developer-page"; icon: "external-link"; small: true; flat: true
                             onClicked: frame.openLink(root.developerUrl) }
                         Chip {
                             text: frame.redirectUrl
@@ -301,7 +301,7 @@ Item {
                             icon: urlCopied.running ? "check" : "copy"
                             maxLabelWidth: parent.width - theme.space(30)
                             onClicked: { frame.copyQuiet(frame.redirectUrl); urlCopied.restart() }
-                            Tooltip { text: "Copy the address" }
+                            Tooltip { msg: "connect-copy-address" }
                         }
                         Timer { id: urlCopied; interval: 1200 }
                     }
@@ -318,15 +318,15 @@ Item {
                     width: parent.width - badge2.width - parent.spacing * 2
                     spacing: theme.space(2)
                     StepText {
-                        title: "Paste the app's ID"
-                        body: root.anilist ? "AniList calls it Client ID: the number on your new client's page." : "MyAnimeList calls it Client ID: the long string on your new app's page."
+                        title: words.t("connect-step-paste-id")
+                        body: root.anilist ? words.t("connect-step-paste-id-anilist") : words.t("connect-step-paste-id-mal")
                     }
-                    Field { id: accountId; width: parent.width; placeholder: "Client ID"; mono: true }
+                    Field { id: accountId; width: parent.width; placeholder: words.t("connect-client-id"); mono: true }
                     Field {
                         id: accountSecret
                         visible: !root.anilist
                         width: parent.width
-                        placeholder: "Client secret (only for Web apps)"
+                        placeholder: words.t("connect-client-secret-web")
                         mono: true
                     }
                 }
@@ -342,12 +342,12 @@ Item {
                     width: parent.width - badge3.width - parent.spacing * 2
                     spacing: theme.space(2)
                     StepText {
-                        title: "Connect"
-                        body: "The browser opens, " + root.name + " asks you to sign in and approve AniBeam, and AniBeam catches the reply."
+                        title: words.t("action-connect")
+                        body: words.t("connect-step-connect-body", { name: root.name })
                     }
                     ConnectButton {
                         tracker: root.tracker
-                        text: "Connect"; icon: "log-in"; primary: root.hasId
+                        text: words.t("action-connect"); icon: "log-in"; primary: root.hasId
                         enabled: root.hasId
                         onClicked: root.saveAndConnect(accountId.text.trim(), root.anilist ? "" : accountSecret.text.trim())
                     }

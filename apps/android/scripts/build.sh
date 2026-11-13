@@ -6,6 +6,11 @@
 #   scripts/build.sh --abi all        APK for phones and the emulator (arm64-v8a + x86_64)
 #   scripts/build.sh --dist           --abi all, then copy to dist/AniBeam-<versionName>.apk
 #   scripts/build.sh cargo <args>     any cargo command, capped (cargo test -p anibeam-companion)
+#
+# The version is Cargo.toml's, 2.4.3, unless CI says what it ships the build as in
+# ANIBEAM_RELEASE_VERSION: 2.4.3 for a stable release, 2.4.3-nightly.20261113.41 for a
+# nightly. ANIBEAM_KEYSTORE, ANIBEAM_KEYSTORE_PASS and ANIBEAM_KEY_ALIAS pick the signing key;
+# the default is the debug key in ~/.android/debug.keystore.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -44,6 +49,32 @@ for t in x86_64-linux-android aarch64-linux-android; do
   export "CC_${low}=$TC/${t}${MIN_API}-clang" "CXX_${low}=$TC/${t}${MIN_API}-clang++" "AR_${low}=$TC/llvm-ar"
 done
 
+crate_version=$(sed -n '0,/^version = "\(.*\)"/s//\1/p' Cargo.toml)
+version_name="${ANIBEAM_RELEASE_VERSION:-$crate_version}"
+base="${version_name%%-*}"
+if [ "$base" != "$crate_version" ]; then
+  echo "build.sh: ANIBEAM_RELEASE_VERSION $version_name is not a build of $crate_version (Cargo.toml)." >&2
+  exit 1
+fi
+# Android installs an update only over a lower versionCode, so the code follows the train:
+# every build of 2.4.3 sits below every build of 2.5.0, and within 2.4.3 a local build comes
+# first, then the nightlies by run number, then the stable release they led up to.
+#   2.4.3 local 204030000   2.4.3-nightly.<day>.41 204030041   2.4.3 stable 204039999
+IFS=. read -r major minor patch <<<"$base"
+case "$version_name" in
+  "$base") step=$([ -n "${ANIBEAM_RELEASE_VERSION:-}" ] && echo 9999 || echo 0) ;;
+  "$base"-nightly.*.*) step="${version_name##*.}"; [[ "$step" =~ ^[1-9][0-9]*$ ]] || step=bad ;;
+  *) echo "build.sh: $version_name is neither a stable version nor a nightly." >&2; exit 1 ;;
+esac
+if [ "$step" = bad ] || (( minor > 99 || patch > 99 || step > 9999 )); then
+  echo "build.sh: $version_name does not fit the versionCode scheme." >&2
+  exit 1
+fi
+version_code=$(( ((major * 100 + minor) * 100 + patch) * 10000 + step ))
+# build.rs puts both into the app, which shows them in More, About. Worked out before the
+# cargo passthrough too, so a cargo test between two APK builds does not change them and
+# rebuild the app crate each time.
+export ANIBEAM_PHONE_VERSION="$version_name" ANIBEAM_VERSION_CODE="$version_code"
 if [[ "${1:-}" == "cargo" ]]; then
   shift
   exec cargo "$@"
@@ -64,18 +95,10 @@ while (( $# )); do
   shift
 done
 
-manifest=android/AndroidManifest.xml
-version_name=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' "$manifest")
-version_code=$(sed -n 's/.*android:versionCode="\([^"]*\)".*/\1/p' "$manifest")
-crate_version=$(sed -n '0,/^version = "\(.*\)"/s//\1/p' Cargo.toml)
-if [ "$version_name" != "$crate_version" ]; then
-  echo "build.sh: versionName $version_name (manifest) and version $crate_version (Cargo.toml) differ." >&2
-  exit 1
-fi
 # What's new reads CHANGELOG.md into the APK: a build ships with its own version's notes.
 notes_version=$(sed -n 's/^## \([^ ]*\).*/\1/p' CHANGELOG.md | head -1)
-if [ "$notes_version" != "$version_name" ]; then
-  echo "build.sh: the newest heading in CHANGELOG.md is ${notes_version:-missing}, but versionName is $version_name. Add its notes first." >&2
+if [ "$notes_version" != "$base" ]; then
+  echo "build.sh: the newest heading in CHANGELOG.md is ${notes_version:-missing}, but the version is $base. Add its notes first." >&2
   exit 1
 fi
 
@@ -106,8 +129,10 @@ for abi in "${abis[@]}"; do
   cp vendor/mpv/"$abi"/*.so "$stage/lib/$abi/"
 done
 
+manifest=android/AndroidManifest.xml
 "$BT/aapt2" compile --dir android/res -o "$stage/res.zip"
-"$BT/aapt2" link -o "$stage/base.apk" -I "$PLATFORM_JAR" --manifest "$manifest" "$stage/res.zip"
+"$BT/aapt2" link -o "$stage/base.apk" -I "$PLATFORM_JAR" --manifest "$manifest" \
+  --version-code "$version_code" --version-name "$version_name" "$stage/res.zip"
 # The Java side, the download service's notification and the player's screen calls:
 # javac, then d8, into classes.dex at the APK root.
 rm -rf "$stage/java" && mkdir -p "$stage/java/classes" "$stage/java/dex"
@@ -122,9 +147,10 @@ rm -rf "$stage/java" && mkdir -p "$stage/java/classes" "$stage/java/dex"
 "$BT/zipalign" -P 16 -f 4 "$stage/base.apk" "$stage/aligned.apk"
 
 keystore="${ANIBEAM_KEYSTORE:-$HOME/.android/debug.keystore}"
+pass="${ANIBEAM_KEYSTORE_PASS:-android}"
 apk=build/AniBeam-debug.apk
-"$BT/apksigner" sign --ks "$keystore" --ks-pass pass:android --key-pass pass:android \
-  --ks-key-alias androiddebugkey --out "$apk" "$stage/aligned.apk"
+"$BT/apksigner" sign --ks "$keystore" --ks-pass "pass:$pass" --key-pass "pass:$pass" \
+  --ks-key-alias "${ANIBEAM_KEY_ALIAS:-androiddebugkey}" --out "$apk" "$stage/aligned.apk"
 rm -f "$apk.idsig"
 echo "build.sh: $apk (versionCode $version_code, versionName $version_name, ${abis[*]})"
 [[ " ${abis[*]} " == *" arm64-v8a "* ]] || echo "build.sh: emulator only, a phone cannot run this APK; use --dist for one"

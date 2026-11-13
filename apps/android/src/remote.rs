@@ -212,6 +212,7 @@ pub fn series(
                 picked: false,
                 remote: e.file.is_some(),
                 versions: version_lines(e),
+                ..Default::default()
             };
             ((e.season.unwrap_or(1), e.number), line)
         })
@@ -227,6 +228,7 @@ pub fn series(
             picked: false,
             remote: false,
             versions: Default::default(),
+            ..Default::default()
         };
         lines.push(((1, f64::from(*n)), line));
     }
@@ -249,6 +251,7 @@ pub fn series(
             picked: false,
             remote: false,
             versions: Default::default(),
+            ..Default::default()
         });
     }
     Some((head, lines))

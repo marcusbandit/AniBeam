@@ -17,14 +17,15 @@ Tile {
     signal cancel()
     signal switchTo(string name)
 
-    readonly property bool starting: label.indexOf("Starting") === 0 && label !== "Starting the search"
+    // The phase label comes worded from the core's job progress, so these compare its words
+    readonly property bool starting: label.indexOf("Starting") === 0 && label !== "Starting the search" // i18n: none
     readonly property bool ondemand: total > 0
     readonly property string why: {
-        if (label === "Starting the search") return "AniBeam is starting its search helper; this takes a second or two."
-        if (starting) return root.endpoint + " runs through a helper that starts when a search needs it. The first search waits for it, up to " + Math.round(root.total) + " seconds; the ones after skip this."
-        if (label.indexOf("Reading") === 0) return "Splitting the releases into groups and checking them against the library."
-        if (root.ondemand) return "A helper reads " + root.endpoint + " afresh for every new search, which usually takes ten to twenty seconds."
-        return root.elapsed > 8 ? root.endpoint + " is slow to answer right now." : "This usually takes a second or two."
+        if (label === "Starting the search") return words.t("search-progress-why-helper") // i18n: none
+        if (starting) return words.t("search-progress-why-starting", { endpoint: root.endpoint, seconds: Math.round(root.total) })
+        if (label.indexOf("Reading") === 0) return words.t("search-progress-why-reading") // i18n: none
+        if (root.ondemand) return words.t("search-progress-why-ondemand", { endpoint: root.endpoint })
+        return root.elapsed > 8 ? words.t("search-progress-why-slow", { endpoint: root.endpoint }) : words.t("search-progress-why-usual")
     }
     readonly property bool slow: elapsed >= (ondemand ? (starting ? total : 35) : 15)
 
@@ -37,19 +38,20 @@ Tile {
         spacing: theme.space(3)
         Item {
             width: parent.width
-            height: Math.max(words.implicitHeight, buttons.height)
+            height: Math.max(wordsColumn.implicitHeight, buttons.height)
             Column {
-                id: words
+                // Not `words`, which would hide the global words in this file
+                id: wordsColumn
                 width: parent.width - buttons.width - theme.space(6)
                 spacing: theme.space(1.25)
                 Row {
                     spacing: theme.space(3)
-                    Label { id: phase; text: root.label === "" ? "Searching" : root.label; role: "title"; font.pointSize: theme.typeNormal * 1.15 }
-                    Label { anchors.baseline: phase.baseline; text: Math.floor(root.elapsed) + " s"; role: "ledger"; color: root.slow ? theme.orange : theme.textDim }
+                    Label { id: phase; text: root.label === "" ? words.t("search-progress-searching") : root.label; role: "title"; font.pointSize: theme.typeNormal * 1.15 }
+                    Label { anchors.baseline: phase.baseline; text: words.t("search-progress-seconds", { seconds: Math.floor(root.elapsed) }); role: "ledger"; color: root.slow ? theme.orange : theme.textDim }
                 }
                 Label {
                     width: parent.width
-                    text: root.why + (root.slow ? " This is taking longer than usual; cancel to try another source." : "")
+                    text: root.slow ? words.t("search-progress-why-and-slow", { why: root.why }) : root.why
                     role: "ui"
                     color: theme.textDim
                     wrapMode: Text.Wrap
@@ -62,9 +64,9 @@ Tile {
                 spacing: theme.space(2)
                 Repeater {
                     model: root.others.slice(0, 2)
-                    Button { required property string modelData; text: "Try " + modelData; icon: "search"; flat: true; small: true; onClicked: root.switchTo(modelData) }
+                    Button { required property string modelData; text: words.t("search-progress-try", { endpoint: modelData }); icon: "search"; flat: true; small: true; onClicked: root.switchTo(modelData) }
                 }
-                Button { objectName: "search-cancel"; text: "Cancel"; icon: "x"; small: true; onClicked: root.cancel() }
+                Button { objectName: "search-cancel"; msg: "action-cancel"; icon: "x"; small: true; onClicked: root.cancel() }
             }
         }
         // The bar: toward the start's ceiling while an on-demand endpoint comes up, else a sweep

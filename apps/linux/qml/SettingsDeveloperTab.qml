@@ -11,8 +11,8 @@ import com.marcusrosado.AniBeam
 
 SettingsTab {
     id: tab
-    title: "Developer"
-    lead: "Why a page is slow, measured. Each switch applies to the next page you open."
+    title: words.t("settings-developer-title")
+    lead: words.t("settings-developer-lead")
     wide: true
     readonly property var rec: frame.devRecorder
     readonly property var kept: frame.devKept
@@ -27,10 +27,10 @@ SettingsTab {
     Connections { target: tab.rec; function onFinished(l) { tab.picked = l } }
 
     function mb(kbOrBytes, isKb) { return tab.rec.mb(isKb ? kbOrBytes * 1024 : kbOrBytes) }
-    function ms(v) { return v < 0 ? "-" : Math.round(v) + " ms" }
+    function ms(v) { return v < 0 ? "-" : words.t("settings-developer-ms", { ms: Math.round(v) }) }
     // Whole numbers grouped by a thin space: a comma or a dot reads as a decimal somewhere
     function n(v) { return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u2009") }
-    function mbWhole(kb) { return n(kb / 1024) + " MB" }
+    function mbWhole(kb) { return words.t("settings-developer-mb", { mb: n(kb / 1024) }) }
     function tone(v) { return v < 100 ? theme.green : v < 300 ? theme.yellow : theme.red }
     // A table column: `parts` of the 100 the table's width is cut into
     function col(parts) { return Math.floor((tab.blockWidth - theme.space(2)) * parts / 100) }
@@ -66,48 +66,48 @@ SettingsTab {
     Component {
         id: switchesPanel
         Panel {
-            title: "Switches"; icon: "toggle-right"
-            SettingRow { label: "Load images"; helper: "Off, no poster, banner or portrait is read or decoded."
+            title: words.t("settings-developer-switches"); icon: "toggle-right"
+            SettingRow { label: words.t("settings-developer-load-images"); helper: words.t("settings-developer-load-images-helper")
                 Switch { objectName: "dev-images"; checked: tab.kept.images; onToggled: function(on) { frame.devSetImages(on); frame.loadPage() } } }
-            SettingRow { label: "Page load overlay"; helper: "The last page load and the memory, in the window's bottom right corner."
+            SettingRow { label: words.t("settings-developer-overlay"); helper: words.t("settings-developer-overlay-helper")
                 Switch { objectName: "dev-hud"; checked: tab.kept.hud; onToggled: function(on) { tab.kept.hud = on } } }
-            SettingRow { label: "Keep library reads"; helper: "The answer to a whole library read is kept until the library changes. Off, every page asks the core again."
+            SettingRow { label: words.t("settings-developer-read-cache"); helper: words.t("settings-developer-read-cache-helper")
                 Switch { checked: tab.kept.readCache; onToggled: function(on) { tab.kept.readCache = on; frame.devApply() } } }
-            SettingRow { label: "Warm posters in the background"; helper: "Decodes the 60 posters you are most likely to see and keeps them in memory."
+            SettingRow { label: words.t("settings-developer-poster-pool"); helper: words.t("settings-developer-poster-pool-helper")
                 Switch { checked: tab.kept.posterPool; onToggled: function(on) { tab.kept.posterPool = on } } }
-            SettingRow { visible: !Dev.forced; label: "Developer options"; helper: "Turns this tab, the overlay and the measuring off."
+            SettingRow { visible: !Dev.forced; label: words.t("settings-developer-options"); helper: words.t("settings-developer-options-helper")
                 Switch { checked: true; onToggled: function(on) { if (!on) { tab.kept.enabled = false; frame.devApply(); frame.go("settings", { tab: "about" }) } } } }
         }
     }
     Component {
         id: memoryPanel
         Panel {
-            title: "Memory"; icon: "memory-stick"
-            helper: tab.mem.VmRSS ? "What the kernel counts for this process. Images hold decoded pixels in memory and on the graphics card." : "This system does not say how much memory the app uses."
+            title: words.t("settings-developer-memory"); icon: "memory-stick"
+            helper: tab.mem.VmRSS ? words.t("settings-developer-memory-helper") : words.t("settings-developer-memory-unknown")
             Tiles { tiles: tab.mem.VmRSS ? [
-                { value: tab.mbWhole(tab.mem.VmRSS), caption: "In use" },
-                { value: tab.mbWhole(tab.mem.VmHWM), caption: "Peak" },
-                { value: tab.mbWhole(tab.mem.RssAnon), caption: "Heap" },
-                { value: tab.mbWhole(tab.mem.RssFile), caption: "Files mapped" },
-                { value: String(tab.mem.Threads || 0), caption: "Threads" }] : [] }
-            SettingRow { label: "Give memory back"; helper: "Drops what the scene graph can rebuild, collects JavaScript garbage and hands free heap to the system. What it frees is what the app was holding without needing it."
-                line: tab.released ? tab.mb(tab.released.before, true) + " to " + tab.mb(tab.released.after, true) : ""
-                Button { text: "Free now"; icon: "recycle"; small: true
+                { value: tab.mbWhole(tab.mem.VmRSS), caption: words.t("settings-developer-in-use") },
+                { value: tab.mbWhole(tab.mem.VmHWM), caption: words.t("settings-developer-peak") },
+                { value: tab.mbWhole(tab.mem.RssAnon), caption: words.t("settings-developer-heap") },
+                { value: tab.mbWhole(tab.mem.RssFile), caption: words.t("settings-developer-files-mapped") },
+                { value: String(tab.mem.Threads || 0), caption: words.t("settings-developer-threads") }] : [] }
+            SettingRow { label: words.t("settings-developer-give-back"); helper: words.t("settings-developer-give-back-helper")
+                line: tab.released ? words.t("settings-developer-released", { before: tab.mb(tab.released.before, true), after: tab.mb(tab.released.after, true) }) : ""
+                Button { msg: "settings-developer-free-now"; icon: "recycle"; small: true
                     onClicked: { var b = JSON.parse(Dev.memory()).VmRSS || 0; Dev.release(frame.hostWindow); var a = JSON.parse(Dev.memory()).VmRSS || 0; tab.released = { before: b, after: a }; tab.memRead() } } }
-            SettingRow { label: "Images since the start"
-                line: { var t = JSON.parse(Dev.images(Number.MAX_VALUE)); tab.mem; return t.decodes + " decoded, " + tab.rec.mb(t.decodedBytes) + " of pixels from " + tab.rec.mb(t.fileBytes) + " on disk, " + Math.round(t.decodeMs) + " ms" } }
+            SettingRow { label: words.t("settings-developer-images-total")
+                line: { var t = JSON.parse(Dev.images(Number.MAX_VALUE)); tab.mem; return words.t("settings-developer-images-total-line", { decodes: t.decodes, pixels: tab.rec.mb(t.decodedBytes), disk: tab.rec.mb(t.fileBytes), ms: Math.round(t.decodeMs) }) } }
         }
     }
     Component {
         id: loadsPanel
         Panel {
-            title: "Page loads"; icon: "timer"
-            helper: "Built is the wait after a click: the Qt thread does nothing else until the page exists. Settled is when its last image arrived."
+            title: words.t("settings-developer-loads"); icon: "timer"
+            helper: words.t("settings-developer-loads-helper")
             Row {
                 spacing: theme.space(2)
-                Button { objectName: "dev-tour"; text: tab.rec.tourState ? "Timing, " + tab.rec.tourState.at + " of " + tab.rec.tourState.steps.length : "Time every page"; icon: "gauge"; primary: true; enabled: !tab.rec.tourState; onClicked: tab.rec.tour(3) }
-                Button { text: "Copy report"; icon: "copy"; enabled: tab.rec.loads.length > 0; onClicked: frame.copyText(tab.rec.report()) }
-                Button { text: "Clear"; icon: "trash-2"; flat: true; enabled: tab.rec.loads.length > 0; onClicked: { tab.rec.loads = []; tab.picked = null } }
+                Button { objectName: "dev-tour"; text: tab.rec.tourState ? words.t("settings-developer-touring", { at: tab.rec.tourState.at, steps: tab.rec.tourState.steps.length }) : words.t("settings-developer-tour"); icon: "gauge"; primary: true; enabled: !tab.rec.tourState; onClicked: tab.rec.tour(3) }
+                Button { msg: "settings-developer-copy-report"; icon: "copy"; enabled: tab.rec.loads.length > 0; onClicked: frame.copyText(tab.rec.report()) }
+                Button { msg: "action-clear"; icon: "trash-2"; flat: true; enabled: tab.rec.loads.length > 0; onClicked: { tab.rec.loads = []; tab.picked = null } }
             }
             Column {
                 width: parent.width
@@ -116,7 +116,9 @@ SettingsTab {
                     Row {
                         anchors.verticalCenter: parent.verticalCenter
                         Repeater {
-                            model: [["Page", 16], ["Built", 8], ["Painted", 8], ["Settled", 8], ["Calls, data", 12], ["Decodes, time, pixels", 18], ["Items", 8], ["Images out of view", 12], ["Memory", 10]]
+                            model: [[words.t("settings-developer-col-page"), 16], [words.t("settings-developer-col-built"), 8], [words.t("settings-developer-col-painted"), 8], [words.t("settings-developer-col-settled"), 8],
+                                    [words.t("settings-developer-col-calls"), 12], [words.t("settings-developer-col-decodes"), 18], [words.t("settings-developer-col-items"), 8],
+                                    [words.t("settings-developer-col-offscreen"), 12], [words.t("settings-developer-col-memory"), 10]]
                             Label { required property var modelData; width: tab.col(modelData[1]); text: modelData[0]; role: "ledger"; color: theme.textFaint }
                         }
                     }
@@ -130,21 +132,21 @@ SettingsTab {
                         radius: theme.space(1)
                         Row {
                             anchors.verticalCenter: parent.verticalCenter
-                            Label { width: tab.col(16); role: "ledger"; text: modelData.label + (modelData.images ? "" : ", no images"); elide: Text.ElideRight }
+                            Label { width: tab.col(16); role: "ledger"; text: modelData.images ? modelData.label : words.t("settings-developer-load-no-images", { page: modelData.label }); elide: Text.ElideRight }
                             Label { width: tab.col(8); role: "ledger"; text: tab.ms(modelData.built); color: tab.tone(modelData.built) }
                             Label { width: tab.col(8); role: "ledger"; text: tab.ms(modelData.firstFrame); color: theme.textDim }
                             Label { width: tab.col(8); role: "ledger"; text: tab.ms(modelData.settled); color: tab.tone(modelData.settled) }
                             Label { width: tab.col(12); role: "ledger"; text: modelData.calls.n + ", " + tab.rec.kb(modelData.calls.bytes); color: theme.textDim }
                             Label { width: tab.col(18); role: "ledger"; text: modelData.decodes.n + ", " + tab.ms(modelData.decodes.ms) + ", " + tab.rec.mb(modelData.decodes.bytes); color: theme.textDim }
                             Label { width: tab.col(8); role: "ledger"; text: tab.n(modelData.scene.items); color: modelData.scene.items > 3000 ? theme.orange : theme.textDim }
-                            Label { width: tab.col(12); role: "ledger"; text: modelData.scene.images.offscreen + " of " + modelData.scene.images.total; color: theme.textDim }
+                            Label { width: tab.col(12); role: "ledger"; text: words.t("settings-developer-offscreen-of", { offscreen: modelData.scene.images.offscreen, total: modelData.scene.images.total }); color: theme.textDim }
                             Label { width: tab.col(10); role: "ledger"; text: tab.mb(modelData.memAfter.VmRSS || 0, true); color: theme.textDim }
                         }
                         MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: tab.picked = modelData; Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
                             Accessible.onPressAction: tab.picked = modelData }
                     }
                 }
-                Label { visible: tab.rec.loads.length === 0; topPadding: theme.space(2); text: "Open any page and it shows up here."; color: theme.textDim }
+                Label { visible: tab.rec.loads.length === 0; topPadding: theme.space(2); msg: "settings-developer-loads-empty"; color: theme.textDim }
             }
         }
     }
@@ -152,12 +154,12 @@ SettingsTab {
         id: detailPanel
         Panel {
             readonly property var l: tab.picked
-            title: l.label + (l.images ? "" : ", images off"); icon: "scan-search"
-            helper: l.frames + " frames painted while it loaded, the longest gap between two " + tab.ms(l.maxGap) + (l.timedOut ? ". Gave up waiting for its images after 15 s." : ".")
+            title: l.images ? l.label : words.t("settings-developer-load-images-off", { page: l.label }); icon: "scan-search"
+            helper: words.t(l.timedOut ? "settings-developer-load-frames-timed-out" : "settings-developer-load-frames", { frames: l.frames, gap: tab.ms(l.maxGap) })
             Tiles { tiles: [
-                { value: tab.ms(l.built), caption: "Built" }, { value: tab.ms(l.settled), caption: "Settled" },
-                { value: tab.rec.kb(l.calls.bytes), caption: "Data from the core" }, { value: tab.rec.mb(l.decodes.bytes), caption: "Pixels decoded" },
-                { value: tab.n(l.scene.items), caption: "Items on the page" }, { value: String(l.decodes.cached), caption: "Images already in memory" }] }
+                { value: tab.ms(l.built), caption: words.t("settings-developer-built") }, { value: tab.ms(l.settled), caption: words.t("settings-developer-settled") },
+                { value: tab.rec.kb(l.calls.bytes), caption: words.t("settings-developer-core-data") }, { value: tab.rec.mb(l.decodes.bytes), caption: words.t("settings-developer-pixels") },
+                { value: tab.n(l.scene.items), caption: words.t("settings-developer-page-items") }, { value: String(l.decodes.cached), caption: words.t("settings-developer-cached-images") }] }
             Row {
                 id: detailCols
                 width: parent.width
@@ -167,54 +169,57 @@ SettingsTab {
                 Column {
                     width: detailCols.third
                     spacing: theme.space(1)
-                    Label { text: "Core calls, slowest first"; role: "title"; font.pointSize: theme.typeNormal; bottomPadding: theme.space(1) }
+                    Label { msg: "settings-developer-calls"; role: "title"; font.pointSize: theme.typeNormal; bottomPadding: theme.space(1) }
                     Repeater {
                         model: l.calls.list.slice(0, 14)
                         Label { required property var modelData; width: parent.width; role: "ledger"; elide: Text.ElideRight
-                            text: modelData.name + "  " + modelData.total.toFixed(1) + " ms  " + tab.rec.kb(modelData.bytes) + (modelData.hit ? "  cached" : "  core " + modelData.core.toFixed(1) + ", to QML " + (modelData.json + modelData.qjson).toFixed(1))
+                            text: modelData.hit ? words.t("settings-developer-call-cached", { name: modelData.name, ms: modelData.total.toFixed(1), size: tab.rec.kb(modelData.bytes) })
+                                  : words.t("settings-developer-call", { name: modelData.name, ms: modelData.total.toFixed(1), size: tab.rec.kb(modelData.bytes), core: modelData.core.toFixed(1), qml: (modelData.json + modelData.qjson).toFixed(1) })
                             color: modelData.hit ? theme.textFaint : theme.textDim }
                     }
                 }
                 Column {
                     width: detailCols.third
                     spacing: theme.space(1)
-                    Label { text: "Slowest decodes"; role: "title"; font.pointSize: theme.typeNormal; bottomPadding: theme.space(1) }
+                    Label { msg: "settings-developer-decodes"; role: "title"; font.pointSize: theme.typeNormal; bottomPadding: theme.space(1) }
                     Label { visible: l.decodes.n > 0; width: parent.width; wrapMode: Text.Wrap; role: "ledger"; color: theme.textDim
-                        text: l.decodes.n + " decodes one after another on the image thread, " + tab.ms(l.decodes.span) + " from the first to the last; " + l.decodes.requests + " asked for, " + l.decodes.cached + " already decoded, " + l.decodes.blocked + " blocked" }
+                        text: words.t("settings-developer-decodes-line", { count: l.decodes.n, span: tab.ms(l.decodes.span), requests: l.decodes.requests, cached: l.decodes.cached, blocked: l.decodes.blocked }) }
                     Repeater {
                         model: l.decodes.slowest
                         Label { required property var modelData; width: parent.width; role: "ledger"; elide: Text.ElideMiddle; color: theme.textDim
-                            text: modelData.ms.toFixed(1) + " ms  " + modelData.srcW + "x" + modelData.srcH + " to " + modelData.w + "x" + modelData.h + "  " + tab.rec.kb(modelData.bytes) }
+                            text: words.t("settings-developer-decode", { ms: modelData.ms.toFixed(1), srcW: modelData.srcW, srcH: modelData.srcH, w: modelData.w, h: modelData.h, size: tab.rec.kb(modelData.bytes) }) }
                     }
-                    Label { visible: l.decodes.n === 0; text: l.images ? "Nothing decoded: every image was in memory already." : "Images were off."; role: "ledger"; color: theme.textFaint }
+                    Label { visible: l.decodes.n === 0; text: l.images ? words.t("settings-developer-decodes-none") : words.t("settings-developer-images-were-off"); role: "ledger"; color: theme.textFaint }
                 }
                 Column {
                     width: detailCols.third
                     spacing: theme.space(1)
-                    Label { text: "What the page is made of"; role: "title"; font.pointSize: theme.typeNormal; bottomPadding: theme.space(1) }
+                    Label { msg: "settings-developer-scene"; role: "title"; font.pointSize: theme.typeNormal; bottomPadding: theme.space(1) }
                     Label { width: parent.width; wrapMode: Text.Wrap; role: "ledger"; color: theme.textDim
-                        text: l.scene.items + " items, " + l.scene.offscreen + " outside the window; " + l.scene.texts + " texts, " + l.scene.shapes + " shapes, " + l.scene.icons + " icons; "
-                              + l.scene.images.total + " images, " + l.scene.images.offscreen + " of them outside the window holding " + tab.rec.mb(l.scene.images.offscreenPixels * 4) }
+                        text: words.t("settings-developer-scene-line", { items: l.scene.items, offscreen: l.scene.offscreen, texts: l.scene.texts, shapes: l.scene.shapes, icons: l.scene.icons,
+                              images: l.scene.images.total, imagesOffscreen: l.scene.images.offscreen, size: tab.rec.mb(l.scene.images.offscreenPixels * 4) }) }
                     Repeater {
                         model: l.scene.types.slice(0, 12)
                         Label { required property var modelData; role: "ledger"; color: theme.textDim; text: modelData[1] + "  " + modelData[0] }
                     }
                 }
             }
-            Button { text: "Copy this load"; icon: "copy"; small: true; onClicked: frame.copyText(tab.rec.describe(l)) }
+            Button { msg: "settings-developer-copy-load"; icon: "copy"; small: true; onClicked: frame.copyText(tab.rec.describe(l)) }
         }
     }
     Component {
         id: tourPanel
         Panel {
-            title: "Every page, images on and off"; icon: "gauge"
-            helper: "The middle of three visits to each page. Where the two columns match, images are not what makes the page slow."
+            title: words.t("settings-developer-tour-title"); icon: "gauge"
+            helper: words.t("settings-developer-tour-helper")
             Column {
                 width: parent.width
                 Row {
                     height: theme.space(8)
                     Repeater {
-                        model: [["Page", 14], ["Built, images on", 11], ["Built, images off", 11], ["Settled, on", 11], ["Settled, off", 11], ["Items", 9], ["Decodes, time", 13], ["Data", 10], ["Memory", 10]]
+                        model: [[words.t("settings-developer-col-page"), 14], [words.t("settings-developer-col-built-on"), 11], [words.t("settings-developer-col-built-off"), 11],
+                                [words.t("settings-developer-col-settled-on"), 11], [words.t("settings-developer-col-settled-off"), 11], [words.t("settings-developer-col-items"), 9],
+                                [words.t("settings-developer-col-decodes-time"), 13], [words.t("settings-developer-col-data"), 10], [words.t("settings-developer-col-memory"), 10]]
                         Label { required property var modelData; anchors.verticalCenter: parent.verticalCenter; width: tab.col(modelData[1]); text: modelData[0]; role: "ledger"; color: theme.textFaint }
                     }
                 }
@@ -234,25 +239,25 @@ SettingsTab {
                         Label { anchors.verticalCenter: parent.verticalCenter; width: tab.col(10); role: "ledger"; text: tab.mb(modelData.on.rss, true); color: theme.textDim }
                     }
                 }
-                Label { topPadding: theme.space(2); role: "ledger"; color: theme.textDim; text: "Peak memory during the tour " + tab.mb(tab.rec.tourResult.peak, true) }
+                Label { topPadding: theme.space(2); role: "ledger"; color: theme.textDim; text: words.t("settings-developer-tour-peak", { size: tab.mb(tab.rec.tourResult.peak, true) }) }
             }
         }
     }
     Component {
         id: eventsPanel
         Panel {
-            title: "Events"; icon: "activity"
-            helper: "Everything the core says, every level, newest first. Each event is copied to the Qt thread as JSON; the size is what it cost to send."
+            title: words.t("settings-developer-events"); icon: "activity"
+            helper: words.t("settings-developer-events-helper")
             Flow {
                 width: parent.width
                 spacing: theme.space(2)
                 Repeater {
                     model: tab.eventRates
                     Chip { required property var modelData; small: true; color: theme.tileSunken; textColor: theme.textDim
-                        text: modelData.kind + " " + modelData.n + "/min, " + tab.rec.kb(modelData.bytes) }
+                        text: words.t("settings-developer-event-rate", { kind: modelData.kind, count: modelData.n, size: tab.rec.kb(modelData.bytes) }) }
                 }
             }
-            Field { width: Math.min(parent.width, theme.space(120)); placeholder: "Filter by words, kind or stage"; onEdited: function(t) { tab.eventFilter = t } }
+            Field { width: Math.min(parent.width, theme.space(120)); placeholder: words.t("settings-developer-events-filter"); onEdited: function(t) { tab.eventFilter = t } }
             ListView {
                 id: list
                 width: parent.width
@@ -268,18 +273,18 @@ SettingsTab {
                     Row {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: theme.space(2)
-                        Label { width: theme.space(14); role: "ledger"; color: theme.textFaint; text: (modelData.at / 1000).toFixed(1) + " s" }
+                        Label { width: theme.space(14); role: "ledger"; color: theme.textFaint; text: words.t("settings-developer-seconds", { seconds: (modelData.at / 1000).toFixed(1) }) }
                         Label { width: theme.space(10); role: "ledger"; text: String(modelData.level); color: modelData.level === "Error" ? theme.red : modelData.level === "Warn" ? theme.orange : modelData.level === "Debug" ? theme.textFaint : theme.textDim }
                         Label { width: theme.space(22); role: "ledger"; color: theme.textDim; text: String(modelData.kind); elide: Text.ElideRight }
                         Label { width: theme.space(12); role: "ledger"; color: theme.textFaint; text: tab.rec.kb(modelData.bytes) }
                         Label { width: list.width - theme.space(66); role: "ledger"; elide: Text.ElideRight; color: theme.text
-                            text: modelData.message + (modelData.plain ? "   (plain: " + modelData.plain + ")" : "") }
+                            text: modelData.plain ? words.t("settings-developer-event-plain", { message: modelData.message, plain: modelData.plain }) : modelData.message }
                     }
                 }
                 QC.ScrollBar.vertical: ThinScrollBar {}
             }
-            Button { text: "Copy events"; icon: "copy"; small: true
-                onClicked: frame.copyText(tab.shownEvents.map(function(e) { return (e.at / 1000).toFixed(3) + " " + e.level + " " + e.stage + " " + e.kind + " " + e.bytes + "B " + e.message }).join("\n")) }
+            Button { msg: "settings-developer-copy-events"; icon: "copy"; small: true
+                onClicked: frame.copyText(tab.shownEvents.map(function(e) { return (e.at / 1000).toFixed(3) + " " + e.level + " " + e.stage + " " + e.kind + " " + e.bytes + "B " + e.message }).join("\n")) } // i18n: none
         }
     }
 }

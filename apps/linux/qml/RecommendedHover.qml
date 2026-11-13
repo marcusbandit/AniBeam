@@ -85,16 +85,14 @@ Item {
     readonly property real posterW: theme.space(30)
 
     function lengthOf(x) {
-        if (x.format === "MOVIE" && x.duration) return Fmt.runtime(x.duration)
-        if (x.episodes) return Fmt.plural(x.episodes, "episode", "episodes")
+        if (x.format === "MOVIE" && x.duration) return words.runtime(x.duration)
+        if (x.episodes) return words.t("count-episodes", { count: x.episodes })
         return ""
     }
-    function formatOf(f) {
-        return ({ TV: "TV", TV_SHORT: "TV short", MOVIE: "Film", SPECIAL: "Special", OVA: "OVA", ONA: "ONA", MUSIC: "Music" })[f] || ""
-    }
+    function formatOf(f) { return words.formatLabel(f) }
     readonly property string facts: {
         var f = []
-        if (r.average_score !== null && r.average_score !== undefined) f.push("AniList " + (r.average_score / 10).toFixed(1))
+        if (r.average_score !== null && r.average_score !== undefined) f.push(words.t("recommended-hover-anilist-score", { score: (r.average_score / 10).toFixed(1) }))
         if (formatOf(r.format)) f.push(formatOf(r.format))
         if (r.year) f.push(String(r.year))
         if (lengthOf(r)) f.push(lengthOf(r))
@@ -139,7 +137,8 @@ Item {
                 spacing: theme.space(3)
                 Label {
                     id: big
-                    text: (root.r.forecast !== undefined ? root.r.forecast : 0) + "%"
+                    msg: "recommended-hover-forecast"
+                    msgArgs: ({ percent: root.r.forecast !== undefined ? root.r.forecast : 0 })
                     role: "display"
                     font.pointSize: theme.typeHeading
                     color: theme.accent
@@ -195,7 +194,8 @@ Item {
                     Label {
                         id: hiddenLabel
                         anchors.centerIn: parent
-                        text: root.r.hidden_loved > 1 ? root.r.hidden_loved + " hidden tags you love" : "A hidden tag you love"
+                        msg: "recommended-hover-hidden-tags"
+                        msgArgs: ({ count: root.r.hidden_loved || 0 })
                         role: "ui"; font.pointSize: theme.typeSmall
                         color: theme.accent
                     }
@@ -206,7 +206,7 @@ Item {
                 width: parent.width
                 spacing: theme.space(2)
                 visible: (root.r.because || []).length > 0
-                Label { text: "Because you watched"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+                Label { msg: "recommended-hover-because"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
                 Row {
                     spacing: theme.space(3)
                     Repeater {

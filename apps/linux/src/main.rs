@@ -57,6 +57,8 @@ fn install_dev_qml_dir(
 }
 
 fn main() {
+    // Before anything formats a word: the core, the bridges and QML all read it.
+    bridge::tr::language_from_env();
     let argv: Vec<String> = std::env::args().collect();
     let args = match args::parse(&argv) {
         Ok(a) => a,

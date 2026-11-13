@@ -6,15 +6,15 @@ import com.marcusrosado.AniBeam
 
 SettingsTab {
     id: tab
-    title: "Keyboard"
-    lead: "Every key AniBeam answers to. Press ? anywhere for the keys that work where you are."
+    title: words.t("settings-keys-title")
+    lead: words.t("settings-keys-lead")
     property Item keyMap: KeyHelp { visible: false; open: false }
     // The player's own keys first, then the ones that work on every page
     readonly property var groups: [
-        { title: "In the player", keys: keyMap.playerGroups[0].keys },
-        { title: "Getting around the player", keys: keyMap.playerGroups[1].keys },
-        { title: "Getting around", keys: keyMap.appGroups[0].keys },
-        { title: "Anywhere", keys: keyMap.appGroups[1].keys }
+        { title: words.t("settings-keys-player"), keys: keyMap.playerGroups[0].keys },
+        { title: words.t("settings-keys-player-around"), keys: keyMap.playerGroups[1].keys },
+        { title: words.t("settings-keys-around"), keys: keyMap.appGroups[0].keys },
+        { title: words.t("settings-keys-anywhere"), keys: keyMap.appGroups[1].keys }
     ]
 
     Repeater {

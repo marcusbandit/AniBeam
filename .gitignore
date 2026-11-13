@@ -35,6 +35,8 @@ out/
 /target/
 !core/tests/fixtures/**/*.json
 !host-api/fixtures/*.json
+# The website's translations, one file per language (site/tools/i18n.py)
+!site/i18n/*.json
 apps/linux/captures/
 apps/linux/.qmlls.ini
 

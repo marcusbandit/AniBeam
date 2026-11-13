@@ -13,17 +13,21 @@ Item {
     property int active: 0
     // Complete subscriptions waiting to be cleared: a red count on Downloads
     property int downloadsBadge: 0
+    // An update waits: a red dot on Settings until it is installed, and its line in the tip
+    property bool settingsBadge: false
+    property string settingsNote: ""
     signal picked(int index)
     signal versionClicked()
 
     readonly property var primary: [
-        { index: 0, text: "Home", icon: "house" }, { index: 1, text: "Library", icon: "layers" },
-        { index: 2, text: "Airing", icon: "radio" }
+        { index: 0, key: "home", msg: "rail-home", icon: "house" }, { index: 1, key: "library", msg: "rail-library", icon: "layers" },
+        { index: 2, key: "airing", msg: "rail-airing", icon: "radio" }
     ]
+    // `key` names the --drive target (rail-<key>), `msg` the words
     readonly property var secondary: [
-        { index: 3, text: "Feed", icon: "rss" }, { index: 4, text: "Watching", icon: "eye" },
-        { index: 8, text: "Stats", icon: "chart-pie" }, { index: 5, text: "Show info", icon: "database" }, { index: 6, text: "Downloads", icon: "download" },
-        { index: 7, text: "Settings", icon: "settings" }
+        { index: 3, key: "feed", msg: "rail-feed", icon: "rss" }, { index: 4, key: "watching", msg: "status-watching", icon: "eye" },
+        { index: 8, key: "stats", msg: "rail-stats", icon: "chart-pie" }, { index: 5, key: "show info", msg: "rail-show-info", icon: "database" }, { index: 6, key: "downloads", msg: "rail-downloads", icon: "download" },   // i18n: none
+        { index: 7, key: "settings", msg: "rail-settings", icon: "settings" }
     ]
     readonly property real pad: theme.space(2)
     readonly property real itemWidth: Math.max(theme.space(18), labels.implicitWidth + pad * 2, lang.implicitWidth + pad)
@@ -35,7 +39,7 @@ Item {
     Column {
         id: labels
         visible: false
-        Repeater { model: root.primary; Label { required property var modelData; role: "title"; font.pointSize: theme.typeSmall; text: modelData.text } }
+        Repeater { model: root.primary; Label { required property var modelData; role: "title"; font.pointSize: theme.typeSmall; msg: modelData.msg } }
     }
 
     Rectangle { anchors.fill: parent; color: theme.tile }
@@ -62,10 +66,10 @@ Item {
             Rectangle {
                 id: entry
                 required property var modelData
-                objectName: "rail-" + modelData.text.toLowerCase()   // a --drive target
+                objectName: "rail-" + modelData.key   // a --drive target
                 readonly property bool on: modelData.index === root.active
                 Accessible.role: Accessible.PageTab
-                Accessible.name: modelData.text
+                Accessible.name: words.t(modelData.msg)
                 Accessible.selected: on
                 Accessible.onPressAction: root.picked(modelData.index)
                 width: root.itemWidth
@@ -89,7 +93,7 @@ Item {
                     }
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: entry.modelData.text
+                        msg: entry.modelData.msg
                         role: "title"
                         font.pointSize: theme.typeSmall
                         color: entry.on || m.containsMouse ? theme.text : theme.textDim
@@ -113,10 +117,10 @@ Item {
             Rectangle {
                 id: minor
                 required property var modelData
-                objectName: "rail-" + modelData.text.toLowerCase()
+                objectName: "rail-" + modelData.key
                 readonly property bool on: modelData.index === root.active
                 Accessible.role: Accessible.PageTab
-                Accessible.name: modelData.text
+                Accessible.name: words.t(modelData.msg)
                 Accessible.selected: on
                 Accessible.onPressAction: root.picked(modelData.index)
                 x: (root.itemWidth - width) / 2
@@ -136,14 +140,18 @@ Item {
                     color: minor.on ? theme.accent : (mm.containsMouse ? theme.text : theme.textFaint)
                 }
                 MouseArea { id: mm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(minor.modelData.index) }
-                Tooltip { text: minor.badge > 0 ? minor.modelData.text + ": " + minor.badge + (minor.badge === 1 ? " subscription is" : " subscriptions are") + " complete" : minor.modelData.text }
-                readonly property int badge: modelData.text === "Downloads" ? root.downloadsBadge : 0
-                // The badge: red, its count in it, over the glyph's top right
+                Tooltip { text: minor.badge > 0 ? words.t("rail-downloads-complete", { count: minor.badge })
+                                : minor.dot && root.settingsNote !== "" ? words.t("rail-settings-note", { note: root.settingsNote }) : words.t(minor.modelData.msg) }
+                readonly property int badge: modelData.key === "downloads" ? root.downloadsBadge : 0
+                // Settings has no count to show, only that something waits there
+                readonly property bool dot: modelData.key === "settings" && root.settingsBadge
+                // The badge: red, its count in it, over the glyph's top right; a dot alone for
+                // Settings
                 Rectangle {
-                    objectName: "rail-downloads-badge"
-                    visible: minor.badge > 0
-                    height: theme.space(4.5)
-                    width: Math.max(height, badgeText.implicitWidth + theme.space(2))
+                    objectName: minor.dot ? "rail-settings-badge" : "rail-downloads-badge"
+                    visible: minor.badge > 0 || minor.dot
+                    height: minor.dot ? theme.space(3.5) : theme.space(4.5)
+                    width: minor.dot ? height : Math.max(height, badgeText.implicitWidth + theme.space(2))
                     radius: height / 2
                     x: minor.width - width * 0.7
                     y: -height * 0.2
@@ -152,6 +160,7 @@ Item {
                     border.width: 2
                     Label {
                         id: badgeText
+                        visible: !minor.dot
                         anchors.centerIn: parent
                         text: minor.badge > 99 ? "99+" : String(minor.badge)
                         role: "ledger"
@@ -170,10 +179,11 @@ Item {
             id: lang
             objectName: "title-language"
             Accessible.role: Accessible.Button
-            Accessible.name: "Title language: " + lang.names[lang.current] + ". Press for the next one"
+            Accessible.name: words.t("rail-title-language-name", { language: lang.names[lang.current] })
             Accessible.onPressAction: langMouse.clicked(null)
             readonly property var order: ["Romaji", "English", "Native"]
-            readonly property var names: ({ "Romaji": "Romaji", "English": "English", "Native": "日本語" })
+            // Romaji and 日本語 name themselves in every language; English is a word
+            readonly property var names: ({ "Romaji": "Romaji", "English": words.t("rail-title-language-english"), "Native": "日本語" })   // i18n: none
             readonly property string current: order.indexOf(Door.preferences.title_language) >= 0 ? Door.preferences.title_language : "Romaji"
             x: (root.itemWidth - width) / 2
             implicitWidth: langWidest.implicitWidth + theme.space(4)
@@ -189,7 +199,7 @@ Item {
                 font.pointSize: theme.typeSmall
             }
             // the widest of them, so the pill does not change width when switched
-            Label { id: langWidest; visible: false; text: "English"; role: "ui"; font.pointSize: theme.typeSmall }
+            Label { id: langWidest; visible: false; text: lang.names.English; role: "ui"; font.pointSize: theme.typeSmall }
             MouseArea {
                 id: langMouse
                 anchors.fill: parent
@@ -201,7 +211,7 @@ Item {
                     Door.setPreferences(p)
                 }
             }
-            Tooltip { text: "Title language: Romaji, English or Japanese" }
+            Tooltip { msg: "rail-title-language-tip" }
         }
         // The version: a click opens What's new
         Label {
@@ -213,10 +223,10 @@ Item {
             role: "ledger"
             color: versionMouse.containsMouse ? theme.text : theme.textFaint
             Accessible.role: Accessible.Button
-            Accessible.name: "What's new in " + Shell.release
+            Accessible.name: words.t("rail-whats-new-in", { release: Shell.release })
             Accessible.onPressAction: root.versionClicked()
             MouseArea { id: versionMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.versionClicked() }
-            Tooltip { text: "What's new" }
+            Tooltip { msg: "rail-whats-new" }
         }
     }
 }

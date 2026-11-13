@@ -12,6 +12,8 @@
 // own; a nightly's sticks. Later hides it until a newer version than this one comes out;
 // the version passed over and the track live in shell.conf. It steps aside while the player
 // has the window or a sheet is open (`covered`), and comes back once they close.
+// Put away or not, an offer stays `pending` until it is installed or the track changes:
+// the rail's Settings icon and the About row badge it, and About keeps the way to take it.
 import QtQuick
 import QtCore
 import com.marcusrosado.AniBeam
@@ -24,10 +26,12 @@ Frost {
     // One width for every state, wider only when the words need it, so the island does not
     // jump about as the update moves along
     readonly property real pad: theme.space(4)
-    width: Math.max(theme.space(116), words.implicitWidth + actions.implicitWidth + pad * 2 + theme.space(6))
-    height: Math.max(words.implicitHeight, actions.implicitHeight) + theme.space(6)
+    width: Math.max(theme.space(116), lines.implicitWidth + actions.implicitWidth + pad * 2 + theme.space(6))
+    height: Math.max(lines.implicitHeight, actions.implicitHeight) + theme.space(6)
 
     property bool shown: false
+    // An update is offered for this track, whether or not the island shows it
+    property bool pending: false
     property bool covered: false
     property string version: ""
     // The release's own name, "Quality of life"; empty for one known by its number
@@ -65,9 +69,19 @@ Frost {
     }
     function setTrack(t) {
         kept.track = t
-        // An update already on its way is not dropped for a change of track
-        if (busy) return
+        // An update already on its way is not dropped for a change of track; if it stops
+        // short, its offer goes and the new track is asked then
+        if (busy) { trackMoved = true; return }
+        drop()
+    }
+    // The track changed under a download that has not landed
+    property bool trackMoved: false
+    // The offer goes, notice and badges with it, and the track is asked again
+    function drop() {
+        trackMoved = false
         shown = false
+        pending = false
+        phase = "offer"
         check()
     }
 
@@ -78,10 +92,14 @@ Frost {
             if (track === root.track && !root.busy) root.show(version, title, url, how, command)
         }
         function onUpdateCurrent(track, error) {
-            if (track !== root.track || !root.asked) return
+            if (track !== root.track) return
+            // Nothing newer on this track: an offer from an earlier check is gone, the
+            // notice with it
+            if (!error && !root.busy) { root.pending = false; root.shown = false; root.phase = "offer" }
+            if (!root.asked) return
             root.asked = false
-            if (error) frame.toast("AniBeam could not check for updates. Check your internet connection, then try again.", 8, "Try again", root.checkNow, String(error))
-            else frame.toast("AniBeam is up to date")
+            if (error) frame.toast(words.t("update-notice-check-failed"), 8, words.t("action-try-again"), root.checkNow, String(error))
+            else frame.toast(words.t("update-notice-up-to-date"))
         }
         function onUpdateProgress(got, total) {
             if (root.phase !== "downloading") return
@@ -94,7 +112,10 @@ Frost {
             root.phase = "ready"
             if (!root.covered) root.restart()
         }
-        function onUpdateFailed(message) { root.failure = message; root.phase = "failed"; root.shown = true }
+        function onUpdateFailed(message) {
+            if (root.trackMoved) { root.drop(); return }
+            root.failure = message; root.phase = "failed"; root.shown = true
+        }
     }
 
     // Check for updates in About: like the launch check, but it shows the offer even for a
@@ -105,7 +126,6 @@ Frost {
     property string laterFor: ""
     function show(version, title, url, how, command) {
         asked = false
-        if (version === laterFor) return
         root.version = version
         root.title = title
         root.url = url
@@ -113,7 +133,9 @@ Frost {
         root.command = command
         root.phase = "offer"
         root.copied = false
-        shown = true
+        root.pending = true
+        // Put off with Later: About and the badges still have it, the island stays away
+        if (version !== laterFor) shown = true
     }
     function later() {
         // A readied update still lands when the app quits; only an offer is passed over
@@ -129,6 +151,7 @@ Frost {
     function cancel() {
         Shell.cancelUpdate()
         root.phase = "offer"
+        if (trackMoved) drop()
     }
     function restart() {
         Shell.restartForUpdate()
@@ -139,26 +162,33 @@ Frost {
         root.copied = true
     }
 
+    // The words on the island's buttons, which About's own buttons use too
+    readonly property string copyText: copied ? words.t("update-notice-copied") : words.t("update-notice-copy")
+    readonly property string restartText: words.t("update-notice-restart")
+    readonly property string retryText: words.t("update-notice-retry")
+    readonly property string cancelText: words.t("action-cancel")
+    readonly property string pageText: words.t("update-notice-release-page")
+
     function mb(bytes) { return Math.round(bytes / 1048576) }
     readonly property string headline: {
-        if (phase === "downloading") return "Downloading AniBeam " + version
-        if (phase === "ready") return "AniBeam " + version + " is ready"
-        if (phase === "failed") return "The update failed"
-        if (how === "command") return "AniBeam " + version + " is on the AUR"
-        return "AniBeam " + version + (title ? " \u201c" + title + "\u201d" : "") + " is out"
+        if (phase === "downloading") return words.t("update-notice-downloading", { version: version })
+        if (phase === "ready") return words.t("update-notice-ready", { version: version })
+        if (phase === "failed") return words.t("update-notice-failed")
+        if (how === "command") return words.t("update-notice-on-aur", { version: version })
+        return title ? words.t("update-notice-out-titled", { version: version, title: title }) : words.t("update-notice-out", { version: version })
     }
     readonly property string detail: {
-        if (phase === "downloading") return Math.floor(progress * 100) + "%  ·  " + mb(got) + " of " + mb(total) + " MB"
-        if (phase === "ready") return "Restart now, or it opens next time"
+        if (phase === "downloading") return words.t("update-notice-progress", { percent: Math.floor(progress * 100), got: mb(got), total: mb(total) })
+        if (phase === "ready") return words.t("update-notice-restart-hint")
         if (phase === "failed") return failure
         if (how === "command") return command
-        if (how === "source") return "This copy is built from source: pull and rebuild"
-        if (how === "page") return "No download here for this computer"
-        return "Update installs it and restarts AniBeam"
+        if (how === "source") return words.t("update-notice-from-source")
+        if (how === "page") return words.t("update-notice-no-download")
+        return words.t("update-notice-install-hint")
     }
 
     Column {
-        id: words
+        id: lines
         anchors.left: parent.left; anchors.leftMargin: root.pad
         anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(1)
@@ -187,7 +217,7 @@ Frost {
         Button {
             objectName: "update-install"
             visible: (root.phase === "offer" && root.how === "install") || root.phase === "failed"
-            text: root.phase === "failed" ? "Retry" : "Update"
+            text: root.phase === "failed" ? root.retryText : words.t("update-notice-update")
             icon: root.phase === "failed" ? "rotate-cw" : "download"
             primary: true; small: true
             onClicked: root.install()
@@ -195,32 +225,32 @@ Frost {
         Button {
             objectName: "update-restart"
             visible: root.phase === "ready"
-            text: "Restart"; icon: "refresh-cw"; primary: true; small: true
+            text: root.restartText; icon: "refresh-cw"; primary: true; small: true
             onClicked: root.restart()
         }
         Button {
             objectName: "update-copy"
             visible: root.phase === "offer" && root.how === "command"
-            text: root.copied ? "Copied" : "Copy"; icon: root.copied ? "check" : "copy"
+            text: root.copyText; icon: root.copied ? "check" : "copy"
             primary: true; small: true
             onClicked: root.copyCommand()
         }
         Button {
             objectName: "update-page"
             visible: root.phase === "offer" && root.how === "page"
-            text: "Release page"; icon: "external-link"; primary: true; small: true
+            text: root.pageText; icon: "external-link"; primary: true; small: true
             onClicked: { root.shown = false; frame.openLink(root.url) }
         }
         Button {
             objectName: "update-cancel"
             visible: root.phase === "downloading"
-            text: "Cancel"; icon: "x"; small: true
+            text: root.cancelText; icon: "x"; small: true
             onClicked: root.cancel()
         }
         Button {
             objectName: "update-later"
             visible: root.phase !== "downloading"
-            text: "Later"; icon: "clock"; small: true
+            msg: "update-notice-later"; icon: "clock"; small: true
             onClicked: root.later()
         }
     }
