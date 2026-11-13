@@ -84,5 +84,9 @@
  "No nightly newer than {version} yet.": "Пока нет Nightly новее {version}.",
  "Selected. Press Ctrl+C to copy.": "Выделено. Нажмите Ctrl+C, чтобы скопировать.",
  "The Library grid with every show as a poster": "Библиотека сеткой, каждый сериал постером",
- "A show's page with its banner, episodes and characters": "Страница сериала с баннером, сериями и персонажами"
+ "A show's page with its banner, episodes and characters": "Страница сериала с баннером, сериями и персонажами",
+ "Get it for Mac": "Скачать для Mac",
+ "Unless you want to donate": "Если только не захотите задонатить",
+ "But feedback would be lovely": "Но отзывам будем очень рады",
+ "But we support Tailscale": "Но мы поддерживаем Tailscale"
 }

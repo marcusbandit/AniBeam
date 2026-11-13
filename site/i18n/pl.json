@@ -84,5 +84,9 @@
   "No nightly newer than {version} yet.": "Nie ma jeszcze Nightly nowszej niż {version}.",
   "Selected. Press Ctrl+C to copy.": "Zaznaczono. Naciśnij Ctrl+C, aby skopiować.",
   "The Library grid with every show as a poster": "Biblioteka w siatce, każda seria jako plakat",
-  "A show's page with its banner, episodes and characters": "Strona serii z banerem, odcinkami i postaciami"
+  "A show's page with its banner, episodes and characters": "Strona serii z banerem, odcinkami i postaciami",
+  "Get it for Mac": "Pobierz na Maca",
+  "Unless you want to donate": "Chyba że chcesz wesprzeć",
+  "But feedback would be lovely": "Ale opinie bardzo mile widziane",
+  "But we support Tailscale": "Ale obsługujemy Tailscale"
 }

@@ -16,15 +16,17 @@
     // No nightly newer than the release means Nightly offers the release's files, and says so.
     // The phone has a nightly of its own, under its own number.
     const nightly = channel === "nightly";
-    const behind = nightly && !(AB.phone ? rel.phone_nightly : rel.nightly);
+    const android = AB.os === "android";
+    const behind = nightly && !(android ? rel.phone_nightly : rel.nightly);
     const desktop = nightly && rel.nightly ? rel.nightly : rel.stable;
     const phone = nightly && rel.phone_nightly ? rel.phone_nightly : rel.phone;
     for (const card of document.querySelectorAll("#dl-grid [data-asset]")) {
       const from = card.dataset.asset === "apk" ? phone : desktop;
       if (from) card.href = from.assets[card.dataset.asset] || from.url;
     }
-    // A phone sees only the phone's tile, so the line under the title is the phone release's.
-    const shown = AB.phone ? phone : desktop;
+    // An Android phone sees only the phone's tile, so the line under the title is the phone
+    // release's. An iPhone sees the Mac's tile until there is an iPhone app.
+    const shown = android ? phone : desktop;
     if (!meta || !shown) return;
     const when = new Date(shown.published).toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" });
     meta.textContent = behind
@@ -47,8 +49,9 @@
   AB.releases().then((r) => { rel = r; show(page.dataset.channel); });
 
   // The visitor's own system gets the wide tile on top and the brand-coloured button. A phone gets
-  // the phone tile, and the page shows nothing else (style.css, data-device). A system we build
-  // nothing for gets no tile picked, and neither does a Mac the browser says is Intel.
+  // the phone tile and the page shows nothing else (style.css, data-device); an iPhone gets the
+  // Mac's, under a note that the iPhone app is coming. A system we build nothing for gets no tile
+  // picked, and neither does a Mac the browser says is Intel.
   function feature(want) {
     const mine = want && document.querySelector(`.dl-tile[data-os="${want}"]`);
     if (!mine) return;
@@ -58,7 +61,7 @@
     if (AB.os !== "ios") { main.classList.remove("btn-ghost"); main.classList.add("btn-primary"); }
   }
   if (AB.os === "mac") AB.macChip.then((chip) => feature(chip === false ? null : "mac"));
-  else feature(AB.phone ? "android" : AB.os);
+  else feature(AB.os === "ios" ? "mac" : AB.os);
 })();
 
 // The streaks. Each switch of channel plays their entrance again, the same extension the page
