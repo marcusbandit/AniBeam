@@ -71,7 +71,7 @@ pub mod ffi {
         fn open_url(url: &QString) -> bool;
         /// QLocale::setDefault: the language Qt names months, days and numbers in.
         fn set_default_locale(tag: &QString);
-        /// QLocale::system().name(), "da_DK", whatever the default is.
+        /// QLocale::system().uiLanguages(), most wanted first and comma separated: "de-DE,en".
         fn system_locale_name() -> QString;
     }
 

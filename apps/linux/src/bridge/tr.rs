@@ -78,7 +78,7 @@ pub fn language_from_env() {
     }
 }
 
-/// The language picked in Settings, from `[shell] language=` in shell.conf, or else the
+/// The language picked in Settings, from `[language] code=` in shell.conf, or else the
 /// system's; nothing changes when ANIBEAM_LANG pinned one. Words.qml keeps the pick, and
 /// this reads it early so nothing is ever shown in English first.
 pub fn language_from_settings(conf: &std::path::Path) {
@@ -88,21 +88,35 @@ pub fn language_from_settings(conf: &std::path::Path) {
     let text = std::fs::read_to_string(conf).unwrap_or_default();
     let lang = saved_language(&text)
         .and_then(|code| Lang::from_code(&code))
-        .unwrap_or_else(|| {
-            let name = super::helpers::ffi::system_locale_name().to_string();
-            Lang::from_locale(&name)
-        });
+        .unwrap_or_else(system_lang);
     i18n::set_lang(lang);
     super::helpers::ffi::set_default_locale(&QString::from(lang.code()));
 }
 
-/// `language=` under `[shell]` in a QSettings INI file.
+/// The first language the system's person reads that the app speaks, English when none.
+fn system_lang() -> Lang {
+    first_spoken(&super::helpers::ffi::system_locale_name().to_string())
+}
+
+/// The first of a comma separated list of languages ("de-DE,en") that the app speaks.
+fn first_spoken(list: &str) -> Lang {
+    list.split(',')
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .find_map(|l| {
+            let lang = Lang::from_locale(l);
+            (lang != Lang::En || l.to_ascii_lowercase().starts_with("en")).then_some(lang)
+        })
+        .unwrap_or(Lang::En)
+}
+
+/// `code=` under `[language]` in a QSettings INI file.
 fn saved_language(ini: &str) -> Option<String> {
-    let mut in_shell = false;
+    let mut in_section = false;
     for line in ini.lines().map(str::trim) {
         if line.starts_with('[') {
-            in_shell = line == "[shell]";
-        } else if in_shell && let Some(value) = line.strip_prefix("language=") {
+            in_section = line == "[language]";
+        } else if in_section && let Some(value) = line.strip_prefix("code=") {
             let value = value.trim().trim_matches('"');
             return (!value.is_empty()).then(|| value.to_string());
         }
@@ -151,8 +165,7 @@ impl qobject::Tr {
     }
 
     pub fn system_code(&self) -> QString {
-        let name = super::helpers::ffi::system_locale_name().to_string();
-        QString::from(Lang::from_locale(&name).code())
+        QString::from(system_lang().code())
     }
 }
 
@@ -167,17 +180,27 @@ fn arg(value: &QJsonValue) -> Arg<'static> {
 
 #[cfg(test)]
 mod tests {
-    use super::saved_language;
+    use super::{first_spoken, saved_language};
 
     #[test]
-    fn the_saved_language_is_read_from_the_shell_section_only() {
-        let ini = "[airing]\nlanguage=fr\n\n[shell]\nnextNamesEpisode=true\nlanguage=da\n";
+    fn the_saved_language_is_read_from_its_own_section_only() {
+        let ini = "[airing]\ncode=fr\n\n[language]\ncode=da\n";
         assert_eq!(saved_language(ini).as_deref(), Some("da"));
-        assert_eq!(saved_language("[shell]\nlanguage=\n"), None);
+        assert_eq!(saved_language("[language]\ncode=\n"), None);
         assert_eq!(
-            saved_language("[shell]\nlanguage=pt-BR\n").as_deref(),
+            saved_language("[language]\ncode=pt-BR\n").as_deref(),
             Some("pt-BR")
         );
         assert_eq!(saved_language(""), None);
+    }
+
+    #[test]
+    fn the_system_language_is_the_first_one_read_that_the_app_speaks() {
+        use anibeam_core::i18n::Lang;
+        assert_eq!(first_spoken("de-DE,en"), Lang::De);
+        assert_eq!(first_spoken("nb-NO,da-DK,en"), Lang::Da);
+        assert_eq!(first_spoken("en-US,da-DK"), Lang::En);
+        assert_eq!(first_spoken("sv-SE,fi"), Lang::En);
+        assert_eq!(first_spoken(""), Lang::En);
     }
 }

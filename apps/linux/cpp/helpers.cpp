@@ -271,5 +271,7 @@ void set_default_locale(const QString &tag)
 
 QString system_locale_name()
 {
-    return QLocale::system().name();
+    // The languages the person reads, most wanted first (LANGUAGE, then LC_MESSAGES on
+    // Linux), not the locale numbers and dates are formatted in
+    return QLocale::system().uiLanguages().join(QLatin1Char(','));
 }

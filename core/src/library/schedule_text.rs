@@ -23,9 +23,9 @@ pub(crate) const SPAN_MAX: u32 = 500;
 /// `month_num` reads back.
 const MONTHS: &str = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|januar|februar|märz|maerz|juni|juli|oktober|dezember|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|dicembre|janeiro|fevereiro|março|marco|maio|junho|julho|setembro|outubro|dezembro\
 |janv|févr|fevr|avr|juil|déc\
-|marts|maj|august|september|november|december\
+|marts|maja?|august|september|november|december\
 |januari|februari|maart|mrt|mei|augustus\
-|stycz\\w*|lut\\w*|mar(?:ca|zec)|kwie\\w*|czerw\\w*|lip(?:ca|iec)|sierp\\w*|wrze\\w*|paźdz\\w*|listopad\\w*|grud\\w*\
+|stycz(?:eń|nia)|lut(?:y|ego)|mar(?:ca|zec)|kwie(?:cień|tnia)|czerw(?:iec|ca)|lip(?:ca|iec)|sierp(?:ień|nia)|wrze(?:sień|śnia)|paździer(?:nik|nika)|listopad[a]?|grud(?:zień|nia)\
 |январ\\w*|феврал\\w*|март\\w*|апрел\\w*|ма[йя]|июн\\w*|июл\\w*|август\\w*|сентябр\\w*|октябр\\w*|ноябр\\w*|декабр\\w*\
 |янв|фев|мар|апр|авг|сен|окт|ноя|дек";
 const DAYS: &str = "(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*|lunes|martes|miércoles|jueves|viernes|sábado|domingo|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\\.?,?\\s+(?:the\\s+|le\\s+|el\\s+|den\\s+)?";
@@ -668,7 +668,7 @@ fn month_num(name: &str) -> Option<u8> {
         ("lip", 7),
         ("sierp", 8),
         ("wrze", 9),
-        ("paźdz", 10),
+        ("paździer", 10),
         ("lis", 11),
         ("grud", 12),
         ("янв", 1),
@@ -959,8 +959,8 @@ pub(crate) mod tests {
         ),
         (
             "Danish, Dutch, Polish and Russian months",
-            "Episode 13 (10. januar 2027)\nEpisode 14 (17 maart 2027)\nEpisode 15 (24 stycznia 2027)\nEpisode 16 (31 января 2027)",
-            "13 10 Jan 2027; 14 17 Mar 2027; 15 24 Jan 2027; 16 31 Jan 2027",
+            "Episode 13 (10. januar 2027)\nEpisode 14 (17 maart 2027)\nEpisode 15 (24 stycznia 2027)\nEpisode 16 (31 января 2027)\nEpisode 17 (15 maja 2027)\nEpisode 18 (1 grudnia 2027)",
+            "13 10 Jan 2027; 14 17 Mar 2027; 15 24 Jan 2027; 16 31 Jan 2027; 17 15 May 2027; 18 1 Dec 2027",
             None,
         ),
         (

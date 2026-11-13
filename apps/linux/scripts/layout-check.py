@@ -68,8 +68,12 @@ def run(binary, root, out, lang, size):
             _, _, rest = line.partition("DRIVE TEXTS ")
             name, _, payload = rest.partition(" ")
             texts[name] = json.loads(payload)
-    if proc.returncode != 0:
-        print(f"  {lang} {size}: the drive exited {proc.returncode}; see {out / 'run.log'}")
+    # A run that failed, or measured fewer pages than the drive opens, is no result: it must
+    # never read as a clean one
+    pages = len(drive_script()[0]["pages"])
+    if proc.returncode != 0 or len(texts) < pages:
+        raise SystemExit(f"{lang} {size}: the drive exited {proc.returncode} and measured "
+                         f"{len(texts)} of {pages} pages; see {out / 'run.log'}")
     return texts
 
 
@@ -95,7 +99,8 @@ def compare(english, other):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
+                                 epilog="Exits 1 on a finding, and with a message when a run fails.")
     ap.add_argument("--root", required=True)
     ap.add_argument("--bin", default=str(APP.parent.parent / "target/release/anibeam"))
     ap.add_argument("--out", required=True)
