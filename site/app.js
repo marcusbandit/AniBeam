@@ -183,18 +183,13 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     io.observe(wall);
   } else load().then(enable);
 
-  // Right after the wall, so Tab from the card goes on to the page after it. The card sits in a
-  // box that starts at the poster's edge and clips it, so it slides out from behind the poster.
-  const pop = document.createElement("div");
-  pop.className = "show-pop";
-  pop.hidden = true;
-  const card = document.createElement("div");
-  card.className = "show-card";
-  card.setAttribute("role", "dialog");
-  card.setAttribute("aria-modal", "false");
-  card.setAttribute("aria-labelledby", "show-card-title");
-  pop.append(card);
-  wall.after(pop);
+  // Every card is its own element in a layer right after the wall, so Tab from a card goes on to
+  // the page after it, and a card opened while another is leaving lands on top of it. Each card
+  // sits in a box that starts at its poster's edge and clips it, so it slides out from behind
+  // the poster and back in.
+  const layer = document.createElement("div");
+  layer.className = "show-layer";
+  wall.after(layer);
 
   // Below 940 px a poster near the middle has no room on either side, so the card is a sheet.
   const narrow = matchMedia("(max-width: 940px)");
@@ -221,7 +216,14 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
   // The description's last lines fade only while there is more of it below.
   const fade = (text) => text.classList.toggle("more", text.scrollTop + text.clientHeight < text.scrollHeight - 2);
 
-  function fill(s) {
+  let made = 0;
+  function make(s) {
+    const pop = el("div", "show-pop");
+    const card = el("div", "show-card");
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "false");
+    pop.append(card);
+
     const close = el("button", "show-x");
     close.type = "button";
     close.setAttribute("aria-label", t("Close"));
@@ -229,7 +231,8 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     close.addEventListener("click", () => shut(true));
 
     const title = el("h3", null, s.title);
-    title.id = "show-card-title";
+    title.id = `show-card-title-${++made}`;
+    card.setAttribute("aria-labelledby", title.id);
 
     const facts = [s.format === "MOVIE" ? t("Movie") : s.format === "TV" ? "TV" : s.format, s.year];
     if (s.format !== "MOVIE" && s.episodes > 1) facts.push(t("{n} episodes", { n: s.episodes }));
@@ -246,21 +249,22 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     links.append(link(`https://anilist.co/anime/${s.anilist}`, "to-anilist", ANILIST, "AniList"));
     if (s.mal) links.append(link(`https://myanimelist.net/anime/${s.mal}`, "to-mal", MAL, "MyAnimeList"));
 
-    card.replaceChildren(close, title, meta, text, links);
+    card.append(close, title, meta, text, links);
+    return pop;
   }
+
   // Beside the poster on whichever side has room, exactly as tall as it and level with it. The
   // box starts at the poster's edge with room for the shadow on the other three sides; the card
   // waits inside it, pushed back behind the poster, until `in` slides it out.
   const PAD = 48, GAP = 14;
-  function place(poster) {
+  function place(pop, poster) {
+    const card = pop.firstChild;
     for (const k of ["left", "top", "width", "height"]) { pop.style[k] = ""; card.style[k] = ""; }
-    pop.classList.remove("to-right", "to-left");
     if (narrow.matches) return;
     const r = poster.getBoundingClientRect();
     const box = pop.offsetParent ? pop.offsetParent.getBoundingClientRect() : { left: -scrollX, top: -scrollY };
     const w = card.offsetWidth;
     const right = r.right + GAP + w + 16 <= innerWidth;
-    pop.classList.add(right ? "to-right" : "to-left");
     pop.style.width = `${GAP + w + PAD}px`;
     pop.style.height = `${r.height + 2 * PAD}px`;
     pop.style.top = `${r.top - PAD - box.top}px`;
@@ -293,31 +297,35 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     if (pushed) { pushed = false; shut(false, true); }
   });
 
+  // A card that leaves slides back behind its poster and fades, then goes; the next one does not
+  // wait for it.
+  const retire = (pop) => {
+    pop.firstChild.classList.replace("in", "out") || pop.firstChild.classList.add("out");
+    setTimeout(() => pop.remove(), 560);
+  };
+
   let open = null;
+  let current = null;
   let wanted = null;
-  let hiding = 0;
   async function show(poster, byKey) {
     wanted = poster;
     const s = (await load())[poster.dataset.show];
     // Closed, or another poster asked for, while the shows were loading.
     if (wanted !== poster || !s) return;
     if (open) open.classList.remove("is-open");
+    if (current) retire(current);
     open = poster;
     poster.classList.add("is-open");
     wall.classList.add("holding");
-    fill(s);
-    clearTimeout(hiding);
-    // A card already out goes straight back behind its poster, then slides out by the new one.
-    card.classList.add("snap");
-    card.classList.remove("in");
-    pop.hidden = false;
-    place(poster);
-    fade(card.querySelector(".show-text"));
-    void card.offsetWidth;
-    card.classList.remove("snap");
-    requestAnimationFrame(() => requestAnimationFrame(() => { if (open === poster) card.classList.add("in"); }));
+    const pop = make(s);
+    current = pop;
+    layer.append(pop);
+    place(pop, poster);
+    fade(pop.querySelector(".show-text"));
+    void pop.offsetWidth;
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (current === pop) pop.firstChild.classList.add("in"); }));
     pushSheet();
-    if (byKey) card.querySelector(".show-x").focus({ preventScroll: true });
+    if (byKey) pop.querySelector(".show-x").focus({ preventScroll: true });
   }
   function shut(refocus, fromHistory, viaLink) {
     wanted = null;
@@ -326,10 +334,8 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
     open = null;
     poster.classList.remove("is-open");
     wall.classList.remove("holding");
-    card.classList.remove("in");
-    // Hidden once it has slid back behind the poster.
-    clearTimeout(hiding);
-    hiding = setTimeout(() => { if (!open) pop.hidden = true; }, 320);
+    retire(current);
+    current = null;
     if (!fromHistory) popSheet(viaLink);
     if (refocus) poster.focus({ preventScroll: true });
   }
@@ -348,11 +354,11 @@ onceInView([...document.querySelectorAll(".feat")], 0.4);
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && (open || wanted)) shut(true); });
   document.addEventListener("pointerdown", (e) => {
-    if ((open || wanted) && !card.contains(e.target) && !e.target.closest("#marquee .poster")) shut(false, false, !!e.target.closest("a[href]"));
+    if ((open || wanted) && !(current && current.contains(e.target)) && !e.target.closest("#marquee .poster")) shut(false, false, !!e.target.closest("a[href]"));
   });
   addEventListener("resize", () => {
     if (!open) return;
-    place(open);
+    place(current, open);
     pushSheet();
   });
 })();
