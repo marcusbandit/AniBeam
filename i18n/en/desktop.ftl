@@ -1260,7 +1260,7 @@ series-play-again = Watch again
 series-play-continue-episode = Continue episode { $number }
 series-play-again-from = Watch again from episode { $number }
 series-play-episode = Play episode { $number }
-series-not-tracked = Not tracked
+series-page-not-tracked = Not tracked
 series-not-tracked-on-disk =
     { $count ->
         [one] Not tracked, { $count } episode on disk
@@ -1307,11 +1307,11 @@ series-change = Change
 series-get-episodes = Get episodes
 series-your-score = Your score { $score }
 series-rate = Rate
-series-average-score = Average score { $score }
-series-imdb = IMDb { $score }
-series-imdb-votes = { $votes } votes
+series-page-average-score = Average score { $score }
+series-page-imdb = IMDb { $score }
+series-page-imdb-votes = { $votes } votes
 series-add-to-list = Add to a list
-series-rewatched =
+series-page-rewatched =
     { $count ->
         [one] Rewatched { $count } time
        *[other] Rewatched { $count } times

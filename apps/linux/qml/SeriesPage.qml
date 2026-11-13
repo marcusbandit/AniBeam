@@ -409,7 +409,7 @@ Item {
     }
     readonly property string progressText: {
         if (!detail) return ""
-        if (!tracked) return isMovie ? words.t("series-not-tracked") : words.t("series-not-tracked-on-disk", { count: detail.progress.on_disk })
+        if (!tracked) return isMovie ? words.t("series-page-not-tracked") : words.t("series-not-tracked-on-disk", { count: detail.progress.on_disk })
         var p = detail.progress
         if (!p.total) return words.t("series-watched", { count: watchedCount })
         return words.t(p.estimate ? "series-watched-of-estimate" : "series-watched-of", { watched: watchedCount, total: p.total })
@@ -929,13 +929,13 @@ Item {
                         text: page.hasScore ? words.t("series-your-score", { score: Fmt.score(card.my_score) }) : words.t("series-rate")
                         onClicked: scorePicker.openAt(rateButton, page.hasScore ? card.my_score : -1)
                     }
-                    Fact { objectName: "fact-average"; visible: page.hasAverage; icon: "users"; text: page.hasAverage ? words.t("series-average-score", { score: Fmt.score(card.community_score) }) : "" }
+                    Fact { objectName: "fact-average"; visible: page.hasAverage; icon: "users"; text: page.hasAverage ? words.t("series-page-average-score", { score: Fmt.score(card.community_score) }) : "" }
                     Fact {
                         objectName: "fact-imdb"
                         visible: page.hasImdb
                         icon: "clapperboard"
-                        text: page.hasImdb ? words.t("series-imdb", { score: Fmt.score(card.imdb_score) }) : ""
-                        Tooltip { text: page.hasImdb && card.imdb_votes ? words.t("series-imdb-votes", { votes: Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) }) : "" }
+                        text: page.hasImdb ? words.t("series-page-imdb", { score: Fmt.score(card.imdb_score) }) : ""
+                        Tooltip { text: page.hasImdb && card.imdb_votes ? words.t("series-page-imdb-votes", { votes: Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) }) : "" }
                     }
                     // The list status, and with a tracker connected the menu that changes it
                     Fact {
@@ -950,7 +950,7 @@ Item {
                         onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
                         Tooltip { text: statusFact.settable ? frame.listHome(card) : "" }
                     }
-                    Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? words.t("series-rewatched", { count: page.detail.rewatch_count }) : "" }
+                    Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? words.t("series-page-rewatched", { count: page.detail.rewatch_count }) : "" }
                     // The list entry's notes, written to every connected tracker (#211); a show not
                     // on a list yet has no entry to write them on
                     Button {
