@@ -46,7 +46,7 @@ use std::time::Duration;
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 use crate::sync::recover;
 use crate::trackers::accounts::with_secrets;
 use anirss::{AnirssClient, Sidecar, SpawnFailure};
@@ -325,7 +325,7 @@ async fn reach(core: &Arc<Core>) -> Result<Reached, CoreError> {
                 )
             };
             set_anirss_failure_at(core, generation, AnirssState::Missing, &message);
-            return Err(service(anirss::SERVICE, "missing", message));
+            return Err(CoreError::service(anirss::SERVICE, "missing", message));
         }
         Err(SpawnFailure::Io(e)) => {
             let message = crate::i18n::tr(
@@ -336,7 +336,7 @@ async fn reach(core: &Arc<Core>) -> Result<Reached, CoreError> {
                 ],
             );
             set_anirss_failure_at(core, generation, AnirssState::Failed, &message);
-            return Err(service(anirss::SERVICE, "failed", message));
+            return Err(CoreError::service(anirss::SERVICE, "failed", message));
         }
     };
     let client = AnirssClient::new(&sidecar.server(), &sidecar.token, core.http.clone());
@@ -348,7 +348,7 @@ async fn reach(core: &Arc<Core>) -> Result<Reached, CoreError> {
             sidecar.stop();
             let message = anirss::lacks_feature_message(&health.version);
             set_anirss_failure_at(core, generation, AnirssState::Failed, &message);
-            Err(service(anirss::SERVICE, "failed", message))
+            Err(CoreError::service(anirss::SERVICE, "failed", message))
         }
         Ok(health) => {
             let unattended = core.downloads.unattended_allowed();
@@ -400,7 +400,7 @@ async fn reach(core: &Arc<Core>) -> Result<Reached, CoreError> {
                 None => message,
             };
             set_anirss_failure_at(core, generation, AnirssState::Failed, &message);
-            Err(service(anirss::SERVICE, "failed", message))
+            Err(CoreError::service(anirss::SERVICE, "failed", message))
         }
     }
 }
@@ -563,7 +563,7 @@ async fn decide_torrent(
         let port = match own_port {
             Some(port) => port,
             None => anirss::free_port()
-                .map_err(|e| service(qbt::SERVICE, "failed", no_free_port(&e)))?,
+                .map_err(|e| CoreError::service(qbt::SERVICE, "failed", no_free_port(&e)))?,
         };
         s.torrent_mode = TorrentMode::Managed;
         s.torrent_url = format!("http://127.0.0.1:{port}");
@@ -571,7 +571,7 @@ async fn decide_torrent(
         "qBittorrent is a dependency of Downloads and none was running, so AniBeam set up its own"
             .to_string()
     } else {
-        return Err(service(
+        return Err(CoreError::service(
             qbt::SERVICE,
             "missing",
             crate::i18n::tr(
@@ -596,9 +596,8 @@ async fn decide_torrent(
 fn own_address(core: &Core) -> Result<String, CoreError> {
     let port = match managed::configured_port(&managed::profile_dir(&core.paths.data_dir)) {
         Some(port) => port,
-        None => {
-            anirss::free_port().map_err(|e| service(qbt::SERVICE, "failed", no_free_port(&e)))?
-        }
+        None => anirss::free_port()
+            .map_err(|e| CoreError::service(qbt::SERVICE, "failed", no_free_port(&e)))?,
     };
     Ok(format!("http://127.0.0.1:{port}"))
 }
@@ -615,9 +614,9 @@ async fn start_managed(core: &Arc<Core>, s: &DownloadSettings) -> Result<(), Cor
     if answers().await {
         return Ok(());
     }
-    let failed = |message: String| service(qbt::SERVICE, "failed", message);
+    let failed = |message: String| CoreError::service(qbt::SERVICE, "failed", message);
     let binary = managed::binary().ok_or_else(|| {
-        service(
+        CoreError::service(
             qbt::SERVICE,
             "missing",
             crate::i18n::tr("core-downloads-own-client-gone", &[]),
@@ -698,14 +697,6 @@ fn no_free_port(e: &std::io::Error) -> String {
         "core-downloads-no-free-port",
         &[("error", e.to_string().into())],
     )
-}
-
-fn service(name: &str, code: &str, message: String) -> CoreError {
-    CoreError::Service {
-        service: name.to_string(),
-        code: code.to_string(),
-        message,
-    }
 }
 
 /// A service error's own words, without the service's name in front.
@@ -1075,16 +1066,10 @@ async fn probe_endpoints(core: &Core, endpoints: &mut [SearchEndpoint]) {
 /// One ready probe, short: a local service either answers at once or is
 /// not there.
 async fn probe(http: &dyn Http, url: &str) -> bool {
-    http.send(HttpRequest {
-        method: Method::Get,
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout: Some(std::time::Duration::from_millis(1500)),
-    })
-    .await
-    .map(|r| r.is_success())
-    .unwrap_or(false)
+    http.send(HttpRequest::get(url).timeout(std::time::Duration::from_millis(1500)))
+        .await
+        .map(|r| r.is_success())
+        .unwrap_or(false)
 }
 
 /// Re-probes the on-demand endpoints the status already lists. Starts
@@ -1181,7 +1166,7 @@ pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
             .await
             .map_err(|failure| {
                 let (code, message) = jackett::explain(&name, &failure);
-                service(&name, code, message)
+                CoreError::service(&name, code, message)
             })?;
             forget_probes();
             let mut endpoints = owner.downloads.state().endpoints.clone();
@@ -1251,14 +1236,14 @@ async fn guard_search(
             .unwrap_or_default();
         let up = !ready.is_empty() && probe_kept(core.http.as_ref(), &ready).await;
         if !up && target == Some(e.name.as_str()) {
-            return Err(CoreError::Service {
-                service: e.name.clone(),
-                code: "not_running".to_string(),
-                message: crate::i18n::tr(
+            return Err(CoreError::service(
+                e.name.clone(),
+                "not_running",
+                crate::i18n::tr(
                     "core-downloads-source-not-running",
                     &[("name", e.name.as_str().into())],
                 ),
-            });
+            ));
         }
         all_up &= up;
     }
@@ -1485,16 +1470,10 @@ async fn watch_search(
 }
 
 async fn answers(http: &dyn Http, url: &str) -> bool {
-    http.send(HttpRequest {
-        method: Method::Get,
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout: Some(std::time::Duration::from_secs(2)),
-    })
-    .await
-    .map(|r| r.is_success())
-    .unwrap_or(false)
+    http.send(HttpRequest::get(url).timeout(std::time::Duration::from_secs(2)))
+        .await
+        .map(|r| r.is_success())
+        .unwrap_or(false)
 }
 
 /// The facts read off each release, and the library series the query
@@ -1784,7 +1763,7 @@ async fn rehome_rule(
     let _one = core.downloads.rules.lock().await;
     let rules = qbt.rules().await?;
     let Some(def) = rules.get(&result.name) else {
-        return Err(service(
+        return Err(CoreError::service(
             "anirss",
             "rule_missing",
             crate::i18n::tr(
@@ -1822,7 +1801,7 @@ async fn rewire_subscription(
     let qbt = qbt_client(core).await?;
     let rules = qbt.rules().await?;
     let Some(def) = rules.get(&result.name) else {
-        return Err(service(
+        return Err(CoreError::service(
             "anirss",
             "rule_missing",
             crate::i18n::tr(
@@ -3032,7 +3011,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
             let qbt = qbt_client(&owner).await?;
             let rules = qbt.rules().await?;
             let def = rules.get(&name).cloned().ok_or_else(|| {
-                service(
+                CoreError::service(
                     qbt::SERVICE,
                     "rule_missing",
                     crate::i18n::tr("core-downloads-no-rule", &[("name", name.as_str().into())]),
@@ -3041,7 +3020,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
             let url = def["affectedFeeds"][0].as_str().unwrap_or("").to_string();
             let host = crate::net::host_shown(&url);
             let (key, value) = rewire::search_param(&url).ok_or_else(|| {
-                service(
+                CoreError::service(
                     &host,
                     "no_search",
                     crate::i18n::tr("core-downloads-feed-no-search", &[]),
@@ -3100,7 +3079,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                     },
                 });
             }
-            Err(service(
+            Err(CoreError::service(
                 &host,
                 "repair_failed",
                 crate::i18n::tr(
@@ -3127,7 +3106,7 @@ pub fn read_rule(core: &Core, name: String) -> Result<Reply, CoreError> {
             let qbt = qbt_client(&owner).await?;
             let rules = qbt.rules().await?;
             let def = rules.get(&name).cloned().ok_or_else(|| {
-                service(
+                CoreError::service(
                     qbt::SERVICE,
                     "rule_missing",
                     crate::i18n::tr("core-downloads-no-rule", &[("name", name.as_str().into())]),
@@ -3412,7 +3391,7 @@ pub(crate) async fn host_read(
     // The host only reads: it uses a client that is already up and never
     // starts, decides or saves anything for a device that asked.
     let idle = |what: &str| {
-        service(
+        CoreError::service(
             what,
             "not_running",
             crate::i18n::tr("core-downloads-host-not-running", &[]),
@@ -3440,7 +3419,7 @@ pub(crate) async fn host_read(
         Ok(torrents)
     };
     let late = |what: &str| {
-        service(
+        CoreError::service(
             what,
             "timeout",
             crate::i18n::tr("core-downloads-host-late", &[]),
@@ -3568,7 +3547,7 @@ mod tests {
         let wrote = http
             .requests()
             .iter()
-            .any(|r| r.url.contains("/endpoints") && !matches!(r.method, Method::Get));
+            .any(|r| r.url.contains("/endpoints") && !matches!(r.method, crate::net::Method::Get));
         core.shutdown();
         (sync, wrote)
     }

@@ -16,6 +16,7 @@ use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
+use crate::sync::{recover, recover_read, recover_write};
 use anyhow::Context;
 use librqbit::storage::filesystem::FilesystemStorageFactory;
 use librqbit::storage::{BoxStorageFactory, StorageFactory, TorrentStorage};
@@ -46,24 +47,22 @@ impl Files {
     /// Changes which files the torrent fetches. A file wanted again moves its part file
     /// into place on its next write.
     pub fn set_wanted(&self, wanted: Option<HashSet<usize>>) {
-        *self.wanted.write().unwrap_or_else(|e| e.into_inner()) = wanted;
+        *recover_write(&self.wanted) = wanted;
     }
 
     fn is_wanted(&self, id: usize) -> bool {
-        self.wanted
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
+        recover_read(&self.wanted)
             .as_ref()
             .is_none_or(|w| w.contains(&id))
     }
 
     /// Lets go of every open file, so space a deleted file held comes back.
     pub fn close(&self) {
-        self.open.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        recover(&self.open).clear();
     }
 
     fn real(&self, id: usize) -> anyhow::Result<PathBuf> {
-        let names = self.names.read().unwrap_or_else(|e| e.into_inner());
+        let names = recover_read(&self.names);
         let name = names.get(id).context("no such file")?;
         Ok(self.folder.join(name))
     }
@@ -77,7 +76,7 @@ impl Files {
     /// so far are in a part file takes that file over first.
     fn file(&self, id: usize, write: bool) -> anyhow::Result<Arc<File>> {
         let wanted = self.is_wanted(id);
-        let mut open = self.open.lock().unwrap_or_else(|e| e.into_inner());
+        let mut open = recover(&self.open);
         match open.get(&id) {
             Some((real, f)) if *real || !wanted => return Ok(f.clone()),
             // Wanted now, and still open as its part file: move it into place below.
@@ -157,9 +156,7 @@ impl Shelf {
 
     /// The torrent's files, made for `folder` when it has none yet.
     pub fn files(&self, hash: &str, folder: &Path) -> Arc<Files> {
-        self.torrents
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+        recover(&self.torrents)
             .entry(hash.to_string())
             .or_insert_with(|| {
                 Arc::new(Files::new(
@@ -178,20 +175,11 @@ impl Shelf {
     }
 
     pub fn get(&self, hash: &str) -> Option<Arc<Files>> {
-        self.torrents
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(hash)
-            .cloned()
+        recover(&self.torrents).get(hash).cloned()
     }
 
     pub fn forget(&self, hash: &str) {
-        if let Some(files) = self
-            .torrents
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(hash)
-        {
+        if let Some(files) = recover(&self.torrents).remove(hash) {
             files.remove_parts();
         }
     }
@@ -255,7 +243,7 @@ impl TorrentStorage for Storage {
         _shared: &ManagedTorrentShared,
         metadata: &TorrentMetadata,
     ) -> anyhow::Result<()> {
-        *self.files.names.write().unwrap_or_else(|e| e.into_inner()) = metadata
+        *recover_write(&self.files.names) = metadata
             .file_infos
             .iter()
             .map(|f| f.relative_filename.clone())
@@ -276,11 +264,7 @@ impl TorrentStorage for Storage {
     }
 
     fn remove_file(&self, file_id: usize, filename: &Path) -> anyhow::Result<()> {
-        self.files
-            .open
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&file_id);
+        recover(&self.files.open).remove(&file_id);
         for path in [self.files.folder.join(filename), self.files.part(file_id)] {
             match std::fs::remove_file(&path) {
                 Ok(()) => {}

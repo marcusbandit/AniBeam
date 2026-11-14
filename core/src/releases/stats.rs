@@ -28,7 +28,7 @@ use tokio::net::UdpSocket;
 
 use super::endpoints::{quote, split_url, unquote_plus};
 use crate::contract::Release;
-use crate::net::{BoxFuture, Http, HttpRequest, Method};
+use crate::net::{BoxFuture, Http, HttpRequest};
 
 // Every number here is anirss's, from `stats.py` as of anirss 0.7.1, and has to stay so: the
 // native engine's lookups give up when anirss's do (#547). Change one only with anirss.
@@ -434,13 +434,9 @@ async fn http_scrape(http: &dyn Http, announce: &str, hashes: &[Hash]) -> HashMa
             .map(|h| format!("info_hash={}", quote(h, "/")))
             .collect::<Vec<_>>()
             .join("&");
-        let request = HttpRequest {
-            method: Method::Get,
-            url: format!("{url}?{prefix}{qs}"),
-            headers: vec![("User-Agent".to_string(), USER_AGENT.to_string())],
-            body: None,
-            timeout: Some(HTTP_SCRAPE_TIMEOUT),
-        };
+        let request = HttpRequest::get(format!("{url}?{prefix}{qs}"))
+            .header("User-Agent", USER_AGENT)
+            .timeout(HTTP_SCRAPE_TIMEOUT);
         let body = match http.send(request).await {
             Ok(r) if r.is_success() => r.body,
             Ok(r) => {
@@ -632,13 +628,9 @@ impl Backend for Net<'_> {
                 tracing::warn!("torrent download failed ({shown}): malformed URL");
                 return None;
             };
-            let request = HttpRequest {
-                method: Method::Get,
-                url: encoded,
-                headers: vec![("User-Agent".to_string(), USER_AGENT.to_string())],
-                body: None,
-                timeout: Some(timeout),
-            };
+            let request = HttpRequest::get(encoded)
+                .header("User-Agent", USER_AGENT)
+                .timeout(timeout);
             match self.0.send(request).await {
                 Ok(r) if r.is_success() => Some(r.body),
                 Ok(r) => {

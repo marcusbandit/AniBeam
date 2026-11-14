@@ -20,6 +20,7 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::downloads::qbt::QbtClient;
 use crate::store::sql::placeholders;
+use crate::sync::recover;
 
 /// One recorded origin: the torrent's info hash, lower case, and its name.
 #[derive(Clone, Debug, PartialEq)]
@@ -72,7 +73,7 @@ pub fn is_release(origin: &Origin, title: &str, link: &str, facts: &ReleaseFacts
 static SEEN: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 
 fn seen() -> std::sync::MutexGuard<'static, HashSet<String>> {
-    SEEN.lock().unwrap_or_else(|e| e.into_inner())
+    recover(&SEEN)
 }
 
 /// Records which finished torrent holds each library file whose origin is

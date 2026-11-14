@@ -1115,12 +1115,7 @@ mod tests {
 
     #[test]
     fn only_a_refusal_of_one_entry_lets_a_pass_go_on() {
-        let provider = |status| CoreError::Provider {
-            provider: Provider::Anilist,
-            status: Some(status),
-            message: String::new(),
-            retry_after: None,
-        };
+        let provider = |status| CoreError::provider(Provider::Anilist, Some(status), String::new());
         for status in [400, 404, 409, 422] {
             assert!(refuses_one(&provider(status)), "{status}");
         }

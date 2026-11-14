@@ -314,12 +314,11 @@ mod tests {
         ];
         for provider in [Provider::Anilist, Provider::Tvmaze] {
             for status in [None, Some(400), Some(401), Some(404), Some(429), Some(503)] {
-                all.push(CoreError::Provider {
+                all.push(CoreError::provider(
                     provider,
                     status,
-                    message: "error sending request for url (https://graphql.anilist.co/)".into(),
-                    retry_after: None,
-                });
+                    "error sending request for url (https://graphql.anilist.co/)",
+                ));
             }
         }
         for service in [
@@ -338,11 +337,7 @@ mod tests {
                 "failed",
                 "qbt_auth_required",
             ] {
-                all.push(CoreError::Service {
-                    service: service.into(),
-                    code: code.into(),
-                    message: "connection refused".into(),
-                });
+                all.push(CoreError::service(service, code, "connection refused"));
             }
         }
         for r in [
@@ -424,23 +419,13 @@ mod tests {
 
     #[test]
     fn only_a_list_site_sign_in_problem_opens_accounts() {
-        let mal = CoreError::Provider {
-            provider: Provider::Mal,
-            status: Some(401),
-            message: "invalid_token".into(),
-            retry_after: None,
-        };
+        let mal = CoreError::provider(Provider::Mal, Some(401), "invalid_token");
         assert_eq!(plain(&mal).fix, Fix::Settings("accounts"));
         assert_eq!(
             plain(&mal).said,
             "MyAnimeList turned down AniBeam's sign-in."
         );
-        let tvmaze = CoreError::Provider {
-            provider: Provider::Tvmaze,
-            status: Some(403),
-            message: "forbidden".into(),
-            retry_after: None,
-        };
+        let tvmaze = CoreError::provider(Provider::Tvmaze, Some(403), "forbidden");
         assert_eq!(plain(&tvmaze).fix, Fix::Retry);
         let e = CoreError::NotConnected {
             tracker: Tracker::Anilist,
@@ -450,14 +435,7 @@ mod tests {
 
     #[test]
     fn only_no_answer_blames_the_connection() {
-        let at = |status| {
-            plain(&CoreError::Provider {
-                provider: Provider::Tvmaze,
-                status,
-                message: "x".into(),
-                retry_after: None,
-            })
-        };
+        let at = |status| plain(&CoreError::provider(Provider::Tvmaze, status, "x"));
         assert_eq!(at(None).said, "TVmaze did not answer.");
         assert!(at(None).next.contains("internet"));
         for status in [Some(400), Some(404), Some(500), Some(503)] {
@@ -468,22 +446,13 @@ mod tests {
 
     #[test]
     fn a_rate_limit_says_wait() {
-        let e = CoreError::Provider {
-            provider: Provider::Anilist,
-            status: None,
-            message: "slow down".into(),
-            retry_after: Some(30.0),
-        };
+        let e = CoreError::provider_retry(Provider::Anilist, None, "slow down", Some(30.0));
         assert_eq!(plain(&e).next, "Wait a minute, then try again.");
     }
 
     #[test]
     fn a_local_downloads_service_opens_downloads_settings() {
-        let e = CoreError::Service {
-            service: "qBittorrent".into(),
-            code: "unauthorized".into(),
-            message: "403".into(),
-        };
+        let e = CoreError::service("qBittorrent", "unauthorized", "403");
         let p = plain(&e);
         assert_eq!(p.said, "The torrent client turned down the login.");
         assert_eq!(p.fix.key(), "settings:downloads");
@@ -491,11 +460,7 @@ mod tests {
 
     #[test]
     fn a_search_helper_that_cannot_log_in_points_at_the_torrent_password() {
-        let e = CoreError::Service {
-            service: "anirss".into(),
-            code: "qbt_auth_required".into(),
-            message: "qBittorrent wants a login".into(),
-        };
+        let e = CoreError::service("anirss", "qbt_auth_required", "qBittorrent wants a login");
         let p = plain(&e);
         assert_eq!(
             p.said,
@@ -507,11 +472,7 @@ mod tests {
 
     #[test]
     fn a_remote_source_that_times_out_is_not_something_to_start() {
-        let e = CoreError::Service {
-            service: "Some Feed".into(),
-            code: "unreachable".into(),
-            message: "timed out".into(),
-        };
+        let e = CoreError::service("Some Feed", "unreachable", "timed out");
         let p = plain(&e);
         assert_eq!(p.said, "Some Feed did not answer.");
         assert!(!p.next.contains("running"), "{}", p.next);
@@ -520,11 +481,7 @@ mod tests {
 
     #[test]
     fn a_trash_failure_offers_no_retry_that_cannot_work() {
-        let e = CoreError::Service {
-            service: "trash".into(),
-            code: "failed".into(),
-            message: "no trash can".into(),
-        };
+        let e = CoreError::service("trash", "failed", "no trash can");
         assert_eq!(plain(&e).fix, Fix::None);
     }
 

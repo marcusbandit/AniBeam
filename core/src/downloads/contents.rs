@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use crate::contract::*;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 /// The files a `.torrent` lists, path and size; empty when the bytes are
 /// not a torrent.
@@ -71,31 +71,27 @@ pub async fn inspect(http: &dyn Http, link: &str) -> Result<(Vec<u32>, u64), Cor
         return Ok((Vec::new(), 0));
     }
     let r = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: link.to_string(),
-            headers: Vec::new(),
-            body: None,
-            timeout: Some(std::time::Duration::from_secs(20)),
-        })
+        .send(HttpRequest::get(link).timeout(std::time::Duration::from_secs(20)))
         .await
-        .map_err(|e| CoreError::Service {
-            service: "torrent".to_string(),
-            code: "unreachable".to_string(),
-            message: crate::i18n::tr(
-                "core-downloads-torrent-file-no-answer",
-                &[("message", e.message.into())],
-            ),
+        .map_err(|e| {
+            CoreError::service(
+                "torrent",
+                "unreachable",
+                crate::i18n::tr(
+                    "core-downloads-torrent-file-no-answer",
+                    &[("message", e.message.into())],
+                ),
+            )
         })?;
     if r.status >= 400 {
-        return Err(CoreError::Service {
-            service: "torrent".to_string(),
-            code: format!("http_{}", r.status),
-            message: crate::i18n::tr(
+        return Err(CoreError::service(
+            "torrent",
+            format!("http_{}", r.status),
+            crate::i18n::tr(
                 "core-downloads-torrent-file-answered",
                 &[("status", r.status.to_string().into())],
             ),
-        });
+        ));
     }
     // A torrent file is metadata: a few hundred kilobytes for even a long batch
     if r.body.len() > MAX_TORRENT {

@@ -565,11 +565,11 @@ async fn fetch_exact(
         // Which search syntax an API takes is the site's business, so exclusions are applied
         // here rather than sent.
         let Some(map) = &ep.json else {
-            return Err(CoreError::Service {
-                service: ep.name.clone(),
-                code: "unmapped".into(),
-                message: json_needs_repo(),
-            });
+            return Err(CoreError::service(
+                ep.name.clone(),
+                "unmapped",
+                json_needs_repo(),
+            ));
         };
         let (positive, excluded) = split_exclusions(query);
         let items =

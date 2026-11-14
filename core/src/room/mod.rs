@@ -324,11 +324,11 @@ pub(crate) fn local_ms() -> u64 {
 /// A room error: `code` is a fixed word a shell branches on (`not_found`, `full`,
 /// `unreachable`, `refused`, `proto`, `not_in_room`), the words are for people.
 pub(crate) fn error(code: &str, words: Words) -> CoreError {
-    CoreError::Service {
-        service: crate::i18n::tr("core-room-service", &[]),
-        code: code.to_string(),
-        message: words.render(),
-    }
+    CoreError::service(
+        crate::i18n::tr("core-room-service", &[]),
+        code.to_string(),
+        words.render(),
+    )
 }
 
 fn not_in_room() -> CoreError {

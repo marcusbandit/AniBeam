@@ -18,9 +18,10 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use crate::contract::CoreError;
+use crate::sync::recover;
 
 /// A write that failed, with the path the failing step touched: the parent folder, the
 /// temporary sibling or the target.
@@ -71,7 +72,7 @@ fn parent(target: &Path) -> Option<&Path> {
 static LOCKS: LazyLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = LazyLock::new(Default::default);
 
 fn locks() -> MutexGuard<'static, HashMap<PathBuf, Arc<Mutex<()>>>> {
-    LOCKS.lock().unwrap_or_else(PoisonError::into_inner)
+    recover(&LOCKS)
 }
 
 /// Runs `save` on its own turn for `target`, after any save of the same file already
@@ -79,7 +80,7 @@ fn locks() -> MutexGuard<'static, HashMap<PathBuf, Arc<Mutex<()>>>> {
 fn in_turn<T>(target: &Path, save: impl FnOnce() -> T) -> T {
     let turn = Arc::clone(locks().entry(target.to_path_buf()).or_default());
     let out = {
-        let _held = turn.lock().unwrap_or_else(PoisonError::into_inner);
+        let _held = recover(&turn);
         save()
     };
     let mut all = locks();

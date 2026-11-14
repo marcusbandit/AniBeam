@@ -298,30 +298,28 @@ pub fn write_tvmaze_match(
 
 /// TVmaze answered that there is no such show: an attempt that was made.
 fn no_such_show(show_id: u64) -> CoreError {
-    CoreError::Provider {
-        provider: Provider::Tvmaze,
-        status: Some(404),
-        message: crate::i18n::tr(
+    CoreError::provider(
+        Provider::Tvmaze,
+        Some(404),
+        crate::i18n::tr(
             "core-metadata-no-such-show",
             &[("id", show_id.to_string().into())],
         ),
-        retry_after: None,
-    }
+    )
 }
 
 /// AniList answered, and what it said is that there is no such media. That
 /// is the provider's answer rather than a transport failure, so it carries
 /// a status and the caller treats it as an attempt that was made.
 fn no_such_media(anilist_id: u64) -> CoreError {
-    CoreError::Provider {
-        provider: Provider::Anilist,
-        status: Some(404),
-        message: crate::i18n::tr(
+    CoreError::provider(
+        Provider::Anilist,
+        Some(404),
+        crate::i18n::tr(
             "core-metadata-no-such-media",
             &[("id", anilist_id.to_string().into())],
         ),
-        retry_after: None,
-    }
+    )
 }
 
 /// A provider error's own message, without the `Provider:` prefix Display

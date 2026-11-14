@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::changelog::digits;
 use crate::contract::CoreError;
-use crate::net::{Http, HttpRequest, Method};
+use crate::net::{Http, HttpRequest};
 
 pub mod install;
 
@@ -177,13 +177,7 @@ pub async fn check(
     track: Track,
 ) -> Result<Option<Update>, CoreError> {
     let res = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: RELEASES.to_string(),
-            headers: vec![("Accept".into(), "application/vnd.github+json".into())],
-            body: None,
-            timeout: None,
-        })
+        .send(HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json"))
         .await
         .map_err(|e| CoreError::internal(format!("releases: {}", e.message)))?;
     if !res.is_success() {
@@ -235,13 +229,7 @@ const REPOS: &str = "https://anibeam.app/repos.json";
 /// them is offered only what they already have, so the command it is given finds it.
 pub async fn check_repos(http: &dyn Http, current: &str) -> Result<Option<String>, CoreError> {
     let res = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: REPOS.to_string(),
-            headers: Vec::new(),
-            body: None,
-            timeout: None,
-        })
+        .send(HttpRequest::get(REPOS))
         .await
         .map_err(|e| CoreError::internal(format!("repos: {}", e.message)))?;
     if !res.is_success() {
@@ -271,14 +259,11 @@ pub async fn check_aur(
     current: &str,
 ) -> Result<Option<String>, CoreError> {
     let res = http
-        .send(HttpRequest {
-            method: Method::Get,
-            // Names are [a-z0-9@._+-]; a raw + would read as a space
-            url: format!("{AUR_INFO}{}", package.replace('+', "%2B")),
-            headers: Vec::new(),
-            body: None,
-            timeout: None,
-        })
+        // Names are [a-z0-9@._+-]; a raw + would read as a space
+        .send(HttpRequest::get(format!(
+            "{AUR_INFO}{}",
+            package.replace('+', "%2B")
+        )))
         .await
         .map_err(|e| CoreError::internal(format!("aur: {}", e.message)))?;
     if !res.is_success() {

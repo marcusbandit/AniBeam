@@ -14,6 +14,7 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
 use super::doh::Doh;
 use crate::contract::CoreError;
+use crate::sync::{recover_read, recover_write};
 
 /// Each fronted host and the name its connections carry instead, as the installed
 /// definitions say. Shared by the client that decides what is fronted and the resolver that
@@ -23,19 +24,17 @@ pub struct Fronts(Arc<RwLock<Vec<(String, String)>>>);
 
 impl Fronts {
     pub fn set(&self, table: Vec<(String, String)>) {
-        *self.0.write().unwrap_or_else(|e| e.into_inner()) = table;
+        *recover_write(&self.0) = table;
     }
 
     pub fn fronted(&self, url: &str) -> Option<(String, String)> {
-        fronted(url, &self.0.read().unwrap_or_else(|e| e.into_inner()))
+        fronted(url, &recover_read(&self.0))
     }
 
     /// The host a front's name stands for: the first that names it. Every host behind one
     /// front answers on the same edge, so any of them leads there.
     fn host_of(&self, front: &str) -> Option<String> {
-        self.0
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
+        recover_read(&self.0)
             .iter()
             .find(|(_, f)| f.eq_ignore_ascii_case(front))
             .map(|(h, _)| h.clone())

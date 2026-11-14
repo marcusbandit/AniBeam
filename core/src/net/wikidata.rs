@@ -12,7 +12,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use super::imdb::title_id;
-use super::{Fault, Http, HttpRequest, Method, null_to_default};
+use super::{Fault, Http, HttpRequest, null_to_default};
 use crate::contract::Provider;
 use crate::percent;
 
@@ -68,27 +68,20 @@ struct Reply {
 /// Every AniList and MAL id Wikidata links to an IMDb title.
 pub async fn imdb_links(http: &dyn Http) -> Result<Vec<ImdbLink>, Fault> {
     let response = http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: format!("{SPARQL_API}?query={}", percent::encode(QUERY)),
-            headers: vec![
-                (
-                    "Accept".to_string(),
-                    "application/sparql-results+json".to_string(),
-                ),
+        .send(
+            HttpRequest::get(format!("{SPARQL_API}?query={}", percent::encode(QUERY)))
+                .header("Accept", "application/sparql-results+json")
                 // Wikimedia asks every client to say what it is and where
                 // it lives, and throttles the ones that do not.
-                (
-                    "User-Agent".to_string(),
+                .header(
+                    "User-Agent",
                     format!(
                         "AniBeam/{} (https://github.com/marcusbandit/AniBeam)",
                         crate::VERSION
                     ),
-                ),
-            ],
-            body: None,
-            timeout: Some(QUERY_TIMEOUT),
-        })
+                )
+                .timeout(QUERY_TIMEOUT),
+        )
         .await?;
     if !response.is_success() {
         return Err(Fault::Refused(format!(

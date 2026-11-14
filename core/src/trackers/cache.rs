@@ -151,12 +151,11 @@ pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, Core
         );
         let response = core.mal.get(&url, token).await?;
         if !response.is_success() {
-            return Err(CoreError::Provider {
-                provider: Provider::Mal,
-                status: Some(u32::from(response.status)),
-                message: response.text(),
-                retry_after: None,
-            });
+            return Err(CoreError::provider(
+                Provider::Mal,
+                Some(u32::from(response.status)),
+                response.text(),
+            ));
         }
         let body: serde_json::Value = response.json()?;
         let page_entries = body["data"].as_array().cloned().unwrap_or_default();

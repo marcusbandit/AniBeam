@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use crate::contract::*;
 use crate::core::Core;
 use crate::i18n::tr;
-use crate::net::{HttpRequest, Method};
+use crate::net::HttpRequest;
 
 const STEP: Duration = Duration::from_secs(6);
 
@@ -224,28 +224,20 @@ async fn host(
     let start = Instant::now();
     let answer = core
         .http
-        .send(HttpRequest {
-            method: Method::Get,
-            url: url.to_string(),
-            headers: vec![
-                (
-                    "User-Agent".into(),
-                    crate::releases::fetch::USER_AGENT.into(),
-                ),
+        .send(
+            HttpRequest::get(url)
+                .header("User-Agent", crate::releases::fetch::USER_AGENT)
                 // Cloudflare's resolver refuses anything but exactly its own type.
-                (
-                    "Accept".into(),
+                .header(
+                    "Accept",
                     if url.contains("dns-query") {
                         "application/dns-json"
                     } else {
                         "*/*"
-                    }
-                    .into(),
-                ),
-            ],
-            body: None,
-            timeout: Some(STEP * 2),
-        })
+                    },
+                )
+                .timeout(STEP * 2),
+        )
         .await;
     match answer {
         Ok(r) => out.push(line(

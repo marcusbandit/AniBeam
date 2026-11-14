@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{HttpRequest, Method, null_to_default};
+use super::{HttpRequest, null_to_default};
 use crate::contract::{CoreError, Provider};
 
 pub const JIKAN_API: &str = "https://api.jikan.moe/v4";
@@ -53,24 +53,20 @@ impl JikanClient {
     pub async fn episodes(&self, mal_id: u64) -> Result<Vec<JikanEpisode>, CoreError> {
         let response = self
             .client
-            .send(HttpRequest {
-                method: Method::Get,
-                url: format!("{JIKAN_API}/anime/{mal_id}/episodes"),
-                headers: vec![("Accept".to_string(), "application/json".to_string())],
-                body: None,
-                timeout: None,
-            })
+            .send(
+                HttpRequest::get(format!("{JIKAN_API}/anime/{mal_id}/episodes"))
+                    .header("Accept", "application/json"),
+            )
             .await?;
         if response.status == 404 {
             return Ok(Vec::new());
         }
         if !response.is_success() {
-            return Err(CoreError::Provider {
-                provider: Provider::Mal,
-                status: Some(u32::from(response.status)),
-                message: format!("Jikan {}: {}", response.status, response.text()),
-                retry_after: None,
-            });
+            return Err(CoreError::provider(
+                Provider::Mal,
+                Some(u32::from(response.status)),
+                format!("Jikan {}: {}", response.status, response.text()),
+            ));
         }
         let reply: EpisodesReply = response.json()?;
         // Keyed by episode number, so a repeated entry collapses and the

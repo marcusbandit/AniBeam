@@ -19,6 +19,7 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::net::{Body, FilePart, Http, HttpRequest, HttpResponse, Method};
+use crate::sync::recover;
 
 /// How `CoreError::Service` names this service.
 pub const SERVICE: &str = "qBittorrent";
@@ -369,7 +370,7 @@ impl QbtClient {
 
     async fn send(&self, path: &str, body: Option<Body>) -> Result<HttpResponse, CoreError> {
         let mut headers = vec![("Referer".to_string(), format!("{}/", self.base))];
-        if let Some(cookie) = self.sid.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+        if let Some(cookie) = recover(&self.sid).clone() {
             headers.push(("Cookie".to_string(), cookie));
         }
         let method = if body.is_some() {
@@ -378,29 +379,29 @@ impl QbtClient {
             Method::Get
         };
         self.http
-            .send(HttpRequest {
-                method,
-                url: format!("{}/api/v2/{path}", self.base),
-                headers,
-                body,
-                timeout: None,
-            })
+            .send(
+                HttpRequest::new(method, format!("{}/api/v2/{path}", self.base))
+                    .headers(headers)
+                    .body(body),
+            )
             .await
-            .map_err(|e| CoreError::Service {
-                service: SERVICE.to_string(),
-                code: "unreachable".to_string(),
-                message: crate::i18n::tr(
-                    "core-downloads-qbt-no-answer",
-                    &[
-                        ("address", self.base.as_str().into()),
-                        ("message", e.message.into()),
-                    ],
-                ),
+            .map_err(|e| {
+                CoreError::service(
+                    SERVICE,
+                    "unreachable",
+                    crate::i18n::tr(
+                        "core-downloads-qbt-no-answer",
+                        &[
+                            ("address", self.base.as_str().into()),
+                            ("message", e.message.into()),
+                        ],
+                    ),
+                )
             })
     }
 
     async fn login(&self) -> Result<(), CoreError> {
-        if *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) {
+        if *recover(&self.rejected) {
             return Err(unauthorized(crate::i18n::tr(
                 "core-downloads-qbt-password-rejected",
                 &[],
@@ -412,55 +413,55 @@ impl QbtClient {
         ];
         let r = self
             .http
-            .send(HttpRequest {
-                method: Method::Post,
-                url: format!("{}/api/v2/auth/login", self.base),
-                headers: vec![("Referer".to_string(), format!("{}/", self.base))],
-                body: Some(Body::Form(form)),
-                timeout: None,
-            })
+            .send(
+                HttpRequest::post(format!("{}/api/v2/auth/login", self.base))
+                    .header("Referer", format!("{}/", self.base))
+                    .body(Body::Form(form)),
+            )
             .await
-            .map_err(|e| CoreError::Service {
-                service: SERVICE.to_string(),
-                code: "unreachable".to_string(),
-                message: crate::i18n::tr(
-                    "core-downloads-qbt-no-answer",
-                    &[
-                        ("address", self.base.as_str().into()),
-                        ("message", e.message.into()),
-                    ],
-                ),
+            .map_err(|e| {
+                CoreError::service(
+                    SERVICE,
+                    "unreachable",
+                    crate::i18n::tr(
+                        "core-downloads-qbt-no-answer",
+                        &[
+                            ("address", self.base.as_str().into()),
+                            ("message", e.message.into()),
+                        ],
+                    ),
+                )
             })?;
         if r.status == 403 {
-            return Err(CoreError::Service {
-                service: SERVICE.to_string(),
-                code: "banned".to_string(),
-                message: crate::i18n::tr("core-downloads-qbt-banned", &[]),
-            });
+            return Err(CoreError::service(
+                SERVICE,
+                "banned",
+                crate::i18n::tr("core-downloads-qbt-banned", &[]),
+            ));
         }
         // 4.x answers a good login with `Ok.` and a bad one with `Fails.`, both 200;
         // 5.x answers a good one with 204 and nothing. Only a refusal is a rejection;
         // anything else, a proxy's 502 say, is worth another try on the next call.
         let text = String::from_utf8_lossy(&r.body).trim().to_string();
         if r.status == 401 || (r.is_success() && text == "Fails.") {
-            *self.rejected.lock().unwrap_or_else(|e| e.into_inner()) = true;
+            *recover(&self.rejected) = true;
             return Err(unauthorized(crate::i18n::tr(
                 "core-downloads-qbt-login-rejected",
                 &[],
             )));
         }
         if r.status >= 500 {
-            return Err(CoreError::Service {
-                service: SERVICE.to_string(),
-                code: "unreachable".to_string(),
-                message: crate::i18n::tr(
+            return Err(CoreError::service(
+                SERVICE,
+                "unreachable",
+                crate::i18n::tr(
                     "core-downloads-qbt-login-failed",
                     &[
                         ("address", self.base.as_str().into()),
                         ("status", r.status.to_string().into()),
                     ],
                 ),
-            });
+            ));
         }
         if !r.is_success() {
             return judge(&self.base, r).map(|_| ());
@@ -478,7 +479,7 @@ impl QbtClient {
             });
         match sid {
             Some(sid) => {
-                *self.sid.lock().unwrap_or_else(|e| e.into_inner()) = Some(sid);
+                *recover(&self.sid) = Some(sid);
                 Ok(())
             }
             // Logged in without a cookie: an auth bypass answered the
@@ -486,17 +487,17 @@ impl QbtClient {
             None if text.is_empty() || text == "Ok." => Ok(()),
             // Anything else with no cookie, a proxy's or a portal's page say,
             // is some other program answering, not a login qBittorrent took
-            None => Err(CoreError::Service {
-                service: SERVICE.to_string(),
-                code: format!("http_{}", r.status),
-                message: crate::i18n::tr(
+            None => Err(CoreError::service(
+                SERVICE,
+                format!("http_{}", r.status),
+                crate::i18n::tr(
                     "core-downloads-qbt-not-web-ui",
                     &[
                         ("address", self.base.as_str().into()),
                         ("status", r.status.to_string().into()),
                     ],
                 ),
-            }),
+            )),
         }
     }
 }
@@ -530,13 +531,7 @@ fn added_or_not(r: &HttpResponse) -> Result<(), CoreError> {
     if body == "Ok." {
         return Ok(());
     }
-    let failed = |message: String| {
-        Err(CoreError::Service {
-            service: SERVICE.to_string(),
-            code: "add_failed".to_string(),
-            message,
-        })
-    };
+    let failed = |message: String| Err(CoreError::service(SERVICE, "add_failed", message));
     let Ok(v) = serde_json::from_str::<Value>(body) else {
         return failed(crate::i18n::tr(
             "core-downloads-qbt-not-added",
@@ -559,11 +554,7 @@ fn added_or_not(r: &HttpResponse) -> Result<(), CoreError> {
 }
 
 fn unauthorized(message: String) -> CoreError {
-    CoreError::Service {
-        service: SERVICE.to_string(),
-        code: "unauthorized".to_string(),
-        message,
-    }
+    CoreError::service(SERVICE, "unauthorized", message)
 }
 
 fn flatten_feeds(v: &Value, prefix: &str, out: &mut Vec<(String, String)>) {
@@ -618,11 +609,7 @@ fn judge(base: &str, r: HttpResponse) -> Result<HttpResponse, CoreError> {
             ],
         )
     };
-    Err(CoreError::Service {
-        service: SERVICE.to_string(),
-        code,
-        message,
-    })
+    Err(CoreError::service(SERVICE, code, message))
 }
 
 /// A count off qBittorrent's JSON: negative (its "unknown") and absent

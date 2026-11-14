@@ -528,11 +528,11 @@ impl Core {
     }
 
     fn watcher(&self) -> MutexGuard<'_, Option<Arc<Watcher>>> {
-        self.watcher.lock().unwrap_or_else(|e| e.into_inner())
+        recover(&self.watcher)
     }
 
     fn launch(&self) -> MutexGuard<'_, Option<Arc<Subscription>>> {
-        self.launch.lock().unwrap_or_else(|e| e.into_inner())
+        recover(&self.launch)
     }
 
     pub(crate) fn set_launch_listener(&self, sub: Arc<Subscription>) {
@@ -640,11 +640,7 @@ impl Core {
     /// job already running picks this series up on its next time round the
     /// loop precisely because it no longer is.
     pub(crate) fn settle_fired(&self, series_id: u64) {
-        self.library
-            .settle
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&series_id);
+        recover(&self.library.settle).remove(&series_id);
         let Some(core) = self.arc() else { return };
         automatch::start(&core);
     }
@@ -653,7 +649,7 @@ impl Core {
     /// Every caller reports every failure; this is what decides which of
     /// them the user is told about.
     pub(crate) fn report_jikan_outage(&self, message: &str) {
-        let mut last = self.jikan_outage.lock().unwrap_or_else(|e| e.into_inner());
+        let mut last = recover(&self.jikan_outage);
         if last.is_some_and(|at| at.elapsed() < OUTAGE_WINDOW) {
             return;
         }
