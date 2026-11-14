@@ -543,6 +543,17 @@ FocusScope {
         roomState.join(code)
     }
     Connections { target: Shell; function onRoomLinkOpened(code) { frame.joinRoomLink(code) } }
+    // Discord (#966): an Ask to Join comes up as an island, and a Join or an accepted invite
+    // takes the same road as a room link
+    Connections {
+        target: Door
+        function onEvent(envelope) {
+            var b = envelope.body
+            if (envelope.kind === "DiscordJoinAsk") discordAsk.add({ user_id: b.user_id, name: b.name, avatar: b.avatar || "", in_room: b.in_room })
+            else if (envelope.kind === "DiscordAskGone") discordAsk.drop(b.user_id)
+            else if (envelope.kind === "DiscordJoin") frame.joinRoomLink(b.code)
+        }
+    }
 
     // The tracker connect sheet, over everything: the Watching page's empty
     // list, the library's nudge and the Trackers panel all send the user here.
@@ -565,6 +576,11 @@ FocusScope {
         MoveListsSheet { id: moveListsSheet }
         WhatsNew { id: whatsNew }
         ScanSummary { id: scanSummary }
+        DiscordAsk {
+            id: discordAsk
+            anchors.right: parent.right; anchors.rightMargin: theme.space(4)
+            anchors.top: parent.top; anchors.topMargin: theme.space(4)
+        }
         UpdateNotice {
             id: updateNotice
             covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible || onboarding.visible || scanSummary.visible

@@ -518,6 +518,9 @@ core-first-run-not-absolute = a pasta de vídeos precisa ser um caminho absoluto
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Assistindo juntos
+core-presence-in-room = Em uma sala
+core-presence-no-room = Esse convite do Discord ainda não tem sala. Peça para abrirem uma.
 
 # As palavras do core para o grupo da biblioteca (#798).
 

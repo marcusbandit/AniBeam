@@ -67,6 +67,7 @@ QtObject {
         var w = waiting
         waiting = null
         if (w && w.kind === "create") create(w.session)
+        else if (w && w.kind === "letin") letIn(w.user)
         else if (w && w.kind === "join") join(w.code)
         return true
     }
@@ -104,6 +105,22 @@ QtObject {
         if (needsName) { waiting = { kind: "join", code: code }; return }
         episode = null
         callAsync("join", "RoomJoin", { code: code })
+    }
+    // Discord (#966): someone who asked to join is let in, into this room or one started
+    // for what plays. It waits on the relay like Create, and on a name like Create too.
+    function letIn(user) {
+        if (busy !== "") return
+        error = ""
+        if (needsName) { waiting = { kind: "letin", user: user }; frame.openRoom(); return }
+        callAsync(inRoom ? "letin" : "create", "DiscordAnswer", { user_id: user, allow: true })
+        if (!inRoom) frame.openRoom()
+    }
+    // Whether anyone on Discord may join this room without asking; each room starts invite only
+    property bool discordOpen: false
+    function setDiscordOpen(open) {
+        var r = Door.call("DiscordSetRoomOpen", { open: open })
+        if (r.error) { frame.fail(r.error); return }
+        discordOpen = !!r.reply.room_open
     }
     function cancelWaiting() { waiting = null; error = "" }
     function leave() {
@@ -211,7 +228,9 @@ QtObject {
         function onPreferencesChanged() { root.savedName = "" }
         function onRoomChanged(room) {
             var was = root.info ? String(root.info.fetch || "") : ""
+            var wasCode = root.info ? root.info.code : ""
             root.info = room && room.code ? room : null
+            if (!root.info || root.info.code !== wasCode) root.discordOpen = false
             if (!root.info) { root.episode = null; return }
             // The room moved on: what was found for the last episode no longer holds
             var now = root.info.episode ? String(root.info.episode.episode_key) : ""

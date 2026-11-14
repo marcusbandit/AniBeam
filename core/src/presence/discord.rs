@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use super::{Activity, SendError, Transport};
+use super::{Activity, Incoming, SendError, Transport};
 
 pub const HANDSHAKE: u32 = 0;
 pub const FRAME: u32 = 1;
@@ -63,66 +63,255 @@ pub fn read_frame(r: &mut impl Read) -> io::Result<(u32, Value)> {
     Ok((op, value))
 }
 
+/// The events this app asks Discord for after the handshake: someone pressed
+/// Ask to Join on this person's profile, and this person pressed Join or
+/// accepted an invite, which hands over the host's join secret.
+pub const SUBSCRIBED: [&str; 2] = ["ACTIVITY_JOIN", "ACTIVITY_JOIN_REQUEST"];
+
 /// An open, handshaken connection over any byte stream, so the tests can
 /// speak to it from memory.
 pub struct Connection<S> {
     stream: S,
     nonce: u64,
+    /// What Discord said unasked while a reply was awaited, for the next poll.
+    events: Vec<Incoming>,
 }
 
-impl<S: Read + Write> Connection<S> {
-    /// Says which application this is and waits for READY.
+impl<S: Stream> Connection<S> {
+    /// Says which application this is, waits for READY and asks for the join
+    /// events. A Discord that refuses a subscription still shows activities,
+    /// so a refusal is no failure; only a connection that is gone is.
     pub fn handshake(mut stream: S, client_id: &str) -> Result<Connection<S>, SendError> {
         stream.write_all(&encode(HANDSHAKE, &json!({"v": 1, "client_id": client_id})))?;
-        let reply = next_reply(&mut stream, |_| true)?;
-        if reply["evt"] == "READY" {
-            Ok(Connection { stream, nonce: 0 })
-        } else {
-            Err(SendError::Gone(format!("no READY: {reply}")))
+        let mut conn = Connection {
+            stream,
+            nonce: 0,
+            events: Vec::new(),
+        };
+        let reply = conn.next_reply(|_| true)?;
+        if reply["evt"] != "READY" {
+            return Err(SendError::Gone(format!("no READY: {reply}")));
         }
+        for evt in SUBSCRIBED {
+            match conn.command("SUBSCRIBE", Some(evt), json!({})) {
+                Ok(_) | Err(SendError::Rejected(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(conn)
     }
 
-    /// Sets the activity, or clears it with `None`, and reads the reply so
-    /// the socket never fills. An ERROR reply is a rejection; anything else
-    /// that goes wrong means the connection is gone.
-    pub fn set_activity(&mut self, activity: Option<&Value>) -> Result<(), SendError> {
+    /// Sends one command and reads its reply, so the socket never fills. An
+    /// ERROR reply is a rejection; anything else that goes wrong means the
+    /// connection is gone.
+    fn command(&mut self, cmd: &str, evt: Option<&str>, args: Value) -> Result<Value, SendError> {
         self.nonce += 1;
         let nonce = format!("anibeam-{}-{}", std::process::id(), self.nonce);
-        let command = json!({
-            "cmd": "SET_ACTIVITY",
-            "args": {"pid": std::process::id(), "activity": activity},
-            "nonce": nonce,
-        });
+        let mut command = json!({"cmd": cmd, "args": args, "nonce": nonce});
+        if let Some(evt) = evt {
+            command["evt"] = json!(evt);
+        }
         self.stream.write_all(&encode(FRAME, &command))?;
-        let reply = next_reply(&mut self.stream, |v| v["nonce"] == nonce.as_str())?;
+        let reply = self.next_reply(|v| v["nonce"] == nonce.as_str())?;
         if reply["evt"] == "ERROR" {
             let message = reply["data"]["message"].as_str().unwrap_or("rejected");
             return Err(SendError::Rejected(message.to_string()));
+        }
+        Ok(reply)
+    }
+
+    /// Sets the activity, or clears it with `None`.
+    pub fn set_activity(&mut self, activity: Option<&Value>) -> Result<(), SendError> {
+        let args = json!({"pid": std::process::id(), "activity": activity});
+        self.command("SET_ACTIVITY", None, args).map(|_| ())
+    }
+
+    /// Answers someone's Ask to Join: an invite, which hands them the join
+    /// secret, or a close, which takes the request off this person's screen.
+    pub fn answer(&mut self, user_id: &str, invite: bool) -> Result<(), SendError> {
+        let cmd = if invite {
+            "SEND_ACTIVITY_JOIN_INVITE"
+        } else {
+            "CLOSE_ACTIVITY_JOIN_REQUEST"
+        };
+        self.command(cmd, None, json!({"user_id": user_id}))
+            .map(|_| ())
+    }
+
+    /// Everything Discord has said unasked since the last poll, reading only
+    /// what is already waiting on the socket.
+    pub fn poll(&mut self) -> Result<Vec<Incoming>, SendError> {
+        let mut read = 0;
+        while read < MAX_SKIPPED && self.stream.ready()? {
+            read += 1;
+            let (op, value) = read_frame(&mut self.stream)?;
+            self.unasked(op, value)?;
+        }
+        Ok(std::mem::take(&mut self.events))
+    }
+
+    /// The first command frame `wanted` accepts. Pings are answered and
+    /// events kept on the way; a close frame, or one too many frames that
+    /// are not it, is the end.
+    fn next_reply(&mut self, wanted: impl Fn(&Value) -> bool) -> Result<Value, SendError> {
+        for _ in 0..MAX_SKIPPED {
+            let (op, value) = read_frame(&mut self.stream)?;
+            if op == FRAME && wanted(&value) {
+                return Ok(value);
+            }
+            self.unasked(op, value)?;
+        }
+        Err(SendError::Gone("no reply".to_string()))
+    }
+
+    /// A frame nobody waited for: a ping, a close, or an event.
+    fn unasked(&mut self, op: u32, value: Value) -> Result<(), SendError> {
+        match op {
+            PING => self.stream.write_all(&encode(PONG, &value))?,
+            CLOSE => return Err(SendError::Gone(format!("closed: {value}"))),
+            FRAME => self.events.extend(incoming(&value)),
+            _ => {}
         }
         Ok(())
     }
 }
 
-/// The first command frame `wanted` accepts, answering pings on the way. A
-/// close frame, or one too many frames that are not it, is the end.
-fn next_reply<S: Read + Write>(
-    stream: &mut S,
-    wanted: impl Fn(&Value) -> bool,
-) -> Result<Value, SendError> {
-    for _ in 0..MAX_SKIPPED {
-        let (op, value) = read_frame(stream)?;
-        match op {
-            FRAME if wanted(&value) => return Ok(value),
-            PING => stream.write_all(&encode(PONG, &value))?,
-            CLOSE => return Err(SendError::Gone(format!("closed: {value}"))),
-            _ => {}
-        }
+/// The event in a DISPATCH frame, when it is one this app subscribed to and
+/// says what it must. A user id is a Discord snowflake, all digits, and an
+/// avatar a hash, so neither can turn the avatar's URL into another one.
+pub fn incoming(v: &Value) -> Option<Incoming> {
+    if v["cmd"] != "DISPATCH" {
+        return None;
     }
-    Err(SendError::Gone("no reply".to_string()))
+    match v["evt"].as_str()? {
+        "ACTIVITY_JOIN" => {
+            let secret = v["data"]["secret"].as_str()?;
+            Some(Incoming::Join {
+                secret: secret.to_string(),
+            })
+        }
+        "ACTIVITY_JOIN_REQUEST" => {
+            let user = &v["data"]["user"];
+            let id = user["id"].as_str()?;
+            if id.is_empty() || id.len() > 24 || !id.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            let name = [&user["global_name"], &user["username"]]
+                .into_iter()
+                .filter_map(|n| n.as_str())
+                .map(str::trim)
+                .find(|n| !n.is_empty())
+                .unwrap_or(id);
+            let avatar = user["avatar"]
+                .as_str()
+                .filter(|h| {
+                    !h.is_empty()
+                        && h.len() <= 64
+                        && h.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                })
+                .map(|h| format!("https://cdn.discordapp.com/avatars/{id}/{h}.png?size=128"));
+            Some(Incoming::JoinRequest {
+                user_id: id.to_string(),
+                name: name.chars().take(64).collect(),
+                avatar,
+            })
+        }
+        _ => None,
+    }
 }
 
-pub trait Stream: Read + Write + Send {}
-impl<T: Read + Write + Send> Stream for T {}
+/// A byte stream to Discord that can say whether a frame is waiting, so a
+/// poll never blocks on a quiet socket.
+pub trait Stream: Read + Write + Send {
+    /// Whether a read would find bytes now. An ended stream says yes, so the
+    /// read that follows finds the end and the connection is gone.
+    fn ready(&mut self) -> io::Result<bool>;
+}
+
+impl<S: Stream + ?Sized> Stream for Box<S> {
+    fn ready(&mut self) -> io::Result<bool> {
+        (**self).ready()
+    }
+}
+
+/// A Unix socket with the bytes a readiness check read ahead, which the next read hands
+/// out first. Std has no stable peek on a Unix socket, so the check reads instead.
+#[cfg(unix)]
+pub struct Socket {
+    stream: std::os::unix::net::UnixStream,
+    ahead: std::collections::VecDeque<u8>,
+}
+
+#[cfg(unix)]
+impl Read for Socket {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.ahead.is_empty() {
+            return self.stream.read(buf);
+        }
+        let n = buf.len().min(self.ahead.len());
+        for (slot, byte) in buf.iter_mut().zip(self.ahead.drain(..n)) {
+            *slot = byte;
+        }
+        Ok(n)
+    }
+}
+
+#[cfg(unix)]
+impl Write for Socket {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.stream.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
+    }
+}
+
+#[cfg(unix)]
+impl Stream for Socket {
+    fn ready(&mut self) -> io::Result<bool> {
+        if !self.ahead.is_empty() {
+            return Ok(true);
+        }
+        self.stream.set_nonblocking(true)?;
+        let mut chunk = [0u8; 4096];
+        let got = self.stream.read(&mut chunk);
+        self.stream.set_nonblocking(false)?;
+        match got {
+            // The end: the read that follows finds it too.
+            Ok(0) => Ok(true),
+            Ok(n) => {
+                self.ahead.extend(&chunk[..n]);
+                Ok(true)
+            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Stream for std::fs::File {
+    fn ready(&mut self) -> io::Result<bool> {
+        use std::os::windows::io::AsRawHandle;
+        let mut avail: u32 = 0;
+        // SAFETY: the handle is this open pipe's, and with no buffer Windows only
+        // writes the byte count into `avail`.
+        let ok = unsafe {
+            windows_sys::Win32::System::Pipes::PeekNamedPipe(
+                self.as_raw_handle() as _,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                &mut avail,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(avail > 0)
+    }
+}
 
 /// The real transport: finds the socket, handshakes, and holds the
 /// connection until it breaks or is closed.
@@ -165,6 +354,28 @@ impl Transport for Discord {
         result
     }
 
+    fn poll(&mut self) -> Result<Vec<Incoming>, SendError> {
+        let Some(conn) = self.conn.as_mut() else {
+            return Ok(Vec::new());
+        };
+        let result = conn.poll();
+        if result.is_err() {
+            self.conn = None;
+        }
+        result
+    }
+
+    fn answer(&mut self, user_id: &str, invite: bool) -> Result<(), SendError> {
+        let Some(conn) = self.conn.as_mut() else {
+            return Err(SendError::Gone("not connected".to_string()));
+        };
+        let result = conn.answer(user_id, invite);
+        if matches!(result, Err(SendError::Gone(_))) {
+            self.conn = None;
+        }
+        result
+    }
+
     fn close(&mut self) {
         self.conn = None;
     }
@@ -198,8 +409,19 @@ fn walk<T>(
 /// Every place a Discord client may have put its socket, in the order the
 /// official library looks: the runtime dir, the temp dirs, then `/tmp`, with
 /// the Flatpak and Snap builds' own corners of the runtime dir.
+/// `ANIBEAM_DISCORD_IPC` names the one socket to try, for a stand-in Discord
+/// beside a real one. Not part of the contract.
+fn override_path() -> Option<PathBuf> {
+    std::env::var_os("ANIBEAM_DISCORD_IPC")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+}
+
 #[cfg(unix)]
 fn candidates() -> Vec<PathBuf> {
+    if let Some(path) = override_path() {
+        return vec![path];
+    }
     let mut dirs: Vec<PathBuf> = Vec::new();
     if let Some(run) = std::env::var_os("XDG_RUNTIME_DIR") {
         let run = PathBuf::from(run);
@@ -229,11 +451,17 @@ fn open(path: &Path) -> io::Result<Box<dyn Stream>> {
     let stream = std::os::unix::net::UnixStream::connect(path)?;
     stream.set_read_timeout(Some(IO_TIMEOUT))?;
     stream.set_write_timeout(Some(IO_TIMEOUT))?;
-    Ok(Box::new(stream))
+    Ok(Box::new(Socket {
+        stream,
+        ahead: Default::default(),
+    }))
 }
 
 #[cfg(windows)]
 fn candidates() -> Vec<PathBuf> {
+    if let Some(path) = override_path() {
+        return vec![path];
+    }
     (0..10)
         .map(|i| PathBuf::from(format!(r"\\?\pipe\discord-ipc-{i}")))
         .collect()
@@ -334,6 +562,12 @@ mod tests {
         }
     }
 
+    impl Stream for Fake {
+        fn ready(&mut self) -> io::Result<bool> {
+            Ok((self.input.position() as usize) < self.input.get_ref().len())
+        }
+    }
+
     fn ready() -> (u32, Value) {
         (
             FRAME,
@@ -343,6 +577,26 @@ mod tests {
 
     fn nonce(n: u64) -> String {
         format!("anibeam-{}-{n}", std::process::id())
+    }
+
+    /// READY and the replies to the two subscriptions, as a Discord gives them.
+    fn opened() -> Vec<(u32, Value)> {
+        vec![
+            ready(),
+            (
+                FRAME,
+                json!({"cmd": "SUBSCRIBE", "evt": null, "nonce": nonce(1)}),
+            ),
+            (
+                FRAME,
+                json!({"cmd": "SUBSCRIBE", "evt": null, "nonce": nonce(2)}),
+            ),
+        ]
+    }
+
+    fn with(mut frames: Vec<(u32, Value)>, more: Vec<(u32, Value)>) -> Fake {
+        frames.extend(more);
+        Fake::new(&frames)
     }
 
     #[test]
@@ -366,12 +620,15 @@ mod tests {
     }
 
     #[test]
-    fn the_handshake_names_the_application_and_waits_for_ready() {
-        let conn = Connection::handshake(Fake::new(&[ready()]), "123").unwrap();
-        assert_eq!(
-            conn.stream.written(),
-            vec![(HANDSHAKE, json!({"v": 1, "client_id": "123"}))]
-        );
+    fn the_handshake_names_the_application_waits_for_ready_and_subscribes() {
+        let conn = Connection::handshake(Fake::new(&opened()), "123").unwrap();
+        let written = conn.stream.written();
+        assert_eq!(written[0], (HANDSHAKE, json!({"v": 1, "client_id": "123"})));
+        assert_eq!(written.len(), 3);
+        for (frame, evt) in written[1..].iter().zip(SUBSCRIBED) {
+            assert_eq!(frame.1["cmd"], "SUBSCRIBE");
+            assert_eq!(frame.1["evt"], evt);
+        }
         let refused = Connection::handshake(
             Fake::new(&[(CLOSE, json!({"code": 4000, "message": "Invalid Client ID"}))]),
             "123",
@@ -385,50 +642,156 @@ mod tests {
     }
 
     #[test]
-    fn set_activity_sends_the_command_and_reads_its_reply() {
+    fn a_refused_subscription_still_connects() {
         let fake = Fake::new(&[
             ready(),
-            (PING, json!({"p": 1})),
             (
                 FRAME,
-                json!({"cmd": "SET_ACTIVITY", "evt": null, "nonce": nonce(1)}),
+                json!({"cmd": "SUBSCRIBE", "evt": "ERROR", "nonce": nonce(1),
+                           "data": {"code": 4006, "message": "Not authenticated"}}),
             ),
             (
                 FRAME,
-                json!({"cmd": "SET_ACTIVITY", "evt": null, "nonce": nonce(2)}),
+                json!({"cmd": "SUBSCRIBE", "evt": "ERROR", "nonce": nonce(2),
+                           "data": {"code": 4006, "message": "Not authenticated"}}),
             ),
         ]);
+        assert!(Connection::handshake(fake, "123").is_ok());
+    }
+
+    #[test]
+    fn set_activity_sends_the_command_and_reads_its_reply() {
+        let fake = with(
+            opened(),
+            vec![
+                (PING, json!({"p": 1})),
+                (
+                    FRAME,
+                    json!({"cmd": "SET_ACTIVITY", "evt": null, "nonce": nonce(3)}),
+                ),
+                (
+                    FRAME,
+                    json!({"cmd": "SET_ACTIVITY", "evt": null, "nonce": nonce(4)}),
+                ),
+            ],
+        );
         let mut conn = Connection::handshake(fake, "123").unwrap();
         conn.set_activity(Some(&json!({"details": "Bebop"})))
             .unwrap();
         conn.set_activity(None).unwrap();
         let written = conn.stream.written();
-        assert_eq!(written.len(), 4);
-        assert_eq!(written[1].1["cmd"], "SET_ACTIVITY");
-        assert_eq!(written[1].1["args"]["activity"]["details"], "Bebop");
-        assert_eq!(written[1].1["args"]["pid"], std::process::id());
+        assert_eq!(written.len(), 6);
+        assert_eq!(written[3].1["cmd"], "SET_ACTIVITY");
+        assert_eq!(written[3].1["args"]["activity"]["details"], "Bebop");
+        assert_eq!(written[3].1["args"]["pid"], std::process::id());
         // The ping was answered with its own payload.
-        assert_eq!(written[2], (PONG, json!({"p": 1})));
-        assert_eq!(written[3].1["args"]["activity"], Value::Null);
-        assert_eq!(written[3].1["nonce"], nonce(2));
+        assert_eq!(written[4], (PONG, json!({"p": 1})));
+        assert_eq!(written[5].1["args"]["activity"], Value::Null);
+        assert_eq!(written[5].1["nonce"], nonce(4));
     }
 
     #[test]
     fn an_error_reply_is_a_rejection_and_a_closed_socket_is_gone() {
-        let fake = Fake::new(&[
-            ready(),
-            (
+        let fake = with(
+            opened(),
+            vec![(
                 FRAME,
-                json!({"cmd": "SET_ACTIVITY", "evt": "ERROR", "nonce": nonce(1),
+                json!({"cmd": "SET_ACTIVITY", "evt": "ERROR", "nonce": nonce(3),
                        "data": {"code": 4000, "message": "bad large_image"}}),
-            ),
-        ]);
+            )],
+        );
         let mut conn = Connection::handshake(fake, "123").unwrap();
         assert!(matches!(
             conn.set_activity(Some(&json!({}))),
             Err(SendError::Rejected(m)) if m == "bad large_image"
         ));
         assert!(matches!(conn.set_activity(None), Err(SendError::Gone(_))));
+    }
+
+    fn ask(id: &str, avatar: Value) -> (u32, Value) {
+        (
+            FRAME,
+            json!({"cmd": "DISPATCH", "evt": "ACTIVITY_JOIN_REQUEST", "nonce": null,
+                   "data": {"user": {"id": id, "username": "spike", "global_name": "Spike S",
+                                     "avatar": avatar}}}),
+        )
+    }
+
+    #[test]
+    fn a_poll_reads_waiting_events_and_those_that_came_with_a_reply() {
+        let fake = with(
+            opened(),
+            vec![
+                ask("101", json!("abc123")),
+                (
+                    FRAME,
+                    json!({"cmd": "SET_ACTIVITY", "evt": null, "nonce": nonce(3)}),
+                ),
+                (
+                    FRAME,
+                    json!({"cmd": "DISPATCH", "evt": "ACTIVITY_JOIN", "nonce": null,
+                               "data": {"secret": "room:K7QM2X"}}),
+                ),
+                (
+                    FRAME,
+                    json!({"cmd": "DISPATCH", "evt": "ACTIVITY_SPECTATE", "data": {}}),
+                ),
+            ],
+        );
+        let mut conn = Connection::handshake(fake, "123").unwrap();
+        conn.set_activity(None).unwrap();
+        let events = conn.poll().unwrap();
+        assert_eq!(
+            events,
+            vec![
+                Incoming::JoinRequest {
+                    user_id: "101".into(),
+                    name: "Spike S".into(),
+                    avatar: Some(
+                        "https://cdn.discordapp.com/avatars/101/abc123.png?size=128".into()
+                    ),
+                },
+                Incoming::Join {
+                    secret: "room:K7QM2X".into()
+                },
+            ]
+        );
+        // Nothing waiting is nothing, and the poll did not block.
+        assert_eq!(conn.poll().unwrap(), vec![]);
+    }
+
+    #[test]
+    fn a_request_with_an_odd_id_is_dropped_and_an_odd_avatar_is_none() {
+        assert_eq!(incoming(&ask("1/../x", json!("abc")).1), None);
+        let Some(Incoming::JoinRequest { avatar, .. }) = incoming(&ask("7", json!("a/b")).1) else {
+            panic!("a request with a good id is kept")
+        };
+        assert_eq!(avatar, None);
+    }
+
+    #[test]
+    fn an_answer_invites_or_closes_the_request() {
+        let fake = with(
+            opened(),
+            vec![
+                (
+                    FRAME,
+                    json!({"cmd": "SEND_ACTIVITY_JOIN_INVITE", "evt": null, "nonce": nonce(3)}),
+                ),
+                (
+                    FRAME,
+                    json!({"cmd": "CLOSE_ACTIVITY_JOIN_REQUEST", "evt": null, "nonce": nonce(4)}),
+                ),
+            ],
+        );
+        let mut conn = Connection::handshake(fake, "123").unwrap();
+        conn.answer("101", true).unwrap();
+        conn.answer("102", false).unwrap();
+        let written = conn.stream.written();
+        assert_eq!(written[3].1["cmd"], "SEND_ACTIVITY_JOIN_INVITE");
+        assert_eq!(written[3].1["args"]["user_id"], "101");
+        assert_eq!(written[4].1["cmd"], "CLOSE_ACTIVITY_JOIN_REQUEST");
+        assert_eq!(written[4].1["args"]["user_id"], "102");
     }
 
     #[test]

@@ -194,6 +194,10 @@ impl AppInterface {
     /// An `anibeam://room/<code>` link joins that room (#846); the window comes up either
     /// way, and any other link is only a raise.
     fn open(&self, uris: Vec<String>, platform_data: HashMap<String, OwnedValue>) {
+        // Discord launching the app for a join it is about to hand over (#966)
+        if uris.iter().any(|u| crate::args::is_discord_link(u)) {
+            let _ = crate::runtime::core().call(anibeam_core::Call::DiscordListen);
+        }
         if let Some(code) = uris.iter().find_map(|u| crate::args::room_code(u)) {
             self.shell
                 .queue(move |shell| shell.room_link_opened(QString::from(&code)))

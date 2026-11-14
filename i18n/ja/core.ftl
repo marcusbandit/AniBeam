@@ -543,6 +543,9 @@ core-first-run-not-absolute = 動画フォルダは絶対パスで指定して�
 
 # Discord shows this in place of an episode line while an extra plays.
 core-presence-extra = 特典映像
+core-presence-room = 一緒に視聴中
+core-presence-in-room = ルームにいます
+core-presence-no-room = この Discord の招待にはまだルームがありません。ルームを始めてもらってください。
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).

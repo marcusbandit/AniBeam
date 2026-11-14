@@ -36,6 +36,8 @@ pub const PHONE_RULES_REKEPT: &str = "phone_rules_rekept";
 pub const DOWNLOAD_PATHS: &str = "download_paths";
 /// Each file's watch together offset in seconds, by file id (#846). Per machine.
 pub const ROOM_OFFSETS: &str = "room_offsets";
+/// The people told no when they asked on Discord to join (#966), newest first.
+pub const DISCORD_BLOCKED: &str = "discord_blocked";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
     let raw: Option<String> = conn

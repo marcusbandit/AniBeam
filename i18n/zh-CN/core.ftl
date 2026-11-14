@@ -506,6 +506,9 @@ core-first-run-not-absolute = 视频文件夹必须是绝对路径
 ## core/src/presence/mod.rs
 
 core-presence-extra = 附加内容
+core-presence-room = 一起观看
+core-presence-in-room = 在房间中
+core-presence-no-room = 这个 Discord 邀请还没有房间。请对方先开一个房间。
 
 ## core/src/trackers/accounts.rs
 

@@ -142,7 +142,7 @@ fn program(exec: &str) -> Option<String> {
 }
 
 #[cfg(target_os = "linux")]
-mod linux {
+pub(crate) mod linux {
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
@@ -232,7 +232,15 @@ mod linux {
         }
     }
 
-    fn quiet(cmd: &mut Command) {
+    /// The user's own entry that launched this run, for another handler to start the app
+    /// the same way (#966).
+    pub fn launcher_entry() -> Option<PathBuf> {
+        let dir = applications()?;
+        let name = pick(&dir)?;
+        Some(dir.join(name))
+    }
+
+    pub(crate) fn quiet(cmd: &mut Command) {
         let _ = cmd
             .stdin(Stdio::null())
             .stdout(Stdio::null())

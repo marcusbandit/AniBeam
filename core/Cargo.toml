@@ -84,6 +84,7 @@ apple-native-keyring-store = { version = "1.0", default-features = false, featur
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1.1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Pipes"] }
 
 # uname for the host's name; Windows reads COMPUTERNAME instead.
 [target.'cfg(unix)'.dependencies]

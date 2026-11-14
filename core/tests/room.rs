@@ -1088,3 +1088,194 @@ fn the_host_starts_anyway_and_a_late_copy_joins_in_sync() {
     applied(&cid.c, cid_2, |playing, _, _| playing);
     applied(&ben.c, ben_2, |playing, _, _| playing);
 }
+
+// ---------------------------------------------------------------------------
+// Joining through Discord (#966), against a stand-in Discord
+// ---------------------------------------------------------------------------
+
+use anibeam_core::presence::{self, Incoming, Party};
+
+#[derive(Clone, Debug, PartialEq)]
+enum Wire {
+    /// An activity set, by the party it carried.
+    Set(Option<Party>),
+    Clear,
+    Answer(String, bool),
+}
+
+#[derive(Clone, Default)]
+struct Discord {
+    said: Arc<std::sync::Mutex<Vec<Incoming>>>,
+    wire: Arc<std::sync::Mutex<Vec<Wire>>>,
+}
+
+impl presence::Transport for Discord {
+    fn connect(&mut self, _client_id: &str) -> Result<(), presence::SendError> {
+        Ok(())
+    }
+    fn send(&mut self, activity: Option<&presence::Activity>) -> Result<(), presence::SendError> {
+        self.wire.lock().unwrap().push(match activity {
+            Some(a) => Wire::Set(a.party.clone()),
+            None => Wire::Clear,
+        });
+        Ok(())
+    }
+    fn poll(&mut self) -> Result<Vec<Incoming>, presence::SendError> {
+        Ok(std::mem::take(&mut *self.said.lock().unwrap()))
+    }
+    fn answer(&mut self, user_id: &str, invite: bool) -> Result<(), presence::SendError> {
+        self.wire
+            .lock()
+            .unwrap()
+            .push(Wire::Answer(user_id.to_string(), invite));
+        Ok(())
+    }
+    fn close(&mut self) {}
+}
+
+impl Discord {
+    fn ask(&self, user: &str) {
+        self.said.lock().unwrap().push(Incoming::JoinRequest {
+            user_id: user.into(),
+            name: format!("Friend {user}"),
+            avatar: None,
+        });
+    }
+    fn wire(&self) -> Vec<Wire> {
+        self.wire.lock().unwrap().clone()
+    }
+    fn wait(&self, what: &str, pred: impl Fn(&[Wire]) -> bool) -> Vec<Wire> {
+        let deadline = std::time::Instant::now() + WAIT;
+        loop {
+            let w = self.wire();
+            if pred(&w) {
+                return w;
+            }
+            assert!(std::time::Instant::now() < deadline, "{what}: {w:#?}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+    fn last_party(&self) -> Option<Party> {
+        self.wire().iter().rev().find_map(|w| match w {
+            Wire::Set(p) => Some(p.clone()),
+            _ => None,
+        })?
+    }
+}
+
+/// `p` with Discord presence on, speaking to a stand-in.
+fn on_discord(p: &Person) -> Discord {
+    let d = Discord::default();
+    p.core.set_presence_transport(Box::new(d.clone()));
+    let mut prefs = match p.core.call(Call::GetPreferences).unwrap() {
+        Reply::Preferences { preferences } => preferences,
+        other => panic!("{other:?}"),
+    };
+    prefs.discord_presence = true;
+    p.core
+        .call(Call::SetPreferences { preferences: prefs })
+        .unwrap();
+    d
+}
+
+fn asks(p: &Person) -> usize {
+    p.c.events()
+        .iter()
+        .filter(|e| matches!(e.body, EventBody::DiscordJoinAsk { .. }))
+        .count()
+}
+
+#[test]
+fn a_yes_on_discord_starts_a_room_and_the_invite_hands_over_its_code() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[1.0], true);
+    let discord = on_discord(&ann);
+    let s = open(&ann, ann.files[0]);
+    ann.core
+        .call(Call::Tick {
+            session: s,
+            position: 3.0,
+            paused: false,
+        })
+        .unwrap();
+    discord.wait("the episode shows", |w| {
+        w.iter()
+            .any(|x| matches!(x, Wire::Set(Some(p)) if p.secret == presence::ASK_SECRET))
+    });
+
+    discord.ask("777");
+    wait_count(&ann.c, 1, |e| {
+        matches!(e.body, EventBody::DiscordJoinAsk { .. })
+    });
+    let made = room(ann.core.call(Call::DiscordAnswer {
+        user_id: "777".into(),
+        allow: true,
+    }))
+    .expect("a room");
+    assert!(made.host);
+
+    // The room's secret is on Discord before the invite that hands it over.
+    let wire = discord.wait("the invite", |w| {
+        w.contains(&Wire::Answer("777".into(), true))
+    });
+    let invite = wire
+        .iter()
+        .position(|x| *x == Wire::Answer("777".into(), true))
+        .unwrap();
+    let secret = format!("{}{}", presence::ROOM_SECRET, made.code);
+    assert!(
+        wire[..invite]
+            .iter()
+            .any(|x| matches!(x, Wire::Set(Some(p)) if p.secret == secret && !p.open)),
+        "{wire:#?}"
+    );
+
+    // Someone let in once is let in again with no question.
+    discord.ask("777");
+    discord.wait("the second invite", |w| {
+        w.iter()
+            .filter(|x| **x == Wire::Answer("777".into(), true))
+            .count()
+            == 2
+    });
+    assert_eq!(asks(&ann), 1);
+
+    // An open room lets anyone in with no ask at all.
+    ann.core
+        .call(Call::DiscordSetRoomOpen { open: true })
+        .unwrap();
+    discord.wait("the open party", |_| {
+        discord.last_party().is_some_and(|p| p.open)
+    });
+    discord.ask("888");
+    discord.wait("the stranger's invite", |w| {
+        w.contains(&Wire::Answer("888".into(), true))
+    });
+    assert_eq!(asks(&ann), 1);
+}
+
+#[test]
+fn the_room_shows_on_discord_with_everyone_in_it_while_nothing_plays() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[1.0], true);
+    let ben = person(&relay, "Ben", &[1.0], true);
+    let discord = on_discord(&ann);
+    let made = room(ann.core.call(Call::RoomCreate { session: None })).expect("a room");
+    discord.wait("the room", |_| {
+        discord
+            .last_party()
+            .is_some_and(|p| p.secret.ends_with(&made.code) && p.size == 1)
+    });
+    room(ben.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }))
+    .expect("joined");
+    discord.wait("two in the room", |_| {
+        discord.last_party().is_some_and(|p| p.size == 2)
+    });
+    // Leaving takes the room off Discord.
+    ann.core.call(Call::RoomLeave).unwrap();
+    discord.wait("the room gone", |w| {
+        w.iter().rev().find(|x| !matches!(x, Wire::Answer(..))) == Some(&Wire::Clear)
+    });
+}

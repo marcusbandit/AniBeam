@@ -991,6 +991,17 @@ impl Core {
                 subtitle,
             } => session::set_track_choice(&self.services, series, audio, subtitle),
             Call::GetPresence => presence::status_call(&self.playback),
+            Call::DiscordAnswer { user_id, allow } => {
+                presence::join::answer_call(&self.playback, user_id, allow)
+            }
+            Call::DiscordBlocked => presence::join::blocked_call(&self.playback),
+            Call::DiscordUnblock { user_id } => {
+                presence::join::unblock_call(&self.playback, user_id)
+            }
+            Call::DiscordSetRoomOpen { open } => {
+                presence::join::set_open_call(&self.playback, open)
+            }
+            Call::DiscordListen => presence::join::listen_call(&self.playback),
             c @ (Call::CastDevices
             | Call::CastStart { .. }
             | Call::CastStartStream { .. }

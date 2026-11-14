@@ -1424,3 +1424,10 @@ pub struct HostStatus {
     pub urls: Vec<String>,
     pub message: String,
 }
+
+/// Someone on Discord, as an Ask to Join named them (#966).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct DiscordPerson {
+    pub id: String,
+    pub name: String,
+}

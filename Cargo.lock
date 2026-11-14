@@ -170,6 +170,7 @@ dependencies = [
  "walkdir",
  "webpki-root-certs",
  "windows-native-keyring-store",
+ "windows-sys 0.61.2",
  "x25519-dalek",
  "zbus-secret-service-keyring-store",
 ]

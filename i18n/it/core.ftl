@@ -518,6 +518,9 @@ core-first-run-not-absolute = la cartella dei video deve essere un percorso asso
 ## core/src/presence/mod.rs
 
 core-presence-extra = Extra
+core-presence-room = Guardiamo insieme
+core-presence-in-room = In una stanza
+core-presence-no-room = Quell'invito di Discord non ha ancora una stanza. Chiedi di aprirne una.
 
 ## core/src/trackers/accounts.rs
 

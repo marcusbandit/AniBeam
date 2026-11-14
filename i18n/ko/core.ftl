@@ -515,6 +515,9 @@ core-first-run-not-absolute = 동영상 폴더는 절대 경로여야 해요
 ## core/src/presence/mod.rs
 
 core-presence-extra = 번외
+core-presence-room = 함께 보는 중
+core-presence-in-room = 방에 있음
+core-presence-no-room = 이 Discord 초대에는 아직 방이 없습니다. 방을 열어 달라고 하세요.
 
 ## core/src/trackers/accounts.rs
 

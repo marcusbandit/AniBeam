@@ -237,6 +237,25 @@ pub enum EventBody {
     PresenceChanged {
         connected: bool,
     },
+    /// Someone pressed Ask to Join on this person's Discord profile (#966), and this
+    /// person has never said no to them: the shell asks whether to let them in, and
+    /// answers with `DiscordAnswer`. `in_room` says whether a room is open to let them
+    /// into, or one would start. Said once per ask that stands.
+    DiscordJoinAsk {
+        user_id: String,
+        name: String,
+        avatar: Option<String>,
+        in_room: bool,
+    },
+    /// An ask is over: answered, or Discord let it go.
+    DiscordAskGone {
+        user_id: String,
+    },
+    /// This person pressed Join on Discord or accepted an invite into a room: the shell
+    /// joins it as it would an `anibeam://room/<code>` link.
+    DiscordJoin {
+        code: String,
+    },
     ExportFinished {
         path: String,
     },
