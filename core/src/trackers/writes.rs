@@ -225,9 +225,13 @@ pub fn mark(core: &Core, series: u64, episode: f64) -> Result<u64, CoreError> {
     // the list may already cover.
     let again = core
         .store
-        .read(|c| finished_again(c, &target, main, episode))?
-        && rewatching().insert(series);
-    let slot = again.then_some(RewatchSlot(series));
+        .read(|c| finished_again(c, &target, main, episode))?;
+    let slot = if again {
+        core.rewatching.hold(series)
+    } else {
+        None
+    };
+    let again = slot.is_some();
     // The cheap half of the monotonic rule: the cache already knows how
     // far the main tracker says the user has got, so a mark it covers is
     // refused without a request. The job checks again against the tracker
@@ -301,24 +305,37 @@ fn finished_again(
     Ok(watched == 1)
 }
 
-/// The series whose rewatch is being written right now. Two marks of one
-/// finish (the rule at the end and the player's button, say) both read the
-/// list before either has written, so the second waits its turn out here
-/// rather than counting the same rewatch twice.
-static REWATCHING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<u64>>> =
-    std::sync::LazyLock::new(Default::default);
+/// The series whose rewatch is being written right now, one set per core. Two
+/// marks of one finish (the rule at the end and the player's button, say) both
+/// read the list before either has written, so the second waits its turn out
+/// here rather than counting the same rewatch twice.
+#[derive(Clone, Default)]
+pub(crate) struct Rewatching(std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u64>>>);
 
-fn rewatching() -> std::sync::MutexGuard<'static, std::collections::HashSet<u64>> {
-    REWATCHING.lock().unwrap_or_else(|e| e.into_inner())
+impl Rewatching {
+    fn set(&self) -> std::sync::MutexGuard<'_, std::collections::HashSet<u64>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The series' slot, or None while another mark holds it.
+    fn hold(&self, series: u64) -> Option<RewatchSlot> {
+        self.set().insert(series).then(|| RewatchSlot {
+            set: self.clone(),
+            series,
+        })
+    }
 }
 
-/// A series' place in `REWATCHING`, given up when the job that holds it ends
-/// however it ends.
-struct RewatchSlot(u64);
+/// A series' place in its core's [`Rewatching`], given up when the job that
+/// holds it ends however it ends.
+struct RewatchSlot {
+    set: Rewatching,
+    series: u64,
+}
 
 impl Drop for RewatchSlot {
     fn drop(&mut self) {
-        rewatching().remove(&self.0);
+        self.set.set().remove(&self.series);
     }
 }
 

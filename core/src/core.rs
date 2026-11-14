@@ -76,6 +76,9 @@ pub struct Core {
     /// and when it started. A page opened twice joins the first opening's
     /// read, and a read that failed waits before it is tried again (#779).
     pub(crate) show_reads: Mutex<HashMap<u64, (u64, i64)>>,
+    /// The series whose rewatch a mark is writing right now (#776), held per
+    /// core so two cores in one process never share a slot.
+    pub(crate) rewatching: writes::Rewatching,
     /// The least time, in milliseconds, between two of the recommender's
     /// requests to AniList, on top of the shared limiter: its first read is
     /// some seventy requests, and AniList's limit while degraded is thirty
@@ -282,6 +285,7 @@ impl Core {
             aired: crate::aired::Aired::default(),
             airing_reads: Mutex::new(HashMap::new()),
             show_reads: Mutex::new(HashMap::new()),
+            rewatching: writes::Rewatching::default(),
             recommender_gap_ms: AtomicU64::new(crate::recommended::GAP_MS),
             runtime: Mutex::new(Some(runtime)),
             handle,
