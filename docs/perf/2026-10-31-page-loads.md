@@ -1,7 +1,7 @@
 # Page loads: where the time and the memory go, and the plan to make them cheap
 
 Measured on 2026-10-31 for #287 against a copy of the owner's real library (61 series, 1,550
-cached images, 27 MB database), release build, offscreen at 2560x1440, banditbox (12 cores,
+cached images, 27 MB database), release build, offscreen at 2560x1440, the desktop (12 cores,
 RTX 3090, 32 GB). Every number below comes from the Developer tab this PR adds; `Time every
 page` reproduces them in the app. Another build ran on the box during some runs, so treat
 single numbers as plus or minus 20%; the ratios held across every run.

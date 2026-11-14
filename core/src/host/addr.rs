@@ -51,12 +51,12 @@ pub fn wanted(bind_override: Option<&str>, all: &[IpAddr]) -> Result<Vec<SocketA
     }
 }
 
-/// `http://100.65.105.9:8790`, an IPv6 address in brackets.
+/// `http://100.64.0.1:8790`, an IPv6 address in brackets.
 pub fn url(addr: &SocketAddr) -> String {
     format!("http://{addr}")
 }
 
-/// `http://banditbox.tail24c6a9.ts.net:8790`.
+/// `http://desk.example-tailnet.ts.net:8790`.
 pub fn name_url(dns_name: &str, port: u16) -> String {
     format!("http://{}:{port}", dns_name.trim_end_matches('.'))
 }
@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn the_cgnat_block_is_tailscale_and_nothing_next_to_it() {
         assert!(is_tailscale(&ip("100.64.0.0")));
-        assert!(is_tailscale(&ip("100.65.105.9")));
+        assert!(is_tailscale(&ip("100.64.0.1")));
         assert!(is_tailscale(&ip("100.127.255.255")));
         assert!(!is_tailscale(&ip("100.63.255.255")));
         assert!(!is_tailscale(&ip("100.128.0.0")));
@@ -107,18 +107,14 @@ mod tests {
             ip("127.0.0.1"),
             ip("fd7a:115c:a1e0::5"),
             ip("192.168.1.20"),
-            ip("100.65.105.9"),
+            ip("100.64.0.1"),
             ip("fe80::1"),
-            ip("100.65.105.9"),
+            ip("100.64.0.1"),
             ip("100.100.1.1"),
         ];
         assert_eq!(
             pick(&all),
-            vec![
-                ip("100.65.105.9"),
-                ip("100.100.1.1"),
-                ip("fd7a:115c:a1e0::5")
-            ]
+            vec![ip("100.64.0.1"), ip("100.100.1.1"), ip("fd7a:115c:a1e0::5")]
         );
         assert!(pick(&[ip("10.0.0.2"), ip("::1")]).is_empty());
         assert!(pick(&[]).is_empty());
@@ -126,10 +122,10 @@ mod tests {
 
     #[test]
     fn wanted_listens_on_the_default_port_or_where_it_is_told() {
-        let all = [ip("100.65.105.9"), ip("192.168.1.20")];
+        let all = [ip("100.64.0.1"), ip("192.168.1.20")];
         assert_eq!(
             wanted(None, &all).unwrap(),
-            vec!["100.65.105.9:8790".parse().unwrap()]
+            vec!["100.64.0.1:8790".parse().unwrap()]
         );
         assert_eq!(wanted(Some(""), &all).unwrap().len(), 1);
         assert!(wanted(None, &[ip("10.0.0.2")]).unwrap().is_empty());
@@ -148,18 +144,18 @@ mod tests {
     #[test]
     fn urls_bracket_ipv6_and_trim_the_dns_dot() {
         assert_eq!(
-            url(&"100.65.105.9:8790".parse().unwrap()),
-            "http://100.65.105.9:8790"
+            url(&"100.64.0.1:8790".parse().unwrap()),
+            "http://100.64.0.1:8790"
         );
         assert_eq!(
             url(&"[fd7a:115c:a1e0::5]:8790".parse().unwrap()),
             "http://[fd7a:115c:a1e0::5]:8790"
         );
         assert_eq!(
-            name_url("banditbox.tail24c6a9.ts.net.", 8790),
-            "http://banditbox.tail24c6a9.ts.net:8790"
+            name_url("desk.example-tailnet.ts.net.", 8790),
+            "http://desk.example-tailnet.ts.net:8790"
         );
-        assert_eq!(shown(&"100.65.105.9:8790".parse().unwrap()), "100.65.105.9");
+        assert_eq!(shown(&"100.64.0.1:8790".parse().unwrap()), "100.64.0.1");
         assert_eq!(
             shown(&"127.0.0.1:41000".parse().unwrap()),
             "127.0.0.1:41000"

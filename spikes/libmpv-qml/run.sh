@@ -1,6 +1,6 @@
 #!/bin/bash
 # run.sh NAME [mpvspike args...]   env: QPA=wayland|xcb, WS=6 (target workspace), MON=DP-1
-S=/tmp/claude-1000/-home-bandit-Projects-WebApps-AniBeam/ac4c58c2-a7af-415a-a976-7738705656c0/scratchpad
+S=${S:-${TMPDIR:-/tmp}/mpvspike}
 NAME=$1; shift
 OUT=$S/runs/$NAME; rm -rf "$OUT"; mkdir -p "$OUT"
 F='/mnt/wd_general/media/Anime/Girls und Panzer/Girls und Panzer/[ak-Submarines] Girls und Panzer - 03 [BD 1080p][6DDB5621].mkv'

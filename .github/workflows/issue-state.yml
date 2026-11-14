@@ -13,7 +13,7 @@ name: Issue state
 #   branch deleted                        -> #n loses "in progress" unless an open PR closes it
 #   issue closed                          -> both labels come off
 #
-# The board's Status follows these labels through the daily issue sweep on banditbox, since
+# The board's Status follows these labels through the daily issue sweep on the owner's desktop, since
 # GITHUB_TOKEN cannot write to a user's project. pull_request_target, because a PR from a
 # fork gets a read-only token under pull_request; this job never checks out the PR's code.
 on:

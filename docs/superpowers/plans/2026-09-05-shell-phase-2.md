@@ -9508,7 +9508,7 @@ Expected: the window maps with the icon from the entry, no `Could not register a
 
 - [ ] **Step 3: Install on the laptop**
 
-Run: `ssh kangaeru 'cd ~/Projects/WebApps/AniBeam && git pull && apps/linux/packaging/package.sh'` (the laptop's makepkg asks for sudo; run it in a session where the owner can answer, or hand the command to the owner), then `ssh kangaeru gtk-launch com.marcusrosado.AniBeam`
+Run: `ssh laptop 'cd ~/Projects/WebApps/AniBeam && git pull && apps/linux/packaging/package.sh'` (the laptop's makepkg asks for sudo; run it in a session where the owner can answer, or hand the command to the owner), then `ssh laptop gtk-launch com.marcusrosado.AniBeam`
 Expected: the same package builds on the AMD laptop against its Qt 6.11.2; playback lands on `vaapi` (`hwdec-current`); the theme reads the laptop's kitty chain.
 
 - [ ] **Step 4: Hand the switch line to the owner**

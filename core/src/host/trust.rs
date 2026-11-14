@@ -329,7 +329,7 @@ mod tests {
     /// #631: a status with people in it. The phone is the owner's, the tablet a
     /// friend's, and the laptop names no user.
     const PEOPLE: &[u8] = br#"{
-        "Self": {"ID": "nSelf", "UserID": 100, "TailscaleIPs": ["100.65.105.9"]},
+        "Self": {"ID": "nSelf", "UserID": 100, "TailscaleIPs": ["100.64.0.1"]},
         "Peer": {
             "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "UserID": 100, "TailscaleIPs": ["100.70.1.2"]},
             "nodekey:bb": {"ID": "nTablet", "HostName": "tab", "UserID": 200, "TailscaleIPs": ["100.70.1.3"]},
@@ -347,7 +347,7 @@ mod tests {
         assert_eq!(t.owner().map(|u| u.name.as_str()), Some("Owner"));
         assert_eq!(asker(ip("127.0.0.1"), Some(&t)), Asker::Owner);
         assert_eq!(
-            asker(ip("100.65.105.9"), Some(&t)),
+            asker(ip("100.64.0.1"), Some(&t)),
             Asker::Owner,
             "this machine"
         );
@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn a_tagged_machine_cannot_tell_people_apart() {
         let status = br#"{
-            "Self": {"ID": "nSelf", "UserID": 9, "Tags": ["tag:server"], "TailscaleIPs": ["100.65.105.9"]},
+            "Self": {"ID": "nSelf", "UserID": 9, "Tags": ["tag:server"], "TailscaleIPs": ["100.64.0.1"]},
             "Peer": {
                 "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "UserID": 100, "TailscaleIPs": ["100.70.1.2"]},
                 "nodekey:bb": {"ID": "nTv", "HostName": "tv", "UserID": 9, "Tags": ["tag:tv"], "TailscaleIPs": ["100.70.1.5"]}
@@ -416,11 +416,11 @@ mod tests {
     }
 
     const STATUS: &[u8] = br#"{
-        "Self": {"ID": "nSelf", "HostName": "banditbox", "TailscaleIPs": ["100.65.105.9", "fd7a:115c:a1e0::9"]},
+        "Self": {"ID": "nSelf", "HostName": "desk", "TailscaleIPs": ["100.64.0.1", "fd7a:115c:a1e0::9"]},
         "Peer": {
             "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "OS": "android", "Online": true,
                            "TailscaleIPs": ["100.70.1.2", "fd7a:115c:a1e0::2"]},
-            "nodekey:bb": {"ID": "nLaptop", "HostName": "", "DNSName": "kangaeru.tail24c6a9.ts.net.",
+            "nodekey:bb": {"ID": "nLaptop", "HostName": "", "DNSName": "laptop.example-tailnet.ts.net.",
                            "OS": "linux", "Online": false, "TailscaleIPs": ["100.80.3.4"]},
             "nodekey:cc": {"HostName": "no-id", "TailscaleIPs": ["100.90.0.1"]}
         }
@@ -429,9 +429,9 @@ mod tests {
     #[test]
     fn the_status_names_every_device_with_an_id() {
         let t = read_status(STATUS).unwrap();
-        assert_eq!(t.me, vec![ip("100.65.105.9"), ip("fd7a:115c:a1e0::9")]);
+        assert_eq!(t.me, vec![ip("100.64.0.1"), ip("fd7a:115c:a1e0::9")]);
         let names: Vec<_> = t.peers.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, ["kangaeru", "pixel"]);
+        assert_eq!(names, ["laptop", "pixel"]);
         let phone = t.peer(ip("fd7a:115c:a1e0::2")).unwrap();
         assert_eq!(
             (phone.id.as_str(), phone.os.as_str(), phone.online),
@@ -464,14 +464,11 @@ mod tests {
 
     #[test]
     fn this_machines_own_addresses_are_known_without_a_status_read() {
-        let mine = local_tailnet(&[ip("192.168.1.5"), ip("100.65.105.9"), ip("::1")]);
-        assert_eq!(mine.me, vec![ip("100.65.105.9")]);
+        let mine = local_tailnet(&[ip("192.168.1.5"), ip("100.64.0.1"), ip("::1")]);
+        assert_eq!(mine.me, vec![ip("100.64.0.1")]);
         assert!(mine.peers.is_empty());
         let off = vec!["nPhone".to_string()];
-        assert_eq!(
-            decide(ip("100.65.105.9"), &off, Some(&mine)),
-            Verdict::Serve
-        );
+        assert_eq!(decide(ip("100.64.0.1"), &off, Some(&mine)), Verdict::Serve);
         // Anyone else is still unplaceable while a device is off.
         assert_eq!(
             decide(ip("100.70.1.2"), &off, Some(&mine)),
@@ -485,7 +482,7 @@ mod tests {
         let off = vec!["nPhone".to_string()];
         assert_eq!(decide(ip("127.0.0.1"), &off, None), Verdict::Serve);
         assert_eq!(decide(ip("::1"), &off, Some(&t)), Verdict::Serve);
-        assert_eq!(decide(ip("100.65.105.9"), &off, Some(&t)), Verdict::Serve);
+        assert_eq!(decide(ip("100.64.0.1"), &off, Some(&t)), Verdict::Serve);
     }
 
     #[test]
