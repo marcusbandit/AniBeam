@@ -378,7 +378,7 @@ async fn fetch(
             found
         }
     };
-    let known = replace::magnet_hash(&release.link);
+    let known = crate::foundation::magnet::hash(&release.link);
     let title = release.title.clone();
     let since = crate::time::now_secs();
     let (tell, told) = oneshot::channel();
@@ -714,7 +714,7 @@ pub fn pick(items: &[Release], offer: &Offer, e: &proto::EpisodeRef) -> Option<R
 }
 
 fn score(r: &Release, offer: &Offer, e: &proto::EpisodeRef) -> Option<i64> {
-    if let (Some(hash), Some(theirs)) = (&offer.hash, replace::magnet_hash(&r.link))
+    if let (Some(hash), Some(theirs)) = (&offer.hash, crate::foundation::magnet::hash(&r.link))
         && hash.eq_ignore_ascii_case(&theirs)
     {
         return Some(100_000);
