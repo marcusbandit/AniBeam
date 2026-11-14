@@ -128,9 +128,12 @@ fn open(data_dir: &Path) -> Result<(Arc<Core>, Arc<Subscription>), Box<dyn std::
         // The iPhone's container moves on a reinstall or a re-sign (AltStore and LiveContainer
         // re-sign every week), taking the library to a new absolute path. The source the
         // library had at the old one follows it, so its shows, matches and history stay.
+        // A build from before this left one source per container, so the one holding the
+        // most shows (the latest of equals) is the library; the others stay missing.
         match sources
             .iter()
-            .find(|s| moved_library(Path::new(&s.path), &library))
+            .filter(|s| moved_library(Path::new(&s.path), &library))
+            .max_by_key(|s| (s.series_count, s.id))
         {
             Some(old) => {
                 log(&format!(
