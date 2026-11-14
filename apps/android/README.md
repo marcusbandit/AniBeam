@@ -158,6 +158,15 @@ xcrun simctl launch --console-pty booted com.marcusrosado.anibeam
 `scripts/build-ios.sh ipa` builds `build/ios/AniBeam.ipa` for a device, unsigned: AltStore and
 LiveContainer sign it themselves when they install it. It needs the `aarch64-apple-ios` target.
 
+Info.plist asks for the local network (`NSLocalNetworkUsageDescription`), which the host
+and casting need, and declares `_googlecast._tcp` under `NSBonjourServices`. Finding devices
+to cast to still needs more on a sideloaded build: the core's Chromecast search (mDNS) and
+DLNA search (SSDP) send their own multicast, which iOS only allows an app holding the
+`com.apple.developer.networking.multicast` entitlement. Apple grants it on request to a
+paid developer account's provisioning profile, so an AltStore or LiveContainer install
+never carries it, and the plist cannot add it. Until then the iPhone finds no Chromecast or
+DLNA renderer on its own.
+
 `librqbit-dualstack-sockets` 0.7.0 does not build for iOS, so Cargo.toml pins the fix
 from its pull request #7 under `[patch.crates-io]`. Drop the pin once a release has it.
 

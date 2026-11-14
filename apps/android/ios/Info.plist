@@ -22,6 +22,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>AniBeam talks to AniBeam on your computer and casts to TVs and Chromecasts on your network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UILaunchScreen</key>
