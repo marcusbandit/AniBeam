@@ -46,6 +46,11 @@ The scope is the crate the change belongs to: `core`, `shell` for
 in one part of the window can name it instead: `home`, `library`, `series`,
 `feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
 
+`apps/android` is the phone app for Android and the iPhone alike, so its scope
+says which phones a change reaches: `android` for Android only, `ios` for the
+iPhone only, and `phone core` for both, which is any change to the shared
+phone code: `feat(phone core): the phone app opens on the iPhone`.
+
 A `docs` change names the document: `readme`, `contributing`, `context`,
 `spec`. Outside the crates and the docs use `packaging` or `ci`. A change that
 genuinely spans two scopes lists both, comma separated:
