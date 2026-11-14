@@ -52,7 +52,11 @@ root never builds it. It only builds for `wasm32-unknown-unknown`.
   10 s gets `proto` and is closed: each socket carries when it opened as a
   second tag (`o<ms>`), every message checks it, and each open sets the alarm
   10 s on to sweep sockets that never sent anything. That alarm is one more
-  request and one more row per socket opened.
+  request and one more row per socket opened. The client gets the Close frame
+  at 10 s, but workerd keeps the TCP connection of a hibernatable socket that
+  never sent a frame open until the object leaves memory, about 10 s later
+  (cloudflare/workerd#7566). A client that waits for its `close` event sees
+  it then.
 - TODO: the native relay also caps open rooms at 10,000. The Worker has no
   global count; the 32^6 code space and the free plan's daily caps stand in
   for it.

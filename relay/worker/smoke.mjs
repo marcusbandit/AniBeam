@@ -107,6 +107,20 @@ class Client {
     });
   }
 
+  /** True once the relay's Close frame has arrived, before the TCP connection ends. */
+  waitClosing(ms = 5000) {
+    return new Promise((resolve) => {
+      const started = Date.now();
+      const poll = setInterval(() => {
+        const shut = this.closed || this.ws.readyState !== WebSocket.OPEN;
+        if (shut || Date.now() - started >= ms) {
+          clearInterval(poll);
+          resolve(shut);
+        }
+      }, 20);
+    });
+  }
+
   close() {
     try {
       this.ws.close();
@@ -280,11 +294,15 @@ async function limits() {
   check(!!limited && !junk.closed, "a socket before hello gets rate_limited past 20 a second, and stays");
   junk.close();
 
-  // One that never says hello is closed after 10 s.
+  // One that never says hello is closed after 10 s: the relay sends proto and
+  // its Close frame then, so the check waits for that frame. The TCP
+  // connection itself ends only when the room object leaves memory, about
+  // 10 s later, because workerd holds a hibernatable socket open after a
+  // server close when the client never sent a frame (cloudflare/workerd#7566).
   const silent = await new Client("silent").open(code);
   const started = Date.now();
   const late = await silent.next((f) => f.t === "error" && f.code === "proto", 15_000);
-  const shut = await silent.waitClosed(5_000);
+  const shut = await silent.waitClosing(2_000);
   const secs = Math.round((Date.now() - started) / 1000);
   check(!!late && shut && secs >= 9, `a socket that never says hello is closed (${secs} s)`);
 
