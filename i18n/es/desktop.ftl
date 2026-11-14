@@ -1861,7 +1861,6 @@ downloads-suggest-in-library = En tu biblioteca
 downloads-suggest-on-anilist = En AniList, no en tu biblioteca
 downloads-plan-to-watch = Quiero verlo
 downloads-suggest-release-search = Buscar en su lugar nombres de lanzamientos con “{ $query }” en { $names }
-downloads-suggest-release-search-none = Buscar en su lugar nombres de lanzamientos con “{ $query }” en ninguna fuente
 downloads-key-return = Intro
 downloads-sources = Fuentes
 downloads-source-hint-starting = iniciando
