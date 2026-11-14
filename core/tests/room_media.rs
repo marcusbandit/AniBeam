@@ -439,6 +439,11 @@ fn nothing_found_fails_and_get_media_can_be_tried_again() {
     );
     let now = room(ben.core.call(Call::RoomStatus)).unwrap();
     assert_eq!(now.fetch, RoomFetch::Failed);
+    assert_eq!(
+        now.fetch_error.map(|w| w.id).as_deref(),
+        Some("core-room-media-not-found"),
+        "the room says why, for the panel to show"
+    );
     assert!(now.can_fetch, "Get media can be pressed again");
     assert!(added_urls(&ben).is_empty());
 }

@@ -1021,6 +1021,9 @@ pub struct RoomInfo {
     /// can be asked for it.
     #[serde(default)]
     pub can_fetch: bool,
+    /// Why Get media stopped short, while `fetch` is `Failed`: the words to show.
+    #[serde(default)]
+    pub fetch_error: Option<Words>,
 }
 
 /// One person in a room.

@@ -349,6 +349,7 @@ fn stop(playback: &Playback, serial: u64, id: u64, fits: impl FnOnce(&Active) ->
         }
         a.stop_fetch();
         a.fetch = RoomFetch::Failed;
+        a.fetch_error = Some(why.words());
         a.send(a.status());
         Say::said(
             Level::Warn,

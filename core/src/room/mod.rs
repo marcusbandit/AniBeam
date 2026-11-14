@@ -160,6 +160,8 @@ struct Active {
     fetch: RoomFetch,
     progress: Option<proto::Progress>,
     fetching: Option<(u64, CancellationToken)>,
+    /// Why the last Get media stopped short, until the next one starts.
+    fetch_error: Option<Words>,
     tx: mpsc::UnboundedSender<ClientMsg>,
     cancel: CancellationToken,
     kick: Arc<Notify>,
@@ -183,6 +185,7 @@ impl Active {
             connected: self.connected,
             fetch: self.fetch,
             can_fetch: self.can_fetch(),
+            fetch_error: self.fetch_error.clone(),
         })
     }
 
@@ -221,6 +224,7 @@ impl Active {
         }
         self.fetch = RoomFetch::Idle;
         self.progress = None;
+        self.fetch_error = None;
     }
 
     fn is_host(&self) -> bool {
@@ -599,6 +603,7 @@ fn start(playback: &Arc<Playback>, b: Begin) -> Result<RoomInfo, CoreError> {
         fetch: RoomFetch::Idle,
         progress: None,
         fetching: None,
+        fetch_error: None,
         tx,
         cancel: cancel.clone(),
         kick: kick.clone(),
@@ -1387,6 +1392,7 @@ mod tests {
             fetch: RoomFetch::Idle,
             progress: None,
             fetching: None,
+            fetch_error: None,
             tx,
             cancel: CancellationToken::new(),
             kick: Arc::new(Notify::new()),
