@@ -126,9 +126,11 @@ fn heard(update: *mut AnyObject) {
     HINGE.set(next);
 }
 
-/// The angle the layout takes: UIKit's status where it says shut, half or fully open,
-/// since Apple has the angle come as often and as finely as the system likes, and the
-/// angle itself otherwise.
+/// The angle the layout takes: UIKit's status where it says shut or half open, since Apple
+/// has the angle come as often and as finely as the system likes, and the angle itself
+/// otherwise. Fully open can still be a bend the layout calls partly folded (under 170
+/// degrees, as `fold.slint` reads it, and as Android reads its hinge sensor), so the angle
+/// wins there when it reads one.
 fn degrees(status: isize, radians: f64) -> f32 {
     let angle = radians.to_degrees() as f32;
     match status {
@@ -136,11 +138,15 @@ fn degrees(status: isize, radians: f64) -> f32 {
         1 => 0.0,
         // UIHingeStatusPartiallyOpen: bent, whatever the angle reads.
         2 => angle.clamp(31.0, 169.0),
-        // UIHingeStatusFullyOpen
+        // UIHingeStatusFullyOpen: flat unless the angle reads a bend.
+        3 if angle > 30.0 && angle < BENT_UNDER => angle,
         3 => 180.0,
         _ => angle,
     }
 }
+
+/// The angle under which the layout takes the phone for bent, `fold.slint`'s `bent`.
+const BENT_UNDER: f32 = 170.0;
 
 /// The window is taller than wide.
 fn upright() -> bool {
