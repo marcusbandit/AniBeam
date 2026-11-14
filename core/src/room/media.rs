@@ -809,7 +809,7 @@ async fn rest_of_show(
     match downloads::download_telling(
         &playback.downloads,
         found,
-        Some(e.series_title.clone()),
+        folder(&e.series_title),
         options,
         None,
     ) {
