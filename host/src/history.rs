@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -218,20 +218,24 @@ fn map(remote: &[SeriesEntry], here: &[Local]) -> HashMap<String, usize> {
     out
 }
 
-/// A file there under the series path there, as the same file name under
-/// the series path here.
+/// A file there under the series path there, as the same path under the
+/// series path here: a season folder there stays a season folder here,
+/// joined with the separator of the system here. A path that climbs out of
+/// the series is no file of it.
 fn moved(file: &str, there: &str, here: &str) -> Option<String> {
     let file = normalise(file);
     let rest = file.strip_prefix(there)?;
     if !rest.starts_with(['/', '\\']) {
         return None;
     }
-    Some(
-        Path::new(here)
-            .join(last_segment(rest))
-            .to_string_lossy()
-            .into_owned(),
-    )
+    let mut out = PathBuf::from(here);
+    for segment in rest.split(['/', '\\']).filter(|s| !s.is_empty()) {
+        if segment == "." || segment == ".." {
+            return None;
+        }
+        out.push(segment);
+    }
+    Some(out.to_string_lossy().into_owned())
 }
 
 /// The history there, rewritten onto the paths of the series here; what
@@ -551,6 +555,7 @@ mod tests {
     use super::*;
     use crate::transfer::format::{Completed, View};
     use serde_json::json;
+    use std::path::Path;
 
     fn entry(kind: &str, path: &str, anilist: Option<u64>) -> SeriesEntry {
         serde_json::from_value(json!({
@@ -686,6 +691,55 @@ mod tests {
     }
 
     #[test]
+    fn a_file_in_a_season_folder_keeps_its_folder_here() {
+        let here = Path::new("/srv/anime/Show")
+            .join("Season 1")
+            .join("Show - 01.mkv")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            moved("/m/Show/Season 1/Show - 01.mkv", "/m/Show", "/srv/anime/Show").as_deref(),
+            Some(here.as_str())
+        );
+        assert_eq!(
+            moved(
+                "C:\\Anime\\Show\\Season 1\\Show - 01.mkv",
+                "C:\\Anime\\Show",
+                "/srv/anime/Show"
+            )
+            .as_deref(),
+            Some(here.as_str())
+        );
+
+        let paths = HashMap::from([("/m/Show".to_string(), "/srv/anime/Show".to_string())]);
+        let history = History {
+            views: vec![],
+            completed: vec![],
+            resume_points: vec![ResumeEntry::File {
+                file: "/m/Show/Season 1/Show - 01.mkv".into(),
+                position: 10.0,
+                duration: 20.0,
+                at: json!("2026-11-01T10:00:00Z"),
+            }],
+            extra: HashMap::new(),
+        };
+        let landed = translate(history, &paths);
+        assert!(
+            matches!(&landed.resume_points[..], [ResumeEntry::File { file, .. }] if *file == here),
+            "{:?}",
+            landed.resume_points
+        );
+    }
+
+    #[test]
+    fn a_file_that_climbs_out_of_the_series_lands_nowhere() {
+        assert_eq!(
+            moved("/m/Show/../Other/x.mkv", "/m/Show", "/srv/anime/Show"),
+            None
+        );
+    }
+
+    #[test]
     fn a_folder_name_two_series_there_share_decides_nothing() {
         let here = vec![local(1, "/home/a/Twice", None, false)];
         let there = vec![
@@ -697,14 +751,14 @@ mod tests {
 
     #[test]
     fn an_id_only_finds_a_series_of_the_same_kind() {
-        let here = vec![local(1, "/home/a/Show", Some(7), true)];
+        let here = vec![local(1, "/srv/anime/Show", Some(7), true)];
         assert!(map(&[entry("movie", "/m/Film.mkv", Some(7))], &here).is_empty());
     }
 
     #[test]
     fn two_series_here_with_the_id_are_told_apart_by_the_folder() {
         let here = vec![
-            local(1, "/home/a/Show", Some(7), true),
+            local(1, "/srv/anime/Show", Some(7), true),
             local(2, "/home/a/Show [BD]", Some(7), true),
         ];
         let found = map(&[entry("series", "/mnt/Show [BD]", Some(7))], &here);
