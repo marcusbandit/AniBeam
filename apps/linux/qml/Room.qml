@@ -5,7 +5,7 @@
 // - Create and Join wait on the relay's welcome for up to 20 s, so they run off the Qt
 //   thread through Door.callAsync and the panel shows them as busy.
 // - A join is answered by RoomEpisode: with a file this library holds, the player opens on it
-//   and attaches; without one, the panel says the episode is missing here.
+//   and attaches; without one, the panel offers Get media, which downloads the host's copy.
 // - The player calls playerOpened() with each session it opens. The host's always attaches,
 //   which is how the host's next episode moves the whole room; anyone else's attaches when it
 //   is the room's episode.
@@ -122,6 +122,14 @@ QtObject {
         if (r.reply && r.reply.room) info = r.reply.room
     }
     function nudgeOffset(d) { if (inRoom) setOffset(info.offset + d) }
+    // Get media (#889): the host's app passes this member its torrent or its release, and the
+    // core downloads it; the episode opens once it is in the library (RoomEpisode)
+    function getMedia() {
+        error = ""
+        var r = Door.call("RoomGetMedia", {})
+        if (r.error) { error = errorText(r.error); return }
+        if (r.reply && r.reply.room) info = r.reply.room
+    }
 
     // The player opened a session: the host's always drives the room, anyone else's when it
     // is the episode the room watches
@@ -159,7 +167,8 @@ QtObject {
         if (!e) return ""
         if (e.kind === "Service") {
             var ids = { not_found: "room-error-not-found", full: "room-error-full", unreachable: "room-error-unreachable",
-                        refused: "room-error-refused", proto: "room-error-proto", not_in_room: "room-error-not-in-room" }
+                        refused: "room-error-refused", proto: "room-error-proto", not_in_room: "room-error-not-in-room",
+                        cannot_fetch: "room-error-cannot-fetch" }
             if (ids[e.code]) return words.t(ids[e.code])
         }
         if (e.kind === "Invalid" && e.field === "code") return words.t("room-error-bad-code")
