@@ -135,7 +135,14 @@ pub fn set_volume(level: f32) {
     let _ = level;
 }
 
+/// No window of the platform's to reach.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+pub fn window_up(window: &crate::AppWindow) {
+    let _ = window;
+}
+
 /// No screen to turn.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub fn player_screen(on: bool) {
     let _ = on;
 }
