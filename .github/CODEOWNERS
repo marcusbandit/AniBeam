@@ -1,0 +1,13 @@
+# Who has to review a change before it merges (#914). The `protect main` ruleset requires a
+# code owner's review, so every file below the owner's line needs their approval.
+*                                   @marcusbandit
+
+# The iPhone's and the Mac's own files have no owner, so a PR touching only these merges
+# without a review. Keep this list the same as ONLY in .github/ios-automerge.sh.
+/apps/android/ios/
+/apps/android/src/**/ios.rs
+/apps/android/src/**/ios/
+/apps/android/src/**/metal.rs
+/apps/android/scripts/*ios*
+/apps/android/changes/
+/apps/linux/packaging/macos/

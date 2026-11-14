@@ -27,7 +27,8 @@ SELF_JOB="ios-automerge"
 MARK="<!-- ios-automerge -->"
 
 # Paths that only the iPhone or the Mac build reads. Everything else can change another
-# platform: Cargo.toml and Cargo.lock, and every workflow, this one included.
+# platform: Cargo.toml and Cargo.lock, and every workflow, this one included. Keep it the
+# same as the files with no owner in .github/CODEOWNERS.
 ONLY='^(apps/android/ios/'
 ONLY+='|apps/android/src/(.+/)?(ios|metal)(\.rs$|/)'
 ONLY+='|apps/android/scripts/[^/]*ios[^/]*$'
