@@ -195,6 +195,7 @@ dependencies = [
 name = "anibeam-room"
 version = "2.5.0"
 dependencies = [
+ "percent-encoding",
  "serde",
  "serde_json",
 ]

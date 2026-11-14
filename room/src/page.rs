@@ -40,7 +40,6 @@ h1 { margin: 0; font-size: 26px; line-height: 1.2; overflow-wrap: anywhere; }
 .gone .code { font-size: 44px; }
 .gone .missed { display: block; }
 .gone .retry { background: transparent; color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); margin-top: 12px; }
-.press { margin: 12px 0 0; color: var(--dim); }
 "#;
 
 /// A page around `body`: the shared head and look, `head` for the Open Graph tags.
@@ -92,10 +91,11 @@ pub fn find_html(typed: Option<&str>) -> String {
 (function () {{
   var A = "{alphabet}", N = {len};
   var form = document.getElementById("find"), field = document.getElementById("code");
+  // The same reading as code_from_query: no query or fragment, the last path segment
+  // that is not empty, upper case, without spaces and dashes
   function clean(v) {{
-    var parts = v.split("/").filter(function (p) {{ return p.trim() !== ""; }});
-    v = (parts.length ? parts[parts.length - 1] : "").toUpperCase().replace(/[\s-]/g, "");
-    return v;
+    var parts = v.split(/[?#]/)[0].split("/").filter(function (p) {{ return p.trim() !== ""; }});
+    return (parts.length ? parts[parts.length - 1] : "").toUpperCase().replace(/[\s-]/g, "");
   }}
   field.addEventListener("input", function () {{ field.removeAttribute("aria-invalid"); }});
   form.addEventListener("submit", function (e) {{
@@ -112,9 +112,9 @@ pub fn find_html(typed: Option<&str>) -> String {
 }
 
 /// The room code in a find page's `?code=` query, canonical, when it reads as one.
-/// A pasted room link counts too: its last path segment is the code. `Err` holds
-/// what was typed when it was not a code, for the page to show again; `Ok(None)`
-/// means the query asked nothing.
+/// A pasted room link counts too: past its query and fragment, its last path segment
+/// that is not empty is the code. `Err` holds what was typed when it was not a code,
+/// for the page to show again; `Ok(None)` means the query asked nothing.
 pub fn code_from_query(query: Option<&str>) -> Result<Option<String>, String> {
     let Some(raw) = query
         .unwrap_or("")
@@ -123,11 +123,17 @@ pub fn code_from_query(query: Option<&str>) -> Result<Option<String>, String> {
     else {
         return Ok(None);
     };
-    let typed = percent_decode(raw);
+    // A form value: `+` for a space, then `%XX` escapes
+    let typed = percent_encoding::percent_decode_str(&raw.replace('+', " "))
+        .decode_utf8_lossy()
+        .into_owned();
     if typed.trim().is_empty() {
         return Ok(None);
     }
     let last = typed
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
         .split('/')
         .rfind(|p| !p.trim().is_empty())
         .unwrap_or("");
@@ -135,34 +141,6 @@ pub fn code_from_query(query: Option<&str>) -> Result<Option<String>, String> {
         Some(c) => Ok(Some(c)),
         None => Err(typed),
     }
-}
-
-/// A form value as the browser sent it: `+` for a space and `%XX` escapes.
-fn percent_decode(raw: &str) -> String {
-    let bytes = raw.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'+' => out.push(b' '),
-            b'%' if i + 2 < bytes.len() => {
-                match std::str::from_utf8(&bytes[i + 1..i + 3])
-                    .ok()
-                    .filter(|h| h.bytes().all(|b| b.is_ascii_hexdigit()))
-                    .and_then(|h| u8::from_str_radix(h, 16).ok())
-                {
-                    Some(b) => {
-                        out.push(b);
-                        i += 2;
-                    }
-                    None => out.push(b'%'),
-                }
-            }
-            b => out.push(b),
-        }
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// The join page for `code`. `room` is `None` when no such room is open, and the
@@ -199,35 +177,45 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
     } else {
         format!("\n<p class=\"episode\">{episode}</p>")
     };
-    // The app takes the link and comes up over the browser; when the page is still
-    // showing four seconds later and never lost focus, nothing took it (an install that never registered
-    // anibeam://, or none at all), so the page turns to the code to type in by hand.
+    // The app takes the link and comes up over the browser. When the page is still
+    // showing, and has the focus, four seconds after the click, nothing took it (an
+    // install that never registered anibeam://, or none at all), so the page turns to
+    // the code to type in by hand. Only the page going hidden cancels that: a blur can
+    // be the browser's own "Open xdg-open?" prompt as much as the app, so a page without
+    // the focus when the time is up waits for it to come back and gives it four more.
     let open = if room.is_some() {
         format!(
             r#"
 <div class="missed">
-<button class="open" id="copy" type="button">Copy code</button>
-<p class="press">Open Anibeam and press Join room</p>
+<button class="open" id="copy" type="button">Copy code for Join room</button>
 </div>
 <a class="open retry" id="open" href="anibeam://room/{code}">Open in Anibeam</a>
 <script>
 (function () {{
   var main = document.querySelector("main"), open = document.getElementById("open");
   var copy = document.getElementById("copy"), code = document.getElementById("code");
-  var timer = 0;
-  open.addEventListener("click", function () {{
+  var timer = 0, waiting = false;
+  function arm() {{
     clearTimeout(timer);
+    waiting = false;
     timer = setTimeout(function () {{
-      if (document.visibilityState === "visible") main.classList.add("gone");
+      if (document.hidden) return;
+      if (document.hasFocus()) main.classList.add("gone");
+      else waiting = true;
     }}, 4000);
+  }}
+  open.addEventListener("click", arm);
+  window.addEventListener("focus", function () {{ if (waiting) arm(); }});
+  document.addEventListener("visibilitychange", function () {{
+    if (document.hidden) {{ clearTimeout(timer); waiting = false; }}
   }});
-  document.addEventListener("visibilitychange", function () {{ if (document.hidden) clearTimeout(timer); }});
-  window.addEventListener("blur", function () {{ clearTimeout(timer); }});
   function copied() {{ copy.textContent = "Copied"; }}
   function select() {{
     var r = document.createRange(), s = window.getSelection();
     r.selectNodeContents(code); s.removeAllRanges(); s.addRange(r);
-    try {{ document.execCommand("copy"); copied(); }} catch (e) {{}}
+    var ok = false;
+    try {{ ok = document.execCommand("copy"); }} catch (e) {{}}
+    if (ok) copied();
   }}
   copy.addEventListener("click", function () {{
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code.textContent).then(copied, select);
@@ -329,6 +317,24 @@ mod tests {
         }
     }
 
+    /// How many script blocks `html` holds, failing when any is not a bare inline
+    /// `<script>` with its own `</script>`: a `src`, a `type` or a stray tag is markup
+    /// the page never means to have.
+    fn scripts(html: &str) -> usize {
+        let opened = html.matches("<script").count();
+        assert_eq!(
+            opened,
+            html.matches("<script>").count(),
+            "a <script> with attributes"
+        );
+        assert_eq!(
+            opened,
+            html.matches("</script>").count(),
+            "an unbalanced </script>"
+        );
+        opened
+    }
+
     #[test]
     fn names_the_series_and_episode_in_the_preview_and_the_page() {
         let html = join_html(
@@ -349,9 +355,11 @@ mod tests {
     fn the_join_page_falls_back_to_the_code_when_the_app_does_not_open() {
         let html = join_html("K7QM2X", Some(&view("S", Some(1.0), None)));
         assert!(html.contains(r#"<p class="code" id="code">K7QM2X</p>"#));
-        assert!(html.contains(r#"id="copy""#));
-        assert!(html.contains("Open Anibeam and press Join room"));
+        assert!(html.contains(r#"id="copy" type="button">Copy code for Join room</button>"#));
+        assert!(!html.contains(r#"class="press""#));
         assert!(html.contains("setTimeout"));
+        // Only the page going hidden cancels the fallback, never a blur
+        assert!(!html.contains(r#""blur""#));
     }
 
     #[test]
@@ -364,7 +372,7 @@ mod tests {
                 Some("\"><img src=x>"),
             )),
         );
-        assert!(!html.contains("<script>alert"));
+        assert_eq!(scripts(&html), 1);
         assert!(!html.contains("<img"));
         assert!(
             html.contains("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; &#39;co&#39;")
@@ -376,8 +384,13 @@ mod tests {
     fn escapes_the_code_too() {
         let html = join_html("\"><b>", None);
         assert!(!html.contains("<b>"));
+        assert_eq!(scripts(&html), 0);
         let html = find_html(Some("\"><b>"));
         assert!(!html.contains("<b>"));
+        assert_eq!(scripts(&html), 1);
+        let html = find_html(Some("</script><script>alert(1)</script>"));
+        assert_eq!(scripts(&html), 1);
+        assert!(html.contains("&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;"));
         assert!(html.contains(r#"aria-invalid="true""#));
     }
 
@@ -397,7 +410,7 @@ mod tests {
         let html = join_html("K7QM2X", None);
         assert!(html.contains("Room not found"));
         assert!(!html.contains("anibeam://"));
-        assert!(!html.contains("<script"));
+        assert_eq!(scripts(&html), 0);
         assert!(html.contains(DOWNLOAD_URL));
     }
 
@@ -433,6 +446,10 @@ mod tests {
             code_from_query(Some("code=https%3A%2F%2Frooms.anibeam.app%2FK7QM2X%2F")),
             Ok(Some("K7QM2X".into()))
         );
+        assert_eq!(
+            code_from_query(Some("code=anibeam%3A%2F%2Froom%2FK7QM2X%3Fx%3D1%23y")),
+            Ok(Some("K7QM2X".into()))
+        );
         assert_eq!(code_from_query(Some("code=K7QM")), Err("K7QM".into()));
         assert_eq!(code_from_query(Some("code=I0I0I0")), Err("I0I0I0".into()));
         assert_eq!(code_from_query(Some("code=%zz")), Err("%zz".into()));
@@ -441,14 +458,30 @@ mod tests {
 
     #[test]
     fn self_contained_and_dash_free() {
-        for html in [
-            join_html("K7QM2X", Some(&view("S", Some(1.0), Some("T")))),
-            join_html("K7QM2X", None),
-            find_html(None),
-            find_html(Some("nope")),
+        for (html, inline_scripts) in [
+            (
+                join_html("K7QM2X", Some(&view("S", Some(1.0), Some("T")))),
+                1,
+            ),
+            (join_html("K7QM2X", None), 0),
+            (find_html(None), 1),
+            (find_html(Some("nope")), 1),
         ] {
             assert!(!html.contains('\u{2014}') && !html.contains('\u{2013}'));
-            for needle in ["<link", "<script src", "<img", "src=", "@import", "url("] {
+            assert_eq!(scripts(&html), inline_scripts);
+            for needle in [
+                "<link",
+                "<img",
+                "<iframe",
+                "<object",
+                "<embed",
+                "src=",
+                "@import",
+                "url(",
+                "javascript:",
+                "onerror",
+                "onload",
+            ] {
                 assert!(!html.contains(needle), "{needle}");
             }
             assert!(html.starts_with("<!doctype html>"));
