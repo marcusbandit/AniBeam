@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # usage: deps.sh <prefix>
-# Builds what Ubuntu 24.04 does not ship the way AniBeam needs it into <prefix>:
+# Builds what Ubuntu 24.04 does not ship the way Anibeam needs it into <prefix>:
 #   libva 2.24.1, which the AppImage bundles. A newer libva loads older drivers and never
 #     the reverse, and noble ships 2.20, so the build that leaves the machine carries the
 #     newest. The driver directory is left to the host (see appimage.sh's apprun hook).

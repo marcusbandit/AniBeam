@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "AniBeam's contract: the calls, replies, records, events and errors every shell speaks, and the catalog of words"
+description = "Anibeam's contract: the calls, replies, records, events and errors every shell speaks, and the catalog of words"
 
 [lib]
 name = "anibeam_contract"

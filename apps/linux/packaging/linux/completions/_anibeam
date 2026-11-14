@@ -1,5 +1,5 @@
 #compdef anibeam
-# zsh completion for the AniBeam desktop app.
+# zsh completion for the Anibeam desktop app.
 
 _anibeam() {
   if (( CURRENT == 2 )) && [[ $words[2] != -* ]]; then

@@ -1211,13 +1211,13 @@ fn lift_one(
 // The desktop's anirss ------------------------------------------------------------------
 
 /// The kinds anirss itself can search, under their shape names; every other kind is
-/// AniBeam's own. `spec_of` sends each under the name anirss knows it by
+/// Anibeam's own. `spec_of` sends each under the name anirss knows it by
 /// (`kinds::anirss_kind`).
 const ANIRSS_KINDS: [&str; 3] = [crate::releases::kinds::FILTERED_RSS, "rss", "torznab"];
 
-/// What AniBeam last wrote into anirss: endpoint name to a hash of the spec it sent. anirss
+/// What Anibeam last wrote into anirss: endpoint name to a hash of the spec it sent. anirss
 /// lists its endpoints with their secrets masked, so a listed address can never be compared
-/// with the one AniBeam holds; the hash says whether anything changed since.
+/// with the one Anibeam holds; the hash says whether anything changed since.
 type Synced = std::collections::BTreeMap<String, String>;
 
 fn read_synced(core: &Core) -> Synced {
@@ -1234,7 +1234,7 @@ fn read_synced(core: &Core) -> Synced {
 /// or is one the desktop never writes into (a server the person runs, a sandbox run).
 /// None on the phone, and before the desktop has read its anirss.
 ///
-/// Only the anirss engine has these limits. AniBeam's own engine searches every installed
+/// Only the anirss engine has these limits. Anibeam's own engine searches every installed
 /// endpoint itself (`Native::for_core`), whatever anirss's version, kinds or hand-written
 /// endpoints, so there is nothing to note then. The Downloads page still lists its endpoints
 /// from anirss; that is its own item in #297.
@@ -1301,10 +1301,10 @@ fn hash_of(spec: &serde_json::Value) -> String {
 }
 
 /// Puts the installed endpoints into the desktop's anirss, which searches only what its own
-/// config lists: each enabled one with its credentials, under its id. Only names AniBeam
+/// config lists: each enabled one with its credentials, under its id. Only names Anibeam
 /// wrote are ever changed or removed; one anirss already had from its config stays as it was.
 /// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
-/// a hand-written one does today; the secret store stays the record AniBeam reads. A kind
+/// a hand-written one does today; the secret store stays the record Anibeam reads. A kind
 /// anirss cannot search (`json-feed`) stays out, and an anirss whose `/health` does not list
 /// [`ENDPOINT_WRITES`](crate::downloads::anirss::ENDPOINT_WRITES) is left alone, whatever
 /// its version says.
@@ -2424,7 +2424,7 @@ mod tests {
         );
         let anirss = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
 
-        // anirss has its own search-proxy endpoint from config.toml; AniBeam writes only "mine".
+        // anirss has its own search-proxy endpoint from config.toml; Anibeam writes only "mine".
         let theirs = |name: &str, url: &str| SearchEndpoint {
             name: name.into(),
             kind: "rss".into(),

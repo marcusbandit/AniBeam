@@ -59,30 +59,30 @@ lang-name-zh-CN = Chinese (Simplified)
 
 ## Onboarding
 
-onb-welcome-title = AniBeam
+onb-welcome-title = Anibeam
 onb-welcome-note = Your anime on this phone. Find a show, see who has it, download it, and keep your lists in step.
 onb-language-title = Language
-onb-language-note = AniBeam speaks your phone's language unless you pick another. You can change it later in More.
+onb-language-note = Anibeam speaks your phone's language unless you pick another. You can change it later in More.
 onb-lists-title = Your lists
 onb-lists-note = Sign in so what you watch here counts on AniList or MyAnimeList. You can do this later in More.
 onb-wifi-title = Wi-Fi only
-onb-wifi-note = Episodes are big. AniBeam downloads on Wi-Fi unless you say otherwise.
+onb-wifi-note = Episodes are big. Anibeam downloads on Wi-Fi unless you say otherwise.
 onb-storage-title = Storage
-onb-storage-note = A cap on how much AniBeam may download. It reserves nothing: the space stays free until episodes fill it.
+onb-storage-note = A cap on how much Anibeam may download. It reserves nothing: the space stays free until episodes fill it.
 onb-notify-title = Notifications
 onb-notify-note = While episodes download, a notification shows how far along they are, and another says when one is ready to watch. Downloads run either way.
 onb-sites-title = Search sites
-onb-sites-note = AniBeam comes with nothing to search. A repo is a signed list of sites to search. Paste a repo's address, check its key, then install the sites you want. You can do this later in More.
-# The last step: which computer's AniBeam the phone reaches, if any.
+onb-sites-note = Anibeam comes with nothing to search. A repo is a signed list of sites to search. Paste a repo's address, check its key, then install the sites you want. You can do this later in More.
+# The last step: which computer's Anibeam the phone reaches, if any.
 onb-computer-title = Your computer
-onb-computer-note = AniBeam on a computer can share its library with this phone over Tailscale: its shows appear in Library and their episodes play here. Type its Tailscale name and port, then Test. No computer? Leave it empty and start; More has it later.
+onb-computer-note = Anibeam on a computer can share its library with this phone over Tailscale: its shows appear in Library and their episodes play here. Type its Tailscale name and port, then Test. No computer? Leave it empty and start; More has it later.
 onb-wifi-only = Only on Wi-Fi
 onb-wifi-on = On. Mobile data asks first.
 onb-wifi-off = Off. Downloads use mobile data too.
 onb-storage-caption = 18 GB is about 12 episodes. Slide it anywhere up to the phone's whole storage.
 onb-use-cap = Use this cap
-onb-cap-on = On. At { $cap }, AniBeam downloads nothing more until you delete episodes.
-onb-cap-off = Off. AniBeam downloads until the phone is full.
+onb-cap-on = On. At { $cap }, Anibeam downloads nothing more until you delete episodes.
+onb-cap-off = Off. Anibeam downloads until the phone is full.
 onb-start = Start
 onb-continue = Continue
 onb-back = Back
@@ -108,11 +108,11 @@ look-size-normal = Normal
 look-size-large = Large
 look-size-larger = Larger
 look-size-largest = Largest
-look-text-size-note = How big the words are everywhere in AniBeam, on top of your phone's own size.
+look-text-size-note = How big the words are everywhere in Anibeam, on top of your phone's own size.
 
 ## The window: tabs and the sheets over every page
 
-app-title = AniBeam
+app-title = Anibeam
 phone-nav-home = Home
 nav-calendar = Calendar
 phone-nav-library = Library
@@ -186,7 +186,7 @@ more-icon-dark = Dark
 more-icon-line = Line art
 more-subs-status = Size, place, font, colours and box
 more-data-status = Back up, restore, image cache
-more-activity-status = What AniBeam did, newest first
+more-activity-status = What Anibeam did, newest first
 more-look-status-phone = Follows the phone
 # Hours is a number already written out, such as 312.
 more-stats-status = { $count ->
@@ -233,7 +233,7 @@ more-roll-behind-help = { $count ->
    *[other] Watched episodes kept behind the one you just finished. With { $count }, finishing episode { $episode } deletes episode 1.
 }
 more-storage-cap-on = At { $cap }, nothing more downloads until you delete episodes.
-more-storage-cap-off = Off: AniBeam downloads until the phone is full.
+more-storage-cap-off = Off: Anibeam downloads until the phone is full.
 more-network = Network
 more-network-wifi = Wi-Fi only
 more-network-mobile = Wi-Fi and mobile data
@@ -248,7 +248,7 @@ more-feeds-note = Searched before the sites
 more-set-check = Check the connection
 more-check-note = Tests each step between this phone and the search sites: finding them, reaching them, and a secure connection.
 more-check-copy = Copy the results
-more-set-computer = Your computer's AniBeam
+more-set-computer = Your computer's Anibeam
 # my-computer stands for a computer's name; translate it like a placeholder. The numbers are an address.
 more-computer-note = Its library shows in Library, and its episodes play here. A name like my-computer or an address like 100.64.0.1.
 more-computer-placeholder = my-computer:8790
@@ -268,9 +268,9 @@ more-set-version = Version
 host-synced = Synced { $when }.
 host-last-try = Last try { $when }: { $error }
 host-asking = Asking...
-host-reached = Reached { $host }, AniBeam { $version }.
+host-reached = Reached { $host }, Anibeam { $version }.
 # The same, naming whose watch history that computer shows this phone.
-host-reached-for = Reached { $host }, AniBeam { $version }, { $name }'s progress.
+host-reached-for = Reached { $host }, Anibeam { $version }, { $name }'s progress.
 host-saved = Saved. Syncing...
 host-none = No computer. This phone keeps to its own library.
 acct-signed-in-as = Signed in as { $name }
@@ -279,7 +279,7 @@ acct-not-in-build = Not available in this build
 acct-tap-to-sign-in = Not signed in. Tap to sign in.
 acct-sign-in-failed = Sign-in failed: { $why }. Tap to try again.
 acct-sign-in-not-started = Sign-in did not start: { $error }. Tap to try again.
-acct-still-starting = AniBeam is still starting. Try again in a moment.
+acct-still-starting = Anibeam is still starting. Try again in a moment.
 home-recently-watched = Recently watched
 home-recently-downloaded = Recently downloaded
 home-note-empty = On this phone
@@ -331,7 +331,7 @@ more-check-failed = { $failed } of { $total } steps failed. A screenshot of this
 # A step of the connection check and how long it took.
 more-check-row = { $step }  { $ms } ms
 more-check-copied = Copied. Paste it in a message.
-more-version = AniBeam for Android { $version } (build { $build })
+more-version = Anibeam for Android { $version } (build { $build })
 dl-note-waiting = Waiting for Wi-Fi. Downloads go on by themselves when the phone is on Wi-Fi.
 dl-note-nothing = Nothing downloading.
 dl-state-done = Done
@@ -350,7 +350,7 @@ dl-batch = A batch
 disk-storage-line = { $used } used
 disk-storage-line-free = { $used } used, { $free } free
 disk-free = This phone has { $free } free.
-disk-free-below-cap = This phone has { $free } free, less than the cap: the phone fills up before AniBeam stops.
+disk-free-below-cap = This phone has { $free } free, less than the cap: the phone fills up before Anibeam stops.
 
 ## More's search: the words a person might type for each setting
 
@@ -400,7 +400,7 @@ phone-home-empty-body = Shows you download here, and what airs for them, show up
 lib-title = Library
 lib-refresh = Refresh
 lib-search-phone = Search this phone
-# { $device } is the name of another AniBeam the library can show, a computer.
+# { $device } is the name of another Anibeam the library can show, a computer.
 lib-search-device = Search { $device }
 # { $query } is what the person typed; the button runs the same search in Downloads.
 lib-find-in-downloads = Find "{ $query }" in Downloads
@@ -583,7 +583,7 @@ show-score-cleared = Score cleared.
 phone-show-moving-to = Moving to { $label }.
 phone-show-moved-to = Moved to { $label }.
 show-rescan-started = Rescan started.
-show-still-starting = AniBeam is still starting. Try again in a moment.
+show-still-starting = Anibeam is still starting. Try again in a moment.
 show-fix-match = Match
 show-fix-find-match = Find a match
 show-fix-rescan = Rescan folder
@@ -647,7 +647,7 @@ match-paste-anilist = Paste an AniList or MyAnimeList link
 match-paste-tvmaze = Paste a TVmaze or IMDb link
 phone-match-look-up = Look up
 match-apply = Apply
-match-look-up-all = Look up every folder AniBeam does not know yet
+match-look-up-all = Look up every folder Anibeam does not know yet
 match-format-music = Music
 # { $first } and { $second } are names of sites: "AniList and MyAnimeList".
 # { $sites } is one or more site names.
@@ -669,7 +669,7 @@ match-applying = Applying the match.
 phone-match-refreshing = Refreshing { $title }.
 match-clearing = Clearing the match.
 phone-match-cleared = Match cleared.
-match-auto-looking = Looking up the folders AniBeam does not know yet.
+match-auto-looking = Looking up the folders Anibeam does not know yet.
 
 ## Batches (the line under a release in a search)
 
@@ -854,7 +854,7 @@ find-releases = { $count ->
    *[other] { $count } releases
 }
 # { $host } is the source's name.
-find-unreachable = { $host } could not be reached. Some networks and countries block release sites; AniBeam already gets past blocks on names, so this one blocks the site itself, or the site is down. A VPN gets past it, or try another source.
+find-unreachable = { $host } could not be reached. Some networks and countries block release sites; Anibeam already gets past blocks on names, so this one blocks the site itself, or the site is down. A VPN gets past it, or try another source.
 find-the-source = The source
 
 # What a source has: the grid of releases.
@@ -1109,8 +1109,8 @@ stream-app-starting = The app is still starting
 stream-no-computer = No computer yet. Add yours in More.
 # { $host } is the other device's name. "Stream episodes", "Settings" and "Phone app" are names on its screen.
 stream-off-on-host = Streaming is off on { $host }. Turn on Stream episodes there, under Settings, Phone app.
-# { $host } is the other device's name, { $version } its AniBeam version.
-stream-cannot-stream = { $host } runs AniBeam { $version }, which cannot stream yet. Update it there.
+# { $host } is the other device's name, { $version } its Anibeam version.
+stream-cannot-stream = { $host } runs Anibeam { $version }, which cannot stream yet. Update it there.
 stream-no-session = The other device gave no session
 # { $why } is the technical reason, in English.
 stream-answer-unreadable = The answer did not read: { $why }
@@ -1181,7 +1181,7 @@ backup-restore = Restore from a backup
 backup-restore-helper = Reads a backup into this library. What is on disk wins; the file fills in the rest.
 backup-done = Backed up. The file is where you saved it.
 backup-not-saved = Not saved. Nothing was written.
-backup-starting = AniBeam is still starting. Try again in a moment.
+backup-starting = Anibeam is still starting. Try again in a moment.
 backup-images-title = Image cache
 backup-images-body = Posters, banners and portraits are kept on the phone so the library works offline. Cleared images download again as pages need them.
 # Button that answers "Remove 340 images?" by leaving the cache alone.
@@ -1257,7 +1257,7 @@ activity-clear-every-line = Clear every line
 # Button on the first line of an opened run of identical lines: closes it again.
 activity-fold = Fold
 activity-no-problems = No problems. Everything worked.
-activity-nothing-yet = Nothing to report yet. What AniBeam does for you shows up here.
+activity-nothing-yet = Nothing to report yet. What Anibeam does for you shows up here.
 # The time on a log line, as strftime patterns (see the date patterns above). Today's lines
 # say the time; older ones say the day as well.
 activity-time-today = %H:%M:%S
@@ -1318,7 +1318,7 @@ fmt-bytes-tb = { $value } TB
 client-not-found = { $host } is not a name the phone can find. Is Tailscale connected?
 client-timeout = { $host } did not answer. Is it on, and is Tailscale connected on both?
 client-connect-failed = Could not reach { $host }. Is it on, and is Tailscale connected on both?
-client-refused = { $host } is on, but AniBeam there is closed or not sharing. Open AniBeam on it and switch on Share over Tailscale in Settings, Phone app.
+client-refused = { $host } is on, but Anibeam there is closed or not sharing. Open Anibeam on it and switch on Share over Tailscale in Settings, Phone app.
 client-no-route = No route to { $host }. Is Tailscale connected?
 client-invalid-input = Could not connect to { $host }
 # { $why } is the system's own error text.
@@ -1327,17 +1327,17 @@ client-cannot-find = The phone cannot find { $host }. Is Tailscale connected?
 client-broke-off = The answer from { $host } broke off: { $why }
 # { $status } is an HTTP status such as 404, { $path } the address asked.
 client-answered = { $host } answered { $status } for { $path }
-client-not-anibeam-status = Something answered, but not AniBeam ({ $host } answered { $status } for { $path })
-client-not-anibeam-hello = Something answered, but not AniBeam (its answer is not AniBeam's hello)
+client-not-anibeam-status = Something answered, but not Anibeam ({ $host } answered { $status } for { $path })
+client-not-anibeam-hello = Something answered, but not Anibeam (its answer is not Anibeam's hello)
 # { $name } is what the other program calls itself.
-client-not-anibeam-name = Something answered, but not AniBeam (it calls itself { $name })
+client-not-anibeam-name = Something answered, but not Anibeam (it calls itself { $name })
 # API numbers: the computer's and this app's.
 client-too-new = The host speaks API { $host_api }; this app reads { $app_api }. Update the app.
 client-snapshot-unreadable = The snapshot did not read: { $why }
 client-probe-unreadable = The file's details did not read: { $why }
-client-peers-unreadable = The list of AniBeams did not read: { $why }
+client-peers-unreadable = The list of Anibeams did not read: { $why }
 sync-save-failed = Could not save the snapshot: { $why }
-address-https = Your computer's AniBeam answers on plain http over Tailscale; drop the https://.
+address-https = Your computer's Anibeam answers on plain http over Tailscale; drop the https://.
 address-empty = Type the host's name or address, for example my-computer:8790.
 address-ipv6-close = An IPv6 address needs its closing ].
 address-ipv6-port = Put the port after the ], as [fd7a::1]:8790.
@@ -1369,7 +1369,7 @@ repos-index-placeholder = https://.../index.json
 repos-add-site = Add site
 # Heading, and the name the settings search finds this part by.
 repos-add-title = Add a repo
-repos-add-note = Paste the address of a repo's index. AniBeam checks its signature and shows you its key before anything is saved.
+repos-add-note = Paste the address of a repo's index. Anibeam checks its signature and shows you its key before anything is saved.
 # Button
 repos-add-repo = Add repo
 repos-trust-title = Trust this repo?
@@ -1533,7 +1533,7 @@ disk-delete-failed = Nothing was deleted: { $error }
 ## Download notifications
 
 # Small head line of a notification as the shade draws it.
-notify-card-head = AniBeam · now
+notify-card-head = Anibeam · now
 # Sample used in the picture of the notification, "Frieren" is a show.
 notify-sample-called = Frieren episode 7
 notify-sample-called-ready = Frieren episode 6
@@ -1559,7 +1559,7 @@ notify-ready = { $called } is ready
 # For a run of episodes: "Frieren episodes 1 to 12 are ready".
 notify-ready-many = { $called } are ready
 notify-ready-batch = A batch of { $show } is ready
-notify-ready-text = Downloaded to this phone. Tap to open AniBeam.
+notify-ready-text = Downloaded to this phone. Tap to open Anibeam.
 # Names of the two notification channels in the phone's own settings.
 notify-channel-downloads = Downloads
 notify-channel-ready = Episodes ready
@@ -1572,7 +1572,7 @@ notify-row-open-settings = Open notification settings
 notify-helper-on = On. Downloads show in your notifications while they run.
 notify-helper-asks-next = Android asks next.
 notify-helper-asks-next-later = Android asks next. You can change your mind later in More.
-notify-helper-off = Off. Turn on notifications for AniBeam there.
+notify-helper-off = Off. Turn on notifications for Anibeam there.
 notify-question-title = See downloads in your notifications?
 notify-question-body = While episodes download, a notification shows how far along they are, and another says when one is ready. They download either way; this only decides whether you see it.
 # Button that asks Android for permission
@@ -1637,7 +1637,7 @@ remote-airs-in = Episode { $n } airs in { $countdown }
 remote-play-episode = Play episode { $n }
 remote-watch-again = Watch episode { $n } again
 # Under an episode of the other computer's library.
-remote-update-host = Update AniBeam on that computer to play this here
+remote-update-host = Update Anibeam on that computer to play this here
 # Date column of an episode that aired and is missing.
 remote-aired = aired
 remote-missing = Missing
@@ -1653,7 +1653,7 @@ dates-season-line = { $title } · Season { $season }
 dates-paste-open = Paste a list
 dates-paste-done = Done pasting
 dates-paste-hint = Paste a release list, a table or a post
-dates-paste-note = What AniBeam reads shows on the episodes below.
+dates-paste-note = What Anibeam reads shows on the episodes below.
 dates-tap-hint = Tap an episode to date it.
 dates-run = Pick a run
 dates-field-hint = 7 Jan, March 2027, 2027
@@ -1678,7 +1678,7 @@ dates-picked-many =
     }
 dates-saved = Saved.
 dates-cleared = Schedule notes cleared.
-dates-starting = AniBeam is still starting. Try again in a moment.
+dates-starting = Anibeam is still starting. Try again in a moment.
 # A tile's line under its number.
 dates-tile-out = Out
 dates-tile-last = Last

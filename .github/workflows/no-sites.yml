@@ -1,6 +1,6 @@
 name: No sites
 
-# AniBeam ships no download sources (#277): nothing in the tree names a site, not in code,
+# Anibeam ships no download sources (#277): nothing in the tree names a site, not in code,
 # tests, fixtures, copy or current docs. A site belongs in an endpoint repo the person adds.
 # Runs on every pull request, docs-only ones too, since a doc can name a site as well; it is
 # one git grep, so it costs seconds. The names and what is skipped live in the script.

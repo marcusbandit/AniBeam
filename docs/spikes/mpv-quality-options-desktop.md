@@ -174,7 +174,7 @@ where it can be honoured.
 ## What the file holds after this
 
 ```conf
-# AniBeam's base mpv configuration. The user's own mpv.conf loads after this one when
+# Anibeam's base mpv configuration. The user's own mpv.conf loads after this one when
 # "Use my mpv.conf" is on, and ~/.config/anibeam/mpv.conf loads last. The shell re-sets
 # what it owns after every load. Scripts never load.
 

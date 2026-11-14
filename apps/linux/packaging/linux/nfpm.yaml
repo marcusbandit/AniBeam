@@ -1,4 +1,4 @@
-# The .deb and .rpm of AniBeam, filled in by packages.sh through these environment variables:
+# The .deb and .rpm of Anibeam, filled in by packages.sh through these environment variables:
 #   ANIBEAM_PKG_VERSION  the package version: 2.4.0, or 2.4.0~nightly.20261112.40 for a pre-release
 #   ANIBEAM_PKG_RELEASE  the rpm release, 1; empty for the deb, whose version is the plain version
 # Paths in contents are relative to the staging tree, which packages.sh runs nfpm from:
@@ -16,8 +16,8 @@ version_schema: none
 release: "${ANIBEAM_PKG_RELEASE}"
 section: video
 priority: optional
-maintainer: AniBeam <noreply@anibeam.app>
-vendor: AniBeam
+maintainer: Anibeam <noreply@anibeam.app>
+vendor: Anibeam
 homepage: https://anibeam.app
 license: GPL-3.0-or-later
 description: Your anime folder, as a library you can watch and track.

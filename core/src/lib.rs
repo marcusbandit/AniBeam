@@ -1,4 +1,4 @@
-//! AniBeam's core: every rule, used by every shell through the contract in
+//! Anibeam's core: every rule, used by every shell through the contract in
 //! `contract`, which hands on the `anibeam-contract` crate below it.
 
 pub mod agent;

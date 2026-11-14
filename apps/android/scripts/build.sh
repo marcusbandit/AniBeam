@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the AniBeam APK inside a hard memory cap; a Rust + Skia + NDK build can take the
+# Build the Anibeam APK inside a hard memory cap; a Rust + Skia + NDK build can take the
 # desktop into swap otherwise.
 #
 #   scripts/build.sh                  APK for the emulator (x86_64), build/AniBeam-debug.apk

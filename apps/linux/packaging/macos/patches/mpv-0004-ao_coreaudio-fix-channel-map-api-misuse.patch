@@ -8,7 +8,7 @@ merged upstream yet), rebased onto v0.41.0 with our patches 0001 to 0003.
 kAudioOutputUnitProperty_ChannelMap, which takes an array of SInt32, one entry
 per destination (device) channel, holding the source channel index or -1 for
 silence. macOS 27 rejects the bad data with -50, so CoreAudio init fails and
-mpv falls back to AVFoundation (mpv-player/mpv#18384, AniBeam #77).
+mpv falls back to AVFoundation (mpv-player/mpv#18384, Anibeam #77).
 
 The patch sets the map on the output scope from the device's channel count, 1:1
 from ao->channels (ca_init_chmap() already picks the device order), -1 for

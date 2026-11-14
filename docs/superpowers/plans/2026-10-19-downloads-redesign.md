@@ -12,7 +12,7 @@ mockup decide where the plan and the mockup disagree:
 - Rounder than the mockup: the app's tile and pill radii, not square cells.
 - Clicking a show never downloads. It opens the show view, which lists the providers; clicking
   a provider fetches what it has. That view is where a new show or feed is added.
-- A provider switch, with 1337x on it. 1337x is a service that must be started; AniBeam only
+- A provider switch, with 1337x on it. 1337x is a service that must be started; Anibeam only
   ever checks whether it runs, and a search never starts it.
 
 ## 1. Episode cubes
@@ -121,7 +121,7 @@ The page, in order:
   and again on `CheckEndpoints`, a new call that only probes.
 - A search never starts a service: the core sends `fallback: false` whenever an on-demand
   endpoint is not answering, and refuses a search aimed at an on-demand endpoint whose ready URL
-  does not answer at that moment ("1337x is not running; AniBeam does not start it").
+  does not answer at that moment ("1337x is not running; Anibeam does not start it").
 - Shell: a Sources switch row in the Downloads head (and the show view's provider list). Plain
   endpoints default on. An on-demand endpoint defaults to on when running, off when not, and
   says why. Off endpoints are never searched. "Check again" re-probes.

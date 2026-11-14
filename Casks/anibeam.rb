@@ -3,7 +3,7 @@ cask "anibeam" do
   sha256 "407ff751808e9cf297eb034e188f70c65b33f92085b26a9d5d5032a2bc68ca59"
 
   url "https://github.com/marcusbandit/AniBeam/releases/download/v#{version}/AniBeam-#{version}-macos-arm64.dmg"
-  name "AniBeam"
+  name "Anibeam"
   desc "Browse, play and track a local anime library"
   homepage "https://github.com/marcusbandit/AniBeam"
 
@@ -26,7 +26,7 @@ cask "anibeam" do
   ]
 
   caveats <<~EOS
-    AniBeam is not notarized, so macOS stops it the first time it opens. Go to
-    System Settings > Privacy & Security, scroll to the AniBeam line and click Open Anyway.
+    Anibeam is not notarized, so macOS stops it the first time it opens. Go to
+    System Settings > Privacy & Security, scroll to the Anibeam line and click Open Anyway.
   EOS
 end

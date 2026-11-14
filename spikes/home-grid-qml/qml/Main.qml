@@ -10,7 +10,7 @@ ApplicationWindow {
     width: 1600                        // a hint; the compositor sizes the window, see settled
     height: 1000
     visible: true
-    title: "AniBeam prototype: home grid"
+    title: "Anibeam prototype: home grid"
     color: theme.bg
 
     Theme {
@@ -68,7 +68,7 @@ ApplicationWindow {
         { time: "11:11:57", stage: "system", level: "info", msg: "Config reloaded, theme.toml changed" },
         { time: "09:30:12", stage: "export", level: "info", msg: "Wrote anibeam-export-2026-09-04.json, 1.2 MB" },
         { time: "09:30:10", stage: "export", level: "info", msg: "Export started, library only" },
-        { time: "09:02:41", stage: "system", level: "info", msg: "AniBeam 2.0.0-proto started" },
+        { time: "09:02:41", stage: "system", level: "info", msg: "Anibeam 2.0.0-proto started" },
         { time: "09:02:40", stage: "system", level: "info", msg: "Database opened, 16 tables" }
     ]
 

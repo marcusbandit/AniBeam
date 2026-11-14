@@ -596,7 +596,7 @@ pub enum Call {
     /// `DownloadsStatusChanged`.
     TestTorrentClient,
     /// Switches the downloads to another torrent client: the saved client
-    /// `id`, or AniBeam's own when `id` is `None`. A running sidecar is
+    /// `id`, or Anibeam's own when `id` is `None`. A running sidecar is
     /// stopped, as a save stops it; `ConnectDownloads` starts it again on
     /// the new client. Emits `DownloadsStatusChanged`.
     UseTorrentClient {
@@ -766,7 +766,7 @@ pub enum Call {
     /// Plays an HLS stream another machine serves on a device, through this one: the
     /// device reaches this machine on the local network, and this machine fetches every
     /// playlist and piece from `url`, which the device may have no route to (a tailnet
-    /// address). For an episode another AniBeam converts as it plays.
+    /// address). For an episode another Anibeam converts as it plays.
     CastStartStream {
         device: String,
         url: String,

@@ -168,7 +168,7 @@ mkdir -p "$appdir/usr/libexec/anibeam"
 install -m 755 "$downloads/qbittorrent-nox" "$appdir/usr/libexec/anibeam/qbittorrent-nox"
 cat > "$appdir/usr/bin/qbittorrent-nox" <<'LAUNCHER'
 #!/bin/sh
-# AniBeam's own qbittorrent-nox: the static build, with the host's OpenSSL config left out.
+# Anibeam's own qbittorrent-nox: the static build, with the host's OpenSSL config left out.
 here="$(cd "$(dirname "$0")/.." && pwd)"
 OPENSSL_CONF=/dev/null
 export OPENSSL_CONF
@@ -199,7 +199,7 @@ find "$anirss/app" -name __pycache__ -type d -prune -exec rm -rf {} +
 mkdir -p "$anirss/bin"
 cat > "$anirss/bin/anirss" <<'LAUNCHER'
 #!/bin/sh
-# AniBeam's own anirss: the release it was built with, on the Python beside it.
+# Anibeam's own anirss: the release it was built with, on the Python beside it.
 here="$(cd "$(dirname "$0")/.." && pwd)"
 exec "$here/python/bin/python3" "$here/app/anirss" "$@"
 LAUNCHER

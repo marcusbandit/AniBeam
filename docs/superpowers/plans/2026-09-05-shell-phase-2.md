@@ -312,7 +312,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "AniBeam's Linux shell: Qt 6 QML over the core, one window, libmpv inside it"
+description = "Anibeam's Linux shell: Qt 6 QML over the core, one window, libmpv inside it"
 build = "build.rs"
 
 [[bin]]
@@ -564,7 +564,7 @@ Window {
     width: Shell.shootWidth > 0 ? Shell.shootWidth : 1280   // a hint; the compositor sizes the window
     height: Shell.shootHeight > 0 ? Shell.shootHeight : 800
     visible: true
-    title: "AniBeam"
+    title: "Anibeam"
     color: "#101216"                                        // Task 5 binds this to theme.bg
 
     property bool firstFrame: false
@@ -578,7 +578,7 @@ Window {
     Text {
         visible: window.settled
         anchors.centerIn: parent
-        text: "AniBeam " + Shell.version
+        text: "Anibeam " + Shell.version
         color: "#e4e7ee"
     }
 
@@ -653,7 +653,7 @@ impl Default for ShellRust {
 ```ini
 [Desktop Entry]
 Type=Application
-Name=AniBeam
+Name=Anibeam
 Comment=Browse, play, and track your local anime library
 Exec=anibeam
 Icon=com.marcusrosado.AniBeam
@@ -717,7 +717,7 @@ true
 `apps/linux/README.md`, the whole file:
 
 ```markdown
-# AniBeam Linux shell
+# Anibeam Linux shell
 
 Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec: chapters 4 and 5 of
 `docs/superpowers/specs/2026-09-04-native-line-design.md`; plan: `docs/superpowers/plans/2026-09-05-shell-phase-2.md`.
@@ -1615,7 +1615,7 @@ const DARK_GROUND: &str = "#101216";
 const LIGHT_GROUND: &str = "#f6f7fa";
 const DARK_TEXT: &str = "#e4e7ee";
 const LIGHT_TEXT: &str = "#1b1e26";
-/// The AniBeam teal, the seed when the portal has no accent.
+/// The Anibeam teal, the seed when the portal has no accent.
 const ANIBEAM_TEAL: &str = "#46e0c4";
 pub const SCRIM_ALPHA: f64 = 0.8;
 
@@ -2458,7 +2458,7 @@ pub fn save(path: &Path, s: &ThemeSettings) -> std::io::Result<()> {
 }
 ```
 
-The thirty built-ins. Write the two AniBeam files from the prototype and fetch the rest at a pinned commit of tinted-theming/schemes, verbatim:
+The thirty built-ins. Write the two Anibeam files from the prototype and fetch the rest at a pinned commit of tinted-theming/schemes, verbatim:
 
 ```bash
 mkdir -p apps/linux/themes
@@ -3331,7 +3331,7 @@ Flickable {
         Row {
             spacing: theme.space(3)
             Field { placeholder: "A field" }
-            Dropdown { options: ["AniBeam Dark", "Catppuccin Mocha"]; index: 0 }
+            Dropdown { options: ["Anibeam Dark", "Catppuccin Mocha"]; index: 0 }
             Swatches { slot: 4 }
             SliderRow { from: 0; to: 150; value: 100 }
         }
@@ -3367,7 +3367,7 @@ Flickable {
         sourceComponent: Shell.page === "tokens" ? tokensPage : placeholder
     }
     Component { id: tokensPage; TokensPage {} }
-    Component { id: placeholder; Text { anchors.centerIn: parent; text: "AniBeam " + Shell.version; color: theme.text } }
+    Component { id: placeholder; Text { anchors.centerIn: parent; text: "Anibeam " + Shell.version; color: theme.text } }
 ```
 
 and the shoot timer waits for `Theme.ready` as well: `onSettledChanged` becomes a function `maybeShoot()` called from both `onSettledChanged` and a `Connections { target: Theme; function onReadyChanged() { window.maybeShoot() } }`, starting the timer when `settled && Theme.ready && Shell.shoot !== ""`.
@@ -4832,7 +4832,7 @@ FocusScope {
     readonly property alias overlay: overlay
     readonly property alias escapeStack: escapeStack
     readonly property bool fullWindow: page.item ? (page.item.fullWindow === true) : false
-    readonly property string windowTitle: (page.item && page.item.title ? page.item.title : nav.current.label) + " - AniBeam"
+    readonly property string windowTitle: (page.item && page.item.title ? page.item.title : nav.current.label) + " - Anibeam"
 
     Nav { id: nav }
     QtObject {
@@ -4987,7 +4987,7 @@ FocusScope {
     }
     Component { id: frameComponent; Frame { window: window } }
     Component { id: tokensPage; TokensPage {} }
-    title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "AniBeam"
+    title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "Anibeam"
 ```
 
 and the shoot timer waits for `frame.status === Loader.Ready` too (`maybeShoot()` checks `frame.item`).
@@ -4997,13 +4997,13 @@ and the shoot timer waits for `frame.status === Loader.Ready` too (`maybeShoot()
 - [ ] **Step 2: Build and capture**
 
 Run: `cargo build -p anibeam && apps/linux/scripts/shoot.sh frame --page library`
-Expected: the rail with five entries and the JP / EN switch and the version at the foot, the placeholder "Library / Not built yet", the strip at the foot showing the core's Ready line ("AniBeam core ... ready") with the `system` chip and a time.
+Expected: the rail with five entries and the JP / EN switch and the version at the foot, the placeholder "Library / Not built yet", the strip at the foot showing the core's Ready line ("Anibeam core ... ready") with the `system` chip and a time.
 
 Run: `apps/linux/scripts/shoot.sh frame-settings --page settings`
 Expected: Settings lit on the rail, the title "Settings".
 
 Run on a monitor: `cargo build --release -p anibeam && apps/linux/scripts/bench.sh frame-live 2 keep`, then click through the rail, right-click and pick Back, press Escape with the menu open, Alt+Left, Tab through the rail entries and press Return, Ctrl+, and Ctrl+K
-Expected: the window title reads `Feed - AniBeam` after picking Feed; Back returns to the previous page; the menu closes on Escape; Tab moves a focus ring over the rail entries. `pkill -x anibeam` afterwards.
+Expected: the window title reads `Feed - Anibeam` after picking Feed; Back returns to the previous page; the menu closes on Escape; Tab moves a focus ring over the rail entries. `pkill -x anibeam` afterwards.
 
 - [ ] **Step 3: Commit**
 
@@ -5278,14 +5278,14 @@ Item {
         visible: page.libraryEmpty
         icon: "tv"
         title: "Your library is empty"
-        body: "Add a folder in Settings, or import an AniBeam export."
+        body: "Add a folder in Settings, or import an Anibeam export."
         Button { text: "Import"; icon: "download"; onClicked: importDialog.open() }
         Button { text: "Settings"; icon: "settings"; flat: true; onClicked: frame.go("settings") }
     }
     FileDialog {
         id: importDialog
-        title: "Import an AniBeam export"
-        nameFilters: ["AniBeam export (*.json)", "All files (*)"]
+        title: "Import an Anibeam export"
+        nameFilters: ["Anibeam export (*.json)", "All files (*)"]
         onAccepted: { var r = Door.importLibrary(decodeURIComponent(String(selectedFile).replace("file://", ""))); if (r.error) frame.toast(r.error.message); else frame.toast("Import started") }
     }
 }
@@ -5822,7 +5822,7 @@ Spec 4.4 (the surface, mpv configuration, completion and the tick, volume) and 5
 - Consumes: MpvQt 1.2.0 (`MpvAbstractItem`, `MpvController`), `Door.openPlayback`, `Door.reportChapters`, `Door.tick`, `Door.closePlayback`, `paths::ShellPaths`, `Fmt`.
 - Produces:
   - The QML element `VideoItem` (C++): `enum Format { Flag, Int64, Double, String, Node }`; signals `loaded()`, `ended(string reason)`, `changed(string name, var value)`, `reconfigured()`, and the inherited `ready()`; invokables `observe(name, format)`, `include(path)`, and the inherited `setProperty`, `setPropertyAsync`, `getProperty`, `command`, `commandAsync`.
-  - `player_config::PlayerSettings { volume: f64 (100), mute: bool, use_my_mpv_conf: bool }` with `load(path)`, `save(path, &s)` through `toml_edit`; `player_config::owned_options() -> Vec<(&'static str, String)>` (the spec's list, minus the subtitle and volume ones, which the callers append); `player_config::preview_options() -> Vec<(&'static str, &'static str)>`; `player_config::config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf>` (bundled, then the user's when the toggle is on, then AniBeam's, existing files only).
+  - `player_config::PlayerSettings { volume: f64 (100), mute: bool, use_my_mpv_conf: bool }` with `load(path)`, `save(path, &s)` through `toml_edit`; `player_config::owned_options() -> Vec<(&'static str, String)>` (the spec's list, minus the subtitle and volume ones, which the callers append); `player_config::preview_options() -> Vec<(&'static str, &'static str)>`; `player_config::config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf>` (bundled, then the user's when the toggle is on, then Anibeam's, existing files only).
   - The QML singleton `Player`: properties `volume`, `mute`, `useMyMpvConf` (each with a `set*` invokable that persists: `setVolume(v)`, `setMute(b)`, `setUseMyMpvConf(b)`), `configLayers` (string list), `ownedOptions` (JSON array of `[name, value]`), `previewOptions` (JSON array).
   - `PlayerPage` with `props.file`, `fullWindow: true`, `title`, `escape()`, and internal state the next two tasks extend: `session` (the `PlaybackSession` JSON), `video` (the main `VideoItem`), `timePos`, `duration`, `paused`, `ended`, `chromeVisible`, `showChrome()`, `seekTo(secs)`, `togglePause()`, `openNeighbour(file)`, `leave()`.
 
@@ -5898,7 +5898,7 @@ Expected: compile errors.
 `apps/linux/mpv.conf`, verbatim from spec 5.4:
 
 ```conf
-# AniBeam's base mpv configuration. The user's own mpv.conf loads after this one when
+# Anibeam's base mpv configuration. The user's own mpv.conf loads after this one when
 # "Use my mpv.conf" is on, and ~/.config/anibeam/mpv.conf loads last. The shell re-sets
 # what it owns after every load. Scripts never load.
 
@@ -7435,7 +7435,7 @@ pub async fn hand_off(action: Option<&str>) -> Result<(), String> {
         Some(name) => conn.call_method(Some(BUS_NAME), OBJECT_PATH, Some("org.freedesktop.Application"), "ActivateAction", &(name, Vec::<Value>::new(), &data)).await,
         None => conn.call_method(Some(BUS_NAME), OBJECT_PATH, Some("org.freedesktop.Application"), "Activate", &(&data,)).await,
     };
-    result.map(|_| ()).map_err(|e| format!("could not reach the running AniBeam: {e}"))
+    result.map(|_| ()).map_err(|e| format!("could not reach the running Anibeam: {e}"))
 }
 
 pub struct AppInterface {
@@ -7539,7 +7539,7 @@ impl RootInterface for MprisPlayer {
     async fn can_set_fullscreen(&self) -> fdo::Result<bool> { Ok(false) }
     async fn can_raise(&self) -> fdo::Result<bool> { Ok(true) }
     async fn has_track_list(&self) -> fdo::Result<bool> { Ok(false) }
-    async fn identity(&self) -> fdo::Result<String> { Ok("AniBeam".into()) }
+    async fn identity(&self) -> fdo::Result<String> { Ok("Anibeam".into()) }
     async fn desktop_entry(&self) -> fdo::Result<String> { Ok(crate::APP_ID.into()) }
     async fn supported_uri_schemes(&self) -> fdo::Result<Vec<String>> { Ok(vec![]) }
     async fn supported_mime_types(&self) -> fdo::Result<Vec<String>> { Ok(vec![]) }
@@ -7735,7 +7735,7 @@ and in `bridge/helpers.rs`: `include!("cxx-qt-lib/qobject.h"); type QObject = cx
             match result {
                 Ok(()) => std::process::exit(0),
                 Err(e) => {
-                    eprintln!("anibeam: another AniBeam is running and {e}");
+                    eprintln!("anibeam: another Anibeam is running and {e}");
                     std::process::exit(1);
                 }
             }
@@ -8045,15 +8045,15 @@ SettingsTab {
                             onRemoveAccepted: { var r = Door.removeSource(modelData.id); if (r.error) frame.toast(r.error.message) }
                         }
                     }
-                    Text { visible: tab.sources.length === 0; text: "No folders yet. Click Add folder to point AniBeam at your collection."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal; padding: theme.space(3) }
+                    Text { visible: tab.sources.length === 0; text: "No folders yet. Click Add folder to point Anibeam at your collection."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal; padding: theme.space(3) }
                 }
             }
             foot: [
                 Row { spacing: theme.space(2)
                     Button { text: "Add folder"; icon: "folder-plus"; onClicked: folderDialog.open() }
                     Button { text: "Scan all"; icon: "refresh-cw"; enabled: tab.sources.length > 0; onClicked: { var r = Door.scan(-1); frame.toast(r.error ? r.error.message : "Scan started") } } },
-                Note { text: "AniBeam scans these folders for video files. A folder is a series; a file at the top level of a Movies folder is a film." },
-                SettingRow { label: "Show hidden shows"; helper: "Shows hidden series on every page until AniBeam closes."
+                Note { text: "Anibeam scans these folders for video files. A folder is a series; a file at the top level of a Movies folder is a film." },
+                SettingRow { label: "Show hidden shows"; helper: "Shows hidden series on every page until Anibeam closes."
                     Switch { checked: Door.revealHidden; onToggled: function(on) { Door.revealHidden = on } } },
                 SettingRow { label: "Subscriptions"; helper: "The feeds anirss watches for you."
                     Button { text: "Open"; icon: "arrow-up-right"; flat: true; onClicked: frame.go("subscriptions") } }
@@ -8339,7 +8339,7 @@ SettingsTab {
                 Switch { checked: !!(Door.settings.auto_skip && Door.settings.auto_skip.intro); onToggled: function(on) { Door.setAutoSkip(on, !!(Door.settings.auto_skip && Door.settings.auto_skip.outro)) } } }
             SettingRow { label: "Auto-skip outro"; helper: "Jumps the outro when the file's chapters or AniSkip know where it is. Undo in the player turns it off for the session."
                 Switch { checked: !!(Door.settings.auto_skip && Door.settings.auto_skip.outro); onToggled: function(on) { Door.setAutoSkip(!!(Door.settings.auto_skip && Door.settings.auto_skip.intro), on) } } }
-            SettingRow { label: "Use my mpv.conf"; helper: "Loads ~/.config/mpv/mpv.conf under AniBeam's own settings. Lines that only apply at start-up, scripts, input-conf and config-dir, are ignored, and no script ever loads."
+            SettingRow { label: "Use my mpv.conf"; helper: "Loads ~/.config/mpv/mpv.conf under Anibeam's own settings. Lines that only apply at start-up, scripts, input-conf and config-dir, are ignored, and no script ever loads."
                 Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.saveUseMyMpvConf(on) } } }
         }
     }
@@ -8357,7 +8357,7 @@ SettingsTab {
         id: subtitlePanel
         Panel {
             title: "Subtitle defaults"; icon: "captions"
-            helper: "What every session starts from. Change tracks in the player and AniBeam remembers them per series."
+            helper: "What every session starts from. Change tracks in the player and Anibeam remembers them per series."
             SettingRow { label: "Scale"
                 SliderRow { from: 0.5; to: 2.0; stepSize: 0.05; decimals: 2; value: tab.defaults.scale || 1; onMoved: function(v) { tab.edit(function(d) { d.scale = v }) } } }
             SettingRow { label: "ASS override"; helper: "Force applies the text style to styled subtitles and may break signs and karaoke."
@@ -8513,7 +8513,7 @@ SettingsTab {
                             Image { anchors.centerIn: parent; width: parent.width * 0.7; height: width; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icon.png"; sourceSize: Qt.size(128, 128) } }
                         Column { spacing: theme.space(1); anchors.verticalCenter: parent.verticalCenter
                             Row { spacing: theme.space(2)
-                                Text { text: "AniBeam"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "Anibeam"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold; anchors.verticalCenter: parent.verticalCenter }
                                 Chip { text: Shell.version; small: true; anchors.verticalCenter: parent.verticalCenter }
                                 Chip { text: "GPL-3.0-or-later"; small: true; mono: false; anchors.verticalCenter: parent.verticalCenter } }
                             Text { text: "Made by Marcus Rosado"; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
@@ -8526,9 +8526,9 @@ SettingsTab {
             ]
         }
     }
-    FileDialog { id: exportDialog; title: "Export the library"; fileMode: FileDialog.SaveFile; nameFilters: ["AniBeam export (*.json)"]; defaultSuffix: "json"
+    FileDialog { id: exportDialog; title: "Export the library"; fileMode: FileDialog.SaveFile; nameFilters: ["Anibeam export (*.json)"]; defaultSuffix: "json"
         onAccepted: { var r = Door.exportLibrary(tab.pathOf(selectedFile), tab.privateData); frame.toast(r.error ? r.error.message : "Export started") } }
-    FileDialog { id: importDialog; title: "Import an AniBeam export"; nameFilters: ["AniBeam export (*.json)", "All files (*)"]
+    FileDialog { id: importDialog; title: "Import an Anibeam export"; nameFilters: ["Anibeam export (*.json)", "All files (*)"]
         onAccepted: { var r = Door.importLibrary(tab.pathOf(selectedFile)); frame.toast(r.error ? r.error.message : "Import started") } }
 }
 ```
@@ -9222,7 +9222,7 @@ PageScroll {
     Text { text: "RSS feeds anirss is watching for you."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
     Text { visible: page.state === "loading"; text: "Reading anirss…"; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
     Text { visible: page.state === "Missing"; text: "anirss is not installed or not on PATH."; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
-    Text { visible: page.state === "NeedsAuth"; text: "qBittorrent session needed. Run anirss -Sy in a terminal to log in to qBittorrent. AniBeam picks up the cached session."; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; wrapMode: Text.Wrap; width: parent.width }
+    Text { visible: page.state === "NeedsAuth"; text: "qBittorrent session needed. Run anirss -Sy in a terminal to log in to qBittorrent. Anibeam picks up the cached session."; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; wrapMode: Text.Wrap; width: parent.width }
     Text { visible: page.state === "Timeout"; text: "anirss timed out. Is qBittorrent reachable?"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
     Text { visible: page.state === "error"; text: "Couldn't read subscriptions: " + page.error; color: theme.red; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
     Text { visible: page.state === "ok" && page.feeds.length === 0; text: "No subscriptions yet. Run anirss in a terminal to subscribe to a feed."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
@@ -9513,7 +9513,7 @@ Expected: the same package builds on the AMD laptop against its Qt 6.11.2; playb
 
 - [ ] **Step 4: Hand the switch line to the owner**
 
-Post the checklist as one issue, "Switch line: units 1 to 4, 6 and 7 on both machines", with a checkbox per item of spec 4.1's switch line, two columns (desktop, laptop), and the install day steps from spec 5.3: run `package.sh`, rename the Electron entry's `Name` to `AniBeam (Electron)` in `~/.local/share/applications/anibeam.desktop`, and note that the wrapper's `^anibeam$` match keeps finding only Electron. When the owner marks every item green, `v2.0.0` is cut: set the workspace version to `2.0.0`, tag `v2.0.0` annotated on `main`, and rebuild so `pkgver` reads `2.0.0`.
+Post the checklist as one issue, "Switch line: units 1 to 4, 6 and 7 on both machines", with a checkbox per item of spec 4.1's switch line, two columns (desktop, laptop), and the install day steps from spec 5.3: run `package.sh`, rename the Electron entry's `Name` to `Anibeam (Electron)` in `~/.local/share/applications/anibeam.desktop`, and note that the wrapper's `^anibeam$` match keeps finding only Electron. When the owner marks every item green, `v2.0.0` is cut: set the workspace version to `2.0.0`, tag `v2.0.0` annotated on `main`, and rebuild so `pkgver` reads `2.0.0`.
 
 ```bash
 gh issue create --title "Switch line: units 1 to 4, 6 and 7 on both machines" --body-file apps/linux/captures/switch-line.md

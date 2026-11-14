@@ -37,19 +37,19 @@ scan-summary-open-library = ライブラリを開く
 
 ## UpdateNotice
 
-update-notice-check-failed = AniBeamはアップデートを確認できませんでした。インターネット接続を確認して、もう一度お試しください。
-update-notice-up-to-date = AniBeamは最新です
-update-notice-downloading = AniBeam { $version }をダウンロード中
-update-notice-ready = AniBeam { $version }の準備ができました
+update-notice-check-failed = Anibeamはアップデートを確認できませんでした。インターネット接続を確認して、もう一度お試しください。
+update-notice-up-to-date = Anibeamは最新です
+update-notice-downloading = Anibeam { $version }をダウンロード中
+update-notice-ready = Anibeam { $version }の準備ができました
 update-notice-failed = アップデートに失敗しました
-update-notice-on-aur = AniBeam { $version }がAURに公開されました
-update-notice-out = AniBeam { $version }が公開されました
-update-notice-out-titled = AniBeam { $version }「{ $title }」が公開されました
+update-notice-on-aur = Anibeam { $version }がAURに公開されました
+update-notice-out = Anibeam { $version }が公開されました
+update-notice-out-titled = Anibeam { $version }「{ $title }」が公開されました
 update-notice-progress = { $percent }%  ·  { $got } / { $total } MB
 update-notice-restart-hint = 今すぐ再起動するか、次回起動時に反映されます
 update-notice-from-source = このコピーはソースからビルドされています: pullして再ビルドしてください
 update-notice-no-download = このパソコン向けのダウンロードはありません
-update-notice-install-hint = 「アップデート」でインストールしてAniBeamを再起動します
+update-notice-install-hint = 「アップデート」でインストールしてAnibeamを再起動します
 update-notice-retry = 再試行
 update-notice-update = アップデート
 update-notice-restart = 再起動
@@ -89,7 +89,7 @@ activity-drawer-copy-tip = クリックで行をコピー
 activity-drawer-fold = 折りたたむ
 activity-drawer-empty-technical = まだ記録はありません。
 activity-drawer-empty-problems = 問題はありません。すべて正常に動作しました。
-activity-drawer-empty = まだ報告することはありません。AniBeamが行ったことがここに表示されます。
+activity-drawer-empty = まだ報告することはありません。Anibeamが行ったことがここに表示されます。
 
 ## ActivityColumn
 
@@ -131,14 +131,14 @@ activity-column-cube-progress = 第{ $number }話: { $percent }%
 
 ## Frame
 
-frame-window-title = { $page } - AniBeam
+frame-window-title = { $page } - Anibeam
 frame-strip-ready = 準備完了
 frame-strip-progress = { $doing }、{ $total }件中{ $done }件
 frame-strip-idle = 実行中の処理はありません
 frame-strip-time-format = HH:mm
 frame-finish-sign-in = 先に{ $tracker }のログインを完了してください
 frame-did-not-work = うまくいきませんでした。
-frame-could-not-open = AniBeamでは開けませんでした。コピーしてご自身で開いてください。
+frame-could-not-open = Anibeamでは開けませんでした。コピーしてご自身で開いてください。
 frame-copy = コピー
 frame-copied = コピーしました
 frame-status-refused = { $tracker }が受け付けませんでした
@@ -343,7 +343,7 @@ onboarding-choose-folder = アニメのフォルダを選んでください
 onboarding-about = 設定は1分ほど。ライブラリは自動で仕上がります。
 onboarding-step-later = あとで
 onboarding-skip-setup = 設定をスキップ
-onboarding-title-welcome = AniBeamへようこそ
+onboarding-title-welcome = Anibeamへようこそ
 onboarding-title-library = アニメはどこにありますか?
 onboarding-title-lists = アニメリストを連携
 onboarding-title-downloads = ダウンロードのしくみ
@@ -353,14 +353,14 @@ onboarding-title-later = { $count ->
     [2] 準備完了、あとで2つ設定
    *[other] 準備完了、あとで3つ設定
 }
-onboarding-body-welcome = AniBeamはアニメを1か所にまとめます。ディスク上の作品を見つけ、ここで再生し、視聴に合わせてAniListやMyAnimeListを最新に保ちます。
-onboarding-body-library = 作品を保存しているフォルダを選んでください。中のフォルダがそれぞれ1つの作品になり、ポスター、エピソード、前回の続きが表示されます。AniBeamはフォルダを読むだけで、ファイルを移動したり名前を変えたりはしません。
-onboarding-body-lists = 一度ログインすれば、ここで見終わったエピソードがすべてリストに記録されます。入力は不要です。ログインはブラウザで行うので、AniBeamがパスワードを見ることはありません。
+onboarding-body-welcome = Anibeamはアニメを1か所にまとめます。ディスク上の作品を見つけ、ここで再生し、視聴に合わせてAniListやMyAnimeListを最新に保ちます。
+onboarding-body-library = 作品を保存しているフォルダを選んでください。中のフォルダがそれぞれ1つの作品になり、ポスター、エピソード、前回の続きが表示されます。Anibeamはフォルダを読むだけで、ファイルを移動したり名前を変えたりはしません。
+onboarding-body-lists = 一度ログインすれば、ここで見終わったエピソードがすべてリストに記録されます。入力は不要です。ログインはブラウザで行うので、Anibeamがパスワードを見ることはありません。
 onboarding-body-downloads = 「ダウンロード」ページで作品をフォローすると、新しいエピソードが放送に合わせてライブラリに届きます。必要なのは2つ: 検索先と、取得に使うトレントクライアントです。
 onboarding-body-ready = ここで決めたことは、あとから設定でいつでも変更できます。この設定は「設定」の「情報」からもう一度実行できます。
 onboarding-skip-step = 今はスキップ
 onboarding-get-started = 始める
-onboarding-open-app = AniBeamを開く
+onboarding-open-app = Anibeamを開く
 onboarding-continue = 次へ
 onboarding-payoff-library = ライブラリ
 onboarding-payoff-library-line = フォルダ内のすべての作品に、ポスター、エピソード、次に見る話。
@@ -379,20 +379,20 @@ onboarding-shelf-more = ほか
 onboarding-preview-show = あなたの作品
 onboarding-preview-finished = ここで第3話を視聴完了
 onboarding-preview-on-list = リスト: 3話視聴済み
-onboarding-preview-set-by = エンドロールと同時にAniBeamが記録
+onboarding-preview-set-by = エンドロールと同時にAnibeamが記録
 onboarding-lists-connected = 連携しました。ここで視聴したものがリストに記録されます。
 onboarding-lists-no-account = アカウントがない場合は? どちらも無料で、1つあれば十分です。連携は設定の「アカウント」でいつでも解除できます。
 onboarding-search-title = 検索先
 onboarding-search-ready = { $count }件のソースで検索できます。
-onboarding-search-none = AniBeamにはソースが入っていません。ソースリポジトリから追加します。共有されたリンクを、設定の「ダウンロード」に貼り付けてください。
+onboarding-search-none = Anibeamにはソースが入っていません。ソースリポジトリから追加します。共有されたリンクを、設定の「ダウンロード」に貼り付けてください。
 onboarding-sources-after = 設定後に開きます
 onboarding-sources-add = 設定後にリポジトリを追加
 onboarding-fetch-title = 取得の方法
-onboarding-fetch-auto = AniBeamに任せる
+onboarding-fetch-auto = Anibeamに任せる
 onboarding-fetch-recommended = おすすめ
-onboarding-fetch-auto-line = AniBeamが専用のqBittorrentを同梱し、バックグラウンドで静かに動かします。インストールも入力も不要です。
+onboarding-fetch-auto-line = Anibeamが専用のqBittorrentを同梱し、バックグラウンドで静かに動かします。インストールも入力も不要です。
 onboarding-fetch-existing = qBittorrentを使っている
-onboarding-fetch-existing-line = 起動中のqBittorrentにAniBeamが接続します。次に設定でアドレスとログイン情報を入力します。
+onboarding-fetch-existing-line = 起動中のqBittorrentにAnibeamが接続します。次に設定でアドレスとログイン情報を入力します。
 onboarding-ready-library = ライブラリ
 onboarding-ready-library-none = フォルダはまだありません。必要なときに設定の「ライブラリ」で追加できます。
 onboarding-ready-library-series = フォルダ{ $count }個、現在{ $series }作品
@@ -407,7 +407,7 @@ onboarding-ready-downloads-line = { $sources ->
    *[other] ソース{ $sources }件
 }、{ $client ->
     [own] 自分のqBittorrent。
-   *[bundled] AniBeam専用のqBittorrent。
+   *[bundled] Anibeam専用のqBittorrent。
 }{ $next ->
     [ready] 準備完了です。
     [opens] 次に設定の「ダウンロード」が開きます。
@@ -635,13 +635,13 @@ library-all-matched = 選んだ作品はすべて照合済みです
 library-empty-scanned-title = フォルダにはまだ何も見つかりません
 library-empty-title = ライブラリは空です
 library-empty-scanned-body = 監視中のフォルダに作品や映画が見つかりませんでした。もう一度スキャンするか、設定でフォルダを確認してください。
-library-empty-body = アニメを保存しているフォルダを追加するとライブラリが自動で埋まります。AniBeamのエクスポートを読み込むこともできます。
+library-empty-body = アニメを保存しているフォルダを追加するとライブラリが自動で埋まります。Anibeamのエクスポートを読み込むこともできます。
 library-scan-all = すべてスキャン
 library-add-folder = フォルダを追加
 library-settings = ライブラリの設定
 library-import = インポート
-library-import-title = AniBeamのエクスポートをインポート
-library-import-filter-export = AniBeamエクスポート (*.json)
+library-import-title = Anibeamのエクスポートをインポート
+library-import-filter-export = Anibeamエクスポート (*.json)
 library-import-filter-all = すべてのファイル (*)
 library-import-started = インポートを開始しました
 
@@ -694,8 +694,8 @@ metadata-all-recognised = すべての作品を認識しています
 metadata-count = { $count }作品
 metadata-search-placeholder = タイトルで絞り込み
 metadata-find-rest = 残りを探す
-metadata-find-rest-started = AniBeamが未認識のフォルダを検索しています
-metadata-find-rest-tip = AniBeamが未認識のフォルダをすべて、設定の順に各作品情報サイトで検索します
+metadata-find-rest-started = Anibeamが未認識のフォルダを検索しています
+metadata-find-rest-tip = Anibeamが未認識のフォルダをすべて、設定の順に各作品情報サイトで検索します
 metadata-refresh-all = すべて更新
 metadata-refresh-all-started = すべての作品の情報を更新しています
 metadata-refresh-all-tip = 認識済みのすべての作品の情報を取得し直します
@@ -714,7 +714,7 @@ metadata-nothing-under =
     }
 metadata-load-failed-body = 今はライブラリを読み込めませんでした。少し待ってからもう一度お試しください。
 metadata-empty-scanned-body = 監視中のフォルダに作品が見つかりませんでした。もう一度スキャンするか、設定でフォルダを確認してください。
-metadata-empty-body = ライブラリは空です。アニメを保存しているフォルダを追加すると、AniBeamがスキャンします。
+metadata-empty-body = ライブラリは空です。アニメを保存しているフォルダを追加すると、Anibeamがスキャンします。
 metadata-no-matches-body = この表示に、その言葉を含むタイトルはありません。
 metadata-nothing-under-body = 今はこの絞り込みに合う作品がありません。「すべて」で残りを表示します。
 metadata-scan-all = すべてスキャン
@@ -724,8 +724,8 @@ metadata-show-all = すべて表示
 metadata-refreshing = { $title }を更新中
 metadata-refresh-tip = この作品の情報を取得し直す
 metadata-forget-armed = 削除する
-metadata-forget-confirm-tip = もう一度クリックすると、この作品と視聴履歴をAniBeamから削除します
-metadata-forget-tip = フォルダがディスク上にもうありません: この作品と履歴をAniBeamから削除します
+metadata-forget-confirm-tip = もう一度クリックすると、この作品と視聴履歴をAnibeamから削除します
+metadata-forget-tip = フォルダがディスク上にもうありません: この作品と履歴をAnibeamから削除します
 
 ## AiringPage.qml
 
@@ -1233,7 +1233,7 @@ source-row-unavailable-fix = ドライブを接続してから「再スキャン
 source-row-counts = { $count }作品
 source-row-counts-movies = { $count }作品、映画フォルダ{ $movies }個
 source-row-unavailable = 利用不可
-    .tip = AniBeamがこのフォルダにアクセスできません。接続されていないかマウントされていないドライブにある場合は、接続すればAniBeamが再び読み込みます。移動した場合は、ここで削除して新しい場所を追加してください。
+    .tip = Anibeamがこのフォルダにアクセスできません。接続されていないかマウントされていないドライブにある場合は、接続すればAnibeamが再び読み込みます。移動した場合は、ここで削除して新しい場所を追加してください。
 source-row-rescan = 再スキャン
 source-row-remove-question = { $name }と、その{ $count }作品と履歴を削除しますか?
 
@@ -1241,12 +1241,12 @@ source-row-remove-question = { $name }と、その{ $count }作品と履歴を�
 
 start-source-title = { $name }用に{ $service }を起動しますか?
 start-source-busy = { $service }を起動中です。応答があると{ $name }がオンになります。最大1分ほどかかります。
-start-source-body = { $service }は、AniBeamのために{ $name }を検索するサービスです。起動するとこのパソコンのバックグラウンドで動作し、AniBeamを閉じても動き続けます。
+start-source-body = { $service }は、Anibeamのために{ $name }を検索するサービスです。起動するとこのパソコンのバックグラウンドで動作し、Anibeamを閉じても動き続けます。
 start-source-starting = 起動中
 
 ## SearchProgress
 
-search-progress-why-helper = AniBeamが検索ヘルパーを起動しています。1〜2秒かかります。
+search-progress-why-helper = Anibeamが検索ヘルパーを起動しています。1〜2秒かかります。
 search-progress-why-starting = { $endpoint }は、検索時に起動するヘルパーを通して動きます。最初の検索は最大{ $seconds }秒待ちますが、次からは待ちません。
 search-progress-why-reading = リリースをグループに分け、ライブラリと照らし合わせています。
 search-progress-why-ondemand = ヘルパーは新しい検索のたびに{ $endpoint }を読み込み直すため、たいてい10〜20秒かかります。
@@ -1400,8 +1400,8 @@ downloads-cancel-all = すべてキャンセル
 downloads-summary-connecting = 接続中。
 downloads-summary-client-on = { $client } { $version }に接続しています。
 downloads-summary-client-off = { $client }に接続していません。設定の「ダウンロード」でアドレスとパスワードを確認してください。
-downloads-summary-native = AniBeamがソースを直接検索します。
-downloads-summary-native-with = AniBeamがソースを直接検索します。{ $client }
+downloads-summary-native = Anibeamがソースを直接検索します。
+downloads-summary-native-with = Anibeamがソースを直接検索します。{ $client }
 downloads-summary-starting = ダウンロードを起動中。
 downloads-summary-not-running = ダウンロードは動作していません。
 downloads-summary-not-started = ダウンロードはまだ起動していません。
@@ -1531,12 +1531,12 @@ downloads-preview-from-named = 取得元: { $host }（{ $name }）
 downloads-preview-must = 必須: { $terms }
 downloads-preview-must-not = 除外: { $terms }
 downloads-helper-changed = ダウンロードが、応答しないヘルパーに設定されています
-downloads-helper-missing = このAniBeamにはダウンロード機能が含まれていません
+downloads-helper-missing = このAnibeamにはダウンロード機能が含まれていません
 downloads-helper-failed = ダウンロードを開始できませんでした
-downloads-helper-changed-body = 検索とダウンロードは小さなヘルパープログラムを通して動きます。設定がAniBeam専用のものとは別のヘルパーを指していて、それが応答していません。元に戻すと自動で起動します。
+downloads-helper-changed-body = 検索とダウンロードは小さなヘルパープログラムを通して動きます。設定がAnibeam専用のものとは別のヘルパーを指していて、それが応答していません。元に戻すと自動で起動します。
 downloads-helper-missing-body = 検索とダウンロードに使うヘルパープログラムなしでビルドされています。リリースページのインストーラーには含まれています。このコピーへの追加方法は設定の「ダウンロード」にあります。
 downloads-helper-failed-body = 検索とダウンロードに使うヘルパープログラムが、準備完了前に停止しました。たいていはもう一度起動すれば直ります。
-downloads-helper-use-own = AniBeam専用のものを使う
+downloads-helper-use-own = Anibeam専用のものを使う
 downloads-helper-start-again = もう一度起動
 downloads-helper-show-how = 方法を見る
 downloads-helper-what-went-wrong = 原因
@@ -1563,7 +1563,7 @@ downloads-card-next-span =
        *[no] 第{ $episode }〜{ $through }話まであと{ $time }
     }
 downloads-rules-unread = 購読を読み込めませんでした。
-downloads-lens-following-line = AniBeamが監視しているフィードを、届け先の作品ごとに表示します。
+downloads-lens-following-line = Anibeamが監視しているフィードを、届け先の作品ごとに表示します。
 downloads-none-yet = まだありません。
 downloads-reading = 読み込み中。
 downloads-rules-error = 購読を読み込めませんでした。少し待ってからもう一度お試しください。
@@ -1618,7 +1618,7 @@ track-picker-off = オフ
 roll-controls-window = { $ahead }話を準備中: 全{ $total }話中 第{ $next }〜{ $through }話
 roll-controls-window-watched = { $ahead }話を準備中: 全{ $total }話中 第{ $next }〜{ $through }話、{ $watched }話視聴済み
 roll-controls-more = さらに{ $count }話入手
-roll-controls-more-tip = 次のエピソードを今ダウンロードします。追いつくと、AniBeamがまた次の数話を準備します。
+roll-controls-more-tip = 次のエピソードを今ダウンロードします。追いつくと、Anibeamがまた次の数話を準備します。
 roll-controls-fewer-tip = 先の準備を1話減らす
 roll-controls-ahead = { $count }話先まで
 roll-controls-further-tip = 先の準備を1話増やす
@@ -1718,7 +1718,7 @@ player-not-now = 今はしない
 ## EndpointReposPanel.qml
 
 endpoint-repos-panel-title = ソースリスト
-endpoint-repos-panel-helper = ソースリストは、署名付きの検索先の一覧で、アドレスで追加します。AniBeamは保存前に署名を確認して鍵を表示し、そのあと使いたいソースをインストールします。インストールしたソースは上の「検索ソース」に加わります。
+endpoint-repos-panel-helper = ソースリストは、署名付きの検索先の一覧で、アドレスで追加します。Anibeamは保存前に署名を確認して鍵を表示し、そのあと使いたいソースをインストールします。インストールしたソースは上の「検索ソース」に加わります。
 endpoint-repos-panel-could-not-start = 開始できませんでした。少し待ってからもう一度お試しください。
 endpoint-repos-panel-needs-value = { $name }には値が必要です
 endpoint-repos-panel-values-of = { $name }の値
@@ -1792,8 +1792,8 @@ schedule-agent-looking = { $agent }が日付を調べています。「保存」
 schedule-agent-stopped = { $agent }が停止しました: { $error }
 schedule-stop = 停止
 schedule-paste-placeholder = リリース一覧、表、投稿を貼り付け
-schedule-paste-helper = AniBeamが読み取った内容が、下のエピソードに表示されます。
-schedule-agent-hint = このパソコンにClaude Codeがあれば、AniBeamが日付を調べてもらえます。
+schedule-paste-helper = Anibeamが読み取った内容が、下のエピソードに表示されます。
+schedule-agent-hint = このパソコンにClaude Codeがあれば、Anibeamが日付を調べてもらえます。
 schedule-show-more = さらにエピソードを表示
 schedule-pick-hint = エピソードをクリックして日付を設定します。Shiftクリックで範囲を選択します。
 schedule-picked-one = 第{ $number }話:
@@ -1848,7 +1848,7 @@ connect-finish-in-browser = ブラウザで完了してください
 connect-signed-in-anilist = { $account }としてログインしました。リストは「視聴中」ページにあります。
 connect-signed-in-mal = { $account }としてログインしました。視聴に合わせてエピソードが記録されます。
 connect-setup-lead = { $name }へのログインには、自分用のアプリを使います。最初の1回だけ、1分ほどかかります。
-connect-page-open = ブラウザで{ $name }のログインページを開いています。そこでAniBeamを承認すると、これは自動で閉じます。
+connect-page-open = ブラウザで{ $name }のログインページを開いています。そこでAnibeamを承認すると、これは自動で閉じます。
 connect-page-opening = ブラウザで{ $name }のログインページを開いています。
 connect-open-watching = 視聴中を開く
 connect-done = 完了
@@ -1868,7 +1868,7 @@ connect-step-paste-id-anilist = AniListではClient IDと呼ばれ、新しい�
 connect-step-paste-id-mal = MyAnimeListではClient IDと呼ばれ、新しいアプリのページにある長い文字列です。
 connect-client-id = クライアントID
 connect-client-secret-web = クライアントシークレット（Webアプリのみ）
-connect-step-connect-body = ブラウザが開き、{ $name }でログインしてAniBeamを承認すると、AniBeamがその応答を受け取ります。
+connect-step-connect-body = ブラウザが開き、{ $name }でログインしてAnibeamを承認すると、Anibeamがその応答を受け取ります。
 
 ## SettingsPage
 
@@ -1922,7 +1922,7 @@ settings-status-subtitles =
         [Force] すべてのファイルに自分のスタイル
        *[ScaleOnly] スタイル付きファイルは見た目を維持
     }
-settings-status-keys = AniBeamで使えるすべてのキー
+settings-status-keys = Anibeamで使えるすべてのキー
 settings-status-downloads-unread = 未読み込み
 settings-status-downloads-answered = qBittorrentが応答しました
 settings-status-downloads-missing = 検索ヘルパー未インストール
@@ -2085,7 +2085,7 @@ settings-downloads-keep-none = エピソードを見終わると、その前の�
 settings-downloads-keep-line = 見終わった話の前に残す話数です。{ $count }なら第{ $finishing }話を見終えると第1話を削除します。
 settings-downloads-anirss-ready = 動作中、バージョン{ $version }、{ $url }。
 settings-downloads-anirss-starting = 検索ヘルパーを起動中です。
-settings-downloads-anirss-missing = 検索ヘルパーがインストールされていません。AniBeamを再インストールするか、「コマンド」で自分のanirssを指定してください。
+settings-downloads-anirss-missing = 検索ヘルパーがインストールされていません。Anibeamを再インストールするか、「コマンド」で自分のanirssを指定してください。
 settings-downloads-anirss-failed = 検索ヘルパーが停止しました。「再試行」で起動します。メッセージは「詳細」にあります。
 settings-downloads-anirss-idle = まだ起動していません。ダウンロードページで最初に検索したときに起動します。
 settings-downloads-torrent-trying = { $client }を試しています。
@@ -2093,12 +2093,12 @@ settings-downloads-torrent-answered = { $client } { $version }が応答しまし
 settings-downloads-torrent-failed = { $client }に接続できません。アドレスとパスワードを確認し、再テストしてください。
 settings-downloads-torrent-untried = まだ試していません。
 settings-downloads-mode-existing = ご自身で動かしている、Web UIがオンのqBittorrent。
-settings-downloads-mode-managed = AniBeamが専用のqBittorrentを動かし、~/Downloads/Animeに保存します。AniBeamを終了しても動き続けるので、購読のダウンロードも続きます。
+settings-downloads-mode-managed = Anibeamが専用のqBittorrentを動かし、~/Downloads/Animeに保存します。Anibeamを終了しても動き続けるので、購読のダウンロードも続きます。
 settings-downloads-mode-auto = 下のアドレスのqBittorrentか、なければ専用のものを使います。
 settings-downloads-password-saved = このクライアントのパスワードはここに保存されています。
 settings-downloads-password-anirss = 検索ヘルパーが保存したパスワードを使っています。ここに保存すれば、それに頼らずに済みます。
 settings-downloads-password-none = パスワード未保存。このマシンのログインを省くクライアントには不要です。
-settings-downloads-mismatch = 検索ヘルパーは{ $helperUrl }と、AniBeamは{ $url }とやり取りしています。ご自身で動かしている検索ヘルパーは自分のconfig.tomlからアドレスを読むため、ここでクライアントを切り替えても変わりません。
+settings-downloads-mismatch = 検索ヘルパーは{ $helperUrl }と、Anibeamは{ $url }とやり取りしています。ご自身で動かしている検索ヘルパーは自分のconfig.tomlからアドレスを読むため、ここでクライアントを切り替えても変わりません。
 settings-downloads-torrent-title = トレントクライアント
 settings-downloads-torrent-helper = ダウンロードを行うqBittorrent。パスワードはシステムの保管庫に保存します。
 settings-downloads-which-client = クライアント
@@ -2120,29 +2120,29 @@ settings-downloads-secret-unset = 未設定
 settings-downloads-connection = 接続
 settings-downloads-open-config = 設定ファイルを開く
 settings-downloads-details = 詳細
-settings-downloads-details-torrent = AniBeamが試したときの{ $client }の応答です。
+settings-downloads-details-torrent = Anibeamが試したときの{ $client }の応答です。
 settings-downloads-test-trying = 試行中
 settings-downloads-test-save = 保存してテスト
 settings-downloads-test = テスト
 settings-downloads-searching = 検索
 settings-downloads-search-helper = 検索ヘルパー
-settings-downloads-searching-helper = AniBeamがソースを直接検索し、選んだものをトレントクライアントに送ります。検索ヘルパーは不要です。
-settings-downloads-search-helper-helper = 検索と購読を担うAniBeamの一部で、anirssというプログラムです。AniBeamが動かすので、自分で動かす場合だけ変更してください。
+settings-downloads-searching-helper = Anibeamがソースを直接検索し、選んだものをトレントクライアントに送ります。検索ヘルパーは不要です。
+settings-downloads-search-helper-helper = 検索と購読を担うAnibeamの一部で、anirssというプログラムです。Anibeamが動かすので、自分で動かす場合だけ変更してください。
 settings-downloads-runs-in = 検索の実行元
 settings-downloads-runs-in-native-helper = 購読はトレントクライアントで動くので、閉じても新エピソードが届きます。
-settings-downloads-runs-in-helper = 検索ヘルパー。AniBeamが動かすか、ご自身で動かす別のプログラムです。
-settings-downloads-engine-native = AniBeam自身
+settings-downloads-runs-in-helper = 検索ヘルパー。Anibeamが動かすか、ご自身で動かす別のプログラムです。
+settings-downloads-engine-native = Anibeam自身
 settings-downloads-how-runs = 動かし方
-settings-downloads-how-runs-sidecar = AniBeamの起動時に開始し、終了時に停止します。
+settings-downloads-how-runs-sidecar = Anibeamの起動時に開始し、終了時に停止します。
 settings-downloads-how-runs-remote = すでに動かしているものを、下のアドレスとキーで使います。
-settings-downloads-runs-sidecar = AniBeamが動かす
+settings-downloads-runs-sidecar = Anibeamが動かす
 settings-downloads-runs-remote = 自分で動かす
 settings-downloads-command = コマンド
 settings-downloads-command-helper = PATH上の名前かフルパス。~/.local/binも検索します。
 settings-downloads-server-address-helper = サーバーのベースアドレス（/api/v1なし）。
 settings-downloads-key = キー
 settings-downloads-key-saved-helper = キーは保存済みです。置き換えるには新しいキーを入力し、削除するには欄を空にしてください。
-settings-downloads-key-helper = 検索ヘルパーが起動時に表示したキーです。これでAniBeamが接続できます。
+settings-downloads-key-helper = 検索ヘルパーが起動時に表示したキーです。これでAnibeamが接続できます。
 settings-downloads-details-anirss = 検索ヘルパーが停止したときのメッセージです。
 settings-downloads-starting = 起動中
 settings-downloads-reconnect = 再接続
@@ -2173,7 +2173,7 @@ settings-downloads-sources-empty = ソースはまだ設定されていません
 settings-downloads-sources-connect = 一覧を表示するには検索ヘルパーに接続してください
 settings-downloads-sources-empty-helper = 下でソースリストを追加すると、ここに並びます。
 settings-downloads-config-file = 検索ヘルパーの設定ファイル
-settings-downloads-config-native-helper = 保存フォルダ、タグ、最適一致のルールが入っていて、ヘルパーを動かすときはAniBeam自身もこれに従います。ファイル内のソースはヘルパー専用です。
+settings-downloads-config-native-helper = 保存フォルダ、タグ、最適一致のルールが入っていて、ヘルパーを動かすときはAnibeam自身もこれに従います。ファイル内のソースはヘルパー専用です。
 settings-downloads-config-helper = ソース、保存フォルダ、タグ、最適一致のルールが入っています。
 settings-downloads-unsaved = 未保存の変更
 settings-downloads-unsaved-helper = 保存すると、新しい設定で検索ヘルパーを再起動します。
@@ -2267,7 +2267,7 @@ settings-developer-copy-events = イベントをコピー
 ## SettingsKeysTab
 
 settings-keys-title = キーボード
-settings-keys-lead = AniBeamで使えるすべてのキーです。どこでも?を押すと、その場で使えるキーが表示されます。
+settings-keys-lead = Anibeamで使えるすべてのキーです。どこでも?を押すと、その場で使えるキーが表示されます。
 settings-keys-player = プレーヤー
 settings-keys-player-around = プレーヤー内の移動
 settings-keys-around = 移動
@@ -2335,7 +2335,7 @@ key-help-pick-all = 表示中のカードをすべて選択
 ## SettingsAboutTab
 
 settings-about-title = 情報
-settings-about-lead = このAniBeamのバージョンと、次のバージョンの知らせ方です。
+settings-about-lead = このAnibeamのバージョンと、次のバージョンの知らせ方です。
 settings-about-update-failed = アップデートが完了しませんでした。もう一度試すか、リリースページから入手してください。
 settings-about-update-ready = { $version }をインストールできます。
 settings-about-update-command = { $version }が公開されました。{ $command }で更新してください
@@ -2343,7 +2343,7 @@ settings-about-update-progress = { $headline }  ·  { $detail }
 settings-about-update-source = { $version }が公開されました。このコピーはソースからビルドされています: pullして再ビルドしてください。
 settings-about-update-elsewhere = { $version }が公開されましたが、このパソコン向けのダウンロードはありません。
 settings-about-version = バージョン
-settings-about-build = AniBeam { $build }
+settings-about-build = Anibeam { $build }
 settings-about-whats-new = 更新内容
 settings-about-install = { $version }をインストール
 settings-about-setup = セットアップ
@@ -2418,7 +2418,7 @@ settings-accounts-lead = AniListかMyAnimeListを連携すると、見終わっ�
 settings-accounts-syncing = リストを同期中
 settings-accounts-synced = リストを同期しました
 settings-accounts-lists = アニメリスト
-settings-accounts-lists-helper = なくても、AniBeamはこのパソコンで視聴したものを覚えています。AniListやMyAnimeListのリストがあれば、スマホやプロフィールにも反映されます。
+settings-accounts-lists-helper = なくても、Anibeamはこのパソコンで視聴したものを覚えています。AniListやMyAnimeListのリストがあれば、スマホやプロフィールにも反映されます。
 settings-accounts-progress = 進捗
 settings-accounts-main-list = メインのリスト
 settings-accounts-main-list-helper = カードにはこのリストの進捗を表示します。もう一方にもすべての更新が届きます。
@@ -2427,7 +2427,7 @@ settings-accounts-local-lists-helper = { $count }作品は、ステータスか�
 settings-accounts-review-move = 確認して移動
 settings-accounts-nothing-to-move = 移動するものはありません
 settings-accounts-sync-now = 今すぐ同期
-settings-accounts-sync-now-helper = 連携しているすべてのリストを読み込み直します。AniBeamの起動時にも行います。
+settings-accounts-sync-now-helper = 連携しているすべてのリストを読み込み直します。Anibeamの起動時にも行います。
 settings-accounts-sync = 同期
 settings-accounts-move-on-hold = 保留に移動
 settings-accounts-move-on-hold-helper = しばらく触れていない視聴中の作品を、リストで保留に移動します。再生すると元に戻ります。次のエピソードを待っている作品はそのままです。
@@ -2438,7 +2438,7 @@ settings-accounts-days-unit = 日
 ## SettingsPhoneTab
 
 settings-phone-title = スマホアプリ
-settings-phone-lead = スマホのAniBeamから、どこにいてもこのライブラリを再生し、放送中の作品を見て、ダウンロードを追えます。
+settings-phone-lead = スマホのAnibeamから、どこにいてもこのライブラリを再生し、放送中の作品を見て、ダウンロードを追えます。
 settings-phone-online = オンライン
 settings-phone-offline = オフライン
 settings-phone-untrusted = このパソコンから何も受け取りません
@@ -2452,7 +2452,7 @@ settings-phone-host-service = ホストサービス
 settings-phone-not-running = 停止中
 settings-phone-running = 動作中
 settings-phone-service-off-helper = コマンドを一度実行すると、ログイン後はウィンドウなしでもデバイスからつながります。
-settings-phone-service-on-helper = ウィンドウを開かなくても、デバイスからAniBeamにアクセスできます。このウィンドウが開いている間は、サービスの代わりにこちらが共有します。
+settings-phone-service-on-helper = ウィンドウを開かなくても、デバイスからAnibeamにアクセスできます。このウィンドウが開いている間は、サービスの代わりにこちらが共有します。
 settings-phone-copy-command = コマンドをコピー
 settings-phone-command-copied = コマンドをコピーしました
 # Tailscale ties the device to no person, so this computer cannot tell whose it is.
@@ -2493,12 +2493,12 @@ settings-help-add-folder-helper = 作品ごとではなく、作品をまとめ�
 settings-help-add-folder = フォルダを追加
 settings-help-open-folders = フォルダを開く
 settings-help-match = 作品が認識されないのはなぜですか?
-settings-help-match-helper = AniBeamは各フォルダを名前で、まずAniList、次にTVmazeで検索します。余計な語、つづりの誤り、別の言語の名前だと見つからないことがあります。作品情報で正しい作品を手動で選んでください。手動で選んだものが置き換えられることはありません。
+settings-help-match-helper = Anibeamは各フォルダを名前で、まずAniList、次にTVmazeで検索します。余計な語、つづりの誤り、別の言語の名前だと見つからないことがあります。作品情報で正しい作品を手動で選んでください。手動で選んだものが置き換えられることはありません。
 settings-help-all-recognised = すべての作品を認識しています
 settings-help-unrecognised = { $count }作品が認識されていません
 settings-help-open-show-info = 作品情報を開く
 settings-help-connect = AniListと連携するには?
-settings-help-connect-helper = 連携すると、見終わったエピソードがすべてリストに記録され、スマホやプロフィールも最新に保たれます。AniListでは最初に一度だけ自分用の小さなアプリを作る必要があり、AniBeamが手順を案内します。1分ほどで終わります。MyAnimeListも同じです。
+settings-help-connect-helper = 連携すると、見終わったエピソードがすべてリストに記録され、スマホやプロフィールも最新に保たれます。AniListでは最初に一度だけ自分用の小さなアプリを作る必要があり、Anibeamが手順を案内します。1分ほどで終わります。MyAnimeListも同じです。
 settings-help-both-connected = 両方とも連携済みです
 settings-help-anilist-connected = AniListは連携済みです
 settings-help-mal-connected = MyAnimeListは連携済みです
@@ -2506,7 +2506,7 @@ settings-help-none-connected = まだどちらも連携していません
 settings-help-connect-anilist = AniListを連携
 settings-help-connect-mal = MyAnimeListを連携
 settings-help-downloads = ダウンロードが空なのはなぜですか?
-settings-help-downloads-helper = AniBeamに検索先は入っていません。設定の「ダウンロード」でソースリストを追加し、使うソースをインストールします。ダウンロードにはトレントクライアントも必要です: 専用のものを動かすか、手持ちのqBittorrentを使えます。
+settings-help-downloads-helper = Anibeamに検索先は入っていません。設定の「ダウンロード」でソースリストを追加し、使うソースをインストールします。ダウンロードにはトレントクライアントも必要です: 専用のものを動かすか、手持ちのqBittorrentを使えます。
 settings-help-sources = ソースとトレントクライアント
 settings-help-open-downloads = ダウンロード設定を開く
 settings-help-data = データはどこにありますか?
@@ -2594,12 +2594,12 @@ settings-data-cache-size = 画像{ $count }枚、{ $size }
 settings-data-cache-empty = キャッシュされた画像はありません
 settings-data-cache-unmeasured-helper = 少し待ってからもう一度お試しください。画像自体は問題ありません。
 settings-data-remove-images = 画像{ $count }枚を削除しますか?
-settings-data-files = AniBeamのファイルの保存場所
+settings-data-files = Anibeamのファイルの保存場所
 settings-data-files-database = ライブラリのデータベース
 settings-data-files-data = データ
 settings-data-files-settings = 設定
 settings-data-files-cache = キャッシュ
-settings-data-backup-filter = AniBeamバックアップ (*.json)
+settings-data-backup-filter = Anibeamバックアップ (*.json)
 settings-data-all-files-filter = すべてのファイル (*)
 settings-data-backing-up = バックアップ中
 settings-data-restoring = 復元中
@@ -2607,7 +2607,7 @@ settings-data-restoring = 復元中
 ## SettingsLibraryTab
 
 settings-library-title = ライブラリ
-settings-library-lead = AniBeamが監視するフォルダと、その中身の判別方法です。
+settings-library-lead = Anibeamが監視するフォルダと、その中身の判別方法です。
 settings-library-not-scanned = 未スキャン
 settings-library-scan-nothing-changed = 変更なし
 settings-library-scan-added = { $count }件追加
@@ -2626,7 +2626,7 @@ settings-library-folders = フォルダ
 settings-library-folders-helper = この中の各フォルダが1作品です。Moviesフォルダ直下のファイルは映画です。
 settings-library-rescan-started = 再スキャンを開始しました
 settings-library-load-failed = フォルダを読み込めませんでした
-settings-library-load-failed-helper = AniBeamがフォルダの一覧を読み込めませんでした。少し待ってからもう一度お試しください。
+settings-library-load-failed-helper = Anibeamがフォルダの一覧を読み込めませんでした。少し待ってからもう一度お試しください。
 settings-library-no-folders = フォルダはまだありません
 settings-library-no-folders-helper = アニメを保存しているフォルダを指定してください。作品と映画は自動で見つけます。
 settings-library-scanned = { $when }にスキャン
@@ -2639,11 +2639,11 @@ settings-library-matching-helper = 新しいフォルダはこの順に検索し
 settings-library-try-later = 後にする
 settings-library-try-first = 先にする
 settings-library-check-matches = 照合を確認
-settings-library-check-matches-helper = 作品情報ページに、AniBeamが見つけた情報とともにすべての作品が並び、間違った照合を直せます。
+settings-library-check-matches-helper = 作品情報ページに、Anibeamが見つけた情報とともにすべての作品が並び、間違った照合を直せます。
 settings-library-open-show-info = 作品情報を開く
 settings-library-hidden-shows = 非表示の作品
 settings-library-show-hidden = 非表示の作品を表示
-settings-library-show-hidden-helper = 非表示の作品を、AniBeamを閉じるまで全ページに表示します。
+settings-library-show-hidden-helper = 非表示の作品を、Anibeamを閉じるまで全ページに表示します。
 settings-library-hidden-from-airing = 「放送中」で非表示
 settings-library-hidden-from-airing-helper = 「興味なし」にした作品です。戻すまで「放送中」に表示されません。
 settings-library-hidden-from-airing-empty = まだありません。「放送中」で「興味なし」にした作品がここに集まり、いつでも戻せます。
@@ -2697,7 +2697,7 @@ settings-appearance-icon-dark = ダーク
 settings-appearance-icon-dark-name = ダークのアプリアイコン
 settings-appearance-size-motion = サイズと動き
 settings-appearance-text-size = 文字サイズ
-settings-appearance-text-size-helper = AniBeam全体の文字の大きさです。システムの文字サイズに上乗せされます。
+settings-appearance-text-size-helper = Anibeam全体の文字の大きさです。システムの文字サイズに上乗せされます。
 settings-appearance-density = 密度
 settings-appearance-density-helper = 各要素の周りの余白。詰めた表示からゆったりした表示まで。
 settings-appearance-density-compact = コンパクト
@@ -2930,7 +2930,7 @@ status-dot-on-list = リスト: { $status }
 ## TrackerNudge
 
 tracker-nudge-title = アニメリストを連携
-tracker-nudge-body = AniBeamが視聴をAniListやMyAnimeListに記録します。
+tracker-nudge-body = Anibeamが視聴をAniListやMyAnimeListに記録します。
 tracker-nudge-connect-anilist = AniListを連携
 tracker-nudge-connect-mal = MyAnimeListを連携
 tracker-nudge-not-now = 今はしない

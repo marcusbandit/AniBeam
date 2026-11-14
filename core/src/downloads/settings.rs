@@ -39,7 +39,7 @@ pub fn password_key(id: &str) -> String {
     }
 }
 
-/// The key of the password the client in use logs in with. AniBeam's own
+/// The key of the password the client in use logs in with. Anibeam's own
 /// needs none, so it has none.
 pub fn active_password_key(s: &DownloadSettings) -> Option<String> {
     (s.torrent_mode != TorrentMode::Managed).then(|| password_key(&s.active_client))
@@ -319,7 +319,7 @@ fn address_key(url: &str) -> String {
 }
 
 /// Whether the client in use keeps its downloads on this machine's disk, so
-/// the core may move them to the trash itself. AniBeam's own always does; a
+/// the core may move them to the trash itself. Anibeam's own always does; a
 /// client of the user's does when its address is this machine: loopback,
 /// one of the machine's own addresses, or its name. A seedbox's paths are
 /// its own, and the same path here is somebody else's folder.
@@ -453,7 +453,7 @@ fn host_of(url: &str) -> String {
     parsed(url).map_or(String::new(), |u| bare_host(&u))
 }
 
-/// Whether AniBeam's own may listen at the address in use: it has to be on
+/// Whether Anibeam's own may listen at the address in use: it has to be on
 /// this machine, and not where one of the user's saved clients is, or it
 /// would be started at the user's own qBittorrent's port.
 pub fn fits_managed(s: &DownloadSettings) -> bool {
@@ -494,7 +494,7 @@ fn stored_engine_value(conn: &Connection) -> Option<DownloadsEngine> {
 }
 
 /// How many endpoints anirss's own `config.toml` names, nought when there is
-/// no file or none it can read. AniBeam itself does not read them (#552).
+/// no file or none it can read. Anibeam itself does not read them (#552).
 pub fn anirss_config_endpoints(path: &Path) -> usize {
     let Ok(text) = std::fs::read_to_string(path) else {
         return 0;

@@ -1,4 +1,4 @@
-//! AniBeam for Android: the Slint screens and the thread that syncs behind them.
+//! Anibeam for Android: the Slint screens and the thread that syncs behind them.
 //!
 //! The entry point is the platform's (`platform/android.rs`'s `android_main` on the phone,
 //! `platform/ios.rs`'s `ios_main` on the iPhone, which `main.rs` calls), which hands `run`

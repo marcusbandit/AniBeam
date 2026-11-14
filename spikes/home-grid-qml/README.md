@@ -4,7 +4,7 @@ Wayfinder ticket #17 on map #2. A thing to react to, not the shell: the home gri
 cxx-qt spike window with every theme knob live. Build with `cargo build --release` (needs `rust`,
 `lld`, `qt6-base`, `qt6-declarative`) and run `target/release/anibeam-proto`.
 
-It reads the real AniBeam config directory (metadata, the tracker progress cache, view history,
+It reads the real Anibeam config directory (metadata, the tracker progress cache, view history,
 the image cache) and the kitty config strictly read-only; nothing is written anywhere.
 
 ## What is where
@@ -55,7 +55,7 @@ the image cache) and the kitty config strictly read-only; nothing is written any
   is how the Corners switch shows a smooth and a plain corner instead of words.
   `qml/SubtitlePreview.qml` at the top of the subtitle defaults draws the text style over a
   still, sized off mpv's 720 line reference, and follows the fields as you type.
-- `themes/` holds the built-ins as verbatim tinted-theming base16 YAML plus the two AniBeam files.
+- `themes/` holds the built-ins as verbatim tinted-theming base16 YAML plus the two Anibeam files.
 
 ## Presets and screenshots
 

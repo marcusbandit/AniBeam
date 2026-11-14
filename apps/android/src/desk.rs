@@ -1,4 +1,4 @@
-//! Where a download goes: this phone, or the AniBeam computer the phone is connected to
+//! Where a download goes: this phone, or the Anibeam computer the phone is connected to
 //! (#733). The computer is asked once a show opens, in the background, with its cheap
 //! hello; one that does not answer, or runs a version without downloads, is not offered.
 

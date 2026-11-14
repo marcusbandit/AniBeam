@@ -12,7 +12,7 @@ SettingsTab {
     lead: words.t("settings-subtitles-lead")
     readonly property var defaults: frame.subtitleDefaults
     property var preview: ({ path: "", subtitle: "", startAt: 0 })
-    // Back to the look AniBeam ships with; the language orders stay as they are
+    // Back to the look Anibeam ships with; the language orders stay as they are
     function resetStyle() {
         var stock = Player.stockSubtitleDefaults()
         tab.edit(function(d) { d.scale = stock.scale; d.ass_override = stock.ass_override; d.text_style = stock.text_style })

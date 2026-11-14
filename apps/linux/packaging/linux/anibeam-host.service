@@ -1,4 +1,4 @@
-# AniBeam's host service: the library, downloads and the tailnet API for your other
+# Anibeam's host service: the library, downloads and the tailnet API for your other
 # devices, with no window. The desktop app takes the library over while it is open and
 # hands it back when it closes.
 #
@@ -11,7 +11,7 @@
 #   ExecStart=/path/to/anibeam serve
 
 [Unit]
-Description=AniBeam host service for other devices
+Description=Anibeam host service for other devices
 # A core that will not open fails the same way every time: five tries, then stop.
 StartLimitIntervalSec=120
 StartLimitBurst=5

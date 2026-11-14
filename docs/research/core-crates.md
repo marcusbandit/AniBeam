@@ -344,7 +344,7 @@ RFC 8252 section 7.3: native apps "can use the loopback interface to receive the
 
 The registered URI today is `http://127.0.0.1:53682/callback`, pinned "so the URL you register with AniList / MAL once keeps working forever". The core keeps host, port and path. `src/shared/trackerConstants.ts`
 
-Implementation: `tokio::net::TcpListener::bind(("127.0.0.1", 53682))`, accept one connection at a time, read the request line, answer with the forwarder page, the success page or the error page, close. That is a few dozen lines with no HTTP crate; `tiny_http` or axum would each be a larger dependency than the code they replace. A bind failure (`EADDRINUSE`) is reported to the shell as "another AniBeam is mid-connect", as today.
+Implementation: `tokio::net::TcpListener::bind(("127.0.0.1", 53682))`, accept one connection at a time, read the request line, answer with the forwarder page, the success page or the error page, close. That is a few dozen lines with no HTTP crate; `tiny_http` or axum would each be a larger dependency than the code they replace. A bind failure (`EADDRINUSE`) is reported to the shell as "another Anibeam is mid-connect", as today.
 
 ### Not verified
 

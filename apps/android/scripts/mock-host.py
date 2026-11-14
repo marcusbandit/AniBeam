@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-mock-host.py: a dev-only fake of the AniBeam desktop's read-only JSON API.
+mock-host.py: a dev-only fake of the Anibeam desktop's read-only JSON API.
 
 It serves the routes described in host-api/src/lib.rs (hello, snapshot and
 posters) from host-api/fixtures/snapshot.json, and takes download calls (logged,
@@ -490,7 +490,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Dev-only fake of the AniBeam host API.")
+    ap = argparse.ArgumentParser(description="Dev-only fake of the Anibeam host API.")
     ap.add_argument("--port", type=int, default=8790)
     ap.add_argument("--bind", default="127.0.0.1")
     ap.add_argument("--demo", action="store_true", help="add six live AniList shows, subscriptions and torrents")

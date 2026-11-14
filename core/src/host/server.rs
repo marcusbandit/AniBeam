@@ -370,7 +370,7 @@ async fn hello(
     }
 }
 
-/// What this host serves past the snapshot: the list of other AniBeams and
+/// What this host serves past the snapshot: the list of other Anibeams and
 /// this one's history always, since neither is streaming; downloads to the
 /// owner's devices, the only ones that may send them; request
 /// proofs while it has its key; streaming while its switch is on;
@@ -397,7 +397,7 @@ fn features(streaming: bool, keyed: bool, owner: bool) -> Vec<String> {
     out
 }
 
-/// The other AniBeams on the tailnet. Asking them all takes a moment, so the
+/// The other Anibeams on the tailnet. Asking them all takes a moment, so the
 /// list answers every request for `CACHE_FOR`; the slot stays locked while it
 /// is made, so a burst of clients waits for one round of hellos. A tailnet
 /// that cannot be read gives no list rather than an empty one, and nothing is
@@ -581,7 +581,7 @@ pub fn content_type(path: &FsPath, bytes: &[u8]) -> &'static str {
     }
 }
 
-/// This computer's series and history, for another AniBeam to merge
+/// This computer's series and history, for another Anibeam to merge
 /// (`history`). The asker is pulled from in turn, so two computers that
 /// see each other both end up with everything.
 async fn history_document(

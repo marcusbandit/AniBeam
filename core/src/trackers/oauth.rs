@@ -183,7 +183,7 @@ async fn run(
     // then contradicts. Held for so long and no longer: a limiter backing
     // off a run of 429s could outlast the browser's own patience, so past
     // the hold the tab is let go with a page that sends the user back to
-    // AniBeam, and the sign-in carries on to an outcome the app reports.
+    // Anibeam, and the sign-in carries on to an outcome the app reports.
     let hold = Duration::from_millis(core.sign_in_hold_ms.load(Ordering::SeqCst));
     let signing_in = sign_in(
         &core,
@@ -693,7 +693,7 @@ fn query_pairs(query: &str) -> Vec<(String, String)> {
 
 // The pages ------------------------------------------------------------------
 
-/// The look every page shares: AniBeam Dark's ground and brand teal, the
+/// The look every page shares: Anibeam Dark's ground and brand teal, the
 /// mono face, one quiet card in the middle of the tab. These pages are the
 /// only interface a user sees in the browser, so they look like the app
 /// rather than like a server default.
@@ -714,7 +714,7 @@ p{margin:0;color:#a3aec5;font-size:0.875rem;line-height:1.5}\
 /// open leaves the page saying the same thing in words.
 fn success_page(site: &str) -> String {
     let site = escape(site);
-    let title = page_words("core-trackers-page-connected", &site, "AniBeam");
+    let title = page_words("core-trackers-page-connected", &site, "Anibeam");
     let heading = page_words("core-trackers-page-connected", &site, BRAND);
     let close = page_words("core-trackers-page-close-tab", &site, BRAND);
     format!(
@@ -728,11 +728,11 @@ fn success_page(site: &str) -> String {
     )
 }
 
-/// AniBeam's name as the pages set it, in the brand colour.
-const BRAND: &str = "<span class=\"brand\">AniBeam</span>";
+/// Anibeam's name as the pages set it, in the brand colour.
+const BRAND: &str = "<span class=\"brand\">Anibeam</span>";
 
 /// One line of a page from the catalog. The catalog's words are the app's own, so they
-/// go in as they are; `site` is escaped by the caller, and `app` is AniBeam's name,
+/// go in as they are; `site` is escaped by the caller, and `app` is Anibeam's name,
 /// plain for a title or marked up as [`BRAND`] in the body.
 fn page_words(id: &str, site: &str, app: &str) -> String {
     tr(id, &[("site", site.into()), ("app", app.into())])
@@ -742,7 +742,7 @@ fn page_words(id: &str, site: &str, app: &str) -> String {
 /// is escaped before it goes into the page: nothing a provider or a
 /// crafted link says should be able to write markup here.
 fn error_page(message: &str) -> String {
-    let title = page_words("core-trackers-page-failed-title", "", "AniBeam");
+    let title = page_words("core-trackers-page-failed-title", "", "Anibeam");
     let heading = page_words("core-trackers-page-failed", "", BRAND);
     let back = page_words("core-trackers-page-go-back", "", BRAND);
     format!(
@@ -762,7 +762,7 @@ fn error_page(message: &str) -> String {
 /// lands.
 fn finishing_page(site: &str) -> String {
     let site = escape(site);
-    let title = page_words("core-trackers-page-finishing-title", &site, "AniBeam");
+    let title = page_words("core-trackers-page-finishing-title", &site, "Anibeam");
     let heading = page_words("core-trackers-page-finishing", &site, BRAND);
     let body = page_words("core-trackers-page-finishing-body", &site, BRAND);
     format!(
@@ -778,7 +778,7 @@ fn finishing_page(site: &str) -> String {
 /// The tab of a sign-in that was cancelled, or replaced by a newer one,
 /// while it was being finished.
 fn cancelled_page() -> String {
-    let title = page_words("core-trackers-page-cancelled-title", "", "AniBeam");
+    let title = page_words("core-trackers-page-cancelled-title", "", "Anibeam");
     let heading = page_words("core-trackers-page-cancelled", "", BRAND);
     let body = page_words("core-trackers-page-cancelled-body", "", BRAND);
     format!(
@@ -817,7 +817,7 @@ mod tests {
 
     /// Any program's loopback connection can sit on the sign-in port, so a
     /// busy port says what to do and never sends anyone looking for a
-    /// second AniBeam.
+    /// second Anibeam.
     #[tokio::test]
     async fn a_busy_port_says_so_and_asks_for_another_try() {
         let holder = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
@@ -826,7 +826,7 @@ mod tests {
         assert!(matches!(&err, CoreError::Service { code, .. } if code == "port_busy"));
         // What the person reads, prefix and all.
         let shown = err.to_string();
-        assert!(!shown.contains("AniBeam"), "{shown}");
+        assert!(!shown.to_lowercase().contains("anibeam"), "{shown}");
         assert!(!shown.contains("file"), "{shown}");
         assert!(shown.starts_with("Signing in could not start: "), "{shown}");
         assert!(shown.contains(&format!("port {port}")), "{shown}");

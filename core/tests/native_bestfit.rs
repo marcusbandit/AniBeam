@@ -29,7 +29,7 @@ fn feed(titles: &[&str]) -> String {
     )
 }
 
-/// AniBeam runs anirss itself (`mode` Sidecar), so its config is the one on this machine.
+/// Anibeam runs anirss itself (`mode` Sidecar), so its config is the one on this machine.
 /// The native engine never starts it.
 fn settings(mode: AnirssMode) -> DownloadSettings {
     DownloadSettings {

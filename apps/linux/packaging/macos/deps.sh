@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # usage: deps.sh <prefix>
-# Builds what Homebrew does not ship the way AniBeam needs it into <prefix>:
+# Builds what Homebrew does not ship the way Anibeam needs it into <prefix>:
 #   libmpv 0.41.0, lean: the OpenGL render API, VideoToolbox, CoreAudio, libass, and none of
 #     Lua, JavaScript, VapourSynth, Vulkan or libarchive. Homebrew's mpv enables VapourSynth,
 #     which links a whole Python framework into libmpv. The Swift glue stays on: 0.41's

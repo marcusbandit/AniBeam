@@ -1,9 +1,9 @@
-// The connect sheet: what a tracker sign-in looks like from AniBeam's side. With
+// The connect sheet: what a tracker sign-in looks like from Anibeam's side. With
 // credentials, bundled with the build or pasted earlier, the frame has already started the
 // flow by the time the sheet opens, so the sheet is one step: the sign-in page is open in
-// the browser, approve AniBeam there, and the sheet turns into the receipt and closes
+// the browser, approve Anibeam there, and the sheet turns into the receipt and closes
 // itself. Without credentials it walks the set-up first, as three numbered steps with the
-// state each leaves behind: create the app on the provider's developer page with AniBeam's
+// state each leaves behind: create the app on the provider's developer page with Anibeam's
 // redirect URL, paste its Client ID back here, connect. The flow's state lives on the
 // frame (frame.connecting and its neighbours), so this only reads it; Escape or the scrim
 // closes the sheet and the connect keeps running, its result announced by the toast.

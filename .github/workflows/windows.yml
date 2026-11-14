@@ -1,6 +1,6 @@
 name: Windows
 
-# Builds AniBeam for 64-bit Windows on a windows-2025 runner: the installer and a portable
+# Builds Anibeam for 64-bit Windows on a windows-2025 runner: the installer and a portable
 # zip, each carrying Qt, libmpv, MpvQt, qbittorrent-nox and anirss on its own Python. Runs
 # the core and shell tests there, then smoke-tests the bundled app, the two helpers and the
 # Downloads page starting them on a fresh install. nightly.yml, release.yml and pr-build.yml

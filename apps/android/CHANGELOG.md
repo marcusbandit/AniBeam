@@ -1,4 +1,4 @@
-# AniBeam for Android
+# Anibeam for Android
 
 <!--
 The app shows this file in What's new, newest version first. Keep it short.
@@ -20,7 +20,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Seeders show for releases from a tracker written with backslashes
 - Shows followed earlier no longer keep their source's key in the app's files
 - A source with no public address no longer stops DNS-blocked sources loading
-- A busy sign-in port says to try again, not that another AniBeam is open
+- A busy sign-in port says to try again, not that another Anibeam is open
 - A show's synopsis reads as paragraphs instead of showing <br> tags
 - Episode codes like S03E01 fit their column instead of running into the title
 - An extra marked with a v2, like SP01v2, no longer reads as an episode
@@ -85,7 +85,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Home lists the next episodes to air, with a way into the Calendar
 - Downloads shows free space instead of upload speed
 - When your computer cannot be reached, the app says what to do about it
-- An episode your computer cannot stream yet says to update AniBeam there
+- An episode your computer cannot stream yet says to update Anibeam there
 - Editing a site keeps its keys out of the address and offers to change them
 - More opens on a list of settings, each saying how it stands right now
 - Each part of the settings opens as its own page
@@ -247,7 +247,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 0.3.0 · 2026-10-23
 
 ### New
-- The phone is its own AniBeam: Home, Library, More and a first-run setup
+- The phone is its own Anibeam: Home, Library, More and a first-run setup
 
 ## 0.2.0 · 2026-10-17
 

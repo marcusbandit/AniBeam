@@ -1,4 +1,4 @@
-# AniBeam Linux shell
+# Anibeam Linux shell
 
 Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec: chapters 4 and 5 of
 `docs/superpowers/specs/2026-09-04-native-line-design.md`; plan: `docs/superpowers/plans/2026-09-05-shell-phase-2.md`.

@@ -45,7 +45,7 @@ pub enum Install {
         exe: PathBuf,
     },
     /// Under /usr or /opt. `owner` is the package manager that owns the file and its name for
-    /// the package, when one does and its updates come from a source AniBeam knows.
+    /// the package, when one does and its updates come from a source Anibeam knows.
     Package {
         owner: Option<(Manager, String)>,
     },

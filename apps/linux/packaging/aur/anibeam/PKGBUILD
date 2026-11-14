@@ -8,7 +8,7 @@ pkgdesc="Browse, play and track a local anime library (Qt 6 and libmpv)"
 arch=(x86_64 aarch64)
 url="https://github.com/marcusbandit/AniBeam"
 license=(GPL-3.0-or-later)
-# anirss and qbittorrent-nox are the Downloads page's: AniBeam runs both itself, and uses a
+# anirss and qbittorrent-nox are the Downloads page's: Anibeam runs both itself, and uses a
 # qBittorrent you already run instead when one answers.
 depends=(qt6-base qt6-declarative qt6-svg mpvqt mpv gcc-libs glibc hicolor-icon-theme
          'anirss>=0.6.0' qbittorrent-nox)
