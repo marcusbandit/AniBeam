@@ -16,6 +16,17 @@ pub const MAX_MEMBERS: u32 = 10;
 /// The largest position a command may carry, in seconds (a day).
 pub const MAX_POSITION: f64 = 86_400.0;
 
+/// The longest public key a member may publish, in characters. An X25519 key in
+/// base64 is 44.
+pub const MAX_KEY: usize = 64;
+
+/// The longest sealed payload one member may pass to another, in characters.
+pub const MAX_SEALED: usize = 8 * 1024;
+
+/// The longest a download may still take, as a member's status says it, in
+/// seconds (a week). Anything longer reads as unknown.
+pub const MAX_ETA: u64 = 7 * 24 * 3600;
+
 /// The id the protocol shows for one person in a room. Stable across a rejoin.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -68,6 +79,30 @@ pub enum Ready {
     Loading,
 }
 
+/// How far a member's download of the episode is. Plain on purpose: it says
+/// how much, never what or from where.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Progress {
+    /// From 0 to 100.
+    pub percent: f64,
+    /// Seconds left, when the torrent client can tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eta: Option<u64>,
+}
+
+impl Progress {
+    /// The progress with its numbers in range, or `None` when they make no sense.
+    pub fn clean(self) -> Option<Progress> {
+        if !self.percent.is_finite() || !(0.0..=100.0).contains(&self.percent) {
+            return None;
+        }
+        Some(Progress {
+            percent: self.percent,
+            eta: self.eta.filter(|s| *s <= MAX_ETA),
+        })
+    }
+}
+
 /// One person in a room, as everyone in it sees them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Member {
@@ -76,6 +111,13 @@ pub struct Member {
     pub host: bool,
     pub ready: Ready,
     pub joined_ms: u64,
+    /// The member's public key for this session (X25519, base64), which others
+    /// seal payloads to. None from a client that seals nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// The member is downloading the episode, this far.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<Progress>,
 }
 
 /// The whole room, as a joiner gets it in [`ServerMsg::Welcome`].
@@ -137,6 +179,10 @@ pub enum ClientMsg {
         /// From an earlier [`ServerMsg::Welcome`]: the same member comes back.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         rejoin_key: Option<String>,
+        /// This member's public key for the session, base64, at most [`MAX_KEY`].
+        /// A relay from before keys ignores it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
     },
     /// A clock probe; `c` is the client's clock in milliseconds.
     Ping { c: u64 },
@@ -144,10 +190,19 @@ pub enum ClientMsg {
     Cmd { action: Action, position: f64 },
     /// Move the room to another episode. The host only.
     Episode { episode: EpisodeRef },
-    /// Whether this member has the episode open.
-    Status { ready: Ready },
+    /// Whether this member has the episode open, and how far its download is
+    /// while it is fetching it.
+    Status {
+        ready: Ready,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        progress: Option<Progress>,
+    },
     /// Leaving for good: the member's rejoin key stops working at once.
     Bye,
+    /// An opaque payload for one other member, at most [`MAX_SEALED`]
+    /// characters. The relay passes it on as [`ServerMsg::Sealed`] and cannot
+    /// read it: the members seal it to each other's keys.
+    Seal { to: MemberId, data: String },
 }
 
 impl ClientMsg {
@@ -198,6 +253,11 @@ pub enum ServerMsg {
     /// The relay is closing this connection on purpose.
     Closed {
         reason: String,
+    },
+    /// Another member's [`ClientMsg::Seal`], passed on as it came.
+    Sealed {
+        from: MemberId,
+        data: String,
     },
 }
 
@@ -266,6 +326,7 @@ mod tests {
                 client: "anibeam/2.5.0".into(),
                 host_key: Some("ab".into()),
                 rejoin_key: None,
+                key: None,
             }
         );
     }
@@ -279,6 +340,7 @@ mod tests {
                 client: "anibeam/2.5.0".into(),
                 host_key: None,
                 rejoin_key: Some("k".into()),
+                key: Some("a2V5".into()),
             },
             ClientMsg::Ping { c: 12 },
             ClientMsg::Cmd {
@@ -288,8 +350,20 @@ mod tests {
             ClientMsg::Episode { episode: episode() },
             ClientMsg::Status {
                 ready: Ready::Missing,
+                progress: None,
+            },
+            ClientMsg::Status {
+                ready: Ready::Missing,
+                progress: Some(Progress {
+                    percent: 42.5,
+                    eta: Some(90),
+                }),
             },
             ClientMsg::Bye,
+            ClientMsg::Seal {
+                to: MemberId(2),
+                data: "c2VhbGVk".into(),
+            },
         ];
         for msg in all {
             assert_eq!(ClientMsg::parse(&msg.to_json()).unwrap(), msg);
@@ -318,7 +392,8 @@ mod tests {
         assert_eq!(
             status,
             ClientMsg::Status {
-                ready: Ready::Loading
+                ready: Ready::Loading,
+                progress: None,
             }
         );
     }
@@ -377,6 +452,8 @@ mod tests {
             host: true,
             ready: Ready::Ready,
             joined_ms: 5,
+            key: None,
+            progress: None,
         };
         let all = [
             ServerMsg::Welcome {
@@ -412,10 +489,78 @@ mod tests {
             ServerMsg::Closed {
                 reason: "bye".into(),
             },
+            ServerMsg::Sealed {
+                from: MemberId(1),
+                data: "c2VhbGVk".into(),
+            },
         ];
         for msg in all {
             assert_eq!(ServerMsg::parse(&msg.to_json()).unwrap(), msg);
         }
+    }
+
+    #[test]
+    fn members_with_keys_and_progress_read_and_old_ones_still_do() {
+        let v = json!({"t": "members", "members": [{
+            "id": 3, "name": "Cy", "host": false, "ready": "missing", "joined_ms": 1,
+            "key": "a2V5", "progress": {"percent": 12.5, "eta": 40}
+        }]});
+        let Ok(ServerMsg::Members { members }) = serde_json::from_value(v) else {
+            panic!("members did not read")
+        };
+        assert_eq!(members[0].key.as_deref(), Some("a2V5"));
+        assert_eq!(
+            members[0].progress,
+            Some(Progress {
+                percent: 12.5,
+                eta: Some(40)
+            })
+        );
+        let old = json!({"t": "members", "members": [{
+            "id": 3, "name": "Cy", "host": false, "ready": "missing", "joined_ms": 1
+        }]});
+        let Ok(ServerMsg::Members { members }) = serde_json::from_value(old) else {
+            panic!("old members did not read")
+        };
+        assert_eq!((members[0].key.clone(), members[0].progress), (None, None));
+        // What a client from before writes still reads
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"status","ready":"ready"}"#).unwrap(),
+            ClientMsg::Status {
+                ready: Ready::Ready,
+                progress: None
+            }
+        );
+        assert_eq!(
+            ClientMsg::Status {
+                ready: Ready::Ready,
+                progress: None
+            }
+            .to_json(),
+            r#"{"t":"status","ready":"ready"}"#
+        );
+    }
+
+    #[test]
+    fn progress_out_of_range_is_dropped() {
+        let p = |percent, eta| Progress { percent, eta }.clean();
+        assert_eq!(
+            p(50.0, Some(10)),
+            Some(Progress {
+                percent: 50.0,
+                eta: Some(10)
+            })
+        );
+        assert_eq!(p(101.0, None), None);
+        assert_eq!(p(-1.0, None), None);
+        assert_eq!(p(f64::NAN, None), None);
+        assert_eq!(
+            p(5.0, Some(MAX_ETA + 1)),
+            Some(Progress {
+                percent: 5.0,
+                eta: None
+            })
+        );
     }
 
     #[test]
