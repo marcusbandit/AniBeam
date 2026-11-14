@@ -160,6 +160,10 @@ jobs:
               name="$(basename "$f")"
               echo "- [$name]($base/$name)"
             done
+            if [ "$IOS_RESULT" = success ]; then
+              enc="$(printf '%s' "$base/AniBeam-$PHONE_VERSION.ipa" | jq -sRr @uri)"
+              echo "- iPhone: [Add to AltStore](https://anibeam.app/install/?to=altstore&url=$enc), [SideStore](https://anibeam.app/install/?to=sidestore&url=$enc), [LiveContainer](https://anibeam.app/install/?to=livecontainer&url=$enc)"
+            fi
             if [ "$IOS_RESULT" != success ]; then
               echo "- The iPhone IPA did not build ($IOS_RESULT): see [the run]($RUN_URL)."
             fi
