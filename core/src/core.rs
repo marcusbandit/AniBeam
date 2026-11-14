@@ -849,6 +849,7 @@ impl Core {
             Call::ListSources => scan::list_sources_call(self),
             Call::AddSource { path } => scan::add_source(self, &path),
             Call::RemoveSource { source } => scan::remove_source(self, source),
+            Call::MoveSource { source, path } => scan::move_source(self, source, &path),
             Call::ForgetSeries { series } => scan::forget_series(self, series),
             Call::Scan { source } => scan::scan(self, source),
             Call::RescanSeries { series } => scan::rescan_series(self, series),

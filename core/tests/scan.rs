@@ -718,3 +718,100 @@ fn a_scope_asked_for_during_a_running_scan_is_not_lost() {
     );
     core.shutdown();
 }
+
+/// The id of the newest Scan job the collector saw start other than `not`.
+fn scan_after(c: &events::Collector, not: u64) -> u64 {
+    common::wait_for(
+        c,
+        |e| {
+            matches!(
+                e.body,
+                EventBody::JobStarted {
+                    kind: JobKind::Scan
+                }
+            ) && e.job.as_ref().is_some_and(|j| j.id != not)
+        },
+        std::time::Duration::from_secs(5),
+    )
+    .job
+    .unwrap()
+    .id
+}
+
+#[test]
+fn move_source_keeps_its_series_at_the_new_folder() {
+    let (dir, core, c) = common::open_core();
+    let old = dir.path().join("old").join("Anime");
+    for n in 1..=3 {
+        touch(&old.join("Show A").join(format!("Show A - {n:02}.mkv")));
+    }
+    let source = match core
+        .call(Call::AddSource {
+            path: old.to_string_lossy().into_owned(),
+        })
+        .unwrap()
+    {
+        Reply::Source { source } => source.id,
+        other => panic!("{other:?}"),
+    };
+    let first = first_scan(&c);
+    common::wait_job(&c, first);
+    let before = common::cards(&core, Tab::All, false);
+    let show = before.iter().find(|s| s.title == "Show A").unwrap().id;
+
+    // The container moves: the files sit under a new root, the old one is gone.
+    let new = dir.path().join("new").join("Anime");
+    fs::create_dir_all(new.parent().unwrap()).unwrap();
+    fs::rename(&old, &new).unwrap();
+    let moved = core
+        .call(Call::MoveSource {
+            source,
+            path: new.to_string_lossy().into_owned(),
+        })
+        .unwrap();
+    match moved {
+        Reply::Source { source: s } => {
+            assert_eq!((s.id, s.path.as_str()), (source, &*new.to_string_lossy()));
+            assert!(s.available);
+        }
+        other => panic!("{other:?}"),
+    }
+    let scan = scan_after(&c, first);
+    assert!(matches!(
+        common::wait_job(&c, scan).body,
+        EventBody::ScanFinished {
+            added: 0,
+            removed: 0,
+            ..
+        }
+    ));
+    match core.call(Call::ListSources).unwrap() {
+        Reply::Sources { sources } => {
+            assert_eq!(sources.len(), 1);
+            assert_eq!(sources[0].path, new.to_string_lossy());
+            assert_eq!(sources[0].series_count, 1);
+        }
+        other => panic!("{other:?}"),
+    }
+    let after = common::cards(&core, Tab::All, false);
+    let card = after.iter().find(|s| s.title == "Show A").unwrap();
+    assert_eq!(
+        (card.id, card.missing, card.episodes_on_disk),
+        (show, false, 3)
+    );
+
+    // A path inside another source is refused, as AddSource refuses it.
+    let other = dir.path().join("other");
+    fs::create_dir_all(&other).unwrap();
+    core.call(Call::AddSource {
+        path: other.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    assert!(matches!(
+        core.call(Call::MoveSource {
+            source,
+            path: other.join("inside").to_string_lossy().into_owned(),
+        }),
+        Err(CoreError::Invalid { .. })
+    ));
+}
