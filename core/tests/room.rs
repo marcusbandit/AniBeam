@@ -204,19 +204,22 @@ fn a_room_keeps_two_players_together() {
     // Ann plays episode 1, whose opening is at 90 seconds, and starts a room.
     let ann_s = open(&ann, ann.files[0]);
     chapters(&ann, ann_s, 90.0);
-    let made = room(ann.core.call(Call::RoomCreate { session: ann_s })).unwrap();
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_s),
+    }))
+    .unwrap();
     assert_eq!(made.code.len(), 6);
     assert_eq!(made.link, format!("{}/{}", relay.url, made.code));
     assert!(made.host);
     assert!(made.connected);
     assert_eq!(made.session, Some(ann_s));
     assert_eq!(made.members.len(), 1);
-    assert_eq!(made.episode.anilist_id, Some(1));
-    assert_eq!(made.episode.mal_id, Some(21));
-    assert_eq!(made.episode.episode_key, "1");
-    assert_eq!(made.episode.series_title, "Cowboy Bebop");
-    assert_eq!(made.episode.opening_start, Some(90.0));
-    assert_eq!(made.episode.duration, Some(1420.0));
+    assert_eq!(made.episode.as_ref().unwrap().anilist_id, Some(1));
+    assert_eq!(made.episode.as_ref().unwrap().mal_id, Some(21));
+    assert_eq!(made.episode.as_ref().unwrap().episode_key, "1");
+    assert_eq!(made.episode.as_ref().unwrap().series_title, "Cowboy Bebop");
+    assert_eq!(made.episode.as_ref().unwrap().opening_start, Some(90.0));
+    assert_eq!(made.episode.as_ref().unwrap().duration, Some(1420.0));
     common::wait_for(&ann.c, |e| said(e, "core-room-created"), WAIT);
 
     // Ben joins with the code typed loosely, and is told which of his files it is.
@@ -379,7 +382,10 @@ fn a_missing_episode_is_said_and_the_host_moves_everyone_on() {
     let cid = person(&relay, "Cid", &[2.0], false);
 
     let ann_1 = open(&ann, ann.files[0]);
-    let made = room(ann.core.call(Call::RoomCreate { session: ann_1 })).unwrap();
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_1),
+    }))
+    .unwrap();
 
     room(cid.core.call(Call::RoomJoin {
         code: made.code.clone(),
@@ -410,7 +416,7 @@ fn a_missing_episode_is_said_and_the_host_moves_everyone_on() {
     // Ann's player moves on to episode 2: the room follows.
     let ann_2 = open(&ann, ann.files[1]);
     let moved = room(ann.core.call(Call::RoomAttach { session: ann_2 })).unwrap();
-    assert_eq!(moved.episode.episode_key, "2");
+    assert_eq!(moved.episode.as_ref().unwrap().episode_key, "2");
     applied(&ann.c, ann_2, |playing, seek, _| {
         !playing && seek == Some(0.0)
     });
@@ -434,7 +440,7 @@ fn a_missing_episode_is_said_and_the_host_moves_everyone_on() {
         WAIT,
     );
     let ben_room = status(&ben).unwrap();
-    assert_eq!(ben_room.episode.episode_key, "2");
+    assert_eq!(ben_room.episode.as_ref().unwrap().episode_key, "2");
     assert_eq!(ben_room.session, None);
 }
 
@@ -445,7 +451,10 @@ fn a_dropped_connection_comes_back_and_leaving_is_for_good() {
     let ben = person(&relay, "Ben", &[1.0], true);
 
     let ann_s = open(&ann, ann.files[0]);
-    let made = room(ann.core.call(Call::RoomCreate { session: ann_s })).unwrap();
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_s),
+    }))
+    .unwrap();
     let joined = room(ben.core.call(Call::RoomJoin {
         code: made.code.clone(),
     }))
@@ -542,14 +551,44 @@ fn two_attached(relay: &Relay) -> (Person, u64, Person, u64, RoomInfo) {
     let ann = person(relay, "Ann", &[1.0, 2.0], true);
     let ben = person(relay, "Ben", &[1.0, 2.0], true);
     let ann_s = open(&ann, ann.files[0]);
-    let made = room(ann.core.call(Call::RoomCreate { session: ann_s })).unwrap();
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_s),
+    }))
+    .unwrap();
     room(ben.core.call(Call::RoomJoin {
         code: made.code.clone(),
     }));
     let ben_s = open(&ben, ben.files[0]);
     room(ben.core.call(Call::RoomAttach { session: ben_s }));
     applied(&ben.c, ben_s, |playing, _, _| !playing);
+    // Ann sees Ben ready, so her first play is not held for him (#922)
+    seen_ready(&ann, "Ben");
     (ann, ann_s, ben, ben_s, made)
+}
+
+/// Waits until `p` sees `name` with the episode open.
+fn seen_ready(p: &Person, name: &str) {
+    common::wait_for(
+        &p.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomChanged { room: Some(r) }
+                if r.members.iter().any(|m| m.name == name && m.ready == RoomReady::Ready))
+        },
+        WAIT,
+    );
+}
+
+/// Waits until `p`'s room shows the gate in `gate`.
+fn gate_is(p: &Person, gate: RoomGate) -> RoomInfo {
+    let e = common::wait_for(
+        &p.c,
+        |e| matches!(&e.body, EventBody::RoomChanged { room: Some(r) } if r.gate == gate),
+        WAIT,
+    );
+    match e.body {
+        EventBody::RoomChanged { room: Some(r) } => r,
+        _ => unreachable!(),
+    }
 }
 
 fn applies(c: &Collector, session: u64) -> Vec<(bool, Option<f64>)> {
@@ -660,7 +699,7 @@ fn the_hosts_move_while_the_connection_is_down_is_made_again() {
     common::wait_for(&ann.c, |e| said(e, "core-room-lost"), WAIT);
     let ann_2 = open(&ann, ann.files[1]);
     let moved = room(ann.core.call(Call::RoomAttach { session: ann_2 })).unwrap();
-    assert_eq!(moved.episode.episode_key, "2");
+    assert_eq!(moved.episode.as_ref().unwrap().episode_key, "2");
     common::wait_for(&ann.c, |e| said(e, "core-room-back"), WAIT);
 
     // Back, she stays on episode 2 and the room follows her there.
@@ -677,7 +716,7 @@ fn the_hosts_move_while_the_connection_is_down_is_made_again() {
         WAIT,
     );
     let ann_room = status(&ann).unwrap();
-    assert_eq!(ann_room.episode.episode_key, "2");
+    assert_eq!(ann_room.episode.as_ref().unwrap().episode_key, "2");
     assert_eq!(ann_room.session, Some(ann_2));
     assert!(
         !ann.c
@@ -729,6 +768,280 @@ fn a_new_host_keeps_the_offset_stored_for_their_file() {
     let ben_again = open(&ben, ben.files[0]);
     let kept = room(ben.core.call(Call::RoomAttach { session: ben_again })).unwrap();
     assert!(kept.host);
-    assert_eq!(kept.episode.episode_key, "1", "the room stays put");
+    assert_eq!(
+        kept.episode.as_ref().unwrap().episode_key,
+        "1",
+        "the room stays put"
+    );
     assert_eq!(kept.offset, 3.0, "the stored offset is kept");
+}
+
+// A room that starts before anything is picked, and the ready gate (#922)
+
+#[test]
+fn a_room_starts_with_nothing_picked_and_the_hosts_picks_move_everyone() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[1.0, 2.0], true);
+    let ben = person(&relay, "Ben", &[2.0, 1.0], true);
+
+    // Ann starts a room with nothing playing.
+    let made = room(ann.core.call(Call::RoomCreate { session: None })).unwrap();
+    assert!(made.host);
+    assert!(made.connected);
+    assert_eq!(made.episode, None);
+    assert_eq!(made.session, None);
+    assert_eq!(made.gate, RoomGate::Off);
+    common::wait_for(&ann.c, |e| said(e, "core-room-created"), WAIT);
+
+    // Ben joins: he sees the room and who is in it, and nothing to open yet.
+    let joined = room(ben.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }))
+    .unwrap();
+    assert_eq!(joined.episode, None);
+    assert_eq!(joined.members.len(), 2);
+    assert!(joined.members.iter().any(|m| m.name == "Ann" && m.host));
+    common::wait_for(
+        &ann.c,
+        |e| said_name(e, "core-room-member-joined", "Ben"),
+        WAIT,
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        !ben.c
+            .events()
+            .iter()
+            .any(|e| matches!(&e.body, EventBody::RoomEpisode { .. })),
+        "nothing to open before Ann picks"
+    );
+    // Only the host picks: Ben's player on his own does not move the room.
+    let ben_own = open(&ben, ben.files[0]);
+    let err = ben
+        .core
+        .call(Call::RoomAttach { session: ben_own })
+        .unwrap_err();
+    assert_eq!(service_code(err), "not_in_room");
+    ben.core
+        .call(Call::ClosePlayback {
+            session: ben_own,
+            position: 0.0,
+            reason: CloseReason::Stopped,
+        })
+        .unwrap();
+
+    // Ann opens episode 1: the room takes it, and Ben is told which file it is.
+    let ann_1 = open(&ann, ann.files[0]);
+    let picked = room(ann.core.call(Call::RoomAttach { session: ann_1 })).unwrap();
+    assert_eq!(picked.episode.as_ref().unwrap().episode_key, "1");
+    assert_eq!(picked.session, Some(ann_1));
+    applied(&ann.c, ann_1, |playing, seek, _| {
+        !playing && seek == Some(0.0)
+    });
+    common::wait_for(
+        &ben.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomEpisode { file, episode, .. }
+                if *file == Some(ben.files[1]) && episode.episode_key == "1")
+        },
+        WAIT,
+    );
+    let ben_1 = open(&ben, ben.files[1]);
+    room(ben.core.call(Call::RoomAttach { session: ben_1 }));
+    applied(&ben.c, ben_1, |playing, seek, _| {
+        !playing && seek == Some(0.0)
+    });
+
+    // Ann changes her mind before anyone plays: episode 2 it is, and Ben follows
+    // without joining again.
+    let ann_2 = open(&ann, ann.files[1]);
+    let changed = room(ann.core.call(Call::RoomAttach { session: ann_2 })).unwrap();
+    assert_eq!(changed.episode.as_ref().unwrap().episode_key, "2");
+    applied(&ben.c, ben_1, |playing, seek, _| !playing && seek.is_none());
+    common::wait_for(
+        &ben.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomEpisode { file, episode, .. }
+                if *file == Some(ben.files[0]) && episode.episode_key == "2")
+        },
+        WAIT,
+    );
+    let ben_room = status(&ben).unwrap();
+    assert_eq!(ben_room.episode.as_ref().unwrap().episode_key, "2");
+    assert_eq!(
+        ben_room.you, joined.you,
+        "the same member, never reconnected"
+    );
+}
+
+#[test]
+fn the_hosts_first_play_waits_for_everyone_when_asked_to() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[1.0], true);
+    let ben = person(&relay, "Ben", &[1.0], true);
+    let cid = person(&relay, "Cid", &[1.0], true);
+
+    let ann_s = open(&ann, ann.files[0]);
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_s),
+    }))
+    .unwrap();
+    room(ben.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }));
+    let ben_s = open(&ben, ben.files[0]);
+    room(ben.core.call(Call::RoomAttach { session: ben_s }));
+    seen_ready(&ann, "Ben");
+    // Cid joins and has the episode, but has not opened it yet.
+    room(cid.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }));
+    common::wait_for(
+        &ann.c,
+        |e| said_name(e, "core-room-member-joined", "Cid"),
+        WAIT,
+    );
+
+    // Ann presses play: the room holds, her player stays paused where she
+    // pressed, and she is asked.
+    let held = room(ann.core.call(Call::RoomCommand {
+        action: RoomAction::Play,
+        position: 12.0,
+    }))
+    .unwrap();
+    assert_eq!(held.gate, RoomGate::Asking);
+    applied(&ann.c, ann_s, |playing, seek, _| {
+        !playing && seek == Some(12.0)
+    });
+    // She waits for everyone.
+    let waiting = room(ann.core.call(Call::RoomStart { wait: true })).unwrap();
+    assert_eq!(waiting.gate, RoomGate::Waiting);
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        applies(&ben.c, ben_s).iter().all(|(playing, _)| !playing),
+        "nobody plays while the room waits"
+    );
+
+    // Cid opens his copy: everyone is ready, and the room starts on its own
+    // from where Ann pressed play.
+    let cid_s = open(&cid, cid.files[0]);
+    room(cid.core.call(Call::RoomAttach { session: cid_s }));
+    applied(&ann.c, ann_s, |playing, seek, _| {
+        playing && seek.is_some_and(|t| (12.0..14.0).contains(&t))
+    });
+    applied(&ben.c, ben_s, |playing, seek, _| {
+        playing && seek.is_some_and(|t| (12.0..14.0).contains(&t))
+    });
+    applied(&cid.c, cid_s, |playing, _, _| playing);
+    gate_is(&ann, RoomGate::Off);
+
+    // Once it has played, a pause and a play go straight through.
+    ann.core
+        .call(Call::RoomCommand {
+            action: RoomAction::Pause,
+            position: 30.0,
+        })
+        .unwrap();
+    applied(&ben.c, ben_s, |playing, seek, _| {
+        !playing && seek == Some(30.0)
+    });
+    let again = room(ann.core.call(Call::RoomCommand {
+        action: RoomAction::Play,
+        position: 30.0,
+    }))
+    .unwrap();
+    assert_eq!(again.gate, RoomGate::Off);
+    applied(&ben.c, ben_s, |playing, seek, _| {
+        playing && seek.is_some_and(|t| (30.0..32.0).contains(&t))
+    });
+}
+
+#[test]
+fn the_host_starts_anyway_and_a_late_copy_joins_in_sync() {
+    let relay = relay();
+    let ann = person(&relay, "Ann", &[1.0, 2.0], true);
+    let ben = person(&relay, "Ben", &[1.0, 2.0], true);
+    // Cid lacks episode 1.
+    let cid = person(&relay, "Cid", &[2.0], true);
+
+    let ann_s = open(&ann, ann.files[0]);
+    let made = room(ann.core.call(Call::RoomCreate {
+        session: Some(ann_s),
+    }))
+    .unwrap();
+    room(ben.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }));
+    let ben_s = open(&ben, ben.files[0]);
+    room(ben.core.call(Call::RoomAttach { session: ben_s }));
+    seen_ready(&ann, "Ben");
+    room(cid.core.call(Call::RoomJoin {
+        code: made.code.clone(),
+    }));
+    common::wait_for(
+        &ann.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomChanged { room: Some(r) }
+                if r.members.iter().any(|m| m.name == "Cid" && m.ready == RoomReady::Missing))
+        },
+        WAIT,
+    );
+    // Cid, without the episode, is never asked anything: only the host chooses.
+    assert_eq!(status(&cid).unwrap().gate, RoomGate::Off);
+
+    let held = room(ann.core.call(Call::RoomCommand {
+        action: RoomAction::Play,
+        position: 0.0,
+    }))
+    .unwrap();
+    assert_eq!(held.gate, RoomGate::Asking);
+    let ready = held
+        .members
+        .iter()
+        .filter(|m| m.ready == RoomReady::Ready)
+        .count();
+    assert_eq!((ready, held.members.len()), (2, 3));
+
+    // Start anyway: Ann and Ben play, Cid still lacks it.
+    let started = room(ann.core.call(Call::RoomStart { wait: false })).unwrap();
+    assert_eq!(started.gate, RoomGate::Off);
+    applied(&ann.c, ann_s, |playing, _, _| playing);
+    applied(&ben.c, ben_s, |playing, _, _| playing);
+    assert!(status(&cid).unwrap().can_fetch);
+
+    // The next episode moves everyone, Cid included, and its first play is
+    // held again until the host chooses.
+    let ann_2 = open(&ann, ann.files[1]);
+    let moved = room(ann.core.call(Call::RoomAttach { session: ann_2 })).unwrap();
+    assert_eq!(moved.episode.as_ref().unwrap().episode_key, "2");
+    assert_eq!(moved.gate, RoomGate::Off);
+    common::wait_for(
+        &cid.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomEpisode { file, episode, .. }
+                if *file == Some(cid.files[0]) && episode.episode_key == "2")
+        },
+        WAIT,
+    );
+    common::wait_for(
+        &ben.c,
+        |e| {
+            matches!(&e.body, EventBody::RoomEpisode { file, episode, .. }
+                if *file == Some(ben.files[1]) && episode.episode_key == "2")
+        },
+        WAIT,
+    );
+    let cid_2 = open(&cid, cid.files[0]);
+    room(cid.core.call(Call::RoomAttach { session: cid_2 }));
+    seen_ready(&ann, "Cid");
+    let held = room(ann.core.call(Call::RoomCommand {
+        action: RoomAction::Play,
+        position: 0.0,
+    }))
+    .unwrap();
+    assert_eq!(held.gate, RoomGate::Asking, "Ben has yet to open episode 2");
+    // Ben opens it late: the room was asking, and starts now everyone is ready.
+    let ben_2 = open(&ben, ben.files[1]);
+    room(ben.core.call(Call::RoomAttach { session: ben_2 }));
+    applied(&cid.c, cid_2, |playing, _, _| playing);
+    applied(&ben.c, ben_2, |playing, _, _| playing);
 }

@@ -87,7 +87,10 @@ pub struct Room {
     /// Keys the rejoin keys; never leaves the relay.
     secret: [u8; 16],
     keys_made: u64,
-    episode: EpisodeRef,
+    /// None until the host picks something (#922). A room stored before reads
+    /// with its episode.
+    #[serde(default)]
+    episode: Option<EpisodeRef>,
     state: PlayState,
     max: u32,
     /// Members in the order they first joined.
@@ -103,13 +106,14 @@ pub struct Room {
 }
 
 impl Room {
-    /// A new room, paused at 0 on `episode`. Whoever says hello with `host_key`
-    /// becomes the host. `secret` is 16 random bytes the room makes rejoin keys
-    /// from; the caller supplies them because this crate has no randomness.
+    /// A new room, paused at 0 on `episode`, or on nothing yet when it is None.
+    /// Whoever says hello with `host_key` becomes the host. `secret` is 16
+    /// random bytes the room makes rejoin keys from; the caller supplies them
+    /// because this crate has no randomness.
     pub fn new(
         code: impl Into<String>,
         host_key: impl Into<String>,
-        episode: EpisodeRef,
+        episode: Option<EpisodeRef>,
         now_ms: u64,
         secret: [u8; 16],
     ) -> Room {
@@ -140,8 +144,9 @@ impl Room {
         &self.code
     }
 
-    pub fn episode(&self) -> &EpisodeRef {
-        &self.episode
+    /// What the room watches, once the host has picked it.
+    pub fn episode(&self) -> Option<&EpisodeRef> {
+        self.episode.as_ref()
     }
 
     pub fn state(&self) -> PlayState {
@@ -237,6 +242,7 @@ impl Room {
                     host_key,
                     rejoin_key,
                     key,
+                    unpicked,
                 } => self.hello(
                     conn,
                     Hello {
@@ -245,6 +251,7 @@ impl Room {
                         host_key,
                         rejoin_key,
                         key,
+                        unpicked,
                     },
                     now_ms,
                 ),
@@ -293,7 +300,7 @@ impl Room {
                         "only the host changes the episode",
                     )];
                 }
-                self.episode = episode;
+                self.episode = Some(episode.clone());
                 self.state = PlayState {
                     playing: false,
                     position: 0.0,
@@ -307,7 +314,7 @@ impl Room {
                 }
                 vec![
                     all(ServerMsg::Episode {
-                        episode: self.episode.clone(),
+                        episode,
                         state: self.state,
                         by: id,
                     }),
@@ -369,12 +376,21 @@ impl Room {
             host_key,
             rejoin_key,
             key,
+            unpicked,
         } = hello;
         if proto != PROTO {
             return vec![error(
                 conn,
                 ErrorCode::Proto,
                 format!("this relay speaks protocol {PROTO}"),
+            )];
+        }
+        // A client from before #922 cannot read a welcome without an episode
+        if self.episode.is_none() && !unpicked {
+            return vec![error(
+                conn,
+                ErrorCode::Proto,
+                "this room has not picked an episode yet; update the app to join it",
             )];
         }
         let Some(name) = clean_name(&name) else {
@@ -612,6 +628,7 @@ struct Hello {
     host_key: Option<String>,
     rejoin_key: Option<String>,
     key: Option<String>,
+    unpicked: bool,
 }
 
 /// A public key as the room keeps it: base64 characters, at most [`MAX_KEY`].

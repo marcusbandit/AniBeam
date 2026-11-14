@@ -1536,6 +1536,7 @@ core-room-service = Wspólne oglądanie
 core-room-not-found = Nie ma pokoju o tym kodzie. Mógł zostać zamknięty.
 core-room-full = Ten pokój jest pełny.
 core-room-proto = Ten przekaźnik używa innej wersji pokojów. Zaktualizuj { -app-name }, aby dołączyć.
+core-room-needs-episode = Ten przekaźnik potrzebuje odcinka, by utworzyć pokój. Utwórz go z odtwarzacza albo zaktualizuj przekaźnik.
 core-room-unreachable = Nie udało się połączyć z przekaźnikiem: { $message }
 core-room-refused = Przekaźnik odmówił: { $message }
 core-room-not-in = Nie jesteś w żadnym pokoju.

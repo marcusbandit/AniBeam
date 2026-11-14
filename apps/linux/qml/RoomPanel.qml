@@ -2,11 +2,13 @@
 // at the top right and holds the chrome while it is up; anywhere else it stands in the middle
 // of the window over a scrim (Ctrl+J, the rail). One panel, two states:
 //
-// - Not in a room: Start a room (in the player, for the episode playing), and a code to join
-//   one. A name comes first when there is none, asked here, once.
-// - In a room: the code large, the QR code and the link with Copy, who is in it and whether
-//   each has the episode open, the offset with its two steps and the openings' suggestion, the
-//   connection, and Leave.
+// - Not in a room: Start a room (in the player, for the episode playing; anywhere else, with
+//   nothing picked yet), and a code to join one. A name comes first when there is none, asked
+//   here, once.
+// - In a room: the code large, the QR code and the link with Copy, what the room watches or
+//   that nothing is picked yet, the host's ready gate, who is in it and whether each has the
+//   episode open, the offset with its two steps and the openings' suggestion, the connection,
+//   and Leave.
 //
 // The room itself is the frame's (Room.qml); this only shows it and calls into it.
 import QtQuick
@@ -61,12 +63,17 @@ Item {
         open = false
         room.cancelWaiting()
         editingName = false
+        choosing = false
         frame.escapeStack.pop(root)
         if (inPlayer) { player.openMenus--; player.showChrome() }
         else frame.focusPage(root, null)
     }
     Component.onDestruction: root.close()
 
+    // Get media on a series asks first: this episode, or the whole show (#922)
+    property bool choosing: false
+    function getMedia(wholeShow) { choosing = false; room.getMedia(wholeShow) }
+    Connections { target: root.room; function onInfoChanged() { if (!root.info || !root.info.can_fetch) root.choosing = false } }
     // The name: asked when an action waits on it, or when the person asks to change it
     property bool editingName: false
     readonly property bool asking: !room.inRoom && (editingName || room.waiting !== null)
@@ -82,7 +89,7 @@ Item {
     }
     readonly property string episodeLine: {
         var e = info ? info.episode : null
-        if (!e) return ""
+        if (!e) return info ? words.t("room-panel-nothing-picked") : ""
         var ep = e.episode_title ? e.episode_title : (e.number !== null && e.number !== undefined ? words.episodeName("", e.number) : e.episode_key)
         return words.t("room-panel-watching", { series: e.series_title, episode: ep })
     }
@@ -185,22 +192,23 @@ Item {
                 visible: !root.info && !root.asking
                 width: content.wide
                 spacing: theme.space(4)
+                // In the player the room starts on the episode playing; anywhere else it
+                // starts with nothing picked, and the host's first episode picks it (#922)
                 Button {
                     objectName: "room-panel-start"
-                    visible: root.inPlayer
                     width: parent.width
                     primary: true
                     icon: "users"
                     msg: "room-panel-start"
                     busy: room.busy === "create"
-                    enabled: room.busy !== "join" && !!(root.player && root.player.session && !root.player.closed)
-                    takesFocus: false
-                    onClicked: room.create(root.player.session.session)
+                    enabled: room.busy !== "join" && (!root.inPlayer || !!(root.player.session && !root.player.closed))
+                    takesFocus: !root.inPlayer
+                    onClicked: room.create(root.inPlayer ? root.player.session.session : null)
                 }
                 Column {
                     width: parent.width
                     spacing: theme.space(2)
-                    Label { msg: root.inPlayer ? "room-panel-or-join" : "room-panel-join-label"; role: "ui"; color: theme.textDim; font.pointSize: theme.typeSmall }
+                    Label { msg: "room-panel-or-join"; role: "ui"; color: theme.textDim; font.pointSize: theme.typeSmall }
                     Row {
                         spacing: theme.space(2)
                         CodeInput {
@@ -217,7 +225,7 @@ Item {
                             id: joinButton
                             anchors.verticalCenter: parent.verticalCenter
                             objectName: "room-panel-join"
-                            primary: !root.inPlayer
+                            primary: false
                             icon: "log-in"
                             msg: "room-panel-join"
                             busy: room.busy === "join"
@@ -314,6 +322,11 @@ Item {
                             role: "title"; font.pointSize: theme.typeNormal
                             wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
                         }
+                        // The host's ready gate (#922): over the people while it asks or waits
+                        RoomGate {
+                            width: parent.width
+                            takesFocus: !root.inPlayer
+                        }
                         Button {
                             objectName: "room-panel-open-episode"
                             visible: !root.inPlayer && !!room.episode && room.episode.file >= 0
@@ -339,6 +352,8 @@ Item {
                                     readonly property string fetch: me && root.info ? String(root.info.fetch || "Idle") : "Idle"
                                     readonly property bool downloading: m.ready === "Downloading"
                                     readonly property bool offer: me && root.info.can_fetch === true
+                                    // Get media pressed on a series: this episode or the whole show
+                                    readonly property bool choice: offer && root.choosing
                                     readonly property real percent: downloading ? Math.max(0, Math.min(100, Number(m.progress || 0))) : 0
                                     // Your own fetch says more than the relay's echo of it
                                     readonly property string shown: me && (fetch === "Asking" || fetch === "Searching") ? fetch
@@ -347,7 +362,7 @@ Item {
                                     readonly property var look: root.stateLook[shown] || root.stateLook.Loading
                                     objectName: "room-panel-member-" + m.id
                                     width: people.width
-                                    height: theme.space(10) + (downloading ? theme.space(4) : 0)
+                                    height: theme.space(10) + (downloading ? theme.space(4) : 0) + (choice ? choiceRow.height + theme.space(2) : 0)
 
                                     Rectangle {
                                         id: avatar
@@ -368,7 +383,7 @@ Item {
                                         anchors.left: avatar.right; anchors.leftMargin: theme.space(3)
                                         anchors.verticalCenter: avatar.verticalCenter
                                         spacing: theme.space(1.5)
-                                        readonly property real budget: (member.offer ? getButton.x : status.x) - x - theme.space(3)
+                                        readonly property real budget: (member.offer && !member.choice ? getButton.x : status.visible ? status.x : member.width) - x - theme.space(3)
                                         Label {
                                             id: nameText
                                             anchors.verticalCenter: parent.verticalCenter
@@ -397,7 +412,8 @@ Item {
                                         objectName: "room-panel-status"
                                         anchors.right: parent.right
                                         anchors.verticalCenter: avatar.verticalCenter
-                                        visible: !member.offer
+                                        // Nothing to have open before the host picks
+                                        visible: !member.offer && room.picked
                                         spacing: theme.space(1.5)
                                         Icon {
                                             id: statusIcon
@@ -422,12 +438,35 @@ Item {
                                         objectName: "room-panel-get-media"
                                         anchors.right: parent.right
                                         anchors.verticalCenter: avatar.verticalCenter
-                                        visible: member.offer
+                                        visible: member.offer && !member.choice
                                         primary: true; small: true
                                         icon: member.fetch === "Failed" ? "rotate-cw" : "download"
                                         msg: member.fetch === "Failed" ? "action-try-again" : "room-panel-get-media"
                                         takesFocus: false
-                                        onClicked: room.getMedia()
+                                        onClicked: if (room.asksWholeShow) root.choosing = true; else root.getMedia(false)
+                                    }
+                                    // This episode, or the whole show of the host's release
+                                    Row {
+                                        id: choiceRow
+                                        objectName: "room-panel-get-choice"
+                                        visible: member.choice
+                                        anchors.left: nameRow.left
+                                        anchors.top: avatar.bottom; anchors.topMargin: theme.space(2)
+                                        spacing: theme.space(2)
+                                        Button {
+                                            objectName: "room-panel-get-episode"
+                                            small: true; icon: "download"
+                                            msg: "room-panel-this-episode"
+                                            takesFocus: false
+                                            onClicked: root.getMedia(false)
+                                        }
+                                        Button {
+                                            objectName: "room-panel-get-show"
+                                            primary: true; small: true; icon: "layers"
+                                            msg: "room-panel-whole-show"
+                                            takesFocus: false
+                                            onClicked: root.getMedia(true)
+                                        }
                                     }
                                     // The download: a thin line from the name to the edge, the time left at its end
                                     Item {

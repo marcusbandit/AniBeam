@@ -1286,6 +1286,7 @@ core-room-service = Regarder ensemble
 core-room-not-found = Aucun salon n'a ce code. Il est peut-être fermé.
 core-room-full = Ce salon est plein.
 core-room-proto = Ce relais utilise une autre version des salons. Mettez à jour { -app-name } pour le rejoindre.
+core-room-needs-episode = Ce relais a besoin d'un épisode pour ouvrir un salon. Ouvrez-le depuis le lecteur ou mettez à jour le relais.
 core-room-unreachable = Impossible de joindre le relais : { $message }
 core-room-refused = Le relais a refusé : { $message }
 core-room-not-in = Vous n'êtes dans aucun salon.
