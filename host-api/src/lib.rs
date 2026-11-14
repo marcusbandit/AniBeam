@@ -180,7 +180,7 @@ pub struct Hello {
     pub api: u32,
     /// The AniBeam version, as its About page shows it.
     pub version: String,
-    /// The machine's name, for a client to show ("banditbox").
+    /// The machine's name, for a client to show ("desktop").
     pub host: String,
     /// The host's clock, so a client can tell how far apart they are.
     pub now: i64,

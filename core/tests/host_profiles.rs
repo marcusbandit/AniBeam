@@ -17,7 +17,7 @@ use axum::extract::connect_info::MockConnectInfo;
 /// The owner (user 100) has this machine and a phone; a friend (user 200) has a tablet;
 /// the laptop names no user.
 const STATUS: &[u8] = br#"{
-    "Self": {"ID": "nSelf", "HostName": "banditbox", "UserID": 100, "TailscaleIPs": ["100.65.105.9"]},
+    "Self": {"ID": "nSelf", "HostName": "desktop", "UserID": 100, "TailscaleIPs": ["100.64.0.10"]},
     "Peer": {
         "nodekey:aa": {"ID": "nPhone", "HostName": "pixel", "UserID": 100, "TailscaleIPs": ["100.70.1.2"]},
         "nodekey:bb": {"ID": "nTablet", "HostName": "tab", "UserID": 200, "TailscaleIPs": ["100.70.1.3"]},

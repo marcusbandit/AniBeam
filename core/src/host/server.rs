@@ -613,15 +613,12 @@ mod tests {
     #[test]
     fn only_this_machine_or_an_address_passes_the_host_check() {
         use super::host_allowed;
-        assert!(host_allowed("100.94.40.21:8790", "banditbox"));
-        assert!(host_allowed("[fd7a:115c:a1e0::1]:8790", "banditbox"));
-        assert!(host_allowed(
-            "banditbox.tail24c6a9.ts.net:8790",
-            "banditbox"
-        ));
-        assert!(host_allowed("banditbox:8790", "banditbox"));
-        assert!(!host_allowed("evil.example:8790", "banditbox"));
-        assert!(!host_allowed("", "banditbox"));
+        assert!(host_allowed("100.64.0.30:8790", "desktop"));
+        assert!(host_allowed("[fd7a:115c:a1e0::1]:8790", "desktop"));
+        assert!(host_allowed("desktop.example.ts.net:8790", "desktop"));
+        assert!(host_allowed("desktop:8790", "desktop"));
+        assert!(!host_allowed("evil.example:8790", "desktop"));
+        assert!(!host_allowed("", "desktop"));
     }
 
     use super::*;
