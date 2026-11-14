@@ -119,17 +119,49 @@ fn open(data_dir: &Path) -> Result<(Arc<Core>, Arc<Subscription>), Box<dyn std::
     let library = data_dir.join(LIBRARY_DIR);
     std::fs::create_dir_all(&library)?;
     seed(&library);
-    let library = library.to_string_lossy().into_owned();
-    let known = match core.call(Call::ListSources)? {
-        Reply::Sources { sources } => sources.iter().any(|s| s.path == library),
-        _ => false,
+    let library_path = library.to_string_lossy().into_owned();
+    let sources = match core.call(Call::ListSources)? {
+        Reply::Sources { sources } => sources,
+        _ => Vec::new(),
     };
-    if !known {
-        core.call(Call::AddSource { path: library })?;
+    if !sources.iter().any(|s| s.path == library_path) {
+        // The iPhone's container moves on a reinstall or a re-sign (AltStore and LiveContainer
+        // re-sign every week), taking the library to a new absolute path. The source the
+        // library had at the old one follows it, so its shows, matches and history stay.
+        match sources
+            .iter()
+            .find(|s| moved_library(Path::new(&s.path), &library))
+        {
+            Some(old) => {
+                log(&format!(
+                    "library moved from {} to {library_path}",
+                    old.path
+                ));
+                core.call(Call::MoveSource {
+                    source: old.id,
+                    path: library_path,
+                })?;
+            }
+            None => {
+                core.call(Call::AddSource { path: library_path })?;
+            }
+        }
     }
     core.start()?;
     log("core started");
     Ok((core, listener))
+}
+
+/// `old` is this app's library at a container it has left: gone from the disk, and named
+/// as the library is from the app's own folder down (`AniBeam/Anime` on the iPhone,
+/// `files/Anime` on Android), so a folder the app never owned is never taken for it.
+fn moved_library(old: &Path, library: &Path) -> bool {
+    let tail = |p: &Path| {
+        let mut names = p.components().rev().take(2).collect::<Vec<_>>();
+        names.reverse();
+        names
+    };
+    old != library && !old.is_dir() && tail(old).len() == 2 && tail(old) == tail(library)
 }
 
 /// A test hook: each line of `/data/local/tmp/anibeam-seed` names a file to create, empty,
@@ -166,5 +198,31 @@ fn seed(library: &Path) {
         if done {
             log(&format!("seeded {name}"));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_library_left_behind_by_a_moved_container_is_followed() {
+        let new = Path::new(
+            "/var/mobile/Containers/Data/Application/NEW/Library/Application Support/AniBeam/Anime",
+        );
+        let old = Path::new(
+            "/var/mobile/Containers/Data/Application/OLD/Library/Application Support/AniBeam/Anime",
+        );
+        assert!(moved_library(old, new));
+        assert!(!moved_library(new, new));
+        // Another app's folder, or one that is still there, is not the library.
+        assert!(!moved_library(Path::new("/nowhere/Other/Anime"), new));
+        let here = std::env::temp_dir()
+            .join(format!("anibeam-local-{}", std::process::id()))
+            .join("AniBeam/Anime");
+        std::fs::create_dir_all(&here).unwrap();
+        let still_there = moved_library(&here, new);
+        let _ = std::fs::remove_dir_all(here.parent().unwrap().parent().unwrap());
+        assert!(!still_there);
     }
 }
